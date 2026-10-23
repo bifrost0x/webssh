@@ -30,6 +30,8 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/connection-overview.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/command-experience.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/permission-job-dialog.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-windows.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/server-operations.css') }}">
 </head>
@@ -1103,8 +1105,9 @@
             <aside class="command-workspace-tabs management-resource-navigation" role="tablist" aria-label="Command management" data-i18n-aria-label="accessibility.commandManagement">
                 <div class="management-resource-title"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></div>
                 <p class="command-workspace-nav-label" data-i18n="commands.resources">Command resources</p>
-                <button type="button" id="commandSetsTab" class="command-workspace-tab active" role="tab" aria-selected="true" aria-controls="commandSetsPanel" data-command-workspace-section="sets"><span class="material-icons" aria-hidden="true">account_tree</span><span data-i18n="commandSets.manage">Command Sets</span></button>
-                <button type="button" id="commandLibraryTab" class="command-workspace-tab" role="tab" aria-selected="false" aria-controls="commandLibraryPanel" data-command-workspace-section="library"><span class="material-icons" aria-hidden="true">library_books</span><span data-i18n="commands.library">Command Library</span></button>
+                <button type="button" id="commandLibraryTab" class="command-workspace-tab command-kind-command" role="tab" aria-selected="false" aria-controls="commandLibraryPanel" data-command-workspace-section="library"><span class="material-icons" aria-hidden="true">library_books</span><span data-i18n="commands.library">Command Library</span></button>
+                <button type="button" id="commandFavoritesTab" class="command-workspace-tab command-kind-favorite" role="tab" aria-selected="false" aria-controls="commandFavoritesPanel" data-command-workspace-section="favorites"><span class="material-icons" aria-hidden="true">star_outline</span><span data-i18n="sessionCommands.favorites">Favorites</span></button>
+                <button type="button" id="commandSetsTab" class="command-workspace-tab command-kind-set active" role="tab" aria-selected="true" aria-controls="commandSetsPanel" data-command-workspace-section="sets"><span class="material-icons" aria-hidden="true">account_tree</span><span data-i18n="commandSets.manage">Command Sets</span></button>
             </aside>
             <div class="modal-body command-workspace-body">
                 <section id="commandLibraryPanel" class="command-workspace-panel hidden" role="tabpanel" aria-labelledby="commandLibraryTab">
@@ -1147,6 +1150,12 @@
                     </div>
                 </section>
 
+                <section id="commandFavoritesPanel" class="command-workspace-panel hidden" role="tabpanel" aria-labelledby="commandFavoritesTab">
+                    <div class="management-panel-heading"><h3 data-i18n="sessionCommands.favorites">Favorites</h3><p data-i18n="commands.favoritesHint">Your starred commands and command sets. Their original type stays visible.</p></div>
+                    <label class="management-search-control" for="commandFavoritesSearch"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="commands.searchFavorites">Search favorites</span><input id="commandFavoritesSearch" class="form-control" type="search" data-i18n-placeholder="commands.searchFavorites" placeholder="Search favorites"></label>
+                    <div id="commandFavoritesList" class="command-favorites-list"></div>
+                </section>
+
                 <section id="commandSetsPanel" class="command-workspace-panel command-set-modal-body" role="tabpanel" aria-labelledby="commandSetsTab">
                 <section id="commandSetManagementView">
                     <div class="command-set-management-toolbar management-panel-heading">
@@ -1159,6 +1168,7 @@
                             <button type="button" id="newCommandSetBtn" class="btn btn-primary" data-i18n="commandSets.create">Create command set</button>
                         </div>
                     </div>
+                    <label class="command-set-usage-filter" for="commandSetUsageFilter"><span data-i18n="commandSets.usage">Usage</span><select id="commandSetUsageFilter" class="form-control"><option value="all" data-i18n="commandSets.usageAll">All sets</option><option value="startup" data-i18n="commandSets.usageStartup">Available on connect</option><option value="interactive" data-i18n="commandSets.interactiveOnly">Requires manual launch</option></select></label>
                     <div id="commandSetManagementList" class="command-set-management-list"></div>
                 </section>
 
@@ -1175,12 +1185,6 @@
                                 <input id="commandSetDescriptionInput" class="form-control" type="text">
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label for="commandSetParameterNames" data-i18n="commandParameters.names">Interactive parameter names (comma separated)</label>
-                            <input id="commandSetParameterNames" class="form-control" type="text" maxlength="680" placeholder="path, service" aria-describedby="commandSetParameterHint">
-                            <p id="commandSetParameterHint" data-i18n="commandParameters.hint">Optional. Use argument steps only, with each {{ '{{name}}' }} as a whole argument. Values are POSIX shell arguments. These sets require interactive launch and never run on connect.</p>
-                            <button id="addArgumentCommandStepBtn" type="button" class="btn btn-secondary btn-sm" data-i18n="commandParameters.addStep">Add argument step</button>
-                        </div>
                         <div class="command-set-sudo-option">
                             <label for="commandSetUseSudoInput">
                                 <input id="commandSetUseSudoInput" type="checkbox">
@@ -1189,9 +1193,10 @@
                             <p data-i18n="commandSets.useSudoHint">Adds sudo to every non-empty command line. Lines already starting with sudo remain unchanged.</p>
                         </div>
                         <div class="command-set-builder">
-                            <section class="command-set-library-pane" aria-labelledby="commandSetLibraryHeading">
+                            <details id="commandSetLibraryPicker" class="command-set-library-pane" open>
+                                <summary data-i18n="commands.addStep">Add a step from the library</summary>
                                 <h4 id="commandSetLibraryHeading" data-i18n="commands.library">Command Library</h4>
-                                <input id="commandSetSearchInput" class="form-control" type="search" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
+                                <input id="commandSetSearchInput" class="form-control" type="search" aria-label="Search commands" data-i18n-aria-label="commands.searchPlaceholder" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
                                 <div class="command-set-os-filters" aria-label="Operating system filter" data-i18n-aria-label="accessibility.operatingSystemFilter">
                                     <button type="button" class="os-filter-btn command-set-os-filter active" data-os="all" data-i18n="commands.osAll">All</button>
                                     <button type="button" class="os-filter-btn command-set-os-filter" data-os="linux">Linux</button>
@@ -1200,15 +1205,25 @@
                                     <button type="button" class="os-filter-btn command-set-os-filter" data-os="windows">Windows</button>
                                 </div>
                                 <div id="commandSetLibraryResults" class="command-set-library-results"></div>
-                            </section>
+                            </details>
                             <section class="command-set-steps-pane" aria-labelledby="commandSetStepsHeading">
                                 <div class="command-set-steps-heading">
-                                    <h4 id="commandSetStepsHeading" data-i18n="commandSets.steps">Steps</h4>
+                                    <h4 id="commandSetStepsHeading" data-i18n="commands.yourSequence">Your sequence</h4><span id="commandSetDraftCount" aria-live="polite"></span>
                                     <button type="button" id="addInlineCommandStepBtn" class="btn btn-secondary btn-sm" data-i18n="commandSets.addFreeText">Add free text</button>
                                 </div>
                                 <div id="commandSetSteps" class="command-set-steps"></div>
                             </section>
                         </div>
+                        <details id="commandSetParameterOptions" class="command-set-advanced" open>
+                            <summary data-i18n="commands.interactiveOptions">Interactive parameters · advanced</summary>
+                        <div class="form-group">
+                            <label for="commandSetParameterNames" data-i18n="commandParameters.names">Interactive parameter names (comma separated)</label>
+                            <input id="commandSetParameterNames" class="form-control" type="text" maxlength="680" placeholder="path, service" aria-describedby="commandSetParameterHint">
+                            <p id="commandSetParameterHint" data-i18n="commandParameters.hint">Optional. Use argument steps only, with each {{ '{{name}}' }} as a whole argument. Values are POSIX shell arguments. These sets require interactive launch and never run on connect.</p>
+                            <button id="addArgumentCommandStepBtn" type="button" class="btn btn-secondary btn-sm" data-i18n="commandParameters.addStep">Add argument step</button>
+                        </div>
+                        </details>
+                        <section class="command-set-draft-preview" aria-labelledby="commandSetPreviewHeading"><h4 id="commandSetPreviewHeading" data-i18n="commands.sequencePreview">Sequence preview · no execution</h4><pre id="commandSetDraftPreview"></pre></section>
                         <div class="modal-footer command-set-editor-actions">
                             <button type="button" id="cancelCommandSetBtn" class="btn btn-secondary" data-i18n="common.cancel">Cancel</button>
                             <button type="submit" id="saveCommandSetBtn" class="btn btn-primary" data-i18n="common.save">Save</button>
@@ -1319,6 +1334,7 @@
                         <textarea id="commandFormDescription" class="form-control" rows="3" data-i18n-placeholder="commands.descriptionPlaceholder" placeholder="e.g., Update package repository lists" required></textarea>
                     </div>
 
+                    <details class="command-editor-details" open><summary data-i18n="commands.classification">Category and operating systems</summary>
                     <div class="form-group">
                         <label for="commandFormCategory" data-i18n="commands.category">Category</label>
                         <select id="commandFormCategory" class="form-control">
@@ -1343,6 +1359,8 @@
                         </div>
                     </div>
 
+                    </details>
+                    <section class="command-editor-preview"><h3 data-i18n="commands.commandPreview">Command preview</h3><pre id="commandFormPreview"></pre><p data-i18n="commands.noExecution">Saving does not execute commands.</p></section>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" id="cancelCommandFormBtn">
                             <span data-i18n="common.cancel">Cancel</span>
@@ -1688,6 +1706,7 @@
     <script src="{{ static_asset_url(filename='js/smb-source-dialog.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/file-directory-requests.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/file-mutation-dialog.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/permission-job-dialog.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/sftp-file-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/connection-history.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/primary-workspace-controller.js') }}"></script>

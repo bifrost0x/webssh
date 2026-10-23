@@ -118,37 +118,48 @@ The action appears for SFTP sources after a successful handshake advertises
 servers fail closed; WebSSH does not fall back to ordinary path-based chmod,
 shell commands, or sudo.
 
-Select one regular file or directory and choose **Permissions**. Review the
-freshly loaded owner/group/other rwx values, change the checkboxes or three-digit
-octal value, then explicitly apply. For directories, execute means traversal.
-Removing owner access can prevent you from accessing the item afterward.
-Known symlinks, special files, and objects with setuid/setgid/sticky bits cannot
-be edited. There is no recursive chmod, chown, or ACL editor.
+Select one or more regular files and/or directories in one pane and choose
+**Permissions** from its toolbar, context menu or mobile actions. Set separate
+three-digit modes for **files** and **folders**, for example `644` and `755`.
+Directory execute means traversal; file execute makes files executable. Removing
+owner access requires an additional confirmation and can lock you out.
 
-You can also select up to **20** regular files and/or directories in one pane
-and choose **Permissions** from its toolbar, context menu or mobile actions.
-All selected targets are listed in the dialog. If their current modes differ,
-enter an explicit common mode; otherwise the existing mode is shown. Applying
-changes each selected object individually and never changes directory contents.
-For mixed files and directories, choose execute/traversal bits deliberately.
+**Include folder contents** is optional and off initially. Without it, only the
+selected objects change, as with command-line `chmod` without `-R`. With it,
+WebSSH first inspects selected trees, counts files, folders and skipped symlinks,
+and prepares a read-only preview. Review both modes and the counts before
+explicitly applying. Files are processed before folders, with deeper folders
+before their parents. There is no chown or ACL editor; special files and
+setuid/setgid/sticky modes cannot be edited. Symlinks are never descended into.
 
-WebSSH inspects every target before enabling Apply, then reads it again immediately
-before applying its mode. A fresh token is used only if its complete metadata
-fingerprint matches the originally inspected target, including the source, path,
-type, owner, group, mode, size and modification time. This supports slower batches
-without silently accepting changed metadata. The server still enforces the signed
-token's **60-second** lifetime and checks it again before the write. Requests run sequentially and stop
-at the first error, conflict, disconnect or uncertain result. The dialog reports
-each changed, unchanged, failed or unsent item. Completed changes remain; this is
-not an atomic transaction and there is no automatic rollback. Closing the dialog
-stops remaining requests; an already submitted request may still complete.
-Refresh and inspect the remote state before another attempt.
+The previous 20-selection restriction is removed. Server jobs instead have
+at most two active jobs per instance and one per user/source. A job is bounded
+to 10,000 entries, a depth of 64 and a 4 MiB metadata/name budget. Preview
+and application have 90-second and 300-second deadlines, including queue wait;
+existing control-message byte/rate limits also apply. Oversized requests stop
+during preview without changing permissions. A preview expires after
+**120 seconds** and can be applied once. Its target paths and modes are held
+server-side and cannot be changed by the confirmation request.
+
+Before each write, WebSSH rechecks authorization, the source, observed ancestor
+metadata and the planned object's metadata. It stops at the first detected
+change, error, disconnect, cancellation or uncertain result. The dialog shows
+progress and completed changes. Cancelling or closing stops remaining work;
+an operation already in flight can still complete. This is not an atomic
+transaction, and completed changes are not rolled back. Inspect the remote
+state before creating a new preview after a conflict or unknown outcome.
+
+The existing single-object API still uses signed metadata tokens with a
+**60-second** lifetime. Background jobs retain their own bounded, immutable
+preview rather than extending or bypassing those tokens.
 
 No-follow applies to the final path component, not to every ancestor or to an
 immutable file identity. Use trusted servers and appropriately restricted remote
 accounts. Do not enable this feature for privileged accounts working in directories
 that untrusted users can replace or modify without suitable server-side isolation.
 Metadata checks detect observed changes; they are not an atomic compare-and-set.
+Concurrent ancestor renames or same-metadata replacements cannot be completely
+excluded by SFTPv3, including while a recursive job runs.
 Unix rwx values do not describe every ACL rule. Changing mode can affect POSIX ACL
 masks; hardlinks share the same inode and therefore the same permissions.
 
@@ -442,3 +453,21 @@ requests consume the per-user rate limit before the ownership lookup. Each
 owned session allows one in-flight probe with bounded response size and a
 timeout; probes use a separate SSH exec channel without interrupting PTY output.
 There is no directory polling when sync is off.
+
+
+### Creating folders and understanding directory permissions
+
+**New Folder** opens a name dialog bound to the source and directory currently
+shown, for both SFTP and SMB. Enter a single folder name, without slashes or
+path components. Existing items are not replaced. Errors keep the entered
+name; an unconfirmed outcome requires checking the directory before retrying.
+**New file** retains its separate empty-file and optional editor workflow.
+
+By default, changing a folder's Unix permissions changes that folder only.
+Its contents keep their own permission bits, as with command-line `chmod`
+without `-R`. Directory `x` means traversal (entering); removing `x` or write
+access can still affect access through that directory. To change descendants
+as well, explicitly enable **Include folder contents** and review the preview.
+Use the separate file and folder modes to avoid making ordinary files executable
+or removing directory traversal unintentionally. SMB Unix-permission editing
+and additional remote privilege remain unsupported.

@@ -13,7 +13,7 @@ async function workspace(page, kind = 'sftp', chmod = true, enabled = false) {
         window.__mutationEvents = [];
         const original = window.socket.emit.bind(window.socket);
         window.socket.emit = (event, payload, ...rest) => {
-            if (['create_file', 'get_file_permissions', 'set_file_permissions'].includes(event)) {
+            if (['create_file', 'create_directory', 'get_file_permissions', 'set_file_permissions'].includes(event)) {
                 window.__mutationEvents.push({event, payload});
                 if (event === 'get_file_permissions') queueMicrotask(() => {
                     window.socket.listeners('file_permissions').forEach(listener => listener({ ...payload, operation: event, mode: '600', special_bits: 0, object_type: 'file', metadata_token: 'test-token' }));
@@ -23,7 +23,7 @@ async function workspace(page, kind = 'sftp', chmod = true, enabled = false) {
             return original(event, payload, ...rest);
         };
         Object.assign(manager.panes.left, manager.createEmptyPaneState(), {
-            source: { sourceId: `${kind === 'sftp' ? 'sftp-session' : 'smb-quick'}:mutation-test`, kind, label: 'Test source', capabilities: ['list', 'create-file', ...(kind === 'sftp' && chmod ? ['chmod'] : [])], access: {} },
+            source: { sourceId: `${kind === 'sftp' ? 'sftp-session' : 'smb-quick'}:mutation-test`, kind, label: 'Test source', capabilities: ['list', 'mkdir', 'create-file', ...(kind === 'sftp' && chmod ? ['chmod'] : [])], access: {} },
             path: '/', files: [{ name: 'existing.txt', is_dir: false, mode: 33152, size: 3 }],
         });
         manager.setActivePane('left');
@@ -81,10 +81,13 @@ test('new file validates the name, prevents duplicate requests and closes with E
     await assertNoExternalRequests(page);
 });
 
-test('permission dialog binds the inspected metadata and sends only a deliberate change', async ({ page }) => {
+test('legacy single-object permission dialog binds the inspected metadata and sends only a deliberate change', async ({ page }) => {
     await workspace(page);
     await page.locator('#fmLeftList .fm-file-item').first().click();
-    await page.locator('#fmLeftPane [data-pane-action="permissions"]').click();
+    await page.evaluate(() => {
+        const manager = window.sftpFileManager;
+        manager.mutationDialog = new window.FileMutationDialog(manager, 'left', Array.from(manager.panes.left.selected).map(index => manager.panes.left.files[index]));
+    });
     const dialog = page.locator('dialog.fm-mutation-dialog');
     await expect(dialog.locator('[name="mode"]')).toHaveValue('600');
     const apply = dialog.getByRole('button', { name: 'Apply permissions' });
@@ -248,7 +251,10 @@ async function multiSelection(page, options = {}) {
             return window.socket;
         };
     }, options);
-    await page.locator('#fmLeftPane [data-pane-action="permissions"]').click();
+    await page.evaluate(() => {
+        const manager = window.sftpFileManager;
+        manager.mutationDialog = new window.FileMutationDialog(manager, 'left', Array.from(manager.panes.left.selected).map(index => manager.panes.left.files[index]));
+    });
     const dialog = page.locator('dialog.fm-mutation-dialog');
     await expect.poll(() => page.evaluate(() => window.__mutationEvents.filter(item => item.event === 'get_file_permissions').length)).toBe(options.failInspect || options.symlink ? 2 : 3);
     return dialog;
@@ -339,7 +345,7 @@ test('bulk chmod warns before removing directory traversal in a mixed selection'
     expect(await page.evaluate(() => window.__mutationEvents.filter(item => item.event === 'set_file_permissions').length)).toBe(1);
 });
 
-test('bulk chmod enforces the 20 item limit on desktop, mobile and context actions', async ({ page }) => {
+test('chmod accepts more than 20 selected entries while SMB remains ineligible', async ({ page }) => {
     await workspace(page);
     await page.evaluate(() => {
         const manager = window.sftpFileManager;
@@ -350,21 +356,15 @@ test('bulk chmod enforces the 20 item limit on desktop, mobile and context actio
         manager.updateWorkspaceActions();
     });
     const action = page.locator('#fmLeftPane [data-pane-action="permissions"]');
-    await expect(action).toBeDisabled();
-    await expect(action).toHaveAttribute('title', /20/);
+    await expect(action).toBeEnabled();
     await page.setViewportSize({ width: 390, height: 844 });
     await page.evaluate(() => window.sftpFileManager.showActionSheet('left', 0));
-    await expect(page.locator('#fmActionSheet [data-action="permissions"]')).toBeDisabled();
+    await expect(page.locator('#fmActionSheet [data-action="permissions"]')).toBeEnabled();
     await page.evaluate(() => window.sftpFileManager.handleContextAction('permissions', 'left', 0));
-    await expect(page.locator('dialog.fm-mutation-dialog')).toHaveCount(0);
+    await expect(page.locator('dialog.fm-permission-job-dialog')).toBeVisible();
+    await expect(page.locator('dialog.fm-permission-job-dialog .fm-job-target')).toContainText('21');
     expect(await page.evaluate(() => window.__mutationEvents.length)).toBe(0);
-    // A valid selection remains available, while SMB is never eligible.
-    await page.evaluate(() => {
-        const manager = window.sftpFileManager;
-        manager.panes.left.selected.delete(20);
-        manager.updateWorkspaceActions();
-    });
-    await expect(action).toBeEnabled();
+    await page.keyboard.press('Escape');
     await page.evaluate(() => {
         const manager = window.sftpFileManager;
         manager.panes.left.source = { sourceId: 'smb-quick:test', kind: 'smb', capabilities: ['list'] };
@@ -372,6 +372,7 @@ test('bulk chmod enforces the 20 item limit on desktop, mobile and context actio
         manager.updateWorkspaceActions();
     });
     await expect(action).toBeHidden();
+    await expect(page.locator('dialog.fm-permission-job-dialog')).toHaveCount(0);
     expect(await page.evaluate(() => window.__mutationEvents.length)).toBe(0);
 });
 
@@ -457,3 +458,29 @@ for (const reason of ['closed', 'disconnect']) {
         expect(await page.evaluate(() => window.__mutationEvents.filter(item => item.event === 'get_file_permissions').length)).toBe(5);
     });
 }
+
+
+for (const kind of ['sftp','smb']) test(`folder creation uses a bound name dialog for ${kind}`, async ({page}) => {
+    await page.setViewportSize({width:kind === 'smb' ? 360 : 1280,height:740});
+    await workspace(page,kind,false);
+    await page.locator('#fmLeftPane [data-pane-action="newfolder"]').click();
+    const dialog = page.locator('dialog.fm-mutation-dialog');
+    await expect(dialog.getByRole('heading')).toHaveText('New Folder');
+    await dialog.locator('[name="filename"]').fill('../outside');
+    const create = dialog.getByRole('button',{name:'Create folder',exact:true});
+    await expect(create).toBeDisabled();
+    await dialog.locator('[name="filename"]').fill('folder name');
+    await create.click();
+    await expect(create).toBeDisabled();
+    const sent = await page.evaluate(()=>window.__mutationEvents.filter(item=>item.event === 'create_directory'));
+    expect(sent).toHaveLength(1);
+    expect(sent[0].payload).toMatchObject({source_id:`${kind === 'sftp' ? 'sftp-session' : 'smb-quick'}:mutation-test`,remote_path:'/folder name'});
+    await page.evaluate(payload=>window.socket.listeners('error').forEach(fn=>fn({...payload,operation:'create_directory',error:'server-private-path internal failure'})),sent[0].payload);
+    await expect(dialog.getByRole('status')).not.toContainText('server-private-path');
+    await expect(dialog.locator('[name="filename"]')).toHaveValue('folder name');
+    await expect(create).toBeEnabled();
+    const box = await dialog.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x+box.width).toBeLessThanOrEqual(kind === 'smb' ? 360 : 1280);
+    await assertNoExternalRequests(page);
+});

@@ -9,7 +9,15 @@ window.CommandSetManager = {
     currentOs: 'all',
     searchQuery: '',
     managementSearchQuery: '',
+    managementUsageFilter: 'all',
     draggedStepIndex: null,
+    draftActive: false,
+    draftBaseline: '',
+    draftVersion: 0,
+    pendingSave: false,
+    saveAttempt: 0,
+    saveTimer: null,
+    saveOutcomeUnknown: false,
 
     t(key, fallback) {
         if (window.i18n) {
@@ -48,9 +56,13 @@ window.CommandSetManager = {
         document.getElementById('newCommandSetBtn')?.addEventListener('click', () => {
             this.openBuilder();
         });
-        document.getElementById('cancelCommandSetBtn')?.addEventListener('click', () => {
+        document.getElementById('cancelCommandSetBtn')?.addEventListener('click', async () => {
             if (this.returnToConnection) this.close();
-            else this.showManagementList();
+            else if (await this.confirmDiscard()) this.showManagementList();
+        });
+        ['commandSetNameInput', 'commandSetDescriptionInput', 'commandSetParameterNames',
+            'commandSetUseSudoInput'].forEach(id => {
+            document.getElementById(id)?.addEventListener('input', () => this.renderDraftPreview());
         });
         document.getElementById('commandSetForm')?.addEventListener('submit', event => {
             event.preventDefault();
@@ -62,6 +74,11 @@ window.CommandSetManager = {
         });
         document.getElementById('commandSetManagementSearch')?.addEventListener('input', event => {
             this.managementSearchQuery = event.target.value;
+            this.renderManagementList();
+        });
+        document.getElementById('commandSetUsageFilter')?.addEventListener('change', event => {
+            this.managementUsageFilter = ['startup', 'interactive'].includes(event.target.value)
+                ? event.target.value : 'all';
             this.renderManagementList();
         });
         document.querySelectorAll('.command-set-os-filter').forEach(button => {
@@ -90,9 +107,9 @@ window.CommandSetManager = {
         document.getElementById('commandSetManagementList')?.addEventListener('click', event => {
             const button = event.target.closest('button[data-command-set-action]');
             if (!button) return;
-            button.closest('details')?.removeAttribute('open');
+            button.closest('.command-set-management-item')?.querySelector('details')?.removeAttribute('open');
             const id = button.dataset.commandSetId;
-            if (button.dataset.commandSetAction === 'edit') this.openBuilder(id);
+            if (['edit', 'edit-primary'].includes(button.dataset.commandSetAction)) this.openBuilder(id);
             if (button.dataset.commandSetAction === 'duplicate') this.duplicate(id);
             if (button.dataset.commandSetAction === 'delete') this.delete(id);
         });
@@ -214,6 +231,9 @@ window.CommandSetManager = {
     },
 
     openManagement() {
+        if (this.hasUnsavedChanges()) return this.confirmDiscard().then(confirmed => {
+            if (confirmed) this.openManagement();
+        });
         this.returnToConnection = false;
         this.showManagementList();
         this.openModal();
@@ -223,12 +243,18 @@ window.CommandSetManager = {
     },
 
     openBuilder(id = null, returnToConnection = false) {
+        if (this.hasUnsavedChanges()) return this.confirmDiscard().then(confirmed => {
+            if (confirmed) this.openBuilder(id, returnToConnection);
+        });
+        this.draftVersion++;
+        this.resetSaveState();
+        this.draftActive = true;
         this.returnToConnection = returnToConnection;
         this.editingId = id;
         this.convertingProfileId = null;
         const source = id ? this.getById(id) : null;
         this.draftSteps = source
-            ? source.steps.map(step => ({ ...step }))
+            ? source.steps.map(step => step.type === 'argv' ? {...step, argv: [...step.argv]} : {...step})
             : [];
         document.getElementById('commandSetNameInput').value = source?.name || '';
         document.getElementById('commandSetDescriptionInput').value = source?.description || '';
@@ -243,11 +269,15 @@ window.CommandSetManager = {
         document.getElementById('commandSetEditorView')?.classList.remove('hidden');
         this.renderLibraryResults();
         this.renderSteps();
+        this.draftBaseline = this.draftSnapshot();
         this.openModal();
         document.getElementById('commandSetNameInput')?.focus();
     },
 
     openLegacyConversion(profile) {
+        if (this.hasUnsavedChanges()) return this.confirmDiscard().then(confirmed => {
+            if (confirmed) this.openLegacyConversion(profile);
+        });
         this.openBuilder(null, true);
         const sudoInput = document.getElementById('commandSetUseSudoInput');
         if (sudoInput) sudoInput.checked = false;
@@ -258,6 +288,9 @@ window.CommandSetManager = {
     },
 
     showManagementList() {
+        this.draftActive = false;
+        this.draftVersion++;
+        this.resetSaveState();
         this.editingId = null;
         this.convertingProfileId = null;
         document.getElementById('commandSetEditorView')?.classList.add('hidden');
@@ -269,7 +302,8 @@ window.CommandSetManager = {
         window.CommandWorkspace.open('sets', {primary: !this.returnToConnection});
     },
 
-    close() {
+    async close(options = {}) {
+        if (!options.saved && !await this.confirmDiscard()) return false;
         const returnToConnection = this.returnToConnection;
         window.CommandWorkspace.close();
         if (returnToConnection) {
@@ -281,6 +315,90 @@ window.CommandSetManager = {
         }
         this.returnToConnection = false;
         this.showManagementList();
+        return true;
+    },
+
+    draftSnapshot() {
+        return JSON.stringify({
+            name: document.getElementById('commandSetNameInput')?.value || '',
+            description: document.getElementById('commandSetDescriptionInput')?.value || '',
+            parameters: document.getElementById('commandSetParameterNames')?.value || '',
+            useSudo: document.getElementById('commandSetUseSudoInput')?.checked === true,
+            steps: this.draftSteps,
+        });
+    },
+
+    hasUnsavedChanges() {
+        return this.draftActive && this.draftSnapshot() !== this.draftBaseline;
+    },
+
+    async confirmDiscard() {
+        if (!this.hasUnsavedChanges()) return true;
+        // A single confirmation owns its draft; a delayed answer must not discard a newer one.
+        if (this.discardConfirmation) return false;
+        const version = this.draftVersion;
+        const snapshot = this.draftSnapshot();
+        this.discardConfirmation = true;
+        try {
+            const confirmed = await this.requestConfirmation(
+                this.t('commandSets.discardTitle', 'Discard unsaved changes?'),
+                this.t('commandSets.discardHint', 'Your changes have not been saved.'),
+                this.t('commandSets.discard', 'Discard changes'),
+                this.t('commandSets.keepEditing', 'Keep editing'),
+            );
+            if (!confirmed || version !== this.draftVersion || snapshot !== this.draftSnapshot()) return false;
+            this.showManagementList();
+            return true;
+        } finally {
+            this.discardConfirmation = false;
+        }
+    },
+
+    confirmDialog({title, message, confirmLabel, cancelLabel, danger = true}) {
+        return this.requestConfirmation(title, message, confirmLabel, cancelLabel, danger);
+    },
+
+    requestConfirmation(title, message, action, cancel = this.t('common.cancel', 'Cancel'), danger = true) {
+        const previousFocus = document.activeElement;
+        const dialog = document.createElement('dialog');
+        dialog.className = 'command-set-confirm-dialog';
+        const content = document.createElement('div');
+        content.className = 'modal-content';
+        const heading = document.createElement('h3');
+        heading.id = 'commandSetConfirmationTitle';
+        heading.textContent = title;
+        const body = document.createElement('p');
+        body.textContent = message;
+        const footer = document.createElement('div');
+        footer.className = 'modal-footer';
+        const keep = document.createElement('button');
+        keep.type = 'button';
+        keep.className = 'btn btn-secondary';
+        keep.textContent = cancel;
+        const discard = document.createElement('button');
+        discard.type = 'button';
+        discard.className = danger ? 'btn btn-danger' : 'btn btn-primary';
+        discard.textContent = action;
+        dialog.setAttribute('aria-labelledby', heading.id);
+        footer.append(keep, discard);
+        content.append(heading, body, footer);
+        dialog.append(content);
+        document.body.append(dialog);
+        return new Promise(resolve => {
+            const finish = result => {
+                dialog.close();
+                dialog.remove();
+                previousFocus?.focus({preventScroll: true});
+                resolve(result);
+            };
+            keep.addEventListener('click', () => finish(false));
+            discard.addEventListener('click', () => finish(true));
+            dialog.addEventListener('cancel', event => { event.preventDefault(); finish(false); });
+            // Native dialog owns focus and Escape while the underlying workspace remains open.
+            dialog.addEventListener('keydown', event => event.stopPropagation());
+            dialog.showModal();
+            keep.focus();
+        });
     },
 
     renderManagementList() {
@@ -301,17 +419,23 @@ window.CommandSetManager = {
             const empty = document.createElement('p');
             empty.className = 'no-items';
             empty.textContent = this.t('commandSets.empty', 'No command sets saved.');
+            const hint = document.createElement('span');
+            hint.className = 'empty-state-hint';
+            hint.textContent = this.t('empty.setsHint', 'Create a command set above and build it from library commands or free-text steps.');
+            empty.appendChild(hint);
             container.appendChild(empty);
             restoreFocus();
             return;
         }
         const managementQuery = String(this.managementSearchQuery || '').trim().toLowerCase();
-        const visibleCommandSets = managementQuery
-            ? this.commandSets.filter(commandSet => (
-                String(commandSet.name || '').toLowerCase().includes(managementQuery)
-                || String(commandSet.description || '').toLowerCase().includes(managementQuery)
-            ))
-            : this.commandSets;
+        const visibleCommandSets = this.commandSets.filter(commandSet => {
+            const interactive = Boolean(commandSet.parameters?.length);
+            if (this.managementUsageFilter === 'startup' && interactive) return false;
+            if (this.managementUsageFilter === 'interactive' && !interactive) return false;
+            return !managementQuery
+                || String(commandSet.name || '').toLowerCase().includes(managementQuery)
+                || String(commandSet.description || '').toLowerCase().includes(managementQuery);
+        });
         if (!visibleCommandSets.length) {
             const empty = document.createElement('p');
             empty.className = 'no-items';
@@ -330,12 +454,27 @@ window.CommandSetManager = {
             const stepLabel = commandSet.steps.length === 1
                 ? this.t('commandSets.step', 'step')
                 : this.t('commandSets.steps', 'steps');
-            description.textContent = commandSet.description
-                || `${commandSet.steps.length} ${stepLabel}`;
+            description.textContent = commandSet.description || '';
+            const badge = document.createElement('span');
+            badge.className = 'command-type-badge command-type-badge-set';
+            badge.textContent = this.t('commandSets.type', 'Command set');
             const count = document.createElement('span');
             count.className = 'command-set-step-count';
             count.textContent = `${commandSet.steps.length} ${stepLabel}`;
-            info.append(name, description, count);
+            info.className = 'command-set-card-content';
+            info.append(badge, name);
+            if (commandSet.parameters?.length) {
+                const interactive = document.createElement('span');
+                interactive.className = 'command-set-interactive-badge';
+                interactive.textContent = this.t('commandSets.interactiveOnly', 'Requires manual launch');
+                info.append(interactive);
+            }
+            if (commandSet.description) info.append(description);
+            info.append(count);
+            const preview = document.createElement('code');
+            preview.className = 'command-set-card-preview';
+            preview.textContent = commandSet.steps.map(step => this.stepSummary(step)).join('\n');
+            info.append(preview);
             if (commandSet.use_sudo === true) {
                 const sudoBadge = document.createElement('span');
                 sudoBadge.className = 'command-set-sudo-badge';
@@ -344,6 +483,15 @@ window.CommandSetManager = {
             }
             const actions = document.createElement('div');
             actions.className = 'command-set-actions';
+            const favorite = window.CommandWorkspace?.favoriteButton?.('set', commandSet.id);
+            if (favorite) actions.append(favorite);
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'btn btn-primary btn-sm';
+            edit.dataset.commandSetAction = 'edit-primary';
+            edit.dataset.commandSetId = commandSet.id;
+            edit.textContent = this.t('common.edit', 'Edit');
+            actions.append(edit);
             const menu = document.createElement('details');
             menu.className = 'command-set-action-menu';
             menu.dataset.commandSetId = commandSet.id;
@@ -411,38 +559,128 @@ window.CommandSetManager = {
         this.renderSteps();
     },
 
+    renderDraftPreview() {
+        const count = document.getElementById('commandSetDraftCount');
+        if (count) count.textContent = `${this.draftSteps.length} ${this.draftSteps.length === 1
+            ? this.t('commandSets.step', 'step') : this.t('commandSets.steps', 'steps')}`;
+        const preview = document.getElementById('commandSetDraftPreview');
+        if (!preview) return;
+        preview.replaceChildren();
+        const sudo = document.getElementById('commandSetUseSudoInput')?.checked === true;
+        if (sudo) {
+            const hint = document.createElement('p');
+            hint.className = 'command-set-sudo-badge';
+            hint.textContent = this.t('commandSets.sudoPreviewHint', 'sudo applies to each command.');
+            preview.append(hint);
+        }
+        this.draftSteps.forEach((step, index) => {
+            const line = document.createElement('div');
+            line.className = 'command-set-preview-step';
+            const number = document.createElement('span');
+            number.className = 'command-set-step-number';
+            number.textContent = `${index + 1}. `;
+            const code = document.createElement('code');
+            code.textContent = step.type === 'argv' && step.argvError
+                ? step.argvText : this.stepSummary(step);
+            line.append(number, code);
+            preview.append(line);
+        });
+        if (!this.draftSteps.length) preview.textContent = this.t('commandSets.noSteps', 'Add a library command or free-text step.');
+    },
+
     renderSteps() {
         const container = document.getElementById('commandSetSteps');
         if (!container) return;
         container.replaceChildren();
         this.draftSteps.forEach((step, index) => {
             const row = document.createElement('div');
-            row.className = 'command-set-step';
+            row.className = `command-set-step command-set-step-${step.type}`;
             row.dataset.stepIndex = index;
             row.draggable = true;
 
             const header = document.createElement('div');
             header.className = 'command-set-step-header';
             const label = document.createElement('strong');
-            label.textContent = `${index + 1}. ${step.type === 'library'
+            label.textContent = `${step.type === 'library'
                 ? (this.commandById(step.command_id)?.name || this.t('commandSets.missingCommand', 'Missing command'))
-                : this.t('commandSets.freeText', 'Free text')}`;
+                : step.type === 'argv' ? this.t('commandSets.stepTypeArgv', 'Arguments') : this.t('commandSets.freeText', 'Free text')}`;
             const controls = document.createElement('div');
+            controls.className = 'command-set-step-controls';
             [['up', '↑'], ['down', '↓'], ['remove', '×']].forEach(([action, text]) => {
                 const button = document.createElement('button');
                 button.type = 'button';
-                button.className = 'btn-icon';
+                button.className = action === 'remove' ? 'btn btn-secondary btn-sm' : 'btn-icon';
                 button.dataset.stepAction = action;
                 button.dataset.stepIndex = index;
-                button.textContent = text;
+                button.textContent = action === 'remove' ? this.t('commandSets.removeStep', 'Remove step') : text;
                 button.setAttribute('aria-label', this.t(`commandSets.${action}Step`, `${action} step`));
+                button.title = button.getAttribute?.('aria-label') || this.t(`commandSets.${action}Step`, `${action} step`);
+                if (action === 'up') button.disabled = index === 0;
+                if (action === 'down') button.disabled = index === this.draftSteps.length - 1;
                 controls.appendChild(button);
             });
-            header.append(label, controls);
+            const number = document.createElement('span');
+            number.className = 'command-set-step-number';
+            number.textContent = `${index + 1}. `;
+            const grip = document.createElement('span');
+            grip.className = 'material-icons command-set-step-grip';
+            grip.textContent = 'drag_indicator';
+            grip.title = this.t('commandSets.moveHandle', 'Drag to reorder');
+            grip.setAttribute('aria-hidden', 'true');
+            const type = document.createElement('span');
+            type.className = 'command-set-step-type';
+            type.textContent = this.t(`commandSets.stepType${step.type === 'argv' ? 'Argv' : step.type === 'library' ? 'Library' : 'Inline'}`,
+                step.type === 'argv' ? 'Arguments' : step.type === 'library' ? 'Library command' : 'Free text');
+            header.append(grip, number, label);
+            if (step.type === 'library') header.append(type);
+            header.append(controls);
             row.appendChild(header);
 
             if (step.type === 'argv') {
-                label.textContent = `${index + 1}. ${this.t('commandParameters.argumentStep', 'Argument step (JSON array)')}`;
+                label.textContent = this.t('commandSets.stepTypeArgv', 'Arguments');
+                const argumentsGroup = document.createElement('div');
+                argumentsGroup.className = 'command-set-argument-fields';
+                if (!step.argvError) (step.argv || []).forEach((value, argumentIndex) => {
+                    const fieldLabel = document.createElement('label');
+                    fieldLabel.className = 'command-set-argument-field';
+                    const fieldName = document.createElement('span');
+                    fieldName.textContent = this.t('commandSets.argumentLabel', 'Argument {number}')
+                        .replace('{number}', String(argumentIndex + 1));
+                    const argument = document.createElement('input');
+                    argument.type = 'text';
+                    argument.className = 'form-control';
+                    argument.value = value;
+                    argument.maxLength = 4096;
+                    argument.dataset.stepIndex = index;
+                    argument.dataset.argumentIndex = argumentIndex;
+                    argument.dataset.stepField = 'argument';
+                    fieldLabel.append(fieldName, argument);
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'btn btn-secondary btn-sm';
+                    remove.dataset.stepAction = 'remove-argument';
+                    remove.dataset.stepIndex = index;
+                    remove.dataset.argumentIndex = argumentIndex;
+                    remove.disabled = step.argv.length <= 1;
+                    remove.textContent = this.t('commandSets.removeArgument', 'Remove argument');
+                    fieldLabel.append(remove);
+                    argumentsGroup.append(fieldLabel);
+                });
+                const add = document.createElement('button');
+                add.type = 'button';
+                add.className = 'btn btn-secondary btn-sm';
+                add.textContent = this.t('commandSets.addArgument', 'Add argument');
+                add.dataset.stepAction = 'add-argument';
+                add.dataset.stepIndex = index;
+                add.disabled = Boolean(step.argvError);
+                argumentsGroup.append(add);
+                row.append(argumentsGroup);
+                const raw = document.createElement('details');
+                raw.className = 'command-set-raw-arguments';
+                raw.open = true;
+                const rawLabel = document.createElement('summary');
+                rawLabel.textContent = this.t('commandSets.rawArguments', 'Advanced: JSON arguments');
+                raw.append(rawLabel);
                 const input = document.createElement('textarea');
                 input.className = 'form-control';
                 input.rows = 3;
@@ -451,7 +689,15 @@ window.CommandSetManager = {
                 input.dataset.stepIndex = index;
                 input.setAttribute('aria-label', label.textContent);
                 input.value = step.argvText ?? JSON.stringify(step.argv);
-                row.append(input);
+                raw.append(input);
+                row.append(raw);
+                if (step.argvError) {
+                    const error = document.createElement('p');
+                    error.className = 'command-set-argument-error';
+                    error.setAttribute('role', 'alert');
+                    error.textContent = this.t('commandParameters.invalidArguments', 'Argument steps require a JSON array of strings.');
+                    row.append(error);
+                }
             } else if (step.type === 'inline') {
                 const textarea = document.createElement('textarea');
                 textarea.className = 'form-control command-set-inline-input';
@@ -490,6 +736,7 @@ window.CommandSetManager = {
                 parameters.disabled = checkbox.checked;
                 parameters.value = step.parameters_override || '';
                 parameters.placeholder = this.commandById(step.command_id)?.parameters || '';
+                parameters.setAttribute('aria-label', this.t('commands.parameters', 'Parameters'));
                 row.append(summary, defaultLabel, parameters);
             }
             container.appendChild(row);
@@ -500,12 +747,25 @@ window.CommandSetManager = {
             empty.textContent = this.t('commandSets.noSteps', 'Add a library command or free-text step.');
             container.appendChild(empty);
         }
+        this.renderDraftPreview();
     },
 
     handleStepAction(event) {
         const button = event.target.closest('[data-step-action]');
         if (!button) return;
         const index = Number(button.dataset.stepIndex);
+        const step = this.draftSteps[index];
+        if (step?.type === 'argv' && !step.argvError) {
+            if (button.dataset.stepAction === 'add-argument') step.argv.push('');
+            if (button.dataset.stepAction === 'remove-argument' && step.argv.length > 1) {
+                const argumentIndex = Number(button.dataset.argumentIndex);
+                if (Number.isInteger(argumentIndex) && argumentIndex >= 0) step.argv.splice(argumentIndex, 1);
+            }
+            if (['add-argument', 'remove-argument'].includes(button.dataset.stepAction)) {
+                step.argvText = JSON.stringify(step.argv);
+                this.renderSteps();
+            }
+        }
         if (button.dataset.stepAction === 'up') this.moveStep(index, index - 1);
         if (button.dataset.stepAction === 'down') this.moveStep(index, index + 1);
         if (button.dataset.stepAction === 'remove') {
@@ -520,6 +780,14 @@ window.CommandSetManager = {
         const index = Number(event.target.dataset.stepIndex);
         const step = this.draftSteps[index];
         if (!step || !field) return;
+        if (field === 'argument' && step.type === 'argv' && !step.argvError) {
+            const argumentIndex = Number(event.target.dataset.argumentIndex);
+            if (!Number.isInteger(argumentIndex) || argumentIndex < 0 || argumentIndex >= step.argv.length) return;
+            step.argv[argumentIndex] = event.target.value;
+            step.argvText = JSON.stringify(step.argv);
+            const raw = event.target.closest?.('.command-set-step')?.querySelector('[data-step-field="argv"]');
+            if (raw) raw.value = step.argvText;
+        }
         if (field === 'argv') {
             step.argvText = event.target.value;
             try {
@@ -530,6 +798,7 @@ window.CommandSetManager = {
             } catch {
                 step.argvError = true;
             }
+            if (event.type === 'change') this.renderSteps();
         }
         if (field === 'command') step.command = event.target.value;
         if (field === 'parameters_override') step.parameters_override = event.target.value;
@@ -538,6 +807,7 @@ window.CommandSetManager = {
             else step.parameters_override = '';
             this.renderSteps();
         }
+        this.renderDraftPreview();
     },
 
     moveStep(fromIndex, toIndex) {
@@ -550,20 +820,26 @@ window.CommandSetManager = {
         if (!step || step.type !== 'inline' || !step.command.trim()) return;
         const library = this.getCommandLibrary();
         if (!library?.showAddCommandForm) return;
+        const version = this.draftVersion;
         library.showAddCommandForm({
             command: step.command,
             onSaved: command => {
-                this.draftSteps[index] = { type: 'library', command_id: command.id };
+                if (version !== this.draftVersion || !this.draftActive) return;
+                const currentIndex = this.draftSteps.indexOf(step);
+                if (currentIndex < 0) return;
+                this.draftSteps[currentIndex] = { type: 'library', command_id: command.id };
                 this.renderSteps();
                 this.openModal();
             },
         });
     },
 
-    emitWithAck(event, payload, onSuccess) {
+    emitWithAck(event, payload, onSuccess, onFailure, acceptsAck = () => true) {
         if (!window.socket) return;
         window.socket.emit(event, payload, acknowledgement => {
+            if (!acceptsAck()) return;
             if (!acknowledgement?.success) {
+                onFailure?.(acknowledgement);
                 window.showNotification?.(
                     acknowledgement?.error || this.t('common.error', 'Operation failed'), 'error',
                 );
@@ -573,7 +849,41 @@ window.CommandSetManager = {
         });
     },
 
+    setSavePending(pending) {
+        this.pendingSave = pending;
+        const button = document.getElementById('saveCommandSetBtn');
+        if (button) {
+            button.disabled = pending;
+            button.setAttribute('aria-busy', String(pending));
+        }
+    },
+
+    resetSaveState() {
+        if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+        this.saveOutcomeUnknown = false;
+        this.saveAttempt++;
+        this.setSavePending(false);
+    },
+
     save() {
+        if (this.pendingSave || !window.socket) return;
+        if (this.saveOutcomeUnknown) {
+            const version = this.draftVersion;
+            const attempt = this.saveAttempt;
+            const snapshot = this.draftSnapshot();
+            return this.confirmDialog({
+                title: this.t('common.saveUnknownTitle', 'Save outcome unknown'),
+                message: this.t('common.saveUnknownHint', 'The previous save may have succeeded. Check the saved list before trying again. Saving again may create a duplicate.'),
+                confirmLabel: this.t('common.saveAgain', 'Save again'),
+                cancelLabel: this.t('commandSets.keepEditing', 'Keep editing'),
+            }).then(confirmed => {
+                if (!confirmed || version !== this.draftVersion || attempt !== this.saveAttempt
+                        || snapshot !== this.draftSnapshot() || this.pendingSave) return;
+                this.saveOutcomeUnknown = false;
+                return this.save();
+            });
+        }
         if (this.draftSteps.some(step => step.argvError)) {
             window.showNotification?.(this.t('commandParameters.invalidArguments', 'Argument steps require a JSON array of strings.'), 'error');
             return;
@@ -591,30 +901,66 @@ window.CommandSetManager = {
         const event = this.convertingProfileId ? 'convert_legacy_command_set' : 'save_command_set';
         const isLegacyConversion = Boolean(this.convertingProfileId);
         if (this.convertingProfileId) payload.profile_id = this.convertingProfileId;
+        const version = this.draftVersion;
+        const snapshot = this.draftSnapshot();
+        const returnToConnection = this.returnToConnection;
+        const attempt = ++this.saveAttempt;
+        const acceptsAck = () => attempt === this.saveAttempt && version === this.draftVersion;
+        this.setSavePending(true);
+        this.saveTimer = setTimeout(() => {
+            if (!acceptsAck()) return;
+            this.saveAttempt++;
+            this.saveTimer = null;
+            this.setSavePending(false);
+            this.saveOutcomeUnknown = true;
+            this.load();
+            window.showNotification?.(this.t('common.saveUnknownHint', 'The previous save may have succeeded. Check the saved list before trying again. Saving again may create a duplicate.'), 'warning');
+        }, 10000);
         this.emitWithAck(event, payload, acknowledgement => {
+            clearTimeout(this.saveTimer);
+            this.saveTimer = null;
             const saved = acknowledgement.command_set;
             if (saved) {
                 const remaining = this.commandSets.filter(item => item.id !== saved.id);
                 this.setCommandSets([...remaining, saved]);
-                if (this.returnToConnection && !saved.parameters?.length) this.selectForConnection(saved.id);
+                if (version === this.draftVersion && returnToConnection && !saved.parameters?.length) this.selectForConnection(saved.id);
             }
             if (isLegacyConversion && typeof ProfileManager !== 'undefined') {
                 ProfileManager.upsertProfile(acknowledgement.profile);
-                ProfileManager.clearLegacyCommands();
+                if (version === this.draftVersion) ProfileManager.clearLegacyCommands();
             }
             this.load();
-            this.close();
+            if (version === this.draftVersion) {
+                this.setSavePending(false);
+                if (snapshot === this.draftSnapshot()) {
+                    this.draftActive = false;
+                    if (returnToConnection) this.close({saved: true});
+                    else this.showManagementList();
+                } else if (saved) {
+                    this.editingId = saved.id;
+                    this.convertingProfileId = null;
+                    this.draftBaseline = snapshot;
+                }
+            }
             window.showNotification?.(this.t('commandSets.saved', 'Command set saved'), 'success');
-        });
+        }, () => {
+            clearTimeout(this.saveTimer);
+            this.saveTimer = null;
+            if (version === this.draftVersion) this.setSavePending(false);
+        }, acceptsAck);
     },
 
     duplicate(id) {
         this.emitWithAck('duplicate_command_set', { command_set_id: id });
     },
 
-    delete(id) {
+    async delete(id) {
         const commandSet = this.getById(id);
-        if (!commandSet || !window.confirm(this.t('commandSets.confirmDelete', `Delete "${commandSet.name}"?`))) return;
+        if (!commandSet || !await this.confirmDialog({
+            title: this.t('common.delete', 'Delete'),
+            message: this.t('commandSets.confirmDelete', 'Delete "{name}"?').replace('{name}', () => commandSet.name),
+            confirmLabel: this.t('common.delete', 'Delete'),
+        })) return;
         this.emitWithAck('delete_command_set', { command_set_id: id }, () => {
             if (this.selectedId === id) this.selectForConnection('');
             this.load();

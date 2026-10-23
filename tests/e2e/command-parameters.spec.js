@@ -37,6 +37,7 @@ test('argument sets save explicit declarations and preview values before inserti
         SessionManager.switchSession('parameter-session');
         window.workspaceLayoutController.openContext('commands', 'user');
     });
+    await page.locator('#session-command-tab-sets').click();
     const row = page.locator('.session-command-item').filter({has: page.getByText('Parameterized path inspection', {exact: true})});
     await expect(row).toBeVisible();
     const insert = row.getByRole('button', {name: 'Insert', exact: true});

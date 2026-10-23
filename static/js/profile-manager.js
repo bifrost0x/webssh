@@ -567,7 +567,10 @@ const ProfileManager = {
         if (!container) return;
 
         if (this.keys.length === 0) {
-            container.innerHTML = '<p class="no-items">No SSH keys stored</p>';
+            const empty = document.createElement('p');
+            empty.className = 'no-items';
+            empty.textContent = this.t('empty.keys', 'No SSH keys stored. Use the upload form to add a key for your connections.');
+            container.replaceChildren(empty);
             return;
         }
 
@@ -945,6 +948,10 @@ const ProfileManager = {
             const empty = document.createElement('p');
             empty.className = 'no-items';
             empty.textContent = this.t('profiles.none', 'No saved connections.');
+            const hint = document.createElement('span');
+            hint.className = 'empty-state-hint';
+            hint.textContent = this.t('empty.hostsHint', 'Create a saved connection or import hosts using the buttons above.');
+            empty.appendChild(hint);
             container.appendChild(empty);
             restoreFocus();
             return;

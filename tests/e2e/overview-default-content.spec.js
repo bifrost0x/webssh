@@ -1,5 +1,5 @@
 const {test, expect} = require('playwright/test');
-const {login, assertNoExternalRequests} = require('./helpers');
+const {login, assertNoExternalRequests, openWorkspace} = require('./helpers');
 
 test('normal login opens Overview and instance identity is the actual browser host', async ({page}) => {
     await page.goto('/login');
@@ -22,7 +22,7 @@ test('normal login opens Overview and instance identity is the actual browser ho
 });
 
 for (const view of ['overview', 'workspaces', 'hosts', 'commands']) {
-    test(`reauthentication keeps the saved ${view} view instead of overriding it with the login default`, async ({page}) => {
+    test(`reauthentication handles saved ${view} view with Overview as the empty workspace default`, async ({page}) => {
         await login(page, 'e2e_admin', {workspace: false});
         await page.evaluate(view => {
             const ids = {overview: 'overviewNavBtn', workspaces: 'workspaceNavBtn', hosts: 'manageProfilesBtn', commands: 'commandLibraryBtn'};
@@ -30,7 +30,7 @@ for (const view of ['overview', 'workspaces', 'hosts', 'commands']) {
             window.AuthSessionGuard.saveRestore(window, document, sessionStorage);
         }, view);
         await page.reload();
-        await expect(page.locator('body')).toHaveAttribute('data-primary-workspace', view);
+        await expect(page.locator('body')).toHaveAttribute('data-primary-workspace', view === 'workspaces' ? 'overview' : view);
         expect(await page.evaluate(() => Object.keys(sessionStorage)
             .filter(key => key.startsWith('webssh:auth-session-return:')))).toEqual([]);
     });
@@ -69,6 +69,28 @@ for (const width of [1440, 390]) {
         await help.locator('button').focus();
         await page.keyboard.press('Enter');
         await expect(page.locator('#jumpHostManagementModal')).toBeVisible();
+        await assertNoExternalRequests(page);
+    });
+}
+
+for (const width of [390, 1440]) {
+    test(`login after empty workspace expiry opens Overview at ${width}px`, async ({page}) => {
+        await page.setViewportSize({width, height: 844});
+        await login(page, 'e2e_admin', {workspace: false});
+        await openWorkspace(page);
+        await expect(page.locator('body')).toHaveAttribute('data-primary-workspace', 'workspaces');
+        // Simulate expired authentication while retaining this tab's restore storage.
+        await page.context().clearCookies();
+        await page.evaluate(() => window.AuthSessionGuard.create().expire());
+        await expect(page).toHaveURL(/\/login\?next=/);
+        await page.locator('#username').fill('e2e_admin');
+        await page.locator('#password').fill('browser-password');
+        await page.locator('form button[type="submit"]').click();
+        await expect(page).toHaveURL(/\/$/);
+        await expect(page.locator('#connectionOverview')).toBeVisible();
+        await expect(page.locator('body')).toHaveAttribute('data-primary-workspace', 'overview');
+        await expect(page.locator('.main-content')).toBeHidden();
+        expect(await page.evaluate(() => Object.keys(sessionStorage).filter(key => key.startsWith('webssh:auth-session-return:')))).toEqual([]);
         await assertNoExternalRequests(page);
     });
 }

@@ -203,6 +203,7 @@
                 root.ModalManager.close(modal);
                 root.primaryWorkspaceController?.showWorkspaces?.();
                 root.workspaceLayoutController?.openContext('commands', 'user');
+                launcher.activeSection = 'sets';
                 launcher.open(sessionId);
                 launcher.searchQuery = sets().find(set => set.id === id).name;
                 launcher.render();

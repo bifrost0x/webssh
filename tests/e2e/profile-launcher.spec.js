@@ -678,8 +678,9 @@ test('referenced commands and command sets cannot be deleted', async ({ page }) 
         hasText: 'Guarded profile set',
     });
     await expect(guardedSet).toHaveCount(1);
-    page.once('dialog', dialog => dialog.accept());
     await clickCommandSetMenuAction(guardedSet, 'delete');
+    await expect(page.locator('.command-set-confirm-dialog')).toBeVisible();
+    await page.locator('.command-set-confirm-dialog .btn-danger').click();
     await expect(page.locator('.notification-error').last()).toContainText(
         'Command set is used by 1 profile',
     );
@@ -691,8 +692,9 @@ test('referenced commands and command sets cannot be deleted', async ({ page }) 
         hasText: 'Guarded direct command',
     });
     await expect(guardedCommand).toHaveCount(1);
-    page.once('dialog', dialog => dialog.accept());
     await guardedCommand.locator('.cmd-delete').click();
+    await expect(page.locator('.command-set-confirm-dialog')).toBeVisible();
+    await page.locator('.command-set-confirm-dialog .btn-danger').click();
     await expect(page.locator('.notification-error').last()).toContainText(
         'Command is used by 1 profile',
     );
@@ -845,3 +847,76 @@ test('launcher preserves active search through background key and profile refres
     await page.evaluate(() => SessionManager.renderPane(0));
     await expect(search).toHaveValue('');
 });
+
+for (const width of [360, 733, 1440, 3043]) {
+    test(`empty workspace groups connection guidance centrally at ${width}px`, async ({page}) => {
+        await page.setViewportSize({width, height: 662});
+        await expect.poll(() => page.evaluate(() => window.ProfileManager.profilesLoaded)).toBe(true);
+        await page.evaluate(() => window.ProfileManager.setProfiles([]));
+        const launcher = page.locator('.profile-launcher').first();
+        const action = launcher.locator('.profile-launcher-new');
+        await expect(launcher.locator('.profile-launcher-sections')).toHaveCount(0);
+        await expect(launcher.locator('.pane-empty-icon')).toBeVisible();
+        await expect(action).toBeInViewport({ratio: 1});
+        const geometry = await launcher.evaluate(element => {
+            const pane = element.getBoundingClientRect();
+            const parts = ['.pane-empty-icon', '.profile-launcher-title', '.profile-launcher-hint', '.profile-launcher-new']
+                .map(selector => element.querySelector(selector).getBoundingClientRect());
+            return {
+                horizontalOffsets: parts.map(part => Math.abs((part.left + part.right - pane.left - pane.right) / 2)),
+                verticalOffset: Math.abs((parts[0].top + parts[3].bottom - pane.top - pane.bottom) / 2),
+                contentHeight: parts[3].bottom - parts[0].top,
+                overflow: element.scrollWidth - element.clientWidth,
+            };
+        });
+        geometry.horizontalOffsets.forEach(offset => expect(offset).toBeLessThanOrEqual(1));
+        expect(geometry.verticalOffset).toBeLessThanOrEqual(1);
+        expect(geometry.contentHeight).toBeLessThan(260);
+        expect(geometry.overflow).toBeLessThanOrEqual(1);
+        await action.click();
+        await expect(page.locator('#connectionModal')).toHaveClass(/show/);
+        await expect.poll(() => sshAttempts(page)).toHaveLength(0);
+    });
+}
+
+for (const layout of [2, 4]) {
+    test(`empty split workspace keeps all ${layout} connection actions reachable`, async ({page}) => {
+        await page.setViewportSize({width: 1440, height: 662});
+        await expect.poll(() => page.evaluate(() => window.ProfileManager.profilesLoaded)).toBe(true);
+        await page.evaluate(() => window.ProfileManager.setProfiles([]));
+        await page.locator('#workspaceLayoutPicker > summary').click();
+        await page.locator(`.split-btn[data-layout="${layout}"]`).click();
+        const launchers = page.locator('.profile-launcher');
+        await expect(launchers).toHaveCount(layout);
+        for (const launcher of await launchers.all()) {
+            const button = launcher.locator('.profile-launcher-new');
+            await button.scrollIntoViewIfNeeded();
+            await expect(button).toBeInViewport({ratio: 1});
+            expect(await launcher.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+        }
+        await launchers.last().locator('.profile-launcher-new').click();
+        await expect(page.locator('#connectionModal')).toHaveClass(/show/);
+        await expect.poll(() => sshAttempts(page)).toHaveLength(0);
+    });
+}
+
+for (const width of [390, 1440]) {
+    test(`populated launcher retains its header and scroll layout at ${width}px`, async ({page}) => {
+        await page.setViewportSize({width, height: 844});
+        const launcher = page.locator('.profile-launcher').first();
+        await expect(launcher.locator('.profile-launcher-card').first()).toBeVisible();
+        const styles = await launcher.evaluate(element => ({
+            titleSize: getComputedStyle(element.querySelector('.profile-launcher-title')).fontSize,
+            sectionsFlex: getComputedStyle(element.querySelector('.profile-launcher-sections')).flexGrow,
+            sectionsMaxHeight: getComputedStyle(element.querySelector('.profile-launcher-sections')).maxHeight,
+            actionAlign: getComputedStyle(element.querySelector('.profile-launcher-new')).alignSelf,
+            searchWidth: element.querySelector('.profile-launcher-search').getBoundingClientRect().width,
+            contentWidth: element.clientWidth - parseFloat(getComputedStyle(element).paddingLeft) - parseFloat(getComputedStyle(element).paddingRight),
+        }));
+        expect(styles.titleSize).toBe(width < 768 ? '24px' : '28px');
+        expect(styles.sectionsFlex).toBe('1');
+        expect(styles.sectionsMaxHeight).toBe('none');
+        expect(styles.actionAlign).toBe('flex-end');
+        expect(Math.abs(styles.searchWidth - styles.contentWidth)).toBeLessThanOrEqual(1);
+    });
+}

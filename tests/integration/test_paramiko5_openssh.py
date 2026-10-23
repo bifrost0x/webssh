@@ -369,3 +369,74 @@ def test_changed_host_key_is_rejected(isolated_host_key_store):
             )
     finally:
         client.close()
+
+
+@pytest.mark.parametrize('recursive', [False, True])
+def test_permission_jobs_real_tree_preview_modes_and_symlink_exclusion(monkeypatch, recursive):
+    from types import SimpleNamespace
+    from app.permission_jobs import PermissionJobManager
+    from app.paramiko_channels import open_sftp_client
+    from app.sftp_backend import SFTPBackend
+
+    class InlineRuntime:
+        def accepting_work(self):
+            return True
+
+        def start_job(self, _name, target, **_kwargs):
+            event = threading.Event()
+            target(event)
+            return SimpleNamespace(cancel=event.set)
+
+    monkeypatch.setattr(config, 'SFTP_CHMOD_ENABLED', True)
+    session_id = connect_terminal(password=PASSWORD)
+    source = SimpleNamespace(handle_id=session_id, backend=SFTPBackend())
+    client = ssh_manager.sessions[session_id]['client']
+    sftp = open_sftp_client(client.get_transport(), timeout=5, operation_timeout=5)
+    root = f'/tmp/webssh-permission-job-{uuid.uuid4().hex}'
+    sftp.mkdir(root, 0o700)
+    sftp.mkdir(root + '/nested', 0o700)
+    canary = root + '-outside'
+    with sftp.file(canary, 'wb') as remote:
+        remote.write(b'outside selection')
+    sftp.chmod(canary, 0o600)
+    for name in ['file', 'nested/child']:
+        with sftp.file(root + '/' + name, 'wb') as remote:
+            remote.write(b'permission job fixture')
+        sftp.chmod(root + '/' + name, 0o600)
+    sftp.symlink(canary, root + '/nested/link')
+    try:
+        manager = PermissionJobManager(InlineRuntime())
+        status = manager.prepare(
+            user_id=1, socket_sid='disposable-job-socket',
+            source_id='sftp-session:' + session_id,
+            paths=[root, root + '/file'] if recursive else [root],
+            recursive=recursive, file_mode='640', directory_mode='750',
+            authorize=lambda: source,
+        )
+        assert status['state'] == 'ready', status
+        assert (status['files'], status['directories'], status['skipped']) == (
+            (2, 2, 1) if recursive else (0, 1, 0)
+        )
+        assert stat.S_IMODE(sftp.lstat(root).st_mode) == 0o700
+        assert stat.S_IMODE(sftp.lstat(root + '/file').st_mode) == 0o600
+        done = manager.apply(1, 'disposable-job-socket',
+                             'sftp-session:' + session_id, status['job_id'],
+                             authorize=lambda: source)
+        assert done['state'] == 'completed', done
+        assert done['changed'] == (4 if recursive else 1)
+        assert stat.S_IMODE(sftp.lstat(root).st_mode) == 0o750
+        assert stat.S_IMODE(sftp.lstat(root + '/nested').st_mode) == (0o750 if recursive else 0o700)
+        assert stat.S_IMODE(sftp.lstat(root + '/file').st_mode) == (0o640 if recursive else 0o600)
+        assert stat.S_IMODE(sftp.lstat(root + '/nested/child').st_mode) == (0o640 if recursive else 0o600)
+        assert stat.S_ISLNK(sftp.lstat(root + '/nested/link').st_mode)
+        assert stat.S_IMODE(sftp.lstat(canary).st_mode) == 0o600
+    finally:
+        sftp.chmod(root, 0o700)
+        sftp.chmod(root + '/nested', 0o700)
+        for name in ['nested/link', 'nested/child', 'file']:
+            sftp.remove(root + '/' + name)
+        sftp.rmdir(root + '/nested')
+        sftp.rmdir(root)
+        sftp.remove(canary)
+        sftp.close()
+        ssh_manager.close_session(session_id)

@@ -909,6 +909,9 @@ def handle_disconnect():
 
 def _cleanup_socket_session(socket_sid):
     """Release one browser's resources with or without its request environ."""
+    permission_jobs = current_app.extensions.get('permission_jobs')
+    if permission_jobs is not None:
+        permission_jobs.cancel_socket(socket_sid)
     ssh_output_flow.release_socket(socket_sid)
     _cancel_ssh_banner_prompts_for_socket(socket_sid)
     _cancel_ssh_connect_attempts_for_socket(socket_sid)
@@ -4266,6 +4269,121 @@ def handle_get_file_permissions(data, current_user=None):
 @socket_login_required
 def handle_set_file_permissions(data, current_user=None):
     return _handle_file_mutation('set_file_permissions', data, current_user)
+
+
+_permission_job_manager_lock = threading.Lock()
+
+
+def _permission_job_manager():
+    from .permission_jobs import PermissionJobManager
+
+    with _permission_job_manager_lock:
+        manager = current_app.extensions.get('permission_jobs')
+        if manager is None:
+            manager = PermissionJobManager(current_app.extensions['runtime_lifecycle'], quotas=quota_manager)
+            current_app.extensions['permission_jobs'] = manager
+        return manager
+
+
+def _handle_permission_job(operation, data, current_user):
+    from datetime import datetime, timezone
+    from .auth_assurance import current_authentication_session
+    from .file_mutations import FileMutationError, mutation_failure
+    from .ldap_session import ldap_revocation_pending
+    from .maintenance_mode import is_active
+    from .models import AuthenticationSession, User
+
+    payload = data if isinstance(data, dict) else {}
+    identity = _file_request_identity(payload, current_user.id, allow_permission_paths=operation == 'prepare_file_permissions')
+    context = {'operation': operation, **identity}
+    try:
+        if not _valid_file_request(identity):
+            raise FileMutationError('INVALID_REQUEST')
+        source_id = identity['source_id']
+        user_id = current_user.id
+        socket_sid = request.sid
+        generation = int(current_user.auth_generation or 0)
+        auth = current_authentication_session()
+        if auth is None:
+            raise FileSourceUnavailable()
+        auth_id = auth.id
+        app = current_app._get_current_object()
+        ip_address = request.remote_addr
+
+        def authorize():
+            # A copied request must never extend a deleted login or cache user
+            # authorization for the duration of a large remote operation.
+            db.session.expire_all()
+            user = db.session.get(User, user_id)
+            assurance = db.session.get(AuthenticationSession, auth_id)
+            socket_session = SocketSession.query.filter_by(socket_sid=socket_sid, user_id=user_id).first()
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            if (user is None or user.is_locked or int(user.auth_generation or 0) != generation
+                    or assurance is None or assurance.user_id != user_id
+                    or assurance.auth_generation != generation or assurance.expires_at <= now
+                    or socket_session is None or is_active()
+                    or not app.extensions['runtime_lifecycle'].accepting_work()
+                    or (user.is_ldap_managed and ldap_revocation_pending(app, user_id))):
+                raise FileSourceUnavailable()
+            return file_service._permissions_source(source_id, user_id)
+
+        def audit(result, path, old_mode, new_mode):
+            try:
+                source = file_service.resolver.resolve(source_id, user_id)
+                user = db.session.get(User, user_id)
+                if user is not None:
+                    _audit_file_source_operation(user, source, operation='chmod' if path else 'chmod_job',
+                                                 result=result, path=path or '/', ip_address=ip_address,
+                                                 old_mode=old_mode, new_mode=new_mode)
+            except Exception:
+                log_warning('Permission job audit unavailable', user_id=user_id, result=result)
+
+        manager = _permission_job_manager()
+        if operation == 'prepare_file_permissions':
+            result = manager.prepare(user_id=user_id, socket_sid=socket_sid, source_id=source_id,
+                                     paths=payload.get('paths'), recursive=payload.get('recursive', False),
+                                     file_mode=payload.get('file_mode'), directory_mode=payload.get('directory_mode'),
+                                     authorize=authorize, worker_wrap=copy_current_request_context, audit=audit)
+        elif operation == 'apply_file_permissions_job':
+            # Modes and paths belong exclusively to the server's immutable plan.
+            if any(key in payload for key in ('paths', 'recursive', 'file_mode', 'directory_mode')):
+                raise FileMutationError('INVALID_REQUEST')
+            result = manager.apply(user_id, socket_sid, source_id, payload.get('job_id'), authorize=authorize,
+                                   worker_wrap=copy_current_request_context, audit=audit)
+        else:
+            authorize()
+            method = manager.cancel if operation == 'cancel_file_permissions_job' else manager.get
+            result = method(user_id, socket_sid, source_id, payload.get('job_id'))
+        emit('file_permissions_job', {**result, **context})
+    except FileSourceUnavailable:
+        emit('error', _file_source_unavailable_payload(**context))
+    except Exception as error:
+        failure = mutation_failure(error)
+        emit('error', {'error': str(failure), 'code': failure.code, **context})
+
+
+@socketio.on('prepare_file_permissions')
+@socket_login_required
+def handle_prepare_file_permissions(data, current_user=None):
+    return _handle_permission_job('prepare_file_permissions', data, current_user)
+
+
+@socketio.on('get_file_permissions_job')
+@socket_login_required
+def handle_get_file_permissions_job(data, current_user=None):
+    return _handle_permission_job('get_file_permissions_job', data, current_user)
+
+
+@socketio.on('apply_file_permissions_job')
+@socket_login_required
+def handle_apply_file_permissions_job(data, current_user=None):
+    return _handle_permission_job('apply_file_permissions_job', data, current_user)
+
+
+@socketio.on('cancel_file_permissions_job')
+@socket_login_required
+def handle_cancel_file_permissions_job(data, current_user=None):
+    return _handle_permission_job('cancel_file_permissions_job', data, current_user)
 
 
 @socketio.on('create_directory')

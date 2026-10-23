@@ -382,13 +382,13 @@ body.webssh-auth:has(.auth-access-dock) { background-color: var(--ws2-canvas); b
  * bounded scrolling record area. Split panes retain their compact geometry. */
 .webssh-ui .profile-launcher-card { background: var(--ws2-surface); border-color: var(--ws2-border); box-shadow: none; }
 .webssh-ui .profile-launcher-card:hover { background: var(--ws2-row-hover); border-color: var(--ws2-accent); transform: none; }
-.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher { align-items: stretch; justify-content: flex-start; text-align: left; padding: 28px; gap: 12px; }
-.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher > .pane-empty-icon { display: none; }
-.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher-title { font-size: 28px; letter-spacing: -.03em; }
-.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher-search { width: 100%; margin-top: 8px; }
-.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher-sections { flex: 1 1 auto; max-height: none; width: 100%; padding: 12px 4px; }
-.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher-new { align-self: flex-end; min-height: 40px; }
-.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher-section-title { margin-bottom: 12px; }
+.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) { align-items: stretch; justify-content: flex-start; text-align: left; padding: 28px; gap: 12px; }
+.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) > .pane-empty-icon { display: none; }
+.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) .profile-launcher-title { font-size: 28px; letter-spacing: -.03em; }
+.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) .profile-launcher-search { width: 100%; margin-top: 8px; }
+.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) .profile-launcher-sections { flex: 1 1 auto; max-height: none; width: 100%; padding: 12px 4px; }
+.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) .profile-launcher-new { align-self: flex-end; min-height: 40px; }
+.webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) .profile-launcher-section-title { margin-bottom: 12px; }
 @media (min-width: 768px) and (not ((max-height: 520px) and (pointer: coarse))) {
     .webssh-ui .context-workspace-tab { flex-direction: column; gap: 3px; padding: 5px 3px; font-size: 10px; }
     .webssh-ui .context-workspace-tab .material-icons { font-size: 16px; }
@@ -396,8 +396,8 @@ body.webssh-auth:has(.auth-access-dock) { background-color: var(--ws2-canvas); b
     .webssh-ui .context-workspace-tab[aria-selected="true"]::after { display: none; }
 }
 @media (max-width: 767px) {
-    .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher { padding: 20px 14px; }
-    .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher-title { font-size: 24px; }
+    .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) { padding: 20px 14px; }
+    .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) .profile-launcher-title { font-size: 24px; }
 }
 
 /* Instance identity and transfer state come from the current page/session. */
@@ -412,3 +412,154 @@ body.webssh-auth:has(.auth-access-dock) { background-color: var(--ws2-canvas); b
 .workspace-status-transfers:hover { color: var(--ws2-text); }
 .workspace-status-transfers:focus-visible { outline: 2px solid var(--ws2-focus); outline-offset: 2px; }
 .workspace-status-bar [hidden] { display: none !important; }
+
+/* Keep the no-host entry point together; populated launchers retain their list layout. */
+.webssh-ui .profile-launcher:not(:has(.profile-launcher-sections)) {
+    align-items: center;
+    justify-content: safe center;
+    text-align: center;
+    gap: 12px;
+    padding: 24px 16px;
+    overflow: auto;
+}
+.webssh-ui .profile-launcher:not(:has(.profile-launcher-sections)) > .pane-empty-icon {
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    border: 1px solid var(--ws2-border);
+    border-radius: 16px;
+    background: var(--ws2-surface);
+    color: var(--ws2-accent);
+    font-size: 30px;
+    opacity: 1;
+}
+.webssh-ui .profile-launcher:not(:has(.profile-launcher-sections)) .profile-launcher-title {
+    font-size: 22px;
+    line-height: 1.25;
+    letter-spacing: -.02em;
+}
+.webssh-ui .profile-launcher:not(:has(.profile-launcher-sections)) .profile-launcher-hint {
+    max-width: 36ch;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+.webssh-ui .profile-launcher:not(:has(.profile-launcher-sections)) .profile-launcher-new,
+.webssh-ui .profile-launcher:not(:has(.profile-launcher-sections)) .profile-launcher-return {
+    align-self: center;
+    max-width: 100%;
+    min-height: 40px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.webssh-ui .profile-launcher:not(:has(.profile-launcher-sections)) .profile-launcher-new {
+    margin-top: 6px;
+}
+
+/* Shared empty-list geometry. Keep status/error notices and table structure intact. */
+.webssh-ui :is(.no-items, .command-favorites-empty, .session-command-empty,
+    .overview-empty, .recent-connections-empty, .palette-empty, .security-factor-empty,
+    .fm-source-no-results, .ui-empty-state, #hostContextEmpty) {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 120px;
+    margin: 0;
+    padding: 24px 20px;
+    gap: 10px;
+    border: 1px dashed var(--ws2-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ws2-surface) 60%, transparent);
+    color: var(--ws2-text-secondary);
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+.webssh-ui :is(.no-items, .command-favorites-empty, .session-command-empty,
+    .overview-empty, .recent-connections-empty, .palette-empty, .security-factor-empty,
+    .fm-source-no-results, .ui-empty-state, #hostContextEmpty)[hidden] { display: none; }
+.webssh-ui .empty-state-hint {
+    display: block;
+    max-width: 52ch;
+    color: var(--ws2-text-muted);
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.6;
+}
+.webssh-ui .overview-empty > .material-icons {
+    color: var(--ws2-accent);
+    font-size: 24px;
+}
+.webssh-ui .overview-empty > span:not(.material-icons) { max-width: 52ch; }
+.webssh-ui :is(.session-command-empty, .palette-empty, .security-factor-empty) {
+    min-height: 96px;
+    padding: 18px 14px;
+    font-size: 13px;
+}
+.webssh-ui :is(td.ui-empty-table, td.operations-empty) {
+    padding: 28px 16px;
+    color: var(--ws2-text-muted);
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.webssh-ui .fm-source-empty-state {
+    box-sizing: border-box;
+    width: min(100%, 400px);
+    min-width: 0;
+    max-width: 100%;
+    gap: 10px;
+    padding: 24px 20px;
+}
+.webssh-ui .fm-source-empty-state p {
+    display: block;
+    max-width: 36ch;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+.webssh-ui .fm-source-empty-state strong { display: block; font-size: 14px; }
+.webssh-ui .fm-source-empty-state .fm-empty-source-cta {
+    min-height: 44px;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.webssh-ui .fm-empty:not(.fm-source-empty-state) {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+.webssh-ui .ws-desktop-empty :is(h2, p) { max-width: 100%; overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+    .webssh-ui :is(.no-items, .command-favorites-empty, .session-command-empty,
+        .overview-empty, .fm-source-no-results, .ui-empty-state) {
+        min-height: 104px;
+        padding: 20px 14px;
+    }
+    .webssh-ui .fm-source-empty-state { padding: 18px 14px; }
+}
+
+.webssh-ui .fm-move-picker-empty:not(.is-error):not(:has(.spinner)) {
+    min-width: 0;
+    padding: 20px 14px;
+    gap: 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: center;
+    overflow-wrap: anywhere;
+}

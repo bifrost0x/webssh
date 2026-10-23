@@ -9,6 +9,13 @@ const CommandLibrary = {
     pendingSaveCallback: null,
     returnToModalId: null,
     osManuallySelected: false,
+    formEpoch: 0,
+    saving: false,
+    saveTimer: null,
+    saveAttempt: 0,
+    formBaseline: null,
+    saveOutcomeUnknown: false,
+    retryConfirmation: false,
 
     init() {
         this.loadCommands();
@@ -33,6 +40,14 @@ const CommandLibrary = {
         }
 
         this.setupEventListeners();
+        document.addEventListener?.('keydown', event => {
+            const form = document.getElementById('commandFormModal');
+            if (event.key !== 'Escape' || !form?.classList.contains('show')
+                || document.querySelector?.('dialog[open]')) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            this.requestCloseCommandForm();
+        }, true);
         window.addEventListener?.('session-target-os-change', () => this.detectOs());
     },
 
@@ -40,10 +55,11 @@ const CommandLibrary = {
         const commandLibraryBtn = document.getElementById('commandLibraryBtn');
         if (commandLibraryBtn) {
             commandLibraryBtn.addEventListener('click', () => {
-                if (window.CommandWorkspace?.activeSection === 'library') {
+                if (['library', 'favorites'].includes(window.CommandWorkspace?.activeSection)) {
                     this.returnToModalId = null;
                     window.CommandWorkspace.open();
-                    setTimeout(() => document.getElementById('commandSearchInput')?.focus({preventScroll: true}), 0);
+                    const searchId = window.CommandWorkspace.activeSection === 'favorites' ? 'commandFavoritesSearch' : 'commandSearchInput';
+                    setTimeout(() => document.getElementById(searchId)?.focus({preventScroll: true}), 0);
                 } else {
                     window.CommandSetManager?.openManagement();
                 }
@@ -62,12 +78,12 @@ const CommandLibrary = {
 
         const closeCommandFormModal = document.getElementById('closeCommandFormModal');
         if (closeCommandFormModal) {
-            closeCommandFormModal.addEventListener('click', () => this.closeCommandForm());
+            closeCommandFormModal.addEventListener('click', () => this.requestCloseCommandForm());
         }
 
         const cancelCommandFormBtn = document.getElementById('cancelCommandFormBtn');
         if (cancelCommandFormBtn) {
-            cancelCommandFormBtn.addEventListener('click', () => this.closeCommandForm());
+            cancelCommandFormBtn.addEventListener('click', () => this.requestCloseCommandForm());
         }
 
         const commandForm = document.getElementById('commandForm');
@@ -76,13 +92,14 @@ const CommandLibrary = {
                 e.preventDefault();
                 this.saveCommand();
             });
+            commandForm.addEventListener('input', () => this.updateFormPreview());
         }
 
         window.addEventListener('click', (e) => {
             const commandFormModal = document.getElementById('commandFormModal');
 
             if (e.target === commandFormModal) {
-                this.closeCommandForm();
+                this.requestCloseCommandForm();
             }
         });
 
@@ -110,6 +127,7 @@ const CommandLibrary = {
         this.searchCommands(this.searchQuery);
         window.CommandSetManager?.onCommandsChanged();
         window.ConnectionCommandManager?.onDataChanged();
+        window.CommandWorkspace?.renderFavorites?.();
     },
 
     openLibrary() {
@@ -280,6 +298,13 @@ const CommandLibrary = {
                 </div>
             `;
 
+            row.classList.add('command-kind-command');
+            const badge = document.createElement('span');
+            badge.className = 'command-type-badge';
+            badge.textContent = window.SessionCommandLauncher.t('commands.singleCommand', 'Command');
+            row.querySelector('.command-name')?.prepend(badge);
+            const favorite = window.CommandWorkspace?.favoriteButton?.('command', cmd.id);
+            if (favorite) row.querySelector('.command-actions')?.prepend(favorite);
             container.appendChild(row);
         });
     },
@@ -305,6 +330,7 @@ const CommandLibrary = {
     },
 
     showAddCommandForm(options = {}) {
+        this.beginForm();
         this.editingCommandId = null;
         this.pendingSaveCallback = typeof options.onSaved === 'function' ? options.onSaved : null;
         document.getElementById('commandFormTitle').textContent = window.i18n?.t('commands.addCommand') || 'Add Command';
@@ -322,12 +348,15 @@ const CommandLibrary = {
         } else {
             document.getElementById('commandFormModal').classList.add('show');
         }
+        this.formBaseline = this.formSnapshot();
+        this.updateFormPreview();
     },
 
     copyCommand(commandId) {
         const cmd = this.commands.find(c => c.id === commandId);
         if (!cmd) return;
 
+        this.beginForm();
         this.editingCommandId = null;
         document.getElementById('commandFormTitle').textContent = window.i18n?.t('commands.copyToMine') || 'Copy to My Commands';
         document.getElementById('commandFormName').value = cmd.name;
@@ -345,12 +374,15 @@ const CommandLibrary = {
         } else {
             document.getElementById('commandFormModal').classList.add('show');
         }
+        this.formBaseline = this.formSnapshot();
+        this.updateFormPreview();
     },
 
     editCommand(commandId) {
         const cmd = this.commands.find(c => c.id === commandId);
         if (!cmd || cmd.isSystem) return;
 
+        this.beginForm();
         this.editingCommandId = commandId;
         document.getElementById('commandFormTitle').textContent = window.i18n?.t('commands.editCommand') || 'Edit Command';
         document.getElementById('commandFormName').value = cmd.name;
@@ -368,9 +400,71 @@ const CommandLibrary = {
         } else {
             document.getElementById('commandFormModal').classList.add('show');
         }
+        this.formBaseline = this.formSnapshot();
+        this.updateFormPreview();
     },
 
-    saveCommand() {
+    formSnapshot() {
+        return JSON.stringify({fields: ['commandFormName', 'commandFormCommand', 'commandFormParams',
+            'commandFormDescription', 'commandFormCategory'].map(id => document.getElementById(id)?.value || ''),
+        os: Array.from(document.querySelectorAll('input[name="commandOs"]:checked')).map(input => input.value)});
+    },
+
+    updateFormPreview() {
+        const preview = document.getElementById('commandFormPreview');
+        if (preview) {
+            const command = document.getElementById('commandFormCommand')?.value || '';
+            const parameters = document.getElementById('commandFormParams')?.value || '';
+            preview.textContent = command + (parameters ? ` ${parameters}` : '');
+        }
+    },
+
+    async requestCloseCommandForm() {
+        const epoch = this.formEpoch;
+        const snapshot = this.formSnapshot();
+        if (this.formBaseline !== null && snapshot !== this.formBaseline) {
+            const manager = window.CommandSetManager;
+            if (!manager?.confirmDialog || !await manager.confirmDialog({
+                title: manager.t('commandSets.discardTitle', 'Discard changes?'),
+                message: manager.t('commandSets.discardHint', 'Your unsaved changes will be lost.'),
+                confirmLabel: manager.t('commandSets.discard', 'Discard'),
+                cancelLabel: manager.t('commandSets.keepEditing', 'Keep editing'),
+            })) return false;
+            if (epoch !== this.formEpoch || snapshot !== this.formSnapshot()) return false;
+        }
+        this.closeCommandForm();
+        return true;
+    },
+
+    beginForm() {
+        this.formEpoch += 1;
+        this.saveOutcomeUnknown = false;
+        this.retryConfirmation = false;
+        this.saving = false;
+        if (this.saveTimer) clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+        const button = document.querySelector?.('#commandForm [type="submit"]');
+        if (button) button.disabled = false;
+    },
+
+    saveCommand(options = {}) {
+        if (this.saving || this.retryConfirmation) return;
+        if (this.saveOutcomeUnknown && !options.confirmed) {
+            const manager = window.CommandSetManager;
+            if (!manager?.confirmDialog) return;
+            const epoch = this.formEpoch, snapshot = this.formSnapshot();
+            this.retryConfirmation = true;
+            manager.confirmDialog({
+                title: manager.t('common.saveUnknownTitle', 'Save outcome unknown'),
+                message: manager.t('common.saveUnknownHint', 'The previous save may have succeeded. Check the saved list before trying again. Saving again may create a duplicate.'),
+                confirmLabel: manager.t('common.saveAgain', 'Save again'),
+                cancelLabel: manager.t('commandSets.keepEditing', 'Keep editing'),
+            }).then(accepted => {
+                this.retryConfirmation = false;
+                if (accepted && epoch === this.formEpoch && snapshot === this.formSnapshot()) this.saveCommand({confirmed: true});
+            });
+            return;
+        }
         const name = document.getElementById('commandFormName').value.trim();
         const command = document.getElementById('commandFormCommand').value.trim();
         const parameters = document.getElementById('commandFormParams').value.trim();
@@ -401,36 +495,64 @@ const CommandLibrary = {
             category
         };
 
-        if (this.editingCommandId) {
-            data.command_id = this.editingCommandId;
-            window.socket.emit('update_command', data);
+        const submittedSnapshot = this.formSnapshot();
+        const epoch = this.formEpoch;
+        const attempt = ++this.saveAttempt;
+        const callback = this.pendingSaveCallback;
+        const event = this.editingCommandId ? 'update_command' : 'add_command';
+        if (this.editingCommandId) data.command_id = this.editingCommandId;
+        this.saving = true;
+        this.saveOutcomeUnknown = false;
+        const button = document.querySelector?.('#commandForm [type="submit"]');
+        if (button) button.disabled = true;
+        const finish = (acknowledgement, unknown = false) => {
+            if (this.formEpoch !== epoch || this.saveAttempt !== attempt || !this.saving) return;
+            this.saving = false;
+            if (this.saveTimer) clearTimeout(this.saveTimer);
+            this.saveTimer = null;
+            if (button) button.disabled = false;
+            if (unknown) {
+                this.saveOutcomeUnknown = true;
+                this.loadCommands();
+                window.showNotification(window.i18n?.t('common.saveUnknownHint') || 'The save may have succeeded. Check the saved list before retrying.', 'warning');
+                return;
+            }
+            if (!acknowledgement?.success) {
+                window.showNotification(
+                    window.i18n?.t('commands.saveFailed') || 'Could not save the command. Check the fields and try again.', 'error'
+                );
+                return;
+            }
+            if (submittedSnapshot !== this.formSnapshot()) {
+                this.editingCommandId = acknowledgement.command?.id || data.command_id || null;
+                this.formBaseline = submittedSnapshot;
+                return;
+            }
             this.closeCommandForm();
-        } else {
-            window.socket.emit('add_command', data, acknowledgement => {
-                if (!acknowledgement?.success) {
-                    window.showNotification(
-                        window.i18n?.t('commands.saveFailed') || 'Could not save the command. Check the fields and try again.', 'error'
-                    );
-                    return;
-                }
-                const callback = this.pendingSaveCallback;
-                this.closeCommandForm();
-                callback?.(acknowledgement.command);
-            });
-        }
+            callback?.(acknowledgement.command);
+        };
+        // Bound waiting preserves the draft if the connection drops without an ack.
+        if (typeof setTimeout === 'function') this.saveTimer = setTimeout(() => finish(null, true), 10000);
+        window.socket.emit(event, data, finish);
     },
 
-    deleteCommand(commandId) {
+    async deleteCommand(commandId) {
         const cmd = this.commands.find(c => c.id === commandId);
         if (!cmd || cmd.isSystem) return;
 
         const prompt = window.i18n?.t('commands.deleteConfirm') || 'Delete command "{name}"?';
-        if (confirm(prompt.replace('{name}', () => cmd.name))) {
+        const message = prompt.replace('{name}', () => cmd.name);
+        const accepted = window.CommandSetManager?.confirmDialog
+            ? await window.CommandSetManager.confirmDialog({title: window.i18n?.t('commands.delete') || 'Delete', message,
+                confirmLabel: window.i18n?.t('common.delete') || 'Delete'})
+            : confirm(message);
+        if (accepted && this.commands.some(item => item.id === commandId && !item.isSystem)) {
             window.socket.emit('delete_command', { command_id: commandId });
         }
     },
 
     closeCommandForm() {
+        this.beginForm();
         if (window.ModalManager) {
             window.ModalManager.close(document.getElementById('commandFormModal'));
         } else {

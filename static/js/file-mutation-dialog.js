@@ -20,7 +20,7 @@
     }
 
     class FileMutationDialog {
-        constructor(manager, pane, file = null) {
+        constructor(manager, pane, file = null, options = {}) {
             this.manager = manager;
             const state = manager.panes[pane];
             const files = Array.isArray(file) ? file : (file ? [file] : []);
@@ -32,6 +32,7 @@
             this.target = Object.freeze({ pane, state, sourceId: manager.getPaneSourceId(state), parent: state.path,
                 version: state.mutationViewVersion || 0, path: file ? manager.joinPath(state.path, file.name) : null });
             this.permissions = Boolean(file);
+            this.createDirectory = !this.permissions && options.createDirectory === true;
             this.trigger = document.activeElement;
             this.closed = false;
             this.pending = false;
@@ -41,6 +42,7 @@
             this.dialog.setAttribute('aria-labelledby', 'fmMutationTitle');
             this.dialog.innerHTML = `<form novalidate>
                 <h3 id="fmMutationTitle"></h3><p class="fm-mutation-target"></p>
+                <p class="fm-mutation-scope" hidden></p>
                 <label class="fm-mutation-name"><span></span><input name="filename" autocomplete="off" required></label>
                 <label class="fm-mutation-edit"><input name="edit" type="checkbox"><span></span></label>
                 <fieldset class="fm-permissions"><legend></legend><div class="fm-permission-grid"></div>
@@ -50,17 +52,18 @@
                 <div class="fm-mutation-actions"><button type="button" class="btn btn-secondary" data-close></button><button type="submit" class="btn btn-primary"></button></div>
             </form>`;
             const text = (selector, key, fallback) => { this.dialog.querySelector(selector).textContent = manager.t(key, fallback); };
-            text('h3', this.permissions ? 'fm.permissions' : 'fm.newFile', this.permissions ? 'Permissions' : 'New file');
+            text('h3', this.permissions ? 'fm.permissions' : this.createDirectory ? 'fm.newFolder' : 'fm.newFile', this.permissions ? 'Permissions' : this.createDirectory ? 'New Folder' : 'New file');
             this.dialog.querySelector('.fm-mutation-target').textContent = `${state.source?.label || this.target.sourceId}\n${this.target.path || this.target.parent}`;
-            text('.fm-mutation-name span', 'fm.fileName', 'File name');
+            text('.fm-mutation-name span', this.createDirectory ? 'fm.folderName' : 'fm.fileName', this.createDirectory ? 'Folder name' : 'File name');
             text('.fm-mutation-edit span', 'fm.editAfterCreate', 'Open in editor after creation');
             text('legend', 'fm.unixPermissions', 'Unix permissions');
             text('.fm-mutation-mode span', 'fm.octalMode', 'Octal permissions');
             text('[data-close]', 'common.cancel', 'Cancel');
-            text('[type="submit"]', this.permissions ? 'fm.applyPermissions' : 'fm.createFile', this.permissions ? 'Apply permissions' : 'Create file');
-            text('.fm-mutation-hint', this.permissions ? 'fm.permissionsHint' : 'fm.newFileHint', this.permissions
+            text('[type="submit"]', this.permissions ? 'fm.applyPermissions' : this.createDirectory ? 'fm.createFolder' : 'fm.createFile', this.permissions ? 'Apply permissions' : this.createDirectory ? 'Create folder' : 'Create file');
+            text('.fm-mutation-hint', this.permissions ? 'fm.permissionsHint' : this.createDirectory ? 'fm.newFolderHint' : 'fm.newFileHint', this.permissions
                 ? 'Directory execute means traverse. Removing owner access can lock you out. Unix mode is not a full ACL view.'
-                : 'Creates an empty file without replacing existing items. SFTP files start with private permissions.');
+                : this.createDirectory ? 'Creates one folder in this directory without replacing existing items. Enter a name, not a path.'
+                    : 'Creates an empty file without replacing existing items. SFTP files start with private permissions.');
             this.name = this.dialog.querySelector('[name="filename"]');
             this.mode = this.dialog.querySelector('[name="mode"]');
             this.button = this.dialog.querySelector('[type="submit"]');
@@ -68,6 +71,7 @@
             this.grid = this.dialog.querySelector('.fm-permission-grid');
             this.results = this.dialog.querySelector('.fm-mutation-results');
             this.results.hidden = !this.batch;
+            this.updatePermissionHint();
             if (this.batch) {
                 this.dialog.querySelector('.fm-mutation-target').textContent = `${state.source?.label || this.target.sourceId}\n${this.targets.length} ${manager.t('fm.selectedItems', 'selected items')}`;
                 text('.fm-mutation-hint', 'fm.batchPermissionsHint', 'Applies the same mode to each selected item, without recursion. Rechecks each item before applying. Stops on metadata changes or the first error; completed changes remain.');
@@ -79,7 +83,7 @@
             manager.socket.on?.('disconnect', this.onDisconnect);
             this.dialog.querySelector('.fm-permissions').hidden = !this.permissions;
             this.dialog.querySelector('.fm-mutation-name').hidden = this.permissions;
-            this.dialog.querySelector('.fm-mutation-edit').hidden = this.permissions;
+            this.dialog.querySelector('.fm-mutation-edit').hidden = this.permissions || this.createDirectory;
             this.buildPermissionGrid();
             this.dialog.addEventListener('keydown', event => event.stopPropagation());
             this.dialog.addEventListener('close', () => this.close());
@@ -93,6 +97,17 @@
             this.update();
             if (this.batch) this.advanceBatch();
             else if (this.permissions) this.send('get_file_permissions', { path: this.target.path });
+        }
+
+        updatePermissionHint() {
+            const scope = this.dialog.querySelector('.fm-mutation-scope');
+            scope.hidden = !this.permissions || (!this.batch && this.objectType !== 'directory');
+            if (this.batch) {
+                scope.textContent = this.manager.t('fm.batchPermissionsScope', 'Only selected items are changed. Contents of selected folders are not changed.');
+            } else if (this.objectType === 'directory') {
+                scope.textContent = this.manager.t('fm.folderPermissionsScope', 'Only this folder — contained files and subfolders are not changed.');
+                this.dialog.querySelector('.fm-mutation-hint').textContent = this.manager.t('fm.folderPermissionsHint', 'For folders, x means traverse (enter). Removing x or write access can affect access through this folder, while the permission bits of its contents remain unchanged. Unix mode is not a full ACL view.');
+            }
         }
 
         buildPermissionGrid() {
@@ -143,6 +158,7 @@
                 return;
             }
             this.button.disabled = this.pending || this.uncertain || !this.isCurrent()
+                || (this.createDirectory && !this.manager.sourceCan(this.target.state, 'mkdir'))
                 || (this.permissions ? !this.metadataToken || this.specialBits !== 0 || !validMode(this.mode.value) || this.mode.value === this.originalMode : !validLeaf(this.name.value));
             const locked = this.pending || this.uncertain || (this.permissions && (!this.metadataToken || this.specialBits !== 0));
             this.name.disabled = locked;
@@ -207,7 +223,8 @@
             } else {
                 this.editAfterCreate = this.dialog.querySelector('[name="edit"]').checked;
                 this.createdName = this.name.value;
-                this.send('create_file', { parent_path: this.target.parent, name: this.createdName });
+                if (this.createDirectory) this.send('create_directory', { remote_path: this.manager.joinPath(this.target.parent, this.createdName) });
+                else this.send('create_file', { parent_path: this.target.parent, name: this.createdName });
             }
         }
 
@@ -225,7 +242,8 @@
             if (failed) {
                 this.uncertain = ['OUTCOME_UNKNOWN', 'MODE_MISMATCH', 'METADATA_CHANGED'].includes(data.code);
                 if (!this.closed) {
-                    this.status.textContent = data.error;
+                    this.status.textContent = operation === 'create_directory'
+                        ? this.folderError(data) : data.error;
                     if (data.code === 'MODE_MISMATCH' && validMode(data.actual_mode)) {
                         this.mode.value = data.actual_mode;
                         this.syncChecks();
@@ -240,6 +258,7 @@
                 this.originalMode = data.mode;
                 this.specialBits = data.special_bits;
                 this.objectType = data.object_type;
+                this.updatePermissionHint();
                 this.metadataToken = data.metadata_token;
                 this.mode.value = data.mode;
                 this.syncChecks();
@@ -249,10 +268,20 @@
             }
             const mayEdit = operation === 'create_file' && this.editAfterCreate && !this.closed && this.isCurrent();
             if (!this.closed) this.close();
-            this.manager.showNotification(this.manager.t(operation === 'create_file' ? 'fm.fileCreated' : 'fm.permissionsChanged', operation === 'create_file' ? 'File created' : 'Permissions changed'), 'success');
-            this.target.state.restoreFocusName = operation === 'create_file' ? this.createdName : null;
+            this.manager.showNotification(this.manager.t(operation === 'create_file' ? 'fm.fileCreated' : operation === 'create_directory' ? 'fm.folderCreated' : 'fm.permissionsChanged', operation === 'create_file' ? 'File created' : operation === 'create_directory' ? 'Folder created' : 'Permissions changed'), 'success');
+            this.target.state.restoreFocusName = ['create_file', 'create_directory'].includes(operation) ? this.createdName : null;
             this.manager.refreshSource(this.target.sourceId);
             if (mayEdit) window.FilePreview?.openForEditing?.(this.target.sourceId, data.path, this.createdName);
+        }
+
+        folderError(data) {
+            const reasons = {
+                'Failed to create directory: Permission denied': ['fm.folderCreateDenied', 'Permission denied. Choose a directory where you can create folders.'],
+                'Failed to create directory: File or directory already exists': ['fm.folderAlreadyExists', 'An item with this name already exists.'],
+            };
+            const [key, fallback] = Object.hasOwn(reasons, data.error) ? reasons[data.error]
+                : ['fm.folderCreateFailed', 'The folder could not be created. Check the source connection and try again.'];
+            return this.manager.t(key, fallback);
         }
 
         renderBatch() {

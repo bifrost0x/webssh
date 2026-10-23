@@ -195,8 +195,9 @@ Empty-file creation is available for SFTP and SMB. The SFTP Unix permission
 editor is opt-in: uncomment `SFTP_CHMOD_ENABLED=true` under `environment` in
 `docker-compose.yml`, then run `docker compose up -d --force-recreate webssh`.
 It requires a compatible SFTP server and normal remote permissions. The file
-manager shows setup help while disabled. Change one object or up to 20 selected
-objects without recursion, with individual results and a stop on the first error.
+manager shows setup help while disabled. Choose separate file and folder modes, optionally include folder contents,
+and review a bounded server-side preview before applying. Progress and partial
+changes remain visible; jobs stop on the first detected conflict or error.
 See the [chmod manual](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers#unix-permissions)
 for production-overlay instructions and security boundaries.
 

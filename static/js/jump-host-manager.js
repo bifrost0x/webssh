@@ -85,7 +85,14 @@ window.JumpHostManager = {
             return;
         }
         if (!this.jumpHosts.length) {
-            container.innerHTML = `<p class="no-items">${window.i18n ? i18n.t('jumphosts.none') : 'No jump hosts saved'}</p>`;
+            const empty = document.createElement('p');
+            empty.className = 'no-items';
+            empty.textContent = window.i18n ? i18n.t('jumphosts.none') : 'No jump hosts saved';
+            const hint = document.createElement('span');
+            hint.className = 'empty-state-hint';
+            hint.textContent = window.i18n ? i18n.t('empty.jumpsHint') : 'Add a jump host, then choose it in a saved connection.';
+            empty.appendChild(hint);
+            container.replaceChildren(empty);
             return;
         }
         container.innerHTML = '';
