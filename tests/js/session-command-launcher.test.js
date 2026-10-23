@@ -421,6 +421,10 @@ test('mounts with the real top-level const manager pattern', async () => {
     assert.equal(panel.hidden, false);
     assert.equal(context.SessionCommandLauncher.popup.querySelector('.session-command-target-select'), null);
     assert.equal(context.SessionCommandLauncher.popup.findByText('Insert Commands'), null);
+    const libraryTab = context.SessionCommandLauncher.popup.findByText('Library');
+    assert.equal(libraryTab.attributes.role, 'tab');
+    libraryTab.listeners.click();
+    assert.ok(context.SessionCommandLauncher.popup.findByText('Status'));
     const sudoInput = context.SessionCommandLauncher.popup.querySelector(
         '.session-command-sudo-input'
     );

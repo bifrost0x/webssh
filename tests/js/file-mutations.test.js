@@ -279,3 +279,150 @@ test('late inspection after a completed write and close or disconnect refreshes 
         assert.equal(refreshed, 1, reason);
     }
 });
+
+function dialogFixture({ directory = false, file = null, kind = 'sftp' } = {}) {
+    const previousDocument = global.document;
+    class Node {
+        constructor() { this.nodes = new Map(); this.children = []; this.value = ''; this.checked = false; this.disabled = false; }
+        querySelector(selector) { if (!this.nodes.has(selector)) this.nodes.set(selector, new Node()); return this.nodes.get(selector); }
+        querySelectorAll() { return this.children.flatMap(child => child.children || []).filter(child => child.type === 'checkbox'); }
+        append(...nodes) { this.children.push(...nodes); }
+        appendChild(node) { this.children.push(node); }
+        setAttribute() {}
+        addEventListener() {}
+        showModal() {}
+        focus() {}
+        close() {}
+        remove() {}
+    }
+    global.document = { activeElement: null, body: new Node(), createElement: () => { const node = new Node(); node.dataset = {}; return node; }, createTextNode: text => ({ textContent: text }) };
+    const state = { path: '/parent', source: { sourceId: `${kind}:one`, label: 'Source' } };
+    const emitted = [];
+    const manager = { panes: { left: state }, getPaneSourceId: value => value.source.sourceId, joinPath: (parent, name) => `${parent}/${name}`,
+        t: (_, fallback) => fallback, sourceCan: () => true, pendingOperationRequests: new Map(),
+        registerOperationRequest(sourceId, operation) { const id = `r${this.pendingOperationRequests.size}`; this.pendingOperationRequests.set(id, { sourceId, operation }); return id; },
+        socket: { connected: true, on() {}, off() {}, emit: (...args) => emitted.push(args) }, refreshSource() {}, showNotification() {} };
+    let dialog;
+    try { dialog = new FileMutationDialog(manager, 'left', file, { createDirectory: directory }); }
+    finally { global.document = previousDocument; }
+    return { dialog, manager, state, emitted };
+}
+
+test('folder dialog sends the existing mkdir contract once for SFTP and SMB and retains failed draft', () => {
+    for (const kind of ['sftp', 'smb']) {
+        const { dialog, emitted, manager } = dialogFixture({ directory: true, kind });
+        assert.equal(dialog.dialog.querySelector('h3').textContent, 'New Folder');
+        assert.equal(dialog.dialog.querySelector('.fm-mutation-edit').hidden, true);
+        dialog.name.value = 'Reports';
+        dialog.submit();
+        dialog.submit();
+        assert.equal(emitted.length, 1);
+        assert.deepEqual(emitted[0], ['create_directory', { source_id: `${kind}:one`, request_id: 'r0', remote_path: '/parent/Reports' }]);
+        dialog.receive({ request_id: 'r0', error: 'Failed to create directory: File or directory already exists' }, 'create_directory', true);
+        assert.equal(dialog.name.value, 'Reports');
+        assert.equal(dialog.status.textContent, 'An item with this name already exists.');
+        assert.equal(dialog.button.disabled, false);
+        dialog.close();
+        assert.equal(manager.pendingOperationRequests.size, 1);
+    }
+});
+
+test('folder submit rejects invalid leaves and a revoked mkdir capability', () => {
+    const { dialog, manager, emitted } = dialogFixture({ directory: true });
+    for (const name of ['', '.', '..', 'a/b', 'a\\b', 'a\n', 'é'.repeat(128)]) { dialog.name.value = name; dialog.submit(); }
+    dialog.name.value = 'valid';
+    manager.sourceCan = () => false;
+    dialog.submit();
+    assert.equal(dialog.button.disabled, true);
+    assert.deepEqual(emitted, []);
+    dialog.close();
+});
+
+test('folder submit remains bound to its original pane directory and navigation version', () => {
+    for (const change of [state => { state.path = '/other'; }, state => { state.mutationViewVersion = 1; }, state => { state.source.sourceId = 'smb:other'; }]) {
+        const { dialog, state, emitted } = dialogFixture({ directory: true });
+        dialog.name.value = 'Draft';
+        change(state);
+        dialog.submit();
+        assert.deepEqual(emitted, []);
+        assert.equal(dialog.name.value, 'Draft');
+        dialog.close();
+    }
+});
+
+test('folder permission inspection explicitly explains nonrecursive changes and traverse', () => {
+    const { dialog, emitted } = dialogFixture({ file: { name: 'folder', is_dir: true } });
+    dialog.receive({ request_id: 'r0', mode: '750', special_bits: 0, object_type: 'directory', metadata_token: signedFixture({}) }, 'get_file_permissions', false);
+    assert.match(dialog.dialog.querySelector('.fm-mutation-scope').textContent, /Only this folder.*files and subfolders.*not changed/i);
+    assert.match(dialog.dialog.querySelector('.fm-mutation-hint').textContent, /traverse.*contents.*unchanged/i);
+    assert.equal(emitted.length, 1);
+    dialog.close();
+});
+
+test('folder errors use localized safe reasons and never expose unexpected backend detail', () => {
+    for (const [error, expected] of [
+        ['Failed to create directory: Permission denied', 'Permission denied. Choose a directory where you can create folders.'],
+        ['Failed to create directory: File or directory already exists', 'An item with this name already exists.'],
+        ['Backend failure /private/server/path token=secret', 'The folder could not be created. Check the source connection and try again.'],
+    ]) {
+        const { dialog } = dialogFixture({ directory: true });
+        dialog.name.value = 'Draft';
+        dialog.pendingId = 'failed';
+        dialog.receive({ request_id: 'failed', error }, 'create_directory', true);
+        assert.equal(dialog.status.textContent, expected);
+        assert.equal(dialog.name.value, 'Draft');
+        dialog.close();
+    }
+});
+
+test('folder success restores the created name without opening the editor', () => {
+    const { dialog, manager, state } = dialogFixture({ directory: true });
+    const refreshed = [];
+    const notices = [];
+    manager.refreshSource = sourceId => refreshed.push(sourceId);
+    manager.showNotification = (...args) => notices.push(args);
+    window.FilePreview = { openForEditing() { assert.fail('folder opened in editor'); } };
+    dialog.name.value = 'New folder';
+    dialog.submit();
+    dialog.receive({ request_id: 'r0', path: '/parent/New folder' }, 'create_directory', false);
+    assert.equal(dialog.closed, true);
+    assert.equal(state.restoreFocusName, 'New folder');
+    assert.deepEqual(refreshed, ['sftp:one']);
+    assert.deepEqual(notices, [['Folder created', 'success']]);
+    delete window.FilePreview;
+});
+
+test('file creation keeps its separate request and opt-in editor behavior', () => {
+    const { dialog, manager, emitted } = dialogFixture();
+    const edited = [];
+    manager.refreshSource = () => {};
+    window.FilePreview = { openForEditing: (...args) => edited.push(args) };
+    dialog.name.value = 'notes.txt';
+    dialog.dialog.querySelector('[name="edit"]').checked = true;
+    dialog.submit();
+    assert.deepEqual(emitted, [['create_file', { source_id: 'sftp:one', request_id: 'r0', parent_path: '/parent', name: 'notes.txt' }]]);
+    dialog.receive({ request_id: 'r0', path: '/parent/notes.txt' }, 'create_file', false);
+    assert.deepEqual(edited, [['sftp:one', '/parent/notes.txt', 'notes.txt']]);
+    delete window.FilePreview;
+});
+
+test('directory_created routes correlated dialog results before legacy upload refresh handling', () => {
+    require('../../static/js/file-directory-requests.js');
+    require('../../static/js/sftp-file-manager.js');
+    const manager = Object.create(window.SFTPFileManager.prototype);
+    const listeners = {};
+    const received = [];
+    Object.assign(manager, {
+        socket: { on(event, callback) { listeners[event] = callback; } },
+        uploadBatches: new Map([['batch', {}]]),
+        pendingOperationRequests: new Map([['mkdir', { sourceId: 'smb:one', operation: 'create_directory', mutationDialog: { receive: (...args) => received.push(args) } }]]),
+        refreshSource() { assert.fail('legacy refresh should not handle dialog result'); },
+    });
+    manager.setupSocketListeners();
+    const response = { source_id: 'smb:one', request_id: 'mkdir', path: '/new' };
+    listeners.directory_created({ ...response, source_id: 'smb:wrong' });
+    assert.equal(received.length, 0);
+    listeners.directory_created(response);
+    assert.deepEqual(received, [[response, 'create_directory', false]]);
+    assert.equal(manager.pendingOperationRequests.size, 0);
+});

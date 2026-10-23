@@ -591,6 +591,7 @@
         const query = (document.getElementById('adminUserSearch')?.value || '')
             .trim().toLowerCase();
         const filter = document.getElementById('adminUserFilter')?.value || 'all';
+        document.getElementById('adminUserEmptyRow')?.remove();
         const rows = Array.from(document.querySelectorAll('#adminUsersBody tr'));
         let visible = 0;
         rows.forEach(row => {
@@ -603,6 +604,16 @@
             row.hidden = !(matchesQuery && matchesFilter);
             if (!row.hidden) { visible += 1; }
         });
+        if (!visible) {
+            const row = document.createElement('tr');
+            row.id = 'adminUserEmptyRow';
+            const cell = document.createElement('td');
+            cell.className = 'ui-empty-table';
+            cell.colSpan = document.querySelectorAll('#adminUsersTable thead th').length || 1;
+            cell.textContent = t('sessionCommands.noResults', 'No matching entries.');
+            row.appendChild(cell);
+            document.getElementById('adminUsersBody')?.appendChild(row);
+        }
         const status = document.getElementById('adminUserFilterStatus');
         if (status) {
             status.textContent = (query || filter !== 'all')
@@ -1030,7 +1041,7 @@
         const body = document.getElementById('adminAuditBody');
         body.innerHTML = '';
         if (!items.length) {
-            body.innerHTML = `<tr><td colspan="4" class="admin-muted">${escapeHtml(t('admin.noLogs', 'No log entries'))}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="4" class="admin-muted ui-empty-table">${escapeHtml(t('admin.noLogs', 'No log entries'))}</td></tr>`;
             return;
         }
         items.forEach(e => {
@@ -1693,7 +1704,7 @@
             const entries = data.entries || [];
             if (entries.length === 0) {
                 const row = document.createElement('tr');
-                row.innerHTML = `<td colspan="5" class="admin-muted">${escapeHtml(
+                row.innerHTML = `<td colspan="5" class="admin-muted ui-empty-table">${escapeHtml(
                     t('admin.noHostKeys', 'No global host keys stored.')
                 )}</td>`;
                 body.appendChild(row);

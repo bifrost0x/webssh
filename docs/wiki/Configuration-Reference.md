@@ -150,7 +150,7 @@ additional Socket.IO connections.
 | `MAX_PREVIEW_TAIL_LINES` | `10000` |
 | `MAX_SUPPORTED_FILE_SIZE` | `1073741824` (1 GiB) |
 | `SFTP_OPERATION_TIMEOUT` | `30` seconds |
-| `SFTP_CHMOD_ENABLED` | `false`; instance-wide opt-in for SFTP Unix permissions, requiring `lsetstat@openssh.com` v1; up to 20 selected objects, checked individually, without recursion |
+| `SFTP_CHMOD_ENABLED` | `false`; instance-wide opt-in for SFTP Unix permissions, requiring `lsetstat@openssh.com` v1; separate file/folder modes, optional recursive preview jobs with bounded resource use; SFTP only |
 | `SFTP_MAX_PACKET_BYTES` | `1048576` (1 MiB) |
 | `SFTP_MAX_HANDLE_BYTES` | `16384` (16 KiB) |
 | `MAX_EDITOR_FILE_SIZE` | `5242880` (5 MiB) |

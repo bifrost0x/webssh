@@ -297,7 +297,7 @@
                 rowButton.setAttribute('aria-pressed', String(selected && (sourceTarget.unit === row.unit && !!row.unit || sourceTarget.name === row.name && !!row.name || Number(sourceTarget.pid) === Number(row.pid) && !!row.pid)));
             }
             if (!list.querySelector('button')) list.append(el('p', rows.length ? t('serverOps.noMatches', 'No matching resources.')
-                : t('serverOps.noInventory', 'No inventory available. The remote tool may be unsupported, access may be restricted, or sampling is still in progress.')));
+                : t('serverOps.noInventory', 'No inventory available. The remote tool may be unsupported, access may be restricted, or sampling is still in progress.'), 'ui-empty-state'));
             const truncation = kind === 'service' ? model?.systemd?.truncationLabel : kind === 'container' ? model?.docker?.truncationLabel : '';
             if (truncation) list.append(el('p', truncation));
             for (const node of list.querySelectorAll('button')) node.disabled = pending || node.dataset.protected === 'true';

@@ -466,3 +466,35 @@ for (const [view, format] of ['overview', 'workspaces'].flatMap(view =>
         assert.equal(listener, null);
     });
 }
+
+for (const [name, context, expectedView] of [
+    ['empty workspace', {}, 'overview'],
+    ['empty floating workspace', {windowMode: true, layout: 1}, 'overview'],
+    ['pending session restore', {sessionId: 'pending-session'}, 'workspaces'],
+    ['assigned session', {paneAssignments: ['assigned-session']}, 'workspaces'],
+    ['unsaved note', {noteDraft: 'draft'}, 'workspaces'],
+    ['unsaved cleared note', {noteDraft: ''}, 'workspaces'],
+    ['command draft', {commandDrafts: [['command', '--draft']]}, 'workspaces'],
+]) {
+    test(`reauthentication opens ${expectedView} for ${name}`, () => {
+        const sessionStorage = storage();
+        const accountScope = 'overview-return-scope';
+        sessionStorage.setItem(`webssh:auth-session-return:${accountScope}`, JSON.stringify({
+            accountScope, savedAt: Date.now(), primaryView: 'workspaces',
+            sessionId: null, paneAssignments: [], noteDraft: null, commandDrafts: [], ...context,
+        }));
+        const views = [];
+        const document = {body: {dataset: {connectionHistoryScope: accountScope}},
+            getElementById: id => id === 'overviewNavBtn' ? {click: () => views.push('overview')} : null};
+        const browserWindow = {
+            document, SessionManager: {getSession: () => null, setSplitLayout() {}},
+            SessionCommandLauncher: {parameterDrafts: new Map()},
+            primaryWorkspaceController: {showWorkspaces: () => views.push('workspaces')},
+            addEventListener() {},
+        };
+        assert.equal(guardModule.restore(browserWindow, document, sessionStorage), true);
+        assert.deepEqual(views, [expectedView]);
+        assert.equal(sessionStorage.length, 0);
+        if (context.commandDrafts) assert.deepEqual([...browserWindow.SessionCommandLauncher.parameterDrafts], context.commandDrafts);
+    });
+}

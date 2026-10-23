@@ -40,6 +40,11 @@ async function managementPanelGeometry(page, panelId, contentSelector) {
             toolbarTop: Math.round(toolbar.top),
             toolbarBottom: Math.round(toolbar.bottom),
             searchTop: Math.round(search.top),
+            searchBottom: Math.round(search.bottom),
+            searchLeft: Math.round(search.left),
+            searchWidth: Math.round(search.width),
+            toolbarWidth: Math.round(toolbar.width),
+            actionsLeft: Math.round(actions.left),
             searchHeight: Math.round(search.height),
             searchCenter: Math.round((search.top + search.bottom) / 2),
             actionsTop: Math.round(actions.top),
@@ -50,9 +55,15 @@ async function managementPanelGeometry(page, panelId, contentSelector) {
     }, contentSelector);
 }
 
-function expectManagementPanelHierarchy(geometry) {
+function expectManagementPanelHierarchy(geometry, { stackedActions = false } = {}) {
     expect(geometry.headingBottom).toBeLessThanOrEqual(geometry.toolbarTop);
-    expect(Math.abs(geometry.searchCenter - geometry.actionsCenter)).toBeLessThanOrEqual(1);
+    if (stackedActions) {
+        expect(geometry.actionsTop).toBeGreaterThanOrEqual(geometry.searchBottom);
+        expect(Math.abs(geometry.searchLeft - geometry.actionsLeft)).toBeLessThanOrEqual(1);
+        expect(geometry.searchWidth).toBeGreaterThanOrEqual(geometry.toolbarWidth - 1);
+    } else {
+        expect(Math.abs(geometry.searchCenter - geometry.actionsCenter)).toBeLessThanOrEqual(1);
+    }
     expect(geometry.toolbarBottom).toBeLessThanOrEqual(geometry.contentTop);
 }
 
@@ -90,7 +101,7 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
         page,
         '#profileManagementView',
         '#profileManagementList',
-    ));
+    ), { stackedActions: true });
 
     await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
     await expect(page.locator('#jumpHostManagementModal')).toBeVisible();

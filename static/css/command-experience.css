@@ -1,0 +1,175 @@
+/* Command resources share the application's theme, spacing and focus contracts. */
+body.webssh-ui {
+    --command-library-accent: var(--ws2-accent);
+    --command-set-accent: color-mix(in srgb, var(--ws2-success) 65%, var(--ws2-accent));
+    --command-favorite-accent: var(--ws2-warning);
+}
+.command-kind-command { --command-kind-accent: var(--command-library-accent); }
+.command-kind-set, .command-type-badge-set { --command-kind-accent: var(--command-set-accent); }
+.command-kind-favorite { --command-kind-accent: var(--command-favorite-accent); }
+.webssh-ui #commandWorkspaceModal .command-workspace-tab { min-height: 44px; }
+.webssh-ui #commandWorkspaceModal .command-workspace-tab.active,
+.webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal .command-workspace-tab.active {
+    color: var(--command-kind-accent, var(--ws2-accent));
+    border-color: var(--command-kind-accent, var(--ws2-accent));
+    background: color-mix(in srgb, var(--command-kind-accent, var(--ws2-accent)) 10%, var(--ws2-surface));
+}
+.webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal .command-workspace-tab.active .material-icons { color: inherit; }
+#commandWorkspaceModal .command-workspace-layout {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+#commandWorkspaceModal .command-workspace-tabs { flex: none; min-width: 0; }
+#commandWorkspaceModal :is(.management-resource-title,.command-workspace-nav-label) { display: none; }
+#commandWorkspaceModal .command-workspace-body {
+    display: block;
+    min-width: 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scroll-padding-block: 16px 100px;
+}
+#commandWorkspaceModal .command-workspace-panel {
+    flex: none;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    margin-inline: 0;
+    min-width: 0;
+    overflow: visible;
+}
+#commandWorkspaceModal .commands-table-header { display: none; }
+#commandWorkspaceModal .commands-table-wrapper { display: block; flex: none; min-width: 0; border: 0; background: transparent; overflow: visible; }
+#commandWorkspaceModal #commandsList, #commandWorkspaceModal #commandSetManagementList,
+#commandWorkspaceModal .command-favorites-list {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+    flex: none; width: 100%; min-width: 0; max-width: none; padding: 0;
+    gap: 18px; margin: 18px 0; border: 0; max-height: none; overflow: visible; align-items: stretch;
+}
+.webssh-ui #commandWorkspaceModal .command-row,
+.webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal .command-set-management-item,
+#commandWorkspaceModal .command-card {
+    display: flex; flex-direction: column; align-items: stretch; gap: 14px;
+    padding: 20px; min-width: 0; margin: 0; border: 1px solid var(--ws2-border); border-radius: var(--ws2-radius-lg);
+    background: var(--ws2-surface); transition: border-color 160ms, background-color 160ms;
+}
+#commandWorkspaceModal :is(.command-row,.command-card,.command-set-management-item):hover { border-color: var(--ws2-border-strong); transform: none; }
+#commandWorkspaceModal .command-cell { width: auto; min-width: 0; padding: 0; border: 0; }
+#commandWorkspaceModal .command-name { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+#commandWorkspaceModal .command-name strong { width: 100%; font-size: 16px; overflow-wrap: anywhere; }
+#commandWorkspaceModal :is(.command-text,.command-params) code,
+#commandWorkspaceModal .command-set-card-preview, #commandWorkspaceModal .command-card code {
+    display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px;
+    border: 1px solid var(--ws2-border); border-radius: var(--ws2-radius-sm); background: var(--ws2-canvas);
+    color: var(--ws2-text); font-family: var(--font-mono); max-width: 100%;
+}
+#commandWorkspaceModal .command-params:has(code:empty) { display: none; }
+#commandWorkspaceModal .command-desc { color: var(--ws2-text-secondary); line-height: 1.6; overflow-wrap: anywhere; }
+#commandWorkspaceModal :is(.command-actions,.command-set-actions) { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; margin-top: auto; }
+#commandWorkspaceModal .command-card :is(h3,p) { overflow-wrap: anywhere; }
+#commandWorkspaceModal :is(.command-type-badge,.command-kind-badge),
+.session-command-item .command-kind-badge { color: var(--command-kind-accent, var(--command-library-accent)); border: 1px solid currentColor; border-radius: 5px; padding: 4px 7px; font-size: 11px; align-self: flex-start; }
+button.command-favorite { color: var(--ws2-text-secondary); background: transparent; border: 1px solid var(--ws2-border); border-radius: 7px; min-width: 44px; min-height: 44px; cursor: pointer; }
+button.command-favorite[aria-pressed="true"] { color: var(--command-favorite-accent); border-color: currentColor; }
+#commandWorkspaceModal .command-set-card-content { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
+#commandWorkspaceModal .command-set-card-content > strong { font-size: 17px; overflow-wrap: anywhere; }
+#commandWorkspaceModal .command-set-card-preview { width: 100%; box-sizing: border-box; max-height: 9em; overflow: auto; }
+#commandWorkspaceModal .command-set-step-count { font-size: 12px; color: var(--ws2-text-secondary); }
+#commandWorkspaceModal .command-set-action-menu-items { z-index: 5; min-width: 150px; left: auto; right: 0; }
+#commandWorkspaceModal .command-set-action-menu-items .btn { min-height: 44px; }
+#commandSetForm { position: relative; min-width: 0; }
+#commandSetForm > h3 { font-size: 26px; margin-block: 0 24px; }
+#commandSetForm .command-set-builder { display: grid; grid-template-columns: minmax(230px,.7fr) minmax(0,1.3fr); gap: 22px; align-items: start; margin-block: 24px; }
+#commandSetForm :is(.command-set-library-pane,.command-set-steps-pane) { min-width: 0; border: 1px solid var(--ws2-border); border-radius: 12px; padding: 16px; background: var(--ws2-surface); }
+#commandSetForm .command-set-library-pane summary { padding-block: 4px 16px; color: var(--command-library-accent); font-weight: 600; cursor: pointer; min-height: 44px; box-sizing: border-box; }
+#commandSetForm .command-set-library-results { max-height: 48vh; min-height: 100px; overflow: auto; padding-right: 4px; }
+#commandSetForm .command-set-library-item { padding: 14px; gap: 8px; min-height: 70px; border: 1px solid var(--ws2-border); border-radius: 8px; margin-bottom: 10px; }
+#commandSetForm .command-set-library-item code { white-space: pre-wrap; overflow-wrap: anywhere; }
+#commandSetForm .command-set-steps { max-height: none; overflow: visible; min-height: 120px; }
+#commandSetForm .command-set-steps-heading { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; color: var(--command-set-accent); }
+#commandSetForm .command-set-step { padding: 18px; margin-bottom: 16px; border: 1px solid var(--ws2-border-strong); border-radius: 10px; background: var(--ws2-panel); animation: command-step-appear 180ms ease-out; }
+#commandSetForm .command-set-step textarea { min-height: 74px; font-family: var(--font-mono); }
+#commandSetForm :is(.command-set-step-header,.command-set-step-actions) { flex-wrap: wrap; gap: 8px; }
+#commandSetForm .command-set-step-actions button { min-width: 44px; min-height: 44px; }
+#commandSetForm .command-set-step-number { border-radius: 7px; background: color-mix(in srgb, var(--command-set-accent) 15%, var(--ws2-surface)); color: var(--command-set-accent); padding: 6px 10px; }
+#commandSetForm :is(.command-set-advanced,.command-set-draft-preview) { margin-block: 20px; padding: 16px; border: 1px solid var(--ws2-border); border-radius: 10px; background: var(--ws2-surface); }
+#commandSetForm .command-set-advanced summary { cursor: pointer; padding-block: 8px; min-height: 44px; box-sizing: border-box; }
+#commandSetDraftPreview, #commandFormPreview { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ws2-text); font: 12px/1.7 var(--font-mono); border-radius: 7px; padding: 14px; background: var(--ws2-canvas); border: 1px solid var(--ws2-border); }
+#commandSetForm .command-set-editor-actions { position: sticky; bottom: -28px; z-index: 2; display: flex; justify-content: flex-end; gap: 12px; padding: 14px 18px; background: var(--ws2-surface); box-shadow: 0 -8px 24px rgb(0 0 0 / 12%); }
+#commandFormModal .modal-content { max-width: 760px; }
+#commandFormModal .form-group { margin-bottom: 22px; }
+#commandFormModal .command-editor-details { border-block: 1px solid var(--ws2-border); padding-block: 14px; }
+#commandFormModal .command-editor-details summary { cursor: pointer; min-height: 44px; }
+#commandFormModal .command-editor-preview { padding-block: 18px; }
+#commandFormModal .form-actions { position: sticky; bottom: -24px; padding: 16px 0; background: var(--ws2-surface); }
+.command-set-confirm-dialog { margin: auto; width: min(520px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--ws2-border-strong); border-radius: 14px; background: var(--ws2-surface); color: var(--ws2-text); box-shadow: var(--ws2-shadow); overflow: auto; }
+.command-set-confirm-dialog::backdrop { background: rgb(0 0 0 / 65%); backdrop-filter: blur(5px); }
+.command-set-confirm-dialog .modal-content { width: auto; max-height: none; margin: 0; overflow: visible; box-shadow: none; }
+.command-set-confirm-dialog :is(h3,p) { overflow-wrap: anywhere; }
+.command-set-confirm-dialog .modal-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
+.session-command-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--ws2-border); padding-bottom: 10px; }
+.session-command-tabs button { min-height: 44px; flex: 1; padding: 8px 5px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--ws2-text-secondary); font-size: 12px; cursor: pointer; }
+.session-command-tabs button[aria-selected="true"] { color: var(--command-kind-accent); border-color: currentColor; background: var(--ws2-panel); }
+.session-command-tabs .material-icons { display: block; margin: auto; }
+.session-command-item.command-kind-set { border-left: 3px solid var(--command-set-accent); }
+.session-command-item.command-kind-command { border-left: 3px solid var(--command-library-accent); }
+.session-command-item :is(code,input) { min-width: 0; overflow-wrap: anywhere; }
+.session-command-item-actions { flex-wrap: wrap; }
+.connection-command-mode[data-command-mode="command"] .material-icons { color: var(--command-library-accent); }
+.connection-command-mode[data-command-mode="command_set"] .material-icons { color: var(--command-set-accent); }
+.fm-mutation-scope { border-left: 3px solid var(--command-set-accent); background: var(--ws2-panel); padding: 12px; border-radius: 6px; color: var(--ws2-text); line-height: 1.6; }
+@keyframes command-step-appear { from { opacity: .55; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 700px) {
+    #commandWorkspaceModal .command-workspace-tabs { flex-wrap: nowrap; gap: 4px; padding-inline: 10px; }
+    .webssh-ui #commandWorkspaceModal .command-workspace-tab {
+        display: flex; flex: 1 1 0; align-items: center; justify-content: center;
+        gap: 6px; padding-inline: 8px; font-size: 12px; min-width: 0; white-space: normal; overflow-wrap: anywhere;
+    }
+    #commandWorkspaceModal .command-workspace-tab .material-icons { flex: none; font-size: 18px; }
+    #commandWorkspaceModal .command-workspace-panel { width: 100%; }
+    #commandWorkspaceModal .management-panel-toolbar { flex-wrap: wrap; }
+    #commandWorkspaceModal .management-search-control { width: 100%; min-width: 0; }
+    #commandSetForm .form-row { flex-direction: column; }
+    #commandSetForm .command-set-builder { display: flex; flex-direction: column-reverse; gap: 16px; }
+    #commandSetForm :is(.command-set-library-pane,.command-set-steps-pane) { width: 100%; padding: 12px; box-sizing: border-box; }
+    #commandSetForm .command-set-step { padding: 12px; }
+    #commandSetForm .command-set-step-header { align-items: flex-start; }
+    #commandSetForm .command-set-editor-actions { bottom: -20px; padding: 12px 8px calc(12px + env(safe-area-inset-bottom)); }
+    #commandWorkspaceModal .btn, #commandFormModal .btn, .command-set-confirm-dialog .btn { min-height: 44px; }
+    #commandWorkspaceModal .command-set-action-menu-items { position: absolute; }
+    .command-set-confirm-dialog .modal-footer > .btn { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #commandWorkspaceModal *, #commandFormModal *, .session-command-popover *, .command-set-confirm-dialog * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+#commandSetForm .command-set-step-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+#commandSetForm .command-set-step-controls button { min-width:44px; min-height:44px; }
+#commandSetForm .command-set-argument-field { display:flex; gap:8px; align-items:center; margin-block:8px; min-width:0; }
+#commandSetForm .command-set-argument-field input { min-width:0; flex:1; }
+#commandSetForm .command-set-preview-step { white-space:pre-wrap; overflow-wrap:anywhere; }
+#commandSetForm .command-set-argument-error { color:var(--ws2-danger); }
+.command-set-confirm-dialog .modal-content { padding:24px; }
+#commandSetEditorView, #commandSetForm { height: auto; min-height: auto; }
+#commandSetForm { display: block; }
+#commandWorkspaceModal .command-set-modal-body { overflow: visible; }
+#commandSetForm .command-set-builder { flex: none; min-height: auto; }
+#commandSetForm .command-set-library-pane { display: block; }
+#commandSetForm .command-set-steps-pane, #commandSetForm .command-set-steps { flex: none; }
+#commandSetForm .command-set-step-header { align-items: flex-start; }
+#commandWorkspaceModal .command-set-usage-filter { display: flex; align-items: center; gap: 12px; width: fit-content; margin-top: 16px; font-size: 12px; color: var(--ws2-text-secondary); }
+#commandWorkspaceModal #commandSetUsageFilter { width: auto; max-width: 100%; min-height: 44px; }
+
+.session-command-tabs .command-favorite { --command-kind-accent: var(--command-favorite-accent); }
+@media (max-width: 700px) {
+    .webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal .command-workspace-tabs { padding: 8px 10px; gap: 4px; }
+    .webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal .command-workspace-tab { flex: 1 1 0; min-width: 0; padding: 8px 4px; white-space: normal; overflow-wrap: anywhere; justify-content: center; }
+    #commandWorkspaceModal .command-set-usage-filter { max-width: 100%; }
+}
+
+#commandWorkspaceModal #commandSetForm { width: 100%; max-width: 1440px; margin-inline: auto; }

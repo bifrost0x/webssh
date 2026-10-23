@@ -4368,8 +4368,34 @@ body[data-theme="paper"]:has(.auth-access-dock) {
     }
 }
 
-.primary-workspace-surface .primary-workspace-view-hosts .profile-management-toolbar {
+/* Hosts search and actions remain together above the independently scrolling list. */
+#primaryWorkspaceSurface #profileManagementView .profile-management-toolbar {
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: stretch;
     padding-top: 2px;
+}
+
+#primaryWorkspaceSurface #profileManagementView .management-search-control {
+    flex: 0 0 auto;
+    width: 100%;
+}
+
+#primaryWorkspaceSurface #profileManagementView .management-panel-actions {
+    flex-wrap: wrap;
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+}
+
+#primaryWorkspaceSurface #profileManagementView .management-panel-actions > .btn {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+    height: auto;
+    min-height: 38px;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .primary-workspace-surface .primary-workspace-view-hosts .profile-management-list,

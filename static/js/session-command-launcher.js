@@ -221,6 +221,24 @@
         resultsScrollTop: 0,
         favorites: new Set(),
         recent: [],
+        activeSection: 'library',
+        preferencesScope: null,
+
+        ensurePreferences() {
+            if (this.preferencesScope !== this.preferenceKey()) {
+                this.loadPreferences();
+                this.parameterDrafts.clear();
+                this.expandedParameters.clear();
+                this.controller?.invalidatePreviews();
+            }
+        },
+
+        sectionEntries(entries) {
+            this.ensurePreferences();
+            return entries.filter(entry => this.activeSection === 'favorites'
+                ? this.favorites.has(this.entryKey(entry))
+                : entry.type === (this.activeSection === 'sets' ? 'set' : 'command'));
+        },
 
         preferenceKey() {
             const scope = String(root.document?.body?.dataset?.connectionHistoryScope || 'local');
@@ -232,6 +250,7 @@
         },
 
         loadPreferences() {
+            this.preferencesScope = this.preferenceKey();
             try {
                 const saved = JSON.parse(root.localStorage?.getItem(this.preferenceKey()) || '{}');
                 this.favorites = new Set(Array.isArray(saved.favorites) ? saved.favorites.slice(0, 100) : []);
@@ -254,16 +273,20 @@
         },
 
         rememberUse(entry) {
+            this.ensurePreferences();
             const key = this.entryKey(entry);
             this.recent = [key, ...this.recent.filter(candidate => candidate !== key)].slice(0, 12);
             this.savePreferences();
         },
 
         toggleFavorite(entry) {
+            this.ensurePreferences();
+            if (!['command', 'set'].includes(entry?.type) || typeof entry?.id !== 'string' || !entry.id) return;
             const key = this.entryKey(entry);
             if (this.favorites.has(key)) this.favorites.delete(key);
-            else this.favorites.add(key);
+            else if (this.favorites.size < 100) this.favorites.add(key);
             this.savePreferences();
+            if (root.CustomEvent) root.dispatchEvent?.(new root.CustomEvent('command-favorites-change'));
             this.render();
         },
 
@@ -380,6 +403,7 @@
         },
 
         render() {
+            this.ensurePreferences();
             if (!this.popup) return;
             const document = root.document;
             const popup = this.popup;
@@ -393,12 +417,42 @@
             const selection = focused ? [focused.selectionStart, focused.selectionEnd] : null;
             popup.replaceChildren();
 
+            const tabs = document.createElement('div');
+            tabs.className = 'session-command-tabs';
+            tabs.setAttribute('role', 'tablist');
+            const sections = [
+                ['library', 'sessionCommands.library', 'Library', 'command-kind-command'],
+                ['favorites', 'sessionCommands.favorites', 'Favorites', 'command-favorite'],
+                ['sets', 'sessionCommands.sets', 'Command sets', 'command-kind-set'],
+            ];
+            sections.forEach(([name, key, fallback, kind], index) => {
+                const tab = document.createElement('button');
+                tab.type = 'button';
+                tab.className = `session-command-tab ${kind}`;
+                tab.id = `session-command-tab-${name}`;
+                tab.setAttribute('role', 'tab');
+                tab.setAttribute('aria-controls', 'session-command-results');
+                tab.setAttribute('aria-selected', String(this.activeSection === name));
+                tab.tabIndex = this.activeSection === name ? 0 : -1;
+                tab.classList.toggle('active', this.activeSection === name);
+                tab.textContent = this.t(key, fallback);
+                const select = section => { this.activeSection = section; this.searchQuery = ''; this.resultsScrollTop = 0; this.controller?.invalidatePreviews(); this.render(); };
+                tab.addEventListener('click', () => select(name));
+                tab.addEventListener('keydown', event => {
+                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                    event.preventDefault();
+                    const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowRight' ? 1 : -1) + 3) % 3;
+                    select(sections[next][0]);
+                    document.getElementById(`session-command-tab-${sections[next][0]}`)?.focus();
+                });
+                tabs.append(tab);
+            });
             const search = document.createElement('input');
             search.type = 'search';
             search.className = 'session-command-search';
             search.placeholder = this.t(
-                'sessionCommands.searchPlaceholder',
-                'Search Commands and Command Sets...'
+                `sessionCommands.search${this.activeSection === 'sets' ? 'Sets' : this.activeSection === 'favorites' ? 'Favorites' : 'Library'}`,
+                this.activeSection === 'sets' ? 'Search command sets...' : this.activeSection === 'favorites' ? 'Search favorites...' : 'Search library...'
             );
             search.setAttribute('aria-label', search.placeholder);
             search.value = this.searchQuery;
@@ -433,39 +487,28 @@
 
             const list = document.createElement('div');
             list.className = 'session-command-results';
-            const entries = this.controller.entries(this.searchQuery);
+            list.id = 'session-command-results';
+            list.setAttribute('role', 'tabpanel');
+            list.setAttribute('aria-labelledby', `session-command-tab-${this.activeSection}`);
+            const entries = this.sectionEntries(this.controller.entries(this.searchQuery));
             if (!entries.length) {
                 const empty = document.createElement('p');
                 empty.className = 'session-command-empty';
-                empty.textContent = this.t('sessionCommands.noResults', 'No matching entries.');
+                empty.textContent = this.searchQuery.trim()
+                    ? this.t('sessionCommands.noResults', 'No matching entries.')
+                    : this.activeSection === 'favorites'
+                        ? this.t('empty.favorites', 'No favorites yet. Use the star on a command or command set to keep it here.')
+                        : this.activeSection === 'sets'
+                            ? this.t('commandSets.empty', 'No command sets saved.')
+                            : this.t('commands.noCommands', 'No commands found');
                 list.appendChild(empty);
             } else {
                 const byKey = new Map(entries.map(entry => [this.entryKey(entry), entry]));
-                const favoriteEntries = entries.filter(entry => this.favorites.has(this.entryKey(entry)));
-                const favoriteKeys = new Set(favoriteEntries.map(entry => this.entryKey(entry)));
-                const recentEntries = this.recent
-                    .map(key => byKey.get(key))
-                    .filter(entry => entry && !favoriteKeys.has(this.entryKey(entry)));
-                const promotedKeys = new Set([
-                    ...favoriteEntries.map(entry => this.entryKey(entry)),
-                    ...recentEntries.map(entry => this.entryKey(entry)),
-                ]);
-                const catalogEntries = entries.filter(entry => !promotedKeys.has(this.entryKey(entry)));
-                if (!this.searchQuery && favoriteEntries.length) {
-                    this.renderGroup(list, favoriteEntries, null, this.t('sessionCommands.favorites', 'Favorites'), canInsert);
-                }
-                if (!this.searchQuery && recentEntries.length) {
-                    this.renderGroup(list, recentEntries, null, this.t('sessionCommands.recent', 'Recently used'), canInsert);
-                }
-                this.renderGroup(
-                    list,
-                    this.searchQuery ? entries : catalogEntries,
-                    null,
-                    this.searchQuery
-                        ? this.t('sessionCommands.results', 'Results')
-                        : this.t('sessionCommands.catalog', 'All commands'),
-                    canInsert,
-                );
+                const recentEntries = this.recent.map(key => byKey.get(key)).filter(Boolean);
+                const recentKeys = new Set(recentEntries.map(entry => this.entryKey(entry)));
+                if (!this.searchQuery && recentEntries.length) this.renderGroup(list, recentEntries, null, this.t('sessionCommands.recent', 'Recently used'), canInsert);
+                this.renderGroup(list, this.searchQuery ? entries : entries.filter(entry => !recentKeys.has(this.entryKey(entry))), null,
+                    this.t(this.activeSection === 'favorites' ? 'sessionCommands.favorites' : this.activeSection === 'sets' ? 'sessionCommands.sets' : 'sessionCommands.library', this.activeSection === 'favorites' ? 'Favorites' : this.activeSection === 'sets' ? 'Command sets' : 'Library'), canInsert);
             }
 
             const footer = document.createElement('footer');
@@ -483,7 +526,7 @@
                 root.CommandSetManager?.openManagement();
             });
             footer.append(hint, manage);
-            popup.append(search, sudoOption, list, footer);
+            popup.append(tabs, search, sudoOption, list, footer);
             list.scrollTop = this.resultsScrollTop;
             list.addEventListener('scroll', () => { this.resultsScrollTop = list.scrollTop; });
             const nextFocus = searchFocused ? search : Array.from(
@@ -517,7 +560,7 @@
                     && Boolean(insertText)
                     && !hasLineBreak(insertText);
                 const row = document.createElement('article');
-                row.className = 'session-command-item';
+                row.className = `session-command-item command-kind-${entry.type === 'set' ? 'set' : 'command'}`;
                 if (!available) row.classList.add('unavailable');
                 const details = document.createElement('div');
                 details.className = 'session-command-item-details';
@@ -530,7 +573,10 @@
                 preview.textContent = parameterized
                     ? this.t('commandParameters.reviewHint', 'Resolve a preview, then insert it. Press Enter in the terminal to run.')
                     : (insertText || entry.preview);
-                details.append(name);
+                const badge = document.createElement('span');
+                badge.className = `command-kind-badge command-kind-${entry.type}`;
+                badge.textContent = this.t(entry.type === 'set' ? 'commands.commandSet' : 'commands.command', entry.type === 'set' ? 'Command set' : 'Command');
+                details.append(name, badge);
                 if (entry.description) details.append(description);
                 if (entry.preview || parameterized) details.append(preview);
 
@@ -683,7 +729,7 @@
                 actions.className = 'session-command-item-actions';
                 const favorite = document.createElement('button');
                 favorite.type = 'button';
-                favorite.className = 'btn btn-secondary btn-small session-command-favorite';
+                favorite.className = 'btn btn-secondary btn-small session-command-favorite command-favorite';
                 const isFavorite = this.favorites.has(this.entryKey(entry));
                 favorite.textContent = isFavorite ? '★' : '☆';
                 favorite.setAttribute('aria-pressed', String(isFavorite));

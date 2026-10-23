@@ -52,3 +52,25 @@ for (const [locale, entries] of Object.entries(locales)) {
         }
     });
 }
+
+test('chmod help explains separate modes, optional recursion and preview in every locale', () => {
+    const required = {
+        en: [/files/i, /folders/i, /optional/i, /preview/i, /apply/i],
+        de: [/Dateien/, /Ordner/, /optional/i, /Vorschau/, /anwenden/i],
+        vi: [/tệp/, /thư mục/, /tùy chọn/, /xem trước/, /áp dụng/],
+        fr: [/fichiers/, /dossiers/, /facultative/, /aperçu/, /appliqu/],
+        es: [/archivos/, /carpetas/, /opcional/, /vista previa/, /apliqu/],
+        zh: [/文件/, /文件夹/, /可选/, /预览/, /应用/],
+    };
+    for (const [locale, patterns] of Object.entries(required)) {
+        const help = Object.fromEntries(locales[locale])['fm.chmodHelpUsage'];
+        assert.doesNotMatch(help, /20/, `${locale}: obsolete selection cap`);
+        for (const pattern of patterns) assert.match(help, pattern, `${locale}: missing ${pattern}`);
+    }
+    const manager = fs.readFileSync(path.join(__dirname, '../../static/js/sftp-file-manager.js'), 'utf8');
+    const fallback = /data-i18n="fm.chmodHelpUsage">([^<]+)</.exec(manager)[1];
+    assert.match(fallback, /optional/i);
+    assert.match(fallback, /preview/i);
+    assert.match(fallback, /apply/i);
+    assert.doesNotMatch(fallback, /20|Select one /);
+});

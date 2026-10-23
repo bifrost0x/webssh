@@ -64,12 +64,13 @@ def test_commands_workspace_unifies_library_and_command_sets():
     ):
         assert f'id="{element_id}"' in template
     assert 'role="tablist"' in template
-    assert len(re.findall(r'class="command-workspace-tab(?:\s|")', template)) == 2
+    assert len(re.findall(r'class="command-workspace-tab(?:\s|")', template)) == 3
     assert re.search(r'id="commandLibraryTab"[^>]*role="tab"', template)
     assert re.search(r'id="commandSetsTab"[^>]*role="tab"', template)
     assert re.search(r'id="commandLibraryPanel"[^>]*role="tabpanel"', template)
     assert re.search(r'id="commandSetsPanel"[^>]*role="tabpanel"', template)
-    assert template.index('id="commandSetsTab"') < template.index('id="commandLibraryTab"')
+    assert template.index('id="commandLibraryTab"') < template.index('id="commandFavoritesTab"') < template.index('id="commandSetsTab"')
+    assert re.search(r'id="commandFavoritesPanel"[^>]*role="tabpanel"', template)
     assert 'data-os="linux"' in template
     assert 'data-os="windows"' in template
     assert 'class="command-workspace-tabs management-resource-navigation"' in template
@@ -180,7 +181,9 @@ def test_command_library_can_return_a_new_command_to_inline_promotion():
 
     assert 'pendingSaveCallback' in source
     assert re.search(r'showAddCommandForm\([^)]*options', source)
-    assert "window.socket.emit('add_command', data," in source
+    assert "const event = this.editingCommandId ? 'update_command' : 'add_command'" in source
+    assert "window.socket.emit(event, data, finish)" in source
+    assert "callback?.(acknowledgement.command)" in source
 
 
 def test_editing_a_selected_command_returns_to_the_connection_dialog():
@@ -212,7 +215,7 @@ def test_closing_command_set_editor_resets_the_next_management_visit():
     source = read('static/js/command-set-manager.js')
 
     close_method = re.search(
-        r'\n    close\(\) \{(?P<body>.*?)\n    \},',
+        r'\n    async close\(options = \{\}\) \{(?P<body>.*?)\n    \},',
         source,
         re.DOTALL,
     )

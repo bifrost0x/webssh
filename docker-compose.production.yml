@@ -14,7 +14,7 @@ services:
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-1}
       # Optional chmod: uncomment to enable instance-wide, then recreate the service.
       # Requires SFTP lsetstat@openssh.com v1; see the file workspace manual.
-      # Optional Unix permissions; up to 20 selected objects, no recursion.
+      # Separate file/folder modes; optional recursion requires a bounded preview.
       # Stops on the first error; completed changes remain.
       # SFTP_CHMOD_ENABLED: "true"
       TOTP_ENABLED: "${TOTP_ENABLED:-true}"

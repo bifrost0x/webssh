@@ -155,3 +155,102 @@ test('deferred command-library autofocus preserves a scroll made before the time
         assert.equal(scrollTop, 680, `${entryPoint} must preserve the user's scroll`);
     }
 });
+
+test('editing waits for successful acknowledgement and retains fields on failure', () => {
+    const state = setup();
+    state.library.editingCommandId = 'mine';
+    let closed = false;
+    state.library.closeCommandForm = () => { closed = true; };
+    state.library.saveCommand();
+    assert.equal(closed, false);
+    assert.equal(typeof state.emitted[0][2], 'function');
+    state.emitted[0][2]({success: false});
+    assert.equal(closed, false);
+    assert.equal(state.elements.commandFormCommand.value, 'ls');
+    assert.deepEqual(state.notifications, ['localized:commands.saveFailed']);
+});
+
+test('command submission is single flight and a rejected save can be retried', () => {
+    const state = setup();
+    state.library.saveCommand();
+    state.library.saveCommand();
+    assert.equal(state.emitted.length, 1);
+    state.emitted[0][2]({success: false});
+    state.library.saveCommand();
+    assert.equal(state.emitted.length, 2);
+});
+
+test('late save acknowledgement cannot close a newly opened command draft', () => {
+    const state = setup();
+    state.library.saveCommand();
+    state.library.showAddCommandForm({name: 'New draft'});
+    let closed = false;
+    state.library.closeCommandForm = () => { closed = true; };
+    state.emitted[0][2]({success: true, command: {id: 'saved'}});
+    assert.equal(closed, false);
+    assert.equal(state.elements.commandFormName.value, 'New draft');
+});
+
+test('a timed out command attempt cannot acknowledge a later retry', () => {
+    const state = setup();
+    state.library.saveCommand();
+    const first = state.emitted[0][2];
+    first({success: false});
+    state.library.saveCommand();
+    let closed = false;
+    state.library.closeCommandForm = () => { closed = true; };
+    first({success: true, command: {id: 'late'}});
+    assert.equal(closed, false);
+    state.emitted[1][2]({success: true, command: {id: 'current'}});
+    assert.equal(closed, true);
+});
+
+test('edits made while command save is pending survive its successful acknowledgement', () => {
+    const state = setup();
+    let closed = false;
+    state.library.closeCommandForm = () => { closed = true; };
+    state.library.saveCommand();
+    state.elements.commandFormCommand.value = 'printf newer';
+    state.emitted[0][2]({success: true, command: {id: 'saved-id'}});
+    assert.equal(closed, false);
+    assert.equal(state.elements.commandFormCommand.value, 'printf newer');
+    assert.equal(state.library.editingCommandId, 'saved-id');
+    state.library.saveCommand();
+    assert.equal(state.emitted[1][0], 'update_command');
+    assert.equal(state.emitted[1][1].command, 'printf newer');
+});
+
+test('declining command draft discard retains content and stale confirmation cannot close newer edits', async () => {
+    const state = setup();
+    state.library.showAddCommandForm({name:'Initial'});
+    state.elements.commandFormName.value = 'Changed';
+    let answer;
+    state.window.CommandSetManager = {t: key => key, confirmDialog: () => new Promise(resolve => {answer = resolve;})};
+    let closed = false;
+    state.library.closeCommandForm = () => {closed = true;};
+    const first = state.library.requestCloseCommandForm();
+    answer(false);
+    assert.equal(await first, false);
+    assert.equal(closed, false);
+    const second = state.library.requestCloseCommandForm();
+    state.elements.commandFormName.value = 'Changed again';
+    answer(true);
+    assert.equal(await second, false);
+    assert.equal(closed, false);
+});
+
+test('unknown command save outcome needs explicit confirmation before a retry', async () => {
+    const state = setup();
+    state.library.saveOutcomeUnknown = true;
+    let answer;
+    state.window.CommandSetManager = {t:key=>key, confirmDialog:()=>new Promise(resolve=>{answer=resolve;})};
+    state.library.saveCommand();
+    assert.equal(state.emitted.length, 0);
+    answer(false);
+    await Promise.resolve();
+    assert.equal(state.emitted.length, 0);
+    state.library.saveCommand();
+    answer(true);
+    await Promise.resolve();
+    assert.equal(state.emitted.length, 1);
+});

@@ -1,0 +1,25 @@
+.fm-permission-job-dialog { box-sizing: border-box; margin: auto; width: min(48rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); padding: 1.5rem; border: 1px solid var(--border-color); border-radius: 16px; background: var(--bg-secondary); color: var(--text-primary); overflow-y: auto; }
+.fm-permission-job-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+.fm-permission-job-dialog header h3 { margin: 0 0 .6rem; }
+.fm-permission-job-dialog .fm-job-target { white-space: pre-line; overflow-wrap: anywhere; color: var(--text-secondary); font-size: .9rem; }
+.fm-permission-job-dialog .fm-job-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 1rem 0; }
+.fm-permission-job-dialog fieldset { min-width: 0; margin: 0; padding: 1rem; border: 1px solid var(--border-color); border-radius: 10px; }
+.fm-permission-job-dialog legend { font-weight: 600; padding: 0 .4rem; }
+.fm-permission-job-dialog .fm-job-octal { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .85rem; }
+.fm-permission-job-dialog .fm-job-octal input { width: 4.5rem; padding: .45rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; font-family: monospace; }
+.fm-permission-job-dialog .fm-job-grid { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, auto); gap: .7rem .6rem; margin-top: 1rem; align-items: center; font-size: .85rem; }
+.fm-permission-job-dialog .fm-job-grid label { display: flex; gap: .25rem; align-items: center; }
+.fm-permission-job-dialog input[type="checkbox"] { accent-color: var(--accent-color); width: 1rem; height: 1rem; flex-shrink: 0; }
+.fm-permission-job-dialog .fm-job-recursion, .fm-permission-job-dialog .fm-job-ack { display: flex; align-items: flex-start; gap: .6rem; padding: .8rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: .9rem; }
+.fm-permission-job-dialog .fm-job-ack { color: var(--warning-color, #d9a441); }
+.fm-permission-job-dialog .fm-job-hint, .fm-permission-job-dialog .fm-job-partial { font-size: .85rem; line-height: 1.5; color: var(--text-secondary); }
+.fm-permission-job-dialog .fm-job-preview { border-left: 3px solid var(--accent-color); padding: .8rem 1rem; background: var(--bg-primary); border-radius: 6px; margin: 1rem 0; }
+.fm-permission-job-dialog .fm-job-preview h4 { margin: 0 0 .5rem; }
+.fm-permission-job-dialog .fm-job-preview p { font-size: .9rem; line-height: 1.6; margin: .25rem 0; overflow-wrap: anywhere; }
+.fm-permission-job-dialog .fm-job-status { min-height: 1.5em; overflow-wrap: anywhere; }
+.fm-permission-job-dialog progress { width: 100%; accent-color: var(--accent-color); }
+.fm-permission-job-dialog footer { position: sticky; bottom: -1rem; background: var(--bg-secondary); padding-bottom: 1rem; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .6rem; padding-top: .8rem; }
+.fm-permission-job-dialog [hidden] { display: none !important; }
+@media (max-width: 520px) { .fm-permission-job-dialog { padding: 1rem; width: calc(100vw - 1.25rem); max-height: calc(100dvh - 1.25rem); } .fm-permission-job-dialog .fm-job-modes { grid-template-columns: minmax(0, 1fr); gap: .75rem; } .fm-permission-job-dialog footer .btn { flex: 1 1 auto; min-height: 44px; } }
+
+.fm-permission-job-dialog[data-phase="review"] .fm-job-grid { display: none; }

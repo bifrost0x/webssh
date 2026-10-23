@@ -59,6 +59,7 @@ def _file_request_identity(
     *,
     allow_editor_content=False,
     editor_budget_exempt=False,
+    allow_permission_paths=False,
 ):
     if isinstance(payload, dict) and payload.get(
         '_file_control_checked'
@@ -97,6 +98,7 @@ def _file_request_identity(
                 byte_count, editor_bytes = _file_control_payload_metrics(
                     payload,
                     allow_editor_content=allow_editor_content,
+                    allow_permission_paths=allow_permission_paths,
                 )
                 valid = _sanitize_file_control_payload(payload)
                 remainder = max(0, byte_count - 256)
@@ -161,7 +163,7 @@ def _bounded_utf8_size(value, maximum):
     return size
 
 
-def _file_control_payload_metrics(payload, *, allow_editor_content=False):
+def _file_control_payload_metrics(payload, *, allow_editor_content=False, allow_permission_paths=False):
     """Bound all control metadata without reserializing the attacker payload.
 
     Editor content is measured separately so it can retain its larger
@@ -199,6 +201,19 @@ def _file_control_payload_metrics(payload, *, allow_editor_content=False):
                     cost += len(key.encode('utf-8'))
                 except UnicodeEncodeError:
                     return maximum_charge, None
+                if allow_permission_paths and depth == 0 and key == 'paths':
+                    if not isinstance(item, list) or not 1 <= len(item) <= 10000:
+                        return maximum_charge, None
+                    names = 0
+                    for path in item:
+                        size = _bounded_utf8_size(path, min(4096, config.FILE_CONTROL_MAX_PATH_BYTES))
+                        if size is None:
+                            return maximum_charge, None
+                        names += size
+                        cost += max(16, size)
+                        if names > 4 * 1024 * 1024 or cost > config.FILE_CONTROL_BYTES_PER_MINUTE:
+                            return maximum_charge, None
+                    continue
                 stack.append((
                     item,
                     depth + 1,

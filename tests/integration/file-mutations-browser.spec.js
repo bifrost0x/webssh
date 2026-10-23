@@ -36,11 +36,16 @@ test('real browser creates, changes permissions, edits and reopens a remote file
         await expect(dialog).toHaveCount(0);
         await page.locator('#fmLeftList .fm-file-item').filter({ hasText: name }).click();
         await page.locator('#fmLeftPane [data-pane-action="permissions"]').click();
-        dialog = page.locator('dialog.fm-mutation-dialog');
-        await expect(dialog.locator('[name="mode"]')).toHaveValue('600');
+        dialog = page.locator('dialog.fm-permission-job-dialog');
+        await expect(dialog.locator('[name="recursive"]')).not.toBeChecked();
         await page.screenshot({ path: test.info().outputPath('browser-live-desktop.png') });
-        await dialog.locator('[name="mode"]').fill('750');
+        await dialog.locator('[name="file_mode"]').fill('750');
+        await dialog.getByRole('button', { name: 'Preview changes', exact: true }).click();
+        await expect(dialog.locator('.fm-job-current')).toContainText('600');
+        await expect(dialog.locator('.fm-job-plan')).toContainText('750');
         await dialog.getByRole('button', { name: 'Apply permissions' }).click();
+        await expect(dialog.getByRole('status')).toContainText('completed');
+        await page.keyboard.press('Escape');
         await expect(dialog).toHaveCount(0);
         await page.evaluate(name => window.FilePreview.openForEditing(`sftp-session:${window.liveMutationSession}`, `/tmp/${name}`, name), name);
         await expect(page.locator('#editorContent')).toBeVisible();
@@ -53,7 +58,10 @@ test('real browser creates, changes permissions, edits and reopens a remote file
         await page.evaluate(() => window.FilePreview.close());
         await page.locator('#fmLeftList .fm-file-item').filter({ hasText: name }).click();
         await page.locator('#fmLeftPane [data-pane-action="permissions"]').click();
-        await expect(page.locator('dialog [name="mode"]')).toHaveValue('750');
+        dialog = page.locator('dialog.fm-permission-job-dialog');
+        await dialog.getByRole('button', { name: 'Preview changes', exact: true }).click();
+        await expect(dialog.locator('.fm-job-current')).toContainText('750');
+        await expect(dialog.locator('[name="recursive"]')).not.toBeChecked();
         await page.setViewportSize({ width: 390, height: 844 });
         await page.screenshot({ path: test.info().outputPath('browser-live-mobile.png') });
     } finally {

@@ -634,6 +634,7 @@
             const tr = documentRef.createElement('tr');
             const td = documentRef.createElement('td');
             td.colSpan = columns;
+            td.className = 'ui-empty-table';
             td.textContent = message;
             tr.appendChild(td);
             container.appendChild(tr);

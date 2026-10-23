@@ -81,6 +81,34 @@ class SFTPBackend:
         except Exception as error:
             raise mutation_failure(error, uncertain=started) from None
 
+    @contextmanager
+    def permission_job_session(self, source, *, authorize, timeout):
+        """Use one owned channel with bounded packets and per-request waits."""
+        from .file_mutations import FileMutationError
+
+        with sftp_handler.mutation_session(source.handle_id, authorize=authorize, timeout=timeout) as sftp:
+            if getattr(sftp, 'server_extensions', {}).get('lsetstat@openssh.com') != '1':
+                raise FileMutationError('UNSUPPORTED_OPERATION')
+            sftp.get_channel().settimeout(10.0)
+            budget = sftp_handler._TransferMemberBudget(10000, metadata_limit=4 * 1024 * 1024)
+
+            class Operations:
+                def lstat(self, path):
+                    authorize()
+                    return sftp_handler.mutation_lstat(sftp, path)
+
+                @contextmanager
+                def entries(self, path):
+                    authorize()
+                    with sftp_handler._directory_entries(sftp, path, member_budget=budget) as entries:
+                        yield entries
+
+                def chmod(self, path, mode):
+                    authorize()
+                    sftp.set_permissions_no_follow(path, mode)
+
+            yield Operations()
+
     def list_directory(self, source, path):
         return sftp_handler.list_directory(source.handle_id, path)
 

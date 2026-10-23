@@ -119,6 +119,7 @@ test('favorites navigate the bound SFTP source and assigned sets use the existin
     await page.evaluate(() => window.HostContext.openActive());
     await page.locator('.host-context-set').filter({hasText: 'E2E command set'}).getByRole('button').click();
     await expect(page.locator('#sessionCommandsMount')).toContainText('E2E command set');
+    await page.locator('#session-command-tab-sets').click();
     await page.locator('.session-command-item').filter({hasText: 'E2E command set'}).locator('.btn-primary').click();
     await expect.poll(() => page.evaluate(() => window.__contextActions.at(-1))).toEqual(['input', 'context-action', 'printf set']);
 });

@@ -187,10 +187,34 @@ update. They can be converted into a named set while the legacy startup
 commands remain stored as a fallback. No additional environment variable,
 Compose setting, frontend build, or external service is required.
 
+## Managing the command library, favorites and sets
+
+The Commands workspace and session sidebar use the same three areas:
+**Library** (blue, library symbol), **Favorites** (gold star), and
+**Command Sets** (teal, sequence symbol). Text labels identify every type;
+colors are an additional cue. A favorite marks an existing command or set,
+without creating a copy or changing how it runs. Favorites remain local to
+this browser and account. Read-only library templates still require an own
+copy before editing.
+
+Set cards show the step count once. Search combines with the usage filter:
+sets available on connect, or parameterized sets requiring manual launch.
+The builder numbers steps in their actual order, supports drag handles and
+up/down buttons, and shows a non-executing sequence preview. Argument steps
+can be edited field by field; the JSON editor remains available. Invalid
+JSON is retained for correction. On phones, the sequence appears before
+the expandable library picker.
+
+Saving in the main manager returns to its list. Editing from a connection
+dialog returns to that dialog and retains the connection draft. Unsaved
+changes require an explicit discard. Errors preserve the draft; if a save
+cannot be confirmed, check the saved list before explicitly trying again,
+since the previous save may already have succeeded.
+
 ## Commands in an active session
 
-The focused session workspace can search Commands and Command Sets for the
-active terminal. Entries with an operating-system scope are filtered against
+The focused session workspace searches the selected Library, Favorites or
+Command Sets area for the active terminal. Entries with an operating-system scope are filtered against
 the detected target where possible. Selecting **Insert** writes one visible,
 single-line command to the terminal but does not press Enter, leaving the final
 review and execution to the operator.

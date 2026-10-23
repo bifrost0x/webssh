@@ -127,6 +127,10 @@
         let uiRestored = false;
         let applying = false;
         // Also accept records written before the split-compatible format.
+        const hasWorkspaceContext = Boolean(state.sessionId)
+            || (Array.isArray(state.paneAssignments) && state.paneAssignments.some(Boolean))
+            || typeof state.noteDraft === 'string'
+            || (Array.isArray(state.commandDrafts) && state.commandDrafts.length > 0);
         const windowMode = state.windowMode === true || state.layout === 'windows';
         const layout = windowMode ? 'windows' : state.layout;
         const apply = () => {
@@ -148,7 +152,10 @@
                     sessionManager.switchSession(state.sessionId);
                 }
                 if (!uiRestored) {
-                    if (state.primaryView === 'overview') browserDocument.getElementById('overviewNavBtn')?.click();
+                    if (state.primaryView === 'overview'
+                            || ((!state.primaryView || state.primaryView === 'workspaces') && !hasWorkspaceContext)) {
+                        browserDocument.getElementById('overviewNavBtn')?.click();
+                    }
                     else if (state.primaryView === 'files') browserDocument.getElementById('fileTransferBtn')?.click();
                     else if (state.primaryView === 'hosts') browserDocument.getElementById('manageProfilesBtn')?.click();
                     else if (state.primaryView === 'commands') browserDocument.getElementById('commandLibraryBtn')?.click();
