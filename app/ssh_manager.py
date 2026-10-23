@@ -35,6 +35,15 @@ TMUX_PROBE_TIMEOUT = 2.0
 SSH_AUTH_BANNER_MAX_CHARS = 16 * 1024
 
 
+def _tmux_session_command(tmux_command, session_name, *, reconnect=False):
+    """Attach and enable wheel input only for this exact remote session."""
+    attach = 'new-session -A' if reconnect else 'new-session'
+    return (
+        f'{tmux_command} {attach} -s {shlex.quote(session_name)}'
+        f' \\; set-option -t {shlex.quote("=" + session_name + ":")} mouse on'
+    )
+
+
 class TailscaleSSHAuthStrategy(AuthStrategy):
     """Authenticate through Tailscale SSH without user-managed credentials."""
 
@@ -458,10 +467,6 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             safe_user = username.replace('.', '_').replace('-', '_')
             if reconnect_tmux_name:
                 tmux_session_name = reconnect_tmux_name
-                tmux_cmd = (
-                    f'{tmux_command} new-session -A -s '
-                    f'{shlex.quote(tmux_session_name)}'
-                )
             else:
                 unique_suffix = uuid.uuid4().hex[:8]
                 if gateway_attempt is not None:
@@ -471,10 +476,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     )
                 else:
                     tmux_session_name = f"{config.TMUX_SESSION_PREFIX}_{safe_user}_{safe_host}_{port}_{unique_suffix}"
-                tmux_cmd = (
-                    f'{tmux_command} new-session -s '
-                    f'{shlex.quote(tmux_session_name)}'
-                )
+
+            tmux_cmd = _tmux_session_command(
+                tmux_command, tmux_session_name, reconnect=bool(reconnect_tmux_name),
+            )
 
             log_info("Using tmux persistent session", tmux_session=tmux_session_name, host=f"{host}:{port}")
 

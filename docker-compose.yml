@@ -21,7 +21,8 @@ services:
 
       # Persistent sessions; falls back when tmux is unavailable remotely.
       - TMUX_ENABLED=true
-      - TMUX_DEFAULT=true
+      # Users opt in per connection; do not preselect persistent sessions.
+      - TMUX_DEFAULT=false
       - TMUX_SESSION_PREFIX=webssh
 
       # Authentication capabilities and safe assurance defaults
