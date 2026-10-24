@@ -1,0 +1,41 @@
+/* One terminal silhouette; its colors follow the existing application theme. */
+.webssh-ui {
+    --brand-panel: var(--ws2-panel);
+    --brand-surface: var(--ws2-surface);
+    --brand-canvas: var(--ws2-canvas);
+    --brand-outline: var(--ws2-border-strong);
+    --brand-border: var(--ws2-border);
+    --brand-muted: var(--ws2-text-muted);
+    --brand-secondary: var(--ws2-text-secondary);
+    --brand-accent: var(--ws2-accent);
+}
+
+.webssh-ui :is(.app-brand-logo, .auth-product-logo) {
+    display: block;
+    width: 32px;
+    height: 32px;
+    aspect-ratio: 1;
+    max-width: 100%;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.webssh-ui .auth-product-logo {
+    width: 64px;
+    height: 64px;
+}
+
+@media (max-width: 767px), (max-height: 520px) {
+    .webssh-ui .auth-product-logo {
+        width: 56px;
+        height: 56px;
+    }
+
+    .webssh-shell .app-brand-logo {
+        width: 30px;
+        height: 30px;
+    }
+}

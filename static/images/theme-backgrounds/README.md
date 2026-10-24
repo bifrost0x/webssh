@@ -16,7 +16,8 @@ content versions, size budget, appearance, and saved-theme behavior.
 
 The separate `../theme-scenes/` directory contains nine generated landscape and
 architecture wallpapers for authentication pages, the Overview list header,
-and the floating-window desktop. GlassOps keeps its existing artwork. Dense
+and the floating-window desktop. Midnight Homelab uses the matching 1672 x 941 alpine scene in
+`../redesign/midnight-lodge.webp` (WebP quality 82, below 220,000 bytes). Dense
 data panels and settings keep the subtle textures from this directory.
 
 | Theme | Scene asset | Motif |
@@ -31,8 +32,7 @@ data panels and settings keep the subtle textures from this directory.
 | Cyberpunk Neon | `cyberpunk-city.webp` | Rainy skyline with cyan and magenta light |
 | Emerald Matrix | `emerald-forest.webp` | Glass pavilion in a misty forest |
 
-Created with the built-in image generator. Only the WebP runtime assets are
-included; generation sources and review captures are not shipped. Images are
+Only the WebP runtime assets are shipped. Images are
 1672 x 941 pixels (Obsidian: 1672 x 940), encoded with Pillow, `method=6`, at
 qualities 60–88 to keep each below 150,000 bytes. Encoding is an authoring step,
 not an application dependency. The browser loads the selected scene, without
@@ -42,3 +42,14 @@ After changing an asset, update its SHA-256 URL suffix in
 `static/css/midnight-ui.css`. Theme-colored overlays protect header readability;
 custom account/browser backgrounds take precedence. Theme, asset-delivery and
 custom-background browser tests cover these contracts.
+
+## Responsive presentation
+
+`static/css/theme-scenes.css` places the selected scene on authentication,
+Overview and the window desktop. Large screens use a centered illustration
+bounded by the real source resolution, feathered into the theme canvas; images
+are not enlarged into a full-screen 4K wallpaper. High-density displays reduce
+the CSS bounds accordingly. Mobile layouts reserve visible scene space while
+keeping credentials and data on readable surfaces. Per-theme focal points keep
+the subject in frame. Custom account-local wallpapers retain priority and
+deferred-loading guards still prevent unselected scene downloads.

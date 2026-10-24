@@ -50,7 +50,7 @@ body.webssh-ui[data-theme="glass"] {
 .webssh-ui .auth-product-logo { width: 48px; height: 48px; }
 .webssh-ui .auth-product-brand .brand-wordmark { font-size: 30px; }
 .webssh-ui[data-theme="glass"].webssh-auth {
-    --theme-background-image-source: url('../images/redesign/midnight-lodge.webp?v=84c83aff64089b75');
+    --theme-background-image-source: url('../images/redesign/midnight-lodge.webp?v=93faabcdae43379b');
     background: #030f1c var(--theme-background-image) center / cover fixed no-repeat;
 }
 .webssh-ui[data-theme="glass"] .auth-access-dock { background: #051525f5; box-shadow: 0 24px 100px #0009; border-color: #294560; border-radius: 18px; }
@@ -67,7 +67,7 @@ body.webssh-ui[data-theme="glass"] {
 }
 /* Overview: the photograph is an illustration. All visible records are real state. */
 .overview-inner { gap: 20px; }
-.connection-overview .overview-heading { position: relative; isolation: isolate; min-height: 286px; align-items: flex-end; padding: 32px; border: 1px solid #23455f; border-radius: 14px; background: #051727 url('../images/redesign/midnight-lodge.webp?v=84c83aff64089b75') center / cover no-repeat; box-shadow: 0 12px 32px #0002; color: #f2f7ff; overflow: hidden; }
+.connection-overview .overview-heading { position: relative; isolation: isolate; min-height: 286px; align-items: flex-end; padding: 32px; border: 1px solid #23455f; border-radius: 14px; background: #051727 url('../images/redesign/midnight-lodge.webp?v=93faabcdae43379b') center / cover no-repeat; box-shadow: 0 12px 32px #0002; color: #f2f7ff; overflow: hidden; }
 .overview-heading::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #041323e8, #04132365 56%, #04132300 80%); }
 .overview-heading-copy { max-width: 560px; min-width: 0; align-self: center; }
 .overview-eyebrow { margin: 0 0 16px; color: #afc9e4; font-size: 11px; font-weight: 600; letter-spacing: .15em; text-transform: uppercase; }
@@ -275,23 +275,6 @@ body.webssh-ui[data-theme="glass"] {
 .webssh-ui[data-theme="glass"] .overview-host-entry .overview-row { background: linear-gradient(135deg, color-mix(in srgb, var(--group-accent) 10%, var(--ws2-panel)), var(--ws2-surface)); }
 .webssh-ui[data-theme="glass"] .overview-graph .overview-host-group { border-color: color-mix(in srgb, var(--group-accent) 70%, var(--ws2-border)); box-shadow: 0 8px 24px color-mix(in srgb, var(--group-accent) 7%, transparent); }
 
-/* Original, unmodified WebSSH artwork includes the wordmark. Keep its full
-   proportions; a dark backing preserves its white lettering in light themes. */
-.webssh-ui :is(.app-brand-logo, .auth-product-logo) {
-    width: 156px; height: 47px; max-width: 100%; object-fit: contain;
-    background: #0f172a; border-radius: 7px; flex-shrink: 0;
-}
-.webssh-ui .auth-product-logo { width: 220px; height: 66px; }
-.webssh-shell .app-brand { min-width: 0; max-width: 100%; }
-@media (min-width: 768px) and (max-width: 1100px) {
-    .webssh-shell .app-brand-logo { width: 68px; height: 32px; }
-}
-@media (min-width: 1101px) {
-    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .app-brand-logo { width: 68px; height: 32px; }
-}
-@media (max-width: 767px) {
-    .webssh-shell .app-brand-logo { width: 120px; height: 36px; }
-}
 /* Shrink content inside its allocated grid/flex track, including long names. */
 .webssh-ui :is(.overview-card, .overview-host-entry, .overview-host-list, .overview-row, .overview-row-title,
     .profile-management-section, .profile-management-item, .theme-background-controls) { min-width: 0; max-width: 100%; }
@@ -310,7 +293,7 @@ body.webssh-ui[data-theme="glass"] {
 body[data-custom-background] .connection-overview:not(.overview-graph) .overview-heading { background-image: var(--theme-background-image); }
 body[data-custom-background] .terminal-grid.window-mode { background-image: var(--theme-background-image); background-size: cover; background-position: center; }
 @media (max-width: 767px), (max-height: 520px) {
-    .webssh-ui .auth-product-logo { width: 156px; height: 47px; }
+    .webssh-ui .auth-product-logo { width: 56px; height: 56px; }
 }
 .overview-group-heading > span:not(.material-icons),
 .overview-host-entry .overview-row-title {

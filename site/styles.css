@@ -44,7 +44,7 @@ h1, h2, h3, p, figure { margin: 0; }
 .site-header { border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); }
 .header-inner { min-height: 4.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; }
 .brand { display: inline-flex; align-items: center; gap: 1.4rem; text-decoration: none; flex-shrink: 0; }
-.brand img { width: 112px; height: 34px; padding: 1px 4px; border: 1px solid #345377; border-radius: 8px; background: #0b1220; object-fit: contain; }
+.brand img { display: block; width: 40px; height: 40px; flex-shrink: 0; object-fit: contain; }
 .brand-tagline { border-left: 1px solid var(--border-color); padding-left: 1.4rem; color: var(--text-secondary); text-transform: uppercase; font-size: .64rem; letter-spacing: .11em; white-space: nowrap; }
 .site-nav { display: flex; align-items: stretch; gap: 2rem; align-self: stretch; }
 .site-nav a { display: inline-flex; align-items: center; gap: .5rem; position: relative; color: var(--text-secondary); font-size: .85rem; text-decoration: none; padding-block: 1rem; }

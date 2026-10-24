@@ -1,0 +1,188 @@
+/* Scenes illustrate spacious surfaces. Form and data panels stay opaque. */
+body.webssh-ui {
+    --theme-scene-position: 62% 50%;
+    --theme-scene-mobile-position: 62% 42%;
+    --theme-scene-band: clamp(132px, 38vw, 172px);
+    --theme-scene-max-width: 1672px;
+    --theme-scene-max-height: 941px;
+}
+body.webssh-ui[data-theme="glass"] {
+    --theme-scene-image-source: url('../images/redesign/midnight-lodge.webp?v=93faabcdae43379b');
+    --theme-scene-position: 58% 50%;
+    --theme-scene-mobile-position: 64% 50%;
+}
+body.webssh-ui[data-theme="solar"] { --theme-scene-mobile-position: 66% 46%; }
+body.webssh-ui[data-theme="paper"] { --theme-scene-mobile-position: 60% 48%; }
+body.webssh-ui[data-theme="noir"] { --theme-scene-mobile-position: 65% 45%; }
+body.webssh-ui[data-theme="arctic-ice"] { --theme-scene-mobile-position: 55% 46%; }
+body.webssh-ui[data-theme="rose-gold"] { --theme-scene-mobile-position: 58% 45%; }
+body.webssh-ui[data-theme="obsidian"] { --theme-scene-mobile-position: 60% 47%; }
+body.webssh-ui[data-theme="retro"] { --theme-scene-mobile-position: 65% 50%; }
+body.webssh-ui[data-theme="cyberpunk-neon"] { --theme-scene-mobile-position: 58% 44%; }
+body.webssh-ui[data-theme="emerald-matrix"] { --theme-scene-mobile-position: 60% 46%; }
+body.webssh-ui[data-theme] { --theme-scene-image: var(--theme-scene-image-source); }
+body.webssh-ui[data-theme][data-defer-theme-background]:not([data-theme-background-ready]) { --theme-scene-image: none; }
+body.webssh-ui[data-theme][data-custom-background] {
+    --theme-scene-image: var(--theme-background-image);
+    --theme-scene-position: center;
+    --theme-scene-mobile-position: center;
+}
+body.webssh-ui.webssh-auth[data-theme] {
+    --theme-background-image-source: var(--theme-scene-image-source);
+    background-color: var(--ws2-canvas);
+    background-image: none;
+}
+body.webssh-ui.webssh-auth[data-theme]::before {
+    display: block;
+    background-image: linear-gradient(180deg,
+        color-mix(in srgb, var(--ws2-canvas) 16%, transparent),
+        color-mix(in srgb, var(--ws2-canvas) 48%, transparent)), var(--theme-scene-image);
+    background-position: center, var(--theme-scene-position);
+    background-repeat: no-repeat;
+    background-size: cover, contain;
+    top: 50%;
+    bottom: auto;
+    width: 100%;
+    max-width: var(--theme-scene-max-width);
+    height: min(100vh, var(--theme-scene-max-height));
+    margin-inline: auto;
+    transform: translateY(-50%);
+    mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent), linear-gradient(180deg, transparent, black 12%, black 88%, transparent);
+    mask-composite: intersect;
+    pointer-events: none;
+}
+body.webssh-ui.webssh-auth[data-theme]::after { background-image: none; }
+body.webssh-ui[data-theme] .connection-overview:not(.overview-graph) .overview-heading {
+    background-color: var(--ws2-canvas);
+    background-image: var(--theme-scene-image);
+    background-position: var(--theme-scene-position);
+    background-size: cover;
+    color: var(--ws2-text);
+    border-color: var(--ws2-border);
+}
+body.webssh-ui[data-theme] .connection-overview:not(.overview-graph) .overview-heading::before {
+    background: linear-gradient(90deg,
+        var(--ws2-canvas),
+        color-mix(in srgb, var(--ws2-canvas) 96%, transparent) 32%,
+        color-mix(in srgb, var(--ws2-canvas) 84%, transparent) 53%,
+        color-mix(in srgb, var(--ws2-canvas) 12%, transparent) 80%);
+}
+body.webssh-ui[data-theme] .connection-overview:not(.overview-graph) .overview-heading h1 { color: var(--ws2-text); }
+body.webssh-ui[data-theme] .connection-overview:not(.overview-graph) :is(.overview-eyebrow, .overview-intro) { color: var(--ws2-text-secondary); }
+/* Bundled scenes have a real resolution ceiling. Keep a centered illustration
+   on large desktops rather than enlarging it into a blurry full-screen image. */
+body.webssh-ui:not([data-theme="glass"]):not([data-custom-background]) .terminal-grid.window-mode {
+    background-color: var(--ws2-canvas);
+    background-position: center;
+    background-size: min(100%, var(--theme-scene-max-width)) auto;
+}
+@media (min-resolution: 2dppx) {
+    body.webssh-ui { --theme-scene-max-width: 836px; --theme-scene-max-height: 470px; }
+}
+@media (min-resolution: 3dppx) {
+    body.webssh-ui { --theme-scene-max-width: 557px; --theme-scene-max-height: 313px; }
+}
+@media (max-width: 767px) {
+    /* Reserve image space above the copy instead of hiding it under a veil. */
+    body.webssh-ui[data-theme] .connection-overview:not(.overview-graph) .overview-heading {
+        min-height: 0;
+        padding: calc(var(--theme-scene-band) + 20px) 20px 20px;
+        gap: 20px;
+        background-position: var(--theme-scene-mobile-position);
+    }
+    body.webssh-ui[data-theme] .connection-overview:not(.overview-graph) .overview-heading::before {
+        background: linear-gradient(180deg,
+            transparent 0, transparent calc(var(--theme-scene-band) - 24px),
+            var(--ws2-canvas) var(--theme-scene-band), var(--ws2-canvas) 100%);
+    }
+    body.webssh-ui[data-theme] .connection-overview:not(.overview-graph) .overview-heading-copy { align-self: stretch; }
+    body.webssh-ui[data-theme] .connection-overview:not(.overview-graph) .overview-heading .btn { align-self: flex-start; }
+    .webssh-ui.webssh-auth .auth-context-footer {
+        padding: 4px 6px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--ws2-canvas) 94%, transparent);
+    }
+    .webssh-ui.webssh-auth .auth-utility-bar { background: var(--ws2-canvas); padding-inline: 12px; border-radius: 8px; }
+}
+@media (min-width: 768px) and (max-height: 800px) {
+    .webssh-ui.webssh-auth .auth-shell-content { margin-block: 8px; }
+    .webssh-ui.webssh-auth .auth-context-panel { padding-block: 2px; }
+}
+
+/* Compact authentication uses one continuous scene behind the brand header.
+   Keep the form opaque and let the photograph fade into the surrounding canvas. */
+@media (max-width: 1024px) {
+    body.webssh-ui.webssh-auth[data-theme]::before {
+        top: 0;
+        height: min(480px, 75svh);
+        max-width: none;
+        background-size: cover;
+        background-position: center, var(--theme-scene-mobile-position);
+        transform: none;
+        mask-image: linear-gradient(180deg, black 45%, transparent 100%);
+    }
+    .webssh-ui.webssh-auth .auth-shell-content {
+        width: min(540px, calc(100% - 24px));
+        margin-block: 12px;
+    }
+    .webssh-ui.webssh-auth .auth-access-dock { background: transparent; }
+    .webssh-ui.webssh-auth .auth-context-panel {
+        min-height: 64px;
+        padding: 8px 16px;
+        background: color-mix(in srgb, var(--ws2-canvas) 30%, transparent);
+    }
+    .webssh-ui.webssh-auth .auth-access-dock .auth-card { padding: 16px; }
+    .webssh-ui.webssh-auth .auth-access-dock .auth-header { margin-bottom: 12px; }
+    .webssh-ui.webssh-auth .auth-access-dock .auth-header h1 { font-size: 23px; }
+    .webssh-ui.webssh-auth .auth-method-switcher {
+        grid-template-columns: none;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        margin-bottom: 0;
+    }
+    .webssh-ui.webssh-auth .auth-method-switcher:has(> :nth-child(4)) {
+        grid-auto-flow: row;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .webssh-ui.webssh-auth .auth-method-option {
+        grid-template-columns: minmax(0, 1fr);
+        justify-items: center;
+        min-height: 54px;
+        padding: 6px 4px;
+        gap: 3px;
+    }
+    .webssh-ui.webssh-auth .auth-method-option strong {
+        display: block;
+        -webkit-line-clamp: unset;
+        word-break: normal;
+        overflow-wrap: normal;
+        hyphens: auto;
+        text-wrap: balance;
+        text-align: center;
+        font-size: 11px;
+        line-height: 1.2;
+    }
+    .webssh-ui.webssh-auth .auth-method-option > span:last-child { width: 100%; justify-items: center; }
+    .webssh-ui.webssh-auth .auth-method-option small { display: none; }
+    .webssh-ui.webssh-auth .auth-credentials-zone { margin-top: 16px; }
+    .webssh-ui.webssh-auth .auth-form-panel .form-group { margin-bottom: 12px; }
+    .webssh-ui.webssh-auth .auth-form-panel .auth-footer { margin-top: 16px; padding-top: 12px; }
+}
+@media (max-width: 1024px) and (max-height: 700px) {
+    .webssh-ui.webssh-auth .auth-shell-content { margin-block: 4px; }
+    .webssh-ui.webssh-auth .auth-access-dock .auth-card { padding-block: 12px; }
+    .webssh-ui.webssh-auth .auth-access-dock .auth-header h1 { font-size: 21px; }
+    .webssh-ui.webssh-auth .auth-context-panel { min-height: 52px; padding-block: 4px; }
+    .webssh-ui.webssh-auth .auth-product-logo { width: 44px; height: 44px; }
+    .webssh-ui.webssh-auth .auth-access-dock .auth-header { margin-bottom: 8px; }
+    .webssh-ui.webssh-auth .auth-form-panel .form-group { margin-bottom: 8px; }
+    .webssh-ui.webssh-auth .auth-credentials-zone { margin-top: 8px; }
+}
+@media (max-width: 1024px) and (max-height: 600px) {
+    .webssh-ui.webssh-auth .auth-context-panel { min-height: 44px; padding-block: 4px; }
+    .webssh-ui.webssh-auth .auth-product-logo { width: 36px; height: 36px; }
+    .webssh-ui.webssh-auth .auth-access-dock .auth-card { padding-block: 8px; }
+    .webssh-ui.webssh-auth .auth-form-eyebrow { display: none; }
+    .webssh-ui.webssh-auth .auth-method-option { min-height: 44px; }
+    .webssh-ui.webssh-auth .auth-card:has(#passwordLoginMode:not(.hidden)) .auth-header p { display: none; }
+}
