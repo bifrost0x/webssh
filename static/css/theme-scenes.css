@@ -175,3 +175,11 @@ body.webssh-ui:not([data-theme="glass"]):not([data-custom-background]) .terminal
     .webssh-ui.webssh-auth .auth-form-panel .form-group { margin-bottom: 8px; }
     .webssh-ui.webssh-auth .auth-credentials-zone { margin-top: 8px; }
 }
+@media (max-width: 1024px) and (max-height: 600px) {
+    .webssh-ui.webssh-auth .auth-context-panel { min-height: 44px; padding-block: 4px; }
+    .webssh-ui.webssh-auth .auth-product-logo { width: 36px; height: 36px; }
+    .webssh-ui.webssh-auth .auth-access-dock .auth-card { padding-block: 8px; }
+    .webssh-ui.webssh-auth .auth-form-eyebrow { display: none; }
+    .webssh-ui.webssh-auth .auth-method-option { min-height: 44px; }
+    .webssh-ui.webssh-auth .auth-card:has(#passwordLoginMode:not(.hidden)) .auth-header p { display: none; }
+}

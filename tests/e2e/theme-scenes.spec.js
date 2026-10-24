@@ -138,7 +138,7 @@ for (const locale of ['en', 'de']) {
     test(`compact login stays complete with one continuous scene in ${locale}`, async ({page}) => {
         installExternalRequestGuard(page);
         await page.addInitScript(value => localStorage.setItem('language', value), locale);
-        for (const [width, height] of [[320, 640], [360, 640], [390, 700], [600, 740], [768, 740], [820, 1180], [1024, 600], [1024, 768]]) {
+        for (const [width, height] of [[320, 568], [360, 560], [320, 640], [360, 640], [390, 700], [600, 740], [768, 740], [820, 1180], [1024, 600], [1024, 768]]) {
             await page.setViewportSize({width, height});
             await page.goto('/login');
             await page.evaluate(() => document.fonts.ready);
