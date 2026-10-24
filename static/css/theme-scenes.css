@@ -129,6 +129,7 @@ body.webssh-ui:not([data-theme="glass"]):not([data-custom-background]) .terminal
     }
     .webssh-ui.webssh-auth .auth-utility-bar { background: var(--ws2-canvas); padding-inline: 12px; border-radius: 8px; }
     .webssh-ui.webssh-auth .auth-shell-content { margin-top: 40px; margin-bottom: 0; }
+    .webssh-ui.webssh-auth .auth-access-dock .auth-card { padding-block: 16px; }
 }
 @media (max-width: 767px) and (max-height: 520px) {
     /* Keep credentials within reach when the on-screen keyboard is open. */
