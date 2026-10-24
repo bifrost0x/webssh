@@ -164,3 +164,33 @@ for (const locale of ['en', 'de']) {
         }
     });
 }
+
+test('compact sign-in tabs use the available width for one to four enabled methods', async ({page}) => {
+    installExternalRequestGuard(page);
+    await page.setViewportSize({width: 390, height: 844});
+    for (const count of [1, 2, 3, 4]) {
+        await page.goto('/login');
+        await page.locator('.auth-method-switcher').evaluate((element, amount) => {
+            while (element.children.length > amount) element.lastElementChild.remove();
+            while (element.children.length < amount) {
+                const tab = element.firstElementChild.cloneNode(true);
+                tab.removeAttribute('id');
+                tab.setAttribute('aria-selected', 'false');
+                tab.querySelector('strong').textContent = 'GitHub';
+                element.append(tab);
+            }
+        }, count);
+        const boxes = await page.locator('.auth-method-option').evaluateAll(elements => elements.map(element => {
+            const box = element.getBoundingClientRect();
+            return {left: box.left, right: box.right, top: box.top, width: box.width};
+        }));
+        const rows = [...new Set(boxes.map(box => box.top))];
+        expect(rows.length).toBe(count === 4 ? 2 : 1);
+        const bounds = await page.locator('.auth-method-switcher').boundingBox();
+        for (const top of rows) {
+            const row = boxes.filter(box => box.top === top);
+            expect(row[0].left - bounds.x).toBeLessThanOrEqual(6);
+            expect(bounds.x + bounds.width - row.at(-1).right).toBeLessThanOrEqual(6);
+        }
+    }
+});
