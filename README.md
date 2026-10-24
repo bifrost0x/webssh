@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="WebSSH" width="500">
+  <img src="static/images/webssh-logo.svg" alt="WebSSH" width="128" height="128">
 </p>
 
 <p align="center">

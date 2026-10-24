@@ -243,7 +243,7 @@ def test_authentication_pages_use_the_shared_professional_auth_shell():
             'class="auth-utility-bar"',
             'class="auth-access-dock"',
             'class="auth-context-panel"',
-            'class="auth-product-logo"',
+            'brand_logo("auth-product-logo")',
             'class="auth-credentials-zone"',
         ):
             assert marker in contents

@@ -1,19 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 180" width="600" height="180">
-  <defs>
-    <linearGradient id="termGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#10B981"/>
-      <stop offset="100%" style="stop-color:#059669"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Terminal icon -->
-  <rect x="30" y="30" width="120" height="120" rx="12" fill="#0f172a"/>
-  <circle cx="52" cy="52" r="5" fill="#ef4444"/>
-  <circle cx="68" cy="52" r="5" fill="#fbbf24"/>
-  <circle cx="84" cy="52" r="5" fill="#22c55e"/>
-  <text x="48" y="105" font-family="'SF Mono', 'Fira Code', monospace" font-size="32" font-weight="600" fill="#10B981">$_</text>
-
-  <!-- WebSSH text -->
-  <text x="170" y="110" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="64" font-weight="700" fill="#f1f5f9">Web</text>
-  <text x="320" y="110" font-family="'SF Mono', 'Fira Code', Consolas, monospace" font-size="64" font-weight="700" fill="url(#termGrad)">SSH</text>
+<svg id="webssh-terminal" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none" role="img" aria-labelledby="brand-title">
+<title id="brand-title">WebSSH</title>
+<defs>
+<linearGradient id="brand-frame" x1="15" y1="5" x2="113" y2="128" gradientUnits="userSpaceOnUse">
+<stop stop-color="var(--brand-panel, #14283c)"/>
+<stop offset="1" stop-color="var(--brand-surface, #0b1d2f)"/>
+</linearGradient>
+<linearGradient id="brand-screen" x1="64" y1="32" x2="64" y2="122" gradientUnits="userSpaceOnUse">
+<stop stop-color="var(--brand-canvas, #030f1c)"/>
+<stop offset="1" stop-color="var(--brand-canvas, #030f1c)"/>
+</linearGradient>
+<linearGradient id="brand-prompt" x1="28" y1="48" x2="89" y2="105" gradientUnits="userSpaceOnUse">
+<stop stop-color="var(--brand-accent, #48b3ff)"/>
+<stop offset="1" stop-color="var(--brand-accent, #48b3ff)"/>
+</linearGradient>
+</defs>
+<rect x="3" y="3" width="122" height="122" rx="21" fill="url(#brand-frame)" stroke="var(--brand-outline, #365878)" stroke-width="1.5"/>
+<path d="M4 28h120" stroke="var(--brand-border, #19364f)" stroke-width="1.5"/>
+<circle cx="19" cy="17" r="4.5" fill="var(--brand-muted, #7394b3)"/>
+<circle cx="33" cy="17" r="4.5" fill="var(--brand-secondary, #a1b8cb)"/>
+<circle cx="47" cy="17" r="4.5" fill="var(--brand-accent, #48b3ff)"/>
+<rect x="8" y="32" width="112" height="87" rx="10" fill="url(#brand-screen)"/>
+<path d="m31 51 30 24-30 24" stroke="url(#brand-prompt)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="71" y="95" width="33" height="8" rx="3" fill="url(#brand-prompt)"/>
 </svg>

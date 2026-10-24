@@ -1,0 +1,5 @@
+{% macro brand_logo(css_class, decorative=false) -%}
+<svg class="{{ css_class }}" viewBox="0 0 128 128" width="128" height="128" focusable="false" {% if decorative %}aria-hidden="true"{% else %}role="img" aria-label="WebSSH"{% endif %}>
+    <use href="{{ static_asset_url(filename='images/webssh-logo.svg') }}#webssh-terminal"></use>
+</svg>
+{%- endmacro %}

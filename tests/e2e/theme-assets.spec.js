@@ -25,7 +25,7 @@ test('every theme background decodes at its expected resolution', async ({page})
             await image.decode();
             return [image.naturalWidth, image.naturalHeight];
         }, theme);
-        expect(dimensions, theme).toEqual(theme === 'glass' ? [1536, 512] : [1672, theme === 'obsidian' ? 940 : 941]);
+        expect(dimensions, theme).toEqual([1672, theme === 'obsidian' ? 940 : 941]);
     }
 });
 

@@ -1,8 +1,10 @@
+{% from "_brand.html" import brand_logo with context %}
 {% if not embedded %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" data-theme-logo type="image/svg+xml" href="{{ static_asset_url(filename='images/webssh-logo.svg') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="background-scope" content="{{ background_scope }}">
@@ -19,12 +21,15 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/branding.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/theme-scenes.css') }}">
+    <script src="{{ static_asset_url(filename='js/branding.js') }}" defer></script>
 </head>
 <body class="webssh-ui webssh-account" data-theme="{{ theme|default('glass') }}">
     <header class="header">
         <div class="header-content">
             <div class="header-title-row">
-                <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces"><img class="app-brand-logo" src="{{ static_asset_url(filename='images/webssh-logo.svg') }}" alt="WebSSH"></a>
+                <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces">{{ brand_logo("app-brand-logo") }}</a>
             </div>
             <div class="header-buttons">
                 <a class="btn btn-secondary" href="{{ url_for('index') }}"><span class="material-icons" aria-hidden="true">arrow_back</span><span data-i18n="admin.backToApp">Back to Workspaces</span></a>

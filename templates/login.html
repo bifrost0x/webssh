@@ -1,7 +1,9 @@
+{% from "_brand.html" import brand_logo with context %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" data-theme-logo type="image/svg+xml" href="{{ static_asset_url(filename='images/webssh-logo.svg') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="app-root" content="{{ url_prefix }}">
@@ -14,6 +16,9 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/branding.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/theme-scenes.css') }}">
+    <script src="{{ static_asset_url(filename='js/branding.js') }}" defer></script>
 </head>
 <body class="webssh-ui webssh-auth" data-theme="glass" data-use-theme-preference data-defer-theme-background>
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
@@ -41,7 +46,7 @@
                 <div class="auth-context-panel">
                     <div class="auth-brand-lockup">
                         <div class="auth-product-brand">
-                            <img class="auth-product-logo" src="{{ static_asset_url(filename='images/webssh-logo.svg') }}" alt="WebSSH">
+                            {{ brand_logo("auth-product-logo") }}
                         </div>
                         <p class="auth-context-footer" data-i18n="brand.tagline">Your shell. Your rules.</p>
                     </div>
