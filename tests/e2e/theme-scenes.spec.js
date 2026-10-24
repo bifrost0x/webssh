@@ -31,13 +31,14 @@ test('each mobile login theme keeps a visible scene band and the primary action 
         const scene = await sceneDetails(page, 'body', '::before');
         expect(scene.display, theme).toBe('block');
         expect(scene.width, theme).toBeGreaterThanOrEqual(1500);
-        expect(scene.layerHeight, theme).toBeLessThanOrEqual(300);
+        expect(scene.layerHeight, theme).toBeLessThanOrEqual(480);
         const headerScene = await sceneDetails(page, '.auth-context-panel');
-        expect(headerScene.source, theme).toBe(scene.source);
+        expect(headerScene.source, theme).toBeUndefined();
         expect(headerScene.layerHeight, theme).toBeLessThanOrEqual(110);
         const utility = await page.locator('.auth-utility-bar').boundingBox();
         const dock = await page.locator('.auth-access-dock').boundingBox();
-        expect(dock.y - utility.y - utility.height, theme).toBeGreaterThanOrEqual(32);
+        expect(dock.y - utility.y - utility.height, theme).toBeGreaterThanOrEqual(4);
+        expect(dock.y + dock.height, theme).toBeLessThanOrEqual(844);
         const action = await page.locator('form button[type="submit"]').boundingBox();
         expect(action.y + action.height, theme).toBeLessThanOrEqual(844);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), theme).toBe(true);
@@ -132,3 +133,34 @@ test('high density desktops keep the bundled login scene within its physical pix
         await context.close();
     }
 });
+
+for (const locale of ['en', 'de']) {
+    test(`compact login stays complete with one continuous scene in ${locale}`, async ({page}) => {
+        installExternalRequestGuard(page);
+        await page.addInitScript(value => localStorage.setItem('language', value), locale);
+        for (const [width, height] of [[320, 640], [360, 640], [390, 700], [600, 740], [768, 740], [820, 1180], [1024, 600], [1024, 768]]) {
+            await page.setViewportSize({width, height});
+            await page.goto('/login');
+            await page.evaluate(() => document.fonts.ready);
+            await expect(page.locator('html')).toHaveAttribute('lang', locale);
+            const geometry = await page.locator('.auth-access-dock').evaluate(element => ({
+                bottom: element.getBoundingClientRect().bottom,
+                height: document.documentElement.scrollHeight,
+                width: document.documentElement.scrollWidth,
+                headerImage: getComputedStyle(element.querySelector('.auth-context-panel')).backgroundImage,
+                sceneMask: getComputedStyle(document.body, '::before').maskImage,
+            }));
+            expect(geometry.bottom, `${width}x${height}`).toBeLessThanOrEqual(height);
+            expect(geometry.height, `${width}x${height}`).toBeLessThanOrEqual(height);
+            expect(geometry.width).toBeLessThanOrEqual(width);
+            expect(geometry.headerImage).not.toContain('url(');
+            expect(geometry.sceneMask).toContain('linear-gradient');
+            for (const tab of await page.locator('.auth-method-option').all()) {
+                await expect(tab).toBeVisible();
+                expect((await tab.boundingBox()).height).toBeGreaterThanOrEqual(44);
+            }
+            await expect(page.locator('#localLoginForm .btn-primary')).toBeInViewport({ratio: 1});
+            await expect(page.locator('.auth-footer')).toBeInViewport({ratio: 1});
+        }
+    });
+}
