@@ -13,6 +13,21 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_container_update_jobs_have_a_manifest_for_their_ecosystem():
+    text = (ROOT / '.github/dependabot.yml').read_text(encoding='utf-8')
+    blocks = re.split(r'^  - package-ecosystem:\s*', text, flags=re.M)[1:]
+    for block in blocks:
+        ecosystem = block.splitlines()[0].strip().strip('"')
+        if ecosystem not in {'docker', 'docker-compose'}:
+            continue
+        directory = re.search(r'^\s+directory:\s*"([^"]+)"', block, re.M).group(1)
+        target = ROOT / directory.lstrip('/')
+        candidates = ('Dockerfile',) if ecosystem == 'docker' else (
+            'compose.yml', 'compose.yaml', 'docker-compose.yml', 'docker-compose.yaml',
+        )
+        assert any((target / name).is_file() for name in candidates), (ecosystem, directory)
+
+
 def test_every_uv_setup_consumes_the_same_required_version():
     config = tomllib.loads((ROOT / 'uv.toml').read_text(encoding='utf-8'))
     assert re.fullmatch(r'==\d+\.\d+\.\d+', config['required-version'])

@@ -19,7 +19,6 @@ gunicorn>=26.2.0,<27
 # Compatibility: Flask-SocketIO's native-thread transport is qualified with the simple-websocket 1.x API.
 simple-websocket>=1.1,<2
 Flask-WTF==1.3.0
-dnspython==2.9.0
 # Compatibility: the rate-limiter client contract is tested on redis-py 8 against Redis server 7 and 8.
 redis>=8.0,<9
 # Compatibility: WebAuthn 3 keeps the reviewed ceremony and PQC-capable verification APIs.

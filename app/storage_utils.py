@@ -34,24 +34,25 @@ class _CoordinatedStorageLock:
         self._write_context = None
 
     def acquire(self, *args, **kwargs):
-        acquired = self._lock.acquire(*args, **kwargs)
-        if not acquired:
-            return False
         context = persistent_write()
+        context.__enter__()
         try:
-            context.__enter__()
-        except Exception:
-            self._lock.release()
+            acquired = self._lock.acquire(*args, **kwargs)
+        except BaseException:
+            context.__exit__(None, None, None)
             raise
+        if not acquired:
+            context.__exit__(None, None, None)
+            return False
         self._write_context = context
         return True
 
     def release(self):
         context = self._write_context
         self._write_context = None
+        self._lock.release()
         if context is not None:
             context.__exit__(None, None, None)
-        self._lock.release()
 
     def locked(self):
         return self._lock.locked()

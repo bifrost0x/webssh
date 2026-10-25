@@ -1,6 +1,6 @@
 """Process and thread coordination for backup-sensitive persistent state."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass
 from hashlib import sha256
 import os
@@ -244,8 +244,16 @@ def install_sqlalchemy_coordination() -> None:
         def acquire(session, *_args):
             if '_webssh_persistent_write' in session.info:
                 return
-            context = persistent_write()
-            context.__enter__()
+            from flask import current_app, has_app_context
+
+            context = ExitStack()
+            try:
+                if has_app_context() and 'data_access' in current_app.extensions:
+                    context.enter_context(current_app.extensions['data_access'].operation())
+                context.enter_context(persistent_write())
+            except BaseException:
+                context.close()
+                raise
             session.info['_webssh_persistent_write'] = context
 
         def release(session, *_args):
