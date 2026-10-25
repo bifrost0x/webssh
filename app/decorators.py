@@ -65,8 +65,7 @@ def socket_login_required(f):
             # current_user is automatically injected
             print(f"User {current_user.username} triggered event")
     """
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def authenticated_function(*args, **kwargs):
         from .maintenance_mode import is_active
         if is_active():
             payload = {
@@ -105,5 +104,25 @@ def socket_login_required(f):
             return payload
         kwargs['current_user'] = user
         return f(*args, **kwargs)
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        from .data_access import DataAccessUnavailable, current_data_access
+
+        context = current_data_access().operation()
+        try:
+            context.__enter__()
+        except DataAccessUnavailable:
+            payload = {
+                'success': False,
+                'error': 'WebSSH is in restore maintenance mode',
+                'code': 'maintenance',
+            }
+            emit('error', payload)
+            return payload
+        try:
+            return authenticated_function(*args, **kwargs)
+        finally:
+            context.__exit__(None, None, None)
 
     return decorated_function

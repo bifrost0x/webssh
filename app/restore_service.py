@@ -106,6 +106,10 @@ def _perform_restore(app, socketio, record, username, source_ip,
             connection_pool.temp_connection_pool.close_all_connections()
             _disconnect_sockets(socketio)
 
+            app.extensions['data_access'].close_and_drain(
+                timeout=config.RUNTIME_SHUTDOWN_GRACE_SECONDS
+            )
+
             with app.app_context():
                 from .models import db
                 db.session.remove()

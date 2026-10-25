@@ -429,8 +429,8 @@ def create_app(
     app.config.from_object(config)
     from .static_delivery import init_static_delivery
     init_static_delivery(app)
-    from .data_access import DataAccessGate
-    app.extensions['data_access'] = DataAccessGate()
+    from .data_access import init_data_access
+    init_data_access(app)
     app.extensions['runtime_lifecycle'] = RuntimeLifecycle(
         max_workers=config.BACKGROUND_WORKERS
     )
@@ -546,11 +546,13 @@ def create_app(
             user_lifecycle.revoke_user_access(user_id, socketio)
             clear_browser_authentication()
 
-        if is_active() and request.path not in {
-            '/health',
-            '/ready',
-            '/admin/api/backups/restore/status',
-        }:
+        if is_active() or app.extensions['data_access'].closed:
+            if request.path in {
+                '/health', '/ready', '/admin/api/backups/restore/status',
+            }:
+                # Keep diagnostics readable without starting LDAP validation
+                # or authentication-state mutations during replacement.
+                return None
             return jsonify({
                 'error': 'WebSSH is in restore maintenance mode',
                 'code': 'maintenance',
@@ -819,6 +821,7 @@ def create_app(
         if (
             request.endpoint != 'static'
             and initialize_storage
+            and not app.extensions['data_access'].closed
             and session.get('_user_id') is not None
         ):
             from .session_epoch import current_epoch

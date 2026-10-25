@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import os
 import re
+from contextlib import nullcontext
 from collections.abc import MutableMapping
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ import paramiko
 from paramiko.hostkeys import HostKeyEntry
 
 from .audit_logger import log_warning
+from .data_access import bind_user_data_access
 from .storage_utils import (
     atomic_write_bytes,
     fsync_parent_directory,
@@ -240,19 +242,21 @@ class HostKeyStore:
         # One process-local lock per canonical database user. The registry is
         # bounded by the number of users observed by this single-worker app.
         self._lock_key = f"host_keys:{self.user_id}"
+        self._account_access = bind_user_data_access(self.user_id)
 
     def load_into(self, client: paramiko.SSHClient) -> None:
         """Install effective user-first trust on a Paramiko SSH client."""
-        global_file = self._load_or_empty(self.global_path)
-        user_file = self._load_or_empty(self.user_path)
-        client._host_keys = _LayeredHostKeys(global_file, user_file)
+        with self._account_access():
+            global_file = self._load_or_empty(self.global_path)
+            user_file = self._load_or_empty(self.user_path)
+            client._host_keys = _LayeredHostKeys(global_file, user_file)
 
     def missing_key_policy(self, decision=None, context="target") -> paramiko.MissingHostKeyPolicy:
         return _PerUserMissingHostKeyPolicy(self, decision, context)
 
     def record(self, hostname: str, key: paramiko.PKey) -> None:
         """Append a first-seen key without rewriting the user's raw file."""
-        with storage_lock("host_keys:global"), storage_lock(self._lock_key):
+        with self._account_access(), storage_lock("host_keys:global"), storage_lock(self._lock_key):
             self._ensure_private_directory()
             global_file = self._load_or_empty(self.global_path)
             user_file = self._load_or_empty(self.user_path)
@@ -292,21 +296,23 @@ class HostKeyStore:
 
     def list_entries(self):
         """Return management metadata for this user's trusted keys."""
-        return self.list_file(
-            self.user_path,
-            scope="user",
-            owner_id=self.user_id,
-        )
+        with self._account_access():
+            return self.list_file(
+                self.user_path,
+                scope="user",
+                owner_id=self.user_id,
+            )
 
     def delete_entry(self, entry_id):
         """Delete one trusted user key while preserving unrelated raw lines."""
-        return self.delete_file_entry(
-            self.user_path,
-            entry_id,
-            scope="user",
-            owner_id=self.user_id,
-            lock_key=self._lock_key,
-        )
+        with self._account_access():
+            return self.delete_file_entry(
+                self.user_path,
+                entry_id,
+                scope="user",
+                owner_id=self.user_id,
+                lock_key=self._lock_key,
+            )
 
     @classmethod
     def list_file(cls, path, *, scope, owner_id):
@@ -342,12 +348,13 @@ class HostKeyStore:
         owner_id,
         lock_key,
     ):
+        access = bind_user_data_access(owner_id) if scope == 'user' else None
         if not isinstance(entry_id, str) or not re.fullmatch(
             r"[0-9a-f]{64}", entry_id
         ):
             return False
         path = Path(path)
-        with storage_lock(lock_key):
+        with (access() if access is not None else nullcontext()), storage_lock(lock_key):
             try:
                 raw = path.read_bytes()
             except FileNotFoundError:
@@ -373,6 +380,7 @@ class HostKeyStore:
     @classmethod
     def add_file_entry(cls, path, value, *, scope, owner_id, lock_key):
         """Append one validated known_hosts entry without exposing stored keys."""
+        access = bind_user_data_access(owner_id) if scope == 'user' else None
         if not isinstance(value, str):
             return None, "Host key entry must be text"
         try:
@@ -407,7 +415,7 @@ class HostKeyStore:
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
         path = Path(path)
-        with storage_lock(lock_key):
+        with (access() if access is not None else nullcontext()), storage_lock(lock_key):
             try:
                 raw = path.read_bytes()
                 # Refuse to append to a malformed trust store.

@@ -272,6 +272,7 @@ def test_failed_restore_runs_emergency_rollback_and_restarts(
     monkeypatch.setattr(service, 'operation_lock', fake_operation_lock)
     restore_app = SimpleNamespace(
         extensions={
+            'data_access': app.extensions['data_access'],
             'runtime_lifecycle': SimpleNamespace(
                 begin_shutdown=lambda grace: (
                     events.append('shutdown')

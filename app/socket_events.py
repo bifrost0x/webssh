@@ -741,7 +741,17 @@ def _close_transport_after_rejected_connect(handler):
         cleanup_context = _engineio_cleanup_context()
         accepted = False
         try:
-            result = handler(*args, **kwargs)
+            from .data_access import DataAccessUnavailable, current_data_access
+
+            context = current_data_access().operation()
+            try:
+                context.__enter__()
+            except DataAccessUnavailable:
+                return False
+            try:
+                result = handler(*args, **kwargs)
+            finally:
+                context.__exit__(None, None, None)
             accepted = result is not False
             return result
         finally:
@@ -909,6 +919,21 @@ def handle_disconnect():
 
 def _cleanup_socket_session(socket_sid):
     """Release one browser's resources with or without its request environ."""
+    from .data_access import DataAccessUnavailable, current_data_access
+
+    context = current_data_access().operation()
+    try:
+        context.__enter__()
+    except DataAccessUnavailable:
+        # Restore already drained cleanup and owns the replacement database.
+        return
+    try:
+        return _cleanup_admitted_socket_session(socket_sid)
+    finally:
+        context.__exit__(None, None, None)
+
+
+def _cleanup_admitted_socket_session(socket_sid):
     permission_jobs = current_app.extensions.get('permission_jobs')
     if permission_jobs is not None:
         permission_jobs.cancel_socket(socket_sid)

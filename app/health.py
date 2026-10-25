@@ -47,15 +47,17 @@ def health():
 def ready():
     failed = []
     from .maintenance_mode import is_active
-    if is_active():
+    maintenance = is_active() or current_app.extensions['data_access'].closed
+    if maintenance:
         failed.append('maintenance')
     lifecycle = current_app.extensions.get('runtime_lifecycle')
     if lifecycle is None or not lifecycle.accepting_work():
         failed.append('runtime')
-    for category, probe in (
+    probes = () if maintenance else (
         ('database', _probe_database),
         ('data_directory', _probe_data_directory),
-    ):
+    )
+    for category, probe in probes:
         try:
             probe()
         except Exception:
