@@ -10,6 +10,7 @@ from .network_policy import canonicalize_hostname
 from .smb_paths import SMBPathRejected, SMBShareName
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
 from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
+from .data_access import user_operation
 
 
 _ID_PATTERN = re.compile(r'[A-Za-z0-9._-]{1,64}')
@@ -45,6 +46,7 @@ def _contains_secret_field(value):
     )
 
 
+@user_operation
 def get_user_smb_shares_file(user_id):
     from .models import User, db
 
@@ -120,6 +122,7 @@ def _load_with_lock_held(user_id):
     return document['smb_shares']
 
 
+@user_operation
 def load_smb_shares(user_id):
     with storage_lock(f'smb-shares:{user_id}'):
         return _load_with_lock_held(user_id)
@@ -171,6 +174,7 @@ def _validate_payload(payload):
     }, None
 
 
+@user_operation
 def upsert_smb_share(user_id, payload):
     validated, error = _validate_payload(payload)
     if error:
@@ -226,6 +230,7 @@ def upsert_smb_share(user_id, payload):
         return saved, None
 
 
+@user_operation
 def delete_smb_share(user_id, share_id):
     if not isinstance(share_id, str) or not _ID_PATTERN.fullmatch(share_id):
         return False, 'SMB share not found'

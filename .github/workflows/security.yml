@@ -58,8 +58,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=security-amd64
 
       - name: Generate SPDX JSON SBOM
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
+          syft-version: v1.55.0
           image: webssh-security:${{ github.sha }}
           format: spdx-json
           output-file: webssh.spdx.json
@@ -71,6 +72,7 @@ jobs:
         if: ${{ always() }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.1
           image-ref: webssh-security:${{ github.sha }}
           format: json
           output: trivy-results-amd64.json
@@ -83,7 +85,7 @@ jobs:
 
       - name: Upload AMD64 Trivy result
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trivy-amd64-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: trivy-results-amd64.json
@@ -126,6 +128,7 @@ jobs:
         if: ${{ always() }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.1
           input: /tmp/webssh-arm64.tar
           format: json
           output: trivy-results-arm64.json
@@ -138,7 +141,7 @@ jobs:
 
       - name: Upload ARM64 Trivy result
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trivy-arm64-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: trivy-results-arm64.json

@@ -16,48 +16,48 @@ PINNED_ACTIONS = {
         'v7',
     ),
     'actions/download-artifact': (
-        '3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',
-        'v8.0.1',
+        '9000827ccba6bdab643e8b6fd33ac0654aef8333',
+        'v8.0.2',
     ),
     'actions/deploy-pages': (
         '368f82528645a54fb793d4d04e342629a3f51346',
         'v5',
     ),
     'actions/setup-node': (
-        '820762786026740c76f36085b0efc47a31fe5020',
-        'v7.0.0',
+        '949feb2413d6458794dcd2491c4babbbce0c15c1',
+        'v7.1.0',
     ),
     'actions/setup-python': (
-        '5fda3b95a4ea91299a34e894583c3862153e4b97',
-        'v7.0.0',
+        '6d4fd22b20465ccc0f7354476588e8df7c9ca0e0',
+        'v7.1.0',
     ),
     'actions/upload-artifact': (
-        '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
-        'v7.0.1',
+        'cf430e030ddbb5b0abf93d22962f4752f3646cd9',
+        'v7.0.2',
     ),
     'actions/upload-pages-artifact': (
         'fc324d3547104276b827a68afc52ff2a11cc49c9',
         'v5',
     ),
     'anchore/sbom-action': (
-        '3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
-        'v0.24.2',
+        '66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c',
+        'v0.24.3',
     ),
     'aquasecurity/trivy-action': (
         'ed142fd0673e97e23eac54620cfb913e5ce36c25',
         'v0.36.0',
     ),
     'astral-sh/setup-uv': (
-        'c18668ad3cf93ea998bef934396af7bb5c839dc7',
-        'v10.2.0',
+        '07a047e608db84b3d8c06cd9a7c7dcc9c355c18e',
+        'v10.3.2',
     ),
     'docker/build-push-action': (
         'c3c9e263c25d99ce0380d002d59b67737d91b0dc',
         'v7',
     ),
     'docker/login-action': (
-        'dbcb813823bdd20940b903addbd779551569679f',
-        'v4',
+        '81c6f93d4bc991e510b342a00b419b3bb4efc5c6',
+        'v4.7.0',
     ),
     'docker/metadata-action': (
         'dc802804100637a589fabce1cb79ff13a1411302',
@@ -433,7 +433,7 @@ def test_dependabot_tracks_pinned_docker_bases():
         config,
         re.DOTALL,
     )
-    assert len(docker_blocks) == 3
+    assert len(docker_blocks) == 4
     directories = {
         re.search(r'directory:\s*"([^"]+)"', block).group(1)
         for block in docker_blocks
@@ -442,6 +442,7 @@ def test_dependabot_tracks_pinned_docker_bases():
         '/',
         '/tests/integration/paramiko5',
         '/tests/integration/smb',
+        '/tests/integration/ldap',
     }
 
 
@@ -450,11 +451,11 @@ def test_graph_pages_toolchain_versions_are_explicit():
     graph_input = (ROOT / 'requirements-graph.in').read_text(encoding='utf-8')
     graph_lock = (ROOT / 'requirements-graph.txt').read_text(encoding='utf-8')
 
-    assert re.search(r'with:\s*\n\s+version:\s*[\'"]?0\.12\.3', workflow)
+    assert 'version-file: uv.toml' in workflow
     assert 'uv pip install --require-hashes -r requirements-graph.txt' in workflow
-    assert 'graphifyy==0.9.91' in graph_input
+    assert 'graphifyy==0.9.95' in graph_input
     assert '--require-hashes' in graph_lock
-    assert 'graphifyy==0.9.91' in graph_lock
+    assert 'graphifyy==0.9.95' in graph_lock
 
 
 def test_workflows_use_an_explicit_runner_release():
@@ -730,8 +731,8 @@ def test_minimum_python_and_both_redis_versions_share_the_lock_gate():
     assert "python_version: '3.11'" not in shards
     assert shards.count("python_version: '3.14'") == 3
     for version, port, digest in (
-        ('7', 6379, 'e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2'),
-        ('8', 6380, '978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241'),
+        ('7', 6379, '57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541'),
+        ('8', 6380, '0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0'),
     ):
         assert f'image: redis:{version}-alpine@sha256:{digest}' in locks
         assert f'{port}:6379' in locks
@@ -755,7 +756,7 @@ def test_protocol_labs_share_one_runner_and_keep_required_aggregate_checks():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
     ssh = workflow.split('\n  ssh-integration:', 1)[1].split('\n  smb-integration:', 1)[0]
     assert "python-version: '3.14'" in ssh and "node-version: '24'" in ssh
-    assert 'astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7' in ssh
+    assert 'astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e' in ssh
     assert 'cache: npm' in ssh
     buildx = 'run: docker buildx version'
     runner = 'python scripts/run_ci_protocol_checks.py'

@@ -108,13 +108,16 @@ def test_lock_files_do_not_repeat_hashes_within_a_requirement(path):
 
 
 @pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
-def test_greenlet_lock_is_only_sqlalchemy_transitive_provenance(path):
-    """Greenlet is SQLAlchemy's platform-marked dependency, not Eventlet runtime."""
+def test_greenlet_is_absent_or_only_a_sqlalchemy_transitive_dependency(path):
+    """SQLAlchemy 2.1 no longer needs greenlet for our synchronous runtime."""
     direct = normalized_names("requirements.in")
 
     assert "greenlet" not in direct
     assert "sqlalchemy" not in direct
-    assert lock_provenance_set(lock_provenance(path, "greenlet")) == {"sqlalchemy"}
+    if "greenlet" in normalized_names(path):
+        assert lock_provenance_set(lock_provenance(path, "greenlet")) == {"sqlalchemy"}
+    else:
+        assert locked_version(path, "sqlalchemy") >= Version("2.1")
 
 
 def test_runtime_artifacts_do_not_select_cooperative_runtime():
@@ -245,9 +248,9 @@ def test_graph_dependencies_are_hash_locked_and_generated_with_other_locks():
         encoding='utf-8'
     )
 
-    assert 'graphifyy==0.9.91' in graph_input
+    assert 'graphifyy==0.9.95' in graph_input
     assert '--require-hashes' in graph_lock
-    assert 'graphifyy==0.9.91' in graph_lock
+    assert 'graphifyy==0.9.95' in graph_lock
     assert 'requirements-graph.in' in lock_script
     assert 'requirements-graph.txt' in lock_script
 
@@ -340,9 +343,9 @@ def test_uv_installer_policy_is_exact_and_keeps_all_hash_requirements(lines, all
 
 def test_every_host_test_environment_sets_up_the_reviewed_uv_before_installing():
     workflow = Path('.github/workflows/tests.yml').read_text(encoding='utf-8')
-    setup = 'astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7'
+    setup = 'astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e'
     for name in ['dependency-locks', 'pytest-shards', 'ssh-integration', 'browser-e2e-shards', 'browser-fonts']:
         job = re.split(r'\n  [a-z][a-z0-9-]*:', workflow.split('\n  ' + name + ':', 1)[1], maxsplit=1)[0]
         install = 'python scripts/run_ci_protocol_checks.py' if name == 'ssh-integration' else 'uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt'
         assert job.index(setup) < job.index(install)
-        assert "version: '0.12.3'" in job
+        assert "version-file: uv.toml" in job

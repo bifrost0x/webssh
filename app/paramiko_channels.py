@@ -11,6 +11,7 @@ import paramiko
 from paramiko.sftp import SFTPError
 
 import config
+from .sftp_metadata import validate_metadata_packet
 
 
 SSH_OPEN_FAILED_RESOURCE_SHORTAGE = 4
@@ -165,6 +166,12 @@ class BoundedSFTPClient(paramiko.SFTPClient):
             finally:
                 raise SFTPError('SFTP packet exceeds configured byte limit')
         data = self._read_all(size)
+        if data:
+            try:
+                validate_metadata_packet(data[0], data[1:])
+            except SFTPError:
+                self.sock.close()
+                raise
         if self.ultra_debug:
             self._log(
                 paramiko.common.DEBUG,

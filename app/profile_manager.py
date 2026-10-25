@@ -25,6 +25,7 @@ from .storage_utils import (
 )
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
 from .startup_commands import normalize_startup_commands
+from .data_access import user_operation
 
 
 _MAX_PROFILE_GROUP_LENGTH = 64
@@ -96,6 +97,7 @@ def _is_valid_host(host_str):
     )
     return bool(hostname_pattern.match(host_str))
 
+@user_operation
 def get_user_profiles_file(user_id):
     """Get the profiles file path for a specific user."""
     from .models import User, db
@@ -212,6 +214,7 @@ def _load_profiles_for_read_with_lock_held(user_id):
     return profiles
 
 
+@user_operation
 def load_profiles(user_id):
     """Load all connection profiles for a specific user."""
     # A read can persist a schema migration.  Hold the same coordinator used
@@ -260,6 +263,7 @@ def _load_profiles_for_recovery_delete(user_id):
     return profiles, None
 
 
+@user_operation
 def load_profile_recovery_summaries(user_id):
     """Return bounded, non-secret selectors for offline legacy recovery."""
     with storage_lock(f'profiles:{user_id}'):
@@ -282,6 +286,7 @@ def load_profile_recovery_summaries(user_id):
             if isinstance(profile, dict)
         ], None
 
+@user_operation
 def save_profiles(
     user_id,
     profiles,
@@ -424,6 +429,7 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     return result, None
 
 
+@user_operation
 def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                    skip_duplicate=False):
     """Create or update a profile under the per-user coordinator lock."""
@@ -564,6 +570,7 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
         return None, 'Failed to save profile'
 
 
+@user_operation
 def add_profile(user_id, name, host, port, username, auth_type, key_id=None,
                 jump_host_id=None, startup_commands=None, command_set_id=None):
     """Compatibility wrapper for callers that create legacy profile payloads."""
@@ -586,6 +593,7 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None,
         preserve_legacy_fallback=bool(command_set_id and startup_commands),
     )
 
+@user_operation
 def get_profile(user_id, profile_id):
     """Get a specific profile by ID for a specific user."""
     profiles = load_profiles(user_id)
@@ -595,6 +603,7 @@ def get_profile(user_id, profile_id):
     return None
 
 
+@user_operation
 def update_profile_organization(user_id, profile_id, patch):
     """Update only grouping metadata for one user-owned profile."""
     if not isinstance(patch, dict):
@@ -653,6 +662,7 @@ def update_profile_organization(user_id, profile_id, patch):
         return None, 'Failed to save profile'
 
 
+@user_operation
 def move_profile(
     user_id,
     profile_id,
@@ -759,6 +769,7 @@ def move_profile(
         )
         return None, 'Failed to move profile'
 
+@user_operation
 def delete_profile(user_id, profile_id):
     """Delete a profile by ID for a specific user."""
     try:
@@ -800,6 +811,7 @@ def delete_profile(user_id, profile_id):
         return False, 'Failed to delete profile'
 
 
+@user_operation
 def delete_profile_recovery_record(user_id, selector):
     """Delete one selector-bound profile from an offline recovery store."""
     try:
@@ -846,6 +858,7 @@ def delete_profile_recovery_record(user_id, selector):
         return False, 'Failed to delete profile'
 
 
+@user_operation
 def assign_command_set(user_id, profile_id, command_set_id):
     """Assign an existing command set without removing legacy fallback data."""
     try:

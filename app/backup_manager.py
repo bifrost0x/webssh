@@ -11,6 +11,7 @@ import sqlite3
 import stat
 import tempfile
 import zipfile
+import zlib
 
 import config
 from .backup_coordination import ensure_backup_temp_dir
@@ -335,6 +336,20 @@ def _stage_source(data_dir, stage, excluded_relative_paths=frozenset()):
     )
 
 
+def _member_compression(path):
+    """Keep our own archive within the unchanged restore ratio limit."""
+    compressor = zlib.compressobj(level=6, wbits=-15)
+    size = compressed_size = 0
+    with path.open('rb') as source:
+        while chunk := source.read(1024 * 1024):
+            size += len(chunk)
+            compressed_size += len(compressor.compress(chunk))
+    compressed_size += len(compressor.flush())
+    if size / max(compressed_size, 1) > config.BACKUP_MAX_COMPRESSION_RATIO:
+        return zipfile.ZIP_STORED
+    return zipfile.ZIP_DEFLATED
+
+
 def _write_archive(stage, archive, manifest):
     with zipfile.ZipFile(
         archive,
@@ -347,9 +362,11 @@ def _write_archive(stage, archive, manifest):
             _manifest_payload(manifest),
         )
         for item in manifest.files:
+            source = stage / Path(*PurePosixPath(item.path).parts)
             backup.write(
-                stage / Path(*PurePosixPath(item.path).parts),
+                source,
                 arcname=_DATA_PREFIX + item.path,
+                compress_type=_member_compression(source),
             )
 
 

@@ -1,104 +1,114 @@
 {
-  "release": "v3.4.0",
+  "release": "v3.5.1",
   "source": "https://github.com/ryanoasis/nerd-fonts",
   "fonts": [
     {
       "family": "WebSSH JetBrains Mono",
-      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/JetBrainsMono.tar.xz",
-      "archive_sha256": "ef552a3e638f25125c6ad4c51176a6adcdce295ab1d2ffacf0db060caf8c1582",
+      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/JetBrainsMono.tar.xz",
+      "archive_sha256": "04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf",
       "files": [
         {
           "source": "JetBrainsMonoNLNerdFontMono-Regular.ttf",
-          "source_sha256": "d83b3639f2a78e6d6da2cc2a7de4c2fc6817819a2199a6213790b3f7573710d1",
+          "source_sha256": "d9a80146bbf2ff23b187316a3e82ee2a2ceab8220267fe09ac150ca46ab2c3bd",
           "file": "JetBrainsMono-Regular.woff2",
-          "sha256": "18d369fb28eca93578b55400b3b2be0be091e63ef44c0ebfca7affb0c95d9a30",
+          "sha256": "c1de1b6b2edea8e14f4f28adb9f2fac085f9a081fc2d154cc9de658b20fb277a",
           "weight": 400
         },
         {
           "source": "JetBrainsMonoNLNerdFontMono-Bold.ttf",
-          "source_sha256": "100877cb3c17f18e45108b6e769abaf8b7129b3b678fd0ce0908d966d35d1846",
+          "source_sha256": "f799fc4b215c7b7254bf6cee51c0bce122ac684b53b46fd3cb83d408a0ccf385",
           "file": "JetBrainsMono-Bold.woff2",
-          "sha256": "66ac0f274f6237942b28980692ad5373c94b1513fc378d83a41946bb37975620",
+          "sha256": "1dec88a6c826c6ed72244ac1595066716b81262a5bfea4fd8fe32809d9031e6f",
           "weight": 700
         }
       ]
     },
     {
       "family": "WebSSH Hack",
-      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/Hack.tar.xz",
-      "archive_sha256": "1d00a1435638084174516975840854368a45ac30bb0bad2c0c49db713b5925f0",
+      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/Hack.tar.xz",
+      "archive_sha256": "cdd389472e10e2261520140ff1b382b4f8a226af5fd0b2735b975d31151d9c3c",
       "files": [
         {
           "source": "HackNerdFontMono-Regular.ttf",
-          "source_sha256": "03e60d3c1a9f8bef4e1f78836f80aacb9ec005260a6b094f5bfc10043bb115ab",
+          "source_sha256": "e5aeb58577a8acf2b42083e4a07ce48bd53116fdd868636403cadb5b547351be",
           "file": "Hack-Regular.woff2",
-          "sha256": "0d7de65b0180fbab6a3b06cceba66dc018311ee306e2ba32aa453ca0bb680aea",
+          "sha256": "4fc7421383374a155e5fe025b1b227cef3dd159fe83db72d49391848b06f672b",
           "weight": 400
         },
         {
           "source": "HackNerdFontMono-Bold.ttf",
-          "source_sha256": "711084fdea9f9eb4e5dbca372a19e6a5af996fc88bfce55918eeef560f0f6722",
+          "source_sha256": "7c2c76c26ff80fb546798b204ae519335573417c969eb3142d202298722d3832",
           "file": "Hack-Bold.woff2",
-          "sha256": "9e637419848b933b9d879b20e7e37863b958df608c58cea9e7b7562ece0bc7dc",
+          "sha256": "768b6040889ee552213b8260998d874213081f18b620417fbd5597b981a841a5",
           "weight": 700
         }
       ]
     },
     {
       "family": "WebSSH Fira Mono",
-      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/FiraMono.tar.xz",
-      "archive_sha256": "2e4adc97fefdfa2ad70a6e6e79bc0418acd401a305bcb5fcd848a84e03e35a74",
+      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/FiraMono.tar.xz",
+      "archive_sha256": "e3112075b65d9a900ef6ca562c30f1b5eb1d1a928e97de7469962ac8c45e93d6",
       "files": [
         {
           "source": "FiraMonoNerdFontMono-Regular.otf",
-          "source_sha256": "2afd210aa324ce94ec5f722eff6432693ea3c0dd49fa5645efff5a034f2069df",
+          "source_sha256": "648bf8fd0fe6c08ca7737fcd3757830f2b4e31870fc81d3de0344f6864988b64",
           "file": "FiraMono-Regular.woff2",
-          "sha256": "9ca873feac26806018230a0ff89ea55ddf64b4793dd9e886ab7e28a51b95d610",
+          "sha256": "4f9f09de0facdc86b1f72e310fb1ad441c2761c29546794fa3271171b7e034e8",
           "weight": 400
         },
         {
           "source": "FiraMonoNerdFontMono-Bold.otf",
-          "source_sha256": "142f567e8a870ac3d524885deac9317b34ef44c1bfe01a919c75fa48f56c7754",
+          "source_sha256": "51b90b6fad92424548dbe4dc91e22ebdf02c625b2f102ac86a7b7b8a6c424e53",
           "file": "FiraMono-Bold.woff2",
-          "sha256": "badf6a6afae24f3b2b6a233a9bb342dc955d99d8092583ac83188638de694d3c",
+          "sha256": "b87caac47b0052ddb7f3362daf7dfbb39c4e9c85e4cb3205d989ef39648bb592",
           "weight": 700
         }
       ]
     },
     {
       "family": "WebSSH Source Code Pro",
-      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/SourceCodePro.tar.xz",
-      "archive_sha256": "d52d97b66c4c5d6d9d99c88df55148faf39738f244485026f22f8e47407744f4",
+      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/SourceCodePro.tar.xz",
+      "archive_sha256": "50ead7bb7addce27cf4b55f4fffb669b5f1899fece675fad623a2a75a478c8c7",
       "files": [
         {
           "source": "SauceCodeProNerdFontMono-Regular.ttf",
-          "source_sha256": "6d687bfc41b42de0984ff58c43bf98115472027337a2e0980e8b1ecabe466099",
+          "source_sha256": "cbfe6a91123b9d78a1b593cb2efa10a806a704490e3cea6b894078b86d67c0b1",
           "file": "SourceCodePro-Regular.woff2",
-          "sha256": "b35056cfd83defb4c97e3f8048d55bfdc59e897ec2eb863fa74ea9f1765c7f9d",
+          "sha256": "d5086141de9268d2b463aa666d1d50175e55411b4d23e74850e88adfa636c0cb",
           "weight": 400
         },
         {
           "source": "SauceCodeProNerdFontMono-Bold.ttf",
-          "source_sha256": "8cd3f451c85b9d656b4e4c47ca9f8a9704ee0f4e711c8b399fa29494865cf678",
+          "source_sha256": "fedd1dcdfc4228621075dc8a61190474aace7617aff61d1faca877d340a40ff6",
           "file": "SourceCodePro-Bold.woff2",
-          "sha256": "2010df09b9b3dff36b5b830932397ec08e8e1f3ff61e039457da7aea9d7ef0b2",
+          "sha256": "660ba6c2c5c80c4c0fd84de46d1b044d95c839b7a90f7d3a85d841d78c59cb0d",
           "weight": 700
         }
       ]
     },
     {
       "family": "WebSSH Nerd Symbols",
-      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/NerdFontsSymbolsOnly.tar.xz",
-      "archive_sha256": "7f8c090da3b0eaa7108646bf34cbbb6ed13d5358a72460522108b06c7ecd716a",
+      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/NerdFontsSymbolsOnly.tar.xz",
+      "archive_sha256": "01172f37db8543edb102e5cb5c64101c9f4686630804d49b419aa07b23a69996",
       "files": [
         {
           "source": "SymbolsNerdFontMono-Regular.ttf",
-          "source_sha256": "f0f624d9b474bea1662cf7e862d44aebe1ae1f6c7f9cb7a0ca5d0e5ac9561c60",
+          "source_sha256": "fe471e538392f51910faab985fa8e192a39dd3426125edd15b71b3680df0e749",
           "file": "NerdSymbols-Regular.woff2",
-          "sha256": "a8e2fc5ae3c2525812151b95da80c5beab0befa84aca84fc33aaed94317502df",
+          "sha256": "540c7a76fbb99abf734ba0c3ae4def132cef273606909b1fd63fe6b425457903",
           "weight": 400
         }
       ]
     }
-  ]
+  ],
+  "source_revision": "b894ea7803af6aade63d60a4381e006098ec9c4d",
+  "compressor": {
+    "name": "Google woff2_compress",
+    "version": "1.0.2",
+    "distribution": "Ubuntu 24.04 amd64, woff2/libwoff1 1.0.2-2build1, libbrotli1 1.1.0-2build2",
+    "package_sha256": {
+      "woff2_1.0.2-2build1_amd64.deb": "6a7697c0152e630c6a76667de5acbb4a64262a454f92b1a311871cc2ec2f0491",
+      "libwoff1_1.0.2-2build1_amd64.deb": "e23a6287ff611ff60a5a598de21f8f60f6236b6ad9443376318e6cc7914219c1"
+    }
+  }
 }

@@ -1,6 +1,6 @@
 # Terminal font assets
 
-Four Nerd Fonts Mono families from the official Nerd Fonts v3.4.0 release:
+Four Nerd Fonts Mono families from the official Nerd Fonts v3.5.1 release:
 JetBrains Mono (NL, no ligatures), Hack, Fira Mono, and Source Code Pro
 (upstream patched name: SauceCodePro). Regular and bold are included. Italics
 are browser-synthesized. Ligature rendering is not promised by WebSSH's xterm
@@ -30,7 +30,9 @@ Verify committed font binaries offline:
     python scripts/vendor-terminal-fonts.py
 
 To reproduce, download the five exact archive URLs in the manifest into a
-local directory, then run (requires `woff2_compress` on PATH):
+local directory, then run (requires `woff2_compress` on PATH). The manifest
+records the compressor, distribution package versions and package hashes used
+for these reproducible outputs:
 
     python scripts/vendor-terminal-fonts.py --source-dir /path/to/archives
 

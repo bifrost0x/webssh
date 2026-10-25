@@ -58,7 +58,7 @@ function referencedTranslationKeys(translations) {
 }
 
 function build() {
-    const fullSource = fs.readFileSync(sourcePath, 'utf8');
+    const fullSource = fs.readFileSync(sourcePath, 'utf8').replace(/\r\n/g, '\n');
     const { translations, runtime } = parseTranslations(fullSource);
     const locales = Object.keys(translations);
     const keys = referencedTranslationKeys(translations);
@@ -87,7 +87,7 @@ function build() {
 const generated = build();
 if (process.argv.includes('--check')) {
     const committed = fs.existsSync(outputPath)
-        ? fs.readFileSync(outputPath, 'utf8')
+        ? fs.readFileSync(outputPath, 'utf8').replace(/\r\n/g, '\n')
         : '';
     if (committed !== generated) {
         console.error('static/js/i18n-auth.js is stale; run npm run i18n:auth.');
