@@ -429,6 +429,8 @@ def create_app(
     app.config.from_object(config)
     from .static_delivery import init_static_delivery
     init_static_delivery(app)
+    from .data_access import DataAccessGate
+    app.extensions['data_access'] = DataAccessGate()
     app.extensions['runtime_lifecycle'] = RuntimeLifecycle(
         max_workers=config.BACKGROUND_WORKERS
     )

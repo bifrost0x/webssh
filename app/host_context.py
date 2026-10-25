@@ -6,6 +6,7 @@ import json
 from .models import User, db
 from .profile_manager import _load_profiles_for_read_with_lock_held
 from .storage_utils import atomic_write_bytes, load_json_strict, storage_lock
+from .data_access import user_operation
 
 MAX_STORE_BYTES = 4 * 1024 * 1024
 MAX_HOST_CONTEXTS = 2000
@@ -17,6 +18,7 @@ class ContextError(ValueError):
         super().__init__(code)
 
 
+@user_operation
 def bind_profile(user_id, profile_id, host, port, username, jump_host_id, *, optional=False):
     """Bind only an explicitly selected, owned profile with the actual route."""
     if profile_id is None:
@@ -107,6 +109,7 @@ def _load(user_id):
     return path, document
 
 
+@user_operation
 def read_context(user_id, profile_id):
     with storage_lock(f'command-config:{user_id}'):
         _owned_profiles(user_id, profile_id)
@@ -115,6 +118,7 @@ def read_context(user_id, profile_id):
             return copy.deepcopy(document['hosts'].get(profile_id, _empty()))
 
 
+@user_operation
 def write_context(user_id, profile_id, content, expected_revision):
     try:
         valid = _valid_content(content)

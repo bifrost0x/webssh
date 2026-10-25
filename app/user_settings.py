@@ -4,6 +4,7 @@ from .storage_errors import StorageCorruptionError
 from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
 from .terminal_appearance import valid_terminal_appearance
+from .data_access import user_operation
 
 AUTHENTICATION_SESSION_DURATION_MINUTES = frozenset({30, 60, 120, 240, 480})
 DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES = 30
@@ -130,11 +131,13 @@ def _get_user_settings_with_lock_held(user_id):
     return settings
 
 
+@user_operation
 def get_user_settings(user_id):
     """Load user settings from disk with defaults."""
     with storage_lock(f'settings:{user_id}'):
         return _get_user_settings_with_lock_held(user_id)
 
+@user_operation
 def save_user_settings(user_id, settings):
     """Persist user settings to disk."""
     from .models import User, db

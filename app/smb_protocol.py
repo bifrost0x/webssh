@@ -1271,6 +1271,25 @@ class _SealedConnectionCache(dict):
         return super().__setitem__(key, value)
 
 
+class _BoundedSMBConnection(Connection):
+    """Enforce Direct TCP framing before the pinned receiver allocates bodies."""
+
+    def _process_message_thread(self):
+        receive = self.transport._recv
+
+        def bounded_receive(length, timeout):
+            # Direct TCP reserves the high byte; the remaining 24 bits carry
+            # the complete SMB frame, including encrypted/compound messages.
+            if not 0 <= length <= 0xFFFFFF:
+                raise ValueError('SMB frame exceeds transport byte limit')
+            return receive(length, timeout)
+
+        # Connection.connect creates the transport before starting this sole
+        # receiver. Install only on that instance, before even negotiation.
+        self.transport._recv = bounded_receive
+        return super()._process_message_thread()
+
+
 class _RealSMBProtocol:
     smb_3_1_1 = Dialects.SMB_3_1_1
 
@@ -1297,7 +1316,7 @@ class _RealSMBProtocol:
         timeout,
         io_idle_timeout,
     ):
-        connection = Connection(
+        connection = _BoundedSMBConnection(
             uuid.uuid4(),
             server,
             port,

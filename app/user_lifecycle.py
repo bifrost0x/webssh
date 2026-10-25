@@ -193,9 +193,12 @@ def restore_quarantined_user_data(original, quarantined):
 
 def delete_user_account(user, socketio_instance=None):
     """Revoke a user and delete their row without exposing retained files."""
-    with persistent_write():
-        user_id = int(user.id)
-        revoke_user_access(user_id, socketio_instance)
+    from .data_access import current_data_access
+    user_id = int(user.id)
+    with current_data_access().retire(
+        user_id,
+        on_blocked=lambda: revoke_user_access(user_id, socketio_instance),
+    ), persistent_write():
         original = quarantined = None
 
         try:

@@ -29,6 +29,7 @@ from .storage_utils import (
     storage_lock,
 )
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
+from .data_access import user_operation
 
 
 _JUMP_HOST_USAGE_DETAIL_LIMIT = 20
@@ -132,6 +133,7 @@ def _load_jump_hosts_for_read_with_lock_held(user_id):
     return jump_hosts
 
 
+@user_operation
 def load_jump_hosts(user_id):
     """Load all jump hosts for a user."""
     # A read can persist a schema migration.  Coordinate it with profile and
@@ -142,6 +144,7 @@ def load_jump_hosts(user_id):
             return _load_jump_hosts_for_read_with_lock_held(user_id)
 
 
+@user_operation
 def save_jump_hosts(
     user_id,
     jump_hosts,
@@ -214,6 +217,7 @@ def _load_jump_hosts_for_recovery_delete(user_id):
     return jump_hosts
 
 
+@user_operation
 def load_jump_host_recovery_summaries(user_id):
     """Return bounded, non-secret selectors for offline legacy recovery."""
     with storage_lock(f'jump_hosts:{user_id}'):
@@ -277,6 +281,7 @@ def _get_jump_host_with_coordinator_held(user_id, jump_host_id):
     return None
 
 
+@user_operation
 def get_jump_host(user_id, jump_host_id):
     """Resolve a saved jump host from current server-side storage."""
     with storage_lock(f'command-config:{user_id}'):
@@ -285,6 +290,7 @@ def get_jump_host(user_id, jump_host_id):
         )
 
 
+@user_operation
 def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None):
     """Validate and store a new jump host. Never stores a password."""
     try:
@@ -356,6 +362,7 @@ def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None):
         return None, str(e)
 
 
+@user_operation
 def delete_jump_host(user_id, jump_host_id):
     try:
         with storage_lock(f'command-config:{user_id}'):
@@ -400,6 +407,7 @@ def delete_jump_host(user_id, jump_host_id):
         return False, 'Failed to delete jump host', []
 
 
+@user_operation
 def delete_jump_host_recovery_record(user_id, selector):
     """Delete one selector-bound jump host from an offline recovery store."""
     try:

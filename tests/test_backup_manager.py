@@ -568,6 +568,48 @@ def test_create_verify_and_restore_round_trip(tmp_path):
     assert _snapshot(restored_dir) == expected_files
 
 
+def test_create_repetitive_backup_verifies_and_restores_without_changing_source(tmp_path):
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    expected = _write_representative_data(data_dir)
+    expected['users/user_1/repetitive.json'] = b'{"notes":"' + b'x' * (1024 * 1024) + b'"}'
+    expected['users/user_1/empty'] = b''
+    for name in ('users/user_1/repetitive.json', 'users/user_1/empty'):
+        (data_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (data_dir / name).write_bytes(expected[name])
+    archive = tmp_path / 'backup.zip'
+
+    manifest = create_backup(data_dir, archive)
+
+    assert verify_backup(archive) == manifest
+    assert _snapshot(data_dir) == expected
+    restore_backup(archive, tmp_path / 'restored')
+    assert _snapshot(tmp_path / 'restored') == expected
+
+
+def test_backup_roundtrip_preserves_sqlite_free_pages_and_mixed_members(tmp_path):
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _write_representative_data(data_dir)
+    with sqlite3.connect(data_dir / 'app.db') as database:
+        database.execute('CREATE TABLE padding (value BLOB)')
+        database.execute('INSERT INTO padding VALUES (zeroblob(1048576))')
+        database.execute('DELETE FROM padding')
+    (data_dir / 'empty.bin').write_bytes(b'')
+    (data_dir / 'binary.bin').write_bytes(bytes(range(256)) * 4)
+    expected = _snapshot(data_dir)
+    archive = tmp_path / 'backup.zip'
+
+    manifest = create_backup(data_dir, archive)
+    assert verify_backup(archive) == manifest
+    with zipfile.ZipFile(archive) as backup:
+        assert backup.getinfo('data/app.db').compress_type == zipfile.ZIP_STORED
+        assert backup.getinfo('data/binary.bin').compress_type == zipfile.ZIP_DEFLATED
+    restore_backup(archive, tmp_path / 'restored')
+    assert _snapshot(tmp_path / 'restored') == expected
+    assert _snapshot(data_dir) == expected
+
+
 def test_backup_excludes_runtime_only_files(tmp_path):
     data_dir = tmp_path / 'data'
     data_dir.mkdir()

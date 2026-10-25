@@ -17,7 +17,9 @@ from .storage_utils import (
     storage_lock,
 )
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
+from .data_access import user_operation
 
+@user_operation
 def get_user_keys_dir(user_id):
     """Get the keys directory for a specific user."""
     from .models import User, db
@@ -30,6 +32,7 @@ def get_user_keys_dir(user_id):
     os.chmod(keys_dir, 0o700)
     return keys_dir
 
+@user_operation
 def get_user_keys_file(user_id):
     """Get the keys metadata file path for a specific user."""
     keys_dir = get_user_keys_dir(user_id)
@@ -284,11 +287,13 @@ def _load_keys_with_lock_held(user_id):
     return keys
 
 
+@user_operation
 def load_keys(user_id):
     """Load all SSH key metadata for a specific user."""
     with storage_lock(f'keys:{user_id}'):
         return _load_keys_with_lock_held(user_id)
 
+@user_operation
 def save_keys(user_id, keys):
     """Save keys list to JSON file for a specific user."""
     try:
@@ -309,6 +314,7 @@ def save_keys(user_id, keys):
         return False
 
 
+@user_operation
 def rename_key(user_id, key_id, new_name):
     """Rename one owned key without changing its identity or encrypted data."""
     if not isinstance(new_name, str) or not new_name.strip():
@@ -334,6 +340,7 @@ def rename_key(user_id, key_id, new_name):
     return None, "Key not found"
 
 
+@user_operation
 def replace_key(user_id, key_id, key_content):
     """Atomically replace one owned key while preserving its stable identity."""
     if not isinstance(key_id, str) or not key_id:
@@ -424,6 +431,7 @@ def _remove_key_after_metadata_failure(user_id, key_id, key_path):
         )
 
 
+@user_operation
 def save_key(user_id, name, key_content):
     """Store a new SSH private key for a specific user (encrypted at rest)."""
     try:
@@ -502,6 +510,7 @@ def save_key(user_id, name, key_content):
     except Exception as e:
         return None, str(e)
 
+@user_operation
 def get_key_path(user_id, key_id):
     """Get the file path for a key by ID for a specific user."""
     keys = load_keys(user_id)
@@ -525,6 +534,7 @@ def _get_key_path_with_lock_held(user_id, key_id):
             return str(_safe_key_path(keys_dir, key['filename']))
     return None
 
+@user_operation
 def get_key(user_id, key_id):
     """Get key metadata by ID for a specific user."""
     keys = load_keys(user_id)
@@ -533,6 +543,7 @@ def get_key(user_id, key_id):
             return key
     return None
 
+@user_operation
 def read_key_content(user_id, key_id):
     """
     Read and decrypt SSH key content.
@@ -577,6 +588,7 @@ def read_key_content(user_id, key_id):
         return None, "Failed to read key"
 
 
+@user_operation
 def load_key_summaries(user_id):
     """Return key metadata with a transient usability status for clients."""
     keys = load_keys(user_id)
@@ -615,6 +627,7 @@ def load_key_summaries(user_id):
     return summaries
 
 
+@user_operation
 def delete_key(user_id, key_id):
     """Delete an SSH key and its metadata for a specific user."""
     try:

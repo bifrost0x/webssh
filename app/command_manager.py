@@ -13,11 +13,13 @@ from .command_storage_policy import (
 )
 from .storage_utils import atomic_write_json, load_json_strict, storage_lock
 from .storage_migrations import backup_before_migration
+from .data_access import user_operation
 
 
 _PR_COMMAND_WRAPPER_VERSIONS = frozenset({1, 2})
 
 
+@user_operation
 def get_user_commands_file(user_id):
     from .models import User, db
 
@@ -112,6 +114,7 @@ def _load_user_commands_with_lock_held(user_id):
     return commands
 
 
+@user_operation
 def load_user_commands(user_id):
     """Load user-specific commands."""
     with storage_lock(f'commands:{user_id}'):
@@ -125,6 +128,7 @@ def _load_user_commands_for_write(user_id):
         return None, 'User not found'
     return _load_user_commands_with_lock_held(user_id), None
 
+@user_operation
 def save_user_commands(
     user_id,
     commands,
@@ -149,6 +153,7 @@ def save_user_commands(
     atomic_write_json(user_commands_file, commands)
     return True
 
+@user_operation
 def get_all_commands(user_id, os_filter=None):
     """Get both system and user commands, optionally filtered by OS."""
     system_cmds = load_system_commands()
@@ -193,6 +198,7 @@ def _get_all_commands_with_lock_held(user_id, os_filter=None):
         ]
     return all_commands
 
+@user_operation
 def add_user_command(user_id, name, command, parameters, description, os_list, category):
     """Add a new user command."""
     if not valid_user_command_input(
@@ -228,6 +234,7 @@ def add_user_command(user_id, name, command, parameters, description, os_list, c
                 previous_count=previous_count,
             ) else None
 
+@user_operation
 def update_user_command(user_id, command_id, name, command, parameters, description, os_list, category):
     """Update an existing user command."""
     if not valid_user_command_input(
@@ -275,6 +282,7 @@ def update_user_command(user_id, command_id, name, command, parameters, descript
                 return cmd, None
             return None, 'Failed to save command'
 
+@user_operation
 def delete_user_command(user_id, command_id):
     """Delete a user command."""
     from .command_set_manager import (

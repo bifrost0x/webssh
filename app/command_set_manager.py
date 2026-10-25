@@ -25,6 +25,7 @@ from .storage_utils import (
     storage_lock,
 )
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
+from .data_access import user_operation
 
 
 COMMAND_SET_NAME_MAX = 128
@@ -263,6 +264,7 @@ def _load_command_sets_with_lock_held(user_id):
     return data['command_sets'], None
 
 
+@user_operation
 def load_command_sets(user_id):
     """Return ``(sets, error)`` without hiding corrupt storage as an empty list."""
     with storage_lock(f'command-sets:{user_id}'):
@@ -447,6 +449,7 @@ def _validate_payload(payload, existing_sets, commands):
     }, None
 
 
+@user_operation
 def get_command_set(user_id, command_set_id):
     if not isinstance(command_set_id, str) or not command_set_id:
         return None, 'Command set not found'
@@ -471,6 +474,7 @@ def _get_command_set_with_lock_held(user_id, command_set_id):
     return None, 'Command set not found'
 
 
+@user_operation
 def upsert_command_set(user_id, payload):
     """Create or update one command set under the per-user coordinator lock."""
     with storage_lock(f'command-config:{user_id}'):
@@ -535,6 +539,7 @@ def upsert_command_set(user_id, payload):
             return (copy.deepcopy(result), None) if saved else (None, error)
 
 
+@user_operation
 def duplicate_command_set(user_id, command_set_id):
     with storage_lock(f'command-config:{user_id}'):
         with storage_lock(f'command-sets:{user_id}'):
@@ -620,6 +625,7 @@ def _resolve_command_set_with_coordinator_held(user_id, command_set_id):
     return _resolve_loaded_command_set(command_set, commands)
 
 
+@user_operation
 def resolve_command_set(user_id, command_set_id):
     with storage_lock(f'command-config:{user_id}'):
         return _resolve_command_set_with_coordinator_held(
@@ -627,6 +633,7 @@ def resolve_command_set(user_id, command_set_id):
         )
 
 
+@user_operation
 def resolve_command_set_parameters(user_id, command_set_id, values, use_sudo=False):
     """Resolve only an owned saved set; never store supplied parameter values."""
     with storage_lock(f'command-config:{user_id}'):
@@ -669,6 +676,7 @@ def _load_command_sets_with_resolution_with_coordinator_held(user_id):
     return enriched, None
 
 
+@user_operation
 def load_command_sets_with_resolution(user_id):
     """Load sets with exact previews from coordinated store snapshots."""
     with storage_lock(f'command-config:{user_id}'):
@@ -725,6 +733,7 @@ def _get_command_usage_with_coordinator_held(user_id, command_id):
     return (None, error) if error else (usages, None)
 
 
+@user_operation
 def get_command_usage(user_id, command_id):
     with storage_lock(f'command-config:{user_id}'):
         return _get_command_usage_with_coordinator_held(user_id, command_id)
@@ -742,6 +751,7 @@ def _load_profile_references(user_id):
         return None, str(exc)
 
 
+@user_operation
 def delete_command_set(user_id, command_set_id):
     with storage_lock(f'command-config:{user_id}'):
         with storage_lock(f'profiles:{user_id}'):
