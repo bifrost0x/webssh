@@ -433,7 +433,7 @@ def test_dependabot_tracks_pinned_docker_bases():
         config,
         re.DOTALL,
     )
-    assert len(docker_blocks) == 4
+    assert len(docker_blocks) == 3
     directories = {
         re.search(r'directory:\s*"([^"]+)"', block).group(1)
         for block in docker_blocks
@@ -442,8 +442,14 @@ def test_dependabot_tracks_pinned_docker_bases():
         '/',
         '/tests/integration/paramiko5',
         '/tests/integration/smb',
-        '/tests/integration/ldap',
     }
+    compose_blocks = re.findall(
+        r'- package-ecosystem:\s*"docker-compose"\s+(.*?)(?=\n\s+- package-ecosystem:|\Z)',
+        config,
+        re.DOTALL,
+    )
+    assert len(compose_blocks) == 1
+    assert re.search(r'directory:\s*"([^"]+)"', compose_blocks[0]).group(1) == '/tests/integration/ldap'
 
 
 def test_graph_pages_toolchain_versions_are_explicit():

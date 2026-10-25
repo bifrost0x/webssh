@@ -119,7 +119,7 @@ updates:
       prefix: "deps(docker)"
 
   # Disposable LDAP integration image
-  - package-ecosystem: "docker"
+  - package-ecosystem: "docker-compose"
     directory: "/tests/integration/ldap"
     schedule:
       interval: "weekly"
