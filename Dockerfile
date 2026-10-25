@@ -1,4 +1,4 @@
-FROM python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc AS ldap-builder
+FROM python:3.14-slim@sha256:35caba83af2fe6da9a5d922f9b0156f21d1246a48278c58a08bd253303ba42e8 AS ldap-builder
 
 WORKDIR /build
 
@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir --require-hashes \
     --prefix=/install -r requirements.txt
 
 
-FROM python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc
+FROM python:3.14-slim@sha256:35caba83af2fe6da9a5d922f9b0156f21d1246a48278c58a08bd253303ba42e8
 
 ARG VCS_REF=unknown
 

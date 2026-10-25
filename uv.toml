@@ -1,0 +1,2 @@
+# Shared resolver version for local lock generation and CI.
+required-version = "==0.13.5"
