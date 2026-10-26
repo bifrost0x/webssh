@@ -18,6 +18,8 @@ services:
       OPENLDAP_BOOTSTRAP_DATA_ROOT_PASSWORD_HASHED: "{SSHA}gPHcwIz/ftw8IkZF7oGYHQREQ19stJJa"
       OPENLDAP_BOOTSTRAP_CONFIG_ROOT_PASSWORD_HASHED: "{SSHA}UsOVszqq9+zx7NTrGJRS0tw9lIHRoaHw"
       OPENLDAP_BOOTSTRAP_TLS: "true"
+      OPENLDAP_BOOTSTRAP_TLS_CERT: /container/services/openldap/assets/certs/cert.crt
+      OPENLDAP_BOOTSTRAP_TLS_CERT_KEY: /container/services/openldap/assets/certs/cert.key
       OPENLDAP_BOOTSTRAP_TLS_VERIFY_CLIENT: never
       OPENLDAP_BOOTSTRAP_TLS_REQUIRED: "false"
     depends_on:
