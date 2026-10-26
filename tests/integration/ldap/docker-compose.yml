@@ -9,7 +9,7 @@ services:
       - ldap_test_certs:/certs
 
   openldap:
-    image: docker.io/osixia/openldap:2.6.10-alpha@sha256:80a577d7d4471c4db662195111e5709665b6fcbd6679094d05402b8c620e2607
+    image: docker.io/osixia/openldap:2.6.15-alpha@sha256:de37b295c8f11f6654a2376f7b5f9d5e9d028bd2f50713751f99ed270f7abbec
     hostname: ldap.example.test
     environment:
       OPENLDAP_BOOTSTRAP_ORGANIZATION: WebSSH Test
@@ -18,6 +18,8 @@ services:
       OPENLDAP_BOOTSTRAP_DATA_ROOT_PASSWORD_HASHED: "{SSHA}gPHcwIz/ftw8IkZF7oGYHQREQ19stJJa"
       OPENLDAP_BOOTSTRAP_CONFIG_ROOT_PASSWORD_HASHED: "{SSHA}UsOVszqq9+zx7NTrGJRS0tw9lIHRoaHw"
       OPENLDAP_BOOTSTRAP_TLS: "true"
+      OPENLDAP_BOOTSTRAP_TLS_CERT: /container/services/openldap/assets/certs/cert.crt
+      OPENLDAP_BOOTSTRAP_TLS_CERT_KEY: /container/services/openldap/assets/certs/cert.key
       OPENLDAP_BOOTSTRAP_TLS_VERIFY_CLIENT: never
       OPENLDAP_BOOTSTRAP_TLS_REQUIRED: "false"
     depends_on:
@@ -38,7 +40,7 @@ services:
       retries: 24
 
   ldap-secrets-init:
-    image: docker.io/osixia/openldap:2.6.10-alpha@sha256:80a577d7d4471c4db662195111e5709665b6fcbd6679094d05402b8c620e2607
+    image: docker.io/osixia/openldap:2.6.15-alpha@sha256:de37b295c8f11f6654a2376f7b5f9d5e9d028bd2f50713751f99ed270f7abbec
     user: root
     entrypoint: ["/bin/sh", "-ec"]
     command:
