@@ -1,6 +1,6 @@
 """Fail CI when first-party license declarations drift from Apache-2.0.
 
-Historical MIT notices and independently licensed vendor files are intentional.
+Retained historical notices and independently licensed vendor files are intentional.
 This is a consistency check, not a copyright or legal-compliance audit.
 """
 import hashlib
@@ -15,15 +15,15 @@ FILES = {
     "site/index.html": [r"Apache License 2\.0", r"Apache 2\.0 licensed"],
     "site/security.html": [r"Apache License 2\.0"],
     "site/impressum.html": [r"Apache License 2\.0"],
-    "Dockerfile": [r"org\.opencontainers\.image\.licenses=Apache-2\.0", r"COPY config\.py start\.py LICENSE LICENSE-MIT-ORIGINAL NOTICE /app/"],
+    "Dockerfile": [r"org\.opencontainers\.image\.licenses=Apache-2\.0", r"COPY config\.py start\.py LICENSE THIRD-PARTY-NOTICES NOTICE /app/"],
 }
 
 # SHA-256 of the complete UTF-8 text, with universal newline normalization.
 # Apache: https://www.apache.org/licenses/LICENSE-2.0.txt
-# MIT: the original project license, retained without changing its terms.
+# MIT: the retained license terms with the current project attribution.
 LICENSE_DIGESTS = {
     "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "LICENSE-MIT-ORIGINAL": "01879c661749199143546c9f2789a8e11d2a55346501e435e798c88bff463e2a",
+    "THIRD-PARTY-NOTICES": "babef6b561516ebb6e56694fe84acbaf80829dfa5995c6953edd0b139502cf22",
 }
 
 
@@ -52,7 +52,7 @@ def main():
             errors.append(f"{name}: license text differs from the complete retained license")
     notice = read_text("NOTICE", errors)
     if notice is not None:
-        for required in ("WebSSH", "Copyright (c) 2026 H31mdall", "LICENSE-MIT-ORIGINAL", "third-party"):
+        for required in ("WebSSH", "Copyright (c) 2026 bifrost0x", "THIRD-PARTY-NOTICES", "third-party"):
             if required not in notice:
                 errors.append(f"NOTICE: missing attribution or license reference: {required}")
     for name in ("package.json", "package-lock.json"):

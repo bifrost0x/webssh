@@ -239,7 +239,7 @@ def prepare_pages(root: Path, graph_source: Path, output: Path) -> None:
     # A fresh directory prevents files from an older build entering the artifact.
     output.mkdir(parents=True, exist_ok=False)
     shutil.copytree(root / 'site', output, dirs_exist_ok=True)
-    for name in ('LICENSE', 'LICENSE-MIT-ORIGINAL', 'NOTICE'):
+    for name in ('LICENSE', 'THIRD-PARTY-NOTICES', 'NOTICE'):
         shutil.copyfile(root / name, output / name)
     add_search_metadata(output)
     # Preserve Graphify's upstream SRI hash even with a Windows CRLF checkout.

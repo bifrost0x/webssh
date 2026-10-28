@@ -59,7 +59,7 @@ COPY app/ /app/app/
 COPY templates/ /app/templates/
 COPY static/ /app/static/
 COPY deployment/ldap_secret_cli.py /app/deployment/ldap_secret_cli.py
-COPY config.py start.py LICENSE LICENSE-MIT-ORIGINAL NOTICE /app/
+COPY config.py start.py LICENSE THIRD-PARTY-NOTICES NOTICE /app/
 
 RUN chown -R appuser:appuser /app && \
     mkdir -p /app/data/logs /app/data/keys /app/recovery /run/webssh-auth && \

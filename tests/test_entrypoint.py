@@ -6,6 +6,14 @@ import stat
 import subprocess
 import sys
 
+import pytest
+
+
+pytestmark = pytest.mark.skipif(
+    sys.platform != 'linux',
+    reason='Container entrypoint requires Linux Bash and POSIX file permissions',
+)
+
 
 ENTRYPOINT = Path(__file__).parents[1] / 'entrypoint.sh'
 

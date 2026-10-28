@@ -1,14 +1,11 @@
 # Licensing
 
-WebSSH is distributed under the [Apache License, Version 2.0](../LICENSE),
-starting with the source revision that introduces this license transition and
-subsequent distributions. Releases and source revisions preceding that change
-remain available under their original MIT terms.
+WebSSH is distributed under the [Apache License, Version 2.0](../LICENSE).
 
-The original copyright and permission notice is preserved in
-[LICENSE-MIT-ORIGINAL](../LICENSE-MIT-ORIGINAL). [NOTICE](../NOTICE) carries the
-project attribution and references to retained notices. Keep these files with
-redistributed copies of WebSSH.
+The project attribution appears in [NOTICE](../NOTICE). Historical copyright
+and permission notices are retained in
+[THIRD-PARTY-NOTICES](../THIRD-PARTY-NOTICES). Keep these files with redistributed
+copies of WebSSH. Earlier distributions retain their applicable original terms.
 
 ## Bundled components
 
@@ -27,7 +24,7 @@ does not replace their copyright, permission or attribution notices.
 
 `npm run vendor` copies the frontend library license notices from the locked
 upstream packages alongside their assets. `npm run vendor:check` verifies those
-copies. The application image includes `LICENSE`, `LICENSE-MIT-ORIGINAL`,
+copies. The application image includes `LICENSE`, `THIRD-PARTY-NOTICES`,
 `NOTICE`, and the runtime vendor notices under `/app`. The website code graph
 ships its own vendor directory, the project notices at its root, and the
 Material Icons license alongside the font in `assets/material-icons-LICENSE`.

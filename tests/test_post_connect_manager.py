@@ -49,6 +49,29 @@ def test_infer_mode_preserves_explicit_and_legacy_profiles():
     assert infer_mode({}) == 'none'
 
 
+@pytest.mark.parametrize('mode', [[], {}, ['free_text'], {'mode': 'none'}, 1, False])
+@pytest.mark.parametrize('operation', ['validate_configuration', 'resolve_configuration'])
+def test_non_text_post_connect_modes_return_validation_error(mode, operation):
+    from app import post_connect_manager
+
+    result, error = getattr(post_connect_manager, operation)(7, {'startup_mode': mode})
+
+    assert result is None
+    assert error == 'Invalid post-connect command mode'
+
+
+@pytest.mark.parametrize('operation', ['validate_configuration', 'resolve_configuration'])
+def test_free_text_post_connect_rejects_invalid_unicode(operation):
+    from app import post_connect_manager
+
+    result, error = getattr(post_connect_manager, operation)(7, {
+        'startup_mode': 'free_text', 'startup_commands': 'echo \ud800',
+    })
+
+    assert result in (None, '')
+    assert error == 'Startup commands must be valid UTF-8'
+
+
 def test_validate_rejects_conflicting_mode_fields(app, monkeypatch):
     from app import command_manager
     from app.post_connect_manager import validate_configuration

@@ -196,18 +196,20 @@ def test_socket_returns_owned_directory(monkeypatch):
 
 def test_probe_reads_actual_pty_shell_and_busy_nested_shell(tmp_path):
     """Exercise the real Linux process relationship, with no SSH credentials."""
+    import shutil
+    import sys
+
+    if sys.platform != 'linux' or not shutil.which('bash') or not shutil.which('ps'):
+        pytest.skip('Linux PTY and bash required')
+
     import fcntl
     import os
     import pty
     import select
-    import shutil
     import subprocess
-    import sys
     import termios
     import time
 
-    if sys.platform != 'linux' or not shutil.which('bash') or not shutil.which('ps'):
-        pytest.skip('Linux PTY and bash required')
     master, slave = pty.openpty()
     def setup_tty():
         os.setsid()

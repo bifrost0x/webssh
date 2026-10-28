@@ -16,6 +16,31 @@ def create_user(app, username='profile-user'):
         return user.id
 
 
+@pytest.mark.parametrize('mode', [[], {}, ['command'], {'mode': 'command'}, 1, True])
+@pytest.mark.parametrize('update', [False, True])
+def test_invalid_startup_mode_preserves_existing_profiles(app, mode, update):
+    from app import profile_manager
+
+    user_id = create_user(app)
+    payload = {'name': 'Grüße 東京', 'host': 'example.test', 'port': 22,
+               'username': 'deploy', 'auth_type': 'password',
+               'startup_commands': 'echo café', 'group': 'Production',
+               'favorite': True, 'use_tmux': True}
+    with app.app_context():
+        existing, error = profile_manager.upsert_profile(user_id, payload)
+        assert error is None
+        path = profile_manager.get_user_profiles_file(user_id)
+        original = path.read_bytes()
+        invalid = {**payload, 'startup_mode': mode}
+        if update:
+            invalid['id'] = existing['id']
+        result, error = profile_manager.upsert_profile(user_id, invalid)
+        assert result is None
+        assert path.read_bytes() == original
+        assert profile_manager.load_profiles(user_id) == [existing]
+        assert error == 'Invalid post-connect command mode'
+
+
 def test_add_profile_saves_normalized_startup_commands(app):
     from app import profile_manager
 

@@ -89,7 +89,7 @@ def validate_configuration(user_id, payload, dependent_lock_held=False):
         return None, 'Invalid post-connect command configuration'
 
     mode = infer_mode(payload)
-    if mode not in VALID_MODES:
+    if not isinstance(mode, str) or mode not in VALID_MODES:
         return None, 'Invalid post-connect command mode'
     if _has_conflicting_references(mode, payload):
         return None, 'Conflicting post-connect command configuration'
@@ -160,7 +160,7 @@ def _resolve_configuration_with_coordinator_held(user_id, payload):
     if not isinstance(payload, dict):
         return None, 'Invalid post-connect command configuration'
     mode = infer_mode(payload)
-    if mode not in VALID_MODES:
+    if not isinstance(mode, str) or mode not in VALID_MODES:
         return None, 'Invalid post-connect command mode'
     if _has_conflicting_references(mode, payload):
         return None, 'Conflicting post-connect command configuration'

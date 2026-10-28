@@ -3,6 +3,8 @@ Command Library Manager
 Handles system and user-specific command storage and retrieval.
 """
 import json
+import locale
+import sys
 import uuid
 from datetime import datetime, timezone
 import config
@@ -59,6 +61,7 @@ def _valid_commands(value):
 def _valid_commands_document(value):
     return (
         isinstance(value, dict)
+        and type(value.get('schema_version')) is int
         and value.get('schema_version') in _PR_COMMAND_WRAPPER_VERSIONS
         and _valid_commands(value.get('commands'))
     )
@@ -87,13 +90,22 @@ def load_system_commands():
     """Load global system commands from JSON."""
     commands_file = config.SYSTEM_COMMANDS_FILE
     if commands_file.exists():
-        with open(commands_file, 'r') as f:
+        with open(commands_file, 'r', encoding='utf-8') as f:
             return json.load(f)
 
     legacy_file = config.DATA_DIR / 'commands' / 'system_commands.json'
     if legacy_file.exists():
-        with open(legacy_file, 'r') as f:
-            return json.load(f)
+        raw = legacy_file.read_bytes()
+        try:
+            text = raw.decode('utf-8')
+        except UnicodeDecodeError:
+            if sys.platform != 'win32':
+                raise
+            # Older Windows installations used the system ANSI code page.
+            # Keep this compatibility read confined to the legacy location;
+            # never rewrite the original file or replace undecodable bytes.
+            text = raw.decode(locale.getencoding())
+        return json.loads(text)
     return []
 
 def _load_user_commands_with_lock_held(user_id):

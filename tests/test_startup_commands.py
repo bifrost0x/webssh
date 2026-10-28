@@ -149,6 +149,23 @@ def test_normalize_startup_commands_accepts_blank_input():
     assert error is None
 
 
+@pytest.mark.parametrize('value', ['echo \ud800', 'echo \udfff'])
+def test_normalize_startup_commands_rejects_invalid_unicode(value):
+    from app.startup_commands import normalize_startup_commands
+
+    commands, error = normalize_startup_commands(value)
+
+    assert commands == ''
+    assert error == 'Startup commands must be valid UTF-8'
+
+
+def test_normalize_startup_commands_preserves_multibyte_unicode():
+    from app.startup_commands import normalize_startup_commands
+
+    value = 'echo Grüße 🐧'
+    assert normalize_startup_commands(value) == (value, None)
+
+
 def test_normalize_startup_commands_converts_all_line_endings_to_lf():
     from app.startup_commands import normalize_startup_commands
 
