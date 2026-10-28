@@ -45,7 +45,7 @@
         <ul class="benefits">
           <li><span class="icon" aria-hidden="true">verified_user</span><div><h3>Your data stays with you</h3><p>Accounts, keys and settings stay on your instance.</p></div></li>
           <li><span class="icon" aria-hidden="true">computer</span><div><h3>Local browser assets</h3><p>Browser libraries ship with WebSSH.</p></div></li>
-          <li><span class="icon" aria-hidden="true">code</span><div><h3>MIT licensed</h3><p>Open source. Free to use and modify.</p></div></li>
+          <li><span class="icon" aria-hidden="true">code</span><div><h3>Apache 2.0 licensed</h3><p>Open source. Free to use and modify.</p></div></li>
         </ul>
       </div>
       <div class="quick-start" id="quick-start">
@@ -89,13 +89,13 @@
     </section>
     <section class="content-section shell control-section" aria-labelledby="control-title">
       <div><p class="eyebrow">Control starts with clear boundaries</p><h2 id="control-title">Your infrastructure.<br>Your responsibility.</h2><p>WebSSH runs on your host and connects to the targets you allow. No hosted WebSSH account or external control plane is required. Browser dependencies ship locally, and the application has no built-in telemetry.</p><a class="text-link" href="security.html">Understand the security model <span aria-hidden="true">→</span></a></div>
-      <dl class="fact-list"><div><dt>License</dt><dd>MIT. Free to use, modify and self-host.</dd></div><div><dt>Deployment</dt><dd>Docker, Docker Compose or a source installation.</dd></div><div><dt>Identity</dt><dd>Local accounts, with optional Passkeys, TOTP, OIDC, GitHub App and LDAP / Active Directory.</dd></div><div><dt>Trust boundary</dt><dd>The WebSSH server handles credentials and session data. Run it on a trusted host and use HTTPS for remote browser access.</dd></div></dl>
+      <dl class="fact-list"><div><dt>License</dt><dd>Apache 2.0. Free to use, modify and self-host.</dd></div><div><dt>Deployment</dt><dd>Docker, Docker Compose or a source installation.</dd></div><div><dt>Identity</dt><dd>Local accounts, with optional Passkeys, TOTP, OIDC, GitHub App and LDAP / Active Directory.</dd></div><div><dt>Trust boundary</dt><dd>The WebSSH server handles credentials and session data. Run it on a trusted host and use HTTPS for remote browser access.</dd></div></dl>
     </section>
     <section class="content-section shell faq-section" aria-labelledby="faq-title">
       <div class="section-heading"><p class="eyebrow">Before your first connection</p><h2 id="faq-title">A few useful answers.</h2></div>
       <div class="faq-list">
-        <details><summary>What is WebSSH?</summary><p>WebSSH is the MIT-licensed project maintained at <a href="https://github.com/bifrost0x/webssh">bifrost0x/webssh</a>: a self-hosted browser workspace for SSH terminals, SFTP files, saved connections and server administration. You install it on your own infrastructure and access that instance in a browser.</p></details>
-        <details><summary>Is WebSSH free? Do I need a cloud account?</summary><p>The software is free under the MIT license. You provide the infrastructure and pay any hosting costs. A hosted WebSSH subscription or account is not required. This website does not host SSH sessions.</p></details>
+        <details><summary>What is WebSSH?</summary><p>WebSSH is the Apache-2.0-licensed project maintained at <a href="https://github.com/bifrost0x/webssh">bifrost0x/webssh</a>: a self-hosted browser workspace for SSH terminals, SFTP files, saved connections and server administration. You install it on your own infrastructure and access that instance in a browser.</p></details>
+        <details><summary>Is WebSSH free? Do I need a cloud account?</summary><p>The software is free under the Apache License 2.0. You provide the infrastructure and pay any hosting costs. A hosted WebSSH subscription or account is not required. This website does not host SSH sessions.</p></details>
         <details><summary>Can I use it from a phone or another computer?</summary><p>Yes. The responsive browser interface includes a mobile terminal workspace. Your device must be able to reach your WebSSH instance. Use a trusted network or VPN, or a properly configured HTTPS deployment for remote access.</p></details>
         <details><summary>Will my shell survive closing the browser?</summary><p>Persistent shells use tmux on the remote server. With tmux available and persistence enabled for the session, you can return to the remote shell after reconnecting. Ordinary SSH sessions do not provide that guarantee, and browser sign-in still expires independently.</p></details>
         <details><summary>Can I expose the quickstart directly to the Internet?</summary><p>The local quickstart is for evaluation. Internet-facing deployments require the production overlay, HTTPS, an exact browser origin, a restricted backend and an administrator created from the trusted host. See the <a href="self-hosting.html#production">production deployment path</a>.</p></details>
