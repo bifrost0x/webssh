@@ -20,7 +20,7 @@
   <a href="https://github.com/bifrost0x/webssh/actions/workflows/github-code-scanning/codeql"><img src="https://github.com/bifrost0x/webssh/actions/workflows/github-code-scanning/codeql/badge.svg" alt="CodeQL"></a>
   <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh"><img src="https://img.shields.io/badge/container-GHCR-2496ED?logo=docker&logoColor=white" alt="GitHub Container Registry"></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white" alt="Python 3.11 or newer">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f" alt="MIT License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-2ea44f" alt="Apache 2.0 License"></a>
   <a href="https://getwebssh.com/code-graph/"><img src="https://img.shields.io/badge/Interactive%20Code--Map-open-6f42c1" alt="Interactive code map"></a>
 </p>
 
@@ -366,4 +366,8 @@ so the security and runtime boundaries can be reviewed before implementation.
 
 ## License
 
-WebSSH is available under the [MIT License](LICENSE).
+WebSSH is available under the [Apache License 2.0](LICENSE).
+
+Earlier MIT distributions retain their original license. The original notice is
+preserved in [LICENSE-MIT-ORIGINAL](LICENSE-MIT-ORIGINAL). Bundled third-party
+components retain their own licenses; see [Licensing](docs/licensing.md).

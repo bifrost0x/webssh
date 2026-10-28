@@ -2,6 +2,7 @@
   "name": "webssh-frontend",
   "version": "0.0.0",
   "private": true,
+  "license": "Apache-2.0",
   "description": "Frontend vendor dependencies for webssh. These packages are copied into static/vendor/ by `npm run vendor` and served as static assets. Node is only needed to update vendored assets, never at runtime.",
   "scripts": {
     "vendor": "node scripts/vendor.js",

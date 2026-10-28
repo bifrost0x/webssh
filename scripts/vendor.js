@@ -18,6 +18,12 @@ const checkOnly = process.argv.includes('--check');
 
 // [ source (relative to node_modules), destination (relative to static/vendor) ]
 const files = [
+  ['@xterm/xterm/LICENSE', 'xterm/LICENSE'],
+  ['@xterm/addon-fit/LICENSE', 'xterm/LICENSE-addon-fit'],
+  ['@xterm/addon-search/LICENSE', 'xterm/LICENSE-addon-search'],
+  ['@highlightjs/cdn-assets/LICENSE', 'highlight/LICENSE'],
+  ['socket.io-client/LICENSE', 'socketio/LICENSE'],
+  ['material-icons/LICENSE', 'material-icons/LICENSE'],
   ['@xterm/xterm/css/xterm.css', 'xterm/xterm.css'],
   ['@xterm/xterm/lib/xterm.js', 'xterm/xterm.js'],
   ['@xterm/addon-fit/lib/addon-fit.js', 'xterm/xterm-addon-fit.js'],
@@ -53,7 +59,9 @@ function expectedContents(srcPath, dest) {
 function contentsMatch(srcPath, destPath, dest) {
   const source = expectedContents(srcPath, dest);
   const destination = fs.readFileSync(destPath);
-  if (!/\.(?:css|js)$/.test(dest)) return source.equals(destination);
+  if (!/\.(?:css|js)$/.test(dest) && !/(?:^|\/)LICENSE(?:-|$)/.test(dest)) {
+    return source.equals(destination);
+  }
   const normalize = value => value.toString('utf8').replace(/\r\n/g, '\n');
   return normalize(source) === normalize(destination);
 }

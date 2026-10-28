@@ -26,7 +26,7 @@ def main():
         name.startswith(('app/', 'templates/', 'static/', 'deployment/'))
         and (not name.endswith('.md') or name.startswith('static/vendor/terminal-fonts/'))
         and not (name.startswith('static/images/theme-backgrounds/') and name.endswith('.png'))
-    )] + ['requirements.txt', 'config.py', 'start.py', 'entrypoint.sh', 'LICENSE']
+    )] + ['requirements.txt', 'config.py', 'start.py', 'entrypoint.sh', 'LICENSE', 'LICENSE-MIT-ORIGINAL', 'NOTICE']
     if args.container:
         manifest = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in required}
         probe = '''import hashlib, json, sys

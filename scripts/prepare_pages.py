@@ -239,6 +239,8 @@ def prepare_pages(root: Path, graph_source: Path, output: Path) -> None:
     # A fresh directory prevents files from an older build entering the artifact.
     output.mkdir(parents=True, exist_ok=False)
     shutil.copytree(root / 'site', output, dirs_exist_ok=True)
+    for name in ('LICENSE', 'LICENSE-MIT-ORIGINAL', 'NOTICE'):
+        shutil.copyfile(root / name, output / name)
     add_search_metadata(output)
     # Preserve Graphify's upstream SRI hash even with a Windows CRLF checkout.
     runtime = output / GRAPH_VENDOR
@@ -248,6 +250,7 @@ def prepare_pages(root: Path, graph_source: Path, output: Path) -> None:
         'static/images/webssh-logo.svg': 'webssh-logo.svg',
         'static/images/theme-backgrounds/carbon-glass.webp': 'carbon-glass.webp',
         'static/vendor/material-icons/material-icons.woff2': 'material-icons.woff2',
+        'static/vendor/material-icons/LICENSE': 'material-icons-LICENSE',
     }
     for source, target in resources.items():
         shutil.copyfile(root / source, output / 'assets' / target)
