@@ -235,4 +235,4 @@ Reach out via issues or directly at dwight@scranton.de
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+Contributions submitted after the Apache-2.0 transition are intended to be licensed under Apache License 2.0, subject to the contributor having the necessary rights. Earlier contributions remain subject to their applicable original licensing terms unless separately authorized.
