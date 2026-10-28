@@ -8,12 +8,12 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = {
-    "README.md": [r"Apache License 2\\.0", r"license-Apache--2\\.0"],
-    "CONTRIBUTING.md": [r"Apache License 2\\.0"],
-    "site/index.html": [r"Apache License 2\\.0", r"Apache 2\\.0 licensed"],
-    "site/security.html": [r"Apache License 2\\.0"],
-    "site/impressum.html": [r"Apache License 2\\.0"],
-    "Dockerfile": [r"org\\.opencontainers\\.image\\.licenses=Apache-2\\.0", r"COPY config\\.py start\\.py LICENSE LICENSE-MIT-ORIGINAL NOTICE /app/"],
+    "README.md": [r"Apache License 2\.0", r"license-Apache--2\.0"],
+    "CONTRIBUTING.md": [r"Apache License 2\.0"],
+    "site/index.html": [r"Apache License 2\.0", r"Apache 2\.0 licensed"],
+    "site/security.html": [r"Apache License 2\.0"],
+    "site/impressum.html": [r"Apache License 2\.0"],
+    "Dockerfile": [r"org\.opencontainers\.image\.licenses=Apache-2\.0", r"COPY config\.py start\.py LICENSE LICENSE-MIT-ORIGINAL NOTICE /app/"],
 }
 
 
@@ -36,7 +36,7 @@ def main():
     if "MIT License" not in original or "Copyright (c) 2026 H31mdall" not in original:
         errors.append("LICENSE-MIT-ORIGINAL: missing original copyright notice")
     if errors:
-        raise SystemExit("\\n".join(errors))
+        raise SystemExit("\n".join(errors))
     print("First-party Apache-2.0 declarations and retained notices are consistent.")
 
 
