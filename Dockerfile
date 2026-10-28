@@ -23,7 +23,7 @@ ARG VCS_REF=unknown
 
 LABEL org.opencontainers.image.source=https://github.com/bifrost0x/webssh
 LABEL org.opencontainers.image.description="Web SSH Terminal - A modern web-based SSH client with SFTP file manager"
-LABEL org.opencontainers.image.licenses=MIT
+LABEL org.opencontainers.image.licenses=Apache-2.0
 LABEL org.opencontainers.image.revision=$VCS_REF
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
