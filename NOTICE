@@ -1,9 +1,9 @@
 WebSSH
 Copyright (c) 2026 H31mdall
 
+WebSSH is distributed under the Apache License, Version 2.0.
 The original MIT copyright and permission notice is preserved in
-LICENSE-MIT-ORIGINAL. Existing third-party contributions retain applicable
-original license terms unless separately relicensed by their rights holders.
+LICENSE-MIT-ORIGINAL for material originally distributed under MIT.
 
 Bundled third-party components, including terminal fonts and vis-network,
 remain under their respective licenses in their vendor directories.

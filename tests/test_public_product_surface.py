@@ -57,6 +57,17 @@ def test_pages_workflow_publishes_product_root_and_code_graph_subpath():
     assert 'python scripts/prepare_pages.py' in PAGES_WORKFLOW.read_text(encoding='utf-8')
 
 
+def test_packaged_site_preserves_project_and_font_license_notices(built_site):
+    for name in ('LICENSE', 'LICENSE-MIT-ORIGINAL', 'NOTICE'):
+        assert (built_site / name).read_bytes() == (ROOT / name).read_bytes()
+    assert (built_site / 'assets/material-icons-LICENSE').read_bytes() == (
+        ROOT / 'static/vendor/material-icons/LICENSE'
+    ).read_bytes()
+    for name in ('LICENSE-APACHE-2.0', 'LICENSE-MIT'):
+        relative = Path('vendor/vis-network-9.1.6') / name
+        assert (built_site / relative).read_bytes() == (ROOT / 'site' / relative).read_bytes()
+
+
 def test_code_graph_excludes_vendored_runtime_dependencies():
     patterns = set((ROOT / '.graphifyignore').read_text(encoding='utf-8').splitlines())
     assert '/static/vendor/' in patterns

@@ -367,3 +367,7 @@ so the security and runtime boundaries can be reviewed before implementation.
 ## License
 
 WebSSH is available under the [Apache License 2.0](LICENSE).
+
+Earlier MIT distributions retain their original license. The original notice is
+preserved in [LICENSE-MIT-ORIGINAL](LICENSE-MIT-ORIGINAL). Bundled third-party
+components retain their own licenses; see [Licensing](docs/licensing.md).
