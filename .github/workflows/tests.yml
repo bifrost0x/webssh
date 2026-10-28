@@ -66,7 +66,9 @@ jobs:
         env:
           CI_FORCE_FULL: ${{ inputs.expected_sha != '' }}
         run: python scripts/ci_change_scope.py
-      - name: Verify first-party license declarations\n        run: python scripts/check_license_consistency.py\n      - name: Validate documentation contracts
+      - name: Verify first-party license declarations
+        run: python scripts/check_license_consistency.py
+      - name: Validate documentation contracts
         run: python -m unittest discover -s tests -p test_documentation_surface.py -v
 
   dependency-locks:
