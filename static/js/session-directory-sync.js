@@ -110,10 +110,12 @@
         if (!state || state.replayDepth) return false;
         if (directory?.tmux === true) {
             if (directory.bracketed_paste === undefined) {
-                // Legacy tmux cannot report its pane's prompt mode. Preserve
-                // the live-prompt guard; never infer manual completion here.
-                return Boolean(directory.shell_ready && !state.dirty
-                    && state.terminal.modes.bracketedPasteMode);
+                // Legacy tmux coalesces prompt-mode changes too. Use its live
+                // outer mode together with a fresh foreground-shell probe and
+                // output after submission, just as for a reported pane mode.
+                return Boolean(directory.shell_ready
+                    && state.terminal.modes.bracketedPasteMode
+                    && (!state.dirty || (state.submitted && state.submitOutput)));
             }
             return Boolean(directory.shell_ready && directory.bracketed_paste === true
                 && (!state.dirty || (state.submitted && state.submitOutput)));

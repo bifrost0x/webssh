@@ -366,6 +366,42 @@ test('ordinary shells wait for a live prompt after a synchronized directory chan
     }
 });
 
+test('legacy tmux recovers after submitted input without weakening prompt guards', () => {
+    let mode, line;
+    const terminal = {
+        parser: {registerCsiHandler(_id, handler) {mode = handler;}},
+        onData() {}, onLineFeed(handler) {line = handler;},
+        buffer: {active: {type: 'alternate'}}, modes: {bracketedPasteMode: true},
+    };
+    const pane = {tmux: true, shell_ready: true};
+    const tracked = sync.trackTerminal('legacy', terminal);
+    try {
+        assert.equal(sync.canSend('legacy', pane), false);
+        mode([2004]);
+        sync.noteInput('legacy', 'cd /tmp');
+        line();
+        assert.equal(sync.canSend('legacy', pane), false);
+        sync.noteInput('legacy', '\r');
+        assert.equal(sync.canSend('legacy', pane), false);
+        line();
+        assert.equal(sync.canSend('legacy', pane), true);
+        assert.equal(sync.canSend('legacy', {...pane, shell_ready: false}), false);
+        terminal.modes.bracketedPasteMode = false;
+        assert.equal(sync.canSend('legacy', pane), false);
+        terminal.modes.bracketedPasteMode = true;
+        sync.noteInput('legacy', 'unfinished');
+        assert.equal(sync.canSend('legacy', pane), false);
+        sync.noteInput('legacy', '\r'); line();
+        sync.beginReplay('legacy'); sync.endReplay('legacy');
+        assert.equal(sync.canSend('legacy', pane), false);
+        sync.noteInput('legacy', '\x1b[200~paste');
+        sync.noteInput('legacy', '\r'); line();
+        assert.equal(sync.canSend('legacy', pane), false);
+        sync.noteInput('legacy', '\x1b[201~');
+        assert.equal(sync.canSend('legacy', pane), false);
+    } finally { tracked.dispose(); }
+});
+
 for (const submit of ['\r', '\n', '\x03']) {
 test(`tmux accepts a manual submission ${JSON.stringify(submit)} only after live output and a ready pane`, () => {
     let mode, line;
@@ -387,7 +423,7 @@ test(`tmux accepts a manual submission ${JSON.stringify(submit)} only after live
         line();
         assert.equal(sync.canSend('manual', {...pane, shell_ready: false}), false);
         assert.equal(sync.canSend('manual', {...pane, bracketed_paste: false}), false);
-        assert.equal(sync.canSend('manual', {...pane, bracketed_paste: undefined}), false);
+        assert.equal(sync.canSend('manual', {...pane, bracketed_paste: undefined}), true);
         assert.equal(sync.canSend('manual', {...pane, tmux: false}), false);
         assert.equal(sync.canSend('manual', pane), true); // No new outer DEC 2004.
         sync.noteInput('manual', 'next unfinished');
@@ -406,7 +442,8 @@ test(`tmux accepts a manual submission ${JSON.stringify(submit)} only after live
 });
 }
 
-test('tmux submission output invalidates navigation probes started before it', () => {
+for (const bracketed_paste of [undefined, true]) {
+test(`tmux (${bracketed_paste}) submission output invalidates navigation probes started before it`, () => {
     let mode, line;
     const terminal = {
         parser: {registerCsiHandler(_id, handler) {mode = handler;}},
@@ -414,7 +451,7 @@ test('tmux submission output invalidates navigation probes started before it', (
         buffer: {active: {type: 'alternate'}}, modes: {bracketedPasteMode: true},
     };
     const tracked = sync.trackTerminal('a', terminal);
-    const pane = {tmux: true, bracketed_paste: true};
+    const pane = {tmux: true, bracketed_paste};
     const h = harness({canSend: sync.canSend, inputVersion: undefined});
     try {
         mode([2004]); h.reply(0, '/tmp', true, 'bash', pane);
@@ -429,6 +466,7 @@ test('tmux submission output invalidates navigation probes started before it', (
         assert.deepEqual(h.sent, [['a', "cd -- '/wanted'\r"]]);
     } finally { h.controller.dispose(); tracked.dispose(); }
 });
+}
 
 for (const bracketed_paste of [undefined, true]) {
 for (const interruption of ['typing', 'replay']) {
