@@ -162,6 +162,10 @@ def test_tailscale_ssh_requires_an_explicit_exact_host_and_port(monkeypatch):
 def test_linux_route_lookup_uses_policy_routing_result(monkeypatch):
     from app import tailscale_ssh
 
+    # The socket is simulated, including constants absent on non-Linux hosts.
+    monkeypatch.setattr(tailscale_ssh.socket, 'AF_NETLINK', 16, raising=False)
+    monkeypatch.setattr(tailscale_ssh.socket, 'NETLINK_ROUTE', 0, raising=False)
+
     destination = ipaddress.ip_address('100.64.1.2')
     sent = []
     route_attributes = tailscale_ssh._netlink_attribute(
@@ -209,6 +213,20 @@ def test_linux_route_lookup_uses_policy_routing_result(monkeypatch):
         socket_factory=lambda *_args: FakeRouteSocket(),
     ) == 'tailscale0'
     assert destination.packed in sent[0]
+
+
+def test_route_lookup_without_netlink_support_fails_closed(monkeypatch):
+    from app import tailscale_ssh
+
+    monkeypatch.delattr(tailscale_ssh.socket, 'AF_NETLINK', raising=False)
+    monkeypatch.delattr(tailscale_ssh.socket, 'NETLINK_ROUTE', raising=False)
+
+    def unexpected_socket(*args):
+        pytest.fail('No route socket may be opened without Netlink support')
+
+    assert tailscale_ssh._route_interface_for_ip(
+        '100.64.1.2', socket_factory=unexpected_socket,
+    ) is None
 
 
 def test_tailscale_ssh_fails_closed_for_invalid_configured_target(monkeypatch):

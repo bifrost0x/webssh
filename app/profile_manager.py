@@ -439,7 +439,7 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
             dependent_store = {
                 'command': 'commands',
                 'command_set': 'command-sets',
-            }.get(mode)
+            }.get(mode) if isinstance(mode, str) else None
             if dependent_store:
                 with storage_lock(f'{dependent_store}:{user_id}'):
                     validated, error = _validate_profile_payload(

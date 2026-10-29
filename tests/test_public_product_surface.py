@@ -58,7 +58,7 @@ def test_pages_workflow_publishes_product_root_and_code_graph_subpath():
 
 
 def test_packaged_site_preserves_project_and_font_license_notices(built_site):
-    for name in ('LICENSE', 'LICENSE-MIT-ORIGINAL', 'NOTICE'):
+    for name in ('LICENSE', 'THIRD-PARTY-NOTICES', 'NOTICE'):
         assert (built_site / name).read_bytes() == (ROOT / name).read_bytes()
     assert (built_site / 'assets/material-icons-LICENSE').read_bytes() == (
         ROOT / 'static/vendor/material-icons/LICENSE'

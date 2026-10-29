@@ -613,7 +613,7 @@ _KNOWN_PLACEHOLDERS = {'<YOUR-SECRET-KEY>', 'changeme', 'secret', 'your-secret-k
 if not _secret_key or _secret_key.strip().lower() in _KNOWN_PLACEHOLDERS:
     if DEBUG:
         _secret_key = secrets.token_hex(32)
-        print("⚠️  DEBUG MODE: Using auto-generated SECRET_KEY (not for production!)")
+        print("WARNING: DEBUG MODE: Using auto-generated SECRET_KEY (not for production!)")
     else:
         raise RuntimeError(
             "SECURITY ERROR: SECRET_KEY environment variable is required in production. "
@@ -710,9 +710,9 @@ _cors_origins = os.environ.get('CORS_ORIGINS', '')
 if _cors_origins == '*':
     if DEBUG or _allow_cors_wildcard:
         if _allow_cors_wildcard and not DEBUG:
-            print("⚠️  CORS wildcard (*) enabled via ALLOW_CORS_WILDCARD - use only in trusted networks!")
+            print("WARNING: CORS wildcard (*) enabled via ALLOW_CORS_WILDCARD - use only in trusted networks!")
         elif DEBUG:
-            print("⚠️  DEBUG MODE: CORS set to wildcard (*) - not for production!")
+            print("WARNING: DEBUG MODE: CORS set to wildcard (*) - not for production!")
         CORS_ORIGINS = '*'
     else:
         raise RuntimeError(
@@ -725,7 +725,7 @@ elif _cors_origins and _cors_origins.strip().strip('<>') not in ('YOUR-DOMAIN', 
 else:
     CORS_ORIGINS = ['http://localhost:5000', 'http://127.0.0.1:5000']
     if not DEBUG:
-        print("ℹ️  CORS_ORIGINS not set, using localhost only. Set CORS_ORIGINS for other origins.")
+        print("INFO: CORS_ORIGINS not set, using localhost only. Set CORS_ORIGINS for other origins.")
 
 RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True') == 'True'
 # Backend for rate-limit counters.

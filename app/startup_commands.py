@@ -33,6 +33,11 @@ def normalize_startup_commands(value):
     if '\x00' in value:
         return '', 'Startup commands must not contain NUL bytes'
 
+    try:
+        value.encode('utf-8')
+    except UnicodeEncodeError:
+        return '', 'Startup commands must be valid UTF-8'
+
     value = value.replace('\r\n', '\n').replace('\r', '\n')
     if len(value) > MAX_STARTUP_COMMANDS_LENGTH:
         return '', 'Startup commands must not exceed 4096 characters'

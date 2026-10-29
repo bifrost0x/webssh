@@ -24,7 +24,7 @@ class LicenseConsistencyTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        names = [*CHECK.FILES, 'LICENSE', 'LICENSE-MIT-ORIGINAL', 'NOTICE',
+        names = [*CHECK.FILES, 'LICENSE', 'THIRD-PARTY-NOTICES', 'NOTICE',
                  'package.json', 'package-lock.json']
         for name in dict.fromkeys(names):
             source = ROOT / name
@@ -40,7 +40,7 @@ class LicenseConsistencyTests(unittest.TestCase):
         self.run_check()
 
     def test_missing_legal_file_reports_failure_without_traceback(self):
-        for name in ('LICENSE', 'LICENSE-MIT-ORIGINAL', 'NOTICE'):
+        for name in ('LICENSE', 'THIRD-PARTY-NOTICES', 'NOTICE'):
             with self.subTest(name=name):
                 source = (self.root / name).read_bytes()
                 (self.root / name).unlink()
@@ -51,10 +51,10 @@ class LicenseConsistencyTests(unittest.TestCase):
                     (self.root / name).write_bytes(source)
 
     def test_truncated_mit_permission_notice_is_rejected(self):
-        (self.root / 'LICENSE-MIT-ORIGINAL').write_text(
-            'MIT License\nCopyright (c) 2026 H31mdall\n', encoding='utf-8',
+        (self.root / 'THIRD-PARTY-NOTICES').write_text(
+            'MIT License\nCopyright (c) 2026 bifrost0x\n', encoding='utf-8',
         )
-        with self.assertRaisesRegex(SystemExit, 'LICENSE-MIT-ORIGINAL'):
+        with self.assertRaisesRegex(SystemExit, 'THIRD-PARTY-NOTICES'):
             self.run_check()
 
     def test_truncated_apache_terms_are_rejected(self):
