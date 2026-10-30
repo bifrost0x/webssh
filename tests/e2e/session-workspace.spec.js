@@ -459,6 +459,14 @@ test(`tmux folder double-clicks synchronize repeatedly (${legacyTmux ? 'legacy' 
     });
     await expect(page.locator('#sessionDirectorySyncStatus')).toContainText('ready');
     await expect(page.locator('#sessionDirectorySyncInput')).toBeChecked();
+    for (const viewport of [{width: 1920, height: 1080}, {width: 1280, height: 800}]) {
+        await page.setViewportSize(viewport);
+        const help = await page.locator('#sessionDirectorySyncHelp').boundingBox();
+        const panel = await page.locator('#sessionFilesPanel').boundingBox();
+        const list = await page.locator('#fmLeftList').boundingBox();
+        expect(help.height).toBeLessThan(70);
+        expect(list.height).toBeGreaterThan(panel.height * 0.5);
+    }
     const folder = page.locator('#fmLeftList .fm-file-item').filter({hasText: 'releases'});
     await folder.dblclick();
     await expect(page.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current/releases');
