@@ -272,3 +272,20 @@ def test_disconnected_session_does_not_open_channel(monkeypatch):
     session['connected'] = False
     assert directory.collect_directory('a') == (None, 'disconnected')
     assert directory.collect_directory('missing') == (None, 'disconnected')
+
+
+@pytest.mark.parametrize('phase', ['p', 'c', 'b'])
+def test_parse_prompt_integration(phase):
+    result = directory.parse_directory(f'webssh-directory\0{42}\0{1}\0bash\0/tmp\0\0{42}:7:{phase}\0'.encode())
+    assert result['prompt'] == {'generation': 7, 'phase': phase}
+    assert 'bracketed_paste' not in result
+
+
+@pytest.mark.parametrize('marker', ['43:7:p', '42:0:p', '42:7:x', '42:99999999999999999:p', 'invalid'])
+def test_untrusted_prompt_marker_cannot_confirm_readiness(marker):
+    payload = f'webssh-directory\0{42}\0{1}\0bash\0/tmp\0\0{marker}\0'.encode()
+    if marker == '43:7:p':
+        assert 'prompt' not in directory.parse_directory(payload)
+    else:
+        with pytest.raises(ValueError):
+            directory.parse_directory(payload)

@@ -320,6 +320,15 @@
                                     <span data-i18n="workspace.directorySync.label">Synchronize folders with terminal</span>
                                 </label>
                             </div>
+                            <div id="sessionDirectorySyncHelp" class="session-files-status" hidden>
+                                <span id="sessionDirectorySyncStatus" role="status" aria-live="polite"></span>
+                                <details id="sessionDirectorySyncSetup">
+                                    <summary data-i18n="workspace.directorySync.setup">Set up Bash prompt detection</summary>
+                                    <p data-i18n="workspace.directorySync.setupHint">Run the copied block yourself at an empty Bash prompt in this pane. No configuration files are changed. Wait for detection, then press Enter. The helper stays until this shell exits, even with sync off.</p>
+                                    <button type="button" id="sessionDirectorySyncCopy" data-source="{{ static_asset_url(filename='shell/tmux-sync.bash') }}" data-i18n="workspace.directorySync.copy">Copy activation command</button>
+                                    <textarea id="sessionDirectorySyncCommand" readonly rows="6" aria-label="Bash activation command" hidden></textarea>
+                                </details>
+                            </div>
                             <div class="session-files-mount" id="sessionFilesMount"></div>
                             <div class="session-files-status" id="sessionFilesStatus" role="status" aria-live="polite" hidden></div>
                         </div>

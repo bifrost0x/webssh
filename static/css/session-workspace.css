@@ -1769,3 +1769,8 @@ body.session-diagnostics-open {
 .profile-exchange-modal .exchange-warnings summary { cursor: pointer; }
 .profile-exchange-modal .exchange-warnings ul { max-height: 180px; overflow-y: auto; padding-left: 24px; }
 .host-context-modal #hostContextStatus { min-height: 1.5em; }
+
+
+#sessionDirectorySyncHelp { padding: 8px 12px; overflow-wrap: anywhere; }
+#sessionDirectorySyncHelp summary { cursor: pointer; margin-top: 6px; }
+#sessionDirectorySyncCommand { width: 100%; margin-top: 8px; resize: vertical; font-family: monospace; }

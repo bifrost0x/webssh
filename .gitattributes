@@ -5,3 +5,4 @@
 # (core.autocrlf=true) never rewrites the shebang to "#!/bin/bash\r", which
 # makes the container fail with "no such file or directory".
 *.sh text eol=lf
+*.bash text eol=lf
