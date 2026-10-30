@@ -255,3 +255,22 @@ independent.
 - [SFTP File Workspace and Transfers](SFTP-File-Workspace-and-Transfers)
 - [Profiles, Jump Hosts and Commands](Profiles-Jump-Hosts-and-Commands)
 - [Architecture and Runtime Lifecycle](Architecture-and-Runtime-Lifecycle)
+
+
+## Folder synchronization in an existing tmux shell
+
+The existing **Synchronize folders with terminal** checkbox controls folder synchronization. No second toggle is required. Terminal-to-Files following remains available without shell integration; sending a directory change into tmux requires explicit Bash prompt detection.
+
+1. Enable the checkbox and open **Set up Bash prompt detection** beneath it.
+2. Copy the activation block. Finish or cancel any pending command, then paste and execute the complete block yourself at an empty Bash prompt in the intended pane. WebSSH never sends the setup block automatically.
+3. Wait until WebSSH detects the helper, then press Enter at the empty prompt. The status changes to **Folder sync ready**.
+
+The helper supports Bash 4.4 or newer with prompt expansion enabled and compatible tmux format arithmetic (tested with Bash 5.2 and tmux 3.4). It appends invisible hooks to the current shell's PS0, PS1 and PS2, preserving the original strings and leaving PROMPT_COMMAND unchanged. It writes only private options on that pane. It does not edit startup files, enable passthrough, restart shells, or change global/window options. Protected/exported prompt variables and repeated activation are rejected without replacing the prompt hooks.
+
+Turning the checkbox off immediately stops synchronization. The helper remains in that shell until it exits, including across tmux detach/reattach. Reconnection requires a fresh empty Enter after detection; transcript output cannot unlock synchronization. Other shells remain usable, but automatic Files-to-terminal navigation is unavailable without this integration.
+
+Open quotes, continuations, here-documents, running commands, copy mode and unfinished input keep navigation blocked. After input consumed by an interactive program (for example a normally completed `read`), multiline paste, or uncertain prompt counts, synchronization may remain paused. Finish or cancel the input, switch the existing checkbox off and on, wait for detection, and press Enter at the empty prompt. This conservative recovery avoids inserting commands into unfinished input. Prompt frameworks that later replace the hook-bearing prompt variables can also leave synchronization paused; WebSSH does not overwrite their configuration.
+
+### Repeating the real tmux checks
+
+Run `node tests/integration/tmux_sync.cjs` after installing the project Node dependencies and Playwright Chromium. On Linux it uses Python 3 and tmux; on Windows it uses Ubuntu under WSL. The test creates its own tmux server and synthetic shell configuration, checks actual xterm/controller behavior, and removes only those test resources. It verifies continuation blocking, repeated folder changes, Unicode/quoted paths, checkbox recovery, prompt/exit-status preservation, configuration hashes, pane identity and detach/reattach.

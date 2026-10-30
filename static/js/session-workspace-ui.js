@@ -36,6 +36,26 @@
         let inventoryConnected = false;
         let transportReady = socket.connected !== false;
         let fitScheduled = false;
+        const syncHelp = documentRef.getElementById('sessionDirectorySyncHelp');
+        const syncStatus = documentRef.getElementById('sessionDirectorySyncStatus');
+        const syncSetup = documentRef.getElementById('sessionDirectorySyncSetup');
+        const syncCopy = documentRef.getElementById('sessionDirectorySyncCopy');
+        const syncCommand = documentRef.getElementById('sessionDirectorySyncCommand');
+        syncCopy?.addEventListener('click', async () => {
+            try {
+                const response = await fetch(syncCopy.dataset.source, {credentials: 'same-origin'});
+                if (!response.ok) throw new Error('Unavailable');
+                const command = await response.text();
+                syncCommand.value = command;
+                syncCommand.hidden = false;
+                // Keep a selectable copy when clipboard access is unavailable.
+                syncCommand.focus(); syncCommand.select();
+                await root.navigator?.clipboard?.writeText(command);
+            } catch {
+                root.showNotification?.(root.i18n?.t('workspace.directorySync.copyFailed')
+                    || 'Could not copy the command. Select the displayed text or try again.', 'info');
+            }
+        });
         const directorySync = root.SessionDirectorySync?.createController({
             socket,
             manager: fileManager,
@@ -45,6 +65,18 @@
             panel: elements.filesPanel,
             sendInput: (id, value) => root.SSHInput.send(id, value),
             hasPendingInput: id => root.SSHInput?.hasPending(id),
+            onDirectory: directory => {
+                const id = sessionManager.getWorkspaceSession?.() || sessionManager.getActiveSession();
+                const enabled = documentRef.getElementById('sessionDirectorySyncInput')?.checked;
+                if (syncHelp) syncHelp.hidden = !enabled || directory?.tmux !== true;
+                if (syncSetup) syncSetup.hidden = directory?.shell !== 'bash' || Boolean(directory?.prompt);
+                if (syncStatus) {
+                    const key = directory?.prompt
+                        ? (root.SessionDirectorySync.canSend(id, directory) ? 'ready' : 'waiting')
+                        : (directory?.shell === 'bash' ? 'setupRequired' : 'unsupported');
+                    syncStatus.textContent = root.i18n?.t(`workspace.directorySync.${key}`) || key;
+                }
+            },
             onNavigationBlocked: reason => {
                 const messages = {
                     prompt: ['workspace.directorySync.prompt', 'Folder sync paused: an empty terminal prompt could not be confirmed. Finish your input, or turn off sync to browse Files independently.'],

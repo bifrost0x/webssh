@@ -35,10 +35,10 @@
         // Return false so xterm still handles the mode itself. An alternate
         // screen and the remote foreground-process check are separate guards.
         const promptDisposable = terminal.parser.registerCsiHandler({ prefix: '?', final: 'h' }, params => {
-            if (params.includes(2004) && !state.replayDepth) state.dirty = false;
+            if (params.includes(2004) && !state.replayDepth && !state.promptShell) state.dirty = false;
             return false;
         });
-        const inputDisposable = terminal.onData(data => noteInput(sessionId, data));
+        const inputDisposable = terminal.onData(data => noteInput(sessionId, data, true));
         // tmux may combine readline's disable/enable into no outer mode change.
         // A submitted line must produce live output before a fresh pane probe
         // may acknowledge it. Status redraws alone do not count as a new line.
@@ -68,7 +68,7 @@
         };
     }
 
-    function noteInput(sessionId, data) {
+    function noteInput(sessionId, data, localOnly = false) {
         if (!data) return;
         // xterm emits terminal replies through onData too. tmux queries its
         // foreground/background colours after enabling prompt mode at startup.
@@ -80,9 +80,24 @@
         if (state) {
             state.dirty = true;
             state.version += 1;
+            // onData also fires for input sent through SSHInput. Only the
+            // shared sender counts submissions; local events still fence probes.
+            if (localOnly) return;
+            if ((state.pasting || data.includes('\x1b[200~')) && /[\r\n]/.test(data)) {
+                // Fragmented multiline pastes do not have one prompt per
+                // transport chunk. Re-arm explicitly instead of undercounting.
+                state.promptUncertain = true;
+            }
             if (data.includes('\x1b[200~')) state.pasting = true;
             if (data.includes('\x1b[201~')) state.pasting = false;
-            state.submitted = !state.pasting && ['\r', '\n', '\x03'].includes(data);
+            const submissions = state.pasting ? 0 : (data.match(/\r\n|[\r\n\x03]/g) || []).length;
+            if (state.promptShell) {
+                // An observed running command already accounts for its next
+                // primary prompt. Ctrl+C cancels that command, not a new line.
+                state.expectedPrompt += data === '\x03' && state.interruptPending ? 0 : submissions;
+            }
+            state.interruptPending = false;
+            state.submitted = !state.pasting && /[\r\n\x03]$/.test(data);
             state.submitOutput = false;
         }
     }
@@ -91,6 +106,7 @@
         const state = inputs.get(sessionId);
         if (!state) return;
         state.replayDepth = (state.replayDepth || 0) + 1;
+        state.promptShell = null;
         state.dirty = true;
         state.version += 1;
         state.submitted = state.submitOutput = false;
@@ -105,20 +121,43 @@
         state.dirty = true;
     }
 
+    function observePrompt(sessionId, directory) {
+        const state = inputs.get(sessionId);
+        const prompt = directory?.prompt;
+        if (!state || state.replayDepth || !prompt || !directory.shell_id) return;
+        if (state.promptShell !== directory.shell_id) {
+            state.integration = true;
+            state.promptUncertain = false;
+            state.promptShell = directory.shell_id;
+            state.expectedPrompt = prompt.generation;
+            state.dirty = true;
+            state.submitted = state.submitOutput = false;
+            return;
+        }
+        state.interruptPending = prompt.phase === 'b' && state.submitted
+            && state.expectedPrompt === prompt.generation + 1;
+        if (prompt.phase === 'p' && directory.shell_ready && !state.promptUncertain && state.submitted
+                && state.submitOutput && prompt.generation >= state.expectedPrompt) {
+            state.dirty = false;
+            state.expectedPrompt = prompt.generation;
+            state.submitted = state.submitOutput = false;
+        }
+    }
+
     function canSend(sessionId, directory = null) {
         const state = inputs.get(sessionId);
         if (!state || state.replayDepth) return false;
         if (directory?.tmux === true) {
-            if (directory.bracketed_paste === undefined) {
-                // Legacy tmux coalesces prompt-mode changes too. Use its live
-                // outer mode together with a fresh foreground-shell probe and
-                // output after submission, just as for a reported pane mode.
-                return Boolean(directory.shell_ready
-                    && state.terminal.modes.bracketedPasteMode
-                    && (!state.dirty || (state.submitted && state.submitOutput)));
+            if (state.integration) {
+                return Boolean(directory.shell_ready && !state.dirty && !state.promptUncertain
+                    && directory.shell_id === state.promptShell
+                    && directory.prompt?.phase === 'p'
+                    && directory.prompt.generation >= state.expectedPrompt
+                    && directory.bracketed_paste !== false);
             }
-            return Boolean(directory.shell_ready && directory.bracketed_paste === true
-                && (!state.dirty || (state.submitted && state.submitOutput)));
+            // DEC 2004 also occurs at continuation prompts. A tmux session
+            // needs the explicitly installed primary-prompt integration.
+            return false;
         }
         return Boolean(state && !state.dirty
             && state.terminal.buffer.active.type === 'normal'
@@ -129,7 +168,7 @@
         const state = inputs.get(sessionId);
         // tmux can coalesce readline's disable/enable pair. A confirmed cwd
         // change from our own cd can acknowledge that command, never user input.
-        if (state && state.version === version && !state.replayDepth) state.dirty = false;
+        if (state && !state.promptShell && state.version === version && !state.replayDepth) state.dirty = false;
     }
 
     function validPath(path) {
@@ -203,11 +242,18 @@
                 input.disabled = !sessionId;
             }
             if (panel?.dataset) panel.dataset.directorySyncEnabled = String(enabled);
+            options.onDirectory?.(directory);
         }
 
         function setEnabled(value) {
             if (!sessionId) return false;
             sessionOverrides.set(sessionId, Boolean(value));
+            const state = inputs.get(sessionId);
+            if (value && state?.integration) {
+                state.promptShell = null;
+                state.dirty = true;
+                state.submitted = state.submitOutput = false;
+            }
             cancel();
             directory = null;
             render();
@@ -265,6 +311,8 @@
                     return;
                 }
                 directory = next;
+                if (token.version === inputVersion(sessionId)) observePrompt(sessionId, next);
+                options.onDirectory?.(next);
                 if (targetPath !== null) {
                     if (!next.shell_ready || !inputReady(sessionId, next)
                             || token.version !== inputVersion(sessionId)
@@ -416,6 +464,7 @@
         endReplay,
         noteInput,
         canSend,
+        observePrompt,
         cdCommand,
         validPath,
         parseOsc7,

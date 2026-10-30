@@ -364,6 +364,15 @@ jobs:
       - name: Install locked Playwright Chromium
         run: node scripts/install-ci-chromium.js
 
+      - name: Verify directory sync with real tmux
+        if: matrix.group == 1
+        run: |
+          if ! command -v tmux >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y tmux
+          fi
+          node tests/integration/tmux_sync.cjs
+
       - name: Run required local browser gate
         run: node scripts/run-e2e-ci-parallel.js --group=${{ matrix.group }}/8 --lanes=4
 
