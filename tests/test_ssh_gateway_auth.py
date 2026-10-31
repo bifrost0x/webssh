@@ -7,10 +7,14 @@ class Transport:
     def __init__(self):
         self.authenticated = False
         self.calls = []
+        self.none_requests = 0
     def close(self):
         self.authenticated = False
     def is_authenticated(self):
         return self.authenticated
+    def auth_none(self, username):
+        self.none_requests += 1
+        raise paramiko.BadAuthenticationType('Methods available', ['password'])
     def auth_password(self, username, password, fallback=True):
         self.calls.append(("password", password, fallback))
         raise paramiko.BadAuthenticationType("More factors", ["keyboard-interactive"])
@@ -26,6 +30,7 @@ def test_password_never_replayed_into_otp():
     strategy = GatewayAuthStrategy("u:t", password="initial-secret", interact=lambda *args: ["123456"])
     strategy.authenticate(transport)
     assert transport.calls == [("password", "initial-secret", False), ("interactive",)]
+    assert transport.none_requests == 0
 
 
 def test_empty_password_starts_interactive():
@@ -161,3 +166,64 @@ def test_immediate_auth_reply_is_not_lost(response):
     transport = ImmediateTransport()
     handler = GatewayTransport.get_auth_handler(transport)
     assert handler.auth_password('alice', 'secret') == ([] if response == 'success' else ['keyboard-interactive'])
+
+
+def test_ordinary_password_prefers_advertised_interactive_without_password_replay():
+    transport = Transport()
+    def discover(username):
+        raise paramiko.BadAuthenticationType('Methods available', ['password', 'keyboard-interactive'])
+    transport.auth_none = discover
+    GatewayAuthStrategy('alice', password='initial-secret', interact=lambda *args: ['123456']).authenticate(transport)
+    assert transport.calls == [('interactive',)]
+
+
+@pytest.mark.parametrize('failure', ['generic', 'unsupported'])
+def test_ordinary_method_discovery_fails_closed(failure):
+    transport = Transport()
+    def discover(username):
+        if failure == 'generic':
+            raise paramiko.AuthenticationException('Discovery rejected')
+        raise paramiko.BadAuthenticationType('Methods available', ['publickey'])
+    transport.auth_none = discover
+    strategy = GatewayAuthStrategy('alice', password='secret', interact=lambda *args: pytest.fail('unexpected prompt'))
+    with pytest.raises(paramiko.AuthenticationException):
+        strategy.authenticate(transport)
+    assert transport.calls == []
+    assert strategy.password is None and strategy.pkey is None
+
+
+def test_none_authentication_success_needs_no_credential_request():
+    transport = Transport()
+    def discover(username):
+        transport.authenticated = True
+        return []
+    transport.auth_none = discover
+    GatewayAuthStrategy('alice', password='secret', interact=lambda *args: pytest.fail('unexpected prompt')).authenticate(transport)
+    assert transport.calls == []
+
+
+def test_ordinary_wrong_password_does_not_trigger_fallback_prompt():
+    transport = Transport()
+    def reject(*args, **kwargs):
+        raise paramiko.AuthenticationException('Wrong password')
+    transport.auth_password = reject
+    with pytest.raises(paramiko.AuthenticationException, match='Wrong password'):
+        GatewayAuthStrategy('alice', password='wrong', interact=lambda *args: pytest.fail('unexpected fallback')).authenticate(transport)
+    assert transport.none_requests == 1
+
+
+def test_method_discovery_uses_shared_authentication_deadline(monkeypatch):
+    import app.ssh_gateway_auth as auth
+    now = [100.0]
+    monkeypatch.setattr(auth.time, 'monotonic', lambda: now[0])
+    transport = Transport()
+    def discover(username):
+        now[0] += 150
+        raise paramiko.BadAuthenticationType('Methods available', ['password'])
+    def password(*args, **kwargs):
+        assert 0 < transport.auth_timeout <= 30
+        transport.authenticated = True
+        return []
+    transport.auth_none = discover
+    transport.auth_password = password
+    GatewayAuthStrategy('alice', password='secret', interact=lambda *args: pytest.fail('unexpected prompt')).authenticate(transport)

@@ -24,6 +24,12 @@ SSH terminals support server `keyboard-interactive` challenges, including PAM
 verification codes after password or key authentication. Connect normally and
 answer each server prompt in the SSH authentication dialog. Jump-host prompts
 identify the jump host. Reload existing browser tabs after updating WebSSH.
+If the server offers interactive authentication, it can request your password
+again in that dialog before asking for a verification code. Responses always
+come from the dialog; WebSSH does not guess which prompt expects a password.
+
+Pending ordinary terminal connections count toward the existing SSH-session
+limits. File background jobs keep their separate capacity.
 
 Responses are masked, used once, and never saved in connection profiles. Cancel
 closes the pending connection; unanswered prompts time out. This authentication

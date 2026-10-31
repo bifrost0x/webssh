@@ -40,6 +40,24 @@ class GatewayAuthStrategy(AuthStrategy):
         )
         attempted = set()
         try:
+            if self.pkey is None and self.password is not None and ':' not in self.username:
+                # PAM may advertise password while requiring several interactive
+                # answers. Discover methods before sending the saved password.
+                remaining_timeout()
+                try:
+                    methods = transport.auth_none(self.username)
+                except BadAuthenticationType as error:
+                    methods = error.allowed_types
+                remaining_timeout()
+                if transport.is_authenticated():
+                    return
+                if not isinstance(methods, (list, tuple)):
+                    raise AuthenticationException('SSH authentication method discovery failed')
+                method = next((candidate for candidate in (
+                    'keyboard-interactive', 'password'
+                ) if candidate in methods), None)
+                if method is None:
+                    raise AuthenticationException('No supported SSH authentication method')
             for _round in range(8):
                 self.check()
                 if time.monotonic() >= deadline:
