@@ -224,12 +224,19 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             return None, 'Tailscale SSH authorization is invalid'
         tailscale_target_authorized = True
 
-    try:
-        reservation = quota_manager.reserve(
-            QuotaKind.SSH_SESSION, user_id
-        )
-    except QuotaExceeded:
-        return None, "Maximum number of sessions reached"
+    admission_reservation = getattr(gateway_attempt, 'reservation', None)
+    if getattr(admission_reservation, 'kind', None) is QuotaKind.SSH_SESSION:
+        if (admission_reservation.user_id != str(user_id)
+                or admission_reservation.released):
+            return None, "Invalid SSH session reservation"
+        reservation = admission_reservation
+    else:
+        try:
+            reservation = quota_manager.reserve(
+                QuotaKind.SSH_SESSION, user_id
+            )
+        except QuotaExceeded:
+            return None, "Maximum number of sessions reached"
 
     bastion_client = None
     client = None
@@ -564,7 +571,9 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         with sessions_lock:
             if gateway_attempt is not None:
-                gateway_attempt.handoff(client, validated_socket, bastion_client)
+                gateway_attempt.handoff(
+                    client, validated_socket, bastion_client, reservation=reservation,
+                )
             sessions[session_id] = {
                 'client': client,
                 'channel': channel,
@@ -714,7 +723,9 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         log_error("SSH connection unexpected error", host=f"{host}:{port}", error=str(e))
         return None, "Connection failed"
     finally:
-        if not connection_stored:
+        # Admission keeps its quota until the connection worker finishes.
+        if (not connection_stored
+                and getattr(gateway_attempt, 'reservation', None) is not reservation):
             release_reservation(reservation)
 
         # Avoid leaking the bastion connection if the target connect failed.

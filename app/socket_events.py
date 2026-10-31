@@ -1478,6 +1478,9 @@ def handle_ssh_connect(data, current_user=None):
                     gateway_attempt = registry.create(
                         current_user.id, socket_sid, client_request_id,
                         factory=GatewayAttempt, reserve=True, require_gateway=is_gateway,
+                        reservation_kind=(
+                            QuotaKind.BACKGROUND_JOB if is_gateway else QuotaKind.SSH_SESSION
+                        ),
                         emit=lambda event, payload: socketio.emit(event, payload, to=socket_sid),
                     )
             except (ValueError, QuotaExceeded):

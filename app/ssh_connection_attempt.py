@@ -105,12 +105,15 @@ class SSHConnectionAttempt:
         resource.close()
         raise self.cancellation_error()
 
-    def handoff(self, *resources):
+    def handoff(self, *resources, reservation=None):
+        """Transfer live resources and a matching quota to the SSH session."""
         with self.condition:
             self.check()
             for resource in resources:
                 if resource in self.resources:
                     self.resources.remove(resource)
+            if reservation is not None and self.reservation is reservation:
+                self.reservation = None
 
     def _clear_pending(self):
         """Protocol interactions may clear secrets while the condition is held."""
@@ -161,7 +164,7 @@ class SSHAttemptRegistry:
         self.stopping = False
 
     def create(self, user_id, sid, request_id, *, factory=SSHConnectionAttempt,
-               reserve=False, **kwargs):
+               reserve=False, reservation_kind=QuotaKind.BACKGROUND_JOB, **kwargs):
         if request_id is not None and (
                 not isinstance(request_id, str) or not 1 <= len(request_id) <= 128):
             raise ValueError('Invalid connection request ID')
@@ -171,7 +174,7 @@ class SSHAttemptRegistry:
             if self.stopping or key in self.attempts:
                 raise ValueError('Connection request already in progress or unavailable')
             reservation = (
-                quota_manager.reserve(QuotaKind.BACKGROUND_JOB, user_id)
+                quota_manager.reserve(reservation_kind, user_id)
                 if reserve else None
             )
             try:
