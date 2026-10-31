@@ -1461,8 +1461,13 @@ def handle_ssh_connect(data, current_user=None):
             (str(current_user.id), socket_sid, client_request_id)
             if client_request_id else None
         )
-        if ':' in username:
-            if data.get('gateway_interaction') != 1 or not client_request_id:
+        is_gateway = ':' in username
+        interactive_ssh = (
+            auth_type != 'tailscale' and data.get('ssh_interaction') == 1
+            and bool(client_request_id)
+        )
+        if is_gateway or interactive_ssh:
+            if is_gateway and (data.get('gateway_interaction') != 1 or not client_request_id):
                 emit_error('Gateway connections require an updated interactive client')
                 return
             from .ssh_gateway_interaction import GatewayAttempt
@@ -1472,11 +1477,11 @@ def handle_ssh_connect(data, current_user=None):
                         raise ValueError('Connection request already in progress')
                     gateway_attempt = registry.create(
                         current_user.id, socket_sid, client_request_id,
-                        factory=GatewayAttempt, reserve=True,
+                        factory=GatewayAttempt, reserve=True, require_gateway=is_gateway,
                         emit=lambda event, payload: socketio.emit(event, payload, to=socket_sid),
                     )
             except (ValueError, QuotaExceeded):
-                emit_error('Gateway connection limit reached or request unavailable')
+                emit_error('SSH connection limit reached or request unavailable')
                 return
         credential_box = {
             'password': password,
@@ -1713,7 +1718,7 @@ def handle_ssh_connect(data, current_user=None):
                             and SocketSession.query.filter_by(
                                 socket_sid=socket_sid, user_id=current_user.id,
                             ).first() is not None):
-                        emit_error('Gateway connection failed or timed out')
+                        emit_error('SSH connection failed or timed out')
                 credentials.clear()
                 local_password = None
                 local_key_content = None

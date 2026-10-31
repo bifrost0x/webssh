@@ -307,6 +307,20 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 else:
                     return None, "Jump host authentication method not provided"
 
+                if gateway_attempt is not None:
+                    from .ssh_gateway_auth import GatewayAuthStrategy, GatewayTransport
+                    bastion_auth['transport_factory'] = GatewayTransport
+                    bastion_auth['auth_strategy'] = GatewayAuthStrategy(
+                        proxy_jump_username, password=bastion_auth.pop('password', None),
+                        pkey=bastion_auth.pop('pkey', None),
+                        interact=lambda title, instructions, prompts: gateway_attempt.challenge(
+                            f'Jump host: {proxy_jump_host}',
+                            '\n'.join(part for part in (title, instructions) if part), prompts,
+                        ),
+                        check=gateway_attempt.check,
+                    )
+                    bastion_auth.pop('look_for_keys', None)
+                    bastion_auth.pop('allow_agent', None)
                 bastion_client.connect(**bastion_auth)
                 if connection_cancelled():
                     return None, "Connection cancelled"
@@ -444,7 +458,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         if connection_cancelled():
             return None, "Connection cancelled"
 
-        if gateway_attempt is not None:
+        if gateway_attempt is not None and ':' in username:
             from .ssh_gateway_setup import prepare_terminal
             prepare_terminal(transport, gateway_attempt)
 
@@ -469,7 +483,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 tmux_session_name = reconnect_tmux_name
             else:
                 unique_suffix = uuid.uuid4().hex[:8]
-                if gateway_attempt is not None:
+                if gateway_attempt is not None and ':' in username:
                     from .ssh_gateway import tmux_name
                     tmux_session_name = tmux_name(
                         config.TMUX_SESSION_PREFIX, host, port, username, user_id,

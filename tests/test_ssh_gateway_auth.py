@@ -123,3 +123,41 @@ def test_shared_deadline_closes_a_blocked_authentication(monkeypatch):
     with pytest.raises(paramiko.AuthenticationException):
         GatewayAuthStrategy("u:t", interact=lambda *args: []).authenticate(transport)
     assert timers[0].cancelled
+
+@pytest.mark.parametrize("username", ["alice", "root", "user@example.test"])
+def test_ordinary_ssh_password_then_otp(username):
+    transport = Transport()
+    GatewayAuthStrategy(username, password="initial-secret", interact=lambda *args: ["123456"]).authenticate(transport)
+    assert transport.is_authenticated()
+    assert transport.calls == [("password", "initial-secret", False), ("interactive",)]
+
+
+def test_ordinary_key_partial_success_then_otp():
+    transport = Transport()
+    transport.auth_publickey = lambda *args: ["keyboard-interactive"]
+    GatewayAuthStrategy("alice", pkey=object(), interact=lambda *args: ["123456"]).authenticate(transport)
+    assert transport.is_authenticated()
+    assert transport.calls == [("interactive",)]
+
+@pytest.mark.parametrize('response', ['success', 'partial'])
+def test_immediate_auth_reply_is_not_lost(response):
+    import threading
+    from paramiko import Message
+    from paramiko.auth_handler import PartialAuthentication
+    from app.ssh_gateway_auth import GatewayTransport
+    class ImmediateTransport:
+        lock = threading.Lock()
+        auth_timeout = .1
+        def _log(self, *args): pass
+        def _auth_trigger(self): pass
+        def is_active(self): return True
+        def get_exception(self):
+            return PartialAuthentication(['keyboard-interactive']) if response == 'partial' else None
+        def _send_message(self, message):
+            if response == 'success':
+                handler._parse_userauth_success(Message())
+            elif handler.auth_event is not None:
+                handler.auth_event.set()
+    transport = ImmediateTransport()
+    handler = GatewayTransport.get_auth_handler(transport)
+    assert handler.auth_password('alice', 'secret') == ([] if response == 'success' else ['keyboard-interactive'])

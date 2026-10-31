@@ -18,6 +18,19 @@ Open **Quick Connect** or launch a saved profile. A connection includes:
 Connection passwords are not stored in profiles or audit logs. Stored private
 keys are encrypted at rest and decrypted only when needed for authentication.
 
+## SSH server MFA
+
+SSH terminals support server `keyboard-interactive` challenges, including PAM
+verification codes after password or key authentication. Connect normally and
+answer each server prompt in the SSH authentication dialog. Jump-host prompts
+identify the jump host. Reload existing browser tabs after updating WebSSH.
+
+Responses are masked, used once, and never saved in connection profiles. Cancel
+closes the pending connection; unanswered prompts time out. This authentication
+is separate from MFA for the WebSSH account and does not require enabling the
+optional Warpgate integration. Standalone Quick SFTP keeps its existing
+password/key authentication path.
+
 ## Stored SSH keys
 
 WebSSH accepts RSA, Ed25519, and ECDSA private keys supported by the installed

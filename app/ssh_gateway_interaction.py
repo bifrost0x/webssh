@@ -12,13 +12,14 @@ class GatewayCancelled(ValueError):
 
 
 class GatewayAttempt(SSHConnectionAttempt):
-    """MFA and setup I/O shared by gateway terminals and Quick SFTP."""
+    """MFA and setup I/O shared by SSH terminals and gateway Quick SFTP."""
 
     timeout = 300
     cancellation_error = GatewayCancelled
 
     def __init__(self, user_id, sid, request_id, emit, *,
-                 reservation=None, kind='terminal'):
+                 reservation=None, kind='terminal', require_gateway=True):
+        self.require_gateway = require_gateway
         self.emit = emit
         self.auth_deadline = time.monotonic() + 180
         self.prompt = None
@@ -36,7 +37,7 @@ class GatewayAttempt(SSHConnectionAttempt):
     def check(self):
         with self.condition:
             super().check()
-            if not self.committed:
+            if self.require_gateway and not self.committed:
                 from .app_settings import is_ssh_gateway_enabled
                 if not is_ssh_gateway_enabled():
                     raise GatewayCancelled()

@@ -10,7 +10,7 @@ class SSHConnectionAttempt:
     """Cancellation and resource ownership for interactive SSH setup.
 
     A user cancellation loses after commit; disconnect and shutdown still stop
-    runtime work. Ordinary SSH retains its existing cancellation implementation.
+    runtime work. Legacy SSH clients retain their existing cancellation implementation.
     """
 
     timeout = None
