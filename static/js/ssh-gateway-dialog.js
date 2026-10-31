@@ -53,6 +53,10 @@
             content.replaceChildren(attempt.content);
             active = id;
         }
+        const heading = modal.querySelector('#sshGatewayTitle');
+        heading.textContent = attempt.gateway
+            ? t('gateway.title', 'Gateway connection') : t('ssh.authentication', 'SSH authentication');
+        heading.dataset.i18n = attempt.gateway ? 'gateway.title' : 'ssh.authentication';
         window.ModalManager.open(modal);
         attempt.terminal?.focus();
         attempt.content.querySelector('input, button')?.focus();
@@ -83,7 +87,7 @@
         if (!attempt || !Array.isArray(data.prompts) || data.prompts.length > 8) return;
         const content = attempt.content;
         content.replaceChildren();
-        const title = element('h3', data.title || t('gateway.authentication', 'Gateway authentication'));
+        const title = element('h3', data.title || (attempt.gateway ? t('gateway.authentication', 'Gateway authentication') : t('ssh.authentication', 'SSH authentication')));
         title.className = 'gateway-challenge-title';
         content.append(title);
         appendInstructions(content, data.instructions || '');
@@ -211,11 +215,13 @@
             socket.on('disconnect', () => [...attempts.keys()].forEach(close));
         },
         prepare(payload, quick = false, onCancel = null) {
-            if (!window.ConnectionValidation.isGateway(payload.username)) return;
-            payload.gateway_interaction = 1;
+            const gateway = window.ConnectionValidation.isGateway(payload.username);
+            if (!gateway && (quick || payload.username?.includes(':') || payload.auth_type === 'tailscale')) return;
+            if (gateway) payload.gateway_interaction = 1;
+            else payload.ssh_interaction = 1;
             payload.client_request_id ||= 'gateway_' + window.crypto.randomUUID();
             if (!attempts.has(payload.client_request_id) && attempts.size < 8) {
-                attempts.set(payload.client_request_id, {quick, terminal: null, onCancel});
+                attempts.set(payload.client_request_id, {quick, gateway, terminal: null, onCancel});
             }
         },
         has: id => attempts.has(id),

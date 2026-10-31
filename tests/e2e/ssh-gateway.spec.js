@@ -338,3 +338,23 @@ test('quick gateway errors and disconnect release only the matching request', as
     });
     expect(result).toEqual({afterOld: 'new-request', afterCurrent: null, afterDisconnect: null});
 });
+
+test('ordinary SSH prepares masked PAM prompts with gateway disabled', async ({page}) => {
+    await loginDefault(page);
+    const payload = await page.evaluate(() => {
+        const payload = {username: 'alice', auth_type: 'password', client_request_id: 'pam-test'};
+        window.SSHGatewayDialog.prepare(payload);
+        window.socket.listeners('ssh_gateway_challenge').forEach(fn => fn({
+            client_request_id: 'pam-test', challenge_id: 'otp', title: 'SSH authentication',
+            instructions: 'Enter your verification code', prompts: [{label: 'Verification code:'}],
+        }));
+        return payload;
+    });
+    expect(payload.ssh_interaction).toBe(1);
+    expect(payload.gateway_interaction).toBeUndefined();
+    const modal = page.locator('#sshGatewayModal');
+    await expect(modal).toHaveClass(/show/);
+    await expect(modal.locator('input')).toHaveAttribute('type', 'password');
+    await expect(modal).toContainText('Verification code:');
+    await expect(modal.locator('#sshGatewayTitle')).toHaveText('SSH authentication');
+});

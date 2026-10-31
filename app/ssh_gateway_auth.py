@@ -4,6 +4,9 @@ import threading
 
 from paramiko import AuthenticationException, BadAuthenticationType, ServiceRequestingTransport
 from paramiko.auth_strategy import AuthStrategy
+from paramiko.auth_handler import AuthOnlyHandler
+from paramiko import Message
+from paramiko.common import cMSG_USERAUTH_REQUEST
 
 from .ssh_gateway import parse_selector
 
@@ -11,7 +14,8 @@ from .ssh_gateway import parse_selector
 class GatewayAuthStrategy(AuthStrategy):
     def __init__(self, username, *, password=None, pkey=None, interact, check=None):
         super().__init__(ssh_config=None)
-        parse_selector(username)
+        if ":" in username:
+            parse_selector(username)
         self.username = username
         self.password = password or None
         self.pkey = pkey
@@ -36,6 +40,24 @@ class GatewayAuthStrategy(AuthStrategy):
         )
         attempted = set()
         try:
+            if self.pkey is None and self.password is not None and ':' not in self.username:
+                # PAM may advertise password while requiring several interactive
+                # answers. Discover methods before sending the saved password.
+                remaining_timeout()
+                try:
+                    methods = transport.auth_none(self.username)
+                except BadAuthenticationType as error:
+                    methods = error.allowed_types
+                remaining_timeout()
+                if transport.is_authenticated():
+                    return
+                if not isinstance(methods, (list, tuple)):
+                    raise AuthenticationException('SSH authentication method discovery failed')
+                method = next((candidate for candidate in (
+                    'keyboard-interactive', 'password'
+                ) if candidate in methods), None)
+                if method is None:
+                    raise AuthenticationException('No supported SSH authentication method')
             for _round in range(8):
                 self.check()
                 if time.monotonic() >= deadline:
@@ -89,6 +111,31 @@ class GatewayAuthStrategy(AuthStrategy):
             self.password = None
             self.pkey = None
 
+class GatewayAuthHandler(AuthOnlyHandler):
+    """Register the reply event before a fast server can answer the request.
+
+    Paramiko 5.1 AuthOnlyHandler installs it after sending, which can lose a
+    success or partial-authentication reply. Keep this compatibility override
+    aligned with AuthOnlyHandler.send_auth_request when upgrading Paramiko.
+    """
+
+    def send_auth_request(self, username, method, finish_message=None):
+        self.auth_method = method
+        self.username = username
+        message = Message()
+        message.add_byte(cMSG_USERAUTH_REQUEST)
+        message.add_string(username)
+        message.add_string('ssh-connection')
+        message.add_string(method)
+        if finish_message is not None:
+            finish_message(message)
+        event = threading.Event()
+        self.auth_event = event
+        with self.transport.lock:
+            self.transport._send_message(message)
+        return self.wait_for_response(event)
+
+
 class GatewayTransport(ServiceRequestingTransport):
     """Request ssh-userauth once, with a bounded Paramiko 5 service handshake.
 
@@ -96,6 +143,9 @@ class GatewayTransport(ServiceRequestingTransport):
     its ensure_session loop does not stop on close or timeout. This isolated
     override retains its protocol behavior and bounds that initial wait.
     """
+
+    def get_auth_handler(self):
+        return GatewayAuthHandler(self)
 
     def ensure_session(self):
         from paramiko import Message, SSHException

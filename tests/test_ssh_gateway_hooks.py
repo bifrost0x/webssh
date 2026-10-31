@@ -267,3 +267,42 @@ def test_request_id_cannot_cross_ordinary_and_gateway_attempts(app, monkeypatch,
     finally:
         release.set()
         assert finished.wait(2)
+
+@pytest.mark.usefixtures("direct_socket_authentication")
+def test_ordinary_socket_mfa_admission_and_cancel_with_gateway_disabled(app, monkeypatch):
+    import threading
+    from flask import request
+    from app import app_settings, socket_events, ssh_manager
+    from tests.test_command_set_socket_events import create_socket_user
+    monkeypatch.setattr(app_settings, 'is_ssh_gateway_enabled', lambda: False)
+    _, sid = create_socket_user(app, "pam_cancel")
+    entered, finished = threading.Event(), threading.Event()
+    def connect(**kwargs):
+        attempt = kwargs.get("gateway_attempt")
+        if attempt is None:
+            finished.set()
+            return None, "missing interaction"
+        attempt.check()
+        entered.set()
+        try:
+            attempt.challenge("PAM", "", [("Verification code:", False)])
+        except ValueError:
+            pass
+        finally:
+            finished.set()
+        return None, "cancelled"
+    monkeypatch.setattr(ssh_manager, "create_ssh_connection", connect)
+    with app.test_request_context("/socket.io"):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            "host": "host", "username": "alice", "password": "secret",
+            "client_request_id": "pam-request", "ssh_interaction": 1,
+        })
+    try:
+        assert entered.wait(2)
+        with app.test_request_context("/socket.io"):
+            request.sid = sid
+            assert socket_events.handle_ssh_connect_cancel({"client_request_id": "pam-request"})["success"]
+        assert finished.wait(2)
+    finally:
+        app.extensions['ssh_attempt_registry'].cancel_socket(sid)
