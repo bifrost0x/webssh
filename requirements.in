@@ -23,6 +23,8 @@ Flask-WTF==1.3.0
 redis>=8.0,<9
 # Compatibility: WebAuthn 3 keeps the reviewed ceremony and PQC-capable verification APIs.
 webauthn>=3.0.1,<4
+# Compatibility: WebAuthn supports pyasn1 0.6; 0.6.5 fixes four decoder CPU exhaustion vulnerabilities.
+pyasn1>=0.6.5,<0.7
 # Compatibility: PyOTP 2.10 provides the reviewed RFC 6238 verification API.
 PyOTP>=2.10,<3
 # Compatibility: qrcode 8.2 provides local SVG QR generation without Pillow.
