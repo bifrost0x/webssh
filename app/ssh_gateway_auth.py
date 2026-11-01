@@ -39,6 +39,7 @@ class GatewayAuthStrategy(AuthStrategy):
             "password" if self.password else "keyboard-interactive"
         )
         attempted = set()
+        promptless_password_fallback = False
         try:
             if self.pkey is None and self.password is not None and ':' not in self.username:
                 # PAM may advertise password while requiring several interactive
@@ -58,6 +59,9 @@ class GatewayAuthStrategy(AuthStrategy):
                 ) if candidate in methods), None)
                 if method is None:
                     raise AuthenticationException('No supported SSH authentication method')
+                promptless_password_fallback = (
+                    method == 'keyboard-interactive' and 'password' in methods
+                )
             for _round in range(8):
                 self.check()
                 if time.monotonic() >= deadline:
@@ -93,7 +97,19 @@ class GatewayAuthStrategy(AuthStrategy):
                         remaining_timeout()
                         methods = transport.auth_interactive(self.username, handler)
                 except BadAuthenticationType as error:
+                    if method == 'keyboard-interactive' and rounds:
+                        raise
                     methods = error.allowed_types
+                except AuthenticationException:
+                    # Some servers advertise interactive auth without a working
+                    # backend. Retry the saved password only before any challenge
+                    # or partial authentication, never after a rejected OTP.
+                    if (not promptless_password_fallback
+                            or attempted != {'keyboard-interactive'} or rounds
+                            or not transport.is_active()):
+                        raise
+                    remaining_timeout()
+                    methods = ['password']
                 self.check()
                 remaining_timeout()
                 if transport.is_authenticated():

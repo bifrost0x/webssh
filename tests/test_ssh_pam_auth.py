@@ -17,7 +17,7 @@ class PAMServer(paramiko.ServerInterface):
         self.password_requests = []
 
     def get_allowed_auths(self, username):
-        if self.mode == 'interactive-advertised':
+        if self.mode in ('interactive-advertised', 'interactive-rejected'):
             return 'password,keyboard-interactive'
         if self.first_factor:
             return 'keyboard-interactive'
@@ -25,7 +25,7 @@ class PAMServer(paramiko.ServerInterface):
 
     def check_auth_password(self, username, password):
         self.password_requests.append(password)
-        if self.mode == 'password-only' and password == 'login-secret':
+        if self.mode in ('password-only', 'interactive-rejected') and password == 'login-secret':
             return paramiko.AUTH_SUCCESSFUL
         if self.mode == 'password' and password == 'login-secret':
             self.first_factor = True
@@ -41,6 +41,8 @@ class PAMServer(paramiko.ServerInterface):
         return paramiko.AUTH_FAILED
 
     def check_auth_interactive(self, username, submethods):
+        if self.mode == 'interactive-rejected':
+            return paramiko.AUTH_FAILED
         if not self.first_factor:
             return paramiko.AUTH_FAILED
         if self.mode in ('interactive-multiple', 'interactive-advertised'):
@@ -65,7 +67,7 @@ def protocol_key():
     return paramiko.RSAKey.generate(2048)
 
 
-@pytest.mark.parametrize('mode', ['password', 'key', 'interactive-only', 'interactive-multiple', 'interactive-sequential', 'interactive-advertised', 'password-only', 'key-only'])
+@pytest.mark.parametrize('mode', ['password', 'key', 'interactive-only', 'interactive-multiple', 'interactive-sequential', 'interactive-advertised', 'interactive-rejected', 'password-only', 'key-only'])
 @pytest.mark.parametrize('valid_code', [True, False])
 def test_real_ssh_pam_challenges(mode, valid_code, protocol_key):
     client_sock, server_sock = socket.socketpair()
@@ -84,15 +86,17 @@ def test_real_ssh_pam_challenges(mode, valid_code, protocol_key):
                                       pkey=protocol_key if mode.startswith('key') else None, interact=answer)
         kwargs = dict(hostname='pam.example', username='alice', sock=client_sock,
                       timeout=5, auth_timeout=5, transport_factory=GatewayTransport, auth_strategy=strategy)
-        if valid_code or mode in ('password-only', 'key-only'):
+        if valid_code or mode in ('password-only', 'key-only', 'interactive-rejected'):
             client.connect(**kwargs)
             assert client.get_transport().is_authenticated()
         else:
             with pytest.raises(paramiko.AuthenticationException):
                 client.connect(**kwargs)
             assert not client.get_transport().is_authenticated()
-        assert bool(challenges) == (mode not in ('password-only', 'key-only'))
-        if mode.startswith('interactive'):
+        assert bool(challenges) == (mode not in ('password-only', 'key-only', 'interactive-rejected'))
+        if mode == 'interactive-rejected':
+            assert server.password_requests == ['login-secret']
+        elif mode.startswith('interactive'):
             assert server.password_requests == []
         if mode in ('password', 'key', 'interactive-only'):
             assert server.answers == [['123456' if valid_code else '654321']]

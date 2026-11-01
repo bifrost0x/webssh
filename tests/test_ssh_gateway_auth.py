@@ -12,6 +12,8 @@ class Transport:
         self.authenticated = False
     def is_authenticated(self):
         return self.authenticated
+    def is_active(self):
+        return True
     def auth_none(self, username):
         self.none_requests += 1
         raise paramiko.BadAuthenticationType('Methods available', ['password'])
@@ -227,3 +229,54 @@ def test_method_discovery_uses_shared_authentication_deadline(monkeypatch):
     transport.auth_none = discover
     transport.auth_password = password
     GatewayAuthStrategy('alice', password='secret', interact=lambda *args: pytest.fail('unexpected prompt')).authenticate(transport)
+
+
+@pytest.mark.parametrize('failure', ['rejected', 'wrong-password', 'challenge', 'empty-challenge',
+                                    'changed-methods', 'closed', 'cancelled', 'deadline', 'key-partial'])
+def test_promptless_password_fallback_boundaries(failure, monkeypatch):
+    import app.ssh_gateway_auth as auth
+    now = [100.0]
+    cancelled = [False]
+    password_calls = []
+    monkeypatch.setattr(auth.time, 'monotonic', lambda: now[0])
+    transport = Transport()
+    def discover(username):
+        raise paramiko.BadAuthenticationType('Methods available', ['keyboard-interactive', 'password'])
+    def interactive(username, handler):
+        if failure in ('challenge', 'changed-methods'):
+            handler('', '', [('OTP', False)])
+        if failure == 'empty-challenge':
+            handler('', '', [])
+        if failure == 'deadline':
+            now[0] += 181
+        if failure == 'cancelled':
+            cancelled[0] = True
+        if failure == 'changed-methods':
+            raise paramiko.BadAuthenticationType('Rejected challenge', ['password'])
+        raise paramiko.AuthenticationException('Interactive rejected')
+    def password(username, value, fallback=True):
+        password_calls.append((value, fallback))
+        if failure == 'wrong-password':
+            raise paramiko.AuthenticationException('Wrong password')
+        transport.authenticated = True
+        return []
+    def check():
+        if cancelled[0]:
+            raise RuntimeError('cancelled')
+    transport.auth_none = discover
+    transport.auth_interactive = interactive
+    transport.auth_password = password
+    transport.is_active = lambda: failure != 'closed'
+    transport.auth_publickey = lambda *args: ['keyboard-interactive']
+    strategy = GatewayAuthStrategy('alice', password='secret',
+        pkey=object() if failure == 'key-partial' else None,
+        interact=lambda title, instructions, prompts: ['123456'] * len(prompts), check=check)
+    if failure == 'rejected':
+        strategy.authenticate(transport)
+        assert transport.is_authenticated()
+    else:
+        with pytest.raises((paramiko.AuthenticationException, RuntimeError)):
+            strategy.authenticate(transport)
+        assert not transport.is_authenticated()
+    assert password_calls == ([('secret', False)] if failure in ('rejected', 'wrong-password') else [])
+    assert strategy.password is None and strategy.pkey is None
