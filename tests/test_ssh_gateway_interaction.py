@@ -173,3 +173,15 @@ def test_timeout_wins_while_commit_is_waiting_on_gateway_condition():
         assert not gateway.committed
     finally:
         gateway.finish()
+
+
+def test_ordinary_mfa_does_not_require_gateway_setting(monkeypatch):
+    from app import app_settings
+    monkeypatch.setattr(app_settings, 'is_ssh_gateway_enabled', lambda: False)
+    sent = []
+    attempt = GatewayAttempt(1, 'sid', 'pam', lambda event, data: sent.append((event, data)), require_gateway=False)
+    try:
+        attempt.check()
+        assert attempt.commit_if_active()
+    finally:
+        attempt.finish()

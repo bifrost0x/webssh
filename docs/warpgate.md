@@ -19,12 +19,12 @@ Once enabled, connect to an existing Warpgate SSH endpoint using an ordinary Web
 4. Respond to additional authentication prompts. Browser approval links open only when clicked. Return to WebSSH and continue after approval.
 5. Review any target host-key or access-approval prompt in the temporary gateway terminal.
 
-No additional service, Compose setting, database migration, or dependency is required. Ordinary SSH, existing jump hosts and Tailscale connections keep their existing paths. A normal SSH jump host may precede a gateway terminal connection; Quick SFTP does not add jump-host or Tailscale support.
+No additional service, Compose setting, database migration, or dependency is required. Ordinary SSH and jump hosts also support interactive MFA prompts without enabling the gateway integration. Tailscale keeps its dedicated authentication path. A normal SSH jump host may precede a gateway terminal connection; Quick SFTP does not add jump-host or Tailscale support.
 
 When globally enabled, the integration is selected by a validated `user:target` username.
-Ordinary SSH keeps its existing authentication, cancellation and banner-wait
-implementation; ordinary Quick SFTP remains synchronous. Gateway terminal and
-Quick SFTP attempts share their own bounded interaction lifecycle.
+Ordinary SSH terminals share the bounded MFA interaction lifecycle, while
+gateway target setup remains exclusive to gateway selectors. Ordinary Quick
+SFTP remains synchronous.
 
 ## Security and compatibility boundaries
 
@@ -38,6 +38,6 @@ Quick SFTP attempts share their own bounded interaction lifecycle.
 - Existing profile auth types remain unchanged. Older WebSSH versions can read the profile document, but cannot connect using the new selector syntax.
 - Ticket secrets, `#` selectors, automatic target discovery, gateway administration and non-SSH protocols are not supported.
 
-The reference implementation is tested against Warpgate 0.29.0 and Paramiko 5.0.0. The gateway-only transport uses Paramiko's `ServiceRequestingTransport` so multi-factor authentication requests the SSH authentication service once. Its initial service wait is explicitly bounded; the small compatibility override must be rechecked when upgrading Paramiko.
+The reference implementation is tested against Warpgate 0.29.0 and Paramiko 5.0.0. The shared interactive authentication transport uses Paramiko's `ServiceRequestingTransport` so multi-factor authentication requests the SSH authentication service once. The compatibility overrides bound the initial service wait and register each authentication reply event before sending the request, so fast replies are not lost. Recheck these overrides when upgrading Paramiko.
 
 Cancel closes an unfinished gateway attempt. Once the existing startup/session commit boundary has been crossed, the ordinary WebSSH cancellation contract applies.

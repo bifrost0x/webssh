@@ -1031,3 +1031,31 @@ def test_gateway_handoff_preserves_established_session(monkeypatch):
     attempt.finish()
     assert not clients[0].closed
     assert ssh_manager.get_session(session_id)["connected"]
+
+@pytest.mark.parametrize('via_jump', [False, True])
+def test_ordinary_mfa_uses_explicit_strategy_without_gateway_setup(monkeypatch, via_jump):
+    from app.ssh_gateway_auth import GatewayAuthStrategy, GatewayTransport
+    from app.ssh_gateway_interaction import GatewayAttempt
+    from app import app_settings, ssh_gateway_setup
+    monkeypatch.setattr(app_settings, 'is_ssh_gateway_enabled', lambda: False)
+    monkeypatch.setattr(ssh_gateway_setup, 'prepare_terminal', lambda *args: pytest.fail('gateway setup for ordinary SSH'))
+    clients = install_ssh_clients(monkeypatch)
+    attempt = GatewayAttempt(7, 'sid', 'mfa', lambda *args: None, require_gateway=False)
+    try:
+        kwargs = dict(password='target-secret', gateway_attempt=attempt)
+        if via_jump:
+            kwargs.update(proxy_jump_host='bastion.example', proxy_jump_username='jump-user', proxy_jump_password='jump-secret')
+        session_id, error = connect_target(**kwargs)
+        assert error is None
+        assert session_id
+        for client in clients:
+            options = client.connect_kwargs
+            assert options['transport_factory'] is GatewayTransport
+            strategy = options['auth_strategy']
+            assert isinstance(strategy, GatewayAuthStrategy)
+            assert 'password' not in options and 'pkey' not in options
+        assert clients[-1].connect_kwargs['auth_strategy'].username == 'alice'
+        if via_jump:
+            assert clients[0].connect_kwargs['auth_strategy'].username == 'jump-user'
+    finally:
+        attempt.finish()
