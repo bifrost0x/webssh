@@ -48,8 +48,8 @@ PINNED_ACTIONS = {
         'v0.36.0',
     ),
     'astral-sh/setup-uv': (
-        '07a047e608db84b3d8c06cd9a7c7dcc9c355c18e',
-        'v10.3.2',
+        '68559e99cc807c1eb7e9238fd43a15bba460eec2',
+        'v10.3.3',
     ),
     'docker/build-push-action': (
         'c3c9e263c25d99ce0380d002d59b67737d91b0dc',
@@ -459,9 +459,9 @@ def test_graph_pages_toolchain_versions_are_explicit():
 
     assert 'version-file: uv.toml' in workflow
     assert 'uv pip install --require-hashes -r requirements-graph.txt' in workflow
-    assert 'graphifyy==0.9.95' in graph_input
+    assert 'graphifyy==0.9.97' in graph_input
     assert '--require-hashes' in graph_lock
-    assert 'graphifyy==0.9.95' in graph_lock
+    assert 'graphifyy==0.9.97' in graph_lock
 
 
 def test_workflows_use_an_explicit_runner_release():
@@ -762,7 +762,7 @@ def test_protocol_labs_share_one_runner_and_keep_required_aggregate_checks():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
     ssh = workflow.split('\n  ssh-integration:', 1)[1].split('\n  smb-integration:', 1)[0]
     assert "python-version: '3.14'" in ssh and "node-version: '24'" in ssh
-    assert 'astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e' in ssh
+    assert 'astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2' in ssh
     assert 'cache: npm' in ssh
     buildx = 'run: docker buildx version'
     runner = 'python scripts/run_ci_protocol_checks.py'
