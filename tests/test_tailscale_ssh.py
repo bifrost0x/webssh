@@ -687,7 +687,13 @@ def test_tmux_reconnect_does_not_pass_startup_commands_to_ssh_manager(app, monke
         lambda _session_id: {'tmux_session_name': 'webssh_tiny_root'},
     )
     monkeypatch.setattr(config, 'TMUX_ENABLED', True)
-    monkeypatch.setattr(socket_events, 'emit', lambda *_args, **_kwargs: None)
+    connected_event = threading.Event()
+
+    def record_emit(event, _payload=None, **_kwargs):
+        if event == 'ssh_connected':
+            connected_event.set()
+
+    monkeypatch.setattr(socket_events, 'emit', record_emit)
 
     with app.test_request_context('/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}):
         request.sid = 'startup-reconnect-socket'
@@ -701,6 +707,8 @@ def test_tmux_reconnect_does_not_pass_startup_commands_to_ssh_manager(app, monke
             'startup_commands': 'echo should-not-run',
         })
 
+    assert connected_event.wait(2), 'tmux reconnect did not complete'
+    assert len(calls) == 1
     assert calls[0]['startup_commands'] == ''
 
 
