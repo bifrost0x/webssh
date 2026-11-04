@@ -4,13 +4,6 @@ This retrospective explains what shipped and why the documented changes mattered
 It is reconstructed from public releases, PR descriptions, issue links and Git ancestry,
 not from an original project plan. Reconstruction date: **2026-10-03**.
 
-## Next release: v2.7.0
-
-The [2.7.0 candidate notes](releases/v2.7.0.md) describe the selected changes
-since v2.6.0. This is release preparation, not a published release. Historical
-counts below remain unchanged until the final tag and image are verified.
-The machine-readable manifest records the candidate separately from releases.
-
 ## Reading the evidence
 
 - **Delivered:** the published tag contains the implementation's merge commit.
@@ -53,12 +46,27 @@ These belong to the first official release baseline, not invented pre-1.0 releas
 | [v2.4.0](https://github.com/bifrost0x/webssh/releases/tag/v2.4.0) / 2026-09-21 | High-output multi-session rendering/recovery, terminal/files sync, hardened remote work and native-image release gates | [#221](https://github.com/bifrost0x/webssh/pull/221): hidden-pane rendering delayed ACKs and caused reconnect loops; [#223](https://github.com/bifrost0x/webssh/pull/223)-[#226](https://github.com/bifrost0x/webssh/pull/226): verify immutable image candidates without breaking deployment compatibility | 16 |
 | [v2.5.0](https://github.com/bifrost0x/webssh/releases/tag/v2.5.0) / 2026-10-05 | Optional gateways and everyday workspace continuity | [#238](https://github.com/bifrost0x/webssh/pull/238): optional Warpgate; #231/#233/#242: workspace and connection usability; #234-#236/#239/#241: terminal correctness; #251: background loading; #252: dependency updates | 17 |
 | [v2.6.0](https://github.com/bifrost0x/webssh/releases/tag/v2.6.0) / 2026-10-23 | Trusted SSH workspaces, reviewable server/file actions, windows and local fonts | #258: subfolder proxy fix; #271/#273: workspace redesign; #279: Nerd Fonts; #280: host trust/context and server operations; #284/#286: file creation/chmod/review; #287: stable action menus | 24 |
+| [v2.7.0](https://github.com/bifrost0x/webssh/releases/tag/v2.7.0) / 2026-11-04 | SSH PAM MFA, tmux navigation, file/command UX, theme-aware branding, security hardening and Apache 2.0 | #304: server MFA; #300/#302: explicit tmux sync; #295/#296: storage and backup boundaries; #298/#299: distribution notices; #309: release documentation | 16 |
 
-The 189 PRs in these release stages are assigned by their **first tagged inclusion**,
+The 205 PRs in these release stages are assigned by their **first tagged inclusion**,
 not by the week in which they merged. The machine-readable
 [release history](release-history.json) lists every PR number, tag SHA, release URL,
 comparison and verified issue-to-implementation link. Direct commits are covered by the
 Git comparisons even though they have no PR to attach to a native milestone.
+
+## v2.7.0 delivery
+
+Published on **2026-11-04** at `271c5fca33f74ba3ea108ae44549c910f6de7bbb`. The tag first includes
+16 merged PRs after v2.6.0, including #290's prior-release documentation and
+#309's 2.7 preparation. [Tag CI](https://github.com/bifrost0x/webssh/actions/runs/41798705520) and native image publication passed.
+The immutable AMD64/ARM64 index is `ghcr.io/bifrost0x/webssh@sha256:1a9ac06d0aca3e88bb8f48d0395b8f87e39d33cb2f19be437cca2b8e193aa5d2`.
+Both platforms retain SPDX SBOM and SLSA provenance, verified directly in GHCR.
+
+One mobile command-persistence test initially hit its total timeout. Its retry
+then encountered leftover test entries. The failed gate passed a targeted rerun
+on the unchanged commit, and five local repetitions passed. No persistent runtime
+regression was established. See [release notes](releases/v2.7.0.md) for changes,
+upgrade precautions and the explicit limits of automated acceptance.
 
 ## v2.6.0 delivery and remaining acceptance
 
@@ -73,7 +81,8 @@ server-side ownership, capability and review boundaries. Parameterized `argv`
 command-set steps introduce an explicit older-version downgrade boundary; see
 [upgrade and rollback guidance](wiki/Upgrading-Rollback-and-FAQ.md).
 [Release record #289](https://github.com/bifrost0x/webssh/issues/289) separates
-publication from the unrun deployment-specific checks in [#288](https://github.com/bifrost0x/webssh/issues/288).
+publication from the deployment-specific checks in [#288](https://github.com/bifrost0x/webssh/issues/288),
+which was closed with remaining unrun checks explicitly documented.
 No native-device or real-environment certification is inferred from browser-engine CI.
 
 ## v2.5.0 delivery and remaining acceptance

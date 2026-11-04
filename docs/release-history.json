@@ -5,8 +5,8 @@
   "baseline_commit": "dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
   "native_milestone_backfill": "applied_with_exceptions",
   "method": "First tagged release containing each merged PR's merge_commit_sha, with every compare page retrieved. The first release includes all prior verified PR merges. Issues require an explicit implementation link.",
-  "expected_merged_pr_count": 189,
-  "expected_implementation_linked_issue_count": 27,
+  "expected_merged_pr_count": 205,
+  "expected_implementation_linked_issue_count": 28,
   "historical": [
     {
       "title": "v1.0.0",
@@ -533,6 +533,45 @@
       "validation_followup": 288,
       "image_digest": "sha256:27bcf7bf013a39243192dccc6ca9078bd7bb610e5e9295fd83ee7cecb1bf0b37",
       "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/39916394736"
+    },
+    {
+      "title": "v2.7.0",
+      "state": "closed",
+      "goal": "Improve SSH MFA and persistent-session workflows, harden storage and refresh distribution documentation",
+      "previous_release": "v2.6.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.6.0...v2.7.0",
+      "description": "Published v2.7.0 on 2026-11-04. SSH PAM MFA, opt-in tmux folder synchronization and session-local scrolling, command/SFTP permission UX, theme-aware branding, storage/backup hardening, dependency updates and Apache 2.0 licensing. Tag CI and native image checks passed; one browser timeout passed a targeted rerun on the same commit and five local repetitions. Deployment-specific acceptance is not inferred from CI.",
+      "pull_requests": [
+        290,
+        291,
+        292,
+        293,
+        294,
+        295,
+        296,
+        297,
+        298,
+        299,
+        300,
+        302,
+        304,
+        307,
+        308,
+        309
+      ],
+      "issues": [
+        {
+          "number": 303,
+          "implemented_by": 304,
+          "evidence": "GitHub closingIssuesReferences for PR #304"
+        }
+      ],
+      "published_at": "2026-11-04T08:32:39Z",
+      "tag_commit": "271c5fca33f74ba3ea108ae44549c910f6de7bbb",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v2.7.0",
+      "release_notes": "docs/releases/v2.7.0.md",
+      "image_digest": "sha256:1a9ac06d0aca3e88bb8f48d0395b8f87e39d33cb2f19be437cca2b8e193aa5d2",
+      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/41798705520"
     }
   ],
   "excluded_issues": [
@@ -639,33 +678,7 @@
     ],
     "verification": "All 185 accessible planned items matched their intended milestone through the GitHub API. Browser milestone overview confirmed 10 closed and 1 open. Release-readiness issue #248 remains open. No due dates were added."
   },
-  "candidate": {
-    "title": "v2.7.0",
-    "state": "prepared",
-    "previous_release": "v2.6.0",
-    "base_commit": "eaa31e19f0a89f6f316d1e07db4132329deb49b1",
-    "goal": "Improve SSH MFA and persistent-session workflows, harden storage and refresh distribution documentation",
-    "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.6.0...main",
-    "release_notes": "docs/releases/v2.7.0.md",
-    "pull_requests": [
-      290,
-      291,
-      292,
-      293,
-      294,
-      295,
-      296,
-      297,
-      298,
-      299,
-      300,
-      302,
-      304,
-      307,
-      308
-    ],
-    "publication_status": "Pending final candidate review, CI, tag and native image verification"
-  },
+  "candidate": null,
   "updated_on": "2026-11-04",
   "release_updates": [
     {
@@ -724,6 +737,35 @@
       "closed_release_gate": 289,
       "open_validation_followup": 288,
       "note": "First tagged inclusion determines release membership; #255 first ships in v2.6.0. The dated native_milestone_backfill_result snapshot remains unchanged."
+    },
+    {
+      "version": "v2.7.0",
+      "published_at": "2026-11-04T08:32:39Z",
+      "tag_commit": "271c5fca33f74ba3ea108ae44549c910f6de7bbb",
+      "assigned_additional_pull_requests": [
+        290,
+        291,
+        292,
+        293,
+        294,
+        295,
+        296,
+        297,
+        298,
+        299,
+        300,
+        302,
+        304,
+        307,
+        308,
+        309
+      ],
+      "assigned_implementation_linked_issues": [
+        303
+      ],
+      "image_digest": "sha256:1a9ac06d0aca3e88bb8f48d0395b8f87e39d33cb2f19be437cca2b8e193aa5d2",
+      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/41798705520",
+      "note": "First tagged inclusion determines release membership. Dated historical snapshots remain unchanged; no new native milestone assignment is claimed."
     }
   ]
 }

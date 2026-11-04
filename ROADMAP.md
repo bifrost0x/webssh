@@ -4,10 +4,9 @@ WebSSH is a self-hosted SSH and file workspace. This roadmap explains the direct
 the current release focus, and the evidence behind completed work. It is not a release-date
 promise or a replacement for issues, pull requests, and release notes.
 
-Release preparation updated: **2026-11-04**. Version **2.7.0** is selected from
-`origin/main`; the latest published release remains
-[v2.6.0](https://github.com/bifrost0x/webssh/releases/tag/v2.6.0) until tag and image
-publication are verified.
+Release status updated: **2026-11-04**, [v2.7.0](https://github.com/bifrost0x/webssh/releases/tag/v2.7.0) at
+[`271c5fc`](https://github.com/bifrost0x/webssh/commit/271c5fca33f74ba3ea108ae44549c910f6de7bbb).
+Check linked GitHub items for newer status.
 
 ## Product direction
 
@@ -19,19 +18,23 @@ publication are verified.
 These themes summarize the existing product and published release history; they do not
 add new feature commitments.
 
-## Now: prepare v2.7.0
+## Now: v2.7.0 published
 
-The [2.7.0 candidate notes](docs/releases/v2.7.0.md) cover ordinary SSH PAM MFA,
+The [2.7.0 release notes](docs/releases/v2.7.0.md) cover ordinary SSH PAM MFA,
 explicit tmux setup and folder synchronization, command and SFTP permission UX,
 theme-aware branding, storage/backup hardening, dependency updates and Apache 2.0
-licensing. The scope comes from changes merged since v2.6.0; it introduces no
-additional feature commitment.
+licensing. The [release comparison](https://github.com/bifrost0x/webssh/compare/v2.6.0...v2.7.0)
+contains 16 merged PRs first included in a release, plus direct commits.
 
-Publication requires the exact final candidate's CI, native image scans,
-versioned AMD64/ARM64 image, SBOM and provenance verification. Retain explicit
-upgrade/rollback precautions and record deployment-specific acceptance separately.
-The historical 2.6 delivery record and its acceptance follow-up remain in
-[project history](docs/project-history.md#v260-delivery-and-remaining-acceptance).
+[Tag CI and native image publication](https://github.com/bifrost0x/webssh/actions/runs/41798705520) passed on `271c5fca33f74ba3ea108ae44549c910f6de7bbb`.
+Linux AMD64 and ARM64 images retain SPDX SBOM and SLSA provenance. The immutable
+image digest and upgrade precautions are recorded in the release notes.
+
+SFTP chmod and server mutations remain disabled by default. Parameterized `argv`
+command sets retain the documented downgrade boundary. Automated gates do not
+certify every deployment's identity provider, device, upgrade or recovery setup.
+The earlier [2.6 acceptance record](https://github.com/bifrost0x/webssh/issues/288)
+is closed with its unrun environment-specific checks explicitly documented.
 
 ## Next: choose from verified feedback
 
@@ -39,7 +42,7 @@ Select a small scope from reproducible bugs, user feedback and validated
 security/dependency findings. State the benefit, priority reason and acceptance criteria in
 an issue before assigning substantial work to the next milestone.
 
-Beyond the selected 2.7 scope, no release date or large architecture migration is committed here.
+No additional release date or large architecture migration is committed here.
 Urgent security fixes may take a separate patch path rather than wait for a feature release;
 follow [SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
