@@ -55,10 +55,11 @@ the production file removes those previously implicit limits on recreation.
 Existing image-only upgrades do not change container settings. Review the merged
 configuration before recreating containers; keep data and recovery volumes intact.
 
-## v2.7.0 upgrade preparation
+## v2.7.0 compatibility
 
 The [2.7 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v2.7.0.md)
-cover the candidate changes; use a versioned image only after it is published.
+cover the published changes. Use `ghcr.io/bifrost0x/webssh:2.7.0` or the verified
+immutable digest in those notes.
 Reload open browser tabs after upgrading to load the SSH interactive-authentication
 dialog. PAM challenges belong to SSH server authentication, separately from
 WebSSH account MFA; standalone Quick SFTP retains password/key authentication.

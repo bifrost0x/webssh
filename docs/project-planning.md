@@ -56,7 +56,7 @@ related workspace fixes. [#248](https://github.com/bifrost0x/webssh/issues/248) 
 the exact candidate, publication and image verification. The maintainer authorized
 publication with the reported deployment acceptance still unverified; those checks
 were recorded in the now-closed [#254](https://github.com/bifrost0x/webssh/issues/254).
-Current v2.6.0 deployment acceptance is tracked separately in [#288](https://github.com/bifrost0x/webssh/issues/288). Publication and operational acceptance are
+The v2.6.0 deployment acceptance record is [#288](https://github.com/bifrost0x/webssh/issues/288), closed with remaining environment-specific checks explicitly unverified. Publication and operational acceptance are
 recorded separately, without repeating implementation PRs or marking unrun checks passed.
 
 ## Record decisions and blockers
@@ -116,8 +116,15 @@ Published on **2026-10-23**: [v2.6.0](https://github.com/bifrost0x/webssh/releas
 implementation-linked issues. The manifest now contains twelve releases, 189 merged
 PR mappings and 27 implementation-linked issues. Release record #289 and milestone 12
 close after tag/image verification; the separate deployment acceptance follow-up #288
-remains open. PR #255 first appears in this release because membership follows Git ancestry.
+was later closed with unrun environment checks explicitly retained. PR #255 first appears in this release because membership follows Git ancestry.
 The original dated backfill snapshot remains unchanged.
+
+Published on **2026-11-04**: [v2.7.0](https://github.com/bifrost0x/webssh/releases/tag/v2.7.0) adds 16 first-included PRs and
+one implementation-linked issue (#303 through #304). The manifest now contains
+thirteen releases, 205 merged PR mappings and 28 implementation-linked issues.
+[Tag CI and native image publication](https://github.com/bifrost0x/webssh/actions/runs/41798705520) passed; the release notes record
+immutable image identity, SBOM/provenance verification and the resolved browser
+CI timeout. Historical backfill snapshots remain unchanged.
 
 For historical backfill:
 
