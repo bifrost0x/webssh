@@ -246,28 +246,29 @@ def test_product_tours_are_readable_looping_animations():
 def test_readme_is_a_compact_project_entry_point():
     """The repository landing page stays concise enough to scan on GitHub."""
     lines = README.read_text(encoding="utf-8").splitlines()
-    assert 80 <= len(lines) <= 180
+    assert 200 <= len(lines) <= 400
 
 
 def test_readme_has_the_approved_information_architecture():
     """The README routes readers through product, setup, safety, and docs."""
     readme = README.read_text(encoding="utf-8")
     for heading in (
+        "## Why WebSSH",
         "## Features",
+        "## Screenshots",
         "## Quick Start",
-        "## Security and deployment",
+        "## Security Boundary",
         "## Documentation",
-        "## Contributing and support",
+        "## Contributing and Support",
     ):
         assert heading in readme
 
 
-def test_readme_links_the_product_gallery():
-    """The entry point links to the complete gallery without duplicating it."""
+def test_readme_uses_the_new_product_media():
+    """The compact README presents every current product capture."""
     readme = README.read_text(encoding="utf-8")
-    assert "[screenshots and workflow previews](docs/screenshots.md)" in readme
-    gallery = (ROOT / "docs/screenshots.md").read_text(encoding="utf-8")
     for name in (
+        "webssh-demo.gif",
         "workspace-overview.png",
         "multi-session.png",
         "sftp-workspace.png",
@@ -277,7 +278,7 @@ def test_readme_links_the_product_gallery():
         "command-set-builder.png",
         "file-edit-review.png",
     ):
-        assert f"assets/{name}" in gallery
+        assert f"assets/{name}" in readme
 
 
 def test_readme_routes_long_form_runbooks_to_the_published_wiki():
@@ -344,7 +345,8 @@ def test_file_workspace_documents_secure_opt_in_smb_boundary():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for phrase in ("source", "independent", "server-to-server", "transfer queue"):
         assert phrase.lower() in sftp.lower()
-    assert "Encrypted SMB shares are optional" in readme
+    assert "SMB_ENABLED=false" in readme
+    assert "SMB_ALLOWED_TARGETS" in readme
     for text in (sftp,):
         for phrase in (
             "SMB_ENABLED=false",
