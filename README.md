@@ -60,9 +60,10 @@ a hosted control plane or runtime CDN dependencies.
 ### Terminal workspace
 
 - Multiple SSH sessions with tabs and 1-, 2-, or 4-pane layouts.
-- Persistent remote shells through tmux when tmux is available on the target.
-- Saved connections, jump hosts, key, password, and optional Tailscale SSH
-  authentication paths.
+- Optional persistent remote shells through tmux, with session-local mouse
+  scrolling and folder synchronization after explicit Bash prompt setup.
+- Saved connections, jump hosts, key, password, SSH server PAM MFA, and
+  optional Tailscale SSH authentication paths.
 - Broadcast input, terminal search, transcripts, reconnect controls, and
   configurable scrollback.
 - Per-account terminal appearance with four self-hosted Nerd Font Mono families
@@ -75,22 +76,10 @@ a hosted control plane or runtime CDN dependencies.
 - **Clipboard-Only Service Actions** that prepare allowlisted commands without
   executing the service change inside WebSSH.
 
-Terminal icon support applies to live server output, including Neovim, eza and
-Starship, with any selected text font. A self-hosted Symbols Nerd Font Mono face
-supplies private-use icons even for theme fonts and unpatched local fonts.
-The font assets and their licenses are documented in
-[`static/vendor/terminal-fonts/README.md`](static/vendor/terminal-fonts/README.md).
-No font enumeration, external font service, font upload or arbitrary font URL is
-required; the selected font name is saved with the account appearance settings.
-
-SSH output is decoded as a continuous UTF-8 stream. Existing terminal capability filters and
-Unicode width rules are unchanged. Font/spacing changes resize the remote PTY
-after xterm measures the new cells. The PTY continues to advertise `xterm-256color`.
-The remote application must emit UTF-8 and enable its icons (for example,
-`eza -l --icons`); font selection does not install plugins or change shell/tmux settings.
-Remote wcwidth tables and complex emoji sequences can still differ. Local fonts
-may be absent on another device, and custom proportional fonts cannot guarantee
-terminal alignment. Prefer the included Mono families for consistent geometry.
+Included Mono fonts and a local Nerd Font symbol fallback support terminal
+icons without external font services. Remote applications must emit UTF-8 and
+enable their own icons. See the
+[terminal font guide](static/vendor/terminal-fonts/README.md) for setup and limitations.
 
 ### Files and transfers
 
@@ -106,40 +95,11 @@ terminal alignment. Prefer the included Mono families for consistent geometry.
   unavailable source, timeout, and configured-limit violations.
 - Per-user ownership checks, size limits, quotas, and path validation.
 
-SMB is disabled by default (`SMB_ENABLED=false`). Enabling it also requires an
-exact `SMB_ALLOWED_TARGETS` server allowlist. WebSSH fixes SMB connections to
-TCP 445 and requires SMB 3.1.1, signing, encryption, and secure negotiation;
-the current authentication mode is NTLM. Guest access, DFS, Kerberos, and
-automatic reconnect are not supported. SMB credentials are used for one
-temporary connection. Passwords and authentication secrets are never stored by
-WebSSH. Users may save non-secret, per-user share definitions containing a
-display name, host, share, domain, and username.
-
-For Active Directory and TrueNAS, first try the DNS domain (for example
-`example.com`) with the account name (for example `alice`). Alternatively,
-leave the domain field empty and use a UPN such as `alice@example.com`. NetBIOS
-domain names may not be accepted by every server.
-
-After connecting, WebSSH non-destructively checks root listing, file creation,
-directory creation, and child deletion access. The workspace labels confirmed
-write access, confirmed root read-only access, or unknown access; deeper ACLs
-can still differ. Uploads and remote copies never silently overwrite an
-existing destination: replace, skip, or cancel requires an explicit choice,
-and replacement fails closed when the backend cannot provide an atomic rename.
-SMB uses separate control and transfer sessions so browsing does not wait for a
-bulk stream. Cancellation is a single idempotent request, and known oversized
-operations report both the actual size and exact configured limit. Inline SMB
-editing preserves revision checks and offers an explicit recoverable-swap path
-when atomic replacement is unavailable.
-Supported SMB targets must refuse symlink and wide-link traversal (for Samba,
-use `follow symlinks = no` and `wide links = no`). WebSSH additionally opens
-files and directories without following reparse points and validates existing
-path components before remote operations.
-
-This is a two-link trust boundary: browser TLS protects browser-to-WebSSH
-traffic, while SMB encryption protects WebSSH-to-share traffic. The WebSSH process
-necessarily handles the submitted credentials and transferred file contents, so
-run it only on a trusted host and allowlist only trusted shares.
+SMB is disabled by default (`SMB_ENABLED=false`) and requires an exact
+`SMB_ALLOWED_TARGETS` allowlist. Connections require SMB 3.1.1 with signing and
+encryption; credentials are temporary and are not saved. See
+[SMB setup and security boundaries](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers)
+for server prerequisites, supported authentication, permissions and limitations.
 
 ### Identity and security
 
@@ -159,8 +119,8 @@ run it only on a trusted host and allowlist only trusted shares.
 - Health and readiness endpoints for deployment checks.
 - User administration, registration controls, security feature gates, and
   structured audit export and retention.
-- Native backup and restore with maintenance mode, staging isolation, quotas,
-  explicit confirmation, and bounded execution.
+- Consistent online backups and restore with maintenance mode, staging
+  isolation, quotas, explicit confirmation, and bounded execution.
 - Optional Redis-backed rate-limit counters.
 - Vendored browser dependencies, restrictive CSP, and no built-in telemetry.
 
@@ -208,15 +168,11 @@ Arrange steps, review parameters, and assign a saved sequence to a connection.
 
 Each pane has an explicit source, endpoint, path, trust state, and selection.
 
-Empty-file creation is available for SFTP and SMB. The SFTP Unix permission
-editor is opt-in: uncomment `SFTP_CHMOD_ENABLED=true` under `environment` in
-`docker-compose.yml`, then run `docker compose up -d --force-recreate webssh`.
-It requires a compatible SFTP server and normal remote permissions. The file
-manager shows setup help while disabled. Choose separate file and folder modes, optionally include folder contents,
-and review a bounded server-side preview before applying. Progress and partial
-changes remain visible; jobs stop on the first detected conflict or error.
-See the [chmod manual](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers#unix-permissions)
-for production-overlay instructions and security boundaries.
+Create empty files on SFTP and SMB sources. Optional SFTP Unix permissions
+include separate file/folder modes and a bounded preview before applying changes.
+The feature is disabled by default and grants no additional remote privileges.
+See the [permissions guide](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers#unix-permissions)
+for activation, prerequisites and limits.
 
 ### Review file changes before saving
 
@@ -274,6 +230,11 @@ Verify the container and readiness endpoint:
 docker compose ps
 curl -fsS http://localhost:5000/ready
 ```
+
+The supplied Compose file follows `latest`. For controlled upgrades, pin a
+published version or verified image digest, keep Compose files from the same
+release, and back up the data with matching secrets. See
+[upgrade and rollback guidance](https://github.com/bifrost0x/webssh/wiki/Upgrading-Rollback-and-FAQ).
 
 For an Internet-facing instance, do not expose this homelab configuration
 unchanged. Use the production overlay, an HTTPS reverse proxy, exact origins,

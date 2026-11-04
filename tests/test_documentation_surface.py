@@ -345,7 +345,9 @@ def test_file_workspace_documents_secure_opt_in_smb_boundary():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for phrase in ("source", "independent", "server-to-server", "transfer queue"):
         assert phrase.lower() in sftp.lower()
-    for text in (sftp, readme):
+    assert "SMB_ENABLED=false" in readme
+    assert "SMB_ALLOWED_TARGETS" in readme
+    for text in (sftp,):
         for phrase in (
             "SMB_ENABLED=false",
             "SMB_ALLOWED_TARGETS",
