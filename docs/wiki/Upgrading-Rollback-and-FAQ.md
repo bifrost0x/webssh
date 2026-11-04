@@ -55,6 +55,27 @@ the production file removes those previously implicit limits on recreation.
 Existing image-only upgrades do not change container settings. Review the merged
 configuration before recreating containers; keep data and recovery volumes intact.
 
+## v2.7.0 upgrade preparation
+
+The [2.7 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v2.7.0.md)
+cover the candidate changes; use a versioned image only after it is published.
+Reload open browser tabs after upgrading to load the SSH interactive-authentication
+dialog. PAM challenges belong to SSH server authentication, separately from
+WebSSH account MFA; standalone Quick SFTP retains password/key authentication.
+Test the actual server and jump-host authentication policy before broad rollout.
+
+Persistent tmux is selected explicitly for new connections. Existing tmux
+sessions remain on the remote server. Folder synchronization into a tmux shell
+requires manual, session-local Bash prompt setup; see
+[tmux synchronization](Terminal-and-Persistent-tmux-Sessions.md#folder-synchronization-in-an-existing-tmux-shell).
+No shell startup files are changed automatically. SFTP chmod and server
+mutations remain disabled by default.
+
+WebSSH now distributes under Apache License 2.0 with retained notices. See the
+[licensing guide](https://github.com/bifrost0x/webssh/blob/main/docs/licensing.md).
+Keep all pre-upgrade data and matching secrets. The earlier command-set format
+boundary below still applies when downgrading past 2.6.
+
 ## v2.6.0 compatibility
 
 Keep a complete pre-upgrade data backup, matching secrets and the previous image digest.

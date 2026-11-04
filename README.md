@@ -1,261 +1,55 @@
 <p align="center">
-  <img src="static/images/webssh-logo.svg" alt="WebSSH" width="128" height="128">
+  <img src="static/images/webssh-logo.svg" alt="WebSSH" width="96" height="96">
 </p>
 
-<p align="center">
-  <strong>A secure, self-hosted SSH and SFTP workspace for homelabs and teams.</strong>
-</p>
+# WebSSH
 
-<p align="center">
-  <a href="https://getwebssh.com/">Product site</a> ·
-  <a href="https://www.youtube.com/watch?v=mw_qXUnYYVs">Watch the full tour</a> ·
-  <a href="https://github.com/bifrost0x/webssh/wiki">Documentation</a> ·
-  <a href="ROADMAP.md">Roadmap</a> ·
-  <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Container image</a> ·
-  <a href="https://github.com/bifrost0x/webssh/discussions">Discussions</a>
-</p>
+A self-hosted SSH and SFTP workspace for homelabs and teams. Open terminals,
+manage files, and keep server commands and notes together in your browser.
+Accounts, connection profiles, and application data stay on your instance.
 
-<p align="center">
+<p>
   <a href="https://github.com/bifrost0x/webssh/actions/workflows/tests.yml"><img src="https://github.com/bifrost0x/webssh/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-  <a href="https://github.com/bifrost0x/webssh/actions/workflows/github-code-scanning/codeql"><img src="https://github.com/bifrost0x/webssh/actions/workflows/github-code-scanning/codeql/badge.svg" alt="CodeQL"></a>
-  <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh"><img src="https://img.shields.io/badge/container-GHCR-2496ED?logo=docker&logoColor=white" alt="GitHub Container Registry"></a>
-  <img src="https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white" alt="Python 3.11 or newer">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-2ea44f" alt="Apache 2.0 License"></a>
+  <img src="https://img.shields.io/badge/python-3.11+-3776AB" alt="Python 3.11 or newer">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-2ea44f" alt="Apache License 2.0"></a>
   <a href="https://getwebssh.com/code-graph/"><img src="https://img.shields.io/badge/Interactive%20Code--Map-open-6f42c1" alt="Interactive code map"></a>
 </p>
 
-## Product tour
+[Website](https://getwebssh.com/) ·
+[Documentation](https://github.com/bifrost0x/webssh/wiki) ·
+[Releases](https://github.com/bifrost0x/webssh/releases) ·
+[Container image](https://github.com/bifrost0x/webssh/pkgs/container/webssh) ·
+<a href="https://www.youtube.com/watch?v=mw_qXUnYYVs">Watch the tour</a>
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=mw_qXUnYYVs">
-    <img src="site/assets/webssh-youtube-tour.jpg" alt="Watch the WebSSH tour on YouTube: SSH connections, split terminals, SFTP files, command sets and Docker setup" width="1100">
-  </a>
-</p>
-
-WebSSH keeps terminal work, files, commands, diagnostics, and notes in one
-responsive browser workspace. It is self-hosted, multi-user, and built without
-a hosted control plane or runtime CDN dependencies.
-
-<details>
-  <summary>Preview the animated product tour</summary>
-
-  <p align="center">
-    <img src="assets/webssh-demo.gif" alt="WebSSH tour showing a focused terminal, split sessions, the SFTP workspace, and account security" width="1100">
-  </p>
-</details>
-
-## Why WebSSH
-
-- **One workspace, not a terminal tab.** Keep SSH sessions, SFTP sources,
-  commands, live Linux context, and notes aligned with the active server.
-- **Self-hosted by design.** Accounts, profiles, encrypted keys, host trust,
-  audit records, and application data remain on your WebSSH instance.
-- **Safe operational boundaries.** Authentication, ownership checks, network
-  policy, host-key verification, quotas, and bounded runtime work are explicit.
-- **Useful from phone to workstation.** The same interface adapts from a focused
-  mobile shell to multi-pane desktop operations.
+![WebSSH terminal and session workspace](assets/workspace-overview.png)
 
 ## Features
 
-### Terminal workspace
+- **Browser terminals:** multiple SSH sessions, tabs, split panes, search,
+  transcripts, broadcast input, and locally served terminal fonts.
+- **Persistent shells:** optional remote tmux sessions, reconnect controls,
+  and opt-in folder synchronization with explicit Bash prompt setup.
+- **Connections and commands:** saved profiles, jump hosts, encrypted SSH keys,
+  reusable Command Sets, and SSH password, key, and PAM MFA authentication.
+- **Files:** dual-pane SFTP browsing, uploads and downloads, server-to-server
+  transfers, previews, text editing with change review, and opt-in Unix permissions.
+  Encrypted SMB shares are optional and require an explicit target allowlist.
+- **Session tools:** Session-aware Files, Commands, Diagnostics, and Notes contexts;
+  Active Session Monitoring, Expanded Diagnostics, and Clipboard-Only Service Actions.
+  Direct server mutations require separate opt-in configuration.
+- **Multi-user access:** isolated account data and host-key trust, optional
+  Passkeys, TOTP, Recovery Codes, OIDC, GitHub App, and LDAP/Active Directory sign-in.
+- **Administration:** user management, audit export, native backup and restore,
+  readiness checks, and optional Redis-backed rate limits.
 
-- Multiple SSH sessions with tabs and 1-, 2-, or 4-pane layouts.
-- Persistent remote shells through tmux when tmux is available on the target.
-- Saved connections, jump hosts, key, password, and optional Tailscale SSH
-  authentication paths.
-- Broadcast input, terminal search, transcripts, reconnect controls, and
-  configurable scrollback.
-- Per-account terminal appearance with four self-hosted Nerd Font Mono families
-  (JetBrains Mono, Hack, Fira Mono, and Source Code Pro), local font selection,
-  and live shell, code, and character previews.
-- Session-aware Files, Commands, Diagnostics, and Notes contexts.
-- **Active Session Monitoring** for supported Linux resource and runtime data.
-- **Expanded Diagnostics** for resource history, processes, systemd services,
-  and Docker containers.
-- **Clipboard-Only Service Actions** that prepare allowlisted commands without
-  executing the service change inside WebSSH.
-
-Terminal icon support applies to live server output, including Neovim, eza and
-Starship, with any selected text font. A self-hosted Symbols Nerd Font Mono face
-supplies private-use icons even for theme fonts and unpatched local fonts.
-The font assets and their licenses are documented in
-[`static/vendor/terminal-fonts/README.md`](static/vendor/terminal-fonts/README.md).
-No font enumeration, external font service, font upload or arbitrary font URL is
-required; the selected font name is saved with the account appearance settings.
-
-SSH output is decoded as a continuous UTF-8 stream. Existing terminal capability filters and
-Unicode width rules are unchanged. Font/spacing changes resize the remote PTY
-after xterm measures the new cells. The PTY continues to advertise `xterm-256color`.
-The remote application must emit UTF-8 and enable its icons (for example,
-`eza -l --icons`); font selection does not install plugins or change shell/tmux settings.
-Remote wcwidth tables and complex emoji sequences can still differ. Local fonts
-may be absent on another device, and custom proportional fonts cannot guarantee
-terminal alignment. Prefer the included Mono families for consistent geometry.
-
-### Files and transfers
-
-- Source-first SFTP and opt-in SMB workspace with independent tabs and one or
-  two file panes.
-- Uploads, downloads, previews, inline text editing, and common file operations.
-- Streamed HTTP bulk transfers with Socket.IO limited to control events and
-  bounded editor content.
-- Server-to-server transfers across SFTP and SMB sources with progress,
-  cancellation, explicit conflict handling, and a shared transfer queue.
-- Same-source moves between folders without silently replacing existing items.
-- Stable, visible transfer reasons such as permission denied, conflict,
-  unavailable source, timeout, and configured-limit violations.
-- Per-user ownership checks, size limits, quotas, and path validation.
-
-SMB is disabled by default (`SMB_ENABLED=false`). Enabling it also requires an
-exact `SMB_ALLOWED_TARGETS` server allowlist. WebSSH fixes SMB connections to
-TCP 445 and requires SMB 3.1.1, signing, encryption, and secure negotiation;
-the current authentication mode is NTLM. Guest access, DFS, Kerberos, and
-automatic reconnect are not supported. SMB credentials are used for one
-temporary connection. Passwords and authentication secrets are never stored by
-WebSSH. Users may save non-secret, per-user share definitions containing a
-display name, host, share, domain, and username.
-
-For Active Directory and TrueNAS, first try the DNS domain (for example
-`example.com`) with the account name (for example `alice`). Alternatively,
-leave the domain field empty and use a UPN such as `alice@example.com`. NetBIOS
-domain names may not be accepted by every server.
-
-After connecting, WebSSH non-destructively checks root listing, file creation,
-directory creation, and child deletion access. The workspace labels confirmed
-write access, confirmed root read-only access, or unknown access; deeper ACLs
-can still differ. Uploads and remote copies never silently overwrite an
-existing destination: replace, skip, or cancel requires an explicit choice,
-and replacement fails closed when the backend cannot provide an atomic rename.
-SMB uses separate control and transfer sessions so browsing does not wait for a
-bulk stream. Cancellation is a single idempotent request, and known oversized
-operations report both the actual size and exact configured limit. Inline SMB
-editing preserves revision checks and offers an explicit recoverable-swap path
-when atomic replacement is unavailable.
-Supported SMB targets must refuse symlink and wide-link traversal (for Samba,
-use `follow symlinks = no` and `wide links = no`). WebSSH additionally opens
-files and directories without following reparse points and validates existing
-path components before remote operations.
-
-This is a two-link trust boundary: browser TLS protects browser-to-WebSSH
-traffic, while SMB encryption protects WebSSH-to-share traffic. The WebSSH process
-necessarily handles the submitted credentials and transferred file contents, so
-run it only on a trusted host and allowlist only trusted shares.
-
-### Identity and security
-
-- Local multi-user accounts with isolated profiles, keys, files, settings, and
-  SSH host trust.
-- Optional Passkeys, authenticator apps (TOTP), and one-time Recovery Codes.
-- Optional OIDC, admin-configured GitHub App, and LDAP/Active Directory sign-in with conservative account
-  linking and assurance handling.
-- Action-bound confirmation for protected account and administrative changes.
-- Encrypted SSH private-key storage and per-user known-host decisions.
-- CSRF protection, secure response headers, rate limits, request limits, audit
-  logging, and production fail-closed checks.
-
-### Operations and administration
-
-- Docker and Docker Compose deployment with a persistent data volume.
-- Health and readiness endpoints for deployment checks.
-- User administration, registration controls, security feature gates, and
-  structured audit export and retention.
-- Native backup and restore with maintenance mode, staging isolation, quotas,
-  explicit confirmation, and bounded execution.
-- Optional Redis-backed rate-limit counters.
-- Vendored browser dependencies, restrictive CSP, and no built-in telemetry.
-
-## Screenshots
-
-Captured from the current interface with synthetic hosts and example data.
-
-### Focused session workspace
-
-<p align="center">
-  <img src="assets/workspace-overview.png" alt="Connected WebSSH terminal with active-session controls and a notes workspace" width="1100">
-</p>
-
-The active session stays central while contextual tools remain close at hand.
-
-### Multiple live sessions
-
-<p align="center">
-  <img src="assets/multi-session.png" alt="WebSSH desktop workspace with two live terminal panes and four session tabs" width="1100">
-</p>
-
-Split panes make side-by-side observation and coordinated work visible without
-mixing session ownership or terminal state.
-
-### Commands, favorites, and reusable sequences
-
-<p align="center">
-  <img src="assets/commandlibrary.png" alt="WebSSH Command Library with searchable command cards, operating-system filters, and separate Favorites and Command Sets tabs" width="1100">
-</p>
-
-Browse the library, keep frequently used entries in Favorites, and build
-reusable Command Sets. Each has its own label, icon, and color.
-
-<p align="center">
-  <img src="assets/command-set-builder.png" alt="WebSSH Command Set editor with a searchable library, ordered steps, and per-step parameter controls" width="1100">
-</p>
-
-Arrange steps, review parameters, and assign a saved sequence to a connection.
-
-### File workspace
-
-<p align="center">
-  <img src="assets/sftp-workspace.png" alt="WebSSH dual-pane file workspace with trusted sources and a transfer queue" width="1100">
-</p>
-
-Each pane has an explicit source, endpoint, path, trust state, and selection.
-
-Empty-file creation is available for SFTP and SMB. The SFTP Unix permission
-editor is opt-in: uncomment `SFTP_CHMOD_ENABLED=true` under `environment` in
-`docker-compose.yml`, then run `docker compose up -d --force-recreate webssh`.
-It requires a compatible SFTP server and normal remote permissions. The file
-manager shows setup help while disabled. Choose separate file and folder modes, optionally include folder contents,
-and review a bounded server-side preview before applying. Progress and partial
-changes remain visible; jobs stop on the first detected conflict or error.
-See the [chmod manual](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers#unix-permissions)
-for production-overlay instructions and security boundaries.
-
-### Review file changes before saving
-
-<p align="center">
-  <img src="assets/file-edit-review.png" alt="WebSSH file editor showing the destination, a colored line diff, original-file backup, and explicit save confirmation" width="1100">
-</p>
-
-Check the target and changed lines, optionally download the original, then
-explicitly save the reviewed content.
-
-<details>
-  <summary>Preview the file editing workflow</summary>
-
-<p align="center">
-  <img src="assets/file-editing.gif" alt="WebSSH file workflow from dual-pane browsing through preview, editing, save confirmation, and transfer completion" width="1100">
-</p>
-
-</details>
-
-### Security Center
-
-<p align="center">
-  <img src="assets/security-center.png" alt="WebSSH Security Center showing sign-in assurance, SSH host trust, Passkeys, TOTP, and Recovery Codes" width="1100">
-</p>
-
-The Security Center explains how the current sign-in confirms protected
-changes and keeps factors and SSH trust in one account-owned view.
-
-### Mobile workspace
-
-<p align="center">
-  <img src="assets/mobile-workspace.png" alt="WebSSH mobile terminal workspace with responsive session controls and connection status" width="360">
-</p>
+Browser scripts, styles, icons, and fonts are served locally. Node.js is used
+for development tooling and vendor updates; it is not required at runtime.
 
 ## Quick Start
 
-The supplied Compose file is intended for evaluation and trusted homelab
-networks. It stores the database, generated application secret, user data, and
-encrypted keys in the `webssh_data` volume.
+Requires Docker Engine and Docker Compose. The default configuration is for
+trusted homelab networks and publishes port 5000. It persists the database,
+application secret, user settings, and encrypted keys in the `webssh_data` volume.
 
 ```bash
 mkdir webssh-deployment
@@ -264,109 +58,73 @@ curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.y
 docker compose up -d
 ```
 
-Open <http://localhost:5000>. On a new instance, create the first administrator
-immediately from a trusted network. The one-time browser bootstrap closes after
-that account exists.
-
-Verify the container and readiness endpoint:
+Open [http://localhost:5000](http://localhost:5000) and create the first
+administrator immediately from a trusted network. The one-time browser
+bootstrap closes after that account exists.
 
 ```bash
 docker compose ps
 curl -fsS http://localhost:5000/ready
 ```
 
-For an Internet-facing instance, do not expose this homelab configuration
-unchanged. Use the production overlay, an HTTPS reverse proxy, exact origins,
-secure cookies, disabled browser registration, internal-target blocking, and
-explicit trusted-proxy settings.
+The supplied Compose file follows the `latest` image. For controlled upgrades,
+pin a published version or immutable image digest and keep Compose files from
+the same release. Back up the data and matching secrets before upgrading;
+see [upgrade and rollback guidance](https://github.com/bifrost0x/webssh/wiki/Upgrading-Rollback-and-FAQ).
 
-Read the [Quick Start](https://github.com/bifrost0x/webssh/wiki/Quick-Start) or
-the complete [Production Deployment](https://github.com/bifrost0x/webssh/wiki/Production-Deployment)
-guide before accepting users. See [production container boundaries](docs/production-container.md)
-for the optional `docker-compose.hardened.yml` overlay, writable paths,
-configurable resource budgets, and LDAP/Tailscale constraints.
+For Internet-facing deployments, use an HTTPS reverse proxy and the
+[production overlay](https://github.com/bifrost0x/webssh/wiki/Production-Deployment).
+Configure exact origins, secure cookies, trusted proxies, and SSH target policy;
+do not expose the default homelab setup unchanged.
 
-## Security Boundary
+## Security and deployment
 
-<p align="center">
-  <img src="docs/media/diagrams/system-trust-boundaries.png" alt="WebSSH trust boundaries from the browser through the single application process to owned SSH and SFTP targets" width="1100">
-</p>
+WebSSH handles connection credentials, terminal contents, and transferred files.
+Protect the host, administrator accounts, data volume, logs, and backups as
+trusted infrastructure. Verify SSH host-key fingerprints before accepting trust.
 
-WebSSH is trusted infrastructure. It processes connection credentials,
-terminal input and output, and file data while establishing and maintaining SSH
-and SFTP sessions. It is not an end-to-end encrypted relay that is blind to
-session contents.
+- Run exactly **one Gunicorn `gthread` worker**. SSH state is process-local;
+  multiple workers or replicas are unsupported.
+- Preserve the configured socket, thread, background-worker, and quota limits.
+- Optional SMB, Tailscale SSH, SFTP chmod, and server mutations need explicit
+  configuration. Feature flags do not grant additional remote privileges.
+- Retain a tested local administrator when enabling external authentication.
+- Backups may contain both the application secret and encrypted keys; protect
+  them like credentials.
 
-Keep these deployment contracts intact:
-
-- Terminate HTTPS at a trusted boundary and protect the WebSSH host, data
-  volume, logs, backups, and administrator accounts.
-- Review SSH host-key fingerprints before trusting them and investigate
-  unexpected changes.
-- Production uses exactly **one Gunicorn `gthread` worker**. Live SSH state and
-  part of the resource coordination are process-local; multiple workers or
-  replicas are not supported without an external session-state architecture.
-- Thread count, socket admission, per-user socket limits, background workers,
-  and quotas form one capacity model. Keep HTTP capacity reserved.
-- External OIDC or LDAP identity never bypasses the local account, ownership,
-  or authorization model. Retain a tested local break-glass administrator.
-- Backups can contain the persisted application secret and encrypted private
-  keys together. Protect and test them accordingly.
-
-See the [Security Model and Hardening](https://github.com/bifrost0x/webssh/wiki/Security-Model-and-Hardening)
-guide and the project's [security policy](SECURITY.md) before exposing WebSSH
-to untrusted networks.
+Read the [security model](https://github.com/bifrost0x/webssh/wiki/Security-Model-and-Hardening)
+and [security policy](SECURITY.md). Report vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/bifrost0x/webssh/security/advisories/new).
 
 ## Documentation
 
-The README is the project entry point. Detailed installation, operation,
-security, authentication, recovery, and development guidance lives in the
-[WebSSH Wiki](https://github.com/bifrost0x/webssh/wiki). Its
-[versioned source](docs/wiki/Home.md) is reviewed with the code through pull
-requests and published automatically after changes reach `main`.
+The [WebSSH Wiki](https://github.com/bifrost0x/webssh/wiki) contains the operator
+and user guides. Its [versioned source](docs/wiki/Home.md) is reviewed with the
+code and published after changes reach `main`.
 
-| Goal | Guide |
+| Task | Guide |
 |---|---|
-| Install with Docker | [Docker and Docker Compose](https://github.com/bifrost0x/webssh/wiki/Docker-and-Docker-Compose) |
+| Install and connect | [Quick Start](https://github.com/bifrost0x/webssh/wiki/Quick-Start) |
 | Deploy behind HTTPS | [Production Deployment](https://github.com/bifrost0x/webssh/wiki/Production-Deployment) |
-| Configure every setting | [Configuration Reference](https://github.com/bifrost0x/webssh/wiki/Configuration-Reference) |
-| Connect and verify hosts | [SSH Connections and Host Keys](https://github.com/bifrost0x/webssh/wiki/SSH-Connections-and-Host-Keys) |
-| Use terminal and tmux sessions | [Terminal and Persistent tmux Sessions](https://github.com/bifrost0x/webssh/wiki/Terminal-and-Persistent-tmux-Sessions) |
-| Work with files and transfers | [SFTP File Workspace and Transfers](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers) |
+| Configure the instance | [Configuration Reference](https://github.com/bifrost0x/webssh/wiki/Configuration-Reference) |
 | Configure authentication | [Authentication Overview](https://github.com/bifrost0x/webssh/wiki/Authentication-Overview) |
-| Run backup or restore | [Backup, Restore and Secret Rotation](https://github.com/bifrost0x/webssh/wiki/Backup-Restore-and-Secret-Rotation) |
-| Troubleshoot health checks | [Health Checks and Troubleshooting](https://github.com/bifrost0x/webssh/wiki/Health-Checks-and-Troubleshooting) |
-| Understand the runtime | [Architecture and Runtime Lifecycle](https://github.com/bifrost0x/webssh/wiki/Architecture-and-Runtime-Lifecycle) |
-| Develop and test locally | [Development and Testing](https://github.com/bifrost0x/webssh/wiki/Development-and-Testing) |
+| Work with files | [SFTP and transfers](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers) |
+| Back up and recover | [Backup and restore](https://github.com/bifrost0x/webssh/wiki/Backup-Restore-and-Secret-Rotation) |
+| Develop and test | [Development and Testing](https://github.com/bifrost0x/webssh/wiki/Development-and-Testing) |
 
-Additional project views:
+See also [screenshots and workflow previews](docs/screenshots.md),
+[roadmap](ROADMAP.md), [release history](docs/project-history.md), and
+[production container options](docs/production-container.md).
 
-- [Roadmap and current release focus](ROADMAP.md)
-- [Project history and documented decisions](docs/project-history.md)
-- [Planning, milestones and release workflow](docs/project-planning.md)
-- [Product site](https://getwebssh.com/)
-- [Interactive code graph](https://getwebssh.com/code-graph/)
-- [Container image](https://github.com/bifrost0x/webssh/pkgs/container/webssh)
+## Contributing and support
 
-## Contributing and Support
-
-Bug reports and focused pull requests are welcome. For feature proposals and
-architecture ideas, start with [GitHub Discussions](https://github.com/bifrost0x/webssh/discussions)
-so the security and runtime boundaries can be reviewed before implementation.
-
-- Read [Development and Testing](https://github.com/bifrost0x/webssh/wiki/Development-and-Testing).
-- Use [Issues](https://github.com/bifrost0x/webssh/issues) for reproducible bugs.
-- Report vulnerabilities privately through
-  [GitHub Security Advisories](https://github.com/bifrost0x/webssh/security/advisories/new).
-- Support ongoing work through [Buy Me a Coffee](https://buymeacoffee.com/bifrost0x).
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/chart?repos=bifrost0x/webssh&type=date&legend=top-left)](https://www.star-history.com/?repos=bifrost0x%2Fwebssh&type=date&legend=top-left)
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+Use [Issues](https://github.com/bifrost0x/webssh/issues) for reproducible bugs
+and [Discussions](https://github.com/bifrost0x/webssh/discussions) for feature ideas.
+You can support development through [Buy Me a Coffee](https://buymeacoffee.com/bifrost0x).
 
 ## License
 
-WebSSH is available under the [Apache License 2.0](LICENSE).
-
-Bundled third-party components retain their own licenses. See
-[Licensing](docs/licensing.md) and [retained notices](THIRD-PARTY-NOTICES).
+WebSSH is licensed under the [Apache License 2.0](LICENSE).
+Bundled components retain their own licenses; see [licensing](docs/licensing.md),
+[NOTICE](NOTICE), and [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).

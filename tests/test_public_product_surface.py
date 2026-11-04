@@ -325,6 +325,8 @@ def test_demo_links_bypass_previously_cached_tour(built_site):
     readme = (ROOT / 'README.md').read_text(encoding='utf-8')
     page = Page(readme)
     assert 'https://www.youtube.com/watch?v=mw_qXUnYYVs' in page.links()
-    assert 'site/assets/webssh-youtube-tour.jpg' in readme
+    gallery = (ROOT / 'docs/screenshots.md').read_text(encoding='utf-8')
+    assert 'site/assets/webssh-youtube-tour.jpg' in gallery
+    assert 'https://www.youtube.com/watch?v=mw_qXUnYYVs' in gallery
     assert 'Watch the 60-second' not in readme
     assert 'Music:' not in readme

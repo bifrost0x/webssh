@@ -5,7 +5,7 @@ Thanks for your interest in contributing! This project is open to contributions 
 ## Quick Links
 
 - [Report a Bug](https://github.com/bifrost0x/webssh/issues/new?template=bug_report.md)
-- [Request a Feature](https://github.com/bifrost0x/webssh/issues/new?template=feature_request.md)
+- [Propose a Feature](https://github.com/bifrost0x/webssh/discussions)
 - [Security Issues](SECURITY.md) - Please don't open public issues for vulnerabilities
 - [Roadmap](ROADMAP.md) and [planning workflow](docs/project-planning.md)
 
@@ -18,57 +18,23 @@ Thanks for your interest in contributing! This project is open to contributions 
 
 ### Local Development Setup
 
-```bash
-# Clone the repository
-git clone https://github.com/bifrost0x/webssh.git
-cd webssh
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# or: venv\Scripts\activate  # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set required environment variable
-export SECRET_KEY=$(openssl rand -hex 32)
-export DEBUG=True
-
-# Run the application
-python start.py
-```
-
-Open http://localhost:5000 and create a test account.
+Follow [Development and Testing](docs/wiki/Development-and-Testing.md) for
+hash-locked dependency installation, an isolated test data directory, Node tooling,
+and the required checks. Python 3.11 is the minimum; the production container uses
+Python 3.14. Browser assets are already vendored, so no frontend build is needed
+to start the application.
 
 ### Project Structure
 
-```
-webssh/
-├── app/                    # Flask application (15 modules)
-│   ├── __init__.py        # App factory, routes, security headers
-│   ├── auth.py            # Authentication, rate limiting
-│   ├── models.py          # SQLAlchemy models
-│   ├── socket_events.py   # WebSocket event handlers
-│   ├── ssh_manager.py     # SSH connection management
-│   ├── sftp_handler.py    # SFTP file operations
-│   ├── connection_pool.py # SSH connection pooling
-│   ├── key_manager.py     # SSH key storage
-│   ├── key_encryption.py  # SSH key encryption at rest
-│   ├── profile_manager.py # Connection profiles
-│   ├── command_manager.py # Command library
-│   ├── binary_transfer.py # Binary file transfer protocol
-│   ├── user_settings.py   # User preferences
-│   ├── audit_logger.py    # Security audit logging
-│   └── decorators.py      # Shared decorators
-├── static/
-│   ├── css/               # Stylesheets (3 files)
-│   └── js/                # Frontend JavaScript (12 modules)
-├── templates/             # Jinja2 templates (4 files)
-├── config.py              # Central configuration
-├── start.py               # Entry point
-└── requirements.txt       # Python dependencies
-```
+| Path | Purpose |
+|---|---|
+| `app/` | Flask application, authenticated Socket.IO handlers, SSH/SFTP and storage services |
+| `static/`, `templates/` | Vanilla JavaScript, CSS, vendored browser assets and Jinja templates |
+| `config.py`, `start.py` | Configuration and application entry point |
+| `tests/` | Python, JavaScript, browser and disposable-server integration tests |
+| `scripts/` | Dependency locks, vendor updates, CI and release checks |
+| `docs/wiki/` | Versioned user and operator documentation |
+| `site/` | Public project website |
 
 ## How to Contribute
 
@@ -87,7 +53,7 @@ Include in your bug report:
 
 ### Suggesting Features
 
-Feature requests are welcome! Please include:
+Start a [Discussion](https://github.com/bifrost0x/webssh/discussions) for feature ideas. Please include:
 - Clear description of the feature
 - Use case - why is this useful?
 - Possible implementation approach (optional)

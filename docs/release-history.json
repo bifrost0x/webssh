@@ -639,8 +639,34 @@
     ],
     "verification": "All 185 accessible planned items matched their intended milestone through the GitHub API. Browser milestone overview confirmed 10 closed and 1 open. Release-readiness issue #248 remains open. No due dates were added."
   },
-  "candidate": null,
-  "updated_on": "2026-10-23",
+  "candidate": {
+    "title": "v2.7.0",
+    "state": "prepared",
+    "previous_release": "v2.6.0",
+    "base_commit": "eaa31e19f0a89f6f316d1e07db4132329deb49b1",
+    "goal": "Improve SSH MFA and persistent-session workflows, harden storage and refresh distribution documentation",
+    "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.6.0...main",
+    "release_notes": "docs/releases/v2.7.0.md",
+    "pull_requests": [
+      290,
+      291,
+      292,
+      293,
+      294,
+      295,
+      296,
+      297,
+      298,
+      299,
+      300,
+      302,
+      304,
+      307,
+      308
+    ],
+    "publication_status": "Pending final candidate review, CI, tag and native image verification"
+  },
+  "updated_on": "2026-11-04",
   "release_updates": [
     {
       "version": "v2.5.0",

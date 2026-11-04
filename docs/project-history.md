@@ -4,6 +4,13 @@ This retrospective explains what shipped and why the documented changes mattered
 It is reconstructed from public releases, PR descriptions, issue links and Git ancestry,
 not from an original project plan. Reconstruction date: **2026-10-03**.
 
+## Next release: v2.7.0
+
+The [2.7.0 candidate notes](releases/v2.7.0.md) describe the selected changes
+since v2.6.0. This is release preparation, not a published release. Historical
+counts below remain unchanged until the final tag and image are verified.
+The machine-readable manifest records the candidate separately from releases.
+
 ## Reading the evidence
 
 - **Delivered:** the published tag contains the implementation's merge commit.
