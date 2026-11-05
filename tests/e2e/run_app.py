@@ -290,14 +290,12 @@ def main():
             'SECRET_KEY': 'e2e-only-secret-key',
             # Disposable HTTP loopback fixture for the explicit development exception.
             'DEBUG': 'True',
-            'AUTOMATION_ENABLED': 'true',
             'AUTOMATION_ALLOW_INSECURE_LOOPBACK': 'true',
             # This fixture binds plain HTTP on loopback. WebKit correctly omits
             # Secure cookies there; production cookie defaults remain intact.
             'SESSION_COOKIE_SECURE': 'False',
             'HOST': '127.0.0.1',
             'PORT': os.environ.get('WEBSSH_E2E_PORT', '4173'),
-            'REGISTRATION_ENABLED': 'True',
             'RATELIMIT_STORAGE_URL': 'memory://',
             'RATELIMIT_LOGIN_LIMIT': '100 per minute',
             # Independent browser cases reauthenticate the same seeded admin.
@@ -335,11 +333,18 @@ def main():
             from test_hashing import enable_fast_password_hashing
             enable_fast_password_hashing()
 
+        # Exercise mutable Admin policies rather than pinning them via environment.
+        os.environ.pop('AUTOMATION_ENABLED', None)
+        os.environ.pop('REGISTRATION_ENABLED', None)
+
         from app import create_app, socketio
         from app.auth import register_user
 
         app = create_app()
         with app.app_context():
+            from app.app_settings import set_automation_enabled, set_registration_enabled
+            set_automation_enabled(True)
+            set_registration_enabled(True)
             from app.models import (
                 GitHubIdentity,
                 OIDCIdentity,
