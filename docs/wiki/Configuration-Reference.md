@@ -297,3 +297,21 @@ deployment configuration. Audit retention is already managed in Administration.
 TOTP capability is available by default in 3.0; Admin activation remains off
 until explicitly enabled. `TOTP_ENABLED=false` is the optional operator kill
 switch. Existing enrolled users and saved activation choices are retained.
+
+
+### Safe tmux handoff from 2.7
+
+The supplied Compose retains active `TMUX_ENABLED=true` and `TMUX_DEFAULT=false`
+for compatibility. Keep your own values if they differ. First start 3.0 with the
+existing Compose and data volume. Verify the effective and saved values under
+Administration → Integrations. Only then remove the two environment overrides
+and recreate the container to make those Admin settings editable. The saved
+values remain effective. Other advanced Compose options remain documented in
+the example file and must not be discarded during this handoff.
+
+Replacing both the image and Compose before the first 3.0 start cannot recover
+custom environment values that were removed from the old file: they were never
+stored in application data. Do not replace a customized deployment file with a
+fresh template without carrying over its settings. If an Admin value already
+exists and differs from the override, inspect that saved value before removing
+the override; it becomes effective again when the override is removed.

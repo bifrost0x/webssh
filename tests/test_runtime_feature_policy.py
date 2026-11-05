@@ -24,15 +24,16 @@ def test_runtime_policy_preserves_explicit_values_and_saved_admin_choice(app, cl
     assert runtime_feature_status(name)['enabled'] is True
 
 @pytest.mark.parametrize('enabled',[True,False])
-def test_legacy_compose_value_survives_removing_override(app,monkeypatch,enabled):
+@pytest.mark.parametrize('name,key', [('tmux_enabled','TMUX_ENABLED'),('tmux_default','TMUX_DEFAULT'),('server_operations_enabled','SERVER_OPERATIONS_ENABLED'),('sftp_chmod_enabled','SFTP_CHMOD_ENABLED')])
+def test_legacy_compose_value_survives_removing_override(app,monkeypatch,enabled,name,key):
     import config
     from app import app_settings
-    monkeypatch.setattr(config,'SERVER_OPERATIONS_ENABLED',enabled)
-    monkeypatch.setattr(config,'EXPLICIT_ENVIRONMENT_KEYS',frozenset({'SERVER_OPERATIONS_ENABLED'}))
+    monkeypatch.setattr(config,key,enabled)
+    monkeypatch.setattr(config,'EXPLICIT_ENVIRONMENT_KEYS',frozenset({key}))
     app_settings.migrate_runtime_features()
     monkeypatch.setattr(config,'EXPLICIT_ENVIRONMENT_KEYS',frozenset())
-    monkeypatch.setattr(config,'SERVER_OPERATIONS_ENABLED',not enabled)
-    status=app_settings.runtime_feature_status('server_operations_enabled')
+    monkeypatch.setattr(config,key,not enabled)
+    status=app_settings.runtime_feature_status(name)
     assert status['enabled'] is enabled
     assert status['migrated'] is True
     assert status['locked'] is False

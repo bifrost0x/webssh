@@ -1340,7 +1340,7 @@
                 : policy.migrated ? words('Übernommener Wert der bisherigen Installation · im Adminbereich änderbar.', 'Preserved value from the previous installation · editable here.')
                 : policy.source === 'admin' ? words('Quelle: Admin-Einstellung', 'Source: admin setting') : words('Quelle: Produktstandard', 'Source: product default');
             const link = document.createElement('a'); link.href = 'https://github.com/bifrost0x/webssh/wiki/Configuration-Reference'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'Wiki';
-            if (policy.locked && policy.saved_value !== null) source.append(words(' · Gespeicherter Adminwert: ', ' · Saved admin value: ') + policy.saved_value);
+            if (policy.locked && policy.saved_value !== null) source.append(words(' · Gespeicherter Adminwert: ', ' · Saved admin value: ') + policy.saved_value + words(' · Vor Entfernen der Compose-Vorgabe prüfen: Danach gilt dieser gespeicherte Wert.', ' · Review before removing the Compose override: this saved value will then apply.'));
             source.append(' · ', link); copy.append(title, hint, source);
             const control = document.createElement('label'); control.className = 'admin-switch';
             const input = document.createElement('input'); input.type = 'checkbox'; input.id = 'runtime-' + name; input.checked = policy.enabled; input.disabled = policy.locked;

@@ -28,16 +28,13 @@ def compose(files, environment=None):
 
 
 @pytest.mark.parametrize('production', [False, True])
-def test_compose_leaves_tmux_policy_to_administration(production):
+def test_compose_preserves_tmux_defaults_until_admin_handoff(production):
     files = ['docker-compose.yml']
     if production:
         files.append('docker-compose.production.yml')
     environment = compose(files)['environment']
-    assert 'TMUX_ENABLED' not in environment
-    assert 'TMUX_DEFAULT' not in environment
-    from app.app_settings import runtime_feature_status
-    for name in ('tmux_enabled', 'tmux_default'):
-        assert runtime_feature_status(name)['locked'] is False
+    assert environment['TMUX_ENABLED'] == 'true'
+    assert environment['TMUX_DEFAULT'] == 'false'
 
 
 @pytest.mark.parametrize('ldap', [False, True])
