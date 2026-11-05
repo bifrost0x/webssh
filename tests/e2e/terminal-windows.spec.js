@@ -489,7 +489,9 @@ test('dragging beyond an edge and resizing the workspace keep complete windows v
 
 for (const zones of [['left', 'right'], ['top-left', 'top-right', 'bottom-left', 'bottom-right']]) {
     test(`snapped ${zones.length} cells retain their preview geometry on a narrow desktop`, async ({page}) => {
-        await page.setViewportSize({width:1280,height:800});
+        // Docked tools narrow the window desktop at this breakpoint. Laptop
+        // overlays intentionally preserve terminal geometry instead.
+        await page.setViewportSize({width:1440,height:800});
         await enterWindowMode(page);
         await page.locator('#contextWorkspaceResizer').press('End');
         const desktop = page.locator('#terminalGrid');
@@ -546,6 +548,14 @@ for (const zones of [['left', 'right'], ['top-left', 'top-right', 'bottom-left',
         await expect.poll(async () => (await box(desktop)).width).toBeLessThan(664);
         await expect(page.locator('.ws-window.is-gliding')).toHaveCount(0);
         await assertGeometry();
+        await page.setViewportSize({width:1280,height:800});
+        await page.locator('#contextWorkspaceResizer').press('Home');
+        const overlayWidth = (await box(desktop)).width;
+        await page.locator('#contextWorkspaceResizer').press('End');
+        await expect.poll(async () => (await box(desktop)).width).toBe(overlayWidth);
+        await assertGeometry();
+        await page.locator('#contextWorkspaceClose').click();
+        for (const frame of await page.locator('.ws-window').all()) await expect(frame).toBeInViewport({ratio: 1});
         expect(await page.evaluate(() => window.__windowEvents.filter(e => e.event === 'ssh_disconnect'))).toEqual([]);
         for (const index of zones.keys()) await expect(page.locator(`#terminal-win-snap-${index} .xterm`)).toHaveCount(1);
         await assertNoExternalRequests(page);

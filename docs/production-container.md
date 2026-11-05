@@ -94,6 +94,16 @@ and copy completed archives to encrypted off-host storage. A backup left in a
 one-off container's writable layer or temporary directory is not durable.
 CLI backup and restore require a stopped application and the offline acknowledgement.
 
+Restore rejects database triggers, views and virtual tables, which WebSSH does
+not create, before replacing existing data. The same check protects internal
+recovery snapshots and authentication-state cleanup. Archives containing SQLite
+WAL, shared-memory or journal sidecars are rejected rather than replayed after
+validation. Backup creation consolidates committed WAL data into the database
+snapshot; it does not silently discard those changes. For an older archive with
+sidecars, create a new consistent backup from the original stopped installation.
+These checks reduce the import attack surface but do not replace SQLite security
+updates or make untrusted database files safe to parse.
+
 ## Optional authentication and networking
 
 For LDAP, merge base, LDAP and production files in this order, then append the

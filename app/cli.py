@@ -460,7 +460,7 @@ def backup_restore(archive, confirm_offline):
 @click.command('rotate-secret-key')
 @click.option('--confirm-offline', is_flag=True)
 def rotate_secret_key(confirm_offline):
-    """Rotate the persisted SECRET_KEY and every stored SSH key."""
+    """Rotate the persisted SECRET_KEY and secrets encrypted with it."""
     from .secret_rotation import rotate_secret
 
     _require_offline_confirmation(confirm_offline)
@@ -476,12 +476,14 @@ def rotate_secret_key(confirm_offline):
     _audit_operation(
         'SECRET_ROTATION_SUCCESS',
         rotated_keys=report.rotated_keys,
+        rotated_named_records=report.rotated_credentials,
     )
     click.echo(
         f'SECRET_KEY rotated for {report.rotated_keys} stored SSH keys and '
         f'{report.rotated_totp_secrets} TOTP secrets and '
-        f'{report.rotated_github_secrets} GitHub client secrets. '
-        f'Verified backup: {report.backup_path}'
+        f'{report.rotated_github_secrets} GitHub client secrets and '
+        f'{report.rotated_credentials} named credentials. '
+        f'Verified private recovery snapshot: {report.backup_path}'
     )
     click.echo(
         'Restart WebSSH now so every process loads the new persisted secret.'

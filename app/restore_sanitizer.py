@@ -3,6 +3,8 @@
 from pathlib import Path
 import sqlite3
 
+from .restore_database import harden_imported_database
+
 
 _TRANSIENT_TABLES = (
     'factor_bootstrap_tokens',
@@ -30,6 +32,7 @@ def sanitize_restored_authentication_state(database_path: Path):
     connection = sqlite3.connect(str(database_path), timeout=30)
     try:
         connection.execute('BEGIN IMMEDIATE')
+        harden_imported_database(connection)
         present = {
             row[0]
             for row in connection.execute(

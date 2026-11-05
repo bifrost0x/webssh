@@ -265,9 +265,10 @@ def test_hosts_are_prominent_and_connection_assets_share_navigation():
     assert navigation.index('fileTransferBtn') < navigation.index(
         'manageProfilesBtn'
     )
-    assert navigation.index('manageProfilesBtn') < navigation.index(
-        'commandLibraryBtn'
-    )
+    assert navigation.index('commandLibraryBtn') < navigation.index('manageProfilesBtn')
+    for destination in ('overviewNavBtn', 'workspaceNavBtn', 'fileTransferBtn',
+                        'commandLibraryBtn', 'manageProfilesBtn'):
+        assert navigation.count(f'id="{destination}"') == 1
     assert 'data-i18n="connectionAssets.hosts">Hosts</span>' in navigation
     assert 'manageProfilesBtn' not in account_menu.group('body')
     assert 'manageKeysBtn' not in account_menu.group('body')
@@ -277,9 +278,9 @@ def test_hosts_are_prominent_and_connection_assets_share_navigation():
         template,
         re.DOTALL,
     )
-    assert len(asset_menus) == 3
+    assert len(asset_menus) == 4
     for menu in asset_menus:
-        for asset in ('hosts', 'jump-hosts', 'keys'):
+        for asset in ('hosts', 'jump-hosts', 'keys', 'passwords'):
             assert menu.count(f'data-connection-asset="{asset}"') == 1
     assert 'function openConnectionAssetManager(asset)' in app_source
     assert "openConnectionAssetManager('keys')" in app_source

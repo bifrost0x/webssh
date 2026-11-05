@@ -281,14 +281,23 @@ class AtomicSFTP:
 
     def file(self, path, mode):
         self.opened.append((path, mode))
-        return io.BytesIO()
+        class RemoteFile(io.BytesIO):
+            permissions = 0o600
+
+            def stat(self):
+                return SimpleNamespace(st_mode=stat.S_IFREG | self.permissions,
+                                       st_size=len(self.getvalue()), st_mtime=1)
+
+            def chmod(self, permissions):
+                self.permissions = permissions
+        return RemoteFile()
 
     def lstat(self, _path):
         if self.destination_error is not None:
             raise self.destination_error
         if not self.destination_exists:
             raise FileNotFoundError()
-        return SimpleNamespace(st_mode=stat.S_IFREG)
+        return SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_size=0, st_mtime=1)
 
     def posix_rename(self, old_path, new_path):
         if self.replace_error is not None:
@@ -310,6 +319,13 @@ def install_sftp_session(monkeypatch, sftp, calls=None):
         yield sftp, 'session'
 
     monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+    if isinstance(sftp, AtomicSFTP):
+        @contextmanager
+        def exclusive_file(client, path, *, mode=0o600):
+            assert mode == 0o600
+            with client.file(path, 'wx') as remote:
+                yield remote
+        monkeypatch.setattr(sftp_handler, 'open_exclusive_file', exclusive_file)
 
 
 def test_transfer_reader_uses_a_separate_io_lane(monkeypatch):
@@ -347,7 +363,7 @@ def test_atomic_writer_commits_replace_only_through_posix_rename(monkeypatch):
     ) as writer:
         writer.write(b'replacement')
 
-    assert sftp.opened == [('/target.txt.webssh-write-token.tmp', 'wb')]
+    assert sftp.opened == [('/target.txt.webssh-write-token.tmp', 'wx')]
     assert sftp.replaced == [
         ('/target.txt.webssh-write-token.tmp', '/target.txt')
     ]

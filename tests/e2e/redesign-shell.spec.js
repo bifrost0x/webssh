@@ -1,5 +1,5 @@
 const {test, expect} = require('playwright/test');
-const {login, installSshConnectTrap, sshAttempts, assertNoExternalRequests} = require('./helpers');
+const {login, installSshConnectTrap, sshAttempts, assertNoExternalRequests, assertRouteGeometry} = require('./helpers');
 
 async function overview(page) {
     if (!await page.locator('#overviewNavBtn').isVisible()) await page.locator('#mobileMoreBtn').click();
@@ -78,16 +78,18 @@ test('one real search and exact group filter preserve existing recent-history re
         ]);
     });
     await overview(page);
-    await page.locator('#overviewGroupFilter').focus();
-    await page.locator('#overviewGroupFilter').selectOption('group:Ops');
-    await expect(page.locator('#overviewHosts button')).toHaveCount(1);
+    const group = page.locator('#overviewGroupFilter');
+    await group.selectOption('group:Ops');
+    await expect(page.locator('.overview-compact-row')).toHaveCount(1);
     await expect(page.locator('#overviewHosts')).toContainText('Alpha');
-    await expect(page.locator('#overviewGroupFilter')).toBeFocused();
-    await page.locator('#overviewGroupFilter').selectOption('');
-    await expect(page.locator('#overviewHosts button')).toHaveCount(2);
+    await expect(group).toHaveValue('group:Ops');
+    await group.selectOption('');
+    await expect(page.locator('.overview-compact-row')).toHaveCount(2);
     await page.locator('#overviewHostSearch').fill('Beta');
-    await expect(page.locator('#overviewHosts button')).toHaveCount(1);
+    await expect(page.locator('#overviewHosts .overview-row-title')).toHaveText(['Beta']);
     await expect(page.locator('#overviewHosts')).toContainText('Beta');
+    await expect(page.locator('#overviewHistory')).toBeHidden();
+    await page.locator('#overviewHostSearch').fill('');
     await page.locator('#overviewHistory button').click();
     await expect(page.locator('#hostInput')).toHaveValue('history.example.invalid');
     await expect(page.locator('#portInput')).toHaveValue('2222');
@@ -102,6 +104,7 @@ test('workspace host tree launches through the existing saved-profile review', a
     await installSshConnectTrap(page);
     await expect(page.locator('.shell-groups')).toBeHidden();
     await page.evaluate(() => SessionManager.createSession({session_id: 'tree-test', host: 'fixture.example.invalid', username: 'demo', port: 22}));
+    await page.locator('#toggleHostRail').click();
     await page.locator('#shellGroups').getByRole('button', {name: 'Password review', exact: true}).click();
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
     await expect(page.locator('#hostInput')).toHaveValue('password.local');
@@ -109,7 +112,7 @@ test('workspace host tree launches through the existing saved-profile review', a
     expect(await sshAttempts(page)).toEqual([]);
 });
 
-test('graph has one jump source and exactly the configured directed edges, including after resize', async ({page}) => {
+test('network distinguishes configured, direct and missing routes and retains paths after resize', async ({page}) => {
     await login(page);
     await installSshConnectTrap(page);
     await page.evaluate(() => {
@@ -122,35 +125,27 @@ test('graph has one jump source and exactly the configured directed edges, inclu
         ]);
     });
     await overview(page);
-    await expect(page.locator('#overviewRoutePreview .overview-edges path')).toHaveCount(2);
-    const previewTarget = page.locator('#overviewRoutePreview [data-host-id="one"]');
+    const previewTarget = page.locator('#overviewHosts [data-host-id="one"]');
     await previewTarget.focus();
     await page.evaluate(() => window.dispatchEvent(new Event('profile-list-change')));
     await expect(previewTarget).toBeFocused();
-    const originalTone = await previewTarget.getAttribute('data-tone');
-    await page.locator('#overviewExpandRoutes').click();
-    await expect(page.locator('#overviewHosts [data-host-id="one"]')).toHaveAttribute('data-tone', originalTone);
-    await expect(page.locator('#overviewNavBtn')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('.overview-jump')).toHaveCount(1);
-    const alignment = await page.locator('#overviewHosts').evaluate(canvas => {
-        const frame = canvas.getBoundingClientRect();
-        const branch = canvas.querySelector('[data-jump-id]').getBoundingClientRect();
-        return Math.abs((frame.left + frame.right) / 2 - (branch.left + branch.right) / 2);
-    });
-    expect(alignment).toBeLessThanOrEqual(1);
-    await expect(page.locator('.overview-edges path')).toHaveCount(2);
-    expect(await page.locator('.overview-edges path').evaluateAll(paths => paths.map(p => [p.dataset.sourceId, p.dataset.targetId]).sort())).toEqual([['jump', 'one'], ['jump', 'two']]);
-    const before = await page.locator('.overview-edges path').first().getAttribute('d');
-    await page.setViewportSize({width: 390, height: 844});
-    await expect.poll(() => page.locator('.overview-edges path').first().getAttribute('d')).not.toBe(before);
+    await expect(page.locator('.overview-compact-route').filter({hasText:'Saved jump host unavailable'})).toHaveCount(1);
+    await page.getByRole('button',{name:'Expand map',exact:true}).click();
+    await expect(page.locator('.ssh-route-branch')).toHaveCount(3);
+    await expect(page.locator('.ssh-route-canvas > svg > path')).toHaveCount(5);
+    for (const width of [1280, 1920, 390]) {
+        await page.setViewportSize({width, height: 844});
+        await assertRouteGeometry(page);
+        await expect(page.getByRole('button',{name:'Close map',exact:true})).toBeInViewport();
+    }
+    await page.keyboard.press('Escape');
     expect(await page.locator('#connectionOverview').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-    await page.locator('#overviewListBtn').click();
-    await expect(page.locator('#overviewHosts .overview-edges')).toHaveCount(0);
-    await expect(page.locator('#overviewRoutePreview .overview-edges path')).toHaveCount(2);
+    await previewTarget.click();
+    await expect(page.locator('.overview-path-stops > li strong')).toHaveText(['WebSSH server','Bastion','One']);
+    await page.locator('.overview-access-heading button').click();
     await page.locator('#overviewHostSearch').fill('Direct');
-    await expect(page.locator('#overviewRouteCard')).toBeVisible();
-    await expect(page.locator('#overviewRoutePreview')).toBeHidden();
-    await expect(page.locator('.overview-edges')).toHaveCount(0);
+    await page.locator('#overviewHosts [data-host-id="direct"]').click();
+    await expect(page.locator('.overview-path-stops > li strong')).toHaveText(['WebSSH server','Direct']);
     expect(await sshAttempts(page)).toEqual([]);
 });
 
@@ -160,16 +155,20 @@ for (const width of [1440, 1024, 390]) {
         await login(page);
         await seedPresentation(page);
         await overview(page);
-        await expect(page.locator('#overviewHistory button')).toHaveCount(5);
+        // Active sessions already appear beside history; only the other targets
+        // belong in the compact recent-connections section.
+        await expect(page.locator('#overviewHistory button')).toHaveCount(2);
+        await expect(page.locator('#overviewHistory')).toContainText('nas');
+        await expect(page.locator('#overviewHistory')).toContainText('pfSense');
         await expect(page.locator('#overviewSessionCount')).toHaveText('3');
         await expect(page.locator('#overviewTransferCount')).toHaveText('3');
         await expect(page.locator('#connectionOverview progress')).toHaveCount(0);
         await expect(page.locator('#overviewSessions')).not.toContainText('Connected');
         await page.screenshot({path: test.info().outputPath( `dashboard-${width}.png`)});
-        await page.locator('#overviewGraphBtn').click();
-        await expect(page.locator('.overview-edges path')).toHaveCount(3);
-        await expect(page.locator('#overviewTitle')).toBeFocused();
-        expect(await page.locator('#connectionOverview').evaluate(el => el.scrollTop)).toBe(0);
+        await page.locator('#overviewHosts [data-host-id]').first().click();
+        await expect(page.locator('.overview-path-stops > li strong')).toHaveText(['WebSSH server', 'db-jump', 'db-cluster']);
+        await expect(page.locator('#overviewAccessTitle')).toBeFocused();
+        await expect(page.locator('#overviewAccessTitle')).toBeInViewport();
         await page.screenshot({path: test.info().outputPath( `graph-${width}.png`)});
         if (await page.locator('#workspaceNavBtn').isVisible()) await page.locator('#workspaceNavBtn').click();
         else await page.locator('[data-mobile-view=workspaces]').click();
@@ -197,8 +196,10 @@ test('empty overview exposes one search and no invented sessions, routes or tran
         JumpHostManager.setJumpHosts([]);
     });
     await overview(page);
-    await expect(page.locator('#connectionOverview input[type=search]')).toHaveCount(1);
-    await expect(page.locator('#overviewQuickConnect')).toBeVisible();
+    await expect(page.locator('#overviewHostSearch')).toHaveCount(1);
+    await expect(page.locator('#overviewRouteMap .ssh-map-toolbar input')).toHaveCount(1);
+    await expect(page.locator('#overviewQuickConnect')).toHaveCount(0);
+    await expect(page.locator('#shellConnectBtn')).toBeVisible();
     await expect(page.locator('#shellSearch, #shellQuickConnect, #routesNavBtn, #shellNotes, .overview-quick-actions, .shell-settings')).toHaveCount(0);
     await expect(page.locator('.shell-groups')).toBeHidden();
     await expect(page.locator('#overviewHostCount')).toHaveText('0');
@@ -207,11 +208,11 @@ test('empty overview exposes one search and no invented sessions, routes or tran
     await expect(page.locator('#overviewAllTransfers')).toBeHidden();
     await expect(page.locator('#overviewHosts')).toContainText('No saved connections');
     await page.screenshot({path: test.info().outputPath('empty-overview.png')});
-    await page.locator('#overviewGraphBtn').click();
+    await expect(page.locator('.overview-access-inspector')).toHaveCount(0);
     await expect(page.locator('.overview-edges path')).toHaveCount(0);
     await page.setViewportSize({width: 390, height: 844});
-    await expect(page.getByRole('button', {name: 'Quick Connect', exact: true})).toHaveCount(1);
-    await page.locator('#overviewListBtn').click();
+    await expect(page.locator('#mobileSessionSummary')).toBeVisible();
+    if (await page.locator('.overview-access-inspector').count()) await page.locator('.overview-access-heading button').click();
     await page.screenshot({path: test.info().outputPath('empty-mobile.png')});
     await page.locator('#mobileSessionSummary').click();
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);

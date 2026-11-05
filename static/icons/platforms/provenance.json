@@ -1,0 +1,91 @@
+{
+  "upstream": "https://github.com/simple-icons/simple-icons/tree/16.0.0/icons",
+  "version": "16.0.0",
+  "license": "CC0-1.0; upstream metadata retains brand-specific license and trademark guidance",
+  "icons": {
+    "proxmox": {
+      "title": "Proxmox",
+      "hex": "E57000",
+      "source": "https://www.proxmox.com/en/news/media-kit",
+      "guidelines": "https://www.proxmox.com/en/news/media-kit"
+    },
+    "raspberrypi": {
+      "title": "Raspberry Pi",
+      "hex": "A22846",
+      "source": "https://www.raspberrypi.org/trademark-rules",
+      "guidelines": "https://www.raspberrypi.org/trademark-rules"
+    },
+    "homeassistant": {
+      "title": "Home Assistant",
+      "hex": "18BCF2",
+      "source": "https://github.com/home-assistant/assets/blob/0f69676da79c3881e7dfca6d6c0a5739f88273d8/logo/home-assistant-logo.zip",
+      "guidelines": "https://design.home-assistant.io/#brand/logo"
+    },
+    "truenas": {
+      "title": "TrueNAS",
+      "hex": "0095D5",
+      "source": "https://www.truenas.com"
+    },
+    "opnsense": {
+      "title": "OPNsense",
+      "hex": "E44A20",
+      "source": "https://github.com/opnsense/core/blob/f4b69b9b565d2747eb40d7d23e060f4a3c81a071/src/opnsense/www/themes/opnsense/build/images/icon-logo.svg"
+    },
+    "ubuntu": {
+      "title": "Ubuntu",
+      "hex": "E95420",
+      "source": "https://design.ubuntu.com/resources",
+      "guidelines": "https://design.ubuntu.com/brand"
+    },
+    "debian": {
+      "title": "Debian",
+      "hex": "A81D33",
+      "source": "https://www.debian.org/logos",
+      "guidelines": "https://www.debian.org/logos/",
+      "license": {
+        "type": "CC-BY-SA-3.0"
+      }
+    },
+    "fedora": {
+      "title": "Fedora",
+      "hex": "51A2DA",
+      "source": "https://docs.fedoraproject.org/en-US/project/brand/",
+      "guidelines": "https://fedoraproject.org/wiki/Legal:Trademark_guidelines",
+      "license": {
+        "type": "custom",
+        "url": "https://docs.fedoraproject.org/en-US/project/brand/"
+      }
+    },
+    "archlinux": {
+      "title": "Arch Linux",
+      "hex": "1793D1",
+      "source": "https://www.archlinux.org/art",
+      "guidelines": "https://wiki.archlinux.org/index.php/DeveloperWiki:TrademarkPolicy#Logo_Usage_Guidelines"
+    },
+    "alpinelinux": {
+      "title": "Alpine Linux",
+      "hex": "0D597F",
+      "source": "https://alpinelinux.org"
+    },
+    "linux": {
+      "title": "Linux",
+      "hex": "FCC624",
+      "source": "https://www.linuxfoundation.org/the-linux-mark/"
+    },
+    "apple": {
+      "title": "Apple",
+      "hex": "000000",
+      "source": "https://www.apple.com"
+    },
+    "freebsd": {
+      "title": "FreeBSD",
+      "hex": "AB2B28",
+      "source": "https://www.freebsdfoundation.org/about/project/"
+    },
+    "docker": {
+      "title": "Docker",
+      "hex": "2496ED",
+      "source": "https://www.docker.com/company/newsroom/media-resources"
+    }
+  }
+}

@@ -1,0 +1,220 @@
+/* Shared presentation measured against the approved product references. */
+@font-face { font-family: 'WebSSH UI'; src: url('../vendor/roboto/Roboto-Variable.ttf?v=d7598e12c5dbef09') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'WebSSH Outline'; src: url('../vendor/material-icons/material-icons-outlined.woff2?v=35dca8a7145a17c8') format('woff2'); font-weight: 400; font-style: normal; font-display: block; }
+.webssh-ui {
+    --font-sans: 'WebSSH UI', 'Segoe UI', sans-serif;
+    --font-mono: 'WebSSH JetBrains Mono', Consolas, monospace;
+    --ui-space: 24px;
+    --ui-action-bg: var(--ws2-accent);
+    --ui-action-fg: #101211;
+    --ui-action-hover: var(--ws2-accent-strong);
+    --ui-motion-fast: 140ms;
+    --ui-motion-panel: 320ms;
+    --ui-ease: cubic-bezier(.16, 1, .3, 1);
+    font-family: var(--font-sans); font-size: 16px; line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+    scrollbar-color: var(--ws2-border-strong) var(--ws2-canvas); scrollbar-width: thin;
+}
+body.webssh-ui[data-theme="paper"] { --ui-action-fg: #ffffff; }
+body.webssh-ui[data-theme="werkbank"] {
+    color-scheme: dark;
+    --term-background: #121210;
+    --bg-primary: #171715;
+    --bg-secondary: #24231f;
+    --bg-tertiary: #302e27;
+    --bg-hover: #3c382f;
+    --bg-modal: #24231f;
+    --bg-active: #363026;
+    --text-primary: #f0e9dd;
+    --text-secondary: #c9c0b0;
+    --text-muted: #b4a995;
+    --border-color: #494237;
+    --border-hover: #796e5b;
+    --accent-primary: #d6c3a1;
+    --accent-secondary: #bda782;
+    --accent-primary-glow: rgb(214 195 161 / 14%);
+    --accent-on-text: #262119;
+    --btn-primary-text: #262119;
+    --ws2-canvas: #171715;
+    --ws2-surface: #24231f;
+    --ws2-panel: #302e27;
+    --ws2-raised: #3c382f;
+    --ws2-row-hover: #353229;
+    --ws2-border: #494237;
+    --ws2-border-strong: #796e5b;
+    --ws2-text: #f0e9dd;
+    --ws2-text-primary: #f0e9dd;
+    --ws2-text-secondary: #c9c0b0;
+    --ws2-text-muted: #b4a995;
+    --ws2-accent: #d6c3a1;
+    --ws2-accent-strong: #f0dbb4;
+    --ws2-accent-on: #262119;
+    --ws2-focus: #f0dbb4;
+    --ws2-success: #a3c58a;
+    --ws2-warning: #e4bc70;
+    --ws2-danger: #e89786;
+    --success-color: #a3c58a;
+    --warning-color: #e4bc70;
+    --error-color: #e89786;
+    --ui-action-bg: #e9ddc8;
+    --ui-action-fg: #262119;
+    --ui-action-hover: #fff4e0;
+    --ui-selected: color-mix(in srgb, var(--ws2-accent) 10%, var(--ws2-surface));
+    --ws2-shadow: 0 12px 36px #0006;
+    --theme-scene-image-source: url('../images/theme-scenes/werkbank-sand.webp?v=39a741ead6090f1b');
+    --theme-scene-image: var(--theme-scene-image-source);
+    --theme-background-image-source: var(--theme-scene-image-source);
+    --theme-background-opacity: .07;
+    background-color: var(--ws2-canvas); color: var(--ws2-text);
+}
+
+/* Werkbank: a distinct navigation material above the quiet working surfaces. */
+.webssh-shell[data-theme="werkbank"] .header {
+    --ui-action-bg: #27251e;
+    --ui-action-fg: #f2e8d5;
+    --ui-action-hover: #403b30;
+    background: #dfd1b8;
+    background-image: none;
+    color: #27251e;
+    border-bottom: 1px solid #a6977c;
+}
+.webssh-shell[data-theme="werkbank"] .header .app-brand-logo { --brand-canvas: #dfd1b8; --brand-accent: #27251e; }
+.webssh-shell[data-theme="werkbank"] .header :is(.brand-wordmark, .global-nav-item, .account-btn-header, .account-avatar, .account-caret, .mobile-menu-btn) { color: #27251e; }
+.webssh-shell[data-theme="werkbank"] .header .global-nav-item .material-icons { color: #494235; }
+.webssh-shell[data-theme="werkbank"] .header .global-nav-item.active { color: #27251e; background: #cbbb9d; }
+.webssh-shell[data-theme="werkbank"] .header .global-nav-item.active::after { background: #27251e; }
+.webssh-shell[data-theme="werkbank"] .header .global-nav-item:hover { background: #d2c3a6; }
+.webssh-shell[data-theme="werkbank"] .header .shell-search-button { color: #f2e8d5; background: #302c24; border-color: #655b48; }
+.webssh-shell[data-theme="werkbank"] .header .shell-search-button kbd { border-color: #796c55; }
+.webssh-shell[data-theme="werkbank"] .header :is(button, a):focus-visible { outline-color: #27251e; }
+.webssh-shell[data-theme="werkbank"] .header .account-dropdown-header :is(button, a):focus-visible { outline-color: var(--ws2-accent); }
+.webssh-shell[data-theme="werkbank"] .header .account-dropdown-header { color: var(--ws2-text); background: var(--ws2-panel); border-color: var(--ws2-border-strong); }
+.webssh-shell[data-theme="werkbank"] .header .account-profile-copy > strong { color: var(--ws2-text); }
+.webssh-shell[data-theme="werkbank"] .header .account-btn-header:hover { background: #cbbb9d; }
+.webssh-shell[data-theme="werkbank"] .header .header-buttons.is-open { background-color: #dfd1b8; }
+.webssh-shell[data-theme="werkbank"] .session-tabs-row {
+    --ui-action-bg: #e9ddc8;
+    --ui-action-fg: #262119;
+    color: var(--ws2-text);
+}
+.webssh-ui ::selection { background: color-mix(in srgb, var(--ws2-accent) 32%, transparent); color: var(--ws2-text); }
+.webssh-ui :is(input,textarea) { caret-color: var(--ws2-accent); }
+.webssh-ui :is(button,input,select,textarea) { font-family: var(--font-sans); }
+.webssh-ui .material-icons { font-family: 'WebSSH Outline'; font-weight: normal; font-style: normal; letter-spacing: normal; font-feature-settings: 'liga'; }
+.webssh-ui :is(.btn,.form-control) { font-size: 15px; border-radius: 5px; }
+.webssh-ui .btn { min-height: 36px; font-weight: 500; box-shadow: none; }
+.webssh-ui[data-theme="werkbank"] .btn-primary { color: var(--ui-action-fg); background: var(--ui-action-bg); border-color: var(--ui-action-bg); }
+.webssh-ui[data-theme="werkbank"] .btn-primary:hover { background: var(--ui-action-hover); border-color: var(--ui-action-hover); }
+.webssh-ui :is(.btn-secondary,.btn-icon) { color: var(--ws2-text); background: transparent; border-color: var(--ws2-border); }
+.webssh-ui :is(.btn-secondary,.btn-icon):hover { background: var(--ws2-row-hover); border-color: var(--ws2-border-strong); }
+.webssh-ui :is(.form-control,select,textarea) { background-color: var(--ws2-surface); color: var(--ws2-text); border-color: var(--ws2-border); }
+.webssh-ui .form-control:focus { border-color: var(--ws2-accent); box-shadow: none; }
+.webssh-ui ::placeholder { color: var(--ws2-text-muted); opacity: 1; }
+.webssh-ui :is(h1,h2,h3) { letter-spacing: -.02em; font-weight: 600; text-wrap: balance; }
+.webssh-ui h1 { font-family: var(--font-sans); }
+.webssh-ui :is(code,pre,.command-preview,.fm-path-input) { font-family: var(--font-mono); }
+.webssh-ui :is(.modal-content,.quick-connect-card,.manager-card,.security-card,.admin-section) { border-radius: 6px; }
+.webssh-ui .modal-header { padding-block: 14px; }
+.webssh-ui :is(.modal-header,.modal-footer) { border-color: var(--ws2-border); }
+.webssh-ui :is(.btn,.global-nav-item,.context-workspace-tab) { transition: background-color 140ms ease-out,color 140ms ease-out; }
+.webssh-ui :is(button,a,input,select,textarea,summary):focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 2px; }
+.webssh-ui .overview-eyebrow { display: none; }
+.webssh-ui[data-theme="werkbank"] :is(.overview-hosts,.overview-route-preview) { background-image: none; }
+
+.webssh-ui[data-theme="werkbank"] .auth-access-dock { background: var(--ws2-surface); border-color: var(--ws2-border); box-shadow: var(--ws2-shadow); }
+.webssh-ui .overview-user-name { color: var(--ws2-text); }
+.webssh-ui .overview-welcome-date { align-self: flex-start; padding-top: 10px; font-size: 16px; color: var(--ws2-text-secondary); white-space: nowrap; }
+.webssh-ui .pane-empty { --bg-primary:var(--ws2-canvas); --bg-secondary:var(--ws2-surface); --bg-hover:var(--ws2-raised); --border-color:var(--ws2-border); --text-primary:var(--ws2-text); --text-secondary:var(--ws2-text-secondary); --text-muted:var(--ws2-text-muted); --accent-primary:var(--ws2-accent); background:var(--ws2-canvas); }
+.webssh-ui .profile-launcher-list { grid-template-columns: repeat(auto-fit,minmax(min(260px,100%),1fr)); }
+.webssh-ui .profile-launcher-card { min-height:52px; padding:8px 12px; border:1px solid var(--ws2-border); border-radius:5px; box-shadow:none; background:var(--ws2-surface); }
+.webssh-ui .profile-launcher-card.is-favorite { padding-inline-start: 34px; }
+.webssh-ui .profile-launcher-name { font-size: 15px; font-weight: 500; }
+.webssh-ui .profile-launcher-card:hover { transform: none; }
+.webssh-ui .profile-launcher-section-title { text-transform:none; letter-spacing:0; color:var(--ws2-text-secondary); }
+.webssh-ui .profile-launcher-endpoint { font-size:13px; }
+.workspace-access-rail,.shell-search-button,.shell-connect-button { display:none; }
+@media (min-width:768px) and (not ((max-height:520px) and (pointer:coarse))) {
+    body.webssh-shell { padding-left:0; --shell-header-height:44px; }
+    body.webssh-shell[data-primary-workspace="workspaces"] { --shell-header-height:44px; }
+    .webssh-shell::after { display:none; }
+    .webssh-shell .header { flex:0 0 var(--shell-header-height); }
+    .webssh-shell .header-content { height:var(--shell-header-height); min-height:var(--shell-header-height); width:100%; max-width:1960px; margin-inline:auto; padding:0 20px; gap:26px; flex-direction:row; align-items:center; margin-bottom:0; }
+    .webssh-shell .header-title-row { position:static; width:auto; height:var(--shell-header-height); padding:0; flex:0 0 auto; }
+    .webssh-shell .app-brand { gap:14px; }
+    .webssh-shell .app-brand-logo { width:32px; height:32px; padding:0; border:0; background:transparent; }
+    .webssh-shell .app-brand .brand-wordmark { font-family:var(--font-sans); display:inline; font-size:22px; font-weight:600; letter-spacing:0; }
+    .webssh-shell .shell-location { display:none; }
+    .webssh-shell .header-buttons,.webssh-shell .header-buttons.is-open { display:flex; position:static; flex:1 1 auto; flex-direction:row; width:auto; margin-top:0; min-width:0; align-items:center; gap:16px; padding:0; background:transparent; border:0; box-shadow:none; }
+    .webssh-shell .global-navigation { position:static; display:flex; flex-direction:row; align-items:stretch; width:auto; flex:1; min-width:0; min-height:var(--shell-header-height); gap:4px; margin:0; }
+    .webssh-shell .global-nav-item { position:relative; width:auto; min-height:var(--shell-header-height); padding:0 12px; gap:9px; font-size:14px; font-weight:500; white-space:nowrap; border:0; border-radius:0; background:transparent; }
+    .webssh-shell .global-nav-item .material-icons { font-size:21px; }
+    .webssh-shell .global-nav-item.active { color:var(--ws2-text); background:transparent; border-color:transparent; box-shadow:none; }
+    .webssh-shell .global-nav-item::after { display:block; position:absolute; content:''; height:3px; border-radius:2px; left:8px; right:8px; bottom:6px; background:transparent; }
+    .webssh-shell .global-nav-item.active::after { background:var(--ws2-accent); }
+    .webssh-shell .global-nav-item span:not(.material-icons) { display:inline; }
+    .webssh-shell #overviewNavBtn { order:0; } .webssh-shell #workspaceNavBtn { order:1; } .webssh-shell #fileTransferBtn { order:2; } .webssh-shell #automationNavBtn { order:3; } .webssh-shell #commandLibraryBtn { order:4; } .webssh-shell #manageProfilesBtn { order:5; }
+    .webssh-shell .account-selector { width:auto; flex:0 0 auto; }
+    .webssh-shell .account-btn-header { min-height:36px; font-size:15px; padding:4px; border:0; background:transparent; gap:8px; }
+    .webssh-shell .account-avatar { font-size:23px; }
+    .webssh-shell .mobile-menu-btn { display:none; }
+    .webssh-shell .shell-search-button { display:flex; align-items:center; gap:10px; min-height:36px; width:200px; padding:5px 10px; border:1px solid var(--ws2-border); border-radius:5px; background:var(--ws2-surface); color:var(--ws2-text-muted); text-align:left; white-space:nowrap; cursor:pointer; font-size:15px; }
+    .shell-search-button .material-icons { font-size:22px; }
+    .shell-search-button kbd { margin-left:auto; border:1px solid var(--ws2-border); padding:1px 5px; border-radius:3px; font:inherit; font-size:13px; }
+    .webssh-shell .shell-connect-button { display:inline-flex; gap:8px; min-height:36px; white-space:nowrap; }
+    .webssh-shell[data-primary-workspace="workspaces"] .workspace-access-rail { display:flex; position:fixed; top:var(--shell-header-height); bottom:28px; left:0; width:60px; z-index:101; flex-direction:column; align-items:stretch; gap:8px; padding:12px 0; border-right:1px solid var(--ws2-border); background:var(--ws2-canvas); }
+    .workspace-access-button { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:48px; padding:7px 2px; color:var(--ws2-text); background:transparent; border:0; text-decoration:none; cursor:pointer; font-size:13px; }
+    .workspace-access-button .material-icons { font-size:25px; }
+    .workspace-access-button:hover,.workspace-access-button[aria-expanded="true"] { color:var(--ws2-accent); background:var(--ui-selected); }
+    .workspace-access-settings { margin-top:auto; }
+    .webssh-shell[data-primary-workspace="workspaces"] .main-content { margin-left:60px; width:calc(100% - 60px); }
+    .webssh-shell[data-primary-workspace="workspaces"] .session-tabs-row { margin-left:60px; }
+    .webssh-shell[data-primary-workspace="workspaces"] .shell-groups { position:fixed; top:96px; bottom:28px; left:60px; width:208px; padding:12px 8px; background:var(--ws2-surface); border-top:0; border-right:1px solid var(--ws2-border); z-index:20; }
+    .webssh-shell:not(.hosts-collapsed)[data-primary-workspace="workspaces"]:has(.shell-groups:not([hidden])) .main-content { margin-left:268px; width:calc(100% - 268px); }
+    .webssh-shell.hosts-collapsed .shell-groups { display:none!important; }
+    .webssh-shell .shell-group { font-size:15px; }
+    .webssh-shell .shell-host { min-height:34px; font-size:14px; padding:6px; }
+}
+@media (min-width:768px) and (max-width:1350px) {
+    .webssh-shell .header-content { gap:16px; padding-inline:12px; }
+    .webssh-shell .header-buttons { gap:10px; }
+    .webssh-shell .global-nav-item { padding-inline:9px; gap:6px; font-size:15px; }
+    .webssh-shell .shell-search-button { width:36px; justify-content:center; padding:5px; }
+    .webssh-shell .shell-search-button :is(span:not(.material-icons),kbd) { display:none; }
+    .webssh-shell .account-name,.webssh-shell .account-caret { display:none; }
+}
+@media (min-width:768px) and (max-width:1000px) {
+    .webssh-shell .global-nav-item span:not(.material-icons) { display:none; }
+    .webssh-shell .global-nav-item { min-width:44px; justify-content:center; padding-inline:10px; }
+    .webssh-shell .header-content { gap:12px; }
+    .webssh-shell .header-buttons { gap:10px; }
+    .webssh-shell .app-brand .brand-wordmark { display:none; }
+    .webssh-shell .shell-connect-button { width:36px; padding:5px; justify-content:center; }
+    .webssh-shell .shell-connect-button span:last-child { display:none; }
+}
+@media (max-width:767px),(max-height:520px) and (pointer:coarse) {
+    body.webssh-ui[data-theme] .connection-overview:not(.overview-graph) .overview-heading { padding:8px 0; }
+    .webssh-ui .overview-welcome-date { padding-top:0; font-size:14px; }
+}
+@media (pointer:coarse) { .webssh-ui :is(.btn,.form-control) { min-height:44px; } }
+@media (prefers-reduced-motion:reduce) {
+    .webssh-ui :is(.btn, .global-nav-item, .context-workspace-tab) { transition: none; }
+}
+
+/* Motion explains selection and spatial ownership; it never resizes terminals. */
+.webssh-ui .global-nav-item .material-icons { color: var(--ws2-text-secondary); }
+.webssh-ui .global-nav-item.active .material-icons { color: var(--ws2-accent); }
+.webssh-ui :is(.btn, .global-nav-item, .context-workspace-tab, .overview-bundle-button, .overview-host-actions button) { transition: background-color var(--ui-motion-fast) var(--ui-ease), color var(--ui-motion-fast) var(--ui-ease), border-color var(--ui-motion-fast) var(--ui-ease); }
+@keyframes ws-inspector-open { from { clip-path: inset(0 0 0 22%); transform: translateX(18px); opacity: .6; } to { clip-path: inset(0); transform: translateX(0); opacity: 1; } }
+@keyframes ws-tool-open { from { clip-path: inset(0 0 0 30%); transform: translateX(20px); opacity: .6; } to { clip-path: inset(0); transform: translateX(0); opacity: 1; } }
+@keyframes ws-surface-open { from { clip-path: inset(0 0 4%); opacity: .7; } to { clip-path: inset(0); opacity: 1; } }
+.webssh-ui .primary-workspace-view[aria-hidden="false"] { animation: ws-surface-open 260ms var(--ui-ease); }
+.webssh-ui #profileManagementModal.has-profile-editor #profileEditorView,
+.webssh-ui #commandWorkspaceModal .command-library-details { animation: ws-inspector-open var(--ui-motion-panel) var(--ui-ease); }
+.webssh-ui .context-workspace-panel:not([hidden]) { animation: ws-tool-open var(--ui-motion-panel) var(--ui-ease); }
+@media (prefers-reduced-motion: reduce) {
+    .webssh-ui #profileManagementModal.has-profile-editor #profileEditorView,
+    .webssh-ui #commandWorkspaceModal .command-library-details,
+    .webssh-ui .context-workspace-panel:not([hidden]) { animation: none; }
+    .webssh-ui .primary-workspace-view[aria-hidden="false"] { animation: none; }
+    .webssh-ui :is(.btn, .global-nav-item, .context-workspace-tab, .overview-bundle-button, .overview-host-actions button) { transition: none; }
+}

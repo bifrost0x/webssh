@@ -165,7 +165,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           auth_banner_decision=None, host_key_decision=None,
                           tailscale_authorization=None,
                           cancel_event=None, client_request_id=None,
-                          jump_host_id=None, gateway_attempt=None, profile_id=None):
+                          jump_host_id=None, gateway_attempt=None, profile_id=None,
+                          credential_guard=None):
     """
     Create a new SSH connection and return session ID.
 
@@ -328,6 +329,14 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     )
                     bastion_auth.pop('look_for_keys', None)
                     bastion_auth.pop('allow_agent', None)
+                elif credential_guard is not None and proxy_jump_password:
+                    from .credential_connections import SavedPasswordAuth
+                    bastion_auth.pop('password', None)
+                    bastion_auth.pop('look_for_keys', None)
+                    bastion_auth.pop('allow_agent', None)
+                    bastion_auth['auth_strategy'] = SavedPasswordAuth(
+                        proxy_jump_username, proxy_jump_password, credential_guard,
+                    )
                 bastion_client.connect(**bastion_auth)
                 if connection_cancelled():
                     return None, "Connection cancelled"
@@ -442,7 +451,13 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             elif key_path:
                 auth_kwargs['key_filename'] = key_path
             elif password:
-                auth_kwargs['password'] = password
+                if credential_guard is not None:
+                    from .credential_connections import SavedPasswordAuth
+                    auth_kwargs.pop('look_for_keys', None)
+                    auth_kwargs.pop('allow_agent', None)
+                    auth_kwargs['auth_strategy'] = SavedPasswordAuth(username, password, credential_guard)
+                else:
+                    auth_kwargs['password'] = password
             else:
                 return None, "No authentication method provided"
 
@@ -1103,6 +1118,7 @@ def get_session(session_id):
                 'jump_host_id': session.get('jump_host_id'),
                 'profile_id': session.get('profile_id'),
                 'reconnect_route_known': True,
+                'detected_platform': session.get('detected_platform'),
                 'auth_type': session.get('auth_type', 'password'),
                 'use_tmux': session.get('use_tmux', False),
                 'tmux_session_name': session.get('tmux_session_name'),

@@ -15,6 +15,7 @@ from .backup_coordination import (
 from .backup_manager import (
     BackupIntegrityError,
     _stage_source,
+    _create_recovery_snapshot,
     create_backup,
 )
 
@@ -49,6 +50,23 @@ def _snapshot_sqlite(source_path: Path, destination_path: Path) -> None:
 
 def create_online_backup(data_dir, destination, *, held_token=None):
     """Create and verify a current-format archive without copying live SQLite."""
+    return _create_online_archive(
+        data_dir, destination, held_token=held_token,
+        include_remote_credentials=False,
+    )
+
+
+def _create_online_recovery_snapshot(data_dir, destination, *, held_token=None):
+    """Internal rollback only, including credentials; not a downloadable backup."""
+    return _create_online_archive(
+        data_dir, destination, held_token=held_token,
+        include_remote_credentials=True,
+    )
+
+
+def _create_online_archive(
+    data_dir, destination, *, held_token, include_remote_credentials,
+):
     data_dir = Path(data_dir).resolve(strict=True)
     destination = Path(destination)
     if destination.resolve(strict=False).is_relative_to(data_dir):
@@ -67,6 +85,8 @@ def create_online_backup(data_dir, destination, *, held_token=None):
                     data_dir,
                     snapshot,
                     excluded_relative_paths=_SQLITE_RUNTIME_FILES,
+                    include_remote_credentials=include_remote_credentials,
                 )
                 _snapshot_sqlite(data_dir / 'app.db', snapshot / 'app.db')
-            return create_backup(snapshot, destination)
+            create = _create_recovery_snapshot if include_remote_credentials else create_backup
+            return create(snapshot, destination)

@@ -1,0 +1,303 @@
+/* Hosts and Commands follow the shared resource-table and inspector layout. */
+.webssh-ui :is(#profileManagementModal, #commandWorkspaceModal) { font-size: 15px; color: var(--ws2-text); }
+.webssh-ui #primaryWorkspaceSurface :is(.connection-asset-nav, .command-workspace-tabs) { display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 0 24px; overflow-x: auto; border-bottom: 1px solid var(--ws2-border); background: var(--ws2-canvas); }
+.webssh-ui #primaryWorkspaceSurface .management-resource-title { display: flex; align-items: center; gap: 0; margin: 0 24px 0 0; padding-block: 14px; font-size: 24px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.webssh-ui #primaryWorkspaceSurface .management-resource-title .material-icons { display: none; }
+.webssh-ui #primaryWorkspaceSurface :is(.connection-asset-nav-label, .command-workspace-nav-label) { display: none; }
+.webssh-ui #primaryWorkspaceSurface :is(.connection-asset-nav-item, .command-workspace-tab) { display: inline-flex; align-items: center; flex: none; gap: 8px; width: auto; min-height: 56px; padding: 12px 16px; color: var(--ws2-text); background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; font-size: 15px; font-weight: 400; box-shadow: none; }
+.webssh-ui #primaryWorkspaceSurface :is(.connection-asset-nav-item.active, .command-workspace-tab.active) { color: var(--ws2-text); background: transparent; border: 0; border-bottom: 3px solid var(--ws2-accent); box-shadow: none; }
+.webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal .command-workspace-tab.active { color: var(--ws2-text); background: transparent; border: 0; border-bottom: 3px solid var(--ws2-accent); box-shadow: none; }
+.webssh-ui #primaryWorkspaceSurface .connection-asset-nav-item > .material-icons { display: none; }
+.webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal .command-workspace-tabs { flex-wrap: wrap; gap: 0 8px; align-content: start; overflow-x: clip; }
+.webssh-ui #commandWorkspaceModal .management-resource-title { flex: 0 0 auto; padding: 14px 0; }
+.webssh-ui #primaryWorkspaceSurface :is(#profileManagementView, #profileEditorView, .command-workspace-body) { padding: 20px 24px; }
+.webssh-ui :is(#profileManagementView, #commandLibraryPanel) > .management-panel-heading { display: none; }
+.webssh-ui #primaryWorkspaceSurface #commandSetManagementView > .management-panel-heading { display: none; }
+.webssh-ui #primaryWorkspaceSurface #commandSetManagementView > .management-panel-toolbar { padding: 0 0 20px; margin: 0; border: 0; align-items: center; gap: 12px; }
+.webssh-ui :is(#profileManagementModal, #commandWorkspaceModal) :is(.btn, .form-control, .os-filter-btn) { min-height: 40px; border-radius: 4px; padding: 8px 12px; font-size: 15px; font-weight: 400; }
+.webssh-ui :is(#profileManagementModal, #commandWorkspaceModal) .btn-primary { font-weight: 500; }
+.webssh-ui :is(#profileManagementModal, #commandWorkspaceModal) :is(.btn-icon, button.command-favorite, .profile-favorite-button) { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; width: 32px; height: 32px; padding: 4px; border: 0; border-radius: 3px; color: var(--ws2-text); background: transparent; }
+.webssh-ui :is(#profileManagementModal, #commandWorkspaceModal) .material-icons { font-size: 22px; }
+.webssh-ui :is(#profileManagementModal, #commandWorkspaceModal) :is(button, summary, input, select, textarea):focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 2px; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementView .management-panel-toolbar { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 12px; align-items: center; padding: 0 0 16px; margin: 0; border: 0; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementView .management-search-control { flex: 1 1 auto; width: auto; min-width: 120px; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementView .management-panel-actions { display: flex; flex: 0 0 auto; flex-direction: row; flex-wrap: nowrap; width: auto; gap: 10px; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementView #newProfileBtn { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.webssh-ui :is(#profileManagementModal, #commandWorkspaceModal) .management-search-control > .form-control { width: 100%; max-width: none; padding-left: 40px; }
+.webssh-ui :is(#profileManagementModal, #commandWorkspaceModal) .management-search-control > .material-icons { font-size: 22px; }
+.webssh-ui .management-toolbar-menu { position: relative; flex: none; }
+.webssh-ui .management-toolbar-menu > summary { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--ws2-border); border-radius: 4px; background: var(--ws2-surface); color: var(--ws2-text); font-size: 15px; list-style: none; cursor: pointer; white-space: nowrap; }
+.webssh-ui .management-toolbar-menu > summary::-webkit-details-marker { display: none; }
+.webssh-ui .management-toolbar-menu > :not(summary) { position: absolute; top: calc(100% + 6px); right: 0; display: flex; flex-direction: column; gap: 4px; min-width: 210px; padding: 8px; border: 1px solid var(--ws2-border-strong); border-radius: 4px; background: var(--ws2-panel); z-index: 50; box-shadow: 0 8px 24px #0005; }
+.webssh-ui .management-toolbar-menu > :not(summary) .btn { justify-content: flex-start; text-align: left; white-space: nowrap; }
+.webssh-ui #profileDensityBtn { display: inline-flex; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementModal.has-profile-editor > .modal-content > .modal-body { grid-template-columns: minmax(0, 1fr) 420px; grid-template-rows: auto minmax(0, 1fr); }
+.webssh-ui #profileManagementModal.has-profile-editor .connection-asset-nav { grid-column: 1 / -1; }
+.webssh-ui #profileManagementModal.has-profile-editor #profileManagementView { grid-column: 1; grid-row: 2; }
+.webssh-ui #profileManagementModal.has-profile-editor #profileEditorView { grid-column: 2; grid-row: 2; border-left: 1px solid var(--ws2-border); background: var(--ws2-canvas); }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList { --host-columns: 32px 26px minmax(110px, 1fr) minmax(170px, 1.4fr) minmax(110px, .8fr) 72px; display: block; margin: 0; padding: 0; border: 1px solid var(--ws2-border); border-radius: 4px; background: transparent; overflow-y: auto; scrollbar-gutter: stable; }
+.webssh-ui #profileManagementList .profile-management-columns { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: var(--host-columns); align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; border-bottom: 1px solid var(--ws2-border); background: var(--ws2-canvas); font-size: 13px; }
+.webssh-ui #profileManagementList .profile-management-columns > span { min-width: 0; overflow-wrap: normal; hyphens: auto; padding-block: 6px; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-section { display: block; padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-section-title { padding: 0; margin: 0; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-section-toggle { display: flex; align-items: center; gap: 12px; min-height: 34px; padding: 6px 12px; border: 0; border-bottom: 1px solid var(--ws2-border); border-radius: 0; font-size: 14px; font-weight: 500; line-height: 1.3; color: var(--ws2-text); background: var(--ws2-surface); text-transform: none; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-section-count { min-width: auto; margin: 0; padding: 0; font-size: 13px; font-weight: 400; color: var(--ws2-text-secondary); border: 0; background: transparent; }
+.webssh-ui #profileManagementList .profile-management-section-count::before { content: '('; }
+.webssh-ui #profileManagementList .profile-management-section-count::after { content: ')'; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-item { position: relative; display: grid; grid-template-columns: var(--host-columns); align-items: center; min-height: 44px; gap: 10px; padding: 4px 10px; margin: 0; border: 0; border-bottom: 1px solid var(--ws2-border); border-radius: 0; color: var(--ws2-text); background: transparent; box-shadow: none; transform: none; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-item:hover { background: var(--ws2-row-hover); }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-item.is-selected { background: var(--ui-selected); box-shadow: inset 2px 0 var(--ws2-accent); }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-info { display: contents; }
+.webssh-ui #profileManagementList .profile-favorite-button { grid-column: 1; grid-row: 1; }
+.webssh-ui #profileManagementList .profile-favorite-button[aria-pressed='true'] { color: var(--ws2-accent); }
+.webssh-ui #profileManagementList .profile-row-platform { grid-column: 2; grid-row: 1; width: 22px; height: 22px; margin: 0; }
+.webssh-ui #profileManagementList .profile-inspect-button { grid-column: 3; grid-row: 1; min-width: 0; min-height: 32px; padding: 0; border: 0; color: var(--ws2-text); background: transparent; font: 400 15px var(--font-sans); text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.webssh-ui #profileManagementList .profile-inspect-button:hover { color: var(--ws2-accent); }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-target { grid-column: 4; grid-row: 1; font: 400 13px/1.5 var(--font-mono); color: var(--ws2-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-post-connect { grid-column: 5; grid-row: 1; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ws2-text); font-size: 15px; }
+.webssh-ui #profileManagementList .profile-management-post-connect > span:not(.material-icons) { color: inherit; font-size: inherit; }
+.webssh-ui #profileManagementList .profile-group-badge { display: none; }
+.webssh-ui #profileManagementList .profile-management-actions { grid-column: 6; grid-row: 1; display: flex; gap: 4px; }
+.webssh-ui #profileManagementList .profile-action-menu > summary { min-width: 32px; min-height: 32px; padding: 4px; border: 0; background: transparent; color: var(--ws2-text); }
+.webssh-ui #profileManagementList .profile-drag-handle { position: absolute; left: 52px; top: 50%; width: 26px; height: 32px; transform: translateY(-50%); opacity: 0; }
+.webssh-ui #profileManagementList .profile-management-item:is(:hover, :focus-within) .profile-drag-handle { opacity: 1; }
+.webssh-ui #profileManagementList .profile-management-item:is(:hover, :focus-within) .profile-row-platform { opacity: 0; }
+.webssh-ui #profileManagementList .profile-drop-slot { height: 0; }
+.webssh-ui #primaryWorkspaceSurface #profileManagementList.is-compact .profile-management-item { min-height: 38px; padding-block: 2px; }
+.webssh-ui #profileManagementModal .profile-editor-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.webssh-ui #profileManagementModal .manager-card { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.webssh-ui #profileManagementModal .manager-card-header { padding: 0; margin: 0 0 18px; border: 0; }
+.webssh-ui #profileConnectionDetailsCard > .manager-card-header > .material-icons { display: none; }
+.webssh-ui #profileConnectionDetailsCard > .manager-card-header { position: relative; padding-right: 32px; }
+.webssh-ui #profileManagementModal .profile-inspector-close { position: absolute; right: 0; top: 0; }
+.webssh-ui #profileManagementModal .manager-card-header h3 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: 0; }
+.webssh-ui #profileManagementModal .manager-card-header p { margin: 0; font-size: 16px; color: var(--ws2-text-secondary); }
+.webssh-ui #profileManagementModal .form-group { margin-bottom: 16px; }
+.webssh-ui #profileManagementModal .form-group > label { margin-bottom: 7px; font-size: 15px; font-weight: 400; color: var(--ws2-text); }
+.webssh-ui #profileManagementModal .form-group:has(> #profileEditorAuthType),
+.webssh-ui #profileManagementModal #profileEditorKeyGroup:not(.hidden) { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 7px; }
+.webssh-ui #profileManagementModal .form-group:has(> #profileEditorAuthType) > label,
+.webssh-ui #profileManagementModal #profileEditorKeyGroup > label { margin: 0; }
+.webssh-ui #profileManagementModal #profileEditorKeyGroup .profile-inline-key { grid-column: 1 / -1; margin-top: 0; }
+.webssh-ui #profileManagementModal #profileEditorAddKeyBtn { min-height: 28px; padding: 3px 0; border: 0; background: transparent; color: var(--ws2-text-secondary); }
+.webssh-ui #profileManagementModal .profile-inline-key-status:empty { display: none; }
+.webssh-ui #profileManagementModal .profile-editor-scroll-region { padding-right: 0; }
+.webssh-ui #profileManagementModal .profile-editor-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 16px; padding: 16px 0 0; border: 0; border-top: 1px solid var(--ws2-border); border-radius: 0; background: var(--ws2-canvas); }
+.webssh-ui #profileManagementModal .profile-editor-actions > button { padding-inline: 10px; font-size: 14px; }
+.webssh-ui #profileManagementModal .profile-editor-actions button[type='submit']:not(#saveConnectProfileBtn) { color: var(--ui-action-fg); background: var(--ui-action-bg); border-color: var(--ui-action-bg); }
+.webssh-ui #profileManagementModal #saveConnectProfileBtn { color: var(--ws2-text); background: transparent; border-color: var(--ws2-border); }
+.webssh-ui #profileManagementModal .profile-advanced-settings { padding-top: 18px; border-top: 1px solid var(--ws2-border); }
+.webssh-ui #profileManagementModal .profile-advanced-settings summary { margin-bottom: 0; }
+.webssh-ui #profileManagementModal .profile-advanced-settings summary h3 { font-size: 16px; }
+.webssh-ui #profileManagementModal .profile-advanced-settings summary p { font-size: 14px; }
+.webssh-ui #profileManagementModal .profile-advanced-settings[open] summary { margin-bottom: 16px; }
+
+/* Library columns remain stable while details use a bounded second pane. */
+.webssh-ui #commandWorkspaceModal .command-workspace-body { min-height: 0; }
+.webssh-ui #commandWorkspaceModal #commandLibraryPanel:not(.hidden) { --command-columns: 32px minmax(160px, 1.05fr) minmax(180px, 1.15fr) minmax(85px, .55fr) minmax(75px, .5fr) 72px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(140px, 1fr); height: 100%; min-height: 0; align-content: start; }
+.webssh-ui #commandWorkspaceModal #commandLibraryPanel.has-command-details { grid-template-columns: minmax(0, 1fr) 420px; column-gap: 20px; }
+.webssh-ui #commandLibraryPanel > :not(.command-library-details) { grid-column: 1; min-width: 0; }
+.webssh-ui #commandWorkspaceModal #commandLibraryPanel > .command-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 0 0 20px; margin: 0; border: 0; }
+.webssh-ui #commandLibraryPanel .command-toolbar .management-search-control { flex: 1 1 240px; min-width: 180px; }
+.webssh-ui #commandLibraryPanel .command-toolbar .management-panel-actions { flex: none; }
+.webssh-ui #commandWorkspaceModal .os-filter-toolbar { display: flex; align-items: center; flex: none; flex-wrap: nowrap; gap: 8px; margin: 0; padding: 0; font-size: 14px; }
+.webssh-ui #commandWorkspaceModal .os-filter-buttons { display: flex; flex-wrap: nowrap; gap: 0; }
+.webssh-ui #commandWorkspaceModal .os-filter-btn { min-height: 36px; padding: 6px 10px; border-radius: 0; border: 1px solid var(--ws2-border); border-right-width: 0; background: transparent; color: var(--ws2-text); font-size: 14px; }
+.webssh-ui #commandWorkspaceModal .os-filter-btn:first-child { border-radius: 4px 0 0 4px; }
+.webssh-ui #commandWorkspaceModal .os-filter-btn:last-child { border-right-width: 1px; border-radius: 0 4px 4px 0; }
+.webssh-ui #commandWorkspaceModal .os-filter-btn.active { color: var(--ws2-text); background: var(--ui-selected); border-color: var(--ws2-accent); }
+.webssh-ui #commandWorkspaceModal .command-source-filter { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; white-space: nowrap; }
+.webssh-ui #commandWorkspaceModal .command-source-filter select { min-height: 36px; padding: 6px 10px; font-size: 14px; }
+.webssh-ui #commandWorkspaceModal .commands-table-wrapper { display: block; min-width: 0; min-height: 0; overflow: auto; border: 1px solid var(--ws2-border); border-radius: 4px; scrollbar-gutter: stable; }
+.webssh-ui #commandWorkspaceModal .commands-table-header { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: var(--command-columns); gap: 12px; align-items: center; min-width: 700px; min-height: 40px; padding: 0 10px; border-bottom: 1px solid var(--ws2-border); background: var(--ws2-surface); font-size: 14px; }
+.webssh-ui #commandWorkspaceModal #commandsList { display: block; margin: 0; padding: 0; overflow: visible; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-row { display: grid; grid-template-columns: var(--command-columns); grid-template-rows: auto; align-items: center; min-width: 700px; min-height: 58px; gap: 12px; margin: 0; padding: 8px 10px; border: 0; border-bottom: 1px solid var(--ws2-border); border-radius: 0; background: transparent; box-shadow: none; transform: none; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-row:hover { background: var(--ws2-row-hover); }
+.webssh-ui #commandWorkspaceModal #commandsList .command-row.is-selected { background: var(--ui-selected); box-shadow: inset 2px 0 var(--ws2-accent); }
+.webssh-ui #commandWorkspaceModal #commandsList .command-star { grid-column: 1; grid-row: 1; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-name { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-inspect-button { padding: 0; border: 0; background: transparent; color: var(--ws2-text); font: 600 15px var(--font-sans); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-desc { color: var(--ws2-text-secondary); font-size: 14px; line-height: 1.4; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-text { grid-column: 3; grid-row: 1; align-items: flex-start; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-text code { display: inline-block; max-width: 100%; padding: 4px 7px; border: 1px solid var(--ws2-border); border-radius: 4px; background: var(--ws2-surface); color: var(--ws2-text); font: 400 13px/1.4 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-os-badges { grid-column: 4; grid-row: 1; display: flex; flex-direction: row; flex-wrap: wrap; gap: 0 4px; }
+.webssh-ui #commandWorkspaceModal #commandsList .os-badge { padding: 0; border: 0; background: transparent; font-size: 14px; font-weight: 400; text-transform: none; color: var(--ws2-text); }
+.webssh-ui #commandWorkspaceModal #commandsList .os-badge:not(:last-child)::after { content: ','; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-source-label { grid-column: 5; grid-row: 1; display: flex; flex-direction: row; align-items: center; gap: 8px; color: var(--ws2-text); font-size: 14px; }
+.webssh-ui #commandWorkspaceModal button.command-favorite { font-size: 24px; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-actions { grid-column: 6; grid-row: 1; display: flex; flex-wrap: nowrap; gap: 4px; margin: 0; }
+.webssh-ui #commandWorkspaceModal .command-row-menu { position: relative; }
+.webssh-ui #commandWorkspaceModal .command-row-menu > summary { cursor: pointer; list-style: none; }
+.webssh-ui #commandWorkspaceModal .command-row-menu > summary::-webkit-details-marker { display: none; }
+.webssh-ui #commandWorkspaceModal .command-row-menu-items { position: absolute; top: 100%; right: 0; display: flex; flex-direction: column; gap: 4px; min-width: 170px; padding: 8px; border: 1px solid var(--ws2-border-strong); border-radius: 4px; background: var(--ws2-panel); box-shadow: 0 8px 24px #0005; z-index: 10; }
+.webssh-ui #commandWorkspaceModal .command-row-menu-items[popover]:not(:popover-open) { display: none; }
+.webssh-ui #commandWorkspaceModal .command-row-menu-items:popover-open { position: fixed; inset: auto; margin: 0; }
+.webssh-ui #commandWorkspaceModal #commandsList .command-row-menu-items .btn { min-height: 36px; padding: 7px 10px; text-align: left; font-size: 15px; font-weight: 400; }
+.webssh-ui #commandWorkspaceModal .command-library-details { grid-column: 2; grid-row: 1 / -1; min-width: 0; overflow-y: auto; padding: 0 0 20px 20px; border-left: 1px solid var(--ws2-border); scrollbar-gutter: stable; }
+.webssh-ui #commandWorkspaceModal .management-inspector-heading { display: flex; align-items: start; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
+.webssh-ui #commandWorkspaceModal .management-inspector-heading h3 { margin: 0; font-size: 23px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
+.webssh-ui #commandWorkspaceModal .command-library-details > .command-source-label { margin: 0 0 18px; color: var(--ws2-text-secondary); font-size: 15px; }
+.webssh-ui #commandWorkspaceModal .command-detail-field { margin-top: 16px; }
+.webssh-ui #commandWorkspaceModal .command-detail-field h4 { margin: 0 0 6px; color: var(--ws2-text-secondary); font-size: 15px; font-weight: 400; }
+.webssh-ui #commandWorkspaceModal .command-detail-field :is(pre, p) { margin: 0; min-height: 36px; padding: 8px 10px; border: 1px solid var(--ws2-border); border-radius: 4px; background: var(--ws2-canvas); color: var(--ws2-text); font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.webssh-ui #commandWorkspaceModal .management-inspector-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--ws2-border); }
+.webssh-ui #commandWorkspaceModal .management-inspector-actions .btn-primary { width: 100%; order: 2; }
+.webssh-ui #commandWorkspaceModal .management-inspector-actions .command-favorite { width: auto; gap: 8px; padding-inline: 10px; border: 1px solid var(--ws2-border); }
+.webssh-ui #commandWorkspaceModal .management-inspector-actions .command-favorite::after { content: attr(aria-label); font: 400 15px var(--font-sans); }
+.webssh-ui #commandWorkspaceModal .command-execution-hint { display: flex; align-items: flex-start; gap: 8px; margin: 26px 0 0; padding-top: 16px; border-top: 1px solid var(--ws2-border); color: var(--ws2-text-secondary); font-size: 15px; font-style: italic; }
+.webssh-ui #commandWorkspaceModal .command-help { display: none; }
+.webssh-ui #commandWorkspaceModal :is(#commandSetManagementList, .command-favorites-list) { display: flex; flex-direction: column; gap: 0; margin-block: 12px; }
+.webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal :is(.command-set-management-item, .command-card) { flex-direction: row; gap: 12px; padding: 12px 8px; border: 0; border-bottom: 1px solid var(--ws2-border); border-radius: 0; background: transparent; }
+.webssh-ui #commandWorkspaceModal .command-set-card-content > strong { font-size: 16px; }
+.webssh-ui #commandWorkspaceModal .command-set-card-preview { padding: 6px 8px; max-height: 4.5em; font-size: 13px; }
+.webssh-ui #commandWorkspaceModal .command-set-actions { margin-top: 0; align-self: center; }
+
+@media (min-width: 901px) and (max-width: 1400px) {
+    .webssh-ui #commandLibraryPanel .command-toolbar .management-search-control { flex-basis: 180px; }
+    .webssh-ui #commandWorkspaceModal .os-filter-toolbar > span { display: none; }
+}
+@media (max-width: 1150px) {
+    .webssh-ui #primaryWorkspaceSurface #profileManagementView .management-panel-toolbar { flex-wrap: wrap; }
+    .webssh-ui #primaryWorkspaceSurface #profileManagementView .management-search-control { flex-basis: 100%; }
+    .webssh-ui #primaryWorkspaceSurface #profileManagementList { --host-columns: 28px 22px minmax(100px, 1fr) minmax(135px, 1.2fr) minmax(80px, .7fr) 68px; }
+}
+.webssh-ui .inspector-return :is(.inspector-return-arrow, .inspector-return-label) { display: none; }
+@media (max-width: 1120px) {
+    .webssh-ui #profileConnectionDetailsCard > .manager-card-header,
+    .webssh-ui #commandWorkspaceModal .management-inspector-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 4px 12px; padding-right: 0; }
+    .webssh-ui #profileConnectionDetailsCard > .manager-card-header > :is(h3, p),
+    .webssh-ui #commandWorkspaceModal .management-inspector-heading > h3 { grid-column: 1; }
+    .webssh-ui #profileManagementModal .profile-inspector-close,
+    .webssh-ui #commandWorkspaceModal .inspector-return { position: static; grid-column: 2; grid-row: 1 / span 2; align-self: start; width: auto; min-height: 36px; padding: 6px 8px; gap: 6px; font-size: 14px; }
+    .webssh-ui .inspector-return .inspector-return-close { display: none; }
+    .webssh-ui .inspector-return :is(.inspector-return-arrow, .inspector-return-label) { display: inline; }
+    .webssh-ui #primaryWorkspaceSurface #profileManagementModal.has-profile-editor > .modal-content > .modal-body { grid-template-columns: minmax(0, 1fr); }
+    .webssh-ui #profileManagementModal.has-profile-editor #profileManagementView { display: none; }
+    .webssh-ui #profileManagementModal.has-profile-editor #profileEditorView { grid-column: 1; border-left: 0; }
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel.has-command-details { grid-template-columns: minmax(0, 1fr); }
+    .webssh-ui #commandLibraryPanel.has-command-details > :not(.command-library-details) { display: none; }
+    .webssh-ui #commandWorkspaceModal .command-library-details { grid-column: 1; padding-left: 0; border-left: 0; }
+    .webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-target { font-size: 14px; }
+}
+@media (max-width: 650px) {
+    .webssh-ui #primaryWorkspaceSurface :is(.connection-asset-nav, .command-workspace-tabs) { padding-inline: 12px; gap: 0; }
+    .webssh-ui #primaryWorkspaceSurface .management-resource-title { margin-right: 8px; font-size: 25px; }
+    .webssh-ui #primaryWorkspaceSurface :is(.connection-asset-nav-item, .command-workspace-tab) { padding-inline: 10px; font-size: 14px; }
+    .webssh-ui #primaryWorkspaceSurface :is(#profileManagementView, #profileEditorView, .command-workspace-body) { padding: 16px 12px; }
+    .webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-columns { display: none; }
+    .webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-item { grid-template-columns: 32px 24px minmax(0, 1fr) 68px !important; gap: 4px 8px; padding-block: 8px; }
+    .webssh-ui #profileManagementList .profile-inspect-button { grid-column: 3; grid-row: 1; }
+    .webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-target { grid-column: 3; grid-row: 2; }
+    .webssh-ui #primaryWorkspaceSurface #profileManagementList .profile-management-post-connect { grid-column: 3; grid-row: 3; font-size: 14px; }
+    .webssh-ui #profileManagementList .profile-management-actions { grid-column: 4; grid-row: 1 / span 3; }
+    .webssh-ui #primaryWorkspaceSurface #profileManagementView .management-panel-actions { flex-wrap: wrap; max-width: 100%; }
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel:not(.hidden) { --command-columns: 32px minmax(120px, 1fr) 72px; }
+    .webssh-ui #commandWorkspaceModal .commands-table-header { display: none; }
+    .webssh-ui #commandWorkspaceModal #commandsList .command-row { min-width: 0; grid-template-columns: var(--command-columns); gap: 8px; }
+    .webssh-ui #commandWorkspaceModal #commandsList .command-name { grid-column: 2; grid-row: 1; }
+    .webssh-ui #commandWorkspaceModal #commandsList .command-text { grid-column: 2; grid-row: 2; }
+    .webssh-ui #commandWorkspaceModal #commandsList :is(.command-os-badges, .command-source-label) { grid-column: 2; grid-row: auto; }
+    .webssh-ui #commandWorkspaceModal #commandsList .command-actions { grid-column: 3; grid-row: 1 / span 4; }
+    .webssh-ui #commandWorkspaceModal #commandsList .command-star { grid-row: 1 / span 4; }
+    .webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal :is(.command-set-management-item, .command-card) { flex-direction: column; align-items: stretch; }
+}
+@media (pointer: coarse) {
+    .webssh-ui :is(#profileManagementModal, #commandWorkspaceModal) :is(.btn, .btn-icon, .form-control, .os-filter-btn, .command-favorite, .profile-favorite-button, .profile-inspect-button, .command-inspect-button) { min-height: 44px; }
+}
+
+@media (min-width: 651px) {
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel > .command-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 16px; }
+    .webssh-ui #commandLibraryPanel .command-toolbar .management-search-control { grid-column: 1; grid-row: 1; min-width: 0; }
+    .webssh-ui #commandLibraryPanel .command-toolbar .management-panel-actions { grid-column: 2; grid-row: 1; }
+    .webssh-ui #commandLibraryPanel .command-toolbar .os-filter-toolbar { grid-column: 1; grid-row: 2; flex-wrap: wrap; }
+    .webssh-ui #commandLibraryPanel .command-toolbar .command-source-filter { grid-column: 2; grid-row: 2; justify-self: end; }
+}
+
+/* Keep labels readable when an inspector takes part of a laptop viewport. */
+@media (min-width: 1121px) and (max-width: 1439px) {
+    .webssh-ui #profileManagementModal.has-profile-editor #profileManagementList { --host-columns: 28px 22px minmax(90px, 1fr) minmax(140px, 1fr) 165px 68px; }
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel.has-command-details { --command-columns: 32px minmax(120px, 1fr) minmax(120px, 1fr) 110px 80px 72px; }
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel.has-command-details .commands-table-header,
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel.has-command-details #commandsList .command-row { min-width: 0; }
+}
+@media (max-width: 1120px) {
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel.has-command-details > .command-toolbar { display: none; }
+}
+@media (min-width: 768px) and (max-height: 800px) {
+    .webssh-ui #primaryWorkspaceSurface :is(.connection-asset-nav-item, .command-workspace-tab) { min-height: 48px; padding-block: 8px; }
+    .webssh-ui #primaryWorkspaceSurface .management-resource-title { padding-block: 10px; font-size: 22px; }
+    .webssh-ui #primaryWorkspaceSurface :is(#profileManagementView, #profileEditorView, .command-workspace-body) { padding-block: 14px; }
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel > .command-toolbar { padding-bottom: 12px; }
+    .webssh-ui #profileManagementModal .profile-editor-grid { gap: 14px; }
+    .webssh-ui #profileManagementModal .form-group { margin-bottom: 12px; }
+}
+
+/* The active resource tab provides the title at every viewport width. */
+.webssh-ui #primaryWorkspaceSurface .connection-asset-nav .management-resource-title { display: none; }
+
+/* Connection forms follow destination, identity and authentication in DOM order. */
+.webssh-ui #connectionDetailsCard { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.webssh-ui #connectionDetailsCard .quick-connect-card-header { padding: 0 0 12px; }
+.webssh-ui #connectionDetailsCard .quick-connect-details-content { padding: 14px 0 0; }
+.webssh-ui #connectionDetailsCard .quick-connect-core-fields { gap: 12px; }
+.webssh-ui #connectionDetailsCard .quick-connect-auth-method { display: block; margin: 0; }
+.webssh-ui #connectionDetailsCard .quick-connect-auth-method label { margin-bottom: 6px; }
+.webssh-ui #connectionForm .field-hint:empty { display: none; }
+.webssh-ui #connectionForm .field-hint { min-height: 0; font-size: 13px; }
+.webssh-ui #connectionForm :is(label, .post-connect-label) { font-size: 14px; }
+.webssh-ui #connectionForm .quick-connect-secondary > .quick-connect-card { padding: 16px; }
+.webssh-ui #commandForm .form-group { margin-bottom: 14px; }
+.webssh-ui #commandForm :is(#commandFormCommand, #commandFormDescription) { min-height: 72px; }
+.webssh-ui :is(#commandFormCommand, #commandFormParams, #keyContentInput, #profileEditorNewKeyContent) { font-family: var(--font-mono); font-size: 14px; }
+.webssh-ui #jumpHostForm .auth-type-selector { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.webssh-ui #jumpHostForm .radio-label { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; margin: 0; font-size: 14px; }
+.webssh-ui #commandForm .checkbox-group > label { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; margin: 0; }
+
+@media (max-width: 600px) {
+    .webssh-ui #connectionForm :is(.form-control, .btn),
+    .webssh-ui #jumpHostForm .radio-label,
+    .webssh-ui #commandForm .checkbox-group > label { min-height: 44px; }
+}
+
+.webssh-ui #commandsList .command-row { cursor: pointer; }
+.webssh-ui #commandsList .command-row :is(code, .command-desc) { cursor: text; }
+/* Lists keep their own scroll surface beside the inspector. Narrow layouts
+   reflow every field instead of requiring horizontal command scrolling. */
+.webssh-ui #commandWorkspaceModal #commandsList .command-name,
+.webssh-ui #commandWorkspaceModal #commandsList .command-desc { min-width: 0; overflow-wrap: anywhere; }
+.webssh-ui #commandWorkspaceModal .command-set-os-filters { flex-wrap: wrap; overflow-x: visible; }
+.webssh-ui #commandWorkspaceModal .command-set-os-filter { border-right-width: 1px; }
+@media (max-width: 900px) {
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel:not(.hidden) { --command-columns: 28px minmax(0, 1fr) 64px; }
+    .webssh-ui #commandWorkspaceModal .commands-table-header { display: none; }
+    .webssh-ui #commandWorkspaceModal #commandsList .command-row { min-width: 0; grid-template-columns: var(--command-columns); gap: 8px; }
+    .webssh-ui #commandWorkspaceModal #commandsList .command-name { grid-column: 2; grid-row: 1; }
+    .webssh-ui #commandWorkspaceModal #commandsList .command-text { grid-column: 2; grid-row: 2; }
+    .webssh-ui #commandWorkspaceModal #commandsList :is(.command-os-badges, .command-source-label) { grid-column: 2; grid-row: auto; }
+    .webssh-ui #commandWorkspaceModal #commandsList .command-actions { grid-column: 3; grid-row: 1 / span 4; flex-wrap: wrap; }
+    .webssh-ui #commandWorkspaceModal #commandsList .command-star { grid-row: 1 / span 4; }
+}
+@media (max-width: 767px) {
+    .webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal .management-resource-title { display: none; }
+    .webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal .command-workspace-tabs { flex-wrap: nowrap; gap: 0; padding-inline: 8px; }
+    .webssh-ui #primaryWorkspaceSurface #commandWorkspaceModal .command-workspace-tab { flex: 1 1 0; min-width: 0; padding: 8px 4px; gap: 5px; font-size: 13px; }
+    .webssh-ui #commandWorkspaceModal .command-workspace-tab span:last-child { overflow-wrap: normal; word-break: normal; }
+    .webssh-ui #commandWorkspaceModal .os-filter-toolbar,
+    .webssh-ui #commandWorkspaceModal .os-filter-buttons { flex-wrap: wrap; }
+}
+@media (max-width: 767px) {
+    /* Short screens need one continuous scrolling surface below the tabs. */
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel:not(.hidden):not(.has-command-details) { height: auto; grid-template-rows: auto auto; }
+    .webssh-ui #commandWorkspaceModal #commandLibraryPanel:not(.has-command-details) .commands-table-wrapper { overflow: visible; }
+}
+.webssh-ui #commandWorkspaceModal .commands-table-wrapper { padding-bottom: 2px; }
+@media (max-width: 767px) {
+    .webssh-ui #commandLibraryPanel .command-toolbar .management-search-control { flex: 0 0 auto; height: auto; min-width: 0; }
+}
+/* Keep key setup usable by touch despite the compact desktop button rule. */
+@media (max-width: 767px), (pointer: coarse) {
+    .webssh-ui #profileManagementModal .profile-inline-key-actions .btn,
+    .webssh-ui #profileManagementModal .profile-inline-key > .btn,
+    .webssh-ui #keyManagementModal .key-item-actions .btn { min-height: 44px; }
+}
+.command-template-hint { color: var(--ws2-text-secondary); font-size: 13px; line-height: 1.5; margin-block: 8px; overflow-wrap: anywhere; }

@@ -11,6 +11,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="background-scope" content="{{ background_scope }}">
     <script defer src="{{ static_asset_url(filename='js/theme-background.js') }}"></script>
+    <meta name="start-page" content="{{ start_page|default('overview') }}">
     <meta name="app-root" content="{{ url_prefix }}">
     <meta name="ssh-gateway-enabled" content="{{ 'true' if ssh_gateway_enabled else 'false' }}">
     <meta name="max-editor-file-size" content="{{ max_editor_file_size|default(5242880) }}">
@@ -18,6 +19,11 @@
 
     <link rel="stylesheet" href="{{ static_asset_url(filename='vendor/xterm/xterm.css') }}" />
 
+    {% set platform_assets = namespace(urls={}) %}
+    {% for platform in ['alpinelinux', 'apple', 'archlinux', 'debian', 'docker', 'fedora', 'freebsd', 'homeassistant', 'linux', 'opnsense', 'proxmox', 'raspberrypi', 'truenas', 'ubuntu'] %}
+        {% set _ = platform_assets.urls.update({platform: static_asset_url(filename='icons/platforms/' ~ platform ~ '.svg')}) %}
+    {% endfor %}
+    <script id="hostPlatformAssets" type="application/json">{{ platform_assets.urls | tojson }}</script>
     <meta name="preview-highlight-script" content="{{ static_asset_url(filename='vendor/highlight/highlight.min.js') }}">
     <meta name="preview-highlight-style" content="{{ static_asset_url(filename='vendor/highlight/github-dark.min.css') }}">
 
@@ -29,7 +35,9 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='vendor/terminal-fonts/fonts.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-appearance.css') }}">
-    <link rel="stylesheet" href="{{ static_asset_url(filename='css/connection-overview.css') }}">
+    {% if overview_layout == 'classic' %}
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/connection-overview-classic.css') }}">
+    {% endif %}
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/branding.css') }}">
@@ -37,8 +45,25 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/command-experience.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/permission-job-dialog.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-windows.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/host-platform.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/server-operations.css') }}">
     <script src="{{ static_asset_url(filename='js/branding.js') }}" defer></script>
+    {% if overview_layout != 'classic' %}
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/connection-overview.css') }}">
+    {% endif %}
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/design-system.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/management-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/workspace-ui.css') }}">
+    <script defer src="{{ static_asset_url(filename='js/navigation-shell.js') }}"></script>
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/credential-picker.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/host-resources.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/automation.css') }}">
+    {% if overview_layout != 'classic' %}
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/overview-commandcenter.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/overview-route-map.css') }}">
+    {% endif %}
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/overview-analytics.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/onboarding.css') }}">
 </head>
 <body class="webssh-shell webssh-ui" data-primary-workspace="overview" data-sftp-chmod-enabled="{{ 'true' if sftp_chmod_enabled else 'false' }}" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
@@ -48,7 +73,7 @@
             <div class="header-title-row">
                 <a class="app-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.websshWorkspaces">
                     {{ brand_logo("app-brand-logo", decorative=true) }}
-                    <span><small data-i18n="brand.tagline">Your shell. Your rules.</small></span>
+                    <strong class="brand-wordmark">WebSSH</strong>
                 </a>
                 <button id="mobileSessionSummary" class="mobile-session-summary" type="button">
                     <span class="mobile-session-status" aria-hidden="true"></span>
@@ -60,11 +85,12 @@
             <div class="shell-location" id="shellLocation" data-i18n="overview.title">Overview</div>
             <div class="header-buttons" id="headerButtons">
                 <nav class="global-navigation" id="globalNavigation" aria-label="Primary navigation" data-i18n-aria-label="navigation.primary">
+                    <button id="overviewNavBtn" class="global-nav-item active" type="button" aria-current="page" aria-label="Overview" data-i18n-aria-label="overview.title" title="Overview" data-i18n-title="overview.title"><span class="material-icons" aria-hidden="true">home</span><span data-i18n="overview.title">Overview</span></button>
                     <button id="workspaceNavBtn" class="global-nav-item" type="button" aria-label="Workspaces" data-i18n-aria-label="navigation.workspaces" title="Workspaces" data-i18n-title="navigation.workspaces"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.workspaces">Workspaces</span></button>
-                    <button id="overviewNavBtn" class="global-nav-item active" type="button" aria-current="page" aria-label="Overview" data-i18n-aria-label="overview.title" title="Overview" data-i18n-title="overview.title"><span class="material-icons" aria-hidden="true">dashboard</span><span data-i18n="overview.title">Overview</span></button>
-                    <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()" aria-label="File Manager" data-i18n-aria-label="files.fileManager" title="File Manager" data-i18n-title="files.fileManager"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
-                    <button id="manageProfilesBtn" class="global-nav-item" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts" aria-label="Hosts" data-i18n-aria-label="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
+                    <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()" aria-label="File Manager" data-i18n-aria-label="files.fileManager" title="File Manager" data-i18n-title="files.fileManager"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="workspaceContext.files">Files</span></button>
+                    <a data-native-automation id="automationNavBtn" class="global-nav-item" href="{{ url_for('automation.page') }}" aria-label="Automation" title="Automation" data-i18n-aria-label="automation.title" data-i18n-title="automation.title"><span class="material-icons" aria-hidden="true">playlist_play</span><span data-i18n="automation.title">Automation</span></a>
                     <button id="commandLibraryBtn" class="global-nav-item" type="button" aria-label="Commands" data-i18n-aria-label="commands.workspace" title="Commands" data-i18n-title="commands.workspace"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
+                    <button id="manageProfilesBtn" class="global-nav-item" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts" aria-label="Hosts" data-i18n-aria-label="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
                 </nav>
 
                 <div class="mobile-more-actions" aria-label="Session actions" data-i18n-aria-label="workspace.sessionActions">
@@ -77,6 +103,8 @@
 
                 <span class="header-divider" aria-hidden="true"></span>
 
+                <button id="shellSearchBtn" class="shell-search-button" type="button" aria-label="Search actions, hosts, and sessions..." data-i18n-aria-label="palette.searchPlaceholder" title="Search actions, hosts, and sessions..." data-i18n-title="palette.searchPlaceholder"><span class="material-icons" aria-hidden="true">search</span><span data-i18n="palette.search">Search</span><kbd>Ctrl K</kbd></button>
+                <button id="shellConnectBtn" class="btn btn-primary shell-connect-button" type="button" aria-label="Connection" data-i18n-aria-label="navigation.connect" title="Connection" data-i18n-title="navigation.connect"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="navigation.connect">Connection</span></button>
                 <div class="account-selector">
                     <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" onclick="toggleAccountDropdownHeader(event)" aria-label="Account menu" data-i18n-aria-label="account.menu" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdownHeader">
                         <span class="account-avatar material-icons" aria-hidden="true">person</span>
@@ -112,6 +140,7 @@
 
                         <div class="account-divider" role="separator"></div>
                         <a id="accountSettingsBtn" class="account-item account-action" href="{{ url_for('security_center') }}#preferences"><span class="account-item-icon material-icons" aria-hidden="true">settings</span> <span data-i18n="settings.title">Settings</span></a>
+                        <button id="restartTour" class="account-item account-action" type="button"><span class="material-icons" aria-hidden="true">explore</span><span>Product tour</span></button>
                         <button id="accountShortcutsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">keyboard</span> <span data-i18n="shortcuts.title">Keyboard Shortcuts</span></button>
 
                         <div class="account-divider" role="separator"></div>
@@ -154,36 +183,41 @@
         </div>
     </header>
 
-    <aside class="shell-groups" aria-labelledby="shellGroupsTitle">
+    <nav id="workspaceAccessRail" class="workspace-access-rail" aria-label="Workspace shortcuts" data-i18n-aria-label="workspace.shortcuts">
+        <button id="toggleHostRail" class="workspace-access-button" type="button" aria-controls="shellHostAccess" aria-expanded="false" data-i18n-title="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
+        <button id="workspaceFavoritesBtn" class="workspace-access-button" type="button" title="Favorites" data-i18n-title="sessionCommands.favorites"><span class="material-icons" aria-hidden="true">star_outline</span><span class="sr-only" data-i18n="sessionCommands.favorites">Favorites</span></button>
+        <button id="workspaceRecentBtn" class="workspace-access-button" type="button" title="Quick Connect" data-i18n-title="connection.newConnection"><span class="material-icons" aria-hidden="true">terminal</span><span class="sr-only" data-i18n="connection.newConnection">Quick Connect</span></button>
+        <a class="workspace-access-button workspace-access-settings" href="{{ url_for('security_center') }}" title="Settings" data-i18n-title="settings.title"><span class="material-icons" aria-hidden="true">settings</span><span class="sr-only" data-i18n="settings.title">Settings</span></a>
+    </nav>
+    <aside id="shellHostAccess" class="shell-groups" aria-labelledby="shellGroupsTitle">
         <div class="shell-groups-heading"><span id="shellGroupsTitle" data-i18n="profiles.savedConnections">Saved Connections</span></div>
         <div id="shellGroups"></div>
     </aside>
 
     <section id="primaryWorkspaceSurface" class="primary-workspace-surface" aria-label="Application workspace" data-i18n-aria-label="workspace.application" hidden></section>
 
-    <section id="connectionOverview" class="connection-overview" aria-labelledby="overviewTitle" hidden>
+    {% if overview_layout == 'classic' %}
+    {% include 'overview_classic.html' %}
+    {% else %}
+    <section id="connectionOverview" class="connection-overview overview-commandcenter" aria-labelledby="overviewTitle" hidden>
         <div class="overview-inner">
             <div class="overview-heading">
                 <div class="overview-heading-copy">
-                    <p class="overview-eyebrow" data-i18n="overview.eyebrow">WebSSH</p>
-                    <h1 id="overviewTitle" tabindex="-1" data-i18n="overview.heading">SSH workspaces</h1>
-                    <p class="overview-intro" data-i18n="overview.intro">Open a saved connection or start a new SSH session.</p>
+                    <h1 id="overviewTitle" tabindex="-1" data-username="{{ current_user.username }}"></h1><p id="overviewGreetingLine" class="overview-greeting-line"></p>
                 </div>
-                <button id="overviewQuickConnect" class="btn btn-primary" type="button"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
+                <div class="overview-scene" aria-hidden="true"></div>
+                <div class="overview-commandcenter-welcome"><time id="overviewToday"></time><button id="overviewCustomize" class="btn btn-secondary" type="button" aria-pressed="false"></button></div>
             </div>
+
             <p id="overviewConnectionNotice" class="overview-notice" role="status" data-i18n="overview.stale" hidden>Connection to WebSSH interrupted. Displayed data may be out of date.</p>
             <div class="overview-primary">
             <section class="overview-card overview-hosts-card" aria-labelledby="overviewHostsTitle">
                 <div class="overview-card-heading">
-                    <h2 id="overviewHostsTitle"><span data-i18n="profiles.savedConnections">Saved Connections</span><span id="overviewHostCount" class="overview-count">—</span></h2>
-                    <div class="overview-view-switch" role="group" data-i18n-aria-label="connectionAssets.hosts" aria-label="Hosts">
-                        <button id="overviewListBtn" type="button" aria-pressed="true" aria-controls="overviewHosts"><span class="material-icons" aria-hidden="true">view_list</span><span data-i18n="overview.list">List</span></button>
-                        <button id="overviewGraphBtn" type="button" aria-pressed="false" aria-controls="overviewHosts"><span class="material-icons" aria-hidden="true">account_tree</span><span data-i18n="overview.graph">SSH routes</span></button>
-                    </div>
-                </div>
-                <div class="overview-search-row">
-                <label class="overview-filter"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="overview.search">Search names and groups…</span><input id="overviewHostSearch" type="search" placeholder="Search names and groups…" data-i18n-placeholder="overview.search" autocomplete="off"></label>
-                <label class="overview-group-select"><span class="sr-only" data-i18n="profiles.group">Group</span><select id="overviewGroupFilter"><option value="" data-i18n="overview.allGroups">All groups</option></select></label>
+                    <div class="overview-network-heading"><h2 id="overviewHostsTitle"><span data-i18n="overview.infrastructure">Your infrastructure</span><span id="overviewHostCount" class="overview-count">—</span></h2></div>
+                    <button id="overviewCreateHost" class="btn btn-secondary overview-create-host" type="button"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="profiles.newHost">New host</span></button><label class="overview-filter"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="overview.search">Search names and groups…</span><input id="overviewHostSearch" type="search" placeholder="Search names and groups…" data-i18n-placeholder="overview.search" autocomplete="off"></label><div class="overview-view-switch" hidden role="group" data-i18n-aria-label="connectionAssets.hosts" aria-label="Hosts">
+                        <button id="overviewListBtn" type="button" aria-pressed="true" aria-controls="overviewHosts"><span class="material-icons" aria-hidden="true">view_list</span><span data-i18n="overview.networkView">Network</span></button>
+                        <button id="overviewGraphBtn" type="button" aria-pressed="false" aria-controls="overviewHosts"><span class="material-icons" aria-hidden="true">account_tree</span><span data-i18n="overview.pathView">SSH path</span></button>
+                    </div><label class="overview-group-select"><span class="sr-only" data-i18n="profiles.group">Group</span><select id="overviewGroupFilter"><option value="" data-i18n="overview.allGroups">All groups</option></select></label>
                 </div>
                 <div class="overview-arrange-bar">
                     <button id="overviewArrangeGroups" class="overview-link" type="button" aria-expanded="false" aria-controls="overviewArrangePanel"><span class="material-icons" aria-hidden="true">dashboard_customize</span><span data-i18n="overview.arrangeGroups">Arrange groups</span></button>
@@ -218,21 +252,34 @@
                 </div>
             </section>
             </div>
-            <div class="overview-activity">
-            <section class="overview-card overview-recents-card" aria-labelledby="overviewRecentsTitle">
-                <div class="overview-card-heading"><h2 id="overviewRecentsTitle" data-i18n="connection.recentConnections">Recent Connections</h2></div>
-                <div id="overviewHistory" class="overview-history"></div>
-                <p class="overview-card-note" data-i18n="connection.recentConnectionsHint">Stored only in this browser for your account.</p>
-            </section>
-            <section class="overview-card overview-sessions-card" aria-labelledby="overviewSessionsTitle">
+            <div class="overview-support">
+            <section id="overviewAnalytics" hidden></section>
+            <section id="overviewRouteMap" class="overview-card"></section>
+            <section id="overviewAutomation" class="overview-card" hidden><div class="overview-card-heading"><h2 id="overviewAutomationTitle"></h2></div><p id="overviewAutomationStale" role="status" hidden></p><div id="overviewAutomationRuns"></div></section>
+            <section class="overview-card overview-sessions-card overview-session-strip" aria-labelledby="overviewSessionsTitle">
                 <div class="overview-card-heading"><h2 id="overviewSessionsTitle"><span data-i18n="overview.browserSessions">Sessions in this browser</span><span id="overviewSessionCount" class="overview-count">0</span></h2><span class="material-icons" aria-hidden="true">terminal</span></div>
                 <div id="overviewSessions" class="overview-sessions"></div>
+                <div class="overview-session-recents"><h3 id="overviewHistoryTitle" data-i18n="connection.recentConnections">Recent connections</h3><div id="overviewHistory" class="overview-history"></div></div>
             </section>
+            <div class="overview-activity">
+            <details id="overviewNews" class="overview-card overview-news-card" aria-labelledby="overviewNewsTitle">
+                <summary class="overview-card-heading"><h2 id="overviewNewsTitle" data-i18n="overview.productNews">In WebSSH</h2><span class="material-icons" aria-hidden="true">expand_more</span></summary><div class="overview-news-content">
+                <article class="overview-product-note"><div><h3 data-i18n="overview.syncNewsTitle">Directory sync in your terminal</h3><p data-i18n="overview.syncNewsBody">Keep your file browser and shell directory together.</p><img class="overview-news-art" src="{{ static_asset_url(filename='images/product/directory-sync.svg') }}" alt="" loading="lazy"></div></article>
+                <article class="overview-product-note"><div><h3 data-i18n="overview.themeNewsTitle">A theme that follows you</h3><p data-i18n="overview.themeNewsBody">Logo and interface adapt to your selected theme.</p><img class="overview-news-art" src="{{ static_asset_url(filename='images/product/theme-roles.svg') }}" alt="" loading="lazy"></div></article>
+            </div></details>
+            </div>
             </div>
 
+            <aside class="overview-inventory-sidebar">
+                <h2 data-i18n="overview.inventoryTitle">Inventory</h2>
+                <div id="overviewInventorySummary"></div>
+                <h3 hidden class="overview-group-navigation-title" data-i18n="overview.groupView">Groups</h3>
+                <nav hidden id="overviewInventoryGroups" aria-label="Groups" data-i18n-aria-label="overview.groupView"></nav>
+            </aside>
         </div>
     </section>
 
+    {% endif %}
     <main class="main-content" hidden>
         <!-- session-meta kept hidden for JS references; visible session-bar only on mobile -->
         <div aria-hidden="true" style="display:none">
@@ -243,7 +290,7 @@
                 <button class="btn btn-secondary mobile-input-close" id="mobileInputCloseBtn" type="button" aria-label="Hide command input" data-i18n-aria-label="terminal.hideInput">
                     <span class="material-icons" aria-hidden="true">keyboard_hide</span>
                 </button>
-                <input type="text" id="mobileInput" data-i18n-placeholder="terminal.mobileInputPlaceholder" placeholder="Type or paste here..."
+                <input type="text" id="mobileInput" aria-label="Terminal input" data-i18n-aria-label="terminal.inputLabel" data-i18n-placeholder="terminal.mobileInputPlaceholder" placeholder="Type or paste here..."
                        maxlength="4096" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                 <button class="btn btn-primary mobile-send-btn" id="mobileSendBtn" type="button" aria-label="Send command" data-i18n-aria-label="terminal.sendInput">
                     <span class="material-icons" aria-hidden="true">send</span>
@@ -251,13 +298,13 @@
             </div>
         </div>
         <div class="broadcast-bar hidden" id="broadcastBar">
-            <span class="broadcast-bar-label">
+            <span class="broadcast-bar-label" id="broadcastAudienceLabel">
                 <span class="broadcast-bar-icon material-icons" aria-hidden="true">cell_tower</span>
                 <span data-i18n="broadcast.barLabel">Broadcast to</span>
                 <strong id="broadcastCount">0</strong>
                 <span data-i18n="broadcast.sessions">sessions</span>
             </span>
-            <input type="text" id="broadcastInput" class="broadcast-input"
+            <input type="text" id="broadcastInput" aria-labelledby="broadcastAudienceLabel" class="broadcast-input"
                    data-i18n-placeholder="broadcast.placeholder"
                    placeholder="Type a command — sent to all open sessions on Enter"
                    maxlength="4096" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
@@ -276,7 +323,7 @@
                             </div>
                         </div>
                         <div class="terminal-search-bar hidden" id="terminalSearchBar">
-                            <input type="text" id="terminalSearchInput" placeholder="Search in terminal..." data-i18n-placeholder="terminal.searchPlaceholder" autocomplete="off" />
+                            <input type="text" id="terminalSearchInput" aria-label="Search in terminal" data-i18n-aria-label="terminal.searchPlaceholder" placeholder="Search in terminal..." data-i18n-placeholder="terminal.searchPlaceholder" autocomplete="off" />
                             <span class="search-count" id="terminalSearchCount"></span>
                             <button class="search-btn search-prev" id="terminalSearchPrev" title="Previous (Shift+Enter)" aria-label="Previous search result" data-i18n-title="terminal.searchPrevious" data-i18n-aria-label="terminal.searchPrevious">▲</button>
                             <button class="search-btn search-next" id="terminalSearchNext" title="Next (Enter)" aria-label="Next search result" data-i18n-title="terminal.searchNext" data-i18n-aria-label="terminal.searchNext">▼</button>
@@ -291,19 +338,19 @@
                 <div class="context-workspace-resizer" id="contextWorkspaceResizer" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize session tools" title="Drag to resize session tools" data-i18n-aria-label="workspace.resizeTools" data-i18n-title="workspace.resizeToolsHint"></div>
                 <div class="context-workspace-header">
                     <div class="context-workspace-tabs" id="contextWorkspaceTabs" role="tablist" aria-label="Session tools" data-i18n-aria-label="workspace.sessionTools">
-                        <button class="context-workspace-tab" id="contextFilesTab" type="button" role="tab" data-workspace-context="files" aria-selected="false" aria-controls="contextFilesPanel" disabled>
+                        <button class="context-workspace-tab" id="contextFilesTab" title="Files" data-i18n-title="workspaceContext.files" type="button" role="tab" data-workspace-context="files" aria-selected="false" aria-controls="contextFilesPanel" disabled>
                             <span class="material-icons" aria-hidden="true">folder_open</span>
                             <span data-i18n="workspaceContext.files">Files</span>
                         </button>
-                        <button class="context-workspace-tab" id="contextCommandsTab" type="button" role="tab" data-workspace-context="commands" aria-selected="false" aria-controls="contextCommandsPanel">
+                        <button class="context-workspace-tab" id="contextCommandsTab" title="Commands" data-i18n-title="workspaceContext.commands" type="button" role="tab" data-workspace-context="commands" aria-selected="false" aria-controls="contextCommandsPanel">
                             <span class="material-icons" aria-hidden="true">terminal</span>
                             <span data-i18n="workspaceContext.commands">Commands</span>
                         </button>
-                        <button class="context-workspace-tab" id="contextDiagnosticsTab" type="button" role="tab" data-workspace-context="diagnostics" aria-selected="false" aria-controls="contextDiagnosticsPanel" disabled>
+                        <button class="context-workspace-tab" id="contextDiagnosticsTab" title="Monitoring" data-i18n-title="workspaceContext.diagnostics" type="button" role="tab" data-workspace-context="diagnostics" aria-selected="false" aria-controls="contextDiagnosticsPanel" disabled>
                             <span class="material-icons" aria-hidden="true">monitor_heart</span>
                             <span data-i18n="workspaceContext.diagnostics">Diagnostics</span>
                         </button>
-                        <button class="context-workspace-tab" id="contextNotesTab" type="button" role="tab" data-workspace-context="notes" aria-selected="false" aria-controls="contextNotesPanel">
+                        <button class="context-workspace-tab" id="contextNotesTab" title="Notes" data-i18n-title="workspaceContext.notes" type="button" role="tab" data-workspace-context="notes" aria-selected="false" aria-controls="contextNotesPanel">
                             <span class="material-icons" aria-hidden="true">edit_note</span>
                             <span data-i18n="workspaceContext.notes">Notes</span>
                         </button>
@@ -313,7 +360,7 @@
 
                 <div class="context-workspace-panels">
                     <section class="context-workspace-panel" id="contextFilesPanel" role="tabpanel" aria-labelledby="contextFilesTab" aria-hidden="true" hidden>
-                        <div class="session-files-panel hidden" id="sessionFilesPanel" aria-label="Active session files" data-i18n-aria-label="workspace.activeSessionFiles">
+                        <div class="session-files-panel hidden" id="sessionFilesPanel" aria-label="Active session files" data-i18n-aria-label="workspace.activeSessionFiles"><div class="session-files-heading"><strong id="sessionFilesHeading"></strong></div>
                             <div class="session-panel-header" id="sessionDirectorySyncIndicator" hidden>
                                 <label class="session-directory-sync" for="sessionDirectorySyncInput" title="Link folder navigation to this terminal. Starts at the terminal folder." data-i18n-title="workspace.directorySync.hint">
                                     <input type="checkbox" id="sessionDirectorySyncInput">
@@ -329,7 +376,7 @@
                                     <textarea id="sessionDirectorySyncCommand" readonly rows="6" aria-label="Bash activation command" hidden></textarea>
                                 </details>
                             </div>
-                            <div class="session-files-mount" id="sessionFilesMount"></div>
+                            <div class="session-files-mount" id="sessionFilesMount"></div><button type="button" id="sessionFilesOpenManager" class="btn btn-secondary session-files-open-manager"><span class="material-icons" aria-hidden="true">open_in_new</span><span data-i18n="fm.openFileManager">Open File Manager</span></button>
                             <div class="session-files-status" id="sessionFilesStatus" role="status" aria-live="polite" hidden></div>
                         </div>
                     </section>
@@ -350,6 +397,7 @@
                                     <div class="notepad-title-row">
                                         <h2 id="notepadTitle" data-i18n="workspaceContext.notes">Notes</h2>
                                         <span class="notepad-save-status" id="notepadSaveStatus"></span>
+                                        <button type="button" class="btn btn-secondary btn-sm" id="notepadRetryBtn" data-i18n="notes.retry" hidden>Retry save</button>
                                     </div>
                                     <p data-i18n="workspaceContext.notesHint">Your private notes, shared across all your sessions.</p>
                                 </div>
@@ -371,7 +419,7 @@
         <span id="workspaceStatusUserField" hidden><strong data-i18n="auth.username">Username</strong> <span id="workspaceStatusUser"></span></span>
         <span id="workspaceStatusPersistence" hidden></span>
         <span class="workspace-status-spacer"></span>
-        <button type="button" id="workspaceStatusTransfers" class="workspace-status-transfers"><span class="material-icons" aria-hidden="true">sync_alt</span> <span data-i18n="workspace.transfers">Transfers</span> <span id="workspaceStatusTransferCount">0</span></button>
+        <button type="button" id="workspaceStatusTransfers" class="workspace-status-transfers"><span class="material-icons" aria-hidden="true">sync_alt</span> <span data-i18n="workspace.transfers">Transfers</span> <span id="workspaceStatusTransferCount">0</span><span id="workspaceStatusTransferState"></span></button>
     </footer>
 
     <button id="mobileMenuBackdrop" class="mobile-menu-backdrop" type="button" tabindex="-1" aria-hidden="true" hidden></button>
@@ -680,10 +728,31 @@
                                     </div>
                                 </div>
 
-                                <div class="form-group quick-connect-auth-method">
+                                <div class="quick-connect-core-fields">
+                    <div class="form-row">
+                        <div class="form-group flex-2">
+                            <label for="hostInput" data-i18n="connection.host">Host *</label>
+                            <input type="text" id="hostInput" aria-describedby="hostHint" class="form-control" placeholder="192.168.1.100" required spellcheck="false" autocapitalize="none">
+                            <div class="field-hint" id="hostHint"></div>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="portInput" data-i18n="connection.port">Port *</label>
+                            <input type="number" id="portInput" aria-describedby="portHint" class="form-control" min="1" max="65535" value="22" required>
+                            <div class="field-hint" id="portHint"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="usernameInput" data-i18n="auth.username">Username *</label>
+                        <input type="text" id="usernameInput" aria-describedby="usernameHint" class="form-control" placeholder="root" required spellcheck="false" autocapitalize="none">
+                        <div class="field-hint" id="usernameHint"></div>
+                    </div>
+
+                    <div class="form-group quick-connect-auth-method">
                                     <label for="authTypeSelect" data-i18n="connection.authMethod">Authentication Method</label>
                                     <select id="authTypeSelect" class="form-control">
                                         <option value="password" data-i18n="auth.password">Password</option>
+                                        <option value="saved-password" data-i18n="credentials.savedPassword">Saved password</option>
                                         <option value="key" data-i18n="connection.sshKey">SSH Key</option>
                                         {% if tailscale_ssh_allowed %}
                                         <option value="tailscale" data-i18n="connection.tailscaleSSH">Tailscale SSH</option>
@@ -691,30 +760,10 @@
                                     </select>
                                 </div>
 
-                                <div class="quick-connect-core-fields">
-                    <div class="form-row">
-                        <div class="form-group flex-2">
-                            <label for="hostInput" data-i18n="connection.host">Host *</label>
-                            <input type="text" id="hostInput" class="form-control" placeholder="192.168.1.100" required>
-                            <div class="field-hint" id="hostHint"></div>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="portInput" data-i18n="connection.port">Port *</label>
-                            <input type="number" id="portInput" class="form-control" value="22" required>
-                            <div class="field-hint" id="portHint"></div>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="usernameInput" data-i18n="auth.username">Username *</label>
-                        <input type="text" id="usernameInput" class="form-control" placeholder="root" required>
-                        <div class="field-hint" id="usernameHint"></div>
-                    </div>
-
                     <div class="form-group" id="passwordGroup">
                         <label for="passwordInput" data-i18n="auth.password">Password *</label>
                         <div class="input-wrapper with-toggle">
-                            <input type="password" id="passwordInput" class="form-control" data-i18n-placeholder="auth.password" placeholder="Password">
+                            <input type="password" id="passwordInput" aria-describedby="passwordHint" class="form-control" data-i18n-placeholder="auth.password" placeholder="Password">
                             <button type="button" class="password-toggle material-icons" data-target="passwordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                         </div>
                         <div class="field-hint" id="passwordHint"></div>
@@ -722,7 +771,7 @@
 
                     <div class="form-group hidden" id="keyGroup">
                         <label for="keySelect" data-i18n="connection.sshKey">SSH Key *</label>
-                        <select id="keySelect" class="form-control">
+                        <select id="keySelect" aria-describedby="keyHint" class="form-control">
                             <option value="" data-i18n="connection.selectSSHKey">-- Select SSH Key --</option>
                         </select>
                         <div class="field-hint" id="keyHint"></div>
@@ -866,12 +915,12 @@
             </div>
             <div class="modal-body profile-management-modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
-                    <div class="management-resource-title"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></div>
+                    <div class="management-resource-title management-page-title"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></div>
                     <p class="connection-asset-nav-label" data-i18n="connectionAssets.navigation">Connection resources</p>
                     <button type="button" class="connection-asset-nav-item active" data-connection-asset="hosts" aria-current="page"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts"><span class="material-icons" aria-hidden="true">alt_route</span><span data-i18n="connectionAssets.jumpHosts">Jump Hosts</span></button>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="keys"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
-                </nav>
+                <button type="button" class="connection-asset-nav-item" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
                 <section id="profileManagementView">
                     <div class="management-panel-heading">
                         <h3 data-i18n="profiles.savedConnections">Saved Connections</h3>
@@ -884,11 +933,15 @@
                             <input type="search" id="profileSearchInput" class="form-control profile-management-search" data-i18n-placeholder="profiles.searchPlaceholder" placeholder="Search by name, host, user, or group">
                         </label>
                         <div class="management-panel-actions">
-                            <button type="button" id="profileDensityBtn" class="btn btn-secondary" aria-pressed="false" data-i18n="profiles.compact">Compact view</button>
-                            <button type="button" id="collapseAllProfilesBtn" class="btn btn-secondary" data-i18n="profiles.collapseAll">Collapse all</button>
-                            <button type="button" id="importProfilesBtn" class="btn btn-secondary" data-i18n="exchange.import">Import hosts</button>
-                            <button type="button" id="exportProfilesBtn" class="btn btn-secondary" data-i18n="exchange.export">Export host metadata</button>
-                            <button type="button" id="newProfileBtn" class="btn btn-primary" data-i18n="profiles.create">Create saved connection</button>
+                            <details class="management-toolbar-menu"><summary><span data-i18n="profiles.view">View</span><span class="material-icons" aria-hidden="true">expand_more</span></summary><div class="management-toolbar-dropdown">
+                                <button type="button" id="profileDensityBtn" class="btn btn-secondary" aria-pressed="false" data-i18n="profiles.compact">Compact view</button>
+                                <button type="button" id="collapseAllProfilesBtn" class="btn btn-secondary" data-i18n="profiles.collapseAll">Collapse all</button>
+                            </div></details>
+                            <details class="management-toolbar-menu"><summary><span class="material-icons" aria-hidden="true">import_export</span><span data-i18n="exchange.importExport">Import / Export</span><span class="material-icons" aria-hidden="true">expand_more</span></summary><div class="management-toolbar-dropdown">
+                                <button type="button" id="importProfilesBtn" class="btn btn-secondary" data-i18n="exchange.import">Import hosts</button>
+                                <button type="button" id="exportProfilesBtn" class="btn btn-secondary" data-i18n="exchange.export">Export host metadata</button>
+                            </div></details>
+                            <button type="button" id="newProfileBtn" class="btn btn-primary"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="profiles.newHost">New host</span></button>
                         </div>
                     </div>
                     <div id="profileManagementList" class="profile-management-list"></div>
@@ -904,7 +957,6 @@
                                         <span class="material-icons" aria-hidden="true">terminal</span>
                                         <div>
                                             <h3 id="profileConnectionDetailsTitle" data-i18n="connection.details">Connection Details</h3>
-                                            <p data-i18n="connection.detailsHint">Enter the destination and choose how to authenticate.</p>
                                         </div>
                                     </div>
                         <div class="form-group">
@@ -918,7 +970,7 @@
                         <div class="form-row">
                             <div class="form-group flex-2">
                                 <label for="profileEditorHost" data-i18n="connection.host">Host *</label>
-                                <input type="text" id="profileEditorHost" class="form-control" required>
+                                <input type="text" id="profileEditorHost" class="form-control" required spellcheck="false" autocapitalize="none">
                             </div>
                             <div class="form-group flex-1">
                                 <label for="profileEditorPort" data-i18n="connection.port">Port *</label>
@@ -927,7 +979,7 @@
                         </div>
                         <div class="form-group">
                             <label for="profileEditorUsername" data-i18n="auth.username">Username *</label>
-                            <input type="text" id="profileEditorUsername" class="form-control" required>
+                            <input type="text" id="profileEditorUsername" class="form-control" required spellcheck="false" autocapitalize="none">
                         </div>
                         <div class="form-group">
                             <label for="profileEditorAuthType" data-i18n="connection.authMethod">Authentication Method</label>
@@ -969,7 +1021,28 @@
                                             <p data-i18n="connection.advancedSettingsHint">Jump host, post-connect actions, and persistence.</p>
                                         </div>
                                         <span class="material-icons profile-advanced-chevron" aria-hidden="true">expand_more</span>
-                                    </summary>
+                                    </summary>                        <div class="form-group"><label for="profileEditorPlatformIcon" data-i18n="platform.label">Platform icon</label>
+                            <select id="profileEditorPlatformIcon" class="form-control">
+                                <option value="auto" data-i18n="platform.auto">Automatic</option>
+                                <option value="server" data-i18n="platform.neutral">Neutral server</option>
+                                <option value="docker">Docker</option>
+                                <option value="proxmox">Proxmox</option>
+                                <option value="raspberrypi">Raspberry Pi</option>
+                                <option value="homeassistant">Home Assistant</option>
+                                <option value="truenas">TrueNAS</option>
+                                <option value="opnsense">OPNsense</option>
+                                <option value="ubuntu">Ubuntu</option>
+                                <option value="debian">Debian</option>
+                                <option value="fedora">Fedora</option>
+                                <option value="archlinux">Arch Linux</option>
+                                <option value="alpinelinux">Alpine Linux</option>
+                                <option value="linux">Linux</option>
+                                <option value="apple">macOS</option>
+                                <option value="freebsd">FreeBSD</option>
+                            </select>
+                            <small data-i18n="platform.help">Automatic checks platform facts after connecting over SSH. Choose an icon to override detection.</small>
+                        </div>
+
                         <div class="form-group">
                             <label for="profileEditorJumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
                             <select id="profileEditorJumpHostSelect" class="form-control"></select>
@@ -1062,6 +1135,15 @@
         </div>
     </div>
 
+<section id="credentialManagementView" hidden aria-labelledby="credentialManagementTitle">
+ <nav class="connection-asset-nav" aria-label="Connection resources"><button type="button" class="connection-asset-nav-item" data-connection-asset="hosts" data-i18n="connectionAssets.hosts">Hosts</button><button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button><button type="button" class="connection-asset-nav-item" data-connection-asset="keys" data-i18n="connectionAssets.keys">SSH Keys</button><button type="button" class="connection-asset-nav-item active" aria-current="page" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
+ <header class="native-credential-toolbar"><h2 id="credentialManagementTitle" data-i18n="credentials.title">Passwords</h2><input type="search" data-credential-search class="form-control" aria-label="Search passwords" data-i18n-aria-label="credentials.search" placeholder="Search passwords" data-i18n-placeholder="credentials.search"><button type="button" class="btn btn-primary" data-credential-new data-i18n="credentials.new">New password</button></header>
+ <p role="status"></p>
+ <div class="native-credential-workspace"><div class="native-credential-list" data-credential-list></div><aside data-credential-detail hidden></aside></div>
+ <footer class="native-credential-legacy"><button type="button" class="btn btn-secondary" data-credential-legacy hidden data-i18n="credentials.importLegacy">Import existing vault</button></footer>
+</section>
+<section id="automationNativeView" hidden>{% include '_automation_workspace.html' %}</section>
+
     <div class="modal modal-wide" id="keyManagementModal" role="dialog" aria-modal="true" aria-labelledby="keyManagementTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
@@ -1075,7 +1157,7 @@
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts"><span class="material-icons" aria-hidden="true">alt_route</span><span data-i18n="connectionAssets.jumpHosts">Jump Hosts</span></button>
                     <button type="button" class="connection-asset-nav-item active" data-connection-asset="keys" aria-current="page"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
-                </nav>
+                <button type="button" class="connection-asset-nav-item" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
 
                 <div class="connection-asset-layout">
                 <section class="key-upload-section manager-card">
@@ -1091,9 +1173,9 @@
                         <div class="form-group">
                             <label for="keyContentInput" data-i18n="keys.privateKey">Private Key</label>
                         <textarea id="keyContentInput" class="form-control" rows="8" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----
-..." required></textarea>
+..." required spellcheck="false" autocapitalize="none"></textarea>
                         </div>
-                        <button type="submit" class="btn btn-primary"><span data-i18n="keys.uploadKey">Upload Key</span> ⬆️</button>
+                        <button type="submit" class="btn btn-primary"><span class="material-icons" aria-hidden="true">upload</span><span data-i18n="keys.uploadKey">Upload Key</span></button>
                     </form>
                 </section>
 
@@ -1135,10 +1217,6 @@
                             <span class="sr-only" data-i18n="commands.searchPlaceholder">Search commands, parameters, or descriptions...</span>
                             <input type="search" id="commandSearchInput" class="form-control" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
                         </label>
-                        <div class="management-panel-actions">
-                            <button class="btn btn-primary" id="addCommandBtn"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="commands.addCommand">Add Command</span></button>
-                        </div>
-                    </div>
                     <div class="os-filter-toolbar">
                         <span data-i18n="commands.filterByOs">Filter by OS:</span>
                         <div class="os-filter-buttons">
@@ -1147,6 +1225,10 @@
                             <button class="os-filter-btn" data-os="macos">macOS</button>
                             <button class="os-filter-btn" data-os="bsd">BSD</button>
                             <button class="os-filter-btn" data-os="windows">Windows</button>
+                        </div>
+                    </div>
+                        <div class="management-panel-actions">
+                            <button class="btn btn-primary" id="addCommandBtn"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="commands.addCommand">Add Command</span></button>
                         </div>
                     </div>
                     <div class="commands-table-wrapper">
@@ -1170,11 +1252,11 @@
                     <div id="commandFavoritesList" class="command-favorites-list"></div>
                 </section>
 
-                <section id="commandSetsPanel" class="command-workspace-panel command-set-modal-body" role="tabpanel" aria-labelledby="commandSetsTab">
+                <section id="commandSetsPanel" class="command-workspace-panel command-set-modal-body" role="tabpanel" aria-labelledby="commandSetsTab" aria-describedby="commandSetManagementHint">
                 <section id="commandSetManagementView">
                     <div class="command-set-management-toolbar management-panel-heading">
                         <h3 data-i18n="commandSets.manage">Command Sets</h3>
-                        <p data-i18n="commandSets.manageHint">Build reusable command sequences and assign one to any saved connection.</p>
+                        <p id="commandSetManagementHint" data-i18n="commandSets.manageHint">Build reusable command sequences and assign one to any saved connection.</p>
                     </div>
                     <div class="command-set-search-toolbar management-panel-toolbar">
                         <label class="management-search-control" for="commandSetManagementSearch"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="commandSets.search">Search command sets</span><input id="commandSetManagementSearch" class="form-control" type="search" data-i18n-placeholder="commandSets.search" placeholder="Search command sets"></label>
@@ -1263,12 +1345,12 @@
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
                     <button type="button" class="connection-asset-nav-item active" data-connection-asset="jump-hosts" aria-current="page"><span class="material-icons" aria-hidden="true">alt_route</span><span data-i18n="connectionAssets.jumpHosts">Jump Hosts</span></button>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="keys"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
-                </nav>
+                <button type="button" class="connection-asset-nav-item" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
                 <div class="connection-asset-layout">
                 <section class="key-upload-section manager-card">
                     <div class="manager-card-header">
                         <span class="material-icons" aria-hidden="true">add_link</span>
-                        <h3 data-i18n="jumphosts.addNew">Add Jump Host</h3>
+                        <h3 id="jumpHostEditorTitle" data-i18n="jumphosts.addNew">Add Jump Host</h3>
                     </div>
                     <form id="jumpHostForm">
                         <div class="form-group">
@@ -1278,22 +1360,22 @@
                         <div class="form-row">
                             <div class="form-group flex-2">
                                 <label for="jhHostInput" data-i18n="connection.host">Host</label>
-                                <input type="text" id="jhHostInput" class="form-control" placeholder="bastion.example.com" required>
+                                <input type="text" id="jhHostInput" class="form-control" placeholder="bastion.example.com" required spellcheck="false" autocapitalize="none">
                             </div>
                             <div class="form-group flex-1">
                                 <label for="jhPortInput" data-i18n="connection.port">Port</label>
-                                <input type="number" id="jhPortInput" class="form-control" value="22">
+                                <input type="number" id="jhPortInput" class="form-control" value="22" min="1" max="65535" required>
                             </div>
                         </div>
                         <div class="form-group">
                             <label for="jhUsernameInput" data-i18n="auth.username">Username</label>
-                            <input type="text" id="jhUsernameInput" class="form-control" placeholder="bastion_user" required>
+                            <input type="text" id="jhUsernameInput" class="form-control" placeholder="bastion_user" required spellcheck="false" autocapitalize="none">
                         </div>
                         <div class="form-group">
                             <label data-i18n="connection.authMethod">Authentication Method</label>
-                            <div class="auth-type-selector">
+                            <div class="auth-type-selector" role="group" aria-label="Authentication Method" data-i18n-aria-label="connection.authMethod">
                                 <label class="radio-label"><input type="radio" name="jhAuthType" value="password" checked> <span data-i18n="auth.password">Password</span></label>
-                                <label class="radio-label"><input type="radio" name="jhAuthType" value="key"> <span data-i18n="connection.sshKey">SSH Key</span></label>
+                                <label class="radio-label"><input type="radio" name="jhAuthType" value="key"> <span data-i18n="fm.qc.sshKey">SSH Key</span></label>
                             </div>
                         </div>
                         <div class="form-group hidden" id="jhKeyGroup">
@@ -1302,8 +1384,9 @@
                                 <option value="" data-i18n="connection.selectSSHKey">-- Select SSH Key --</option>
                             </select>
                         </div>
-                        <p class="field-hint" data-i18n="jumphosts.noPasswordHint">Passwords are never stored — you enter them when connecting.</p>
-                        <button type="submit" class="btn btn-primary"><span data-i18n="jumphosts.add">Add Jump Host</span></button>
+                        <p class="field-hint" data-i18n="credentials.jumpHint">Enter a password when connecting, or explicitly save a reusable password.</p>
+                        <p id="jhSaveStatus" class="field-hint" role="status" hidden></p>
+                        <div class="form-actions"><button type="button" id="cancelJumpHostEdit" class="btn btn-secondary" data-i18n="common.cancel" hidden>Cancel</button><button type="submit" id="saveJumpHostBtn" class="btn btn-primary"><span data-i18n="jumphosts.add">Add Jump Host</span></button></div>
                     </form>
                 </section>
                 <section class="keys-list-section manager-card">
@@ -1335,17 +1418,17 @@
 
                     <div class="form-group">
                         <label for="commandFormCommand"><span data-i18n="commands.command">Command</span> *</label>
-                        <textarea id="commandFormCommand" class="form-control" rows="3" maxlength="4096" data-i18n-placeholder="commands.commandPlaceholder" placeholder="e.g., apt update" required></textarea>
+                        <textarea id="commandFormCommand" class="form-control" rows="2" maxlength="4096" data-i18n-placeholder="commands.commandPlaceholder" placeholder="e.g., apt update" required spellcheck="false" autocapitalize="none"></textarea>
                     </div>
 
                     <div class="form-group">
                         <label for="commandFormParams"><span data-i18n="commands.parameters">Parameters</span> (<span data-i18n="common.optional">Optional</span>)</label>
-                        <input type="text" id="commandFormParams" class="form-control" data-i18n-placeholder="commands.parametersPlaceholder" placeholder="e.g., -y">
+                        <input type="text" id="commandFormParams" class="form-control" data-i18n-placeholder="commands.parametersPlaceholder" placeholder="e.g., -y" spellcheck="false" autocapitalize="none">
                     </div>
 
                     <div class="form-group">
                         <label for="commandFormDescription"><span data-i18n="commands.description">Description</span> *</label>
-                        <textarea id="commandFormDescription" class="form-control" rows="3" data-i18n-placeholder="commands.descriptionPlaceholder" placeholder="e.g., Update package repository lists" required></textarea>
+                        <textarea id="commandFormDescription" class="form-control" rows="2" data-i18n-placeholder="commands.descriptionPlaceholder" placeholder="e.g., Update package repository lists" required></textarea>
                     </div>
 
                     <details class="command-editor-details" open><summary data-i18n="commands.classification">Category and operating systems</summary>
@@ -1364,7 +1447,7 @@
 
                     <div class="form-group">
                         <label data-i18n="commands.operatingSystems">Operating Systems *</label>
-                        <div class="checkbox-group">
+                        <div class="checkbox-group" role="group" aria-label="Operating Systems *" data-i18n-aria-label="commands.operatingSystems">
                             <label><input type="checkbox" name="commandOs" value="all" id="osAll"> <span data-i18n="commands.osAll">All</span></label>
                             <label><input type="checkbox" name="commandOs" value="linux"> Linux</label>
                             <label><input type="checkbox" name="commandOs" value="macos"> macOS</label>
@@ -1425,7 +1508,7 @@
                 <button type="button" class="close material-icons" id="closeCommandPaletteModal" aria-label="Close command palette" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
-                <input type="text" id="commandPaletteInput" class="form-control" data-i18n-placeholder="palette.searchPlaceholder" placeholder="Search actions, hosts, and sessions..." autocomplete="off">
+                <input type="text" id="commandPaletteInput" role="combobox" aria-expanded="true" aria-controls="commandPaletteList" aria-autocomplete="list" aria-label="Search actions, hosts, and sessions" data-i18n-aria-label="palette.searchPlaceholder" class="form-control" data-i18n-placeholder="palette.searchPlaceholder" placeholder="Search actions, hosts, and sessions..." autocomplete="off">
                 <div class="palette-list" id="commandPaletteList" role="listbox"></div>
             </div>
         </div>
@@ -1707,6 +1790,7 @@
     <script src="{{ static_asset_url(filename='js/webssh2-shell.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/account-workspace-pulse.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/broadcast-input.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/host-platform.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/profile-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/profile-exchange.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/jump-host-manager.js') }}"></script>
@@ -1724,13 +1808,25 @@
     <script src="{{ static_asset_url(filename='js/sftp-file-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/connection-history.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/primary-workspace-controller.js') }}"></script>
-    <script src="{{ static_asset_url(filename='js/connection-overview.js') }}"></script>
+    <script src="{{ static_asset_url(filename=('js/connection-overview-classic.js' if overview_layout == 'classic' else 'js/connection-overview.js')) }}"></script>
     <script src="{{ static_asset_url(filename='js/socket-reconnect-policy.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/notepad-controller.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/auth-session-guard.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/connection-validation.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/ssh-gateway-dialog.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/ssh-host-trust.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/native-credentials.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/credential-picker.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/automation-i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/automation-guidance.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/automation-templates.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/automation.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/overview-analytics.js') }}"></script>
+    {% if overview_layout != 'classic' %}
+    <script src="{{ static_asset_url(filename='js/overview-route-map.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/overview-dashboard.js') }}"></script>
+    {% endif %}
+    <script src="{{ static_asset_url(filename='js/host-resource-layout.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-file-bridge.js') }}"></script>
     <script>
@@ -1751,6 +1847,7 @@
         function initThemeSelectorHeader() {
             const themes = [
                 { id: 'glass', name: 'Glass Ops', color: '#58a6ff' },
+                { id: 'werkbank', name: 'Werkbank / Sand', color: '#d6c3a1' },
                 { id: 'retro', name: 'Retro Future', color: '#ffb454' },
                 { id: 'solar', name: 'Solar Drift', color: '#6ea8ff' },
                 { id: 'paper', name: 'Paper Ops', color: '#c77d48', light: true },
@@ -1763,6 +1860,13 @@
             ];
             const currentTheme = document.body.getAttribute('data-theme') || 'glass';
             window.ThemePreference?.store(currentTheme);
+            window.addEventListener('storage', event => {
+                if (event.key !== 'websshTheme' || !window.ThemePreference?.isValid(event.newValue)) return;
+                if (document.body.dataset.theme === event.newValue) return;
+                document.body.dataset.theme = event.newValue;
+                window.TerminalManager?.applyThemeToAll();
+                window.dispatchEvent(new CustomEvent('themeChanged', {detail: {theme: event.newValue}}));
+            });
             const select = document.getElementById('settingsThemeSelect');
 
             if (select) {
@@ -1857,5 +1961,6 @@
             window.accountWorkspacePulse?.init();
         });
     </script>
+    <script src="{{ static_asset_url(filename='js/onboarding.js') }}" defer></script>
 </body>
 </html>

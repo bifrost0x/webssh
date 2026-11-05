@@ -1,3 +1,4 @@
+from .app_settings import runtime_feature_enabled
 from flask_socketio import (
     ConnectionRefusedError,
     disconnect,
@@ -36,6 +37,8 @@ from .command_storage_policy import CommandStorageLimitError
 from .connection_storage_policy import ConnectionStorageLimitError
 from .network_policy import canonicalize_hostname
 from .ssh_errors import connection_error_payload
+from .credential_connections import connection_password, credential_error, CredentialGuard
+from .automation_store import AutomationError
 from . import binary_transfer, connection_pool
 from .transfer_routes import prepare_transfer, transfer_manager, _terminalize
 from .quota_manager import QuotaExceeded, QuotaKind, quota_manager
@@ -328,17 +331,24 @@ class _CombinedCancellation:
         lifecycle_cancel_event,
         commit_lock=None,
         attempt=None,
+        credential_guards=(),
     ):
         self._user_cancel_event = user_cancel_event
         self._lifecycle_cancel_event = lifecycle_cancel_event
         self._commit_lock = commit_lock or threading.Lock()
         self._attempt = attempt
+        self._credential_guards = credential_guards
 
     def is_set(self):
         return (
             self._user_cancel_event.is_set()
             or self._lifecycle_cancel_event.is_set()
+            or any(guard.is_set() for guard in self._credential_guards)
         )
+
+    def check(self):
+        if self.is_set():
+            raise AutomationError('vault_locked')
 
     def wait(self, timeout=None):
         if self.is_set():
@@ -1058,6 +1068,7 @@ def restore_user_sessions(user_id, socket_sid):
                 'via_jump': session.get('via_jump'),
                 'jump_host_id': session.get('jump_host_id'),
                 'profile_id': session.get('profile_id'),
+                'detected_platform': session.get('detected_platform'),
                 'reconnect_route_known': session.get('reconnect_route_known', False),
                 'key_id': db_session.key_id,
                 'use_tmux': session.get('use_tmux', False),
@@ -1081,7 +1092,7 @@ def restore_user_sessions(user_id, socket_sid):
             log_debug(f"SSH session {session_id} no longer active, marked disconnected")
 
     # Restore disconnected persistent tmux sessions as reconnect candidates
-    if config.TMUX_ENABLED:
+    if runtime_feature_enabled('tmux_enabled'):
         persistent_sessions = SSHSession.query.filter_by(
             user_id=user_id, is_persistent=True, connected=False
         ).all()
@@ -1166,6 +1177,7 @@ def handle_ssh_connect(data, current_user=None):
     client_request_id = None
     socket_sid = request.sid
     client_cancel_event = threading.Event()
+    credential_guards = []
     try:
         data = data if isinstance(data, dict) else {}
         client_request_id = _ssh_request_id(data) or None
@@ -1296,6 +1308,7 @@ def handle_ssh_connect(data, current_user=None):
                 emit_error('Jump host reference not found')
                 return
             runtime_password = proxy_jump.get('password')
+            credential_reference = proxy_jump.get('credential_id')
             proxy_jump = {
                 'host': live_jump_host.get('host'),
                 'port': live_jump_host.get('port', 22),
@@ -1305,6 +1318,8 @@ def handle_ssh_connect(data, current_user=None):
             }
             if live_jump_host.get('auth_type') == 'password':
                 proxy_jump['password'] = runtime_password
+                if credential_reference is not None:
+                    proxy_jump['credential_id'] = credential_reference
 
         if auth_type == 'tailscale' and proxy_jump:
             emit_error('Tailscale SSH cannot be used with a jump host')
@@ -1323,7 +1338,7 @@ def handle_ssh_connect(data, current_user=None):
         if proxy_jump:
             bastion_password = proxy_jump.get('password')
             bastion_key_id = proxy_jump.get('key_id')
-            if not bastion_password and not bastion_key_id:
+            if not bastion_password and not bastion_key_id and not proxy_jump.get('credential_id'):
                 emit_error('Jump host password or SSH key required')
                 return
             if (
@@ -1338,6 +1353,17 @@ def handle_ssh_connect(data, current_user=None):
         if check_socket_rate_limit(current_user.id, 'ssh_connect', config.RATELIMIT_SSH_CONNECT):
             log_warning("SSH connect rate limit hit", user=current_user.username)
             emit_error('Too many connection attempts. Please wait a moment.')
+            return
+
+        try:
+            if data.get('credential_id') is not None:
+                credential_guards.append(CredentialGuard(current_user.id, 'ssh', data))
+                password = connection_password(current_user.id, 'ssh', data)
+            if proxy_jump and proxy_jump.get('credential_id') is not None:
+                credential_guards.append(CredentialGuard(current_user.id, 'jump', proxy_jump))
+                bastion_password = connection_password(current_user.id, 'jump', proxy_jump)
+        except AutomationError as error:
+            emit('ssh_error', dict(credential_error(error), client_request_id=client_request_id))
             return
 
         if auth_type == 'key' and key_id:
@@ -1434,7 +1460,7 @@ def handle_ssh_connect(data, current_user=None):
                 emit_error(f'Jump host: {bastion_error}')
                 return
 
-        use_tmux = bool(data.get('use_tmux')) and config.TMUX_ENABLED
+        use_tmux = bool(data.get('use_tmux')) and runtime_feature_enabled('tmux_enabled')
         reconnect_tmux_name = None
         if use_tmux:
             raw_name = data.get('reconnect_tmux_name')
@@ -1515,9 +1541,13 @@ def handle_ssh_connect(data, current_user=None):
                 cancellation = _CombinedCancellation(
                     client_cancel_event, lifecycle_cancel_event,
                     attempt['commit_lock'], attempt,
+                    credential_guards=credential_guards,
                 )
             else:
-                gateway_attempt.bind_runtime(lifecycle_cancel_event)
+                gateway_attempt.bind_runtime(_CombinedCancellation(
+                    client_cancel_event, lifecycle_cancel_event,
+                    credential_guards=credential_guards,
+                ))
                 cancellation = gateway_attempt
             local_password = credentials.pop('password', None)
             local_key_content = credentials.pop('key_content', None)
@@ -1557,6 +1587,9 @@ def handle_ssh_connect(data, current_user=None):
                     tailscale_authorization=tailscale_authorization,
                     cancel_event=cancellation,
                     client_request_id=client_request_id,
+                    **({'credential_guard': _CombinedCancellation(
+                        client_cancel_event, lifecycle_cancel_event, credential_guards=credential_guards,
+                    )} if credential_guards else {}),
                     **({'gateway_attempt': gateway_attempt} if gateway_attempt is not None else {}),
                 )
 
@@ -1697,6 +1730,16 @@ def handle_ssh_connect(data, current_user=None):
                     True,
                     request.remote_addr,
                 )
+                if not cancellation.is_set():
+                    try:
+                        from .host_platform import detect_connected_platform
+                        detect_connected_platform(
+                            session_id, current_user.id,
+                            lambda payload: socketio.emit('host_platform', payload, to=request.sid),
+                            cancel_event=cancellation,
+                        )
+                    except Exception:
+                        pass
             except StorageCorruptionError as error:
                 if not cancellation.is_set():
                     emit('ssh_error', _storage_error_payload(
@@ -2310,7 +2353,7 @@ def handle_list_jump_hosts(current_user=None):
 @socketio.on('save_jump_host')
 @socket_login_required
 def handle_save_jump_host(data, current_user=None):
-    """Save a new jump host (bastion) for this user. Never stores a password."""
+    """Create or update a jump host (bastion) for this user. Never stores a password."""
     try:
         limited = _connection_mutation_rate_limit(current_user)
         if limited:
@@ -2323,7 +2366,8 @@ def handle_save_jump_host(data, current_user=None):
             port=data.get('port', 22),
             username=data.get('username'),
             auth_type=data.get('auth_type'),
-            key_id=data.get('key_id')
+            key_id=data.get('key_id'),
+            jump_host_id=data.get('jump_host_id')
         )
         if error:
             return _command_set_error(error)
@@ -2743,7 +2787,7 @@ def handle_list_directory(data, current_user=None):
         else:
             log_info("list_directory OK", path=remote_path, files=len(files),
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
-            if config.SFTP_CHMOD_ENABLED:
+            if runtime_feature_enabled('sftp_chmod_enabled'):
                 try:
                     emit('file_mutation_capabilities', {**identity, 'file_source': _public_file_source(source_id, current_user.id)})
                 except FileSourceUnavailable:
@@ -2777,7 +2821,7 @@ def handle_set_theme(data, current_user=None):
     try:
         theme = data.get('theme')
         valid_themes = [
-            'glass', 'retro', 'solar', 'paper', 'noir',
+            'glass', 'werkbank', 'retro', 'solar', 'paper', 'noir',
             'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'
         ]
         if theme not in valid_themes:
@@ -3894,7 +3938,8 @@ def handle_smb_quick_connect(data, current_user=None):
         host = canonicalize_hostname(payload.get('host'))
         share = str(SMBShareName.parse(payload.get('share')))
         username = payload.get('username')
-        password = payload.get('password')
+        credential_guard = CredentialGuard(current_user.id, 'smb', payload) if payload.get('credential_id') is not None else None
+        password = connection_password(current_user.id, 'smb', payload)
         domain = payload.get('domain', '')
         if (
             not isinstance(username, str)
@@ -3910,6 +3955,9 @@ def handle_smb_quick_connect(data, current_user=None):
             or any(ord(character) < 32 for character in domain)
         ):
             raise ValueError('Invalid SMB connection input')
+    except AutomationError as error:
+        emit('smb_quick_connect_error', dict(credential_error(error), request_id=request_id))
+        return
     except (TypeError, ValueError):
         emit(
             'smb_quick_connect_error',
@@ -3953,6 +4001,7 @@ def handle_smb_quick_connect(data, current_user=None):
         cancellation = _CombinedCancellation(
             attempt['cancel_event'],
             lifecycle_cancel_event,
+            credential_guards=(credential_guard,) if credential_guard else (),
         )
         descriptor = None
         try:
@@ -4074,9 +4123,7 @@ def handle_smb_quick_connect_cancel(data, current_user=None):
 @socket_login_required
 def handle_quick_connect(data, current_user=None):
     """Create temporary SSH connection for file transfers without active session."""
-    request_id = _ssh_request_id(data) if isinstance(data, dict) and isinstance(
-        data.get('username'), str
-    ) and ':' in data['username'] else None
+    request_id = _ssh_request_id(data) or None
 
     def send_error(payload):
         if request_id:
@@ -4095,7 +4142,14 @@ def handle_quick_connect(data, current_user=None):
             send_error({'error': 'Too many connection attempts. Please wait a moment.'})
             return
 
-        password = data.get('password')
+        try:
+            if data.get('credential_id') is not None and (data.get('proxy_jump') or data.get('jump_host_id')):
+                raise AutomationError('credential_target_changed')
+            credential_guard = CredentialGuard(current_user.id, 'ssh', data) if data.get('credential_id') is not None else None
+            password = connection_password(current_user.id, 'ssh', data)
+        except AutomationError as error:
+            send_error(credential_error(error))
+            return
         key_id = data.get('key_id')
 
         host, port, username, error = _validate_ssh_params(
@@ -4120,6 +4174,7 @@ def handle_quick_connect(data, current_user=None):
         if ':' in username:
             _start_gateway_quick_connect(
                 data, current_user, host, port, username, password, key_content,
+                **({'credential_guard': credential_guard} if credential_guard else {}),
             )
             return
 
@@ -4129,7 +4184,8 @@ def handle_quick_connect(data, current_user=None):
             username=username,
             password=password,
             key_content=key_content,
-            user_id=str(current_user.id)
+            user_id=str(current_user.id),
+            **({'credential_guard': credential_guard} if credential_guard else {}),
         )
 
         if password:
@@ -4141,6 +4197,7 @@ def handle_quick_connect(data, current_user=None):
             send_error(connection_error_payload(error))
         else:
             emit('quick_connect_success', {
+                'client_request_id': request_id,
                 'connection_id': connection_id,
                 'host': host,
                 'port': port,
@@ -5528,7 +5585,7 @@ def handle_transfer_server_to_server(data, current_user=None):
 
 
 
-def _start_gateway_quick_connect(data, user, host, port, username, password, key_content):
+def _start_gateway_quick_connect(data, user, host, port, username, password, key_content, credential_guard=None):
     """Run only selector-based Quick SFTP asynchronously with bounded admission."""
     request_id = _ssh_request_id(data)
     if (data.get('gateway_interaction') != 1 or not request_id
@@ -5556,7 +5613,10 @@ def _start_gateway_quick_connect(data, user, host, port, username, password, key
 
     @copy_current_request_context
     def connect(cancel_event):
-        attempt.bind_runtime(cancel_event)
+        attempt.bind_runtime(_CombinedCancellation(
+            threading.Event(), cancel_event,
+            credential_guards=(credential_guard,) if credential_guard else (),
+        ))
         connection_id = None
         committed = False
         try:

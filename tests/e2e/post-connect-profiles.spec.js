@@ -2,12 +2,20 @@ const { test, expect } = require('playwright/test');
 const {
     assertNoExternalRequests,
     installSshConnectTrap,
-    launchProfile,
     login,
     openProfileManagement,
     restoreSshConnect,
     sshAttempts,
 } = require('./helpers');
+
+async function launchProfile(page, name) {
+    await page.locator('.terminal-pane.active .profile-launcher-search').fill(name);
+    const id = await page.evaluate(profileName => window.ProfileManager.profiles.find(profile => profile.name === profileName)?.id, name);
+    expect(id).toBeTruthy();
+    const card = page.locator(`.terminal-pane.active .profile-launcher-card[data-profile-id="${id}"]`);
+    await expect(card).toHaveCount(1);
+    await card.click();
+}
 
 test.beforeEach(async ({ page }) => {
     await login(page);
@@ -54,10 +62,7 @@ test('projects all post-connect modes with exact parameter and stale-field seman
         expect(payload).toMatchObject(expected);
         absent.forEach(field => expect(payload).not.toHaveProperty(field));
         await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
-        await expect(page.locator('.profile-launcher-name').getByText(
-            name,
-            { exact: true },
-        )).toBeVisible();
+        await expect(page.locator('.terminal-pane.active .profile-launcher-name')).toContainText([name]);
         await installSshConnectTrap(page);
     }
 });
@@ -114,9 +119,6 @@ test('missing post-connect references stop before the guarded SSH network layer'
         await expect(page.locator('.notification-error').last()).not.toContainText(
             'E2E network guard reached',
         );
-        await expect(page.locator('.profile-launcher-name').getByText(
-            name,
-            { exact: true },
-        )).toBeVisible();
+        await expect(page.locator('.terminal-pane.active .profile-launcher-name')).toContainText([name]);
     }
 });

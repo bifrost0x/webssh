@@ -47,7 +47,7 @@ Prefer `flask create-admin` for controlled deployments. Public registration is i
 |---|---|
 | `BLOCK_INTERNAL_SSH` | Blocks SSH connections to loopback, private, link-local, and other protected targets according to the network policy |
 | `PROXY_JUMP_REMOTE_DNS_ALLOWLIST` | Exact hostnames a trusted bastion may resolve remotely |
-| `SERVER_OPERATIONS_ENABLED` | Default `false`; enables reviewed, step-up protected service/container actions, process TERM and reboot on owned SSH sessions |
+| `SERVER_OPERATIONS_ENABLED` | Optional authoritative environment override; otherwise Admin → Integrations controls reviewed, step-up protected service/container actions, process TERM and reboot. Product default: `false` |
 
 `BLOCK_INTERNAL_SSH=true` is appropriate for an Internet-facing gateway but can conflict with homelab use. Resolve and validate the exact target policy before enabling it. Host-key verification remains a separate control.
 
@@ -150,7 +150,7 @@ additional Socket.IO connections.
 | `MAX_PREVIEW_TAIL_LINES` | `10000` |
 | `MAX_SUPPORTED_FILE_SIZE` | `1073741824` (1 GiB) |
 | `SFTP_OPERATION_TIMEOUT` | `30` seconds |
-| `SFTP_CHMOD_ENABLED` | `false`; instance-wide opt-in for SFTP Unix permissions, requiring `lsetstat@openssh.com` v1; separate file/folder modes, optional recursive preview jobs with bounded resource use; SFTP only |
+| `SFTP_CHMOD_ENABLED` | Optional authoritative override; otherwise Admin → Integrations controls SFTP Unix permissions (product default `false`), requiring `lsetstat@openssh.com` v1; separate file/folder modes, optional recursive preview jobs with bounded resource use; SFTP only |
 | `SFTP_MAX_PACKET_BYTES` | `1048576` (1 MiB) |
 | `SFTP_MAX_HANDLE_BYTES` | `16384` (16 KiB) |
 | `MAX_EDITOR_FILE_SIZE` | `5242880` (5 MiB) |
@@ -169,13 +169,9 @@ additional Socket.IO connections.
 
 Bulk uploads and downloads are streamed over HTTP; Socket.IO carries control events and bounded editor content rather than entire files. Align proxy request-body and timeout limits with WebSSH when increasing an application limit.
 
-To enable chmod in Docker Compose, uncomment the existing
-`SFTP_CHMOD_ENABLED=true` line under `environment` and recreate the service;
-changing `.env` alone does not pass this optional setting into the container.
-For a source install, set the variable in the process environment or `.env` and
-restart WebSSH. This grants no extra remote privileges and does not enable SMB
-ACL editing. See [Unix permissions](SFTP-File-Workspace-and-Transfers#unix-permissions)
-for activation, normal use, supported servers and security boundaries.
+Enable file permission changes under **Settings → Administration → Integrations**.
+`SFTP_CHMOD_ENABLED` is an optional authoritative environment override, not a
+required activation step. See [Unix permissions](SFTP-File-Workspace-and-Transfers#unix-permissions).
 
 SFTP directory responses are paged. Declared protocol packet and opaque handle
 size, raw entry count (including `.` and `..`), filename, longname, aggregate
@@ -266,3 +262,38 @@ docker compose \
 ```
 
 Add `-f docker-compose.ldap.yml` when LDAP is enabled. Confirm the effective bind address, origins, cookie mode, registration state, proxy trust, volumes, and secret files before starting the service.
+
+
+## Runtime settings and existing Compose files
+
+Manage file permission changes, server operations, tmux availability and the
+initial tmux selection under **Settings → Administration → Integrations**.
+Sensitive changes require administrator reauthentication and are audited.
+
+For `SFTP_CHMOD_ENABLED`, `SERVER_OPERATIONS_ENABLED`, `TMUX_ENABLED` and
+`TMUX_DEFAULT`, priority is: explicitly supplied environment value, saved Admin
+setting, product default. Both explicit `true` and explicit `false` lock the UI.
+Compose/environment includes variables passed by Docker, systemd, a shell or the
+application's `.env`; the application cannot identify which file supplied them.
+Settings shows the key, effective value, stored value and source. Edit or remove
+the variable and recreate the container to release the lock. Existing sessions
+remain open; reload clients and reconnect SFTP after changing capabilities.
+
+On upgrade, existing explicit values are saved once if no Admin value exists.
+A previous Admin choice is retained under an override and becomes effective again
+when that override is removed. Older Compose files do not need replacing.
+Unspecified feature defaults remain unchanged; server actions and chmod are off.
+Disabling server operations prevents new actions without undoing commands already
+sent to a server. Remote account privileges are never expanded by these switches.
+
+Automation and registration also honor explicit environment overrides; production
+continues to prohibit public self-registration. Password storage remains an Admin
+policy. Authentication features retain their separate deployment-capability,
+readiness and Admin-activation checks: allowing a capability does not enroll users
+or bypass provider, HTTPS, origin, RP-ID or recovery checks. Networking, identity
+provider trust, secrets, resource ceilings, mounts and backup recovery paths remain
+deployment configuration. Audit retention is already managed in Administration.
+
+TOTP capability is available by default in 3.0; Admin activation remains off
+until explicitly enabled. `TOTP_ENABLED=false` is the optional operator kill
+switch. Existing enrolled users and saved activation choices are retained.

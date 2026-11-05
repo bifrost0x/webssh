@@ -486,3 +486,11 @@ test('distinguishes missing inventory counts from a confirmed empty inventory', 
     assert.equal(empty.systemd.countsAvailable, true);
     assert.equal(empty.docker.countsAvailable, true);
 });
+
+test('invalid telemetry values are gaps, never measured zeroes', () => {
+    for (const value of ['  ', [], [5], {}]) {
+        const model = diagnostics.buildViewModel(coreState({memory:{used_kib:value,total_kib:1000}, load:{one:value,cpu_count:4}}));
+        assert.equal(model.resources.memory, null);
+        assert.equal(model.resources.load, null);
+    }
+});

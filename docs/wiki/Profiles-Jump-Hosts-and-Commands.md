@@ -1,7 +1,9 @@
 # Profiles, Jump Hosts and Commands
 
 Saved connection data is private to each WebSSH account. Profiles intentionally
-exclude SSH and jump-host passwords.
+exclude plaintext SSH and jump-host passwords. Optional saved passwords are
+encrypted separately and assigned to hosts or jump hosts; see
+[Credentials](../credentials.md).
 
 ## Saved profiles
 
@@ -17,7 +19,7 @@ A profile can store:
 - flat group and sort position;
 - favorite state.
 
-Password-dependent profiles open the connection form at the required field.
+Profiles without a usable saved credential open the connection form at the required field.
 Profiles that need no password, such as a usable stored key or authorized
 Tailscale mode, can launch directly from an empty pane.
 
@@ -75,6 +77,21 @@ because the empty group ceases to exist.
 
 Jump hosts are saved separately so several target profiles can reuse one
 bastion. Select the jump host while editing a profile.
+
+Open **Hosts > Jump Hosts**, then choose **Edit** beside a saved entry to change
+its name, address, port, username, authentication method, or stored-key reference.
+Saving keeps the same Jump Host ID, so dependent profiles use the updated
+configuration on subsequent connections. Existing SSH sessions are not restarted.
+Passwords are never stored in plaintext in Jump Host records. Enter one when
+connecting or select an explicitly saved password when the feature is enabled.
+Changing the selected Jump Host in Quick Connect clears the previous bastion's
+password.
+
+**Cancel** asks before discarding a changed draft. Switching application views
+retains the draft. If a save times out, check the saved list before editing or
+adding again: a missing acknowledgement does not establish whether the write
+succeeded. Deletion is blocked while saved profiles still reference the Jump
+Host; update those profiles first.
 
 Use least privilege on the bastion and target. The presence of a jump host does
 not bypass target network policy, session ownership, or host-key verification.

@@ -18,6 +18,13 @@ def revoke_user_access(user_id, socketio_instance=None):
     database session metadata from being revoked.
     """
     user_id = int(user_id)
+    from flask import current_app
+    credentials = current_app.extensions.get('credentials')
+    if credentials is not None:
+        credentials.revoke(user_id)
+    automation = current_app.extensions.get('automation')
+    if automation is not None:
+        automation.revoke(user_id)
     result = {
         'transfers': 0,
         'sockets': 0,
@@ -203,6 +210,8 @@ def delete_user_account(user, socketio_instance=None):
 
         try:
             original, quarantined = quarantine_user_data(user_id)
+            from .automation_schedule import AutomationSchedule
+            AutomationSchedule.query.filter_by(user_id=user_id).delete(synchronize_session=False)
             db.session.delete(user)
             db.session.commit()
         except Exception:

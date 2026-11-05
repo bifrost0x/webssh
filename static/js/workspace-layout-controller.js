@@ -17,7 +17,8 @@
     const MIN_CONTEXT_WIDTH = 320;
     const MAX_CONTEXT_WIDTH = 720;
     const MIN_TERMINAL_WIDTH = 480;
-    const AUTO_CONTEXT_WIDTH_RATIO = 0.25;
+    const AUTO_CONTEXT_WIDTH = 340;
+    const CONTEXT_RAIL_WIDTH = 64;
     const LAYOUT_CLASSES = ['layout-desktop', 'layout-tablet', 'layout-mobile'];
 
     function breakpointForWidth(width) {
@@ -54,7 +55,7 @@
         const numericViewport = Number(viewportWidth);
         const usableWidth = Number.isFinite(numericViewport) ? numericViewport : 1280;
         return clampContextWidth(
-            Math.min(440, Math.max(360, usableWidth * AUTO_CONTEXT_WIDTH_RATIO)),
+            AUTO_CONTEXT_WIDTH,
             usableWidth,
         );
     }
@@ -120,6 +121,7 @@
         let contextWidthMode = 'auto';
         let resizePointerId = null;
         let userInteractionRevision = 0;
+        let userCollapsed = false;
         const sessionDefaults = new Map();
 
         function listen(target, name, listener) {
@@ -215,10 +217,12 @@
             elements.workspace.classList.add(`layout-${mode}`);
             const panelOpen = Boolean(activeContext);
             elements.workspace.classList.toggle('context-open', panelOpen);
-            elements.panel.hidden = !panelOpen;
-            elements.panel.setAttribute('aria-hidden', String(!panelOpen));
+            elements.panel.hidden = !panelOpen && mode !== 'desktop';
+            elements.panel.setAttribute('aria-hidden', String(!panelOpen && mode !== 'desktop'));
+            elements.tablist.setAttribute('aria-orientation', mode === 'desktop' ? 'vertical' : 'horizontal');
             elements.resizer.hidden = !panelOpen || mode !== 'desktop';
-            elements.launcher.hidden = panelOpen;
+            elements.launcher.hidden = panelOpen || mode === 'desktop';
+            elements.close.hidden = !panelOpen;
             elements.launcher.setAttribute('aria-expanded', String(panelOpen));
             elements.backdrop?.classList.toggle(
                 'visible',
@@ -237,6 +241,14 @@
                 const panel = elements.panels[name];
                 tab.disabled = !enabled;
                 tab.setAttribute('aria-disabled', String(!enabled));
+                const hintKey = enabled ? tab.getAttribute('data-i18n-title') : `workspaceContext.${name}Unavailable`;
+                const translatedHint = windowRef.i18n?.t?.(hintKey);
+                const fallbackHint = enabled ? {files: 'Files', commands: 'Commands', diagnostics: 'Monitoring', notes: 'Notes'}[name]
+                    : name === 'files' ? 'Connect to a host to browse its files.'
+                        : 'Monitoring is available for supported SSH sessions.';
+                tab.setAttribute('title', translatedHint && translatedHint !== hintKey ? translatedHint : fallbackHint);
+                if (!enabled) tab.setAttribute('aria-description', tab.getAttribute('title'));
+                else tab.removeAttribute('aria-description');
                 tab.setAttribute('aria-selected', String(selected));
                 tab.setAttribute('tabindex', name === focusableContext ? '0' : '-1');
                 panel.hidden = !selected;
@@ -246,7 +258,10 @@
 
         function openContext(name, reason = 'programmatic') {
             if (!CONTEXTS.includes(name) || !availability.get(name)) return false;
-            if (reason === 'user') userInteractionRevision += 1;
+            if (reason === 'user') {
+                userInteractionRevision += 1;
+                userCollapsed = false;
+            }
             const previousContext = activeContext;
             activeContext = name;
             lastContext = name;
@@ -265,14 +280,28 @@
 
         function closeContext(reason = 'programmatic') {
             if (!activeContext) return false;
-            if (reason === 'user') userInteractionRevision += 1;
+            if (reason === 'user') {
+                userInteractionRevision += 1;
+                userCollapsed = true;
+            }
+            const focusedInside = elements.panel.contains?.(documentRef.activeElement);
             const previousContext = activeContext;
             activeContext = null;
             render();
             contextEvent(previousContext);
             scheduleTerminalSync(true);
-            if (reason === 'user') elements.launcher.focus?.();
+            if (reason === 'user' || (reason === 'responsive' && focusedInside)) {
+                const target = mode === 'desktop' ? elements.tabs[lastContext] : elements.launcher;
+                target?.focus?.();
+            }
             return true;
+        }
+
+        function returnToTerminal() {
+            if (!closeContext('user')) return;
+            if (sessionManager?.getActiveTerminal?.()) {
+                sessionManager.focusActivePane?.();
+            }
         }
 
         function setContextAvailability(name, enabled) {
@@ -283,6 +312,7 @@
             if (
                 normalized
                 && mode === 'desktop'
+                && !userCollapsed
                 && lastContext === name
                 && activeContext !== name
             ) {
@@ -291,6 +321,8 @@
                 return;
             }
             if (!normalized && activeContext === name) {
+                const focusedInside = elements.panels[name]?.contains?.(documentRef.activeElement)
+                    || documentRef.activeElement === elements.tabs[name];
                 const previousContext = activeContext;
                 activeContext = null;
                 const fallback = fallbackContext();
@@ -300,6 +332,10 @@
                     render();
                     contextEvent(previousContext);
                     scheduleTerminalSync(true);
+                }
+                if (focusedInside) {
+                    const target = activeContext ? elements.tabs[activeContext] : elements.launcher;
+                    target?.focus?.();
                 }
                 contextAvailabilityEvent(name);
                 return;
@@ -358,7 +394,7 @@
 
         function handleResizePointerMove(event) {
             if (resizePointerId === null || !Number.isFinite(Number(event.clientX))) return;
-            setContextWidth(windowRef.innerWidth - Number(event.clientX), {
+            setContextWidth(windowRef.innerWidth - Number(event.clientX) - CONTEXT_RAIL_WIDTH, {
                 widthMode: 'manual',
             });
             event.preventDefault?.();
@@ -391,7 +427,7 @@
         }
 
         function moveTabFocus(event) {
-            const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+            const keys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
             if (!keys.includes(event.key)) return;
             const tabs = availableContexts().map(name => elements.tabs[name]);
             if (!tabs.length) return;
@@ -399,10 +435,12 @@
             let nextIndex = currentIndex;
             if (event.key === 'Home') nextIndex = 0;
             if (event.key === 'End') nextIndex = tabs.length - 1;
-            if (event.key === 'ArrowLeft') {
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
                 nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
             }
-            if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+            if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                nextIndex = (currentIndex + 1) % tabs.length;
+            }
             event.preventDefault?.();
             const nextTab = tabs[nextIndex];
             const name = nextTab.getAttribute('data-workspace-context');
@@ -453,17 +491,22 @@
 
             CONTEXTS.forEach(name => {
                 listen(elements.tabs[name], 'click', () => {
-                    if (openContext(name, 'user')) elements.tabs[name].focus?.();
+                    if (mode === 'desktop' && activeContext === name) {
+                        closeContext('user');
+                    } else if (openContext(name, 'user')) {
+                        elements.tabs[name].focus?.();
+                    }
                 });
             });
             listen(elements.tablist, 'keydown', moveTabFocus);
+            listen(windowRef, 'languageChanged', render);
             listen(elements.launcher, 'click', () => {
                 const context = fallbackContext();
                 if (context && openContext(context, 'user')) {
                     elements.tabs[context].focus?.();
                 }
             });
-            listen(elements.close, 'click', () => closeContext('user'));
+            listen(elements.close, 'click', returnToTerminal);
             listen(elements.resizer, 'pointerdown', handleResizePointerDown);
             listen(elements.resizer, 'keydown', handleResizeKeydown);
             listen(elements.resizer, 'dblclick', () => {
@@ -475,9 +518,13 @@
             listen(documentRef, 'pointermove', handleResizePointerMove);
             listen(documentRef, 'pointerup', finishResize);
             listen(documentRef, 'pointercancel', finishResize);
-            listen(elements.backdrop, 'click', () => closeContext('user'));
+            listen(elements.backdrop, 'click', returnToTerminal);
             listen(documentRef, 'keydown', event => {
-                if (event.key === 'Escape' && activeContext && mode !== 'desktop') {
+                // Hidden session tools must not consume keys in another primary view.
+                const primaryView = documentRef.body?.dataset?.primaryWorkspace;
+                if (primaryView && primaryView !== 'workspaces') return;
+                if (event.key === 'Escape' && activeContext
+                    && (mode !== 'desktop' || elements.panel.contains?.(event.target))) {
                     if (event.defaultPrevented) return;
                     const foregroundModalOpen = Array.from(
                         documentRef.querySelectorAll?.('.modal.show') || []
@@ -486,7 +533,7 @@
                         return;
                     }
                     event.preventDefault?.();
-                    closeContext('user');
+                    returnToTerminal();
                     event.stopImmediatePropagation?.();
                 }
             });

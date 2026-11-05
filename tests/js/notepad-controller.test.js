@@ -115,3 +115,31 @@ test('checks the server character limit without rejecting valid non-BMP text', (
     h.edit('😀'.repeat(100000)); h.tick(300);
     assert.equal(h.requests.length, 1);
 });
+
+test('manual retry preserves the text and serializes repeated requests', () => {
+    const h = harness();
+    h.edit('unchanged note'); h.tick(300);
+    h.requests[0].ack({success:false});
+    h.controller.retry(); h.controller.retry();
+    assert.equal(h.requests.length,2);
+    assert.equal(h.requests[1].payload.text,'unchanged note');
+    assert.equal(h.state.text,'unchanged note');
+    h.requests[1].ack({success:true});
+    h.controller.retry();
+    assert.equal(h.requests.length,2);
+    assert.equal(h.controller.hasUnsaved(),false);
+});
+
+test('retry after timeout ignores the old acknowledgement and waits while offline', () => {
+    const h = harness();
+    h.edit('retain me'); h.tick(300); h.tick(10000);
+    h.disconnect(); h.controller.retry();
+    assert.equal(h.requests.length,1);
+    assert.equal(h.state.status,'offline');
+    h.socket.connected=true; h.controller.reconnect();
+    h.requests[0].ack({success:true});
+    assert.equal(h.controller.hasUnsaved(),true);
+    assert.equal(h.state.status,'saving');
+    h.requests[1].ack({success:true});
+    assert.equal(h.controller.hasUnsaved(),false);
+});

@@ -158,3 +158,22 @@ test('removing the last favorite retains the star action on the previous card',(
     last.focus();last.listeners.click();
     assert.equal(document.activeElement,elements.commandFavoritesList.querySelectorAll('[data-favorite-type]').at(-1));
 });
+
+test('resource tabs remember separate scroll positions without moving on reselection',()=>{
+    const {context,document}=fixture();
+    const body={scrollTop:0};
+    const query=document.querySelector;
+    document.querySelector=selector=>selector==='#commandWorkspaceModal .command-workspace-body'?body:query(selector);
+    const workspace=context.CommandWorkspace;
+    body.scrollTop=320;
+    workspace.select('favorites');
+    assert.equal(body.scrollTop,0);
+    body.scrollTop=140;
+    workspace.select('library');
+    assert.equal(body.scrollTop,320);
+    workspace.select('favorites');
+    assert.equal(body.scrollTop,140);
+    body.scrollTop=180;
+    workspace.select('favorites');
+    assert.equal(body.scrollTop,180);
+});

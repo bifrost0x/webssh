@@ -120,6 +120,7 @@ textarea {
 }
 
 .global-nav-item {
+    text-decoration: none;
     position: relative;
     display: inline-flex;
     align-items: center;
@@ -758,10 +759,10 @@ body:has(#securityAssuranceOverview) .admin-setting-row .admin-toolbar {
 }
 
 .security-overview-heading p {
-    max-width: 720px;
+    max-width: 72ch;
     margin: 7px 0 0;
     color: var(--ws2-text-muted);
-    font-size: 12px;
+    font-size: 14px;
     line-height: 1.55;
 }
 

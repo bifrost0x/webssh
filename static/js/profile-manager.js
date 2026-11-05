@@ -6,6 +6,7 @@ const ProfileManager = {
     selectedLegacyStartupCommands: '',
     selectedProfileId: null,
     editingProfileId: null,
+    editorBaseline: null,
     editingKeyId: null,
     editingKeyName: null,
     keyRenamePending: false,
@@ -57,7 +58,7 @@ const ProfileManager = {
             this.renderManagementList();
         });
         document.getElementById('cancelProfileEditorBtn')?.addEventListener('click', () => {
-            this.showManagementList();
+            this.requestManagementList();
         });
         document.getElementById('profileEditorForm')?.addEventListener('submit', event => {
             event.preventDefault();
@@ -264,6 +265,7 @@ const ProfileManager = {
     setProfiles(profiles) {
         this.profiles = Array.isArray(profiles) ? profiles : [];
         this.profilesLoaded = true;
+        window.HostPlatform?.refreshSessionIcons(typeof SessionManager !== 'undefined' ? SessionManager : null, this.profiles);
         this.renderProfileSelect();
         this.renderManagementList();
         this.refreshEmptyPanes();
@@ -413,6 +415,7 @@ const ProfileManager = {
                 const name = document.createElement('span');
                 name.className = 'profile-launcher-name';
                 name.textContent = profile.name;
+                if (window.HostPlatform) name.prepend(window.HostPlatform.render(profile));
                 let favorite = null;
                 if (profile.favorite === true) {
                     button.classList.add('is-favorite');
@@ -608,7 +611,7 @@ const ProfileManager = {
 
             const dateSpan = document.createElement('span');
             dateSpan.className = 'key-date';
-            dateSpan.textContent = `Uploaded: ${new Date(key.uploaded_at).toLocaleString()}`;
+            dateSpan.textContent = `${this.t('keys.uploadedAt', 'Uploaded')}: ${new Date(key.uploaded_at).toLocaleString(window.i18n?.getLanguage() || undefined)}`;
 
             keyInfo.appendChild(typeSpan);
             keyInfo.appendChild(dateSpan);
@@ -778,6 +781,8 @@ const ProfileManager = {
                 window.JumpHostManager.updatePasswordVisibility();
             }
         }
+        window.CredentialPicker?.restore?.('passwordInput');
+        window.CredentialPicker?.restore?.('jumpHostPasswordInput');
         const useTmuxCheck = document.getElementById('useTmuxCheck');
         if (useTmuxCheck) useTmuxCheck.checked = profile.use_tmux === true;
         window.setConnectionAdvancedExpanded?.(
@@ -822,6 +827,7 @@ const ProfileManager = {
             document.getElementById('passwordInput').required = false;
             document.getElementById('keySelect').required = false;
         }
+        window.CredentialPicker?.sync?.('passwordInput');
     },
 
     t(key, fallback) {
@@ -840,19 +846,48 @@ const ProfileManager = {
     },
 
     openManagement() {
-        this.editingProfileId = null;
-        this.showManagementList();
+        const modal = document.getElementById('profileManagementModal');
+        const retainEditor = modal?.classList.contains('has-profile-editor')
+            && this.editorBaseline !== null;
+        if (!retainEditor) {
+            this.editingProfileId = null;
+            this.showManagementList();
+        }
         this.loadProfiles();
         this.loadKeys();
         window.JumpHostManager?.load();
-        const modal = document.getElementById('profileManagementModal');
         if (!window.primaryWorkspaceController?.open('hosts', modal)) {
             window.ModalManager?.open(modal);
         }
-        modal?.querySelector('#profileSearchInput')?.focus();
+        modal?.querySelector(retainEditor ? '#profileEditorName' : '#profileSearchInput')?.focus();
+    },
+
+    async requestManagementList() {
+        const modal = document.getElementById('profileManagementModal');
+        const snapshot = this.editorSnapshot();
+        const profileId = this.editingProfileId;
+        if (modal?.classList.contains('has-profile-editor') && this.editorBaseline !== null
+            && snapshot !== this.editorBaseline) {
+            const accepted = await window.CommandSetManager?.confirmDialog?.({
+                title: this.t('commandSets.discardTitle', 'Discard changes?'),
+                message: this.t('commandSets.discardHint', 'Your unsaved changes will be lost.'),
+                confirmLabel: this.t('commandSets.discard', 'Discard'),
+                cancelLabel: this.t('commandSets.keepEditing', 'Keep editing'),
+            });
+            if (!accepted || profileId !== this.editingProfileId || snapshot !== this.editorSnapshot()) return;
+        }
+        this.showManagementList();
+        const buttons = document.querySelectorAll('#profileManagementList .profile-inspect-button');
+        Array.from(buttons).find(button => button.dataset.profileId === profileId)?.focus({preventScroll: true});
     },
 
     showManagementList() {
+        this.nativeCredentialSaveGeneration = (this.nativeCredentialSaveGeneration || 0) + 1;
+        this.nativeCredentialSavePending = false;
+        const credentialPassword = document.getElementById('profileEditorCredentialPassword');
+        if (credentialPassword) credentialPassword.value = '';
+        this.editorBaseline = null;
+        document.getElementById('profileManagementModal')?.classList.remove('has-profile-editor');
         document.getElementById('profileEditorView')?.classList.add('hidden');
         document.getElementById('profileManagementView')?.classList.remove('hidden');
         this.renderManagementList();
@@ -943,6 +978,22 @@ const ProfileManager = {
             if (activeMenu) (focusTarget || document.getElementById('profileSearchInput'))?.focus({preventScroll: true});
         };
         container.replaceChildren();
+        const columns = document.createElement('div');
+        columns.className = 'profile-management-columns';
+        columns.setAttribute('aria-hidden', 'true');
+        [
+            ['star_border', 'material-icons'], ['', ''],
+            [this.t('commands.name', 'Name'), ''],
+            [this.t('profiles.destination', 'Destination'), ''],
+            [this.t('connection.authMethod', 'Authentication'), ''],
+            [this.t('common.actions', 'Actions'), ''],
+        ].forEach(([text, className]) => {
+            const label = document.createElement('span');
+            label.className = className;
+            label.textContent = text;
+            columns.append(label);
+        });
+        container.append(columns);
         if (!this.profiles.length) {
             this.updateCollapseAllState([]);
             const empty = document.createElement('p');
@@ -1079,8 +1130,19 @@ const ProfileManager = {
                 dragHandle.appendChild(dragIcon);
                 const info = document.createElement('div');
                 info.className = 'profile-management-info';
-                const name = document.createElement('strong');
+                const name = document.createElement('button');
+                name.type = 'button';
+                name.className = 'profile-inspect-button';
+                name.dataset.profileAction = 'edit';
+                name.dataset.profileId = profile.id;
+                name.setAttribute('aria-controls', 'profileEditorView');
+                name.setAttribute('aria-expanded', String(this.editingProfileId === profile.id
+                    && document.getElementById('profileManagementModal')?.classList.contains('has-profile-editor')));
+                card.classList.toggle('is-selected', this.editingProfileId === profile.id
+                    && document.getElementById('profileManagementModal')?.classList.contains('has-profile-editor'));
                 name.textContent = profile.name;
+                const platform = window.HostPlatform?.render(profile);
+                if (platform) platform.classList.add('profile-row-platform');
                 if (profile.group && profile.favorite === true) {
                     const group = document.createElement('span');
                     group.className = 'profile-group-badge';
@@ -1091,7 +1153,7 @@ const ProfileManager = {
                 }
                 const target = document.createElement('span');
                 target.className = 'profile-management-target';
-                target.textContent = `${profile.username}@${profile.host}:${profile.port}`;
+                target.textContent = `${profile.username}@${profile.host}:${profile.port || 22}`;
                 const details = document.createElement('span');
                 details.className = 'profile-management-post-connect';
                 const mode = this.inferPostConnectMode(profile);
@@ -1122,7 +1184,14 @@ const ProfileManager = {
                     tailscale: ['connection.tailscaleSSH', 'Tailscale SSH'],
                 };
                 const authLabel = authLabels[profile.auth_type] || ['connection.authMethod', 'Authentication'];
-                details.textContent = this.t(...authLabel) + (mode === 'none' ? '' : ` · ${modeLabel}`);
+                details.title = this.t(...authLabel) + (mode === 'none' ? '' : ` · ${modeLabel}`);
+                const authIcon = document.createElement('span');
+                authIcon.className = 'material-icons';
+                authIcon.setAttribute('aria-hidden', 'true');
+                authIcon.textContent = profile.auth_type === 'key' ? 'key' : profile.auth_type === 'tailscale' ? 'verified_user' : 'lock';
+                const authText = document.createElement('span');
+                authText.textContent = this.t(...authLabel);
+                details.append(authIcon, authText);
                 info.append(target, details);
 
                 const actions = document.createElement('div');
@@ -1147,14 +1216,19 @@ const ProfileManager = {
                 star.setAttribute('aria-hidden', 'true');
                 star.textContent = profile.favorite === true ? 'star' : 'star_border';
                 favorite.appendChild(star);
-                actions.appendChild(favorite);
                 const connect = document.createElement('button');
                 connect.type = 'button';
-                connect.className = 'btn btn-sm btn-primary';
+                connect.className = 'btn-icon profile-row-connect';
                 connect.dataset.profileAction = 'connect';
                 connect.dataset.profileId = profile.id;
-                connect.textContent = this.t('connection.connect', 'Connect');
-                connect.setAttribute('aria-label', `${connect.textContent} ${profile.name || profile.host}`);
+                const connectLabel = `${this.t('connection.connect', 'Connect')} ${profile.name || profile.host}`;
+                connect.setAttribute('aria-label', connectLabel);
+                connect.title = connectLabel;
+                const connectIcon = document.createElement('span');
+                connectIcon.className = 'material-icons';
+                connectIcon.setAttribute('aria-hidden', 'true');
+                connectIcon.textContent = 'arrow_forward';
+                connect.append(connectIcon);
                 actions.appendChild(connect);
 
                 const actionMenu = document.createElement('details');
@@ -1188,6 +1262,8 @@ const ProfileManager = {
                         : actionSummary;
                 }
                 actions.appendChild(actionMenu);
+                card.append(favorite);
+                if (platform) card.append(platform);
                 card.append(dragHandle, info, actions);
                 items.appendChild(card);
             });
@@ -1254,17 +1330,67 @@ const ProfileManager = {
     },
 
     openEditor(profileId = null, options = {}) {
+        const modal = document.getElementById('profileManagementModal');
+        if (profileId && profileId === this.editingProfileId && !options.duplicate
+            && modal?.classList.contains('has-profile-editor')) {
+            document.getElementById('profileEditorName')?.focus();
+            return;
+        }
+        if (!options.confirmed && modal?.classList.contains('has-profile-editor')
+            && this.editorBaseline !== null && this.editorSnapshot() !== this.editorBaseline) {
+            const snapshot = this.editorSnapshot();
+            const manager = window.CommandSetManager;
+            manager?.confirmDialog?.({
+                title: this.t('commandSets.discardTitle', 'Discard changes?'),
+                message: this.t('commandSets.discardHint', 'Your unsaved changes will be lost.'),
+                confirmLabel: this.t('commandSets.discard', 'Discard'),
+                cancelLabel: this.t('commandSets.keepEditing', 'Keep editing'),
+            }).then(accepted => {
+                if (accepted && snapshot === this.editorSnapshot()) this.openEditor(profileId, {...options, confirmed: true});
+            });
+            return;
+        }
         const profile = profileId
             ? this.profiles.find(item => item.id === profileId)
             : null;
         if (profileId && !profile) return;
         const duplicating = options?.duplicate === true;
         this.editingProfileId = duplicating ? null : (profile?.id || null);
+        const inspectorTitle = document.getElementById('profileConnectionDetailsTitle');
+        if (inspectorTitle) {
+            inspectorTitle.textContent = profile?.name || this.t('profiles.create', 'New host');
+            inspectorTitle.removeAttribute?.('data-i18n');
+            const header = inspectorTitle.closest?.('.manager-card-header');
+            if (header && !header.querySelector('.profile-inspector-close')) {
+                const close = document.createElement('button');
+                close.type = 'button';
+                close.className = 'btn-icon profile-inspector-close inspector-return';
+                close.setAttribute('aria-label', this.t('common.backToList', 'Back to list'));
+                close.setAttribute('data-i18n-aria-label', 'common.backToList');
+                const icon = document.createElement('span');
+                icon.className = 'material-icons inspector-return-close';
+                icon.setAttribute('aria-hidden', 'true');
+                icon.textContent = 'close';
+                const arrow = document.createElement('span');
+                arrow.className = 'material-icons inspector-return-arrow';
+                arrow.setAttribute('aria-hidden', 'true');
+                arrow.textContent = 'arrow_back';
+                const label = document.createElement('span');
+                label.className = 'inspector-return-label';
+                label.setAttribute('data-i18n', 'common.backToList');
+                label.textContent = this.t('common.backToList', 'Back to list');
+                close.append(icon, arrow, label);
+                close.onclick = () => this.requestManagementList();
+                header.append(close);
+            }
+        }
         this.renderEditorSelects();
 
         document.getElementById('profileEditorForm')?.reset();
         this.setInlineKeyPanelExpanded(false);
         document.getElementById('profileEditorId').value = this.editingProfileId || '';
+        const platformSelect = document.getElementById('profileEditorPlatformIcon');
+        if (platformSelect) platformSelect.value = profile?.platform_icon || 'auto';
         document.getElementById('profileEditorName').value = duplicating
             ? this.duplicateProfileName(profile?.name)
             : (profile?.name || '');
@@ -1273,6 +1399,7 @@ const ProfileManager = {
         document.getElementById('profileEditorPort').value = profile?.port || 22;
         document.getElementById('profileEditorUsername').value = profile?.username || '';
         document.getElementById('profileEditorAuthType').value = profile?.auth_type || 'password';
+
         document.getElementById('profileEditorKeySelect').value = profile?.key_id || '';
         document.getElementById('profileEditorJumpHostSelect').value = profile?.jump_host_id || '';
         document.getElementById('profileEditorPostConnectMode').value = profile
@@ -1297,14 +1424,21 @@ const ProfileManager = {
             : '';
 
         const advanced = document.getElementById('profileAdvancedSettingsCard');
-        if (advanced) advanced.open = Boolean(
-            useTmux?.checked
-            || window.ProfileLauncherUtils?.usesAdvancedConnectionSettings(profile)
-        );
+        if (advanced) advanced.open = false;
         this.updateEditorVisibility();
-        document.getElementById('profileManagementView')?.classList.add('hidden');
+        document.getElementById('profileManagementModal')?.classList.add('has-profile-editor');
+        document.getElementById('profileManagementView')?.classList.remove('hidden');
         document.getElementById('profileEditorView')?.classList.remove('hidden');
+        this.renderManagementList();
+        this.editorBaseline = this.editorSnapshot();
+        if (typeof window.CustomEvent === 'function') window.dispatchEvent(new window.CustomEvent('webssh:profile-editor'));
         document.getElementById('profileEditorName')?.focus();
+    },
+
+    editorSnapshot() {
+        return JSON.stringify(Array.from(document.getElementById('profileEditorForm')?.elements || [])
+            .filter(field => field.name || field.id)
+            .map(field => [field.id || field.name, field.value, field.checked]));
     },
 
     updateEditorVisibility() {
@@ -1382,11 +1516,12 @@ const ProfileManager = {
         preview.classList.toggle('error', error);
     },
 
-    saveFromEditor({connect = false} = {}) {
+    async saveFromEditor({connect = false} = {}) {
         if (!window.socket) return;
         const mode = document.getElementById('profileEditorPostConnectMode').value;
         const payload = {
             name: document.getElementById('profileEditorName').value.trim(),
+            platform_icon: document.getElementById('profileEditorPlatformIcon')?.value || 'auto',
             group: document.getElementById('profileEditorGroup').value.trim(),
             host: document.getElementById('profileEditorHost').value.trim(),
             port: Number(document.getElementById('profileEditorPort').value) || 22,
@@ -1420,7 +1555,22 @@ const ProfileManager = {
             ).value;
         }
 
-        window.socket.emit('save_profile', payload, acknowledgement => {
+        if (payload.auth_type === 'password' && ['true', 'error'].includes(document.getElementById('profileEditorCredential')?.dataset.loading)) { window.showNotification?.(this.t('credentials.loadFailed', 'Passwords could not be loaded. Reload before saving this host.'), 'error'); return; }
+        const credentialChoice = payload.auth_type === 'password' ? (document.getElementById('profileEditorCredential')?.value || '') : '';
+        const credentialDraft = credentialChoice === '__new' ? {name:document.getElementById('profileEditorCredentialName').value.trim(),password:document.getElementById('profileEditorCredentialPassword').value} : null;
+        const assigned = document.getElementById('profileEditorCredential')?.dataset.assigned || '';
+        const original = this.profiles.find(item => item.id === payload.id);
+        const targetChanged = original && ['host','port','username','auth_type','key_id','jump_host_id'].some(key => String(original[key] || '') !== String(payload[key] || ''));
+        const confirmationRequired = document.getElementById('profileEditorCredential')?.dataset.confirmRequired === 'true';
+        const needsAssignment = credentialChoice === '__new' || confirmationRequired || credentialChoice !== assigned || (targetChanged && Boolean(credentialChoice));
+        const editorId = this.editingProfileId;
+        const snapshot = this.editorSnapshot();
+        const generation = this.nativeCredentialSaveGeneration || 0;
+        const releasePending=()=>{if(generation===(this.nativeCredentialSaveGeneration||0))this.nativeCredentialSavePending=false;};
+        const current = () => this.editingProfileId === editorId && (this.nativeCredentialSaveGeneration || 0) === generation && this.editorSnapshot() === snapshot && !document.getElementById('profileEditorView')?.classList.contains('hidden') && !document.getElementById('profileManagementModal')?.hidden && document.getElementById('profileManagementModal')?.classList.contains('show');
+        this.nativeCredentialSavePending = Boolean(credentialChoice || assigned);
+        const completeSave = acknowledgement => {
+            releasePending();
             if (!acknowledgement?.success) {
                 window.showNotification?.(
                     acknowledgement?.error || this.t('profiles.saveFailed', 'Failed to save connection'),
@@ -1436,6 +1586,36 @@ const ProfileManager = {
             this.renderProfileSelect();
             this.showManagementList();
             if (connect) this.connect(saved.id);
+        };
+        if (credentialChoice === '__new' && !payload.id) {
+            const {name,password} = credentialDraft;
+            if (!name || !password) { window.showNotification?.(this.t('credentials.required', 'Enter a password name and password.'), 'error'); return; }
+            try {
+                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind: 'ssh', resource: payload, name, username: payload.username, password, confirm_target: true}, null, current);
+                if (!current()) return;
+                completeSave({success: true, profile: result.resource});
+            } catch (error) { if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error'); }
+            finally { releasePending(); }
+            return;
+        }
+        window.socket.emit('save_profile', payload, async acknowledgement => {
+            if (!current()) { releasePending(); return; }
+            if (!acknowledgement?.success || !needsAssignment) { completeSave(acknowledgement); return; }
+            try {
+                if (credentialChoice === '__new') {
+                    await window.NativeCredentials.mutate('create', {...credentialDraft, username: payload.username, resource_id: acknowledgement.profile.id, confirm_target: true, target: {host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id,jump_host_id:payload.jump_host_id}}, null, current);
+                    if (!current()) return;
+                } else {
+                    await window.NativeCredentials.mutate('assign', {resource_id: acknowledgement.profile.id, credential_id: credentialChoice || null, confirm_target: true, target: {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, key_id: payload.key_id}}, null, current);
+                }
+                if (!current()) return;
+                completeSave(acknowledgement);
+            } catch (error) {
+                releasePending();
+                if (error.name === 'AbortError') return;
+                window.showNotification?.(this.t('credentials.assignmentFailed', 'Host saved, but password assignment failed. Your password draft is preserved. Review the saved target and try again.'), 'error');
+                this.editingProfileId = acknowledgement.profile.id;
+            }
         });
     },
 

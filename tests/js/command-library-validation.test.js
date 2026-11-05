@@ -102,6 +102,27 @@ test('library OS filter keeps the shared catalog and combines search across cata
     assert.equal(state.emitted.at(-1)[1].os_filter, null);
 });
 
+test('library source selection combines with OS and text filters across refreshes', () => {
+    const {library} = setup();
+    library.renderCommandsList = () => {};
+    const commands = [
+        {id: 'system', name: 'Memory status', os: ['linux'], isSystem: true},
+        {id: 'personal', name: 'Memory status', os: ['linux'], isSystem: false},
+        {id: 'windows', name: 'Memory status', os: ['windows'], isSystem: false},
+        {id: 'other', name: 'Disk status', os: ['linux'], isSystem: false},
+    ].map(command => ({command: '', parameters: '', description: '', category: 'custom', ...command}));
+    library.currentSource = 'personal';
+    library.currentOs = 'linux';
+    library.setCommands(commands);
+    library.searchCommands('Memory');
+    assert.deepEqual(Array.from(library.filteredCommands, command => command.id), ['personal']);
+    library.setCommands(commands);
+    assert.deepEqual(Array.from(library.filteredCommands, command => command.id), ['personal']);
+    library.currentSource = 'system';
+    library.searchCommands('Memory');
+    assert.deepEqual(Array.from(library.filteredCommands, command => command.id), ['system']);
+});
+
 test('empty library uses existing translations in all six languages', () => {
     const state = setup();
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../static/js/i18n.js'), 'utf8'), {

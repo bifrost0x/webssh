@@ -1,0 +1,280 @@
+/* Commandcenter composition. Existing controllers continue to own actions and data. */
+body.webssh-ui #connectionOverview.overview-commandcenter { padding: 0 32px 32px; }
+body.webssh-ui #connectionOverview .overview-inner { display:flex; flex-direction:column; align-items:stretch; gap:0; max-width:2100px; width:100%; margin:auto; }
+body.webssh-ui[data-theme] #connectionOverview .overview-heading { display:flex; flex-wrap:nowrap; align-items:center; justify-content:space-between; position:relative; isolation:isolate; min-height:252px; margin:0 -32px; padding:40px 32px; background:none; border:0; border-radius:0; overflow:hidden; }
+body.webssh-ui[data-theme] #connectionOverview .overview-heading::before { display:none; }
+body.webssh-ui #connectionOverview .overview-heading-copy { flex:1; min-width:0; }
+body.webssh-ui #connectionOverview .overview-heading h1 { font:500 clamp(34px,3.5vw,58px)/1.12 var(--font-family,Roboto,sans-serif); letter-spacing:-.035em; margin:0; }
+#connectionOverview .overview-heading h1 em { color:var(--ws2-accent); font-style:normal; }
+#connectionOverview .overview-commandcenter-intro { margin:16px 0 0; color:var(--ws2-text-secondary); font-size:15px; line-height:1.6; }
+body.webssh-ui #connectionOverview .overview-scene { display:block; position:absolute; inset:0; z-index:-1; opacity:.48; background-image:var(--theme-scene-image); background-size:cover; background-position:center 48%; mask-image:linear-gradient(90deg,transparent 5%,#000 75%),linear-gradient(0deg,transparent,#000 60%); mask-composite:intersect; }
+.overview-commandcenter-welcome { max-width:350px; text-align:right; flex:0 1 350px; padding-left:24px; }
+.overview-commandcenter-welcome time { color:var(--ws2-text-secondary); font-size:13px; }
+.overview-commandcenter-welcome p { margin:14px 0 20px; line-height:1.5; color:var(--ws2-text); }
+.overview-commandcenter-welcome .btn { margin:4px 0 4px 8px; }
+body.webssh-ui #connectionOverview .overview-primary { display:block; min-width:0; order:0; }
+body.webssh-ui #connectionOverview .overview-hosts-card { padding:0; border:0; background:transparent; }
+body.webssh-ui #connectionOverview .overview-card-heading { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:20px 0 12px; margin:0; }
+#connectionOverview .overview-hosts-card > .overview-card-heading { border-top:1px solid var(--ws2-border); }
+#connectionOverview .overview-network-heading { flex:1 1 200px; }
+#connectionOverview .overview-card-heading h2 { font-size:20px; font-weight:500; }
+#connectionOverview .overview-filter { flex:0 1 300px; width:auto; max-width:none; min-width:180px; }
+#connectionOverview .overview-group-select { display:block; }
+#connectionOverview .overview-arrange-bar { position:static; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:16px; padding:4px 0 12px; }
+#connectionOverview #overviewArrangePanel { flex-basis:100%; }
+#connectionOverview .overview-inventory-context { margin:0 0 12px; min-height:24px; }
+#connectionOverview .overview-inventory-context[data-focused=false] { display:none; }
+body.webssh-ui #connectionOverview .overview-inventory-canvas { display:grid; grid-template-columns:110px minmax(0,1fr); gap:35px; padding:20px 0 24px; min-height:410px; position:relative; overflow:visible; }
+#connectionOverview .overview-inventory-origin { align-self:center; margin:0; width:110px; min-height:88px; padding:14px; background:var(--ws2-accent); color:var(--ws2-canvas); border:0; border-radius:10px; z-index:1; }
+#connectionOverview .overview-inventory-origin .material-icons { color:inherit; }
+#connectionOverview .overview-inventory-origin strong { font-size:13px; }
+body.webssh-ui #connectionOverview .overview-inventory-bundles { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:28px; align-items:start; }
+body.webssh-ui #connectionOverview .overview-network-group { display:flex; flex-direction:column; gap:14px; min-width:0; }
+body.webssh-ui[data-theme] #connectionOverview .overview-network-group > .overview-bundle-button { display:flex; width:100%; gap:10px; min-height:40px; padding:0 0 10px; border:0; border-bottom:1px solid var(--ws2-border); border-radius:0; background:var(--ws2-canvas); position:relative; z-index:1; }
+#connectionOverview .overview-bundle-title { flex:1; min-width:0; }
+#connectionOverview .overview-bundle-title strong { font-size:15px; overflow-wrap:anywhere; }
+#connectionOverview .overview-bundle-count { font-size:12px; }
+body.webssh-ui #connectionOverview .overview-route-bundle { display:flex; flex-direction:column; gap:10px; padding:0; margin:0; border:0; background:none; min-width:0; }
+body.webssh-ui #connectionOverview .overview-route-step { align-self:start; background:var(--ws2-surface); border:1px solid var(--ws2-border); padding:7px 10px; min-height:34px; max-width:100%; border-radius:6px; position:relative; z-index:1; }
+body.webssh-ui #connectionOverview .overview-route-direct { position:absolute; width:1px; height:1px; padding:0; border:0; overflow:hidden; clip-path:inset(50%); }
+#connectionOverview .overview-route-step strong { font-size:12px; }
+#connectionOverview .overview-route-step small { font-size:11px; }
+body.webssh-ui #connectionOverview .overview-bundle-platforms { display:grid; grid-template-columns:1fr; gap:10px; min-width:0; width:100%; }
+body.webssh-ui #connectionOverview .overview-platform-card { position:relative; z-index:1; display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; min-height:70px; padding:12px; background:var(--ws2-canvas); border:1px solid var(--ws2-border-strong); border-radius:10px; transition:background .18s,border-color .18s,box-shadow .18s; }
+#connectionOverview .overview-platform-card:hover,#connectionOverview .overview-platform-card:focus-within { background:var(--ws2-surface); border-color:var(--ws2-accent); box-shadow:0 8px 22px #0002; }
+#connectionOverview .overview-platform-card[data-live=true] { border-color:var(--ws2-accent); }
+body.webssh-ui #connectionOverview .overview-platform-name { display:flex; align-items:center; gap:10px; flex:1 1 160px; min-width:0; padding:0; background:transparent; border:0; text-align:left; }
+#connectionOverview .overview-platform-copy { min-width:0; }
+body.webssh-ui #connectionOverview .overview-platform-host { font-size:14px; white-space:normal; overflow-wrap:anywhere; }
+#connectionOverview .overview-platform-copy small { display:block; font-size:12px; margin-top:5px; }
+body.webssh-ui #connectionOverview .overview-platform-card .host-platform-icon { width:27px; height:27px; flex:0 0 27px; }
+#connectionOverview .overview-platform-card .overview-host-actions { margin-left:auto; }
+body.webssh-ui #connectionOverview .overview-platform-card .overview-host-connect { min-height:32px; padding:5px; }
+#connectionOverview .overview-platform-card .overview-host-connect span:not(.material-icons) { display:none; }
+#connectionOverview .overview-host-edit { min-height:32px; }
+#connectionOverview .overview-inventory-edges { pointer-events:none; z-index:0; }
+#connectionOverview .overview-inventory-edges path { stroke:var(--ws2-border-strong); opacity:.6; fill:none; }
+#connectionOverview .overview-inventory-edges path[data-live=true] { stroke:var(--ws2-accent); stroke-dasharray:6 10; opacity:1; animation:commandcenter-flow 2.5s linear infinite; }
+#connectionOverview .overview-inventory-edges path[data-selected=true] { stroke:var(--ws2-accent); opacity:1; }
+#connectionOverview[data-motion-paused=true] .overview-inventory-edges path { animation:none; }
+#connectionOverview[data-motion-paused=true] .overview-analytics-track { animation:none; }
+#connectionOverview .overview-network-group > .overview-bundle-more { align-self:start; font-size:13px; border:1px solid var(--ws2-border); background:var(--ws2-surface); padding:8px 12px; }
+#connectionOverview .overview-atlas-legend { display:flex; flex-wrap:wrap; gap:8px 14px; font-size:12px; padding:14px 0 20px; border-top:0; border-bottom:1px solid var(--ws2-border); }
+#connectionOverview .overview-map-meaning { flex-basis:100%; font-size:12px; line-height:1.5; color:var(--ws2-text-secondary); }
+body.webssh-ui #connectionOverview .overview-support { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:24px 40px; padding:28px 0; order:1; }
+body.webssh-ui #connectionOverview .overview-support > * { grid-row:auto; grid-column:auto; min-width:0; }
+body.webssh-ui #connectionOverview .overview-support > .overview-session-strip { grid-column:1/-1; grid-row:auto; }
+body.webssh-ui #connectionOverview .overview-support > .overview-activity { grid-column:1/-1; grid-row:auto; }
+#connectionOverview .overview-support:has(#overviewAnalytics[hidden]) > #overviewAutomation { grid-column:1/-1; }
+#connectionOverview .overview-automation-run { min-width:0; }
+#connectionOverview .overview-automation-run > span:first-child { min-width:0; overflow-wrap:anywhere; }
+#connectionOverview .overview-automation-run time { font-size:12px; }
+body.webssh-ui #connectionOverview .overview-inventory-sidebar { display:block; order:2; padding:20px 0; border:0; border-top:1px solid var(--ws2-border); width:100%; }
+#connectionOverview .overview-inventory-sidebar h2 { font-size:14px; margin-bottom:12px; }
+body.webssh-ui #connectionOverview .overview-resource-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:20px; padding:0; }
+body.webssh-ui #connectionOverview .overview-resource-summary > div { display:flex; justify-content:space-between; gap:8px; }
+#connectionOverview .overview-resource-summary dd { font-size:15px; }
+#connectionOverview .overview-access-inspector { position:sticky; top:12px; }
+#connectionOverview .overview-with-inspector .overview-inventory-bundles { grid-template-columns:repeat(2,minmax(0,1fr)); }
+body.webssh-ui[data-theme] #connectionOverview[data-journey=inventory] .overview-heading { display:none; }
+body.webssh-ui #connectionOverview[data-journey=inventory] .overview-support { display:none; }
+#connectionOverview .overview-hosts[aria-busy=true] { min-height:240px; }
+@keyframes commandcenter-flow { to { stroke-dashoffset:-64; } }
+@media(max-width:1400px) {
+ #connectionOverview .overview-with-inspector .overview-inventory-bundles { grid-template-columns:1fr; }
+ body.webssh-ui #connectionOverview .overview-inventory-canvas { grid-template-columns:90px minmax(0,1fr); gap:24px; }
+ #connectionOverview .overview-inventory-origin { width:90px; }
+}
+@media(max-width:900px) {
+ body.webssh-ui #connectionOverview .overview-inventory-bundles { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ body.webssh-ui[data-theme] #connectionOverview .overview-heading { min-height:220px; padding:28px 24px; }
+ body.webssh-ui #connectionOverview.overview-commandcenter { padding:0 20px 24px; }
+ body.webssh-ui[data-theme] #connectionOverview .overview-heading { margin:0 -20px; }
+ .overview-commandcenter-welcome { max-width:270px; }
+ body.webssh-ui #connectionOverview .overview-support { gap:24px; grid-template-columns:1fr; }
+ body.webssh-ui #connectionOverview .overview-inventory-canvas { grid-template-columns:1fr; gap:18px; }
+ #connectionOverview .overview-inventory-origin { justify-self:center; width:140px; min-height:60px; }
+ #connectionOverview .overview-inventory-edges { display:none; }
+ #connectionOverview .overview-access-inspector { position:static; }
+}
+@media(max-width:600px) {
+ body.webssh-ui[data-theme] #connectionOverview .overview-heading { display:block; padding:28px 20px; }
+ body.webssh-ui #connectionOverview .overview-heading h1 { font-size:38px; }
+ .overview-commandcenter-welcome { max-width:none; text-align:left; padding:20px 0 0; }
+ .overview-commandcenter-welcome time { display:none; }
+ .overview-commandcenter-welcome p { margin:0 0 10px; font-size:14px; }
+ .overview-commandcenter-welcome .btn { margin:4px 8px 0 0; }
+ body.webssh-ui #connectionOverview .overview-inventory-bundles { grid-template-columns:1fr; gap:24px; }
+ body.webssh-ui #connectionOverview .overview-platform-name { flex-basis:160px; min-height:44px; }
+ #connectionOverview .overview-platform-card .overview-host-actions { margin-left:auto; }
+ #connectionOverview .overview-platform-card :is(.overview-host-connect,.overview-host-edit) { min-height:44px; min-width:44px; }
+ body.webssh-ui #connectionOverview .overview-resource-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ #connectionOverview .overview-filter { flex-basis:100%; order:2; }
+ #connectionOverview .overview-group-select { order:3; flex:1; }
+ #connectionOverview .overview-group-select select { width:100%; }
+ #connectionOverview .overview-arrange-bar { gap:12px; }
+}
+@media(prefers-reduced-motion:reduce) { #connectionOverview *,#connectionOverview *::before,#connectionOverview *::after { animation:none!important; transition:none!important; } }
+/* Compact group atlas: local routes, no cross-group wiring or group pages. */
+body.webssh-ui[data-theme] #connectionOverview .overview-heading { min-height:190px; padding-block:28px; }
+body.webssh-ui #connectionOverview .overview-heading h1 { font-size:clamp(32px,3vw,46px); }
+body.webssh-ui #connectionOverview .overview-inventory-canvas { display:block; min-height:0; padding:12px 0 18px; }
+#connectionOverview .overview-inventory-origin { display:none; }
+body.webssh-ui #connectionOverview .overview-inventory-bundles { grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr)); gap:18px; }
+body.webssh-ui #connectionOverview .overview-network-group { gap:8px; padding:16px; background:var(--ws2-surface); border:1px solid var(--ws2-border); border-radius:12px; }
+body.webssh-ui[data-theme] #connectionOverview .overview-network-group > .overview-bundle-button { background:transparent; margin-bottom:4px; }
+body.webssh-ui #connectionOverview .overview-route-bundle { gap:5px; }
+body.webssh-ui #connectionOverview .overview-route-step,
+body.webssh-ui #connectionOverview .overview-route-direct { position:relative; align-self:start; width:auto; height:auto; clip-path:none; overflow:visible; padding:3px 0; min-height:24px; border:0; background:none; font-size:12px; color:var(--ws2-text-secondary); }
+body.webssh-ui #connectionOverview .overview-route-step .material-icons { font-size:16px; }
+body.webssh-ui #connectionOverview .overview-route-step small { display:none; }
+body.webssh-ui #connectionOverview .overview-bundle-platforms { padding-left:18px; gap:5px; }
+body.webssh-ui #connectionOverview .overview-platform-card { min-height:54px; padding:7px 9px; border-radius:7px; }
+body.webssh-ui #connectionOverview .overview-platform-name { flex:1 1 110px; }
+body.webssh-ui #connectionOverview .overview-platform-host { font-size:13px; }
+#connectionOverview .overview-platform-copy small { font-size:11px; margin-top:3px; }
+#connectionOverview .overview-inventory-edges path { stroke:var(--ws2-text-secondary); opacity:.8; stroke-width:1.25; }
+#connectionOverview .overview-inventory-edges { z-index:1; }
+#connectionOverview .overview-network-group > .overview-bundle-more { padding:6px 10px; margin-top:4px; }
+#connectionOverview .overview-map-meaning { display:none; }
+#connectionOverview .overview-atlas-legend { padding:4px 0 12px; }
+body.webssh-ui #connectionOverview .overview-support { padding:12px 0; gap:18px 28px; }
+#connectionOverview .overview-analytics { margin-top:0; padding-top:18px; }
+@keyframes commandcenter-arrive { from { clip-path:inset(0 0 15% 0); opacity:.45; } to { clip-path:inset(0); opacity:1; } }
+@keyframes commandcenter-landscape { from { background-position:45% 48%; } to { background-position:55% 52%; } }
+@media(prefers-reduced-motion:no-preference) {
+ #connectionOverview .overview-inventory-bundles { animation:commandcenter-arrive 650ms cubic-bezier(.16,1,.3,1) both; }
+ body.webssh-ui #connectionOverview .overview-scene { animation:commandcenter-landscape 24s ease-in-out infinite alternate; }
+}
+#connectionOverview[data-motion-paused=true] *,#connectionOverview[data-motion-paused=true] *::before { animation:none!important; }
+@media(max-width:600px) {
+ body.webssh-ui #connectionOverview .overview-network-group { padding:12px; }
+ body.webssh-ui #connectionOverview .overview-inventory-bundles { grid-template-columns:1fr; }
+}
+#connectionOverview .overview-inventory-edges { display:block; }
+body.webssh-ui #connectionOverview .overview-inventory > .overview-atlas-legend { margin-top:0; padding-top:4px; }
+/* A bounded, navigable atlas keeps large inventories out of the dashboard flow. */
+#connectionOverview .overview-map { min-width:0; border:1px solid var(--ws2-border); border-radius:12px; overflow:hidden; background:var(--ws2-canvas); }
+#connectionOverview .overview-map-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:12px; background:var(--ws2-surface); border-bottom:1px solid var(--ws2-border); }
+#connectionOverview .overview-map-toolbar :is(button,select) { min-height:40px; border:1px solid var(--ws2-border); border-radius:6px; padding:6px 12px; background:var(--ws2-canvas); color:var(--ws2-text); }
+#connectionOverview .overview-map-toolbar button:focus-visible,#connectionOverview .overview-map-viewport:focus-visible { outline:2px solid var(--ws2-accent); outline-offset:-3px; }
+#connectionOverview .overview-map-hint { flex:1; color:var(--ws2-text-secondary); font-size:12px; }
+#connectionOverview .overview-map-zoom { min-width:42px; text-align:center; font-variant-numeric:tabular-nums; }
+#connectionOverview .overview-map-viewport { position:relative; height:clamp(360px,58vh,680px); overflow:hidden; cursor:grab; background-image:radial-gradient(var(--ws2-border-strong) 1px,transparent 1px); background-size:24px 24px; touch-action:none; }
+#connectionOverview .overview-map-viewport[data-dragging=true] { cursor:grabbing; user-select:none; }
+#connectionOverview .overview-map-viewport[data-list=false] { overflow:clip; }
+body.webssh-ui #connectionOverview .overview-map .overview-inventory-canvas { position:absolute; top:0; left:0; width:max-content; padding:16px; transform-origin:0 0; }
+body.webssh-ui #connectionOverview .overview-map .overview-inventory-bundles { display:grid; grid-template-columns:repeat(var(--map-columns),340px); gap:24px; align-items:start; animation:none; }
+body.webssh-ui #connectionOverview .overview-map .overview-network-group { width:340px; box-sizing:border-box; }
+#connectionOverview .overview-map [data-compact=true] :is(.overview-route-bundle,.overview-bundle-more) { display:none; }
+#connectionOverview .overview-map [data-compact=true] .overview-bundle-button { min-height:90px; }
+#connectionOverview .overview-map [data-compact=true] .overview-bundle-count { font-size:18px; }
+#connectionOverview .overview-map-viewport[data-list=true] { overflow:auto; touch-action:pan-y; cursor:auto; }
+body.webssh-ui #connectionOverview .overview-map [data-list=true] .overview-inventory-canvas { position:relative; width:100%; }
+body.webssh-ui #connectionOverview .overview-map [data-list=true] .overview-inventory-bundles { grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr)); }
+body.webssh-ui #connectionOverview .overview-map [data-list=true] .overview-network-group { width:auto; }
+@media(max-width:600px) {
+ #connectionOverview .overview-map-hint { flex-basis:100%; order:2; }
+ #connectionOverview .overview-map-toolbar { gap:6px; }
+ #connectionOverview .overview-map-toolbar select { max-width:130px; }
+ #connectionOverview .overview-map-toolbar :is(button,select) { padding:6px 8px; min-height:44px; }
+}
+body.webssh-ui #connectionOverview .overview-map-toolbar > :is(button,select,output) { flex:0 0 auto; width:auto; margin:0; }
+body.webssh-ui #connectionOverview .overview-map-toolbar > button { display:inline-flex; justify-content:center; align-items:center; min-width:40px; }
+body.webssh-ui #connectionOverview .overview-map-toolbar > .overview-map-hint { flex:1 1 120px; }
+#connectionOverview .overview-map-group-summary { display:none; }
+#connectionOverview [data-compact=true] .overview-map-group-summary { display:block; margin:0; color:var(--ws2-text-secondary); font-size:13px; }
+@media(prefers-reduced-motion:no-preference) {
+ #connectionOverview .overview-map-viewport:not([data-dragging=true]) .overview-inventory-canvas { transition:transform 180ms ease-out; }
+}
+#connectionOverview .overview-map[data-list=true] .overview-map-toolbar > :is(button,output) { display:none; }
+body.webssh-ui #connectionOverview .overview-map [data-list=false] .overview-inventory-bundles { display:block; position:relative; }
+body.webssh-ui #connectionOverview .overview-map [data-list=false] .overview-network-group { position:absolute; }
+#connectionOverview .overview-map .overview-map-handle { position:absolute; right:10px; top:10px; width:30px; min-height:30px; padding:3px; border:0; background:transparent; color:var(--ws2-text-secondary); cursor:grab; touch-action:none; }
+#connectionOverview .overview-map .overview-map-handle:hover { color:var(--ws2-accent); background:var(--ws2-canvas); }
+#connectionOverview .overview-map .overview-network-group > .overview-bundle-button { padding-right:32px; }
+#connectionOverview .overview-map [data-list=true] .overview-map-handle { display:none; }
+body.webssh-ui[data-theme] #connectionOverview .overview-heading { min-height:150px; }
+#connectionOverview .overview-map .overview-map-handle { z-index:3; }
+/* Responsive dashboard modules; the map is one bounded module, not the page. */
+body.webssh-ui #connectionOverview .overview-dashboard-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; width:100%; order:0; }
+body.webssh-ui #connectionOverview .overview-dashboard-module { min-width:0; grid-column:span 1; }
+body.webssh-ui #connectionOverview .overview-dashboard-module[data-size=full] { grid-column:1/-1; }
+body.webssh-ui #connectionOverview .overview-dashboard-module[hidden] { display:none; }
+body.webssh-ui #connectionOverview .overview-dashboard-module > :is(.overview-primary,.overview-activity,.overview-inventory-sidebar) { width:100%; margin:0; }
+body.webssh-ui #connectionOverview .overview-dashboard-module .overview-map-viewport { height:clamp(220px,34dvh,420px); }
+body.webssh-ui #connectionOverview .overview-dashboard-module[data-height=compact] .overview-map-viewport { height:clamp(180px,25dvh,280px); }
+body.webssh-ui #connectionOverview .overview-dashboard-module[data-height=large] .overview-map-viewport { height:clamp(280px,55dvh,600px); }
+body.webssh-ui[data-theme] #connectionOverview .overview-heading { min-height:132px; padding-block:24px; gap:24px; }
+body.webssh-ui #connectionOverview .overview-heading h1 { font-size:clamp(26px,2.5vw,38px); line-height:1.2; overflow-wrap:anywhere; }
+#connectionOverview .overview-greeting-line { margin:10px 0 0; font-size:15px; color:var(--ws2-text-secondary); }
+body.webssh-ui #connectionOverview .overview-commandcenter-welcome { max-width:none; display:flex; flex-direction:column; align-items:flex-end; gap:12px; }
+body.webssh-ui #connectionOverview .overview-commandcenter-welcome time { display:block; font-size:17px; color:var(--ws2-text); }
+#connectionOverview .overview-commandcenter-welcome .btn { margin:0; }
+#connectionOverview .overview-module-tools { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px; margin-bottom:10px; border:1px dashed var(--ws2-accent); border-radius:8px; background:var(--ws2-surface); }
+#connectionOverview .overview-module-tools[hidden] { display:none; }
+#connectionOverview .overview-module-tools :is(button,select) { width:auto; min-height:36px; padding:6px 10px; background:var(--ws2-canvas); color:var(--ws2-text); border:1px solid var(--ws2-border); border-radius:5px; }
+#connectionOverview .overview-module-tools .overview-module-handle { cursor:grab; flex:1; text-align:left; }
+@media(max-width:600px),(pointer:coarse) {
+ #connectionOverview .overview-module-tools :is(button,select),
+ #connectionOverview .overview-module-tools label { min-height:44px; }
+ #connectionOverview .overview-module-tools button { min-width:44px; }
+}
+#connectionOverview .overview-dashboard-module.is-dragging { opacity:.55; }
+#connectionOverview[data-dashboard-editing=true] .overview-dashboard-module { outline:1px dashed var(--ws2-border-strong); outline-offset:5px; }
+body.webssh-ui #connectionOverview .overview-arrange-bar { margin:0; padding:0; min-height:30px; }
+body.webssh-ui #connectionOverview .overview-card-heading { margin-bottom:10px; }
+body.webssh-ui #connectionOverview[data-journey=inventory] .overview-dashboard-module:not([data-module=infrastructure]) { display:none; }
+body.webssh-ui #connectionOverview[data-journey=inventory] .overview-dashboard-module[data-module=infrastructure] { grid-column:1/-1; }
+#connectionOverview .overview-map-options { position:relative; margin-left:auto; }
+#connectionOverview .overview-map-options summary { cursor:pointer; padding:10px; color:var(--ws2-text-secondary); }
+#connectionOverview .overview-map-options[open] > button { position:absolute; z-index:5; right:0; top:100%; min-width:180px; padding:12px; border:1px solid var(--ws2-border); background:var(--ws2-surface); color:var(--ws2-text); }
+@media(max-width:900px) {
+ body.webssh-ui #connectionOverview .overview-dashboard-grid { grid-template-columns:1fr; }
+ body.webssh-ui #connectionOverview .overview-dashboard-module { grid-column:1/-1; }
+ body.webssh-ui #connectionOverview .overview-commandcenter-welcome { align-items:flex-start; padding:12px 0 0; }
+ body.webssh-ui #connectionOverview .overview-dashboard-module .overview-map-viewport { height:clamp(200px,30dvh,300px); }
+}
+@media(prefers-reduced-motion:no-preference) {
+ #connectionOverview .overview-heading-copy { animation:dashboard-greet 500ms ease-out both; }
+ #connectionOverview .overview-dashboard-module { transition:outline-color 160ms ease-out; }
+}
+@keyframes dashboard-greet { from { opacity:.3; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+body.webssh-ui #connectionOverview .overview-card-heading > .overview-arrange-bar { flex:0 0 auto; margin:0; position:relative; }
+#connectionOverview .overview-card-heading #overviewArrangePanel { position:static; order:3; flex-basis:100%; grid-column:1 / -1; grid-row:4; width:100%; min-width:0; box-sizing:border-box; background:var(--ws2-surface); border:1px solid var(--ws2-border); padding:12px; }
+@media(max-width:600px) {
+ body.webssh-ui #connectionOverview .overview-hosts-card > .overview-card-heading { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+ #connectionOverview .overview-network-heading { grid-column:1; grid-row:1; }
+ #connectionOverview .overview-card-heading > .overview-arrange-bar { grid-column:2; grid-row:1; }
+ #connectionOverview .overview-card-heading > .overview-filter { grid-column:1/-1; grid-row:2; }
+ #connectionOverview .overview-card-heading > .overview-group-select { grid-column:1; grid-row:3; }
+ #connectionOverview .overview-card-heading > .overview-create-host { grid-column:2; grid-row:3; }
+ body.webssh-ui[data-theme] #connectionOverview .overview-heading { padding-block:16px; }
+ body.webssh-ui #connectionOverview .overview-commandcenter-welcome { gap:8px; }
+}
+/* Default dashboard: compact inventory, spatial context beside actionable history. */
+#connectionOverview .overview-dashboard-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
+body.webssh-ui #connectionOverview .overview-dashboard-module:not([data-module=inventory]) { border:1px solid var(--ws2-border); border-radius:12px; background:var(--ws2-surface); padding:18px; }
+body.webssh-ui #connectionOverview .overview-dashboard-module[data-module=infrastructure] { background:var(--ws2-canvas); }
+body.webssh-ui #connectionOverview .overview-dashboard-module[data-module=inventory] .overview-inventory-sidebar { border:0; padding:12px 0 18px; }
+#connectionOverview .overview-dashboard-module[data-module=inventory] h2 { display:none; }
+body.webssh-ui #connectionOverview .overview-dashboard-module[data-module=inventory] .overview-resource-summary { gap:24px; }
+body.webssh-ui #connectionOverview .overview-dashboard-module[data-module=inventory] .overview-resource-summary > div { align-items:center; padding-left:12px; border-left:2px solid var(--ws2-border-strong); }
+#connectionOverview .overview-dashboard-module[data-module=inventory] dd { font-size:23px; font-variant-numeric:tabular-nums; }
+#connectionOverview .overview-dashboard-module > #overviewAnalytics { border:0; padding:0; margin:0; }
+#connectionOverview .overview-dashboard-module > #overviewAutomation { padding:0; border:0; background:none; }
+#connectionOverview .overview-dashboard-module .overview-session-strip { padding:0; border:0; background:none; }
+body.webssh-ui #connectionOverview .overview-dashboard-module[data-size=half] .overview-session-strip { display:block; }
+#connectionOverview .overview-dashboard-module[data-size=half] .overview-session-recents { border-left:0; border-top:1px solid var(--ws2-border); margin-top:16px; padding:16px 0 0; }
+#connectionOverview .overview-module-tools label { display:flex; align-items:center; gap:6px; }
+#connectionOverview .overview-module-tools input[type=checkbox] { width:16px; height:16px; }
+body.webssh-ui #connectionOverview .overview-dashboard-module .overview-card-heading h2 { font-size:18px; }
+@media(max-width:900px) {
+ #connectionOverview .overview-dashboard-actions { justify-content:flex-start; }
+ body.webssh-ui #connectionOverview .overview-dashboard-module:not([data-module=inventory]) { padding:12px; }
+}
+body.webssh-ui #connectionOverview .overview-dashboard-actions > button { flex:0 0 auto; width:auto; }
+
+
+/* Shared row edges keep dashboard panes aligned at every desktop width. */
+body.webssh-ui #connectionOverview .overview-dashboard-grid { align-items:stretch; }

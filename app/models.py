@@ -194,6 +194,12 @@ def ensure_security_columns():
 
     ensure_user_columns()
     inspector = inspect(db.engine)
+    if 'github_oauth_states' in inspector.get_table_names():
+        github_columns = {column['name'] for column in inspector.get_columns('github_oauth_states')}
+        for name in ('auth_generation', 'authentication_session_id'):
+            if name not in github_columns:
+                db.session.execute(text(f'ALTER TABLE github_oauth_states ADD COLUMN {name} INTEGER'))
+        db.session.commit()
     if 'oidc_login_states' not in inspector.get_table_names():
         return
     existing = {
@@ -429,6 +435,8 @@ class GitHubOAuthState(db.Model):
         db.String(512), nullable=False, default='/', server_default='/'
     )
     configuration_generation = db.Column(db.Integer, nullable=False)
+    auth_generation = db.Column(db.Integer, nullable=True)
+    authentication_session_id = db.Column(db.Integer, nullable=True)
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
 
 

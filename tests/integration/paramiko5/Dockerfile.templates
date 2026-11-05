@@ -1,0 +1,9 @@
+# Dedicated disposable template lab; never use this sudo policy in production.
+ARG SSH_LAB_IMAGE=paramiko5-target:latest
+FROM ${SSH_LAB_IMAGE}
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends procps iproute2 util-linux sudo \
+    && printf 'testuser ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/testuser \
+    && chmod 440 /etc/sudoers.d/testuser \
+    && visudo -cf /etc/sudoers.d/testuser

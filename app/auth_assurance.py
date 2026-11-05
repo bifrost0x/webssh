@@ -583,6 +583,13 @@ def current_authentication_session():
 
 
 def delete_current_authentication_session():
+    automation = current_app.extensions.get('automation')
+    auth = current_authentication_session()
+    credentials = current_app.extensions.get('credentials')
+    if credentials is not None and auth is not None:
+        credentials.revoke_session(auth.id)
+    if automation is not None and auth is not None:
+        automation.revoke_session(auth.id)
     opaque_session_id = session.get('_auth_session')
     if not isinstance(opaque_session_id, str) or not opaque_session_id:
         return False

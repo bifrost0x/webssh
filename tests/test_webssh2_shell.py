@@ -222,9 +222,32 @@ def test_hosts_and_commands_share_the_resource_navigation_anatomy(app, client):
     response = client.get('/')
 
     assert response.status_code == 200
-    assert response.data.count(b'class="management-resource-title"') >= 4
+    for surface in (b'id="profileManagementModal"', b'id="jumpHostManagementModal"',
+                    b'id="commandWorkspaceModal"'):
+        assert surface in response.data
+    assert response.data.count(b'class="management-resource-title"') == 3
     assert response.data.count(b'Connection resources') >= 3
     assert b'class="connection-asset-nav-item active"' in response.data
+
+
+def test_platform_icons_have_content_addressed_urls(app, client):
+    import hashlib
+    import json
+    import re
+    from urllib.parse import parse_qs, urlsplit
+
+    _create_login(app, client)
+    source = client.get('/').get_data(as_text=True)
+    manifest = re.search(r'<script id="hostPlatformAssets" type="application/json">(.*?)</script>', source, re.S)
+    assert manifest, 'Platform icons need individually versioned asset URLs'
+    assets = json.loads(manifest.group(1))
+    expected = {path.stem: path for path in Path('static/icons/platforms').glob('*.svg')}
+    assert set(assets) == set(expected)
+    for name, path in expected.items():
+        parsed = urlsplit(assets[name])
+        assert parsed.path.endswith('/' + path.as_posix())
+        assert parse_qs(parsed.query) == {'v': [hashlib.sha256(path.read_bytes()).hexdigest()[:16]]}
+        assert client.get(assets[name]).data == path.read_bytes()
 
 
 def test_authentication_pages_use_the_shared_professional_auth_shell():
@@ -267,7 +290,7 @@ def test_authentication_pages_use_the_shared_professional_auth_shell():
     assert 'This password belongs only to your local WebSSH account.' in change_password
 
 
-def test_authentication_pages_center_the_tagline_with_the_product_logo():
+def test_authentication_pages_group_product_identity_before_contextual_guidance():
     project_root = Path(__file__).resolve().parents[1]
     pages = (
         project_root / "templates/login.html",
@@ -279,10 +302,10 @@ def test_authentication_pages_center_the_tagline_with_the_product_logo():
         contents = page.read_text(encoding="utf-8")
         lockup_start = contents.index('class="auth-brand-lockup"')
         brand_start = contents.index('class="auth-product-brand"', lockup_start)
-        tagline_start = contents.index('class="auth-context-footer"', brand_start)
-        lockup_end = contents.index("</div>", tagline_start)
-
-        assert lockup_start < brand_start < tagline_start < lockup_end
+        name_start = contents.index('brand_logo("auth-product-logo")', brand_start)
+        guidance_start = contents.index('class="auth-context-copy"', name_start)
+        assert lockup_start < brand_start < name_start < guidance_start
+        assert contents.count('brand_logo("auth-product-logo")') == 1
 
 
 def test_auth_brand_lockup_keeps_logo_and_tagline_as_one_centered_unit():

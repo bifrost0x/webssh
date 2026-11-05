@@ -11,6 +11,8 @@ DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES = 30
 
 DEFAULT_SETTINGS = {
     'theme': 'glass',
+    'overview_layout': 'dashboard',
+    'start_page': 'overview',
     'terminal_appearance': {},
     'notepad': '',
     'confirm_session_close': False,
@@ -33,6 +35,12 @@ def _valid_settings(value):
     if not isinstance(value, dict):
         return False
     if value.get('schema_version') != CURRENT_STORAGE_VERSIONS['settings']:
+        return False
+    if ('overview_layout' in value and (not isinstance(value['overview_layout'], str)
+            or value['overview_layout'] not in {'dashboard', 'classic'})):
+        return False
+    if ('start_page' in value and (not isinstance(value['start_page'], str)
+            or value['start_page'] not in {'overview', 'workspaces'})):
         return False
     if 'theme' in value and not isinstance(value['theme'], str):
         return False
@@ -74,6 +82,10 @@ def _valid_settings(value):
 def _valid_settings_update(value):
     return (
         isinstance(value, dict)
+        and ('start_page' not in value or (isinstance(value['start_page'], str)
+             and value['start_page'] in {'overview', 'workspaces'}))
+        and ('overview_layout' not in value or (isinstance(value['overview_layout'], str)
+             and value['overview_layout'] in {'dashboard', 'classic'}))
         and (
             'terminal_appearance' not in value
             or valid_terminal_appearance(value['terminal_appearance'])

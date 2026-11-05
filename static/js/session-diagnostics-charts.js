@@ -10,7 +10,8 @@
     'use strict';
 
     function finite(value) {
-        if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
+        if ((typeof value !== 'number' && typeof value !== 'string')
+            || (typeof value === 'string' && !value.trim())) {
             return null;
         }
         const number = Number(value);

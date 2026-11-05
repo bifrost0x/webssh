@@ -14,10 +14,13 @@ import uuid
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from .backup_manager import create_backup
+from .backup_manager import _create_recovery_snapshot as create_backup
 from .key_encryption import _derive_key, is_encrypted, key_operation_lock
 from .mfa_crypto import decrypt_totp_secret, encrypt_totp_secret
 from .github_auth_crypto import decrypt_client_secret, encrypt_client_secret
+from .credential_crypto import decrypt_with_secret, encrypt_with_secret
+from .credential_store import _valid as valid_credentials
+from .automation_store import MAX_STORE_BYTES
 from .storage_migrations import CURRENT_STORAGE_VERSIONS, migrate_document
 from .storage_utils import atomic_write_bytes
 
@@ -32,6 +35,7 @@ class RotationReport:
     backup_path: Path
     rotated_totp_secrets: int = 0
     rotated_github_secrets: int = 0
+    rotated_credentials: int = 0
 
 
 _MIGRATION_BACKUP_PATTERN = re.compile(
@@ -348,6 +352,52 @@ def _apply_staged_github_rotation(connection, staged):
             )
 
 
+def _stage_credential_rotation(connection, data_dir, old_secret, new_secret):
+    """Validate and reencrypt complete credential documents before publishing."""
+    staged = {}
+    rotated_credentials = 0
+    for path in sorted((data_dir / 'users').glob('*/credentials.json')):
+        try:
+            if (path.is_symlink() or not path.is_file()
+                    or path.parent.is_symlink()
+                    or not re.fullmatch(r'user_[1-9][0-9]*', path.parent.name)
+                    or path.stat().st_size > MAX_STORE_BYTES):
+                raise ValueError('unsafe credential storage')
+            original = path.read_bytes()
+            document = json.loads(original)
+            if not valid_credentials(document):
+                raise ValueError('invalid credential document')
+            user_id = int(path.parent.name.removeprefix('user_'))
+            row = connection.execute(
+                'SELECT created_at FROM users WHERE id = ?', (user_id,),
+            ).fetchone()
+            if row is None or not isinstance(row[0], str):
+                raise ValueError('missing credential owner')
+            account_incarnation = datetime.fromisoformat(row[0]).isoformat()
+            for record_id, record in document['credentials'].items():
+                plaintext = decrypt_with_secret(
+                    user_id, record_id, record['ciphertext'],
+                    master_secret=old_secret, account_incarnation=account_incarnation,
+                )
+                record['ciphertext'] = encrypt_with_secret(
+                    user_id, record_id, plaintext,
+                    master_secret=new_secret, account_incarnation=account_incarnation,
+                )
+                verified = decrypt_with_secret(
+                    user_id, record_id, record['ciphertext'],
+                    master_secret=new_secret, account_incarnation=account_incarnation,
+                )
+                if not hmac.compare_digest(plaintext.encode(), verified.encode()):
+                    raise ValueError('credential verification failed')
+                rotated_credentials += 1
+            staged[path] = (original, json.dumps(document).encode('utf-8'))
+        except Exception as exc:
+            raise SecretRotationError(
+                'named credential storage could not be decrypted and verified'
+            ) from exc
+    return staged, rotated_credentials
+
+
 def _rotate_secret_locked(old_secret, new_secret, data_dir):
     _validate_secret(old_secret, 'old')
     _validate_secret(new_secret, 'new')
@@ -391,6 +441,10 @@ def _rotate_secret_locked(old_secret, new_secret, data_dir):
                 old_secret,
                 new_secret,
             )
+            staged_credentials, rotated_credentials = _stage_credential_rotation(
+                connection, data_dir, old_secret, new_secret,
+            )
+            originals.update({path: values[0] for path, values in staged_credentials.items()})
             with tempfile.TemporaryDirectory(
                 dir=data_dir.parent,
                 prefix='.webssh-secret-rotation-',
@@ -424,6 +478,13 @@ def _rotate_secret_locked(old_secret, new_secret, data_dir):
                         raise SecretRotationError(
                             'staged SSH key verification failed'
                         )
+                    staged_files[path] = staged
+
+                for index, (path, (_, payload)) in enumerate(staged_credentials.items()):
+                    staged = stage / f'{index}.credentials'
+                    _write_staged_key(staged, payload)
+                    if staged.read_bytes() != payload:
+                        raise SecretRotationError('staged named credential verification failed')
                     staged_files[path] = staged
 
                 committed = False
@@ -478,6 +539,7 @@ def _rotate_secret_locked(old_secret, new_secret, data_dir):
             backup_path=backup_path,
             rotated_totp_secrets=len(staged_totp),
             rotated_github_secrets=len(staged_github),
+            rotated_credentials=rotated_credentials,
         )
 
 

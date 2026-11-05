@@ -210,6 +210,8 @@ def test_account_preferences_api_validates_and_persists_supported_values(
     assert updated.get_json()["settings"] == {
         "theme": "obsidian",
         "terminal_appearance": {},
+        "overview_layout": "dashboard",
+        "start_page": "overview",
         "notepad": "",
         "sync_terminal_directory": False,
         "confirm_session_close": True,
@@ -428,3 +430,46 @@ def test_security_copy_keeps_mfa_optional(app, client):
 
     assert "required for all" not in html
     assert "mandatory for all" not in html
+
+
+@pytest.mark.parametrize('value', [None, True, 2, [], {}, 'other'])
+def test_overview_layout_rejects_invalid_values(app, client, value):
+    _create_user(app, 'layout_user')
+    _login(client, 'layout_user')
+    assert client.post('/api/account/preferences', json={'overview_layout': value}).status_code == 400
+
+
+def test_overview_layout_selects_classic_without_changing_theme(app, client):
+    _create_user(app, 'layout_user')
+    _login(client, 'layout_user')
+    assert client.post('/api/account/preferences', json={'theme': 'paper'}).status_code == 200
+    response = client.post('/api/account/preferences', json={'overview_layout': 'classic'})
+    assert response.status_code == 200
+    assert response.json['settings']['theme'] == 'paper'
+    classic = client.get('/').data
+    assert b'connection-overview-classic.js' in classic
+    assert b'overview-dashboard.js' not in classic
+    assert b'overviewQuickConnect' in classic
+    assert client.post('/api/account/preferences', json={'overview_layout': 'dashboard'}).status_code == 200
+    assert b'overview-dashboard.js' in client.get('/').data
+
+
+@pytest.mark.parametrize("value", [None, [], {}, True, "automation", "https://example.com"])
+def test_start_page_rejects_invalid_values(app, client, value):
+    _create_user(app, "start_invalid")
+    _login(client, "start_invalid")
+    assert client.post('/api/account/preferences', json={'start_page': value}).status_code == 400
+
+
+def test_start_page_persists_without_changing_other_preferences(app, client):
+    _create_user(app, "start_user")
+    _login(client, "start_user")
+    assert client.post('/api/account/preferences', json={'theme': 'paper', 'overview_layout': 'classic'}).status_code == 200
+    response = client.post('/api/account/preferences', json={'start_page': 'workspaces'})
+    assert response.status_code == 200
+    assert response.json['settings']['theme'] == 'paper'
+    assert response.json['settings']['overview_layout'] == 'classic'
+    assert b'name="start-page" content="workspaces"' in client.get('/').data
+    assert b'data-saved="workspaces"' in client.get('/settings').data
+    assert client.post('/api/account/preferences', json={'start_page': 'overview'}).status_code == 200
+    assert b'name="start-page" content="overview"' in client.get('/').data

@@ -605,7 +605,7 @@ test('captures the focused session workspace and operational context', async ({ 
     await expect(page.locator('#terminalGrid')).toContainText('OpenSSH server');
     await expect(page.locator('#notepadTitle')).toHaveText('Notes');
     await expect(page.locator('header.header')).not.toContainText('E2E');
-    await expect(page.locator('main')).not.toContainText('.local');
+    await expect(page.locator('.main-content')).not.toContainText('.local');
     await expectCurrentCaptureTerminology(page);
     await captureDesktopStill(page, 'workspace-overview.png', testInfo);
 
@@ -937,9 +937,9 @@ test('captures six current Command Sets animation frames without remote actions'
 
     expect(page.viewportSize()).toEqual(DESKTOP_VIEWPORT);
     await expect(page.locator('header.header')).not.toContainText('E2E');
-    await expect(page.locator('main')).not.toContainText('E2E');
+    await expect(page.locator('.main-content')).not.toContainText('E2E');
     await expect(page.locator('header.header')).not.toContainText('.local');
-    await expect(page.locator('main')).not.toContainText('.local');
+    await expect(page.locator('.main-content')).not.toContainText('.local');
     await captureCssFrame(page, frameDirectory, '01-saved-connections.png');
 
     await page.locator('#commandLibraryBtn').click();
@@ -1017,9 +1017,9 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await expect(page.locator('#notepadTitle')).toHaveText('Notes');
     await expect(page.locator('#sessionNotepad')).toHaveValue(/edge-01\.example/);
     await expect(page.locator('header.header')).not.toContainText('E2E');
-    await expect(page.locator('main')).not.toContainText('E2E');
+    await expect(page.locator('.main-content')).not.toContainText('E2E');
     await expect(page.locator('header.header')).not.toContainText('.local');
-    await expect(page.locator('main')).not.toContainText('.local');
+    await expect(page.locator('.main-content')).not.toContainText('.local');
     await expectCurrentCaptureTerminology(page);
     await assertWorkspaceIsContained(page);
     await captureDesktopStill(page, 'multi-session.png', testInfo);
@@ -1027,8 +1027,8 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await page.locator('#accountBtnHeader').click();
     await page.locator('#accountSettingsBtn').click();
     await expect(page).toHaveURL(/\/settings#preferences$/);
-    await expect(page.locator('#settingsThemeSelect option')).toHaveCount(10);
-    await expect(page.locator('#settingsThemeSelect')).toContainText('Glass Ops');
+    await expect(page.locator('#settingsThemeSelect option')).toHaveCount(11);
+    await expect(page.locator('#settingsThemeSelect option[value="werkbank"]')).toHaveText('Werkbank / Sand');
     await expect(page.locator('#settingsThemeSelect')).toContainText('Obsidian');
     const themeBounds = await page.locator('.settings-center-main').boundingBox();
     expect(themeBounds).not.toBeNull();
@@ -1073,7 +1073,7 @@ test('captures the current Security Center assurance overview', async ({ page },
         document.getElementById('githubIdentityStatus').textContent = 'Connected as operations-demo';
     });
     expect(await page.locator('body').innerText()).not.toMatch(/e2e[_-]/i);
-    await expect(page.locator('body')).not.toContainText('E2E');
+    await expect(page.locator('.settings-center-main')).not.toContainText('E2E');
     await captureDesktopStill(page, 'security-center.png', testInfo);
 
     await assertCaptureNetworkClean(page);
@@ -1113,8 +1113,8 @@ test.describe('mobile product capture', () => {
         await expect(page.locator('#sessionTabs')).toContainText('Production Edge');
         await expect(page.locator('#terminalGrid')).toContainText('OpenSSH server');
         await expect(page.locator('#notepadPanel')).toBeHidden();
-        await expect(page.locator('main')).not.toContainText('E2E');
-        await expect(page.locator('main')).not.toContainText('.local');
+        await expect(page.locator('.main-content')).not.toContainText('E2E');
+        await expect(page.locator('.main-content')).not.toContainText('.local');
         await expectCurrentCaptureTerminology(page);
 
         const layout = await page.evaluate(() => ({
@@ -1136,4 +1136,30 @@ test.describe('mobile product capture', () => {
         }
         await assertCaptureNetworkClean(page);
     });
+});
+
+
+test('captures WebSSH 3 dashboard and every supported theme', async ({page}, info) => {
+    await installCaptureNetworkGuard(page);
+    await login(page);
+    await installSshConnectTrap(page);
+    await sanitizeSeededCatalog(page);
+    await page.locator('#overviewNavBtn').click();
+    await expect(page.locator('#overviewRouteMap')).toBeVisible();
+    await page.evaluate(()=>{const title=document.querySelector('#overviewTitle');title.dataset.username='operator';window.dispatchEvent(new Event('languageChanged'));});
+    const themes = ['glass','werkbank','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian'];
+    for (const [index, theme] of themes.entries()) {
+        await page.evaluate(t => { ThemePreference.store(t); document.body.dataset.theme=t; }, theme);
+        await expect(page.locator('body')).toHaveAttribute('data-theme', theme);
+        await page.waitForTimeout(700);
+        if (captureAssetsEnabled()) {
+            const directory=path.resolve('.test-run.tmp/theme-frames');fs.mkdirSync(directory,{recursive:true});
+            await page.screenshot({path:path.join(directory, String(index).padStart(2,'0')+'-'+theme+'.png'),animations:'disabled'});
+        }
+        expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    }
+    await page.evaluate(()=>{ThemePreference.store('arctic-ice');document.body.dataset.theme='arctic-ice';});
+    await page.waitForTimeout(700);
+    await captureDesktopStill(page,'dashboard.png',info);
+    await assertCaptureNetworkClean(page);
 });

@@ -508,7 +508,8 @@ def save_key(user_id, name, key_content):
     except StorageCorruptionError:
         raise
     except Exception as e:
-        return None, str(e)
+        log_error('Unable to store SSH key', user_id=user_id, error_type=type(e).__name__)
+        return None, 'Unable to store SSH key. Check server storage permissions and available space.'
 
 @user_operation
 def get_key_path(user_id, key_id):

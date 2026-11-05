@@ -8,6 +8,7 @@ import time
 from threading import Event, Lock, RLock, Timer
 
 import config
+from .app_settings import runtime_feature_enabled
 
 from .file_backend import FileWriteOutcome
 from .file_sources import (
@@ -672,7 +673,7 @@ class FileService:
     def _permissions_source(self, source_id, user_id):
         from .file_mutations import FileMutationError
 
-        if not config.SFTP_CHMOD_ENABLED:
+        if not runtime_feature_enabled('sftp_chmod_enabled'):
             raise FileMutationError('UNSUPPORTED_OPERATION')
         return self._authorize_mutation(source_id, user_id, FileCapability.CHMOD)
 

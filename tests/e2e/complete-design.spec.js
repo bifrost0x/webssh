@@ -64,8 +64,9 @@ for (const width of [1440, 1024, 390]) {
         await openProfileManagement(page);
         await capture(page, 'hosts', width);
         const nav = await page.locator('#profileManagementModal .connection-asset-nav').boundingBox();
-        const heading = await page.locator('#profileManagementView .management-panel-heading').boundingBox();
-        expect(nav.y + nav.height).toBeLessThanOrEqual(heading.y);
+        await expect(page.locator('#profileManagementView .management-panel-heading')).toBeHidden();
+        const toolbar = await page.locator('#profileManagementView .management-panel-toolbar').boundingBox();
+        expect(nav.y + nav.height <= toolbar.y + 1 || nav.x + nav.width <= toolbar.x + 1).toBe(true);
         const favorite = page.locator('.profile-management-section').filter({
             has: page.locator('[data-profile-group-toggle="favorites"]'),
         }).locator('.profile-management-item').first();
@@ -88,9 +89,13 @@ for (const width of [1440, 1024, 390]) {
         await capture(page, 'host-editor', width);
         await page.locator('#cancelProfileEditorBtn').click();
         await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
+        await expect(page.locator('#jumpHostForm')).toBeHidden();
+        await page.locator('#jumpResourceNew').click();
         await expect(page.locator('#jumpHostForm')).toBeVisible();
         await capture(page, 'jump-hosts', width);
         await page.locator('#jumpHostManagementModal [data-connection-asset="keys"]').click();
+        await expect(page.locator('#keyUploadForm')).toBeHidden();
+        await page.locator('#keyResourceNew').click();
         await expect(page.locator('#keyUploadForm')).toBeVisible();
         await capture(page, 'ssh-keys', width);
         if (!await page.locator('#commandLibraryBtn').isVisible()) await page.locator('#mobileMoreBtn').click();
@@ -178,7 +183,7 @@ for (const width of [1440, 390]) {
         await navigate(page, '#fileTransferBtn');
         await expect(page.locator('#sftpFileManager')).toBeVisible();
         await capture(page, 'files-empty', width);
-        await page.locator('[data-source-target="left"]').click();
+        await page.locator('#fmLeftList .fm-empty-source-cta').click();
         await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
         await capture(page, 'file-sources', width);
         // Browser-only enabled-feature fixture, matching the existing SMB suite.

@@ -175,7 +175,7 @@ def _validate_payload(payload):
 
 
 @user_operation
-def upsert_smb_share(user_id, payload):
+def upsert_smb_share(user_id, payload, on_created=None):
     validated, error = _validate_payload(payload)
     if error:
         return None, error
@@ -183,6 +183,7 @@ def upsert_smb_share(user_id, payload):
         path = get_user_smb_shares_file(user_id)
         if path is None:
             return None, 'User not found'
+        transaction_before = path.read_bytes() if on_created and path.exists() else None
         shares = _load_with_lock_held(user_id)
         share_id = payload.get('id')
         if any(
@@ -227,6 +228,9 @@ def upsert_smb_share(user_id, payload):
         shares.append(saved)
         if not _write_with_lock_held(user_id, shares):
             return None, 'Failed to save SMB share'
+        if on_created:
+            from .credential_store import finish_resource_transaction
+            finish_resource_transaction(path,transaction_before,saved,on_created)
         return saved, None
 
 

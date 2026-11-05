@@ -99,7 +99,7 @@ test('gateway challenges are correlated, masked, text-only and transient', async
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
     await expect(modal).not.toHaveClass(/show/);
     await expect(modal.locator('input')).toHaveCount(0);
-    assertNoExternalRequests(page);
+    await assertNoExternalRequests(page);
 });
 
 test('ordinary passwords stay required and gateway passwords can be empty', async ({page}) => {
@@ -145,7 +145,7 @@ test('ordinary passwords stay required and gateway passwords can be empty', asyn
     await page.locator('#passwordInput').fill('test-password');
     await page.locator('#connectBtn').click();
     expect(await page.evaluate(() => window.__ordinaryConnects.map(data => data.username))).toEqual(['ordinary']);
-    assertNoExternalRequests(page);
+    await assertNoExternalRequests(page);
 });
 
 test('concurrent gateway prompts restore the pending terminal and its input routing', async ({page}) => {

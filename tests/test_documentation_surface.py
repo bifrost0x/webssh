@@ -16,6 +16,7 @@ DIAGRAM_NAMES = {
     "backup-restore-safety",
 }
 DESKTOP_PRODUCT_CAPTURES = {
+    "dashboard.png",
     "commandlibrary.png",
     "command-set-builder.png",
     "file-edit-review.png",
@@ -212,6 +213,7 @@ def test_backup_diagram_keeps_online_backup_out_of_maintenance_mode():
     restore_nodes = source.split("<!-- Restore nodes -->", 1)[1]
     assert "Snapshot barrier" in backup_nodes
     assert "service stays online" in backup_nodes
+    assert "passwords / keys omitted" in backup_nodes
     assert "Maintenance mode" not in backup_nodes
     assert "maintenance mode" in restore_nodes
 
@@ -229,6 +231,7 @@ def test_product_tours_are_readable_looping_animations():
     """README tours are high-resolution, multi-frame, and long enough to read."""
     expectations = {
         "webssh-demo.gif": 15_000,
+        "webssh-themes.gif": 15_000,
         "file-editing.gif": 12_000,
         "command-sets.gif": 12_000,
     }
@@ -356,7 +359,8 @@ def test_file_workspace_documents_secure_opt_in_smb_boundary():
             "signing",
             "encryption",
             "NTLM",
-            "never stored",
+            "manually entered passwords are transient",
+        "Optional saved passwords are encrypted",
             "guest",
             "DFS",
             "Kerberos",

@@ -441,7 +441,7 @@ const TerminalManager = {
         const width = window.innerWidth;
         if (width < 480) return 12;
         if (width < 768) return 13;
-        return 14;
+        return 16;
     },
 
     isMobile() {
@@ -884,8 +884,24 @@ const TerminalManager = {
     },
 
     stripAnsiSequences(text) {
-        return text
-            .replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, '')
+        const parts = [];
+        let plainStart = 0;
+        for (let index = 0; index < text.length; index++) {
+            if (text[index] !== '\x1b' || text[index + 1] !== ']') continue;
+            parts.push(text.slice(plainStart, index));
+            index += 2;
+            while (index < text.length) {
+                if (text[index] === '\x07') break;
+                if (text[index] === '\x1b' && text[index + 1] === '\\') {
+                    index++;
+                    break;
+                }
+                index++;
+            }
+            plainStart = Math.min(index + 1, text.length);
+        }
+        parts.push(text.slice(plainStart));
+        return parts.join('')
             .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
             .replace(/\x1b[()][0-2]?/g, '')
             .replace(/\x1b[>=]/g, '')

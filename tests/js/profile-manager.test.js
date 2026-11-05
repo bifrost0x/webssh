@@ -22,6 +22,39 @@ function loadProfileManager(contextOverrides = {}) {
     return manager;
 }
 
+test('leaving a host editor protects dirty edits and ignores a stale discard decision', async () => {
+    let snapshot = 'draft';
+    let answer = false;
+    let confirmCount = 0;
+    let left = 0;
+    const manager = loadProfileManager({document: {
+        getElementById: () => ({classList: {contains: () => true}}),
+        querySelectorAll: () => [],
+    }});
+    manager.editorBaseline = 'saved';
+    manager.editingProfileId = 'host';
+    manager.editorSnapshot = () => snapshot;
+    manager.showManagementList = () => { left += 1; };
+    manager.__testWindow.CommandSetManager = {confirmDialog: async () => {confirmCount += 1; return answer;}};
+    await manager.requestManagementList();
+    assert.equal(left, 0);
+    answer = true;
+    await manager.requestManagementList();
+    assert.equal(left, 1);
+    snapshot = 'saved';
+    await manager.requestManagementList();
+    assert.equal(left, 2);
+    assert.equal(confirmCount, 2);
+    snapshot = 'draft';
+    let resolve;
+    manager.__testWindow.CommandSetManager.confirmDialog = () => new Promise(done => {resolve = done;});
+    const pending = manager.requestManagementList();
+    snapshot = 'newer draft';
+    resolve(true);
+    await pending;
+    assert.equal(left, 2);
+});
+
 test('partial key mutation replies preserve transient usability', () => {
     const manager = loadProfileManager();
     manager.keys = [{
@@ -64,6 +97,20 @@ test('profile upsert replaces fields cleared by the authoritative server record'
     }]);
     assert.equal('group' in manager.profiles[0], false);
     assert.equal('favorite' in manager.profiles[0], false);
+});
+
+test('profile refresh updates existing session icons through the lexical session manager', () => {
+    const sessions = {sessions: {existing: {profileId: 'profile-1'}}};
+    let refreshed;
+    const manager = loadProfileManager({SessionManager: sessions, window: {
+        HostPlatform: {refreshSessionIcons(sessionManager, profiles) {refreshed = {sessionManager, profiles};}},
+    }});
+    manager.renderProfileSelect = () => {};
+    manager.renderManagementList = () => {};
+    manager.refreshEmptyPanes = () => {};
+    manager.setProfiles([{id: 'profile-1', platform_icon: 'debian'}]);
+    assert.equal(refreshed.sessionManager, sessions);
+    assert.equal(refreshed.profiles[0].platform_icon, 'debian');
 });
 
 test('failed key replacement preserves private-key draft for retry', () => {
@@ -248,6 +295,7 @@ test('collapse all stays inactive while search results are expanded', () => {
 test('opening Hosts focuses the saved connection search', () => {
     let focused = null;
     const modal = {
+        classList: {contains() { return false; }},
         querySelector(selector) {
             if (selector === '#profileSearchInput') {
                 return {focus() { focused = 'search'; }};
@@ -398,18 +446,18 @@ test('duplicate profile names are localized and remain within storage limit', ()
     assert.equal(bounded.endsWith(' (Kopie)'), true);
 });
 
-test('profile editor reveals effective persistence and respects saved preferences', () => {
+test('compact profile inspector retains persistence while advanced options start collapsed', () => {
     const utils = require('../../static/js/profile-launcher-utils.js');
     const cases = [
-        {label: 'new host with persistence default', defaultTmux: true, checked: true, open: true},
+        {label: 'new host with persistence default', defaultTmux: true, checked: true, open: false},
         {label: 'new host without persistence default', defaultTmux: false, checked: false, open: false},
         {label: 'saved opt-out overrides deployment default', defaultTmux: true,
             profile: {id: 'saved', use_tmux: false}, checked: false, open: false},
         {label: 'duplicate keeps saved persistence', defaultTmux: false,
-            profile: {id: 'saved', use_tmux: true}, duplicate: true, checked: true, open: true},
+            profile: {id: 'saved', use_tmux: true}, duplicate: true, checked: true, open: false},
         {label: 'startup commands still reveal advanced settings', defaultTmux: false,
             profile: {id: 'saved', startup_mode: 'free_text', startup_commands: 'pwd'},
-            checked: false, open: true},
+            checked: false, open: false},
         {label: 'deployment without tmux controls', tmuxEnabled: false, open: false},
     ];
     for (const scenario of cases) {
@@ -419,7 +467,7 @@ test('profile editor reveals effective persistence and respects saved preference
             if (!elements.has(id)) elements.set(id, {
                 value: '', checked: false, open: true,
                 dataset: {default: String(scenario.defaultTmux)},
-                classList: {add() {}, remove() {}}, reset() {}, focus() {},
+                classList: {add() {}, remove() {}, contains() {return false;}}, reset() {}, focus() {},
             });
             return elements.get(id);
         }};
@@ -427,6 +475,7 @@ test('profile editor reveals effective persistence and respects saved preference
         manager.renderEditorSelects = () => {};
         manager.setInlineKeyPanelExpanded = () => {};
         manager.updateEditorVisibility = () => {};
+        manager.renderManagementList = () => {};
         manager.profiles = scenario.profile ? [scenario.profile] : [];
 
         manager.openEditor(scenario.profile?.id, {duplicate: scenario.duplicate});

@@ -1,0 +1,23 @@
+.intro-tour { position: fixed; inset: auto 24px 24px auto; margin: 0; width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto; padding: 24px; border: 1px solid var(--ws2-border); border-radius: 14px; background: var(--ws2-surface, var(--bg-secondary)); color: var(--ws2-text); box-shadow: 0 16px 48px #0005; font: inherit; }
+.intro-tour::backdrop { background: #0004; }
+.intro-tour h2 { margin: 12px 0; font-size: 23px; line-height: 1.25; }
+.intro-tour p { line-height: 1.55; margin: 12px 0; }
+.intro-tour progress { width: 100%; height: 5px; accent-color: var(--ws2-accent); }
+.intro-tour header, .intro-tour footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.intro-tour footer { margin-top: 24px; flex-wrap: wrap; }
+.intro-tour .intro-links { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px; }
+.intro-tour a { color: var(--ws2-accent); text-underline-offset: 3px; }
+.intro-tour dl { margin: 16px 0; }
+.intro-tour dl div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--ws2-border); }
+.intro-tour dt { overflow-wrap: anywhere; font-size: 12px; }
+.intro-tour dd { margin: 0; font-weight: 600; font-size: 13px; }
+.intro-target { outline: 2px solid var(--ws2-accent) !important; outline-offset: 4px; }
+.intro-tour .intro-error { color: var(--ws2-text); font-weight: 600; }
+@media (prefers-reduced-motion: no-preference) { .intro-tour[open] { animation: intro-enter 220ms ease-out; } @keyframes intro-enter { from { transform: translateY(12px); opacity: .5; } to { transform: none; opacity: 1; } } }
+@media (max-width: 600px) { .intro-tour { inset: auto 16px 16px; padding: 18px; max-height: 75dvh; } }
+
+.intro-tour footer { position: sticky; bottom: -24px; background: var(--ws2-surface, var(--bg-secondary)); padding: 12px 0; }
+
+.intro-tour dt small { display: block; margin-top: 3px; color: var(--ws2-text-secondary); font-size: 11px; }
+.intro-tour .btn-secondary { color: var(--ws2-text); background: var(--ws2-surface, var(--bg-secondary)); border-color: var(--ws2-border); }
+.intro-tour .btn-secondary:disabled { opacity: .5; }

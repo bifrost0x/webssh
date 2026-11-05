@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 138" fill="none">
+<title>Getrennte Farbrollen für Fläche, Text und Fokus</title>
+<rect x="2" y="14" width="336" height="108" rx="6" fill="#211f1b" stroke="#796e5b" stroke-width="1.2"/>
+<path d="M2 42h336" stroke="#494237"/>
+<g font-family="system-ui,sans-serif" font-size="13" fill="#c9c0b0"><text x="16" y="32">Eine Oberfläche. Klare Farbrollen.</text><text x="16" y="106">Flächen</text><text x="135" y="106">Text</text><text x="254" y="106">Fokus</text></g>
+<g stroke="#796e5b"><rect x="16" y="57" width="27" height="27" rx="4" fill="#191815"/><rect x="48" y="57" width="27" height="27" rx="4" fill="#2b2822"/><rect x="80" y="57" width="27" height="27" rx="4" fill="#353127"/></g>
+<g fill="#f0e9dd"><rect x="135" y="59" width="82" height="5" rx="2"/><rect x="135" y="71" width="64" height="4" rx="2" fill="#c9c0b0"/><rect x="135" y="81" width="46" height="3" rx="1.5" fill="#b4a995"/></g>
+<rect x="254" y="57" width="66" height="28" rx="4" fill="#363026" stroke="#d6c3a1"/>
+<path d="m267 68 5 5 8-9" stroke="#f0dbb4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M288 70h20" stroke="#f0e9dd" stroke-width="3" stroke-linecap="round"/>
+</svg>

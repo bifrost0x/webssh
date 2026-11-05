@@ -608,3 +608,35 @@ test('retains normalized load above 100 percent in the collected history', () =>
     });
     assert.ok(Math.abs(runtime.renders.at(-1).metricHistory.at(-1).normalizedLoadPercent - 133.33333333333333) < 0.00001);
 });
+
+test('missing network counters never become zero readings or recovery spikes', () => {
+    let now = 1000;
+    const runtime = fakeRuntime({nowFn: () => now});
+    runtime.controller.setSession('session-a', true);
+    function respond(network) {
+        const request = runtime.emitted.at(-1).payload;
+        runtime.handlers.get('session_insights')({success:true, session_id:'session-a', request_id:request.request_id, stats:{network}});
+        const state = runtime.renders.at(-1);
+        now += 4000;
+        [...runtime.intervals.values()][0].callback();
+        return state;
+    }
+    respond({received_bytes:1000, transmitted_bytes:500});
+    for (const missing of [null, '', '  ', false, [], {}]) {
+        assert.equal(respond({received_bytes:missing, transmitted_bytes:missing}).networkRates, null);
+        const recovered = respond({received_bytes:100000, transmitted_bytes:50000});
+        assert.equal(recovered.networkRates, null);
+        assert.equal(recovered.metricHistory.at(-1).receivedBps, null);
+    }
+    const valid = respond({received_bytes:104000, transmitted_bytes:52000});
+    assert.deepEqual(valid.networkRates, {received_bps:1000, transmitted_bps:500});
+    assert.equal(respond(undefined).networkRates, null);
+    assert.equal(respond({received_bytes:108000, transmitted_bytes:54000}).networkRates, null);
+});
+
+test('unknown capacity does not display as zero capacity', () => {
+    for (const missing of [null, undefined, '', '  ', false, [], {}]) {
+        assert.equal(insights.formatKib(missing), '—');
+    }
+    assert.equal(insights.formatKib(0), '0.0 MB');
+});

@@ -24,7 +24,14 @@
     // enumerated, converted to URLs or sent to a font service.
     function loadFont(family, fontSet = typeof document !== 'undefined' ? document.fonts : null) {
         if (family !== symbolFont && !Object.hasOwn(bundledFonts, family)) return Promise.resolve(true);
-        if (loadedFonts.has(family)) return Promise.resolve(true);
+        if (loadedFonts.has(family)) {
+            const sample = family === symbolFont ? '\uf07b' : 'M';
+            const weights = family === symbolFont ? [400] : [400, 700];
+            if (!fontSet?.check || weights.every(weight => fontSet.check(`${weight} 14px "${family}"`, sample))) return Promise.resolve(true);
+            // WebKit can invalidate CSS font faces when xterm rebuilds styles.
+            loadedFonts.delete(family);
+            fontLoads.delete(family);
+        }
         if (!fontSet?.load) return Promise.resolve(false);
         if (fontLoads.has(family)) return fontLoads.get(family);
         const pending = new Promise(resolveLoad => {
@@ -146,6 +153,28 @@
             // finish before clearing, or rapid sample changes leave stale text.
             preview.write('\x1bc' + (samples[sample.value] || samples.shell));
         }
+        function refreshPreviewFont() {
+            if (!preview || !modal.classList.contains('show')) return;
+            const family = resolve(draft, manager.buildTheme(), manager.getMonoFont(), manager.getResponsiveFontSize()).options.fontFamily;
+            if (preview.options.fontFamily === family) return;
+            preview.options.fontFamily = family;
+            fit.fit();
+            preview.refresh(0, preview.rows - 1);
+        }
+        function restorePreviewFonts() {
+            if (!preview || !modal.classList.contains('show')) return;
+            // Renderer writes can happen in a later frame than updatePreview.
+            // Revalidate only successful loads after those writes; failed loads
+            // stay failed until the user explicitly retries a selection.
+            const revision = previewRevision;
+            for (const family of [draft.font_family, symbolFont]) {
+                if (loadedFonts.has(family)) loadFont(family).then(loaded => {
+                    if (!loaded && revision === previewRevision && modal.classList.contains('show')) {
+                        fontStatus.textContent = t(family === symbolFont ? 'terminalAppearance.iconsFailed' : 'terminalAppearance.fontFailed');
+                    }
+                });
+            }
+        }
         async function updatePreview() {
             const resolved = resolve(draft, manager.buildTheme(), manager.getMonoFont(), manager.getResponsiveFontSize());
             previewElement.style.setProperty('--terminal-surface-color', resolved.surface);
@@ -173,9 +202,8 @@
             if (revision !== previewRevision) return;
             if (!iconsLoaded) fontStatus.textContent = t('terminalAppearance.iconsFailed');
             if (preview && modal.classList.contains('show')) {
-                Object.assign(preview.options, resolve(draft, manager.buildTheme(), manager.getMonoFont(), manager.getResponsiveFontSize()).options);
-                fit.fit();
-                preview.refresh(0, preview.rows - 1);
+                refreshPreviewFont();
+                restorePreviewFonts();
             }
         }
         function renderControls() {
@@ -207,6 +235,7 @@
                     fit = new FitAddon.FitAddon();
                     preview.loadAddon(fit);
                     preview.open(previewElement);
+                    preview.onRender(restorePreviewFonts);
                     paintSample();
                 }
                 updatePreview();
@@ -292,7 +321,7 @@
         // the preview then, without changing the user's selection.
         document.fonts?.addEventListener?.('loadingdone', () => {
             applyLoadedFont(manager);
-            if (preview && modal.classList.contains('show')) updatePreview();
+            refreshPreviewFont();
         });
         refreshSavedFont();
         manager.updateAppearanceSurface();

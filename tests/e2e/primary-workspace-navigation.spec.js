@@ -101,7 +101,7 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
         page,
         '#profileManagementView',
         '#profileManagementList',
-    ), { stackedActions: true });
+    ));
 
     await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
     await expect(page.locator('#jumpHostManagementModal')).toBeVisible();
@@ -128,7 +128,7 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
     await expect(page.locator('#commandSetsPanel .management-panel-heading p')).toHaveText(
         'Build reusable command sequences and assign one to any saved connection.',
     );
-    await expect(page.locator('#commandSetManagementSearch')).toBeFocused();
+    await expect(page.locator('#commandSetsTab')).toBeFocused();
     const commandSetsGeometry = await managementPanelGeometry(
         page,
         '#commandSetsPanel',
@@ -137,7 +137,7 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
     expectManagementPanelHierarchy(commandSetsGeometry);
     await page.locator('#commandLibraryTab').click();
     await expect(page.locator('#commandLibraryPanel')).toBeVisible();
-    await expect(page.locator('#commandSearchInput')).toBeFocused();
+    await expect(page.locator('#commandLibraryTab')).toBeFocused();
     await expect(page.locator('#commandLibraryPanel .management-panel-heading h3')).toHaveText('Command Library');
     await expect(page.locator('#commandLibraryPanel .management-panel-heading p')).toHaveText(
         'Browse, search, and manage commands available to your sessions.',
@@ -145,7 +145,7 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
     const commandLibraryGeometry = await managementPanelGeometry(
         page,
         '#commandLibraryPanel',
-        '.os-filter-toolbar',
+        '#commandsList',
     );
     expectManagementPanelHierarchy(commandLibraryGeometry);
     expect({
@@ -164,7 +164,7 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
         actionsHeight: commandSetsGeometry.actionsHeight,
     });
     await page.locator('#commandSetsTab').click();
-    await expect(page.locator('#commandSetManagementSearch')).toBeFocused();
+    await expect(page.locator('#commandSetsTab')).toBeFocused();
 
     await page.locator('#fileTransferBtn').click();
     await expect(page.locator('#fileTransferBtn')).toHaveAttribute('aria-current', 'page');
@@ -182,7 +182,7 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
     await expect(page.locator('#fmRightList .fm-empty-source-cta')).toBeVisible();
     const languageErrors = [];
     page.on('pageerror', error => languageErrors.push(error.message));
-    await page.locator('[data-source-target="left"]').click();
+    await page.locator('#fmLeftList .fm-empty-source-cta').click();
     await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
     await page.evaluate(() => window.i18n.setLanguage('de'));
     await expect(page.locator('#fmLeftTabs')).toHaveAttribute(

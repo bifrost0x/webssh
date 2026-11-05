@@ -10,6 +10,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const {hardenXtermLinks} = require('./xterm-link-hardening');
 
 const root = path.resolve(__dirname, '..');
 const nodeModules = path.join(root, 'node_modules');
@@ -40,6 +41,20 @@ const files = [
 
 function expectedContents(srcPath, dest) {
   const source = fs.readFileSync(srcPath);
+  if (dest === 'socketio/socket.io.min.js') {
+    // A polling XHR with status 0 has already lost its network channel. Sending
+    // another close POST during error cleanup can start a request from a departing
+    // document. Close locally while preserving the original error and reconnect
+    // path. Normal shutdown and HTTP error responses retain upstream behavior.
+    const prefix = 'i.V=function(t,n){if("opening"===this.readyState||"open"===this.readyState||"closing"===this.readyState){if(this.clearTimeoutFn(this.Z),';
+    const before = prefix + 'this.transport.removeAllListeners("close"),this.transport.close(),this.transport.removeAllListeners()';
+    const after = prefix + 'this.transport.removeAllListeners("close"),("transport error"===t&&"polling"===this.transport.name&&n&&0===n.description?this.transport.onClose():this.transport.close()),this.transport.removeAllListeners()';
+    const bundle = source.toString('utf8');
+    if (bundle.split(before).length !== 2) {
+      throw new Error('Socket.IO error cleanup changed; review the failed-polling close patch.');
+    }
+    return Buffer.from(bundle.replace(before, after), 'utf8');
+  }
   if (dest === 'xterm/xterm.js') {
     const parserLimit = 't.PAYLOAD_LIMIT=1e7';
     const boundedParserLimit = 't.PAYLOAD_LIMIT=2e5';
@@ -50,9 +65,33 @@ function expectedContents(srcPath, dest) {
         'xterm parser limit changed; review the OSC/DCS memory-bound patch.'
       );
     }
-    return Buffer.from(bundle.replace(parserLimit, boundedParserLimit), 'utf8');
+    let patched = bundle.replace(parserLimit, boundedParserLimit);
+    // CSI counts are remotely controlled. Saturating operations need at most
+    // one screen of work; REP also needs a bound on expanded payload size.
+    const replacements = [
+      ['parse(e,t){let i,s=this._activeBuffer.x,r=this._activeBuffer.y,n=0;const o=this._parseStack.paused;',
+        'parse(e,t){let i,s=this._activeBuffer.x,r=this._activeBuffer.y,n=0;const o=this._parseStack.paused;if(!o)this._websshRepeatBudget=2e5;'],
+      ['let t=e.params[0]||1;for(;t--;)this._activeBuffer.x=this._activeBuffer.nextStop()', 'let t=Math.min(e.params[0]||1,this._bufferService.cols);for(;t--;)this._activeBuffer.x=this._activeBuffer.nextStop()'],
+      ['let t=e.params[0]||1;for(;t--;)this._activeBuffer.x=this._activeBuffer.prevStop()', 'let t=Math.min(e.params[0]||1,this._bufferService.cols);for(;t--;)this._activeBuffer.x=this._activeBuffer.prevStop()'],
+      ...['insertLines', 'deleteLines'].map(method => [
+        `${method}(e){this._restrictCursor();let t=e.params[0]||1;`,
+        `${method}(e){this._restrictCursor();let t=Math.min(e.params[0]||1,this._activeBuffer.scrollBottom-this._activeBuffer.y+1);`,
+      ]),
+      ...['scrollUp', 'scrollDown'].map(method => [
+        `${method}(e){let t=e.params[0]||1;`,
+        `${method}(e){let t=Math.min(e.params[0]||1,this._activeBuffer.scrollBottom-this._activeBuffer.scrollTop+1);`,
+      ]),
+      ['const i=e.params[0]||1,s=p.UnicodeService.extractWidth(t),r=this._activeBuffer.x-s,n=this._activeBuffer.lines.get(this._activeBuffer.ybase+this._activeBuffer.y).getString(r),o=new Uint32Array(n.length*i);',
+        'const s=p.UnicodeService.extractWidth(t),r=this._activeBuffer.x-s,n=this._activeBuffer.lines.get(this._activeBuffer.ybase+this._activeBuffer.y).getString(r);const i=Math.min(e.params[0]||1,Math.floor(this._websshRepeatBudget/Math.max(1,n.length)));if(!i)return!0;this._websshRepeatBudget-=n.length*i;const o=new Uint32Array(n.length*i);'],
+    ];
+    for (const [before, after] of replacements) {
+      if (patched.split(before).length !== 2) {
+        throw new Error('xterm CSI implementation changed; review the bounded-count patch.');
+      }
+      patched = patched.replace(before, after);
+    }
+    return Buffer.from(hardenXtermLinks(patched), 'utf8');
   }
-  // Socket.IO 4.8.4 includes the attachment bounds checked by our security tests.
   return source;
 }
 

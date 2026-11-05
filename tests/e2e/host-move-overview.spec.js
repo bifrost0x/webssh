@@ -1,7 +1,7 @@
 const {test, expect} = require('playwright/test');
 const {login, assertNoExternalRequests} = require('./helpers');
 for (const graph of [false, true]) {
-    test(`Overview ${graph ? 'routes' : 'list'} moves hosts through the existing organization contract`, async ({page}) => {
+    test(`Overview ${graph ? 'routes' : 'inventory'} moves hosts through the existing organization contract`, async ({page}) => {
         await login(page, 'e2e_admin', {workspace:false});
         await page.evaluate(() => {
             const template = window.ProfileManager.profiles[0];
@@ -23,16 +23,27 @@ for (const graph of [false, true]) {
                 ack({success:true, organization:[{id:payload.profile_id, group:payload.target_group, sort_order:payload.target_index}]});
             };
         });
-        if (graph) await page.locator('#overviewGraphBtn').click();
+        await expect(page.locator('#overviewHosts .overview-list-group')).toHaveCount(2);
+        await page.locator('#overviewGroupFilter').selectOption('group:Source');
+        if (graph) {
+            await page.locator('#overviewHosts [data-host-id]').first().click();
+            await expect(page.locator('.overview-path-stops')).toContainText('Move A');
+        }
         const host = page.locator('#overviewHosts [data-host-id="move-a"]');
-        await host.dragTo(page.locator('#overviewHosts [data-host-drop-group="Target"]').first());
+        await expect(host).toBeVisible();
+        let row = page.locator('#overviewHosts .overview-compact-row').filter({has: page.locator('[data-host-id="move-a"]')});
+        await row.locator('summary').click();
+        await expect(row.locator('option')).toHaveCount(3);
+        await row.locator('select').selectOption('Target');
         await expect.poll(() => page.evaluate(() => window.__moves.length)).toBe(1);
         expect(await page.evaluate(() => window.__moves[0])).toEqual({profile_id:'move-a',expected_source_group:'Source',target_group:'Target',target_index:1,confirm_source_group_removal:false});
         await expect(page.locator('#overviewHosts [data-host-drop-group="Target"] [data-host-id="move-a"]')).toBeVisible();
-        const row = page.locator('#overviewHosts .overview-host-entry').filter({has: page.locator('[data-host-id="move-a"]')});
+        row = page.locator('#overviewHosts .overview-compact-row').filter({has: page.locator('[data-host-id="move-a"]')});
+        await expect(row.locator('summary')).toBeFocused();
         await row.locator('summary').click();
         await row.locator('select').selectOption('');
         await expect.poll(() => page.evaluate(() => window.__moves.length)).toBe(2);
+        expect(await page.evaluate(() => window.__moves[1])).toEqual({profile_id:'move-a',expected_source_group:'Target',target_group:'',target_index:0,confirm_source_group_removal:false});
         await expect(page.locator('#overviewHosts [data-host-drop-group=""] [data-host-id="move-a"]')).toBeVisible();
         await expect(row.locator('summary')).toBeFocused();
         await row.locator('summary').press('Enter');
@@ -67,8 +78,13 @@ test('large host stores populate only the open move menu', async ({page}) => {
             ...template, id:`large-${i}`, name:`Host ${i}`, group:`Group ${i}`, favorite:false,
         })));
     });
-    const rows = page.locator('#overviewHosts .overview-host-entry');
-    await expect(rows).toHaveCount(500);
+    await expect(page.locator('#overviewHostCount')).toHaveText('500');
+    await expect(page.locator('#overviewHosts .overview-list-group')).toHaveCount(500);
+    await expect(page.locator('#overviewHosts .overview-compact-row')).toHaveCount(500);
+    await expect(page.locator('.overview-host-move option')).toHaveCount(0);
+    await page.locator('#overviewGroupFilter').selectOption('group:Group 0');
+    const rows = page.locator('#overviewHosts .overview-compact-row');
+    await expect(rows).toHaveCount(1);
     await expect(page.locator('.overview-host-move option')).toHaveCount(0);
     await rows.first().locator('summary').click();
     await expect(rows.first().locator('option')).toHaveCount(501);

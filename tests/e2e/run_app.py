@@ -288,7 +288,10 @@ def main():
         os.environ.update({
             **storage_environment,
             'SECRET_KEY': 'e2e-only-secret-key',
-            'DEBUG': 'False',
+            # Disposable HTTP loopback fixture for the explicit development exception.
+            'DEBUG': 'True',
+            'AUTOMATION_ENABLED': 'true',
+            'AUTOMATION_ALLOW_INSECURE_LOOPBACK': 'true',
             # This fixture binds plain HTTP on loopback. WebKit correctly omits
             # Secure cookies there; production cookie defaults remain intact.
             'SESSION_COOKIE_SECURE': 'False',
@@ -404,6 +407,8 @@ def main():
             ))
             db.session.commit()
             key = _seed_launcher_profiles(admin, user)
+            from automation_fixture import seed
+            seed(app, [user])
             _seed_post_connect_profiles(admin, key)
 
             from app import ssh_manager

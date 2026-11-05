@@ -4,9 +4,9 @@ WebSSH is a self-hosted SSH and file workspace. This roadmap explains the direct
 the current release focus, and the evidence behind completed work. It is not a release-date
 promise or a replacement for issues, pull requests, and release notes.
 
-Release status updated: **2026-11-04**, [v2.7.0](https://github.com/bifrost0x/webssh/releases/tag/v2.7.0) at
-[`271c5fc`](https://github.com/bifrost0x/webssh/commit/271c5fca33f74ba3ea108ae44549c910f6de7bbb).
-Check linked GitHub items for newer status.
+Candidate scope updated: **2026-11-05**. WebSSH 3.0 is in local release
+preparation; it has not been published. See the [version 3 guide](docs/webssh-3.md)
+for upgrade behavior and outstanding release validation.
 
 ## Product direction
 
@@ -18,33 +18,29 @@ Check linked GitHub items for newer status.
 These themes summarize the existing product and published release history; they do not
 add new feature commitments.
 
-## Now: v2.7.0 published
+## Now: prepare WebSSH 3.0
 
-The [2.7.0 release notes](docs/releases/v2.7.0.md) cover ordinary SSH PAM MFA,
-explicit tmux setup and folder synchronization, command and SFTP permission UX,
-theme-aware branding, storage/backup hardening, dependency updates and Apache 2.0
-licensing. The [release comparison](https://github.com/bifrost0x/webssh/compare/v2.6.0...v2.7.0)
-contains 16 merged PRs first included in a release, plus direct commits.
+The candidate combines a customizable dashboard and SSH topology, a selectable
+start page and classic overview, consistent host and credential management,
+and integrated automation with editable templates, command sets, schedules
+and bounded run logs. Existing themes and terminal-centered workflows remain.
 
-[Tag CI and native image publication](https://github.com/bifrost0x/webssh/actions/runs/41798705520) passed on `271c5fca33f74ba3ea108ae44549c910f6de7bbb`.
-Linux AMD64 and ARM64 images retain SPDX SBOM and SLSA provenance. The immutable
-image digest and upgrade precautions are recorded in the release notes.
+Saved passwords and automation are administrator-controlled and disabled by
+default. Portable backups exclude stored passwords and SSH private keys;
+operators must preserve a separate trusted recovery source for these secrets.
+See the [upgrade and validation guide](docs/webssh-3.md).
 
-SFTP chmod and server mutations remain disabled by default. Parameterized `argv`
-command sets retain the documented downgrade boundary. Automated gates do not
-certify every deployment's identity provider, device, upgrade or recovery setup.
-The earlier [2.6 acceptance record](https://github.com/bifrost0x/webssh/issues/288)
-is closed with its unrun environment-specific checks explicitly documented.
+Publication requires final-revision CI, native image acceptance and an explicit
+resolution or maintainer decision for outstanding security findings. Local
+checks and emulated ARM64 runs do not establish these release gates. No release
+date is promised.
 
-## Next: choose from verified feedback
+## Next: verified feedback and security maintenance
 
-Select a small scope from reproducible bugs, user feedback and validated
-security/dependency findings. State the benefit, priority reason and acceptance criteria in
-an issue before assigning substantial work to the next milestone.
-
-No additional release date or large architecture migration is committed here.
-Urgent security fixes may take a separate patch path rather than wait for a feature release;
-follow [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+Prioritize reproducible bugs, compatibility feedback and security updates.
+Security fixes may take a separate patch path; follow [SECURITY.md](SECURITY.md)
+for private vulnerability reporting. Historical release evidence below does
+not certify the version 3 candidate or every operator's deployment.
 
 ## Later: proposals are not promises
 

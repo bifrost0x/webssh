@@ -1,3 +1,4 @@
+from .app_settings import runtime_feature_enabled
 from .auth_redirects import public_continuation
 from flask import (Flask, abort, current_app, flash, jsonify, redirect,
                    render_template, request, session, url_for)
@@ -11,6 +12,7 @@ import sys
 import time
 from datetime import timezone
 from .models import db
+from .automation_schedule import AutomationSchedule
 from .auth import (init_auth, authenticate_user, register_user,
                    check_rate_limit, is_bootstrap_registration_available,
                    password_exceeds_bcrypt_limit)
@@ -401,6 +403,12 @@ def _initialize_persistent_storage(app):
         from .models import ensure_security_columns, ensure_ssh_session_columns
         ensure_security_columns()
         ensure_ssh_session_columns()
+        from .app_settings import migrate_feature_policies, migrate_runtime_features
+        migrate_runtime_features()
+        migrate_feature_policies(
+            automation_enabled=config.AUTOMATION_ENABLED,
+            credentials_enabled=any(config.USERS_DIR.glob('*/automation-vault.json')),
+        )
         from .auth import ensure_initial_admin, sync_admin_users
         ensure_initial_admin()
         sync_admin_users()
@@ -494,8 +502,8 @@ def create_app(
             ),
             'registration_enabled': registration_available,
             'ssh_gateway_enabled': is_ssh_gateway_enabled(),
-            'tmux_enabled': config.TMUX_ENABLED,
-            'tmux_default': config.TMUX_DEFAULT,
+            'tmux_enabled': runtime_feature_enabled('tmux_enabled'),
+            'tmux_default': runtime_feature_enabled('tmux_default'),
             'admin_panel_enabled': config.ADMIN_PANEL_ENABLED,
             'webauthn_enabled': feature_is_active('passkey'),
             'webauthn_origin': config.WEBAUTHN_ORIGIN,
@@ -713,6 +721,22 @@ def create_app(
     app.register_blueprint(profile_exchange_blueprint)
     app.register_blueprint(host_context_blueprint)
     app.register_blueprint(server_operations_blueprint)
+    from .automation_routes import automation_blueprint
+    from .automation_service import AutomationService
+    from .credential_routes import credentials_blueprint
+    from .credential_service import CredentialService
+    from .onboarding import onboarding_blueprint
+    app.register_blueprint(onboarding_blueprint)
+    app.register_blueprint(credentials_blueprint)
+    credentials = app.extensions['credentials'] = CredentialService(app)
+    app.extensions['runtime_lifecycle'].register_shutdown_callback('credentials', credentials.shutdown)
+    app.register_blueprint(automation_blueprint)
+    automation = app.extensions['automation'] = AutomationService(app)
+    from .automation_schedule import ScheduleService
+    app.extensions['automation_schedules'] = ScheduleService(app)
+    app.extensions['runtime_lifecycle'].register_shutdown_callback(
+        'automation', automation.shutdown
+    )
     app.register_blueprint(github_auth_blueprint)
     app.register_blueprint(oidc_blueprint)
     app.register_blueprint(recovery_blueprint)
@@ -794,6 +818,7 @@ def create_app(
     @app.after_request
     def add_security_headers(response):
         """Add comprehensive security headers to all responses."""
+        frame_ancestors = "'none'"
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
@@ -802,7 +827,7 @@ def create_app(
             "font-src 'self' data:; "
             "media-src 'self' data:; "
             "connect-src 'self' ws: wss:; "
-            "frame-ancestors 'none';"
+            f"frame-ancestors {frame_ancestors};"
         )
 
         response.headers['X-Frame-Options'] = 'DENY'
@@ -876,6 +901,8 @@ def create_app(
                     )
 
         try:
+            lifecycle.start_job('credentials-cleanup', credentials.cleanup)
+            lifecycle.start_job('automation-cleanup', automation.cleanup)
             lifecycle.start_job(
                 'inactive_socket_session_cleanup', db_cleanup_task
             )
@@ -901,6 +928,7 @@ def create_app(
     @app.route('/')
     @login_required
     def index():
+        from .app_settings import is_automation_enabled
         settings = get_user_settings(current_user.id)
         theme = settings.get('theme', 'glass')
         auth_session = current_authentication_session()
@@ -908,6 +936,9 @@ def create_app(
             'index.html',
             username=current_user.username,
             theme=theme,
+            overview_layout=settings.get('overview_layout', 'dashboard'),
+            start_page=settings.get('start_page', 'overview'),
+            automation_enabled=is_automation_enabled(),
             terminal_appearance=settings.get('terminal_appearance', {}),
             sync_terminal_directory=settings.get('sync_terminal_directory', True),
             connection_history_scope=connection_history_scope(
@@ -921,7 +952,7 @@ def create_app(
             ),
             max_editor_file_size=config.MAX_EDITOR_FILE_SIZE,
             smb_enabled=config.SMB_ENABLED,
-            sftp_chmod_enabled=config.SFTP_CHMOD_ENABLED,
+            sftp_chmod_enabled=runtime_feature_enabled('sftp_chmod_enabled'),
             transfer_limits={
                 'uploadBytes': config.MAX_UPLOAD_SIZE,
                 'downloadBytes': config.MAX_DOWNLOAD_SIZE,
@@ -1220,6 +1251,8 @@ def create_app(
             'security.html',
             username=current_user.username,
             theme=settings.get('theme', 'glass'),
+            overview_layout=settings.get('overview_layout', 'dashboard'),
+            start_page=settings.get('start_page', 'overview'),
             recovery_mode=recovery_session_required(auth_session),
             authentication_methods=tuple(
                 {
@@ -1259,6 +1292,8 @@ def create_app(
         if not isinstance(data, dict):
             return jsonify({'error': 'Invalid settings payload'}), 400
         allowed = {
+            'start_page',
+            'overview_layout',
             'theme',
             'terminal_appearance',
             'sync_terminal_directory',
@@ -1270,6 +1305,16 @@ def create_app(
             return jsonify({'error': 'Invalid settings payload'}), 400
 
         updates = {}
+        if 'start_page' in data:
+            start_page = data['start_page']
+            if not isinstance(start_page, str) or start_page not in {'overview', 'workspaces'}:
+                return jsonify({'error': 'Invalid start page'}), 400
+            updates['start_page'] = start_page
+        if 'overview_layout' in data:
+            layout = data['overview_layout']
+            if not isinstance(layout, str) or layout not in {'dashboard', 'classic'}:
+                return jsonify({'error': 'Invalid overview layout'}), 400
+            updates['overview_layout'] = layout
         if 'terminal_appearance' in data:
             if not valid_terminal_appearance(data['terminal_appearance']):
                 return jsonify({'error': 'Invalid terminal appearance'}), 400
@@ -1280,7 +1325,7 @@ def create_app(
             updates['sync_terminal_directory'] = data['sync_terminal_directory']
         if 'theme' in data:
             valid_themes = {
-                'glass', 'retro', 'solar', 'paper', 'noir',
+                'glass', 'werkbank', 'retro', 'solar', 'paper', 'noir',
                 'arctic-ice', 'rose-gold', 'cyberpunk-neon',
                 'emerald-matrix', 'obsidian',
             }
@@ -1353,7 +1398,8 @@ def create_app(
     @admin_required
     @login_required
     def admin_page():
-        return redirect(f"{url_for('security_center')}#users")
+        # A fragment is browser-side only. Do not override incoming deep links.
+        return redirect(url_for('security_center', section='users'))
 
     @app.route('/admin/api/users', methods=['GET'])
     @admin_required
@@ -1534,8 +1580,13 @@ def create_app(
     @admin_required
     @login_required
     def admin_get_settings():
-        return jsonify({'registration_enabled': is_registration_enabled(),
-                        'ssh_gateway_enabled': is_ssh_gateway_enabled()})
+        from .app_settings import is_credentials_enabled, is_automation_enabled
+        from .app_settings import RUNTIME_FEATURES, runtime_feature_status, native_setting_sources
+        policies = {name: runtime_feature_status(name) for name in RUNTIME_FEATURES}
+        return jsonify({'setting_sources': native_setting_sources(), 'runtime_features': policies, **{name: status['enabled'] for name, status in policies.items()}, 'registration_enabled': is_registration_enabled(),
+                        'ssh_gateway_enabled': is_ssh_gateway_enabled(),
+                        'credentials_enabled': is_credentials_enabled(),
+                        'automation_enabled': is_automation_enabled()})
 
     @app.route('/admin/api/settings', methods=['POST'])
     @admin_required
@@ -1545,6 +1596,21 @@ def create_app(
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({'error': 'Invalid settings payload'}), 400
+        from .app_settings import RUNTIME_FEATURES, runtime_feature_status, set_runtime_feature
+        from .app_settings import native_setting_sources
+        for name, policy in native_setting_sources().items():
+            if name in data and policy['locked'] and policy['source'] != 'production':
+                return jsonify(error='Setting is controlled by deployment configuration', code='deployment_locked', setting=name, policy=policy), 409
+        for name in RUNTIME_FEATURES:
+            if name in data:
+                if type(data[name]) is not bool:
+                    return jsonify(error='Expected a boolean', setting=name), 400
+                status = runtime_feature_status(name)
+                if status['locked']:
+                    return jsonify(error='Setting is controlled by Compose/environment', code='deployment_locked', setting=name, policy=status), 409
+        for feature in ('credentials_enabled', 'automation_enabled'):
+            if feature in data and type(data[feature]) is not bool:
+                return jsonify({'error': f'{feature} must be a boolean'}), 400
         if ('ssh_gateway_enabled' in data
                 and type(data['ssh_gateway_enabled']) is not bool):
             return jsonify({'error': 'ssh_gateway_enabled must be a boolean'}), 400
@@ -1570,8 +1636,19 @@ def create_app(
             val = set_ssh_gateway_enabled(data['ssh_gateway_enabled'])
             log_info("Admin changed SSH gateway setting",
                      admin=current_user.username, ssh_gateway_enabled=val)
-        return jsonify({'registration_enabled': is_registration_enabled(),
-                        'ssh_gateway_enabled': is_ssh_gateway_enabled()})
+        from .app_settings import set_credentials_enabled, set_automation_enabled
+        for feature, setter in (('credentials_enabled', set_credentials_enabled),
+                                ('automation_enabled', set_automation_enabled)):
+            if feature in data:
+                setter(data[feature])
+                log_info('Admin changed application feature',
+                         admin=current_user.username, feature=feature, enabled=data[feature])
+        for name in RUNTIME_FEATURES:
+            if name in data:
+                set_runtime_feature(name, data[name])
+                from .audit_logger import log_security_event
+                log_security_event('RUNTIME_FEATURE_CHANGED', admin=current_user.username, feature=name, enabled=data[name])
+        return admin_get_settings()
 
     @app.route('/admin/api/security-features', methods=['GET'])
     @admin_required

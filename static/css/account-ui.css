@@ -1,0 +1,102 @@
+/* Account surfaces share the compact product vocabulary; scenes stay behind opaque forms. */
+.webssh-auth .auth-shell-content { width: min(500px, calc(100% - 32px)); margin: 24px auto; }
+.webssh-ui.webssh-auth .auth-access-dock { border: 1px solid var(--ws2-border-strong); border-radius: 6px; background: var(--ws2-surface); box-shadow: var(--ws2-shadow); }
+.webssh-auth .auth-context-panel { min-height: 60px; padding: 12px 24px; background: var(--ws2-canvas); }
+.webssh-auth .auth-brand-lockup { justify-content: flex-start; gap: 12px; }
+.webssh-auth .auth-product-logo { width: 32px; height: 32px; padding: 0; background: transparent; }
+.webssh-auth .auth-brand-name, .account-brand-name { font-size: 21px; font-weight: 600; letter-spacing: -.025em; }
+.webssh-auth .auth-access-dock .auth-card { padding: 24px; border-radius: 0; }
+.webssh-auth .auth-access-dock .auth-header h1 { font-size: 24px; line-height: 1.25; letter-spacing: -.025em; }
+.webssh-auth .auth-access-dock .auth-header p { font-size: 14px; line-height: 1.5; }
+.webssh-auth .auth-form-panel :is(label, .field-hint, .auth-footer) { font-size: 14px; }
+.webssh-auth .auth-form-panel :is(.form-control, .btn-primary) { min-height: 42px; border-radius: 5px; font-size: 15px; }
+.webssh-auth .auth-method-switcher { border-radius: 5px; }
+.webssh-auth .auth-method-option { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 6px; border-radius: 3px; min-height: 56px; }
+.webssh-auth .auth-method-option strong { font-size: 13px; overflow-wrap: normal; hyphens: auto; }
+.webssh-auth .auth-method-option small { font-size: 12px; line-height: 1.35; overflow-wrap: normal; hyphens: auto; }
+.webssh-auth .auth-credentials-zone { margin-top: 18px; }
+body.webssh-ui.webssh-auth[data-theme]::before { position: fixed; inset: 0; top: 50%; bottom: auto; transform: translateY(-50%); width: 100%; height: min(100dvh, var(--theme-scene-max-height)); max-width: var(--theme-scene-max-width); margin-inline: auto; mask-image: linear-gradient(90deg, transparent, black 10%, black 90%, transparent), linear-gradient(180deg, transparent, black 10%, black 90%, transparent); mask-composite: intersect; background-size: cover; opacity: 1; background-image: linear-gradient(90deg, color-mix(in srgb, var(--ws2-canvas) 55%, transparent), color-mix(in srgb, var(--ws2-canvas) 12%, transparent)), var(--theme-scene-image); }
+.webssh-auth .auth-instance-state { font-size: 13px; }
+.webssh-auth .auth-utility-bar { position: relative; z-index: 2; background: var(--ws2-canvas); padding: 8px 16px; border-bottom: 1px solid var(--ws2-border); }
+.webssh-account .header { min-height: 44px; background: var(--ws2-canvas); border-bottom: 1px solid var(--ws2-border); }
+.webssh-account .header-content { min-height: 44px; padding: 4px 20px; }
+.webssh-account .settings-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ws2-text); text-decoration: none; }
+.webssh-account .settings-brand .app-brand-logo { width: 28px; height: 28px; padding: 0; }
+.webssh-account .admin-content { padding: 20px 24px 48px; }
+.webssh-account .admin-page-header { padding: 16px 18px; margin-bottom: 20px; border: 1px solid var(--ws2-border); border-radius: 5px; background-color: var(--ws2-canvas); background-image: linear-gradient(90deg, var(--ws2-canvas) 45%, color-mix(in srgb, var(--ws2-canvas) 72%, transparent)), var(--theme-scene-image); background-position: center, 80% 48%; background-size: cover; }
+.webssh-account .admin-settings-intro { min-width: 0; }
+.webssh-account .admin-settings-intro :is(h3, p) { overflow-wrap: anywhere; hyphens: auto; }
+.webssh-account .admin-page-header h2 { font-size: 24px; line-height: 1.25; letter-spacing: -.025em; }
+.webssh-account .admin-page-header p { font-size: 14px; line-height: 1.5; max-width: 72ch; margin-top: 8px; }
+.webssh-account .admin-navigation { padding: 16px 10px; }
+.webssh-account .admin-tab { min-height: 38px; padding: 8px 10px; border-radius: 4px; font-size: 14px; }
+.webssh-account :is(.admin-settings-surface, .admin-setting-row, .security-assurance-overview, .operations-grid > section) { border-radius: 5px; }
+.webssh-account :is(.btn, .form-control) { min-height: 38px; border-radius: 5px; font-size: 14px; }
+.webssh-account :is(.admin-muted, .admin-settings-row, .admin-auth-feature-row, .admin-table) { font-size: 14px; line-height: 1.5; }
+.webssh-account .admin-table th { font-size: 13px; padding-block: 10px; }
+.webssh-account .admin-table td { padding-block: 12px; }
+.webssh-account .admin-user-toolbar { padding: 14px; border-radius: 5px 5px 0 0; }
+body.webssh-ui.webssh-account[data-theme]::before { display: none; }
+body.webssh-ui.webssh-account[data-theme="werkbank"] .header,
+body.webssh-ui.webssh-auth[data-theme="werkbank"] .auth-context-panel { background: #dfd1b8; color: #27251e; --ws2-text: #27251e; --ws2-text-secondary: #4b4438; --ws2-text-muted: #5d5345; --ws2-border: #a6977c; --ws2-surface: #dfd1b8; --ws2-row-hover: #cbbca2; --ui-action-bg: #27251e; --ui-action-fg: #f2e8d5; --ui-action-hover: #403b30; }
+.webssh-account[data-theme="werkbank"] .settings-brand { color: #27251e; }
+.webssh-account[data-theme="werkbank"] .header .app-brand-logo,
+.webssh-auth[data-theme="werkbank"] .auth-context-panel .auth-product-logo { --brand-canvas: #dfd1b8; --brand-accent: #27251e; }
+@media (min-width: 1101px) {
+    .webssh-account .admin-settings-surface:has(> .admin-settings-intro) { grid-template-columns: 190px minmax(0, 1fr); column-gap: 24px; padding-block: 18px; }
+    .webssh-account .admin-settings-intro h3 { font-size: 17px; }
+    .webssh-account .admin-settings-surface > :is(.admin-settings-row, .admin-auth-feature-row) { padding: 14px 18px; }
+}
+@media (max-width: 767px) {
+    .webssh-auth .auth-shell-content { width: calc(100% - 24px); margin-block: 12px; }
+    .webssh-auth .auth-context-panel { min-height: 52px; padding: 10px 16px; }
+    .webssh-auth .auth-access-dock .auth-card { padding: 20px 16px; }
+    .webssh-auth .auth-access-dock .auth-header h1 { font-size: 22px; }
+    .webssh-auth .auth-method-option small { display: none; }
+    .webssh-account .header-content { padding-inline: 12px; }
+    .webssh-account .admin-content { padding: 16px 12px 36px; }
+    .webssh-account .admin-page-header { padding: 14px; }
+    .webssh-account .admin-page-header h2 { font-size: 22px; }
+    .webssh-account :is(.btn, .form-control), .webssh-auth .auth-form-panel :is(.form-control, .btn-primary) { min-height: 44px; }
+}
+@media (max-height: 740px) and (min-width: 768px) {
+    .webssh-auth .auth-shell-content { margin-block: 12px; }
+    .webssh-auth .auth-access-dock .auth-card { padding-block: 18px; }
+    .webssh-auth .auth-header { margin-bottom: 12px; }
+    .webssh-ui.webssh-auth .auth-form-panel .form-control { height: 44px; padding-block: 10px; }
+    .webssh-ui.webssh-auth .auth-form-panel .btn-primary { min-height: 44px; padding-block: 10px; }
+}
+
+@media (max-width: 767px) {
+    body.webssh-ui.webssh-auth[data-theme]::before { top: 0; height: 100dvh; max-width: none; transform: none; mask-image: linear-gradient(180deg, black 60%, transparent); }
+}
+
+@media (max-width: 767px) and (max-height: 640px) {
+    .webssh-auth .auth-shell-content { margin-block: 4px; }
+    .webssh-auth .auth-context-panel { min-height: 44px; padding: 6px 14px; }
+    .webssh-auth .auth-access-dock .auth-card { padding: 12px 14px; }
+    .webssh-auth .auth-access-dock .auth-header h1 { font-size: 21px; }
+    .webssh-auth .auth-form-panel .form-group { margin-bottom: 10px; }
+    .webssh-auth .auth-credentials-zone { margin-top: 12px; }
+    .webssh-auth .auth-form-panel .auth-footer { margin-top: 12px; padding-top: 10px; font-size: 13px; }
+    .webssh-auth .auth-method-option { min-height: 48px; }
+}
+
+@media (max-width: 600px) {
+    .webssh-auth .auth-instance-state > [data-i18n="auth.instanceStatus"] { display: none; }
+}
+@media (max-width: 767px) and (max-height: 640px) {
+    .webssh-ui.webssh-auth .auth-utility-bar { margin: 4px 12px 0; width: calc(100% - 24px); padding: 4px 8px; min-height: 40px; }
+    .webssh-ui.webssh-auth .auth-form-panel .form-control { height: 44px; padding-block: 10px; }
+    .webssh-ui.webssh-auth .auth-form-panel .btn-primary { min-height: 44px; padding-block: 10px; }
+}
+.webssh-auth .auth-method-switcher[hidden] { display: none; }
+body.webssh-ui.webssh-auth[data-theme]::before {
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    max-width: none;
+    transform: none;
+    mask-image: none;
+    background-size: cover;
+}

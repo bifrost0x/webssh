@@ -46,6 +46,7 @@ FORBIDDEN_DIRECTORIES = frozenset({
     '.cursor',
     '.gemini',
     '.junie',
+    '.impeccable',
     '.pytest_cache',
     '.superpowers',
     '.test-run.tmp',

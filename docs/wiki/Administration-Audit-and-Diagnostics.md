@@ -141,7 +141,9 @@ line. Load peaks remain visible above 100%. Measurement receipt time and remote
 inventory timestamp are displayed separately.
 
 Network rates sum non-loopback interfaces and may count traffic again across
-bridges or virtual interfaces. Process CPU values come from `ps` lifetime
+bridges or virtual interfaces. Missing or invalid counters are not zero readings.
+After a missing counter sample, the first valid sample establishes a new baseline;
+a rate appears only after the next valid sample. Process CPU values come from `ps` lifetime
 averages, not the current sampling interval; compare them with the live CPU
 trend. Inventory commands remain explicit clipboard actions. No extra remote
 commands or automatic interventions are performed by the interpretation panel.

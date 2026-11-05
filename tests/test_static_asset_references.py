@@ -77,9 +77,10 @@ def test_theme_backgrounds_have_a_small_first_load_budget():
 
 
 def test_theme_scenes_have_a_small_first_load_budget():
-    source = Path('static/css/midnight-ui.css').read_text(encoding='utf-8')
+    source = '\n'.join(path.read_text(encoding='utf-8')
+                       for path in Path('static/css').glob('*.css'))
     names = re.findall(r'images/theme-scenes/([^?"\)]+)', source)
-    assert len(names) == len(set(names)) == 9
+    assert len(set(names)) == 10
     assert set(names) == {asset.name for asset in Path('static/images/theme-scenes').glob('*')}
     for name in names:
         assert (Path('static/images/theme-scenes') / name).stat().st_size < 150_000, name

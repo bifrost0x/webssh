@@ -8,6 +8,7 @@ import threading
 from types import MappingProxyType
 from typing import Any
 
+from .app_settings import runtime_feature_enabled
 from .file_backend import FileBackend
 
 
@@ -281,7 +282,7 @@ def _sftp_descriptor(
     label = str(display_name) if display_name else f'{safe_username}@{safe_host}'
     capabilities = SFTP_CAPABILITIES
     import config
-    if config.SFTP_CHMOD_ENABLED:
+    if runtime_feature_enabled('sftp_chmod_enabled'):
         from .sftp_handler import get_ssh_client
         client = get_ssh_client(handle_id)
         transport = client.get_transport() if client is not None else None

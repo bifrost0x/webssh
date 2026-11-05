@@ -8,6 +8,14 @@ global.navigator = {};
 require('../../static/js/terminal-manager.js');
 const TerminalManager = global.window.TerminalManager;
 
+test('OSC stripping preserves text between separate BEL and ST strings', () => {
+    assert.equal(TerminalManager.stripAnsiSequences('before\x1b]0;one\x1b\\middle\x1b]0;two\x07after'), 'beforemiddleafter');
+});
+
+test('unterminated OSC strings at the transcript limit are discarded', () => {
+    assert.equal(TerminalManager.stripAnsiSequences('before' + '\x1b]'.repeat(100000)), 'before');
+});
+
 test('transcript export preserves text before CRLF line endings', () => {
     TerminalManager.transcripts = {
         session: ['user@host:~$ echo hello\r', '\n\x1b[32mhello\x1b[0m\r', '\nuser@host:~$ '],

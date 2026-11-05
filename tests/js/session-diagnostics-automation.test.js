@@ -1,0 +1,41 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+const {hostAutomationRuns, createAutomationRunsController} = require('../../static/js/session-diagnostics.js');
+const session = {id:'session-a', profileId:'profile-a', host:'host-a', port:22, username:'admin'};
+const target = {id:'profile-a', host:'host-a', port:22, username:'admin', status:'failed', steps:[]};
+const run = (id, overrides={}) => ({id, created_at:`2026-11-${String(id).padStart(2,'0')}T10:00:00Z`, status:'succeeded', targets:[{...target, ...overrides}]});
+const tick = () => new Promise(resolve => setImmediate(resolve));
+test('matches profile and complete endpoint, retains target status and bounds latest history', () => {
+    const rows = hostAutomationRuns([run(1),run(2),run(3),run(4),run(5),run(6),run(7,{id:'other'}),run(8,{host:'old'}),run(9,{port:2222}),run(10,{username:'root'})],session);
+    assert.deepEqual(rows.map(row=>row.run.id),[6,5,4,3,2]);
+    assert.equal(rows[0].target.status,'failed');
+    assert.deepEqual(hostAutomationRuns([run(1)], {...session,profileId:null}),[]);
+});
+test('late host response cannot replace selected host; activation refreshes without polling', async () => {
+    const requests=[]; const views=[];
+    const controller=createAutomationRunsController({enabled:()=>true,render:view=>views.push(view), fetchRuns:signal=>new Promise(resolve=>requests.push({resolve,signal}))});
+    controller.update(session,true);
+    controller.update(session,true);
+    assert.equal(requests.length,1);
+    controller.update({...session,id:'session-b',profileId:'profile-b'},true);
+    assert.equal(requests[0].signal.aborted,true);
+    requests[1].resolve({runs:[run(2,{id:'profile-b'})]}); await tick();
+    requests[0].resolve({runs:[run(1)]}); await tick();
+    assert.equal(views.at(-1).rows[0].run.id,2);
+    controller.update(session,false);
+    assert.equal(views.at(-1).status,'hidden');
+    controller.update(session,true);
+    assert.equal(requests.length,3);
+    controller.destroy();
+    requests[2].resolve({runs:[run(1)]}); await tick();
+    assert.equal(views.at(-1).status,'loading');
+});
+test('disabled and unbound sessions do not fetch; errors clear old results and explicit retry recovers',async()=>{
+    let enabled=false; let calls=0; let reject=false; const views=[];
+    const controller=createAutomationRunsController({enabled:()=>enabled,render:view=>views.push(view),fetchRuns:async()=>{calls++;if(reject)throw Error('private server detail');return {runs:[]};}});
+    controller.update(session,true); assert.equal(calls,0);
+    enabled=true; controller.update({...session,profileId:null},true); assert.equal(calls,0); assert.equal(views.at(-1).status,'unbound');
+    controller.update(session,true); await tick(); assert.equal(views.at(-1).status,'ready');
+    reject=true; await controller.refresh(); assert.deepEqual(views.at(-1),{status:'error',rows:[]});
+    reject=false; await controller.refresh(); assert.equal(views.at(-1).status,'ready');
+});

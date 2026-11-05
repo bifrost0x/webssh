@@ -2,8 +2,10 @@ const CommandLibrary = {
     commands: [],
     filteredCommands: [],
     currentOs: 'all',
+    currentSource: 'all',
     searchQuery: '',
     editingCommandId: null,
+    selectedCommandId: null,
     renderCursor: 0,
     chunkSize: 40,
     pendingSaveCallback: null,
@@ -52,6 +54,7 @@ const CommandLibrary = {
     },
 
     setupEventListeners() {
+        this.setupLibraryLayout();
         const commandLibraryBtn = document.getElementById('commandLibraryBtn');
         if (commandLibraryBtn) {
             commandLibraryBtn.addEventListener('click', () => {
@@ -112,6 +115,54 @@ const CommandLibrary = {
                 this.searchCommands(this.searchQuery);
             });
         });
+    },
+
+    setupLibraryLayout() {
+        const toolbar = document.querySelector?.('#commandLibraryPanel .command-toolbar');
+        if (!toolbar?.insertBefore) return;
+        if (!document.getElementById('commandSourceFilter')) {
+            const label = document.createElement('label');
+            label.className = 'command-source-filter';
+            const text = document.createElement('span');
+            text.textContent = window.i18n?.t('commands.source') || 'Source';
+            text.setAttribute('data-i18n', 'commands.source');
+            const select = document.createElement('select');
+            select.id = 'commandSourceFilter';
+            select.className = 'form-control';
+            [['all', 'commands.sourceAll', 'All sources'], ['system', 'commands.sourceSystem', 'System'], ['personal', 'commands.sourcePersonal', 'Personal']]
+                .forEach(([value, key, fallback]) => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = window.i18n?.t(key) || fallback;
+                    option.setAttribute('data-i18n', key);
+                    select.append(option);
+                });
+            select.value = this.currentSource;
+            select.addEventListener('change', () => {
+                this.currentSource = select.value;
+                this.searchCommands(this.searchQuery);
+            });
+            label.append(text, select);
+            toolbar.insertBefore(label, toolbar.querySelector('.management-panel-actions'));
+        }
+        const header = document.querySelector('#commandLibraryPanel .commands-table-header');
+        if (header) {
+            header.replaceChildren();
+            [
+                ['star_border', 'material-icons', null],
+                [window.i18n?.t('commands.name') || 'Name', '', 'commands.name'],
+                [window.i18n?.t('commands.preview') || 'Preview', '', 'commands.preview'],
+                [window.i18n?.t('commands.operatingSystems') || 'Operating systems', '', 'commands.operatingSystems'],
+                [window.i18n?.t('commands.source') || 'Source', '', 'commands.source'],
+                [window.i18n?.t('common.actions') || 'Actions', '', 'common.actions'],
+            ].forEach(([text, className, key]) => {
+                const cell = document.createElement('span');
+                cell.textContent = text;
+                cell.className = className;
+                if (key) cell.setAttribute('data-i18n', key);
+                header.append(cell);
+            });
+        }
     },
 
     loadCommands() {
@@ -188,8 +239,9 @@ const CommandLibrary = {
 
     searchCommands(query) {
         this.searchQuery = query || '';
-        const commands = this.commands.filter(command => this.currentOs === 'all'
-            || (command.os || ['all']).some(os => os.toLowerCase() === 'all' || os.toLowerCase() === this.currentOs.toLowerCase()));
+        const commands = this.commands.filter(command => (this.currentOs === 'all'
+            || (command.os || ['all']).some(os => os.toLowerCase() === 'all' || os.toLowerCase() === this.currentOs.toLowerCase()))
+            && (this.currentSource === 'all' || (command.isSystem ? 'system' : 'personal') === this.currentSource));
         if (!query) {
             this.filteredCommands = commands;
         } else {
@@ -223,6 +275,10 @@ const CommandLibrary = {
 
     renderCommandsList() {
         const container = document.getElementById('commandsList');
+        if (!this.filteredCommands.some(command => command.id === this.selectedCommandId)) {
+            this.selectedCommandId = null;
+        }
+        this.renderCommandDetails();
 
         if (this.filteredCommands.length === 0) {
             container.innerHTML = '';
@@ -243,6 +299,10 @@ const CommandLibrary = {
             if (container.scrollTop + container.clientHeight >= container.scrollHeight - 40) {
                 this.renderNextChunk();
             }
+        };
+        const wrapper = container.closest('.commands-table-wrapper');
+        if (wrapper) wrapper.onscroll = () => {
+            if (wrapper.scrollTop + wrapper.clientHeight >= wrapper.scrollHeight - 40) this.renderNextChunk();
         };
         const body = container.closest('.command-workspace-body');
         if (body) body.onscroll = () => {
@@ -268,43 +328,58 @@ const CommandLibrary = {
         this.filteredCommands.slice(start, end).forEach(cmd => {
             const row = document.createElement('div');
             row.className = 'command-row';
+            row.dataset.commandId = cmd.id;
+            row.classList.toggle('is-selected', cmd.id === this.selectedCommandId);
             if (cmd.isSystem) {
                 row.classList.add('system-command');
             }
 
             row.innerHTML = `
+                <div class="command-cell command-star"></div>
                 <div class="command-cell command-name">
-                    <strong>${this.escapeHtml(cmd.name)}</strong>
-                    <div class="command-os-badges">
-                        ${cmd.os.map(os => `<span class="os-badge">${this.escapeHtml(os)}</span>`).join('')}
-                    </div>
+                    <button type="button" class="command-inspect-button" data-cmd-id="${this.escapeHtml(cmd.id)}" aria-controls="commandLibraryDetails" aria-expanded="${cmd.id === this.selectedCommandId}">${this.escapeHtml(cmd.name)}</button>
+                    <div class="command-desc">${this.escapeHtml(cmd.description)}</div>
                 </div>
                 <div class="command-cell command-text">
-                    <code>${this.escapeHtml(cmd.command)}</code>
+                    <code>${this.escapeHtml(cmd.command + (cmd.parameters ? ` ${cmd.parameters}` : ''))}</code>
                 </div>
-                <div class="command-cell command-params">
-                    <code>${this.escapeHtml(cmd.parameters)}</code>
+                <div class="command-cell command-os-badges">
+                    ${cmd.os.map(os => `<span class="os-badge">${this.escapeHtml(os)}</span>`).join('')}
                 </div>
-                <div class="command-cell command-desc">
-                    ${this.escapeHtml(cmd.description)}
+                <div class="command-cell command-source-label">
+                    <span class="material-icons" aria-hidden="true">${cmd.isSystem ? 'lock' : 'person'}</span>
+                    <span>${this.escapeHtml(window.i18n?.t(cmd.isSystem ? 'commands.sourceSystem' : 'commands.sourcePersonal') || (cmd.isSystem ? 'System' : 'Personal'))}</span>
                 </div>
                 <div class="command-cell command-actions">
                     ${cmd.isSystem ? `
-                        <button class="btn btn-secondary cmd-copy" data-cmd-id="${this.escapeHtml(cmd.id)}" title="${this.escapeHtml(window.SessionCommandLauncher.t('commands.copyToMine', 'Add to my commands'))}" aria-label="${this.escapeHtml(window.SessionCommandLauncher.t('commands.copyToMine', 'Add to my commands'))}"><span class="material-icons" aria-hidden="true">add</span><span>${this.escapeHtml(window.SessionCommandLauncher.t('commands.copyToMine', 'Add to my commands'))}</span></button>
+                        <button type="button" class="btn-icon cmd-copy" data-cmd-id="${this.escapeHtml(cmd.id)}" title="${this.escapeHtml(window.SessionCommandLauncher.t('commands.copyToMine', 'Add to my commands'))}" aria-label="${this.escapeHtml(window.SessionCommandLauncher.t('commands.copyToMine', 'Add to my commands'))}"><span class="material-icons" aria-hidden="true">content_copy</span></button>
                     ` : `
-                        <button class="btn-icon cmd-edit material-icons" data-cmd-id="${this.escapeHtml(cmd.id)}" title="${this.escapeHtml(window.SessionCommandLauncher.t('commands.edit', 'Edit'))}" aria-label="${this.escapeHtml(window.SessionCommandLauncher.t('commands.edit', 'Edit'))}">edit</button>
-                        <button class="btn-icon cmd-delete material-icons" data-cmd-id="${this.escapeHtml(cmd.id)}" title="${this.escapeHtml(window.SessionCommandLauncher.t('commands.delete', 'Delete'))}" aria-label="${this.escapeHtml(window.SessionCommandLauncher.t('commands.delete', 'Delete'))}">delete</button>
+                        <button type="button" class="btn-icon cmd-edit" data-cmd-id="${this.escapeHtml(cmd.id)}" title="${this.escapeHtml(window.SessionCommandLauncher.t('commands.edit', 'Edit'))}" aria-label="${this.escapeHtml(window.SessionCommandLauncher.t('commands.edit', 'Edit'))}"><span class="material-icons" aria-hidden="true">edit</span></button>
                     `}
+                    <details class="command-row-menu"><summary class="btn-icon" aria-label="${this.escapeHtml(window.i18n?.t('common.actions') || 'Actions')}"><span class="material-icons" aria-hidden="true">more_horiz</span></summary><div class="command-row-menu-items" popover="auto">
+                        <button type="button" class="btn btn-secondary cmd-details" data-cmd-id="${this.escapeHtml(cmd.id)}">${this.escapeHtml(window.i18n?.t('commands.details') || 'Command details')}</button>
+                        ${cmd.isSystem ? '' : `<button type="button" class="btn btn-secondary cmd-delete" data-cmd-id="${this.escapeHtml(cmd.id)}">${this.escapeHtml(window.i18n?.t('commands.delete') || 'Delete')}</button>`}
+                    </div></details>
                 </div>
             `;
 
             row.classList.add('command-kind-command');
-            const badge = document.createElement('span');
-            badge.className = 'command-type-badge';
-            badge.textContent = window.SessionCommandLauncher.t('commands.singleCommand', 'Command');
-            row.querySelector('.command-name')?.prepend(badge);
             const favorite = window.CommandWorkspace?.favoriteButton?.('command', cmd.id);
-            if (favorite) row.querySelector('.command-actions')?.prepend(favorite);
+            if (favorite) row.querySelector('.command-star')?.append(favorite);
+            const menu = row.querySelector('.command-row-menu');
+            const menuItems = row.querySelector('.command-row-menu-items');
+            if (menu && menuItems?.showPopover) {
+                menu.addEventListener('toggle', () => {
+                    if (!menu.open) { menuItems.hidePopover(); return; }
+                    menuItems.showPopover();
+                    const anchor = menu.getBoundingClientRect();
+                    menuItems.style.left = `${Math.max(8, anchor.right - menuItems.offsetWidth)}px`;
+                    menuItems.style.top = `${Math.max(8, Math.min(anchor.bottom + 4, window.innerHeight - menuItems.offsetHeight - 8))}px`;
+                });
+                menuItems.addEventListener('toggle', event => {
+                    if (event.newState === 'closed') menu.open = false;
+                });
+            }
             container.appendChild(row);
         });
     },
@@ -316,17 +391,154 @@ const CommandLibrary = {
         container.onclick = (event) => {
             const btn = event.target.closest('button[data-cmd-id]');
             if (!btn || !container.contains(btn)) {
+                const row = event.target.closest('.command-row[data-command-id]');
+                if (!row || !container.contains(row)
+                    || event.target.closest('button, a, input, select, textarea, summary, details')) return;
+                const selection = window.getSelection?.();
+                if (selection?.type === 'Range' && selection.containsNode(row, true)) return;
+                this.selectCommand(row.dataset.commandId);
                 return;
             }
             const cmdId = btn.dataset.cmdId;
+            const menu = btn.closest('.command-row-menu');
+            if (menu) menu.open = false;
             if (btn.classList.contains('cmd-copy')) {
                 this.copyCommand(cmdId);
             } else if (btn.classList.contains('cmd-edit')) {
                 this.editCommand(cmdId);
             } else if (btn.classList.contains('cmd-delete')) {
                 this.deleteCommand(cmdId);
+            } else if (btn.classList.contains('command-inspect-button') || btn.classList.contains('cmd-details')) {
+                this.selectCommand(cmdId);
             }
         };
+    },
+
+    commandSourceLabel(command) {
+        const key = command.isSystem ? 'commands.systemSource' : 'commands.personalSource';
+        return window.i18n?.t(key) || (command.isSystem ? 'System · read-only' : 'Personal');
+    },
+
+    selectCommand(commandId) {
+        if (!this.commands.some(command => command.id === commandId)) return;
+        this.selectedCommandId = commandId;
+        document.getElementById('commandsList')?.querySelectorAll('[data-command-id]').forEach(row => {
+            const selected = row.dataset.commandId === commandId;
+            row.classList.toggle('is-selected', selected);
+            row.querySelector('.command-inspect-button')?.setAttribute('aria-expanded', String(selected));
+        });
+        this.renderCommandDetails();
+        document.getElementById('commandLibraryDetails')?.focus({preventScroll: true});
+    },
+
+    renderCommandDetails() {
+        const panel = document.getElementById('commandLibraryPanel');
+        if (!panel?.append) return;
+        const command = this.commands.find(item => item.id === this.selectedCommandId);
+        panel.classList.toggle('has-command-details', Boolean(command));
+        let details = document.getElementById('commandLibraryDetails');
+        if (!command) {
+            details?.remove();
+            return;
+        }
+        if (!details) {
+            details = document.createElement('aside');
+            details.id = 'commandLibraryDetails';
+            details.className = 'command-library-details';
+            details.tabIndex = -1;
+            details.setAttribute('aria-label', window.i18n?.t('commands.details') || 'Command details');
+            panel.append(details);
+        }
+        details.replaceChildren();
+        const header = document.createElement('div');
+        header.className = 'management-inspector-heading';
+        const title = document.createElement('h3');
+        title.textContent = command.name;
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'btn-icon inspector-return';
+        const closeIcon = document.createElement('span');
+        closeIcon.className = 'material-icons inspector-return-close';
+        closeIcon.setAttribute('aria-hidden', 'true');
+        closeIcon.textContent = 'close';
+        const arrow = document.createElement('span');
+        arrow.className = 'material-icons inspector-return-arrow';
+        arrow.setAttribute('aria-hidden', 'true');
+        arrow.textContent = 'arrow_back';
+        const label = document.createElement('span');
+        label.className = 'inspector-return-label';
+        label.textContent = window.i18n?.t('common.backToList') || 'Back to list';
+        close.append(closeIcon, arrow, label);
+        close.setAttribute('aria-label', label.textContent);
+        close.onclick = () => {
+            this.selectedCommandId = null;
+            this.renderCommandDetails();
+            document.getElementById('commandsList')?.querySelectorAll('[data-command-id]').forEach(row => {
+                row.classList.remove('is-selected');
+                const button = row.querySelector('.command-inspect-button');
+                button?.setAttribute('aria-expanded', 'false');
+                if (row.dataset.commandId === command.id) button?.focus({preventScroll: true});
+            });
+        };
+        header.append(title, close);
+        const source = document.createElement('p');
+        source.className = 'command-source-label';
+        source.textContent = this.commandSourceLabel(command);
+        details.append(header, source);
+        const fields = [
+            ['commands.command', 'Command', command.command, true],
+            ...(command.parameters ? [
+                ['commands.parameters', 'Parameters', command.parameters, true],
+                ['commands.preview', 'Preview', `${command.command} ${command.parameters}`, true],
+            ] : []),
+            ['commands.description', 'Description', command.description, false],
+            ['commands.operatingSystems', 'Operating systems', (command.os || ['all']).join(', '), false],
+        ];
+        fields.forEach(([key, fallback, value, code]) => {
+            const field = document.createElement('div');
+            field.className = 'command-detail-field';
+            const label = document.createElement('h4');
+            label.textContent = window.i18n?.t(key) || fallback;
+            const content = document.createElement(code ? 'pre' : 'p');
+            content.textContent = value || '—';
+            field.append(label, content);
+            details.append(field);
+        });
+        if (command.isSystem && command.parameters) {
+            const notice = document.createElement('p');
+            notice.className = 'command-template-hint';
+            notice.textContent = window.i18n?.t('commands.templateHint') || 'Library defaults, not values detected on this host. Review arguments before insertion.';
+            details.append(notice);
+        }
+        const actions = document.createElement('div');
+        actions.className = 'management-inspector-actions';
+        const action = (key, fallback, callback, primary = false) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `btn ${primary ? 'btn-primary' : 'btn-secondary'}`;
+            button.textContent = window.i18n?.t(key) || fallback;
+            button.onclick = callback;
+            actions.append(button);
+        };
+        if (command.isSystem) action('commands.copyToMine', 'Add to my commands', () => this.copyCommand(command.id), true);
+        else {
+            action('commands.edit', 'Edit', () => this.editCommand(command.id), true);
+            action('commands.delete', 'Delete', () => this.deleteCommand(command.id));
+        }
+        const favorite = window.CommandWorkspace?.favoriteButton?.('command', command.id);
+        if (favorite) actions.append(favorite);
+        details.append(actions);
+        const hint = document.createElement('p');
+        hint.className = 'command-execution-hint';
+        const hintIcon = document.createElement('span');
+        hintIcon.className = 'material-icons';
+        hintIcon.setAttribute('aria-hidden', 'true');
+        hintIcon.textContent = 'info';
+        const hintText = document.createElement('span');
+        hintText.setAttribute('data-i18n', 'commands.executionHint');
+        hintText.textContent = window.i18n?.t('commands.executionHint') || 'Run commands from the command tool in a session.';
+        hint.append(hintIcon, hintText);
+        details.append(hint);
     },
 
     showAddCommandForm(options = {}) {
@@ -408,6 +620,11 @@ const CommandLibrary = {
         return JSON.stringify({fields: ['commandFormName', 'commandFormCommand', 'commandFormParams',
             'commandFormDescription', 'commandFormCategory'].map(id => document.getElementById(id)?.value || ''),
         os: Array.from(document.querySelectorAll('input[name="commandOs"]:checked')).map(input => input.value)});
+    },
+
+    hasUnsavedChanges() {
+        return document.getElementById('commandFormModal')?.classList.contains('show')
+            && this.formBaseline !== null && this.formSnapshot() !== this.formBaseline;
     },
 
     updateFormPreview() {
@@ -573,7 +790,7 @@ const CommandLibrary = {
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
-        return div.innerHTML;
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 };
 

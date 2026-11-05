@@ -378,6 +378,8 @@ test('mounts with the real top-level const manager pattern', async () => {
         };
         window.setLauncherOpen = open => { launcherOpen = open; };
         const CommandLibrary = {
+            managementOpens: 0,
+            openLibrary() { this.managementOpens += 1; },
             commands: [{
                 id: 'status',
                 name: 'Status',
@@ -486,7 +488,12 @@ test('mounts with the real top-level const manager pattern', async () => {
 
     const manage = context.SessionCommandLauncher.popup.findByText('Manage Commands');
     manage.listeners.click();
+    assert.equal(vm.runInContext('CommandLibrary.managementOpens', context), 1);
+    assert.equal(context.CommandSetManager.managementOpens, 0);
+    context.SessionCommandLauncher.popup.findByText('Command sets').listeners.click();
+    context.SessionCommandLauncher.popup.findByText('Manage Commands').listeners.click();
     assert.equal(context.CommandSetManager.managementOpens, 1);
+    context.SessionCommandLauncher.popup.findByText('Library').listeners.click();
     assert.equal(panel.hidden, false);
     assert.ok(context.SessionCommandLauncher.popup);
     const failureInsert = context.SessionCommandLauncher.popup.findByText('Insert');

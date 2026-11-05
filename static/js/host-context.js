@@ -9,8 +9,9 @@
 
     function createController(deps) {
         const drafts = new Map();
+        const pendingSaves = new Set();
         let epoch = 0;
-        const state = {profileId: null, sessionId: null, content: null, loading: false, dirty: false, error: null};
+        const state = {profileId: null, sessionId: null, content: null, loading: false, saving: false, dirty: false, error: null};
         const changed = () => deps.changed?.(state);
         function currentTarget() {
             const session = deps.getActiveSession?.();
@@ -20,9 +21,10 @@
         const controller = {
             state,
             currentTarget,
+            hasUnsaved: () => pendingSaves.size > 0 || Array.from(drafts.values()).some(draft => draft.dirty),
             async open(profileId, sessionId = null, reload = false) {
                 const token = ++epoch;
-                Object.assign(state, {profileId, sessionId, content: null, loading: Boolean(profileId), dirty: false, error: null});
+                Object.assign(state, {profileId, sessionId, content: null, loading: Boolean(profileId), saving: pendingSaves.has(profileId), dirty: false, error: null});
                 if (!profileId) { changed(); return; }
                 if (drafts.has(profileId) && !reload) {
                     Object.assign(state, drafts.get(profileId), {loading: false});
@@ -50,9 +52,10 @@
                 deps.updated?.(state);
             },
             async save() {
-                if (!state.content || state.loading || state.saving) return false;
+                if (!state.content || state.loading || pendingSaves.has(state.profileId)) return false;
                 const profileId = state.profileId;
                 const snapshot = copy(state.content);
+                pendingSaves.add(profileId);
                 state.saving = true;
                 changed();
                 try {
@@ -70,8 +73,11 @@
                     if (state.profileId === profileId) state.error = error.code || 'save_failed';
                     return false;
                 } finally {
-                    state.saving = false;
-                    changed();
+                    pendingSaves.delete(profileId);
+                    if (state.profileId === profileId) {
+                        state.saving = false;
+                        changed();
+                    }
                 }
             },
             async directory(path) {
@@ -231,5 +237,5 @@
         open(session?.profileId || null, session ? `${session.username}@${session.host}:${session.port}` : null);
     }
 
-    return {createController, init, open, openActive};
+    return {createController, init, open, openActive, hasUnsaved: () => controller?.hasUnsaved() || false};
 }));

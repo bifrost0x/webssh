@@ -17,6 +17,8 @@ RUNTIME_DIR = PROJECT_ROOT / "tests/integration/paramiko5/runtime"
 INTEGRATION_MODULES = [
     "tests/integration/test_paramiko5_openssh.py",
     "tests/integration/test_paramiko5_socketio.py",
+    # The Socket.IO singleton fixture owns its initial server registration.
+    "tests/integration/test_automation_openssh.py",
 ]
 
 

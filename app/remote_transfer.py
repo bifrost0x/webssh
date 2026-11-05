@@ -220,6 +220,8 @@ def _copy_file(
                             'file_transferred': copied,
                             'file_size': declared_size,
                         })
+                if copied < declared_size:
+                    raise FileSourceChanged('Source changed during transfer')
                 _check_cancelled(cancel_event)
     except (
         RemoteTransferError,
