@@ -694,17 +694,43 @@ def test_env_example_documents_every_runtime_environment_variable():
     assert runtime_names - documented_names == set()
 
 
-def test_compose_retains_advanced_operator_choices_and_runtime_overrides():
+def test_homelab_compose_exposes_major_operator_choices():
     compose = Path('docker-compose.yml').read_text(encoding='utf-8')
-    reference = Path('docs/wiki/Configuration-Reference.md').read_text(encoding='utf-8')
-    for name in ('APPLICATION_ROOT', 'BLOCK_INTERNAL_SSH', 'WEBAUTHN_ENABLED',
-                 'OIDC_MFA_AMR_VALUES', 'SFTP_CHMOD_ENABLED', 'SERVER_OPERATIONS_ENABLED',
-                 'SMB_ALLOWED_TARGETS', 'TAILSCALE_SSH_ALLOWED_TARGETS',
-                 'RATELIMIT_STORAGE_URL', 'GUNICORN_THREADS', 'BACKUP_UPLOAD_MAX_SIZE'):
-        assert name in compose
-    for name in ('DEPLOYMENT_PROFILE', 'CORS_ORIGINS', 'TRUSTED_PROXIES',
-                 'SESSION_COOKIE_SECURE', 'BACKUP_RECOVERY_DURABLE'):
-        assert name in compose
+    expected_names = {
+        'APPLICATION_ROOT',
+        'AUDIT_EXPORT_ENABLED',
+        'BLOCK_INTERNAL_SSH',
+        'BOOTSTRAP_REGISTRATION_ENABLED',
+        'HOST_KEY_MANAGEMENT_ENABLED',
+        'OIDC_ENABLED',
+        'OIDC_MFA_ACR_VALUES',
+        'OIDC_MFA_AMR_VALUES',
+        'OIDC_PHISHING_RESISTANT_ACR_VALUES',
+        'OIDC_PHISHING_RESISTANT_AMR_VALUES',
+        'OIDC_STEP_UP_ACR_VALUES',
+        'RECOVERY_CODES_ENABLED',
+        'REGISTRATION_ENABLED',
+        'STEP_UP_MAX_AGE_SECONDS',
+        'TAILSCALE_SSH_ENABLED',
+        'TOTP_ENABLED',
+        'TMUX_DEFAULT',
+        'TMUX_ENABLED',
+        'WEBAUTHN_ENABLED',
+    }
+
+    assert {
+        name for name in expected_names if name not in compose
+    } == set()
+
+
+def test_compose_exposes_totp_capability_without_bypassing_admin_gate():
+    compose = Path('docker-compose.yml').read_text(encoding='utf-8')
+    production = Path('docker-compose.production.yml').read_text(
+        encoding='utf-8'
+    )
+
+    assert 'TOTP_ENABLED=${TOTP_ENABLED:-true}' in compose
+    assert 'TOTP_ENABLED: "${TOTP_ENABLED:-true}"' in production
 
 
 def test_totp_capability_retains_explicit_operator_kill_switch():
