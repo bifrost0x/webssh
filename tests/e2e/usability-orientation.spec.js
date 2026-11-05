@@ -62,4 +62,3 @@ test('compact command inspector offers a named return and restores selection foc
     await expect(inspect).toBeFocused();
     await expect(page.locator('#commandLibraryDetails')).toHaveCount(0);
 });
-

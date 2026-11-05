@@ -121,4 +121,3 @@ async function openWorkspaceWithSources(page) {
         window.sftpFileManager.openSourceLauncher('left');
     });
 }
-

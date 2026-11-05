@@ -106,4 +106,3 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => {
     await assertNoExternalRequests(page);
 });
-

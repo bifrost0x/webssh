@@ -63,4 +63,3 @@ for(const width of [390,820,1280,1920])test(`closing tools returns input to the 
  await page.locator('#contextWorkspaceClose').click();
  await expect(page.locator('#terminal-journey-terminal .xterm-helper-textarea').first()).toBeFocused();
 });
-
