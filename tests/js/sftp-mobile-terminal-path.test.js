@@ -7,9 +7,20 @@ require('../../static/js/sftp-file-manager.js');
 const Manager = window.SFTPFileManager;
 
 function fixture() {
+    const element = () => ({
+        className: '', children: [], disabled: false,
+        classList: { contains: () => false, toggle() {} },
+        append(...children) { children.forEach(child => { child.parentElement = this; this.children.push(child); }); },
+        before(child) { child.parentElement = this.parentElement; },
+        querySelector() { return this.children[1]?.children[0] || this; },
+        setAttribute() {}, removeAttribute() {}, focus() {},
+    });
+    document.createElement = element;
+    document.createTextNode = textContent => ({textContent});
+    const parent = element();
     const buttons = {};
     const sheet = {
-        querySelector: selector => buttons[selector] ||= { disabled: false, focus() {} },
+        querySelector: selector => buttons[selector] ||= Object.assign(element(), {parentElement: parent}),
         classList: { toggle() {}, add() {} }, removeAttribute() {}, setAttribute() {},
     };
     global.document.getElementById = () => sheet;

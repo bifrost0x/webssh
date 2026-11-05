@@ -285,14 +285,14 @@ def test_config_rejects_invalid_smb_allowlist_entries(entry):
     assert 'SMB_ALLOWED_TARGETS' in result.stderr
 
 
-def test_totp_is_disabled_by_default():
+def test_totp_capability_is_available_by_default():
     result = _load_config(
         _production_env(),
         'import config; print(config.TOTP_ENABLED)',
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.splitlines()[-1] == 'False'
+    assert result.stdout.splitlines()[-1] == 'True'
 
 
 def test_oidc_assurance_values_default_to_empty_explicit_sets():
@@ -694,43 +694,26 @@ def test_env_example_documents_every_runtime_environment_variable():
     assert runtime_names - documented_names == set()
 
 
-def test_homelab_compose_exposes_major_operator_choices():
+def test_compose_retains_advanced_operator_choices_and_runtime_overrides():
     compose = Path('docker-compose.yml').read_text(encoding='utf-8')
-    expected_names = {
-        'APPLICATION_ROOT',
-        'AUDIT_EXPORT_ENABLED',
-        'BLOCK_INTERNAL_SSH',
-        'BOOTSTRAP_REGISTRATION_ENABLED',
-        'HOST_KEY_MANAGEMENT_ENABLED',
-        'OIDC_ENABLED',
-        'OIDC_MFA_ACR_VALUES',
-        'OIDC_MFA_AMR_VALUES',
-        'OIDC_PHISHING_RESISTANT_ACR_VALUES',
-        'OIDC_PHISHING_RESISTANT_AMR_VALUES',
-        'OIDC_STEP_UP_ACR_VALUES',
-        'RECOVERY_CODES_ENABLED',
-        'REGISTRATION_ENABLED',
-        'STEP_UP_MAX_AGE_SECONDS',
-        'TAILSCALE_SSH_ENABLED',
-        'TOTP_ENABLED',
-        'TMUX_DEFAULT',
-        'TMUX_ENABLED',
-        'WEBAUTHN_ENABLED',
-    }
-
-    assert {
-        name for name in expected_names if name not in compose
-    } == set()
+    reference = Path('docs/wiki/Configuration-Reference.md').read_text(encoding='utf-8')
+    for name in ('APPLICATION_ROOT', 'BLOCK_INTERNAL_SSH', 'WEBAUTHN_ENABLED',
+                 'OIDC_MFA_AMR_VALUES', 'SFTP_CHMOD_ENABLED', 'SERVER_OPERATIONS_ENABLED',
+                 'SMB_ALLOWED_TARGETS', 'TAILSCALE_SSH_ALLOWED_TARGETS',
+                 'RATELIMIT_STORAGE_URL', 'GUNICORN_THREADS', 'BACKUP_UPLOAD_MAX_SIZE'):
+        assert name in compose
+    for name in ('DEPLOYMENT_PROFILE', 'CORS_ORIGINS', 'TRUSTED_PROXIES',
+                 'SESSION_COOKIE_SECURE', 'BACKUP_RECOVERY_DURABLE'):
+        assert name in compose
 
 
-def test_compose_exposes_totp_capability_without_bypassing_admin_gate():
-    compose = Path('docker-compose.yml').read_text(encoding='utf-8')
-    production = Path('docker-compose.production.yml').read_text(
-        encoding='utf-8'
-    )
+def test_totp_capability_retains_explicit_operator_kill_switch():
+    for value, expected in [('true', 'True'), ('false', 'False')]:
+        result = _load_config(_production_env(TOTP_ENABLED=value),
+                              'import config; print(config.TOTP_ENABLED)')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stdout.splitlines()[-1] == expected
 
-    assert 'TOTP_ENABLED=${TOTP_ENABLED:-true}' in compose
-    assert 'TOTP_ENABLED: "${TOTP_ENABLED:-true}"' in production
 
 
 def test_default_compose_has_no_ldap_secret_infrastructure():

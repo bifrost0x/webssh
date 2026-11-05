@@ -52,7 +52,7 @@ def test_session_epoch_invalidates_existing_login(app, client):
     }).status_code == 302
     admin = client.get('/admin')
     assert admin.status_code == 302
-    assert admin.headers['Location'].endswith('/settings#users')
+    assert admin.headers['Location'].endswith('/settings?section=users')
 
     rotate_epoch()
 

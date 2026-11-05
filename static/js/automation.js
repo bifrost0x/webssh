@@ -92,9 +92,16 @@
         target.textContent = message;
         target.hidden = !message;
     }
+    let scheduleHome;
     function availability(enabled) {
         $('automationApp').hidden = !enabled;
         $('automationDisabled').hidden = enabled;
+        const schedules = $('auto-schedules');
+        if (schedules) {
+            if (!scheduleHome) { scheduleHome = document.createComment('schedule section'); schedules.before(scheduleHome); }
+            if (enabled) { scheduleHome.after(schedules); schedules.hidden = selectedTab !== 'schedules'; }
+            else { $('automationDisabled').append(schedules); schedules.hidden = false; }
+        }
     }
     async function api(path, options = {}) {
         const root = document.querySelector('meta[name="app-root"]')?.content || '';
@@ -927,9 +934,9 @@
                 const generation = authorizationGeneration;
                 const result = await api('/api/automation/schedules/' + encodeURIComponent(schedule.id) + '/preview-run', {method:'POST', body:{}});
                 assertAuthorizationCurrent(generation); showRunPreview(result);
-            })); tools.append(execute);
+            })); execute.disabled = $('automationApp').hidden; tools.append(execute);
             const review=node('button',tr('reviewSchedule'),'btn btn-secondary');review.type='button';
-            review.addEventListener('click',()=>openSchedule(schedule));tools.append(review);
+            review.addEventListener('click',()=>openSchedule(schedule));review.disabled=$('automationApp').hidden;tools.append(review);
             const remove=node('button',tr('delete'),'automation-text-button danger');remove.type='button';
             remove.addEventListener('click',()=>action(async()=>{if(await question(tr('deleteSchedule'),tr('deleteScheduleHint'),{confirm:true})!== '')return;await api('/api/automation/schedules/'+encodeURIComponent(schedule.id),{method:'DELETE'});await loadSchedules();}));tools.append(remove);
             row.append(tools);$('scheduleList').append(row);
@@ -1080,7 +1087,7 @@
         translate(); if ($('scheduleFrequency')) updateScheduleBuilder({preserveCron:true}); edit(currentDraft, {preserveSchedule:true}); dirty = wasDirty; renderTargets(); setStage(currentStage, {animate:false});
         historySignature = ''; if (selectedTab === 'runs') action(loadRuns);
     });
-    window.WebSSHAutomation = {openRun, getRunSnapshot, activate: () => action(async () => { try { await loadState(); } catch(error) { if(error.code !== 'disabled')throw error; availability(false); return; } await loadSchedules(); if (selectedTab === 'runs') await loadRuns(); })};
+    window.WebSSHAutomation = {openRun, getRunSnapshot, activate: () => action(async () => { try { await loadState(); } catch(error) { if(error.code !== 'disabled')throw error; availability(false); await loadSchedules(); return; } await loadSchedules(); if (selectedTab === 'runs') await loadRuns(); })};
     window.addEventListener('load',()=>{window.socket?.on('command_sets_list',()=>setTimeout(renderTemplates,0));window.socket?.on('commands_list',()=>setTimeout(renderEditorSources,0));renderTemplates();});
     translate(); edit();
     if (document.body.dataset.automationEnabled === 'true' || document.querySelector('main[data-native-automation]')?.dataset.automationEnabled === 'true' || nativeCredentials) {
@@ -1088,7 +1095,7 @@
         action(async () => {
             try {
                 try { await loadState({initial:true}); tab(location.hash.slice(1)); await loadRuns(); }
-                catch(error) { if(error.code !== 'disabled' || !nativeCredentials)throw error; availability(false); return; }
+                catch(error) { if(error.code !== 'disabled' || !nativeCredentials)throw error; availability(false); await loadSchedules(); return; }
                 if(nativeCredentials)await loadSchedules();
             }
             finally { $('automationApp').inert = false; }

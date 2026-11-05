@@ -19,13 +19,112 @@ services:
       - TRUSTED_PROXIES=0
       - SESSION_COOKIE_SECURE=false
 
-      # Recovery storage must survive failed restores.
+      # Persistent sessions; falls back when tmux is unavailable remotely.
+      # TMUX availability and default selection: Administration → Integrations.
+      # Explicit values below override and lock the corresponding Admin setting.
+      # - TMUX_ENABLED=true
+      # Users opt in per connection; do not preselect persistent sessions.
+      # - TMUX_DEFAULT=false
+      - TMUX_SESSION_PREFIX=webssh
+
+      # Authentication capabilities and safe assurance defaults
+      # TOTP is available to Admin, but users cannot enroll until Admin enables it.
+      # Set TOTP_ENABLED=false only as a deployment-level kill switch.
+      - TOTP_ENABLED=${TOTP_ENABLED:-true}
+      # Keep OIDC assurance lists empty unless the provider documents its
+      # signed acr/amr values explicitly.
+      - OIDC_MFA_AMR_VALUES=${OIDC_MFA_AMR_VALUES:-}
+      - OIDC_MFA_ACR_VALUES=${OIDC_MFA_ACR_VALUES:-}
+      - OIDC_PHISHING_RESISTANT_AMR_VALUES=${OIDC_PHISHING_RESISTANT_AMR_VALUES:-}
+      - OIDC_PHISHING_RESISTANT_ACR_VALUES=${OIDC_PHISHING_RESISTANT_ACR_VALUES:-}
+      - OIDC_STEP_UP_ACR_VALUES=${OIDC_STEP_UP_ACR_VALUES:-}
+      - STEP_UP_MAX_AGE_SECONDS=${STEP_UP_MAX_AGE_SECONDS:-300}
+
+      # Optional configuration
+
+      # Optional authoritative override for Unix permissions (default: disabled).
+      # Separate file/folder modes; optional recursion requires a bounded preview.
+      # Stops on the first detected conflict/error; completed changes remain.
+      # Enable in Administration → Integrations. An explicit environment value
+      # overrides and locks that Admin setting. Recreate after changing Compose.
+      # Requires SFTP lsetstat@openssh.com v1 and remote permission to chmod; no SMB support.
+      # - SFTP_CHMOD_ENABLED=true
+
+      # Server operations: Administration → Integrations (default: disabled).
+      # Optional authoritative override for reviewed service/container actions, process TERM and reboot.
+      # Read-only server inspection remains available without this switch.
+      # - SERVER_OPERATIONS_ENABLED=true
+
+      # Secret override; generated and persisted when omitted.
+      # - SECRET_KEY=<paste output of: openssl rand -hex 32>
+
+      # Serve WebSSH from a reverse-proxy subfolder.
+      # Requires TRUSTED_PROXIES=1; see the Wiki page about subfolder deployment.
+      # - APPLICATION_ROOT=/webssh
+
+      # Registration: the first browser-created account becomes administrator.
+      # Optionally require CLI bootstrap or keep registration open afterwards.
+      # - BOOTSTRAP_REGISTRATION_ENABLED=false
+      # - REGISTRATION_ENABLED=true
+
+      # Optional feature: Tailscale SSH through the shared node identity.
+      # Configure narrow allowlists; see docs/tailscale-ssh.md.
+      # - TAILSCALE_SSH_ENABLED=true
+      # - TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=operator
+      # - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10:2222
+      # - TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
+      # - TAILSCALE_SSH_INTERFACE=tailscale0
+
+      # Enabled by default: host-key management, recovery codes, audit export.
+      # The false switches disable them; internal-target blocking is opt-in.
+      # - HOST_KEY_MANAGEMENT_ENABLED=false
+      # - RECOVERY_CODES_ENABLED=false
+      # - AUDIT_EXPORT_ENABLED=false
+      # - BLOCK_INTERNAL_SSH=true
+
+      # Optional SMB client support. No SMB server port is published here.
+      # - SMB_ENABLED=true
+      # - SMB_ALLOWED_TARGETS=nas.example,10.0.0.8
+      # - SMB_CONNECT_TIMEOUT_SECONDS=10
+      # - SMB_IO_IDLE_TIMEOUT_SECONDS=30
+      # - SMB_CONNECT_RATELIMIT=5 per minute
+
+      # Admin backup and restore is built in; these only tune its limits.
+      # - BACKUP_UPLOAD_MAX_SIZE=1073741824
+      # - BACKUP_OPERATION_TIMEOUT=1800
+      # - BACKUP_DOWNLOAD_TTL=600
       - BACKUP_TEMP_DIR=/app/recovery
       - BACKUP_RECOVERY_DURABLE=true
-      # Features: Settings → Administration → Integrations.
-      # Explicit environment values override runtime feature settings.
-      # Advanced deployment, identity providers, SMB and Redis:
-      # https://github.com/bifrost0x/webssh/wiki/Configuration-Reference
+
+      # Optional feature: Passkeys. Set the exact public domain and origin.
+      # - WEBAUTHN_ENABLED=true
+      # - WEBAUTHN_RP_ID=ssh.example.com
+      # - WEBAUTHN_RP_NAME=WebSSH
+      # - WEBAUTHN_ORIGIN=https://ssh.example.com
+
+      # Optional feature: sign in through an OpenID Connect identity provider.
+      # Register WebSSH there, mount its client secret read-only, then set the
+      # issuer, client ID, secret-file path, and exact callback URL below.
+      # An administrator links provider identities to WebSSH accounts.
+      # - OIDC_ENABLED=true
+      # - OIDC_ISSUER=https://idp.example.com
+      # - OIDC_CLIENT_ID=webssh
+      # - OIDC_CLIENT_SECRET_FILE=/run/secrets/webssh_oidc_client_secret
+      # - OIDC_REDIRECT_URI=https://ssh.example.com/oidc/callback
+      # - OIDC_ALLOWED_SUBJECTS=
+      # - OIDC_ALLOWED_DOMAINS=example.com
+      # - OIDC_LOGIN_RATE_LIMIT=10 per minute
+
+      # Capacity tuning (not required for normal use; keep one worker).
+      # - GUNICORN_THREADS=64
+      # - MAX_SOCKET_CONNECTIONS=48
+      # - MAX_SOCKET_CONNECTIONS_PER_USER=8
+
+      # Optional feature: persistent rate-limit counters in Redis.
+      # Also uncomment depends_on and the Redis service below.
+      # - RATELIMIT_STORAGE_URL=redis://redis:6379/0
+    # depends_on:
+    #   - redis
     volumes:
       - webssh_data:/app/data
       - webssh_recovery:/app/recovery
@@ -36,6 +135,12 @@ services:
       retries: 3
       start_period: 10s
 
+  # Optional Redis service for persistent rate-limit counters.
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: webssh-redis
+  #   restart: unless-stopped
+  #   command: ["redis-server", "--save", "", "--appendonly", "no"]
 
 volumes:
   webssh_data:

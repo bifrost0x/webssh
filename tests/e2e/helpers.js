@@ -18,7 +18,7 @@ function installExternalRequestGuard(page) {
     page.__externalRequests = externalRequests;
 }
 
-async function login(page, username = 'e2e_admin', {workspace = true} = {}) {
+async function login(page, username = 'e2e_admin', {workspace = true, tour = 'acknowledged'} = {}) {
     installExternalRequestGuard(page);
 
     await page.goto('/login');
@@ -30,6 +30,10 @@ async function login(page, username = 'e2e_admin', {workspace = true} = {}) {
     if ((await (await tourState).json()).state === 'new') {
         await page.locator('.intro-tour').getByRole('button', {name: 'Skip tour', exact: true}).click();
         await expect(page.locator('.intro-tour')).toHaveCount(0);
+    }
+    if (tour === 'acknowledged') {
+        const response = await page.request.post('/api/account/tour', {data:{state:'completed',acknowledged:true},headers:{'X-CSRFToken':await page.locator('meta[name="csrf-token"]').getAttribute('content')}});
+        expect(response.ok()).toBe(true);
     }
     await expect.poll(() => page.evaluate(() => (
         window.ProfileManager?.profilesLoaded === true
