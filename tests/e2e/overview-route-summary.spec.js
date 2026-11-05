@@ -1,6 +1,7 @@
 const {test,expect}=require('playwright/test');
 const {login,installSshConnectTrap,sshAttempts}=require('./helpers');
 async function seedHosts(page) {
+ await page.waitForFunction(()=>ProfileManager.profilesLoaded && JumpHostManager.loaded);
  await page.evaluate(() => {
   const base = ProfileManager.profiles[0];
   JumpHostManager.setJumpHosts([{id: 'summary-gateway', name: 'Nextcloud'}]);
