@@ -32,7 +32,7 @@ async function workspace(page, kind = 'sftp', chmod = true, enabled = false) {
     }, {kind, chmod});
 }
 
-test('disabled chmod remains discoverable through operator setup help', async ({ page }) => {
+test('disabled chmod explains Admin activation and authoritative environment overrides', async ({ page }) => {
     await workspace(page, 'sftp', false);
     await expect(page.locator('#fmLeftPane [data-pane-action="permissions"]')).toBeHidden();
     const help = page.locator('.fm-permissions-help');
@@ -45,7 +45,8 @@ test('disabled chmod remains discoverable through operator setup help', async ({
     expect(await page.locator('.fm-panes').evaluate(element => element.getBoundingClientRect().top)).toBe(panesTop);
     await test.info().attach('chmod-help-desktop-expanded', { body: await page.screenshot({ path: test.info().outputPath('desktop-expanded.png') }), contentType: 'image/png' });
     await expect(help).toContainText('SFTP_CHMOD_ENABLED=true');
-    await expect(help).toContainText('operator');
+    await expect(help).toContainText('Administration → Integrations');
+    await expect(help).toContainText('overrides the Admin setting');
     await expect(help).toContainText('lsetstat@openssh.com');
     await expect(help).toContainText('SMB');
     expect(await page.evaluate(() => window.__mutationEvents.length)).toBe(0);
@@ -57,7 +58,8 @@ test('disabled chmod remains discoverable through operator setup help', async ({
     await test.info().attach('chmod-help-mobile-expanded', { body: await page.screenshot({ path: test.info().outputPath('mobile-expanded.png') }), contentType: 'image/png' });
     await page.evaluate(() => i18n.setLanguage('de'));
     await expect(help.locator('summary [data-i18n]')).toHaveText('Hilfe zu Berechtigungen');
-    await expect(help).toContainText('Betreiber');
+    await expect(help).toContainText('Administration → Integrationen');
+    await expect(help).toContainText('hat Vorrang');
     await expect(page.locator('#fmLeftPane [data-pane-action="permissions"]')).toBeHidden();
     await page.keyboard.press('Escape');
     await expect(help).not.toHaveAttribute('open');

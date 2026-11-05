@@ -40,14 +40,7 @@ test('SSH route pane handles mixed routes, large inventories, themes and saved c
  await page.waitForTimeout(250);
  const stored=await page.evaluate(()=>localStorage.getItem('webssh:route-map:'+document.querySelector('meta[name=background-scope]').content));
  expect(JSON.parse(stored).fullCamera.scale).toBeGreaterThan(0);
- for(const theme of ['glass','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian','werkbank']){
-  await page.evaluate(t=>document.body.dataset.theme=t,theme);
-  for(const width of [390,1440,3440]){
-   await page.setViewportSize({width,height:900});
-   expect(await page.locator('#connectionOverview').evaluate(e=>e.scrollWidth<=e.clientWidth+1),theme+' '+width).toBe(true);
-   expect(await pane.evaluate(e=>e.scrollWidth<=e.clientWidth+1),theme+' '+width).toBe(true);
-  }
- }
+ await page.evaluate(()=>document.body.dataset.theme='werkbank');
  await page.setViewportSize({width:1440,height:900});await pane.scrollIntoViewIfNeeded();
  await pane.getByRole('button',{name:'Fit map',exact:true}).click();
  await page.screenshot({path:info.outputPath('routes-1440.png'),animations:'disabled'});
@@ -63,3 +56,27 @@ test('SSH route pane handles mixed routes, large inventories, themes and saved c
  expect(after).toEqual(before);
  expect(errors).toEqual([]);
 });
+
+// Each theme gets its own bounded browser case; retain the full 120-host matrix.
+for (const theme of ['glass','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian','werkbank']) {
+ test(`expanded 120-host route map fits narrow and wide layouts in ${theme}`, async ({page}) => {
+  await login(page,'e2e_admin',{workspace:false});await installSshConnectTrap(page);
+ await page.evaluate(()=>{
+  const base=ProfileManager.profiles[0];JumpHostManager.setJumpHosts([{id:'bastion',name:'Gateway'}]);
+  ProfileManager.setProfiles(Array.from({length:120},(_,i)=>({...base,id:'route-'+i,name:'Server '+String(i).padStart(3,'0'),group:'Group '+Math.floor(i/20),favorite:false,jump_host_id:i%3?'bastion':null})));
+ });
+
+  const pane=page.locator('#overviewRouteMap');
+  await expect(pane.locator('.ssh-map-count')).toHaveText('120 / 120 hosts');
+  await pane.getByRole('button',{name:'Show hosts: Direct SSH',exact:true}).click();
+  await expect(pane.locator('.ssh-route-host')).toHaveCount(42);
+  await expect(pane.getByRole('button',{name:'Close map',exact:true})).toBeVisible();
+  await page.evaluate(theme=>document.body.dataset.theme=theme,theme);
+  for(const width of [390,1440,3440]) {
+   await page.setViewportSize({width,height:900});
+   expect(await page.locator('#connectionOverview').evaluate(e=>e.scrollWidth<=e.clientWidth+1),theme+' '+width).toBe(true);
+   expect(await pane.evaluate(e=>e.scrollWidth<=e.clientWidth+1),theme+' '+width).toBe(true);
+  }
+  expect(await sshAttempts(page)).toEqual([]);
+ });
+}

@@ -1049,7 +1049,10 @@ const TerminalManager = {
         if (!batch) {
             batch = {chunks: [], callbacks: [], size: 0, timer: null};
             this.backgroundWrites[terminalKey] = batch;
-            batch.timer = setTimeout(() => this.flushBackgroundOutput(terminalKey), 16);
+            // Coalesce the current delivery burst, then let xterm parse it.
+            // A frame-sized delay holds scarce server ACK slots even though
+            // hidden terminals do not need to wait for a visual repaint.
+            batch.timer = setTimeout(() => this.flushBackgroundOutput(terminalKey), 0);
         }
         batch.chunks.push(data);
         batch.callbacks.push(onWritten);
