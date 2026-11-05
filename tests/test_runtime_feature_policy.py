@@ -49,3 +49,35 @@ def test_runtime_policy_backend_uses_admin_value(app,client,monkeypatch):
     assert client.post('/api/server-operations/intents',json={}).json['code']=='disabled'
     set_runtime_feature('server_operations_enabled',True)
     assert client.post('/api/server-operations/intents',json={}).json['code']!='disabled'
+
+
+@pytest.mark.parametrize('enabled', [True, False])
+def test_image_only_upgrade_keeps_legacy_compose_authoritative(app, client, monkeypatch, enabled):
+    import config
+    from app import app_settings
+    _prepare_role(app, client, 'admin')
+    monkeypatch.setattr(config, 'TMUX_ENABLED', enabled)
+    monkeypatch.setattr(config, 'EXPLICIT_ENVIRONMENT_KEYS', frozenset({'TMUX_ENABLED'}))
+    app_settings.migrate_runtime_features()
+    app_settings.migrate_runtime_features()
+    policy = client.get('/admin/api/settings').json['runtime_features']['tmux_enabled']
+    assert policy['enabled'] is enabled
+    assert policy['saved_value'] is enabled
+    assert policy['locked'] is True
+    assert policy['source'] == 'compose'
+    headers = password_step_up_headers(client, 'settings.update', 'global')[0]
+    assert client.post('/admin/api/settings', json={'tmux_enabled': not enabled}, headers=headers).status_code == 409
+    assert app_settings.runtime_feature_enabled('tmux_enabled') is enabled
+
+
+def test_new_install_has_editable_tmux_without_compose_override(app, client, monkeypatch):
+    import config
+    _prepare_role(app, client, 'admin')
+    monkeypatch.setattr(config, 'EXPLICIT_ENVIRONMENT_KEYS', frozenset())
+    policy = client.get('/admin/api/settings').json['runtime_features']['tmux_enabled']
+    assert policy['locked'] is False
+    headers = password_step_up_headers(client, 'settings.update', 'global')[0]
+    result = client.post('/admin/api/settings', json={'tmux_enabled': True}, headers=headers)
+    assert result.status_code == 200
+    assert result.json['runtime_features']['tmux_enabled']['enabled'] is True
+    assert result.json['runtime_features']['tmux_enabled']['source'] == 'admin'

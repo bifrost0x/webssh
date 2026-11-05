@@ -299,19 +299,29 @@ until explicitly enabled. `TOTP_ENABLED=false` is the optional operator kill
 switch. Existing enrolled users and saved activation choices are retained.
 
 
-### Safe tmux handoff from 2.7
+### Existing deployments and new installations
 
-The supplied Compose retains active `TMUX_ENABLED=true` and `TMUX_DEFAULT=false`
-for compatibility. Keep your own values if they differ. First start 3.0 with the
-existing Compose and data volume. Verify the effective and saved values under
-Administration → Integrations. Only then remove the two environment overrides
-and recreate the container to make those Admin settings editable. The saved
-values remain effective. Other advanced Compose options remain documented in
-the example file and must not be discarded during this handoff.
+Updating an existing deployment's image through `latest` does not replace its
+Compose file. Keep that file and its custom values. With an old Compose that
+sets `TMUX_ENABLED=true`, version 3.0 continues to use `true`. Administration
+shows Compose/environment as the authoritative source, the exact variable,
+the effective value and the saved Admin value. The switch remains locked while
+the override exists. The first 3.0 start saves the supplied value if no Admin
+value exists; subsequent image updates do not replace saved Admin choices.
+This behavior also applies to `TMUX_DEFAULT`, file permissions and server actions.
 
-Replacing both the image and Compose before the first 3.0 start cannot recover
-custom environment values that were removed from the old file: they were never
-stored in application data. Do not replace a customized deployment file with a
-fresh template without carrying over its settings. If an Admin value already
-exists and differs from the override, inspect that saved value before removing
-the override; it becomes effective again when the override is removed.
+The current example Compose is for new installations. It leaves the runtime
+feature overrides commented out so administrators can manage them immediately
+in Administration → Integrations. Product defaults apply until an Admin value
+is saved; file permissions, server operations and tmux are off by default.
+Network, authentication and other advanced deployment examples remain present.
+
+Moving an existing deployment to Admin-managed settings is optional: start 3.0
+with its original Compose, inspect the saved values, then remove only the
+corresponding environment entries and recreate the container. The saved values
+become effective. The rest of the deployment file stays intact.
+
+Do not replace a customized old Compose with a new-installation template during
+an image upgrade. Removed historical environment values cannot be reconstructed
+if version 3.0 has never seen them. If a saved Admin value differs from the
+current override, inspect it before removing the override.

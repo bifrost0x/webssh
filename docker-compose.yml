@@ -20,12 +20,13 @@ services:
       - SESSION_COOKIE_SECURE=false
 
       # Persistent sessions; falls back when tmux is unavailable remotely.
-      # Compatibility defaults: retain these active lines for the first 3.0 start.
-      # Then verify the imported values in Administration → Integrations before
-      # removing these two overrides to manage tmux there. Preserve custom values.
-      - TMUX_ENABLED=true
+      # New installations: manage tmux in Administration → Integrations.
+      # Existing deployments can keep their unchanged Compose: explicit values
+      # remain authoritative and are explained in Administration.
+      # Optional operator override (locks the Admin switch):
+      # - TMUX_ENABLED=true
       # Users opt in per connection; do not preselect persistent sessions.
-      - TMUX_DEFAULT=false
+      # - TMUX_DEFAULT=false
       - TMUX_SESSION_PREFIX=webssh
 
       # Authentication capabilities and safe assurance defaults

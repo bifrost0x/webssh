@@ -1339,6 +1339,7 @@
                 ? words('Durch Compose/Umgebung festgelegt: ', 'Controlled by Compose/environment: ') + policy.environment_key + '=' + policy.enabled
                 : policy.migrated ? words('Übernommener Wert der bisherigen Installation · im Adminbereich änderbar.', 'Preserved value from the previous installation · editable here.')
                 : policy.source === 'admin' ? words('Quelle: Admin-Einstellung', 'Source: admin setting') : words('Quelle: Produktstandard', 'Source: product default');
+            if (policy.locked && policy.migrated) source.append(words(' · Umgebungswert beim ersten 3.0-Start übernommen. Die unveränderte Compose bleibt maßgeblich.', ' · Environment value saved on the first 3.0 start. Your unchanged Compose remains authoritative.'));
             const link = document.createElement('a'); link.href = 'https://github.com/bifrost0x/webssh/wiki/Configuration-Reference'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'Wiki';
             if (policy.locked && policy.saved_value !== null) source.append(words(' · Gespeicherter Adminwert: ', ' · Saved admin value: ') + policy.saved_value + words(' · Vor Entfernen der Compose-Vorgabe prüfen: Danach gilt dieser gespeicherte Wert.', ' · Review before removing the Compose override: this saved value will then apply.'));
             source.append(' · ', link); copy.append(title, hint, source);
