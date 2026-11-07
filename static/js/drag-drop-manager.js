@@ -296,7 +296,7 @@ class DragDropManager {
 
   showQuickConnectDialog() {
     if (window.showNotification) {
-      window.showNotification('Please connect to a server first, then try uploading again.', 'warning');
+      window.showNotification((window.i18n ? window.i18n.t('toast.connectBeforeUpload') : 'Please connect to a server first, then try uploading again.'), 'warning');
     }
 
     const connectionModal = document.getElementById('connectionModal');

@@ -268,6 +268,12 @@
                     : elements.moreButton;
                 setCommandOpen(false);
                 setBackgroundInert(true);
+                // Actions that act on a terminal are offered only while a session is open.
+                const hasSession = Boolean(sessionManager?.getActiveSession?.());
+                ['mobileBroadcastAction', 'mobileTranscriptAction'].forEach(id => {
+                    const action = documentRef.getElementById?.(id);
+                    if (action) action.disabled = !hasSession;
+                });
                 elements.headerButtons?.setAttribute?.('role', 'dialog');
                 elements.headerButtons?.setAttribute?.('aria-modal', 'true');
                 elements.headerButtons?.setAttribute?.(

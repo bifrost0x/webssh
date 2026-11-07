@@ -399,5 +399,10 @@
         );
         initAuthenticationSessionDuration();
         initDisconnectAction();
+        // Signing out here also tells open workspace tabs (see auth-session-guard.js).
+        document.addEventListener('submit', event => {
+            if (!/\/logout$/.test(new URL(event.target.action, window.location.href).pathname)) return;
+            try { window.localStorage.setItem('webssh:signed-out', String(Date.now())); } catch { /* optional storage */ }
+        });
     });
 })();

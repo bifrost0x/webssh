@@ -73,13 +73,28 @@
             if (!win.primaryWorkspaceController?.open('hosts', $('profileManagementModal'))) return;
             manager.loadKeys?.();
             win.JumpHostManager?.load?.();
-            manager.openEditor(hostId);
+            manager.openEditor(hostId, {returnAfterSave: returnToOverview});
+        }
+        /** After saving from the overview, come back to it with the saved host in view. */
+        function returnToOverview(hostId) {
+            win.primaryWorkspaceController?.open('overview', view);
+            render();
+            const card = hostList.querySelector(`[data-host-id="${CSS.escape(hostId)}"]`);
+            card?.scrollIntoView?.({block: 'nearest'});
+            (card?.querySelector('.od-connect') || $('overviewTitle'))?.focus({preventScroll: true});
         }
         const openHosts = () => $('manageProfilesBtn')?.click();
         const openAutomation = () => $('automationNavBtn')?.click();
         function createHost() {
-            $('manageProfilesBtn')?.click();
-            $('newProfileBtn')?.click();
+            const manager = win.ProfileManager;
+            if (!manager?.openEditor || !win.primaryWorkspaceController?.open('hosts', $('profileManagementModal'))) {
+                $('manageProfilesBtn')?.click();
+                $('newProfileBtn')?.click();
+                return;
+            }
+            manager.loadKeys?.();
+            win.JumpHostManager?.load?.();
+            manager.openEditor(null, {returnAfterSave: returnToOverview});
         }
         const relative = timestamp => {
             const minutes = Math.round((Date.now() - Number(timestamp)) / 60000);

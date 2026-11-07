@@ -547,13 +547,13 @@
                 return;
             }
             if (!TerminalManager.hasSearchSupport()) {
-                showNotification('Search not available', 'warning');
+                showNotification((window.i18n ? window.i18n.t('toast.searchUnavailable') : 'Search not available'), 'warning');
                 return;
             }
 
             const activeSession = SessionManager.getActiveSession();
             if (!activeSession) {
-                showNotification('No active session', 'warning');
+                showNotification((window.i18n ? window.i18n.t('toast.noActiveSession') : 'No active session'), 'warning');
                 return;
             }
 
@@ -1089,9 +1089,9 @@
             if (this._previewFullContent == null) return;
             try {
                 await TerminalManager.writeTextToClipboard(this._previewFullContent);
-                showNotification('Copied to clipboard', 'success');
+                showNotification((window.i18n ? window.i18n.t('toast.copied') : 'Copied to clipboard'), 'success');
             } catch {
-                showNotification('Failed to copy', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.copyFailed') : 'Failed to copy'), 'error');
             }
         },
 
@@ -1866,7 +1866,7 @@
 
     socket.on('profile_deleted', (data) => {
         ProfileManager.removeProfile(data?.profile_id);
-        showNotification('Saved connection deleted successfully', 'success');
+        showNotification((window.i18n ? window.i18n.t('toast.hostDeleted') : 'Saved connection deleted successfully'), 'success');
     });
 
     socket.on('keys_list', (data) => {
@@ -1882,7 +1882,7 @@
 
     socket.on('key_uploaded', (data) => {
         ProfileManager.upsertKeySummary(data.key);
-        showNotification('SSH key uploaded successfully', 'success');
+        showNotification((window.i18n ? window.i18n.t('toast.keyUploaded') : 'SSH key uploaded successfully'), 'success');
         document.getElementById('keyUploadForm')?.reset();
     });
 
@@ -1901,7 +1901,7 @@
     });
 
     socket.on('key_deleted', () => {
-        showNotification('SSH key deleted successfully', 'success');
+        showNotification((window.i18n ? window.i18n.t('toast.keyDeleted') : 'SSH key deleted successfully'), 'success');
     });
 
     socket.on('jump_hosts_list', (data) => {
@@ -2456,11 +2456,11 @@
         const active = SessionManager.getActiveSession();
         const terminal = SessionManager.getActiveTerminal();
         if (!active || !terminal) {
-            showNotification('No active session', 'warning');
+            showNotification((window.i18n ? window.i18n.t('toast.noActiveSession') : 'No active session'), 'warning');
             return;
         }
         if (!terminal.hasSelection()) {
-            showNotification('Nothing selected to copy', 'info');
+            showNotification((window.i18n ? window.i18n.t('toast.nothingSelected') : 'Nothing selected to copy'), 'info');
             return;
         }
         TerminalManager.copySelectionToClipboard(terminal)
@@ -2470,24 +2470,24 @@
                     copied ? 'success' : 'info',
                 );
             })
-            .catch(() => showNotification('Clipboard access denied', 'error'));
+            .catch(() => showNotification((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error'));
     }
 
     function pasteClipboardIntoActiveTerminal() {
         const active = SessionManager.getActiveSession();
         if (!active) {
-            showNotification('No active session', 'warning');
+            showNotification((window.i18n ? window.i18n.t('toast.noActiveSession') : 'No active session'), 'warning');
             return;
         }
         if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
-            showNotification('Clipboard access denied', 'error');
+            showNotification((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error');
             return;
         }
         let clipboardText;
         try {
             clipboardText = navigator.clipboard.readText();
         } catch {
-            showNotification('Clipboard access denied', 'error');
+            showNotification((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error');
             return;
         }
         Promise.resolve(clipboardText)
@@ -2503,7 +2503,7 @@
                     }
                 }
             })
-            .catch(() => showNotification('Clipboard access denied', 'error'));
+            .catch(() => showNotification((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error'));
     }
 
     function setupClipboardActions() {
@@ -2513,12 +2513,12 @@
             saveBtn.addEventListener('click', () => {
                 const active = SessionManager.getActiveSession();
                 if (!active) {
-                    showNotification('No active session', 'warning');
+                    showNotification((window.i18n ? window.i18n.t('toast.noActiveSession') : 'No active session'), 'warning');
                     return;
                 }
                 const transcript = TerminalManager.getCleanTranscript(active);
                 if (!transcript) {
-                    showNotification('Transcript is empty', 'info');
+                    showNotification((window.i18n ? window.i18n.t('toast.transcriptEmpty') : 'Transcript is empty'), 'info');
                     return;
                 }
                 const blob = new Blob([transcript], { type: 'text/plain;charset=utf-8' });
@@ -2530,7 +2530,7 @@
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                showNotification('Transcript saved', 'success');
+                showNotification((window.i18n ? window.i18n.t('toast.transcriptSaved') : 'Transcript saved'), 'success');
             });
         }
 
@@ -2706,7 +2706,17 @@
             return null;
         }
 
+        // Views first: the palette also works as a way to move between the main areas.
+        const navButton = id => {
+            const button = document.getElementById(id);
+            return button && !button.hidden && !button.disabled && button.getClientRects().length ? button : null;
+        };
         const actions = [
+            { id: 'view-overview', labelKey: 'overview.title', hint: '', available: () => navButton('overviewNavBtn'), action: () => navButton('overviewNavBtn')?.click() },
+            { id: 'view-workspaces', labelKey: 'navigation.workspaces', hint: '', available: () => navButton('workspaceNavBtn'), action: () => navButton('workspaceNavBtn')?.click() },
+            { id: 'view-hosts', labelKey: 'connectionAssets.hosts', hint: '', available: () => document.getElementById('manageProfilesBtn'), action: () => document.getElementById('manageProfilesBtn')?.click() },
+            { id: 'view-automation', labelKey: 'automation.title', hint: '', available: () => navButton('automationNavBtn'), action: () => navButton('automationNavBtn')?.click() },
+            { id: 'view-settings', labelKey: 'settings.title', hint: '', action: () => { window.location.href = APP_ROOT + '/settings'; } },
             { id: 'quick-connect', labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: openDefaultConnectionModal },
             { id: 'command-library', labelKey: 'commands.library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
             { id: 'file-transfer', labelKey: 'files.fileTransfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
@@ -2727,7 +2737,7 @@
         }
 
         function buildItems() {
-            const translatedActions = actions.map(action => ({
+            const translatedActions = actions.filter(action => !action.available || action.available()).map(action => ({
                 id: action.id,
                 label: translate(action.labelKey, action.labelKey),
                 description: '',
@@ -3049,7 +3059,7 @@
             const targetPane = pendingPaneIndex;
 
             if (!host || !username) {
-                showNotification('Host and username are required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.hostUserRequired') : 'Host and username are required'), 'error');
                 return;
             }
 
@@ -3062,13 +3072,13 @@
             }
 
             if (authType === 'password' && !password && !credentialId && !window.ConnectionValidation.isGateway(username)) {
-                showNotification('Password is required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.passwordRequired') : 'Password is required'), 'error');
                 document.getElementById('passwordInput').focus();
                 return;
             }
 
             if (authType === 'key' && !keyId) {
-                showNotification('SSH key is required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.keyRequired') : 'SSH key is required'), 'error');
                 return;
             }
 
@@ -3101,7 +3111,7 @@
             if (jumpHostId) {
                 const jh = window.JumpHostManager ? window.JumpHostManager.getById(jumpHostId) : null;
                 if (!jh) {
-                    showNotification('Selected jump host not found', 'error');
+                    showNotification((window.i18n ? window.i18n.t('toast.jumpNotFound') : 'Selected jump host not found'), 'error');
                     return;
                 }
                 proxyJump = {
@@ -3115,7 +3125,7 @@
                     const jhPass = document.getElementById('jumpHostPasswordInput').value;
                     const jumpCredentialId = window.CredentialPicker?.get('jumpHostPasswordInput');
                     if (!jhPass && !jumpCredentialId) {
-                        showNotification('Jump host password is required', 'error');
+                        showNotification((window.i18n ? window.i18n.t('toast.jumpPasswordRequired') : 'Jump host password is required'), 'error');
                         document.getElementById('jumpHostPasswordInput').focus();
                         return;
                     }
@@ -3224,7 +3234,7 @@
             const keyContent = document.getElementById('keyContentInput').value;
 
             if (!name || !keyContent) {
-                showNotification('Key name and content are required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.keyNameContentRequired') : 'Key name and content are required'), 'error');
                 return;
             }
 
@@ -3253,11 +3263,11 @@
             const authType = document.querySelector('input[name="jhAuthType"]:checked').value;
             const keyId = document.getElementById('jhKeySelect').value;
             if (!name || !host || !username) {
-                showNotification('Name, host and username are required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.nameHostUserRequired') : 'Name, host and username are required'), 'error');
                 return;
             }
             if (authType === 'key' && !keyId) {
-                showNotification('SSH key is required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.keyRequired') : 'SSH key is required'), 'error');
                 return;
             }
             if (window.JumpHostManager) {
@@ -3378,6 +3388,7 @@
                     form.appendChild(input);
                 }
                 document.body.appendChild(form);
+                window.AuthSessionGuard?.markSignedOut?.();
                 form.submit();
             }
         });

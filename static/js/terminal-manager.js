@@ -386,7 +386,7 @@ const TerminalManager = {
             && this.isCopyShortcut(event, isMac)
         ) {
             this.copySelectionToClipboard(terminal).catch(() => {
-                window.showNotification?.('Clipboard access denied', 'error');
+                window.showNotification?.((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error');
             });
         }
         return shouldProcess;

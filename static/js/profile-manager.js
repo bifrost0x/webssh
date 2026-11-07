@@ -17,6 +17,7 @@ const ProfileManager = {
     inlineKeyUploadPending: false,
     profileSearchQuery: '',
     organizationPending: new Set(),
+    favoritePending: new Set(),
     collapsedGroups: new Set(),
     activeProfileDragId: null,
     activeProfileDropSlot: null,
@@ -1214,7 +1215,10 @@ const ProfileManager = {
                 const star = document.createElement('span');
                 star.className = 'material-icons';
                 star.setAttribute('aria-hidden', 'true');
-                star.textContent = profile.favorite === true ? 'star' : 'star_border';
+                // While saving, show the requested state so the click is acknowledged at once.
+                const pendingFavorite = this.favoritePending.has(profile.id);
+                star.textContent = (profile.favorite === true) !== pendingFavorite ? 'star' : 'star_border';
+                if (pendingFavorite) favorite.setAttribute('aria-busy', 'true');
                 favorite.appendChild(star);
                 const connect = document.createElement('button');
                 connect.type = 'button';
@@ -1331,6 +1335,8 @@ const ProfileManager = {
 
     openEditor(profileId = null, options = {}) {
         const modal = document.getElementById('profileManagementModal');
+        // Where to go after a successful save: the caller that opened the editor, if it asked.
+        if (!options.confirmed) this.returnAfterSave = typeof options.returnAfterSave === 'function' ? options.returnAfterSave : null;
         if (profileId && profileId === this.editingProfileId && !options.duplicate
             && modal?.classList.contains('has-profile-editor')) {
             document.getElementById('profileEditorName')?.focus();
@@ -1597,7 +1603,10 @@ const ProfileManager = {
             ];
             this.renderProfileSelect();
             this.showManagementList();
+            const back = this.returnAfterSave;
+            this.returnAfterSave = null;
             if (connect) this.connect(saved.id);
+            else back?.(saved.id);
         };
         if (credentialChoice === '__new' && !payload.id) {
             const {name,password} = credentialDraft;
@@ -1639,6 +1648,7 @@ const ProfileManager = {
         const profile = this.profiles.find(item => item.id === profileId);
         if (!profile || this.organizationPending.has(profileId)) return;
         this.organizationPending.add(profileId);
+        this.favoritePending.add(profileId);
         this.renderManagementList();
         const send = emit || ((acknowledge) => window.socket?.emit(
             'update_profile_organization',
@@ -1647,6 +1657,7 @@ const ProfileManager = {
         ));
         send(acknowledgement => {
             this.organizationPending.delete(profileId);
+            this.favoritePending.delete(profileId);
             if (!acknowledgement?.success || !acknowledgement.profile) {
                 window.showNotification?.(
                     acknowledgement?.error || this.t(
@@ -1817,7 +1828,7 @@ const ProfileManager = {
     },
 
     deleteProfile(profileId) {
-        if (confirm('Are you sure you want to delete this saved connection?')) {
+        if (confirm((window.i18n ? window.i18n.t('toast.confirmDeleteHost') : 'Are you sure you want to delete this saved connection?'))) {
             if (window.socket) {
                 window.socket.emit('delete_profile', { profile_id: profileId });
             }
@@ -1997,7 +2008,7 @@ const ProfileManager = {
     },
 
     deleteKey(keyId) {
-        if (confirm('Are you sure you want to delete this SSH key?')) {
+        if (confirm((window.i18n ? window.i18n.t('toast.confirmDeleteKey') : 'Are you sure you want to delete this SSH key?'))) {
             if (window.socket) {
                 window.socket.emit('delete_key', { key_id: keyId });
             }

@@ -376,3 +376,17 @@ test('a reachability result is dropped when the host now points elsewhere', asyn
     await expect(first).not.toHaveAttribute('data-state', 'unreachable');
     await expect(page.locator(`#overviewHostList .od-host[data-host-id="${ids[1]}"]`)).toHaveAttribute('data-state', 'unreachable');
 });
+
+test('saving a host opened from the overview returns to the overview with that host in view', async ({page}) => {
+    await login(page, 'e2e_admin', {workspace: false});
+    await openOverview(page);
+    const card = page.locator('#overviewHostList .od-host:not(.od-skeleton)').first();
+    const hostId = await card.getAttribute('data-host-id');
+    const name = (await card.locator('.od-host-name, strong').first().textContent()).trim();
+    await card.getByRole('button', {name: `Edit ${name}`, exact: true}).click();
+    const editor = page.locator('#profileEditorForm');
+    await expect(editor).toBeVisible();
+    await editor.locator('button[type="submit"]:not(#saveConnectProfileBtn)').click();
+    await expect(page.locator('#connectionOverview')).toBeVisible();
+    await expect(page.locator(`#overviewHostList [data-host-id="${hostId}"] .od-connect`)).toBeFocused();
+});
