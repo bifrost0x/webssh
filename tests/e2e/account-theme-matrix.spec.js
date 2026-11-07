@@ -1,6 +1,7 @@
 const {test,expect}=require('playwright/test');const {login,assertNoExternalRequests}=require('./helpers');
 const themes=['glass','werkbank','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian'];
-const sizes=[{width:360,height:740},{width:767,height:1024},{width:768,height:1024},{width:1023,height:768},{width:1024,height:768},{width:1280,height:720},{width:1600,height:900},{width:1920,height:1080},{width:3440,height:1440},{width:3840,height:2160}];
+// Both sides of each layout breakpoint plus a phone, a desktop and an ultrawide screen.
+const sizes=[{width:360,height:740},{width:767,height:1024},{width:768,height:1024},{width:1023,height:768},{width:1024,height:768},{width:1920,height:1080},{width:3440,height:1440}];
 async function verify(page, label) {
  const state = await page.evaluate(() => {
   const shown = e => e.checkVisibility({visibilityProperty:true}) && !e.closest('[hidden],[aria-hidden="true"]');

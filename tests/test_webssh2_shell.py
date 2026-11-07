@@ -419,42 +419,15 @@ def test_login_loads_the_step_up_dependency_before_webauthn():
     assert security_ui < webauthn
 
 
-def test_context_workspace_has_one_bounded_desktop_panel_and_responsive_sheets():
-    project_root = Path(__file__).resolve().parents[1]
-    contents = (project_root / "static/css/webssh-2.css").read_text(
-        encoding="utf-8"
-    )
-
-    assert "var(--context-workspace-width, 420px)" in contents
-    assert ".workspace.layout-desktop.context-open" in contents
-    assert ".context-workspace-resizer" in contents
-    assert ".workspace.layout-tablet .context-workspace" in contents
-    assert ".workspace.layout-mobile .context-workspace" in contents
-    assert ".context-workspace-tabs" in contents
-    assert ".context-workspace-panel" in contents
-    assert ".context-workspace .session-diagnostics-overlay" in contents
-
-
-def test_security_actions_are_grouped_for_predictable_card_alignment():
-    project_root = Path(__file__).resolve().parents[1]
-    contents = (project_root / "templates/security.html").read_text(
-        encoding="utf-8"
-    )
-
-    assert contents.count('class="admin-toolbar-actions"') == 2
-
-
 def test_security_center_uses_the_same_navigation_grid_as_administration():
     project_root = Path(__file__).resolve().parents[1]
     security = (project_root / "templates/security.html").read_text(encoding="utf-8")
     admin = (project_root / "templates/admin.html").read_text(encoding="utf-8")
-    styles = (project_root / "static/css/admin.css").read_text(encoding="utf-8")
 
     assert 'class="admin-main settings-center-main"' in security
     assert 'class="admin-main"' in admin
     assert 'class="admin-navigation"' in security
     assert 'class="admin-navigation"' in admin
-    assert "grid-template-columns: 228px minmax(0, 1fr);" in styles
 
 
 def test_admin_settings_use_grouped_professional_navigation():

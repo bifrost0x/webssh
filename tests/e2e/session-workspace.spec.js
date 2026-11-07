@@ -119,12 +119,15 @@ test('monitoring warnings remain readable in every theme', async ({page}) => {
 });
 
 for (const theme of ['glass','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian']) {
-    test(`theme tool journey ${theme}`, async ({page}, testInfo) => {
-        test.setTimeout(180000);
+    // The tool journey does not depend on the theme: glass runs it in full at every
+    // breakpoint; the other themes check that tools and tabs stay contained.
+    const fullJourney = theme === 'glass';
+    test(`theme tool ${fullJourney ? 'journey' : 'containment'} ${theme}`, async ({page}, testInfo) => {
+        test.setTimeout(fullJourney ? 180000 : 90000);
         await login(page);
         await seedLinuxSession(page);
         await page.evaluate(value => applyTheme(value), theme);
-        for (const width of [360, 768, 1024, 1280, 3440]) {
+        for (const width of fullJourney ? [360, 768, 1024, 1280, 3440] : [360, 1280, 3440]) {
             await page.setViewportSize({width, height: width === 360 ? 740 : width === 3440 ? 1440 : 768});
             await expect.poll(() => page.evaluate(() => workspaceLayoutController.getState().mode))
                 .toBe(width >= 1024 ? 'desktop' : width >= 768 ? 'tablet' : 'mobile');
@@ -144,6 +147,7 @@ for (const theme of ['glass','retro','solar','paper','noir','arctic-ice','rose-g
                 expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${theme} ${width} ${name}`).toBe(true);
                 if (width === 360 || width === 3440) await page.screenshot({path:testInfo.outputPath(`${theme}-${width}-${name}.png`),animations:'disabled'});
             }
+            if (!fullJourney) continue;
             await page.locator('#sessionNotepad').fill(`Retained ${theme} ${width}`);
             const views = [['hosts','manageProfilesBtn'],['commands','commandLibraryBtn'],['files','fileTransferBtn']];
             for (const [view,id] of views) {
