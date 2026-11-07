@@ -178,6 +178,49 @@ def _csv_env(name):
     )
 
 
+ALLOWLISTABLE_INTERNAL_NETWORKS = (
+    ipaddress.ip_network('10.0.0.0/8'),
+    ipaddress.ip_network('172.16.0.0/12'),
+    ipaddress.ip_network('192.168.0.0/16'),
+    ipaddress.ip_network('100.64.0.0/10'),
+    ipaddress.ip_network('fc00::/7'),
+)
+
+
+def parse_internal_network_allowlist(raw_value):
+    """Return the validated private networks of ``SSH_ALLOWED_INTERNAL_NETWORKS``.
+
+    Each entry is an address or CIDR network without host bits. Entries must
+    be contained in ``ALLOWLISTABLE_INTERNAL_NETWORKS``; anything else fails
+    startup instead of being ignored.
+    """
+    networks = []
+    for raw_entry in str(raw_value or '').split(','):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+        try:
+            network = ipaddress.ip_network(entry, strict=True)
+        except ValueError as exc:
+            raise RuntimeError(
+                'SECURITY ERROR: SSH_ALLOWED_INTERNAL_NETWORKS contains an '
+                f'invalid network: {entry!r}'
+            ) from exc
+        if not any(
+            network.version == allowed.version
+            and network.subnet_of(allowed)
+            for allowed in ALLOWLISTABLE_INTERNAL_NETWORKS
+        ):
+            raise RuntimeError(
+                'SECURITY ERROR: SSH_ALLOWED_INTERNAL_NETWORKS accepts only '
+                'networks inside 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, '
+                f'100.64.0.0/10 or fc00::/7: {entry!r}'
+            )
+        if network not in networks:
+            networks.append(network)
+    return tuple(networks)
+
+
 def parse_tailscale_ssh_target(raw_value):
     """Return one canonical ``(host, port)`` Tailscale SSH policy entry."""
     if not isinstance(raw_value, str):
@@ -818,6 +861,12 @@ PROXY_JUMP_REMOTE_DNS_ALLOWLIST = tuple(
     ).split(',')
     if entry.strip()
 )
+# Private networks that stay reachable while BLOCK_INTERNAL_SSH=true. Entries
+# must lie inside the ranges below; loopback, link-local, multicast and other
+# protected addresses can never be re-enabled through this setting.
+SSH_ALLOWED_INTERNAL_NETWORKS = parse_internal_network_allowlist(
+    os.environ.get('SSH_ALLOWED_INTERNAL_NETWORKS', '')
+)
 
 # Encrypted SSH-key storage is bounded per account. Existing stores above the
 # byte limit remain readable and may be renamed, deleted, or replaced by
@@ -1248,6 +1297,11 @@ def validate_security_config():
         warnings.append(
             'BLOCK_INTERNAL_SSH is disabled for the homelab profile'
         )
+        if SSH_ALLOWED_INTERNAL_NETWORKS:
+            warnings.append(
+                'SSH_ALLOWED_INTERNAL_NETWORKS has no effect while '
+                'BLOCK_INTERNAL_SSH is disabled'
+            )
     if TAILSCALE_SSH_ENABLED:
         if not TAILSCALE_SSH_ALLOWED_TARGETS:
             warnings.append(

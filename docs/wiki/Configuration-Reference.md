@@ -46,10 +46,13 @@ Prefer `flask create-admin` for controlled deployments. Public registration is i
 | Variable | Purpose |
 |---|---|
 | `BLOCK_INTERNAL_SSH` | Blocks SSH connections to loopback, private, link-local, and other protected targets according to the network policy |
+| `SSH_ALLOWED_INTERNAL_NETWORKS` | Comma-separated private networks (CIDR or single addresses) that stay reachable while `BLOCK_INTERNAL_SSH=true`; see below |
 | `PROXY_JUMP_REMOTE_DNS_ALLOWLIST` | Exact hostnames a trusted bastion may resolve remotely |
 | `SERVER_OPERATIONS_ENABLED` | Optional authoritative environment override; otherwise Admin → Integrations controls reviewed, step-up protected service/container actions, process TERM and reboot. Product default: `false` |
 
 `BLOCK_INTERNAL_SSH=true` is appropriate for an Internet-facing gateway but can conflict with homelab use. Resolve and validate the exact target policy before enabling it. Host-key verification remains a separate control.
+
+`SSH_ALLOWED_INTERNAL_NETWORKS` keeps `BLOCK_INTERNAL_SSH=true` in place and re-admits only the listed private networks, for example `10.20.0.0/16,fd00:20::/64`. It applies to direct targets, Jump Hosts and file-transfer connections, and it is accepted by the production profile. Entries must lie inside `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` or `fc00::/7`; host bits, broader networks or any other range stop startup. Loopback, link-local (including cloud metadata addresses), multicast, reserved and IPv4-mapped IPv6 addresses always stay blocked. Every connection admitted through the list is recorded in the audit log.
 
 ## Runtime capacity
 

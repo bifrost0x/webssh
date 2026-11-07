@@ -13,6 +13,7 @@ SECURITY_ENV_NAMES = {
     'ALLOW_CORS_WILDCARD',
     'BLOCK_INTERNAL_SSH',
     'BOOTSTRAP_REGISTRATION_ENABLED',
+    'SSH_ALLOWED_INTERNAL_NETWORKS',
     'CORS_ORIGINS',
     'DEBUG',
     'DEPLOYMENT_PROFILE',
@@ -252,6 +253,88 @@ def test_homelab_tailscale_misconfiguration_warns_without_blocking_startup(
     for fragment in warning_fragments:
         assert fragment in warnings
 
+
+
+def test_internal_network_allowlist_is_empty_by_default():
+    result = _load_config(
+        _production_env(),
+        'import config; print(config.SSH_ALLOWED_INTERNAL_NETWORKS)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == '()'
+
+
+def test_production_accepts_private_internal_network_allowlist():
+    result = _load_config(
+        _production_env(
+            SSH_ALLOWED_INTERNAL_NETWORKS=(
+                ' 10.0.0.0/8, 192.168.0.0/16,172.16.0.0/12 ,fc00::/7,'
+                '100.64.0.0/10, 10.20.30.40, fd00::1, 10.0.0.0/8'
+            ),
+        ),
+        'import config; '
+        'print(",".join(map(str, config.SSH_ALLOWED_INTERNAL_NETWORKS)))',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().splitlines()[-1] == (
+        '10.0.0.0/8,192.168.0.0/16,172.16.0.0/12,fc00::/7,'
+        '100.64.0.0/10,10.20.30.40/32,fd00::1/128'
+    )
+
+
+@pytest.mark.parametrize(
+    'entry',
+    (
+        'internal',
+        '10.0.0.1/8',
+        '10.0.0.0/33',
+        '0.0.0.0/0',
+        '::/0',
+        '10.0.0.0/7',
+        '8.8.8.0/24',
+        '127.0.0.0/8',
+        '169.254.0.0/16',
+        '224.0.0.0/4',
+        '::1',
+        'fe80::/10',
+        'fec0::/10',
+        '::ffff:10.0.0.1',
+        'fe80::1%eth0',
+    ),
+)
+@pytest.mark.parametrize('profile', ('production', 'homelab'))
+def test_internal_network_allowlist_rejects_unsafe_or_invalid_entries(
+    entry,
+    profile,
+):
+    result = _load_config(
+        _production_env(
+            DEPLOYMENT_PROFILE=profile,
+            SSH_ALLOWED_INTERNAL_NETWORKS=f'10.0.0.0/8,{entry}',
+        )
+    )
+
+    assert result.returncode != 0
+    assert 'SSH_ALLOWED_INTERNAL_NETWORKS' in result.stdout + result.stderr
+
+
+def test_homelab_warns_when_internal_allowlist_has_no_effect():
+    result = _load_config(
+        _production_env(
+            DEPLOYMENT_PROFILE='homelab',
+            BLOCK_INTERNAL_SSH='false',
+            SSH_ALLOWED_INTERNAL_NETWORKS='10.0.0.0/8',
+        ),
+        'import json, config; '
+        'print(json.dumps(config.SECURITY_CONFIG_WARNINGS))',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'SSH_ALLOWED_INTERNAL_NETWORKS has no effect' in (
+        result.stdout.splitlines()[-1]
+    )
 
 def test_smb_is_disabled_by_default():
     result = _load_config(

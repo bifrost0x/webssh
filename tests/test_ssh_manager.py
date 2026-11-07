@@ -1,3 +1,5 @@
+import ipaddress
+
 import paramiko
 import pytest
 import socket
@@ -5,6 +7,7 @@ import threading
 import shlex
 
 from app import ssh_manager
+from app import network_policy
 from app.network_policy import ResolvedTarget
 
 
@@ -205,7 +208,7 @@ def install_ssh_clients(monkeypatch, *connect_errors):
     monkeypatch.setattr(
         ssh_manager,
         'resolve_allowed_target',
-        lambda host, port, allow_internal=False: ResolvedTarget(
+        lambda host, port, allow_internal=False, **_kwargs: ResolvedTarget(
             host,
             port,
             '1.1.1.1' if host == 'target.example' else '8.8.8.8',
@@ -754,7 +757,7 @@ def test_proxy_jump_remote_dns_is_rejected_when_internal_blocking_is_on(
     clients = install_ssh_clients(monkeypatch)
     original_resolver = ssh_manager.resolve_allowed_target
 
-    def resolver(host, port, allow_internal=False):
+    def resolver(host, port, allow_internal=False, **_kwargs):
         if host == 'remote-only.example':
             raise ValueError('Host could not be resolved')
         return original_resolver(host, port, allow_internal)
@@ -782,7 +785,7 @@ def test_proxy_jump_exact_allowlist_preserves_remote_dns_when_blocked(
     clients = install_ssh_clients(monkeypatch)
     original_resolver = ssh_manager.resolve_allowed_target
 
-    def resolver(host, port, allow_internal=False):
+    def resolver(host, port, allow_internal=False, **_kwargs):
         if host == 'xn--bcher-kva.example':
             raise ValueError('Host could not be resolved')
         return original_resolver(host, port, allow_internal)
@@ -819,7 +822,7 @@ def test_proxy_jump_remote_dns_remains_compatible_when_blocking_is_off(
     clients = install_ssh_clients(monkeypatch)
     original_resolver = ssh_manager.resolve_allowed_target
 
-    def resolver(host, port, allow_internal=False):
+    def resolver(host, port, allow_internal=False, **_kwargs):
         if host == 'remote-only.example':
             raise ValueError('Host could not be resolved')
         return original_resolver(host, port, allow_internal)
@@ -1060,3 +1063,76 @@ def test_ordinary_mfa_uses_explicit_strategy_without_gateway_setup(monkeypatch, 
             assert clients[0].connect_kwargs['auth_strategy'].username == 'jump-user'
     finally:
         attempt.finish()
+
+
+def _use_real_policy(monkeypatch, networks):
+    monkeypatch.setattr(
+        ssh_manager,
+        'resolve_allowed_target',
+        network_policy.resolve_allowed_target,
+    )
+    monkeypatch.setattr(ssh_manager.config, 'BLOCK_INTERNAL_SSH', True)
+    monkeypatch.setattr(
+        ssh_manager.config,
+        'SSH_ALLOWED_INTERNAL_NETWORKS',
+        tuple(ipaddress.ip_network(network) for network in networks),
+    )
+    audited = []
+    monkeypatch.setattr(
+        ssh_manager,
+        'audit_internal_allowlist_use',
+        lambda target, role: audited.append(
+            (role, target.ip, target.via_internal_allowlist)
+        ),
+    )
+    return audited
+
+
+def test_blocked_internal_target_connects_when_network_is_allowlisted(
+        monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+    audited = _use_real_policy(monkeypatch, ('10.20.0.0/16',))
+
+    session_id, error = connect_target(
+        host='10.20.30.40', password='target-password'
+    )
+
+    assert error is None
+    assert session_id
+    assert clients.opened_sockets[0].host == '10.20.30.40'
+    assert audited == [('target', '10.20.30.40', True)]
+
+
+def test_blocked_internal_target_outside_allowlist_is_still_rejected(
+        monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+    _use_real_policy(monkeypatch, ('192.168.0.0/16',))
+
+    session_id, error = connect_target(
+        host='10.20.30.40', password='target-password'
+    )
+
+    assert session_id is None
+    assert error == 'Connections to this address are not allowed'
+    assert clients == []
+
+
+def test_allowlisted_jump_host_and_target_are_both_admitted(monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+    audited = _use_real_policy(monkeypatch, ('fc00::/7', '10.0.0.0/8'))
+
+    session_id, error = connect_target(
+        host='fd00::22',
+        password='target-password',
+        proxy_jump_host='10.0.0.2',
+        proxy_jump_username='jump-user',
+        proxy_jump_password='jump-password',
+    )
+
+    assert error is None
+    assert session_id
+    assert clients[0].transport.opened_channel[1] == ('fd00::22', 22)
+    assert audited == [
+        ('target', 'fd00::22', True),
+        ('jump_host', '10.0.0.2', True),
+    ]

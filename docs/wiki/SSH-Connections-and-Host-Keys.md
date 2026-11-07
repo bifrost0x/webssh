@@ -139,7 +139,9 @@ the old record and reconnect.
 
 `BLOCK_INTERNAL_SSH=true` blocks loopback, link-local, private, reserved, and
 other unsafe destinations after DNS resolution. The production profile requires
-this protection.
+this protection. `SSH_ALLOWED_INTERNAL_NETWORKS` re-admits explicitly listed
+private networks without disabling it; loopback, link-local, multicast and
+reserved addresses cannot be re-admitted.
 
 The homelab profile defaults to false because private addresses are often the
 intended targets. If untrusted users can access the instance, private-target

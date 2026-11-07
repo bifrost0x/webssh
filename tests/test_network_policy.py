@@ -1,9 +1,11 @@
+import ipaddress
 import socket
 
 import pytest
 
 from app.network_policy import (
     ResolvedTarget,
+    audit_internal_allowlist_use,
     canonicalize_hostname,
     open_validated_socket,
     proxy_jump_remote_dns_allowed,
@@ -399,3 +401,137 @@ def test_proxy_jump_remote_dns_allowlist_is_exact_idna_and_hostname_only():
     assert not proxy_jump_remote_dns_allowed('other-target', allowlist)
     assert not proxy_jump_remote_dns_allowed('10.0.0.8', allowlist)
     assert not proxy_jump_remote_dns_allowed('bad host name', allowlist)
+
+
+PRIVATE_ALLOWLIST = (
+    ipaddress.ip_network('10.0.0.0/8'),
+    ipaddress.ip_network('192.168.0.0/16'),
+    ipaddress.ip_network('172.16.0.0/12'),
+    ipaddress.ip_network('fc00::/7'),
+)
+
+
+@pytest.mark.parametrize(
+    'ip',
+    ['10.1.2.3', '192.168.50.7', '172.31.255.1', 'fd12:3456::7', 'fc00::1'],
+)
+def test_internal_allowlist_admits_listed_literal_addresses(ip):
+    target = resolve_allowed_target(
+        ip, 22, allowed_internal_networks=PRIVATE_ALLOWLIST
+    )
+
+    assert target.ip == ipaddress.ip_address(ip).compressed
+    assert target.via_internal_allowlist is True
+
+
+def test_internal_allowlist_admits_resolved_candidate(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        'getaddrinfo',
+        lambda *args, **kwargs: [
+            addr(socket.AF_INET, '127.0.0.1'),
+            addr(socket.AF_INET, '172.20.0.9'),
+        ],
+    )
+
+    target = resolve_allowed_target(
+        'internal.example',
+        22,
+        allowed_internal_networks=(ipaddress.ip_network('172.20.0.0/16'),),
+    )
+
+    assert target.ip == '172.20.0.9'
+    assert target.via_internal_allowlist is True
+
+
+def test_internal_allowlist_rejects_addresses_outside_listed_networks():
+    with pytest.raises(ValueError, match='not allowed'):
+        resolve_allowed_target(
+            '10.9.9.9',
+            22,
+            allowed_internal_networks=(ipaddress.ip_network('10.1.0.0/16'),),
+        )
+
+
+@pytest.mark.parametrize(
+    ('ip', 'network'),
+    [
+        ('127.0.0.1', '127.0.0.0/8'),
+        ('169.254.169.254', '169.254.0.0/16'),
+        ('224.0.0.1', '224.0.0.0/4'),
+        ('0.0.0.0', '0.0.0.0/8'),
+        ('240.0.0.1', '240.0.0.0/4'),
+        ('::1', '::1/128'),
+        ('fe80::1', 'fe80::/10'),
+        ('fec0::1', 'fec0::/10'),
+        ('ff02::1', 'ff00::/8'),
+        ('::ffff:10.0.0.1', '::ffff:0:0/96'),
+    ],
+)
+def test_internal_allowlist_never_readmits_protected_addresses(ip, network):
+    with pytest.raises(ValueError, match='not allowed'):
+        resolve_allowed_target(
+            ip,
+            22,
+            allowed_internal_networks=(
+                ipaddress.ip_network(network),
+                ipaddress.ip_network('10.0.0.0/8'),
+            ),
+        )
+
+
+def test_public_and_allow_internal_targets_are_not_marked_as_allowlisted():
+    public = resolve_allowed_target(
+        '1.1.1.1', 22, allowed_internal_networks=PRIVATE_ALLOWLIST
+    )
+    unrestricted = resolve_allowed_target(
+        '10.0.0.1',
+        22,
+        allow_internal=True,
+        allowed_internal_networks=PRIVATE_ALLOWLIST,
+    )
+
+    assert public.via_internal_allowlist is False
+    assert unrestricted.via_internal_allowlist is False
+
+
+def test_internal_allowlist_flag_does_not_change_target_equality():
+    assert ResolvedTarget(
+        'h', 22, '10.0.0.1', socket.AF_INET, via_internal_allowlist=True
+    ) == ResolvedTarget('h', 22, '10.0.0.1', socket.AF_INET)
+
+
+def test_internal_allowlist_use_is_audited_only_when_it_applied(monkeypatch):
+    from app import audit_logger
+
+    records = []
+    monkeypatch.setattr(
+        audit_logger,
+        'log_info',
+        lambda message, **kwargs: records.append((message, kwargs)),
+    )
+
+    audit_internal_allowlist_use(
+        ResolvedTarget('db.internal', 22, '10.0.0.5', socket.AF_INET),
+        'target',
+    )
+    audit_internal_allowlist_use(
+        ResolvedTarget(
+            'db.internal',
+            2222,
+            '10.0.0.5',
+            socket.AF_INET,
+            via_internal_allowlist=True,
+        ),
+        'jump_host',
+    )
+
+    assert records == [(
+        'SSH target admitted by internal network allowlist',
+        {
+            'role': 'jump_host',
+            'host': 'db.internal',
+            'ip': '10.0.0.5',
+            'port': 2222,
+        },
+    )]
