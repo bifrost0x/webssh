@@ -1,9 +1,10 @@
+import ipaddress
 import threading
 
 import paramiko
 import pytest
 
-from app import connection_pool, ssh_manager
+from app import connection_pool, network_policy, ssh_manager
 from app.network_policy import ResolvedTarget
 from app.quota_manager import QuotaKind, QuotaManager
 
@@ -291,7 +292,7 @@ def install_ssh_client(monkeypatch, connect_error=None):
     monkeypatch.setattr(
         connection_pool,
         'resolve_allowed_target',
-        lambda host, port, allow_internal=False: ResolvedTarget(
+        lambda host, port, allow_internal=False, **_kwargs: ResolvedTarget(
             host, port, '1.1.1.1', 2
         ),
     )
@@ -325,6 +326,43 @@ def create_connection(pool, **overrides):
     kwargs.update(overrides)
     return pool.create_connection(**kwargs)
 
+
+
+def test_pool_applies_internal_network_allowlist(monkeypatch):
+    pool = make_pool()
+    clients = install_ssh_client(monkeypatch)
+    monkeypatch.setattr(
+        connection_pool,
+        'resolve_allowed_target',
+        network_policy.resolve_allowed_target,
+    )
+    monkeypatch.setattr(connection_pool.config, 'BLOCK_INTERNAL_SSH', True)
+    monkeypatch.setattr(
+        connection_pool.config,
+        'SSH_ALLOWED_INTERNAL_NETWORKS',
+        (ipaddress.ip_network('192.168.10.0/24'),),
+    )
+    audited = []
+    monkeypatch.setattr(
+        connection_pool,
+        'audit_internal_allowlist_use',
+        lambda target, role: audited.append((role, target.ip)),
+    )
+
+    allowed_id, allowed_error = create_connection(
+        pool, host='192.168.10.5', password='secret'
+    )
+    blocked_id, blocked_error = create_connection(
+        pool, host='192.168.11.5', password='secret'
+    )
+
+    assert allowed_error is None
+    assert allowed_id in pool.connections
+    assert clients[0].connect_kwargs['hostname'] == '192.168.10.5'
+    assert audited == [('file_transfer', '192.168.10.5')]
+    assert blocked_id is None
+    assert blocked_error is not None
+    assert len(clients) == 1
 
 def test_connection_pool_exposes_the_shared_loader():
     assert connection_pool._load_private_key is ssh_manager._load_private_key

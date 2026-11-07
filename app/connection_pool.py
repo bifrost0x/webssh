@@ -18,7 +18,11 @@ import paramiko
 from datetime import datetime
 import config
 from .host_key_store import HostKeyStore, HostKeyNotAccepted
-from .network_policy import open_validated_socket, resolve_allowed_target
+from .network_policy import (
+    audit_internal_allowlist_use,
+    open_validated_socket,
+    resolve_allowed_target,
+)
 from .ssh_key_loader import load_private_key as _load_private_key
 from .ssh_errors import SSHConnectionError
 from .paramiko_channels import open_sftp_client
@@ -112,7 +116,9 @@ class TemporaryConnectionPool:
                 host,
                 port,
                 allow_internal=not config.BLOCK_INTERNAL_SSH,
+                allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
             )
+            audit_internal_allowlist_use(target, 'file_transfer')
             host = target.hostname
             port = target.port
             validated_socket = open_validated_socket(target, 10)

@@ -10,7 +10,13 @@ services:
       SESSION_COOKIE_SECURE: "true"
       REGISTRATION_ENABLED: "False"
       BOOTSTRAP_REGISTRATION_ENABLED: "false"
+      # Blocks all internal targets (loopback, link-local, private, reserved).
       BLOCK_INTERNAL_SSH: "true"
+      # Optional exceptions to the block above, e.g. 10.20.0.0/16,fd00:20::/64.
+      # The block stays active: only the listed private networks become
+      # reachable, loopback, link-local and metadata addresses never do, and
+      # each admitted connection is audited. Empty means no exceptions.
+      SSH_ALLOWED_INTERNAL_NETWORKS: "${SSH_ALLOWED_INTERNAL_NETWORKS:-}"
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-1}
       # Optional chmod: uncomment to enable instance-wide, then recreate the service.
       # Requires SFTP lsetstat@openssh.com v1; see the file workspace manual.
