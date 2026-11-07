@@ -1276,3 +1276,34 @@ def test_cli_backup_does_not_redirect_storage_errors_or_explicit_paths(
     assert len(attempted) == 1
     if explicit:
         assert attempted[0] == destination
+
+
+@pytest.mark.parametrize('recovery_snapshot', (False, True))
+def test_cli_restore_keeps_private_material_only_for_recovery_snapshots(
+    tmp_path, monkeypatch, recovery_snapshot
+):
+    import config
+
+    # A separate DATA_DIR: no in-process app may hold app.db open.
+    data_dir = tmp_path / 'data'
+    _write_representative_data(data_dir)
+    archive = tmp_path / 'rollback.zip'
+    backup_manager._create_recovery_snapshot(data_dir, archive)
+    key_file = data_dir / 'users/user_1/keys/key.pem'
+    key_file.write_bytes(b'changed-after-snapshot')
+    monkeypatch.setattr(config, 'BACKUP_TEMP_DIR', tmp_path / 'operations')
+    arguments = ['backup', 'restore', str(archive), '--confirm-offline']
+    if recovery_snapshot:
+        arguments.append('--recovery-snapshot')
+
+    result = _maintenance_cli(
+        data_dir,
+        *arguments,
+        environment_overrides={'BACKUP_TEMP_DIR': str(config.BACKUP_TEMP_DIR)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    if recovery_snapshot:
+        assert key_file.read_bytes() == b'encrypted-private-key'
+    else:
+        assert not key_file.exists()

@@ -68,6 +68,13 @@ flask --app start:app backup restore --help
 
 For a container deployment, execute the command in a one-off container with the same data volume and configuration, while the normal application container is stopped.
 
+`backup restore` treats every archive as an export and discards SSH keys and
+saved passwords, even when an older archive contains them. To recover this
+instance from its own emergency rollback archive (`rollback.zip` in the durable
+recovery directory) or a secret-rotation recovery snapshot, add
+`--recovery-snapshot`. That restores the encrypted keys and passwords as well;
+they are only usable with the same `SECRET_KEY`.
+
 Without `--destination`, `backup create --confirm-offline` retains the parent of
 `DATA_DIR` as its default when writable. On a read-only or permission-restricted
 parent, it writes to the private instance directory under `BACKUP_TEMP_DIR` and

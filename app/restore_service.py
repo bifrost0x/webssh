@@ -150,7 +150,7 @@ def _perform_restore(app, socketio, record, username, source_ip,
         mark_failed(
             operation_id,
             (
-                'Restore failed and emergency rollback failed; use CLI recovery'
+                'Restore failed and emergency rollback failed; use CLI recovery (backup restore --recovery-snapshot)'
                 if rollback_failed
                 else (
                     'Restore failed; original state was restored'

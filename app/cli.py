@@ -431,10 +431,18 @@ def backup_verify(archive):
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
 @click.option('--confirm-offline', is_flag=True)
-def backup_restore(archive, confirm_offline):
+@click.option(
+    '--recovery-snapshot',
+    is_flag=True,
+    help=(
+        'Restore an internal recovery snapshot of this instance, including '
+        'SSH keys and saved passwords. Exported backups never contain them.'
+    ),
+)
+def backup_restore(archive, confirm_offline, recovery_snapshot):
     """Restore a verified backup while WebSSH is stopped."""
     from .backup_coordination import operation_lock
-    from .backup_manager import restore_backup
+    from .backup_manager import _restore_recovery_snapshot, restore_backup
     from .restore_sanitizer import sanitize_restored_authentication_state
     from .session_epoch import reset_cache, rotate_epoch
 
@@ -443,7 +451,11 @@ def backup_restore(archive, confirm_offline):
         with operation_lock():
             db.session.remove()
             db.engine.dispose()
-            restore_backup(archive, config.DATA_DIR)
+            # Exports drop remote credentials. A recovery snapshot of this
+            # instance (rollback or pre-rotation copy) keeps them encrypted
+            # for this SECRET_KEY, so restoring it must not discard them.
+            restore = _restore_recovery_snapshot if recovery_snapshot else restore_backup
+            restore(archive, config.DATA_DIR)
             sanitize_restored_authentication_state(
                 Path(config.DATA_DIR) / 'app.db'
             )
@@ -453,7 +465,7 @@ def backup_restore(archive, confirm_offline):
         raise click.ClickException(str(exc)) from exc
     from .maintenance_mode import clear_failed_status_after_cli_restore
     clear_failed_status_after_cli_restore()
-    _audit_operation('BACKUP_RESTORE_SUCCESS')
+    _audit_operation('BACKUP_RESTORE_SUCCESS', recovery_snapshot=recovery_snapshot)
     click.echo('Backup restored and verified.')
 
 
