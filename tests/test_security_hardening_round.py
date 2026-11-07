@@ -337,16 +337,19 @@ def test_overview_values_from_a_newer_version_do_not_corrupt_settings(app, conte
         assert save_user_settings(uid, {'overview_dismissed': ['future-kind:abc']}) is False
 
 
-def test_expired_form_returns_to_a_fresh_form(app, client):
+def test_expired_form_is_refused_with_a_way_back_to_the_form(app, client):
     app.config['WTF_CSRF_ENABLED'] = True
     try:
         from app.auth import register_user
         with app.app_context():
             register_user('form_expiry_admin', 'password123')
         response = client.post('/login', data={'username': 'x', 'password': 'y'})
-        assert response.status_code == 302 and response.headers['Location'].endswith('/login')
-        page = client.get('/login').get_data(as_text=True)
-        assert 'data-i18n="auth.formExpired"' in page
+        page = response.get_data(as_text=True)
+        assert response.status_code == 400
+        assert 'data-i18n="auth.formExpired"' in page and 'href="/login"' in page
+        # Unknown paths fall back to the login form instead of echoing the path.
+        unknown = client.post('/no-such-form', data={})
+        assert unknown.status_code in (400, 404) and 'no-such-form' not in unknown.get_data(as_text=True)
         api = client.post('/api/overview/reachability', json={})
         assert api.status_code in (400, 401, 302)
         if api.status_code == 400:

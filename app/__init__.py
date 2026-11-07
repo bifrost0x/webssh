@@ -544,38 +544,53 @@ def create_app(
         return (request.path.startswith(('/api/', '/admin/api/', '/auth/api/'))
                 or request.is_json or request.accept_mimetypes.best == 'application/json')
 
+    def _user_already_loaded():
+        from flask import g
+        return '_login_user' in g
+
+    def _error_page(status, kind, action_url=None, detail=''):
+        # Only reuse a user that the request already loaded: an error page must not
+        # trigger the user loader for requests that were refused before it ran.
+        from flask import g
+        theme = 'glass'
+        user = g.get('_login_user')
+        if user is not None and getattr(user, 'is_authenticated', False):
+            try:
+                theme = get_user_settings(user.id).get('theme', 'glass')
+            except Exception:
+                theme = 'glass'
+        return render_template('error.html', status=status, kind=kind, theme=theme,
+                               action_url=action_url or url_for('index'), detail=detail,
+                               url_prefix=getattr(config, 'APPLICATION_ROOT', '')), status
+
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
-        """An expired or mismatched form token: send people back to a fresh form."""
+        """An expired or mismatched form token: nothing ran; offer the form again."""
         if _wants_json():
             return jsonify({'error': 'This page expired. Reload it and try again.', 'code': 'csrf_expired'}), 400
-        flash('The form expired. Please try again.', 'error')
-        target = url_for('login') if request.endpoint in (None, 'logout') else request.path
-        return redirect(target)
-
-    def _error_page(status, title_key, title, body_key, body):
-        theme = 'glass'
-        try:
-            if current_user.is_authenticated:
-                theme = get_user_settings(current_user.id).get('theme', 'glass')
-        except Exception:
-            theme = 'glass'
-        return render_template('error.html', status=status, theme=theme, title_key=title_key, title=title,
-                               body_key=body_key, body=body, url_prefix=getattr(config, 'APPLICATION_ROOT', '')), status
+        # The link is rebuilt from the matched route, never from the raw path, so a
+        # crafted path such as //example.com cannot point outside WebSSH.
+        target = None
+        if request.endpoint not in (None, 'logout', 'static') and request.url_rule is not None:
+            try:
+                target = url_for(request.endpoint, **(request.view_args or {}))
+            except Exception:
+                target = None
+        return _error_page(400, 'form_expired', target or url_for('login'), detail=error.description)
 
     @app.errorhandler(Forbidden)
     def handle_forbidden(error):
-        if _wants_json():
+        # Requests refused before Flask-Login ran (for example a disabled admin
+        # panel) keep the plain response, so the page cannot load the user.
+        if _wants_json() or not _user_already_loaded():
             return error
-        return _error_page(403, 'errors.forbiddenTitle', 'This area is not available to your account',
-                           'errors.forbiddenBody', 'Ask an administrator if you need access.')
+        return _error_page(403, 'forbidden')
 
     @app.errorhandler(NotFound)
     def handle_not_found(error):
-        if _wants_json() or request.path.startswith('/static/'):
+        if _wants_json() or request.path.startswith('/static/') or not _user_already_loaded():
             return error
-        return _error_page(404, 'errors.notFoundTitle', 'Page not found',
-                           'errors.notFoundBody', 'The address may be outdated. Return to WebSSH to continue.')
+        return _error_page(404, 'not_found')
 
     url_prefix = getattr(config, 'APPLICATION_ROOT', '')
     if url_prefix:

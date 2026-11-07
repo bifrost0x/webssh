@@ -12,8 +12,7 @@
     'New passwords do not match': 'auth.passwordsNoMatch',
     'Current password is incorrect': 'auth.currentPasswordIncorrect',
     'New password must be different from current password': 'auth.passwordMustDiffer',
-    'Password updated successfully': 'auth.passwordUpdated',
-    'The form expired. Please try again.': 'auth.formExpired'
+    'Password updated successfully': 'auth.passwordUpdated'
 } %}
 {% macro render_auth_messages() %}
     {% for category, message in get_flashed_messages(with_categories=true) %}

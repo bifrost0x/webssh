@@ -6,7 +6,7 @@
     <link rel="icon" data-theme-logo type="image/svg+xml" href="{{ static_asset_url(filename='images/webssh-logo.svg') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="app-root" content="{{ url_prefix }}">
-    <title data-i18n="{{ title_key }}">{{ title }} · WebSSH</title>
+    <title>WebSSH</title>
     <link rel="stylesheet" href="{{ static_asset_url(filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/auth.css') }}">
@@ -28,11 +28,24 @@
                             <div class="auth-header">
                                 <a class="auth-product-brand" href="{{ url_for('index') }}" aria-label="WebSSH">{{ brand_logo("auth-product-logo") }}</a>
                                 <span class="auth-form-eyebrow">{{ status }}</span>
-                                <h1 data-i18n="{{ title_key }}">{{ title }}</h1>
-                                <p data-i18n="{{ body_key }}">{{ body }}</p>
+                                {% if kind == 'form_expired' %}
+                                <h1 data-i18n="auth.formExpired">The form expired. Please try again.</h1>
+                                <p data-i18n="errors.formExpiredBody">Nothing was sent. Open the form again to continue.</p>
+                                {% if detail %}<p class="auth-form-eyebrow">{{ detail }}</p>{% endif %}
+                                {% elif kind == 'forbidden' %}
+                                <h1 data-i18n="errors.forbiddenTitle">This area is not available to your account</h1>
+                                <p data-i18n="errors.forbiddenBody">Ask an administrator if you need access.</p>
+                                {% else %}
+                                <h1 data-i18n="errors.notFoundTitle">Page not found</h1>
+                                <p data-i18n="errors.notFoundBody">The address may be outdated. Return to WebSSH to continue.</p>
+                                {% endif %}
                             </div>
-                            <a class="btn btn-primary btn-block" href="{{ url_for('index') }}">
+                            <a class="btn btn-primary btn-block" href="{{ action_url }}">
+                                {% if kind == 'form_expired' %}
+                                <span data-i18n="errors.openFormAgain">Open the form again</span>
+                                {% else %}
                                 <span data-i18n="errors.backHome">Back to WebSSH</span>
+                                {% endif %}
                             </a>
                         </div>
                     </div>
