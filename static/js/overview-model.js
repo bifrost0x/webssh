@@ -168,9 +168,11 @@
      * fanned out to the left, jump hosts stacked on the right with their
      * hosts behind them. Hubs with many hosts show the first `perHub` and a
      * "+N" summary. Labels point away from the center, so they never cross.
+     * Without an explicit height the view box fits the content, so a small
+     * inventory does not leave an empty canvas.
      */
-    function topology(hostList = [], {width = 1200, height = 440, perHub = 12} = {}) {
-        const center = {x: width * 0.42, y: height / 2};
+    const ROW = 40;
+    function topology(hostList = [], {width = 1200, height = null, perHub = 12} = {}) {
         const groups = new Map();
         hostList.forEach(host => {
             const kind = host.route.kind === 'jump' ? 'jump' : host.route.kind === 'direct' ? 'direct' : 'missing';
@@ -181,25 +183,38 @@
         const direct = groups.get('direct');
         const right = [...groups.values()].filter(hub => hub.kind !== 'direct')
             .sort((a, b) => b.hosts.length - a.hosts.length || String(a.name).localeCompare(String(b.name)));
+        if (!height) {
+            const left = direct ? Math.min(perHub, direct.hosts.length) : 0;
+            const rightRows = right.reduce((sum, hub) => sum + Math.max(1.5, Math.min(perHub, hub.hosts.length)), 0);
+            height = Math.round(Math.min(520, Math.max(220, Math.max(left, rightRows) * ROW + 90)));
+        }
+        // Keep the drawing centred when one side is empty.
+        const center = {x: width * (!right.length ? 0.64 : !direct ? 0.3 : 0.42), y: height / 2};
         const nodes = [];
         const hubs = [];
         const place = (hub, point, side, slice) => {
             const shown = hub.hosts.slice(0, perHub);
-            const span = Math.min(slice * 0.86, 34 * Math.max(0, shown.length - 1));
+            const span = Math.min(slice * 0.86, ROW * Math.max(0, shown.length - 1));
             shown.forEach((host, index) => {
                 const offset = shown.length === 1 ? 0 : -span / 2 + (span * index) / (shown.length - 1);
                 const curve = Math.abs(offset) * 0.35;
-                nodes.push({host, hub: hub.key, x: point.x + side * (170 - curve), y: point.y + offset, anchor: side < 0 ? 'end' : 'start'});
+                nodes.push({host, hub: hub.key, x: point.x + side * (150 - curve), y: point.y + offset, anchor: side < 0 ? 'end' : 'start'});
             });
             hubs.push({...hub, x: point.x, y: point.y, hidden: Math.max(0, hub.hosts.length - shown.length)});
         };
-        if (direct) place(direct, {x: center.x - 210, y: center.y}, -1, height);
+        if (direct) place(direct, {x: center.x - 190, y: center.y}, -1, height);
+        // Jump hosts share the right side in proportion to the hosts they carry.
+        const weights = right.map(hub => Math.max(1.5, Math.min(perHub, hub.hosts.length)));
+        const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+        let top = 0;
         right.forEach((hub, index) => {
-            const slice = height / right.length;
-            place(hub, {x: center.x + 220, y: slice * index + slice / 2}, 1, slice);
+            const slice = (height * weights[index]) / totalWeight;
+            place(hub, {x: center.x + 200, y: top + slice / 2}, 1, slice);
+            top += slice;
         });
         nodes.forEach(node => {
-            node.x = Math.max(110, Math.min(width - 110, node.x));
+            // Room for a name and destination label beside every node.
+            node.x = Math.max(190, Math.min(width - 190, node.x));
             node.y = Math.max(20, Math.min(height - 20, node.y));
         });
         return {center, hubs, nodes, width, height};

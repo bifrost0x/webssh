@@ -22,7 +22,8 @@ test('dashboard shows inventory health without opening connections', async ({pag
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     const probes = [];
-    page.on('request', request => { if (request.url().endsWith('/api/overview/reachability')) probes.push(request.url()); });
+    // Reading the last stored result is allowed; a probe is a POST.
+    page.on('request', request => { if (request.url().endsWith('/api/overview/reachability') && request.method() === 'POST') probes.push(request.url()); });
     await login(page, 'e2e_admin', {workspace: false});
     await setReachability(page, 'manual');
     await openOverview(page);
@@ -83,7 +84,7 @@ test('keyboard reaches search and moves between host actions', async ({page}) =>
 
 test('reachability follows the account setting', async ({page}) => {
     const probes = [];
-    page.on('request', request => { if (request.url().endsWith('/api/overview/reachability')) probes.push(request.method()); });
+    page.on('request', request => { if (request.url().endsWith('/api/overview/reachability') && request.method() === 'POST') probes.push(request.method()); });
     await login(page, 'e2e_admin', {workspace: false});
 
     await setReachability(page, 'off');
@@ -171,4 +172,23 @@ test('connecting from the expanded route map closes the map once', async ({page}
     await dialog.locator('.overview-host-connect').first().click();
     await expect(dialog).toBeHidden();
     await expect(page.locator('#connectionOverview')).toBeHidden();
+});
+
+test('the last reachability result survives leaving and reloading the overview', async ({page}) => {
+    await login(page, 'e2e_admin', {workspace: false});
+    await setReachability(page, 'manual');
+    const posts = [];
+    const ids = await page.evaluate(() => ProfileManager.profiles.map(profile => profile.id));
+    await page.route('**/api/overview/reachability', async route => {
+        if (route.request().method() === 'POST') posts.push(1);
+        const results = Object.fromEntries(ids.map(id => [id, {state: 'reachable', latency_ms: 4}]));
+        await route.fulfill({json: {results, checked_at: Date.now() / 1000 - 120}});
+    });
+    await openOverview(page);
+    await expect(page.locator('#odKpiReach .od-kpi-value')).toContainText('/');
+    await expect(page.locator('#odKpiReach')).toContainText(/2 minutes ago|vor 2 Minuten/);
+    await page.locator('#workspaceNavBtn').click();
+    await page.locator('#overviewNavBtn').click();
+    await expect(page.locator('#odKpiReach .od-kpi-value')).toContainText('/');
+    expect(posts).toEqual([]);
 });

@@ -152,7 +152,15 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-ring-value { fill: none; stroke: var(--od-tone, var(--od-muted)); stroke-width: 5; stroke-linecap: round; }
 
 /* Panels */
-.od-panel { min-width: 0; padding: 18px 20px; border: 1px solid var(--ws2-border); border-radius: var(--od-radius); background: var(--ws2-surface); }
+.od-panel {
+    position: relative;
+    min-width: 0;
+    padding: 18px 20px;
+    border: 1px solid var(--ws2-border);
+    border-radius: var(--od-radius);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--ws2-text) 3%, var(--ws2-surface)), var(--ws2-surface) 120px);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ws2-text) 6%, transparent);
+}
 .od-panel[hidden] { display: none; }
 .od-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 14px; }
 .od-panel-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
@@ -173,13 +181,14 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-node[data-state="unknown"] { --od-state-color: var(--ws2-border-strong); }
 .od-topology-canvas {
     position: relative;
-    height: clamp(300px, 40vh, 480px);
+    /* The view box fits the inventory; the canvas follows its aspect ratio. */
+    padding: 4px 0;
     border-radius: 12px;
     background:
         radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--ws2-accent) 12%, transparent), transparent 60%),
         radial-gradient(color-mix(in srgb, var(--ws2-border-strong) 55%, transparent) 1px, transparent 1px) 0 0 / 22px 22px;
 }
-.od-topology-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.od-topology-svg { width: 100%; height: auto; max-height: 520px; display: block; overflow: visible; }
 .od-edge { fill: none; stroke: var(--ws2-border-strong); stroke-width: 1.4; opacity: .85; }
 .od-edge-hub { stroke-width: 2; }
 .od-edge-live { stroke: var(--od-live); stroke-width: 2.4; stroke-dasharray: 6 9; opacity: 1; }
@@ -190,15 +199,21 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-node:hover .od-node-halo { fill: color-mix(in srgb, var(--od-state-color) 34%, transparent); }
 .od-node-label, .od-hub-label, .od-axis { fill: var(--ws2-text-secondary); font: 13px var(--font-sans, sans-serif); }
 .od-hub-label { fill: var(--ws2-text); font-weight: 600; }
+.od-node-label { fill: var(--ws2-text); font-weight: 500; }
+.od-node-sub { fill: var(--od-muted); font: 11px var(--od-mono); }
+.od-node-more { fill: var(--od-muted); font: 600 12px var(--font-sans, sans-serif); }
 .od-hub-box { fill: var(--ws2-raised, var(--ws2-panel)); stroke: var(--ws2-border-strong); }
 .od-hub[data-kind="missing"] .od-hub-box { stroke: var(--od-danger); }
-.od-core-disc { fill: var(--ws2-accent); }
+.od-core-disc { fill: var(--ws2-accent); filter: drop-shadow(0 0 18px color-mix(in srgb, var(--ws2-accent) 55%, transparent)); }
+.od-core-ring { fill: none; stroke: color-mix(in srgb, var(--ws2-accent) 45%, transparent); stroke-width: 1.5; stroke-dasharray: 3 7; }
 .od-core-label { fill: var(--ui-action-fg, #101211); font: 600 13px var(--font-sans, sans-serif); }
 .od-core-pulse { fill: color-mix(in srgb, var(--ws2-accent) 20%, transparent); }
 
 /* Hosts and the side column */
-.od-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr); gap: var(--od-gap); align-items: start; }
-.od-side { display: grid; gap: var(--od-gap); min-width: 0; }
+/* Main column: routes and hosts. The side column starts beside the routes,
+   so attention and automation are part of the first view. */
+.od-grid { display: grid; grid-template-columns: minmax(0, 1fr) clamp(340px, 28%, 460px); gap: var(--od-gap); align-items: start; }
+.od-main, .od-side { display: grid; gap: var(--od-gap); min-width: 0; align-content: start; }
 .od-host-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
 .od-host {
     display: grid;
@@ -217,6 +232,12 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-host-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .od-host-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .od-host-destination { font: 12px/1.3 var(--od-mono); color: var(--od-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od-host-meta { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.od-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; padding: 2px 8px; border: 1px solid var(--ws2-border); border-radius: 999px; color: var(--od-muted); font-size: 12px; line-height: 18px; }
+.od-chip > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od-chip .material-icons { font-size: 14px; }
+.od-chip[data-route="jump"] { color: var(--ws2-text); border-color: color-mix(in srgb, var(--ws2-accent) 40%, var(--ws2-border)); }
+.od-chip[data-route="missing"] { color: var(--ws2-text); border-color: color-mix(in srgb, var(--od-danger) 55%, var(--ws2-border)); }
 .od-host-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .od-state { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; font-size: 12px; color: var(--od-muted); }
 .od-state > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -263,12 +284,14 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-row-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .od-attention { border-color: color-mix(in srgb, var(--od-action) 45%, var(--ws2-border)); background: linear-gradient(180deg, color-mix(in srgb, var(--od-action) 9%, var(--ws2-surface)), var(--ws2-surface)); }
 
-.od-chart-svg { display: block; width: 100%; height: auto; }
-.od-bar-track { fill: color-mix(in srgb, var(--ws2-border) 55%, transparent); }
-.od-bar-value[data-kind="succeeded"] { fill: var(--od-ready); }
-.od-bar-value[data-kind="failed"] { fill: var(--od-danger); }
-.od-bar-value[data-kind="other"] { fill: var(--od-action); }
-.od-axis { font-size: 11px; }
+.od-chart-bars { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 6px; height: 112px; align-items: stretch; }
+.od-bar { display: flex; align-items: flex-end; min-width: 0; border-radius: 6px; background: color-mix(in srgb, var(--ws2-border) 45%, transparent); }
+.od-bar-stack { display: flex; flex-direction: column; gap: 2px; width: 100%; height: var(--od-fill, 0%); transform-origin: 50% 100%; }
+.od-bar-value { flex: var(--od-count, 1) 1 0; min-height: 4px; border-radius: 5px; }
+.od-bar-value[data-kind="succeeded"] { background: linear-gradient(180deg, color-mix(in srgb, var(--od-ready) 80%, #fff), var(--od-ready)); }
+.od-bar-value[data-kind="failed"] { background: var(--od-danger); }
+.od-bar-value[data-kind="other"] { background: var(--od-action); }
+.od-chart-axis { display: flex; justify-content: space-between; margin-top: 8px; color: var(--od-muted); font-size: 12px; }
 
 .od-platform { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 4px 12px; }
 .od-platform .host-platform-icon { width: 22px; height: 22px; font-size: 20px; }
@@ -310,7 +333,7 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
     }
     #connectionOverview.od:not([data-settled]) .od-host { animation-delay: calc(360ms + var(--od-index, 0) * 40ms); }
     #connectionOverview.od:not([data-settled]) .od-ring-value { animation: od-ring 1100ms var(--ui-ease, ease) both 200ms; }
-    #connectionOverview.od:not([data-settled]) .od-bar { animation: od-grow 700ms var(--ui-ease, ease) both; animation-delay: calc(420ms + var(--od-delay, 0ms)); transform-origin: 50% 92px; transform-box: view-box; }
+    #connectionOverview.od:not([data-settled]) .od-bar-stack { animation: od-grow 700ms var(--ui-ease, ease) both; animation-delay: calc(420ms + var(--od-delay, 0ms)); }
     #connectionOverview.od:not([data-settled]) :is(.od-edge, .od-hub) { animation: od-fade 700ms ease both; animation-delay: var(--od-delay, 0ms); }
     #connectionOverview.od:not([data-settled]) .od-node { animation: od-fade 520ms ease both; animation-delay: var(--od-delay, 0ms); }
     .od-scene { animation: od-drift 38s ease-in-out infinite alternate; }
@@ -318,12 +341,14 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
     .od-edge-live { animation: od-flow 1.1s linear infinite; }
     .od-node[data-state="live"] .od-node-halo { animation: od-breathe 2.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
     .od-core-pulse { animation: od-breathe 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .od-core-ring { animation: od-spin 40s linear infinite; transform-box: fill-box; transform-origin: center; }
     .od-skeleton { animation: od-shimmer 1.4s linear infinite; }
 }
 @keyframes od-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes od-fade { from { opacity: 0; } }
 @keyframes od-ring { from { stroke-dasharray: 0 126; } }
 @keyframes od-grow { from { transform: scaleY(0); } }
+@keyframes od-spin { to { transform: rotate(360deg); } }
 @keyframes od-drift { from { transform: scale(1.08) translateX(-1.5%); } to { transform: scale(1.02) translateX(1.5%); } }
 @keyframes od-ping { 0% { opacity: .7; transform: scale(.6); } 80%, 100% { opacity: 0; transform: scale(1.6); } }
 @keyframes od-flow { to { stroke-dashoffset: -30; } }
@@ -344,7 +369,6 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
     .od-kpi { min-height: 128px; padding: 14px; }
     .od-kpi-value { font-size: 26px; }
     .od-ring { width: 40px; height: 40px; flex-basis: 40px; }
-    .od-topology-canvas { height: 260px; }
     .od-host-grid { grid-template-columns: minmax(0, 1fr); }
     .od-icon-button, .od-connect { min-height: 44px; }
     .od-icon-button { width: 44px; flex-basis: 44px; }

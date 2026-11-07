@@ -6,6 +6,8 @@ test('welcome aligns key figures, routes, hosts and side panels in the responsiv
  await page.setViewportSize({width:2126,height:836});await login(page,'e2e_admin',{workspace:false});
  const hero=page.locator('.od-hero');await expect(hero).toBeVisible();
  await expect(page.locator('#overviewHostList .od-host:not(.od-skeleton)').first()).toBeVisible();
+ // Measure the settled layout, not the entrance animation.
+ await expect(page.locator('#connectionOverview')).toHaveAttribute('data-settled',/.*/);
  for(const size of [{width:2126,height:836},{width:1280,height:720},{width:390,height:844},{width:3440,height:1440}]){
   await page.setViewportSize(size);await expect(hero).toBeVisible();
   const bounds=await hero.boundingBox();expect(bounds.height).toBeGreaterThanOrEqual(80);
@@ -14,7 +16,8 @@ test('welcome aligns key figures, routes, hosts and side panels in the responsiv
   expect(kpis.y).toBeGreaterThanOrEqual(bounds.y+bounds.height-1);expect(map.y).toBeGreaterThanOrEqual(kpis.y+kpis.height-1);
   const hosts=await page.locator('.od-hosts').boundingBox();const side=await page.locator('.od-side').boundingBox();
   expect(hosts.y).toBeGreaterThanOrEqual(map.y+map.height-1);
-  if(size.width>=1280){expect(Math.abs(side.y-hosts.y)).toBeLessThan(2);expect(side.x).toBeGreaterThanOrEqual(hosts.x+hosts.width);}
+  // Wide: attention and automation start beside the routes, in the first view.
+  if(size.width>=1280){expect(Math.abs(side.y-map.y)).toBeLessThan(2);expect(side.x).toBeGreaterThanOrEqual(map.x+map.width);expect(side.x).toBeGreaterThanOrEqual(hosts.x+hosts.width);}
   else expect(side.y).toBeGreaterThanOrEqual(hosts.y+hosts.height);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   expect(await page.locator('#connectionOverview').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);

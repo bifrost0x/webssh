@@ -23,6 +23,8 @@ MAX_PROBES = 50
 PROBE_TIMEOUT_SECONDS = 3
 CHECK_DEADLINE_SECONDS = 8
 CACHE_SECONDS = 60
+# The last answer stays on display across page loads, never as a fresh check.
+RESULT_RETENTION_SECONDS = 30 * 60
 RATE_LIMIT = '6 per minute'
 
 # Shared by all users: at most this many probes run at once in the process.
@@ -108,23 +110,10 @@ def _probe(host, port):
     return dict(state='reachable', latency_ms=round((time.monotonic() - started) * 1000))
 
 
-@overview_blueprint.post('/api/overview/reachability')
-@login_required
-def reachability():
+def _plans(user_id, wanted=None):
     from .data_access import user_data_access
-    if not current_app.extensions['runtime_lifecycle'].accepting_work():
-        return jsonify(error='WebSSH is not accepting new work.', code='unavailable'), 503
-    data = request.get_json(silent=True)
-    if data is not None and not isinstance(data, dict):
-        return jsonify(error='Invalid request.', code='invalid_request'), 400
-    requested = (data or {}).get('ids')
-    if requested is not None and (not isinstance(requested, list) or len(requested) > MAX_PROBES
-                                  or not all(isinstance(item, str) and len(item) <= 128 for item in requested)):
-        return jsonify(error='Invalid request.', code='invalid_request'), 400
-    user_id = current_user.id
     with user_data_access(user_id):
         profiles, jumps, _keys = _owned_inventory(user_id)
-    wanted = set(requested) if requested is not None else None
     jump_by_id = {jump.get('id'): jump for jump in jumps}
     plans = {}
     for profile in profiles:
@@ -135,9 +124,41 @@ def reachability():
         record = jump_by_id.get(profile.get('jump_host_id')) if profile.get('jump_host_id') else profile
         endpoint = _endpoint(record) if record else None
         plans[profile.get('id')] = dict(endpoint=endpoint, via_jump=bool(profile.get('jump_host_id')))
-    endpoints = {plan['endpoint'] for plan in plans.values() if plan['endpoint']}
-    # A cached answer is reused only for the same set of destinations.
+    # A stored answer belongs to exactly this set of destinations.
     signature = tuple(sorted((key, str(plan['endpoint']), plan['via_jump']) for key, plan in plans.items()))
+    return plans, signature
+
+
+@overview_blueprint.get('/api/overview/reachability')
+@login_required
+def last_reachability():
+    """Return the last check for the current hosts without contacting any host."""
+    _unused, signature = _plans(current_user.id)
+    with _CACHE_LOCK:
+        cached = _CACHE.get(current_user.id)
+        current = bool(cached and cached['signature'] == signature
+                       and time.monotonic() - cached['at'] < RESULT_RETENTION_SECONDS)
+        payload = dict(results=cached['results'], checked_at=cached['checked_at']) if current else dict(results=None)
+    response = jsonify(**payload)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@overview_blueprint.post('/api/overview/reachability')
+@login_required
+def reachability():
+    if not current_app.extensions['runtime_lifecycle'].accepting_work():
+        return jsonify(error='WebSSH is not accepting new work.', code='unavailable'), 503
+    data = request.get_json(silent=True)
+    if data is not None and not isinstance(data, dict):
+        return jsonify(error='Invalid request.', code='invalid_request'), 400
+    requested = (data or {}).get('ids')
+    if requested is not None and (not isinstance(requested, list) or len(requested) > MAX_PROBES
+                                  or not all(isinstance(item, str) and len(item) <= 128 for item in requested)):
+        return jsonify(error='Invalid request.', code='invalid_request'), 400
+    user_id = current_user.id
+    plans, signature = _plans(user_id, set(requested) if requested is not None else None)
+    endpoints = {plan['endpoint'] for plan in plans.values() if plan['endpoint']}
     with _CACHE_LOCK:
         cached = _CACHE.get(user_id)
         if cached and cached['signature'] == signature and time.monotonic() - cached['at'] < CACHE_SECONDS:

@@ -166,3 +166,34 @@ def test_reachability_preference_is_validated(app, client, context, mode, status
     if status == 200:
         assert response.json['settings']['overview_reachability'] == mode
         assert f'data-reachability="{mode}"'.encode() in client.get('/').data
+
+
+def test_last_reachability_is_read_only_and_follows_the_current_hosts(app, client, context, monkeypatch):
+    from app.profile_manager import add_profile
+    uid, _aid, _book, _profile = context
+    calls = []
+    monkeypatch.setattr(overview_routes, '_probe', _fake_probe({}, calls))
+    assert client.get('/api/overview/reachability').json == {'results': None}
+    checked = client.post('/api/overview/reachability', json={}).json
+    restored = client.get('/api/overview/reachability')
+    assert restored.headers['Cache-Control'] == 'no-store'
+    assert restored.json['results'] == checked['results']
+    assert restored.json['checked_at'] == checked['checked_at']
+    assert len(calls) == 1, 'reading the last result never probes'
+    # A changed inventory makes the stored answer obsolete instead of misleading.
+    add_profile(uid, 'Later', 'later.example', 22, 'operator', 'password')
+    assert client.get('/api/overview/reachability').json == {'results': None}
+    assert len(calls) == 1
+
+
+def test_last_reachability_expires_and_stays_per_user(app, client, context, monkeypatch):
+    monkeypatch.setattr(overview_routes, '_probe', _fake_probe({}, []))
+    client.post('/api/overview/reachability', json={})
+    uid = context[0]
+    with overview_routes._CACHE_LOCK:
+        entry = overview_routes._CACHE[uid]
+        entry['at'] -= overview_routes.RESULT_RETENTION_SECONDS + 1
+    assert client.get('/api/overview/reachability').json == {'results': None}
+    with overview_routes._CACHE_LOCK:
+        entry['at'] += overview_routes.RESULT_RETENTION_SECONDS + 1
+        assert set(overview_routes._CACHE) == {uid}

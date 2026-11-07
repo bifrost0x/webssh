@@ -255,9 +255,12 @@
                 title.textContent = `${item.host.name} · ${item.host.destination} · ${stateLabel(item.host.state)}`;
                 group.append(title, svg('circle', {r: 14, class: 'od-node-halo'}), svg('circle', {r: 7, class: 'od-node-dot'}));
                 const offset = item.anchor === 'start' ? 16 : item.anchor === 'end' ? -16 : 0;
-                const label = svg('text', {x: offset, y: item.anchor === 'middle' ? 28 : 5, 'text-anchor': item.anchor, class: 'od-node-label'});
-                label.textContent = item.host.name.length > 16 ? `${item.host.name.slice(0, 15)}…` : item.host.name;
-                group.append(label);
+                const clip = (value, size) => value.length > size ? `${value.slice(0, size - 1)}…` : value;
+                const label = svg('text', {x: offset, y: -1, 'text-anchor': item.anchor, class: 'od-node-label'});
+                label.textContent = clip(item.host.name, 18);
+                const sub = svg('text', {x: offset, y: 13, 'text-anchor': item.anchor, class: 'od-node-sub'});
+                sub.textContent = clip(item.host.destination, 24);
+                group.append(label, sub);
                 group.addEventListener('click', () => focusHost(item.host.id));
                 nodes.append(group);
             });
@@ -270,14 +273,14 @@
                 label.textContent = text;
                 group.append(label);
                 if (hub.hidden) {
-                    const more = svg('text', {y: 34, 'text-anchor': 'middle', class: 'od-node-label'});
+                    const more = svg('text', {y: 34, 'text-anchor': 'middle', class: 'od-node-more'});
                     more.textContent = `+${hub.hidden}`;
                     group.append(more);
                 }
                 nodes.append(group);
             });
             const core = svg('g', {class: 'od-core', transform: `translate(${layout.center.x} ${layout.center.y})`});
-            core.append(svg('circle', {r: 42, class: 'od-core-pulse'}), svg('circle', {r: 30, class: 'od-core-disc'}));
+            core.append(svg('circle', {r: 46, class: 'od-core-pulse'}), svg('circle', {r: 40, class: 'od-core-ring'}), svg('circle', {r: 30, class: 'od-core-disc'}));
             const coreLabel = svg('text', {y: 5, 'text-anchor': 'middle', class: 'od-core-label'});
             coreLabel.textContent = 'WebSSH';
             core.append(coreLabel);
@@ -314,7 +317,8 @@
             if (host.status?.auth === 'key_missing') return tw('reasonKeyMissing', 'SSH key missing');
             if (host.status?.auth === 'password_changed') return tw('reasonPasswordChanged', 'Saved password needs review');
             if (host.reach?.state === 'reachable') return tw('reasonReachable', 'Reachable · {ms} ms', {ms: host.reach.latency_ms});
-            return host.route.kind === 'jump' ? tw('routeVia', 'via {name}', {name: host.route.name}) : tw('routeDirect', 'Direct');
+            // The route has its own chip; the badge only states readiness.
+            return host.state === 'unknown' ? tw('loading', 'Loading…') : stateLabel(host.state);
         }
         function hostCard(host) {
             const item = node('li', 'od-host');
@@ -325,6 +329,19 @@
             logo.append(win.HostPlatform?.render(host.profile, doc) || icon('dns'));
             const copy = node('div', 'od-host-copy');
             copy.append(node('span', 'od-host-name', host.name), node('span', 'od-host-destination', host.destination));
+            const meta = node('div', 'od-host-meta');
+            const route = node('span', 'od-chip');
+            route.dataset.route = host.route.kind;
+            route.append(icon(host.route.kind === 'direct' ? 'arrow_forward' : 'alt_route'),
+                node('span', '', host.route.kind === 'direct' ? tw('routeDirect', 'Direct')
+                    : host.route.kind === 'jump' ? tw('routeVia', 'via {name}', {name: host.route.name})
+                        : t('overview.missingJump', 'Saved jump host unavailable')));
+            meta.append(route);
+            if (host.group) {
+                const group = node('span', 'od-chip');
+                group.append(icon('folder_open'), node('span', '', host.group));
+                meta.append(group);
+            }
             const favoriteLabel = host.favorite
                 ? tw('favoriteRemove', 'Remove {name} from favorites', {name: host.name})
                 : tw('favoriteAdd', 'Add {name} to favorites', {name: host.name});
@@ -348,17 +365,25 @@
             connectButton.dataset.key = `connect:${host.id}`;
             connectButton.append(icon(host.sessionId ? 'east' : 'terminal'), node('span', '', primary));
             bottom.append(badge, editButton, connectButton);
-            item.append(top, bottom);
+            item.append(top, meta, bottom);
             return item;
         }
         function renderHosts(hosts) {
             const loaded = win.ProfileManager?.profilesLoaded === true;
             const visible = Model.filter(hosts, search.value);
-            hostList.setAttribute('aria-busy', String(!loaded));
-            hostList.replaceChildren();
             $('overviewHostsEmpty').hidden = !loaded || hosts.length > 0;
             $('overviewHostsNoMatch').hidden = !loaded || !hosts.length || visible.length > 0;
             $('overviewHostTotal').textContent = loaded ? String(visible.length === hosts.length ? hosts.length : `${visible.length} / ${hosts.length}`) : '';
+            // Status updates arrive often; rebuild cards only when what they show changed,
+            // so focus, hover and scroll position stay where the user left them.
+            const signature = JSON.stringify([loaded, win.i18n?.getLanguage?.() || '', visible.map(host => [host.id, host.state, host.name,
+                host.destination, host.favorite, host.group, host.route.kind, host.route.name, host.sessionId, reasonFor(host),
+                win.HostPlatform?.resolve?.(host.profile)?.id || ''])]);
+            if (signature === state.hostSignature) return;
+            state.hostSignature = signature;
+            const focusedKey = hostList.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
+            hostList.setAttribute('aria-busy', String(!loaded));
+            hostList.replaceChildren();
             if (!loaded) {
                 for (let index = 0; index < 6; index += 1) hostList.append(node('li', 'od-host od-skeleton'));
                 return;
@@ -368,6 +393,7 @@
                 card.style.setProperty('--od-index', String(Math.min(index, 12)));
                 hostList.append(card);
             });
+            if (focusedKey) [...hostList.querySelectorAll('[data-key]')].find(item => item.dataset.key === focusedKey)?.focus({preventScroll: true});
         }
 
         function renderAttention(items) {
@@ -404,33 +430,33 @@
             if (!runInfo.enabled) return;
             const bins = metrics.automation.bins;
             const max = Math.max(1, ...bins.map(bin => bin.succeeded + bin.failed + bin.other));
-            const chart = svg('svg', {viewBox: '0 0 280 110', class: 'od-chart-svg', role: 'img',
-                'aria-label': tw('chartLabel', 'Automation runs per day over 14 days: {runs} runs, {failed} failed', {runs: metrics.automation.runs, failed: metrics.automation.failed})});
-            const barWidth = 14;
+            // HTML bars stay crisp at every panel width; SVG text would scale with it.
+            const dayLabel = bin => new Date(bin.start).toLocaleDateString(win.i18n?.getLanguage?.() || undefined, {day: 'numeric', month: 'short'});
+            const chart = node('div', 'od-chart-bars');
+            chart.setAttribute('role', 'img');
+            chart.setAttribute('aria-label', tw('chartLabel', 'Automation runs per day over 14 days: {runs} runs, {failed} failed', {runs: metrics.automation.runs, failed: metrics.automation.failed}));
             bins.forEach((bin, index) => {
-                const x = 6 + index * 19.5;
-                let y = 92;
-                const day = new Date(bin.start).toLocaleDateString(win.i18n?.getLanguage?.() || undefined, {day: 'numeric', month: 'short'});
-                const group = svg('g', {class: 'od-bar', style: `--od-delay:${index * 40}ms`});
-                const title = svg('title');
-                title.textContent = `${day}: ${bin.succeeded} ✓ · ${bin.failed} ✕ · ${bin.other} ?`;
-                group.append(title);
-                group.append(svg('rect', {x, y: 8, width: barWidth, height: 84, rx: 4, class: 'od-bar-track'}));
-                [['succeeded', bin.succeeded], ['other', bin.other], ['failed', bin.failed]].forEach(([kind, count]) => {
+                const total = bin.succeeded + bin.failed + bin.other;
+                const column = node('div', 'od-bar');
+                column.title = `${dayLabel(bin)}: ${bin.succeeded} ✓ · ${bin.failed} ✕ · ${bin.other} ?`;
+                column.style.setProperty('--od-delay', `${index * 40}ms`);
+                const stack = node('div', 'od-bar-stack');
+                stack.style.setProperty('--od-fill', `${total ? Math.max(8, (total / max) * 100) : 0}%`);
+                [['failed', bin.failed], ['other', bin.other], ['succeeded', bin.succeeded]].forEach(([kind, count]) => {
                     if (!count) return;
-                    const height = (count / max) * 80;
-                    y -= height;
-                    group.append(svg('rect', {x, y: y.toFixed(1), width: barWidth, height: Math.max(3, height).toFixed(1), rx: 4, class: 'od-bar-value', 'data-kind': kind}));
+                    const segment = node('span', 'od-bar-value');
+                    segment.dataset.kind = kind;
+                    segment.style.setProperty('--od-count', String(count));
+                    stack.append(segment);
                 });
-                chart.append(group);
+                column.append(stack);
+                chart.append(column);
             });
-            [[0, bins[0]], [bins.length - 1, bins[bins.length - 1]]].forEach(([index, bin]) => {
-                const label = svg('text', {x: 6 + index * 19.5 + barWidth / 2, y: 106, 'text-anchor': index ? 'end' : 'start', class: 'od-axis'});
-                label.textContent = new Date(bin.start).toLocaleDateString(win.i18n?.getLanguage?.() || undefined, {day: 'numeric', month: 'short'});
-                chart.append(label);
-            });
+            const axis = node('div', 'od-chart-axis');
+            axis.setAttribute('aria-hidden', 'true');
+            axis.append(node('span', '', dayLabel(bins[0])), node('span', '', dayLabel(bins[bins.length - 1])));
             // An empty chart is noise; the status line explains the state instead.
-            $('odAutomationChart').replaceChildren(...(metrics.automation.runs ? [chart] : []));
+            $('odAutomationChart').replaceChildren(...(metrics.automation.runs ? [chart, axis] : []));
             const next = metrics.nextRun;
             $('odNextRun').textContent = !runInfo.loaded ? (runInfo.stale ? tw('automationUnavailable', 'Automation data is unavailable right now.') : tw('loading', 'Loading…'))
                 : runInfo.stale ? tw('automationStale', 'Showing the last known runs. Automation could not be refreshed.')
@@ -553,9 +579,26 @@
                 schedule();
             }
         }
+        /** Show the last check after a page load; this never contacts a host. */
+        async function restoreReachability() {
+            if (mode() === 'off' || state.checkedAt) return;
+            state.restoring = true;
+            try {
+                const data = await request('/api/overview/reachability');
+                if (data.results && !state.checkedAt) {
+                    state.reachability = data.results;
+                    state.checkedAt = Number(data.checked_at) * 1000 || null;
+                    schedule();
+                }
+            } catch {
+                // Without a stored result the tile simply shows "Not checked yet".
+            } finally {
+                state.restoring = false;
+            }
+        }
         function syncAutomatic() {
             win.clearInterval(state.automaticTimer);
-            if (mode() !== 'automatic' || view.hidden) return;
+            if (state.restoring || mode() !== 'automatic' || view.hidden) return;
             if (!state.checkedAt || Date.now() - state.checkedAt > AUTOMATIC_INTERVAL) checkReachability();
             state.automaticTimer = win.setInterval(() => { if (!doc.hidden && !view.hidden) checkReachability(); }, AUTOMATIC_INTERVAL);
         }
@@ -642,7 +685,7 @@
             }
             render();
             queueReadiness();
-            syncAutomatic();
+            restoreReachability().finally(syncAutomatic);
         }
         return {init, render};
     }

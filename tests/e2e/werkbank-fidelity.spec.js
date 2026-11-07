@@ -13,7 +13,8 @@ test('Werkbank overview aligns the welcome above routes and compact hosts',async
  expect(positions.welcome.bottom-positions.welcome.top).toBeGreaterThanOrEqual(80);
  expect(positions.routes.top).toBeGreaterThanOrEqual(positions.welcome.bottom);
  expect(positions.hosts.top).toBeGreaterThanOrEqual(positions.routes.bottom);
- expect(Math.abs(positions.side.top-positions.hosts.top)).toBeLessThan(24);
+ expect(Math.abs(positions.side.top-positions.routes.top)).toBeLessThan(24);
+ expect(positions.side.left).toBeGreaterThanOrEqual(positions.hosts.right);
  await expect(page.locator('.od-host .od-connect').first()).toBeVisible();
  await page.locator('.od-host [data-key^="edit:"]').first().click();
  await expect(page.locator('#profileEditorView')).toBeVisible();

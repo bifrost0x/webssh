@@ -123,3 +123,14 @@ test('greeting follows the time of day', () => {
     assert.equal(Model.greetingKey(14), 'greetingDay');
     assert.equal(Model.greetingKey(21), 'greetingEvening');
 });
+
+test('topology height follows the inventory and stays bounded', () => {
+    const make = (count, jump) => Model.hosts({profiles: Array.from({length: count}, (_, index) => ({id: `h${index}`, name: `h${index}`, host: `10.0.0.${index}`,
+        jump_host_id: jump ? 'j1' : undefined})), jumps, jumpsLoaded: true});
+    const small = Model.topology(make(1));
+    assert.equal(small.height, 220, 'one host does not leave an empty canvas');
+    assert.ok(small.center.x > small.width / 2, 'a direct-only drawing is centred instead of leaving the right half empty');
+    assert.equal(Model.topology(make(40)).height, 520);
+    assert.equal(Model.topology(make(3), {height: 440}).height, 440, 'an explicit height wins');
+    for (const node of Model.topology(make(12, true)).nodes) assert.ok(node.x <= 1200 - 190, 'labels keep room on the right');
+});

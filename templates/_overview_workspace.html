@@ -30,34 +30,35 @@
             <li id="odKpiReach" class="od-kpi" style="--od-index:3"></li>
         </ul>
 
-        <section class="od-panel od-topology" aria-labelledby="odTopologyTitle" style="--od-index:4">
-            <div class="od-panel-head">
-                <h2 id="odTopologyTitle" data-i18n="overviewWorkspace.topologyTitle">Infrastructure</h2>
-                <ul class="od-legend">
-                    <li data-state="ready" data-i18n="overviewWorkspace.stateReady">Ready</li>
-                    <li data-state="action" data-i18n="overviewWorkspace.stateAction">Needs action</li>
-                    <li data-state="unreachable" data-i18n="overviewWorkspace.stateUnreachable">Unreachable</li>
-                    <li data-state="live" data-i18n="overviewWorkspace.stateLive">Session open</li>
-                </ul>
-                <button id="overviewOpenMap" class="od-link" type="button" data-i18n="overviewWorkspace.routesOpenMap" hidden>Open map</button>
-            </div>
-            <div id="odTopology" class="od-topology-canvas"></div>
-        </section>
-
         <div class="od-grid">
-            <section class="od-panel od-hosts" aria-labelledby="overviewHostsTitle" style="--od-index:5">
-                <div class="od-panel-head">
-                    <h2 id="overviewHostsTitle"><span data-i18n="overviewWorkspace.hostsTitle">Hosts</span> <span id="overviewHostTotal" class="od-count"></span></h2>
-                </div>
-                <ul id="overviewHostList" class="od-host-grid" aria-busy="true"></ul>
-                <div id="overviewHostsEmpty" class="od-empty" hidden>
-                    <div class="od-empty-art" aria-hidden="true"></div>
-                    <h3 data-i18n="overviewWorkspace.emptyTitle">Add your first host</h3>
-                    <p data-i18n="overviewWorkspace.emptyBody">Saved hosts appear here with their address, route and state, ready to connect.</p>
-                    <button id="overviewEmptyCreate" class="btn btn-primary" type="button" data-i18n="profiles.newHost">New host</button>
-                </div>
-                <p id="overviewHostsNoMatch" class="od-muted" role="status" data-i18n="profiles.noMatches" hidden>No matching hosts.</p>
-            </section>
+            <div class="od-main">
+                <section class="od-panel od-topology" aria-labelledby="odTopologyTitle" style="--od-index:4">
+                    <div class="od-panel-head">
+                        <h2 id="odTopologyTitle" data-i18n="overviewWorkspace.topologyTitle">Infrastructure</h2>
+                        <ul class="od-legend">
+                            <li data-state="ready" data-i18n="overviewWorkspace.stateReady">Ready</li>
+                            <li data-state="action" data-i18n="overviewWorkspace.stateAction">Needs action</li>
+                            <li data-state="unreachable" data-i18n="overviewWorkspace.stateUnreachable">Unreachable</li>
+                            <li data-state="live" data-i18n="overviewWorkspace.stateLive">Session open</li>
+                        </ul>
+                        <button id="overviewOpenMap" class="od-link" type="button" data-i18n="overviewWorkspace.routesOpenMap" hidden>Open map</button>
+                    </div>
+                    <div id="odTopology" class="od-topology-canvas"></div>
+                </section>
+                <section class="od-panel od-hosts" aria-labelledby="overviewHostsTitle" style="--od-index:5">
+                    <div class="od-panel-head">
+                        <h2 id="overviewHostsTitle"><span data-i18n="overviewWorkspace.hostsTitle">Hosts</span> <span id="overviewHostTotal" class="od-count"></span></h2>
+                    </div>
+                    <ul id="overviewHostList" class="od-host-grid" aria-busy="true"></ul>
+                    <div id="overviewHostsEmpty" class="od-empty" hidden>
+                        <div class="od-empty-art" aria-hidden="true"></div>
+                        <h3 data-i18n="overviewWorkspace.emptyTitle">Add your first host</h3>
+                        <p data-i18n="overviewWorkspace.emptyBody">Saved hosts appear here with their address, route and state, ready to connect.</p>
+                        <button id="overviewEmptyCreate" class="btn btn-primary" type="button" data-i18n="profiles.newHost">New host</button>
+                    </div>
+                    <p id="overviewHostsNoMatch" class="od-muted" role="status" data-i18n="profiles.noMatches" hidden>No matching hosts.</p>
+                </section>
+            </div>
             <div class="od-side">
                 <section id="odAttention" class="od-panel od-attention" aria-labelledby="odAttentionTitle" hidden style="--od-index:6">
                     <div class="od-panel-head"><h2 id="odAttentionTitle" data-i18n="overviewWorkspace.attentionTitle">Needs attention</h2></div>
