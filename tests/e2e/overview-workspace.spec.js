@@ -1,6 +1,15 @@
 const {test, expect} = require('playwright/test');
 const {login, installSshConnectTrap, sshAttempts, assertNoExternalRequests} = require('./helpers');
 
+// The e2e server is shared within a lane; restore the account's overview state even after a failure.
+test.afterEach(async ({page}) => {
+    const token = await page.locator('meta[name="csrf-token"]').getAttribute('content', {timeout: 1000}).catch(() => null);
+    if (!token) return;
+    const headers = {'X-CSRFToken': token};
+    await page.request.post('/api/account/preferences', {data: {overview_reachability: 'manual', overview_layout: 'dashboard'}, headers}).catch(() => {});
+    await page.request.put('/api/overview/preferences', {data: {panels: null, dismissed: []}, headers}).catch(() => {});
+});
+
 async function csrf(page) {
     return page.locator('meta[name="csrf-token"]').getAttribute('content');
 }
@@ -172,6 +181,11 @@ test('connecting from the expanded route map closes the map once', async ({page}
     await dialog.locator('.overview-host-connect').first().click();
     await expect(dialog).toBeHidden();
     await expect(page.locator('#connectionOverview')).toBeHidden();
+    // The map must not reopen behind the workspace, and exactly one connection starts.
+    await expect.poll(() => sshAttempts(page).then(attempts => attempts.length)).toBe(1);
+    await page.waitForTimeout(300);
+    await expect(dialog).toBeHidden();
+    expect((await sshAttempts(page)).length).toBe(1);
 });
 
 test('the last reachability result survives leaving and reloading the overview', async ({page}) => {

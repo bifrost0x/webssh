@@ -37,8 +37,12 @@ test('theme preferences survive save and reload without opting users into Werkba
  await login(page,'e2e_admin',{workspace:false});
  await page.goto('/settings#preferences');
  for(const theme of ['glass','arctic-ice','werkbank','glass']){
+  const saved=page.waitForResponse(r=>r.url().endsWith('/api/account/preferences')&&r.request().method()==='POST');
   await page.locator('#settingsThemeSelect').selectOption(theme);
+  expect((await saved).ok()).toBe(true);
   await expect(page.locator('#settingsThemeSelect')).toBeEnabled();
+  // Drop the browser's copy so the reload proves the account setting was stored.
+  await page.evaluate(()=>localStorage.removeItem('websshTheme'));
   await page.reload();
   await expect(page.locator('#settingsThemeSelect')).toHaveValue(theme);
   await expect(page.locator('body')).toHaveAttribute('data-theme',theme);

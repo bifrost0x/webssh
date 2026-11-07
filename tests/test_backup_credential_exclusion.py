@@ -1,4 +1,5 @@
 """Export boundaries must not compromise the private restore rollback path."""
+import contextlib
 import sqlite3
 import zipfile
 from pathlib import Path
@@ -23,7 +24,8 @@ PRIVATE_FILES = (
 
 def seed(root):
     root.mkdir()
-    with sqlite3.connect(root / 'app.db') as db:
+    # sqlite3's context manager only commits; closing releases the file for the restore.
+    with contextlib.closing(sqlite3.connect(root / 'app.db')) as db, db:
         db.execute('CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password_hash TEXT)')
     for name in PRIVATE_FILES:
         path = root / name

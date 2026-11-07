@@ -1,9 +1,11 @@
 const {test,expect}=require('playwright/test');
 const {login,assertNoExternalRequests}=require('./helpers');
 test.afterEach(async({page})=>assertNoExternalRequests(page));
+async function defaultPanels(page){const token=await page.locator('meta[name="csrf-token"]').getAttribute('content');expect((await page.request.put('/api/overview/preferences',{data:{panels:null},headers:{'X-CSRFToken':token}})).ok()).toBe(true);}
 async function overviewLayout(page,layout){const token=await page.locator('meta[name="csrf-token"]').getAttribute('content');const response=await page.request.post('/api/account/preferences',{data:{overview_layout:layout},headers:{'X-CSRFToken':token}});expect(response.ok()).toBe(true);}
 test('welcome aligns key figures, routes, hosts and side panels in the responsive dashboard grid',async({page})=>{
  await page.setViewportSize({width:2126,height:836});await login(page,'e2e_admin',{workspace:false});
+ await defaultPanels(page);await page.reload();
  const hero=page.locator('.od-hero');await expect(hero).toBeVisible();
  await expect(page.locator('#overviewHostList .od-host:not(.od-skeleton)').first()).toBeVisible();
  // Measure the settled layout, not the entrance animation.

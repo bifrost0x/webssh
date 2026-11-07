@@ -23,12 +23,16 @@ def test_tour_persists_only_own_progress_and_rejects_extra_settings(app, client)
     assert client.get('/api/account/tour').json['state'] == 'new'
 
 
-def test_tour_allowlists_configuration_and_uses_effective_policy(app, client, monkeypatch):
+def test_tour_allowlists_configuration_and_uses_effective_policy(app, client, monkeypatch, tmp_path):
     import config
     from app.app_settings import set_automation_enabled
     _prepare_role(app, client, 'admin')
     monkeypatch.setattr(config, 'SMB_ENABLED', True)
-    monkeypatch.setattr(config, 'OIDC_CLIENT_SECRET', 'must-not-appear', raising=False)
+    # A configured OIDC client secret (file path and content) must never reach the tour.
+    secret_file = tmp_path / 'oidc-secret-must-not-appear'
+    secret_file.write_text('oidc-client-secret-must-not-appear', encoding='utf-8')
+    monkeypatch.setattr(config, 'OIDC_ENABLED', True)
+    monkeypatch.setattr(config, 'OIDC_CLIENT_SECRET_FILE', str(secret_file))
     with app.app_context():
         set_automation_enabled(True)
     response = client.get('/api/account/tour')
@@ -38,7 +42,8 @@ def test_tour_allowlists_configuration_and_uses_effective_policy(app, client, mo
     facts = {item['key']: item['enabled'] for item in response.json['facts']}
     assert facts['SMB_ENABLED'] is True
     assert facts['automation_enabled'] is True
-    assert 'must-not-appear' not in response.get_data(as_text=True)
+    body = response.get_data(as_text=True)
+    assert 'must-not-appear' not in body and str(secret_file) not in body
     assert all(set(item) <= {'key', 'enabled', 'configured', 'source'} for item in response.json['facts'])
 
 

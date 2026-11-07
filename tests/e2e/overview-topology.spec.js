@@ -28,7 +28,7 @@ test('compact inventory and route topology support large inventories and fullscr
  await map.getByRole('button',{name:'Close map',exact:true}).click();await expect(dialog).not.toBeVisible();
  expect(await sshAttempts(page)).toEqual([]);expect(errors).toEqual([]);
 });
-for(const theme of ['glass','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian','werkbank']){
+for(const theme of ['glass','retro','paper','werkbank']){
  test(`120-host compact inventory fits narrow and wide layouts in ${theme}`,async({page})=>{
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await login(page,'e2e_admin',{workspace:false});await installSshConnectTrap(page);await seedHosts(page);

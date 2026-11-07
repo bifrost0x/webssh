@@ -1173,15 +1173,15 @@ test('captures WebSSH 3 dashboard and every supported theme', async ({page}, inf
     for (const [index, theme] of themes.entries()) {
         await page.evaluate(t => { ThemePreference.store(t); document.body.dataset.theme=t; }, theme);
         await expect(page.locator('body')).toHaveAttribute('data-theme', theme);
-        await page.waitForTimeout(700);
         if (captureAssetsEnabled()) {
+            await page.waitForTimeout(700);
             const directory=path.resolve('.test-run.tmp/theme-frames');fs.mkdirSync(directory,{recursive:true});
             await page.screenshot({path:path.join(directory, String(index).padStart(2,'0')+'-'+theme+'.png'),animations:'disabled'});
         }
         expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
     }
     await page.evaluate(()=>{ThemePreference.store('arctic-ice');document.body.dataset.theme='arctic-ice';});
-    await page.waitForTimeout(700);
+    if (captureAssetsEnabled()) await page.waitForTimeout(700);
     await captureDesktopStill(page,'dashboard.png',info);
     await assertCaptureNetworkClean(page);
 });
@@ -1199,7 +1199,7 @@ test('captures dashboard arrangement and host discovery', async ({page}, info) =
     await expect(page.locator('#connectionOverview')).toHaveAttribute('data-settled', /.*/);
     await page.locator('#overviewCustomize').click();
     await expect(page.locator('#odEditBar')).toBeVisible();
-    await page.waitForTimeout(400);
+    if (captureAssetsEnabled()) await page.waitForTimeout(400);
     await captureDesktopStill(page, 'dashboard-customize.png', info);
     await page.locator('#odLayoutDone').click();
 
@@ -1217,7 +1217,7 @@ test('captures dashboard arrangement and host discovery', async ({page}, info) =
     await page.locator('#hostDiscoveryPorts').fill('22, 2222');
     await page.locator('#hostDiscoveryStart').click();
     await expect(page.locator('#hostDiscoveryResults > li')).toHaveCount(4);
-    await page.waitForTimeout(400);
+    if (captureAssetsEnabled()) await page.waitForTimeout(400);
     await captureDesktopStill(page, 'host-discovery.png', info);
     await assertCaptureNetworkClean(page);
 });

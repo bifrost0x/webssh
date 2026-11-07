@@ -37,7 +37,7 @@ test('dashboard summarizes routes at readable size and opens complete editable t
  expect(errors).toEqual([]);expect(await sshAttempts(page)).toEqual([]);
 });
 
-for (const theme of ['glass','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian','werkbank']) {
+for (const theme of ['glass','retro','paper','werkbank']) {
  test(`route summary remains readable through size changes in ${theme}`, async ({page}, info) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

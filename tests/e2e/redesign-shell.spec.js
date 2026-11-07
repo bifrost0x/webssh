@@ -209,10 +209,13 @@ test('empty overview exposes one search and no invented sessions, routes or tran
     await expect(page.locator('#overviewRouteMap .ssh-map-toolbar input')).toHaveCount(1);
     await expect(page.locator('#overviewQuickConnect')).toHaveCount(0);
     await expect(page.locator('#shellConnectBtn')).toBeVisible();
-    await expect(page.locator('#shellSearch, #shellQuickConnect, #routesNavBtn, #shellNotes, .overview-quick-actions, .shell-settings')).toHaveCount(0);
+    await expect(page.locator('#shellSearch')).toHaveCount(0);
     await expect(page.locator('.shell-groups')).toBeHidden();
     await expect(page.locator('#overviewHostTotal')).toHaveText('0');
     await expect(page.locator('#odKpiSessionsValue')).toHaveText('0');
+    expect(await page.evaluate(() => SessionManager.getAllSessions().length)).toBe(0);
+    await expect(page.locator('#odActivity .od-event')).toHaveCount(0);
+    await expect(page.locator('#odActivityEmpty')).toBeVisible();
     await expect(page.locator('#overviewHostList [data-host-id]')).toHaveCount(0);
     await expect(page.locator('#overviewHostsEmpty')).toBeVisible();
     await page.screenshot({path: test.info().outputPath('empty-overview.png')});

@@ -1,5 +1,7 @@
 const {test,expect}=require('playwright/test');
 const {login,installSshConnectTrap,sshAttempts}=require('./helpers');
+// Switching to classic is per account on a shared server; never leave it behind.
+test.afterEach(async({page})=>{const token=await page.locator('meta[name="csrf-token"]').getAttribute('content',{timeout:1000}).catch(()=>null);if(token)await page.request.post('/api/account/preferences',{data:{overview_layout:'dashboard'},headers:{'X-CSRFToken':token}}).catch(()=>{});});
 test('account can switch classic overview and dashboard without losing layout',async({page},info)=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await login(page,'e2e_admin',{workspace:false});
