@@ -20,6 +20,14 @@ class AutomationError(ValueError):
 class AutomationNotDispatched(AutomationError):
     """A run was definitely not started; nothing reached any target."""
 
+
+class AutomationHostKeyRequired(AutomationError):
+    """Selected hosts have no verified host key yet."""
+
+    def __init__(self, hosts):
+        super().__init__('host_key_required')
+        self.hosts = list(hosts)[:50]
+
 def text(value, maximum, *, empty=False):
     try:
         size = len(value.encode('utf-8')) if isinstance(value, str) else maximum + 1

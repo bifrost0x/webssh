@@ -86,7 +86,8 @@
         'vault_missing', 'vault_unlock_failed', 'vault_exists', 'vault_unreadable', 'credential_missing',
         'invalid_passphrase', 'invalid_runbook', 'invalid_request', 'invalid_targets', 'unsupported_target',
         'key_unavailable', 'preview_changed', 'invalid_intent', 'confirmation_required', 'step_up_required',
-        'invalid_schedule', 'storage_limit', 'storage_unavailable', 'not_found', 'acknowledgement_required', 'unavailable']);
+        'invalid_schedule', 'storage_limit', 'storage_unavailable', 'not_found', 'acknowledgement_required', 'unavailable',
+        'credentials_disabled', 'credential_target_changed', 'host_key_required', 'cancelled']);
     function notify(message, error = false) {
         const target = $(error ? 'automationError' : 'automationNotice');
         target.textContent = message;
@@ -125,7 +126,13 @@
                 $('runPreview').close();
                 $('scheduleReview')?.close();
             }
-            const error = new Error(tr(errors.has(data.code) ? `error.${data.code}` : 'requestFailed'));
+            // Never fall back to an unexplained message: an unmapped code is
+            // still shown so the user or an administrator can act on it.
+            const hosts = Array.isArray(data.hosts) ? data.hosts.filter(name => typeof name === 'string').slice(0, 5).join(', ') : '';
+            const message = errors.has(data.code) ? tr(`error.${data.code}`, {hosts: hosts || tr('hostsSelected')})
+                : typeof data.code === 'string' && /^[a-z_]{1,64}$/.test(data.code) ? tr('requestFailedCode', {code: data.code})
+                    : tr('requestFailed');
+            const error = new Error(message);
             error.code = data.code;
             throw error;
         }

@@ -3,7 +3,11 @@ from app.automation_store import AutomationError, save_runbook
 from app.automation_service import AutomationService
 
 @pytest.fixture
-def context(app, client):
+def context(app, client, monkeypatch):
+    # Unit fixtures use unreachable hosts; trust is covered explicitly in
+    # test_automation_host_key_preflight and by the OpenSSH integration tests.
+    from app.host_key_store import HostKeyStore
+    monkeypatch.setattr(HostKeyStore, 'has_trusted_key', lambda self, hostname, port=22: True)
     from app.auth import register_user
     from app.models import AuthenticationSession
     from app.profile_manager import add_profile

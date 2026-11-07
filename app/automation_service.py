@@ -11,7 +11,7 @@ import time
 import uuid
 
 import config
-from .automation_store import (AutomationError, AutomationNotDispatched, profile_fingerprint,
+from .automation_store import (AutomationError, AutomationHostKeyRequired, AutomationNotDispatched, profile_fingerprint,
     runbooks, user_path, read_document, write_document, MAX_STORE_BYTES)
 from .credential_service import session_identity
 from .automation_transport import (CONNECTION_REASONS, STEP_REASONS, STEP_OUTPUT_BYTES,
@@ -134,6 +134,7 @@ class AutomationService:
             if book is None:
                 raise AutomationError('not_found')
             targets = self._inventory(user_id, data)
+            self._require_trusted_host_keys(user_id, targets)
             needs_password = any(target['auth_type'] == 'password' for target in targets)
             generation = self.credentials.generations(user_id, auth_id, [t for t in targets if t['auth_type'] == 'password']) if needs_password else None
             for target in targets:
@@ -144,6 +145,21 @@ class AutomationService:
             token = self._remember(user_id, auth_id, payload)
             return dict(intent=token, runbook=book, targets=[self.display_target(t) for t in targets],
                         confirmation=str(len(targets)), expires_in=300)
+
+    @staticmethod
+    def _require_trusted_host_keys(user_id, targets):
+        """Fail the review early instead of letting the first run fail.
+
+        Automation never accepts unknown host keys; the user verifies a key
+        through a normal interactive connection first.
+        """
+        from .host_key_store import HostKeyStore
+        from .network_policy import canonicalize_hostname
+        store = HostKeyStore(user_id, config.KNOWN_HOSTS_FILE, config.USERS_DIR)
+        missing = [target for target in targets
+                   if not store.has_trusted_key(canonicalize_hostname(target['host']), target.get('port', 22))]
+        if missing:
+            raise AutomationHostKeyRequired([target['name'] for target in missing])
 
     @staticmethod
     def display_target(target):

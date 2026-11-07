@@ -71,8 +71,13 @@ def private(response):
 def failure(error):
     status = {'authentication_required':401, 'disabled':403, 'https_required':403,
         'step_up_required':403, 'busy':429, 'not_found':404, 'invalid_intent':409,
-        'preview_changed':409, 'vault_locked':423, 'unavailable':503}.get(error.code, 400)
-    return jsonify(error='Automation request could not be completed.', code=error.code), status
+        'preview_changed':409, 'vault_locked':423, 'unavailable':503,
+        'credentials_disabled':403, 'host_key_required':409}.get(error.code, 400)
+    body = dict(error='Automation request could not be completed.', code=error.code)
+    # Names of the user's own saved hosts let the browser say which host to verify.
+    if getattr(error, 'hosts', None):
+        body['hosts'] = error.hosts
+    return jsonify(body), status
 
 @automation_blueprint.errorhandler(StorageCorruptionError)
 def corrupt(_error):

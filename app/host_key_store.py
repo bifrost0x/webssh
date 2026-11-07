@@ -251,6 +251,19 @@ class HostKeyStore:
             user_file = self._load_or_empty(self.user_path)
             client._host_keys = _LayeredHostKeys(global_file, user_file)
 
+    def has_trusted_key(self, hostname: str, port: int = 22) -> bool:
+        """Whether a non-revoked user or global key exists for this endpoint.
+
+        Only a readiness hint: connections still verify the presented key.
+        """
+        lookup_name = hostname if int(port) == 22 else f"[{hostname}]:{int(port)}"
+        with self._account_access():
+            keys = _LayeredHostKeys(
+                self._load_or_empty(self.global_path),
+                self._load_or_empty(self.user_path),
+            )
+            return keys.lookup(lookup_name) is not None
+
     def missing_key_policy(self, decision=None, context="target") -> paramiko.MissingHostKeyPolicy:
         return _PerUserMissingHostKeyPolicy(self, decision, context)
 
