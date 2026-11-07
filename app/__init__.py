@@ -1641,8 +1641,9 @@ def create_app(
                                 ('automation_enabled', set_automation_enabled)):
             if feature in data:
                 setter(data[feature])
-                log_info('Admin changed application feature',
-                         admin=current_user.username, feature=feature, enabled=data[feature])
+                from .audit_logger import log_security_event
+                log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
+                                   feature=feature, enabled=data[feature])
         for name in RUNTIME_FEATURES:
             if name in data:
                 set_runtime_feature(name, data[name])

@@ -4,6 +4,8 @@ Unlike user_settings (per user), these are global settings an admin can toggle
 at runtime without restarting (e.g. whether self-registration is open). Each
 value falls back to its config/env default when no override has been saved.
 """
+import secrets
+
 import config
 
 from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
@@ -11,12 +13,22 @@ from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
 _SETTINGS_FILE = config.DATA_DIR / 'app_settings.json'
 
+_BOOLEAN_SETTINGS = (
+    'credentials_enabled',
+    'automation_enabled',
+    'automation_effective_observed',
+    'sftp_chmod_enabled',
+    'server_operations_enabled',
+    'tmux_enabled',
+    'tmux_default',
+)
+
 
 def _valid_settings(value):
     return (
         isinstance(value, dict)
         and value.get('schema_version') == CURRENT_STORAGE_VERSIONS['app_settings']
-        and all(name not in value or type(value[name]) is bool for name in ('credentials_enabled','automation_enabled','sftp_chmod_enabled','server_operations_enabled','tmux_enabled','tmux_default'))
+        and all(name not in value or type(value[name]) is bool for name in _BOOLEAN_SETTINGS)
         and ('runtime_feature_migration' not in value or (isinstance(value['runtime_feature_migration'], list) and all(isinstance(name, str) and name in RUNTIME_FEATURES for name in value['runtime_feature_migration'])))
         and all(name not in value or isinstance(value[name],str) for name in ('credentials_enabled_revision','automation_enabled_revision'))
         and (
@@ -58,12 +70,15 @@ def _save(data):
 
 
 def is_registration_enabled():
-    """Effective registration state: saved override if present, else env default."""
+    """Effective registration state: saved override if present, else env default.
+
+    REGISTRATION_ENABLED has always been only the initial value; a saved
+    administrator choice wins. Keeping that precedence guarantees that an
+    upgrade never reopens registration an administrator closed.
+    """
     data = _load()
     if config.DEPLOYMENT_PROFILE == 'production':
         return False
-    if 'REGISTRATION_ENABLED' in config.EXPLICIT_ENVIRONMENT_KEYS:
-        return bool(config.REGISTRATION_ENABLED)
     if 'registration_enabled' in data:
         return bool(data['registration_enabled'])
     return bool(config.REGISTRATION_ENABLED)
@@ -139,8 +154,11 @@ def _set_feature(name, value):
             return value
         data[name] = value
         # Changing away and back must revoke old background grants too.
-        import secrets
         data[name + '_revision'] = secrets.token_hex(32)
+        if name == 'automation_enabled':
+            # The new revision already reflects this change; a restart must
+            # not rotate it a second time and revoke grants approved since.
+            data['automation_effective_observed'] = _effective_automation_enabled(data)
         _save(data)
     return value
 
@@ -160,16 +178,40 @@ def get_automation_policy_revision():
     return _load().get('automation_enabled_revision', '')
 
 
+def _effective_automation_enabled(data):
+    if 'AUTOMATION_ENABLED' in config.EXPLICIT_ENVIRONMENT_KEYS:
+        return bool(config.AUTOMATION_ENABLED)
+    return data.get('automation_enabled') is True
+
+
 def migrate_feature_policies(*, credentials_enabled=False, automation_enabled=False):
-    """Explicit one-time startup migration; a saved administrator choice wins."""
+    """Startup migration; a saved administrator choice wins.
+
+    AUTOMATION_ENABLED can change between restarts without passing through the
+    Admin toggle. Any change of the effective value observed at startup rotates
+    the policy revision, so schedules approved before an environment disable
+    cannot resume after a later re-enable.
+    """
     with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
         data = _load_with_lock_held()
-        for name,value in [('credentials_enabled',credentials_enabled),('automation_enabled',automation_enabled)]:
+        changed = False
+        for name, value in (
+            ('credentials_enabled', credentials_enabled),
+            ('automation_enabled', automation_enabled),
+        ):
             if name not in data:
-                data[name]=value is True
-                import secrets
-                data[name+'_revision']=secrets.token_hex(32)
-        _save(data)
+                data[name] = value is True
+                data[name + '_revision'] = secrets.token_hex(32)
+                changed = True
+        effective = _effective_automation_enabled(data)
+        observed = data.get('automation_effective_observed')
+        if observed is not effective:
+            if type(observed) is bool:
+                data['automation_enabled_revision'] = secrets.token_hex(32)
+            data['automation_effective_observed'] = effective
+            changed = True
+        if changed:
+            _save(data)
 
 
 RUNTIME_FEATURES = {
@@ -212,20 +254,40 @@ def set_runtime_feature(name, enabled):
 
 
 def migrate_runtime_features():
-    """Preserve the pre-upgrade effective values, including old Compose files."""
+    """Preserve the pre-upgrade effective values, including old Compose files.
+
+    An explicit environment value without a saved Admin value is recorded
+    once, so removing the Compose line later keeps the same behavior.
+    """
     with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
         data = _load_with_lock_held()
-        migrated = data.setdefault('runtime_feature_migration', [])
+        migrated = list(data.get('runtime_feature_migration', []))
+        changed = False
         for name, key in RUNTIME_FEATURES.items():
             if name not in data and key in config.EXPLICIT_ENVIRONMENT_KEYS:
                 data[name] = bool(getattr(config, key))
                 migrated.append(name)
-        _save(data)
+                changed = True
+        if changed:
+            data['runtime_feature_migration'] = migrated
+            _save(data)
 
 
 def native_setting_sources():
-    return {name: {
-        'locked': key in config.EXPLICIT_ENVIRONMENT_KEYS or (name == 'registration_enabled' and config.DEPLOYMENT_PROFILE == 'production'),
-        'environment_key': key,
-        'source': 'compose' if key in config.EXPLICIT_ENVIRONMENT_KEYS else ('production' if name == 'registration_enabled' and config.DEPLOYMENT_PROFILE == 'production' else 'admin'),
-    } for name, key in {'automation_enabled':'AUTOMATION_ENABLED', 'registration_enabled':'REGISTRATION_ENABLED'}.items()}
+    """Lock state of Admin switches that have an environment counterpart."""
+    automation_locked = 'AUTOMATION_ENABLED' in config.EXPLICIT_ENVIRONMENT_KEYS
+    production = config.DEPLOYMENT_PROFILE == 'production'
+    return {
+        'automation_enabled': {
+            'locked': automation_locked,
+            'environment_key': 'AUTOMATION_ENABLED',
+            'source': 'compose' if automation_locked else 'admin',
+        },
+        # REGISTRATION_ENABLED is only the initial value (see
+        # is_registration_enabled); only the production profile locks it.
+        'registration_enabled': {
+            'locked': production,
+            'environment_key': 'REGISTRATION_ENABLED',
+            'source': 'production' if production else 'admin',
+        },
+    }

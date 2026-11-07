@@ -81,3 +81,48 @@ def test_new_install_has_editable_tmux_without_compose_override(app, client, mon
     assert result.status_code == 200
     assert result.json['runtime_features']['tmux_enabled']['enabled'] is True
     assert result.json['runtime_features']['tmux_enabled']['source'] == 'admin'
+
+
+def test_registration_environment_is_only_the_initial_value(app, client, monkeypatch):
+    import config
+    from app.app_settings import is_registration_enabled
+    _prepare_role(app, client, 'admin')
+    monkeypatch.setattr(config, 'REGISTRATION_ENABLED', True)
+    monkeypatch.setattr(config, 'EXPLICIT_ENVIRONMENT_KEYS', frozenset({'REGISTRATION_ENABLED'}))
+    settings = client.get('/admin/api/settings').json
+    assert settings['setting_sources']['registration_enabled']['locked'] is False
+    headers = password_step_up_headers(client, 'settings.update', 'global')[0]
+    closed = client.post('/admin/api/settings', json={'registration_enabled': False}, headers=headers)
+    assert closed.status_code == 200
+    assert closed.json['registration_enabled'] is False
+    assert is_registration_enabled() is False
+
+
+def test_production_profile_locks_registration_closed(app, client, monkeypatch):
+    import config
+    from app.app_settings import is_registration_enabled, native_setting_sources
+    monkeypatch.setattr(config, 'DEPLOYMENT_PROFILE', 'production')
+    monkeypatch.setattr(config, 'REGISTRATION_ENABLED', True)
+    assert is_registration_enabled() is False
+    assert native_setting_sources()['registration_enabled'] == {
+        'locked': True, 'environment_key': 'REGISTRATION_ENABLED', 'source': 'production'}
+
+
+def test_automation_environment_override_locks_the_admin_switch(app, client, monkeypatch):
+    import config
+    _prepare_role(app, client, 'admin')
+    monkeypatch.setattr(config, 'AUTOMATION_ENABLED', False)
+    monkeypatch.setattr(config, 'EXPLICIT_ENVIRONMENT_KEYS', frozenset({'AUTOMATION_ENABLED'}))
+    headers = password_step_up_headers(client, 'settings.update', 'global')[0]
+    response = client.post('/admin/api/settings', json={'automation_enabled': True}, headers=headers)
+    assert response.status_code == 409
+    assert response.json['code'] == 'deployment_locked'
+
+
+def test_admin_toggle_does_not_revoke_again_on_restart(app):
+    from app import app_settings
+    app_settings.migrate_feature_policies()
+    app_settings.set_automation_enabled(True)
+    revision = app_settings.get_automation_policy_revision()
+    app_settings.migrate_feature_policies()
+    assert app_settings.get_automation_policy_revision() == revision

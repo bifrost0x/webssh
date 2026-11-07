@@ -78,20 +78,50 @@ validation as proof that an arbitrary SQLite database is safe to parse.
 
 ## First-login tour
 
-An optional eight-step tour introduces the overview, hosts, workspaces, files, commands and automation after login. Back and Next move between the actual application views without connecting to hosts or executing commands. Every account sees the version 3 tour until explicitly checking the acknowledgement on step eight and completing it. Skipping only closes the current tour; it returns on the next application load. The acknowledgement is stored per account; reopen it from the account menu with Product tour.
+An optional eight-step tour introduces the overview, hosts, workspaces, files, commands and automation after login. Back and Next move between the actual application views without connecting to hosts or executing commands. Every account sees the version 3 tour once after login. Skipping closes it and is remembered for the account; completing it requires checking the acknowledgement on step eight. Reopen it at any time from the account menu with Product tour.
 
 The final steps show an allowlisted view of effective deployment flags and administrator feature policies. Authentication features also require their readiness and administrator gates. No environment secrets, host paths or Compose contents are exposed. Process root status is not a statement about Docker privileges, host mounts or remote SSH/sudo permissions. Documentation links open the product Wiki; administration links are shown only to administrators when the admin panel is available.
 
 
 ## Configuration ownership during upgrades
 
-Existing Compose files remain supported. Explicit environment values for file
-permission changes, server operations and tmux take precedence over saved Admin
-settings. Without an override, manage these under Administration → Integrations.
-Settings identifies the effective value, its source and any stored Admin value
-that is currently overridden. Removing an override reveals the saved value;
-review it before changing deployment configuration. Old explicit values are
-preserved once when no saved value exists. Automation and registration honor
-explicit deployment overrides; production registration remains prohibited.
+Version 3 manages file permission changes, server operations, tmux availability,
+the tmux preselection and automation under **Administration → Integrations**.
+Existing Compose and `.env` files keep working unchanged for all of 3.x.
+
+Rules:
+
+1. A non-empty environment value for one of these switches wins and locks the
+   Admin switch. Settings names the variable, the effective value and the saved
+   Admin value. An empty value (`X=` or `X=${X:-}`) counts as not set.
+2. On the first start with such a value and no saved Admin value, the value is
+   stored once. Removing the line later keeps the same behavior and unlocks the
+   switch.
+3. `REGISTRATION_ENABLED` stays an initial value, as in 2.x: a choice saved in
+   Administration wins. The production profile always disables registration.
+4. Product defaults: tmux available but not preselected; file permissions,
+   server operations, automation and saved passwords off. Saved passwords stay
+   on when a 2.x vault exists.
+
+| Switch | New installation (new Compose) | Existing, old Compose unchanged | Existing, new Compose before the first 3.0 start | Existing, new Compose after the first 3.0 start |
+|---|---|---|---|---|
+| tmux available | on, editable | on, locked by Compose | on (default), editable | on (stored), editable |
+| tmux preselected | off, editable | off, locked by Compose | off (default), editable | off (stored), editable |
+| File permissions | off, editable | as in the Compose; locked if set | off (default) | as before (stored), editable |
+| Server operations | off, editable | as in the Compose; locked if set | off (default) | as before (stored), editable |
+| Registration | off, editable | as in 2.x, editable | as in 2.x, editable | as in 2.x, editable |
+| Automation | off, editable | off, editable | off, editable | off, editable |
+
+Behavior is identical to 2.x in every column, with one exception: if file
+permissions or server operations were explicitly enabled in the old Compose
+and that file is replaced before the first 3.0 start, the value cannot be
+recovered and the feature is off. Carry those lines over, or enable the
+features in Administration after the upgrade.
+
+Changing an environment value later wins again while it is set; the stored
+Admin value is shown and applies once the line is removed. Changing the
+effective automation value between restarts revokes approved schedules.
+A rollback to 2.x ignores the stored Admin values and follows its environment.
+
 Authentication capabilities retain separate readiness and activation checks.
 TOTP capability is available by default; Admin activation remains required.

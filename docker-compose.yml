@@ -20,7 +20,8 @@ services:
       - SESSION_COOKIE_SECURE=false
 
       # Persistent sessions; falls back when tmux is unavailable remotely.
-      # New installations: manage tmux in Administration → Integrations.
+      # Managed in Administration → Integrations (default: available, not
+      # preselected; users opt in per host or connection).
       # Existing deployments can keep their unchanged Compose: explicit values
       # remain authoritative and are explained in Administration.
       # Optional operator override (locks the Admin switch):

@@ -44,7 +44,8 @@ for (const width of [390, 1440]) {
         await openProfileManagement(page);
         await page.locator('#newProfileBtn').click();
         const option = page.locator('#profileEditorUseTmux');
-        if (process.env.TMUX_ENABLED !== 'true') {
+        // tmux is available unless an operator override disables it.
+        if (process.env.TMUX_ENABLED === 'false') {
             await expect(option).toHaveCount(0);
             return;
         }

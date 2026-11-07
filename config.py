@@ -16,6 +16,19 @@ BASE_DIR = Path(__file__).parent
 # always take precedence over .env, so existing deployments are unaffected.
 load_dotenv(BASE_DIR / '.env')
 
+
+def _admin_switch_env(name, default):
+    """Parse an environment value that overrides an Admin switch.
+
+    An empty value (for example ``X=`` or ``X=${X:-}`` in Compose) counts as
+    not supplied: it neither locks the Admin switch nor changes the default.
+    """
+    raw_value = os.environ.get(name, '').strip()
+    if not raw_value:
+        return default
+    return raw_value.lower() == 'true'
+
+
 DEPLOYMENT_PROFILE = os.environ.get(
     'DEPLOYMENT_PROFILE',
     'homelab',
@@ -53,14 +66,12 @@ HOST_KEY_MANAGEMENT_ENABLED = (
     os.environ.get('HOST_KEY_MANAGEMENT_ENABLED', 'true').lower() == 'true'
 )
 # Native automation is an explicit operator opt-in.
-AUTOMATION_ENABLED = os.environ.get('AUTOMATION_ENABLED', 'false').lower() == 'true'
+AUTOMATION_ENABLED = _admin_switch_env('AUTOMATION_ENABLED', False)
 AUTOMATION_ALLOW_INSECURE_LOOPBACK = os.environ.get(
     'AUTOMATION_ALLOW_INSECURE_LOOPBACK', 'false'
 ).lower() == 'true'
 
-SERVER_OPERATIONS_ENABLED = (
-    os.environ.get('SERVER_OPERATIONS_ENABLED', 'false').lower() == 'true'
-)
+SERVER_OPERATIONS_ENABLED = _admin_switch_env('SERVER_OPERATIONS_ENABLED', False)
 RECOVERY_CODES_ENABLED = (
     os.environ.get('RECOVERY_CODES_ENABLED', 'true').lower() == 'true'
 )
@@ -464,6 +475,16 @@ if BACKGROUND_WORKERS_MIN > BACKGROUND_WORKERS_MAX:
 BACKGROUND_WORKERS = _positive_int_env(
     'BACKGROUND_WORKERS', BACKGROUND_WORKERS_MIN
 )
+if BACKGROUND_WORKERS < BACKGROUND_WORKERS_MIN:
+    # The minimum grows when releases add permanent background jobs. Raising
+    # an explicit value only adds capacity, so existing deployments keep
+    # starting instead of failing on a value that was valid before.
+    print(
+        f'WARNING: BACKGROUND_WORKERS={BACKGROUND_WORKERS} is below the '
+        f'required minimum of {BACKGROUND_WORKERS_MIN}; using '
+        f'{BACKGROUND_WORKERS_MIN}.'
+    )
+    BACKGROUND_WORKERS = BACKGROUND_WORKERS_MIN
 if not BACKGROUND_WORKERS_MIN <= BACKGROUND_WORKERS <= BACKGROUND_WORKERS_MAX:
     raise RuntimeError(
         'CONFIGURATION ERROR: BACKGROUND_WORKERS must be between '
@@ -571,7 +592,7 @@ FILE_CONTROL_MAX_PATH_BYTES = _bounded_int_env(
     'FILE_CONTROL_MAX_PATH_BYTES', 4096, 512, 16 * 1024
 )
 # Explicit operator opt-in; changing permissions requires no-follow support.
-SFTP_CHMOD_ENABLED = os.environ.get('SFTP_CHMOD_ENABLED', 'false').lower() == 'true'
+SFTP_CHMOD_ENABLED = _admin_switch_env('SFTP_CHMOD_ENABLED', False)
 REMOTE_FILENAME_MAX_BYTES = _bounded_int_env(
     'REMOTE_FILENAME_MAX_BYTES', 4096, 255, 16 * 1024
 )
@@ -928,9 +949,12 @@ MAX_RECOVERY_JSON_SIZE = min(
 # When enabled, SSH sessions are wrapped in a tmux session on the remote host.
 # This means commands keep running even if the webssh server restarts.
 # Reconnecting to the same host/user will reattach to the existing tmux session.
-TMUX_ENABLED = os.environ.get('TMUX_ENABLED', 'false').lower() == 'true'
+# tmux is available by default but never preselected: users opt in per
+# connection. Every Compose file shipped before 3.0 set TMUX_ENABLED=true, so
+# this default keeps image-only upgrades and replaced Compose files identical.
+TMUX_ENABLED = _admin_switch_env('TMUX_ENABLED', True)
 TMUX_SESSION_PREFIX = os.environ.get('TMUX_SESSION_PREFIX', 'webssh')
-TMUX_DEFAULT = os.environ.get('TMUX_DEFAULT', 'false').lower() == 'true'
+TMUX_DEFAULT = _admin_switch_env('TMUX_DEFAULT', False)
 
 
 def validate_security_config():
@@ -1328,5 +1352,8 @@ def validate_security_config():
 
 SECURITY_CONFIG_WARNINGS = validate_security_config()
 
-# Presence is separate from the parsed value: omitted options remain administrable.
-EXPLICIT_ENVIRONMENT_KEYS = frozenset(os.environ)
+# Presence is separate from the parsed value: omitted or empty options remain
+# administrable.
+EXPLICIT_ENVIRONMENT_KEYS = frozenset(
+    name for name, value in os.environ.items() if value.strip()
+)

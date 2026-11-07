@@ -61,7 +61,7 @@ Prefer `flask create-admin` for controlled deployments. Public registration is i
 | `GUNICORN_THREADS` | `64` | Supported range `8` to `256` |
 | `MAX_SOCKET_CONNECTIONS` | `48` | Global admitted Socket.IO connections |
 | `MAX_SOCKET_CONNECTIONS_PER_USER` | `8` | Per-user Socket.IO connections |
-| `BACKGROUND_WORKERS` | Calculated baseline | Bounded executor; minimum is cleanup jobs plus global SSH-session and background-job quotas |
+| `BACKGROUND_WORKERS` | Calculated baseline | Bounded executor; minimum is cleanup jobs plus global SSH-session and background-job quotas. A lower explicit value is raised to the minimum with a startup warning |
 | `RUNTIME_SHUTDOWN_GRACE_SECONDS` | `5` | Graceful shutdown window; supported range `1` to `30` seconds |
 
 Production requires exactly one Gunicorn worker with `gthread`. Live SSH channels and part of the coordination state are process-local. Increasing worker count does not scale WebSSH safely.
@@ -200,8 +200,8 @@ and jump-host key references remain ownership checked.
 
 | Variable | Default or purpose |
 |---|---|
-| `TMUX_ENABLED` | `false`; enables persistent remote tmux sessions |
-| `TMUX_DEFAULT` | `false`; preselects tmux in the connection dialog |
+| `TMUX_ENABLED` | Optional override of Admin → Integrations; product default `true` (tmux available) |
+| `TMUX_DEFAULT` | Optional override of Admin → Integrations; product default `false` (not preselected) |
 | `TMUX_SESSION_PREFIX` | `webssh` |
 | `HOST_KEY_MANAGEMENT_ENABLED` | `true` |
 | `RECOVERY_CODES_ENABLED` | `true` |
@@ -275,7 +275,8 @@ Sensitive changes require administrator reauthentication and are audited.
 
 For `SFTP_CHMOD_ENABLED`, `SERVER_OPERATIONS_ENABLED`, `TMUX_ENABLED` and
 `TMUX_DEFAULT`, priority is: explicitly supplied environment value, saved Admin
-setting, product default. Both explicit `true` and explicit `false` lock the UI.
+setting, product default. Both explicit `true` and explicit `false` lock the UI;
+an empty value counts as not supplied.
 Compose/environment includes variables passed by Docker, systemd, a shell or the
 application's `.env`; the application cannot identify which file supplied them.
 Settings shows the key, effective value, stored value and source. Edit or remove
@@ -285,13 +286,15 @@ remain open; reload clients and reconnect SFTP after changing capabilities.
 On upgrade, existing explicit values are saved once if no Admin value exists.
 A previous Admin choice is retained under an override and becomes effective again
 when that override is removed. Older Compose files do not need replacing.
-Unspecified feature defaults remain unchanged; server actions and chmod are off.
+Server actions and chmod are off by default; tmux is available by default and
+never preselected, matching every Compose file shipped before 3.0.
 Disabling server operations prevents new actions without undoing commands already
 sent to a server. Remote account privileges are never expanded by these switches.
 
-Automation and registration also honor explicit environment overrides; production
-continues to prohibit public self-registration. Password storage remains an Admin
-policy. Authentication features retain their separate deployment-capability,
+`AUTOMATION_ENABLED` follows the same rule. `REGISTRATION_ENABLED` remains only
+the initial value, as in 2.x: a choice saved in Administration wins, and the
+production profile always prohibits public self-registration. Password storage
+remains an Admin policy. Authentication features retain their separate deployment-capability,
 readiness and Admin-activation checks: allowing a capability does not enroll users
 or bypass provider, HTTPS, origin, RP-ID or recovery checks. Networking, identity
 provider trust, secrets, resource ceilings, mounts and backup recovery paths remain
@@ -316,7 +319,10 @@ This behavior also applies to `TMUX_DEFAULT`, file permissions and server action
 The current example Compose is for new installations. It leaves the runtime
 feature overrides commented out so administrators can manage them immediately
 in Administration → Integrations. Product defaults apply until an Admin value
-is saved; file permissions, server operations and tmux are off by default.
+is saved: tmux available but not preselected; file permissions and server
+operations off. The defaults match the previous example Compose, so replacing
+an old Compose file does not change tmux behavior. See the upgrade table in
+the WebSSH 3 notes for all upgrade paths.
 Network, authentication and other advanced deployment examples remain present.
 
 Moving an existing deployment to Admin-managed settings is optional: start 3.0
