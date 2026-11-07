@@ -254,7 +254,7 @@
                     </details>
                     <div class="admin-settings-row">
                         <div><strong id="githubAuthEnabledLabel" data-i18n="admin.githubEnable">Enable GitHub sign-in</strong><p id="githubAuthEnabledHint" class="admin-muted" data-i18n="admin.githubEnableHint">The login button appears only after every required value is saved.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="githubAuthEnabled" aria-labelledby="githubAuthEnabledLabel" aria-describedby="githubAuthEnabledHint"><span data-i18n="common.enabled">Enabled</span></label>
+                        <label class="admin-switch"><input type="checkbox" id="githubAuthEnabled" aria-labelledby="githubAuthEnabledLabel" aria-describedby="githubAuthEnabledHint"><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
                     </div>
                     <div class="form-group">
                         <label for="githubAuthClientId" data-i18n="admin.githubClientId">GitHub App client ID</label>
@@ -277,7 +277,7 @@
                     </div>
                     <div class="admin-settings-row">
                         <div><strong id="githubAuthAutoProvisionLabel" data-i18n="admin.githubAutoProvision">Automatically provision users</strong><p id="githubAuthAutoProvisionHint" class="admin-muted" data-i18n="admin.githubAutoProvisionHint">Disabled by default. New GitHub users are always created as non-admin accounts.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="githubAuthAutoProvision" aria-labelledby="githubAuthAutoProvisionLabel" aria-describedby="githubAuthAutoProvisionHint"><span data-i18n="common.enabled">Enabled</span></label>
+                        <label class="admin-switch"><input type="checkbox" id="githubAuthAutoProvision" aria-labelledby="githubAuthAutoProvisionLabel" aria-describedby="githubAuthAutoProvisionHint"><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
                     </div>
                     <div class="admin-toolbar">
                         <button class="btn btn-primary" id="githubAuthSave" type="button" data-i18n="admin.githubSave">Save GitHub configuration</button>
@@ -293,15 +293,15 @@
                 <div class="admin-settings-surface">
                     <div class="admin-settings-row">
                         <div><label for="settingCredentials"><strong data-i18n="admin.credentials">Save passwords</strong></label><p id="credentialsSettingHint" class="admin-muted" data-i18n="admin.credentialsHint">Allow personal encrypted passwords for hosts and file connections. The server can decrypt them for authorized connections. Disabling preserves saved data and established connections.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="settingCredentials" aria-describedby="credentialsSettingHint" disabled><span data-i18n="common.enabled">Enabled</span></label>
+                        <label class="admin-switch"><input type="checkbox" id="settingCredentials" aria-describedby="credentialsSettingHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
                     </div>
                     <div class="admin-settings-row">
                         <div><label for="settingAutomation"><strong data-i18n="admin.automation">Automation</strong></label><p id="automationSettingHint" class="admin-muted" data-i18n="admin.automationHint">Allow reviewed SSH tasks and explicitly authorized schedules. Disabling stops further steps; commands already sent to a server may still take effect.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="settingAutomation" aria-describedby="automationSettingHint" disabled><span data-i18n="common.enabled">Enabled</span></label>
+                        <label class="admin-switch"><input type="checkbox" id="settingAutomation" aria-describedby="automationSettingHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
                     </div>
                     <div class="admin-settings-row">
                         <div><label for="settingSshGateway"><strong data-i18n="admin.sshGateway">Warpgate / SSH gateway</strong></label><p id="sshGatewaySettingHint" class="admin-muted" data-i18n="admin.sshGatewayHint">Allow interactive gateway connections using user:target for all users. Disabled by default. Disabling blocks new connections and unfinished gateway authentication; established sessions remain connected. Reload open workspaces after changing this setting.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="settingSshGateway" aria-describedby="sshGatewaySettingHint" disabled><span data-i18n="common.enabled">Enabled</span></label>
+                        <label class="admin-switch"><input type="checkbox" id="settingSshGateway" aria-describedby="sshGatewaySettingHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
                     </div>
                 </div>
             </section>
@@ -311,7 +311,7 @@
                 <div class="admin-settings-surface">
                     <div class="admin-settings-row">
                         <div><strong id="settingRegistrationLabel" data-i18n="admin.allowRegistration">Allow self-registration</strong><p id="settingRegistrationHint" class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="settingRegistration" aria-labelledby="settingRegistrationLabel" aria-describedby="settingRegistrationHint" disabled><span data-i18n="common.enabled">Enabled</span></label>
+                        <label class="admin-switch"><input type="checkbox" id="settingRegistration" aria-labelledby="settingRegistrationLabel" aria-describedby="settingRegistrationHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
                     </div>
                 </div>
             </section>

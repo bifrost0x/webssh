@@ -29,7 +29,8 @@
             const r = await fetch(api, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content}, body: JSON.stringify({state: value, acknowledged: value === 'completed' && dialog.querySelector('#introAcknowledge')?.checked === true})});
             if (!r.ok) throw Error('save');
             target?.classList.remove('intro-target'); dialog.close(); dialog.remove(); dialog = null;
-            document.getElementById('overviewNavBtn')?.focus();
+            const next = [document.getElementById('overviewNavBtn'), document.getElementById('overviewTitle')].find(element => element?.offsetParent);
+            next?.focus();
         } catch {
             buttons.forEach(b => { b.disabled = false; });
             if (!dialog.querySelector('.intro-error')) { const error = node('p', t('Fortschritt konnte nicht gespeichert werden. Bitte erneut versuchen.', 'Could not save progress. Please try again.'), 'intro-error'); error.role = 'alert'; dialog.append(error); }
@@ -73,7 +74,8 @@
         if (index === 7) {
             const label = node('label'); const check = node('input'); check.type = 'checkbox'; check.id = 'introAcknowledge';
             label.append(check, document.createTextNode(t(' Ich habe die Einführung und die angezeigten Einstellungen zur Kenntnis genommen.', ' I have read the introduction and reviewed the settings shown.')));
-            const done = footer.lastElementChild; done.disabled = true; check.addEventListener('change', () => { done.disabled = !check.checked; }); dialog.append(label);
+            // The acknowledgement sits in the sticky footer next to the button it unlocks, so it is visible on small screens.
+            label.className = 'intro-acknowledge'; const done = footer.lastElementChild; done.disabled = true; check.addEventListener('change', () => { done.disabled = !check.checked; }); footer.prepend(label);
         }
         dialog.append(footer); heading.focus(); dialog.scrollTop = 0;
     }

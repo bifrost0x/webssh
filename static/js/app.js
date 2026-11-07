@@ -1837,7 +1837,11 @@
     });
 
     socket.on('session_timeout_warning', (data) => {
-        showNotification(`Session "${data.session_id.substr(0,8)}..." will timeout in 2 minutes due to inactivity. Type anything to keep alive.`, 'warning', 10000);
+        const session = `${String(data?.session_id || '').substr(0, 8)}…`;
+        const text = window.i18n?.t('session.timeoutWarning');
+        showNotification(text && text !== 'session.timeoutWarning'
+            ? text.replace('{session}', session)
+            : `Session "${session}" will time out in 2 minutes due to inactivity. Type anything to keep it alive.`, 'warning', 10000);
     });
 
     socket.on('profiles_list', (data) => {
@@ -1845,8 +1849,11 @@
     });
 
     socket.on('profile_saved', (data) => {
+        const created = !ProfileManager.profiles.some(profile => profile.id === data?.profile?.id);
         ProfileManager.upsertProfile(data?.profile);
-        showNotification('Saved connection updated successfully', 'success');
+        const key = created ? 'profiles.savedCreated' : 'profiles.savedUpdated';
+        const text = window.i18n?.t(key);
+        showNotification(text && text !== key ? text : (created ? 'Host saved' : 'Host updated'), 'success');
     });
 
     socket.on('profile_deleted', (data) => {

@@ -21,3 +21,6 @@
 .intro-tour dt small { display: block; margin-top: 3px; color: var(--ws2-text-secondary); font-size: 11px; }
 .intro-tour .btn-secondary { color: var(--ws2-text); background: var(--ws2-surface, var(--bg-secondary)); border-color: var(--ws2-border); }
 .intro-tour .btn-secondary:disabled { opacity: .5; }
+
+.intro-tour footer .intro-acknowledge { flex: 1 1 100%; display: flex; align-items: flex-start; gap: 8px; font-size: 14px; }
+.intro-tour footer .intro-acknowledge input { margin-top: 3px; }

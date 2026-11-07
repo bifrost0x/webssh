@@ -1320,3 +1320,6 @@ p.operations-metric-note { margin: 8px 0 0; }
 
 .admin-policy-source { font-size: .85rem; line-height: 1.5; overflow-wrap: anywhere; }
 .admin-policy-source a, .admin-feature-config a { color: var(--accent-primary); text-decoration: underline; }
+
+/* The label states what the switch currently does. */
+.admin-switch input:not(:checked) ~ .admin-switch-on, .admin-switch input:checked ~ .admin-switch-off { display: none; }

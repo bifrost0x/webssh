@@ -175,8 +175,16 @@
             $('hostDiscoveryStart').focus();
         }
 
+        /** Hosts added since the scan are saved now; mark them so they are not added twice. */
+        function markSaved() {
+            if (!scan?.found?.length) return;
+            const saved = new Set((win.ProfileManager?.profiles || []).map(profile => `${String(profile.host || '').toLowerCase()}:${Number(profile.port || 22)}`));
+            scan.found = scan.found.map(entry => saved.has(`${entry.address.toLowerCase()}:${entry.port}`) ? {...entry, known: true} : entry);
+        }
+
         function open() {
             returnFocus = doc.activeElement;
+            markSaved();
             if (!$('hostDiscoveryNetwork').value) $('hostDiscoveryNetwork').value = suggestNetwork(win.ProfileManager?.profiles || []);
             showError('');
             render();
