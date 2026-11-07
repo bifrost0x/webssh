@@ -1,6 +1,8 @@
 const {test,expect}=require('playwright/test');
 const {login,installSshConnectTrap,sshAttempts}=require('./helpers');
 test('map supports large inventories, pan, zoom, group drilldown and responsive themes',async({page},info)=>{
+ // 121 hosts across four themes and three widths: more work than the default budget allows on shared runners.
+ test.slow();
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await login(page,'e2e_admin',{workspace:false});await installSshConnectTrap(page);
  // The dashboard offers the full map once a saved route uses a jump host.
@@ -40,10 +42,10 @@ test('map supports large inventories, pan, zoom, group drilldown and responsive 
  }
  await page.locator('#overviewOpenMap').click();
  await page.locator('.ssh-map-toolbar input').fill('');
- await page.locator('.ssh-map-dialog').screenshot({path:info.outputPath('map-large.png')});
+ await page.locator('.ssh-map-dialog').screenshot({path:info.outputPath('map-large.png'),animations:'disabled'});
  await page.setViewportSize({width:390,height:760});
  await expect(page.getByRole('button',{name:'Close map',exact:true})).toBeInViewport();
  await expect(page.getByRole('button',{name:'Fit map',exact:true})).toBeInViewport();
- await page.locator('.ssh-map-dialog').screenshot({path:info.outputPath('map-small.png')});
+ await page.locator('.ssh-map-dialog').screenshot({path:info.outputPath('map-small.png'),animations:'disabled'});
  expect(await sshAttempts(page)).toEqual([]);expect(errors).toEqual([]);
 });
