@@ -16,7 +16,7 @@ from . import paramiko_channels
 from .automation_store import AutomationError
 from .host_key_store import HostKeyStore, HostKeyNotAccepted, RevokedHostKeyError
 from .key_manager import read_key_content
-from .network_policy import resolve_allowed_target, open_validated_socket
+from .network_policy import audit_internal_allowlist_use, resolve_allowed_target, open_validated_socket
 from .quota_manager import quota_manager, QuotaKind
 from .ssh_key_loader import load_private_key
 
@@ -82,7 +82,9 @@ def connect_profile(user_id, profile, password, cancelled, own=lambda _resource:
             if cancelled():
                 raise AutomationError('cancelled')
             target = resolve_allowed_target(profile['host'], profile.get('port', 22),
-                                             allow_internal=not config.BLOCK_INTERNAL_SSH)
+                                             allow_internal=not config.BLOCK_INTERNAL_SSH,
+                                             allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS)
+            audit_internal_allowlist_use(target, 'automation_target')
             connected = open_validated_socket(target, min(config.SSH_CONNECT_TIMEOUT, 10))
             own(connected)
             if cancelled():

@@ -16,6 +16,10 @@ class AutomationError(ValueError):
         self.code = code
         super().__init__(code)
 
+
+class AutomationNotDispatched(AutomationError):
+    """A run was definitely not started; nothing reached any target."""
+
 def text(value, maximum, *, empty=False):
     try:
         size = len(value.encode('utf-8')) if isinstance(value, str) else maximum + 1

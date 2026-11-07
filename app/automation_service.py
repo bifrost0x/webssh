@@ -4,13 +4,14 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
+import os
 import secrets
 import threading
 import time
 import uuid
 
 import config
-from .automation_store import (AutomationError, profile_fingerprint,
+from .automation_store import (AutomationError, AutomationNotDispatched, profile_fingerprint,
     runbooks, user_path, read_document, write_document, MAX_STORE_BYTES)
 from .credential_service import session_identity
 from .automation_transport import (CONNECTION_REASONS, STEP_REASONS, STEP_OUTPUT_BYTES,
@@ -18,7 +19,7 @@ from .automation_transport import (CONNECTION_REASONS, STEP_REASONS, STEP_OUTPUT
 from .data_access import bind_user_data_access, user_data_access
 from .profile_manager import load_profiles
 from .key_manager import read_key_content
-from .quota_manager import quota_manager, QuotaKind
+from .quota_manager import quota_manager, QuotaExceeded, QuotaKind
 from .storage_utils import storage_lock
 from .audit_logger import log_security_event
 
@@ -37,6 +38,7 @@ class AutomationService:
         self._intents = {}
         self._vault_mutations = self.credentials._vault_mutations
         self._active = {}
+        self._key_digest_cache = {}
 
     def _remember(self, user_id, auth_id, payload):
         now = time.monotonic()
@@ -91,11 +93,40 @@ class AutomationService:
         result = {}
         for target in targets:
             if target.get('auth_type') == 'key':
-                content, error = read_key_content(user_id, target.get('key_id'))
-                if error or not content:
-                    raise AutomationError('key_unavailable')
-                result[target['id']] = hashlib.sha256(content.encode()).hexdigest()
+                result[target['id']] = self._key_digest(user_id, target.get('key_id'))
         return result
+
+    def _key_digest(self, user_id, key_id):
+        """Digest of the decrypted key, cached by the stored file's identity.
+
+        Decryption derives the key with PBKDF2 under a process-wide lock.
+        Running jobs revalidate their grant repeatedly, so an unchanged
+        stored key file reuses its digest. Any replacement, re-encryption or
+        deletion changes the file identity and forces a fresh decryption.
+        """
+        from .key_manager import get_key_path
+        path = get_key_path(user_id, key_id)
+        if not path:
+            raise AutomationError('key_unavailable')
+        try:
+            info = os.stat(path)
+        except OSError as error:
+            raise AutomationError('key_unavailable') from error
+        identity = (str(path), info.st_ino, info.st_size, info.st_mtime_ns)
+        cache_key = (int(user_id), str(key_id))
+        with self._lock:
+            cached = self._key_digest_cache.get(cache_key)
+        if cached is not None and cached[0] == identity:
+            return cached[1]
+        content, error = read_key_content(user_id, key_id)
+        if error or not content:
+            raise AutomationError('key_unavailable')
+        digest_value = hashlib.sha256(content.encode()).hexdigest()
+        with self._lock:
+            if len(self._key_digest_cache) >= 1024:
+                self._key_digest_cache.clear()
+            self._key_digest_cache[cache_key] = (identity, digest_value)
+        return digest_value
 
     def prepare_run(self, user_id, auth_id, data):
         with user_data_access(user_id):
@@ -231,8 +262,11 @@ class AutomationService:
 
     def start_scheduled(self, intent):
         if intent.get('kind') != 'scheduled':
-            raise AutomationError('invalid_intent')
-        self.validate_run(intent)
+            raise AutomationNotDispatched('invalid_intent')
+        try:
+            self.validate_run(intent)
+        except AutomationError as error:
+            raise AutomationNotDispatched(error.code) from error
         return self._start_work(intent)
 
     def _start_work(self, intent, consume=None):
@@ -249,23 +283,45 @@ class AutomationService:
         metadata_bytes = len(json.dumps(dict(version=1, runs=[record])).encode())
         output_budget = min(RUN_OUTPUT_BYTES, max(0, (MAX_STORE_BYTES-metadata_bytes-65536)//6))
         if metadata_bytes + 65536 > MAX_STORE_BYTES:
-            raise AutomationError('storage_limit')
+            raise AutomationNotDispatched('storage_limit')
         with self._lock:
             if int(user_id) in self._active or len(self._active) >= 4:
-                raise AutomationError('busy')
-            reservation = quota_manager.reserve(QuotaKind.BACKGROUND_JOB, user_id)
+                raise AutomationNotDispatched('busy')
+            try:
+                reservation = quota_manager.reserve(QuotaKind.BACKGROUND_JOB, user_id)
+            except QuotaExceeded as error:
+                raise AutomationNotDispatched('busy') from error
             state = dict(record=record, cancel=threading.Event(), resources=[], auth_id=int(auth_id),
                          output_budget=output_budget)
             self._active[int(user_id)] = state
+            persisted = False
             try:
                 if consume is not None:
                     consume()
                 self._persist(user_id, record)
+                persisted = True
                 self.app.extensions['runtime_lifecycle'].start_job('automation-run',
                     lambda cancelled: self._work(intent, state, access, cancelled, reservation), owner_id=user_id)
-            except BaseException:
+            except BaseException as error:
                 self._active.pop(int(user_id), None)
                 reservation.release()
+                if persisted:
+                    # The queued record never ran; do not leave it looking queued.
+                    record.update(status='skipped')
+                    for target in record['targets']:
+                        target['status'] = 'skipped'
+                        for step in target['steps']:
+                            step['status'] = 'skipped'
+                    try:
+                        self._persist(user_id, record)
+                    except Exception as persist_error:
+                        log_security_event('AUTOMATION_RUN_RECORD_FAILED', user_id=user_id,
+                                           error_type=type(persist_error).__name__)
+                if isinstance(error, Exception) and not isinstance(error, AutomationError):
+                    # start_job rejects atomically; consume/persist fail before dispatch.
+                    raise AutomationNotDispatched('unavailable') from error
+                if isinstance(error, AutomationError) and not isinstance(error, AutomationNotDispatched):
+                    raise AutomationNotDispatched(error.code) from error
                 raise
         log_security_event('AUTOMATION_RUN_STARTED', user_id=user_id)
         return deepcopy(record)
@@ -279,27 +335,18 @@ class AutomationService:
         def cancelled():
             if state['cancel'].is_set() or runtime_cancel.is_set() or time.monotonic() >= deadline:
                 return True
-            if intent.get('source_schedule'):
-                try:
-                    with access():
-                        self.validate_run(intent)
-                except Exception:
-                    return True
-            from .app_settings import is_automation_enabled
-            if not is_automation_enabled():
-                return True
-            if intent.get('kind') == 'scheduled':
-                try:
-                    with access():
-                        self.app.extensions['automation_schedules'].validate(intent)
-                except Exception:
-                    return True
+            # The transport polls every few milliseconds. Full revalidation
+            # reads settings, runbooks, profiles and key digests, so it runs
+            # at most every 250 ms; a revoked grant stops the next step.
             if time.monotonic()-checked[0] > .25:
                 checked[0] = time.monotonic()
+                from .app_settings import is_automation_enabled
                 try:
                     with access():
                         checked[1] = (is_automation_enabled() and not self.app.extensions['data_access'].closed
                             and self.app.extensions['runtime_lifecycle'].accepting_work())
+                        if checked[1] and intent.get('source_schedule'):
+                            self.validate_run(intent)
                         if checked[1]:
                             if intent.get('kind') == 'scheduled':
                                 self.app.extensions['automation_schedules'].validate(intent)

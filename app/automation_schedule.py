@@ -7,7 +7,7 @@ import uuid
 from sqlalchemy import update, case, or_
 
 from .automation_cron import next_due
-from .automation_store import AutomationError, profile_fingerprint, runbooks
+from .automation_store import AutomationError, AutomationNotDispatched, profile_fingerprint, runbooks
 from .data_access import user_data_access
 from .models import User, db
 from .profile_manager import load_profiles
@@ -276,6 +276,18 @@ class ScheduleService:
                                  schedule_revision=rev + 1, claim_id=claim)
                     try:
                         self.automation.start_scheduled(grant)
+                    except AutomationNotDispatched as error:
+                        # Nothing was started. Capacity limits only skip this
+                        # slot; an invalid grant still requires a new review.
+                        transient = error.code in {'busy', 'unavailable', 'storage_limit'}
+                        values = dict(claim_id=None, claimed_at=None,
+                                      last_status='skipped' if transient else 'needs_review')
+                        if not transient:
+                            values.update(enabled=False, revision=rev + 2)
+                        db.session.execute(update(AutomationSchedule).where(
+                            AutomationSchedule.id == sid, AutomationSchedule.claim_id == claim
+                        ).values(**values))
+                        db.session.commit()
                     except Exception:
                         # Never retry an ambiguous dispatch automatically.
                         db.session.execute(update(AutomationSchedule).where(

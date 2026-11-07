@@ -38,3 +38,6 @@ urllib3>=2.8.0,<3
 # Compatibility: Bonsai 1.5.5 supports Python 3.10-3.14 and exposes the
 # reviewed OpenLDAP StartTLS, certificate-policy, timeout, and referral APIs.
 bonsai==1.5.5
+# zoneinfo needs the IANA time zone database for scheduled automation; hosts
+# without system tzdata (Windows, minimal images) rely on this package.
+tzdata==2026.6
