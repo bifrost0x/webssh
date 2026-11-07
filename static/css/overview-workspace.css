@@ -364,7 +364,15 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-empty { display: grid; justify-items: center; gap: 8px; padding: 32px 16px; text-align: center; }
 .od-empty h3 { margin: 6px 0 0; font-size: 18px; }
 .od-empty p { margin: 0 0 8px; max-width: 420px; color: var(--od-muted); }
-.od-empty-art { width: 100%; max-width: 420px; height: 140px; border-radius: 14px; background: var(--theme-scene-image, var(--ws2-panel)) center / cover; opacity: .8; }
+/* A small route illustration: WebSSH reaching its first host. */
+.od-empty-art { display: flex; align-items: center; justify-content: center; gap: 0; width: 100%; max-width: 360px; height: 120px; }
+.od-empty-node { display: grid; place-items: center; width: 64px; height: 64px; flex: 0 0 64px; border-radius: 18px; background: color-mix(in srgb, var(--ws2-accent) 16%, var(--ws2-surface)); border: 1px solid color-mix(in srgb, var(--ws2-accent) 45%, var(--ws2-border)); color: var(--ws2-accent); }
+.od-empty-node .material-icons { font-size: 30px; }
+.od-empty-node-host { border-style: dashed; background: var(--ws2-canvas); color: var(--od-muted); }
+.od-empty-line { flex: 1; max-width: 140px; height: 2px; background: repeating-linear-gradient(90deg, var(--ws2-accent) 0 8px, transparent 8px 14px); opacity: .7; }
+/* With no saved hosts, the first host is the one useful action: show it first. */
+#odBoard[data-empty="true"] > [data-panel="hosts"] { order: -1 !important; grid-column: 1 / -1; }
+#odBoard[data-empty="true"] > :is([data-panel="kpis"], [data-panel="platforms"]) { display: none; }
 .od-empty[hidden], #connectionOverview.od [hidden] { display: none; }
 
 .od-list, .od-platforms, .od-timeline { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }

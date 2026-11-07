@@ -457,13 +457,26 @@
         }
         function describeAttention(item) {
             switch (item.kind) {
-            case 'host-keys': return ['key', tw('attentionHostKeys', '{count} hosts: host key not verified yet', {count: item.count}), openHosts];
-            case 'jump-missing': return ['alt_route', tw('jumpMissing', '{name}: jump host missing', {name: item.name}), () => edit(item.hostId)];
-            case 'unreachable': return ['wifi_off', tw('attentionUnreachable', '{count} hosts not reachable: {names}', {count: item.count, names: item.names.join(', ')}), () => focusHost(hostIdByName(item.names[0]))];
-            case 'credentials': return ['password', tw('attentionCredentials', '{count} hosts: sign-in needs review', {count: item.count}), openHosts];
+            // One affected host is named; several are counted.
+            case 'host-keys': return ['key', item.count === 1
+                ? tw('attentionHostKeysOne', '{name}: host key not verified yet. Connect once to verify it.', {name: hostName(item.hostIds[0])})
+                : tw('attentionHostKeys', '{count} hosts: host key not verified yet. Connect once to verify it.', {count: item.count}),
+            item.count === 1 ? () => focusHost(item.hostIds[0]) : openHosts];
+            case 'jump-missing': return ['alt_route', tw('jumpMissing', 'Jump host missing for {name}', {name: item.name}), () => edit(item.hostId)];
+            case 'unreachable': return ['wifi_off', item.count === 1
+                ? tw('attentionUnreachableOne', '{name} is not reachable', {name: item.names[0]})
+                : tw('attentionUnreachable', '{count} hosts not reachable: {names}', {count: item.count, names: item.names.join(', ')}), () => focusHost(hostIdByName(item.names[0]))];
+            case 'credentials': return ['password', item.count === 1
+                ? tw('attentionCredentialsOne', '{name}: SSH key missing or saved password changed', {name: hostName(item.hostIds[0])})
+                : tw('attentionCredentials', '{count} hosts: SSH key missing or saved password changed', {count: item.count}),
+            item.count === 1 ? () => edit(item.hostIds[0]) : openHosts];
             case 'run-failed': return ['error_outline', tw('runFailed', 'Run failed: {name}', {name: item.name}), () => win.WebSSHAutomation?.openRun?.(item.runId)];
             default: return ['schedule', tw('scheduleReview', 'Schedule needs review: {name}', {name: item.name}), openAutomation];
             }
+        }
+        function hostName(id) {
+            const profile = profiles().find(item => item.id === id);
+            return String(profile?.name || profile?.host || '');
         }
         function hostIdByName(name) {
             return profiles().find(profile => profile.name === name)?.id || '';
@@ -566,6 +579,7 @@
             if (view.hidden) return;
             const focusKey = view.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
             const hosts = hostModel();
+            $('odBoard')?.setAttribute('data-empty', String(win.ProfileManager?.profilesLoaded === true && hosts.length === 0));
             const runInfo = snapshot();
             const allAttention = Model.attention({hostList: hosts, runs: runInfo.runs || [], schedules: runInfo.schedules || []});
             const dismissed = new Set(state.dismissed);
