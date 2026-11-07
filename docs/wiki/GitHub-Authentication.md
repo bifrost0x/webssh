@@ -179,6 +179,11 @@ identity is rejected without matching by username or email. When enabled,
 WebSSH creates a new non-admin account and its identity binding atomically.
 GitHub metadata can never create or promote an administrator.
 
+In the `production` profile, auto-provisioning requires at least one allowed
+organization. Without one, any GitHub account could create a WebSSH account,
+which would bypass the closed registration of that profile; the setting is
+refused and existing settings of that kind do not create accounts.
+
 ### Bootstrap the first independent factor
 
 An auto-provisioned account has no known local password. Before that user can

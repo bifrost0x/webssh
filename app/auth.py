@@ -88,6 +88,18 @@ def check_socket_rate_limit(user_id, endpoint, limit_str):
     return not _get_rate_limiter().allow(key, limit, window)
 
 
+def check_user_rate_limit(user_id, endpoint, limit_str, cost=1):
+    """Return True when the account exceeded ``limit_str``; ``cost`` units are charged.
+
+    For authenticated features without credentials, where a shared source
+    address (NAT, a proxy without TRUSTED_PROXIES) must not let one account
+    exhaust the budget of everyone else.
+    """
+    limit, window = parse_rate_limit(limit_str)
+    limiter = _get_rate_limiter()
+    return not all(limiter.allow(f'{endpoint}:user:{int(user_id)}', limit, window) for _ in range(max(1, int(cost))))
+
+
 def check_reauth_rate_limit(user_id, ip_address, endpoint, limit_str):
     """Return True when either the user or source IP exceeds reauth limits."""
     limit, window = parse_rate_limit(limit_str)
@@ -295,10 +307,16 @@ def sync_admin_users():
     import config
     from .audit_logger import log_info
     changed = False
+    from .audit_logger import log_warning
     for name in getattr(config, 'ADMIN_USERS', []):
         u = User.query.filter_by(username=name).first()
+        if u is None:
+            # Whoever registers this name later would become admin on the next start.
+            log_warning("ADMIN_USERS lists an account that does not exist; remove it or create the account", user=name)
+            continue
         if (
-            u and not u.is_admin
+            not u.is_admin
+            and not u.is_locked
             and not u.is_ldap_managed
             and not u.is_github_managed
         ):

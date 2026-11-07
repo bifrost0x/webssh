@@ -218,6 +218,11 @@ def github_auth_is_active():
         return False
 
 
+def auto_provision_unrestricted(auto_provision, allowed_orgs):
+    """True when any GitHub account could create a WebSSH account on a production instance."""
+    return bool(auto_provision) and not allowed_orgs and config.DEPLOYMENT_PROFILE == 'production'
+
+
 def update_settings(data, admin_id):
     if not isinstance(data, dict):
         raise GitHubConfigurationError('Invalid GitHub configuration payload')
@@ -254,6 +259,11 @@ def update_settings(data, admin_id):
     if 'allowed_orgs' in data:
         row.allowed_orgs_json = json.dumps(
             _normalize_orgs(data['allowed_orgs']), separators=(',', ':')
+        )
+    if auto_provision_unrestricted(row.auto_provision, json.loads(row.allowed_orgs_json or '[]')):
+        # Production keeps sign-up closed; automatic accounts need an organization limit there.
+        raise GitHubConfigurationError(
+            'Automatic account creation requires at least one allowed organization in production'
         )
     if (
         'clear_client_secret' in data

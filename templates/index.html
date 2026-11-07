@@ -1702,7 +1702,7 @@
 
     {% include 'terminal_appearance.html' %}
     {% include 'terminal_file_bridge.html' %}
-    {% include '_host_discovery.html' %}
+    {% if host_discovery_available %}{% include '_host_discovery.html' %}{% endif %}
     <script src="{{ static_asset_url(filename='js/terminal-appearance.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/ssh-input.js') }}"></script>

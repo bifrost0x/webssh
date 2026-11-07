@@ -19,8 +19,8 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
 
 import config
-from .audit_logger import log_info
-from .auth import check_reauth_rate_limit
+from .audit_logger import log_security_event
+from .auth import check_user_rate_limit
 
 discovery_blueprint = Blueprint('discovery', __name__)
 
@@ -51,6 +51,11 @@ _SCANS = {}
 _RUNNERS = ThreadPoolExecutor(max_workers=MAX_RUNNING_SCANS, thread_name_prefix='discovery-scan')
 # Reverse lookups can block without a timeout of their own; they run here.
 _RESOLVER = ThreadPoolExecutor(max_workers=2, thread_name_prefix='discovery-dns')
+
+
+def discovery_available():
+    """Scanning other networks from a public server is an abuse risk; production does not offer it."""
+    return config.DEPLOYMENT_PROFILE != 'production'
 
 
 def parse_network(value):
@@ -125,7 +130,8 @@ def _probe(address, port):
     finally:
         connection.close()
     banner = describe_banner(raw)
-    return dict(state='ssh', **banner) if banner else dict(state='open')
+    # Only SSH servers are results; other listeners are not reported.
+    return dict(state='ssh', **banner) if banner else dict(state='closed')
 
 
 def _known_endpoints(user_id):
@@ -180,8 +186,8 @@ class Scan:
                 if self.state == 'running':
                     self.state = 'cancelled' if cancel_event.is_set() else 'done'
                 self.finished_at = time.time()
-            log_info('Host discovery finished', user_id=self.user_id, network=self.network, state=self.state,
-                     checked=self.checked, found=len(self.found), blocked=self.blocked)
+            log_security_event('host_discovery_finished', user_id=self.user_id, network=self.network, state=self.state,
+                               checked=self.checked, found=len(self.found), blocked=self.blocked)
 
     def _record(self, address, port, future):
         try:
@@ -218,6 +224,8 @@ def _own_scan(scan_id):
 @discovery_blueprint.post('/api/discovery/scans')
 @login_required
 def start_scan():
+    if not discovery_available():
+        return jsonify(error='Host discovery is not available on this instance.', code='unavailable'), 404
     lifecycle = current_app.extensions['runtime_lifecycle']
     if not lifecycle.accepting_work():
         return jsonify(error='WebSSH is not accepting new work.', code='unavailable'), 503
@@ -230,20 +238,22 @@ def start_scan():
     except ValueError as error:
         return jsonify(error=str(error), code='invalid_network'), 400
     user_id = current_user.id
+    network = str(ipaddress.ip_network(data['network'].strip(), strict=False))
+    known = _known_endpoints(user_id)
+    if check_user_rate_limit(user_id, 'host_discovery', RATE_LIMIT):
+        return jsonify(error='Too many scans. Try again later.', code='busy'), 429
+    scan = Scan(user_id, network, addresses, ports, known)
+    # Admission and registration happen under one lock, so concurrent starts cannot pass the limits together.
     with _LOCK:
         _prune()
-        if any(scan.user_id == user_id and scan.state == 'running' for scan in _SCANS.values()):
+        # A cancelled scan counts until its in-flight probes have ended.
+        if any(item.user_id == user_id and item.finished_at is None for item in _SCANS.values()):
             return jsonify(error='A scan is already running. Wait for it or cancel it.', code='running'), 409
-        if sum(scan.state == 'running' for scan in _SCANS.values()) >= MAX_RUNNING_SCANS:
+        if sum(item.finished_at is None for item in _SCANS.values()) >= MAX_RUNNING_SCANS:
             return jsonify(error='Another discovery is running. Try again shortly.', code='busy'), 429
-    if check_reauth_rate_limit(user_id, request.remote_addr, 'host_discovery', RATE_LIMIT):
-        return jsonify(error='Too many scans. Try again later.', code='busy'), 429
-    network = str(ipaddress.ip_network(data['network'].strip(), strict=False))
-    scan = Scan(user_id, network, addresses, ports, _known_endpoints(user_id))
-    with _LOCK:
         _SCANS[scan.id] = scan
     _RUNNERS.submit(scan.run)
-    log_info('Host discovery started', user_id=user_id, network=network, addresses=len(addresses), ports=ports)
+    log_security_event('host_discovery_started', user_id=user_id, network=network, addresses=len(addresses), ports=ports)
     return jsonify(scan.view()), 202
 
 
@@ -269,6 +279,18 @@ def cancel_scan(scan_id):
         if scan.state == 'running':
             scan.state = 'cancelled'
     return jsonify(scan.view())
+
+
+def cancel_for_user(user_id):
+    """Stop the account's scans and forget their results (logout, lock, deletion)."""
+    with _LOCK:
+        owned = [scan for scan in _SCANS.values() if scan.user_id == user_id]
+        for scan in owned:
+            scan.cancel_event.set()
+            if scan.state == 'running':
+                scan.state = 'cancelled'
+            _SCANS.pop(scan.id, None)
+    return len(owned)
 
 
 def cancel_all(_deadline=None):

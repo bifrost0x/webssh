@@ -25,6 +25,7 @@ from .auth_assurance import AssuranceLevel
 from .decorators import admin_required, step_up_required
 from .github_auth_service import (
     GitHubConfigurationError,
+    auto_provision_unrestricted,
     GitHubOrganizationRejected,
     GitHubProviderError,
     GitHubStateError,
@@ -275,7 +276,8 @@ def _complete_login(intent, profile, settings):
         github_user_id=profile.user_id
     ).first()
     if identity is None:
-        if not settings.auto_provision:
+        # Settings stored before this rule existed fail closed in production as well.
+        if not settings.auto_provision or auto_provision_unrestricted(settings.auto_provision, settings.allowed_orgs):
             log_security_event(
                 'GITHUB_IDENTITY_REJECTED', level=logging.WARNING,
                 github_user_id=profile.user_id, reason='unlinked',

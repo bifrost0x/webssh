@@ -64,7 +64,9 @@ long as the saved hosts are unchanged; showing it does not contact any host.
 
 **Find hosts** in the Hosts view (or on the overview's Hosts panel) looks for
 SSH and SFTP servers in a network range you enter, for example
-`192.168.1.0/24`. It only runs when you start it.
+`192.168.1.0/24`. It only runs when you start it. It is not offered in the
+`production` profile, where the server could otherwise be used to scan third
+parties.
 
 - A scan covers at most 256 addresses and up to three ports (default 22).
 - Each address and port gets one TCP connection. WebSSH reads the greeting an
@@ -78,7 +80,9 @@ SSH and SFTP servers in a network range you enter, for example
   `SSH_ALLOWED_INTERNAL_NETWORKS`); addresses SSH may not reach are skipped and
   counted as not allowed.
 - One scan per account runs at a time, at most two in the whole instance, and
-  each account can start ten scans per hour. Scans can be stopped, end on
+  each account can start ten scans per hour (limits are per account, so users
+  behind one address do not block each other). Logging out or locking an
+  account stops its scans. Only SSH servers are reported. Scans can be stopped, end on
   shutdown, are recorded in the audit log and their results are kept in memory
   for 15 minutes.
 - Results show the address, the reverse DNS name, the SSH software and an

@@ -25,6 +25,8 @@ def revoke_user_access(user_id, socketio_instance=None):
     automation = current_app.extensions.get('automation')
     if automation is not None:
         automation.revoke(user_id)
+    from .discovery_routes import cancel_for_user as cancel_discovery
+    cancel_discovery(user_id)
     result = {
         'transfers': 0,
         'sockets': 0,

@@ -259,6 +259,8 @@ def _sanitize_log_value(value):
         return 'None'
     s = str(value)
     s = s.replace('\n', '\\n').replace('\r', '\\r').replace('\x00', '\\x00')
+    # Fields are separated by " | "; an escaped pipe cannot start a forged field.
+    s = s.replace('|', '\\|')
     return s[:512]
 
 

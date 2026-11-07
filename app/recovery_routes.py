@@ -9,7 +9,7 @@ from flask_login import current_user, login_required
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from .audit_logger import log_rate_limit_exceeded, log_security_event
-from .auth import check_rate_limit
+from .auth import check_rate_limit, check_reauth_rate_limit
 from .auth_assurance import (
     AssuranceLevel,
     AuthenticationFinalizationError,
@@ -130,6 +130,11 @@ def complete_pending_with_recovery():
         return jsonify({"error": "Pending authentication is invalid"}), 401
     if pending.primary_method not in {"password", "ldap"}:
         return jsonify({"error": "Recovery authentication failed"}), 401
+    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
+        pending.user_id, client_ip, "recovery_mfa_account", config.RATELIMIT_LOGIN_LIMIT,
+    ):
+        log_rate_limit_exceeded("recovery_mfa_account", client_ip)
+        return jsonify({"error": "Too many authentication attempts"}), 429
     user = db.session.get(User, pending.user_id)
     if user is None or user.is_locked or not user.mfa_enabled:
         return jsonify({"error": "Recovery authentication failed"}), 401

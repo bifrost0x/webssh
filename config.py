@@ -2,6 +2,7 @@ import os
 import secrets
 import ipaddress
 import re
+import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 from datetime import timedelta
@@ -679,7 +680,8 @@ TAILSCALE_SSH_INTERFACE = os.environ.get(
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 _secret_key = os.environ.get('SECRET_KEY')
-_KNOWN_PLACEHOLDERS = {'<YOUR-SECRET-KEY>', 'changeme', 'secret', 'your-secret-key'}
+# Compared after lower-casing, so every entry is lower case.
+_KNOWN_PLACEHOLDERS = {'<your-secret-key>', 'changeme', 'secret', 'your-secret-key'}
 if not _secret_key or _secret_key.strip().lower() in _KNOWN_PLACEHOLDERS:
     if DEBUG:
         _secret_key = secrets.token_hex(32)
@@ -691,6 +693,11 @@ if not _secret_key or _secret_key.strip().lower() in _KNOWN_PLACEHOLDERS:
         )
 
 SECRET_KEY = _secret_key
+if not DEBUG and len(SECRET_KEY) < 32:
+    # Short keys stay accepted so existing installs keep running, but they
+    # make signed cookies and derived at-rest keys easier to guess offline.
+    print('WARNING: SECRET_KEY is shorter than 32 characters. Generate a longer one with: '
+          'python -c "import secrets; print(secrets.token_hex(32))"', file=sys.stderr)
 
 
 def _cookie_name_env(name, default):

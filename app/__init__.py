@@ -14,7 +14,7 @@ from datetime import timezone
 from .models import db
 from .automation_schedule import AutomationSchedule
 from .auth import (init_auth, authenticate_user, register_user,
-                   check_rate_limit, is_bootstrap_registration_available,
+                   check_rate_limit, check_reauth_rate_limit, is_bootstrap_registration_available,
                    password_exceeds_bcrypt_limit)
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
                               log_login_attempt, log_logout, log_registration, log_password_change)
@@ -389,12 +389,30 @@ def _install_engineio_admission(app):
     engineio_server.on('disconnect', handle_engineio_disconnect)
 
 
+def _prepare_data_dir(path):
+    """Create DATA_DIR private to the service account; warn when an existing one is not.
+
+    The container entrypoint already enforces 0700. For source installs a new
+    directory is created 0700 so the database and logs inside are not readable
+    by other local users. An existing directory is left as the operator set it.
+    """
+    created = not path.exists()
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.name != 'posix':
+        return
+    if created:
+        os.chmod(path, 0o700)
+    elif path.stat().st_mode & 0o077:
+        log_warning('DATA_DIR is accessible to other local users; restrict it with chmod 700',
+                    path=str(path))
+
+
 def _initialize_persistent_storage(app):
     """Initialize storage and schema for serving or explicit CLI mutation."""
     if app.extensions.get('persistent_storage_initialized'):
         return
 
-    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _prepare_data_dir(config.DATA_DIR)
     from .session_epoch import current_epoch
     current_epoch()
     from .audit_logger import initialize_file_logging
@@ -730,7 +748,7 @@ def create_app(
     app.register_blueprint(onboarding_blueprint)
     from .overview_routes import overview_blueprint
     app.register_blueprint(overview_blueprint)
-    from .discovery_routes import cancel_all as cancel_discovery, discovery_blueprint
+    from .discovery_routes import cancel_all as cancel_discovery, discovery_available, discovery_blueprint
     app.register_blueprint(discovery_blueprint)
     app.extensions['runtime_lifecycle'].register_shutdown_callback('host_discovery', cancel_discovery)
     app.register_blueprint(credentials_blueprint)
@@ -833,6 +851,8 @@ def create_app(
             "font-src 'self' data:; "
             "media-src 'self' data:; "
             "connect-src 'self' ws: wss:; "
+            "base-uri 'self'; "
+            "object-src 'none'; "
             f"frame-ancestors {frame_ancestors};"
         )
 
@@ -840,7 +860,9 @@ def create_app(
 
         response.headers['X-Content-Type-Options'] = 'nosniff'
 
-        response.headers['X-XSS-Protection'] = '1; mode=block'
+        # The legacy XSS auditor is gone from current browsers and could be abused for
+        # cross-site leaks in old ones; the CSP above is the protection.
+        response.headers['X-XSS-Protection'] = '0'
 
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
@@ -848,6 +870,12 @@ def create_app(
 
         if not config.DEBUG:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
+        # Pages and API answers carry account data (CSRF token, user lists, audit
+        # entries); keep them out of browser and proxy caches unless a route chose
+        # its own policy. Static assets keep their caching.
+        if request.endpoint != 'static' and 'Cache-Control' not in response.headers:
+            response.headers['Cache-Control'] = 'no-store'
 
         if (
             request.endpoint != 'static'
@@ -944,6 +972,7 @@ def create_app(
             theme=theme,
             overview_layout=settings.get('overview_layout', 'dashboard'),
             overview_reachability=settings.get('overview_reachability', 'manual'),
+            host_discovery_available=discovery_available(),
             overview_preferences={'panels': settings.get('overview_panels'),
                                   'dismissed': settings.get('overview_dismissed', [])},
             start_page=settings.get('start_page', 'overview'),
@@ -1157,10 +1186,9 @@ def create_app(
             abort(403)
         if request.method == 'POST':
             client_ip = get_client_ip()
-            if config.RATELIMIT_ENABLED and check_rate_limit(
-                client_ip,
-                'change_password',
-                config.RATELIMIT_LOGIN_LIMIT
+            if config.RATELIMIT_ENABLED and (
+                check_rate_limit(client_ip, 'change_password', config.RATELIMIT_LOGIN_LIMIT)
+                or check_reauth_rate_limit(current_user.id, client_ip, 'change_password_account', config.RATELIMIT_LOGIN_LIMIT)
             ):
                 log_rate_limit_exceeded('change_password', client_ip, user=current_user.username)
                 flash('Too many attempts. Please try again later.', 'error')

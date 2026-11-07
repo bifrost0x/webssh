@@ -15,7 +15,7 @@ from flask_login import current_user, login_required
 
 import config
 from .audit_logger import log_info
-from .auth import check_reauth_rate_limit
+from .auth import check_user_rate_limit
 
 overview_blueprint = Blueprint('overview', __name__)
 
@@ -26,11 +26,15 @@ CACHE_SECONDS = 60
 # The last answer stays on display across page loads, never as a fresh check.
 RESULT_RETENTION_SECONDS = 30 * 60
 RATE_LIMIT = '6 per minute'
+# Probed endpoints per account and minute, across requests.
+PROBE_BUDGET = '150 per minute'
 
 # Shared by all users: at most this many probes run at once in the process.
 _EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix='overview-reachability')
 _CACHE_LOCK = threading.Lock()
 _CACHE = {}
+# Accounts whose probes are still running; one check per account at a time.
+_IN_FLIGHT = set()
 
 
 def _owned_inventory(user_id):
@@ -163,16 +167,28 @@ def reachability():
         cached = _CACHE.get(user_id)
         if cached and cached['signature'] == signature and time.monotonic() - cached['at'] < CACHE_SECONDS:
             return jsonify(results=cached['results'], cached=True, checked_at=cached['checked_at'])
-    if check_reauth_rate_limit(user_id, request.remote_addr, 'overview_reachability', RATE_LIMIT):
+    if (check_user_rate_limit(user_id, 'overview_reachability', RATE_LIMIT)
+            or check_user_rate_limit(user_id, 'overview_reachability_probes', PROBE_BUDGET, cost=len(endpoints))):
         return jsonify(error='Too many checks. Wait a minute and try again.', code='busy'), 429
+    with _CACHE_LOCK:
+        if user_id in _IN_FLIGHT:
+            return jsonify(error='A check is still running.', code='busy'), 429
+        _IN_FLIGHT.add(user_id)
     futures = {endpoint: _EXECUTOR.submit(_probe, *endpoint) for endpoint in endpoints}
-    deadline = time.monotonic() + CHECK_DEADLINE_SECONDS
-    outcomes = {}
-    for endpoint, future in futures.items():
-        try:
-            outcomes[endpoint] = future.result(timeout=max(0.0, deadline - time.monotonic()))
-        except FutureTimeout:
-            outcomes[endpoint] = dict(state='unreachable')
+    try:
+        deadline = time.monotonic() + CHECK_DEADLINE_SECONDS
+        outcomes = {}
+        for endpoint, future in futures.items():
+            try:
+                outcomes[endpoint] = future.result(timeout=max(0.0, deadline - time.monotonic()))
+            except FutureTimeout:
+                outcomes[endpoint] = dict(state='unreachable')
+    finally:
+        # Probes that did not start before the deadline leave the shared queue.
+        for future in futures.values():
+            future.cancel()
+        with _CACHE_LOCK:
+            _IN_FLIGHT.discard(user_id)
     results = {}
     for profile_id, plan in plans.items():
         outcome = dict(outcomes.get(plan['endpoint']) or dict(state='unresolved'))

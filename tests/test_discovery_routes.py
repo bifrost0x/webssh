@@ -165,10 +165,14 @@ def test_real_probe_reads_the_greeting_from_a_local_server(monkeypatch):
     server = socket.socket()
     server.bind(('127.0.0.1', 0))
     server.listen(1)
+    server.settimeout(5)  # never leave a waiting thread behind if the probe is refused
     received = []
 
     def serve():
-        connection, _ = server.accept()
+        try:
+            connection, _ = server.accept()
+        except OSError:
+            return
         connection.sendall(b'SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13\r\n')
         connection.settimeout(1)
         try:
@@ -177,7 +181,7 @@ def test_real_probe_reads_the_greeting_from_a_local_server(monkeypatch):
             received.append(b'')
         connection.close()
 
-    thread = threading.Thread(target=serve)
+    thread = threading.Thread(target=serve, daemon=True)
     thread.start()
     result = discovery._probe('127.0.0.1', server.getsockname()[1])
     thread.join(3)
