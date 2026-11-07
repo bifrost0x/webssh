@@ -134,3 +134,10 @@ test('topology height follows the inventory and stays bounded', () => {
     assert.equal(Model.topology(make(3), {height: 440}).height, 440, 'an explicit height wins');
     for (const node of Model.topology(make(12, true)).nodes) assert.ok(node.x <= 1200 - 190, 'labels keep room on the right');
 });
+
+test('unchecked hosts count neither as reachable nor as down', () => {
+    const hosts = Model.hosts({profiles, jumps, jumpsLoaded: true, reachability: {web: {state: 'unchecked'}, db: {state: 'reachable'}}});
+    assert.notEqual(hosts.find(host => host.id === 'web').state, 'unreachable');
+    const metrics = Model.metrics({hostList: hosts, reachability: {web: {state: 'unchecked'}, db: {state: 'reachable'}}});
+    assert.deepEqual(metrics.reachability, {checked: 1, reachable: 1});
+});

@@ -54,8 +54,8 @@ _RESOLVER = ThreadPoolExecutor(max_workers=2, thread_name_prefix='discovery-dns'
 
 
 def discovery_available():
-    """Scanning other networks from a public server is an abuse risk; production does not offer it."""
-    return config.DEPLOYMENT_PROFILE != 'production'
+    """HOST_DISCOVERY_ENABLED; off by default in production, where the server could scan third parties."""
+    return config.HOST_DISCOVERY_ENABLED
 
 
 class ScanRequestError(ValueError):
@@ -171,6 +171,7 @@ class Scan:
         self.state = 'running'
         self.started = time.time()
         self.finished_at = None
+        self.revoked = False
         self.cancel_event = threading.Event()
 
     def view(self):
@@ -218,7 +219,7 @@ class Scan:
             self.checked += 1
             if outcome['state'] == 'blocked':
                 self.blocked += 1
-            if entry:
+            if entry and not self.revoked:
                 self.found.append(entry)
                 self.found.sort(key=lambda item: (ipaddress.ip_address(item['address']), item['port']))
 
@@ -233,7 +234,7 @@ def _own_scan(scan_id):
     with _LOCK:
         scan = _SCANS.get(scan_id)
     # A scan belongs to the user who started it; others get the same answer as for no scan.
-    return scan if scan and scan.user_id == current_user.id else None
+    return scan if scan and scan.user_id == current_user.id and not scan.revoked else None
 
 
 @discovery_blueprint.post('/api/discovery/scans')
@@ -299,12 +300,14 @@ def cancel_scan(scan_id):
 def cancel_for_user(user_id):
     """Stop the account's scans and forget their results (logout, lock, deletion)."""
     with _LOCK:
-        owned = [scan for scan in _SCANS.values() if scan.user_id == user_id]
+        owned = [scan for scan in _SCANS.values() if scan.user_id == user_id and not scan.revoked]
         for scan in owned:
             scan.cancel_event.set()
+            scan.revoked = True
+            scan.found = []
             if scan.state == 'running':
                 scan.state = 'cancelled'
-            _SCANS.pop(scan.id, None)
+    # Revoked scans stay counted until their probes ended; _prune removes them later.
     return len(owned)
 
 

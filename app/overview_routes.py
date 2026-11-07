@@ -33,8 +33,10 @@ PROBE_BUDGET = '150 per minute'
 _EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix='overview-reachability')
 _CACHE_LOCK = threading.Lock()
 _CACHE = {}
-# Accounts whose probes are still running; one check per account at a time.
+# Accounts whose probes are still running; one check per account at a time and
+# a few in the whole process, so checks never hold many HTTP threads.
 _IN_FLIGHT = set()
+MAX_CONCURRENT_CHECKS = 3
 
 
 def _owned_inventory(user_id):
@@ -104,8 +106,11 @@ def _probe(host, port):
         target = resolve_allowed_target(host, port, allow_internal=not config.BLOCK_INTERNAL_SSH,
                                         allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS)
     except ValueError as error:
-        message = str(error)
-        return dict(state='unresolved' if 'resolved' in message else 'blocked')
+        # Where internal targets are blocked, "does not resolve" and "resolves to a
+        # blocked address" look the same, so names cannot be probed for existence.
+        if config.BLOCK_INTERNAL_SSH:
+            return dict(state='blocked')
+        return dict(state='unresolved' if 'resolved' in str(error) else 'blocked')
     try:
         connection = open_validated_socket(target, PROBE_TIMEOUT_SECONDS)
     except OSError:
@@ -173,6 +178,8 @@ def reachability():
     with _CACHE_LOCK:
         if user_id in _IN_FLIGHT:
             return jsonify(error='A check is still running.', code='busy'), 429
+        if len(_IN_FLIGHT) >= MAX_CONCURRENT_CHECKS:
+            return jsonify(error='Other checks are running. Try again shortly.', code='busy'), 429
         _IN_FLIGHT.add(user_id)
     futures = {endpoint: _EXECUTOR.submit(_probe, *endpoint) for endpoint in endpoints}
     try:
@@ -182,7 +189,8 @@ def reachability():
             try:
                 outcomes[endpoint] = future.result(timeout=max(0.0, deadline - time.monotonic()))
             except FutureTimeout:
-                outcomes[endpoint] = dict(state='unreachable')
+                # Not answered within the deadline, or never started: unknown, not down.
+                outcomes[endpoint] = dict(state='unchecked')
     finally:
         # Probes that did not start before the deadline leave the shared queue.
         for future in futures.values():

@@ -96,7 +96,8 @@
             .map(item => ({...item, due: Date.parse(item.next_due)}))
             .filter(item => !Number.isNaN(item.due) && item.due >= now)
             .sort((a, b) => a.due - b.due)[0] || null;
-        const checked = reachability ? Object.values(reachability) : [];
+        // Hosts the check could not reach in time are unknown, not counted either way.
+        const checked = reachability ? Object.values(reachability).filter(item => item.state !== 'unchecked') : [];
         return {
             hosts: {total, ready: readyCount, needsAttention: known.length - readyCount, loaded: known.length === total},
             sessions: {count: sessions.filter(item => item.connected === true).length},

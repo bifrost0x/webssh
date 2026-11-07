@@ -628,6 +628,7 @@
             try {
                 const data = await request('/api/overview/reachability', {method: 'POST', body: JSON.stringify({})});
                 state.reachability = data.results || {};
+                state.reachTargets = reachTargets();
                 state.checkedAt = Number(data.checked_at) * 1000 || Date.now();
             } catch (error) {
                 state.reachError = error.code === 'busy' ? tw('reachBusy', 'Too many checks. Try again in a minute.') : tw('reachFailed', 'The check could not be completed.');
@@ -635,6 +636,26 @@
                 state.checking = false;
                 schedule();
             }
+        }
+        // A result belongs to the address and route that were checked.
+        const reachTarget = profile => [profile.host, profile.port || 22, profile.jump_host_id || ''].join('|');
+        function reachTargets() {
+            return new Map(profiles().map(profile => [profile.id, reachTarget(profile)]));
+        }
+        /** Forget results of hosts that were removed or now point somewhere else. */
+        function pruneReachability() {
+            if (!state.reachability || !state.reachTargets) return;
+            const current = reachTargets();
+            const loaded = win.ProfileManager?.profilesLoaded === true;
+            Object.keys(state.reachability).forEach(id => {
+                // A result restored before the hosts loaded adopts the first known target.
+                if (!state.reachTargets.has(id)) {
+                    if (current.has(id)) state.reachTargets.set(id, current.get(id));
+                    else if (loaded) delete state.reachability[id];
+                    return;
+                }
+                if (current.get(id) !== state.reachTargets.get(id)) delete state.reachability[id];
+            });
         }
         /** Show the last check after a page load; this never contacts a host. */
         async function restoreReachability() {
@@ -644,6 +665,7 @@
                 const data = await request('/api/overview/reachability');
                 if (data.results && !state.checkedAt) {
                     state.reachability = data.results;
+                    state.reachTargets = reachTargets();
                     state.checkedAt = Number(data.checked_at) * 1000 || null;
                     schedule();
                 }
@@ -796,7 +818,10 @@
             ['session-workspace-change', 'languageChanged', 'automation-runs-updated'].forEach(name => win.addEventListener(name, schedule));
             ['profile-list-change', 'jump-host-list-change', 'host-access-change'].forEach(name => win.addEventListener(name, () => { schedule(); queueReadiness(); }));
             // The first automatic check needs the saved hosts, which may load after init.
-            win.addEventListener('profile-list-change', () => { if (!state.checkedAt && !state.checking && !view.hidden) syncAutomatic(); });
+            win.addEventListener('profile-list-change', () => {
+                pruneReachability();
+                if (!state.checkedAt && !state.checking && !view.hidden) syncAutomatic();
+            });
             win.addEventListener('primary-workspace-change', () => { schedule(); if (!view.hidden) { queueReadiness(); syncAutomatic(); } else win.clearInterval(state.automaticTimer); });
             ['connect', 'disconnect'].forEach(name => win.socket?.on?.(name, schedule));
             win.setInterval(() => { if (!view.hidden && !doc.hidden) schedule(); }, 60 * 1000);

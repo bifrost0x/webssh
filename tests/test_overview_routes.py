@@ -132,6 +132,9 @@ def test_probe_applies_the_network_policy(monkeypatch):
         raise ValueError('Host could not be resolved')
 
     monkeypatch.setattr(network_policy, 'resolve_allowed_target', unresolved)
+    # With internal targets blocked, a missing name is indistinguishable from a blocked one.
+    assert overview_routes._probe('nowhere.invalid', 22) == {'state': 'blocked'}
+    monkeypatch.setattr(config, 'BLOCK_INTERNAL_SSH', False)
     assert overview_routes._probe('nowhere.invalid', 22) == {'state': 'unresolved'}
 
 
