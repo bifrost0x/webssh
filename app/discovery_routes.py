@@ -58,16 +58,31 @@ def discovery_available():
     return config.DEPLOYMENT_PROFILE != 'production'
 
 
+class ScanRequestError(ValueError):
+    """Invalid scan input; ``code`` selects a fixed message, never the exception text."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+
+
+_INPUT_MESSAGES = {
+    'network': 'Enter a network such as 192.168.1.0/24.',
+    'network_size': 'Choose a range of at most 256 addresses (for example a /24).',
+    'ports': 'Choose up to three ports between 1 and 65535.',
+}
+
+
 def parse_network(value):
-    """Return the addresses to probe, or raise ValueError with a user message."""
+    """Return the addresses to probe, or raise ScanRequestError."""
     if not isinstance(value, str) or not value.strip() or len(value) > 64:
-        raise ValueError('Enter a network such as 192.168.1.0/24.')
+        raise ScanRequestError('network')
     try:
         network = ipaddress.ip_network(value.strip(), strict=False)
     except ValueError:
-        raise ValueError('Enter a network such as 192.168.1.0/24.') from None
+        raise ScanRequestError('network') from None
     if network.num_addresses > MAX_ADDRESSES:
-        raise ValueError('Choose a range of at most 256 addresses (for example a /24).')
+        raise ScanRequestError('network_size')
     if network.version == 4 and network.prefixlen < 31:
         return [str(address) for address in network.hosts()]
     return [str(address) for address in network]
@@ -78,7 +93,7 @@ def parse_ports(value):
         return [22]
     if (not isinstance(value, list) or not 1 <= len(value) <= MAX_PORTS
             or not all(type(port) is int and 1 <= port <= 65535 for port in value)):
-        raise ValueError('Choose up to three ports between 1 and 65535.')
+        raise ScanRequestError('ports')
     return sorted(set(value))
 
 
@@ -235,8 +250,8 @@ def start_scan():
     try:
         addresses = parse_network(data.get('network'))
         ports = parse_ports(data.get('ports'))
-    except ValueError as error:
-        return jsonify(error=str(error), code='invalid_network'), 400
+    except ScanRequestError as error:
+        return jsonify(error=_INPUT_MESSAGES.get(error.code, _INPUT_MESSAGES['network']), code='invalid_network'), 400
     user_id = current_user.id
     network = str(ipaddress.ip_network(data['network'].strip(), strict=False))
     known = _known_endpoints(user_id)

@@ -188,3 +188,10 @@ def test_real_probe_reads_the_greeting_from_a_local_server(monkeypatch):
     server.close()
     assert result['state'] == 'ssh' and result['software'] == 'OpenSSH 9.6p1' and result['platform'] == 'ubuntu'
     assert received == [b''], 'the probe sends nothing before closing'
+
+
+def test_invalid_input_gets_a_fixed_message(app, client, context):
+    response = client.post('/api/discovery/scans', json={'network': '10.0.0.0/16'})
+    assert response.status_code == 400
+    assert response.json == {'error': 'Choose a range of at most 256 addresses (for example a /24).', 'code': 'invalid_network'}
+    assert client.post('/api/discovery/scans', json={'network': 'not a network'}).json['error'] == 'Enter a network such as 192.168.1.0/24.'
