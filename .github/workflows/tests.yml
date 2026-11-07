@@ -645,6 +645,30 @@ jobs:
             docker volume rm "$WEBSSH_CI_RECOVERY_VOLUME"
           fi
 
+  container-upgrade:
+    needs: dispatch-integrity
+    if: needs.dispatch-integrity.outputs.mode == 'full'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Build this checkout
+        run: docker build --build-arg VCS_REF="${GITHUB_SHA}" --tag "webssh-upgrade:${GITHUB_SHA}" .
+
+      # Published v2.7.0 index (docs/project-history.md). Upgrades its real
+      # data volume with the old and new example Compose, then rolls back.
+      - name: Upgrade a previous-release data volume and roll back
+        env:
+          PREVIOUS_RELEASE_IMAGE: ghcr.io/bifrost0x/webssh@sha256:1a9ac06d0aca3e88bb8f48d0395b8f87e39d33cb2f19be437cca2b8e193aa5d2
+        run: >-
+          python scripts/check_container_upgrade.py
+          --old-image "$PREVIOUS_RELEASE_IMAGE"
+          --new-image "webssh-upgrade:${GITHUB_SHA}"
+
   release-contract:
     needs: [dispatch-integrity, ssh-integration]
     if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
@@ -658,7 +682,7 @@ jobs:
         run: test "$RELEASE_RESULT" = success
 
   all-tests:
-    needs: [dispatch-integrity, dependency-locks, pytest-shards, pytest, redis-rate-limiter, ssh-integration, smb-integration, browser-e2e-shards, browser-fonts, browser-e2e, container-threading-smoke, release-contract]
+    needs: [dispatch-integrity, dependency-locks, pytest-shards, pytest, redis-rate-limiter, ssh-integration, smb-integration, browser-e2e-shards, browser-fonts, browser-e2e, container-threading-smoke, container-upgrade, release-contract]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     permissions:
