@@ -1,6 +1,6 @@
 """Resolve SSH targets once and connect only to the validated address."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import ipaddress
 import socket
 
@@ -12,6 +12,8 @@ class ResolvedTarget:
     ip: str
     family: int
     sockaddr: tuple | None = None
+    # True when only an internal-network allowlist entry permitted the address.
+    via_internal_allowlist: bool = field(default=False, compare=False)
 
     def __post_init__(self):
         if self.sockaddr is not None:
@@ -73,14 +75,50 @@ def _ip_is_internal(address):
     )
 
 
+def _ip_is_never_allowlistable(address):
+    return (
+        address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_unspecified
+        or address.is_reserved
+        or getattr(address, 'is_site_local', False)
+        or (address.version == 6 and address.ipv4_mapped is not None)
+    )
+
+
+def _ip_in_internal_allowlist(address, allowed_networks):
+    if _ip_is_never_allowlistable(address):
+        return False
+    return any(
+        address.version == network.version and address in network
+        for network in allowed_networks or ()
+    )
+
+
+def _address_decision(address, allow_internal, allowed_networks):
+    """Return ``(allowed, via_internal_allowlist)`` for one address."""
+    if allow_internal or not _ip_is_internal(address):
+        return True, False
+    if _ip_in_internal_allowlist(address, allowed_networks):
+        return True, True
+    return False, False
+
+
 def resolve_allowed_target(
     hostname,
     port,
     allow_internal=False,
     *,
     target_validator=None,
+    allowed_internal_networks=(),
 ):
-    """Resolve once and select the first policy-allowed TCP address."""
+    """Resolve once and select the first policy-allowed TCP address.
+
+    ``allowed_internal_networks`` re-admits internal addresses inside the
+    given networks while ``allow_internal`` is false. Loopback, link-local,
+    multicast, unspecified, reserved and IPv4-mapped addresses stay blocked.
+    """
     canonical = canonicalize_hostname(hostname)
     try:
         clean_port = int(port)
@@ -95,13 +133,17 @@ def resolve_allowed_target(
         literal = None
 
     if literal is not None:
-        if not allow_internal and _ip_is_internal(literal):
+        allowed, via_allowlist = _address_decision(
+            literal, allow_internal, allowed_internal_networks
+        )
+        if not allowed:
             raise ValueError('Connections to this address are not allowed')
         target = ResolvedTarget(
             canonical,
             clean_port,
             literal.compressed,
             socket.AF_INET6 if literal.version == 6 else socket.AF_INET,
+            via_internal_allowlist=via_allowlist,
         )
         if target_validator is not None and not target_validator(target):
             raise ValueError('Connections to this address are not allowed')
@@ -136,18 +178,36 @@ def resolve_allowed_target(
             continue
         if address.version == 6 and family != socket.AF_INET6:
             continue
-        if allow_internal or not _ip_is_internal(address):
+        allowed, via_allowlist = _address_decision(
+            address, allow_internal, allowed_internal_networks
+        )
+        if allowed:
             target = ResolvedTarget(
                 canonical,
                 clean_port,
                 address.compressed,
                 family,
                 sockaddr,
+                via_internal_allowlist=via_allowlist,
             )
             if target_validator is None or target_validator(target):
                 return target
 
     raise ValueError('Connections to this address are not allowed')
+
+
+def audit_internal_allowlist_use(target, role):
+    """Record that SSH_ALLOWED_INTERNAL_NETWORKS admitted a resolved target."""
+    if not getattr(target, 'via_internal_allowlist', False):
+        return
+    from .audit_logger import log_info
+    log_info(
+        'SSH target admitted by internal network allowlist',
+        role=role,
+        host=target.hostname,
+        ip=target.ip,
+        port=target.port,
+    )
 
 
 _LINUX_IP_UNICAST_IF = 50

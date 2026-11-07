@@ -18,7 +18,7 @@ def _clean_ssh_sessions(monkeypatch):
     monkeypatch.setattr(
         ssh_manager,
         'resolve_allowed_target',
-        lambda host, port, allow_internal=False: ResolvedTarget(
+        lambda host, port, allow_internal=False, **_kwargs: ResolvedTarget(
             host, port, '1.1.1.1', 2
         ),
     )

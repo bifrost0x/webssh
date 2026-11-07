@@ -138,9 +138,14 @@ Production enables `BLOCK_INTERNAL_SSH=true`, blocking loopback, link-local,
 private, and reserved targets after DNS resolution. This reduces the risk that
 untrusted users use WebSSH as an SSRF or internal network pivot.
 
-If the real use case requires private targets, do not simply relax the flag on
-a broadly accessible service. Restrict users and network access, isolate the
-instance, and document the exception.
+If the real use case requires private targets, keep the flag enabled and list
+the required networks in `SSH_ALLOWED_INTERNAL_NETWORKS`, for example
+`10.20.0.0/16,fd00:20::/64`. The production profile accepts this list; entries
+must lie inside the RFC 1918, shared-address (`100.64.0.0/10`) or unique-local
+IPv6 (`fc00::/7`) ranges. Loopback, link-local, multicast and reserved targets
+remain blocked, and each admitted connection is audited. Keep the networks as
+narrow as the managed hosts allow, restrict who can sign in, and document the
+exception for review.
 
 ## Capacity contract
 

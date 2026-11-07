@@ -10,6 +10,7 @@ import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from .host_key_store import HostKeyStore, HostKeyNotAccepted
 from .network_policy import (
+    audit_internal_allowlist_use,
     canonicalize_hostname,
     open_validated_socket,
     proxy_jump_remote_dns_allowed,
@@ -259,8 +260,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                             host,
                             port,
                             allow_internal=not config.BLOCK_INTERNAL_SSH,
+                            allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
                         )
                     )
+                    audit_internal_allowlist_use(target, 'target')
                     channel_destination = (target.ip, target.port)
                     host = target.hostname
                     port = target.port
@@ -288,7 +291,9 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     proxy_jump_host,
                     proxy_jump_port or 22,
                     allow_internal=not config.BLOCK_INTERNAL_SSH,
+                    allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
                 )
+                audit_internal_allowlist_use(bastion_target, 'jump_host')
                 validated_socket = open_validated_socket(
                     bastion_target, config.SSH_CONNECT_TIMEOUT
                 )
@@ -386,8 +391,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     host,
                     port,
                     allow_internal=not config.BLOCK_INTERNAL_SSH,
+                    allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
                 )
             )
+            audit_internal_allowlist_use(target, 'target')
             host = target.hostname
             port = target.port
             if tailscale_target_authorized:
