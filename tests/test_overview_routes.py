@@ -197,3 +197,40 @@ def test_last_reachability_expires_and_stays_per_user(app, client, context, monk
     with overview_routes._CACHE_LOCK:
         entry['at'] += overview_routes.RESULT_RETENTION_SECONDS + 1
         assert set(overview_routes._CACHE) == {uid}
+
+
+def test_overview_preferences_round_trip_and_render(app, client, context):
+    panels = [{'id': 'hosts', 'w': 8, 'h': None, 'hidden': False}, {'id': 'activity', 'w': 4, 'h': 40, 'hidden': True}]
+    response = client.put('/api/overview/preferences', json={'panels': panels, 'dismissed': ['run-failed:r1', 'host-keys:a1b2']})
+    assert response.status_code == 200
+    assert response.json == {'panels': panels, 'dismissed': ['run-failed:r1', 'host-keys:a1b2']}
+    # Partial updates keep the other value.
+    assert client.put('/api/overview/preferences', json={'dismissed': []}).json['panels'] == panels
+    page = client.get('/').data.decode()
+    assert '"activity"' in page and 'id="overviewPreferences"' in page
+    assert client.put('/api/overview/preferences', json={'panels': None}).json['panels'] is None
+
+
+@pytest.mark.parametrize('payload', [
+    {}, [], {'other': 1}, {'panels': 'all'},
+    {'panels': [{'id': 'hosts', 'w': 2, 'h': None, 'hidden': False}]},
+    {'panels': [{'id': 'hosts', 'w': 13, 'h': None, 'hidden': False}]},
+    {'panels': [{'id': 'hosts', 'w': 6, 'h': 4, 'hidden': False}]},
+    {'panels': [{'id': 'hosts', 'w': 6, 'h': None, 'hidden': 'no'}]},
+    {'panels': [{'id': 'hosts', 'w': 6}, {'id': 'hosts', 'w': 6}]},
+    {'panels': [{'id': 'news', 'w': 6}]},
+    {'panels': [{'id': 'hosts', 'w': 6, 'script': 'x'}]},
+    {'panels': [{'id': 'hosts', 'w': True}]},
+    {'dismissed': 'run-failed:r1'},
+    {'dismissed': ['unknown:r1']},
+    {'dismissed': ['run-failed:']},
+    {'dismissed': ['run-failed:<script>']},
+    {'dismissed': ['run-failed:a', 'run-failed:a']},
+    {'dismissed': [f'run-failed:r{index}' for index in range(101)]},
+])
+def test_overview_preferences_reject_invalid_payloads(app, client, context, payload):
+    assert client.put('/api/overview/preferences', json=payload).status_code == 400
+
+
+def test_overview_preferences_require_login(client):
+    assert client.put('/api/overview/preferences', json={'dismissed': []}).status_code in (302, 401)

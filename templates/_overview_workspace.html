@@ -17,38 +17,79 @@
                     <kbd aria-hidden="true">/</kbd>
                 </label>
                 <p id="overviewSearchHint" class="sr-only" data-i18n="overviewWorkspace.searchHint">Enter connects to the first match. Arrow keys move between hosts.</p>
+                <button id="overviewCustomize" class="od-ghost-button" type="button" aria-pressed="false" aria-controls="odBoard">
+                    <span class="material-icons" aria-hidden="true">dashboard_customize</span><span data-i18n="overviewWorkspace.customize">Customize</span>
+                </button>
                 <button id="overviewNewHost" class="btn btn-primary od-new-host" type="button">
                     <span class="material-icons" aria-hidden="true">add</span><span data-i18n="profiles.newHost">New host</span>
                 </button>
             </div>
         </header>
+        </header>
 
-        <ul class="od-kpis" aria-label="Key figures" data-i18n-aria-label="overviewWorkspace.kpisLabel">
-            <li id="odKpiHosts" class="od-kpi" style="--od-index:0"></li>
-            <li id="odKpiSessions" class="od-kpi" style="--od-index:1"></li>
-            <li id="odKpiAutomation" class="od-kpi" style="--od-index:2"></li>
-            <li id="odKpiReach" class="od-kpi" style="--od-index:3"></li>
-        </ul>
+        <div id="odEditBar" class="od-edit-bar" role="toolbar" aria-labelledby="odEditTitle" hidden>
+            <div class="od-edit-copy">
+                <strong id="odEditTitle" data-i18n="overviewWorkspace.editTitle">Arrange your overview</strong>
+                <span data-i18n="overviewWorkspace.editHint">Drag panels by their handle, resize them from the corner, or use the buttons on each panel.</span>
+            </div>
+            <div id="odHiddenPanels" class="od-hidden-panels" role="group" aria-label="Hidden panels" data-i18n-aria-label="overviewWorkspace.hiddenPanels"></div>
+            <button id="odLayoutReset" class="od-ghost-button" type="button" data-i18n="overviewWorkspace.layoutReset">Reset layout</button>
+            <button id="odLayoutDone" class="btn btn-primary" type="button" data-i18n="overviewWorkspace.layoutDone">Done</button>
+        </div>
+        <p id="odLayoutStatus" class="sr-only" role="status" aria-live="polite"></p>
 
-        <div class="od-grid">
-            <div class="od-main">
-                <section class="od-panel od-topology" aria-labelledby="odTopologyTitle" style="--od-index:4">
-                    <div class="od-panel-head">
-                        <h2 id="odTopologyTitle" data-i18n="overviewWorkspace.topologyTitle">Infrastructure</h2>
-                        <ul class="od-legend">
-                            <li data-state="ready" data-i18n="overviewWorkspace.stateReady">Ready</li>
-                            <li data-state="action" data-i18n="overviewWorkspace.stateAction">Needs action</li>
-                            <li data-state="unreachable" data-i18n="overviewWorkspace.stateUnreachable">Unreachable</li>
-                            <li data-state="live" data-i18n="overviewWorkspace.stateLive">Session open</li>
-                        </ul>
-                        <button id="overviewOpenMap" class="od-link" type="button" data-i18n="overviewWorkspace.routesOpenMap" hidden>Open map</button>
+        <div id="odBoard" class="od-board">
+            <section class="od-panel od-panel-bare" data-panel="kpis" aria-label="Key figures" data-i18n-aria-label="overviewWorkspace.kpisLabel" style="--od-index:1">
+                <ul class="od-kpis">
+                    <li id="odKpiHosts" class="od-kpi" style="--od-index:1"></li>
+                    <li id="odKpiSessions" class="od-kpi" style="--od-index:2"></li>
+                    <li id="odKpiAutomation" class="od-kpi" style="--od-index:3"></li>
+                    <li id="odKpiReach" class="od-kpi" style="--od-index:4"></li>
+                </ul>
+            </section>
+            <section class="od-panel od-topology" data-panel="topology" aria-labelledby="odTopologyTitle" style="--od-index:4">
+                <div class="od-panel-head">
+                    <h2 id="odTopologyTitle" data-i18n="overviewWorkspace.topologyTitle">Infrastructure</h2>
+                    <ul class="od-legend">
+                        <li data-state="ready" data-i18n="overviewWorkspace.stateReady">Ready</li>
+                        <li data-state="action" data-i18n="overviewWorkspace.stateAction">Needs action</li>
+                        <li data-state="unreachable" data-i18n="overviewWorkspace.stateUnreachable">Unreachable</li>
+                        <li data-state="live" data-i18n="overviewWorkspace.stateLive">Session open</li>
+                    </ul>
+                    <button id="overviewOpenMap" class="od-link" type="button" data-i18n="overviewWorkspace.routesOpenMap" hidden>Open map</button>
+                </div>
+                <div class="od-panel-body"><div id="odTopology" class="od-topology-canvas"></div></div>
+            </section>
+            <section id="odAttention" class="od-panel od-attention" data-panel="attention" aria-labelledby="odAttentionTitle" style="--od-index:5">
+                <div class="od-panel-head">
+                    <h2 id="odAttentionTitle" data-i18n="overviewWorkspace.attentionTitle">Needs attention</h2>
+                    <button id="odAttentionDismissAll" class="od-link" type="button" data-i18n="overviewWorkspace.dismissAll" hidden>Dismiss all</button>
+                </div>
+                <div class="od-panel-body">
+                    <ul class="od-list"></ul>
+                    <div id="odAttentionClear" class="od-all-clear" hidden>
+                        <span class="od-all-clear-mark" aria-hidden="true"><span class="material-icons">check</span></span>
+                        <span data-i18n="overviewWorkspace.allClear">Nothing needs your attention.</span>
                     </div>
-                    <div id="odTopology" class="od-topology-canvas"></div>
-                </section>
-                <section class="od-panel od-hosts" aria-labelledby="overviewHostsTitle" style="--od-index:5">
-                    <div class="od-panel-head">
-                        <h2 id="overviewHostsTitle"><span data-i18n="overviewWorkspace.hostsTitle">Hosts</span> <span id="overviewHostTotal" class="od-count"></span></h2>
-                    </div>
+                    <p id="odAttentionFoot" class="od-attention-foot" hidden><span id="odAttentionDismissed"></span> <button id="odAttentionRestore" class="od-link" type="button" data-i18n="overviewWorkspace.showDismissed">Show again</button></p>
+                    <p id="odAttentionError" class="od-error" role="alert" hidden></p>
+                </div>
+            </section>
+            <section id="odAutomation" class="od-panel" data-panel="automation" aria-labelledby="odAutomationTitle" hidden style="--od-index:6">
+                <div class="od-panel-head">
+                    <h2 id="odAutomationTitle" data-i18n="overviewWorkspace.automationTitle">Automation</h2>
+                    <button id="overviewOpenAutomation" class="od-link" type="button" data-i18n="overviewWorkspace.automationOpen">Open Automation</button>
+                </div>
+                <div class="od-panel-body">
+                    <div id="odAutomationChart" class="od-chart"></div>
+                    <p id="odNextRun" class="od-muted"></p>
+                </div>
+            </section>
+            <section class="od-panel od-hosts" data-panel="hosts" aria-labelledby="overviewHostsTitle" style="--od-index:7">
+                <div class="od-panel-head">
+                    <h2 id="overviewHostsTitle"><span data-i18n="overviewWorkspace.hostsTitle">Hosts</span> <span id="overviewHostTotal" class="od-count"></span></h2>
+                </div>
+                <div class="od-panel-body">
                     <ul id="overviewHostList" class="od-host-grid" aria-busy="true"></ul>
                     <div id="overviewHostsEmpty" class="od-empty" hidden>
                         <div class="od-empty-art" aria-hidden="true"></div>
@@ -57,31 +98,20 @@
                         <button id="overviewEmptyCreate" class="btn btn-primary" type="button" data-i18n="profiles.newHost">New host</button>
                     </div>
                     <p id="overviewHostsNoMatch" class="od-muted" role="status" data-i18n="profiles.noMatches" hidden>No matching hosts.</p>
-                </section>
-            </div>
-            <div class="od-side">
-                <section id="odAttention" class="od-panel od-attention" aria-labelledby="odAttentionTitle" hidden style="--od-index:6">
-                    <div class="od-panel-head"><h2 id="odAttentionTitle" data-i18n="overviewWorkspace.attentionTitle">Needs attention</h2></div>
-                    <ul class="od-list"></ul>
-                </section>
-                <section id="odAutomation" class="od-panel" aria-labelledby="odAutomationTitle" hidden style="--od-index:7">
-                    <div class="od-panel-head">
-                        <h2 id="odAutomationTitle" data-i18n="overviewWorkspace.automationTitle">Automation</h2>
-                        <button id="overviewOpenAutomation" class="od-link" type="button" data-i18n="overviewWorkspace.automationOpen">Open Automation</button>
-                    </div>
-                    <div id="odAutomationChart" class="od-chart"></div>
-                    <p id="odNextRun" class="od-muted"></p>
-                </section>
-                <section id="odPlatforms" class="od-panel" aria-labelledby="odPlatformsTitle" hidden style="--od-index:8">
-                    <div class="od-panel-head"><h2 id="odPlatformsTitle" data-i18n="overviewWorkspace.platformsTitle">Platforms</h2></div>
-                    <ul class="od-platforms"></ul>
-                </section>
-                <section id="odActivity" class="od-panel" aria-labelledby="odActivityTitle" style="--od-index:9">
-                    <div class="od-panel-head"><h2 id="odActivityTitle" data-i18n="overviewWorkspace.activityTitle">Activity</h2></div>
+                </div>
+            </section>
+            <section id="odPlatforms" class="od-panel" data-panel="platforms" aria-labelledby="odPlatformsTitle" hidden style="--od-index:8">
+                <div class="od-panel-head"><h2 id="odPlatformsTitle" data-i18n="overviewWorkspace.platformsTitle">Platforms</h2></div>
+                <div class="od-panel-body"><ul class="od-platforms"></ul></div>
+            </section>
+            <section id="odActivity" class="od-panel" data-panel="activity" aria-labelledby="odActivityTitle" style="--od-index:9">
+                <div class="od-panel-head"><h2 id="odActivityTitle" data-i18n="overviewWorkspace.activityTitle">Activity</h2></div>
+                <div class="od-panel-body">
                     <ol class="od-timeline"></ol>
                     <p id="odActivityEmpty" class="od-muted" data-i18n="overviewWorkspace.activityEmpty">Connections and automation runs will appear here.</p>
-                </section>
-            </div>
+                </div>
+            </section>
         </div>
+        <script type="application/json" id="overviewPreferences">{{ overview_preferences|default({'panels': None, 'dismissed': []})|tojson }}</script>
         <div class="od-route-map-home"><section id="overviewRouteMap" class="overview-card"></section></div>
     </section>

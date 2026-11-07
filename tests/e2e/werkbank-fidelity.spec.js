@@ -8,7 +8,7 @@ test('Werkbank overview aligns the welcome above routes and compact hosts',async
  await expect(page.locator('#overviewHostList .od-host:not(.od-skeleton)').first()).toBeVisible();
  const positions=await page.evaluate(()=>{
   const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}};
-  return {welcome:box('.od-hero'),routes:box('.od-topology'),hosts:box('.od-hosts'),side:box('.od-side')};
+  return {welcome:box('.od-hero'),routes:box('.od-topology'),hosts:box('.od-hosts'),side:box('#odAttention')};
  });
  expect(positions.welcome.bottom-positions.welcome.top).toBeGreaterThanOrEqual(80);
  expect(positions.routes.top).toBeGreaterThanOrEqual(positions.welcome.bottom);

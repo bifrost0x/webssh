@@ -941,6 +941,8 @@ def create_app(
             theme=theme,
             overview_layout=settings.get('overview_layout', 'dashboard'),
             overview_reachability=settings.get('overview_reachability', 'manual'),
+            overview_preferences={'panels': settings.get('overview_panels'),
+                                  'dismissed': settings.get('overview_dismissed', [])},
             start_page=settings.get('start_page', 'overview'),
             automation_enabled=is_automation_enabled(),
             terminal_appearance=settings.get('terminal_appearance', {}),

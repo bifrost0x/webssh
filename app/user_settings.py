@@ -13,10 +13,58 @@ DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES = 30
 # Overview opens and periodically while it is visible.
 OVERVIEW_REACHABILITY_MODES = frozenset({'off', 'manual', 'automatic'})
 
+# Overview panels the account can arrange. Widths are columns of a 12-column
+# grid; a height of None follows the content, otherwise it is in 8px rows.
+OVERVIEW_PANELS = ('kpis', 'topology', 'hosts', 'attention', 'automation', 'platforms', 'activity')
+OVERVIEW_PANEL_WIDTHS = range(3, 13)
+OVERVIEW_PANEL_HEIGHTS = range(8, 161)
+OVERVIEW_DISMISSED_LIMIT = 100
+_DISMISSED_KINDS = frozenset({'host-keys', 'jump-missing', 'unreachable', 'credentials', 'run-failed', 'schedule-review'})
+
+
+def valid_overview_layout(value):
+    """An ordered list of panel placements, or None for the default layout."""
+    if value is None:
+        return True
+    if not isinstance(value, list) or len(value) > len(OVERVIEW_PANELS):
+        return False
+    seen = set()
+    for item in value:
+        if not isinstance(item, dict) or set(item) - {'id', 'w', 'h', 'hidden'}:
+            return False
+        panel = item.get('id')
+        if not isinstance(panel, str) or panel not in OVERVIEW_PANELS or panel in seen:
+            return False
+        seen.add(panel)
+        if type(item.get('w')) is not int or item['w'] not in OVERVIEW_PANEL_WIDTHS:
+            return False
+        height = item.get('h')
+        if height is not None and (type(height) is not int or height not in OVERVIEW_PANEL_HEIGHTS):
+            return False
+        if not isinstance(item.get('hidden', False), bool):
+            return False
+    return True
+
+
+def valid_overview_dismissed(value):
+    """Acknowledged attention items as "kind:fingerprint" strings."""
+    if not isinstance(value, list) or len(value) > OVERVIEW_DISMISSED_LIMIT:
+        return False
+    for item in value:
+        if not isinstance(item, str) or len(item) > 160 or ':' not in item:
+            return False
+        kind, fingerprint = item.split(':', 1)
+        if kind not in _DISMISSED_KINDS or not fingerprint or not all(
+                char.isalnum() or char in '-_.' for char in fingerprint):
+            return False
+    return len(set(value)) == len(value)
+
 DEFAULT_SETTINGS = {
     'theme': 'glass',
     'overview_layout': 'dashboard',
     'overview_reachability': 'manual',
+    'overview_panels': None,
+    'overview_dismissed': [],
     'start_page': 'overview',
     'terminal_appearance': {},
     'notepad': '',
@@ -49,6 +97,10 @@ def _valid_settings(value):
         return False
     if ('overview_reachability' in value and (not isinstance(value['overview_reachability'], str)
             or value['overview_reachability'] not in OVERVIEW_REACHABILITY_MODES)):
+        return False
+    if 'overview_panels' in value and not valid_overview_layout(value['overview_panels']):
+        return False
+    if 'overview_dismissed' in value and not valid_overview_dismissed(value['overview_dismissed']):
         return False
     if 'theme' in value and not isinstance(value['theme'], str):
         return False
@@ -96,6 +148,8 @@ def _valid_settings_update(value):
              and value['overview_layout'] in {'dashboard', 'classic'}))
         and ('overview_reachability' not in value or (isinstance(value['overview_reachability'], str)
              and value['overview_reachability'] in OVERVIEW_REACHABILITY_MODES))
+        and ('overview_panels' not in value or valid_overview_layout(value['overview_panels']))
+        and ('overview_dismissed' not in value or valid_overview_dismissed(value['overview_dismissed']))
         and (
             'terminal_appearance' not in value
             or valid_terminal_appearance(value['terminal_appearance'])

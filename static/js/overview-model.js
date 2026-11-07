@@ -112,7 +112,8 @@
     /** Overall headline: the most severe condition wins. */
     function headline({connected = true, hostList = [], attentionItems = []} = {}) {
         if (!connected) return {tone: 'danger', key: 'disconnected'};
-        if (hostList.some(host => host.state === 'broken')) return {tone: 'danger', key: 'attention', count: attentionItems.length};
+        // Acknowledged items no longer drive the headline.
+        if (attentionItems.some(item => item.kind === 'jump-missing' || item.kind === 'run-failed')) return {tone: 'danger', key: 'attention', count: attentionItems.length};
         if (attentionItems.length) return {tone: 'warning', key: 'attention', count: attentionItems.length};
         if (!hostList.length) return {tone: 'neutral', key: 'empty'};
         return {tone: 'success', key: 'ready'};
@@ -125,14 +126,36 @@
         hostList.filter(host => host.state === 'broken').slice(0, 3)
             .forEach(host => items.push({kind: 'jump-missing', name: host.name, hostId: host.id}));
         const unreachable = hostList.filter(host => host.state === 'unreachable');
-        if (unreachable.length) items.push({kind: 'unreachable', count: unreachable.length, names: unreachable.slice(0, 3).map(host => host.name)});
+        if (unreachable.length) items.push({kind: 'unreachable', count: unreachable.length, names: unreachable.slice(0, 3).map(host => host.name), hostIds: unreachable.map(host => host.id)});
         const credentials = hostList.filter(host => ['password_changed', 'key_missing'].includes(host.status?.auth));
         if (credentials.length) items.push({kind: 'credentials', count: credentials.length, hostIds: credentials.map(host => host.id)});
         runs.filter(run => run.outcome === 'failed' && now - Date.parse(run.created_at) < DAY).slice(0, 2)
             .forEach(run => items.push({kind: 'run-failed', name: run.name, runId: run.id}));
         schedules.filter(item => ['needs_review', 'unknown'].includes(item.last_status)).slice(0, 2)
-            .forEach(item => items.push({kind: 'schedule-review', name: item.name}));
-        return items;
+            .forEach(item => items.push({kind: 'schedule-review', name: item.name, scheduleId: item.id, status: item.last_status}));
+        return items.map(item => ({...item, key: attentionKey(item)}));
+    }
+
+    /** 32-bit FNV-1a, enough to tell one set of hosts from another. */
+    function fingerprint(value) {
+        let hash = 0x811c9dc5;
+        for (const char of String(value)) {
+            hash ^= char.codePointAt(0);
+            hash = Math.imul(hash, 0x01000193) >>> 0;
+        }
+        return hash.toString(36);
+    }
+
+    /**
+     * Stable identity of an attention item. Acknowledging it hides exactly
+     * this situation: a different set of hosts or a new failed run is a new
+     * item and shows again.
+     */
+    function attentionKey(item) {
+        const subject = item.hostIds ? [...item.hostIds].sort().join(',')
+            : item.runId || item.hostId || `${item.scheduleId || item.name}|${item.status || ''}`;
+        const plain = /^[A-Za-z0-9_.-]{1,64}$/.test(subject) ? subject : fingerprint(subject);
+        return `${item.kind}:${plain}`;
     }
 
     /** Recent events across sessions, connections and runs, newest first. */
@@ -224,5 +247,5 @@
         return hour < 11 ? 'greetingMorning' : hour < 18 ? 'greetingDay' : 'greetingEvening';
     }
 
-    return {destination, hosts, filter, automationBins, metrics, headline, attention, activity, platforms, topology, greetingKey};
+    return {destination, hosts, filter, automationBins, metrics, headline, attention, attentionKey, fingerprint, activity, platforms, topology, greetingKey};
 }));

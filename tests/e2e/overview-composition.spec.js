@@ -14,11 +14,12 @@ test('welcome aligns key figures, routes, hosts and side panels in the responsiv
   expect(bounds.x+bounds.width).toBeLessThanOrEqual(size.width);
   const kpis=await page.locator('.od-kpis').boundingBox();const map=await page.locator('.od-topology').boundingBox();
   expect(kpis.y).toBeGreaterThanOrEqual(bounds.y+bounds.height-1);expect(map.y).toBeGreaterThanOrEqual(kpis.y+kpis.height-1);
-  const hosts=await page.locator('.od-hosts').boundingBox();const side=await page.locator('.od-side').boundingBox();
+  const hosts=await page.locator('.od-hosts').boundingBox();const side=await page.locator('#odAttention').boundingBox();
   expect(hosts.y).toBeGreaterThanOrEqual(map.y+map.height-1);
   // Wide: attention and automation start beside the routes, in the first view.
   if(size.width>=1280){expect(Math.abs(side.y-map.y)).toBeLessThan(2);expect(side.x).toBeGreaterThanOrEqual(map.x+map.width);expect(side.x).toBeGreaterThanOrEqual(hosts.x+hosts.width);}
-  else expect(side.y).toBeGreaterThanOrEqual(hosts.y+hosts.height);
+  // Stacked: open issues follow the routes, before the host list.
+  else {expect(side.y).toBeGreaterThanOrEqual(map.y+map.height-1);expect(hosts.y).toBeGreaterThanOrEqual(side.y+side.height-1);}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   expect(await page.locator('#connectionOverview').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
  }

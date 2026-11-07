@@ -25,6 +25,17 @@ automation at a glance:
 - A list of items that need attention, an automation chart with the next
   scheduled run, a platform breakdown and recent activity.
 
+Select **Customize** to arrange the dashboard: drag a panel by its handle,
+resize it from its corner, change its width with the panel buttons, hide it or
+show it again from the edit bar. The arrow keys move a focused panel handle.
+**Reset layout** restores the default. The layout is stored per account; on
+narrow screens panels stack in the same order and follow their content height.
+
+Items under **Needs attention** can be dismissed one by one or all at once. A
+dismissed item stays hidden for this account until the situation changes, for
+example a new failed run or another host without a verified host key. **Show
+again** brings dismissed items back.
+
 Press <kbd>/</kbd> to search hosts, <kbd>Enter</kbd> to connect to the first
 match and the arrow keys to move between hosts.
 

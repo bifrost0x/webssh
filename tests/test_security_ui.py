@@ -212,6 +212,8 @@ def test_account_preferences_api_validates_and_persists_supported_values(
         "terminal_appearance": {},
         "overview_layout": "dashboard",
         "overview_reachability": "manual",
+        "overview_panels": None,
+        "overview_dismissed": [],
         "start_page": "overview",
         "notepad": "",
         "sync_terminal_directory": False,

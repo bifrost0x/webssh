@@ -48,7 +48,8 @@
         const hostList = $('overviewHostList');
         const mode = () => view.dataset.reachability || 'manual';
         const state = {readiness: null, reachability: null, checkedAt: null, checking: false, reachError: null,
-            shown: new Map(), scheduled: false, readinessTimer: 0, automaticTimer: 0, routeMap: null, firstPaint: true, returnKey: null};
+            shown: new Map(), scheduled: false, readinessTimer: 0, automaticTimer: 0, routeMap: null, firstPaint: true, returnKey: null,
+            dismissed: [], attention: [], board: null};
 
         const profiles = () => win.ProfileManager?.profiles || [];
         const sessions = () => sessionManager?.getAllSessions?.() || [];
@@ -396,20 +397,57 @@
             if (focusedKey) [...hostList.querySelectorAll('[data-key]')].find(item => item.dataset.key === focusedKey)?.focus({preventScroll: true});
         }
 
-        function renderAttention(items) {
+        function renderAttention(items, hiddenCount) {
             const section = $('odAttention');
-            section.hidden = !items.length;
             const list = section.querySelector('.od-list');
+            section.dataset.clear = String(!items.length);
+            $('odAttentionClear').hidden = items.length > 0;
+            $('odAttentionDismissAll').hidden = items.length < 2;
+            $('odAttentionFoot').hidden = !hiddenCount;
+            $('odAttentionDismissed').textContent = hiddenCount
+                ? tw(hiddenCount === 1 ? 'dismissedOne' : 'dismissedMany', '{count} dismissed', {count: hiddenCount}) : '';
             list.replaceChildren(...items.map(item => {
                 const entry = node('li');
                 const config = describeAttention(item);
                 const action = button('od-row', config[1], config[2]);
-                action.dataset.key = `attention:${item.kind}:${item.runId || item.hostId || item.name || ''}`;
+                action.dataset.key = `attention:${item.key}`;
                 action.dataset.kind = item.kind;
                 action.append(icon(config[0]), node('span', 'od-row-label', config[1]), icon('chevron_right'));
-                entry.append(action);
+                const dismissLabel = tw('dismissItem', 'Dismiss: {label}', {label: config[1]});
+                const dismiss = button('od-dismiss', dismissLabel, () => dismissAttention([item.key]));
+                dismiss.title = tw('dismiss', 'Dismiss');
+                dismiss.dataset.key = `dismiss:${item.key}`;
+                dismiss.append(icon('close'));
+                entry.append(action, dismiss);
                 return entry;
             }));
+        }
+        async function saveDismissed(next) {
+            const previous = state.dismissed;
+            // Keep the most recent acknowledgements within the stored limit.
+            state.dismissed = [...new Set(next)].slice(-100);
+            $('odAttentionError').hidden = true;
+            schedule();
+            try {
+                const data = await request('/api/overview/preferences', {method: 'PUT', body: JSON.stringify({dismissed: state.dismissed})});
+                state.dismissed = Array.isArray(data.dismissed) ? data.dismissed : state.dismissed;
+            } catch {
+                state.dismissed = previous;
+                $('odAttentionError').textContent = tw('dismissFailed', 'The change could not be saved. Try again.');
+                $('odAttentionError').hidden = false;
+                schedule();
+            }
+        }
+        function dismissAttention(keys) {
+            const next = [...state.dismissed, ...keys];
+            const remaining = state.attention.filter(item => !next.includes(item.key));
+            saveDismissed(next);
+            // Keep keyboard users in the panel after the row disappears.
+            win.requestAnimationFrame(() => {
+                const target = remaining.length ? $('odAttention').querySelector('.od-row') : $('odAttentionTitle');
+                if (target === $('odAttentionTitle')) target.setAttribute('tabindex', '-1');
+                target?.focus({preventScroll: true});
+            });
         }
         function describeAttention(item) {
             switch (item.kind) {
@@ -456,7 +494,17 @@
             axis.setAttribute('aria-hidden', 'true');
             axis.append(node('span', '', dayLabel(bins[0])), node('span', '', dayLabel(bins[bins.length - 1])));
             // An empty chart is noise; the status line explains the state instead.
-            $('odAutomationChart').replaceChildren(...(metrics.automation.runs ? [chart, axis] : []));
+            // Status is never colour alone: a legend names each colour with its count.
+            const legend = node('ul', 'od-chart-legend');
+            [['succeeded', metrics.automation.succeeded], ['failed', metrics.automation.failed],
+                ['other', metrics.automation.runs - metrics.automation.succeeded - metrics.automation.failed]].forEach(([kind, count]) => {
+                if (!count && kind !== 'succeeded') return;
+                const entry = node('li');
+                entry.dataset.kind = kind;
+                entry.append(node('span', 'od-legend-swatch'), node('span', '', tw(`legend${kind[0].toUpperCase()}${kind.slice(1)}`, kind)), node('strong', '', String(count)));
+                legend.append(entry);
+            });
+            $('odAutomationChart').replaceChildren(...(metrics.automation.runs ? [chart, axis, legend] : []));
             const next = metrics.nextRun;
             $('odNextRun').textContent = !runInfo.loaded ? (runInfo.stale ? tw('automationUnavailable', 'Automation data is unavailable right now.') : tw('loading', 'Loading…'))
                 : runInfo.stale ? tw('automationStale', 'Showing the last known runs. Automation could not be refreshed.')
@@ -513,14 +561,17 @@
             const focusKey = view.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
             const hosts = hostModel();
             const runInfo = snapshot();
-            const attentionItems = Model.attention({hostList: hosts, runs: runInfo.runs || [], schedules: runInfo.schedules || []});
+            const allAttention = Model.attention({hostList: hosts, runs: runInfo.runs || [], schedules: runInfo.schedules || []});
+            const dismissed = new Set(state.dismissed);
+            const attentionItems = allAttention.filter(item => !dismissed.has(item.key));
+            state.attention = allAttention;
             const metrics = Model.metrics({hostList: hosts, sessions: sessions(), runs: runInfo.runs || [], schedules: runInfo.schedules || [],
                 reachability: state.reachability});
             renderHero(hosts, attentionItems);
             renderKpis(hosts, metrics, runInfo);
             renderTopology(hosts);
             renderHosts(hosts);
-            renderAttention(attentionItems);
+            renderAttention(attentionItems, allAttention.length - attentionItems.length);
             renderAutomation(runInfo, metrics);
             renderPlatforms(hosts);
             renderActivity(hosts, runInfo);
@@ -658,7 +709,74 @@
             (target || $('overviewTitle'))?.focus({preventScroll: !target});
         }
 
+        function preferences() {
+            try {
+                const data = JSON.parse($('overviewPreferences')?.textContent || '{}');
+                return {panels: Array.isArray(data.panels) ? data.panels : null, dismissed: Array.isArray(data.dismissed) ? data.dismissed : []};
+            } catch {
+                return {panels: null, dismissed: []};
+            }
+        }
+        function panelLabel(id) {
+            return {
+                kpis: tw('kpisLabel', 'Key figures'), topology: tw('topologyTitle', 'Infrastructure'), hosts: tw('hostsTitle', 'Hosts'),
+                attention: tw('attentionTitle', 'Needs attention'), automation: tw('automationTitle', 'Automation'),
+                platforms: tw('platformsTitle', 'Platforms'), activity: tw('activityTitle', 'Activity'),
+            }[id] || id;
+        }
+        function announce(message) {
+            const status = $('odLayoutStatus');
+            status.textContent = '';
+            win.requestAnimationFrame(() => { status.textContent = message; });
+        }
+        async function saveLayout(panels) {
+            try {
+                await request('/api/overview/preferences', {method: 'PUT', body: JSON.stringify({panels})});
+            } catch {
+                announce(tw('layoutSaveFailed', 'The layout could not be saved. Your changes apply until you reload.'));
+            }
+        }
+        function setEditing(value) {
+            if (!state.board) return;
+            state.board.setEditing(value);
+            $('odEditBar').hidden = !value;
+            $('overviewCustomize').setAttribute('aria-pressed', String(value));
+            view.dataset.editing = String(value);
+            announce(value ? tw('editStarted', 'Layout editing on. Each panel has its own controls.') : tw('editEnded', 'Layout saved'));
+            if (value) $('odBoard').querySelector('[data-panel-handle]')?.focus({preventScroll: true});
+            else $('overviewCustomize').focus({preventScroll: true});
+        }
+        function createBoard() {
+            if (!win.OverviewLayout || !$('odBoard')) return null;
+            return win.OverviewLayout.createBoard({
+                doc, win, board: $('odBoard'), stored: preferences().panels, save: saveLayout,
+                t: tw, label: panelLabel, announce,
+            });
+        }
+
         function init() {
+            state.dismissed = preferences().dismissed;
+            state.board = createBoard();
+            $('overviewCustomize')?.addEventListener('click', () => setEditing(!state.board?.isEditing()));
+            $('odLayoutDone')?.addEventListener('click', () => setEditing(false));
+            $('odLayoutReset')?.addEventListener('click', () => state.board?.reset());
+            $('overviewCustomize').hidden = !state.board;
+            view.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && state.board?.isEditing() && !event.target.closest?.('input, dialog')) {
+                    event.preventDefault();
+                    setEditing(false);
+                }
+            });
+            $('odAttentionDismissAll')?.addEventListener('click', () => {
+                const dismissed = new Set(state.dismissed);
+                dismissAttention(state.attention.filter(item => !dismissed.has(item.key)).map(item => item.key));
+            });
+            $('odAttentionRestore')?.addEventListener('click', () => {
+                const current = new Set(state.attention.map(item => item.key));
+                saveDismissed(state.dismissed.filter(key => !current.has(key)));
+                win.requestAnimationFrame(() => $('odAttention').querySelector('.od-row')?.focus({preventScroll: true}));
+            });
+            win.addEventListener('languageChanged', () => state.board?.relabel());
             bindKeyboard();
             $('overviewNewHost').addEventListener('click', createHost);
             $('overviewEmptyCreate')?.addEventListener('click', createHost);

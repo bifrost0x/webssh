@@ -11,7 +11,7 @@ test('overview assigns inventory, navigation and route information separate role
     await expect(page.locator('#overviewOpenFiles, #overviewOpenCommands')).toHaveCount(0);
     await expect(page.locator('.overview-network-subtitle')).toHaveCount(0);
     await expect(page.locator('.overview-inventory-origin small')).toHaveCount(0);
-    await expect(page.locator('#overviewCustomize, #overviewNews, #overviewGroupFilter, #overviewInventorySummary')).toHaveCount(0);
+    await expect(page.locator('#overviewNews, #overviewGroupFilter, #overviewInventorySummary')).toHaveCount(0);
     await expect(page.locator('#overviewHostList .od-host').first()).toBeVisible();
     await expect(page.locator('#odTopology')).toBeVisible();
     await expect(page.locator('#odKpiHosts')).toBeVisible();

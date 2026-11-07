@@ -186,3 +186,27 @@ def reachability():
     response = jsonify(results=results, cached=False, checked_at=checked_at)
     response.headers['Cache-Control'] = 'no-store'
     return response
+
+
+@overview_blueprint.put('/api/overview/preferences')
+@login_required
+def save_preferences():
+    """Store the account's panel arrangement and acknowledged attention items."""
+    from .user_settings import (get_user_settings, save_user_settings,
+                                valid_overview_dismissed, valid_overview_layout)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data or set(data) - {'panels', 'dismissed'}:
+        return jsonify(error='Invalid request.', code='invalid_request'), 400
+    updates = {}
+    if 'panels' in data:
+        if not valid_overview_layout(data['panels']):
+            return jsonify(error='Invalid layout.', code='invalid_layout'), 400
+        updates['overview_panels'] = data['panels']
+    if 'dismissed' in data:
+        if not valid_overview_dismissed(data['dismissed']):
+            return jsonify(error='Invalid acknowledgement list.', code='invalid_dismissed'), 400
+        updates['overview_dismissed'] = data['dismissed']
+    if not save_user_settings(current_user.id, updates):
+        return jsonify(error='The overview settings could not be saved.', code='storage'), 500
+    settings = get_user_settings(current_user.id)
+    return jsonify(panels=settings.get('overview_panels'), dismissed=settings.get('overview_dismissed', []))
