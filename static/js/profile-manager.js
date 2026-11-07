@@ -1432,6 +1432,18 @@ const ProfileManager = {
         this.renderManagementList();
         this.editorBaseline = this.editorSnapshot();
         if (typeof window.CustomEvent === 'function') window.dispatchEvent(new window.CustomEvent('webssh:profile-editor'));
+        // A new host can start from what discovery found. The values are applied
+        // after the baseline, so leaving the form asks before discarding them.
+        const prefill = !profile && options.prefill && typeof options.prefill === 'object' ? options.prefill : null;
+        if (prefill) {
+            const text = (value, size) => (typeof value === 'string' ? value.slice(0, size) : '');
+            document.getElementById('profileEditorName').value = text(prefill.name, 100);
+            document.getElementById('profileEditorHost').value = text(prefill.host, 255);
+            const port = Number(prefill.port);
+            if (Number.isInteger(port) && port > 0 && port < 65536) document.getElementById('profileEditorPort').value = port;
+            document.getElementById('profileEditorUsername')?.focus();
+            return;
+        }
         document.getElementById('profileEditorName')?.focus();
     },
 

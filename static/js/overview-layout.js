@@ -192,8 +192,8 @@
                 const tools = doc.createElement('div');
                 tools.className = 'od-panel-tools';
                 tools.setAttribute('role', 'group');
-                tools.setAttribute('aria-label', t('panelTools', 'Arrange {name}', {name}));
-                const handle = controlButton('od-tool od-drag', t('panelMoveHandle', 'Move {name}. Use arrow keys to move it earlier or later.', {name}), 'drag_indicator', () => {});
+                tools.setAttribute('aria-label', t('overviewWorkspace.panelTools', 'Arrange {name}', {name}));
+                const handle = controlButton('od-tool od-drag', t('overviewWorkspace.panelMoveHandle', 'Move {name}. Use arrow keys to move it earlier or later.', {name}), 'drag_indicator', () => {});
                 handle.dataset.panelHandle = id;
                 handle.addEventListener('keydown', event => {
                     const offset = {ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1}[event.key];
@@ -201,7 +201,7 @@
                     event.preventDefault();
                     const next = move(layout, id, offset);
                     const position = next.filter(entry => !entry.hidden).findIndex(entry => entry.id === id) + 1;
-                    change(next, t('panelMoved', '{name} moved to position {position}', {name, position}));
+                    change(next, t('overviewWorkspace.panelMoved', '{name} moved to position {position}', {name, position}));
                     sections.get(id).querySelector('[data-panel-handle]')?.focus();
                 });
                 handle.addEventListener('pointerdown', event => startDrag(event, id));
@@ -209,32 +209,32 @@
                 size.className = 'od-tool-size';
                 size.textContent = `${item.w}/${COLUMNS}`;
                 size.setAttribute('aria-hidden', 'true');
-                const narrower = controlButton('od-tool', t('panelNarrower', 'Make {name} narrower', {name}), 'remove', () => {
-                    change(resize(layout, id, {w: item.w - 1}), t('panelWidth', '{name}: width {width} of 12', {name, width: Math.max(MIN_WIDTH, item.w - 1)}));
+                const narrower = controlButton('od-tool', t('overviewWorkspace.panelNarrower', 'Make {name} narrower', {name}), 'remove', () => {
+                    change(resize(layout, id, {w: item.w - 1}), t('overviewWorkspace.panelWidth', '{name}: width {width} of 12', {name, width: Math.max(MIN_WIDTH, item.w - 1)}));
                     sections.get(id).querySelector('[data-tool="narrower"]')?.focus();
                 });
                 narrower.dataset.tool = 'narrower';
                 narrower.disabled = item.w <= MIN_WIDTH;
-                const wider = controlButton('od-tool', t('panelWider', 'Make {name} wider', {name}), 'add', () => {
-                    change(resize(layout, id, {w: item.w + 1}), t('panelWidth', '{name}: width {width} of 12', {name, width: Math.min(COLUMNS, item.w + 1)}));
+                const wider = controlButton('od-tool', t('overviewWorkspace.panelWider', 'Make {name} wider', {name}), 'add', () => {
+                    change(resize(layout, id, {w: item.w + 1}), t('overviewWorkspace.panelWidth', '{name}: width {width} of 12', {name, width: Math.min(COLUMNS, item.w + 1)}));
                     sections.get(id).querySelector('[data-tool="wider"]')?.focus();
                 });
                 wider.dataset.tool = 'wider';
                 wider.disabled = item.w >= COLUMNS;
-                const autoHeight = controlButton('od-tool', t('panelAutoHeight', 'Fit {name} to its content', {name}), 'unfold_less', () => {
-                    change(resize(layout, id, {h: null}), t('panelAutoHeightDone', '{name} fits its content', {name}));
+                const autoHeight = controlButton('od-tool', t('overviewWorkspace.panelAutoHeight', 'Fit {name} to its content', {name}), 'unfold_less', () => {
+                    change(resize(layout, id, {h: null}), t('overviewWorkspace.panelAutoHeightDone', '{name} fits its content', {name}));
                     sections.get(id).querySelector('[data-panel-handle]')?.focus();
                 });
                 autoHeight.hidden = !item.h;
-                const hide = controlButton('od-tool', t('panelHide', 'Hide {name}', {name}), 'visibility_off', () => {
-                    change(setHidden(layout, id, true), t('panelHidden', '{name} hidden', {name}));
+                const hide = controlButton('od-tool', t('overviewWorkspace.panelHide', 'Hide {name}', {name}), 'visibility_off', () => {
+                    change(setHidden(layout, id, true), t('overviewWorkspace.panelHidden', '{name} hidden', {name}));
                     doc.getElementById('odLayoutDone')?.focus();
                 });
                 tools.append(handle, size, narrower, wider, autoHeight, hide);
                 const grip = doc.createElement('span');
                 grip.className = 'od-resize';
                 grip.setAttribute('aria-hidden', 'true');
-                grip.title = t('panelResize', 'Drag to resize');
+                grip.title = t('overviewWorkspace.panelResize', 'Drag to resize');
                 grip.addEventListener('pointerdown', event => startResize(event, id));
                 section.append(tools, grip);
             });
@@ -246,7 +246,7 @@
                     add.type = 'button';
                     add.className = 'od-chip od-chip-button';
                     add.dataset.showPanel = item.id;
-                    add.setAttribute('aria-label', t('panelShow', 'Show {name}', {name}));
+                    add.setAttribute('aria-label', t('overviewWorkspace.panelShow', 'Show {name}', {name}));
                     const glyph = doc.createElement('span');
                     glyph.className = 'material-icons';
                     glyph.setAttribute('aria-hidden', 'true');
@@ -255,7 +255,7 @@
                     text.textContent = name;
                     add.append(glyph, text);
                     add.addEventListener('click', () => {
-                        change(setHidden(layout, item.id, false), t('panelShown', '{name} shown', {name}));
+                        change(setHidden(layout, item.id, false), t('overviewWorkspace.panelShown', '{name} shown', {name}));
                         sections.get(item.id)?.querySelector('[data-panel-handle]')?.focus();
                     });
                     return add;
@@ -315,7 +315,7 @@
                 delete board.dataset.dragging;
                 persist();
                 const position = layout.filter(item => !item.hidden).findIndex(item => item.id === id) + 1;
-                announce(t('panelMoved', '{name} moved to position {position}', {name: label(id), position}));
+                announce(t('overviewWorkspace.panelMoved', '{name} moved to position {position}', {name: label(id), position}));
             };
             doc.addEventListener('pointermove', onMove);
             doc.addEventListener('pointerup', onUp);
@@ -344,7 +344,7 @@
                 delete section.dataset.resizing;
                 persist();
                 const item = layout.find(entry => entry.id === id);
-                announce(t('panelWidth', '{name}: width {width} of 12', {name: label(id), width: item.w}));
+                announce(t('overviewWorkspace.panelWidth', '{name}: width {width} of 12', {name: label(id), width: item.w}));
             };
             doc.addEventListener('pointermove', onMove);
             doc.addEventListener('pointerup', onUp);
@@ -363,7 +363,7 @@
         return {
             setEditing,
             isEditing: () => editing,
-            reset() { change(defaults(), t('layoutResetDone', 'Default layout restored')); },
+            reset() { change(defaults(), t('overviewWorkspace.layoutResetDone', 'Default layout restored')); },
             layout: () => layout.map(item => ({...item})),
             relabel: renderControls,
             measure,

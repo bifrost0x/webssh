@@ -730,6 +730,9 @@ def create_app(
     app.register_blueprint(onboarding_blueprint)
     from .overview_routes import overview_blueprint
     app.register_blueprint(overview_blueprint)
+    from .discovery_routes import cancel_all as cancel_discovery, discovery_blueprint
+    app.register_blueprint(discovery_blueprint)
+    app.extensions['runtime_lifecycle'].register_shutdown_callback('host_discovery', cancel_discovery)
     app.register_blueprint(credentials_blueprint)
     credentials = app.extensions['credentials'] = CredentialService(app)
     app.extensions['runtime_lifecycle'].register_shutdown_callback('credentials', credentials.shutdown)

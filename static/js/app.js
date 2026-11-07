@@ -2961,6 +2961,30 @@
         });
         window.connectionOverview?.init();
         window.overviewWorkspace?.init();
+        window.hostDiscovery = window.HostDiscovery?.create({
+            win: window, doc: document,
+            t: (key, fallback, values = {}) => {
+                let text = window.i18n?.t(key);
+                if (!text || text === key) text = fallback;
+                return Object.entries(values).reduce((value, [name, replacement]) => value.replaceAll(`{${name}}`, String(replacement)), text);
+            },
+            request: async (path, options = {}) => {
+                const appRoot = (document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
+                const response = await fetch(appRoot + path, {credentials: 'same-origin', cache: 'no-store', ...options,
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''}});
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'The request failed.');
+                return data;
+            },
+            openEditor: values => {
+                if (!window.primaryWorkspaceController?.open('hosts', document.getElementById('profileManagementModal'))) return;
+                ProfileManager.openEditor(null, {prefill: values});
+            },
+        }) || null;
+        document.querySelectorAll('[data-host-discovery]').forEach(button => {
+            button.hidden = !window.hostDiscovery;
+            button.addEventListener('click', () => window.hostDiscovery?.open());
+        });
 
         ProfileManager.loadProfiles();
         ProfileManager.loadKeys();

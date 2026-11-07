@@ -750,7 +750,7 @@
             if (!win.OverviewLayout || !$('odBoard')) return null;
             return win.OverviewLayout.createBoard({
                 doc, win, board: $('odBoard'), stored: preferences().panels, save: saveLayout,
-                t: tw, label: panelLabel, announce,
+                t, label: panelLabel, announce,
             });
         }
 

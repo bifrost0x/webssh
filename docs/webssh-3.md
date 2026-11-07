@@ -60,6 +60,31 @@ are reused for 60 seconds, and each account is rate limited. The last result
 stays visible for up to 30 minutes after leaving or reloading the overview, as
 long as the saved hosts are unchanged; showing it does not contact any host.
 
+### Finding hosts
+
+**Find hosts** in the Hosts view (or on the overview's Hosts panel) looks for
+SSH and SFTP servers in a network range you enter, for example
+`192.168.1.0/24`. It only runs when you start it.
+
+- A scan covers at most 256 addresses and up to three ports (default 22).
+- Each address and port gets one TCP connection. WebSSH reads the greeting an
+  SSH server sends by itself and closes the connection. It never logs in and
+  sends no data or credentials.
+- New connection attempts are paced to about three per second, with at most
+  three in flight, so a /24 takes roughly 90 seconds. The scan is not hidden:
+  firewalls or intrusion detection may still record it. Only scan networks you
+  are responsible for.
+- The SSH network policy applies (`BLOCK_INTERNAL_SSH`,
+  `SSH_ALLOWED_INTERNAL_NETWORKS`); addresses SSH may not reach are skipped and
+  counted as not allowed.
+- One scan per account runs at a time, at most two in the whole instance, and
+  each account can start ten scans per hour. Scans can be stopped, end on
+  shutdown, are recorded in the audit log and their results are kept in memory
+  for 15 minutes.
+- Results show the address, the reverse DNS name, the SSH software and an
+  operating-system hint from the greeting, and mark endpoints that are already
+  saved. **Add** opens the host form prefilled with name, address and port.
+
 ## Reusable operations
 
 Automation combines editable templates, your command library and command sets.

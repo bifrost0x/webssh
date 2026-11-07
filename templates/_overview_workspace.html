@@ -88,6 +88,7 @@
             <section class="od-panel od-hosts" data-panel="hosts" aria-labelledby="overviewHostsTitle" style="--od-index:7">
                 <div class="od-panel-head">
                     <h2 id="overviewHostsTitle"><span data-i18n="overviewWorkspace.hostsTitle">Hosts</span> <span id="overviewHostTotal" class="od-count"></span></h2>
+                    <button type="button" class="od-link" data-host-discovery hidden><span data-i18n="discovery.open">Find hosts</span></button>
                 </div>
                 <div class="od-panel-body">
                     <ul id="overviewHostList" class="od-host-grid" aria-busy="true"></ul>
@@ -95,7 +96,10 @@
                         <div class="od-empty-art" aria-hidden="true"></div>
                         <h3 data-i18n="overviewWorkspace.emptyTitle">Add your first host</h3>
                         <p data-i18n="overviewWorkspace.emptyBody">Saved hosts appear here with their address, route and state, ready to connect.</p>
-                        <button id="overviewEmptyCreate" class="btn btn-primary" type="button" data-i18n="profiles.newHost">New host</button>
+                        <div class="od-empty-actions">
+                            <button id="overviewEmptyCreate" class="btn btn-primary" type="button" data-i18n="profiles.newHost">New host</button>
+                            <button class="btn btn-secondary" type="button" data-host-discovery hidden><span class="material-icons" aria-hidden="true">radar</span><span data-i18n="discovery.open">Find hosts</span></button>
+                        </div>
                     </div>
                     <p id="overviewHostsNoMatch" class="od-muted" role="status" data-i18n="profiles.noMatches" hidden>No matching hosts.</p>
                 </div>
