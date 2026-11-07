@@ -45,7 +45,9 @@ are reported through the jump host, which is the only system WebSSH contacts
 directly. Checks follow the same network policy as SSH connections
 (`BLOCK_INTERNAL_SSH`, `SSH_ALLOWED_INTERNAL_NETWORKS`); blocked destinations
 are reported as blocked, not probed. A check covers at most 50 hosts, results
-are reused for 60 seconds, and each account is rate limited.
+are reused for 60 seconds, and each account is rate limited. The last result
+stays visible for up to 30 minutes after leaving or reloading the overview, as
+long as the saved hosts are unchanged; showing it does not contact any host.
 
 ## Reusable operations
 
