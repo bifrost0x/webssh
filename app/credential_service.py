@@ -27,6 +27,15 @@ def session_identity(user_id, auth_id):
     return (user.created_at.isoformat(), auth.session_hash, auth.auth_generation)
 
 
+# Binding a saved password to a destination lets the server send that secret
+# there, so it is treated like reading the secret: it requires account
+# reauthentication. One verification covers further bindings of the same
+# browser authentication session for this window.
+BINDING_ASSURANCE_SECONDS = 300
+# Removing stored secrets stays available while password storage is disabled.
+_ERASE_VAULT_OPERATIONS = frozenset({'delete', 'reset'})
+
+
 class CredentialService:
     def __init__(self, app):
         self.app = app
@@ -35,7 +44,40 @@ class CredentialService:
         self.named = NamedStore()
         self._lock = threading.RLock()
         self._intents = {}
+        self._binding_assurance = {}
         self._vault_mutations = threading.Lock()
+
+    def binding_assured(self, user_id, auth_id):
+        """Whether this exact authentication session recently reauthenticated."""
+        from .app_settings import credentials_policy_revision
+        key = (int(user_id), int(auth_id))
+        with self._lock:
+            entry = self._binding_assurance.get(key)
+            if entry is None:
+                return False
+            if entry['expires'] <= time.monotonic():
+                self._binding_assurance.pop(key, None)
+                return False
+        try:
+            identity = session_identity(user_id, auth_id)
+        except AutomationError:
+            return False
+        return (entry['identity'] == identity
+                and entry['policy'] == credentials_policy_revision())
+
+    def assure_binding(self, user_id, auth_id):
+        """Record a consumed credentials.vault grant for later bindings."""
+        from .app_settings import credentials_policy_revision
+        entry = dict(identity=session_identity(user_id, auth_id),
+                     policy=credentials_policy_revision(),
+                     expires=time.monotonic() + BINDING_ASSURANCE_SECONDS)
+        now = time.monotonic()
+        with self._lock:
+            self._binding_assurance = {
+                key: value for key, value in self._binding_assurance.items()
+                if value['expires'] > now
+            }
+            self._binding_assurance[(int(user_id), int(auth_id))] = entry
 
     def resources(self, user_id, *, coordinator_held=False):
         """Current owned non-secret resources with collision-free public IDs."""
@@ -122,6 +164,10 @@ class CredentialService:
         with self._lock:
             self.vault.lock(user_id)
             self._intents = {k:v for k,v in self._intents.items() if v['user_id'] != int(user_id)}
+            self._binding_assurance = {
+                key: value for key, value in self._binding_assurance.items()
+                if key[0] != int(user_id)
+            }
 
     lock = revoke
 
@@ -129,11 +175,16 @@ class CredentialService:
         with self._lock:
             self.vault.lock_session(auth_id)
             self._intents = {k:v for k,v in self._intents.items() if v['auth_id'] != int(auth_id)}
+            self._binding_assurance = {
+                key: value for key, value in self._binding_assurance.items()
+                if key[1] != int(auth_id)
+            }
 
     def shutdown(self, deadline=None):
         with self._lock:
             self.vault.lock()
             self._intents.clear()
+            self._binding_assurance.clear()
 
     def cleanup(self, cancelled):
         while not cancelled.wait(5):
@@ -177,10 +228,13 @@ class CredentialService:
             return deepcopy(value)
 
     def prepare_vault(self, user_id, auth_id, data):
-        self._named_enabled()
+        operation = data.get('operation')
+        mutation = data.get('mutation') if operation == 'native' else None
+        erase = (isinstance(operation, str) and operation in _ERASE_VAULT_OPERATIONS) or (
+            isinstance(mutation, dict) and mutation.get('method') == 'delete')
+        self._named_enabled(erase=erase)
         if self._vault_mutations.locked():
             raise AutomationError('busy')
-        operation = data.get('operation')
         if operation == 'native':
             from .automation_store import digest
             from .app_settings import credentials_policy_revision
@@ -223,13 +277,15 @@ class CredentialService:
             self._vault_mutations.release()
 
     def _apply_vault(self, token, user_id, auth_id, data):
-        self._named_enabled()
+        self._named_enabled(erase=True)
         with user_data_access(user_id):
             # Serialize the revision check with the mutation across browser tabs.
             with self._lock:
                 intent = self.intent(token, user_id, auth_id, consume=True)
                 if intent['kind'] != 'vault':
                     raise AutomationError('invalid_intent')
+                if intent['operation'] not in _ERASE_VAULT_OPERATIONS:
+                    self._named_enabled()
                 path = self.vault.path(user_id)
                 revision = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
                 if revision != intent['revision']:
@@ -260,9 +316,14 @@ class CredentialService:
         return self.vault_status(user_id, auth_id)
 
 
-    def _named_enabled(self):
+    def _named_enabled(self, *, erase=False):
+        """Admit a password operation. Erasing stays possible when disabled.
+
+        Administrators can disable password storage; users must still be able
+        to delete what they saved, so ``erase`` skips only the feature check.
+        """
         from .app_settings import is_credentials_enabled
-        if not is_credentials_enabled():
+        if not erase and not is_credentials_enabled():
             raise AutomationError('credentials_disabled')
         if has_request_context() and not request.is_secure:
             raise AutomationError('https_required')
@@ -282,6 +343,10 @@ class CredentialService:
             public=[]
             for record in doc['credentials'].values():
                 item=self.named.public(doc,record)
+                # Assignments of deleted hosts are no longer uses: they can
+                # never send the secret anywhere and must not block deletion.
+                live={p['id'] for p in profiles}
+                item['uses']=[rid for rid in item['uses'] if rid in live]
                 item['uses']=[dict(resource_id=rid,id=rid,name=next((p.get('name',rid) for p in profiles if p['id']==rid),rid),kind=next((p.get('kind') for p in profiles if p['id']==rid),None),valid=any(p['id']==rid and profile_fingerprint(p)==doc['assignments'][rid]['fingerprint'] for p in profiles)) for rid in item['uses']]
                 public.append(item)
             return dict(enabled=is_credentials_enabled(),credentials=public,
@@ -308,13 +373,23 @@ class CredentialService:
             return self.named.mutate(uid,update)
 
     def delete_named(self, uid, rid):
-        self._named_enabled()
-        def delete(doc):
-            self.named.record(doc,rid)
-            if any(a['credential_id']==rid for a in doc['assignments'].values()):
-                raise AutomationError('credential_in_use')
-            del doc['credentials'][rid]
+        from .app_settings import is_credentials_enabled
+        self._named_enabled(erase=True)
+        enabled = is_credentials_enabled()
         with user_data_access(uid):
+            # Resolve resources before the named-credentials lock (lock order).
+            live = {item['id'] for item in self.resources(uid)}
+            def delete(doc):
+                self.named.record(doc,rid)
+                uses=[resource_id for resource_id,a in doc['assignments'].items() if a['credential_id']==rid]
+                # While enabled, live assignments protect working connections.
+                # Assignments of deleted hosts, or any while password storage
+                # is disabled, are removed together with the secret.
+                if enabled and any(resource_id in live for resource_id in uses):
+                    raise AutomationError('credential_in_use')
+                for resource_id in uses:
+                    doc['assignments'].pop(resource_id,None)
+                del doc['credentials'][rid]
             self.named.mutate(uid,delete)
 
     def assign_named(self, uid, resource_id, rid, confirmed):
@@ -395,11 +470,18 @@ class CredentialService:
             finally:
                 _KDF.release()
             revision=digest(document)
+            # Resolve owned resources before taking the named-credentials
+            # lock: resource managers take command-config/profiles first and
+            # then named-credentials, so resolving inside the mutation would
+            # invert that order and can deadlock concurrent assignments.
+            resolved={}
+            for resource_id in records:
+                try: resolved[resource_id]=self.resolve_resource(uid,resource_id)
+                except AutomationError: resolved[resource_id]=None
             def migrate(doc):
                 if revision in doc['imports']: return
                 for resource_id,legacy in records.items():
-                    try: resource=self.resolve_resource(uid,resource_id)
-                    except AutomationError: resource=None
+                    resource=resolved[resource_id]
                     created=self.named.create(uid,doc,dict(name=(resource.get('name') if resource else resource_id) or 'Imported password',password=legacy['password']))
                     # Preserve the historical fingerprint even when the target changed.
                     if resource_id not in doc['assignments'] and resource is not None:

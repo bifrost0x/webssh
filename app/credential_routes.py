@@ -53,9 +53,16 @@ def intent():
     _available()
     data = _data()
     native = data.get('operation') == 'native'
+    mutation = data.get('mutation') if native else None
+    passphrase_attempt = isinstance(mutation, dict) and mutation.get('method') == 'import'
     # Native assignment batches are ordinary authenticated mutations, not
     # attempts to guess a vault passphrase. Keep a separate bounded budget.
-    bucket, limit = ('credential_change', '120 per minute') if native else ('automation_vault', '10 per minute')
+    # A legacy vault import decrypts with a submitted passphrase and shares
+    # the vault unlock budget.
+    if native and not passphrase_attempt:
+        bucket, limit = 'credential_change', '120 per minute'
+    else:
+        bucket, limit = 'automation_vault', '10 per minute'
     if check_reauth_rate_limit(current_user.id, request.remote_addr, bucket, limit):
         raise AutomationError('busy')
     return jsonify(service().prepare_vault(current_user.id, auth.id, data))
@@ -84,6 +91,27 @@ def lock():
     return jsonify(service().vault_status(current_user.id, auth.id))
 
 
+def _binds_saved_secret(method, data):
+    """Mutations that let the server send an existing saved secret somewhere.
+
+    Assigning a saved password to a destination, authorizing a one-off target
+    and importing the legacy vault all disclose a stored secret to a
+    destination chosen in this request. They are treated like reading the
+    secret and require account reauthentication. Typing a new password,
+    renaming, unassigning and deleting do not.
+    """
+    if method == 'assign':
+        return bool(data.get('credential_id'))
+    return method in {'import', 'authorize_target'}
+
+
+def _require_binding_step_up(uid, auth_id, token):
+    if service().binding_assured(uid, auth_id):
+        return
+    _grant('credentials.vault', token)
+    service().assure_binding(uid, auth_id)
+
+
 def _native(method, rid=None):
     from .automation_store import digest
     auth=_auth()
@@ -98,6 +126,15 @@ def _native(method, rid=None):
     if intent.get('kind')!='native' or intent.get('mutation_digest')!=digest(mutation):
         raise AutomationError('invalid_intent')
     uid=current_user.id
+    if _binds_saved_secret(method, data):
+        # Checked before the intent is consumed, so the browser can complete
+        # reauthentication for this exact intent and retry it.
+        _require_binding_step_up(uid, auth.id, token)
+    if method=='authorize_target':
+        service().intent(token,uid,auth.id,consume=True)
+        result=service().authorize_target(uid,auth.id,data)
+        log_security_event('CREDENTIAL_CHANGED',user_id=uid,action=method)
+        return jsonify(result)
     result={}
     assignment=method in {'create','assign'} and bool(data.get('resource_id'))
     if not assignment:
@@ -143,9 +180,7 @@ def native_import():
 @credentials_blueprint.post('/api/credentials/authorize-target')
 @login_required
 def native_target():
-    auth=_auth()
-    _available()
-    return jsonify(service().authorize_target(current_user.id,auth.id,_data()))
+    return _native('authorize_target')
 
 @credentials_blueprint.post('/api/credentials/create-for-resource')
 @login_required

@@ -6,7 +6,11 @@ test('Quick Connect retains the manual draft and submits a freshly authorized na
     const profile = await page.evaluate(() => window.ProfileManager.profiles.find(item => !item.key_id && !item.jump_host_id));
     expect(profile).toBeTruthy();
     await page.route('**/api/credentials/state', route => route.fulfill({json:{enabled:true,profiles:[profile],credentials:[{id:'named-test',name:'Connection password',uses:[]}]}}));
-    let authorization;
+    let authorization, intentMutation;
+    await page.route('**/api/credentials/intents', route => {
+        intentMutation = route.request().postDataJSON().mutation;
+        return route.fulfill({json:{intent:'exact-target-intent'}});
+    });
     await page.route('**/api/credentials/authorize-target', route => {
         authorization = route.request().postDataJSON();
         return route.fulfill({json:{credential_target_token:'exact-target-token'}});
@@ -28,6 +32,9 @@ test('Quick Connect retains the manual draft and submits a freshly authorized na
     await page.locator('#connectBtn').click();
     await expect.poll(async () => page.evaluate(() => window.__sshConnectAttempts.length)).toBe(1);
     const attempts = await page.evaluate(() => window.__sshConnectAttempts);
+    expect(intentMutation.method).toBe('authorize_target');
+    expect(intentMutation.target).toEqual(authorization.target);
+    expect(authorization.intent).toBe('exact-target-intent');
     expect(authorization.credential_id).toBe('named-test');
     expect(authorization.target.host).toBe(profile.host);
     expect(authorization.target.auth_type).toBe('password');

@@ -132,6 +132,8 @@ def test_native_twenty_host_batch_does_not_hit_password_guess_limit(app,client,c
     service=app.extensions['credentials']
     record=service.create_named(uid,dict(name='Shared batch password',password='batch-secret'))
     secure=dict(base_url='https://localhost')
+    # One account verification covers the batch; see test_credential_binding_step_up.
+    service.assure_binding(uid,aid)
     for index in range(20):
         profile,error=add_profile(uid,f'Batch {index}',f'host-{index}.example',22,'operator','password')
         assert error is None

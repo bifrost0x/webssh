@@ -33,9 +33,42 @@ test('late native intent cannot mutate a cancelled destination and clears passwo
  await assert.rejects(client.mutate('create',payload,null,()=>current),{name:'AbortError'});assert.equal(requests,1);assert.equal(payload.password,'');
 });
 test('target authorization binds exact destination and rejects late result',async()=>{
- let current=true;const target={host:'server',port:22,username:'operator'};let sent;
- const client=nativeClient(async(path,options)=>{sent={path,body:JSON.parse(options.body)};current=false;return {ok:true,json:async()=>({credential_target_token:'late-token'})};});
- await assert.rejects(client.authorizeTarget('named',target,()=>current),{name:'AbortError'});assert.equal(sent.path,'/api/credentials/authorize-target');assert.deepEqual(sent.body,{credential_id:'named',target,confirm_target:true});
+ let current=true;const target={host:'server',port:22,username:'operator'};const sent=[];
+ const client=nativeClient(async(path,options)=>{sent.push({path,body:JSON.parse(options.body)});if(path.endsWith('/intents'))return {ok:true,json:async()=>({intent:'target-intent'})};current=false;return {ok:true,json:async()=>({credential_target_token:'late-token'})};});
+ await assert.rejects(client.authorizeTarget('named',target,()=>current),{name:'AbortError'});
+ assert.deepEqual(sent.map(item=>item.path),['/api/credentials/intents','/api/credentials/authorize-target']);
+ assert.deepEqual(sent[0].body,{operation:'native',mutation:{method:'authorize_target',credential_id:'named',target,confirm_target:true}});
+ assert.deepEqual(sent[1].body,{credential_id:'named',target,confirm_target:true,intent:'target-intent'});
+});
+
+test('binding a saved password retries once with a grant for the exact intent',async()=>{
+ const requests=[];
+ const context={window:{},document:{addEventListener(){},querySelector(){return null;},activeElement:null},DOMException};
+ context.fetch=async(path,options)=>{
+  requests.push({path,body:JSON.parse(options.body),headers:options.headers});
+  if(path.endsWith('/intents'))return {ok:true,json:async()=>({intent:'bind-intent'})};
+  if(!options.headers['X-WebSSH-Step-Up'])return {ok:false,status:403,json:async()=>({code:'step_up_required'})};
+  return {ok:true,json:async()=>({credential_target_token:'token'})};
+ };
+ const authorized=[];
+ context.window.WebSSHSecurityUI={createAccountStepUpClient:()=>({authorize:async(action,target)=>{authorized.push([action,target]);return 'grant-value';},header:grant=>({'X-WebSSH-Step-Up':grant})})};
+ vm.runInNewContext(fs.readFileSync('static/js/native-credentials.js','utf8'),context);
+ const result=await context.window.NativeCredentials.authorizeTarget('named',{host:'server',port:22,username:'operator'});
+ assert.equal(result.credential_target_token,'token');
+ assert.deepEqual(authorized,[['credentials.vault','bind-intent']]);
+ assert.deepEqual(requests.map(item=>item.path),['/api/credentials/intents','/api/credentials/authorize-target','/api/credentials/authorize-target']);
+ assert.equal(requests[2].headers['X-WebSSH-Step-Up'],'grant-value');
+ assert.equal(requests[2].body.intent,'bind-intent');
+});
+
+test('cancelled reauthentication does not retry the binding',async()=>{
+ const requests=[];
+ const context={window:{},document:{addEventListener(){},querySelector(){return null;},activeElement:null},DOMException};
+ context.fetch=async(path,options)=>{requests.push(path);if(path.endsWith('/intents'))return {ok:true,json:async()=>({intent:'bind-intent'})};return {ok:false,status:403,json:async()=>({code:'step_up_required'})};};
+ context.window.WebSSHSecurityUI={createAccountStepUpClient:()=>({authorize:async()=>null,header:grant=>({'X-WebSSH-Step-Up':grant})})};
+ vm.runInNewContext(fs.readFileSync('static/js/native-credentials.js','utf8'),context);
+ await assert.rejects(context.window.NativeCredentials.mutate('assign',{resource_id:'p1',credential_id:'named'}),{name:'AbortError'});
+ assert.deepEqual(requests,['/api/credentials/intents','/api/credentials/assign']);
 });
 
 test('password API gives a sign-in message for expired HTML sessions',async()=>{

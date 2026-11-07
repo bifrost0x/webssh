@@ -3,6 +3,7 @@ const path=require('node:path');
 async function setup(page){
  await page.route('**/inline-fixture',r=>r.fulfill({contentType:'text/html',body:'<style>.hidden{display:none}</style><meta name="app-root" content=""><div id="connectionModal" class="show"><form><input id="hostInput" value="host"><input id="portInput" value="22"><input id="usernameInput" value="alice"><select id="authTypeSelect"><option value="password">Password</option><option value="saved-password">Saved password</option><option value="key">SSH key</option></select><div id="passwordGroup"><input id="passwordInput" type="password" required></div></form></div>'}));
  await page.route('**/api/credentials/state',r=>r.fulfill({json:{enabled:true,credentials:[{id:'named',name:'Lab password',uses:[]}],profiles:[]}}));
+ let intents=0;await page.route('**/api/credentials/intents',r=>r.fulfill({json:{intent:'target-intent-'+(++intents)}}));
  await page.goto('/inline-fixture');
  await page.evaluate(()=>{window.ProfileManager={selectedProfileId:null};});
  for(const name of ['native-credentials.js','credential-picker.js']) await page.addScriptTag({path:path.resolve(__dirname,'../../static/js',name)});
@@ -13,7 +14,7 @@ test('inline saved mode preserves manual draft and authorizes exact destination 
  await page.route('**/api/credentials/authorize-target',r=>{requests.push(r.request().postDataJSON());return r.fulfill({json:{credential_target_token:'token-'+requests.length}});});
  await page.locator('#passwordInput').fill('manual-draft');await page.locator('#authTypeSelect').selectOption('saved-password');await page.locator('#savedPasswordSelect').selectOption('named');
  await expect(page.getByRole('button',{name:'Use saved password'})).toHaveCount(0);expect(requests).toHaveLength(0);
- expect(await page.evaluate(()=>window.CredentialPicker.resolve('passwordInput'))).toBe('named');expect(requests[0]).toEqual({credential_id:'named',target:{host:'host',port:22,username:'alice',auth_type:'password',jump_host_id:null},confirm_target:true});
+ expect(await page.evaluate(()=>window.CredentialPicker.resolve('passwordInput'))).toBe('named');expect(requests[0]).toEqual({credential_id:'named',target:{host:'host',port:22,username:'alice',auth_type:'password',jump_host_id:null},confirm_target:true,intent:'target-intent-1'});
  await page.evaluate(()=>window.CredentialPicker.resolve('passwordInput'));expect(requests).toHaveLength(2);
  await page.locator('#hostInput').fill('different');expect(await page.evaluate(()=>window.CredentialPicker.get('passwordInput'))).toBeNull();await expect(page.locator('#savedPasswordSelect')).toHaveValue('');
  await page.locator('#authTypeSelect').selectOption('password');await expect(page.locator('#passwordInput')).toHaveValue('manual-draft');await expect(page.locator('#passwordInput')).toBeEnabled();
