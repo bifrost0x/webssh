@@ -52,32 +52,36 @@ test('mobile overview integrates the scene inside the welcome without covering i
     await login(page, 'e2e_admin', {workspace: false});
     for (const theme of themes) {
         await page.evaluate(value => {document.body.dataset.theme = value;}, theme);
-        const scene = await sceneDetails(page, '.overview-scene');
+        const scene = await sceneDetails(page, '.od-scene');
         expect(scene.width, theme).toBeGreaterThanOrEqual(1500);
-        const photo = await page.locator('.overview-scene').boundingBox();
+        const photo = await page.locator('.od-hero').boundingBox();
         const title = await page.locator('#overviewTitle').boundingBox();
-        const inventory = await page.locator('#overviewInventorySummary').boundingBox();
+        const inventory = await page.locator('.od-kpis').boundingBox();
         expect(photo.height, theme).toBeGreaterThanOrEqual(60);
         expect(title.y, theme).toBeGreaterThanOrEqual(photo.y);
         expect(title.y + title.height, theme).toBeLessThanOrEqual(photo.y + photo.height);
         expect(photo.x + photo.width, theme).toBeLessThanOrEqual(390);
         expect(inventory.y, theme).toBeGreaterThanOrEqual(photo.y + photo.height);
     }
-    await page.locator('#overviewHosts [data-host-id]').first().click();
-    await expect(page.locator('.overview-scene')).toBeVisible();
-    await expect(page.locator('.overview-access-inspector')).toBeVisible();
+    await expect(page.locator('.od-scene')).toBeVisible();
+    await page.locator('#overviewSearch').fill('Usable');
+    await expect(page.locator('#overviewSearch')).toHaveValue('Usable');
+    expect(await page.locator('#overviewSearch').evaluate(input => {
+        const box = input.getBoundingClientRect();
+        return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === input;
+    })).toBe(true);
+    await page.locator('#overviewSearch').fill('');
 });
 
 test('scene readiness and custom wallpaper override preserve the mobile overview', async ({page}) => {
     await page.setViewportSize({width: 390, height: 844});
     await login(page, 'e2e_admin', {workspace: false});
-    if (await page.locator('.overview-access-inspector').count()) await page.locator('.overview-access-heading button').click();
     await page.evaluate(() => {
         document.body.dataset.theme = 'paper';
         document.body.dataset.deferThemeBackground = '';
         document.body.removeAttribute('data-theme-background-ready');
     });
-    await expect(page.locator('.overview-scene')).not.toHaveCSS('background-image', /url\(/);
+    await expect(page.locator('.od-scene')).not.toHaveCSS('background-image', /url\(/);
     await page.evaluate(() => {
         document.body.dataset.themeBackgroundReady = '';
         const canvas = document.createElement('canvas');
@@ -87,12 +91,12 @@ test('scene readiness and custom wallpaper override preserve the mobile overview
         document.body.style.setProperty('--theme-background-image', `url("${canvas.toDataURL()}")`);
         document.body.dataset.customBackground = '';
     });
-    await expect(page.locator('.overview-scene')).toHaveCSS('background-image', /data:image\/png/);
+    await expect(page.locator('.od-scene')).toHaveCSS('background-image', /data:image\/png/);
     await page.evaluate(() => {
         document.body.style.removeProperty('--theme-background-image');
         delete document.body.dataset.customBackground;
     });
-    await expect(page.locator('.overview-scene')).toHaveCSS('background-image', /paper-pavilion/);
+    await expect(page.locator('.od-scene')).toHaveCSS('background-image', /paper-pavilion/);
 });
 
 test('large screens decode local scene sources and keep the login form concentrated', async ({page}) => {

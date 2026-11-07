@@ -24,18 +24,20 @@ for (const view of ['overviewNavBtn', 'manageProfilesBtn', 'commandLibraryBtn'])
   await expect(page.locator('#terminal-journey-terminal .xterm-helper-textarea').first()).toBeFocused();
  });
 }
-test('returning from a connection attempt keeps the host search and group',async({page})=>{
+test('returning from a connection attempt keeps the host search',async({page})=>{
  await page.setViewportSize({width:1280,height:720});await login(page,'e2e_admin',{workspace:false});
- await page.locator('#overviewGroupFilter').selectOption('group:Production');
- await page.locator('#overviewHostSearch').fill('Usable');
+ await page.locator('#overviewSearch').fill('Usable');
+ const connect=page.locator('#overviewHostList .od-connect').first();
+ await expect(connect).toHaveAccessibleName('Connect Usable key');
  await expect.poll(()=>page.evaluate(()=>ProfileManager.keysLoaded)).toBe(true);
  await page.evaluate(()=>{const emit=socket.emit.bind(socket);window.__journeyConnects=[];socket.emit=(event,...args)=>{if(event==='ssh_connect'){window.__journeyConnects.push(args[0]);return socket;}return emit(event,...args);};});
- await page.locator('#overviewHosts .overview-host-connect').first().click();
+ await connect.click();
  await expect.poll(()=>page.evaluate(()=>window.__journeyConnects.length)).toBe(1);
  await page.locator('#overviewNavBtn').click();
- await expect(page.locator('#overviewGroupFilter')).toHaveValue('group:Production');
- await expect(page.locator('#overviewHostSearch')).toHaveValue('Usable');
- await expect(page.locator('#overviewHosts .overview-host-connect').first()).toBeFocused();
+ await expect(page.locator('#overviewSearch')).toHaveValue('Usable');
+ await expect(connect).toBeFocused();
+ await expect(connect).toHaveAccessibleName(/Usable key$/);
+ await page.locator('#workspaceNavBtn').click();await page.locator('#overviewNavBtn').click();await expect(page.locator('#overviewTitle')).toBeFocused();
 });
 for(const width of [390,820,1280,1920])test(`closing tools returns input to the terminal at ${width}px`,async({page},testInfo)=>{
  await page.setViewportSize({width,height:800});await login(page);

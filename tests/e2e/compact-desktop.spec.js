@@ -4,12 +4,13 @@ const {login, assertNoExternalRequests} = require('./helpers');
 test.use({viewport: {width: 1280, height: 720}});
 test.afterEach(async ({page}) => assertNoExternalRequests(page));
 
-test('overview compact row contents do not overlap at laptop widths', async ({page}) => {
+test('overview host card contents do not overlap at laptop widths', async ({page}) => {
     await login(page, 'e2e_admin', {workspace: false});
-    await expect.poll(() => page.locator('.overview-compact-row').count()).toBeGreaterThan(0);
+    const rows = '#overviewHostList .od-host-top, #overviewHostList .od-host-bottom';
+    await expect.poll(() => page.locator(rows).count()).toBeGreaterThan(0);
     for (const width of [1920, 1600, 1440, 1280, 1152, 1024]) {
         await page.setViewportSize({width, height: 720});
-        const collisions = await page.locator('.overview-compact-row').evaluateAll(buttons => buttons.flatMap(button => {
+        const collisions = await page.locator(rows).evaluateAll(buttons => buttons.flatMap(button => {
             const children = [...button.children].filter(el => el.getClientRects().length);
             return children.flatMap((a, i) => children.slice(i + 1).filter(b => {
                 const x = a.getBoundingClientRect(), y = b.getBoundingClientRect();

@@ -3,10 +3,12 @@ const {login,installSshConnectTrap,sshAttempts}=require('./helpers');
 test('map supports large inventories, pan, zoom, group drilldown and responsive themes',async({page},info)=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await login(page,'e2e_admin',{workspace:false});await installSshConnectTrap(page);
- await page.evaluate(()=>{const base=ProfileManager.profiles[0];ProfileManager.setProfiles(Array.from({length:120},(_,i)=>({...base,id:'map-'+i,name:'Map host '+i,group:'Group '+Math.floor(i/20),jump_host_id:null})));});
- await page.getByRole('button',{name:'Expand map',exact:true}).click();
+ // The dashboard offers the full map once a saved route uses a jump host.
+ await page.evaluate(()=>{const base=ProfileManager.profiles[0];JumpHostManager.setJumpHosts([{id:'map-gate',name:'Gateway'}]);ProfileManager.setProfiles([...Array.from({length:120},(_,i)=>({...base,id:'map-'+i,name:'Map host '+i,group:'Group '+Math.floor(i/20),jump_host_id:null})),{...base,id:'map-gated',name:'Gated host',group:'Edge',jump_host_id:'map-gate'}]);});
+ const hosts=page.locator('#overviewHostList .od-host');await expect(hosts).toHaveCount(121);
+ await page.locator('#overviewOpenMap').click();
  await expect(page.locator('.ssh-route-more')).toHaveAttribute('aria-expanded','false');
- await expect(page.locator('.ssh-route-host')).toHaveCount(2);
+ await expect(page.locator('[data-map-node="direct:hosts"] .ssh-route-host')).toHaveCount(2);
  await page.getByRole('button',{name:'Zoom in SSH routes',exact:true}).click();
  const canvas=page.locator('.ssh-route-canvas');const before=await canvas.getAttribute('style');
  const viewport=page.locator('.ssh-route-viewport');await viewport.focus();await page.keyboard.press('ArrowRight');
@@ -16,20 +18,17 @@ test('map supports large inventories, pan, zoom, group drilldown and responsive 
  expect(await canvas.getAttribute('style')).not.toBe(prior);
  await page.getByRole('button',{name:'Fit map',exact:true}).click();
  await page.locator('.ssh-route-more').click();
- await expect(page.locator('.ssh-route-host')).toHaveCount(120);
+ await expect(page.locator('[data-map-node="direct:hosts"] .ssh-route-host')).toHaveCount(120);
  await page.locator('.ssh-map-toolbar input').fill('Map host 119');
  await expect(page.locator('.ssh-route-host')).toHaveCount(1);
  await page.locator('.ssh-route-target').click();
  await expect(page.locator('.ssh-map-dialog')).not.toBeVisible();
- await expect(page.locator('.overview-path-stops')).toContainText('Map host 119');
- await page.locator('.overview-access-heading button').click();
- await page.locator('#overviewGroupFilter').selectOption('group:Group 0');
- await expect(page.locator('.overview-compact-row')).toHaveCount(20);
- await page.locator('#overviewGroupFilter').selectOption('');
- await page.locator('#overviewHostSearch').fill('Map host 119');
- await page.locator('[data-host-id="map-119"]').click();
- await expect(page.locator('.overview-path-stops')).toContainText('Map host 119');
- await page.locator('.overview-access-heading button').click();await page.locator('#overviewHostSearch').fill('');
+ await expect(page.locator('#overviewSearch')).toHaveValue('Map host 119');await expect(hosts).toHaveCount(1);
+ await page.locator('#overviewSearch').fill('Group 0');
+ await expect(hosts).toHaveCount(20);
+ await page.locator('#overviewSearch').fill('Map host 119');
+ await expect(hosts).toHaveCount(1);await expect(page.getByRole('button',{name:'Connect Map host 119',exact:true})).toBeVisible();
+ await page.locator('#overviewSearch').fill('');
  for(const theme of ['glass','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian','werkbank']){
   await page.evaluate(t=>document.body.dataset.theme=t,theme);
   for(const width of [390,1440,3440]){
@@ -37,7 +36,7 @@ test('map supports large inventories, pan, zoom, group drilldown and responsive 
    expect(await page.locator('#connectionOverview').evaluate(e=>e.scrollWidth<=e.clientWidth+1),theme+' '+width).toBe(true);
   }
  }
- await page.getByRole('button',{name:'Expand map',exact:true}).click();
+ await page.locator('#overviewOpenMap').click();
  await page.locator('.ssh-map-toolbar input').fill('');
  await page.locator('.ssh-map-dialog').screenshot({path:info.outputPath('map-large.png')});
  await page.setViewportSize({width:390,height:760});

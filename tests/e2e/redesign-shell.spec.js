@@ -1,6 +1,12 @@
 const {test, expect} = require('playwright/test');
 const {login, installSshConnectTrap, sshAttempts, assertNoExternalRequests, assertRouteGeometry} = require('./helpers');
 
+async function overviewLayout(page, layout) {
+    const token = await page.locator('meta[name="csrf-token"]').getAttribute('content');
+    const response = await page.request.post('/api/account/preferences', {data: {overview_layout: layout}, headers: {'X-CSRFToken': token}});
+    expect(response.ok()).toBe(true);
+}
+
 async function overview(page) {
     if (!await page.locator('#overviewNavBtn').isVisible()) await page.locator('#mobileMoreBtn').click();
     await page.locator('#overviewNavBtn').click();
@@ -66,36 +72,42 @@ async function seedPresentation(page) {
 
 test.afterEach(async ({page}) => { await assertNoExternalRequests(page); });
 
-test('one real search and exact group filter preserve existing recent-history review', async ({page}) => {
+test('classic search and exact group filter preserve existing recent-history review', async ({page}) => {
     await page.setViewportSize({width: 1440, height: 900});
-    await login(page);
-    await installSshConnectTrap(page);
-    await page.evaluate(() => {
-        ConnectionHistory.addConnection('history.example.invalid', 2222, 'demo');
-        ProfileManager.setProfiles([
-            {id: 'a', name: 'Alpha', group: 'Ops', auth_type: 'password'},
-            {id: 'b', name: 'Beta', group: 'Ops extended', auth_type: 'password'},
-        ]);
-    });
-    await overview(page);
-    const group = page.locator('#overviewGroupFilter');
-    await group.selectOption('group:Ops');
-    await expect(page.locator('.overview-compact-row')).toHaveCount(1);
-    await expect(page.locator('#overviewHosts')).toContainText('Alpha');
-    await expect(group).toHaveValue('group:Ops');
-    await group.selectOption('');
-    await expect(page.locator('.overview-compact-row')).toHaveCount(2);
-    await page.locator('#overviewHostSearch').fill('Beta');
-    await expect(page.locator('#overviewHosts .overview-row-title')).toHaveText(['Beta']);
-    await expect(page.locator('#overviewHosts')).toContainText('Beta');
-    await expect(page.locator('#overviewHistory')).toBeHidden();
-    await page.locator('#overviewHostSearch').fill('');
-    await page.locator('#overviewHistory button').click();
-    await expect(page.locator('#hostInput')).toHaveValue('history.example.invalid');
-    await expect(page.locator('#portInput')).toHaveValue('2222');
-    await expect(page.locator('#usernameInput')).toHaveValue('demo');
-    await expect(page.locator('#passwordInput')).toBeFocused();
-    expect(await sshAttempts(page)).toEqual([]);
+    await login(page, 'e2e_admin', {workspace: false});
+    await overviewLayout(page, 'classic');
+    try {
+        await page.goto('/');
+        await expect.poll(() => page.evaluate(() => ProfileManager.profilesLoaded)).toBe(true);
+        await installSshConnectTrap(page);
+        await page.evaluate(() => {
+            ConnectionHistory.addConnection('history.example.invalid', 2222, 'demo');
+            ProfileManager.setProfiles([
+                {id: 'a', name: 'Alpha', group: 'Ops', auth_type: 'password'},
+                {id: 'b', name: 'Beta', group: 'Ops extended', auth_type: 'password'},
+            ]);
+        });
+        await overview(page);
+        const group = page.locator('#overviewGroupFilter');
+        const hosts = page.locator('#overviewHosts [data-host-id]');
+        await group.selectOption('group:Ops');
+        await expect(hosts).toHaveCount(1);
+        await expect(page.locator('#overviewHosts')).toContainText('Alpha');
+        await expect(group).toHaveValue('group:Ops');
+        await group.selectOption('');
+        await expect(hosts).toHaveCount(2);
+        await page.locator('#overviewHostSearch').fill('Beta');
+        await expect(page.locator('#overviewHosts .overview-row-title')).toHaveText(['Beta']);
+        await page.locator('#overviewHostSearch').fill('');
+        await page.locator('#overviewHistory button').click();
+        await expect(page.locator('#hostInput')).toHaveValue('history.example.invalid');
+        await expect(page.locator('#portInput')).toHaveValue('2222');
+        await expect(page.locator('#usernameInput')).toHaveValue('demo');
+        await expect(page.locator('#passwordInput')).toBeFocused();
+        expect(await sshAttempts(page)).toEqual([]);
+    } finally {
+        await overviewLayout(page, 'dashboard');
+    }
 });
 
 test('workspace host tree launches through the existing saved-profile review', async ({page}) => {
@@ -125,12 +137,14 @@ test('network distinguishes configured, direct and missing routes and retains pa
         ]);
     });
     await overview(page);
-    const previewTarget = page.locator('#overviewHosts [data-host-id="one"]');
+    const previewTarget = page.locator('#overviewHostList [data-host-id="one"] .od-connect');
     await previewTarget.focus();
     await page.evaluate(() => window.dispatchEvent(new Event('profile-list-change')));
     await expect(previewTarget).toBeFocused();
-    await expect(page.locator('.overview-compact-route').filter({hasText:'Saved jump host unavailable'})).toHaveCount(1);
-    await page.getByRole('button',{name:'Expand map',exact:true}).click();
+    const missing = page.locator('#overviewHostList [data-host-id="missing"]');
+    await expect(missing).toHaveAttribute('data-state', 'broken');
+    await expect(missing).toContainText('Saved jump host unavailable');
+    await page.locator('#overviewOpenMap').click();
     await expect(page.locator('.ssh-route-branch')).toHaveCount(3);
     await expect(page.locator('.ssh-route-canvas > svg > path')).toHaveCount(5);
     for (const width of [1280, 1920, 390]) {
@@ -140,12 +154,12 @@ test('network distinguishes configured, direct and missing routes and retains pa
     }
     await page.keyboard.press('Escape');
     expect(await page.locator('#connectionOverview').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-    await previewTarget.click();
-    await expect(page.locator('.overview-path-stops > li strong')).toHaveText(['WebSSH server','Bastion','One']);
-    await page.locator('.overview-access-heading button').click();
-    await page.locator('#overviewHostSearch').fill('Direct');
-    await page.locator('#overviewHosts [data-host-id="direct"]').click();
-    await expect(page.locator('.overview-path-stops > li strong')).toHaveText(['WebSSH server','Direct']);
+    await page.locator('#overviewOpenMap').click();
+    await page.locator('.ssh-route-target[data-ssh-map-focus="direct"]').click();
+    await expect(page.locator('dialog.ssh-map-dialog')).not.toBeVisible();
+    await expect(page.locator('#overviewSearch')).toHaveValue('Direct');
+    await expect(page.locator('#overviewHostList [data-host-id="direct"] .od-connect')).toBeFocused();
+    await expect(page.locator('#overviewHostList .od-host')).toHaveCount(1);
     expect(await sshAttempts(page)).toEqual([]);
 });
 
@@ -155,20 +169,14 @@ for (const width of [1440, 1024, 390]) {
         await login(page);
         await seedPresentation(page);
         await overview(page);
-        // Active sessions already appear beside history; only the other targets
-        // belong in the compact recent-connections section.
-        await expect(page.locator('#overviewHistory button')).toHaveCount(2);
-        await expect(page.locator('#overviewHistory')).toContainText('nas');
-        await expect(page.locator('#overviewHistory')).toContainText('pfSense');
-        await expect(page.locator('#overviewSessionCount')).toHaveText('3');
-        await expect(page.locator('#overviewTransferCount')).toHaveText('3');
+        await expect(page.locator('#overviewHostList .od-host')).toHaveCount(5);
+        await expect(page.locator('#odActivity .od-event').first()).toBeVisible();
         await expect(page.locator('#connectionOverview progress')).toHaveCount(0);
-        await expect(page.locator('#overviewSessions')).not.toContainText('Connected');
         await page.screenshot({path: test.info().outputPath( `dashboard-${width}.png`)});
-        await page.locator('#overviewHosts [data-host-id]').first().click();
-        await expect(page.locator('.overview-path-stops > li strong')).toHaveText(['WebSSH server', 'db-jump', 'db-cluster']);
-        await expect(page.locator('#overviewAccessTitle')).toBeFocused();
-        await expect(page.locator('#overviewAccessTitle')).toBeInViewport();
+        await expect(page.locator('#odTopology svg, #odTopology .od-route-list').first()).toBeVisible();
+        await expect(page.locator('#odTopology')).toContainText('bastion-01');
+        await expect(page.locator('#odTopology')).toContainText('db-jump');
+        await page.locator('.od-topology').scrollIntoViewIfNeeded();
         await page.screenshot({path: test.info().outputPath( `graph-${width}.png`)});
         if (await page.locator('#workspaceNavBtn').isVisible()) await page.locator('#workspaceNavBtn').click();
         else await page.locator('[data-mobile-view=workspaces]').click();
@@ -196,23 +204,23 @@ test('empty overview exposes one search and no invented sessions, routes or tran
         JumpHostManager.setJumpHosts([]);
     });
     await overview(page);
-    await expect(page.locator('#overviewHostSearch')).toHaveCount(1);
+    await expect(page.locator('#overviewSearch')).toHaveCount(1);
+    await expect(page.locator('#overviewHostSearch')).toHaveCount(0);
     await expect(page.locator('#overviewRouteMap .ssh-map-toolbar input')).toHaveCount(1);
     await expect(page.locator('#overviewQuickConnect')).toHaveCount(0);
     await expect(page.locator('#shellConnectBtn')).toBeVisible();
     await expect(page.locator('#shellSearch, #shellQuickConnect, #routesNavBtn, #shellNotes, .overview-quick-actions, .shell-settings')).toHaveCount(0);
     await expect(page.locator('.shell-groups')).toBeHidden();
-    await expect(page.locator('#overviewHostCount')).toHaveText('0');
-    await expect(page.locator('#overviewSessionCount')).toHaveText('0');
-    await expect(page.locator('#overviewSessions button')).toHaveCount(0);
-    await expect(page.locator('#overviewAllTransfers')).toBeHidden();
-    await expect(page.locator('#overviewHosts')).toContainText('No saved connections');
+    await expect(page.locator('#overviewHostTotal')).toHaveText('0');
+    await expect(page.locator('#odKpiSessionsValue')).toHaveText('0');
+    await expect(page.locator('#overviewHostList [data-host-id]')).toHaveCount(0);
+    await expect(page.locator('#overviewHostsEmpty')).toBeVisible();
     await page.screenshot({path: test.info().outputPath('empty-overview.png')});
-    await expect(page.locator('.overview-access-inspector')).toHaveCount(0);
-    await expect(page.locator('.overview-edges path')).toHaveCount(0);
+    await expect(page.locator('.od-topology')).toBeHidden();
+    await expect(page.locator('#odTopology .od-edge')).toHaveCount(0);
+    await expect(page.locator('#overviewOpenMap')).toBeHidden();
     await page.setViewportSize({width: 390, height: 844});
     await expect(page.locator('#mobileSessionSummary')).toBeVisible();
-    if (await page.locator('.overview-access-inspector').count()) await page.locator('.overview-access-heading button').click();
     await page.screenshot({path: test.info().outputPath('empty-mobile.png')});
     await page.locator('#mobileSessionSummary').click();
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);

@@ -7,22 +7,25 @@ test('SSH route pane handles mixed routes, large inventories, themes and saved c
   const base=ProfileManager.profiles[0];JumpHostManager.setJumpHosts([{id:'bastion',name:'Gateway'}]);
   ProfileManager.setProfiles(Array.from({length:120},(_,i)=>({...base,id:'route-'+i,name:'Server '+String(i).padStart(3,'0'),group:'Group '+Math.floor(i/20),favorite:false,jump_host_id:i%3?'bastion':null})));
  });
+ // The dashboard shows a route summary; the complete map opens on request.
+ await page.locator('#overviewOpenMap').click();
  const pane=page.locator('#overviewRouteMap'),viewport=pane.locator('.ssh-route-viewport');
  await expect(pane.locator('.ssh-map-count')).toHaveText('120 / 120 hosts');
  await expect(pane.locator('.ssh-route-branch')).toHaveCount(2);
  await expect(pane.locator('.ssh-route-source').filter({hasText:'Gateway'})).toHaveCount(1);
  await expect(pane.locator('svg path')).toHaveCount(3);
- await expect(pane.locator('.ssh-route-summary')).toHaveCount(2);
+ await expect(pane.locator('.ssh-route-host')).toHaveCount(4);
  await pane.getByRole('button',{name:'Show hosts: Direct SSH',exact:true}).click();
  await expect(pane.locator('.ssh-route-host')).toHaveCount(42);
  const search=pane.getByRole('searchbox');
  await search.fill('Server 119');await expect(pane.locator('.ssh-route-host')).toHaveCount(1);
  await expect(pane.locator('.ssh-route-source')).toContainText('Gateway');
  await pane.getByRole('button',{name:'Inspect Server 119',exact:true}).click();
- await expect(page.locator('.overview-path-stops')).toContainText('Server 119');
- await expect(page.locator('.overview-path-stops')).toContainText('Gateway');
- await page.locator('.overview-access-heading button').click();
- await search.fill('');await pane.getByRole('button',{name:'Expand map',exact:true}).click();
+ await expect(page.locator('dialog.ssh-map-dialog')).toBeHidden();
+ await expect(page.locator('#overviewSearch')).toHaveValue('Server 119');
+ await expect(page.locator('#overviewHostList .od-host')).toHaveCount(1);
+ await page.locator('#overviewSearch').press('Escape');
+ await page.locator('#overviewOpenMap').click();await search.fill('');
  await pane.getByRole('button',{name:'Fit map',exact:true}).click();
  const percent=await pane.locator('output').innerText();
  await pane.getByRole('button',{name:'Zoom in SSH routes',exact:true}).click();
@@ -50,7 +53,8 @@ test('SSH route pane handles mixed routes, large inventories, themes and saved c
  // Use the existing profiles after reload; saved camera is independent of inventory churn.
  await page.waitForTimeout(250);
  const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('webssh:route-map:'+document.querySelector('meta[name=background-scope]').content)).camera);
- await page.reload();await page.waitForFunction(()=>ProfileManager.profilesLoaded);
+ await page.reload();await page.waitForFunction(()=>ProfileManager.profilesLoaded&&JumpHostManager.loaded);
+ await page.locator('#overviewOpenMap').click();
  await expect(pane.locator('.ssh-map-count')).toContainText('hosts');
  const after=await page.evaluate(()=>JSON.parse(localStorage.getItem('webssh:route-map:'+document.querySelector('meta[name=background-scope]').content)).camera);
  expect(after).toEqual(before);
@@ -65,7 +69,7 @@ for (const theme of ['glass','retro','solar','paper','noir','arctic-ice','rose-g
   const base=ProfileManager.profiles[0];JumpHostManager.setJumpHosts([{id:'bastion',name:'Gateway'}]);
   ProfileManager.setProfiles(Array.from({length:120},(_,i)=>({...base,id:'route-'+i,name:'Server '+String(i).padStart(3,'0'),group:'Group '+Math.floor(i/20),favorite:false,jump_host_id:i%3?'bastion':null})));
  });
-
+  await page.locator('#overviewOpenMap').click();
   const pane=page.locator('#overviewRouteMap');
   await expect(pane.locator('.ssh-map-count')).toHaveText('120 / 120 hosts');
   await pane.getByRole('button',{name:'Show hosts: Direct SSH',exact:true}).click();

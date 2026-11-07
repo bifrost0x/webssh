@@ -3,7 +3,7 @@ const {login}=require('./helpers');
 test('workflow command-set copies, overview log links and reachable stage actions',async({page},info)=>{
  await login(page,'e2e_admin',{workspace:false});
  const book={id:'b',name:'Check',steps:[{name:'Identity',command:'id',timeout:30,sudo:false}]};
- const run={id:'recent-run',name:'Latest check',status:'running',created_at:'2026-11-04T09:00:00Z',targets:[{name:'Host A',host:'example.invalid',username:'op',status:'running',steps:[{name:'Identity',status:'running',exit_code:null,duration:null,stdout:'',stderr:''}]}]};
+ const run={id:'recent-run',name:'Latest check',status:'running',created_at:new Date().toISOString(),targets:[{name:'Host A',host:'example.invalid',username:'op',status:'running',steps:[{name:'Identity',status:'running',exit_code:null,duration:null,stdout:'',stderr:''}]}]};
  await page.route('**/api/automation/state',r=>r.fulfill({json:{enabled:true,runbooks:[book],profiles:Array.from({length:30},(_,i)=>({id:'h'+i,name:'Host '+i,host:'example.invalid',username:'op',group:'Lab',auth_type:'key',supported:true}))}}));
  let unavailable=false;await page.route('**/api/automation/runs',r=>r.fulfill(unavailable?{status:503,json:{code:'unavailable'}}:{json:{runs:[run]}}));await page.route('**/api/automation/schedules',r=>r.fulfill({json:{schedules:[]}}));
  const writes=[];page.on('request',r=>{if(r.url().includes('/api/automation/')&&r.method()!=='GET')writes.push(r.url());});
@@ -24,11 +24,11 @@ test('workflow command-set copies, overview log links and reachable stage action
   }
   await page.screenshot({path:info.outputPath('targets-'+size.width+'.png'),animations:'disabled'});
  }
- await page.locator('#overviewNavBtn').click();await expect(page.locator('#overviewAutomation')).toBeVisible();await expect(page.locator('#overviewAutomation')).toContainText('Latest check');await page.locator('#overviewAutomation').screenshot({path:info.outputPath('overview-runs.png')});
+ await page.locator('#overviewNavBtn').click();await expect(page.locator('#odAutomation')).toBeVisible();await expect(page.locator('#odActivity')).toContainText('Latest check');await expect(page.locator('#odKpiAutomation')).toContainText('0 failed');await page.locator('#odAutomation').screenshot({path:info.outputPath('overview-runs.png')});
  run.status='failed';run.targets[0].steps[0]={name:'Identity',status:'failed',exit_code:1,duration:1,stdout:'diagnostic text',stderr:'failure detail'};
- await expect(page.locator('#overviewAutomation .automation-state')).toHaveText('Failed',{timeout:10000});
- unavailable=true;await expect(page.locator('#overviewAutomationStale')).toBeVisible({timeout:10000});unavailable=false;await expect(page.locator('#overviewAutomationStale')).toBeHidden({timeout:10000});
- await page.locator('.overview-automation-run').click();await expect(page.locator('#auto-runs')).toBeVisible();await expect(page.locator('#runHistory pre').filter({hasText:'failure detail'})).toBeVisible();
+ const failed=page.locator('#odAttention button[data-key="attention:run-failed:recent-run"]');await expect(failed).toHaveText(/Run failed: Latest check/,{timeout:10000});await expect(page.locator('#odKpiAutomation')).toContainText('1 failed');
+ unavailable=true;await page.waitForResponse(r=>r.url().includes('/api/automation/runs')&&r.status()===503,{timeout:10000});await expect(failed).toBeVisible();await expect(page.locator('#odNextRun')).toHaveText('Showing the last known runs. Automation could not be refreshed.');unavailable=false;
+ await failed.click();await expect(page.locator('#auto-runs')).toBeVisible();await expect(page.locator('#runHistory pre').filter({hasText:'failure detail'})).toBeVisible();
  expect(writes).toEqual([]);
 });
 test('command-set parameter resolution and missing references do not import broken drafts',async({page})=>{

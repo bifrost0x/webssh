@@ -9,30 +9,27 @@ for(const width of [360,768,1280,1920,3440]) {
    JumpHostManager.setJumpHosts([{id:'map-jump',name:'Bastion'}]);
    ProfileManager.setProfiles(Array.from({length:28},(_,i)=>({...base,id:`map-${i}`,name:`Storage replica ${String(i).padStart(2,'0')} — Homelab`,group:`Group ${Math.floor(i/7)}`,favorite:false,jump_host_id:i%2?'map-jump':null})));
   });
-  await expect(page.locator('#overviewHostCount')).toHaveText('28');
-  await expect(page.locator('#overviewGroupFilter')).toHaveCSS('appearance','none');
-  await expect(page.locator('.overview-list-group')).toHaveCount(4);
-  await expect(page.locator('.overview-compact-row')).toHaveCount(28);
-  await expect(page.locator('.overview-route-bundle[data-selected="true"]')).toHaveCount(0);
-  const first=page.locator('.overview-compact-row [data-host-id]').first();
-  await first.click();
-  await expect(page.locator('.overview-access-inspector')).toBeVisible();
-  await expect(page.locator('.overview-heading')).toBeVisible();
-  expect(await page.locator('#overviewHosts').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  const hosts=page.locator('#overviewHostList .od-host');
+  await expect(page.locator('#overviewHostTotal')).toHaveText('28');
+  await expect(hosts).toHaveCount(28);
+  await expect(page.locator('#odTopology')).toHaveAttribute('aria-label','28 hosts, 14 direct, 1 jump hosts, 0 with an open session');
+  await expect(page.locator('#overviewTitle')).toBeVisible();
+  expect(await page.locator('#overviewHostList').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
   for(const theme of ['glass','werkbank','paper','arctic-ice']){
    await page.evaluate(theme=>document.body.dataset.theme=theme,theme);
-   expect(await page.locator('#overviewHosts').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+   expect(await page.locator('#overviewHostList').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+   expect(await page.locator('#connectionOverview').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
   }
   await page.screenshot({path:test.info().outputPath(`map-${width}.png`),animations:'disabled'});
-  await page.locator('.overview-access-heading button').click();
-  await expect(first).toBeFocused();
-  await page.locator('#overviewHostSearch').fill('Storage replica');
-  const ids=new Set(await page.locator('.overview-compact-row [data-host-id]').evaluateAll(nodes=>nodes.map(n=>n.dataset.hostId)));
+  await page.locator('#overviewSearch').fill('Storage replica');
+  const ids=new Set(await page.locator('#overviewHostList .od-host').evaluateAll(nodes=>nodes.map(n=>n.dataset.hostId)));
   expect(ids.size).toBe(28);
-  await page.locator('#overviewHostSearch').fill('Storage replica 27');
-  await page.locator('[data-host-id="map-27"]').click();
-  await expect(page.locator('.overview-path-stops li')).toHaveCount(3);
-  await expect(page.locator('.overview-path-stops')).toContainText('Bastion');
+  await page.locator('#overviewSearch').fill('Bastion');
+  await expect(hosts).toHaveCount(14);await expect(page.locator('#overviewHostList [data-host-id="map-27"]')).toBeVisible();
+  await page.locator('#overviewSearch').fill('Storage replica 27');
+  await expect(hosts).toHaveCount(1);
+  await page.locator('#overviewSearch').press('ArrowDown');
+  await expect(page.getByRole('button',{name:'Connect Storage replica 27 — Homelab',exact:true})).toBeFocused();
   expect(await sshAttempts(page)).toEqual([]);
  });
 }

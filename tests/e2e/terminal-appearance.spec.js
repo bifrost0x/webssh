@@ -7,7 +7,7 @@ test('overview defers terminal fonts until the appearance preview opens', async 
         if (request.url().includes('/static/vendor/terminal-fonts/') && request.url().includes('.woff2')) fonts.push(request.url());
     });
     await login(page, 'e2e_admin', {workspace: false});
-    await expect(page.locator('#overviewHosts .overview-compact-row [data-host-id]').first()).toBeVisible();
+    await expect(page.locator('#overviewHostList .od-host .od-connect').first()).toBeVisible();
     // Include the load event and a paint after all DOMContentLoaded consumers.
     await page.waitForLoadState('load');
     await page.evaluate(() => new Promise(requestAnimationFrame));

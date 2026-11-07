@@ -15,11 +15,14 @@ test('system command arguments are explicitly library defaults, not discovered h
 test('an empty host store never substitutes sample hosts or configured route nodes',async({page})=>{
  await login(page,'e2e_admin',{workspace:false});await installSshConnectTrap(page);
  await page.evaluate(()=>ProfileManager.setProfiles([]));
- await expect(page.locator('#overviewHosts')).toContainText('No saved connections');
- await expect(page.locator('#overviewHostCount')).toHaveText('0');
- await expect(page.locator('#overviewHosts [data-host-id]')).toHaveCount(0);
- await expect(page.locator('.overview-route-bundle')).toHaveCount(0);
- await page.locator('#overviewHostSearch').fill('proxmox');
- await expect(page.locator('#overviewHosts [data-host-id]')).toHaveCount(0);
+ await expect(page.locator('#overviewHostsEmpty')).toBeVisible();
+ await expect(page.locator('#overviewHostTotal')).toHaveText('0');
+ await expect(page.locator('#odKpiHostsValue')).toHaveText('0 / 0');
+ await expect(page.locator('#overviewHostList [data-host-id]')).toHaveCount(0);
+ await expect(page.locator('.od-topology')).toBeHidden();
+ await expect(page.locator('#odTopology .od-node, #odTopology .od-route-item')).toHaveCount(0);
+ await expect(page.locator('#odPlatforms')).toBeHidden();
+ await page.locator('#overviewSearch').fill('proxmox');
+ await expect(page.locator('#overviewHostList [data-host-id]')).toHaveCount(0);
  expect(await sshAttempts(page)).toEqual([]);
 });

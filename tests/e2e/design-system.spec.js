@@ -28,7 +28,7 @@ test('Werkbank shell uses a sand header and readable dark navigation without cha
  await page.evaluate(()=>{document.body.dataset.theme='werkbank';});
  await expect(page.locator('.header').first()).toHaveCSS('background-color','rgb(223, 209, 184)');
  await expect(page.locator('#overviewNavBtn')).toHaveCSS('color','rgb(39, 37, 30)');
- await expect(page.locator('.overview-compact-row .overview-row-title').first()).toBeAttached();
+ await expect(page.locator('#overviewHostList .od-host .od-host-name').first()).toBeAttached();
  await page.locator('#accountBtnHeader').click();
  await expect(page.locator('.account-profile-copy > strong')).toHaveCSS('color','rgb(240, 233, 221)');
  await page.locator('#accountBtnHeader').click();
@@ -59,8 +59,12 @@ test('surface and tool motion have a visible authored duration with an immediate
 test('reduced motion keeps selected routes and usable tool panels immediately visible',async({page})=>{
  await page.emulateMedia({reducedMotion:'reduce'});
  await login(page,'e2e_admin',{workspace:false});
- await expect.poll(()=>page.locator('.ssh-route-canvas > svg > path').count()).toBeGreaterThan(0);
- expect(await page.locator('.ssh-route-canvas > svg > path').first().evaluate(e=>getComputedStyle(e).animationName)).toBe('none');
+ await expect.poll(()=>page.locator('#odTopology .od-edge').count()).toBeGreaterThan(0);
+ for(const selector of ['#odTopology .od-edge','#odTopology .od-node','#overviewHostList .od-host']) expect(await page.locator(selector).first().evaluate(e=>getComputedStyle(e).animationName)).toBe('none');
+ await page.locator('#overviewOpenMap').click();
+ await expect.poll(()=>page.locator('.ssh-map-dialog .ssh-route-canvas > svg > path').count()).toBeGreaterThan(0);
+ expect(await page.locator('.ssh-map-dialog .ssh-route-canvas > svg > path').first().evaluate(e=>getComputedStyle(e).animationName)).toBe('none');
+ await page.keyboard.press('Escape');
  await page.locator('#workspaceNavBtn').click();
  if (!await page.locator('#contextNotesPanel').isVisible()) await page.locator('#contextNotesTab').click();
  await expect(page.locator('#contextNotesPanel')).toBeVisible();
@@ -69,35 +73,12 @@ test('reduced motion keeps selected routes and usable tool panels immediately vi
  await expect(page.locator('#sessionNotepad')).toHaveValue('Notes remain editable with reduced motion.');
 });
 
-test('route geometry remains aligned after resize and enabled news artwork loads',async({page})=>{
+test('route geometry remains aligned after resize',async({page})=>{
  await login(page,'e2e_admin',{workspace:false});
- await expect.poll(()=>page.locator('.ssh-route-canvas > svg > path').count()).toBeGreaterThan(0);
+ await page.locator('#overviewOpenMap').click();
+ await expect.poll(()=>page.locator('.ssh-map-dialog .ssh-route-canvas > svg > path').count()).toBeGreaterThan(0);
  await page.setViewportSize({width:1480,height:900});
  await assertRouteGeometry(page);
- await page.locator('#overviewCustomize').click();
- await page.locator('[data-module=news] input[type=checkbox]').check();
- await page.locator('#overviewCustomize').click();
- await expect(page.locator('.overview-news-art')).toHaveCount(2);
- await page.locator('#overviewNews > summary').click();
- for(const art of await page.locator('.overview-news-art').all()){
-   await expect(art).toHaveAttribute('src',/\.svg\?v=/);
-   await art.scrollIntoViewIfNeeded();
-   await expect.poll(()=>art.evaluate(e=>e.complete&&e.naturalWidth>0)).toBe(true);
- }
-});
-
-test('selected host and route inspector survive redundant geometry measurements',async({page})=>{
- await login(page,'e2e_admin',{workspace:false});
- const hosts=page.locator('.overview-compact-row > button');
- await expect.poll(()=>hosts.count()).toBeGreaterThan(1);
- await hosts.first().click();
- const path=page.locator('.overview-path-stops');
- await expect(path).toBeVisible();
- const labels=await path.locator('strong').allTextContents();
- await path.evaluate(el=>{window.__routeInspector=el;window.dispatchEvent(new Event('resize'));});
- await expect.poll(()=>page.evaluate(()=>document.querySelector('.overview-path-stops')===window.__routeInspector)).toBe(true);
- await expect(path.locator('strong')).toHaveText(labels);
- await expect(hosts.first()).toHaveAttribute('aria-pressed','true');
 });
 
 

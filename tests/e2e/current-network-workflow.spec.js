@@ -1,11 +1,16 @@
 const {test,expect}=require('playwright/test');
 const {login,assertNoExternalRequests}=require('./helpers');
+const layout=async(page,value)=>{const response=await page.request.post('/api/account/preferences',{data:{overview_layout:value},headers:{'X-CSRFToken':await page.locator('meta[name="csrf-token"]').getAttribute('content')}});expect(response.ok()).toBe(true);};
+let classic=false;
+test.afterEach(async({page})=>{if(classic){classic=false;await layout(page,'dashboard');}});
 for(const width of [360,870,1440]) test(`current network arrangement remains operable at ${width}px`,async({page},testInfo)=>{
  await page.setViewportSize({width,height:740});
  await login(page,'e2e_admin',{workspace:false});
+ // Group arrangement lives in the classic overview layout.
+ await layout(page,'classic');classic=true;await page.reload();await page.waitForFunction(()=>ProfileManager.profilesLoaded);
  await page.evaluate(()=>ProfileManager.setProfiles(['Alpha','Beta','Gamma'].map(group=>({id:group,name:group+' host',group,host:'example.test'}))));
  await page.locator('#overviewArrangeGroups').click();
- const groups=page.locator('#overviewHosts .overview-list-group');
+ const groups=page.locator('#overviewHosts .overview-host-group');
  await expect(groups).toHaveCount(3);
  const order=()=>groups.evaluateAll(rows=>rows.map(row=>row.dataset.overviewGroup));
  await expect.poll(order).toEqual(['Alpha','Beta','Gamma']);

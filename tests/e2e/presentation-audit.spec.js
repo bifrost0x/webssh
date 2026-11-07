@@ -57,23 +57,20 @@ for (const theme of themes) {
         await records(page);
         await page.evaluate(theme => { document.body.dataset.theme = theme; }, theme);
         await navigate(page, '#overviewNavBtn');
-        await page.locator('#overviewHostSearch').fill('Server');
-        await expect(page.locator('#overviewHosts .overview-row-title')).toHaveCount(5);
-        for (const selector of ['#overviewCreateHost', '#overviewHostSearch', '#overview-resource-hosts', '.overview-row-title', '.overview-list-group h3']) {
+        await page.locator('#overviewSearch').fill('Server');
+        await expect(page.locator('#overviewHostList .od-host-name')).toHaveCount(5);
+        for (const selector of ['#overviewNewHost', '#overviewSearch', '#overviewTitle', '#overviewHostsTitle', '.od-kpi-value', '.od-host-name', '.od-connect']) {
             expect(await contrast(page, selector), `${theme}: ${selector}`).toBeGreaterThanOrEqual(4.5);
         }
-        for (let tone = 0; tone < 5; tone++) {
-            expect(await contrast(page, `#overviewHosts .overview-list-group:nth-child(${tone + 1}) h3`), `${theme}: group ${tone}`).toBeGreaterThanOrEqual(4.5);
-        }
-        await page.locator('#overviewCreateHost').hover();
-        expect(await contrast(page, '#overviewCreateHost'), `${theme}: create host hover`).toBeGreaterThanOrEqual(4.5);
+        await page.locator('#overviewNewHost').hover();
+        expect(await contrast(page, '#overviewNewHost'), `${theme}: create host hover`).toBeGreaterThanOrEqual(4.5);
         await page.mouse.move(0, 0);
         await capture(page, `theme-${theme}-overview`);
-        await page.locator('#overviewHosts [data-host-id]').first().click();
-        await expect(page.locator('#overviewHosts .overview-path-stops > li')).toHaveCount(3);
-        await expect(page.locator('#overviewHosts .overview-path-stops > li').nth(1)).toContainText('Bastion');
-        expect(await contrast(page, '.overview-access-actions .btn-primary')).toBeGreaterThanOrEqual(4.5);
+        await expect(page.locator('#odTopology')).toContainText('Bastion');
+        await page.locator('#overviewOpenMap').click();
+        await expect(page.locator('.ssh-map-dialog')).toContainText('Bastion');
         await capture(page, `theme-${theme}-routes`);
+        await page.keyboard.press('Escape');
         await navigate(page, '#manageProfilesBtn');
         await capture(page, `theme-${theme}-hosts`);
         await page.goto('/settings#preferences');
@@ -92,15 +89,16 @@ for (const language of languages) {
             const unchangedNames = ['Server 1', 'Server 2', 'Server 3', 'Server 4', 'Server 5'];
             await navigate(page, '#overviewNavBtn');
             await expect(page.locator('html')).toHaveAttribute('lang', language);
-            await page.locator('#overviewHostSearch').fill('Server');
-            await expect(page.locator('#overviewHosts .overview-row-title')).toHaveText(unchangedNames);
-            await expect(page.locator('#overviewTitle')).toHaveText(await page.evaluate(() => i18n.t('overview.ui.' + (new Date().getHours() < 11 ? 'good_morning' : new Date().getHours() < 18 ? 'hello' : 'good_evening')) + ', e2e_admin.'));
+            await page.locator('#overviewSearch').fill('Server');
+            await expect(page.locator('#overviewHostList .od-host-name')).toHaveText(unchangedNames);
+            await expect(page.locator('#overviewTitle')).toHaveText(await page.evaluate(() => i18n.t('overviewWorkspace.' + (new Date().getHours() < 11 ? 'greetingMorning' : new Date().getHours() < 18 ? 'greetingDay' : 'greetingEvening')).replace('{name}', 'e2e_admin')));
             await expect(page.locator('#connectionOverview')).not.toContainText(/homelab|demo|placeholder/i);
             await capture(page, `language-${language}-${width}-overview`);
-            await page.locator('#overviewHosts [data-host-id]').first().click();
-            await expect(page.locator('.overview-access-inspector')).toBeVisible();
-            await expect(page.locator('#overviewHosts .overview-path-stops > li')).toHaveCount(3);
+            await expect(page.locator('#odTopology')).toContainText('Bastion');
+            await page.locator('#overviewOpenMap').click();
+            await expect(page.locator('.ssh-map-dialog')).toContainText('Bastion');
             await capture(page, `language-${language}-${width}-routes`);
+            await page.keyboard.press('Escape');
             for (const [selector, name] of [['#manageProfilesBtn', 'hosts'], ['#commandLibraryBtn', 'commands'], ['#fileTransferBtn', 'files']]) {
                 await navigate(page, selector);
                 await capture(page, `language-${language}-${width}-${name}`);

@@ -1145,8 +1145,9 @@ test('captures WebSSH 3 dashboard and every supported theme', async ({page}, inf
     await installSshConnectTrap(page);
     await sanitizeSeededCatalog(page);
     await page.locator('#overviewNavBtn').click();
-    await expect(page.locator('#overviewRouteMap')).toBeVisible();
-    await page.evaluate(()=>{const title=document.querySelector('#overviewTitle');title.dataset.username='operator';window.dispatchEvent(new Event('languageChanged'));});
+    await expect(page.locator('#overviewHostList .od-host').first()).toBeVisible();
+    await page.evaluate(()=>{document.querySelector('#connectionOverview').dataset.username='operator';window.dispatchEvent(new Event('languageChanged'));});
+    await expect(page.locator('#overviewTitle')).toContainText('operator');
     const themes = ['glass','werkbank','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian'];
     for (const [index, theme] of themes.entries()) {
         await page.evaluate(t => { ThemePreference.store(t); document.body.dataset.theme=t; }, theme);

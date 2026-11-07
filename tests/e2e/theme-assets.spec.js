@@ -51,22 +51,18 @@ test('theme scenes follow the selected theme on overview and the window desktop'
     await page.locator('.split-btn[data-layout="windows"]').click();
     await expect(page.locator('#terminalGrid')).toHaveClass(/window-mode/);
     await page.locator('#overviewNavBtn').click();
-    if (await page.locator('.overview-access-inspector').count()) await page.locator('.overview-access-heading button').click();
     for (const [theme, name] of Object.entries(scenes)) {
         await page.evaluate(value => { document.body.dataset.theme = value; }, theme);
-        await expect(page.locator('.overview-scene')).toHaveCSS('background-image', new RegExp(name));
+        await expect(page.locator('.od-scene')).toHaveCSS('background-image', new RegExp(name));
         await page.locator('#workspaceNavBtn').click();
         await expect(page.locator('#terminalGrid')).toBeVisible();
         await expect(page.locator('#terminalGrid')).toHaveCSS('background-image', new RegExp(name));
         await page.locator('#overviewNavBtn').click();
-        await expect(page.locator('.overview-scene')).toHaveCSS('background-size', 'cover');
-        await page.locator('#overviewHosts [data-host-id]').first().click();
-        await expect(page.locator('.overview-scene')).toBeVisible();
-        await expect(page.locator('.overview-access-inspector')).toBeVisible();
-        if (await page.locator('.overview-access-inspector').count()) await page.locator('.overview-access-heading button').click();
+        await expect(page.locator('.od-scene')).toHaveCSS('background-size', 'cover');
+        await expect(page.locator('.od-scene')).toBeVisible();
     }
     await page.evaluate(() => { document.body.dataset.theme = 'werkbank'; });
-    await expect(page.locator('.overview-scene')).toHaveCSS('background-image', /werkbank-sand.webp/);
+    await expect(page.locator('.od-scene')).toHaveCSS('background-image', /werkbank-sand.webp/);
     await page.locator('#workspaceNavBtn').click();
     await expect(page.locator('#terminalGrid')).toBeVisible();
     await expect(page.locator('#terminalGrid')).toHaveCSS('background-image', /werkbank-sand.webp/);

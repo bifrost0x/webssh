@@ -17,7 +17,7 @@ test('wide and narrow arrangements survive workspace landing and independent res
  await page.setViewportSize({width:3440,height:1000});await login(page,'e2e_admin',{workspace:false});
  const pane=page.locator('#overviewRouteMap'),target=pane.locator('[data-map-node="direct:hosts"]');
  const hostCount=await page.evaluate(()=>ProfileManager.profiles.length);expect(hostCount).toBeGreaterThanOrEqual(20);
- const open=()=>pane.getByRole('button',{name:'Expand map',exact:true}).click();
+ const open=()=>page.locator('#overviewOpenMap').click();
  const move=async()=>{await target.getByRole('button',{name:'Move Direct connections',exact:true}).focus();await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowDown');};
  await open();await move();const wide=await target.getAttribute('style');
  await page.setViewportSize({width:390,height:800});await expect(target).toHaveCSS('transform','none');await move();await move();const narrow=await target.getAttribute('style');expect(narrow).not.toBe(wide);

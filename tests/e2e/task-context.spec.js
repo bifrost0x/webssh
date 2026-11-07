@@ -3,49 +3,19 @@ const {login, assertNoExternalRequests} = require('./helpers');
 
 test.afterEach(async ({page}) => assertNoExternalRequests(page));
 
-test('group work hides welcome distractions and reports the filtered inventory', async ({page}) => {
-    await page.setViewportSize({width: 1600, height: 900});
+test('returning from another view preserves the overview search and Escape clears it', async ({page}, testInfo) => {
     await login(page, 'e2e_admin', {workspace: false});
-    await page.locator('#overviewCustomize').click();
-    await page.locator('[data-module=news] input[type=checkbox]').check();
-    await page.locator('#overviewCustomize').click();
-    await expect(page.locator('.overview-news-card')).toBeVisible();
-    await page.locator('#overviewGroupFilter').selectOption('group:Operations');
-    await expect(page.locator('.overview-news-card')).toBeHidden();
-    await expect(page.locator('.overview-heading')).toBeHidden();
-    await expect(page.locator('.overview-session-strip')).toBeHidden();
-    await expect(page.locator('.overview-compact-row')).toHaveCount(2);
-    await expect(page.locator('.overview-list-group h3')).toHaveText('Operations2');
-    await expect(page.locator('#overviewCreateHost')).toBeVisible();
-    await page.locator('#overviewHostSearch').fill('Ops');
+    const search = page.locator('#overviewSearch');
+    await search.fill('Ops');
+    await expect(page.locator('#overviewHostTotal')).toContainText(' / ');
     await page.locator('#fileTransferBtn').click();
     await page.locator('#overviewNavBtn').click();
-    await expect(page.locator('#overviewHostsTitle')).toBeFocused();
-    await expect(page.locator('.overview-news-card')).toBeHidden();
-    await page.locator('#overviewHostSearch').fill('');
-    await expect(page.locator('.overview-news-card')).toBeHidden();
-    await expect(page.locator('#overviewGroupFilter')).toHaveValue('group:Operations');
-    await page.locator('#overviewGroupFilter').selectOption('');
-    await expect(page.locator('.overview-news-card')).toBeVisible();
-    await expect(page.locator('.overview-heading')).toBeVisible();
-    await page.locator('#overviewHostSearch').fill('Ops');
-    await expect(page.locator('.overview-news-card')).toBeHidden();
-    await page.locator('#overviewHostSearch').fill('');
-    await expect(page.locator('.overview-news-card')).toBeVisible();
-});
-
-test('explicit overview reset clears search while returning from another view preserves it', async ({page}, testInfo) => {
-    await login(page, 'e2e_admin', {workspace: false});
-    await page.locator('#overviewGroupFilter').selectOption('group:Operations');
-    await page.locator('#overviewHostSearch').fill('Ops');
-    await page.locator('#fileTransferBtn').click();
-    await page.locator('#overviewNavBtn').click();
-    await expect(page.locator('#overviewHostSearch')).toHaveValue('Ops');
-    await expect(page.locator('#overviewGroupFilter')).toHaveValue('group:Operations');
-    await page.locator('#overviewNavBtn').click();
-    await expect(page.locator('#overviewHostSearch')).toHaveValue('');
-    await expect(page.locator('#overviewGroupFilter')).toHaveValue('');
-    await expect(page.locator('.overview-heading')).toBeVisible();
+    await expect(search).toHaveValue('Ops');
+    await expect(page.locator('#overviewHostTotal')).toContainText(' / ');
+    await search.press('Escape');
+    await expect(search).toHaveValue('');
+    await expect(page.locator('#overviewHostTotal')).not.toContainText('/');
+    await expect(page.locator('.od-hero')).toBeVisible();
     await page.setViewportSize({width:360,height:529});
     await page.screenshot({path:testInfo.outputPath('overview-short.png'),animations:'disabled'});
 });

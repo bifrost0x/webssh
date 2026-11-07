@@ -21,12 +21,11 @@ test('own command set through real backend SSH run and exact overview history li
  }
  const success=await execute('id','Succeeded');await page.locator('[data-auto-tab=runbooks]').click();const failure=await execute('fail','Failed');expect(success).not.toBe(failure);
  await page.locator('#runStatusFilter').selectOption('attention');await page.locator('#runSearch').fill('no matching workflow');
- await page.locator('#overviewNavBtn').click();await expect(page.locator('#overviewAutomation')).toBeVisible();
- for(const [id,status] of [[success,'Succeeded'],[failure,'Failed']]){
-  await page.locator(`#overviewAutomationRuns button[data-run-id="${id}"]`).click();
-  const detail=page.locator(`#runHistory > details[data-run-id="${id}"]`);await expect(detail).toHaveAttribute('open','');await expect(detail.locator('summary').first()).toContainText(status);await expect(detail.locator('pre').filter({hasText:'fixture command completed'})).toBeVisible();await expect(page.locator('#runSearch')).toHaveValue('');await expect(page.locator('#runStatusFilter')).toHaveValue('');
-  await page.screenshot({path:info.outputPath(status+'-run.png')});await page.locator('#overviewNavBtn').click();
- }
+ await page.locator('#overviewNavBtn').click();await expect(page.locator('#odAutomation')).toBeVisible();
+ await expect(page.locator('#odActivity')).toContainText(name+' succeeded');await expect(page.locator('#odActivity')).toContainText(name+' failed');
+ await page.locator(`#odAttention button[data-key="attention:run-failed:${failure}"]`).click();
+ const detail=page.locator(`#runHistory > details[data-run-id="${failure}"]`);await expect(detail).toHaveAttribute('open','');await expect(detail.locator('summary').first()).toContainText('Failed');await expect(detail.locator('pre').filter({hasText:'fixture command completed'})).toBeVisible();await expect(page.locator('#runSearch')).toHaveValue('');await expect(page.locator('#runStatusFilter')).toHaveValue('');
+ await page.screenshot({path:info.outputPath('Failed-run.png')});
  expect(await page.evaluate(name=>window.CommandSetManager.commandSets.find(s=>s.name===name).resolved_command,name)).toBe('id');
  expect(errors).toEqual([]);await assertNoExternalRequests(page);
 });
