@@ -44,7 +44,9 @@ def test_all_locales_have_matching_translation_keys():
     for index, match in enumerate(locale_starts):
         end = locale_starts[index + 1].start() if index + 1 < len(locale_starts) else source.index('\n};', match.end())
         block = source[match.end():end]
-        keys_by_locale[match.group(1)] = set(re.findall(r"^        '([^']+)':", block, re.MULTILINE))
+        # Keys are written with single or double quotes.
+        keys_by_locale[match.group(1)] = set(re.findall(r'''^        ["']([^"']+)["']:''', block, re.MULTILINE))
+    assert len(keys_by_locale.get('en', ())) > 2000, 'the key pattern must match the dictionary format'
 
     assert set(keys_by_locale) == {'en', 'vi', 'de', 'fr', 'es', 'zh'}
     assert all(
