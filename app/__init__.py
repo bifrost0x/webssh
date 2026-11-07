@@ -537,6 +537,46 @@ def create_app(
         )
         return app.response_class(body, status=503, mimetype='text/html')
 
+    from flask_wtf.csrf import CSRFError
+    from werkzeug.exceptions import Forbidden, NotFound
+
+    def _wants_json():
+        return (request.path.startswith(('/api/', '/admin/api/', '/auth/api/'))
+                or request.is_json or request.accept_mimetypes.best == 'application/json')
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(error):
+        """An expired or mismatched form token: send people back to a fresh form."""
+        if _wants_json():
+            return jsonify({'error': 'This page expired. Reload it and try again.', 'code': 'csrf_expired'}), 400
+        flash('The form expired. Please try again.', 'error')
+        target = url_for('login') if request.endpoint in (None, 'logout') else request.path
+        return redirect(target)
+
+    def _error_page(status, title_key, title, body_key, body):
+        theme = 'glass'
+        try:
+            if current_user.is_authenticated:
+                theme = get_user_settings(current_user.id).get('theme', 'glass')
+        except Exception:
+            theme = 'glass'
+        return render_template('error.html', status=status, theme=theme, title_key=title_key, title=title,
+                               body_key=body_key, body=body, url_prefix=getattr(config, 'APPLICATION_ROOT', '')), status
+
+    @app.errorhandler(Forbidden)
+    def handle_forbidden(error):
+        if _wants_json():
+            return error
+        return _error_page(403, 'errors.forbiddenTitle', 'This area is not available to your account',
+                           'errors.forbiddenBody', 'Ask an administrator if you need access.')
+
+    @app.errorhandler(NotFound)
+    def handle_not_found(error):
+        if _wants_json() or request.path.startswith('/static/'):
+            return error
+        return _error_page(404, 'errors.notFoundTitle', 'Page not found',
+                           'errors.notFoundBody', 'The address may be outdated. Return to WebSSH to continue.')
+
     url_prefix = getattr(config, 'APPLICATION_ROOT', '')
     if url_prefix:
         app.config['SESSION_COOKIE_PATH'] = url_prefix

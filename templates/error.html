@@ -1,0 +1,46 @@
+{% from "_brand.html" import brand_logo with context %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" data-theme-logo type="image/svg+xml" href="{{ static_asset_url(filename='images/webssh-logo.svg') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="app-root" content="{{ url_prefix }}">
+    <title data-i18n="{{ title_key }}">{{ title }} · WebSSH</title>
+    <link rel="stylesheet" href="{{ static_asset_url(filename='vendor/material-icons/material-icons.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/auth.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/branding.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/theme-scenes.css') }}">
+    <script src="{{ static_asset_url(filename='js/branding.js') }}" defer></script>
+</head>
+<body class="webssh-ui webssh-auth" data-theme="{{ theme }}" data-defer-theme-background>
+    <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
+    <div class="auth-shell">
+        <main class="auth-shell-content">
+            <section class="auth-access-dock">
+                <div class="auth-form-panel">
+                    <div class="auth-container">
+                        <div class="auth-card">
+                            <div class="auth-header">
+                                <a class="auth-product-brand" href="{{ url_for('index') }}" aria-label="WebSSH">{{ brand_logo("auth-product-logo") }}</a>
+                                <span class="auth-form-eyebrow">{{ status }}</span>
+                                <h1 data-i18n="{{ title_key }}">{{ title }}</h1>
+                                <p data-i18n="{{ body_key }}">{{ body }}</p>
+                            </div>
+                            <a class="btn btn-primary btn-block" href="{{ url_for('index') }}">
+                                <span data-i18n="errors.backHome">Back to WebSSH</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="{{ static_asset_url(filename='js/i18n-auth.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/auth.js') }}"></script>
+</body>
+</html>

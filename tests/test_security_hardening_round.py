@@ -335,3 +335,35 @@ def test_overview_values_from_a_newer_version_do_not_corrupt_settings(app, conte
         assert settings['overview_dismissed'] == ['run-failed:r1']
         # New values are still validated strictly.
         assert save_user_settings(uid, {'overview_dismissed': ['future-kind:abc']}) is False
+
+
+def test_expired_form_returns_to_a_fresh_form(app, client):
+    app.config['WTF_CSRF_ENABLED'] = True
+    try:
+        from app.auth import register_user
+        with app.app_context():
+            register_user('form_expiry_admin', 'password123')
+        response = client.post('/login', data={'username': 'x', 'password': 'y'})
+        assert response.status_code == 302 and response.headers['Location'].endswith('/login')
+        page = client.get('/login').get_data(as_text=True)
+        assert 'data-i18n="auth.formExpired"' in page
+        api = client.post('/api/overview/reachability', json={})
+        assert api.status_code in (400, 401, 302)
+        if api.status_code == 400:
+            assert api.json['code'] == 'csrf_expired'
+    finally:
+        app.config['WTF_CSRF_ENABLED'] = False
+
+
+def test_forbidden_and_missing_pages_are_branded_but_apis_unchanged(app, client):
+    from app.auth import register_user
+    with app.app_context():
+        register_user('first_admin_for_errors', 'password123')
+        register_user('plain_user_for_errors', 'password123')
+    assert client.post('/login', data={'username': 'plain_user_for_errors', 'password': 'password123'}).status_code == 302
+    forbidden = client.get('/admin')
+    assert forbidden.status_code == 403 and 'data-i18n="errors.forbiddenTitle"' in forbidden.get_data(as_text=True)
+    missing = client.get('/no-such-page')
+    assert missing.status_code == 404 and 'data-i18n="errors.notFoundTitle"' in missing.get_data(as_text=True)
+    api = client.get('/admin/api/users')
+    assert api.status_code == 403 and 'errors.forbiddenTitle' not in api.get_data(as_text=True)
