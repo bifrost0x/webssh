@@ -17,6 +17,8 @@ DIAGRAM_NAMES = {
 }
 DESKTOP_PRODUCT_CAPTURES = {
     "dashboard.png",
+    "dashboard-customize.png",
+    "host-discovery.png",
     "commandlibrary.png",
     "command-set-builder.png",
     "file-edit-review.png",

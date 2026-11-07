@@ -5,6 +5,26 @@ exclude plaintext SSH and jump-host passwords. Optional saved passwords are
 encrypted separately and assigned to hosts or jump hosts; see
 [Credentials](../credentials.md).
 
+## Find hosts in a network
+
+**Find hosts** in the Hosts view, or on the overview's Hosts panel, looks for
+SSH and SFTP servers in a network range you enter (at most 256 addresses and
+three ports). It runs only when you start it and is not offered in the
+`production` profile.
+
+- Each address and port gets one TCP connection. WebSSH reads the greeting an
+  SSH server sends by itself and closes the connection; it never logs in and
+  sends no credentials.
+- Attempts are paced to about three per second with at most three in flight,
+  so a /24 takes roughly 90 seconds. The scan is not hidden: firewalls or
+  intrusion detection may record it. Scan only networks you are responsible for.
+- The SSH network policy applies. Addresses that SSH may not reach are skipped.
+- Results show the address, reverse DNS name, SSH software and a platform hint,
+  and mark endpoints already saved. **Add** opens the new-host form prefilled
+  with name, address and port; leaving it asks before discarding the values.
+- One scan per account runs at a time; ten scans per account per hour. Logging
+  out stops the account's scans.
+
 ## Saved profiles
 
 A profile can store:

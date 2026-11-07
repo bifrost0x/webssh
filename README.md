@@ -22,6 +22,9 @@
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white" alt="Python 3.11 or newer">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-2ea44f" alt="Apache 2.0 License"></a>
   <a href="https://getwebssh.com/code-graph/"><img src="https://img.shields.io/badge/Interactive%20Code--Map-open-6f42c1" alt="Interactive code map"></a>
+  <a href="https://github.com/bifrost0x/webssh/releases"><img src="https://img.shields.io/github/v/release/bifrost0x/webssh?display_name=tag&sort=semver" alt="Latest release"></a>
+  <a href="https://github.com/bifrost0x/webssh/stargazers"><img src="https://img.shields.io/github/stars/bifrost0x/webssh?style=flat&logo=github" alt="GitHub stars"></a>
+  <img src="https://img.shields.io/badge/telemetry-none-2ea44f" alt="No telemetry">
 </p>
 
 ## Product tour
@@ -44,6 +47,31 @@ a hosted control plane or runtime CDN dependencies.
   </p>
 </details>
 
+## New in WebSSH 3
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <h3>Status-first overview</h3>
+      Host readiness, open sessions, automation results and reachability at a
+      glance. Arrange panels freely, dismiss handled alerts and find hosts with
+      <kbd>/</kbd>.
+    </td>
+    <td width="33%" valign="top">
+      <h3>Native automation</h3>
+      Run command sets and templates now or on a schedule, with exact-target
+      review, saved passwords or keys and bounded per-step output.
+    </td>
+    <td width="33%" valign="top">
+      <h3>Find SSH hosts</h3>
+      Scan a network range you choose for SSH and SFTP servers, gently and only
+      on request, then add a host from a prefilled form.
+    </td>
+  </tr>
+</table>
+
+Upgrading from 2.x? Read the [WebSSH 3 changes and upgrade notes](docs/webssh-3.md).
+
 ## Why WebSSH
 
 - **One workspace, not a terminal tab.** Keep SSH sessions, SFTP sources,
@@ -57,13 +85,26 @@ a hosted control plane or runtime CDN dependencies.
 
 ## Features
 
-### Dashboard and automation
+### Overview and automation
 
-- Customizable dashboard or classic overview, with a per-account choice of
-  Overview or Workspaces as the start page after sign-in.
+- Status-first overview: host readiness from stored configuration, open
+  sessions, 14-day automation results, reachability and recent activity.
+- Free layout per account: drag, resize, hide and restore panels, with keyboard
+  controls and a reset to the default arrangement.
+- **Needs attention** lists unverified host keys, missing jump hosts, changed
+  saved passwords and failed runs. Handled items can be dismissed and come back
+  when the situation changes.
+- Optional reachability checks (off, on demand, or automatic): one TCP
+  connection to the SSH port under the SSH network policy, no login.
+- **Find hosts** scans a range you name for SSH and SFTP servers at a gentle,
+  fixed pace and opens the host form prefilled. It only runs when you start it.
 - Readable route summaries and an expandable SSH map with saved arrangements.
+- A classic overview remains available, with a per-account choice of Overview
+  or Workspaces as the start page after sign-in.
 - Reusable workflows from commands, command sets and templates, immediate runs,
-  cron schedules, cancellation and bounded per-step output history.
+  cron schedules, cancellation and bounded per-step output history, for saved
+  hosts or complete groups. Administrators enable Automation; it is disabled by
+  default and requires HTTPS.
 - Optional encrypted, per-account passwords shared by saved hosts and supported
   connection types. Administrators enable this under Integrations.
 - Application backup exports exclude stored passwords and SSH private keys.
@@ -97,10 +138,8 @@ See the [WebSSH 3 changes and upgrade notes](docs/webssh-3.md),
 - **Clipboard-Only Service Actions** that prepare allowlisted commands without
   executing the service change inside WebSSH.
 
-Included Mono fonts and a local Nerd Font symbol fallback support terminal
-icons without external font services. Remote applications must emit UTF-8 and
-enable their own icons. See the
-[terminal font guide](static/vendor/terminal-fonts/README.md) for setup and limitations.
+Fonts and Nerd Font symbols are served locally; see the
+[terminal font guide](static/vendor/terminal-fonts/README.md).
 
 ### Files and transfers
 
@@ -116,40 +155,12 @@ enable their own icons. See the
   unavailable source, timeout, and configured-limit violations.
 - Per-user ownership checks, size limits, quotas, and path validation.
 
-SMB is disabled by default (`SMB_ENABLED=false`). Enabling it also requires an
-exact `SMB_ALLOWED_TARGETS` server allowlist. WebSSH fixes SMB connections to
-TCP 445 and requires SMB 3.1.1, signing, encryption, and secure negotiation;
-the current authentication mode is NTLM. Guest access, DFS, Kerberos, and
-automatic reconnect are not supported. SMB connections are temporary. Manually entered passwords are transient; when
-the administrator enables saved passwords, users can explicitly attach a credential
-to a saved share. Optional saved passwords are encrypted. Share definitions contain the display
-name, host, share, domain and username, not plaintext passwords.
-
-For Active Directory and TrueNAS, first try the DNS domain (for example
-`example.com`) with the account name (for example `alice`). Alternatively,
-leave the domain field empty and use a UPN such as `alice@example.com`. NetBIOS
-domain names may not be accepted by every server.
-
-After connecting, WebSSH non-destructively checks root listing, file creation,
-directory creation, and child deletion access. The workspace labels confirmed
-write access, confirmed root read-only access, or unknown access; deeper ACLs
-can still differ. Uploads and remote copies never silently overwrite an
-existing destination: replace, skip, or cancel requires an explicit choice,
-and replacement fails closed when the backend cannot provide an atomic rename.
-SMB uses separate control and transfer sessions so browsing does not wait for a
-bulk stream. Cancellation is a single idempotent request, and known oversized
-operations report both the actual size and exact configured limit. Inline SMB
-editing preserves revision checks and offers an explicit recoverable-swap path
-when atomic replacement is unavailable.
-Supported SMB targets must refuse symlink and wide-link traversal (for Samba,
-use `follow symlinks = no` and `wide links = no`). WebSSH additionally opens
-files and directories without following reparse points and validates existing
-path components before remote operations.
-
-This is a two-link trust boundary: browser TLS protects browser-to-WebSSH
-traffic, while SMB encryption protects WebSSH-to-share traffic. The WebSSH process
-necessarily handles the submitted credentials and transferred file contents, so
-run it only on a trusted host and allowlist only trusted shares.
+SMB is disabled by default (`SMB_ENABLED=false`) and needs an exact
+`SMB_ALLOWED_TARGETS` allowlist. WebSSH requires SMB 3.1.1 with signing and
+encryption, never silently overwrites a destination and refuses symlink and
+wide-link traversal. See the
+[file workspace guide](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers)
+for authentication, access checks, limits and the trust boundary.
 
 ### Identity and security
 
@@ -172,11 +183,30 @@ run it only on a trusted host and allowlist only trusted shares.
 - Consistent online backups and restore with maintenance mode, staging
   isolation, quotas, explicit confirmation, and bounded execution.
 - Optional Redis-backed rate-limit counters.
-- Vendored browser dependencies, restrictive CSP, and no built-in telemetry.
+- Vendored browser dependencies, a same-origin Content Security Policy, and no
+  built-in telemetry.
 
 ## Screenshots
 
 Captured from the current interface with synthetic hosts and example data.
+
+### Arrange the overview
+
+<p align="center">
+  <img src="assets/dashboard-customize.png" alt="WebSSH overview in layout editing mode with move, width and hide controls on every panel" width="1100">
+</p>
+
+Every panel can be moved, resized or hidden. The arrangement belongs to your
+account and stacks in the same order on small screens.
+
+### Find SSH hosts
+
+<p align="center">
+  <img src="assets/host-discovery.png" alt="WebSSH host discovery dialog listing SSH servers found in a network range, with saved hosts marked and Add buttons for new ones" width="1100">
+</p>
+
+Discovery reads only the greeting an SSH server sends by itself, marks hosts
+you already saved and turns a result into a prefilled new host.
 
 ### Focused session workspace
 
@@ -218,11 +248,8 @@ Arrange steps, review parameters, and assign a saved sequence to a connection.
 
 Each pane has an explicit source, endpoint, path, trust state, and selection.
 
-Create empty files on SFTP and SMB sources. Optional SFTP Unix permissions
-include separate file/folder modes and a bounded preview before applying changes.
-The feature is disabled by default and grants no additional remote privileges.
-See the [permissions guide](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers#unix-permissions)
-for activation, prerequisites and limits.
+Optional SFTP Unix permissions (disabled by default) preview changes before
+applying them; see the [permissions guide](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers#unix-permissions).
 
 ### Review file changes before saving
 
@@ -274,28 +301,17 @@ Open <http://localhost:5000>. On a new instance, create the first administrator
 immediately from a trusted network. The one-time browser bootstrap closes after
 that account exists.
 
-Verify the container and readiness endpoint:
-
-```bash
-docker compose ps
-curl -fsS http://localhost:5000/ready
-```
+Verify readiness with `curl -fsS http://localhost:5000/ready`.
 
 The supplied Compose file follows `latest`. For controlled upgrades, pin a
 published version or verified image digest, keep Compose files from the same
 release, and back up the data with matching secrets. See
 [upgrade and rollback guidance](https://github.com/bifrost0x/webssh/wiki/Upgrading-Rollback-and-FAQ).
 
-For an Internet-facing instance, do not expose this homelab configuration
-unchanged. Use the production overlay, an HTTPS reverse proxy, exact origins,
-secure cookies, disabled browser registration, internal-target blocking, and
-explicit trusted-proxy settings.
-
-Read the [Quick Start](https://github.com/bifrost0x/webssh/wiki/Quick-Start) or
-the complete [Production Deployment](https://github.com/bifrost0x/webssh/wiki/Production-Deployment)
-guide before accepting users. See [production container boundaries](docs/production-container.md)
-for the optional `docker-compose.hardened.yml` overlay, writable paths,
-configurable resource budgets, and LDAP/Tailscale constraints.
+Do not expose this homelab configuration to the Internet unchanged. Read the
+[Quick Start](https://github.com/bifrost0x/webssh/wiki/Quick-Start), the
+[Production Deployment](https://github.com/bifrost0x/webssh/wiki/Production-Deployment)
+guide and the [production container boundaries](docs/production-container.md).
 
 ## Security Boundary
 
@@ -303,10 +319,8 @@ configurable resource budgets, and LDAP/Tailscale constraints.
   <img src="docs/media/diagrams/system-trust-boundaries.png" alt="WebSSH trust boundaries from the browser through the single application process to owned SSH and SFTP targets" width="1100">
 </p>
 
-WebSSH is trusted infrastructure. It processes connection credentials,
-terminal input and output, and file data while establishing and maintaining SSH
-and SFTP sessions. It is not an end-to-end encrypted relay that is blind to
-session contents.
+WebSSH is trusted infrastructure: it handles credentials, terminal I/O and file
+data, and is not an end-to-end encrypted relay.
 
 Keep these deployment contracts intact:
 
@@ -332,11 +346,8 @@ to untrusted networks.
 
 ## Documentation
 
-The README is the project entry point. Detailed installation, operation,
-security, authentication, recovery, and development guidance lives in the
-[WebSSH Wiki](https://github.com/bifrost0x/webssh/wiki). Its
-[versioned source](docs/wiki/Home.md) is reviewed with the code through pull
-requests and published automatically after changes reach `main`.
+Detailed guidance lives in the [WebSSH Wiki](https://github.com/bifrost0x/webssh/wiki);
+its [versioned source](docs/wiki/Home.md) is reviewed with the code.
 
 | Goal | Guide |
 |---|---|
@@ -352,14 +363,9 @@ requests and published automatically after changes reach `main`.
 | Understand the runtime | [Architecture and Runtime Lifecycle](https://github.com/bifrost0x/webssh/wiki/Architecture-and-Runtime-Lifecycle) |
 | Develop and test locally | [Development and Testing](https://github.com/bifrost0x/webssh/wiki/Development-and-Testing) |
 
-Additional project views:
-
-- [Roadmap and current release focus](ROADMAP.md)
-- [Project history and documented decisions](docs/project-history.md)
-- [Planning, milestones and release workflow](docs/project-planning.md)
-- [Product site](https://getwebssh.com/)
-- [Interactive code graph](https://getwebssh.com/code-graph/)
-- [Container image](https://github.com/bifrost0x/webssh/pkgs/container/webssh)
+More: [roadmap](ROADMAP.md) · [project history](docs/project-history.md) ·
+[planning and releases](docs/project-planning.md) · [product site](https://getwebssh.com/) ·
+[code graph](https://getwebssh.com/code-graph/) · [container image](https://github.com/bifrost0x/webssh/pkgs/container/webssh)
 
 ## Contributing and Support
 
@@ -375,7 +381,14 @@ so the security and runtime boundaries can be reviewed before implementation.
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/chart?repos=bifrost0x/webssh&type=date&legend=top-left)](https://www.star-history.com/?repos=bifrost0x%2Fwebssh&type=date&legend=top-left)
+<p align="center">
+  <a href="https://www.star-history.com/#bifrost0x/webssh&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=bifrost0x/webssh&type=Date&theme=dark">
+      <img alt="Star history of bifrost0x/webssh" src="https://api.star-history.com/svg?repos=bifrost0x/webssh&type=Date" width="720">
+    </picture>
+  </a>
+</p>
 
 ## License
 
@@ -383,7 +396,3 @@ WebSSH is available under the [Apache License 2.0](LICENSE).
 
 Bundled third-party components retain their own licenses. See
 [Licensing](docs/licensing.md) and [retained notices](THIRD-PARTY-NOTICES).
-
-### Native automation
-
-Run ordered SSH tasks immediately or on a schedule, with saved hosts or complete groups, exact-target previews and account verification. Administrators enable Automation and saved passwords in Settings; both are disabled by default and require HTTPS. Reuse SSH keys or named passwords assigned to your hosts. Runs retain bounded command output for troubleshooting. See [Automation setup, security and limits](docs/automation.md) and [Saved passwords](docs/credentials.md).

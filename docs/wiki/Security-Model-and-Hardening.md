@@ -24,7 +24,12 @@ WebSSH includes:
 - Content Security Policy, HSTS in production, frame denial, MIME sniffing prevention, referrer policy, and permissions policy;
 - per-user ownership checks for sessions, transfers, files, profiles, keys, and host-key data;
 - bounded connection, transfer, temporary-storage, and background-work quotas;
-- login, reauthentication, connection, backup, and default rate limits;
+- login, reauthentication, connection, backup, and default rate limits; second
+  factors (TOTP, Recovery Codes) and the password change are also limited per
+  account, so rotating source addresses does not extend guessing;
+- per-account budgets for reachability checks and host discovery, which never
+  log in and follow the SSH target policy;
+- `Cache-Control: no-store` on dynamic pages and API responses;
 - explicit SSH target policy and per-user host-key verification;
 - encrypted private-key storage derived per user;
 - security audit logging and administrator reauthentication;
