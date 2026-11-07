@@ -17,6 +17,7 @@ _BOOLEAN_SETTINGS = (
     'credentials_enabled',
     'automation_enabled',
     'automation_effective_observed',
+    'automation_enabled_from_environment',
     'sftp_chmod_enabled',
     'server_operations_enabled',
     'tmux_enabled',
@@ -159,6 +160,7 @@ def _set_feature(name, value):
             # The new revision already reflects this change; a restart must
             # not rotate it a second time and revoke grants approved since.
             data['automation_effective_observed'] = _effective_automation_enabled(data)
+            data['automation_enabled_from_environment'] = False
         _save(data)
     return value
 
@@ -202,7 +204,16 @@ def migrate_feature_policies(*, credentials_enabled=False, automation_enabled=Fa
             if name not in data:
                 data[name] = value is True
                 data[name + '_revision'] = secrets.token_hex(32)
+                if name == 'automation_enabled' and 'AUTOMATION_ENABLED' in config.EXPLICIT_ENVIRONMENT_KEYS:
+                    data['automation_enabled_from_environment'] = True
                 changed = True
+        # Like the runtime switches: until an administrator decides, the stored
+        # automation value follows the last explicit environment value.
+        if (data.get('automation_enabled_from_environment') is True
+                and 'AUTOMATION_ENABLED' in config.EXPLICIT_ENVIRONMENT_KEYS
+                and data.get('automation_enabled') is not bool(config.AUTOMATION_ENABLED)):
+            data['automation_enabled'] = bool(config.AUTOMATION_ENABLED)
+            changed = True
         effective = _effective_automation_enabled(data)
         observed = data.get('automation_effective_observed')
         if observed is not effective:
@@ -256,17 +267,24 @@ def set_runtime_feature(name, enabled):
 def migrate_runtime_features():
     """Preserve the pre-upgrade effective values, including old Compose files.
 
-    An explicit environment value without a saved Admin value is recorded
-    once, so removing the Compose line later keeps the same behavior.
+    While no administrator has chosen a value, the stored value follows the
+    last explicit environment value. Removing the Compose line later keeps
+    the behavior the operator set last; it never revives an older value.
     """
     with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
         data = _load_with_lock_held()
         migrated = list(data.get('runtime_feature_migration', []))
         changed = False
         for name, key in RUNTIME_FEATURES.items():
-            if name not in data and key in config.EXPLICIT_ENVIRONMENT_KEYS:
-                data[name] = bool(getattr(config, key))
+            if key not in config.EXPLICIT_ENVIRONMENT_KEYS:
+                continue
+            value = bool(getattr(config, key))
+            if name not in data:
+                data[name] = value
                 migrated.append(name)
+                changed = True
+            elif name in migrated and data[name] is not value:
+                data[name] = value
                 changed = True
         if changed:
             data['runtime_feature_migration'] = migrated

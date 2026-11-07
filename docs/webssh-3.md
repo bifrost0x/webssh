@@ -94,9 +94,10 @@ Rules:
 1. A non-empty environment value for one of these switches wins and locks the
    Admin switch. Settings names the variable, the effective value and the saved
    Admin value. An empty value (`X=` or `X=${X:-}`) counts as not set.
-2. On the first start with such a value and no saved Admin value, the value is
-   stored once. Removing the line later keeps the same behavior and unlocks the
-   switch.
+2. Until an administrator changes the switch, the stored value follows the
+   last explicit environment value. Removing the line later keeps the behavior
+   the operator set last and unlocks the switch; it never revives an older
+   value.
 3. `REGISTRATION_ENABLED` stays an initial value, as in 2.x: a choice saved in
    Administration wins. The production profile always disables registration.
 4. Product defaults: tmux available but not preselected; file permissions,
@@ -118,9 +119,16 @@ and that file is replaced before the first 3.0 start, the value cannot be
 recovered and the feature is off. Carry those lines over, or enable the
 features in Administration after the upgrade.
 
-Changing an environment value later wins again while it is set; the stored
-Admin value is shown and applies once the line is removed. Changing the
-effective automation value between restarts revokes approved schedules.
+An administrator's own choice is kept: a later environment value wins while
+it is set, and the Admin choice applies again once the line is removed.
+Without a value in the environment, an administrator can enable these
+features in the web interface (with reauthentication); set the variable to
+`false` to keep a feature off for good. Changing the effective automation
+value between restarts revokes approved schedules.
+
+Installations started without the example Compose (plain `docker run` or a
+source install whose `.env` lacks `TMUX_ENABLED`) now offer tmux by default;
+it stays unselected until a user enables it for a host or connection.
 A rollback to 2.x ignores the stored Admin values and follows its environment.
 
 Authentication capabilities retain separate readiness and activation checks.

@@ -7,7 +7,7 @@ import threading
 import time
 
 from flask import has_request_context, request
-from .automation_store import AutomationError, profile_fingerprint, text, MAX_STORE_BYTES
+from .automation_store import AutomationError, profile_fingerprint, remember_intent, text, MAX_STORE_BYTES
 from .automation_vault import Vault
 from .audit_logger import log_security_event
 from .data_access import user_data_access
@@ -205,10 +205,7 @@ class CredentialService:
         payload = dict(payload, user_id=int(user_id), auth_id=int(auth_id),
                        identity=session_identity(user_id, auth_id), expires=now+300)
         with self._lock:
-            self._intents = {key: value for key, value in self._intents.items() if value['expires'] > now}
-            if len(self._intents) >= 256 or sum(value['user_id'] == int(user_id) for value in self._intents.values()) >= 8:
-                raise AutomationError('busy')
-            self._intents[hashlib.sha256(token.encode()).hexdigest()] = payload
+            self._intents = remember_intent(self._intents, hashlib.sha256(token.encode()).hexdigest(), payload, now)
         return token
 
     def intent(self, token, user_id, auth_id, *, consume=False):
@@ -341,11 +338,11 @@ class CredentialService:
                 profile['credential_assignment'] = deepcopy(assignment)
                 profile['credential_status'] = self.credential_status(uid, profile)
             public=[]
+            live={p['id'] for p in profiles}
             for record in doc['credentials'].values():
                 item=self.named.public(doc,record)
                 # Assignments of deleted hosts are no longer uses: they can
                 # never send the secret anywhere and must not block deletion.
-                live={p['id'] for p in profiles}
                 item['uses']=[rid for rid in item['uses'] if rid in live]
                 item['uses']=[dict(resource_id=rid,id=rid,name=next((p.get('name',rid) for p in profiles if p['id']==rid),rid),kind=next((p.get('kind') for p in profiles if p['id']==rid),None),valid=any(p['id']==rid and profile_fingerprint(p)==doc['assignments'][rid]['fingerprint'] for p in profiles)) for rid in item['uses']]
                 public.append(item)

@@ -189,14 +189,37 @@ def test_registration_keeps_the_2x_precedence(start, saved, env, expected):
     assert result['registration']['locked'] is False
 
 
-def test_changing_an_override_later_wins_until_removed(start):
+def test_removing_an_override_keeps_the_last_operator_value(start):
     seed_v2_install(start.data_dir)
-    start({'TMUX_ENABLED': 'true'})
-    changed = start({'TMUX_ENABLED': 'false'})
-    assert effective(changed)['tmux'] == (False, True)
-    assert changed['tmux_enabled']['saved_value'] is True
+    start({'SERVER_OPERATIONS_ENABLED': 'true'})
+    changed = start({'SERVER_OPERATIONS_ENABLED': 'false'})
+    assert effective(changed)['server_operations'] == (False, True)
+    assert changed['server_operations_enabled']['saved_value'] is False
     removed = start({})
-    assert effective(removed)['tmux'] == (True, False)
+    # Switching a privileged feature off in Compose must not be undone by
+    # later adopting a Compose file without the line.
+    assert effective(removed)['server_operations'] == (False, False)
+
+
+def test_an_administrator_choice_survives_later_overrides(start, monkeypatch):
+    seed_v2_install(start.data_dir)
+    start({'TMUX_ENABLED': 'false'})
+    settings = start.data_dir / 'app_settings.json'
+    data = json.loads(settings.read_text(encoding='utf-8'))
+    data['tmux_enabled'] = True  # what set_runtime_feature stores for an Admin choice
+    data['runtime_feature_migration'] = [name for name in data['runtime_feature_migration'] if name != 'tmux_enabled']
+    settings.write_text(json.dumps(data), encoding='utf-8')
+    locked = start({'TMUX_ENABLED': 'false'})
+    assert effective(locked)['tmux'] == (False, True)
+    assert locked['tmux_enabled']['saved_value'] is True
+    assert effective(start({}))['tmux'] == (True, False)
+
+
+def test_removing_an_automation_override_keeps_the_last_operator_value(start):
+    start({'AUTOMATION_ENABLED': 'true'})
+    start({'AUTOMATION_ENABLED': 'false'})
+    removed = start({})
+    assert removed['automation']['enabled'] is False and removed['automation']['locked'] is False
 
 
 def test_environment_toggles_of_automation_revoke_approvals(start):

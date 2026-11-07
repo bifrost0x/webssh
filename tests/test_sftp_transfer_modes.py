@@ -61,7 +61,7 @@ def remote(monkeypatch):
     return remote
 
 
-@pytest.mark.parametrize('mode', [0o600, 0o640, 0o750])
+@pytest.mark.parametrize('mode', [0o600, 0o640, 0o750, 0o400, 0o444, 0o440, 0o500, 0o555])
 def test_transfer_stays_private_until_payload_complete_and_retains_mode(remote, mode):
     remote.original.st_mode = stat.S_IFREG | mode
     with sftp_handler.atomic_transfer_writer(remote, '/target', '/stage', replace=True) as writer:

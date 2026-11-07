@@ -1342,9 +1342,11 @@ def atomic_transfer_writer(sftp, path, temporary_path, *, replace, cancelled=Non
             staged = permission_snapshot(remote_file.stat())
             if staged['object_type'] != 'file' or staged['special_bits']:
                 raise SFTPOperationError('Staged upload permissions are unsafe')
-            # New content may never be more widely readable while staged than
-            # the file it replaces, even on servers that force a create mode.
-            if original is not None and int(staged['mode'], 8) & ~int(original['mode'], 8):
+            # New content may never be more widely accessible to group or others
+            # while staged than the file it replaces, even on servers that force
+            # a create mode. The owner's bits do not widen exposure: a read-only
+            # original (0444, 0400) is still staged writable for the owner.
+            if original is not None and int(staged['mode'], 8) & ~int(original['mode'], 8) & 0o077:
                 raise SFTPOperationError('Private staging permissions unavailable')
             yield remote_file
             if cancelled and cancelled():

@@ -175,6 +175,8 @@ def main():
         replaced = inspect(options.new_image, volume, {}, 'new Compose')
         require('new Compose keeps tmux on, editable', switch(replaced, 'tmux_enabled'), (True, False))
         require('new Compose keeps the stored file permission choice', switch(replaced, 'sftp_chmod_enabled'), (True, False))
+        require('new Compose keeps tmux preselection off, editable', switch(replaced, 'tmux_default'), (False, False))
+        require('new Compose keeps server operations off', switch(replaced, 'server_operations_enabled'), (False, False))
 
         inspect(options.old_image, volume, LEGACY_ENVIRONMENT, 'rollback')
         print('ok: rollback to the previous release keeps every record')

@@ -86,3 +86,10 @@ test('password API rejects malformed proxy responses without leaking parser deta
   await assert.rejects(client.load(),error=>/Passwords could not be saved/.test(error.message)&&!error.message.includes('private proxy'));
  }
 });
+
+test('every saved-password target authorization goes through the step-up flow',()=>{
+ const source=fs.readFileSync('static/js/native-credentials.js','utf8');
+ // Only authorizeTarget() may call the endpoint; it prepares an intent and retries with a grant.
+ assert.equal(source.split("'/api/credentials/authorize-target'").length-1,1);
+ assert.match(source,/async function authorizeTarget[\s\S]*?\/api\/credentials\/intents[\s\S]*?withStepUp/);
+});

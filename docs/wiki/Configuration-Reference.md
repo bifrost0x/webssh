@@ -283,9 +283,12 @@ Settings shows the key, effective value, stored value and source. Edit or remove
 the variable and recreate the container to release the lock. Existing sessions
 remain open; reload clients and reconnect SFTP after changing capabilities.
 
-On upgrade, existing explicit values are saved once if no Admin value exists.
-A previous Admin choice is retained under an override and becomes effective again
-when that override is removed. Older Compose files do not need replacing.
+Until an administrator changes a switch, its stored value follows the last
+explicit environment value, so removing the variable keeps the behavior the
+operator set last. An administrator's own choice is retained under an override
+and becomes effective again when that override is removed. Without the variable,
+an administrator can enable the feature in the web interface; set it explicitly
+to `false` to keep it off. Older Compose files do not need replacing.
 Server actions and chmod are off by default; tmux is available by default and
 never preselected, matching every Compose file shipped before 3.0.
 Disabling server operations prevents new actions without undoing commands already
