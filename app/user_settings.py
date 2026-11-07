@@ -98,9 +98,12 @@ def _valid_settings(value):
     if ('overview_reachability' in value and (not isinstance(value['overview_reachability'], str)
             or value['overview_reachability'] not in OVERVIEW_REACHABILITY_MODES)):
         return False
-    if 'overview_panels' in value and not valid_overview_layout(value['overview_panels']):
+    # Stored overview values are only type-checked: entries a newer version wrote
+    # (another panel, another attention kind) are dropped on read instead of
+    # making the whole settings file unreadable after a rollback.
+    if 'overview_panels' in value and not (value['overview_panels'] is None or isinstance(value['overview_panels'], list)):
         return False
-    if 'overview_dismissed' in value and not valid_overview_dismissed(value['overview_dismissed']):
+    if 'overview_dismissed' in value and not isinstance(value['overview_dismissed'], list):
         return False
     if 'theme' in value and not isinstance(value['theme'], str):
         return False
@@ -204,7 +207,30 @@ def _get_user_settings_with_lock_held(user_id):
     settings = _defaults_for_user(user)
     settings.update(data)
     settings.pop('schema_version', None)
+    settings['overview_panels'] = _known_overview_panels(settings.get('overview_panels'))
+    settings['overview_dismissed'] = _known_overview_dismissed(settings.get('overview_dismissed'))
     return settings
+
+
+def _known_overview_panels(value):
+    if not isinstance(value, list):
+        return None
+    kept, seen = [], set()
+    for item in value:
+        if valid_overview_layout([item]) and item['id'] not in seen:
+            seen.add(item['id'])
+            kept.append(item)
+    return kept or None
+
+
+def _known_overview_dismissed(value):
+    if not isinstance(value, list):
+        return []
+    kept = []
+    for item in value:
+        if item not in kept and valid_overview_dismissed([item]):
+            kept.append(item)
+    return kept[-OVERVIEW_DISMISSED_LIMIT:]
 
 
 @user_operation

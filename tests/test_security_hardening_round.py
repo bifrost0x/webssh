@@ -132,8 +132,8 @@ def test_new_data_directory_is_private(tmp_path):
     assert target.stat().st_mode & 0o077 == 0
 
 
-def test_discovery_is_not_offered_in_production(app, client, context, monkeypatch):
-    monkeypatch.setattr(config, 'DEPLOYMENT_PROFILE', 'production')
+def test_discovery_is_not_offered_when_disabled(app, client, context, monkeypatch):
+    monkeypatch.setattr(config, 'HOST_DISCOVERY_ENABLED', False)
     assert client.post('/api/discovery/scans', json={'network': '10.0.0.0/30'}).status_code == 404
     assert b'id="hostDiscoveryDialog"' not in client.get('/').data
 
@@ -233,8 +233,8 @@ def test_revoking_an_account_stops_its_scans(app, context):
     discovery._SCANS.update({scan.id: scan, other.id: other})
     with app.app_context():
         revoke_user_access(context[0])
-    assert scan.cancel_event.is_set() and scan.id not in discovery._SCANS
-    assert not other.cancel_event.is_set() and other.id in discovery._SCANS
+    assert scan.cancel_event.is_set() and scan.revoked and scan.found == []
+    assert not other.cancel_event.is_set() and not other.revoked
     discovery._SCANS.clear()
 
 
@@ -247,3 +247,91 @@ def test_a_stopping_scan_still_blocks_a_new_one(app, client, context, monkeypatc
     discovery._SCANS[scan.id] = scan
     assert client.post('/api/discovery/scans', json={'network': '10.4.1.0/30'}).status_code == 409
     discovery._SCANS.clear()
+
+
+@pytest.mark.parametrize('origin,host,accepted', [
+    ('http://192.168.1.10:5000', '192.168.1.10:5000', True),
+    ('https://ssh.example.com', 'ssh.example.com', True),
+    ('https://ssh.example.com:443', 'ssh.example.com', True),
+    ('http://SSH.example.com:8080', 'ssh.example.com:8080', True),
+    ('https://ssh.example.com', 'ssh.example.com:443', True),
+    ('http://192.168.1.10:8080', '192.168.1.10:5000', False),   # another service on the same host
+    ('https://grafana.example.com', 'ssh.example.com', False),  # sibling subdomain
+    ('http://192.168.1.11:5000', '192.168.1.10:5000', False),
+    ('null', '192.168.1.10:5000', False),
+    ('file://', '192.168.1.10:5000', False),
+    ('http://user:pw@192.168.1.10:5000', '192.168.1.10:5000', False),
+    ('http://192.168.1.10:5000', '', False),
+])
+def test_wildcard_socket_origin_means_same_origin(origin, host, accepted):
+    from app import same_origin_socket_check
+    assert same_origin_socket_check(origin, {'HTTP_HOST': host, 'wsgi.url_scheme': 'http'}) is accepted
+
+
+def test_wildcard_cors_installs_the_same_origin_check(monkeypatch):
+    from app import create_app, same_origin_socket_check, socketio
+    monkeypatch.setattr(config, 'CORS_ORIGINS', '*')
+    monkeypatch.setattr(config, 'SOCKETIO_ALLOW_ANY_ORIGIN', False)
+    create_app(start_runtime=False)
+    assert socketio.server.eio.cors_allowed_origins is same_origin_socket_check
+    monkeypatch.setattr(config, 'SOCKETIO_ALLOW_ANY_ORIGIN', True)
+    create_app(start_runtime=False)
+    assert socketio.server.eio.cors_allowed_origins == '*'
+
+
+def test_discovery_defaults_off_in_production_only(tmp_path):
+    import os
+    import subprocess
+    import sys
+    base = {**os.environ, 'SECRET_KEY': 'x' * 64, 'DEBUG': 'false', 'DATA_DIR': str(tmp_path)}
+    base.pop('HOST_DISCOVERY_ENABLED', None)
+    root = os.path.dirname(os.path.dirname(__file__))
+    homelab = subprocess.run([sys.executable, '-c', 'import config; print(config.HOST_DISCOVERY_ENABLED)'], cwd=root,
+                             env={**base, 'DEPLOYMENT_PROFILE': 'homelab'}, capture_output=True, text=True, timeout=60)
+    assert homelab.stdout.strip().splitlines()[-1] == 'True'
+
+
+def test_reachability_reports_late_probes_as_unchecked_and_caps_concurrent_checks(app, client, context, monkeypatch):
+    from app import overview_routes
+    overview_routes._CACHE.clear()
+
+    class Late:
+        def result(self, timeout=None):
+            from concurrent.futures import TimeoutError as FutureTimeout
+            raise FutureTimeout()
+
+        def cancel(self):
+            return True
+
+    monkeypatch.setattr(overview_routes._EXECUTOR, 'submit', lambda *args, **kwargs: Late())
+    results = client.post('/api/overview/reachability', json={}).json['results']
+    assert results and all(item['state'] == 'unchecked' for item in results.values())
+    overview_routes._CACHE.clear()
+    with overview_routes._CACHE_LOCK:
+        overview_routes._IN_FLIGHT.update({-1, -2, -3})
+    try:
+        assert client.post('/api/overview/reachability', json={}).status_code == 429
+    finally:
+        with overview_routes._CACHE_LOCK:
+            overview_routes._IN_FLIGHT.difference_update({-1, -2, -3})
+
+
+def test_overview_values_from_a_newer_version_do_not_corrupt_settings(app, context):
+    import json
+    from app.models import User, db
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+    from app.user_settings import get_user_settings, save_user_settings
+    uid = context[0]
+    with app.app_context():
+        path = db.session.get(User, uid).get_data_dir() / 'settings.json'
+        path.write_text(json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['settings'], 'theme': 'paper',
+            'overview_panels': [{'id': 'future-panel', 'w': 6, 'h': None, 'hidden': False}, {'id': 'hosts', 'w': 6, 'h': None, 'hidden': False}],
+            'overview_dismissed': ['future-kind:abc', 'run-failed:r1'],
+        }), encoding='utf-8')
+        settings = get_user_settings(uid)
+        assert settings['theme'] == 'paper'
+        assert settings['overview_panels'] == [{'id': 'hosts', 'w': 6, 'h': None, 'hidden': False}]
+        assert settings['overview_dismissed'] == ['run-failed:r1']
+        # New values are still validated strictly.
+        assert save_user_settings(uid, {'overview_dismissed': ['future-kind:abc']}) is False
