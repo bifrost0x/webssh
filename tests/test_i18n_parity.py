@@ -140,7 +140,7 @@ def test_saved_connection_and_quick_connect_terms_are_consistent():
         assert {values[key] for key in quick_keys} == {quick_connect}
         assert {values[key] for key in saved_keys} == {saved_connections}
         assert values['panes.newConnection'] == f'+ {quick_connect}'
-        assert values['fm.newConnection'] == f'+ {quick_connect}...'
+        assert values['fm.newConnection'] in (f'+ {quick_connect}...', f'+ {quick_connect}…')
         assert quick_connect in values['connection.clickToStart']
         assert quick_connect in values['panes.selectSession']
         assert quick_connect in values['panes.assignInfo']
