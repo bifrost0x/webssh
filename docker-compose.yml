@@ -14,6 +14,8 @@ services:
     environment:
       # Active homelab settings
       - DEPLOYMENT_PROFILE=homelab
+      # '*' accepts any address you use to open WebSSH; realtime connections
+      # still only accept pages served from that same address.
       - CORS_ORIGINS=*
       - ALLOW_CORS_WILDCARD=true
       - TRUSTED_PROXIES=0

@@ -154,6 +154,20 @@ An optional eight-step tour introduces the overview, hosts, workspaces, files, c
 The final steps show an allowlisted view of effective deployment flags and administrator feature policies. Authentication features also require their readiness and administrator gates. No environment secrets, host paths or Compose contents are exposed. Process root status is not a statement about Docker privileges, host mounts or remote SSH/sudo permissions. Documentation links open the product Wiki; administration links are shown only to administrators when the admin panel is available.
 
 
+## Realtime connections and origins
+
+With `CORS_ORIGINS=*` (the homelab Compose default), version 3 accepts
+realtime connections only from pages served from the address the browser used
+for WebSSH, any IP or hostname, any port. Before, any page on the same site, for
+example another service on a different port of the same host, could open a
+connection with the user's session. Direct access is unaffected. A reverse
+proxy must pass the original Host header including a non-default port
+(`$http_host` in nginx) or set `X-Forwarded-Host` with `TRUSTED_PROXIES`. A
+front end deliberately served from another origin can set
+`SOCKETIO_ALLOW_ANY_ORIGIN=true`; the production profile refuses that setting.
+Refused connections are logged as "Realtime connection from another origin
+refused".
+
 ## Configuration ownership during upgrades
 
 Version 3 manages file permission changes, server operations, tmux availability,

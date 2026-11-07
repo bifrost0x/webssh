@@ -817,6 +817,20 @@ else:
     if not DEBUG:
         print("INFO: CORS_ORIGINS not set, using localhost only. Set CORS_ORIGINS for other origins.")
 
+# With CORS_ORIGINS='*' the realtime connection still only accepts pages served
+# from the address the browser used for WebSSH itself. Setting this to true
+# accepts any origin again; only for front ends that are deliberately served
+# from another origin. Refused in the production profile.
+SOCKETIO_ALLOW_ANY_ORIGIN = os.environ.get('SOCKETIO_ALLOW_ANY_ORIGIN', 'false').lower() == 'true'
+
+# Manual SSH host discovery in a network range the user names. On by default
+# for homelab installs, off in the production profile unless set explicitly.
+# An empty value counts as unset, like the other switches in .env.example.
+HOST_DISCOVERY_ENABLED = (
+    os.environ.get('HOST_DISCOVERY_ENABLED', '').strip()
+    or ('false' if DEPLOYMENT_PROFILE == 'production' else 'true')
+).lower() == 'true'
+
 RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True') == 'True'
 # Backend for rate-limit counters.
 #   memory://  (default) — per-process, no external dependency.
@@ -1263,6 +1277,8 @@ def validate_security_config():
             )
         if ALLOW_CORS_WILDCARD:
             violations.append('ALLOW_CORS_WILDCARD must be false')
+        if SOCKETIO_ALLOW_ANY_ORIGIN:
+            violations.append('SOCKETIO_ALLOW_ANY_ORIGIN must be false')
         if not SESSION_COOKIE_SECURE or not REMEMBER_COOKIE_SECURE:
             violations.append('SESSION_COOKIE_SECURE must be true')
         if REGISTRATION_ENABLED:

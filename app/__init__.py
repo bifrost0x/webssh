@@ -407,6 +407,44 @@ def _prepare_data_dir(path):
                     path=str(path))
 
 
+_DEFAULT_PORTS = {'http': 80, 'https': 443}
+_origin_rejections = {'last': 0.0}
+
+
+def _host_and_port(value, scheme):
+    from urllib.parse import urlsplit
+    parts = urlsplit(f'//{value}')
+    if not parts.hostname:
+        return None
+    return parts.hostname.lower().rstrip('.'), parts.port or _DEFAULT_PORTS[scheme]
+
+
+def same_origin_socket_check(origin, environ):
+    """Accept a browser origin only when it names the host and port of this request.
+
+    The Host header is the one the browser sent, or the one ProxyFix restored
+    from a trusted proxy. The scheme is not compared, so TLS termination at a
+    proxy that does not forward the scheme keeps working; one port cannot
+    serve two schemes. Requests without an Origin header never reach this check.
+    """
+    from urllib.parse import urlsplit
+    accepted = False
+    try:
+        parsed = urlsplit(origin or '')
+        if parsed.scheme in _DEFAULT_PORTS and not parsed.username and not parsed.password:
+            expected = _host_and_port(environ.get('HTTP_HOST', ''), parsed.scheme)
+            accepted = expected is not None and _host_and_port(parsed.netloc, parsed.scheme) == expected
+    except ValueError:
+        accepted = False
+    if not accepted:
+        now = time.monotonic()
+        if now - _origin_rejections['last'] > 60:
+            _origin_rejections['last'] = now
+            log_warning('Realtime connection from another origin refused', origin=str(origin)[:200],
+                        host=str(environ.get('HTTP_HOST', ''))[:200])
+    return accepted
+
+
 def _initialize_persistent_storage(app):
     """Initialize storage and schema for serving or explicit CLI mutation."""
     if app.extensions.get('persistent_storage_initialized'):
@@ -813,6 +851,11 @@ def create_app(
         cors_origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
     if cors_origins == ['*']:
         cors_origins = '*'
+    if cors_origins == '*' and not config.SOCKETIO_ALLOW_ANY_ORIGIN:
+        # '*' would let any page on the same site (another port on this host, a
+        # sibling subdomain) open a realtime connection with the user's cookie.
+        cors_origins = same_origin_socket_check
+        log_info('Realtime connections accept the WebSSH origin only; set SOCKETIO_ALLOW_ANY_ORIGIN=true to accept any origin')
 
     socketio.init_app(
         app,

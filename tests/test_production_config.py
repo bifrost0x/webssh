@@ -689,6 +689,11 @@ def test_webauthn_json_limit_cannot_exceed_hard_security_ceiling():
             id='latent-wildcard-opt-in',
         ),
         pytest.param(
+            {'SOCKETIO_ALLOW_ANY_ORIGIN': 'true'},
+            'SOCKETIO_ALLOW_ANY_ORIGIN',
+            id='any-socket-origin',
+        ),
+        pytest.param(
             {'CORS_ORIGINS': 'http://ssh.example.com'},
             'CORS_ORIGINS',
             id='non-https-origin',
