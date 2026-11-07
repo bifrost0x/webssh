@@ -60,35 +60,11 @@
 .ssh-map-dialog #overviewRouteMap .ssh-route-viewport { flex:1; min-height:0; }
 #connectionOverview .overview-module-handle { touch-action:none; }
 #connectionOverview .overview-dashboard-module.is-drop-target { outline:2px solid var(--ws2-accent); outline-offset:3px; }
-body.webssh-ui #connectionOverview .overview-compact-list { display:block; overflow:auto; height:400px; padding:0; }
-body.webssh-ui #connectionOverview .overview-list-group { margin:0; }
-body.webssh-ui #connectionOverview .overview-list-group h3 { display:flex; align-items:center; justify-content:space-between; margin:0; padding:10px 8px; font-size:13px; background:var(--ws2-surface); border-bottom:1px solid var(--ws2-border); }
-#connectionOverview .overview-list-group h3 small { color:var(--ws2-text-secondary); }
-body.webssh-ui #connectionOverview .overview-compact-row { display:flex; align-items:center; gap:8px; padding:5px 8px; min-height:48px; border-bottom:1px solid var(--ws2-border); }
-body.webssh-ui #connectionOverview .overview-compact-row > button { flex:1; min-width:0; display:flex; align-items:center; gap:10px; background:transparent; border:0; padding:5px 0; text-align:left; }
-#connectionOverview .overview-compact-row .overview-row-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-#connectionOverview .overview-compact-row > button > .material-icons:last-child { display:none; }
-#connectionOverview .overview-compact-row .host-platform-icon { width:22px; height:22px; flex:0 0 22px; }
-#connectionOverview .overview-compact-route { font-size:12px; color:var(--ws2-text-secondary); max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-#connectionOverview .overview-compact-row .overview-host-actions { display:flex; flex-shrink:0; gap:4px; }
-#connectionOverview .overview-compact-row .overview-host-actions button { min-width:32px; padding:4px; }
-#connectionOverview .overview-compact-row .overview-host-connect span:not(.material-icons) { display:none; }
-#connectionOverview .overview-session-indicator { width:8px; height:8px; flex:0 0 8px; border-radius:50%; background:var(--ws2-success); animation:overview-session-pulse 2.5s ease-in-out infinite; }
-@keyframes overview-session-pulse { 50% { box-shadow:0 0 0 4px color-mix(in srgb, var(--ws2-success) 20%, transparent); } }
-@media(prefers-reduced-motion:reduce) { #connectionOverview .overview-session-indicator { animation:none; } }
-@media(max-width:600px),(pointer:coarse) {
- body.webssh-ui #connectionOverview .overview-compact-row > button,
- body.webssh-ui #connectionOverview .overview-compact-row .overview-host-actions button { min-width:44px; min-height:44px; }
-}
-body.webssh-ui #connectionOverview:has(.overview-compact-list) #overviewGraphToggle { display:none; }
-body.webssh-ui #connectionOverview .overview-dashboard-module[data-height=compact] .overview-compact-list { height:260px; }
-body.webssh-ui #connectionOverview .overview-dashboard-module[data-height=large] .overview-compact-list { height:560px; }
 @media(max-width:600px) {
  #overviewRouteMap .ssh-map-toolbar input { flex-basis:100%; width:100%; }
  #overviewRouteMap .ssh-map-heading { flex-wrap:wrap; }
  #overviewRouteMap .ssh-map-toolbar button { min-height:44px; min-width:44px; }
  #overviewRouteMap .ssh-route-viewport { height:320px; }
- #connectionOverview .overview-compact-route { display:none; }
  .ssh-map-dialog { padding:12px; width:calc(100vw - 12px); height:calc(100dvh - 12px); }
 }
 
@@ -111,12 +87,6 @@ body.webssh-ui #connectionOverview .overview-dashboard-module[data-height=large]
 
 #overviewRouteMap .ssh-route-host-list { max-height:280px; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; }
 #overviewRouteMap .ssh-route-more { margin:0 0 8px; }
-
-/* Keep host assignment actions inside their row, including the open selector. */
-#connectionOverview .overview-compact-row { flex-wrap:wrap; }
-#connectionOverview .overview-compact-row .overview-host-move { position:relative; top:auto; right:auto; flex:0 0 auto; }
-#connectionOverview .overview-compact-row .overview-host-move[open] { flex-basis:100%; display:flex; align-items:center; gap:8px; }
-#connectionOverview .overview-compact-row .overview-host-move select { position:static; width:auto; max-width:calc(100% - 52px); flex:1; }
 
 /* Dashboard: route summaries stay readable; host operations live in the expanded map. */
 #overviewRouteMap.is-summary .ssh-route-canvas { gap:32px; }
