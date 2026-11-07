@@ -3,10 +3,16 @@ const {login} = require('./helpers');
 
 test('tour crosses workspaces, handles small screens and saves completion', async ({page}) => {
     await login(page, 'e2e_admin', {workspace: false, tour: 'new'});
-    await page.request.post('/api/account/tour', {data:{state:'dismissed'},headers:{'X-CSRFToken':await page.locator('meta[name="csrf-token"]').getAttribute('content')}});
+    await page.request.post('/api/account/tour', {data:{state:'new'},headers:{'X-CSRFToken':await page.locator('meta[name="csrf-token"]').getAttribute('content')}});
     await page.reload();
     await expect(page.locator('.intro-tour')).toBeVisible();
     await page.locator('.intro-tour').getByRole('button', {name:'Skip tour',exact:true}).click();
+    await expect(page.locator('.intro-tour')).toHaveCount(0);
+    // A skipped tour stays closed across page loads.
+    const reloadedTour = page.waitForResponse(response => response.url().endsWith('/api/account/tour') && response.request().method() === 'GET');
+    await page.reload();
+    expect((await (await reloadedTour).json()).state).toBe('dismissed');
+    await expect(page.locator('.intro-tour')).toHaveCount(0);
     await page.locator('#accountBtnHeader').click();
     await page.locator('#restartTour').click();
     const tour = page.locator('.intro-tour');

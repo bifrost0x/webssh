@@ -18,8 +18,9 @@ def test_tour_persists_only_own_progress_and_rejects_extra_settings(app, client)
     assert client.get('/api/account/tour').json['state'] == 'completed'
     assert client.post('/api/account/tour', json={'state': 'completed'}).status_code == 400
     assert client.post('/api/account/tour', json={'state': 'dismissed'}).status_code == 200
-    assert client.get('/api/account/tour').json['state'] == 'new'
+    assert client.get('/api/account/tour').json['state'] == 'dismissed'
     assert client.post('/api/account/tour', json={'state': 'new'}).status_code == 200
+    assert client.get('/api/account/tour').json['state'] == 'new'
 
 
 def test_tour_allowlists_configuration_and_uses_effective_policy(app, client, monkeypatch):

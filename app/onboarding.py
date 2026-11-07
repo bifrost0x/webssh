@@ -51,8 +51,17 @@ def tour():
         fact['configured'] = fact['enabled']
         fact['enabled'] = feature_is_active(feature)
         fact['source'] = 'deployment_and_admin'
+    settings = get_user_settings(current_user.id)
+    if settings.get('intro_tour_v3_acknowledged') is True:
+        state = 'completed'
+    elif settings.get('intro_tour') == 'dismissed':
+        # Skipping is a decision too: never reopen the modal on every page
+        # load. The account menu can still restart the tour.
+        state = 'dismissed'
+    else:
+        state = 'new'
     response = jsonify(
-        state='completed' if get_user_settings(current_user.id).get('intro_tour_v3_acknowledged') is True else 'new',
+        state=state,
         administrator=bool(current_user.is_admin),
         admin_url=url_for('admin_page') if current_user.is_admin and config.ADMIN_PANEL_ENABLED else None,
         process_root=os.geteuid() == 0 if hasattr(os, 'geteuid') else None,

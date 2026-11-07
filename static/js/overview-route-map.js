@@ -57,7 +57,7 @@
         const canvas=el('div','ssh-route-canvas');viewport.append(canvas);
         const note=el('p','ssh-map-note');
         const expandButton=btn('',()=>setExpanded(!dialog.open));
-        const dialog=el('dialog','ssh-map-dialog');document.body.append(dialog);
+        const dialog=el('dialog','ssh-map-dialog');dialog.setAttribute('aria-label',t('SSH routes'));document.body.append(dialog);
         let homeCamera=null, homeArrangement=null, homeSize=null;
         function setExpanded(open){
             if(open){homeSize=viewportSize();homeArrangement=arrangement();homeCamera=camera?{...camera}:null;dialog.append(root);dialog.showModal();camera=fullCamera&&fullCameraMode===positionMode()&&sameSize(fullSize)?{...fullCamera}:null;}

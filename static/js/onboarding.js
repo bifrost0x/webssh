@@ -15,7 +15,10 @@
     ];
     const wiki = 'https://github.com/bifrost0x/webssh/wiki/';
     const featureDocs = {SMB_ENABLED:'SFTP-File-Workspace-and-Transfers', SFTP_CHMOD_ENABLED:'SFTP-File-Workspace-and-Transfers#unix-permissions', SERVER_OPERATIONS_ENABLED:'Administration-Audit-and-Diagnostics', TMUX_ENABLED:'Terminal-and-Persistent-tmux-Sessions', TAILSCALE_SSH_ENABLED:'Tailscale-SSH', credentials_enabled:'Profiles-Jump-Hosts-and-Commands', automation_enabled:'Administration-Audit-and-Diagnostics', registration_enabled:'Users-and-Account-Management', OIDC_ENABLED:'OpenID-Connect', LDAP_ENABLED:'LDAP-and-Active-Directory', TOTP_ENABLED:'Authentication-Overview', WEBAUTHN_ENABLED:'Passkeys-and-Recovery-Codes', SESSION_COOKIE_SECURE:'Production-Deployment', BOOTSTRAP_REGISTRATION_ENABLED:'Quick-Start'};
-    const api = new URL('api/account/tour', document.baseURI);
+    // Same prefix source as the other modules: document.baseURI breaks under a
+    // URL prefix opened without a trailing slash.
+    const appRoot = (document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
+    const api = new URL(appRoot + '/api/account/tour', window.location.origin);
     let state, index = 0, dialog, target;
     const node = (tag, text, className) => { const el = document.createElement(tag); if (text) el.textContent = text; if (className) el.className = className; return el; };
     const button = (text, handler, primary = false) => { const el = node('button', text, `btn ${primary ? 'btn-primary' : 'btn-secondary'}`); el.type = 'button'; el.addEventListener('click', handler); return el; };
