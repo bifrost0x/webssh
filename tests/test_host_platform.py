@@ -150,3 +150,40 @@ def test_host_exchange_preserves_only_manual_icon():
     document['hosts'][0]['detected_platform'] = 'ubuntu'
     with pytest.raises(ExchangeError):
         preview_import(json.dumps(document), 'json')
+
+
+@pytest.mark.parametrize('stored, probed', [
+    ({}, True),
+    ({'platform_icon': 'auto'}, True),
+    ({'platform_icon': 'proxmox'}, False),
+    ({'detected_platform': 'debian'}, False),
+])
+def test_detection_runs_once_per_saved_host_in_automatic_mode(app, monkeypatch, stored, probed):
+    from app import ssh_manager, profile_manager
+    from tests.test_profile_manager import create_user
+    user_id = create_user(app)
+    calls = []
+    with app.app_context():
+        profile, _ = profile_manager.upsert_profile(user_id, dict(name='Host', host='example.test', port=22, username='deploy', auth_type='password',
+                                                                  **{k: v for k, v in stored.items() if k == 'platform_icon'}))
+        if 'detected_platform' in stored:
+            assert profile_manager.cache_detected_platform(user_id, profile['id'], host_platform.endpoint(profile), stored['detected_platform'])
+        monkeypatch.setitem(ssh_manager.sessions, 'platform-once', dict(profile, connected=True, user_id=user_id, profile_id=profile['id']))
+        monkeypatch.setattr(host_platform, 'collect_platform', lambda _, **kwargs: (calls.append(1), ('ubuntu', None))[1])
+        host_platform.detect_connected_platform('platform-once', user_id, lambda payload: None)
+        assert bool(calls) is probed
+        # A detected result is reused on the next connection.
+        host_platform.detect_connected_platform('platform-once', user_id, lambda payload: None)
+        assert len(calls) == (1 if probed else 0)
+
+
+def test_quick_connections_are_never_probed(app, monkeypatch):
+    from app import ssh_manager
+    from tests.test_profile_manager import create_user
+    user_id = create_user(app)
+    calls = []
+    with app.app_context():
+        monkeypatch.setitem(ssh_manager.sessions, 'platform-quick', dict(host='example.test', port=22, username='deploy', connected=True, user_id=user_id, profile_id=None))
+        monkeypatch.setattr(host_platform, 'collect_platform', lambda _, **kwargs: (calls.append(1), ('ubuntu', None))[1])
+        host_platform.detect_connected_platform('platform-quick', user_id, lambda payload: None)
+    assert calls == []

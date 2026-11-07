@@ -10,6 +10,7 @@ from .user_settings import get_user_settings, save_user_settings
 from .security_features import feature_is_active
 
 onboarding_blueprint = Blueprint('onboarding', __name__)
+_ADMIN_ONLY_FACTS = frozenset({'SESSION_COOKIE_SECURE', 'BOOTSTRAP_REGISTRATION_ENABLED'})
 
 
 @onboarding_blueprint.route('/api/account/tour', methods=['GET', 'POST'])
@@ -60,11 +61,18 @@ def tour():
         state = 'dismissed'
     else:
         state = 'new'
+    administrator = bool(current_user.is_admin)
+    if not administrator:
+        # Users learn what they can use; deployment posture (where a value
+        # comes from, cookie and bootstrap settings, process identity) is
+        # administrator information.
+        facts = [dict(key=item['key'], enabled=item['enabled']) for item in facts
+                 if item['key'] not in _ADMIN_ONLY_FACTS]
     response = jsonify(
         state=state,
-        administrator=bool(current_user.is_admin),
-        admin_url=url_for('admin_page') if current_user.is_admin and config.ADMIN_PANEL_ENABLED else None,
-        process_root=os.geteuid() == 0 if hasattr(os, 'geteuid') else None,
+        administrator=administrator,
+        admin_url=url_for('admin_page') if administrator and config.ADMIN_PANEL_ENABLED else None,
+        process_root=(os.geteuid() == 0 if hasattr(os, 'geteuid') else None) if administrator else None,
         facts=facts,
     )
     response.headers['Cache-Control'] = 'no-store'

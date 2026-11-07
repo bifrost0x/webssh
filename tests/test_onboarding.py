@@ -46,3 +46,12 @@ def test_tour_does_not_serve_local_documents(app, client):
     _prepare_role(app, client, 'normal')
     assert client.get('/help/tour/credentials.md').status_code == 404
     assert client.get('/help/tour/project-planning.md').status_code == 404
+
+
+def test_non_administrators_do_not_receive_deployment_posture(app, client):
+    _prepare_role(app, client, 'normal')
+    data = client.get('/api/account/tour').json
+    assert data['process_root'] is None
+    keys = {item['key'] for item in data['facts']}
+    assert not keys & {'SESSION_COOKIE_SECURE', 'BOOTSTRAP_REGISTRATION_ENABLED'}
+    assert all(set(item) == {'key', 'enabled'} for item in data['facts'])

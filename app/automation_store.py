@@ -21,6 +21,29 @@ class AutomationNotDispatched(AutomationError):
     """A run was definitely not started; nothing reached any target."""
 
 
+INTENTS_PER_USER = 8
+INTENTS_GLOBAL = 4096
+
+
+def remember_intent(intents, key, payload, now):
+    """Store a short-lived intent with per-user and global bounds.
+
+    A user at the per-user bound replaces their own oldest intent instead of
+    being refused, so one account can neither lock itself out nor, together
+    with a few others, fill the shared table for everyone. The global bound
+    only limits memory.
+    """
+    current = {name: value for name, value in intents.items() if value['expires'] > now}
+    user_id = payload['user_id']
+    own = sorted((value['expires'], name) for name, value in current.items() if value['user_id'] == user_id)
+    while len(own) >= INTENTS_PER_USER:
+        current.pop(own.pop(0)[1], None)
+    if len(current) >= INTENTS_GLOBAL:
+        raise AutomationError('busy')
+    current[key] = payload
+    return current
+
+
 class AutomationHostKeyRequired(AutomationError):
     """Selected hosts have no verified host key yet."""
 

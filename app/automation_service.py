@@ -11,7 +11,7 @@ import time
 import uuid
 
 import config
-from .automation_store import (AutomationError, AutomationHostKeyRequired, AutomationNotDispatched, profile_fingerprint,
+from .automation_store import (AutomationError, AutomationHostKeyRequired, AutomationNotDispatched, remember_intent, profile_fingerprint,
     runbooks, user_path, read_document, write_document, MAX_STORE_BYTES)
 from .credential_service import session_identity
 from .automation_transport import (CONNECTION_REASONS, STEP_REASONS, STEP_OUTPUT_BYTES,
@@ -46,10 +46,7 @@ class AutomationService:
         payload = dict(payload, user_id=int(user_id), auth_id=int(auth_id),
                        identity=session_identity(user_id, auth_id), expires=now+300)
         with self._lock:
-            self._intents = {key: value for key, value in self._intents.items() if value['expires'] > now}
-            if len(self._intents) >= 256 or sum(value['user_id'] == int(user_id) for value in self._intents.values()) >= 8:
-                raise AutomationError('busy')
-            self._intents[hashlib.sha256(token.encode()).hexdigest()] = payload
+            self._intents = remember_intent(self._intents, hashlib.sha256(token.encode()).hexdigest(), payload, now)
         return token
 
     def intent(self, token, user_id, auth_id, *, consume=False):
@@ -156,8 +153,11 @@ class AutomationService:
         from .host_key_store import HostKeyStore
         from .network_policy import canonicalize_hostname
         store = HostKeyStore(user_id, config.KNOWN_HOSTS_FILE, config.USERS_DIR)
-        missing = [target for target in targets
-                   if not store.has_trusted_key(canonicalize_hostname(target['host']), target.get('port', 22))]
+        try:
+            missing = [target for target in targets
+                       if not store.has_trusted_key(canonicalize_hostname(target['host']), target.get('port', 22))]
+        except ValueError as error:
+            raise AutomationError('invalid_targets') from error
         if missing:
             raise AutomationHostKeyRequired([target['name'] for target in missing])
 
@@ -425,7 +425,10 @@ class AutomationService:
                                 output_remaining -= sum(len(result.get(stream, '').encode('utf-8'))
                                                         for stream in ('stdout', 'stderr'))
                                 target['steps'][step_index].update(result)
-                                persist()
+                                # No write here: the next step's "running" record or the
+                                # target's final record persists this result. The write
+                                # before each dispatch stays, so a crash leaves an
+                                # explicit unknown outcome instead of a skipped step.
                                 if result['status'] != 'succeeded':
                                     break
                         statuses = [s['status'] for s in target['steps']]

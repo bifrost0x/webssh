@@ -48,7 +48,7 @@
         const heading = node('h2', title); heading.id = 'introTitle'; heading.tabIndex = -1;
         dialog.append(header, progress, heading, node('p', body));
         if (index >= 6) {
-            if (index === 7) dialog.append(node('p', `${t('Deine Rolle', 'Your role')}: ${state.administrator ? t('Administrator', 'Administrator') : t('Benutzer', 'User')}. ${t('WebSSH-Prozess als root', 'WebSSH process as root')}: ${state.process_root === null ? t('Unbekannt', 'Unknown') : state.process_root ? t('Ja', 'Yes') : t('Nein', 'No')}.`));
+            if (index === 7) dialog.append(node('p', `${t('Deine Rolle', 'Your role')}: ${state.administrator ? t('Administrator', 'Administrator') : t('Benutzer', 'User')}.${state.administrator ? ` ${t('WebSSH-Prozess als root', 'WebSSH process as root')}: ${state.process_root === null ? t('Unbekannt', 'Unknown') : state.process_root ? t('Ja', 'Yes') : t('Nein', 'No')}.` : ''}`));
             const auth = ['OIDC_ENABLED', 'LDAP_ENABLED', 'TOTP_ENABLED', 'WEBAUTHN_ENABLED', 'SESSION_COOKIE_SECURE', 'BOOTSTRAP_REGISTRATION_ENABLED'];
             const names = {
                 SMB_ENABLED: t('SMB-Dateiquellen', 'SMB file sources'), SFTP_CHMOD_ENABLED: t('Dateirechte ändern', 'Change file permissions'),

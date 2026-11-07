@@ -74,8 +74,22 @@ def endpoint(profile):
         return None
     return (host, port, username, profile.get('jump_host_id') or None)
 
+def needs_detection(profile):
+    """Probe only saved hosts in automatic mode that have no result yet.
+
+    Detection opens an extra exec channel. On keys with a forced command
+    (authorized_keys command=, sshd ForceCommand) the server runs that command
+    instead, so the probe must not repeat on every connection.
+    """
+    if not isinstance(profile, dict):
+        return False
+    if profile.get('platform_icon', 'auto') not in (None, 'auto'):
+        return False
+    return profile.get('detected_platform') not in PLATFORMS
+
+
 def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None):
-    """Optional once-per-connection work; all failures leave the PTY alone."""
+    """Optional once-per-host work; all failures leave the PTY alone."""
     from . import ssh_manager, profile_manager
     try:
         with ssh_manager.sessions_lock:
@@ -87,6 +101,10 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
                 return
             profile_id = session.get('profile_id')
         if cancel_event is not None and cancel_event.is_set():
+            return
+        # Quick connections have nowhere to keep a result; saved hosts keep it
+        # until their address, port, user or route changes.
+        if not profile_id or not needs_detection(profile_manager.get_profile(user_id, profile_id)):
             return
         platform, error = collect_platform(session_id, cancel_event=cancel_event)
         if error or platform not in PLATFORMS:

@@ -249,7 +249,11 @@ class ScheduleService:
         from .app_settings import is_automation_enabled
         if not is_automation_enabled() or not self.app.extensions['runtime_lifecycle'].accepting_work():
             return
-        due = AutomationSchedule.query.filter(AutomationSchedule.enabled.is_(True), AutomationSchedule.next_at <= now.timestamp()).limit(200).all()
+        # Oldest slots first, so rows beyond one tick's batch are the newest
+        # rather than an arbitrary set that may age into "missed".
+        due = (AutomationSchedule.query
+               .filter(AutomationSchedule.enabled.is_(True), AutomationSchedule.next_at <= now.timestamp())
+               .order_by(AutomationSchedule.next_at, AutomationSchedule.id).limit(200).all())
         for row in due:
             uid, sid, rev, at = row.user_id, row.id, row.revision, row.next_at
             try:

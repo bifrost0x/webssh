@@ -1,4 +1,6 @@
 """Resolve saved connection passwords only within the authenticated TLS session."""
+import time
+
 from flask import current_app, request
 
 from .automation_store import AutomationError
@@ -49,19 +51,30 @@ class CredentialGuard:
         self.args = (user_id, auth.id, kind, data['credential_id'], connection)
         self.token = (self.service.target_generation(*self.target_args) if self.target_token else self.service.connection_generation(*self.args))
         self.cancelled = False
+        self._checked_at = time.monotonic()
 
-    def is_set(self):
+    # Cancellation polling runs every 20-100 ms while a connection is pending.
+    # Each full check reads every owned store and several database rows, so
+    # polls reuse a result for this long; check() before authentication is
+    # always fresh.
+    POLL_INTERVAL = 0.25
+
+    def is_set(self, *, fresh=False):
         if self.cancelled:
             return True
+        now = time.monotonic()
+        if not fresh and now - self._checked_at < self.POLL_INTERVAL:
+            return False
         try:
             with self.app.app_context():
                 self.cancelled = (self.service.target_generation(*self.target_args) if self.target_token else self.service.connection_generation(*self.args)) != self.token
         except Exception:
             self.cancelled = True
+        self._checked_at = now
         return self.cancelled
 
     def check(self):
-        if self.is_set():
+        if self.is_set(fresh=True):
             raise AutomationError('vault_locked')
 
 

@@ -71,10 +71,50 @@ def test_pending_credential_guard_cancels_on_generation_change_and_never_revives
     app.extensions['credentials'] = SimpleNamespace(connection_generation=lambda *args: token[0])
     with app.test_request_context('/socket.io', base_url='https://localhost'):
         guard = CredentialGuard(1, 'ssh', {'credential_id': 'p1', 'host': 'target', 'username': 'u'})
-        assert not guard.is_set()
+        assert not guard.is_set(fresh=True)
         token[0] = 'changed'
-        assert guard.is_set()
+        assert guard.is_set(fresh=True)
         token[0] = 'original'
+        assert guard.is_set()
+
+
+def test_credential_guard_polls_are_throttled_but_authentication_checks_fresh(app, monkeypatch):
+    from app import credential_connections
+    from app.credential_connections import CredentialGuard
+    from app.automation_store import AutomationError
+    import app.auth_assurance as assurance
+    monkeypatch.setattr(assurance, 'current_authentication_session', lambda: SimpleNamespace(id=7, user_id=1))
+    calls = []
+    token = ['original']
+    app.extensions['credentials'] = SimpleNamespace(connection_generation=lambda *args: (calls.append(1), token[0])[1])
+    now = [100.0]
+    monkeypatch.setattr(credential_connections.time, 'monotonic', lambda: now[0])
+    with app.test_request_context('/socket.io', base_url='https://localhost'):
+        guard = CredentialGuard(1, 'ssh', {'credential_id': 'p1', 'host': 'target', 'username': 'u'})
+        baseline = len(calls)
+        for _ in range(20):
+            assert not guard.is_set()
+        assert len(calls) == baseline
+        token[0] = 'changed'
+        with pytest.raises(AutomationError):
+            guard.check()
+        assert guard.is_set()
+
+
+def test_credential_guard_poll_sees_a_change_after_the_interval(app, monkeypatch):
+    from app import credential_connections
+    from app.credential_connections import CredentialGuard
+    import app.auth_assurance as assurance
+    monkeypatch.setattr(assurance, 'current_authentication_session', lambda: SimpleNamespace(id=7, user_id=1))
+    token = ['original']
+    app.extensions['credentials'] = SimpleNamespace(connection_generation=lambda *args: token[0])
+    now = [100.0]
+    monkeypatch.setattr(credential_connections.time, 'monotonic', lambda: now[0])
+    with app.test_request_context('/socket.io', base_url='https://localhost'):
+        guard = CredentialGuard(1, 'ssh', {'credential_id': 'p1', 'host': 'target', 'username': 'u'})
+        token[0] = 'changed'
+        assert not guard.is_set()
+        now[0] += CredentialGuard.POLL_INTERVAL
         assert guard.is_set()
 
 
