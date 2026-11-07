@@ -211,6 +211,7 @@ def test_account_preferences_api_validates_and_persists_supported_values(
         "theme": "obsidian",
         "terminal_appearance": {},
         "overview_layout": "dashboard",
+        "overview_reachability": "manual",
         "start_page": "overview",
         "notepad": "",
         "sync_terminal_directory": False,
@@ -448,10 +449,10 @@ def test_overview_layout_selects_classic_without_changing_theme(app, client):
     assert response.json['settings']['theme'] == 'paper'
     classic = client.get('/').data
     assert b'connection-overview-classic.js' in classic
-    assert b'overview-dashboard.js' not in classic
+    assert b'overview-workspace.js' not in classic
     assert b'overviewQuickConnect' in classic
     assert client.post('/api/account/preferences', json={'overview_layout': 'dashboard'}).status_code == 200
-    assert b'overview-dashboard.js' in client.get('/').data
+    assert b'overview-workspace.js' in client.get('/').data
 
 
 @pytest.mark.parametrize("value", [None, [], {}, True, "automation", "https://example.com"])

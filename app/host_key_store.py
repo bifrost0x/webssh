@@ -256,13 +256,20 @@ class HostKeyStore:
 
         Only a readiness hint: connections still verify the presented key.
         """
-        lookup_name = hostname if int(port) == 22 else f"[{hostname}]:{int(port)}"
+        return self.trust_checker()(hostname, port)
+
+    def trust_checker(self):
+        """Load user and global trust once; return ``check(hostname, port)``."""
         with self._account_access():
             keys = _LayeredHostKeys(
                 self._load_or_empty(self.global_path),
                 self._load_or_empty(self.user_path),
             )
+
+        def check(hostname, port=22):
+            lookup_name = hostname if int(port) == 22 else f"[{hostname}]:{int(port)}"
             return keys.lookup(lookup_name) is not None
+        return check
 
     def missing_key_policy(self, decision=None, context="target") -> paramiko.MissingHostKeyPolicy:
         return _PerUserMissingHostKeyPolicy(self, decision, context)

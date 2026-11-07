@@ -149,7 +149,9 @@
         } catch { return []; }
     }
 
-    function createController({window: win, document: doc, sessionManager}) {
+    // overviewPage=false: another module owns the Overview page; this controller
+    // then only maintains the workspace host rail and navigation labels.
+    function createController({window: win, document: doc, sessionManager, overviewPage = true}) {
         const view = doc.getElementById('connectionOverview');
         const byId = id => doc.getElementById(id);
         let graph = false;
@@ -1130,9 +1132,11 @@
                 targetPage = 0;
             }
             const select = byId('overviewGroupFilter');
-            select.replaceChildren(new win.Option(t('overview.allGroups'), ''));
-            groups.forEach((items, group) => select.add(new win.Option(group || t('profiles.ungrouped'), `group:${group}`)));
-            select.value = selectedGroup === null ? '' : `group:${selectedGroup}`;
+            if (select) {
+                select.replaceChildren(new win.Option(t('overview.allGroups'), ''));
+                groups.forEach((items, group) => select.add(new win.Option(group || t('profiles.ungrouped'), `group:${group}`)));
+                select.value = selectedGroup === null ? '' : `group:${selectedGroup}`;
+            }
             const inventoryNav = byId('overviewInventoryGroups');
             if (inventoryNav) retainFocus(inventoryNav, () => {
                 inventoryNav.replaceChildren();
@@ -1339,7 +1343,7 @@
             if (byId('fmQueue')?.classList.contains('collapsed')) win.sftpFileManager?.toggleQueue();
         }
         const routeMap = win.OverviewRouteMap?.create({
-            root: byId('overviewRouteMap'),
+            root: overviewPage ? byId('overviewRouteMap') : null,
             loaded: () => win.ProfileManager?.profilesLoaded === true,
             model: () => buildAccessModel(win.ProfileManager?.profiles || [], win.JumpHostManager?.jumpHosts || [], win.JumpHostManager?.loaded),
             hostActions,
@@ -1351,7 +1355,7 @@
             },
         });
         function render() {
-            if (!visible()) return;
+            if (!overviewPage || !visible()) return;
             byId('overviewConnectionNotice').hidden = win.socket?.connected === true;
             renderResourceSummary();
             renderHosts();
@@ -1403,6 +1407,19 @@
         }
         function init() {
             if (!view) return;
+            if (overviewPage) bindOverviewPage();
+            ['profile-list-change', 'jump-host-list-change', 'session-workspace-change',
+                'primary-workspace-change', 'languageChanged'].forEach(event => win.addEventListener(event, schedule));
+            ['profile-list-change', 'languageChanged', 'primary-workspace-change', 'session-workspace-change', 'host-access-change'].forEach(event => win.addEventListener(event, renderSidebar));
+            win.addEventListener('primary-workspace-change', updateNavigation);
+            win.addEventListener('languageChanged', updateNavigation);
+            renderSidebar();
+            updateNavigation();
+            render();
+            if (!overviewPage) return;
+            bindOverviewRuntime();
+        }
+        function bindOverviewPage() {
             byId('overviewNavBtn').addEventListener('click', () => {
                 if (win.primaryWorkspaceController.getActiveView() !== 'overview') {
                     openOverview();
@@ -1458,11 +1475,8 @@
             byId('overviewListBtn').addEventListener('click', () => setGraph(false));
             byId('overviewGraphBtn').addEventListener('click', () => setGraph(true));
             byId('overviewExpandRoutes').addEventListener('click', () => setGraph(true));
-            ['profile-list-change', 'jump-host-list-change', 'session-workspace-change',
-                'primary-workspace-change', 'languageChanged'].forEach(event => win.addEventListener(event, schedule));
-            ['profile-list-change', 'languageChanged', 'primary-workspace-change', 'session-workspace-change', 'host-access-change'].forEach(event => win.addEventListener(event, renderSidebar));
-            win.addEventListener('primary-workspace-change', updateNavigation);
-            win.addEventListener('languageChanged', updateNavigation);
+        }
+        function bindOverviewRuntime() {
             win.addEventListener('resize', scheduleEdges);
             if (win.ResizeObserver) {
                 groupObserver = new win.ResizeObserver(scheduleEdges);
@@ -1470,9 +1484,6 @@
                 observer.observe(byId('overviewHosts'));
                 observer.observe(byId('overviewRoutePreview'));
             }
-            renderSidebar();
-            updateNavigation();
-            render();
             // Queue progress must not rebuild focusable host/session buttons.
             win.addEventListener('file-transfer-queue-change', () => {
                 if (!visible() || transfersScheduled) return;

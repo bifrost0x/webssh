@@ -59,10 +59,9 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/host-resources.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/automation.css') }}">
     {% if overview_layout != 'classic' %}
-    <link rel="stylesheet" href="{{ static_asset_url(filename='css/overview-commandcenter.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/overview-route-map.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/overview-workspace.css') }}">
     {% endif %}
-    <link rel="stylesheet" href="{{ static_asset_url(filename='css/overview-analytics.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/onboarding.css') }}">
 </head>
 <body class="webssh-shell webssh-ui" data-primary-workspace="overview" data-sftp-chmod-enabled="{{ 'true' if sftp_chmod_enabled else 'false' }}" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
@@ -199,86 +198,7 @@
     {% if overview_layout == 'classic' %}
     {% include 'overview_classic.html' %}
     {% else %}
-    <section id="connectionOverview" class="connection-overview overview-commandcenter" aria-labelledby="overviewTitle" hidden>
-        <div class="overview-inner">
-            <div class="overview-heading">
-                <div class="overview-heading-copy">
-                    <h1 id="overviewTitle" tabindex="-1" data-username="{{ current_user.username }}"></h1><p id="overviewGreetingLine" class="overview-greeting-line"></p>
-                </div>
-                <div class="overview-scene" aria-hidden="true"></div>
-                <div class="overview-commandcenter-welcome"><time id="overviewToday"></time><button id="overviewCustomize" class="btn btn-secondary" type="button" aria-pressed="false"></button></div>
-            </div>
-
-            <p id="overviewConnectionNotice" class="overview-notice" role="status" data-i18n="overview.stale" hidden>Connection to WebSSH interrupted. Displayed data may be out of date.</p>
-            <div class="overview-primary">
-            <section class="overview-card overview-hosts-card" aria-labelledby="overviewHostsTitle">
-                <div class="overview-card-heading">
-                    <div class="overview-network-heading"><h2 id="overviewHostsTitle"><span data-i18n="overview.infrastructure">Your infrastructure</span><span id="overviewHostCount" class="overview-count">—</span></h2></div>
-                    <button id="overviewCreateHost" class="btn btn-secondary overview-create-host" type="button"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="profiles.newHost">New host</span></button><label class="overview-filter"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="overview.search">Search names and groups…</span><input id="overviewHostSearch" type="search" placeholder="Search names and groups…" data-i18n-placeholder="overview.search" autocomplete="off"></label><div class="overview-view-switch" hidden role="group" data-i18n-aria-label="connectionAssets.hosts" aria-label="Hosts">
-                        <button id="overviewListBtn" type="button" aria-pressed="true" aria-controls="overviewHosts"><span class="material-icons" aria-hidden="true">view_list</span><span data-i18n="overview.networkView">Network</span></button>
-                        <button id="overviewGraphBtn" type="button" aria-pressed="false" aria-controls="overviewHosts"><span class="material-icons" aria-hidden="true">account_tree</span><span data-i18n="overview.pathView">SSH path</span></button>
-                    </div><label class="overview-group-select"><span class="sr-only" data-i18n="profiles.group">Group</span><select id="overviewGroupFilter"><option value="" data-i18n="overview.allGroups">All groups</option></select></label>
-                </div>
-                <div class="overview-arrange-bar">
-                    <button id="overviewArrangeGroups" class="overview-link" type="button" aria-expanded="false" aria-controls="overviewArrangePanel"><span class="material-icons" aria-hidden="true">dashboard_customize</span><span data-i18n="overview.arrangeGroups">Arrange groups</span></button>
-                    <div id="overviewArrangePanel" hidden>
-                        <p data-i18n="overview.arrangeHint">Drag groups or enter a position. The order applies to Overview lists and routes in this browser, for your account.</p>
-                        <div class="overview-arrange-actions">
-                            <button id="overviewSortGroupsAsc" class="overview-link" type="button" data-i18n="overview.sortGroupsAsc">Name A–Z</button>
-                            <button id="overviewSortGroupsDesc" class="overview-link" type="button" data-i18n="overview.sortGroupsDesc">Name Z–A</button>
-                            <span id="overviewArrangeStatus" role="status" aria-live="polite"></span>
-                        </div>
-                    </div>
-                </div>
-                <div id="overviewHosts" class="overview-hosts"></div>
-                <div id="overviewGraphLegend" class="overview-legend" hidden>
-                    <strong><span class="material-icons" aria-hidden="true">arrow_right_alt</span><span data-i18n="overview.configuredRoute">Configured SSH route</span></strong><strong><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="overview.grouping">Grouping</span></strong>
-                    <p data-i18n="overview.graphHint">Arrows show saved jump-host assignments, not host availability. Groups organize saved connections.</p>
-                    <div class="overview-route-help">
-                        <p data-i18n="overview.routeSetupHint">Add a jump host, then select it in a saved host's advanced settings. This view will show the route through that jump host to the destination.</p>
-                        <button class="overview-link" type="button" data-connection-asset="jump-hosts"><span data-i18n="jumphosts.addNew">Add Jump Host</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button>
-                    </div>
-                </div>
-                <div class="overview-footer">
-                    <button id="overviewAllTransfers" title="Current file-workspace transfers" data-i18n-title="overview.transfersHint" class="overview-link" type="button" hidden><span class="material-icons" aria-hidden="true">swap_horiz</span><span data-i18n="fm.transfers">Transfers</span><span id="overviewTransferCount" class="overview-count">0</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button>
-                </div>
-            </section>
-            <section id="overviewRouteCard" class="overview-card overview-route-card" aria-labelledby="overviewRoutesTitle" hidden>
-                <div class="overview-card-heading"><h2 id="overviewRoutesTitle" data-i18n="overview.graph">SSH routes</h2><button id="overviewExpandRoutes" class="overview-link" type="button"><span data-i18n="overview.graph">SSH routes</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button></div>
-                <div id="overviewRoutePreview" class="overview-route-preview"></div>
-                <div class="overview-route-help">
-                    <p data-i18n="overview.routeSetupHint">Add a jump host, then select it in a saved host's advanced settings. This view will show the route through that jump host to the destination.</p>
-                    <button class="overview-link" type="button" data-connection-asset="jump-hosts"><span data-i18n="jumphosts.addNew">Add Jump Host</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button>
-                </div>
-            </section>
-            </div>
-            <div class="overview-support">
-            <section id="overviewAnalytics" hidden></section>
-            <section id="overviewRouteMap" class="overview-card"></section>
-            <section id="overviewAutomation" class="overview-card" hidden><div class="overview-card-heading"><h2 id="overviewAutomationTitle"></h2></div><p id="overviewAutomationStale" role="status" hidden></p><div id="overviewAutomationRuns"></div></section>
-            <section class="overview-card overview-sessions-card overview-session-strip" aria-labelledby="overviewSessionsTitle">
-                <div class="overview-card-heading"><h2 id="overviewSessionsTitle"><span data-i18n="overview.browserSessions">Sessions in this browser</span><span id="overviewSessionCount" class="overview-count">0</span></h2><span class="material-icons" aria-hidden="true">terminal</span></div>
-                <div id="overviewSessions" class="overview-sessions"></div>
-                <div class="overview-session-recents"><h3 id="overviewHistoryTitle" data-i18n="connection.recentConnections">Recent connections</h3><div id="overviewHistory" class="overview-history"></div></div>
-            </section>
-            <div class="overview-activity">
-            <details id="overviewNews" class="overview-card overview-news-card" aria-labelledby="overviewNewsTitle">
-                <summary class="overview-card-heading"><h2 id="overviewNewsTitle" data-i18n="overview.productNews">In WebSSH</h2><span class="material-icons" aria-hidden="true">expand_more</span></summary><div class="overview-news-content">
-                <article class="overview-product-note"><div><h3 data-i18n="overview.syncNewsTitle">Directory sync in your terminal</h3><p data-i18n="overview.syncNewsBody">Keep your file browser and shell directory together.</p><img class="overview-news-art" src="{{ static_asset_url(filename='images/product/directory-sync.svg') }}" alt="" loading="lazy"></div></article>
-                <article class="overview-product-note"><div><h3 data-i18n="overview.themeNewsTitle">A theme that follows you</h3><p data-i18n="overview.themeNewsBody">Logo and interface adapt to your selected theme.</p><img class="overview-news-art" src="{{ static_asset_url(filename='images/product/theme-roles.svg') }}" alt="" loading="lazy"></div></article>
-            </div></details>
-            </div>
-            </div>
-
-            <aside class="overview-inventory-sidebar">
-                <h2 data-i18n="overview.inventoryTitle">Inventory</h2>
-                <div id="overviewInventorySummary"></div>
-                <h3 hidden class="overview-group-navigation-title" data-i18n="overview.groupView">Groups</h3>
-                <nav hidden id="overviewInventoryGroups" aria-label="Groups" data-i18n-aria-label="overview.groupView"></nav>
-            </aside>
-        </div>
-    </section>
-
+    {% include '_overview_workspace.html' %}
     {% endif %}
     <main class="main-content" hidden>
         <!-- session-meta kept hidden for JS references; visible session-bar only on mobile -->
@@ -1821,10 +1741,10 @@
     <script src="{{ static_asset_url(filename='js/automation-guidance.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/automation-templates.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/automation.js') }}"></script>
-    <script src="{{ static_asset_url(filename='js/overview-analytics.js') }}"></script>
     {% if overview_layout != 'classic' %}
     <script src="{{ static_asset_url(filename='js/overview-route-map.js') }}"></script>
-    <script src="{{ static_asset_url(filename='js/overview-dashboard.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/overview-model.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/overview-workspace.js') }}"></script>
     {% endif %}
     <script src="{{ static_asset_url(filename='js/host-resource-layout.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>

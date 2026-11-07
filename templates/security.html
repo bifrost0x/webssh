@@ -111,6 +111,14 @@
                     </select>
                 </div>
                 <div class="admin-settings-row">
+                    <div><label for="settingsOverviewReachability"><strong data-i18n="settings.overviewReachability">Host reachability on Overview</strong></label><p class="admin-muted" data-i18n="settings.overviewReachabilityHint">Checks whether your saved hosts accept connections on their SSH port. Only a TCP connection is opened; no login is attempted. Jump-host routes check the jump host.</p></div>
+                    <select id="settingsOverviewReachability" class="form-control settings-preference-control" data-saved="{{ overview_reachability|default('manual') }}">
+                        <option value="manual" data-i18n="settings.reachabilityManual"{% if overview_reachability not in ('off', 'automatic') %} selected{% endif %}>When I ask</option>
+                        <option value="automatic" data-i18n="settings.reachabilityAutomatic"{% if overview_reachability == 'automatic' %} selected{% endif %}>Automatically while Overview is open</option>
+                        <option value="off" data-i18n="settings.reachabilityOff"{% if overview_reachability == 'off' %} selected{% endif %}>Never</option>
+                    </select>
+                </div>
+                <div class="admin-settings-row">
                     <div><label for="settingsStartPage"><strong data-i18n="settings.startPage">Start page</strong></label><p class="admin-muted" data-i18n="settings.startPageHint">Choose where WebSSH opens after sign-in. Direct links still open their destination.</p></div>
                     <select id="settingsStartPage" class="form-control settings-preference-control" data-saved="{{ start_page|default('overview') }}">
                         <option value="overview" data-i18n="overview.title"{% if start_page != 'workspaces' %} selected{% endif %}>Overview</option>

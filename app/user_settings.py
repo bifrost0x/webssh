@@ -9,9 +9,14 @@ from .data_access import user_operation
 AUTHENTICATION_SESSION_DURATION_MINUTES = frozenset({30, 60, 120, 240, 480})
 DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES = 30
 
+# off: never probe; manual: probe on request; automatic: probe when the
+# Overview opens and periodically while it is visible.
+OVERVIEW_REACHABILITY_MODES = frozenset({'off', 'manual', 'automatic'})
+
 DEFAULT_SETTINGS = {
     'theme': 'glass',
     'overview_layout': 'dashboard',
+    'overview_reachability': 'manual',
     'start_page': 'overview',
     'terminal_appearance': {},
     'notepad': '',
@@ -41,6 +46,9 @@ def _valid_settings(value):
         return False
     if ('start_page' in value and (not isinstance(value['start_page'], str)
             or value['start_page'] not in {'overview', 'workspaces'})):
+        return False
+    if ('overview_reachability' in value and (not isinstance(value['overview_reachability'], str)
+            or value['overview_reachability'] not in OVERVIEW_REACHABILITY_MODES)):
         return False
     if 'theme' in value and not isinstance(value['theme'], str):
         return False
@@ -86,6 +94,8 @@ def _valid_settings_update(value):
              and value['start_page'] in {'overview', 'workspaces'}))
         and ('overview_layout' not in value or (isinstance(value['overview_layout'], str)
              and value['overview_layout'] in {'dashboard', 'classic'}))
+        and ('overview_reachability' not in value or (isinstance(value['overview_reachability'], str)
+             and value['overview_reachability'] in OVERVIEW_REACHABILITY_MODES))
         and (
             'terminal_appearance' not in value
             or valid_terminal_appearance(value['terminal_appearance'])

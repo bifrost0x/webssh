@@ -56,7 +56,7 @@
         const viewport=el('div','ssh-route-viewport');viewport.tabIndex=0;
         const canvas=el('div','ssh-route-canvas');viewport.append(canvas);
         const note=el('p','ssh-map-note');
-        const expandButton=btn('',()=>setExpanded(!dialog.open));
+        const expandButton=btn('',()=>setExpanded(!dialog.open));expandButton.dataset.routeMapExpand='true';
         const dialog=el('dialog','ssh-map-dialog');dialog.setAttribute('aria-label',t('SSH routes'));document.body.append(dialog);
         let homeCamera=null, homeArrangement=null, homeSize=null;
         function setExpanded(open){

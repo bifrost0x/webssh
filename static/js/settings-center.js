@@ -186,7 +186,12 @@
     }
 
     function initOverviewLayout() {
-        const select = document.getElementById('settingsOverviewLayout');
+        bindPreferenceSelect('settingsOverviewLayout', 'overview_layout');
+        bindPreferenceSelect('settingsOverviewReachability', 'overview_reachability');
+    }
+
+    function bindPreferenceSelect(id, key) {
+        const select = document.getElementById(id);
         if (!select) return;
         select.addEventListener('change', async () => {
             const previous = select.dataset.saved;
@@ -194,7 +199,7 @@
             select.disabled = true;
             setPreferenceStatus(t('settings.saving', 'Saving setting…'));
             try {
-                await savePreference({overview_layout: requested});
+                await savePreference({[key]: requested});
                 select.dataset.saved = requested;
                 setPreferenceStatus(t('settings.saved', 'Setting saved.'));
             } catch (error) {

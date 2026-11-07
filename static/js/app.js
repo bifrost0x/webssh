@@ -2951,10 +2951,16 @@
         window.HostContext?.init();
         ProfileManager.init();
 
-        window.connectionOverview = window.ConnectionOverview?.createController({
+        // The dashboard owns the Overview page when its markup is present; the
+        // established controller keeps the host rail and navigation labels.
+        window.overviewWorkspace = window.OverviewWorkspace?.createController({
             window, document, sessionManager: SessionManager,
+        }) || null;
+        window.connectionOverview = window.ConnectionOverview?.createController({
+            window, document, sessionManager: SessionManager, overviewPage: !window.overviewWorkspace,
         });
         window.connectionOverview?.init();
+        window.overviewWorkspace?.init();
 
         ProfileManager.loadProfiles();
         ProfileManager.loadKeys();

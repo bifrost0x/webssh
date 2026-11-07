@@ -22,6 +22,7 @@ from .terminal_appearance import valid_terminal_appearance
 from .user_settings import (
     AUTHENTICATION_SESSION_DURATION_MINUTES,
     DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES,
+    OVERVIEW_REACHABILITY_MODES,
     get_user_settings,
     save_user_settings,
 )
@@ -727,6 +728,8 @@ def create_app(
     from .credential_service import CredentialService
     from .onboarding import onboarding_blueprint
     app.register_blueprint(onboarding_blueprint)
+    from .overview_routes import overview_blueprint
+    app.register_blueprint(overview_blueprint)
     app.register_blueprint(credentials_blueprint)
     credentials = app.extensions['credentials'] = CredentialService(app)
     app.extensions['runtime_lifecycle'].register_shutdown_callback('credentials', credentials.shutdown)
@@ -937,6 +940,7 @@ def create_app(
             username=current_user.username,
             theme=theme,
             overview_layout=settings.get('overview_layout', 'dashboard'),
+            overview_reachability=settings.get('overview_reachability', 'manual'),
             start_page=settings.get('start_page', 'overview'),
             automation_enabled=is_automation_enabled(),
             terminal_appearance=settings.get('terminal_appearance', {}),
@@ -1252,6 +1256,7 @@ def create_app(
             username=current_user.username,
             theme=settings.get('theme', 'glass'),
             overview_layout=settings.get('overview_layout', 'dashboard'),
+            overview_reachability=settings.get('overview_reachability', 'manual'),
             start_page=settings.get('start_page', 'overview'),
             recovery_mode=recovery_session_required(auth_session),
             authentication_methods=tuple(
@@ -1294,6 +1299,7 @@ def create_app(
         allowed = {
             'start_page',
             'overview_layout',
+            'overview_reachability',
             'theme',
             'terminal_appearance',
             'sync_terminal_directory',
@@ -1315,6 +1321,11 @@ def create_app(
             if not isinstance(layout, str) or layout not in {'dashboard', 'classic'}:
                 return jsonify({'error': 'Invalid overview layout'}), 400
             updates['overview_layout'] = layout
+        if 'overview_reachability' in data:
+            mode = data['overview_reachability']
+            if not isinstance(mode, str) or mode not in OVERVIEW_REACHABILITY_MODES:
+                return jsonify({'error': 'Invalid reachability setting'}), 400
+            updates['overview_reachability'] = mode
         if 'terminal_appearance' in data:
             if not valid_terminal_appearance(data['terminal_appearance']):
                 return jsonify({'error': 'Invalid terminal appearance'}), 400

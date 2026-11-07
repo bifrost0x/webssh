@@ -55,6 +55,7 @@
     let historySignature = '';
     let runsStale = false;
     let knownRuns = [];
+    let knownSchedules = [];
     let runsLoaded = false;
     let runsEnabled = document.querySelector('main[data-native-automation]')?.dataset.automationEnabled === 'true'
         || document.body.dataset.automationEnabled === 'true';
@@ -68,7 +69,8 @@
                 : ['unknown', 'succeeded'].includes(run.status) ? 'unknown' : 'other';
             return {id: run.id, name: run.name, created_at: run.created_at, status: run.status,
                 outcome, targetIds: run.targets.map(target => target.id).filter(Boolean)};
-        })};
+        }), schedules: knownSchedules.map(schedule => ({id: schedule.id, name: schedule.name, enabled: schedule.enabled === true,
+            last_status: schedule.last_status || null, next_due: schedule.next_due || null}))};
     }
     function publishRunSnapshot() {
         window.dispatchEvent(new CustomEvent('automation-runs-updated', {detail: getRunSnapshot()}));
@@ -168,7 +170,6 @@
         });
         updateSectionHint();
         renderTemplates();
-        renderOverviewRuns();
     }
     function selectedTemplate(value = $('workflowTemplate')?.value || '') {
         if (!value.startsWith('set:')) return window.AutomationTemplates?.create(value);
@@ -747,7 +748,7 @@
         const signature = JSON.stringify(result.runs);
         if (signature === historySignature) return;
         historySignature = signature;
-        knownRuns = result.runs; renderBooks(); renderOverviewRuns();
+        knownRuns = result.runs; renderBooks();
         publishRunSnapshot();
         const history = $('runHistory');
         const retained = new Set(result.runs.map(run => run.id));
@@ -804,31 +805,6 @@
     function setRunsStale(value) {
         runsStale = value;
         publishRunSnapshot();
-        if ($('overviewAutomationStale')) {
-            $('overviewAutomationStale').textContent = tr('runsStale');
-            $('overviewAutomationStale').hidden = !runsStale;
-        }
-    }
-    function renderOverviewRuns() {
-        const section = $('overviewAutomation');
-        if (!section) return;
-        section.hidden = !knownRuns.length;
-        $('overviewAutomationTitle').textContent = tr('recentAutomation');
-        setRunsStale(runsStale);
-        const list = $('overviewAutomationRuns');
-        const focusedRun = list.contains(document.activeElement) ? document.activeElement.dataset.runId : null;
-        const runs = [...knownRuns].sort((a,b) => Number(['queued','running'].includes(b.status)) - Number(['queued','running'].includes(a.status)) || Date.parse(b.created_at)-Date.parse(a.created_at)).slice(0,5);
-        list.replaceChildren(...runs.map(run => {
-            const button = node('button', undefined, 'overview-automation-run'); button.type = 'button'; button.dataset.runId=run.id;
-            const text = node('span'); text.append(node('strong',run.name));
-            const steps = run.targets.flatMap(target=>target.steps);
-            text.append(node('small',tr('runTotals',{hosts:run.targets.length,confirmed:steps.filter(step=>step.status==='succeeded'&&step.exit_code===0).length,total:steps.length})));
-            const state = node('span',tr(`state.${run.status}`),'automation-state'); state.dataset.state = run.status;
-            const time = node('time',new Date(run.created_at).toLocaleString()); time.dateTime=run.created_at;
-            button.append(text,state,time,node('span',tr('viewRunLog'),'overview-automation-log'));
-            button.onclick=()=>openRun(run.id);return button;
-        }));
-        if (focusedRun) [...list.children].find(item=>item.dataset.runId===focusedRun)?.focus({preventScroll:true});
     }
     function openRun(runId, targetProfileId) {
         return action(async()=>{
@@ -918,6 +894,8 @@
     async function loadSchedules() {
         if (!$('scheduleList')) return;
         const result = await api('/api/automation/schedules');
+        knownSchedules = Array.isArray(result.schedules) ? result.schedules : [];
+        publishRunSnapshot();
         $('scheduleList').replaceChildren();
         if (!result.schedules.length) $('scheduleList').append(node('p',tr('noSchedules'),'automation-hint'));
         result.schedules.forEach(schedule => {
@@ -1101,9 +1079,8 @@
         $('automationApp').inert = true;
         action(async () => {
             try {
-                try { await loadState({initial:true}); tab(location.hash.slice(1)); await loadRuns(); }
+                try { await loadState({initial:true}); tab(location.hash.slice(1)); await loadRuns(); await loadSchedules(); }
                 catch(error) { if(error.code !== 'disabled' || !nativeCredentials)throw error; availability(false); await loadSchedules(); return; }
-                if(nativeCredentials)await loadSchedules();
             }
             finally { $('automationApp').inert = false; }
         });
@@ -1113,7 +1090,7 @@
             try {
                 if (!$('automationApp').hidden && (selectedTab === 'runs' || window.primaryWorkspaceController?.getActiveView() === 'overview')) await loadRuns();
                 if (Date.now() - lastStateRefresh >= 15000) await loadState();
-            } catch (error) { if (['disabled','authentication_required'].includes(error.code) && $('overviewAutomation')) { $('overviewAutomation').hidden=true; knownRuns=[]; historySignature=''; runsEnabled=false; publishRunSnapshot(); } if(error.code !== 'disabled')notify(error.message,true); else if(nativeCredentials)$('automationDisabled').hidden=false; } finally { polling = false; }
+            } catch (error) { if (['disabled','authentication_required'].includes(error.code)) { knownRuns=[]; historySignature=''; runsEnabled=false; publishRunSnapshot(); } if(error.code !== 'disabled')notify(error.message,true); else if(nativeCredentials)$('automationDisabled').hidden=false; } finally { polling = false; }
         }, 3000);
     }
 }());
