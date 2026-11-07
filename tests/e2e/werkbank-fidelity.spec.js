@@ -51,6 +51,8 @@ test.describe('touch host previews',()=>{
   await login(page,'e2e_admin',{workspace:false});
   const card=page.locator('#overviewHostList .od-host:not(.od-skeleton)').first();
   await expect(card).toBeVisible();
+  // Measure once readiness has arrived; it updates the cards.
+  await expect(page.locator('#overviewHostList .od-host[data-state="unknown"]')).toHaveCount(0);
   for(const selector of ['.od-connect','[data-key^="edit:"]']){
    const box=await card.locator(selector).boundingBox();
    expect(box.width).toBeGreaterThanOrEqual(44);

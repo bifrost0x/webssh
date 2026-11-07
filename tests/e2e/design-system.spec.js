@@ -60,7 +60,7 @@ test('reduced motion keeps selected routes and usable tool panels immediately vi
  await page.emulateMedia({reducedMotion:'reduce'});
  await login(page,'e2e_admin',{workspace:false});
  await expect.poll(()=>page.locator('#odTopology .od-edge').count()).toBeGreaterThan(0);
- for(const selector of ['#odTopology .od-edge','#odTopology .od-node','#overviewHostList .od-host']) expect(await page.locator(selector).first().evaluate(e=>getComputedStyle(e).animationName)).toBe('none');
+ await expect(page.locator('#overviewHostList .od-host[data-state="unknown"]')).toHaveCount(0);for(const selector of ['#odTopology .od-edge','#odTopology .od-node','#overviewHostList .od-host']) await expect.poll(()=>page.locator(selector).first().evaluate(e=>e.isConnected?getComputedStyle(e).animationName:'detached')).toBe('none');
  await page.locator('#overviewOpenMap').click();
  await expect.poll(()=>page.locator('.ssh-map-dialog .ssh-route-canvas > svg > path').count()).toBeGreaterThan(0);
  expect(await page.locator('.ssh-map-dialog .ssh-route-canvas > svg > path').first().evaluate(e=>getComputedStyle(e).animationName)).toBe('none');

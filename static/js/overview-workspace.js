@@ -227,8 +227,14 @@
         function renderTopology(hosts) {
             const holder = $('odTopology');
             const matching = new Set(Model.filter(hosts, search.value).map(host => host.id));
+            const narrow = Boolean(holder.clientWidth && holder.clientWidth < 560);
+            // Like the host cards, the drawing is rebuilt only when what it shows changed.
+            const signature = JSON.stringify([narrow, win.i18n?.getLanguage?.() || '', hosts.map(host => [host.id, host.name,
+                host.destination, host.state, host.route.kind, host.route.name, matching.has(host.id)])]);
+            if (signature === state.topologySignature && holder.firstChild) return;
+            state.topologySignature = signature;
             const layout = Model.topology(hosts);
-            if (holder.clientWidth && holder.clientWidth < 560) {
+            if (narrow) {
                 renderRouteList(holder, layout);
                 finishTopology(holder, hosts, layout);
                 return;
