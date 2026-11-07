@@ -29,7 +29,9 @@ test('map supports large inventories, pan, zoom, group drilldown and responsive 
  await page.locator('#overviewSearch').fill('Map host 119');
  await expect(hosts).toHaveCount(1);await expect(page.getByRole('button',{name:'Connect Map host 119',exact:true})).toBeVisible();
  await page.locator('#overviewSearch').fill('');
- for(const theme of ['glass','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian','werkbank']){
+ // Themes with distinct geometry (glass default, retro type, paper light, werkbank shell);
+ // every theme's containment is covered by the theme and presentation specs.
+ for(const theme of ['glass','retro','paper','werkbank']){
   await page.evaluate(t=>document.body.dataset.theme=t,theme);
   for(const width of [390,1440,3440]){
    await page.setViewportSize({width,height:900});
