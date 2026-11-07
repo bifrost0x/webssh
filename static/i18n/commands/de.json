@@ -1,0 +1,1242 @@
+{
+  "sys-001": {
+    "name": "Paketlisten aktualisieren",
+    "description": "APT-Paketquellen aktualisieren"
+  },
+  "sys-002": {
+    "name": "Pakete aktualisieren",
+    "description": "Alle installierten Pakete aktualisieren"
+  },
+  "sys-003": {
+    "name": "Paket installieren",
+    "description": "Paket mit APT installieren"
+  },
+  "sys-004": {
+    "name": "Paket entfernen",
+    "description": "Paket mit APT entfernen"
+  },
+  "sys-005": {
+    "name": "Paket suchen",
+    "description": "Nach Paketen suchen"
+  },
+  "sys-006": {
+    "name": "System neu starten",
+    "description": "System sofort neu starten"
+  },
+  "sys-007": {
+    "name": "System herunterfahren",
+    "description": "System sofort herunterfahren"
+  },
+  "sys-008": {
+    "name": "Dienste auflisten",
+    "description": "Alle systemd-Dienste auflisten"
+  },
+  "sys-009": {
+    "name": "Dienst starten",
+    "description": "systemd-Dienst starten"
+  },
+  "sys-010": {
+    "name": "Dienst stoppen",
+    "description": "systemd-Dienst stoppen"
+  },
+  "sys-011": {
+    "name": "Dienst neu starten",
+    "description": "systemd-Dienst neu starten"
+  },
+  "sys-012": {
+    "name": "Dienst aktivieren",
+    "description": "Dienst beim Systemstart aktivieren"
+  },
+  "sys-013": {
+    "name": "Dienst deaktivieren",
+    "description": "Dienst beim Systemstart deaktivieren"
+  },
+  "sys-014": {
+    "name": "Dienststatus",
+    "description": "Status eines Dienstes anzeigen"
+  },
+  "sys-015": {
+    "name": "Dienstprotokolle anzeigen",
+    "description": "Protokolle eines Dienstes live verfolgen"
+  },
+  "sys-016": {
+    "name": "Festplattenbelegung",
+    "description": "Belegten Speicherplatz anzeigen"
+  },
+  "sys-017": {
+    "name": "Verzeichnisgröße",
+    "description": "Größe von Verzeichnissen anzeigen"
+  },
+  "sys-018": {
+    "name": "Freier Arbeitsspeicher",
+    "description": "Speicherauslastung anzeigen"
+  },
+  "sys-019": {
+    "name": "Prozesse nach Last",
+    "description": "Prozessmonitor anzeigen"
+  },
+  "sys-020": {
+    "name": "Prozessliste",
+    "description": "Alle Prozesse auflisten"
+  },
+  "sys-021": {
+    "name": "Prozess beenden",
+    "description": "Prozess erzwungen beenden"
+  },
+  "sys-022": {
+    "name": "Prozess suchen",
+    "description": "Prozess nach Namen suchen"
+  },
+  "sys-023": {
+    "name": "Systemlaufzeit",
+    "description": "Laufzeit des Systems anzeigen"
+  },
+  "sys-024": {
+    "name": "Kernel-Version",
+    "description": "Kernel-Version anzeigen"
+  },
+  "sys-025": {
+    "name": "Systeminformationen",
+    "description": "Systeminformationen anzeigen"
+  },
+  "sys-026": {
+    "name": "CPU-Informationen",
+    "description": "CPU-Informationen anzeigen"
+  },
+  "sys-027": {
+    "name": "Speicherdetails",
+    "description": "Details zum Arbeitsspeicher anzeigen"
+  },
+  "sys-028": {
+    "name": "Blockgeräte",
+    "description": "Blockgeräte auflisten"
+  },
+  "sys-029": {
+    "name": "PCI-Geräte",
+    "description": "PCI-Geräte auflisten"
+  },
+  "sys-030": {
+    "name": "USB-Geräte",
+    "description": "USB-Geräte auflisten"
+  },
+  "net-001": {
+    "name": "IP-Adressen",
+    "description": "Alle Netzwerkschnittstellen anzeigen"
+  },
+  "net-002": {
+    "name": "ifconfig",
+    "description": "Netzwerkkonfiguration (veraltet)"
+  },
+  "net-003": {
+    "name": "Host anpingen",
+    "description": "Erreichbarkeit testen"
+  },
+  "net-004": {
+    "name": "Route verfolgen",
+    "description": "Netzwerkpfad verfolgen"
+  },
+  "net-005": {
+    "name": "DNS-Abfrage (nslookup)",
+    "description": "DNS-Abfrage durchführen"
+  },
+  "net-006": {
+    "name": "DNS-Abfrage (dig)",
+    "description": "Detaillierte DNS-Abfrage"
+  },
+  "net-007": {
+    "name": "Netzwerkstatistik",
+    "description": "Lauschende Ports anzeigen"
+  },
+  "net-008": {
+    "name": "Socket-Statistik",
+    "description": "Moderner Ersatz für netstat"
+  },
+  "net-009": {
+    "name": "Datei herunterladen",
+    "description": "Datei von einer URL herunterladen"
+  },
+  "net-010": {
+    "name": "cURL-Anfrage",
+    "description": "HTTP-Anfrage senden"
+  },
+  "net-011": {
+    "name": "Port testen",
+    "description": "Erreichbarkeit eines Ports testen"
+  },
+  "net-012": {
+    "name": "Firewall-Status",
+    "description": "UFW-Firewall prüfen"
+  },
+  "net-013": {
+    "name": "Firewall aktivieren",
+    "description": "UFW aktivieren"
+  },
+  "net-014": {
+    "name": "Port freigeben",
+    "description": "Port in der Firewall erlauben"
+  },
+  "net-015": {
+    "name": "Port sperren",
+    "description": "Port in der Firewall blockieren"
+  },
+  "net-016": {
+    "name": "iptables-Regeln",
+    "description": "Firewall-Regeln auflisten"
+  },
+  "net-017": {
+    "name": "Routing-Tabelle",
+    "description": "Routing-Tabelle anzeigen"
+  },
+  "net-018": {
+    "name": "ARP-Cache",
+    "description": "ARP-Cache anzeigen"
+  },
+  "net-019": {
+    "name": "Netzwerk scannen",
+    "description": "Netzwerk scannen"
+  },
+  "net-020": {
+    "name": "Port-Scan",
+    "description": "Alle Ports scannen"
+  },
+  "net-021": {
+    "name": "Schnittstellen (ip link)",
+    "description": "Netzwerkschnittstellen anzeigen"
+  },
+  "net-022": {
+    "name": "IP-Adresse setzen",
+    "description": "IP-Adresse konfigurieren"
+  },
+  "net-023": {
+    "name": "Schnittstelle aktivieren",
+    "description": "Netzwerkschnittstelle aktivieren"
+  },
+  "net-024": {
+    "name": "Schnittstelle deaktivieren",
+    "description": "Netzwerkschnittstelle deaktivieren"
+  },
+  "net-025": {
+    "name": "MTU-Größe",
+    "description": "MTU-Größe festlegen"
+  },
+  "net-026": {
+    "name": "IP-Adressen entfernen",
+    "description": "Alle IP-Adressen einer Schnittstelle entfernen"
+  },
+  "net-027": {
+    "name": "Route hinzufügen",
+    "description": "Statische Route hinzufügen"
+  },
+  "net-028": {
+    "name": "Route löschen",
+    "description": "Route entfernen"
+  },
+  "net-029": {
+    "name": "Pakete mitschneiden",
+    "description": "Netzwerkpakete mitschneiden"
+  },
+  "net-030": {
+    "name": "Verbindungen auflisten",
+    "description": "Offene Netzwerkverbindungen auflisten"
+  },
+  "net-031": {
+    "name": "WHOIS-Abfrage",
+    "description": "WHOIS-Abfrage durchführen"
+  },
+  "net-032": {
+    "name": "Bandbreitenmonitor",
+    "description": "Bandbreitennutzung überwachen"
+  },
+  "net-033": {
+    "name": "Netzwerkgeschwindigkeit",
+    "description": "Internetgeschwindigkeit testen"
+  },
+  "net-034": {
+    "name": "Hosts-Datei",
+    "description": "Hosts-Datei anzeigen"
+  },
+  "net-035": {
+    "name": "DNS-Konfiguration",
+    "description": "DNS-Konfiguration anzeigen"
+  },
+  "net-036": {
+    "name": "MAC-Adresse",
+    "description": "MAC-Adresse anzeigen"
+  },
+  "net-037": {
+    "name": "MAC-Adresse ändern",
+    "description": "MAC-Adresse fälschen"
+  },
+  "net-038": {
+    "name": "SSH-Tunnel",
+    "description": "SSH-Tunnel erstellen"
+  },
+  "net-039": {
+    "name": "Reverse-SSH-Tunnel",
+    "description": "Umgekehrten SSH-Tunnel erstellen"
+  },
+  "net-040": {
+    "name": "SCP-Upload",
+    "description": "Datei per SCP auf einen Remote-Host kopieren"
+  },
+  "net-041": {
+    "name": "SCP-Download",
+    "description": "Datei per SCP von einem Remote-Host kopieren"
+  },
+  "net-042": {
+    "name": "Rsync über SSH",
+    "description": "Dateien per rsync über SSH synchronisieren"
+  },
+  "net-043": {
+    "name": "HTTP-Server",
+    "description": "Schnell einen HTTP-Server starten"
+  },
+  "net-044": {
+    "name": "Auf Port lauschen",
+    "description": "Mit netcat auf einem Port lauschen"
+  },
+  "net-045": {
+    "name": "Daten senden",
+    "description": "Datei per netcat senden"
+  },
+  "net-046": {
+    "name": "Telnet-Test",
+    "description": "TCP-Verbindung testen"
+  },
+  "net-047": {
+    "name": "Standard-Gateway",
+    "description": "Standard-Gateway anzeigen"
+  },
+  "net-048": {
+    "name": "DNS-Cache leeren",
+    "description": "DNS-Cache leeren"
+  },
+  "net-049": {
+    "name": "Schnittstellenstatistik",
+    "description": "Statistik der Netzwerkschnittstellen anzeigen"
+  },
+  "net-050": {
+    "name": "Ping-Flood",
+    "description": "Ping-Flood (zu Testzwecken)"
+  },
+  "file-001": {
+    "name": "Dateien auflisten",
+    "description": "Alle Dateien mit Details auflisten"
+  },
+  "file-002": {
+    "name": "Verzeichnis wechseln",
+    "description": "Ins angegebene Verzeichnis wechseln"
+  },
+  "file-003": {
+    "name": "Aktuelles Verzeichnis",
+    "description": "Aktuelles Verzeichnis anzeigen"
+  },
+  "file-004": {
+    "name": "Verzeichnis erstellen",
+    "description": "Verzeichnisse erstellen"
+  },
+  "file-005": {
+    "name": "Verzeichnis entfernen",
+    "description": "Leeres Verzeichnis entfernen"
+  },
+  "file-006": {
+    "name": "Rekursiv löschen",
+    "description": "Dateien und Verzeichnisse rekursiv löschen"
+  },
+  "file-007": {
+    "name": "Dateien kopieren",
+    "description": "Rekursiv kopieren"
+  },
+  "file-008": {
+    "name": "Dateien verschieben",
+    "description": "Verschieben oder umbenennen"
+  },
+  "file-009": {
+    "name": "Datei anzeigen",
+    "description": "Dateiinhalt anzeigen"
+  },
+  "file-010": {
+    "name": "Datei seitenweise anzeigen",
+    "description": "Datei mit Seitenvorschub anzeigen"
+  },
+  "file-011": {
+    "name": "Dateianfang",
+    "description": "Erste 20 Zeilen anzeigen"
+  },
+  "file-012": {
+    "name": "Dateiende",
+    "description": "Letzte 20 Zeilen anzeigen"
+  },
+  "file-013": {
+    "name": "Protokoll verfolgen",
+    "description": "Änderungen an einer Datei live verfolgen"
+  },
+  "file-014": {
+    "name": "Mit grep suchen",
+    "description": "In Dateien suchen"
+  },
+  "file-015": {
+    "name": "Nach Name suchen",
+    "description": "Dateien nach Namen finden"
+  },
+  "file-016": {
+    "name": "Nach Größe suchen",
+    "description": "Große Dateien finden"
+  },
+  "file-017": {
+    "name": "Kürzlich geänderte Dateien",
+    "description": "Kürzlich geänderte Dateien finden"
+  },
+  "file-018": {
+    "name": "Berechtigungen ändern",
+    "description": "Dateiberechtigungen setzen"
+  },
+  "file-019": {
+    "name": "Besitzer ändern",
+    "description": "Besitzer einer Datei ändern"
+  },
+  "file-020": {
+    "name": "Dateityp",
+    "description": "Dateityp bestimmen"
+  },
+  "file-021": {
+    "name": "Zeilen zählen",
+    "description": "Zeilen zählen"
+  },
+  "file-022": {
+    "name": "Datei anlegen",
+    "description": "Leere Datei erstellen"
+  },
+  "file-023": {
+    "name": "Dateien vergleichen",
+    "description": "Dateien vergleichen"
+  },
+  "file-024": {
+    "name": "Symbolischer Link",
+    "description": "Symbolischen Link erstellen"
+  },
+  "file-025": {
+    "name": "tar-Archiv erstellen",
+    "description": "tar.gz-Archiv erstellen"
+  },
+  "file-026": {
+    "name": "tar-Archiv entpacken",
+    "description": "tar.gz-Archiv entpacken"
+  },
+  "file-027": {
+    "name": "ZIP-Archiv erstellen",
+    "description": "ZIP-Archiv erstellen"
+  },
+  "file-028": {
+    "name": "ZIP-Archiv entpacken",
+    "description": "ZIP-Archiv entpacken"
+  },
+  "file-029": {
+    "name": "Mit rsync kopieren",
+    "description": "Dateien synchronisieren"
+  },
+  "file-030": {
+    "name": "Freier Speicherplatz",
+    "description": "Freien Speicherplatz anzeigen"
+  },
+  "file-031": {
+    "name": "Verzeichnisgröße gesamt",
+    "description": "Gesamtgröße eines Verzeichnisses"
+  },
+  "file-032": {
+    "name": "Größte Verzeichnisse",
+    "description": "Größte Verzeichnisse finden"
+  },
+  "file-033": {
+    "name": "Leere Dateien finden",
+    "description": "Leere Dateien finden"
+  },
+  "file-034": {
+    "name": "Leere Verzeichnisse finden",
+    "description": "Leere Verzeichnisse finden"
+  },
+  "file-035": {
+    "name": "Dateien zählen",
+    "description": "Dateien zählen"
+  },
+  "file-036": {
+    "name": "Verzeichnisbaum",
+    "description": "Verzeichnisbaum anzeigen (2 Ebenen)"
+  },
+  "file-037": {
+    "name": "Dateistatus",
+    "description": "Detaillierte Dateiinformationen anzeigen"
+  },
+  "file-038": {
+    "name": "MD5-Prüfsumme",
+    "description": "MD5-Hash berechnen"
+  },
+  "file-039": {
+    "name": "SHA256-Prüfsumme",
+    "description": "SHA256-Hash berechnen"
+  },
+  "file-040": {
+    "name": "Prüfsummen vergleichen",
+    "description": "Dateiintegrität prüfen"
+  },
+  "file-041": {
+    "name": "Datei aufteilen",
+    "description": "In Teile zu je 100 MB aufteilen"
+  },
+  "file-042": {
+    "name": "Dateien zusammenfügen",
+    "description": "Aufgeteilte Dateien zusammenfügen"
+  },
+  "file-043": {
+    "name": "Dateiendung ändern",
+    "description": "Dateien per Stapelverarbeitung umbenennen"
+  },
+  "file-044": {
+    "name": "Zeichenkodierung umwandeln",
+    "description": "Zeichenkodierung einer Datei umwandeln"
+  },
+  "file-045": {
+    "name": "Duplikate entfernen",
+    "description": "Doppelte Zeilen entfernen"
+  },
+  "file-046": {
+    "name": "Duplikate zählen",
+    "description": "Vorkommen zählen"
+  },
+  "file-047": {
+    "name": "Datei rückwärts anzeigen",
+    "description": "Datei in umgekehrter Reihenfolge anzeigen"
+  },
+  "file-048": {
+    "name": "Datei leeren",
+    "description": "Dateiinhalt leeren"
+  },
+  "file-049": {
+    "name": "Datei beobachten",
+    "description": "Dateiänderungen überwachen"
+  },
+  "file-050": {
+    "name": "Hex-Dump",
+    "description": "Datei hexadezimal anzeigen"
+  },
+  "file-051": {
+    "name": "Base64 kodieren",
+    "description": "In Base64 kodieren"
+  },
+  "file-052": {
+    "name": "Base64 dekodieren",
+    "description": "Aus Base64 dekodieren"
+  },
+  "file-053": {
+    "name": "ACL anzeigen",
+    "description": "ACL einer Datei anzeigen"
+  },
+  "file-054": {
+    "name": "ACL setzen",
+    "description": "ACL einer Datei setzen"
+  },
+  "file-055": {
+    "name": "Attribute anzeigen",
+    "description": "Dateiattribute anzeigen"
+  },
+  "file-056": {
+    "name": "Als unveränderlich markieren",
+    "description": "Datei unveränderlich machen"
+  },
+  "file-057": {
+    "name": "Unveränderlich-Flag entfernen",
+    "description": "Unveränderlich-Flag entfernen"
+  },
+  "file-058": {
+    "name": "SUID-Dateien finden",
+    "description": "Dateien mit gesetztem SUID-Bit finden"
+  },
+  "file-059": {
+    "name": "Weltweit beschreibbare Dateien",
+    "description": "Für alle beschreibbare Dateien finden"
+  },
+  "file-060": {
+    "name": "Datei sicher löschen",
+    "description": "Datei unwiederbringlich löschen"
+  },
+  "docker-001": {
+    "name": "Docker-Version",
+    "description": "Docker-Version anzeigen"
+  },
+  "docker-002": {
+    "name": "Container auflisten",
+    "description": "Alle Container auflisten"
+  },
+  "docker-003": {
+    "name": "Images auflisten",
+    "description": "Alle Images auflisten"
+  },
+  "docker-004": {
+    "name": "Image herunterladen",
+    "description": "Image aus der Registry herunterladen"
+  },
+  "docker-005": {
+    "name": "Container ausführen",
+    "description": "Container im Hintergrund ausführen"
+  },
+  "docker-006": {
+    "name": "Container starten",
+    "description": "Gestoppten Container starten"
+  },
+  "docker-007": {
+    "name": "Container stoppen",
+    "description": "Laufenden Container stoppen"
+  },
+  "docker-008": {
+    "name": "Container entfernen",
+    "description": "Container entfernen"
+  },
+  "docker-009": {
+    "name": "Image entfernen",
+    "description": "Image entfernen"
+  },
+  "docker-010": {
+    "name": "Container-Logs",
+    "description": "Container-Logs live verfolgen"
+  },
+  "docker-011": {
+    "name": "Befehl im Container",
+    "description": "Shell im Container öffnen"
+  },
+  "docker-012": {
+    "name": "Container-Statistik",
+    "description": "Ressourcennutzung anzeigen"
+  },
+  "docker-013": {
+    "name": "Container untersuchen",
+    "description": "Detaillierte Containerinformationen anzeigen"
+  },
+  "docker-014": {
+    "name": "Docker-Netzwerke",
+    "description": "Netzwerke auflisten"
+  },
+  "docker-015": {
+    "name": "Docker-Volumes",
+    "description": "Volumes auflisten"
+  },
+  "docker-016": {
+    "name": "Compose starten",
+    "description": "Compose-Dienste starten"
+  },
+  "docker-017": {
+    "name": "Compose beenden",
+    "description": "Compose-Dienste stoppen"
+  },
+  "docker-018": {
+    "name": "Container bereinigen",
+    "description": "Gestoppte Container entfernen"
+  },
+  "docker-019": {
+    "name": "Images bereinigen",
+    "description": "Nicht verwendete Images entfernen"
+  },
+  "docker-020": {
+    "name": "System bereinigen",
+    "description": "Alles Ungenutzte aufräumen"
+  },
+  "docker-021": {
+    "name": "Image bauen",
+    "description": "Image aus einem Dockerfile bauen"
+  },
+  "docker-022": {
+    "name": "Image taggen",
+    "description": "Image mit einem Tag versehen"
+  },
+  "docker-023": {
+    "name": "Image hochladen",
+    "description": "Image in die Registry hochladen"
+  },
+  "docker-024": {
+    "name": "Aus Container kopieren",
+    "description": "Dateien aus dem Container kopieren"
+  },
+  "docker-025": {
+    "name": "In Container kopieren",
+    "description": "Dateien in den Container kopieren"
+  },
+  "docker-026": {
+    "name": "Container exportieren",
+    "description": "Container exportieren"
+  },
+  "docker-027": {
+    "name": "Image importieren",
+    "description": "Als Image importieren"
+  },
+  "docker-028": {
+    "name": "Image speichern",
+    "description": "Image als tar-Datei speichern"
+  },
+  "docker-029": {
+    "name": "Image laden",
+    "description": "Image aus einer tar-Datei laden"
+  },
+  "docker-030": {
+    "name": "Container-Prozesse",
+    "description": "Prozesse eines Containers anzeigen"
+  },
+  "git-001": {
+    "name": "Git Clone",
+    "description": "Repository klonen"
+  },
+  "git-002": {
+    "name": "Git Status",
+    "description": "Status des Arbeitsverzeichnisses anzeigen"
+  },
+  "git-003": {
+    "name": "Alle Änderungen vormerken",
+    "description": "Alle Änderungen für den Commit vormerken"
+  },
+  "git-004": {
+    "name": "Git Commit",
+    "description": "Änderungen committen"
+  },
+  "git-005": {
+    "name": "Git Push",
+    "description": "Auf den Remote pushen"
+  },
+  "git-006": {
+    "name": "Git Pull",
+    "description": "Änderungen abrufen und zusammenführen"
+  },
+  "git-007": {
+    "name": "Branches auflisten",
+    "description": "Alle Branches auflisten"
+  },
+  "git-008": {
+    "name": "Branch wechseln",
+    "description": "Zu einem anderen Branch wechseln"
+  },
+  "git-009": {
+    "name": "Neuen Branch erstellen",
+    "description": "Neuen Branch erstellen"
+  },
+  "git-010": {
+    "name": "Branch mergen",
+    "description": "Branch zusammenführen"
+  },
+  "git-011": {
+    "name": "Git Log",
+    "description": "Commit-Verlauf anzeigen"
+  },
+  "git-012": {
+    "name": "Git Diff",
+    "description": "Nicht vorgemerkte Änderungen anzeigen"
+  },
+  "git-013": {
+    "name": "Git Stash",
+    "description": "Nicht committete Änderungen zwischenspeichern"
+  },
+  "git-014": {
+    "name": "Stash anwenden",
+    "description": "Zwischengespeicherte Änderungen anwenden"
+  },
+  "git-015": {
+    "name": "Hard Reset",
+    "description": "Alle Änderungen verwerfen"
+  },
+  "git-016": {
+    "name": "Remotes anzeigen",
+    "description": "Remote-URLs anzeigen"
+  },
+  "git-017": {
+    "name": "Git Fetch",
+    "description": "Alle Branches herunterladen"
+  },
+  "git-018": {
+    "name": "Git Rebase",
+    "description": "Auf main rebasen"
+  },
+  "git-019": {
+    "name": "Tag erstellen",
+    "description": "Tag erstellen"
+  },
+  "git-020": {
+    "name": "Benutzername setzen",
+    "description": "Benutzernamen festlegen"
+  },
+  "git-021": {
+    "name": "E-Mail-Adresse setzen",
+    "description": "E-Mail-Adresse festlegen"
+  },
+  "git-022": {
+    "name": "Lokalen Branch löschen",
+    "description": "Lokalen Branch löschen"
+  },
+  "git-023": {
+    "name": "Remote-Branch löschen",
+    "description": "Branch auf dem Remote löschen"
+  },
+  "git-024": {
+    "name": "Commit anzeigen",
+    "description": "Details eines Commits anzeigen"
+  },
+  "git-025": {
+    "name": "Git Blame",
+    "description": "Änderungen zeilenweise nachverfolgen"
+  },
+  "git-026": {
+    "name": "Git Reflog",
+    "description": "Referenzprotokoll anzeigen"
+  },
+  "git-027": {
+    "name": "Cherry-Pick",
+    "description": "Bestimmten Commit übernehmen"
+  },
+  "git-028": {
+    "name": "Git Clean",
+    "description": "Unversionierte Dateien entfernen"
+  },
+  "git-029": {
+    "name": "Submodule initialisieren",
+    "description": "Submodule initialisieren"
+  },
+  "git-030": {
+    "name": "Submodule aktualisieren",
+    "description": "Submodule aktualisieren"
+  },
+  "db-001": {
+    "name": "MySQL-Verbindung",
+    "description": "Mit MySQL verbinden"
+  },
+  "db-002": {
+    "name": "PostgreSQL-Verbindung",
+    "description": "Mit PostgreSQL verbinden"
+  },
+  "db-003": {
+    "name": "MySQL-Dump",
+    "description": "MySQL-Datenbank sichern"
+  },
+  "db-004": {
+    "name": "MySQL wiederherstellen",
+    "description": "MySQL-Datenbank wiederherstellen"
+  },
+  "db-005": {
+    "name": "PostgreSQL-Dump",
+    "description": "PostgreSQL-Datenbank sichern"
+  },
+  "db-006": {
+    "name": "PostgreSQL wiederherstellen",
+    "description": "PostgreSQL-Datenbank wiederherstellen"
+  },
+  "db-007": {
+    "name": "Redis CLI",
+    "description": "Mit Redis verbinden"
+  },
+  "db-008": {
+    "name": "MongoDB-Shell",
+    "description": "Mit MongoDB verbinden"
+  },
+  "db-009": {
+    "name": "SQLite öffnen",
+    "description": "SQLite-Datenbank öffnen"
+  },
+  "db-010": {
+    "name": "Redis-Ping",
+    "description": "Redis-Verbindung testen"
+  },
+  "db-011": {
+    "name": "MySQL-Datenbanken anzeigen",
+    "description": "Datenbanken auflisten"
+  },
+  "db-012": {
+    "name": "PostgreSQL-Datenbanken anzeigen",
+    "description": "Datenbanken auflisten"
+  },
+  "db-013": {
+    "name": "Redis-Schlüssel",
+    "description": "Alle Redis-Schlüssel auflisten"
+  },
+  "db-014": {
+    "name": "MongoDB-Datenbanken anzeigen",
+    "description": "Datenbanken auflisten"
+  },
+  "db-015": {
+    "name": "MySQL-Rechte vergeben",
+    "description": "Berechtigungen vergeben"
+  },
+  "db-016": {
+    "name": "PostgreSQL-Benutzer anlegen",
+    "description": "PostgreSQL-Benutzer anlegen"
+  },
+  "db-017": {
+    "name": "Redis leeren",
+    "description": "Alle Redis-Daten löschen"
+  },
+  "db-018": {
+    "name": "MySQL-Tabellen optimieren",
+    "description": "MySQL-Tabellen optimieren"
+  },
+  "db-019": {
+    "name": "PostgreSQL Vacuum",
+    "description": "PostgreSQL aufräumen (Vacuum)"
+  },
+  "db-020": {
+    "name": "SQLite-Backup",
+    "description": "SQLite-Datenbank sichern"
+  },
+  "mac-001": {
+    "name": "Homebrew-Installation",
+    "description": "Mit Homebrew installieren"
+  },
+  "mac-002": {
+    "name": "Homebrew aktualisieren",
+    "description": "Homebrew aktualisieren"
+  },
+  "mac-003": {
+    "name": "Homebrew-Pakete aktualisieren",
+    "description": "Pakete aktualisieren"
+  },
+  "mac-004": {
+    "name": "Homebrew-Suche",
+    "description": "Pakete suchen"
+  },
+  "mac-005": {
+    "name": "macOS-Version",
+    "description": "macOS-Version anzeigen"
+  },
+  "mac-006": {
+    "name": "Homebrew-Pakete auflisten",
+    "description": "Installierte Pakete auflisten"
+  },
+  "mac-007": {
+    "name": "Homebrew-Paketinfo",
+    "description": "Paketinformationen anzeigen"
+  },
+  "mac-008": {
+    "name": "DNS-Cache leeren (macOS)",
+    "description": "DNS-Cache leeren"
+  },
+  "mac-009": {
+    "name": "Versteckte Dateien anzeigen",
+    "description": "Versteckte Dateien im Finder anzeigen"
+  },
+  "mac-010": {
+    "name": "Finder neu starten",
+    "description": "Finder neu starten"
+  },
+  "user-001": {
+    "name": "Benutzer auflisten",
+    "description": "Systembenutzer auflisten"
+  },
+  "user-002": {
+    "name": "Benutzer anlegen",
+    "description": "Benutzer mit Home-Verzeichnis anlegen"
+  },
+  "user-003": {
+    "name": "Benutzer löschen",
+    "description": "Benutzer samt Home-Verzeichnis löschen"
+  },
+  "user-004": {
+    "name": "Passwort ändern",
+    "description": "Benutzerpasswort ändern"
+  },
+  "user-005": {
+    "name": "Angemeldete Benutzer",
+    "description": "Angemeldete Benutzer anzeigen"
+  },
+  "user-006": {
+    "name": "Letzte Anmeldungen",
+    "description": "Letzte 10 Anmeldungen anzeigen"
+  },
+  "user-007": {
+    "name": "Aktueller Benutzer",
+    "description": "Aktuellen Benutzernamen anzeigen"
+  },
+  "user-008": {
+    "name": "Benutzergruppen",
+    "description": "Gruppen eines Benutzers anzeigen"
+  },
+  "user-009": {
+    "name": "Zu Gruppe hinzufügen",
+    "description": "Benutzer einer Gruppe hinzufügen"
+  },
+  "user-010": {
+    "name": "Benutzer wechseln",
+    "description": "Zu einem anderen Benutzer wechseln"
+  },
+  "user-011": {
+    "name": "Sudo-Befehl",
+    "description": "Als Superuser ausführen"
+  },
+  "user-012": {
+    "name": "Sudoers bearbeiten",
+    "description": "sudoers-Datei bearbeiten"
+  },
+  "user-013": {
+    "name": "Sudo-Rechte anzeigen",
+    "description": "Sudo-Berechtigungen auflisten"
+  },
+  "user-014": {
+    "name": "Login-Shell ändern",
+    "description": "Shell eines Benutzers ändern"
+  },
+  "user-015": {
+    "name": "Benutzer sperren",
+    "description": "Benutzerkonto sperren"
+  },
+  "ssh-001": {
+    "name": "SSH-Schlüssel erzeugen",
+    "description": "SSH-Schlüsselpaar erzeugen"
+  },
+  "ssh-002": {
+    "name": "SSH-Schlüssel kopieren",
+    "description": "Schlüssel auf den Remote-Host kopieren"
+  },
+  "ssh-003": {
+    "name": "SSH-Konfiguration",
+    "description": "SSH-Konfiguration anzeigen"
+  },
+  "ssh-004": {
+    "name": "Zum SSH-Agent hinzufügen",
+    "description": "Schlüssel zum Agent hinzufügen"
+  },
+  "ssh-005": {
+    "name": "SSH-Schlüssel auflisten",
+    "description": "Geladene Schlüssel auflisten"
+  },
+  "ssh-006": {
+    "name": "Schlüsselberechtigungen",
+    "description": "Berechtigungen von SSH-Schlüsseln korrigieren"
+  },
+  "ssh-007": {
+    "name": "SSH-Verzeichnisrechte",
+    "description": "Berechtigungen des SSH-Verzeichnisses korrigieren"
+  },
+  "ssh-008": {
+    "name": "Known Hosts",
+    "description": "known_hosts anzeigen"
+  },
+  "ssh-009": {
+    "name": "Known Host entfernen",
+    "description": "Host aus known_hosts entfernen"
+  },
+  "ssh-010": {
+    "name": "SSH-Agent starten",
+    "description": "SSH-Agent starten"
+  },
+  "ssh-011": {
+    "name": "SSL-Zertifikatsinfo",
+    "description": "Zertifikatsdetails anzeigen"
+  },
+  "ssh-012": {
+    "name": "Selbstsigniertes Zertifikat",
+    "description": "SSL-Zertifikat erzeugen"
+  },
+  "ssh-013": {
+    "name": "Remote-SSL prüfen",
+    "description": "SSL-Zertifikat prüfen"
+  },
+  "ssh-014": {
+    "name": "SSH-Fingerprint",
+    "description": "Schlüssel-Fingerprint anzeigen"
+  },
+  "ssh-015": {
+    "name": "SSH ausführlich",
+    "description": "SSH mit Debug-Ausgabe"
+  },
+  "perf-001": {
+    "name": "iostat",
+    "description": "I/O-Statistik überwachen"
+  },
+  "perf-002": {
+    "name": "vmstat",
+    "description": "Statistik zum virtuellen Speicher"
+  },
+  "perf-003": {
+    "name": "iotop",
+    "description": "I/O-Nutzung pro Prozess"
+  },
+  "perf-004": {
+    "name": "htop",
+    "description": "Interaktive Prozessanzeige"
+  },
+  "perf-005": {
+    "name": "Systemlast",
+    "description": "Durchschnittliche Systemlast anzeigen"
+  },
+  "perf-006": {
+    "name": "CPU-Auslastung",
+    "description": "CPU-Statistik"
+  },
+  "perf-007": {
+    "name": "Speicherauslastung",
+    "description": "Speicherstatistik"
+  },
+  "perf-008": {
+    "name": "Swap-Nutzung",
+    "description": "Swap-Nutzung anzeigen"
+  },
+  "perf-009": {
+    "name": "Netzwerkstatistik",
+    "description": "Netzwerkstatistik"
+  },
+  "perf-010": {
+    "name": "Festplatten-I/O",
+    "description": "Nur aktive I/O anzeigen"
+  },
+  "perf-011": {
+    "name": "Prozesse nach CPU",
+    "description": "Prozesse mit höchster CPU-Last"
+  },
+  "perf-012": {
+    "name": "Prozesse nach Speicher",
+    "description": "Prozesse mit höchstem Speicherverbrauch"
+  },
+  "perf-013": {
+    "name": "Offene Dateien",
+    "description": "Offene Dateien auflisten"
+  },
+  "perf-014": {
+    "name": "Prozess-Threads",
+    "description": "Alle Threads auflisten"
+  },
+  "perf-015": {
+    "name": "Systemressourcen",
+    "description": "CPU-Auslastung im Zeitverlauf"
+  },
+  "text-001": {
+    "name": "Mit sed ersetzen",
+    "description": "Text in Datei ersetzen"
+  },
+  "text-002": {
+    "name": "awk-Spalten",
+    "description": "Bestimmte Spalten ausgeben"
+  },
+  "text-003": {
+    "name": "Datei sortieren",
+    "description": "Zeilen alphabetisch sortieren"
+  },
+  "text-004": {
+    "name": "Doppelte Zeilen (uniq)",
+    "description": "Doppelte Zeilen entfernen"
+  },
+  "text-005": {
+    "name": "Spalten mit cut",
+    "description": "CSV-Spalten extrahieren"
+  },
+  "text-006": {
+    "name": "Zeichen mit tr umwandeln",
+    "description": "Kleinbuchstaben in Großbuchstaben umwandeln"
+  },
+  "text-007": {
+    "name": "Spaltenformat",
+    "description": "In Spalten formatieren"
+  },
+  "text-008": {
+    "name": "Dateien nebeneinander",
+    "description": "Dateien nebeneinander zusammenführen"
+  },
+  "text-009": {
+    "name": "Dateien verknüpfen",
+    "description": "Dateien über ein gemeinsames Feld verknüpfen"
+  },
+  "text-010": {
+    "name": "Tabulatoren expandieren",
+    "description": "Tabulatoren in Leerzeichen umwandeln"
+  },
+  "text-011": {
+    "name": "Leerzeichen zu Tabulatoren",
+    "description": "Leerzeichen in Tabulatoren umwandeln"
+  },
+  "text-012": {
+    "name": "Zeilen umbrechen",
+    "description": "Zeilen bei 80 Zeichen umbrechen"
+  },
+  "text-013": {
+    "name": "Zeilen nummerieren",
+    "description": "Zeilennummern hinzufügen"
+  },
+  "text-014": {
+    "name": "Zeilen umkehren",
+    "description": "Jede Zeile umkehren"
+  },
+  "text-015": {
+    "name": "Leerzeilen entfernen",
+    "description": "Leere Zeilen entfernen"
+  },
+  "cron-001": {
+    "name": "Cronjobs auflisten",
+    "description": "Cronjobs des Benutzers auflisten"
+  },
+  "cron-002": {
+    "name": "Cronjobs bearbeiten",
+    "description": "Cronjobs des Benutzers bearbeiten"
+  },
+  "cron-003": {
+    "name": "System-Cron",
+    "description": "System-Crontab anzeigen"
+  },
+  "cron-004": {
+    "name": "Cronjobs entfernen",
+    "description": "Alle Cronjobs des Benutzers entfernen"
+  },
+  "cron-005": {
+    "name": "Einmalige Aufgabe planen",
+    "description": "Einmaligen Job planen"
+  },
+  "web-001": {
+    "name": "Nginx-Test",
+    "description": "Nginx-Konfiguration testen"
+  },
+  "web-002": {
+    "name": "Nginx neu laden",
+    "description": "Nginx neu laden"
+  },
+  "web-003": {
+    "name": "Apache-Test",
+    "description": "Apache-Konfiguration testen"
+  },
+  "web-004": {
+    "name": "Apache neu starten",
+    "description": "Apache neu starten"
+  },
+  "web-005": {
+    "name": "Nginx-Status",
+    "description": "Nginx-Status prüfen"
+  },
+  "web-006": {
+    "name": "Apache-Status",
+    "description": "Apache-Status prüfen"
+  },
+  "web-007": {
+    "name": "Nginx-Zugriffslog",
+    "description": "Zugriffslog live verfolgen"
+  },
+  "web-008": {
+    "name": "Nginx-Fehlerlog",
+    "description": "Fehlerlog live verfolgen"
+  },
+  "web-009": {
+    "name": "Apache-Zugriffslog",
+    "description": "Zugriffslog live verfolgen"
+  },
+  "web-010": {
+    "name": "Apache-Fehlerlog",
+    "description": "Fehlerlog live verfolgen"
+  },
+  "kernel-001": {
+    "name": "Modul laden",
+    "description": "Kernel-Modul laden"
+  },
+  "kernel-002": {
+    "name": "Module auflisten",
+    "description": "Geladene Module auflisten"
+  },
+  "kernel-003": {
+    "name": "Kernel-Meldungen",
+    "description": "Kernel-Meldungen anzeigen"
+  },
+  "kernel-004": {
+    "name": "Modul entladen",
+    "description": "Kernel-Modul entladen"
+  },
+  "kernel-005": {
+    "name": "Modulinformationen",
+    "description": "Modulinformationen anzeigen"
+  }
+}

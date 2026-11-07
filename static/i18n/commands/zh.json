@@ -1,0 +1,1242 @@
+{
+  "sys-001": {
+    "name": "更新软件包列表",
+    "description": "更新 APT 软件源的软件包列表"
+  },
+  "sys-002": {
+    "name": "升级软件包",
+    "description": "升级所有已安装的软件包"
+  },
+  "sys-003": {
+    "name": "安装软件包",
+    "description": "使用 APT 安装软件包"
+  },
+  "sys-004": {
+    "name": "卸载软件包",
+    "description": "使用 APT 卸载软件包"
+  },
+  "sys-005": {
+    "name": "搜索软件包",
+    "description": "搜索软件包"
+  },
+  "sys-006": {
+    "name": "重启系统",
+    "description": "立即重启系统"
+  },
+  "sys-007": {
+    "name": "关闭系统",
+    "description": "立即关机"
+  },
+  "sys-008": {
+    "name": "列出服务",
+    "description": "列出所有 systemd 服务"
+  },
+  "sys-009": {
+    "name": "启动服务",
+    "description": "启动 systemd 服务"
+  },
+  "sys-010": {
+    "name": "停止服务",
+    "description": "停止 systemd 服务"
+  },
+  "sys-011": {
+    "name": "重启服务",
+    "description": "重启 systemd 服务"
+  },
+  "sys-012": {
+    "name": "启用服务",
+    "description": "设置服务开机自启"
+  },
+  "sys-013": {
+    "name": "禁用服务",
+    "description": "取消服务开机自启"
+  },
+  "sys-014": {
+    "name": "服务状态",
+    "description": "查看服务状态"
+  },
+  "sys-015": {
+    "name": "查看服务日志",
+    "description": "实时跟踪服务日志"
+  },
+  "sys-016": {
+    "name": "磁盘使用情况",
+    "description": "显示磁盘使用情况"
+  },
+  "sys-017": {
+    "name": "目录大小",
+    "description": "显示目录大小"
+  },
+  "sys-018": {
+    "name": "空闲内存",
+    "description": "显示内存使用情况"
+  },
+  "sys-019": {
+    "name": "进程排行",
+    "description": "显示进程监视器"
+  },
+  "sys-020": {
+    "name": "进程列表",
+    "description": "列出所有进程"
+  },
+  "sys-021": {
+    "name": "终止进程",
+    "description": "强制终止进程"
+  },
+  "sys-022": {
+    "name": "查找进程",
+    "description": "按名称查找进程"
+  },
+  "sys-023": {
+    "name": "系统运行时间",
+    "description": "显示系统运行时间"
+  },
+  "sys-024": {
+    "name": "内核版本",
+    "description": "显示内核版本"
+  },
+  "sys-025": {
+    "name": "系统信息",
+    "description": "显示系统信息"
+  },
+  "sys-026": {
+    "name": "CPU 信息",
+    "description": "显示 CPU 信息"
+  },
+  "sys-027": {
+    "name": "内存信息",
+    "description": "显示内存详细信息"
+  },
+  "sys-028": {
+    "name": "块设备",
+    "description": "列出块设备"
+  },
+  "sys-029": {
+    "name": "PCI 设备",
+    "description": "列出 PCI 设备"
+  },
+  "sys-030": {
+    "name": "USB 设备",
+    "description": "列出 USB 设备"
+  },
+  "net-001": {
+    "name": "IP 地址",
+    "description": "显示所有网络接口"
+  },
+  "net-002": {
+    "name": "ifconfig",
+    "description": "网络配置（旧版）"
+  },
+  "net-003": {
+    "name": "Ping 主机",
+    "description": "测试连通性"
+  },
+  "net-004": {
+    "name": "路由追踪",
+    "description": "追踪网络路径"
+  },
+  "net-005": {
+    "name": "DNS 查询",
+    "description": "DNS 查询"
+  },
+  "net-006": {
+    "name": "Dig 查询",
+    "description": "详细的 DNS 查询"
+  },
+  "net-007": {
+    "name": "网络统计",
+    "description": "显示监听端口"
+  },
+  "net-008": {
+    "name": "套接字统计",
+    "description": "新一代 netstat"
+  },
+  "net-009": {
+    "name": "下载文件",
+    "description": "从 URL 下载文件"
+  },
+  "net-010": {
+    "name": "cURL 请求",
+    "description": "发送 HTTP 请求"
+  },
+  "net-011": {
+    "name": "测试端口",
+    "description": "测试端口连通性"
+  },
+  "net-012": {
+    "name": "防火墙状态",
+    "description": "查看 UFW 防火墙状态"
+  },
+  "net-013": {
+    "name": "启用防火墙",
+    "description": "启用 UFW"
+  },
+  "net-014": {
+    "name": "放行端口",
+    "description": "允许端口通过防火墙"
+  },
+  "net-015": {
+    "name": "拒绝端口",
+    "description": "拒绝端口访问"
+  },
+  "net-016": {
+    "name": "iptables 列表",
+    "description": "列出防火墙规则"
+  },
+  "net-017": {
+    "name": "路由表",
+    "description": "显示路由表"
+  },
+  "net-018": {
+    "name": "ARP 缓存",
+    "description": "显示 ARP 缓存"
+  },
+  "net-019": {
+    "name": "网络扫描",
+    "description": "扫描网络"
+  },
+  "net-020": {
+    "name": "端口扫描",
+    "description": "扫描所有端口"
+  },
+  "net-021": {
+    "name": "显示网络链路",
+    "description": "显示网络接口"
+  },
+  "net-022": {
+    "name": "设置 IP 地址",
+    "description": "配置 IP 地址"
+  },
+  "net-023": {
+    "name": "启用网络接口",
+    "description": "启用网络接口"
+  },
+  "net-024": {
+    "name": "停用网络接口",
+    "description": "停用网络接口"
+  },
+  "net-025": {
+    "name": "MTU 大小",
+    "description": "设置 MTU 大小"
+  },
+  "net-026": {
+    "name": "清除 IP",
+    "description": "移除所有 IP 地址"
+  },
+  "net-027": {
+    "name": "添加路由",
+    "description": "添加静态路由"
+  },
+  "net-028": {
+    "name": "删除路由",
+    "description": "移除路由"
+  },
+  "net-029": {
+    "name": "TCP 抓包",
+    "description": "捕获网络数据包"
+  },
+  "net-030": {
+    "name": "列出连接",
+    "description": "列出已打开的网络连接"
+  },
+  "net-031": {
+    "name": "Whois 查询",
+    "description": "WHOIS 查询"
+  },
+  "net-032": {
+    "name": "带宽监控",
+    "description": "监控带宽使用情况"
+  },
+  "net-033": {
+    "name": "网络测速",
+    "description": "测试互联网速度"
+  },
+  "net-034": {
+    "name": "Hosts 文件",
+    "description": "查看 hosts 文件"
+  },
+  "net-035": {
+    "name": "DNS 配置",
+    "description": "查看 DNS 配置"
+  },
+  "net-036": {
+    "name": "MAC 地址",
+    "description": "显示 MAC 地址"
+  },
+  "net-037": {
+    "name": "修改 MAC",
+    "description": "伪造 MAC 地址"
+  },
+  "net-038": {
+    "name": "SSH 隧道",
+    "description": "创建 SSH 隧道"
+  },
+  "net-039": {
+    "name": "反向 SSH",
+    "description": "创建反向 SSH 隧道"
+  },
+  "net-040": {
+    "name": "SCP 上传",
+    "description": "安全复制到远程主机"
+  },
+  "net-041": {
+    "name": "SCP 下载",
+    "description": "从远程主机安全复制"
+  },
+  "net-042": {
+    "name": "通过 SSH 使用 Rsync",
+    "description": "通过 SSH 同步"
+  },
+  "net-043": {
+    "name": "HTTP 服务器",
+    "description": "快速启动 HTTP 服务器"
+  },
+  "net-044": {
+    "name": "监听端口",
+    "description": "使用 netcat 监听端口"
+  },
+  "net-045": {
+    "name": "发送数据",
+    "description": "使用 netcat 发送文件"
+  },
+  "net-046": {
+    "name": "Telnet 测试",
+    "description": "测试 TCP 连接"
+  },
+  "net-047": {
+    "name": "显示网关",
+    "description": "显示默认网关"
+  },
+  "net-048": {
+    "name": "清除 DNS 缓存",
+    "description": "清除 DNS 缓存"
+  },
+  "net-049": {
+    "name": "网络接口",
+    "description": "显示接口统计信息"
+  },
+  "net-050": {
+    "name": "Ping 洪泛",
+    "description": "洪泛 Ping（测试用）"
+  },
+  "file-001": {
+    "name": "列出文件",
+    "description": "列出所有文件及详细信息"
+  },
+  "file-002": {
+    "name": "切换目录",
+    "description": "切换目录"
+  },
+  "file-003": {
+    "name": "当前目录",
+    "description": "显示当前目录"
+  },
+  "file-004": {
+    "name": "创建目录",
+    "description": "创建目录"
+  },
+  "file-005": {
+    "name": "删除目录",
+    "description": "删除空目录"
+  },
+  "file-006": {
+    "name": "递归删除",
+    "description": "递归删除文件或目录"
+  },
+  "file-007": {
+    "name": "复制文件",
+    "description": "递归复制"
+  },
+  "file-008": {
+    "name": "移动文件",
+    "description": "移动或重命名"
+  },
+  "file-009": {
+    "name": "查看文件",
+    "description": "显示文件内容"
+  },
+  "file-010": {
+    "name": "分页查看文件",
+    "description": "分页查看文件"
+  },
+  "file-011": {
+    "name": "文件头部",
+    "description": "显示前 20 行"
+  },
+  "file-012": {
+    "name": "文件尾部",
+    "description": "显示最后 20 行"
+  },
+  "file-013": {
+    "name": "跟踪日志",
+    "description": "实时跟踪文件更新"
+  },
+  "file-014": {
+    "name": "Grep 搜索",
+    "description": "在文件中搜索"
+  },
+  "file-015": {
+    "name": "按名称查找",
+    "description": "按名称查找文件"
+  },
+  "file-016": {
+    "name": "按大小查找",
+    "description": "查找大文件"
+  },
+  "file-017": {
+    "name": "查找最近修改",
+    "description": "查找最近修改的文件"
+  },
+  "file-018": {
+    "name": "修改权限",
+    "description": "设置文件权限"
+  },
+  "file-019": {
+    "name": "修改所有者",
+    "description": "修改文件所有者"
+  },
+  "file-020": {
+    "name": "文件类型",
+    "description": "判断文件类型"
+  },
+  "file-021": {
+    "name": "字数统计",
+    "description": "统计行数"
+  },
+  "file-022": {
+    "name": "创建空文件",
+    "description": "创建空文件"
+  },
+  "file-023": {
+    "name": "比较文件",
+    "description": "比较文件差异"
+  },
+  "file-024": {
+    "name": "符号链接",
+    "description": "创建符号链接"
+  },
+  "file-025": {
+    "name": "创建 tar 压缩包",
+    "description": "创建 tar.gz"
+  },
+  "file-026": {
+    "name": "解压 tar 压缩包",
+    "description": "解压 tar.gz"
+  },
+  "file-027": {
+    "name": "创建 zip 压缩包",
+    "description": "创建 zip"
+  },
+  "file-028": {
+    "name": "解压 zip",
+    "description": "解压 zip"
+  },
+  "file-029": {
+    "name": "Rsync 复制",
+    "description": "同步文件"
+  },
+  "file-030": {
+    "name": "磁盘剩余空间",
+    "description": "显示磁盘空间"
+  },
+  "file-031": {
+    "name": "磁盘使用汇总",
+    "description": "显示目录总大小"
+  },
+  "file-032": {
+    "name": "按大小排序目录",
+    "description": "查找最大的目录"
+  },
+  "file-033": {
+    "name": "查找空文件",
+    "description": "查找空文件"
+  },
+  "file-034": {
+    "name": "查找空目录",
+    "description": "查找空目录"
+  },
+  "file-035": {
+    "name": "文件数量",
+    "description": "统计文件数量"
+  },
+  "file-036": {
+    "name": "目录树",
+    "description": "显示目录树（2 层）"
+  },
+  "file-037": {
+    "name": "文件状态",
+    "description": "显示文件详细信息"
+  },
+  "file-038": {
+    "name": "MD5 校验和",
+    "description": "计算 MD5 哈希"
+  },
+  "file-039": {
+    "name": "SHA256 校验和",
+    "description": "计算 SHA256 哈希"
+  },
+  "file-040": {
+    "name": "比对校验和",
+    "description": "验证文件完整性"
+  },
+  "file-041": {
+    "name": "拆分文件",
+    "description": "拆分为 100MB 的分片"
+  },
+  "file-042": {
+    "name": "合并文件",
+    "description": "合并已拆分的文件"
+  },
+  "file-043": {
+    "name": "重命名扩展名",
+    "description": "批量重命名"
+  },
+  "file-044": {
+    "name": "转换编码",
+    "description": "转换文件编码"
+  },
+  "file-045": {
+    "name": "删除重复行",
+    "description": "删除重复行"
+  },
+  "file-046": {
+    "name": "统计重复行",
+    "description": "统计出现次数"
+  },
+  "file-047": {
+    "name": "反向显示文件",
+    "description": "倒序显示文件"
+  },
+  "file-048": {
+    "name": "清空文件",
+    "description": "清空文件内容"
+  },
+  "file-049": {
+    "name": "监视文件",
+    "description": "监视文件变化"
+  },
+  "file-050": {
+    "name": "十六进制转储",
+    "description": "以十六进制查看文件"
+  },
+  "file-051": {
+    "name": "Base64 编码",
+    "description": "编码为 base64"
+  },
+  "file-052": {
+    "name": "Base64 解码",
+    "description": "从 base64 解码"
+  },
+  "file-053": {
+    "name": "查看 ACL",
+    "description": "显示文件 ACL"
+  },
+  "file-054": {
+    "name": "设置 ACL",
+    "description": "设置文件 ACL"
+  },
+  "file-055": {
+    "name": "查看属性",
+    "description": "显示文件属性"
+  },
+  "file-056": {
+    "name": "设为不可变",
+    "description": "将文件设为不可变"
+  },
+  "file-057": {
+    "name": "取消不可变",
+    "description": "移除不可变标志"
+  },
+  "file-058": {
+    "name": "查找 Setuid",
+    "description": "查找 SUID 文件"
+  },
+  "file-059": {
+    "name": "查找全局可写",
+    "description": "查找所有用户可写的文件"
+  },
+  "file-060": {
+    "name": "粉碎文件",
+    "description": "安全删除文件"
+  },
+  "docker-001": {
+    "name": "Docker 版本",
+    "description": "显示 Docker 版本"
+  },
+  "docker-002": {
+    "name": "列出容器",
+    "description": "列出所有容器"
+  },
+  "docker-003": {
+    "name": "列出镜像",
+    "description": "列出所有镜像"
+  },
+  "docker-004": {
+    "name": "拉取镜像",
+    "description": "从镜像仓库拉取镜像"
+  },
+  "docker-005": {
+    "name": "运行容器",
+    "description": "以后台模式运行容器"
+  },
+  "docker-006": {
+    "name": "启动容器",
+    "description": "启动已停止的容器"
+  },
+  "docker-007": {
+    "name": "停止容器",
+    "description": "停止运行中的容器"
+  },
+  "docker-008": {
+    "name": "删除容器",
+    "description": "删除容器"
+  },
+  "docker-009": {
+    "name": "删除镜像",
+    "description": "删除镜像"
+  },
+  "docker-010": {
+    "name": "容器日志",
+    "description": "实时跟踪容器日志"
+  },
+  "docker-011": {
+    "name": "进入容器",
+    "description": "在容器中打开 Shell"
+  },
+  "docker-012": {
+    "name": "容器统计",
+    "description": "显示资源使用统计"
+  },
+  "docker-013": {
+    "name": "检查容器",
+    "description": "显示容器详细信息"
+  },
+  "docker-014": {
+    "name": "Docker 网络",
+    "description": "列出网络"
+  },
+  "docker-015": {
+    "name": "Docker 卷",
+    "description": "列出卷"
+  },
+  "docker-016": {
+    "name": "Compose 启动",
+    "description": "启动 Compose 服务"
+  },
+  "docker-017": {
+    "name": "Compose 停止",
+    "description": "停止 Compose 服务"
+  },
+  "docker-018": {
+    "name": "清理容器",
+    "description": "删除已停止的容器"
+  },
+  "docker-019": {
+    "name": "清理镜像",
+    "description": "删除未使用的镜像"
+  },
+  "docker-020": {
+    "name": "系统清理",
+    "description": "清理所有未使用的资源"
+  },
+  "docker-021": {
+    "name": "构建镜像",
+    "description": "根据 Dockerfile 构建"
+  },
+  "docker-022": {
+    "name": "标记镜像",
+    "description": "为镜像添加标签"
+  },
+  "docker-023": {
+    "name": "推送镜像",
+    "description": "推送到镜像仓库"
+  },
+  "docker-024": {
+    "name": "从容器复制",
+    "description": "将文件复制出容器"
+  },
+  "docker-025": {
+    "name": "复制到容器",
+    "description": "将文件复制到容器"
+  },
+  "docker-026": {
+    "name": "导出容器",
+    "description": "导出容器"
+  },
+  "docker-027": {
+    "name": "导入镜像",
+    "description": "导入为镜像"
+  },
+  "docker-028": {
+    "name": "保存镜像",
+    "description": "将镜像保存为 tar"
+  },
+  "docker-029": {
+    "name": "加载镜像",
+    "description": "从 tar 加载镜像"
+  },
+  "docker-030": {
+    "name": "容器进程",
+    "description": "显示容器中的进程"
+  },
+  "git-001": {
+    "name": "Git 克隆",
+    "description": "克隆仓库"
+  },
+  "git-002": {
+    "name": "Git 状态",
+    "description": "显示工作区状态"
+  },
+  "git-003": {
+    "name": "Git 暂存全部",
+    "description": "暂存所有更改"
+  },
+  "git-004": {
+    "name": "Git 提交",
+    "description": "提交更改"
+  },
+  "git-005": {
+    "name": "Git 推送",
+    "description": "推送到远程仓库"
+  },
+  "git-006": {
+    "name": "Git 拉取",
+    "description": "获取并合并"
+  },
+  "git-007": {
+    "name": "Git 分支列表",
+    "description": "列出所有分支"
+  },
+  "git-008": {
+    "name": "Git 切换",
+    "description": "切换分支"
+  },
+  "git-009": {
+    "name": "Git 新建分支",
+    "description": "创建新分支"
+  },
+  "git-010": {
+    "name": "Git 合并",
+    "description": "合并分支"
+  },
+  "git-011": {
+    "name": "Git 日志",
+    "description": "显示提交历史"
+  },
+  "git-012": {
+    "name": "Git 差异",
+    "description": "显示未暂存的更改"
+  },
+  "git-013": {
+    "name": "Git 储藏",
+    "description": "保存未提交的更改"
+  },
+  "git-014": {
+    "name": "Git 恢复储藏",
+    "description": "应用储藏的更改"
+  },
+  "git-015": {
+    "name": "Git 硬重置",
+    "description": "丢弃所有更改"
+  },
+  "git-016": {
+    "name": "Git 远程",
+    "description": "显示远程仓库地址"
+  },
+  "git-017": {
+    "name": "Git 获取",
+    "description": "下载所有分支"
+  },
+  "git-018": {
+    "name": "Git 变基",
+    "description": "变基到 main"
+  },
+  "git-019": {
+    "name": "Git 标签",
+    "description": "创建标签"
+  },
+  "git-020": {
+    "name": "Git 用户名配置",
+    "description": "设置用户名"
+  },
+  "git-021": {
+    "name": "Git 邮箱配置",
+    "description": "设置邮箱"
+  },
+  "git-022": {
+    "name": "Git 删除分支",
+    "description": "删除本地分支"
+  },
+  "git-023": {
+    "name": "Git 删除远程分支",
+    "description": "删除远程分支"
+  },
+  "git-024": {
+    "name": "Git 查看提交",
+    "description": "显示提交详情"
+  },
+  "git-025": {
+    "name": "Git Blame",
+    "description": "逐行显示更改记录"
+  },
+  "git-026": {
+    "name": "Git Reflog",
+    "description": "显示引用日志"
+  },
+  "git-027": {
+    "name": "Git Cherry-pick",
+    "description": "应用指定提交"
+  },
+  "git-028": {
+    "name": "Git 清理",
+    "description": "删除未跟踪的文件"
+  },
+  "git-029": {
+    "name": "Git 子模块初始化",
+    "description": "初始化子模块"
+  },
+  "git-030": {
+    "name": "Git 子模块更新",
+    "description": "更新子模块"
+  },
+  "db-001": {
+    "name": "连接 MySQL",
+    "description": "连接到 MySQL"
+  },
+  "db-002": {
+    "name": "连接 PostgreSQL",
+    "description": "连接到 PostgreSQL"
+  },
+  "db-003": {
+    "name": "MySQL 导出",
+    "description": "备份 MySQL 数据库"
+  },
+  "db-004": {
+    "name": "MySQL 恢复",
+    "description": "恢复 MySQL 数据库"
+  },
+  "db-005": {
+    "name": "PostgreSQL 导出",
+    "description": "备份 PostgreSQL"
+  },
+  "db-006": {
+    "name": "PostgreSQL 恢复",
+    "description": "恢复 PostgreSQL"
+  },
+  "db-007": {
+    "name": "Redis CLI",
+    "description": "连接到 Redis"
+  },
+  "db-008": {
+    "name": "MongoDB Shell",
+    "description": "连接到 MongoDB"
+  },
+  "db-009": {
+    "name": "打开 SQLite",
+    "description": "打开 SQLite 数据库"
+  },
+  "db-010": {
+    "name": "Redis Ping",
+    "description": "测试 Redis 连接"
+  },
+  "db-011": {
+    "name": "MySQL 显示数据库",
+    "description": "列出数据库"
+  },
+  "db-012": {
+    "name": "PostgreSQL 数据库列表",
+    "description": "列出数据库"
+  },
+  "db-013": {
+    "name": "Redis 键",
+    "description": "列出所有 Redis 键"
+  },
+  "db-014": {
+    "name": "MongoDB 数据库列表",
+    "description": "列出数据库"
+  },
+  "db-015": {
+    "name": "MySQL 授权",
+    "description": "授予权限"
+  },
+  "db-016": {
+    "name": "创建 PostgreSQL 用户",
+    "description": "创建 PostgreSQL 用户"
+  },
+  "db-017": {
+    "name": "Redis 清空全部",
+    "description": "清除所有 Redis 数据"
+  },
+  "db-018": {
+    "name": "MySQL 优化表",
+    "description": "优化 MySQL 表"
+  },
+  "db-019": {
+    "name": "PostgreSQL Vacuum",
+    "description": "对 PostgreSQL 执行 Vacuum"
+  },
+  "db-020": {
+    "name": "SQLite 备份",
+    "description": "备份 SQLite"
+  },
+  "mac-001": {
+    "name": "Homebrew 安装",
+    "description": "使用 Homebrew 安装"
+  },
+  "mac-002": {
+    "name": "Homebrew 更新",
+    "description": "更新 Homebrew"
+  },
+  "mac-003": {
+    "name": "Homebrew 升级",
+    "description": "升级软件包"
+  },
+  "mac-004": {
+    "name": "Homebrew 搜索",
+    "description": "搜索软件包"
+  },
+  "mac-005": {
+    "name": "macOS 版本",
+    "description": "显示 macOS 版本"
+  },
+  "mac-006": {
+    "name": "Homebrew 列表",
+    "description": "列出已安装的软件包"
+  },
+  "mac-007": {
+    "name": "Homebrew 信息",
+    "description": "显示软件包信息"
+  },
+  "mac-008": {
+    "name": "清除 macOS DNS 缓存",
+    "description": "清除 DNS 缓存"
+  },
+  "mac-009": {
+    "name": "显示隐藏文件",
+    "description": "在 Finder 中显示隐藏文件"
+  },
+  "mac-010": {
+    "name": "重启 Finder",
+    "description": "重启 Finder"
+  },
+  "user-001": {
+    "name": "列出用户",
+    "description": "列出系统用户"
+  },
+  "user-002": {
+    "name": "添加用户",
+    "description": "创建用户并创建主目录"
+  },
+  "user-003": {
+    "name": "删除用户",
+    "description": "删除用户及其主目录"
+  },
+  "user-004": {
+    "name": "修改密码",
+    "description": "修改用户密码"
+  },
+  "user-005": {
+    "name": "当前登录用户",
+    "description": "显示已登录的用户"
+  },
+  "user-006": {
+    "name": "最近登录",
+    "description": "显示最近 10 次登录"
+  },
+  "user-007": {
+    "name": "当前用户",
+    "description": "显示当前用户名"
+  },
+  "user-008": {
+    "name": "用户组",
+    "description": "显示用户所属的组"
+  },
+  "user-009": {
+    "name": "加入用户组",
+    "description": "将用户加入用户组"
+  },
+  "user-010": {
+    "name": "切换用户",
+    "description": "切换到指定用户"
+  },
+  "user-011": {
+    "name": "Sudo 命令",
+    "description": "以超级用户身份执行"
+  },
+  "user-012": {
+    "name": "编辑 Sudoers",
+    "description": "编辑 sudoers 文件"
+  },
+  "user-013": {
+    "name": "列出 Sudo 权限",
+    "description": "列出 sudo 权限"
+  },
+  "user-014": {
+    "name": "设置用户 Shell",
+    "description": "修改用户的 Shell"
+  },
+  "user-015": {
+    "name": "锁定用户",
+    "description": "锁定用户账户"
+  },
+  "ssh-001": {
+    "name": "生成 SSH 密钥",
+    "description": "生成 SSH 密钥对"
+  },
+  "ssh-002": {
+    "name": "复制 SSH 密钥",
+    "description": "将密钥复制到远程主机"
+  },
+  "ssh-003": {
+    "name": "SSH 配置",
+    "description": "查看 SSH 配置"
+  },
+  "ssh-004": {
+    "name": "添加到 SSH Agent",
+    "description": "将密钥添加到 agent"
+  },
+  "ssh-005": {
+    "name": "列出 SSH 密钥",
+    "description": "列出已加载的密钥"
+  },
+  "ssh-006": {
+    "name": "SSH 权限",
+    "description": "修复 SSH 密钥权限"
+  },
+  "ssh-007": {
+    "name": "SSH 目录权限",
+    "description": "修复 SSH 目录权限"
+  },
+  "ssh-008": {
+    "name": "已知主机",
+    "description": "查看 known_hosts"
+  },
+  "ssh-009": {
+    "name": "移除已知主机",
+    "description": "从 known_hosts 中移除主机"
+  },
+  "ssh-010": {
+    "name": "启动 SSH Agent",
+    "description": "启动 SSH agent"
+  },
+  "ssh-011": {
+    "name": "SSL 证书信息",
+    "description": "显示证书详情"
+  },
+  "ssh-012": {
+    "name": "生成自签名证书",
+    "description": "生成 SSL 证书"
+  },
+  "ssh-013": {
+    "name": "检查远程 SSL",
+    "description": "检查 SSL 证书"
+  },
+  "ssh-014": {
+    "name": "SSH 指纹",
+    "description": "显示密钥指纹"
+  },
+  "ssh-015": {
+    "name": "SSH 详细输出",
+    "description": "输出调试信息的 SSH 连接"
+  },
+  "perf-001": {
+    "name": "iostat",
+    "description": "监控 I/O 统计"
+  },
+  "perf-002": {
+    "name": "vmstat",
+    "description": "虚拟内存统计"
+  },
+  "perf-003": {
+    "name": "iotop",
+    "description": "按进程显示 I/O 使用情况"
+  },
+  "perf-004": {
+    "name": "htop",
+    "description": "交互式进程查看器"
+  },
+  "perf-005": {
+    "name": "平均负载",
+    "description": "显示平均负载"
+  },
+  "perf-006": {
+    "name": "CPU 使用率",
+    "description": "CPU 统计信息"
+  },
+  "perf-007": {
+    "name": "内存使用率",
+    "description": "内存统计信息"
+  },
+  "perf-008": {
+    "name": "交换分区使用",
+    "description": "显示交换分区使用情况"
+  },
+  "perf-009": {
+    "name": "网络统计",
+    "description": "网络统计信息"
+  },
+  "perf-010": {
+    "name": "磁盘 I/O",
+    "description": "仅显示活跃的 I/O"
+  },
+  "perf-011": {
+    "name": "进程 CPU",
+    "description": "CPU 占用最高的进程"
+  },
+  "perf-012": {
+    "name": "进程内存",
+    "description": "内存占用最高的进程"
+  },
+  "perf-013": {
+    "name": "打开的文件",
+    "description": "列出打开的文件"
+  },
+  "perf-014": {
+    "name": "进程线程",
+    "description": "列出所有线程"
+  },
+  "perf-015": {
+    "name": "系统资源",
+    "description": "CPU 使用率随时间变化"
+  },
+  "text-001": {
+    "name": "sed 替换",
+    "description": "替换文件中的文本"
+  },
+  "text-002": {
+    "name": "awk 列",
+    "description": "输出指定列"
+  },
+  "text-003": {
+    "name": "排序文件",
+    "description": "按字母顺序排序行"
+  },
+  "text-004": {
+    "name": "uniq 行",
+    "description": "删除重复行"
+  },
+  "text-005": {
+    "name": "cut 列",
+    "description": "提取 CSV 列"
+  },
+  "text-006": {
+    "name": "tr 转换",
+    "description": "将小写转换为大写"
+  },
+  "text-007": {
+    "name": "列格式化",
+    "description": "格式化为多列"
+  },
+  "text-008": {
+    "name": "合并文件列",
+    "description": "并排合并文件"
+  },
+  "text-009": {
+    "name": "连接文件",
+    "description": "按公共字段连接文件"
+  },
+  "text-010": {
+    "name": "展开制表符",
+    "description": "将制表符转换为空格"
+  },
+  "text-011": {
+    "name": "还原制表符",
+    "description": "将空格转换为制表符"
+  },
+  "text-012": {
+    "name": "折行",
+    "description": "按 80 个字符折行"
+  },
+  "text-013": {
+    "name": "行号",
+    "description": "添加行号"
+  },
+  "text-014": {
+    "name": "反转输出",
+    "description": "反转每一行"
+  },
+  "text-015": {
+    "name": "删除空行",
+    "description": "删除空行"
+  },
+  "cron-001": {
+    "name": "列出定时任务",
+    "description": "列出用户的 cron 任务"
+  },
+  "cron-002": {
+    "name": "编辑定时任务",
+    "description": "编辑用户的 cron 任务"
+  },
+  "cron-003": {
+    "name": "系统定时任务",
+    "description": "查看系统 cron"
+  },
+  "cron-004": {
+    "name": "删除定时任务",
+    "description": "删除用户的所有 cron 任务"
+  },
+  "cron-005": {
+    "name": "At 调度",
+    "description": "调度一次性任务"
+  },
+  "web-001": {
+    "name": "Nginx 测试",
+    "description": "测试 Nginx 配置"
+  },
+  "web-002": {
+    "name": "Nginx 重载",
+    "description": "重新加载 Nginx"
+  },
+  "web-003": {
+    "name": "Apache 测试",
+    "description": "测试 Apache 配置"
+  },
+  "web-004": {
+    "name": "Apache 重启",
+    "description": "重启 Apache"
+  },
+  "web-005": {
+    "name": "Nginx 状态",
+    "description": "查看 Nginx 状态"
+  },
+  "web-006": {
+    "name": "Apache 状态",
+    "description": "查看 Apache 状态"
+  },
+  "web-007": {
+    "name": "Nginx 访问日志",
+    "description": "实时跟踪访问日志"
+  },
+  "web-008": {
+    "name": "Nginx 错误日志",
+    "description": "实时跟踪错误日志"
+  },
+  "web-009": {
+    "name": "Apache 访问日志",
+    "description": "实时跟踪访问日志"
+  },
+  "web-010": {
+    "name": "Apache 错误日志",
+    "description": "实时跟踪错误日志"
+  },
+  "kernel-001": {
+    "name": "加载模块",
+    "description": "加载内核模块"
+  },
+  "kernel-002": {
+    "name": "列出模块",
+    "description": "列出已加载的模块"
+  },
+  "kernel-003": {
+    "name": "内核消息",
+    "description": "显示内核消息"
+  },
+  "kernel-004": {
+    "name": "卸载模块",
+    "description": "卸载内核模块"
+  },
+  "kernel-005": {
+    "name": "模块信息",
+    "description": "显示模块信息"
+  }
+}

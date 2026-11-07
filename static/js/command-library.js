@@ -18,6 +18,8 @@ const CommandLibrary = {
     formBaseline: null,
     saveOutcomeUnknown: false,
     retryConfirmation: false,
+    sourceCommands: [],
+    translations: {},
 
     init() {
         this.loadCommands();
@@ -51,6 +53,36 @@ const CommandLibrary = {
             this.requestCloseCommandForm();
         }, true);
         window.addEventListener?.('session-target-os-change', () => this.detectOs());
+        window.addEventListener?.('languageChanged', () => this.applyLanguage());
+    },
+
+    /** Built-in commands ship in English; their names and descriptions are translated from a per-language table. */
+    async loadTranslations(language) {
+        if (!language || language === 'en' || !/^[a-z]{2}$/.test(language)) return null;
+        if (!(language in this.translations)) {
+            const appRoot = (document.querySelector?.('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
+            this.translations[language] = fetch(`${appRoot}/static/i18n/commands/${language}.json`, {credentials: 'same-origin', cache: 'no-cache'})
+                .then(response => (response.ok ? response.json() : null))
+                .catch(() => null);
+        }
+        return this.translations[language];
+    },
+
+    localize(commands, table) {
+        return commands.map(command => {
+            const entry = command.isSystem && table ? table[command.id] : null;
+            if (!entry || typeof entry.name !== 'string' || typeof entry.description !== 'string') return command;
+            return {...command, name: entry.name, description: entry.description, sourceName: command.name, sourceDescription: command.description};
+        });
+    },
+
+    async applyLanguage() {
+        const source = this.sourceCommands;
+        const language = window.i18n?.getLanguage?.() || 'en';
+        const table = await this.loadTranslations(language);
+        // A newer list or language may have arrived while the table loaded.
+        if (source !== this.sourceCommands || language !== (window.i18n?.getLanguage?.() || 'en')) return;
+        this.publish(this.localize(source, table));
     },
 
     setupEventListeners() {
@@ -174,6 +206,13 @@ const CommandLibrary = {
     },
 
     setCommands(commands) {
+        this.sourceCommands = Array.isArray(commands) ? commands : [];
+        this.publish(this.localize(this.sourceCommands, null));
+        const language = window.i18n?.getLanguage?.() || 'en';
+        if (language !== 'en') this.applyLanguage();
+    },
+
+    publish(commands) {
         this.commands = commands;
         this.searchCommands(this.searchQuery);
         window.CommandSetManager?.onCommandsChanged();
@@ -251,7 +290,9 @@ const CommandLibrary = {
                     cmd.name.toLowerCase().includes(lowerQuery) ||
                     cmd.command.toLowerCase().includes(lowerQuery) ||
                     cmd.parameters.toLowerCase().includes(lowerQuery) ||
-                    cmd.description.toLowerCase().includes(lowerQuery)
+                    cmd.description.toLowerCase().includes(lowerQuery) ||
+                    String(cmd.sourceName || '').toLowerCase().includes(lowerQuery) ||
+                    String(cmd.sourceDescription || '').toLowerCase().includes(lowerQuery)
                 );
 
                 if (matchesEnglish) {
