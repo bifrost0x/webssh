@@ -322,7 +322,7 @@ def install_sftp_session(monkeypatch, sftp, calls=None):
     if isinstance(sftp, AtomicSFTP):
         @contextmanager
         def exclusive_file(client, path, *, mode=0o600):
-            assert mode == 0o600
+            assert mode in (0o600, None)
             with client.file(path, 'wx') as remote:
                 yield remote
         monkeypatch.setattr(sftp_handler, 'open_exclusive_file', exclusive_file)

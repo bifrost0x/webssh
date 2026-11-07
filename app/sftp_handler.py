@@ -188,11 +188,16 @@ def mutation_session(identifier, *, timeout=10.0, authorize=None):
 
 @contextmanager
 def open_exclusive_file(sftp, path, *, mode=0o600):
-    """Create privately without TRUNC and observe the CLOSE acknowledgement."""
+    """Create exclusively without TRUNC and observe the CLOSE acknowledgement.
+
+    ``mode=None`` sends no permission attribute, so the server applies its
+    normal default (umask or a forced ``internal-sftp -m`` mode).
+    """
     from paramiko import SFTPFile
 
     attributes = SFTPAttributes()
-    attributes.st_mode = mode
+    if mode is not None:
+        attributes.st_mode = mode
     command, message = sftp._request(
         CMD_OPEN, sftp._adjust_cwd(path),
         SFTP_FLAG_WRITE | SFTP_FLAG_CREATE | SFTP_FLAG_EXCL, attributes,
@@ -1291,7 +1296,14 @@ def create_directory(session_id, remote_path):
 
 @contextmanager
 def atomic_transfer_writer(sftp, path, temporary_path, *, replace, cancelled=None):
-    """Stage privately and retain ordinary destination permissions on replace."""
+    """Stage, then publish atomically; replacements keep the old permissions.
+
+    A new file gets the server's default permissions, exactly as a plain
+    SFTP upload would. A replacement is staged with 0600, then receives the
+    destination's previous mode before the atomic rename. A server that
+    forces its own create mode is accepted only if the staged file is not
+    more permissive than the file it replaces.
+    """
     def destination_stat():
         try:
             return sftp.lstat(path)
@@ -1324,10 +1336,15 @@ def atomic_transfer_writer(sftp, path, temporary_path, *, replace, cancelled=Non
     created = False
     publishing = False
     try:
-        with open_exclusive_file(sftp, temporary_path) as remote_file:
+        staging_mode = 0o600 if original is not None else None
+        with open_exclusive_file(sftp, temporary_path, mode=staging_mode) as remote_file:
             created = True
             staged = permission_snapshot(remote_file.stat())
-            if staged['object_type'] != 'file' or staged['mode'] != '600' or staged['special_bits']:
+            if staged['object_type'] != 'file' or staged['special_bits']:
+                raise SFTPOperationError('Staged upload permissions are unsafe')
+            # New content may never be more widely readable while staged than
+            # the file it replaces, even on servers that force a create mode.
+            if original is not None and int(staged['mode'], 8) & ~int(original['mode'], 8):
                 raise SFTPOperationError('Private staging permissions unavailable')
             yield remote_file
             if cancelled and cancelled():

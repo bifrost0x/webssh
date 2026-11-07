@@ -18,6 +18,9 @@ class Remote:
         self.published = []
         self.collision = False
         self.rename_error = None
+        self.requested_modes = []
+        # None models a server that applies its umask or forced create mode.
+        self.default_mode = 0o644
 
     def lstat(self, path):
         if self.original is None:
@@ -41,9 +44,11 @@ def remote(monkeypatch):
 
     @contextmanager
     def exclusive(client, path, *, mode=0o600):
-        assert mode == 0o600
+        client.requested_modes.append(mode)
         if client.collision:
             raise FileExistsError(path)
+        if mode is None:
+            client.staged.st_mode = stat.S_IFREG | client.default_mode
         class Writer(io.BytesIO):
             def stat(self):
                 return client.staged
@@ -148,3 +153,31 @@ def test_no_replace_reports_conflict_for_every_existing_object(remote, mode):
         with sftp_handler.atomic_transfer_writer(remote, '/target', '/stage', replace=False):
             pass
     assert remote.published == []
+
+
+def test_new_file_uses_the_server_default_mode(remote):
+    remote.original = None
+    with sftp_handler.atomic_transfer_writer(remote, '/target', '/stage', replace=False) as writer:
+        writer.write(b'index')
+    assert remote.requested_modes == [None]
+    assert stat.S_IMODE(remote.staged.st_mode) == 0o644
+    assert remote.published == [('/stage', '/target')]
+
+
+def test_new_file_accepts_a_forced_server_create_mode(remote):
+    remote.original = None
+    remote.default_mode = 0o664
+    with sftp_handler.atomic_transfer_writer(remote, '/target', '/stage', replace=True):
+        pass
+    assert remote.requested_modes == [None]
+    assert remote.published == [('/stage', '/target')]
+
+
+def test_forced_create_mode_may_replace_an_equally_readable_file(remote):
+    remote.original.st_mode = stat.S_IFREG | 0o644
+    remote.staged.st_mode = stat.S_IFREG | 0o644
+    with sftp_handler.atomic_transfer_writer(remote, '/target', '/stage', replace=True):
+        pass
+    assert remote.requested_modes == [0o600]
+    assert stat.S_IMODE(remote.staged.st_mode) == 0o644
+    assert remote.published == [('/stage', '/target')]

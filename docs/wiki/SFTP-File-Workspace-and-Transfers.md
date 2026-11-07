@@ -258,6 +258,13 @@ transfer request and an atomic backend rename. If atomic replacement is not
 available, the existing destination remains untouched and the queue explains
 why the replacement was refused.
 
+A new file receives the SFTP server's default permissions, as with any SFTP
+client; servers that force a create mode (for example `internal-sftp -m`) are
+supported. A replacement keeps the previous file's mode. Its staged copy is
+never more widely readable than the file it replaces; a server that cannot
+guarantee this, a symbolic link, special permission bits or a different
+owner or group prevent the replacement.
+
 Queued and active transfers retain references to their source and destination
 connections. Closing the last quick-connection tab defers disconnect until the
 dependent transfer reaches a terminal state.

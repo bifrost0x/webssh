@@ -132,7 +132,7 @@ def exclusive_transfer_file_stub(monkeypatch):
 
     @contextmanager
     def exclusive_file(client, path, *, mode=0o600):
-        assert mode == 0o600
+        assert mode in (0o600, None)
         with client.file(path, 'wb') as remote:
             yield remote
     monkeypatch.setattr(sftp_handler, 'open_exclusive_file', exclusive_file)
