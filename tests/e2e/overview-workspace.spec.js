@@ -359,3 +359,20 @@ test('a saved layout stacks on phones without fixed heights', async ({page}) => 
     expect(await page.locator('#connectionOverview').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
     await savePreferences(page, {panels: null});
 });
+
+test('a reachability result is dropped when the host now points elsewhere', async ({page}) => {
+    await login(page, 'e2e_admin', {workspace: false});
+    await setReachability(page, 'manual');
+    await openOverview(page);
+    const ids = await page.evaluate(() => ProfileManager.profiles.map(profile => profile.id));
+    await page.route('**/api/overview/reachability', route => route.fulfill({json: {
+        results: Object.fromEntries(ids.map(id => [id, {state: 'unreachable'}])), checked_at: Date.now() / 1000}}));
+    await page.locator('#odKpiReach [data-key="reach-check"]').click();
+    const first = page.locator(`#overviewHostList .od-host[data-host-id="${ids[0]}"]`);
+    await expect(first).toHaveAttribute('data-state', 'unreachable');
+    await page.evaluate(id => {
+        ProfileManager.setProfiles(ProfileManager.profiles.map(profile => profile.id === id ? {...profile, host: 'moved.example'} : profile));
+    }, ids[0]);
+    await expect(first).not.toHaveAttribute('data-state', 'unreachable');
+    await expect(page.locator(`#overviewHostList .od-host[data-host-id="${ids[1]}"]`)).toHaveAttribute('data-state', 'unreachable');
+});

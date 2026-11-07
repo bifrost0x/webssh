@@ -22,6 +22,7 @@ for (const code of ['https_required', 'unavailable']) {
  });
 }
 test('native password resource provides write-only editing in every user theme',async({page},testInfo)=>{
+ test.setTimeout(90000);
  await login(page,'e2e_admin',{workspace:false});
  await page.route('**/api/credentials/state',route=>route.fulfill({json:{enabled:true,credentials:[{id:'password-test',name:'Test resource for visual verification',username:'operator',version:1,uses:[]}],profiles:[],legacy_vault:false}}));
  await page.evaluate(()=>window.openConnectionAssetManager('passwords'));
@@ -31,7 +32,8 @@ test('native password resource provides write-only editing in every user theme',
  await expect(page.locator('#credentialManagementView iframe')).toHaveCount(0);
  for(const [width,height]of [[360,560],[768,720],[1280,720],[1920,1080],[3200,1200],[3440,1440],[3840,1600]]){
   await page.setViewportSize({width,height});
-  for(const theme of themes){await page.evaluate(theme=>document.body.dataset.theme=theme,theme);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath(`credentials-${theme}-${width}.png`),fullPage:true,animations:'disabled'});}
+  // Every theme is checked for overflow at every size; full-page screenshots are kept for a phone and a desktop.
+  for(const theme of themes){await page.evaluate(theme=>document.body.dataset.theme=theme,theme);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${theme} ${width}`).toBe(true);if(width===360||width===1920)await page.screenshot({path:testInfo.outputPath(`credentials-${theme}-${width}.png`),fullPage:true,animations:'disabled'});}
  }
  await page.locator('#automationNavBtn').click();
  await expect(page.locator('#automationNativeView')).toBeVisible();

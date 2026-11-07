@@ -24,6 +24,8 @@ Treat `SECRET_KEY` as long-lived installation state. Replacing it without the su
 |---|---|
 | `CORS_ORIGINS` | Comma-separated Socket.IO/browser origin allowlist |
 | `ALLOW_CORS_WILDCARD` | Allows `*`; homelab-only and rejected as a production origin policy |
+| `HOST_DISCOVERY_ENABLED` | Offers manual SSH host discovery in a network range under Hosts → Find hosts | `true`; `false` in production |
+| `SOCKETIO_ALLOW_ANY_ORIGIN` | With `CORS_ORIGINS=*`, realtime connections accept only pages served from the address used for WebSSH. `true` accepts any origin again; rejected in production | `false` |
 | `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none |
 | `SESSION_COOKIE_SECURE` | Sends the session cookie only over HTTPS |
 | `SESSION_TIMEOUT` | Idle SSH session timeout in seconds; default `1800` |
