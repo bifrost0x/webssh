@@ -48,7 +48,7 @@
         const hostList = $('overviewHostList');
         const mode = () => view.dataset.reachability || 'manual';
         const state = {readiness: null, reachability: null, checkedAt: null, checking: false, reachError: null,
-            shown: new Map(), scheduled: false, readinessTimer: 0, automaticTimer: 0, routeMap: null, firstPaint: true, returnKey: null,
+            shown: new Map(), scheduled: false, readinessTimer: 0, automaticTimer: 0, routeMap: null, firstPaint: true, returnKey: null, topologyNarrow: false,
             dismissed: [], attention: [], board: null};
 
         const profiles = () => win.ProfileManager?.profiles || [];
@@ -227,7 +227,11 @@
         function renderTopology(hosts) {
             const holder = $('odTopology');
             const matching = new Set(Model.filter(hosts, search.value).map(host => host.id));
-            const narrow = Boolean(holder.clientWidth && holder.clientWidth < 560);
+            // Hysteresis: re-rendering can change the panel width by a scrollbar or a
+            // wrapped line, which must not flip the topology layout back and forth.
+            const width = holder.clientWidth;
+            const narrow = Boolean(width && (state.topologyNarrow ? width < 600 : width < 560));
+            state.topologyNarrow = narrow;
             // Like the host cards, the drawing is rebuilt only when what it shows changed.
             const signature = JSON.stringify([narrow, win.i18n?.getLanguage?.() || '', hosts.map(host => [host.id, host.name,
                 host.destination, host.state, host.route.kind, host.route.name, matching.has(host.id)])]);
@@ -842,7 +846,8 @@
             if (win.ResizeObserver) {
                 let narrow = null;
                 new win.ResizeObserver(entries => {
-                    const now = entries[0].contentRect.width < 560;
+                    const width = entries[0].contentRect.width;
+                    const now = narrow ? width < 600 : width < 560;
                     if (now !== narrow) { narrow = now; schedule(); }
                 }).observe($('odTopology'));
             }
