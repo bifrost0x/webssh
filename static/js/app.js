@@ -139,7 +139,15 @@
                     }
                 });
             } else {
-                action.href = presentation.action.url;
+                // Only same-site or http(s) targets; a notification never runs a script URL.
+                let target = '#';
+                try {
+                    const url = new URL(String(presentation.action.url || ''), window.location.href);
+                    if (url.protocol === 'http:' || url.protocol === 'https:') target = url.href;
+                } catch {
+                    target = '#';
+                }
+                action.href = target;
             }
             action.textContent = presentation.action.label;
             notification.appendChild(action);
