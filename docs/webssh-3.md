@@ -10,13 +10,42 @@ start page. The preference belongs to your account and survives sign-out.
 Overview remains the default. Direct links, such as Automation, keep their target.
 Choose the dashboard or the classic overview independently in the same settings.
 
-The dashboard combines infrastructure, SSH routes and automation results. Route
-counts open the corresponding hosts in the expanded map. Drag nodes there to
-arrange the topology; arrangements are stored per account in this browser.
-Wide and narrow layouts are saved separately. The compact map uses readable
-route summaries instead of shrinking the complete topology into unreadable text.
-Clearing browser storage removes these local arrangements. The map describes
-saved configuration, not a live availability probe.
+The dashboard shows the state of your saved hosts, open sessions and
+automation at a glance:
+
+- Status tiles for host readiness, open sessions, automation success over the
+  last 14 days and reachability.
+- A route summary from WebSSH through direct routes and jump hosts to each host.
+  **Open map** shows the complete topology; drag nodes there to arrange it.
+  Arrangements are stored per account in this browser, separately for wide and
+  narrow layouts, and are lost when browser storage is cleared.
+- Host cards with platform, route and a readiness badge. Readiness comes from
+  stored configuration only: unknown host keys, missing keys, changed saved
+  passwords and missing jump hosts. Loading it never opens an SSH connection.
+- A list of items that need attention, an automation chart with the next
+  scheduled run, a platform breakdown and recent activity.
+
+Press <kbd>/</kbd> to search hosts, <kbd>Enter</kbd> to connect to the first
+match and the arrow keys to move between hosts.
+
+### Reachability checks
+
+Under **Settings > Preferences > Host reachability on Overview** each account chooses how
+the dashboard checks whether hosts answer:
+
+| Mode | Behavior |
+| --- | --- |
+| When I ask (default) | Checks run only when you select **Check now**. |
+| Automatically while Overview is open | Checks run when the dashboard opens and every five minutes while it is visible. |
+| Never | No checks are made. |
+
+A check opens and immediately closes a TCP connection to the SSH port. It does
+not start an SSH handshake and sends no credentials. Hosts behind a jump host
+are reported through the jump host, which is the only system WebSSH contacts
+directly. Checks follow the same network policy as SSH connections
+(`BLOCK_INTERNAL_SSH`, `SSH_ALLOWED_INTERNAL_NETWORKS`); blocked destinations
+are reported as blocked, not probed. A check covers at most 50 hosts, results
+are reused for 60 seconds, and each account is rate limited.
 
 ## Reusable operations
 
