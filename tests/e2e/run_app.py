@@ -374,6 +374,13 @@ def main():
                 or mixed_mfa_user.is_admin
             ):
                 raise RuntimeError('E2E user roles were not seeded deterministically')
+            # Accounts start with the tour already seen, so a spec that signs in
+            # through the form does not depend on which spec ran first in its lane.
+            # The onboarding spec sets the state it needs explicitly.
+            from app.user_settings import save_user_settings
+            for account in (admin, user, mfa_user, mixed_mfa_user):
+                if not save_user_settings(account.id, {'intro_tour': 'completed', 'intro_tour_v3_acknowledged': True}):
+                    raise RuntimeError('E2E tour state was not seeded')
             mixed_mfa_user.mfa_enabled = True
             db.session.add_all((
                 GitHubIdentity(

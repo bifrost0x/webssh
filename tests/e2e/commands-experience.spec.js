@@ -4,6 +4,8 @@ test('restored command IDs remain literal attributes and open the correct detail
     await login(page);
     await page.evaluate(() => window.CommandLibrary.openLibrary());
     await expect(page.locator('#commandsList .command-row').first()).toBeVisible();
+    // Opening the library requests a fresh list; a late reply must not replace the fixture below.
+    await page.evaluate(() => { window.socket.off('commands_list'); });
     const id = 'legacy" data-injected="yes';
     await page.evaluate(id => {
         window.CommandLibrary.setCommands([{

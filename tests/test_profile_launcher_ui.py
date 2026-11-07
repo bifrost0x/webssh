@@ -288,7 +288,7 @@ def test_submit_keeps_target_pane_until_all_passwords_are_validated():
     end = source.index("document.getElementById('keyUploadForm')", start)
     body = source[start:end]
     assert body.index('const started = startConnection') > body.index(
-        "showNotification('Jump host password is required'"
+        "showNotification((window.i18n ? window.i18n.t('toast.jumpPasswordRequired')"
     )
     assert "document.getElementById('passwordInput').focus()" in body
     assert "document.getElementById('jumpHostPasswordInput').focus()" in body
