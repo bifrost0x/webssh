@@ -65,10 +65,13 @@ class TrackingRemoteFile:
     def write(self, chunk):
         self.written.extend(chunk)
 
+    def chmod(self, mode):
+        self.permissions = mode
+
     def stat(self):
         return SimpleNamespace(
             st_size=self.declared_size,
-            st_mode=stat.S_IFREG | 0o600,
+            st_mode=stat.S_IFREG | getattr(self, 'permissions', 0o600),
             st_mtime=1,
         )
 
@@ -95,7 +98,10 @@ class FakeSFTP:
     def stat(self, _path):
         if not self.destination_exists:
             raise FileNotFoundError(_path)
-        return SimpleNamespace(st_size=self.reported_size)
+        return SimpleNamespace(st_size=self.reported_size, st_mode=stat.S_IFREG | 0o600, st_mtime=1)
+
+    def lstat(self, path):
+        return self.stat(path)
 
     def file(self, path, mode):
         self.opened.append((path, mode))
@@ -118,6 +124,18 @@ class PosixRenameSFTP(FakeSFTP):
         if not self.supports_posix_rename:
             raise AttributeError('extension unavailable')
         self.posix_renamed.append((source, destination))
+
+
+@pytest.fixture(autouse=True)
+def exclusive_transfer_file_stub(monkeypatch):
+    from app import sftp_handler
+
+    @contextmanager
+    def exclusive_file(client, path, *, mode=0o600):
+        assert mode == 0o600
+        with client.file(path, 'wb') as remote:
+            yield remote
+    monkeypatch.setattr(sftp_handler, 'open_exclusive_file', exclusive_file)
 
 
 @pytest.fixture

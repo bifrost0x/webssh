@@ -32,20 +32,21 @@ async function workspace(page, kind = 'sftp', chmod = true, enabled = false) {
     }, {kind, chmod});
 }
 
-test('disabled chmod remains discoverable through operator setup help', async ({ page }) => {
+test('disabled chmod explains Admin activation and authoritative environment overrides', async ({ page }) => {
     await workspace(page, 'sftp', false);
     await expect(page.locator('#fmLeftPane [data-pane-action="permissions"]')).toBeHidden();
     const help = page.locator('.fm-permissions-help');
     await expect(help).toBeVisible();
     expect(await help.evaluate(element => Boolean(element.closest('.fm-workspace-controls')))).toBe(true);
-    expect(await page.locator('#fmModalTitle').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(1);
+    await expect(page.locator('#fmModalTitle')).toBeVisible();
     await test.info().attach('chmod-help-desktop-collapsed', { body: await page.screenshot({ path: test.info().outputPath('desktop-collapsed.png') }), contentType: 'image/png' });
     const panesTop = await page.locator('.fm-panes').evaluate(element => element.getBoundingClientRect().top);
     await help.locator('summary').click();
     expect(await page.locator('.fm-panes').evaluate(element => element.getBoundingClientRect().top)).toBe(panesTop);
     await test.info().attach('chmod-help-desktop-expanded', { body: await page.screenshot({ path: test.info().outputPath('desktop-expanded.png') }), contentType: 'image/png' });
     await expect(help).toContainText('SFTP_CHMOD_ENABLED=true');
-    await expect(help).toContainText('operator');
+    await expect(help).toContainText('Administration → Integrations');
+    await expect(help).toContainText('overrides the Admin setting');
     await expect(help).toContainText('lsetstat@openssh.com');
     await expect(help).toContainText('SMB');
     expect(await page.evaluate(() => window.__mutationEvents.length)).toBe(0);
@@ -56,8 +57,9 @@ test('disabled chmod remains discoverable through operator setup help', async ({
     })).toBe(true);
     await test.info().attach('chmod-help-mobile-expanded', { body: await page.screenshot({ path: test.info().outputPath('mobile-expanded.png') }), contentType: 'image/png' });
     await page.evaluate(() => i18n.setLanguage('de'));
-    await expect(help.locator('summary [data-i18n]')).toHaveText('chmod aktivieren');
-    await expect(help).toContainText('Betreiber');
+    await expect(help.locator('summary [data-i18n]')).toHaveText('Hilfe zu Berechtigungen');
+    await expect(help).toContainText('Administration → Integrationen');
+    await expect(help).toContainText('hat Vorrang');
     await expect(page.locator('#fmLeftPane [data-pane-action="permissions"]')).toBeHidden();
     await page.keyboard.press('Escape');
     await expect(help).not.toHaveAttribute('open');
@@ -66,6 +68,7 @@ test('disabled chmod remains discoverable through operator setup help', async ({
 
 test('new file validates the name, prevents duplicate requests and closes with Escape', async ({ page }) => {
     await workspace(page);
+    await page.locator('#fmLeftPane .fm-action-menu-new > summary').click();
     await page.locator('#fmLeftPane [data-pane-action="newfile"]').click();
     const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'New file', exact: true }) });
     await expect(dialog).toBeVisible();
@@ -140,6 +143,7 @@ for (const kind of ['sftp', 'smb']) {
                         return emit(event, payload, ...rest);
                     };
                 });
+                await page.locator('#fmLeftPane .fm-action-menu-new > summary').click();
                 await page.locator('#fmLeftPane [data-pane-action="newfile"]').click();
                 const dialog = page.locator('dialog.fm-mutation-dialog');
                 await dialog.locator('[name="filename"]').fill('new.txt');
@@ -463,6 +467,7 @@ for (const reason of ['closed', 'disconnect']) {
 for (const kind of ['sftp','smb']) test(`folder creation uses a bound name dialog for ${kind}`, async ({page}) => {
     await page.setViewportSize({width:kind === 'smb' ? 360 : 1280,height:740});
     await workspace(page,kind,false);
+    await page.locator('#fmLeftPane .fm-action-menu-new > summary').click();
     await page.locator('#fmLeftPane [data-pane-action="newfolder"]').click();
     const dialog = page.locator('dialog.fm-mutation-dialog');
     await expect(dialog.getByRole('heading')).toHaveText('New Folder');

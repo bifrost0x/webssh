@@ -652,6 +652,7 @@ def test_password_tmux_preserves_remote_locale(monkeypatch):
         'tmux_reconnect': True,
         'client_request_id': 'tmux-reconnect-request',
         'profile_id': None,
+        'detected_platform': None,
     }
     channels = clients[0].transport.session_channels
     tmux_channel = next(

@@ -4,6 +4,7 @@
     const STORAGE_KEY = 'websshTheme';
     const THEMES = new Set([
         'glass',
+        'werkbank',
         'retro',
         'solar',
         'paper',

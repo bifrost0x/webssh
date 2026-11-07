@@ -287,7 +287,7 @@ def test_all_popup_translation_references_exist_in_every_locale():
         )
         locale_keys = set(
             re.findall(
-                r"^        '([^']+)':",
+                r'''^        ["']([^"']+)["']:''',
                 i18n_source[match.end():end],
                 re.MULTILINE,
             )

@@ -2,7 +2,7 @@ const {test, expect} = require('playwright/test');
 const {login, openProfileManagement, assertNoExternalRequests} = require('./helpers');
 
 for (const width of [360, 390, 870, 1440, 3043]) {
-    test(`Hosts keeps search above reachable actions at ${width}px`, async ({page}, testInfo) => {
+    test(`Hosts keeps search and grouped actions reachable at ${width}px`, async ({page}, testInfo) => {
         await page.setViewportSize({width, height: width >= 1440 ? 662 : 844});
         await login(page);
         await openProfileManagement(page);
@@ -17,16 +17,23 @@ for (const width of [360, 390, 870, 1440, 3043]) {
         const actions = page.locator('#profileManagementView .management-panel-actions');
         const searchBox = await search.boundingBox();
         const actionsBox = await actions.boundingBox();
-        expect(actionsBox.y).toBeGreaterThanOrEqual(searchBox.y + searchBox.height);
-        expect(Math.abs(actionsBox.x - searchBox.x)).toBeLessThanOrEqual(1);
-        expect(Math.abs(actionsBox.width - searchBox.width)).toBeLessThanOrEqual(1);
-        for (const id of ['profileDensityBtn', 'collapseAllProfilesBtn', 'importProfilesBtn', 'exportProfilesBtn', 'newProfileBtn']) {
-            await expect(page.locator(`#${id}`)).toBeInViewport();
-        }
+        if (width > 1150) {
+            expect(Math.abs(actionsBox.y - searchBox.y)).toBeLessThanOrEqual(1);
+            expect(actionsBox.x).toBeGreaterThanOrEqual(searchBox.x + searchBox.width);
+        } else expect(actionsBox.y).toBeGreaterThanOrEqual(searchBox.y + searchBox.height);
+        const menus = actions.locator('.management-toolbar-menu');
+        await expect(menus).toHaveCount(2);
+        await expect(menus.nth(0).locator('summary')).toBeInViewport();
+        await expect(menus.nth(1).locator('summary')).toBeInViewport();
+        await expect(page.locator('#newProfileBtn')).toBeInViewport();
         await page.screenshot({path: testInfo.outputPath(`hosts-toolbar-${width}-default.png`)});
         const downloaded = page.waitForEvent('download');
+        await menus.nth(1).locator('summary').click();
+        await expect(page.locator('#importProfilesBtn')).toBeInViewport();
+        await expect(page.locator('#exportProfilesBtn')).toBeInViewport();
         await page.locator('#exportProfilesBtn').click();
         expect((await downloaded).suggestedFilename()).toMatch(/^webssh-hosts\.(json|zip)$/);
+        await expect(menus.nth(1)).not.toHaveAttribute('open');
         const list = page.locator('#profileManagementList');
         await list.evaluate(element => { element.scrollTop = element.scrollHeight; });
         expect(await list.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
@@ -37,10 +44,15 @@ for (const width of [360, 390, 870, 1440, 3043]) {
         await search.fill('');
         await search.focus();
         await page.keyboard.press('Tab');
+        await expect(menus.nth(0).locator('summary')).toBeFocused();
+        await page.keyboard.press('Enter');
+        await page.keyboard.press('Tab');
         await expect(page.locator('#profileDensityBtn')).toBeFocused();
         await page.locator('#profileDensityBtn').click();
         await expect(page.locator('#profileDensityBtn')).toHaveAttribute('aria-pressed', 'true');
+        await menus.nth(0).locator('summary').click();
         await page.locator('#collapseAllProfilesBtn').click();
+        await expect(menus.nth(0)).not.toHaveAttribute('open');
         await page.locator('#newProfileBtn').click();
         await expect(page.locator('#profileEditorView')).toBeVisible();
         await page.locator('#cancelProfileEditorBtn').click();
@@ -64,12 +76,14 @@ for (const width of [360, 870, 3043]) {
         await openProfileManagement(page);
         await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
         await expect(page.locator('#jumpHostManagementModal')).toBeVisible();
+        await page.locator('#jumpResourceNew').click();
         await page.locator('#jhNameInput').fill('Navigation draft');
         await page.locator('#jumpHostForm button[type="submit"]').scrollIntoViewIfNeeded();
         await expect(page.locator('#jumpHostForm button[type="submit"]')).toBeInViewport();
         expect(await page.locator('#jumpHostManagementModal .connection-asset-layout').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
         await page.locator('#jumpHostManagementModal [data-connection-asset="keys"]').click();
         await expect(page.locator('#keyManagementModal')).toBeVisible();
+        await page.locator('#keyResourceNew').click();
         await page.locator('#keyNameInput').fill('Key navigation draft');
         await page.locator('#keyContentInput').focus();
         await page.keyboard.press('Tab');
@@ -80,7 +94,8 @@ for (const width of [360, 870, 3043]) {
         await expect(page.locator('#newProfileBtn')).toBeInViewport();
         const search = await page.locator('#profileSearchInput').boundingBox();
         const actions = await page.locator('#profileManagementView .management-panel-actions').boundingBox();
-        expect(actions.y).toBeGreaterThanOrEqual(search.y + search.height);
+        if (width > 1150) expect(Math.abs(actions.y - search.y)).toBeLessThanOrEqual(1);
+        else expect(actions.y).toBeGreaterThanOrEqual(search.y + search.height);
         await assertNoExternalRequests(page);
     });
 }

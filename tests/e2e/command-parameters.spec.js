@@ -11,7 +11,7 @@ test.afterEach(async ({page}) => {
         ));
     });
     expect(result.success).toBe(true);
-    assertNoExternalRequests(page);
+    await assertNoExternalRequests(page);
 });
 
 test('argument sets save explicit declarations and preview values before insertion', async ({page}) => {

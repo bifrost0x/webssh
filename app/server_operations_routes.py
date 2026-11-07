@@ -4,6 +4,7 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
 
 import config
+from .app_settings import runtime_feature_enabled
 
 from . import server_operations as operations
 from .audit_logger import log_security_event
@@ -31,7 +32,7 @@ def _auth():
 
 
 def _enabled():
-    if not config.SERVER_OPERATIONS_ENABLED:
+    if not runtime_feature_enabled('server_operations_enabled'):
         raise operations.OperationError('disabled')
 
 
@@ -52,11 +53,11 @@ def capabilities(session_id):
     _auth()
     session = operations.owned_session(session_id, current_user.id)
     return jsonify({
-        'mutations_enabled': config.SERVER_OPERATIONS_ENABLED,
+        'mutations_enabled': runtime_feature_enabled('server_operations_enabled'),
         'host': session.get('host', ''),
         'username': session.get('username', ''),
         'read_actions': sorted(operations.READ_ACTIONS),
-        'write_actions': sorted(operations.WRITE_ACTIONS) if config.SERVER_OPERATIONS_ENABLED else [],
+        'write_actions': sorted(operations.WRITE_ACTIONS) if runtime_feature_enabled('server_operations_enabled') else [],
     })
 
 

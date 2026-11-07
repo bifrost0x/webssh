@@ -5,12 +5,13 @@ import re
 import shlex
 
 from .profile_manager import _is_valid_host
+from .host_platform import PLATFORMS
 
 MAX_INPUT_BYTES = 64 * 1024
 MAX_RECORDS = 100
 _FIELDS = {
     'name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux',
-    'requires_key', 'jump_alias', 'auth_type',
+    'requires_key', 'jump_alias', 'auth_type', 'platform_icon',
 }
 _ALIAS = re.compile(r'^[a-zA-Z0-9_.-]{1,128}$')
 _KNOWN_HOST = re.compile(
@@ -61,6 +62,7 @@ def _record(values):
         or type(row['port']) is not int or not 1 <= row['port'] <= 65535
         or type(row['requires_key']) is not bool
         or row.get('auth_type', 'password') not in ('password', 'key', 'tailscale')
+        or ('platform_icon' in row and (not isinstance(row['platform_icon'], str) or row['platform_icon'] not in PLATFORMS | {'auto'}))
         or ('group' in row and not _text(row['group'], 64))
         or any(type(row[field]) is not bool for field in ('favorite', 'use_tmux') if field in row)
     ):
@@ -214,7 +216,7 @@ def export_profiles(profiles, jump_hosts):
     for profile in profiles:
         row = {
             field: profile[field]
-            for field in ('name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux', 'auth_type')
+            for field in ('name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux', 'auth_type', 'platform_icon')
             if field in profile
         }
         row['requires_key'] = profile.get('auth_type') == 'key'

@@ -38,6 +38,8 @@ SECURITY_ENV_NAMES = {
     'OIDC_STEP_UP_ACR_VALUES',
     'REGISTRATION_ENABLED',
     'SESSION_COOKIE_SECURE',
+    'SESSION_COOKIE_NAME',
+    'REMEMBER_COOKIE_NAME',
     'SMB_ALLOWED_TARGETS',
     'SMB_ENABLED',
     'STEP_UP_MAX_AGE_SECONDS',
@@ -90,6 +92,35 @@ def _load_config(env, code='import config'):
         errors='replace',
         check=False,
     )
+
+
+def test_cookie_names_can_isolate_instances_without_changing_defaults():
+    code = 'import config, json; print(json.dumps([config.SESSION_COOKIE_NAME, config.REMEMBER_COOKIE_NAME]))'
+    defaults = _load_config(_production_env(), code)
+    assert defaults.returncode == 0, defaults.stderr
+    assert json.loads(defaults.stdout.strip().splitlines()[-1]) == ['session', 'remember_token']
+    custom = _load_config(_production_env(
+        SESSION_COOKIE_NAME='webssh_review_session',
+        REMEMBER_COOKIE_NAME='webssh_review_remember',
+    ), code)
+    assert custom.returncode == 0, custom.stderr
+    assert json.loads(custom.stdout.strip().splitlines()[-1]) == ['webssh_review_session', 'webssh_review_remember']
+
+
+@pytest.mark.parametrize('name', ['SESSION_COOKIE_NAME', 'REMEMBER_COOKIE_NAME'])
+@pytest.mark.parametrize('value', ['', 'invalid name', 'invalid;name'])
+def test_cookie_names_reject_invalid_tokens(name, value):
+    result = _load_config(_production_env(**{name: value}))
+    assert result.returncode != 0
+    assert name in result.stderr
+
+
+def test_session_and_remember_cookies_cannot_share_a_name():
+    result = _load_config(_production_env(
+        SESSION_COOKIE_NAME='same', REMEMBER_COOKIE_NAME='same',
+    ))
+    assert result.returncode != 0
+    assert 'must differ' in result.stderr
 
 
 def test_safe_production_profile_loads():
@@ -337,14 +368,14 @@ def test_config_rejects_invalid_smb_allowlist_entries(entry):
     assert 'SMB_ALLOWED_TARGETS' in result.stderr
 
 
-def test_totp_is_disabled_by_default():
+def test_totp_capability_is_available_by_default():
     result = _load_config(
         _production_env(),
         'import config; print(config.TOTP_ENABLED)',
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.splitlines()[-1] == 'False'
+    assert result.stdout.splitlines()[-1] == 'True'
 
 
 def test_oidc_assurance_values_default_to_empty_explicit_sets():
@@ -783,6 +814,15 @@ def test_compose_exposes_totp_capability_without_bypassing_admin_gate():
 
     assert 'TOTP_ENABLED=${TOTP_ENABLED:-true}' in compose
     assert 'TOTP_ENABLED: "${TOTP_ENABLED:-true}"' in production
+
+
+def test_totp_capability_retains_explicit_operator_kill_switch():
+    for value, expected in [('true', 'True'), ('false', 'False')]:
+        result = _load_config(_production_env(TOTP_ENABLED=value),
+                              'import config; print(config.TOTP_ENABLED)')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stdout.splitlines()[-1] == expected
+
 
 
 def test_default_compose_has_no_ldap_secret_infrastructure():

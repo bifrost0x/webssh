@@ -135,6 +135,62 @@ def test_direct_password_terminal_roundtrip():
         assert ssh_manager.close_session(session_id) is True
 
 
+@pytest.mark.parametrize('mode', [0o600, 0o640, 0o750])
+@pytest.mark.parametrize('route', ['backend', 'legacy-upload', 'legacy-copy'])
+def test_atomic_transfer_keeps_staging_private_and_preserves_destination_mode(mode, route):
+    import io
+    from types import SimpleNamespace
+    from app import sftp_handler
+    from app.sftp_backend import SFTPBackend
+    from app.paramiko_channels import open_sftp_client
+
+    session_id = connect_terminal(password=PASSWORD)
+    source = SimpleNamespace(handle_id=session_id)
+    client = ssh_manager.sessions[session_id]['client']
+    sftp = open_sftp_client(client.get_transport(), timeout=5, operation_timeout=5)
+    directory = f'/tmp/webssh-transfer-mode-{uuid.uuid4().hex}'
+    sftp.mkdir(directory, 0o755)
+    target = directory + '/secret'
+    try:
+        with sftp.file(target, 'wb') as original:
+            original.write(b'original')
+        sftp.chmod(target, mode)
+        def inspect_staging(*_args):
+            staged = [item for item in sftp.listdir_attr(directory) if '.webssh-' in item.filename]
+            assert len(staged) == 1
+            assert stat.S_IMODE(staged[0].st_mode) == 0o600
+        if route == 'backend':
+            with SFTPBackend().open_atomic_writer(source, target, replace=True,
+                                                  cancel_event=threading.Event()) as writer:
+                writer.write(b'replacement')
+                inspect_staging()
+        elif route == 'legacy-upload':
+            sftp_handler.upload_request_stream(session_id, target, io.BytesIO(b'replacement'),
+                chunk_size=4, max_bytes=100, replace=True, progress=inspect_staging)
+        else:
+            source_path = directory + '/source'
+            with sftp.file(source_path, 'wb') as source_file:
+                source_file.write(b'replacement')
+            class Progress:
+                def emit(self, event, payload, **_kwargs):
+                    if event == 's2s_transfer_progress' and payload.get('status') == 'transferring':
+                        inspect_staging()
+            success, error = sftp_handler.transfer_server_to_server(
+                session_id, source_path, session_id, target, 'permissions-check',
+                socketio_instance=Progress(), user_room='test', conflict_policy='replace',
+                max_bytes=100, chunk_size=4)
+            assert success, error
+        assert stat.S_IMODE(sftp.stat(target).st_mode) == mode
+        with sftp.file(target, 'rb') as result:
+            assert result.read() == b'replacement'
+    finally:
+        for name in sftp.listdir(directory):
+            sftp.remove(directory + '/' + name)
+        sftp.rmdir(directory)
+        sftp.close()
+        ssh_manager.close_session(session_id)
+
+
 def test_file_mutations_are_exclusive_preserve_modes_and_refuse_final_symlink_race(monkeypatch):
     import hashlib
     from types import SimpleNamespace

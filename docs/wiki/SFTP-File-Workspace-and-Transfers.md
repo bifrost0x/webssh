@@ -27,7 +27,8 @@ administrative shares, reparse-point traversal, and automatic reconnect are
 not supported.
 
 The SMB dialog sends the password only for the requested temporary connection;
-passwords and authentication secrets are never stored by WebSSH. Users may save
+manually entered passwords are transient. Optional saved passwords are encrypted
+separately and can be assigned to saved shares; see [Credentials](../credentials.md). Users may save
 non-secret, per-user share definitions containing a display name, host, share,
 domain, and username. Closing a source's final tab closes the connection after
 any dependent transfer finishes. An application restart also removes all active
@@ -85,33 +86,25 @@ the created file.
 
 ### Unix permissions
 
-Permissions are disabled by default. This is an instance-wide operator setting,
-not a personal preference or an Admin-panel toggle. The file manager includes
-an expandable **Enable chmod** help section while the instance setting is disabled.
-After activation and a page reload, this setup hint disappears. Missing server
-support or an SMB source does not make this instance-wide hint reappear.
+Permissions are disabled by default. Enable **Settings → Administration →
+Integrations → Change file permissions**. This is an instance-wide setting;
+remote SSH permissions and safe SFTP server support are still required.
 
-For Docker Compose, remove the leading `#` from this existing optional line under
-the `webssh` service's `environment` section in `docker-compose.yml`:
+An explicitly supplied `SFTP_CHMOD_ENABLED=true` or `false` in Compose/environment
+is authoritative and locks the Admin switch. The UI shows the variable and
+explains how to remove or change it. Recreate the container after changing
+Compose; restarting alone does not replace environment variables.
 
-```yaml
-      - SFTP_CHMOD_ENABLED=true
-```
-
-Apply the change with `docker compose up -d --force-recreate webssh`. When using
-the production overlay, use the same `-f` files as your normal deployment;
-alternatively uncomment `SFTP_CHMOD_ENABLED: "true"` in that overlay. A plain
-`docker compose restart` does not apply changed container environment variables.
-For source installations, set `SFTP_CHMOD_ENABLED=true` in the application
-environment or `.env`, then restart the application. An explicit environment
-variable takes precedence over `.env`.
+Existing Compose files remain supported. Their explicit value is preserved as
+an initial Admin value if no saved value exists. Removing the environment override
+reveals the saved value; inspect it in Settings before changing deployment policy.
 
 After activation, users reload WebSSH, reconnect their SSH/SFTP source and open
 a directory. No WebSSH administrator role is required for using the action;
 the remote account must have permission to change the selected object's mode.
-To disable it, comment out the Compose line (or set it to false) and recreate
-the service again. The action disappears from toolbars and menus, while new-file
-creation and editing remain available. Direct mutation requests are also denied.
+Disable it in Administration when there is no environment override, or set the
+explicit environment value to false and recreate the service. Unavailable actions
+remain disabled with an explanation; direct mutation requests are denied.
 
 The action appears for SFTP sources after a successful handshake advertises
 `lsetstat@openssh.com` version 1. SMB has no Unix permission editor. Unsupported
@@ -428,19 +421,13 @@ inside the active tmux pane. A confirmed directory change from a sync-generated
 `cd` acknowledges that command even when tmux coalesces prompt-mode signals,
 provided no user input or shell change occurred meanwhile. Unknown or replayed
 prompts and unfinished manual input remain guarded.
-On tmux servers exposing `bracket_paste_flag`, after a manual Enter or Ctrl+C,
-a fresh probe can also confirm the prompt
-once live terminal output advances to a new line. It must find a supported
-foreground shell with bracketed paste enabled **inside the pane**. This avoids
-depending on mode changes that tmux may omit from the outer terminal, and keeps
-navigation blocked while a prompt hook is still running. New typing, an active
-paste, or transcript replay invalidates this confirmation. After reconnecting
-at an unknown prompt, finish or cancel the current input to establish a live
-prompt before using Files-to-terminal navigation.
-Older tmux servers without this optional flag still support directory following
-and the existing live-prompt and sync-generated `cd` checks. They cannot use the
-additional confirmation after manual input when tmux omits the prompt signal;
-Files-to-terminal navigation remains guarded in that case.
+For managed tmux, sending a folder change requires the explicit Bash primary-prompt
+integration described in [Terminal and Persistent tmux Sessions](Terminal-and-Persistent-tmux-Sessions.md).
+Directory following can work without it, but an Enter or Ctrl+C, terminal output,
+or `bracket_paste_flag` alone does not authorize sending `cd`. The prompt marker
+must match the current shell and generation, with an empty input state and
+bracketed paste enabled. Other shells can still support directory following;
+the explicit tmux prompt integration currently supports Bash only.
 These are conservative UI guards, not an atomic shell protocol: custom prompt
 behavior and concurrent input from another SSH/tmux client cannot be fully
 inferred. Paths containing control characters are intentionally rejected.

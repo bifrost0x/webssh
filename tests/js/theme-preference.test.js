@@ -88,3 +88,15 @@ test('loading the helper without a body still exposes its validation API', () =>
     assert.equal(window.ThemePreference.isValid('paper'), true);
     assert.equal(window.ThemePreference.isValid('invalid'), false);
 });
+
+for (const theme of ['glass', 'werkbank', 'arctic-ice']) {
+    test(`saved ${theme} preference remains distinct and is never migrated`, () => {
+        const body = createBody({'data-theme': 'glass', 'data-use-theme-preference': ''});
+        let writes = 0;
+        const window = {localStorage: {getItem: () => theme, setItem: () => writes++}};
+        vm.runInContext(source, vm.createContext({document: {body}, window}));
+        assert.equal(body.getAttribute('data-theme'), theme);
+        assert.equal(writes, 0);
+        assert.equal(window.ThemePreference.isValid(theme), true);
+    });
+}

@@ -32,9 +32,9 @@ test('custom backgrounds persist per theme and account in this browser, never on
     await expect(page.locator('body')).toHaveAttribute('data-custom-background', '');
     await page.goto('/');
     await expect(page.locator('body')).toHaveAttribute('data-custom-background', '');
-    await expect(page.locator('#overviewHosts')).toContainText('Usable key');
-    await page.locator('#overviewListBtn').click();
-    await expect(page.locator('.overview-heading')).toHaveCSS('background-image', /data:image\/jpeg;base64,/);
+    await expect.poll(() => page.evaluate(() => window.ProfileManager?.profiles?.some(profile => profile.name === 'Usable key'))).toBe(true);
+    if (await page.locator('.overview-access-inspector').count()) await page.locator('.overview-access-heading button').click();
+    await expect(page.locator('.overview-scene')).toHaveCSS('background-image', /data:image\/jpeg;base64,/);
     await page.locator('#workspaceNavBtn').click();
     await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('.split-btn[data-layout="windows"]').click();

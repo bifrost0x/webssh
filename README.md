@@ -3,12 +3,12 @@
 </p>
 
 <p align="center">
-  <strong>A secure, self-hosted SSH and SFTP workspace for homelabs and teams.</strong>
+  <strong>WebSSH 3 — your self-hosted SSH, files and automation workspace.</strong>
 </p>
 
 <p align="center">
   <a href="https://getwebssh.com/">Product site</a> ·
-  <a href="https://www.youtube.com/watch?v=mw_qXUnYYVs">Watch the full tour</a> ·
+  <a href="site/demo.html">Watch the full tour</a> ·
   <a href="https://github.com/bifrost0x/webssh/wiki">Documentation</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Container image</a> ·
@@ -27,8 +27,8 @@
 ## Product tour
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=mw_qXUnYYVs">
-    <img src="site/assets/webssh-youtube-tour.jpg" alt="Watch the WebSSH tour on YouTube: SSH connections, split terminals, SFTP files, command sets and Docker setup" width="1100">
+  <a href="site/demo.html">
+    <img src="assets/dashboard.png" alt="WebSSH 3 dashboard with saved SSH routes and infrastructure" width="1100">
   </a>
 </p>
 
@@ -56,6 +56,27 @@ a hosted control plane or runtime CDN dependencies.
   mobile shell to multi-pane desktop operations.
 
 ## Features
+
+### Dashboard and automation
+
+- Customizable dashboard or classic overview, with a per-account choice of
+  Overview or Workspaces as the start page after sign-in.
+- Readable route summaries and an expandable SSH map with saved arrangements.
+- Reusable workflows from commands, command sets and templates, immediate runs,
+  cron schedules, cancellation and bounded per-step output history.
+- Optional encrypted, per-account passwords shared by saved hosts and supported
+  connection types. Administrators enable this under Integrations.
+- Application backup exports exclude stored passwords and SSH private keys.
+  Keep a separate credential recovery plan before restoring.
+
+See the [WebSSH 3 changes and upgrade notes](docs/webssh-3.md),
+[automation guide](docs/automation.md) and [credential guide](docs/credentials.md).
+
+<details>
+  <summary>See all eleven themes in WebSSH 3</summary>
+
+  <img src="assets/webssh-themes.gif" alt="WebSSH 3 dashboard cycling through eleven themes" width="1100">
+</details>
 
 ### Terminal workspace
 
@@ -95,11 +116,40 @@ enable their own icons. See the
   unavailable source, timeout, and configured-limit violations.
 - Per-user ownership checks, size limits, quotas, and path validation.
 
-SMB is disabled by default (`SMB_ENABLED=false`) and requires an exact
-`SMB_ALLOWED_TARGETS` allowlist. Connections require SMB 3.1.1 with signing and
-encryption; credentials are temporary and are not saved. See
-[SMB setup and security boundaries](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers)
-for server prerequisites, supported authentication, permissions and limitations.
+SMB is disabled by default (`SMB_ENABLED=false`). Enabling it also requires an
+exact `SMB_ALLOWED_TARGETS` server allowlist. WebSSH fixes SMB connections to
+TCP 445 and requires SMB 3.1.1, signing, encryption, and secure negotiation;
+the current authentication mode is NTLM. Guest access, DFS, Kerberos, and
+automatic reconnect are not supported. SMB connections are temporary. Manually entered passwords are transient; when
+the administrator enables saved passwords, users can explicitly attach a credential
+to a saved share. Optional saved passwords are encrypted. Share definitions contain the display
+name, host, share, domain and username, not plaintext passwords.
+
+For Active Directory and TrueNAS, first try the DNS domain (for example
+`example.com`) with the account name (for example `alice`). Alternatively,
+leave the domain field empty and use a UPN such as `alice@example.com`. NetBIOS
+domain names may not be accepted by every server.
+
+After connecting, WebSSH non-destructively checks root listing, file creation,
+directory creation, and child deletion access. The workspace labels confirmed
+write access, confirmed root read-only access, or unknown access; deeper ACLs
+can still differ. Uploads and remote copies never silently overwrite an
+existing destination: replace, skip, or cancel requires an explicit choice,
+and replacement fails closed when the backend cannot provide an atomic rename.
+SMB uses separate control and transfer sessions so browsing does not wait for a
+bulk stream. Cancellation is a single idempotent request, and known oversized
+operations report both the actual size and exact configured limit. Inline SMB
+editing preserves revision checks and offers an explicit recoverable-swap path
+when atomic replacement is unavailable.
+Supported SMB targets must refuse symlink and wide-link traversal (for Samba,
+use `follow symlinks = no` and `wide links = no`). WebSSH additionally opens
+files and directories without following reparse points and validates existing
+path components before remote operations.
+
+This is a two-link trust boundary: browser TLS protects browser-to-WebSSH
+traffic, while SMB encryption protects WebSSH-to-share traffic. The WebSSH process
+necessarily handles the submitted credentials and transferred file contents, so
+run it only on a trusted host and allowlist only trusted shares.
 
 ### Identity and security
 
@@ -271,8 +321,10 @@ Keep these deployment contracts intact:
   and quotas form one capacity model. Keep HTTP capacity reserved.
 - External OIDC or LDAP identity never bypasses the local account, ownership,
   or authorization model. Retain a tested local break-glass administrator.
-- Backups can contain the persisted application secret and encrypted private
-  keys together. Protect and test them accordingly.
+- Native backups exclude saved remote passwords and SSH keys. They still contain
+  account authentication data and may contain the persisted application secret;
+  store them encrypted and off-host. After restore, reimport keys, recreate
+  passwords, reassign credentials, and review and re-enable schedules.
 
 See the [Security Model and Hardening](https://github.com/bifrost0x/webssh/wiki/Security-Model-and-Hardening)
 guide and the project's [security policy](SECURITY.md) before exposing WebSSH
@@ -331,3 +383,7 @@ WebSSH is available under the [Apache License 2.0](LICENSE).
 
 Bundled third-party components retain their own licenses. See
 [Licensing](docs/licensing.md) and [retained notices](THIRD-PARTY-NOTICES).
+
+### Native automation
+
+Run ordered SSH tasks immediately or on a schedule, with saved hosts or complete groups, exact-target previews and account verification. Administrators enable Automation and saved passwords in Settings; both are disabled by default and require HTTPS. Reuse SSH keys or named passwords assigned to your hosts. Runs retain bounded command output for troubleshooting. See [Automation setup, security and limits](docs/automation.md) and [Saved passwords](docs/credentials.md).

@@ -87,8 +87,9 @@ exact operator-configured sets above:
 
 Configure values only from the documentation and observed signed tokens of this
 exact provider/app policy. A basic OIDC login cannot bypass MFA already enabled
-on the linked WebSSH account; WebSSH continues with an available local Passkey,
-TOTP, or Recovery second factor.
+on the linked WebSSH account; WebSSH continues with an available local Passkey
+or TOTP second factor. Recovery Codes require password or LDAP primary
+authentication and are not offered after OIDC login.
 
 ### Push on a mobile device
 

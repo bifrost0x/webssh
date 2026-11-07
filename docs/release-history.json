@@ -678,7 +678,17 @@
     ],
     "verification": "All 185 accessible planned items matched their intended milestone through the GitHub API. Browser milestone overview confirmed 10 closed and 1 open. Release-readiness issue #248 remains open. No due dates were added."
   },
-  "candidate": null,
+  "candidate": {
+    "version": "3.0.0",
+    "state": "local_preparation",
+    "published": false,
+    "guide": "docs/webssh-3.md",
+    "remaining_gates": [
+      "Final-revision CI and native AMD64/ARM64 image acceptance",
+      "Outstanding image security findings and Debian SQLite updates",
+      "Backup, restore and rollback acceptance of the final image"
+    ]
+  },
   "updated_on": "2026-11-04",
   "release_updates": [
     {

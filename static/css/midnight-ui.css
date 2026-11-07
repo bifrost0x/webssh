@@ -28,7 +28,7 @@ body.webssh-ui[data-theme="glass"] {
 .webssh-ui[data-theme="paper"] [data-tone="4"] { --group-accent: #803c73; }
 .webssh-ui[data-theme="paper"] { --ws2-accent-strong: color-mix(in srgb, var(--ws2-accent) 85%, black); }
 /* These theme accents are light; white button labels fail normal-text contrast. */
-.webssh-ui:not([data-theme="glass"]):not([data-theme="paper"]) .btn-primary { color: #08111c; }
+.webssh-ui:not([data-theme="glass"]):not([data-theme="paper"]):not([data-theme="werkbank"]) .btn-primary { color: #08111c; }
 .webssh-ui :is(.app-brand, .settings-brand, .auth-product-brand) { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .webssh-ui :is(.app-brand-logo, .auth-product-logo) { width: 38px; height: 38px; object-fit: contain; padding: 0; background: transparent; border: 0; border-radius: 0; }
 .webssh-ui .brand-wordmark { color: var(--ws2-text); font-size: 22px; font-weight: 650; letter-spacing: -.045em; line-height: 1; }

@@ -94,6 +94,32 @@ test('failed bundled font loads remain on fallback and can be retried', async ()
     assert.equal(await appearance.loadFont(family, {load: () => Promise.resolve([{}])}), true);
 });
 
+test('font cache reloads invalidated faces and shares retries without losing bold coverage', async () => {
+    const vm = require('node:vm');
+    const fs = require('node:fs');
+    const context = {module: {exports: {}}, setTimeout, clearTimeout};
+    vm.runInNewContext(fs.readFileSync(require.resolve('../../static/js/terminal-appearance'), 'utf8'), context);
+    const api = context.module.exports;
+    const loaded = new Set();
+    const calls = [];
+    const fontSet = {
+        check(spec) { return loaded.has(spec); },
+        async load(spec) { calls.push(spec); loaded.add(spec); return [{}]; },
+    };
+    for (const family of ['WebSSH Hack', 'WebSSH Nerd Symbols']) {
+        await api.loadFont(family, fontSet);
+        const before = calls.length;
+        await api.loadFont(family, fontSet);
+        assert.equal(calls.length, before);
+        loaded.delete(`${family === 'WebSSH Hack' ? 700 : 400} 14px "${family}"`);
+        const first = api.loadFont(family, fontSet);
+        const second = api.loadFont(family, fontSet);
+        assert.equal(first, second);
+        assert.equal(await first, true);
+        assert.equal(calls.length - before, family === 'WebSSH Hack' ? 2 : 1);
+    }
+});
+
 test('custom font names never trigger font discovery or URL fetching', async () => {
     const fonts = {load() { throw new Error('Must not query local fonts'); }};
     for (const family of ['Consolas', 'theme', 'https://example.com/font.woff2', '";url(x)', '__proto__']) {

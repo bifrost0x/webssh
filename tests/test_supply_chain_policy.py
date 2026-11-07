@@ -700,6 +700,23 @@ def test_docs_selection_is_job_level_and_keeps_both_required_aggregates():
         assert "if: needs.change-scope.outputs.mode == 'full'" in job
 
 
+def test_security_images_require_native_runtime_acceptance_before_success():
+    workflow = (WORKFLOWS / 'security.yml').read_text(encoding='utf-8')
+    for arch, machine in [('amd64', 'x86_64'), ('arm64', 'aarch64')]:
+        job = re.split(r'\n  [a-z][a-z0-9-]*:', workflow.split('\n  image-security-' + arch + ':', 1)[1], maxsplit=1)[0]
+        runtime = job.split('- name: Verify native runtime acceptance', 1)[1].split('- name:', 1)[0]
+        assert 'if:' not in runtime
+        assert f'test "$(uname -m)" = "{machine}"' in runtime
+        assert 'docker image inspect --format' in runtime
+        assert '--image "$runtime_ref"' in runtime
+        assert f'--revision "$GITHUB_SHA" --platform linux/{arch}' in runtime
+        assert 'continue-on-error' not in job
+        assert 'setup-qemu' not in job
+    arm = workflow.split('  image-security-arm64:', 1)[1].split('  image-security:', 1)[0]
+    assert 'docker load --input /tmp/webssh-arm64.tar' in arm
+    assert 'tags: webssh-security:${{ github.sha }}' in arm
+
+
 def test_pr_image_scans_use_native_builder_without_skipping_security_gates():
     workflow = (WORKFLOWS / 'security.yml').read_text(encoding='utf-8')
     for arch in ('amd64', 'arm64'):

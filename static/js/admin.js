@@ -106,6 +106,7 @@
 
     let stepUpGeneration = 0;
     let activeStepUpPrompt = null;
+    let stepUpReturnFocus = null;
 
     function closeStepUpPrompt(error, value) {
         const pending = activeStepUpPrompt;
@@ -119,6 +120,12 @@
         });
         if (!pending) { return; }
         if (error) { pending.reject(error); } else { pending.resolve(value); }
+        setTimeout(() => {
+            if (!activeStepUpPrompt && pending.returnFocus?.isConnected
+                && !pending.returnFocus.disabled && pending.returnFocus.getClientRects().length) {
+                pending.returnFocus.focus();
+            }
+        }, 0);
     }
 
     function requestStepUpValue(method) {
@@ -131,25 +138,33 @@
         const modal = document.getElementById('stepUpModal');
         modal?.classList.add('show');
         modal?.setAttribute('aria-hidden', 'false');
-        setTimeout(() => document.getElementById(
-            password ? 'stepUpPassword' : 'stepUpTotp'
-        )?.focus(), 0);
         return new Promise((resolve, reject) => {
-            activeStepUpPrompt = { method, resolve, reject };
+            const pending = { method, resolve, reject, returnFocus: stepUpReturnFocus || document.activeElement };
+            activeStepUpPrompt = pending;
+            setTimeout(() => {
+                if (activeStepUpPrompt === pending) {
+                    document.getElementById(password ? 'stepUpPassword' : 'stepUpTotp')?.focus();
+                }
+            }, 0);
         });
     }
 
     function initStepUpDialog() {
+        const modal = document.getElementById('stepUpModal');
+        document.addEventListener('click', event => {
+            const trigger = event.target.closest('button, a');
+            if (trigger && !modal?.contains(trigger)) { stepUpReturnFocus = trigger; }
+        }, true);
         const cancel = () => {
             stepUpGeneration += 1;
-            closeStepUpPrompt(new Error('Additional authentication was cancelled'));
+            closeStepUpPrompt(new Error(t('admin.stepUpCancelled', 'Additional authentication was cancelled')));
         };
         document.getElementById('stepUpCancel')?.addEventListener('click', cancel);
         document.getElementById('stepUpCancelButton')?.addEventListener('click', cancel);
         document.getElementById('stepUpModal')?.addEventListener('click', event => {
             if (event.target.id === 'stepUpModal') { cancel(); }
         });
-        document.getElementById('stepUpSubmit')?.addEventListener('click', () => {
+        const submit = () => {
             if (!activeStepUpPrompt) { return; }
             const field = document.getElementById(
                 activeStepUpPrompt.method === 'password'
@@ -162,12 +177,34 @@
                 return;
             }
             closeStepUpPrompt(null, value);
+        };
+        document.getElementById('stepUpSubmit')?.addEventListener('click', submit);
+        document.addEventListener('keydown', event => {
+            if (!activeStepUpPrompt || event.isComposing) { return; }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                cancel();
+            } else if (event.key === 'Enter'
+                && ['stepUpPassword', 'stepUpTotp'].includes(event.target.id)) {
+                event.preventDefault();
+                submit();
+            } else if (event.key === 'Tab') {
+                const fields = Array.from(modal.querySelectorAll('button, input'))
+                    .filter(field => !field.disabled && field.getClientRects().length);
+                const index = fields.indexOf(document.activeElement);
+                if (index < 0 || (event.shiftKey && index === 0)
+                    || (!event.shiftKey && index === fields.length - 1)) {
+                    event.preventDefault();
+                    (event.shiftKey ? fields.at(-1) : fields[0])?.focus();
+                }
+            }
         });
     }
 
     function cancelPendingStepUp() {
         stepUpGeneration += 1;
-        closeStepUpPrompt(new Error('Additional authentication was cancelled'));
+        closeStepUpPrompt(new Error(t('admin.stepUpCancelled', 'Additional authentication was cancelled')));
     }
 
     async function oidcStepUp(action, target, generation) {
@@ -175,17 +212,20 @@
             method: 'POST',
             body: { action, target }
         });
+        assertCurrentStepUp(generation);
         const popup = window.open(started.authorization_url, 'webssh-oidc-step-up', 'popup,width=720,height=760');
         if (!popup) { throw new Error('Allow the OIDC authentication popup and try again'); }
         const deadline = Date.now() + 300000;
         while (Date.now() < deadline && generation === stepUpGeneration) {
             await new Promise(resolve => setTimeout(resolve, 500));
+            if (generation !== stepUpGeneration) { break; }
             const response = await fetch(APP_ROOT + '/api/step-up/oidc/result', {
                 headers: { 'Accept': 'application/json', 'X-CSRFToken': CSRF }
             });
             if (response.ok) {
                 const result = await response.json();
                 popup.close();
+                assertCurrentStepUp(generation);
                 return result.grant;
             }
             if (response.status !== 404) {
@@ -199,28 +239,38 @@
         throw new Error('Additional authentication was cancelled or expired');
     }
 
+    function assertCurrentStepUp(generation) {
+        if (generation !== stepUpGeneration) {
+            throw new Error(t('admin.stepUpCancelled', 'Additional authentication was cancelled'));
+        }
+    }
+
     async function acquireStepUp(action, target) {
         const generation = stepUpGeneration;
         const intent = await api('/api/step-up/intents', {
             method: 'POST', body: { action, target }
         });
+        assertCurrentStepUp(generation);
         if (intent.grant) { return intent.grant; }
         const methods = intent.methods || [intent.method];
         if (methods.includes('passkey') && window.PublicKeyCredential) {
             const options = decodePasskeyOptions(await api('/api/step-up/passkey/options', {
                 method: 'POST', body: { action, target }
             }));
+            assertCurrentStepUp(generation);
             const credential = await navigator.credentials.get({ publicKey: options });
+            assertCurrentStepUp(generation);
             const result = await api('/api/step-up/passkey/verify', {
                 method: 'POST', body: { credential: serializePasskey(credential) }
             });
             if (generation !== stepUpGeneration) {
-                throw new Error('Additional authentication was cancelled');
+                throw new Error(t('admin.stepUpCancelled', 'Additional authentication was cancelled'));
             }
             return result.grant;
         }
         if (methods.includes('totp')) {
             const code = await requestStepUpValue('totp');
+            assertCurrentStepUp(generation);
             const result = await api('/api/step-up/totp', {
                 method: 'POST', body: { action, target, code }
             });
@@ -230,6 +280,7 @@
             return oidcStepUp(action, target, generation);
         }
         const password = await requestStepUpValue('password');
+        assertCurrentStepUp(generation);
         const result = await api('/api/step-up/password', {
             method: 'POST', body: { action, target, password }
         });
@@ -237,7 +288,9 @@
     }
 
     async function stepUpApi(action, target, path, options) {
+        const generation = stepUpGeneration;
         const grant = await acquireStepUp(action, target);
+        assertCurrentStepUp(generation);
         const opts = Object.assign({}, options || {});
         opts.headers = Object.assign({}, opts.headers || {}, {
             'X-WebSSH-Step-Up': grant
@@ -962,13 +1015,39 @@
     }
 
     function initUsers() {
+        const closeUserMenus = () => document.querySelectorAll('.admin-action-menu[open]').forEach(menu => { menu.open = false; });
+        window.addEventListener('resize', closeUserMenus);
+        document.addEventListener('scroll', event => {
+            if (!event.target.closest?.('.admin-actions')) {
+                document.querySelectorAll('.admin-action-menu[open]').forEach(menu => {
+                    if (getComputedStyle(menu.querySelector('.admin-actions')).position === 'fixed') menu.open = false;
+                });
+            }
+        }, true);
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeUserMenus();
+        });
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.admin-action-menu')) closeUserMenus();
+        });
         document.getElementById('adminRefreshUsers')?.addEventListener('click', loadUsers);
         document.getElementById('adminUsersBody')?.addEventListener('click', (e) => {
             const summary = e.target.closest('.admin-action-menu > summary');
             if (summary) {
+                e.preventDefault();
+                const selected = summary.parentElement;
+                const opening = !selected.open;
                 document.querySelectorAll('.admin-action-menu[open]').forEach(menu => {
-                    if (menu !== summary.parentElement) { menu.open = false; }
+                    menu.open = false;
                 });
+                selected.open = opening;
+                if (opening) {
+                    const actions = selected.querySelector('.admin-actions');
+                    const anchor = summary.getBoundingClientRect();
+                    const bounds = actions.getBoundingClientRect();
+                    actions.style.left = `${Math.max(12, Math.min(anchor.right - bounds.width, innerWidth - bounds.width - 12))}px`;
+                    actions.style.top = `${Math.max(12, Math.min(anchor.bottom + 6, innerHeight - bounds.height - 12))}px`;
+                }
                 return;
             }
             const btn = e.target.closest('button[data-act]');
@@ -1036,6 +1115,7 @@
 
     // ---- Audit logs ----
     const audit = { offset: 0, limit: 100, total: 0 };
+    let auditRequestGeneration = 0;
 
     function renderAudit(items) {
         const body = document.getElementById('adminAuditBody');
@@ -1066,38 +1146,44 @@
         document.getElementById('auditNext').disabled = audit.offset + audit.limit >= audit.total;
     }
 
-    async function loadAudit() {
+    async function loadAudit(offset = audit.offset) {
+        const generation = ++auditRequestGeneration;
         const level = document.getElementById('auditLevel').value;
         const q = document.getElementById('auditSearch').value.trim();
-        const params = new URLSearchParams({ offset: audit.offset, limit: audit.limit });
+        const params = new URLSearchParams({ offset, limit: audit.limit });
+        document.getElementById('auditPrev').disabled = true;
+        document.getElementById('auditNext').disabled = true;
         if (level) { params.set('level', level); }
         if (q) { params.set('q', q); }
         try {
             const data = await api('/admin/api/audit?' + params.toString());
+            if (generation !== auditRequestGeneration) { return; }
             audit.total = data.total || 0;
             audit.offset = data.offset || 0;
             renderAudit(data.items || []);
             updateAuditPageInfo();
         } catch (e) {
+            if (generation !== auditRequestGeneration) { return; }
             notify(e.message, 'error');
+        } finally {
+            if (generation === auditRequestGeneration) { updateAuditPageInfo(); }
         }
     }
 
     function initAudit() {
-        document.getElementById('auditRefresh')?.addEventListener('click', () => { audit.offset = 0; loadAudit(); });
-        document.getElementById('auditLevel')?.addEventListener('change', () => { audit.offset = 0; loadAudit(); });
+        document.getElementById('auditRefresh')?.addEventListener('click', () => { loadAudit(0); });
+        document.getElementById('auditLevel')?.addEventListener('change', () => { loadAudit(0); });
         let searchTimer = null;
         document.getElementById('auditSearch')?.addEventListener('input', () => {
+            auditRequestGeneration += 1;
             clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => { audit.offset = 0; loadAudit(); }, 300);
+            searchTimer = setTimeout(() => { loadAudit(0); }, 300);
         });
         document.getElementById('auditPrev')?.addEventListener('click', () => {
-            audit.offset = Math.max(0, audit.offset - audit.limit);
-            loadAudit();
+            loadAudit(Math.max(0, audit.offset - audit.limit));
         });
         document.getElementById('auditNext')?.addEventListener('click', () => {
-            audit.offset = audit.offset + audit.limit;
-            loadAudit();
+            loadAudit(audit.offset + audit.limit);
         });
         document.getElementById('auditExportBtn')?.addEventListener('click', async () => {
             const params = new URLSearchParams();
@@ -1134,6 +1220,8 @@
         recovery: ['admin.featureRecovery', 'Recovery codes']
     });
     let securityFeatureSnapshot = [];
+    const securityFeatureWrites = new Set();
+    let securityFeatureReadGeneration = 0;
 
     function securityFeatureLabel(name) {
         const definition = SECURITY_FEATURE_LABELS[name];
@@ -1157,7 +1245,7 @@
             input.type = 'checkbox';
             input.dataset.securityFeature = state.name;
             input.checked = state.checked;
-            input.disabled = state.disabled;
+            input.disabled = state.disabled || securityFeatureWrites.has(state.name);
             const title = document.createElement('strong');
             const labelText = securityFeatureLabel(state.name);
             title.textContent = labelText;
@@ -1171,7 +1259,8 @@
                 t
             );
             row.append(label, reason);
-            if (['oidc', 'ldap'].includes(state.name)) {
+            if (state.disabled) { label.tabIndex = 0; label.title = reason.textContent + ' ' + (feature.configuration_keys || []).join(', '); label.setAttribute('aria-label', label.title); }
+            if (feature.configuration_keys?.length) {
                 const configuration = document.createElement('details');
                 configuration.className = 'admin-feature-config';
                 const summary = document.createElement('summary');
@@ -1203,37 +1292,121 @@
     async function loadSecurityFeatures() {
         const status = document.getElementById('securityFeatureStatus');
         if (!status) { return; }
+        if (securityFeatureWrites.size) { return; }
+        const generation = ++securityFeatureReadGeneration;
         status.textContent = t('admin.featureStatusLoading', 'Loading feature status…');
         try {
             const data = await api('/admin/api/security-features');
+            if (generation !== securityFeatureReadGeneration) { return; }
             renderSecurityFeatures(data.features || []);
         } catch (e) {
+            if (generation !== securityFeatureReadGeneration) { return; }
             status.textContent = e.message;
             notify(e.message, 'error');
         }
     }
 
+    let settingsReadGeneration = 0;
+    const settingsWrites = new Set();
+
+    function renderRuntimeFeatures(policies) {
+        const root = document.getElementById('runtimeFeatureSettings');
+        if (!root) return;
+        const de = window.i18n?.getLanguage?.() === 'de';
+        const words = (german, english) => de ? german : english;
+        const labels = {
+            sftp_chmod_enabled: words('Dateirechte ändern', 'Change file permissions'),
+            server_operations_enabled: words('Serveraktionen', 'Server operations'),
+            tmux_enabled: words('Persistente Terminals (tmux)', 'Persistent terminals (tmux)'),
+            tmux_default: words('tmux für neue Verbindungen vorauswählen', 'Preselect tmux for new connections'),
+        };
+        const hints = {
+            sftp_chmod_enabled: words('Unix-Rechte über SFTP ändern. Sichere Serverunterstützung und Rechte des SSH-Kontos bleiben erforderlich.', 'Change Unix permissions over SFTP. Safe server support and SSH account permissions remain required.'),
+            server_operations_enabled: words('Dienste, Container und Prozesse steuern oder Server neu starten. Zielprüfung, Bestätigung und erneute Authentifizierung bleiben erforderlich.', 'Manage services, containers and processes or reboot servers. Target review, confirmation and reauthentication remain required.'),
+            tmux_enabled: words('Sitzungen auf dem Zielserver erhalten. Gilt für neue Verbindungen; bestehende Sitzungen bleiben offen.', 'Keep sessions on the destination server. Applies to new connections; existing sessions stay open.'),
+            tmux_default: words('Benutzer können dies pro Verbindung ändern. Wirkt nur, wenn tmux freigegeben ist.', 'Users can change this per connection. Only applies when tmux is enabled.'),
+        };
+        root.replaceChildren();
+        for (const name of Object.keys(labels)) {
+            const policy = policies?.[name]; if (!policy) continue;
+            const row = document.createElement('div'); row.className = 'admin-settings-row';
+            const copy = document.createElement('div');
+            const title = document.createElement('label'); title.htmlFor = 'runtime-' + name;
+            const strong = document.createElement('strong'); strong.textContent = labels[name] || name; title.append(strong);
+            const hint = document.createElement('p'); hint.className = 'admin-muted'; hint.textContent = hints[name] || '';
+            const source = document.createElement('p'); source.className = 'admin-policy-source';
+            source.textContent = policy.locked
+                ? words('Durch Compose/Umgebung festgelegt: ', 'Controlled by Compose/environment: ') + policy.environment_key + '=' + policy.enabled
+                : policy.migrated ? words('Übernommener Wert der bisherigen Installation · im Adminbereich änderbar.', 'Preserved value from the previous installation · editable here.')
+                : policy.source === 'admin' ? words('Quelle: Admin-Einstellung', 'Source: admin setting') : words('Quelle: Produktstandard', 'Source: product default');
+            if (policy.locked && policy.migrated) source.append(words(' · Umgebungswert beim ersten 3.0-Start übernommen. Die unveränderte Compose bleibt maßgeblich.', ' · Environment value saved on the first 3.0 start. Your unchanged Compose remains authoritative.'));
+            const link = document.createElement('a'); link.href = 'https://github.com/bifrost0x/webssh/wiki/Configuration-Reference'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'Wiki';
+            if (policy.locked && policy.saved_value !== null) source.append(words(' · Gespeicherter Adminwert: ', ' · Saved admin value: ') + policy.saved_value + words(' · Vor Entfernen der Compose-Vorgabe prüfen: Danach gilt dieser gespeicherte Wert.', ' · Review before removing the Compose override: this saved value will then apply.'));
+            source.append(' · ', link); copy.append(title, hint, source);
+            const control = document.createElement('label'); control.className = 'admin-switch';
+            const input = document.createElement('input'); input.type = 'checkbox'; input.id = 'runtime-' + name; input.checked = policy.enabled; input.disabled = policy.locked;
+            if (policy.locked) { control.tabIndex = 0; control.title = words('Zum Ändern ', 'To change, remove or update ') + policy.environment_key + words(' in Compose/Umgebung entfernen oder ändern und Container neu erstellen. Ein gespeicherter Adminwert bleibt erhalten.', ' in Compose/environment and recreate the container. The saved admin value is retained.'); control.setAttribute('aria-label', control.title); }
+            input.addEventListener('change', async () => {
+                input.disabled = true;
+                try { await stepUpApi('settings.update', 'global', '/admin/api/settings', {method:'POST', body:{[name]:input.checked}}); }
+                catch (error) { notify(error.message, 'error'); }
+                finally { await loadSettings(); }
+            });
+            const text = document.createElement('span'); text.textContent = words('Aktiviert', 'Enabled'); control.append(input, text); row.append(copy, control); root.append(row);
+        }
+    }
+
     async function loadSettings() {
+        const generation = ++settingsReadGeneration;
         try {
             const data = await api('/admin/api/settings');
-            document.getElementById('settingRegistration').checked = !!data.registration_enabled;
+            if (generation !== settingsReadGeneration) { return; }
+            renderRuntimeFeatures(data.runtime_features);
+            for (const [id, name] of [['settingAutomation','automation_enabled'],['settingRegistration','registration_enabled']]) {
+                const input = document.getElementById(id); if (!input) continue;
+                const policy = data.setting_sources?.[name]; input.dataset.deploymentLocked = String(!!policy?.locked);
+                const control = input.closest('label');
+                if (control && policy?.locked) { control.tabIndex = 0; control.title = policy.source === 'production' ? 'DEPLOYMENT_PROFILE=production' : policy.environment_key + ': Compose / environment'; }
+            }
+            const registration = document.getElementById('settingRegistration');
+            if (registration && !settingsWrites.has('registration')) {
+                registration.checked = !!data.registration_enabled;
+                registration.disabled = registration.dataset.deploymentLocked === 'true';
+            }
             const gateway = document.getElementById('settingSshGateway');
-            if (gateway) {
+            if (gateway && !settingsWrites.has('gateway')) {
                 gateway.checked = data.ssh_gateway_enabled === true;
                 gateway.disabled = false;
             }
+            for (const [id, key] of [['settingCredentials', 'credentials_enabled'], ['settingAutomation', 'automation_enabled']]) {
+                const input = document.getElementById(id);
+                if (input && !settingsWrites.has(key)) {
+                    input.checked = data[key] === true;
+                    input.disabled = input.dataset.deploymentLocked === 'true';
+                }
+            }
         } catch (e) {
+            if (generation !== settingsReadGeneration) { return; }
             notify(e.message, 'error');
         }
         await loadSecurityFeatures();
         await loadGitHubConfig();
     }
 
+    let githubDraftRevision = 0;
+    let githubSavedRevision = 0;
+    let githubReadGeneration = 0;
+    let githubWritePending = false;
+
     async function loadGitHubConfig() {
         const status = document.getElementById('githubAuthStatus');
         if (!status) { return; }
+        if (githubDraftRevision !== githubSavedRevision) { return; }
+        const revision = githubDraftRevision;
+        const generation = ++githubReadGeneration;
         try {
             const data = await api('/admin/api/github-auth/config');
+            if (generation !== githubReadGeneration || revision !== githubDraftRevision) { return; }
             const item = data.configuration || {};
             document.getElementById('githubAuthEnabled').checked = !!item.enabled;
             document.getElementById('githubAuthClientId').value = item.client_id || '';
@@ -1251,7 +1424,29 @@
                 ? t('admin.githubSignInActive', 'GitHub sign-in is active')
                 : (item.error || t('admin.githubSignInDisabled', 'GitHub sign-in is disabled'));
         } catch (error) {
+            if (generation !== githubReadGeneration || revision !== githubDraftRevision) { return; }
             status.textContent = error.message;
+        }
+    }
+
+    async function writeGitHubConfig(body, messageKey, fallback) {
+        if (githubWritePending) { return; }
+        githubWritePending = true;
+        githubReadGeneration += 1;
+        const revision = githubDraftRevision;
+        const buttons = ['githubAuthSave', 'githubAuthClearSecret']
+            .map(id => document.getElementById(id)).filter(Boolean);
+        buttons.forEach(button => { button.disabled = true; });
+        try {
+            await stepUpApi('github.config', 'global', '/admin/api/github-auth/config', {
+                method: 'POST', body
+            });
+            if (revision === githubDraftRevision) { githubSavedRevision = revision; }
+            await loadGitHubConfig();
+            notify(t(messageKey, fallback), 'success');
+        } finally {
+            githubWritePending = false;
+            buttons.forEach(button => { button.disabled = false; });
         }
     }
 
@@ -1266,11 +1461,7 @@
             auto_provision: document.getElementById('githubAuthAutoProvision').checked
         };
         if (secret) { body.client_secret = secret; }
-        await stepUpApi('github.config', 'global', '/admin/api/github-auth/config', {
-            method: 'POST', body
-        });
-        await loadGitHubConfig();
-        notify(t('admin.settingsSaved', 'Settings saved'), 'success');
+        await writeGitHubConfig(body, 'admin.settingsSaved', 'Settings saved');
     }
 
     async function clearGitHubSecret() {
@@ -1278,15 +1469,20 @@
             'admin.githubClearSecretConfirm',
             'Disable GitHub sign-in and permanently remove the stored client secret?'
         ))) { return; }
-        await stepUpApi('github.config', 'global', '/admin/api/github-auth/config', {
-            method: 'POST',
-            body: { enabled: false, clear_client_secret: true }
-        });
-        await loadGitHubConfig();
-        notify(t('admin.githubSecretRemoved', 'GitHub client secret removed'), 'success');
+        await writeGitHubConfig(
+            { enabled: false, clear_client_secret: true },
+            'admin.githubSecretRemoved', 'GitHub client secret removed'
+        );
     }
 
     function initSettings() {
+        ['githubAuthEnabled', 'githubAuthClientId', 'githubAuthClientSecret',
+            'githubAuthRedirectUri', 'githubAuthAllowedOrgs', 'githubAuthAutoProvision']
+            .forEach(id => {
+                const input = document.getElementById(id);
+                input?.addEventListener('input', () => { githubDraftRevision += 1; });
+                input?.addEventListener('change', () => { githubDraftRevision += 1; });
+            });
         document.getElementById('ldapStatusCheck')?.addEventListener('click', checkLdapStatus);
         document.getElementById('githubAuthSave')?.addEventListener('click', () => {
             saveGitHubConfig().catch(error => notify(error.message, 'error'));
@@ -1298,6 +1494,7 @@
             const target = event.target;
             if (!target.matches('input[data-security-feature]')) { return; }
             const featureName = target.dataset.securityFeature;
+            if (securityFeatureWrites.has(featureName)) { return; }
             const enabling = target.checked;
             if (!enabling && !window.confirm(
                 window.WebSSHSecurityUI.featureDisableWarning(
@@ -1310,18 +1507,27 @@
                 return;
             }
             target.disabled = true;
+            securityFeatureWrites.add(featureName);
+            securityFeatureReadGeneration += 1;
             try {
-                await stepUpApi('security_feature.update', featureName, `/admin/api/security-features/${encodeURIComponent(featureName)}`, {
+                const data = await stepUpApi('security_feature.update', featureName, `/admin/api/security-features/${encodeURIComponent(featureName)}`, {
                     method: 'POST',
                     body: {
                         enabled: enabling,
                         confirm_session_fallback: !enabling
                     }
                 });
+                if (data.feature?.name === featureName) {
+                    securityFeatureSnapshot = securityFeatureSnapshot.map(feature => (
+                        feature.name === featureName ? data.feature : feature
+                    ));
+                }
                 notify(t('admin.settingsSaved', 'Settings saved'), 'success');
             } catch (err) {
                 notify(err.message, 'error');
             } finally {
+                securityFeatureWrites.delete(featureName);
+                renderSecurityFeatures(securityFeatureSnapshot);
                 await loadSecurityFeatures();
             }
         });
@@ -1329,6 +1535,8 @@
             const target = e.target;
             const enabled = target.checked;
             target.disabled = true;
+            settingsWrites.add('gateway');
+            settingsReadGeneration += 1;
             try {
                 const data = await stepUpApi('settings.update', 'global', '/admin/api/settings', {
                     method: 'POST', body: { ssh_gateway_enabled: enabled }
@@ -1339,21 +1547,51 @@
                 target.checked = !enabled;
                 notify(err.message, 'error');
             } finally {
+                settingsWrites.delete('gateway');
                 target.disabled = false;
             }
         });
+        for (const [id, key] of [['settingCredentials', 'credentials_enabled'], ['settingAutomation', 'automation_enabled']]) {
+            document.getElementById(id)?.addEventListener('change', async (event) => {
+                const input = event.target;
+                const enabled = input.checked;
+                input.disabled = true;
+                settingsWrites.add(key);
+                settingsReadGeneration += 1;
+                try {
+                    const data = await stepUpApi('settings.update', 'global', '/admin/api/settings', {
+                        method: 'POST', body: { [key]: enabled }
+                    });
+                    input.checked = data[key] === true;
+                    notify(t('admin.settingsSaved', 'Settings saved'), 'success');
+                } catch (error) {
+                    input.checked = !enabled;
+                    notify(error.message, 'error');
+                } finally {
+                    settingsWrites.delete(key);
+                    await loadSettings();
+                }
+            });
+        }
         document.getElementById('settingRegistration')?.addEventListener('change', async (e) => {
             const target = e.target;
+            const requested = target.checked;
+            target.disabled = true;
+            settingsWrites.add('registration');
+            settingsReadGeneration += 1;
             try {
                 const data = await stepUpApi('settings.update', 'global', '/admin/api/settings', {
                     method: 'POST',
-                    body: { registration_enabled: target.checked }
+                    body: { registration_enabled: requested }
                 });
                 target.checked = !!data.registration_enabled;
                 notify(t('admin.settingsSaved', 'Settings saved'), 'success');
             } catch (err) {
-                target.checked = !target.checked; // revert on failure
+                target.checked = !requested;
                 notify(err.message, 'error');
+            } finally {
+                settingsWrites.delete('registration');
+                await loadSettings();
             }
         });
         document.getElementById('auditRetentionSave')?.addEventListener('click', async () => {

@@ -125,6 +125,7 @@ const SessionManager = {
             via_jump: data.via_jump,
             jump_host_id: data.jump_host_id,
             profile_id: data.profile_id,
+            detected_platform: data.detected_platform,
             reconnect_route_known: data.reconnect_route_known,
             key_id: data.key_id,
             display_name: data.display_name,
@@ -262,6 +263,7 @@ const SessionManager = {
             viaJump: sessionData.via_jump || null,
             jumpHostId: sessionData.jump_host_id || null,
             profileId: sessionData.profile_id || null,
+            detectedPlatform: sessionData.detected_platform,
             reconnectRouteKnown: sessionData.reconnect_route_known,
             useTmux: sessionData.use_tmux || false,
             tmuxSessionName: sessionData.tmux_session_name || null,
@@ -309,6 +311,12 @@ const SessionManager = {
 
         tab.appendChild(statusDot);
         tab.appendChild(tabLabel);
+        const platformIcon = document.createElement('span');
+        platformIcon.className = 'session-platform-icon';
+        const iconSession = this.sessions[sessionId];
+        const iconProfile = window.ProfileManager?.profiles.find(profile => profile.id === iconSession?.profileId);
+        if (window.HostPlatform) platformIcon.append(window.HostPlatform.renderSession(iconSession, iconProfile));
+        tab.insertBefore(platformIcon, tabLabel);
         const sess = this.sessions[sessionId];
         if (sess && sess.viaJump) {
             const jumpBadge = document.createElement('span');
@@ -1935,6 +1943,20 @@ const SessionManager = {
         radio.name = `pane-${paneIndex}`;
         radio.value = sessionId === null ? '__empty__' : sessionId;
         radio.checked = isSelected;
+        radio.addEventListener('change', () => {
+            if (!radio.checked || !sessionId || sessionId === '__new__') return;
+            const list = option.closest('#paneAssignmentList');
+            for (const other of list?.querySelectorAll('input[type="radio"]:checked') || []) {
+                if (other === radio || other.value !== radio.value) continue;
+                const group = other.closest('.pane-assignment-options');
+                const empty = group?.querySelector('input[value="__empty__"]');
+                if (!empty) continue;
+                empty.checked = true;
+                group.querySelectorAll('.pane-option').forEach(item => {
+                    item.classList.toggle('selected', item.contains(empty));
+                });
+            }
+        });
 
         const label = document.createElement('div');
         label.className = 'pane-option-label';
@@ -1991,9 +2013,11 @@ const SessionManager = {
             grid.appendChild(pane);
         }
 
+        const assignedSessions = new Set();
         for (let i = 0; i < layout; i++) {
-            if (assignments[i]) {
+            if (assignments[i] && this.sessions[assignments[i]] && !assignedSessions.has(assignments[i])) {
                 this.paneAssignments[i] = assignments[i];
+                assignedSessions.add(assignments[i]);
             }
             this.renderPane(i);
         }

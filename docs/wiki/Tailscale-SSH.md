@@ -150,7 +150,13 @@ The example starts with Tailscale SSH disabled.
 5. Enable Tailscale SSH.
 6. Recreate the service and test one narrow target/user combination.
 
-## Production browser access
+## HTTPS browser access
+
+These changes configure HTTPS browser access; they do not switch the application
+from the homelab profile to production. For production, also follow
+[Production Deployment](Production-Deployment.md), including
+`DEPLOYMENT_PROFILE=production`, disabled registration and bootstrap, and trusted
+proxy configuration matched to your actual proxy topology.
 
 Replace homelab CORS and cookie settings with:
 

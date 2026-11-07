@@ -11,9 +11,9 @@ import config
 from . import connection_pool, ssh_manager
 from .audit_logger import log_security_event
 from .backup_coordination import operation_lock, require_durable_recovery_storage
-from .backup_manager import restore_backup
+from .backup_manager import restore_backup, _restore_recovery_snapshot
 from .backup_operations import backup_operations
-from .online_backup import create_online_backup
+from .online_backup import _create_online_recovery_snapshot as create_online_backup
 from .maintenance_mode import (
     begin_preparing,
     mark_failed,
@@ -138,7 +138,7 @@ def _perform_restore(app, socketio, record, username, source_ip,
     except Exception as restore_error:
         if rollback_available:
             try:
-                restore_backup(rollback_archive, config.DATA_DIR)
+                _restore_recovery_snapshot(rollback_archive, config.DATA_DIR)
                 _clear_restored_runtime_sessions(
                     Path(config.DATA_DIR) / 'app.db'
                 )

@@ -86,6 +86,8 @@ class GitHubIntent:
     step_up_intent_id: int | None
     continuation: str
     configuration_generation: int
+    auth_generation: int | None = None
+    authentication_session_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -287,6 +289,7 @@ def update_settings(data, admin_id):
 def create_oauth_state(
     *, state, session_binding, code_verifier, purpose, generation,
     user_id=None, step_up_intent_id=None, continuation='/', now=None,
+    auth_generation=None, authentication_session_id=None,
 ):
     if purpose not in _PURPOSES:
         raise GitHubStateError('OAuth purpose is invalid')
@@ -296,6 +299,11 @@ def create_oauth_state(
         raise GitHubStateError('Login state contains account context')
     if purpose == 'link' and (not isinstance(user_id, int) or step_up_intent_id is not None):
         raise GitHubStateError('Link state is invalid')
+    if purpose == 'link' and (
+        type(auth_generation) is not int or auth_generation < 0
+        or type(authentication_session_id) is not int or authentication_session_id < 1
+    ):
+        raise GitHubStateError('Link authentication is unavailable')
     if purpose == 'step_up' and (user_id is not None or not isinstance(step_up_intent_id, int)):
         raise GitHubStateError('Step-up state is invalid')
     now = as_naive_utc(now or datetime.now(timezone.utc))
@@ -312,6 +320,8 @@ def create_oauth_state(
             step_up_intent_id=step_up_intent_id,
             continuation=_safe_continuation(continuation),
             configuration_generation=int(generation),
+            auth_generation=auth_generation if purpose == 'link' else None,
+            authentication_session_id=authentication_session_id if purpose == 'link' else None,
             expires_at=now + _STATE_TTL,
         )
         db.session.add(row)
@@ -332,6 +342,7 @@ def consume_oauth_state(*, state, session_binding, generation, now=None):
             row.code_verifier, row.purpose, row.user_id,
             row.step_up_intent_id, _safe_continuation(row.continuation),
             row.configuration_generation,
+            row.auth_generation, row.authentication_session_id,
         )
         expires_at = row.expires_at
         db.session.delete(row)

@@ -16,6 +16,7 @@ import zlib
 import config
 from .backup_coordination import ensure_backup_temp_dir
 from .storage_utils import atomic_copy_file, fsync_parent_directory
+from .restore_database import SQLITE_SIDECARS, harden_imported_database
 
 
 _FORMAT_VERSION = 2
@@ -293,8 +294,25 @@ def _copy_regular_file(source, destination):
     return digest.hexdigest(), size
 
 
-def _stage_source(data_dir, stage, excluded_relative_paths=frozenset()):
+def _excluded_remote_credential_path(relative):
+    """Native exports never carry reusable remote authentication material."""
+    parts = PurePosixPath(relative).parts
+    if 'keys' in parts or parts[0] == 'deleted_users':
+        return True
+    # Include interrupted atomic writes and migration/recovery copies.
+    name = parts[-1].lstrip('.')
+    return any(
+        name == base or name.startswith(base + '.')
+        for base in ('credentials.json', 'automation-vault.json')
+    )
+
+
+def _stage_source(
+    data_dir, stage, excluded_relative_paths=frozenset(), *,
+    include_remote_credentials=False,
+):
     files = []
+    snapshot_sqlite = any((data_dir / name).exists() for name in SQLITE_SIDECARS)
     for current_root, directory_names, file_names in os.walk(
         data_dir,
         topdown=True,
@@ -312,6 +330,13 @@ def _stage_source(data_dir, stage, excluded_relative_paths=frozenset()):
                 name for name in directory_names
                 if name not in _BACKUP_EXCLUDED_TOP_LEVEL_DIRECTORIES
             ]
+        if not include_remote_credentials:
+            directory_names[:] = [
+                name for name in directory_names
+                if not _excluded_remote_credential_path(
+                    (current / name).relative_to(data_dir).as_posix()
+                )
+            ]
         for file_name in file_names:
             if (
                 current == data_dir
@@ -322,9 +347,30 @@ def _stage_source(data_dir, stage, excluded_relative_paths=frozenset()):
             relative = source.relative_to(data_dir).as_posix()
             if relative in excluded_relative_paths:
                 continue
+            if snapshot_sqlite and relative in SQLITE_SIDECARS:
+                continue
+            if (
+                not include_remote_credentials
+                and _excluded_remote_credential_path(relative)
+            ):
+                continue
             _safe_relative_path(relative)
             staged = stage / relative
-            digest, size = _copy_regular_file(source, staged)
+            if snapshot_sqlite and relative == _DATABASE_PATH:
+                # Consolidate committed WAL data; never discard a sidecar and
+                # export only the stale main database.
+                from .online_backup import _snapshot_sqlite
+
+                _snapshot_sqlite(source, staged)
+                checksum = hashlib.sha256()
+                size = 0
+                with staged.open('rb') as handle:
+                    while chunk := handle.read(1024 * 1024):
+                        checksum.update(chunk)
+                        size += len(chunk)
+                digest = checksum.hexdigest()
+            else:
+                digest, size = _copy_regular_file(source, staged)
             files.append(BackupFile(relative, digest, size))
     created_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     return BackupManifest(
@@ -402,6 +448,16 @@ def default_backup_directory(data_dir):
 
 
 def create_backup(data_dir, destination):
+    """Create a portable export without saved remote passwords or SSH keys."""
+    return _create_archive(data_dir, destination, include_remote_credentials=False)
+
+
+def _create_recovery_snapshot(data_dir, destination):
+    """Private transaction recovery only; never expose through backup downloads."""
+    return _create_archive(data_dir, destination, include_remote_credentials=True)
+
+
+def _create_archive(data_dir, destination, *, include_remote_credentials):
     data_dir = Path(data_dir)
     if data_dir.is_symlink():
         raise BackupIntegrityError(
@@ -429,7 +485,9 @@ def create_backup(data_dir, destination):
     ) as temporary_directory:
         stage = Path(temporary_directory) / 'data'
         stage.mkdir(mode=0o700)
-        manifest = _stage_source(data_dir, stage)
+        manifest = _stage_source(
+            data_dir, stage, include_remote_credentials=include_remote_credentials,
+        )
         try:
             with tempfile.NamedTemporaryFile(
                 dir=destination.parent,
@@ -514,7 +572,7 @@ def _validate_webssh_database(path: Path) -> None:
         uri = path.resolve(strict=True).as_uri() + '?mode=ro&immutable=1'
         connection = sqlite3.connect(uri, uri=True)
         connection.execute('PRAGMA query_only = ON')
-        connection.execute('PRAGMA trusted_schema = OFF')
+        harden_imported_database(connection)
         if connection.execute('PRAGMA quick_check').fetchall() != [('ok',)]:
             raise BackupIntegrityError('backup database is invalid')
         tables = {
@@ -574,6 +632,20 @@ def verify_backup(archive):
         with zipfile.ZipFile(Path(archive), 'r') as backup:
             members = _validated_members(backup)
             manifest = _read_manifest(backup, members)
+            normalized_paths = {
+                PurePosixPath(item.path).as_posix().casefold().rstrip(' .')
+                for item in manifest.files
+            }
+            if normalized_paths & SQLITE_SIDECARS:
+                raise BackupIntegrityError(
+                    'backup contains SQLite runtime sidecars; create a consistent snapshot'
+                )
+            if any(
+                PurePosixPath(item.path).as_posix().casefold().rstrip(' .') == _DATABASE_PATH
+                and item.path != _DATABASE_PATH
+                for item in manifest.files
+            ):
+                raise BackupIntegrityError('backup contains an ambiguous database path')
             expected_names = {
                 _MANIFEST_NAME,
                 *(_DATA_PREFIX + item.path for item in manifest.files),
@@ -785,6 +857,16 @@ def _verify_staged_files(stage, manifest):
 
 
 def restore_backup(archive, data_dir):
+    """Restore an export; discard remote credentials even from older archives."""
+    return _restore_archive(archive, data_dir, include_remote_credentials=False)
+
+
+def _restore_recovery_snapshot(archive, data_dir):
+    """Roll back an internal transaction with its original credentials intact."""
+    return _restore_archive(archive, data_dir, include_remote_credentials=True)
+
+
+def _restore_archive(archive, data_dir, *, include_remote_credentials):
     archive = Path(archive)
     data_dir = Path(data_dir)
     if data_dir.is_symlink():
@@ -801,6 +883,10 @@ def restore_backup(archive, data_dir):
             item for item in manifest.files
             if PurePosixPath(item.path).parts[0]
             not in _RESTORE_DISCARDED_TOP_LEVEL_DIRECTORIES
+            and (
+                include_remote_credentials
+                or not _excluded_remote_credential_path(item.path)
+            )
         ),
         manifest.data_schema_version,
         manifest.created_at,

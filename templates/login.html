@@ -151,7 +151,7 @@
             </div>
             {% endif %}
             {% else %}
-            <div class="auth-method-switcher" role="tablist" aria-label="Choose how to sign in" data-i18n-aria-label="auth.chooseSignInMethod">
+            <div class="auth-method-switcher" role="tablist" aria-label="Choose how to sign in" data-i18n-aria-label="auth.chooseSignInMethod"{% if not (webauthn_enabled or oidc_enabled or github_auth_enabled) %} hidden{% endif %}>
                 <button class="auth-method-option" type="button" role="tab" data-auth-mode="password" aria-selected="true" aria-controls="passwordLoginMode">
                     <span class="material-icons" aria-hidden="true">person</span>
                     <span><strong data-i18n="auth.localOrDirectory">Local / Directory</strong><small data-i18n="auth.usernameAndPassword">Username and password</small></span>
@@ -186,7 +186,7 @@
                 {% endif %}
                 <div class="form-group">
                     <label for="totpMfaCode" data-i18n="security.authenticatorCode">Authenticator code</label>
-                    <input type="text" id="totpMfaCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus>
+                    <input type="text" id="totpMfaCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" data-initial-focus>
                 </div>
                 <div class="alert alert-error hidden" id="totpMfaError" role="alert"></div>
                 <button type="button" class="btn-primary" id="submitTotpMfa" data-i18n="auth.verifyCode">Verify code</button>
@@ -228,7 +228,7 @@
                     <div class="input-wrapper">
                         <span class="input-icon material-icons" aria-hidden="true">person</span>
                         <input type="text" id="username" name="username" class="form-control"
-                               data-i18n-placeholder="auth.username" placeholder="Username" required{% if selected_auth_source == 'local' %} autofocus{% endif %}>
+                               data-i18n-placeholder="auth.username" placeholder="Username" required{% if selected_auth_source == 'local' %} data-initial-focus{% endif %}>
                     </div>
                 </div>
 
@@ -259,7 +259,7 @@
                     <label for="ldapUsername" data-i18n="auth.directoryUsername">Directory username</label>
                     <div class="input-wrapper">
                         <span class="input-icon material-icons" aria-hidden="true">person</span>
-                        <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" data-i18n-placeholder="auth.directoryUsername" placeholder="Directory username" required{% if selected_auth_source == 'ldap' %} autofocus{% endif %}>
+                        <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" data-i18n-placeholder="auth.directoryUsername" placeholder="Directory username" required{% if selected_auth_source == 'ldap' %} data-initial-focus{% endif %}>
                     </div>
                 </div>
                 <div class="form-group">
@@ -307,7 +307,7 @@
             </section>
             {% endif %}
             </div>
-            <div class="auth-footer{% if mfa_required %} hidden{% endif %}">
+            <div class="auth-footer{% if mfa_required or not registration_enabled %} hidden{% endif %}">
                 {% if registration_enabled %}
                 <span data-i18n="auth.noAccount">Don't have an account?</span>
                 <a href="{{ url_for('register') }}" data-i18n="auth.registerHere">Register here</a>

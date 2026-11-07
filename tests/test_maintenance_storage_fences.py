@@ -254,6 +254,7 @@ def test_restore_drains_admitted_work_before_snapshot_and_stays_closed(
 
     monkeypatch.setattr(service, 'create_online_backup', snapshot)
     monkeypatch.setattr(service, 'restore_backup', restore)
+    monkeypatch.setattr(service, '_restore_recovery_snapshot', restore)
 
     def writer():
         with gate.operation(), gate.access(123):

@@ -24,12 +24,14 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/branding.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/theme-scenes.css') }}">
     <script src="{{ static_asset_url(filename='js/branding.js') }}" defer></script>
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/design-system.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/account-ui.css') }}">
 </head>
 <body class="webssh-ui webssh-account" data-theme="{{ theme|default('glass') }}">
     <header class="header">
         <div class="header-content">
             <div class="header-title-row">
-                <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces">{{ brand_logo("app-brand-logo") }}</a>
+                <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces">{{ brand_logo("app-brand-logo") }}<span class="account-brand-name">WebSSH</span></a>
             </div>
             <div class="header-buttons">
                 <a class="btn btn-secondary" href="{{ url_for('index') }}"><span class="material-icons" aria-hidden="true">arrow_back</span><span data-i18n="admin.backToApp">Back to Workspaces</span></a>
@@ -251,8 +253,8 @@
                         </div>
                     </details>
                     <div class="admin-settings-row">
-                        <div><strong data-i18n="admin.githubEnable">Enable GitHub sign-in</strong><p class="admin-muted" data-i18n="admin.githubEnableHint">The login button appears only after every required value is saved.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="githubAuthEnabled"><span data-i18n="common.enabled">Enabled</span></label>
+                        <div><strong id="githubAuthEnabledLabel" data-i18n="admin.githubEnable">Enable GitHub sign-in</strong><p id="githubAuthEnabledHint" class="admin-muted" data-i18n="admin.githubEnableHint">The login button appears only after every required value is saved.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="githubAuthEnabled" aria-labelledby="githubAuthEnabledLabel" aria-describedby="githubAuthEnabledHint"><span data-i18n="common.enabled">Enabled</span></label>
                     </div>
                     <div class="form-group">
                         <label for="githubAuthClientId" data-i18n="admin.githubClientId">GitHub App client ID</label>
@@ -274,8 +276,8 @@
                         <p class="admin-muted" data-i18n="admin.githubAllowedOrgsHint">Optional. Private membership checks require the GitHub App organization permission Members: read.</p>
                     </div>
                     <div class="admin-settings-row">
-                        <div><strong data-i18n="admin.githubAutoProvision">Automatically provision users</strong><p class="admin-muted" data-i18n="admin.githubAutoProvisionHint">Disabled by default. New GitHub users are always created as non-admin accounts.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="githubAuthAutoProvision"><span data-i18n="common.enabled">Enabled</span></label>
+                        <div><strong id="githubAuthAutoProvisionLabel" data-i18n="admin.githubAutoProvision">Automatically provision users</strong><p id="githubAuthAutoProvisionHint" class="admin-muted" data-i18n="admin.githubAutoProvisionHint">Disabled by default. New GitHub users are always created as non-admin accounts.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="githubAuthAutoProvision" aria-labelledby="githubAuthAutoProvisionLabel" aria-describedby="githubAuthAutoProvisionHint"><span data-i18n="common.enabled">Enabled</span></label>
                     </div>
                     <div class="admin-toolbar">
                         <button class="btn btn-primary" id="githubAuthSave" type="button" data-i18n="admin.githubSave">Save GitHub configuration</button>
@@ -287,7 +289,16 @@
 
             <section class="admin-settings-subpanel hidden" data-settings-panel="integrations">
                 <div class="admin-page-header"><div><h2 data-i18n="admin.integrations">Integrations</h2></div></div>
+                <div id="runtimeFeatureSettings" class="admin-settings-surface"></div>
                 <div class="admin-settings-surface">
+                    <div class="admin-settings-row">
+                        <div><label for="settingCredentials"><strong data-i18n="admin.credentials">Save passwords</strong></label><p id="credentialsSettingHint" class="admin-muted" data-i18n="admin.credentialsHint">Allow personal encrypted passwords for hosts and file connections. The server can decrypt them for authorized connections. Disabling preserves saved data and established connections.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingCredentials" aria-describedby="credentialsSettingHint" disabled><span data-i18n="common.enabled">Enabled</span></label>
+                    </div>
+                    <div class="admin-settings-row">
+                        <div><label for="settingAutomation"><strong data-i18n="admin.automation">Automation</strong></label><p id="automationSettingHint" class="admin-muted" data-i18n="admin.automationHint">Allow reviewed SSH tasks and explicitly authorized schedules. Disabling stops further steps; commands already sent to a server may still take effect.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingAutomation" aria-describedby="automationSettingHint" disabled><span data-i18n="common.enabled">Enabled</span></label>
+                    </div>
                     <div class="admin-settings-row">
                         <div><label for="settingSshGateway"><strong data-i18n="admin.sshGateway">Warpgate / SSH gateway</strong></label><p id="sshGatewaySettingHint" class="admin-muted" data-i18n="admin.sshGatewayHint">Allow interactive gateway connections using user:target for all users. Disabled by default. Disabling blocks new connections and unfinished gateway authentication; established sessions remain connected. Reload open workspaces after changing this setting.</p></div>
                         <label class="admin-switch"><input type="checkbox" id="settingSshGateway" aria-describedby="sshGatewaySettingHint" disabled><span data-i18n="common.enabled">Enabled</span></label>
@@ -299,8 +310,8 @@
                 <div class="admin-page-header"><div><h2 data-i18n="admin.registration">Registration</h2><p data-i18n="admin.registrationHint">Control who can create a local WebSSH account.</p></div></div>
                 <div class="admin-settings-surface">
                     <div class="admin-settings-row">
-                        <div><strong data-i18n="admin.allowRegistration">Allow self-registration</strong><p class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="settingRegistration"><span data-i18n="common.enabled">Enabled</span></label>
+                        <div><strong id="settingRegistrationLabel" data-i18n="admin.allowRegistration">Allow self-registration</strong><p id="settingRegistrationHint" class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingRegistration" aria-labelledby="settingRegistrationLabel" aria-describedby="settingRegistrationHint" disabled><span data-i18n="common.enabled">Enabled</span></label>
                     </div>
                 </div>
             </section>
@@ -342,7 +353,7 @@
             <div class="admin-page-header"><div><h2 data-i18n="backup.title">Backup &amp; Restore</h2><p data-i18n="backup.pageHint">Create, verify, and restore WebSSH backup archives.</p></div></div>
             <div class="admin-backup-warning" role="alert">
                 <span class="material-icons" aria-hidden="true">warning</span>
-                <p data-i18n="backup.sensitiveWarning">Backup archives contain passwords, application secrets, SSH key metadata, and encrypted private keys. Store every downloaded archive encrypted and off-host.</p>
+                <p data-i18n="backup.sensitiveWarning">Native backups exclude saved remote passwords and SSH keys, but retain application secrets and account authentication data. Store every downloaded archive encrypted and off-host.</p>
             </div>
 
             <div class="admin-backup-grid">
@@ -379,7 +390,7 @@
                         <div><dt data-i18n="backup.compatible">Compatible</dt><dd id="backupCompatible">-</dd></div>
                         <div><dt data-i18n="backup.compatibilityReason">Compatibility</dt><dd id="backupCompatibilityReason">-</dd></div>
                     </dl>
-                    <p class="admin-backup-destructive" data-i18n="backup.restoreWarning">Restore replaces the complete persistent state, invalidates all sessions, enters maintenance mode, and restarts WebSSH.</p>
+                    <p class="admin-backup-destructive" data-i18n="backup.restoreWarning">Restore replaces persistent state, invalidates all sessions, enters maintenance mode, and restarts WebSSH. Saved remote passwords and SSH keys are removed, even when restoring older archives. Reimport keys, recreate passwords, reassign credentials, and review and re-enable schedules.</p>
                     <button type="button" class="btn btn-danger" id="backupRestoreBtn" disabled data-i18n="backup.restore">Restore verified backup</button>
                 </div>
             </div>
@@ -486,7 +497,7 @@
                 <button type="button" class="close material-icons" id="restoreFirstCancel" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
-                <p data-i18n="backup.restoreWarning">Restore replaces the complete persistent state, invalidates all sessions, enters maintenance mode, and restarts WebSSH.</p>
+                <p data-i18n="backup.restoreWarning">Restore replaces persistent state, invalidates all sessions, enters maintenance mode, and restarts WebSSH. Saved remote passwords and SSH keys are removed, even when restoring older archives. Reimport keys, recreate passwords, reassign credentials, and review and re-enable schedules.</p>
                 <label class="admin-checkbox">
                     <input type="checkbox" id="restoreFirstAcknowledge">
                     <span data-i18n="backup.firstAcknowledge">I understand that the current persistent state will be replaced.</span>

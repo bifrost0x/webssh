@@ -170,3 +170,5 @@ test_*.py
 *.bak
 *.backup
 *.orig
+
+.impeccable/

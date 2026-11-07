@@ -52,6 +52,12 @@ WEBAUTHN_ORIGIN = os.environ.get(
 HOST_KEY_MANAGEMENT_ENABLED = (
     os.environ.get('HOST_KEY_MANAGEMENT_ENABLED', 'true').lower() == 'true'
 )
+# Native automation is an explicit operator opt-in.
+AUTOMATION_ENABLED = os.environ.get('AUTOMATION_ENABLED', 'false').lower() == 'true'
+AUTOMATION_ALLOW_INSECURE_LOOPBACK = os.environ.get(
+    'AUTOMATION_ALLOW_INSECURE_LOOPBACK', 'false'
+).lower() == 'true'
+
 SERVER_OPERATIONS_ENABLED = (
     os.environ.get('SERVER_OPERATIONS_ENABLED', 'false').lower() == 'true'
 )
@@ -307,7 +313,7 @@ LDAP_OPERATION_TIMEOUT = _bounded_int_env(
 LDAP_SESSION_REVALIDATION_SECONDS = _bounded_int_env(
     'LDAP_SESSION_REVALIDATION_SECONDS', 300, 60, 3600
 )
-TOTP_ENABLED = os.environ.get('TOTP_ENABLED', 'false').lower() == 'true'
+TOTP_ENABLED = os.environ.get('TOTP_ENABLED', 'true').lower() == 'true'
 OIDC_MFA_AMR_VALUES = _csv_env('OIDC_MFA_AMR_VALUES')
 OIDC_MFA_ACR_VALUES = _csv_env('OIDC_MFA_ACR_VALUES')
 OIDC_PHISHING_RESISTANT_AMR_VALUES = _csv_env(
@@ -431,11 +437,11 @@ _validate_quota_pair(
     False,
 )
 
-# Five permanent cleanup jobs occupy executor slots for the app lifetime.
+# Seven permanent cleanup jobs occupy executor slots for the app lifetime.
 # Reader and transfer capacity must stay available beyond those loops, otherwise
 # an idle cleanup job can starve an accepted SSH session or background transfer.
 BACKGROUND_CLEANUP_JOBS = (
-    5
+    7
     + (1 if LDAP_ENABLED else 0)
     + (
         1
@@ -664,6 +670,19 @@ if not _secret_key or _secret_key.strip().lower() in _KNOWN_PLACEHOLDERS:
         )
 
 SECRET_KEY = _secret_key
+
+
+def _cookie_name_env(name, default):
+    value = os.environ.get(name, default)
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', value):
+        raise ValueError(f'{name} must be a non-empty cookie name containing only letters, digits, dots, underscores or hyphens')
+    return value
+
+
+SESSION_COOKIE_NAME = _cookie_name_env('SESSION_COOKIE_NAME', 'session')
+REMEMBER_COOKIE_NAME = _cookie_name_env('REMEMBER_COOKIE_NAME', 'remember_token')
+if SESSION_COOKIE_NAME == REMEMBER_COOKIE_NAME:
+    raise ValueError('SESSION_COOKIE_NAME and REMEMBER_COOKIE_NAME must differ')
 
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
@@ -1308,3 +1327,6 @@ def validate_security_config():
 
 
 SECURITY_CONFIG_WARNINGS = validate_security_config()
+
+# Presence is separate from the parsed value: omitted options remain administrable.
+EXPLICIT_ENVIRONMENT_KEYS = frozenset(os.environ)

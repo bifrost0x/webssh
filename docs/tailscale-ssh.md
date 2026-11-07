@@ -107,7 +107,8 @@ Bootstrap the deployment in this order:
    ```bash
    docker compose exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
    ```
-3. Keep production self-registration disabled unless it is explicitly needed.
+3. Keep self-registration disabled in production; the production profile requires
+   this. Enable optional public registration only in a homelab deployment.
    Because the administrator was created first, every later account created
    through public registration is non-administrative. On an otherwise empty
    installation, the first registered account would become administrator.

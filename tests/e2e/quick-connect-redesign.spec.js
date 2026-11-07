@@ -177,8 +177,8 @@ test('uses the requested connection details and advanced settings hierarchy', as
             detailsTitle: modal.querySelector('#connectionDetailsTitle')?.textContent.trim(),
             advancedTitle: modal.querySelector('#connectionAdvancedSettings summary strong')?.textContent.trim(),
             detailsBorder: style(detailsContent)?.borderTopWidth,
-            authLabelCenter: rect(authLabel) && (rect(authLabel).top + rect(authLabel).bottom) / 2,
-            authSelectCenter: rect(authSelect) && (rect(authSelect).top + rect(authSelect).bottom) / 2,
+            authLabelBottom: rect(authLabel)?.bottom,
+            authSelectTop: rect(authSelect)?.top, authTop: rect(authRow)?.top,
             authBottom: rect(authRow)?.bottom,
             hostTop: rect(host)?.top,
             jumpHostFontSize: style(jumpHostLabel)?.fontSize,
@@ -192,8 +192,8 @@ test('uses the requested connection details and advanced settings hierarchy', as
     expect(hierarchy.detailsTitle).toBe('Connection Details');
     expect(hierarchy.advancedTitle).toBe('Advanced Settings');
     expect(hierarchy.detailsBorder).toBe('1px');
-    expect(Math.abs(hierarchy.authLabelCenter - hierarchy.authSelectCenter)).toBeLessThan(2);
-    expect(hierarchy.authBottom).toBeLessThan(hierarchy.hostTop);
+    expect(hierarchy.authLabelBottom).toBeLessThanOrEqual(hierarchy.authSelectTop);
+    expect(hierarchy.hostTop).toBeLessThan(hierarchy.authTop);
     expect(hierarchy.runAfterFontSize).toBe(hierarchy.jumpHostFontSize);
     expect(parseFloat(hierarchy.previewFontSize)).toBeLessThan(parseFloat(hierarchy.runAfterFontSize));
     expect(hierarchy.previewWeight).toBeLessThan(hierarchy.runAfterWeight);

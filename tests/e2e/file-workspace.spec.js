@@ -3,6 +3,38 @@ const { login, assertNoExternalRequests } = require('./helpers');
 
 test.use({ viewport: { width: 1536, height: 960 } });
 
+test('compact file header keeps both layouts and permissions help directly clickable', async ({page}) => {
+    await login(page);
+    await page.locator('#fileTransferBtn').click();
+    for (const language of ['en', 'de']) {
+        await page.evaluate(language => window.i18n.setLanguage(language), language);
+        for (const width of [320, 390, 767]) {
+            await page.setViewportSize({width, height:740});
+            for (const selector of ['#fmLayoutSingle', '#fmLayoutSplit', '.fm-permissions-help summary']) {
+                const target = page.locator(selector);
+                await expect(target).toBeInViewport();
+                expect(await target.evaluate(el => {
+                    const r = el.getBoundingClientRect();
+                    return {reachable: el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)), width:r.width, height:r.height};
+                })).toEqual({reachable:true,width:expect.any(Number),height:expect.any(Number)});
+            }
+            await page.locator('#fmLayoutSplit').click();
+            await expect(page.locator('#fmPaneTabs')).toBeVisible();
+            await page.locator('.fm-permissions-help summary').click();
+            await expect(page.locator('.fm-permissions-help')).toHaveAttribute('open','');
+            await page.locator('.fm-permissions-help summary').click();
+            await page.locator('#fmLayoutSingle').click();
+            await expect(page.locator('#fmPaneTabs')).toBeHidden();
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        }
+    }
+});
+
+async function chooseSource(page, pane) {
+    const emptyAction = page.locator(`#fm${pane === 'left' ? 'Left' : 'Right'}List .fm-empty-source-cta`);
+    await (await emptyAction.isVisible() ? emptyAction : page.locator(`[data-source-target="${pane}"]`)).click();
+}
+
 async function openWorkspaceWithSources(page) {
     await login(page);
     await page.evaluate(() => {
@@ -75,12 +107,57 @@ async function openWorkspaceWithSources(page) {
     });
 }
 
+test('file actions wait for a confirmed listing and recover after retry', async ({page}) => {
+    await openWorkspaceWithSources(page);
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
+    await page.evaluate(() => {
+        const sessions = SessionManager.getAllSessions.bind(SessionManager);
+        SessionManager.getAllSessions = () => [...sessions(), ...sftpFileManager.availableSessions];
+        sftpFileManager.navigatePaneTo('left', '/srv/source');
+    });
+    await expect(page.locator('#fmLeftList .fm-file-item')).toHaveCount(3);
+    const upload = page.locator('#fmLeftPane [data-pane-action="upload"]');
+    await expect(upload).toBeEnabled();
+    await page.evaluate(() => {
+        sftpFileManager.panes.left.loading = true;
+        sftpFileManager.renderPane('left');
+    });
+    await expect(upload).toBeDisabled();
+    await expect(page.locator('#fmLeftList')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('#fmLeftCount')).toHaveText('Loading...');
+    await expect(page.locator('#fmLeftSelected')).toHaveText('');
+    await page.evaluate(() => {
+        Object.assign(sftpFileManager.panes.left, {loading: false, error: 'Temporary directory failure'});
+        sftpFileManager.renderPane('left');
+    });
+    await expect(upload).toBeDisabled();
+    await expect(page.locator('#fmLeftCount')).toHaveText('');
+    await expect(page.locator('#fmLeftSelected')).toHaveText('');
+    await page.locator('#fmLeftList .fm-error-retry').click();
+    await expect(page.locator('#fmLeftList .fm-file-item')).toHaveCount(3);
+    await expect(upload).toBeEnabled();
+});
+
 test('compact file toolbar actions retain accessible names', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await login(page);
-    await page.evaluate(() => openFileManager());
+    await openWorkspaceWithSources(page);
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
 
     const toolbar = page.locator('#fmLeftPane .fm-pane-toolbar');
+    await expect(toolbar.locator('.fm-action-menu-more > summary')).toHaveAccessibleName('More…');
+    for (const theme of ['glass', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian']) {
+        await page.evaluate(value => applyTheme(value), theme);
+        const ratio = await toolbar.locator('.fm-action-menu-new > summary').evaluate(el => {
+            const luminance = color => color.match(/[\d.]+/g).slice(0, 3)
+                .map(Number).map(v => v / 255)
+                .map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
+                .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+            const style = getComputedStyle(el);
+            const fg = luminance(style.color), bg = luminance(style.backgroundColor);
+            return (Math.max(fg, bg) + .05) / (Math.min(fg, bg) + .05);
+        });
+        expect(ratio, `${theme} New menu contrast`).toBeGreaterThanOrEqual(4.5);
+    }
     for (const [action, name] of Object.entries({
         newfolder: 'New Folder', upload: 'Upload', download: 'Download',
         preview: 'Preview', rename: 'Rename', move: 'Move…', delete: 'Delete',
@@ -90,19 +167,58 @@ test('compact file toolbar actions retain accessible names', async ({ page }) =>
     }
 });
 
-test('split file toolbars expose every action without horizontal scrolling', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await login(page);
-    await page.evaluate(() => openFileManager());
+test('mobile split sources use the full width when changing sides', async ({page}) => {
+    await openWorkspaceWithSources(page);
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
     await page.locator('#fmLayoutSplit').click();
+    await chooseSource(page, 'right');
+    await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
+    for (const width of [320, 390, 767, 800, 1280, 390]) {
+        await page.setViewportSize({width,height:740});
+        if (width >= 768) {
+            await expect(page.locator('#fmLeftPane')).toBeVisible();
+            await expect(page.locator('#fmRightPane')).toBeVisible();
+            await expect(page.locator('#fmPaneTabs')).toBeHidden();
+            const left = await page.locator('#fmLeftPane').boundingBox();
+            const right = await page.locator('#fmRightPane').boundingBox();
+            expect(right.x).toBeGreaterThanOrEqual(left.x + left.width);
+            for (const side of ["Left", "Right"]) {
+                const list = await page.locator(`#fm${side}List`).boundingBox();
+                expect(list.height).toBeGreaterThan(140);
+            }
+            continue;
+        }
+        for (const side of ['Left', 'Right']) {
+            await page.locator('#fmPaneTabs').getByRole('tab',{name:`${side} side`,exact:true}).click();
+            const pane = page.locator(`#fm${side}Pane`);
+            const paneBox = await pane.boundingBox();
+            const gridBox = await page.locator('#sftpFileManager .fm-panes').boundingBox();
+            expect(Math.abs(paneBox.width-gridBox.width)).toBeLessThanOrEqual(1);
+            await expect(pane.locator('.fm-path-input')).toBeVisible();
+            await expect(pane.locator('[data-pane-action="upload"]')).toBeEnabled();
+            expect(await pane.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+        }
+    }
+});
+
+test('split file toolbars expose every action without horizontal scrolling', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openWorkspaceWithSources(page);
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
+    await page.locator('#fmLayoutSplit').click();
+    await chooseSource(page, 'right');
+    await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
 
     for (const side of ['Left', 'Right']) {
         const toolbar = page.locator(`#fm${side}Pane .fm-pane-toolbar`);
         await expect(toolbar.locator('[data-pane-action]')).toHaveCount(9);
         expect(await toolbar.evaluate(element => element.scrollWidth <= element.clientWidth + 1))
             .toBe(true);
+        await toolbar.locator('.fm-action-menu-more > summary').click();
         await expect(toolbar.locator('[data-pane-action="delete"]')).toBeInViewport();
+        await toolbar.locator('.fm-action-menu-more > summary').click();
     }
+    await page.screenshot({path:testInfo.outputPath('files-split-1280.png'), animations:'disabled'});
 });
 
 test.describe('touch file workspace', () => {
@@ -110,19 +226,22 @@ test.describe('touch file workspace', () => {
 
     test('split file toolbar actions retain mobile touch targets', async ({ page }) => {
         await page.setViewportSize({ width: 1280, height: 720 });
-        await login(page);
-        await page.evaluate(() => openFileManager());
+        await openWorkspaceWithSources(page);
+        await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
         await page.locator('#fmLayoutSplit').click();
+        await chooseSource(page, 'right');
+        await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
         for (const [viewportWidth, sides] of [
             [390, ['Left']],
             [900, ['Left', 'Right']],
         ]) {
             await page.setViewportSize({ width: viewportWidth, height: 844 });
             for (const side of sides) {
+                if (viewportWidth < 768) await page.locator('#fmPaneTabs').getByRole('tab', {name: `${side} side`}).click();
                 const widths = await page.locator(
-                    `#fm${side}Pane .fm-pane-toolbar button:not([hidden])`,
+                    `#fm${side}Pane .fm-pane-toolbar > button:not([hidden]), #fm${side}Pane .fm-pane-toolbar > details > summary`,
                 ).evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().width));
-                expect(widths).toHaveLength(8);
+                expect(widths).toHaveLength(5);
                 expect(Math.min(...widths), `${viewportWidth}px ${side}: ${widths.join(', ')}`)
                     .toBeGreaterThanOrEqual(44);
             }
@@ -301,7 +420,7 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
 
     await page.locator('#fmLayoutSplit').click();
     await expect(page.locator('#sftpFileManager')).toHaveClass(/fm-workspace-split/);
-    await page.locator('[data-source-target="right"]').click();
+    await chooseSource(page, 'right');
     await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
     await expect(page.locator('#fmSourceLauncherPane')).toHaveText('Right side');
     await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
@@ -420,12 +539,51 @@ test('saved key profile stays selected when keys arrive after profiles', async (
     await assertNoExternalRequests(page);
 });
 
+test('late key listing preserves edited file connection details', async ({ page }) => {
+    await openWorkspaceWithSources(page);
+    await expect.poll(() => page.evaluate(() => Array.isArray(sftpFileManager.qcProfiles))).toBe(true);
+    await page.evaluate(() => {
+        const manager = window.sftpFileManager;
+        manager.closeSourceLauncher();
+        const socket = window.socket;
+        const emit = socket.emit;
+        const once = socket.once;
+        const callbacks = {};
+        socket.emit = function(event, ...args) {
+            return ['list_profiles', 'list_keys'].includes(event) ? socket : emit.call(socket, event, ...args);
+        };
+        socket.once = function(event, callback) {
+            if (['profiles_list', 'keys_list'].includes(event)) {
+                callbacks[event] = callback;
+                return socket;
+            }
+            return once.call(socket, event, callback);
+        };
+        manager.openQuickConnect('late-profile');
+        callbacks.profiles_list({profiles: [{id: 'late-profile', name: 'Saved host', host: 'original.example', username: 'original', key_id: 'late-key'}]});
+        window.deliverFileKeys = () => callbacks.keys_list({keys: [{id: 'late-key', name: 'Saved key', type: 'ed25519'}]});
+        socket.emit = emit;
+        socket.once = once;
+    });
+    await page.locator('#fmQcHost').fill('edited.example');
+    await page.locator('#fmQcUsername').fill('edited-user');
+    await page.locator('input[name="fmQcAuth"][value="password"]').check();
+    await page.locator('#fmQcPassword').fill('temporary-test-password');
+    await page.evaluate(() => window.deliverFileKeys());
+    await expect(page.locator('#fmQcHost')).toHaveValue('edited.example');
+    await expect(page.locator('#fmQcUsername')).toHaveValue('edited-user');
+    await expect(page.locator('input[name="fmQcAuth"][value="password"]')).toBeChecked();
+    await expect(page.locator('#fmQcPassword')).toHaveValue('temporary-test-password');
+});
+
 test('empty panes guide source selection and mobile split keeps both panes reachable', async ({ page }) => {
     await openWorkspaceWithSources(page);
 
     await page.locator('#fmSourceLauncherClose').click();
     const leftEmptyAction = page.locator('#fmLeftList').getByRole('button', { name: 'Choose connection' });
     await expect(leftEmptyAction).toBeVisible();
+    await expect(page.locator('#fmLeftPane .fm-pane-nav')).toBeHidden();
+    await expect(page.locator('#fmLeftPane .fm-pane-toolbar')).toBeHidden();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect.poll(() => page.evaluate(() => {
         const action = document.querySelector('#fmLeftList .fm-empty-source-cta');
@@ -441,7 +599,7 @@ test('empty panes guide source selection and mobile split keeps both panes reach
 
     await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
     await page.locator('#fmLayoutSplit').click();
-    await page.locator('[data-source-target="right"]').click();
+    await chooseSource(page, 'right');
     await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
     await page.setViewportSize({ width: 390, height: 844 });
 
@@ -534,6 +692,7 @@ test('same-pane drag remains available beside the Move picker action', async ({ 
         manager.renderPane('left');
     });
 
+    await page.locator('#fmLeftPane .fm-action-menu-more > summary').click();
     const move = page.locator('[data-pane-toolbar="left"] [data-pane-action="move"]');
     await expect(move).toBeVisible();
     await expect(move).toBeDisabled();
@@ -573,6 +732,7 @@ test('Move picker browses folders on the same source and uses correlated rename'
         manager.renderPane('left');
     });
 
+    await page.locator('#fmLeftPane .fm-action-menu-more > summary').click();
     const move = page.locator('[data-pane-toolbar="left"] [data-pane-action="move"]');
     await expect(move).toBeEnabled();
     await move.click();
@@ -612,7 +772,7 @@ test('splitting two single-view tabs distributes them across both file areas', a
     await openWorkspaceWithSources(page);
 
     await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
-    await page.locator('[data-source-target="left"]').click();
+    await chooseSource(page, 'left');
     await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
     await expect(page.locator('#fmLeftTabs .fm-source-tab')).toHaveCount(2);
 
@@ -635,7 +795,7 @@ test.describe('mobile touch File Manager', () => {
         isMobile: true,
     });
 
-    test('opens folders, selects files, scrolls, and exposes long-press actions', async ({ page }) => {
+    test('opens folders, selects files, scrolls, and exposes long-press actions', async ({ page, browserName }) => {
         await openWorkspaceWithSources(page);
         await page.locator('[data-source-key="sftp-session:workspace-source"]').tap();
         await page.evaluate(() => {
@@ -725,9 +885,10 @@ test.describe('mobile touch File Manager', () => {
 
         const list = page.locator('#fmLeftList');
         const listBox = await list.boundingBox();
-        const client = await page.context().newCDPSession(page);
+        const client = browserName === 'chromium' ? await page.context().newCDPSession(page) : null;
         const x = listBox.x + (listBox.width / 2);
         const startY = listBox.y + Math.min(listBox.height - 24, 300);
+        if (client) {
         await client.send('Input.dispatchTouchEvent', {
             type: 'touchStart',
             touchPoints: [{ x, y: startY }],
@@ -748,6 +909,22 @@ test.describe('mobile touch File Manager', () => {
             type: 'touchEnd',
             touchPoints: [],
         });
+        } else {
+            // Playwright exposes native swipe injection only through Chromium CDP.
+            // Exercise browser scrolling and touch movement cancellation
+            // independently in the other engines; mobile WebKit has no wheel API.
+            await file.dispatchEvent('pointerdown', {pointerType:'touch',pointerId:7,clientX:x,clientY:startY});
+            await file.dispatchEvent('pointermove', {pointerType:'touch',pointerId:7,clientX:x+24,clientY:startY-90});
+            await page.mouse.move(x,startY);
+            if (browserName === 'webkit') {
+                await file.focus();
+                await page.keyboard.press('End');
+            } else await page.mouse.wheel(0,180);
+            // Movement must cancel the 500 ms long-press even while held.
+            await page.waitForTimeout(550);
+            await file.dispatchEvent('pointerup', {pointerType:'touch',pointerId:7,clientX:x+24,clientY:startY-90});
+            await expect(page.locator('#fmActionSheet')).not.toHaveClass(/visible/);
+        }
         await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
         expect(scrollLayout.listTouchAction).toBe('manipulation');
 
@@ -757,17 +934,19 @@ test.describe('mobile touch File Manager', () => {
         const longPressFileBox = await longPressFile.boundingBox();
         const fileX = longPressFileBox.x + (longPressFileBox.width / 2);
         const fileY = longPressFileBox.y + (longPressFileBox.height / 2);
-        await client.send('Input.dispatchTouchEvent', {
+        if (client) await client.send('Input.dispatchTouchEvent', {
             type: 'touchStart',
             touchPoints: [{ x: fileX, y: fileY }],
         });
+        else await longPressFile.dispatchEvent('pointerdown', {pointerType:'touch',pointerId:8,clientX:fileX,clientY:fileY});
         // Hold until the browser has handled its long-press timer. A fixed
         // wall-clock sleep can release the pointer before a busy renderer runs it.
         await expect(page.locator('#fmActionSheet')).toHaveClass(/visible/);
-        await client.send('Input.dispatchTouchEvent', {
+        if (client) await client.send('Input.dispatchTouchEvent', {
             type: 'touchEnd',
             touchPoints: [],
         });
+        else await longPressFile.dispatchEvent('pointerup', {pointerType:'touch',pointerId:8,clientX:fileX,clientY:fileY});
         await expect(page.locator('#fmActionSheet')).toHaveClass(/visible/);
         await expect(page.locator('#fmActionSheet')).toHaveAttribute('aria-hidden', 'false');
         await expect(page.locator('#fmActionSheet [data-action="open"]')).toBeEnabled();
@@ -779,4 +958,67 @@ test.describe('mobile touch File Manager', () => {
         await expect(longPressFile.locator('.fm-file-checkbox')).toBeFocused();
         await assertNoExternalRequests(page);
     });
+});
+
+test('keyboard focus and actions follow the same pane in split files', async ({page}) => {
+    await openWorkspaceWithSources(page);
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
+    await page.locator('#fmLayoutSplit').click();
+    await chooseSource(page, 'right');
+    await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
+    await page.evaluate(() => {
+        sftpFileManager.navigatePaneTo('left', '/srv/source');
+        sftpFileManager.navigatePaneTo('right', '/srv/source');
+    });
+    const left = page.locator('#fmLeftList .fm-file-item[data-index="1"]');
+    const right = page.locator('#fmRightList .fm-file-item[data-index="1"]');
+    await expect(left).toBeVisible();await expect(right).toBeVisible();
+    await left.focus();
+    await expect.poll(()=>page.evaluate(()=>sftpFileManager.activePane)).toBe('left');
+    await page.keyboard.press('Tab');
+    await expect.poll(()=>page.evaluate(()=>document.activeElement.closest('.fm-pane')?.id)).toBe('fmRightPane');
+    await expect.poll(()=>page.evaluate(()=>sftpFileManager.activePane)).toBe('right');
+    await right.focus();await page.keyboard.press('Space');
+    await expect(right).toHaveAttribute('aria-selected','true');
+    await expect(left).toHaveAttribute('aria-selected','false');
+    await page.keyboard.press('Shift+Tab');
+    await expect.poll(()=>page.evaluate(()=>document.activeElement.closest('.fm-pane')?.id)).toBe('fmLeftPane');
+    await page.locator('#fmRightPath').focus();
+    await expect.poll(()=>page.evaluate(()=>sftpFileManager.activePane)).toBe('right');
+});
+test('file lists keep working space and reachable actions across viewport sizes', async ({page}, testInfo) => {
+    await openWorkspaceWithSources(page);
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
+    await page.evaluate(() => {
+        const state=sftpFileManager.panes.left;
+        state.files=Array.from({length:45},(_,i)=>({name:`Report-${String(i).padStart(2,'0')}-with-a-long-descriptive-name.txt`,is_dir:false,size:4096}));
+        state.path='/srv/reports';state.loading=false;sftpFileManager.renderPane('left');
+    });
+    for (const size of [{width:360,height:529},{width:390,height:844},{width:768,height:1024},{width:1280,height:720},{width:3440,height:1440}]) {
+        await page.setViewportSize(size);
+        const list=page.locator('#fmLeftList');
+        await page.screenshot({path:testInfo.outputPath(`files-${size.width}.png`),animations:'disabled'});
+        const box=await list.boundingBox();
+        expect(box.height,`file list height at ${size.width}px`).toBeGreaterThanOrEqual(120);
+        expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+        await list.locator('.fm-file-item').first().focus();await page.keyboard.press('End');
+        await expect(list.locator('.fm-file-item').last()).toBeFocused();
+        await expect(list.locator('.fm-file-item').last()).toBeInViewport();
+        await page.locator('#fmLeftPane .fm-action-menu-more > summary').click();
+        await expect(page.locator('#fmLeftPane [data-pane-action="delete"]')).toBeInViewport();
+        await page.locator('#fmLeftPane .fm-action-menu-more > summary').click();
+    }
+});
+
+test('unavailable file permissions explain the prerequisite with a wiki link',async({page},testInfo)=>{
+ await openWorkspaceWithSources(page);
+ await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
+ await page.locator('#fmLayoutSplit').click();
+ const action=page.locator('[data-pane-toolbar="left"] [data-pane-action="permissions"]');
+ await page.locator('[data-pane-toolbar="left"] details').filter({has:page.locator('[data-pane-action=permissions]')}).locator('summary').click();
+ await expect(action).toBeVisible();await expect(action).toBeDisabled();
+ const wrapper=action.locator('..');await wrapper.focus();
+ await expect(wrapper.locator('.fm-permission-access-help')).toBeVisible();
+ await expect(wrapper.getByRole('link',{name:'Wiki'})).toHaveAttribute('href',/SFTP-File-Workspace-and-Transfers#unix-permissions$/);
+ await page.screenshot({path:testInfo.outputPath('permissions-help.png')});
 });

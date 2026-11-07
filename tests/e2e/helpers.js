@@ -18,14 +18,23 @@ function installExternalRequestGuard(page) {
     page.__externalRequests = externalRequests;
 }
 
-async function login(page, username = 'e2e_admin', {workspace = true} = {}) {
+async function login(page, username = 'e2e_admin', {workspace = true, tour = 'acknowledged'} = {}) {
     installExternalRequestGuard(page);
 
     await page.goto('/login');
     await page.locator('#username').fill(username);
     await page.locator('#password').fill('browser-password');
+    const tourState = page.waitForResponse(response => response.url().endsWith('/api/account/tour') && response.request().method() === 'GET');
     await page.locator('form button[type="submit"]').click();
     await expect(page).toHaveURL(/\/$/);
+    if ((await (await tourState).json()).state === 'new') {
+        await page.locator('.intro-tour').getByRole('button', {name: 'Skip tour', exact: true}).click();
+        await expect(page.locator('.intro-tour')).toHaveCount(0);
+    }
+    if (tour === 'acknowledged') {
+        const response = await page.request.post('/api/account/tour', {data:{state:'completed',acknowledged:true},headers:{'X-CSRFToken':await page.locator('meta[name="csrf-token"]').getAttribute('content')}});
+        expect(response.ok()).toBe(true);
+    }
     await expect.poll(() => page.evaluate(() => (
         window.ProfileManager?.profilesLoaded === true
         && window.JumpHostManager?.loaded === true
@@ -167,10 +176,8 @@ async function openKeyManagement(page) {
 }
 
 async function launchProfile(page, name) {
-    const exactName = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
-    const card = page.locator('.profile-launcher-card').filter({
-        has: page.locator('.profile-launcher-name', { hasText: exactName }),
-    });
+    const exactName = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')},`);
+    const card = page.getByRole('button', {name: exactName}).and(page.locator('.profile-launcher-card'));
     await expect(card).toHaveCount(1);
     await card.click();
 }
@@ -179,7 +186,29 @@ async function assertNoExternalRequests(page) {
     expect(page.__externalRequests || []).toEqual([]);
 }
 
+async function assertRouteGeometry(page) {
+    await expect.poll(() => page.locator('.ssh-route-canvas').evaluate(canvas => {
+        const frame=canvas.getBoundingClientRect(), scale=Number(canvas.dataset.scale)||1;
+        const paths=[...canvas.querySelectorAll(':scope > svg > path')];
+        const targets=[...canvas.querySelectorAll('.ssh-route-branch')].flatMap(branch => {
+            const source=branch.querySelector('.ssh-route-source');
+            return source ? [source,branch.querySelector('.ssh-route-destinations')] : [branch.querySelector('.ssh-route-destinations')];
+        });
+        if(!targets.length || targets.length!==paths.length)return Infinity;
+        const vertical=innerWidth<600 || (!canvas.closest('dialog') && canvas.parentElement.clientWidth<620);
+        return Math.max(...targets.map((target,index)=>{
+            const d=paths[index].getAttribute('d').split(' m ')[0];
+            const values=d.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi).map(Number);
+            const elbow=d.includes(' H '), x=values.at(elbow?-1:-2), y=values.at(elbow?-2:-1);
+            const r=target.getBoundingClientRect();
+            const tx=vertical&&!elbow?r.left+r.width/2:r.left, ty=vertical&&!elbow?r.top:r.top+r.height/2;
+            return Math.hypot(frame.left+x*scale-tx,frame.top+y*scale-ty);
+        }));
+    }), {message:'Every route arrow must end on its destination after layout changes'}).toBeLessThan(2);
+}
+
 module.exports = {
+    assertRouteGeometry,
     openWorkspace,
     assertNoExternalRequests,
     installExternalRequestGuard,

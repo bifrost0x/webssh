@@ -189,7 +189,7 @@ test('phone More dialog traps focus and restores the trigger on Escape', () => {
     controller.init();
 
     const more = state.views.find(button => button.dataset.mobileView === 'more');
-    more.focus();
+    state.elements.workspaceNavBtn.focus();
     more.dispatch('click');
     const last = state.elements.accountBtnHeader;
     last.focus();

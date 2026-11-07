@@ -12,16 +12,34 @@ for (const width of [390, 768, 1024, 1440]) {
             ]);
         });
         for (const graph of [false, true]) {
-            await page.locator(graph ? '#overviewGraphBtn' : '#overviewListBtn').click();
+            if (graph) await page.locator('#overviewHosts [data-host-id]').first().click();
+            if (graph) {
+                await expect(page.locator('.overview-path-stops')).toBeVisible();
+                await expect(page.locator('#overviewHosts .overview-list-group')).toHaveCount(2);
+            } else await expect(page.locator('#overviewHosts .overview-list-group')).toHaveCount(2);
             const escaped = await page.locator('#overviewHosts').evaluate(container => {
                 const bounds = container.getBoundingClientRect();
-                return [...container.querySelectorAll('.overview-host-group, .overview-row, .overview-group-heading')].filter(element => {
+                return [...container.querySelectorAll('.overview-list-group, .overview-compact-row, .overview-path-stops')].filter(element => {
+                    if (!element.getClientRects().length) return false;
                     const rect = element.getBoundingClientRect();
                     return rect.right > bounds.right + 1 || rect.left < bounds.left - 1;
                 }).map(element => element.className);
             });
             expect(escaped).toEqual([]);
         }
+        if (await page.locator('.overview-access-inspector').count()) await page.locator('.overview-access-heading button').click();
+        await page.locator('#overviewGroupFilter').selectOption('group:'+'long-group-'.repeat(30));
+        await expect(page.locator('#overviewHosts .overview-compact-row')).toHaveCount(1);
+        await page.locator('#overviewHosts [data-host-id="long-a"]').click();
+        await expect(page.locator('.overview-path-stops')).toContainText('long-host-');
+        const detailOverflow = await page.locator('#overviewHosts').evaluate(container => {
+            const bounds = container.getBoundingClientRect();
+            return [...container.querySelectorAll('.overview-path-stops, .overview-host-group, .overview-row, .overview-group-heading')].filter(element => {
+                const rect = element.getBoundingClientRect();
+                return rect.right > bounds.right + 1 || rect.left < bounds.left - 1;
+            }).map(element => element.className);
+        });
+        expect(detailOverflow).toEqual([]);
         await page.screenshot({path:test.info().outputPath(`overview-${width}.png`)});
         await (width < 768 ? page.locator('[data-mobile-view="workspaces"]') : page.locator('#workspaceNavBtn')).click();
         if (width >= 768) { await page.locator("#workspaceLayoutPicker > summary").click(); await page.locator('[data-layout="windows"]').click(); }

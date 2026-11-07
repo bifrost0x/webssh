@@ -23,7 +23,8 @@ def test_saved_connection_context_precedes_authentication_method():
     context = template.index('id="connectionProfileContext"')
     auth_method = template.index('id="authTypeSelect"')
     host = template.index('id="hostInput"')
-    assert context < auth_method < host
+    # Destination first, then credentials; the saved-profile context precedes both.
+    assert context < host < auth_method
     assert template.index("filename='js/profile-launcher-utils.js'") < template.index(
         "filename='js/profile-manager.js'"
     )

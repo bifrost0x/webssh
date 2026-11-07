@@ -264,12 +264,12 @@ def recover_interrupted_restore() -> None:
         return
     rollback = ensure_backup_temp_dir() / Path(*relative.parts)
     try:
-        from .backup_manager import restore_backup
+        from .backup_manager import _restore_recovery_snapshot
         from .restore_sanitizer import sanitize_restored_authentication_state
         from .session_epoch import reset_cache, rotate_epoch
 
         with operation_lock():
-            restore_backup(rollback, config.DATA_DIR)
+            _restore_recovery_snapshot(rollback, config.DATA_DIR)
             sanitize_restored_authentication_state(
                 Path(config.DATA_DIR) / 'app.db'
             )

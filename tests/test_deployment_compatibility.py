@@ -28,13 +28,13 @@ def compose(files, environment=None):
 
 
 @pytest.mark.parametrize('production', [False, True])
-def test_tmux_is_available_but_not_preselected_in_compose(production):
+def test_new_install_compose_leaves_tmux_admin_managed(production):
     files = ['docker-compose.yml']
     if production:
         files.append('docker-compose.production.yml')
     environment = compose(files)['environment']
-    assert environment['TMUX_ENABLED'] == 'true'
-    assert environment['TMUX_DEFAULT'] == 'false'
+    assert 'TMUX_ENABLED' not in environment
+    assert 'TMUX_DEFAULT' not in environment
 
 
 @pytest.mark.parametrize('ldap', [False, True])

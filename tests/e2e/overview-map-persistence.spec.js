@@ -1,0 +1,26 @@
+const {test,expect}=require('playwright/test');
+const {login}=require('./helpers');
+test('map refits its preview after resizing while expanded and reload during arrangement',async({page},info)=>{
+ await page.setViewportSize({width:3440,height:1440});await login(page,'e2e_admin',{workspace:false});
+ const seed=()=>page.evaluate(()=>{const b=ProfileManager.profiles[0];JumpHostManager.setJumpHosts([{id:'persist-gate',name:'Gateway'}]);ProfileManager.setProfiles(Array.from({length:60},(_,i)=>({...b,id:'persist-'+i,name:'Host '+i,group:'Group '+i%5,jump_host_id:i%2?'persist-gate':null})));});
+ await seed();const pane=page.locator('#overviewRouteMap'),server=pane.locator('.ssh-map-server');
+ await expect(pane.locator('.ssh-route-summary')).toHaveCount(2);
+ await pane.getByRole('button',{name:'Expand map',exact:true}).click();
+ await page.setViewportSize({width:390,height:800});
+ await pane.getByRole('button',{name:'Close map',exact:true}).click();
+ await expect(server).toBeInViewport();
+ await page.setViewportSize({width:1440,height:1000});
+ await pane.getByRole('button',{name:'Expand map',exact:true}).click();
+ const handle=server.getByRole('button',{name:'Move WebSSH',exact:true});await handle.focus();
+ for(let i=0;i<35;i++)await page.keyboard.press('ArrowLeft');
+ const moved=await server.evaluate(e=>e.style.transform);
+ await page.reload();await page.waitForFunction(()=>ProfileManager.profilesLoaded);await seed();
+ await expect(pane.locator('.ssh-route-summary')).toHaveCount(2);await expect(server).toBeInViewport();
+ await pane.getByRole('button',{name:'Expand map',exact:true}).click();await expect(server).toHaveAttribute('style',`transform: ${moved};`);
+ await pane.getByRole('button',{name:'Fit map',exact:true}).click();
+ await pane.getByRole('button',{name:'Close map',exact:true}).click();
+ await expect(pane.locator('.ssh-route-summary')).toHaveCount(2);
+ expect(await pane.locator('.ssh-route-canvas').evaluate(e=>e.getBoundingClientRect().width/e.offsetWidth)).toBeCloseTo(1);
+ await page.screenshot({path:info.outputPath('persisted-preview.png')});
+ await page.setViewportSize({width:390,height:700});await page.reload();await page.waitForFunction(()=>ProfileManager.profilesLoaded);await seed();await pane.scrollIntoViewIfNeeded();await expect(server).toBeInViewport();
+});

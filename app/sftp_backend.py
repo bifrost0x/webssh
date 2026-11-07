@@ -225,34 +225,13 @@ class SFTPBackend:
             source.handle_id, io_lane=io_lane
         ) as (sftp, _source_type):
             try:
-                with sftp.file(temporary_path, 'wb') as remote_file:
+                with sftp_handler.atomic_transfer_writer(
+                    sftp, safe_path, temporary_path, replace=replace,
+                    cancelled=lambda: cancel_event is not None and cancel_event.is_set(),
+                ) as remote_file:
                     yield remote_file
-                if cancel_event is not None and cancel_event.is_set():
-                    raise sftp_handler.TransferCancelled()
-                if replace:
-                    try:
-                        sftp.posix_rename(temporary_path, safe_path)
-                    except (AttributeError, IOError, OSError) as exc:
-                        raise sftp_handler.SFTPOperationError(
-                            'atomic replacement is unavailable'
-                        ) from exc
-                else:
-                    try:
-                        sftp.lstat(safe_path)
-                    except FileNotFoundError:
-                        pass
-                    except OSError as exc:
-                        if exc.errno != errno.ENOENT:
-                            raise
-                    else:
-                        raise FileExistsError('destination already exists')
-                    sftp.rename(temporary_path, safe_path)
-            except Exception:
-                try:
-                    sftp.remove(temporary_path)
-                except Exception:
-                    pass
-                raise
+            except sftp_handler.UploadConflict as error:
+                raise FileExistsError('destination already exists or changed') from error
 
     def iter_tree(
         self,

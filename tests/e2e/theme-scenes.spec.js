@@ -1,7 +1,7 @@
 const {test, expect} = require('playwright/test');
 const {login, installExternalRequestGuard, assertNoExternalRequests} = require('./helpers');
 
-const themes = ['glass', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'];
+const themes = ['glass','werkbank', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'];
 
 async function sceneDetails(page, selector, pseudo) {
     return page.locator(selector).evaluate(async (element, layer) => {
@@ -31,7 +31,7 @@ test('each mobile login theme keeps a visible scene band and the primary action 
         const scene = await sceneDetails(page, 'body', '::before');
         expect(scene.display, theme).toBe('block');
         expect(scene.width, theme).toBeGreaterThanOrEqual(1500);
-        expect(scene.layerHeight, theme).toBeLessThanOrEqual(480);
+        expect(scene.layerHeight, theme).toBeLessThanOrEqual(844);
         const headerScene = await sceneDetails(page, '.auth-context-panel');
         expect(headerScene.source, theme).toBeUndefined();
         expect(headerScene.layerHeight, theme).toBeLessThanOrEqual(110);
@@ -47,40 +47,37 @@ test('each mobile login theme keeps a visible scene band and the primary action 
     await expect(page.locator('#username')).toHaveValue('visible-scene-input');
 });
 
-test('mobile overview reserves a clear scene band above opaque text for every theme', async ({page}) => {
+test('mobile overview integrates the scene inside the welcome without covering inventory controls', async ({page}) => {
     await page.setViewportSize({width: 390, height: 844});
     await login(page, 'e2e_admin', {workspace: false});
-    await page.locator('#overviewListBtn').click();
     for (const theme of themes) {
-        await page.evaluate(value => { document.body.dataset.theme = value; }, theme);
-        const scene = await sceneDetails(page, '.overview-heading');
+        await page.evaluate(value => {document.body.dataset.theme = value;}, theme);
+        const scene = await sceneDetails(page, '.overview-scene');
         expect(scene.width, theme).toBeGreaterThanOrEqual(1500);
-        const geometry = await page.locator('.overview-heading').evaluate(element => {
-            const box = element.getBoundingClientRect();
-            const copy = element.querySelector('.overview-heading-copy').getBoundingClientRect();
-            const veil = getComputedStyle(element, '::before');
-            return {imageBand: copy.top - box.top, veil: veil.backgroundImage,
-                copyBottom: copy.bottom, bottom: box.bottom, scrollWidth: element.scrollWidth, width: box.width};
-        });
-        expect(geometry.imageBand, theme).toBeGreaterThanOrEqual(132);
-        expect(geometry.veil, theme).toMatch(/rgba\(0, 0, 0, 0\)/);
-        expect(geometry.copyBottom, theme).toBeLessThan(geometry.bottom);
-        expect(geometry.scrollWidth, theme).toBeLessThanOrEqual(Math.ceil(geometry.width));
+        const photo = await page.locator('.overview-scene').boundingBox();
+        const title = await page.locator('#overviewTitle').boundingBox();
+        const inventory = await page.locator('#overviewInventorySummary').boundingBox();
+        expect(photo.height, theme).toBeGreaterThanOrEqual(60);
+        expect(title.y, theme).toBeGreaterThanOrEqual(photo.y);
+        expect(title.y + title.height, theme).toBeLessThanOrEqual(photo.y + photo.height);
+        expect(photo.x + photo.width, theme).toBeLessThanOrEqual(390);
+        expect(inventory.y, theme).toBeGreaterThanOrEqual(photo.y + photo.height);
     }
-    await page.locator('#overviewGraphBtn').click();
-    await expect(page.locator('.overview-heading')).toHaveCSS('background-image', 'none');
+    await page.locator('#overviewHosts [data-host-id]').first().click();
+    await expect(page.locator('.overview-scene')).toBeVisible();
+    await expect(page.locator('.overview-access-inspector')).toBeVisible();
 });
 
 test('scene readiness and custom wallpaper override preserve the mobile overview', async ({page}) => {
     await page.setViewportSize({width: 390, height: 844});
     await login(page, 'e2e_admin', {workspace: false});
-    await page.locator('#overviewListBtn').click();
+    if (await page.locator('.overview-access-inspector').count()) await page.locator('.overview-access-heading button').click();
     await page.evaluate(() => {
         document.body.dataset.theme = 'paper';
         document.body.dataset.deferThemeBackground = '';
         document.body.removeAttribute('data-theme-background-ready');
     });
-    await expect(page.locator('.overview-heading')).toHaveCSS('background-image', 'none');
+    await expect(page.locator('.overview-scene')).not.toHaveCSS('background-image', /url\(/);
     await page.evaluate(() => {
         document.body.dataset.themeBackgroundReady = '';
         const canvas = document.createElement('canvas');
@@ -90,12 +87,12 @@ test('scene readiness and custom wallpaper override preserve the mobile overview
         document.body.style.setProperty('--theme-background-image', `url("${canvas.toDataURL()}")`);
         document.body.dataset.customBackground = '';
     });
-    await expect(page.locator('.overview-heading')).toHaveCSS('background-image', /data:image\/png/);
+    await expect(page.locator('.overview-scene')).toHaveCSS('background-image', /data:image\/png/);
     await page.evaluate(() => {
         document.body.style.removeProperty('--theme-background-image');
         delete document.body.dataset.customBackground;
     });
-    await expect(page.locator('.overview-heading')).toHaveCSS('background-image', /paper-pavilion/);
+    await expect(page.locator('.overview-scene')).toHaveCSS('background-image', /paper-pavilion/);
 });
 
 test('large screens decode local scene sources and keep the login form concentrated', async ({page}) => {

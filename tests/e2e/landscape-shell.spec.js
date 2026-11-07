@@ -40,21 +40,41 @@ test.describe('touch landscape navigation', () => {
         });
     }
 
-    test('touch tablet above the phone height breakpoint keeps the rail', async ({ page }) => {
+    test('touch tablet above the phone height breakpoint keeps compact top navigation', async ({ page }) => {
         await page.setViewportSize({ width: 844, height: 521 });
         await login(page);
-        await expect(page.locator('body')).toHaveCSS('padding-left', '72px');
-        await expect(page.locator('.global-navigation')).toHaveCSS('position', 'fixed');
+        await expect(page.locator('body')).toHaveCSS('padding-left', '0px');
+        await expect(page.locator('.global-navigation')).toHaveCSS('position', 'static');
         await expect(page.locator('#overviewNavBtn')).toBeVisible();
+        await assertTopNavigation(page);
         await assertNoExternalRequests(page);
     });
 });
 
-test('short desktop windows keep the rail with a fine pointer', async ({ page }) => {
+test('short desktop windows keep compact top navigation with a fine pointer', async ({ page }) => {
     await page.setViewportSize({ width: 844, height: 390 });
     await login(page);
     expect(await page.evaluate(() => matchMedia('(pointer: fine)').matches)).toBe(true);
-    await expect(page.locator('body')).toHaveCSS('padding-left', '72px');
-    await expect(page.locator('.global-navigation')).toHaveCSS('position', 'fixed');
+    await expect(page.locator('body')).toHaveCSS('padding-left', '0px');
+    await expect(page.locator('.global-navigation')).toHaveCSS('position', 'static');
+    await assertTopNavigation(page);
     await assertNoExternalRequests(page);
 });
+
+async function assertTopNavigation(page) {
+    for (const id of ['overviewNavBtn', 'manageProfilesBtn', 'commandLibraryBtn', 'fileTransferBtn', 'workspaceNavBtn']) {
+        const button = page.locator(`#${id}`);
+        await expect(button).toBeVisible();
+        const box = await button.boundingBox();
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize().width);
+        expect(box.y + box.height).toBeLessThanOrEqual(70);
+        await button.click();
+        await expect(button).toHaveClass(/active/);
+    }
+    const workspace = await page.locator('.main-content').boundingBox();
+    const rail = await page.locator('.workspace-access-rail').boundingBox();
+    expect(rail.width).toBeLessThanOrEqual(60);
+    expect(workspace.x).toBeCloseTo(rail.x + rail.width, 0);
+    expect(workspace.x + workspace.width).toBeCloseTo(page.viewportSize().width, 0);
+}

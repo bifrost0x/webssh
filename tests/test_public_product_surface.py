@@ -269,7 +269,11 @@ def test_metadata_build_rejects_drifted_page_contracts(tmp_path, replacement):
 def test_demo_is_opt_in_and_has_local_preview_and_text_alternatives(built_site):
     html = (built_site / 'demo.html').read_text(encoding='utf-8')
     page = Page(html)
-    assert not any(tag in {'iframe', 'video', 'source'} for tag, _ in page.tags)
+    assert not any(tag == 'iframe' for tag, _ in page.tags)
+    videos = [attrs for tag, attrs in page.tags if tag == 'video']
+    assert len(videos) == 1 and videos[0].get('preload') == 'none'
+    assert 'controls' in videos[0] and 'autoplay' not in videos[0]
+    assert [attrs.get('src') for tag, attrs in page.tags if tag == 'source'] == ['assets/webssh-3-tour.webm']
     assert any(tag == 'button' and 'data-load-youtube' in attrs for tag, attrs in page.tags)
     assert any(tag == 'button' and 'data-remove-youtube' in attrs and 'hidden' in attrs
                for tag, attrs in page.tags)
@@ -297,26 +301,26 @@ def test_demo_video_metadata_matches_the_published_media(built_site):
     video = next(node for node in nodes if node['@type'] == 'VideoObject')
     webpage = next(node for node in nodes if node['@type'] == 'WebPage')
     assert webpage['mainEntity'] == {'@id': video['@id']}
-    assert video['duration'] == 'PT4M33S'
+    assert video['duration'] == 'PT20S'
     assert video['inLanguage'] == 'en'
-    assert video['uploadDate'] == '2026-10-18T13:27:58+02:00'
-    assert video['embedUrl'] == 'https://www.youtube-nocookie.com/embed/mw_qXUnYYVs'
-    assert video['url'] == 'https://www.youtube.com/watch?v=mw_qXUnYYVs'
-    assert 'contentUrl' not in video and 'interactionStatistic' not in video
+    assert video['uploadDate'] == '2026-11-04T00:00:00+01:00'
+    assert video['contentUrl'] == packager().SITE_URL + 'assets/webssh-3-tour.webm'
+    assert (built_site / 'assets/webssh-3-tour.webm').is_file()
+    assert video['url'] == packager().SITE_URL + 'demo.html'
+    assert 'embedUrl' not in video and 'interactionStatistic' not in video
     for url in video['thumbnailUrl']:
         assert url.startswith(packager().SITE_URL)
         assert (built_site / urlsplit(url).path.lstrip('/')).is_file()
     meta = {attrs.get('property'): attrs.get('content')
             for tag, attrs in Page(html).tags if tag == 'meta'}
     assert meta['og:image'] == video['thumbnailUrl'][0]
-    assert (meta['og:image:width'], meta['og:image:height']) == ('1280', '720')
+    assert (meta['og:image:width'], meta['og:image:height']) == ('2560', '1440')
 
 
 def test_demo_links_bypass_previously_cached_tour(built_site):
-    thumbnail = (built_site / 'assets/webssh-youtube-tour.jpg').read_bytes()
-    captions = (built_site / 'assets/webssh-youtube-tour.en.vtt').read_text(encoding='utf-8').encode('utf-8')
-    assert captions.startswith(b'WEBVTT')
-    revision = hashlib.sha256(b'mw_qXUnYYVs' + thumbnail + captions).hexdigest()[:12]
+    video = (built_site / 'assets/webssh-3-tour.webm').read_bytes()
+    thumbnail = (built_site / 'assets/dashboard.png').read_bytes()
+    revision = hashlib.sha256(video + thumbnail).hexdigest()[:12]
     for name in packager().PUBLIC_PAGES:
         page = Page((built_site / name).read_text(encoding='utf-8'))
         demo_links = [urlsplit(link) for link in page.links() if link and urlsplit(link).path.endswith('demo.html')]
@@ -324,7 +328,8 @@ def test_demo_links_bypass_previously_cached_tour(built_site):
         assert all(parse_qs(link.query) == {'v': [revision]} for link in demo_links)
     readme = (ROOT / 'README.md').read_text(encoding='utf-8')
     page = Page(readme)
-    assert 'https://www.youtube.com/watch?v=mw_qXUnYYVs' in page.links()
-    assert 'site/assets/webssh-youtube-tour.jpg' in readme
+    assert 'site/demo.html' in page.links()
+    assert 'assets/dashboard.png' in readme
+    assert 'assets/webssh-themes.gif' in readme
     assert 'Watch the 60-second' not in readme
     assert 'Music:' not in readme

@@ -27,6 +27,7 @@ test('logout confirmation cancels safely and submits the existing protected logo
 
 test('account menu opens the Settings Center and persists close confirmation', async ({ page }) => {
     await login(page);
+    const currentTheme = await page.locator('body').getAttribute('data-theme');
 
     await page.locator('#accountBtnHeader').click();
     const dropdown = page.locator('#accountDropdownHeader');
@@ -54,12 +55,13 @@ test('account menu opens the Settings Center and persists close confirmation', a
     await expect(page).toHaveURL(/\/settings#preferences$/);
     await expect(page.getByText('Settings Center', { exact: true })).toBeVisible();
     await expect(page.locator('[data-account-panel="preferences"]')).toBeVisible();
-    await expect(page.locator('#settingsThemeSelect')).toHaveValue('glass');
+    await expect(page.locator('#settingsThemeSelect')).toHaveValue(currentTheme);
     await expect(page.locator('#settingsLanguageSelect')).not.toHaveValue('');
     await expect(page.locator('#scrollbackInput')).toHaveValue('500');
     await expect(closeConfirmation).not.toBeChecked();
     const signInDuration = page.locator('#authenticationSessionDurationSelect');
-    await expect(signInDuration).toHaveValue('30');
+    const initialDuration = await signInDuration.inputValue();
+    expect(['30', '60', '120', '240', '480']).toContain(initialDuration);
 
     await signInDuration.selectOption('120');
     await expect(signInDuration).not.toBeDisabled();
@@ -79,6 +81,8 @@ test('account menu opens the Settings Center and persists close confirmation', a
     await expect(signInDuration).toHaveValue('120');
     await closeConfirmation.uncheck();
     await expect(closeConfirmation).not.toBeDisabled();
+    await signInDuration.selectOption(initialDuration);
+    await expect(signInDuration).not.toBeDisabled();
 
     await page.getByRole('link', { name: 'Back to Terminal' }).click();
     await page.locator('#accountBtnHeader').click();

@@ -2,11 +2,13 @@
 
 WebSSH provides native administrator and CLI workflows for backing up persistent state, validating archives, restoring an installation, and rotating a container-managed `SECRET_KEY`.
 
-Backups are highly sensitive. An archive can contain user configuration, host information, the database, encrypted private keys, an admin-managed encrypted GitHub client secret, and the persisted application secret. Store it like a credential vault export.
+Backups remain highly sensitive even though native exports exclude saved remote passwords and SSH keys. An archive can contain user configuration, host information, the authentication database (including password hashes and MFA data), provider secrets such as the admin-managed encrypted GitHub client secret, and the persisted application secret. Store downloaded archives encrypted and off-host with restricted access.
 
 ## What a native backup contains
 
-The archive covers the persistent `DATA_DIR` state required to restore the instance. Transient logs, temporary uploads, incomplete transfers, and runtime-only SSH channels are excluded.
+The archive covers persistent `DATA_DIR` configuration and account state. Native exports exclude named password stores (`credentials.json`), legacy `automation-vault.json`, SSH key directories (both metadata and private keys), and quarantined `deleted_users` data. Transient logs, temporary uploads, incomplete transfers, and runtime-only SSH channels are also excluded.
+
+These are specific file exclusions, not general secret detection: commands, notes, profiles and retained run history can still contain manually embedded secrets. Historical archives are not rewritten and may still contain remote credentials. Protect their retention and rotate remote credentials when old copies must stop working.
 
 Current archives use format version 2. The verifier also understands legacy format version 1/schema 0 for compatibility. Validation checks the manifest, file checksums, declared sizes, member paths, member count, compression behavior, and archive-wide limits before restore.
 
@@ -27,7 +29,7 @@ Do not rely on the short-lived browser download as retention. Move the archive i
 
 ## Restore in the web interface
 
-Restore is deliberately disruptive and strongly confirmed:
+Restore is deliberately disruptive and strongly confirmed. Normal web and CLI restore ignore excluded credential files even in older archives and clear existing copies to prevent accidental reuse by a different restored account. After restore, reimport SSH keys, recreate saved remote passwords and reassign credentials to hosts, jump hosts and SMB sources. Review and explicitly re-enable schedules before unattended execution.
 
 Online restore is enabled only when `BACKUP_TEMP_DIR` is an absolute, private,
 durable directory outside `DATA_DIR` and `BACKUP_RECOVERY_DURABLE=true` records
@@ -47,6 +49,8 @@ backup construction, but intentionally does not enable online restore.
 8. An emergency rollback archive is created.
 9. Persistent state is replaced and sessions are invalidated.
 10. The process terminates intentionally so the service manager can start a clean runtime.
+
+Emergency rollback archives and secret-rotation recovery snapshots are private internal recovery material, separate from downloadable exports. They retain encrypted credentials so a failed operation can recover the original state; normal restore does not import those credentials. Restrict recovery storage access and manage its retention and cleanup separately from exported backups.
 
 If an interruption occurs during replacement, the restore workflow attempts rollback from the emergency archive. On restart, the durable recovery directory remains available for diagnosis or recovery. Still take an independent backup before every restore and keep it outside the instance.
 
@@ -97,9 +101,9 @@ The supported rotation command re-encrypts persisted secrets when WebSSH manages
 flask --app start:app rotate-secret-key --help
 ```
 
-All WebSSH processes must be stopped. Take and verify a backup first. The command changes the root used for encrypted per-user SSH keys and invalidates signed session state, so a partial or interrupted manual replacement can make persisted credentials unreadable.
+All WebSSH processes must be stopped. Take and verify a backup first. The command re-encrypts per-user SSH keys, named connection passwords, TOTP values and the GitHub client secret, and invalidates signed session state. It verifies staged credential data before publishing the new secret and restores original bytes if publication fails. Its private recovery snapshot retains the original encrypted credentials; the ordinary backup export does not. A partial or interrupted manual replacement of the application secret can make persisted credentials unreadable.
 
-If `SECRET_KEY` comes from an external environment variable or secret manager, rotating only the external value is not sufficient. Plan a controlled migration that keeps the old key available while persisted SSH keys, TOTP values, and the GitHub App client secret are re-encrypted. The built-in command is scoped to the container-managed persisted secret.
+If `SECRET_KEY` comes from an external environment variable or secret manager, rotating only the external value is not sufficient. Plan a controlled migration that keeps the old key available while persisted SSH keys, named connection passwords, TOTP values, and the GitHub App client secret are re-encrypted. The built-in command is scoped to the container-managed persisted secret.
 
 ## Restore drill
 
@@ -109,8 +113,10 @@ Test the full sequence on an isolated instance:
 2. Verify it with the CLI.
 3. Start a disposable instance with an empty data volume.
 4. Restore the archive.
-5. Confirm local, LDAP/OIDC where applicable, Passkey, SSH, SFTP, and host-key data.
-6. Confirm that old browser sessions are invalid.
-7. Record the observed recovery time and required secret material.
+5. Confirm local, LDAP/OIDC where applicable, Passkey and host-key data.
+6. Reimport SSH keys, recreate saved passwords and reassign credentials; test SSH, SFTP and SMB as applicable.
+7. Review schedules and explicitly re-enable only the intended ones.
+8. Confirm that old browser sessions are invalid.
+9. Record the observed recovery time and required secret material.
 
 An untested archive is not a verified recovery capability.

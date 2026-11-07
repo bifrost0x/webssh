@@ -741,6 +741,8 @@ def test_app_owns_and_stops_all_permanent_cleanup_jobs(runtime_app):
     assert report.cancelled == (
         ('backup-operation-cleanup', None),
         ('transfer-token-cleanup', None),
+        ('credentials-cleanup', None),
+        ('automation-cleanup', None),
         ('inactive_socket_session_cleanup', None),
         ('idle_ssh_session_cleanup', None),
         ('temporary_connection_cleanup', None),
@@ -751,6 +753,9 @@ def test_background_worker_default_reserves_cleanup_reader_and_transfer_slots():
     """Permanent cleanup jobs must not starve accepted readers or transfers."""
     import config
 
+    assert config.BACKGROUND_CLEANUP_JOBS == (
+        7 + int(config.LDAP_ENABLED) + int(config.SMB_ENABLED)
+    )
     assert config.BACKGROUND_WORKERS_MIN == (
         config.BACKGROUND_CLEANUP_JOBS
         + config.QUOTA_SSH_SESSION_GLOBAL
@@ -758,6 +763,24 @@ def test_background_worker_default_reserves_cleanup_reader_and_transfer_slots():
     )
     assert config.BACKGROUND_WORKERS >= config.BACKGROUND_WORKERS_MIN
     assert config.BACKGROUND_WORKERS <= config.BACKGROUND_WORKERS_MAX
+
+
+def test_enabled_automation_cleanup_is_owned_and_stopped_after_admission(runtime_app, monkeypatch):
+    from app import create_app
+    import config
+    monkeypatch.setattr(config, 'AUTOMATION_ENABLED', True)
+    enabled_app = create_app()
+    report = enabled_app.extensions['runtime_lifecycle'].begin_shutdown(1)
+    assert report.remaining == ()
+    assert report.cancelled == (
+        ('backup-operation-cleanup', None),
+        ('transfer-token-cleanup', None),
+        ('credentials-cleanup', None),
+        ('automation-cleanup', None),
+        ('inactive_socket_session_cleanup', None),
+        ('idle_ssh_session_cleanup', None),
+        ('temporary_connection_cleanup', None),
+    )
 
 
 def test_sequential_app_factories_rebind_the_global_connection_pool(

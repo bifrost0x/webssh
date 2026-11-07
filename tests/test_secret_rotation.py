@@ -530,3 +530,109 @@ def test_rotate_secret_cli_generates_and_persists_new_secret(app, monkeypatch):
     assert len(list(data_dir.parent.glob(
         f'{data_dir.name}-pre-rotation-*.zip'
     ))) == 1
+
+
+def _named_rotation_data(tmp_path, monkeypatch):
+    from app import credential_crypto
+    import config
+
+    data_dir, old_secret, new_secret, _ = _rotation_data(tmp_path)
+    created_at = '2026-10-01T12:00:00.123456'
+    with sqlite3.connect(data_dir / 'app.db') as connection:
+        connection.execute('ALTER TABLE users ADD COLUMN created_at TEXT')
+        connection.execute('INSERT INTO users VALUES (1, ?, ?, ?)', ('alice', 'unused', created_at.replace('T', ' ')))
+    monkeypatch.setattr(config, 'SECRET_KEY', old_secret)
+    monkeypatch.setattr(credential_crypto, 'incarnation', lambda uid: created_at)
+    records = {}
+    for rid in ('first', 'second'):
+        records[rid] = dict(id=rid, name=rid, username='alice', version='v1',
+                            updated_at=created_at,
+                            ciphertext=credential_crypto.encrypt(1, rid, 'password-' + rid))
+    document = dict(version=1, credentials=records, assignments={}, imports=[])
+    path = data_dir / 'users/user_1/credentials.json'
+    path.write_text(json.dumps(document), encoding='utf-8')
+    return data_dir, old_secret, new_secret, path
+
+
+def test_rotation_reencrypts_named_credentials_without_app_context(tmp_path, monkeypatch):
+    from app import credential_crypto
+    import config
+    import zipfile
+
+    data_dir, old_secret, new_secret, path = _named_rotation_data(tmp_path, monkeypatch)
+    before = json.loads(path.read_text())
+    report = rotate_secret(old_secret, new_secret, data_dir)
+    with zipfile.ZipFile(report.backup_path) as archive:
+        assert json.loads(archive.read('data/users/user_1/credentials.json')) == before
+    assert report.rotated_credentials == 2
+    monkeypatch.setattr(config, 'SECRET_KEY', new_secret)
+    after = json.loads(path.read_text())
+    for rid, record in after['credentials'].items():
+        assert credential_crypto.decrypt(1, rid, record['ciphertext']) == 'password-' + rid
+        assert record['ciphertext'] != before['credentials'][rid]['ciphertext']
+        record['ciphertext'] = before['credentials'][rid]['ciphertext']
+    assert after == before
+
+
+@pytest.mark.parametrize('damage', ['ciphertext', 'document', 'missing_user', 'incarnation'])
+def test_invalid_named_credentials_abort_rotation(tmp_path, monkeypatch, damage):
+    data_dir, old_secret, new_secret, path = _named_rotation_data(tmp_path, monkeypatch)
+    if damage == 'ciphertext':
+        document = json.loads(path.read_text())
+        document['credentials']['second']['ciphertext'] = 'invalid'
+        path.write_text(json.dumps(document))
+    elif damage == 'document':
+        path.write_text('{broken')
+    else:
+        with sqlite3.connect(data_dir / 'app.db') as connection:
+            if damage == 'missing_user':
+                connection.execute('DELETE FROM users')
+            else:
+                connection.execute("UPDATE users SET created_at = '2026-11-01 00:00:00'")
+    originals = {p: p.read_bytes() for p in data_dir.rglob('*') if p.is_file()}
+    with pytest.raises(SecretRotationError, match='credential'):
+        rotate_secret(old_secret, new_secret, data_dir)
+    assert {p: p.read_bytes() for p in originals} == originals
+
+
+def test_named_credentials_rollback_after_secret_publish_failure(tmp_path, monkeypatch):
+    from app import secret_rotation
+
+    data_dir, old_secret, new_secret, path = _named_rotation_data(tmp_path, monkeypatch)
+    original = path.read_bytes()
+    original_write = secret_rotation.atomic_write_bytes
+    saw_rotated = False
+
+    def fail_publish(target, payload, mode=0o600):
+        nonlocal saw_rotated
+        if Path(target) == data_dir / 'secret_key' and payload == (new_secret + '\n').encode():
+            saw_rotated = path.read_bytes() != original
+            raise OSError('forced publish failure')
+        return original_write(target, payload, mode)
+
+    monkeypatch.setattr(secret_rotation, 'atomic_write_bytes', fail_publish)
+    with pytest.raises(OSError, match='forced publish failure'):
+        rotate_secret(old_secret, new_secret, data_dir)
+    assert saw_rotated
+    assert path.read_bytes() == original
+    assert (data_dir / 'secret_key').read_text() == old_secret + '\n'
+
+
+def test_rotation_cli_reports_named_credential_count(app, tmp_path, monkeypatch):
+    from app import cli
+    import config
+
+    data_dir, _, _, _ = _named_rotation_data(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, 'DATA_DIR', data_dir)
+    audit_events = []
+    monkeypatch.setattr(cli.audit_logger, 'info', lambda event, **fields: audit_events.append((event, fields)))
+
+    result = app.test_cli_runner().invoke(args=['rotate-secret-key', '--confirm-offline'])
+
+    assert result.exit_code == 0, result.output
+    assert '2 named credentials' in result.output
+    assert audit_events == [('SECRET_ROTATION_SUCCESS', {
+        'extra': {'extra_data': {'rotated_keys': 2, 'rotated_named_records': 2}},
+    })]
+    assert 'password-first' not in result.output
+    assert 'password-second' not in result.output

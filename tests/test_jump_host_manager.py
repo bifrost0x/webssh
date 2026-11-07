@@ -725,3 +725,40 @@ def test_jump_host_recovery_selector_deletes_only_selected_duplicate(app):
 
         persisted = json.loads(path.read_text(encoding='utf-8'))['jump_hosts']
         assert [item['name'] for item in persisted] == ['First']
+
+
+def test_update_jump_host_preserves_identity_and_profile_reference(app):
+    from app import jump_host_manager, profile_manager
+    user_id = _create_user(app)
+    with app.app_context():
+        original, error = jump_host_manager.add_jump_host(user_id, 'Bastion', 'old.example', 22, 'deploy', 'password')
+        assert error is None
+        profile = {'id': 'dependent', 'name': 'Target', 'host': 'target.example', 'port': 22,
+                   'username': 'deploy', 'auth_type': 'password', 'jump_host_id': original['id']}
+        assert profile_manager.save_profiles(user_id, [profile])
+        updated, error = jump_host_manager.add_jump_host(user_id, 'Renamed', 'new.example', 2222, 'admin', 'password', jump_host_id=original['id'])
+        assert error is None
+        assert updated['id'] == original['id']
+        assert updated['created_at'] == original['created_at']
+        assert updated['host'] == 'new.example'
+        assert jump_host_manager.load_jump_hosts(user_id) == [updated]
+        assert profile_manager.load_profiles(user_id)[0]['jump_host_id'] == original['id']
+
+
+def test_update_unknown_jump_host_does_not_create_or_mutate(app):
+    from app import jump_host_manager
+    user_id = _create_user(app)
+    with app.app_context():
+        original, _ = jump_host_manager.add_jump_host(user_id, 'Bastion', 'old.example', 22, 'deploy', 'password')
+        updated, error = jump_host_manager.add_jump_host(user_id, 'Other', 'new.example', 22, 'admin', 'password', jump_host_id='not-owned')
+        assert updated is None and error == 'Jump host not found'
+        assert jump_host_manager.load_jump_hosts(user_id) == [original]
+
+
+def test_zero_jump_host_port_is_rejected(app):
+    from app import jump_host_manager
+    user_id = _create_user(app)
+    with app.app_context():
+        value, error = jump_host_manager.add_jump_host(user_id, 'Bastion', 'old.example', 0, 'deploy', 'password')
+        assert value is None and error == 'Port must be between 1 and 65535'
+        assert jump_host_manager.load_jump_hosts(user_id) == []

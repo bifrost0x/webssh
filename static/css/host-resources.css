@@ -1,0 +1,94 @@
+/* The same navigation, library and bounded editor across Hosts resources. */
+.webssh-ui #primaryWorkspaceSurface :is(.primary-workspace-view-hosts, .primary-workspace-view-commands) { max-width: 1960px; margin-inline: auto; }
+.webssh-ui #primaryWorkspaceSurface .host-resource-view > .modal-content > .modal-body {
+    display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden;
+}
+.webssh-ui #primaryWorkspaceSurface .host-resource-toolbar { display: flex; align-items: center; gap: 12px; padding: 20px 24px 16px; margin: 0; }
+.host-resource-toolbar .management-search-control { position: relative; flex: 1; min-width: 0; }
+.host-resource-toolbar .management-search-control > .material-icons { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 20px; color: var(--ws2-text-muted); }
+.host-resource-toolbar .form-control { width: 100%; padding-left: 40px; }
+.webssh-ui #primaryWorkspaceSurface .host-resource-view .connection-asset-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 24px 20px; min-height: 0; overflow: auto; align-items: start; }
+.webssh-ui #primaryWorkspaceSurface .host-resource-view.has-resource-editor .connection-asset-layout { grid-template-columns: minmax(0, 1fr) 420px; }
+.webssh-ui .host-resource-view .connection-asset-layout > .manager-card { padding: 0; border: 0; background: transparent; border-radius: 0; box-shadow: none; min-width: 0; }
+.webssh-ui .host-resource-library > .manager-card-header { display: none; }
+.webssh-ui .host-resource-library .keys-list { max-height: none; padding: 0; gap: 0; border: 1px solid var(--ws2-border); border-radius: 5px; }
+.webssh-ui .host-resource-library .key-item { margin: 0; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--ws2-border); border-radius: 0; background: transparent; gap: 16px; min-height: 60px; }
+.webssh-ui .host-resource-library .key-item:last-child { border-bottom: 0; }
+.webssh-ui .host-resource-library .key-item[hidden] { display: none; }
+.webssh-ui .host-resource-library .key-info { min-width: 0; flex: 1; gap: 4px; }
+.webssh-ui .host-resource-library .key-info:not(:has(.key-rename-editor,.key-replace-editor)) { display: grid; grid-template-columns: minmax(100px,1fr) minmax(100px,1fr) minmax(100px,1fr); align-items: center; gap: 16px; }
+.webssh-ui .host-resource-library .key-info strong { font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.webssh-ui .host-resource-library .key-type { background: transparent; color: var(--ws2-text-secondary); padding: 0; font-size: 13px; }
+.webssh-ui .host-resource-library .key-date { color: var(--ws2-text-secondary); font-size: 13px; overflow-wrap: anywhere; }
+.webssh-ui .host-resource-library .no-items { padding: 24px; }
+.webssh-ui .host-resource-view:not(.has-resource-editor) .host-resource-editor { display: none; }
+.webssh-ui #primaryWorkspaceSurface .host-resource-view .host-resource-editor { padding: 0 0 16px 24px; margin-left: 24px; border-left: 1px solid var(--ws2-border); }
+.webssh-ui .host-resource-editor > .manager-card-header { padding: 16px 0; margin: 0; border: 0; }
+.webssh-ui .host-resource-editor > .manager-card-header > .material-icons { display: none; }
+.webssh-ui .host-resource-editor h3 { font-size: 20px; font-weight: 600; }
+.webssh-ui .host-resource-editor label { font-size: 15px; font-weight: 400; color: var(--ws2-text); }
+.webssh-ui .host-resource-editor .native-host-credentials label:has(input[type=checkbox]) { display: flex; align-items: center; gap: 8px; }
+.webssh-ui #credentialManagementView.primary-workspace-view { padding: 0; }
+.webssh-ui #credentialManagementView .connection-asset-nav { max-width: none; padding-inline: 24px; }
+.webssh-ui #credentialManagementView .native-credential-toolbar { max-width: none; width: auto; margin: 0; padding: 20px 24px 16px; }
+.webssh-ui #credentialManagementView .native-credential-toolbar h2 { display: none; }
+.webssh-ui #credentialManagementView .native-credential-toolbar input { max-width: none; }
+.webssh-ui #credentialManagementView .native-credential-workspace { max-width: none; width: auto; margin: 0 24px 20px; grid-template-columns: minmax(0, 1fr) 420px; min-height: 0; background: transparent; border: 0; overflow: visible; }
+.webssh-ui #credentialManagementView:not(.has-credential-detail) .native-credential-workspace { grid-template-columns: minmax(0, 1fr); }
+.webssh-ui #credentialManagementView:not(.has-credential-detail) .native-credential-workspace > aside { display: none; }
+.webssh-ui #credentialManagementView .native-credential-list { padding: 0; border: 1px solid var(--ws2-border); border-radius: 5px; gap: 0; align-self: start; }
+.webssh-ui #credentialManagementView .native-credential-row { min-height: 60px; padding: 12px 16px; }
+.webssh-ui #credentialManagementView .native-credential-workspace > aside { padding: 0 0 16px 24px; margin-left: 24px; }
+.webssh-ui #credentialManagementView.has-credential-detail .credential-back { display: inline-flex; }
+.webssh-ui #credentialManagementView .native-credential-legacy { max-width: none; padding: 0 24px; }
+.webssh-ui .host-resource-view.has-resource-editor .host-resource-editor { animation: resource-reveal 220ms cubic-bezier(.16,1,.3,1); }
+@keyframes resource-reveal { from { opacity: .65; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
+@media(max-width:1000px) {
+ .webssh-ui .host-resource-library .key-info:not(:has(.key-rename-editor,.key-replace-editor)) { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+ .webssh-ui #primaryWorkspaceSurface .host-resource-view.has-resource-editor .connection-asset-layout { grid-template-columns: minmax(0, 1fr); }
+ .webssh-ui .host-resource-view.has-resource-editor .host-resource-library, .webssh-ui .host-resource-view.has-resource-editor .host-resource-toolbar { display: none !important; }
+ .webssh-ui #primaryWorkspaceSurface .host-resource-view .host-resource-editor { margin: 0; padding: 16px 0; border: 0; }
+ .webssh-ui #credentialManagementView.has-credential-detail .native-credential-list { display: none; }
+ .webssh-ui #credentialManagementView .native-credential-workspace { grid-template-columns: minmax(0, 1fr); }
+ .webssh-ui #credentialManagementView .native-credential-workspace > aside { padding: 0; margin: 0; border: 0; }
+}
+@media(max-width:600px) {
+ .webssh-ui #primaryWorkspaceSurface .host-resource-toolbar { padding: 16px 12px; flex-wrap: wrap; }
+ .host-resource-toolbar .management-search-control { flex-basis: 100%; }
+ .webssh-ui #primaryWorkspaceSurface .host-resource-view .connection-asset-layout { padding-inline: 12px; }
+ .webssh-ui #credentialManagementView .native-credential-workspace { margin-inline: 12px; }
+ .webssh-ui #credentialManagementView .native-credential-toolbar { padding: 16px 12px; }
+ .webssh-ui .host-resource-library .key-item { flex-wrap: wrap; }
+ .webssh-ui .host-resource-library .key-item-actions { flex-wrap: wrap; }
+ .host-resource-view :is(button,input,select) { min-height: 44px; }
+}
+@media(prefers-reduced-motion:reduce) { .webssh-ui .host-resource-view.has-resource-editor .host-resource-editor { animation: none; } }
+/* Focused editing gives the form the working area, with the saved entries as context. */
+@media(min-width:1001px) {
+ .webssh-ui #primaryWorkspaceSurface .host-resource-view.has-resource-editor .connection-asset-layout { grid-template-columns: minmax(280px, 24%) minmax(0, 1fr); }
+ .webssh-ui #primaryWorkspaceSurface .host-resource-view .host-resource-editor { padding: 24px 32px; margin-left: 24px; background: var(--ws2-surface); border: 0; border-radius: 6px; }
+ .webssh-ui .host-resource-view.has-resource-editor .key-item { flex-wrap: wrap; }
+ .webssh-ui .host-resource-view.has-resource-editor .key-info:not(:has(.key-rename-editor,.key-replace-editor)) { display: flex; flex-direction: column; align-items: flex-start; }
+ .webssh-ui .host-resource-view.has-resource-editor .key-item-actions { margin-left: auto; }
+ .webssh-ui .host-resource-editor form { max-width: 860px; }
+ .webssh-ui #credentialManagementView.has-credential-detail .native-credential-workspace { grid-template-columns: minmax(280px,24%) minmax(0,1fr); }
+ .webssh-ui #credentialManagementView .native-credential-workspace > aside { padding: 24px 32px; margin-left: 24px; background: var(--ws2-surface); border: 0; border-radius: 6px; }
+ .webssh-ui #credentialManagementView .native-credential-editor { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); column-gap: 24px; }
+ .webssh-ui #credentialManagementView .native-credential-editor > :not(label) { grid-column: 1/-1; }
+ .webssh-ui #credentialManagementView .native-credential-editor > label:has(input[type=password]) { grid-column: 1/-1; max-width: 720px; }
+}
+.webssh-ui #credentialManagementView .native-credential-editor > ul { padding: 0; margin: 16px 0; list-style: none; }
+.webssh-ui #credentialManagementView .native-credential-editor > ul > li { display: grid; grid-template-columns: minmax(140px,1fr) minmax(0,1fr) auto; gap: 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--ws2-border); }
+.webssh-ui #credentialManagementView .credential-target-address { overflow-wrap: anywhere; }
+.webssh-ui #credentialManagementView .native-credential-editor > ul > li > button:first-child { justify-self: start; text-align: left; }
+@media(max-width:1200px) {
+ .webssh-ui #credentialManagementView .native-credential-editor > ul > li { grid-template-columns: minmax(0,1fr) auto; }
+ .webssh-ui #credentialManagementView .credential-target-address { grid-column: 1; }
+ .webssh-ui #credentialManagementView .native-credential-editor > ul > li > button:last-child { grid-column: 2; grid-row: 1 / span 2; }
+}
+@media(max-width:500px) {
+ .webssh-ui #credentialManagementView .native-credential-editor > ul > li { grid-template-columns: minmax(0,1fr); gap: 8px; }
+ .webssh-ui #credentialManagementView .native-credential-editor > ul > li > button:last-child { grid-column: 1; grid-row: auto; justify-self: start; }
+}
+
+.webssh-ui .credential-editor-actions { display: flex; gap: 8px; align-items: center; }

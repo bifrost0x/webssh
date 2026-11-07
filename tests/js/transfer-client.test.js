@@ -10,6 +10,45 @@ global.AbortController = class { constructor() { this.signal = {}; } abort() {} 
 
 const BinaryTransferClient = require('../../static/js/binary-transfer-client.js');
 
+test('prepare timeout retires a late reservation without starting HTTP I/O', async context => {
+    context.mock.timers.enable({apis: ['setTimeout']});
+    const transport = controlledSocket();
+    const client = new BinaryTransferClient(transport.socket);
+    const preparation = client.prepare('upload', 'sftp-session:fixture', '/target');
+    const rejected = assert.rejects(preparation, error => error.errorCode === 'TIMEOUT');
+    context.mock.timers.tick(15000);
+    await rejected;
+    transport.preparations[0].acknowledgement({success: true, transfer_id: 'late-reservation'});
+    assert.deepEqual(transport.cancellations.map(item => item.payload), [{transfer_id: 'late-reservation'}]);
+    assert.equal(client.pendingPreparations.size, 0);
+});
+
+test('lost prepare acknowledgement releases upload queue after disconnect', async () => {
+    const transport = controlledSocket();
+    transport.socket.connected = true;
+    const client = new BinaryTransferClient(transport.socket);
+    client.uploadFile({name: 'first.txt', size: 1}, '/first.txt', 'sftp-session:fixture');
+    client.uploadFile({name: 'second.txt', size: 1}, '/second.txt', 'sftp-session:fixture');
+    await flushTasks();
+    assert.equal(transport.preparations.length, 1);
+    transport.socket.connected = false;
+    transport.receive('disconnect', 'transport close');
+    await flushTasks();
+    await flushTasks();
+    assert.equal(client.activeOperation, null);
+    assert.equal(transport.preparations.length, 1, 'queued requests must not enter an offline socket buffer');
+    transport.preparations[0].acknowledgement({success: true, transfer_id: 'late-preparation', token: 'unused'});
+    await flushTasks();
+    assert.equal(client.activeOperation, null, 'late acknowledgement must not revive an old transfer');
+    transport.socket.connected = true;
+    client.uploadFile({name: 'third.txt', size: 1}, '/third.txt', 'sftp-session:fixture');
+    await flushTasks();
+    assert.equal(transport.preparations.length, 2, 'a new explicit transfer can start after reconnect');
+    transport.socket.connected = false;
+    transport.receive('disconnect', 'transport close');
+    await flushTasks();
+});
+
 function flushTasks() {
     return new Promise(resolve => setImmediate(resolve));
 }

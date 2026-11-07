@@ -9,6 +9,62 @@ require('../../static/js/file-directory-requests.js');
 require('../../static/js/sftp-file-manager.js');
 const SFTPFileManager = global.window.SFTPFileManager;
 
+for (const acknowledged of [false, true]) for (const trigger of ['disconnect', 'timeout']) {
+    test(`${trigger} settles server copy with ${acknowledged ? 'received' : 'missing'} acknowledgement`, async context => {
+        if (trigger === 'timeout') context.mock.timers.enable({apis: ['setTimeout']});
+        const manager = Object.create(SFTPFileManager.prototype);
+        manager.initializeWorkspaceState();
+        const listeners = {};
+        let acknowledgement;
+        let writes = 0;
+        Object.assign(manager, {
+            transferQueue: [], activeTransfers: new Map(), isTransferring: false,
+            socket: {
+                on(event, callback) { listeners[event] = callback; },
+                emit(event, data, ack) {
+                    if (event === 'transfer_server_to_server') {
+                        writes += 1;
+                        acknowledgement = () => ack({success: true, transfer_id: 'copy-fixture',
+                            source_id: data.source_id, destination_source_id: data.destination_source_id,
+                            request_id: data.request_id});
+                        if (acknowledged) acknowledgement();
+                    }
+                },
+            },
+            renderTransferQueue() {}, updateWorkspaceActions() {},
+            showNotification() {}, refreshBothPanes() {},
+            t(_key, fallback) { return fallback; },
+        });
+        manager.setupSocketListeners();
+        const operation = manager.transferSSHtoSSH(
+            '/a/file', filePane(manager, 'sftp-session:a'),
+            '/b/file', filePane(manager, 'sftp-session:b'),
+            {name: 'file', size: 10, is_dir: false},
+        );
+        await Promise.resolve();
+        if (trigger === 'disconnect') listeners.disconnect();
+        else context.mock.timers.tick(acknowledged ? 120000 : 15000);
+        let resolved = false;
+        operation.then(() => { resolved = true; });
+        await Promise.resolve();
+        await Promise.resolve();
+        assert.equal(resolved, true, 'operation must settle after interruption');
+        const result = await Promise.race([
+            operation,
+            new Promise(resolve => setTimeout(() => resolve('still-waiting'), 50)),
+        ]);
+        assert.notEqual(result, 'still-waiting', 'lost socket must not strand the operation promise');
+        assert.notEqual(result, 'complete', 'disconnect does not prove the write completed');
+        assert.equal(manager.isTransferring, false);
+        acknowledgement();
+        await Promise.resolve();
+        assert.equal(writes, 1, 'uncertain writes must not retry');
+        assert.equal(manager.s2sAcknowledgementWaiters.size, 0);
+        assert.equal(manager.s2sTerminalWaiters?.size || 0, 0);
+        assert.ok(manager.transferQueue.every(entry => entry.status === 'error'));
+    });
+}
+
 test('transfer recovery retries only readable downloads and never repeats writes', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     const state = {source: {capabilities: ['read']}};
@@ -2141,6 +2197,8 @@ test('F5 refreshes the embedded pane without starting a dual-pane transfer', () 
         isOpen: true,
         displayMode: 'embedded',
         activePane: 'left',
+        modalBody: {contains: () => true},
+        hasOpenDialogs: () => false,
         refreshPane(pane) { refreshed = pane; },
         executeTransfer() { assert.fail('dual-pane transfer started'); },
     });
@@ -4062,7 +4120,8 @@ test('mobile uploads use tokenized transfers with joined target paths', () => {
         showNotification() {},
         t(_key, fallback) { return fallback; },
     });
-    const input = { files, value: 'selected' };
+    const input = { files, value: 'selected', click() {} };
+    manager.openUploadPicker(input);
 
     try {
         manager.handleMobileUpload({ target: input });
@@ -5292,4 +5351,92 @@ test('Move picker selects and lists literal SFTP backslashes without admitting t
     } finally {
         global.document = previousDocument;
     }
+});
+
+for (const failure of ['directory', 'file']) {
+    test(`unreadable dropped ${failure} reports an error before starting remote writes`, async () => {
+        const actions = [];
+        const manager = Object.create(SFTPFileManager.prototype);
+        Object.assign(manager, {
+            socket:{emit(){actions.push('remote-write');}},
+            joinPath:(base,name)=>`${base}/${name}`,
+            startUploadBatch(){actions.push('batch');return {id:'batch'};},
+            uploadSingleFileToSSH(){actions.push('upload');},
+            showNotification(message,type){actions.push({message,type});},
+            t:(_key,fallback)=>fallback,
+        });
+        const broken = failure === 'directory'
+            ? {isDirectory:true,name:'broken',createReader(){return {readEntries(_resolve,reject){reject(new Error('private-local-path'));}};}}
+            : {isFile:true,name:'broken',file(_resolve,reject){if (reject) reject(new Error('private-local-path'));}};
+        await manager.uploadDesktopItemsToSSH([broken], {source:fileSource('sftp-session:test'),path:'/incoming'});
+        assert.equal(actions.length,1);
+        assert.equal(actions[0].type,'error');
+        assert.match(actions[0].message,/read/i);
+        assert.equal(actions[0].message.includes('private-local-path'),false);
+    });
+}
+
+test('folder preparation keeps its original destination and reads each directory once', async () => {
+    const uploads = [];
+    const directories = [];
+    let readers = 0;
+    let release;
+    const pane = {source:fileSource('sftp-session:original'),path:'/original'};
+    const file = {isFile:true,name:'note.txt',file(resolve){release=()=>resolve({name:'note.txt',size:1});}};
+    const entry = {isDirectory:true,name:'folder',createReader(){
+        readers++;
+        let read = false;
+        return {readEntries(resolve){resolve(read ? [] : [file]);read=true;}};
+    }};
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        socket:{emit(event,payload){directories.push({event,payload});}},
+        joinPath:(base,name)=>`${base}/${name}`,
+        registerOperationRequest:()=> 'request',
+        startUploadBatch(total){assert.equal(total,1);return {id:'batch'};},
+        uploadSingleFileToSSH(file,path,source){uploads.push({name:file.name,path,source});},
+    });
+    const pending = manager.uploadDesktopItemsToSSH([entry],pane);
+    await new Promise(resolve=>setImmediate(resolve));
+    pane.path='/different';
+    pane.source=fileSource('sftp-session:different');
+    release(); await pending;
+    assert.equal(readers,1);
+    assert.deepEqual(uploads,[{name:'note.txt',path:'/original/folder',source:'sftp-session:original'}]);
+    assert.equal(directories[0].payload.remote_path,'/original/folder');
+    assert.equal(directories[0].payload.source_id,'sftp-session:original');
+});
+
+for (const change of ['session','directory']) test(`upload picker never redirects files after a ${change} change`, () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const original = {source:fileSource('sftp-session:original'),path:'/chosen'};
+    let writes = 0;
+    Object.assign(manager, {
+        activePane:'left', panes:{left:original},
+        pendingUploadTarget:{state:original, sourceId:'sftp-session:original', path:'/chosen'},
+        fileOperationBlocked:()=>false, sourceCan:()=>true,
+        startUploadBatch:()=>({id:'batch'}), getTransferClient:()=>({uploadFile(){writes++;return 'unexpected';}}),
+        queueTransfer(){}, showNotification(){}, t:(_key,fallback)=>fallback,
+    });
+    if (change === 'session') manager.panes.left = {source:fileSource('sftp-session:other'),path:'/elsewhere'};
+    else original.path = '/different';
+    const input = {value:'selected',files:[{name:'private.txt',size:12}]};
+    manager.handleMobileUpload({target:input});
+    assert.equal(writes,0);
+    assert.equal(input.value,'');
+});
+
+test('late server-copy completion refreshes its sources instead of newly selected sessions', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const listeners = {}; const refreshed = [];
+    Object.assign(manager, {
+        socket:{on:(event,listener)=>{listeners[event]=listener;}},
+        transferQueue:[{type:'s2s',id:'transfer-a',requestId:'request-a',sourceIds:['sftp-session:a','sftp-session:b']}],
+        showNotification(){}, t:(_key,fallback)=>fallback,
+        refreshBothPanes(){assert.fail('refreshed unrelated active sessions');},
+        refreshSource(sourceId){refreshed.push(sourceId);}, completeS2STransfer(){},
+    });
+    manager.setupSocketListeners();
+    listeners.s2s_transfer_complete({transfer_id:'transfer-a',request_id:'request-a',source_id:'sftp-session:a',destination_source_id:'sftp-session:b',filename:'file.txt'});
+    assert.deepEqual(refreshed,['sftp-session:a','sftp-session:b']);
 });

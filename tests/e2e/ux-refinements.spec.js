@@ -24,6 +24,7 @@ test('save and connect persists a host then requests its password without bypass
     await page.locator('#newProfileBtn').click();
     await expect(page.locator('#profileAdvancedSettingsCard')).not.toHaveAttribute('open', '');
     const name = `UX save connect ${Date.now()}`;
+    try {
     await page.locator('#profileEditorName').fill(name);
     await page.locator('#profileEditorHost').fill('ux-save.invalid');
     await page.locator('#profileEditorUsername').fill('operator');
@@ -34,6 +35,14 @@ test('save and connect persists a host then requests its password without bypass
     await expect(page.locator('#passwordInput')).toBeFocused();
     expect(await sshAttempts(page)).toHaveLength(0);
     await expect.poll(() => page.evaluate(name => ProfileManager.profiles.some(p => p.name === name), name)).toBe(true);
+    } finally {
+        const result = await page.evaluate(async name => {
+            const profile = ProfileManager.profiles.find(item => item.name === name);
+            if (!profile) return {success:true};
+            return new Promise(resolve => window.socket.emit('delete_profile', {profile_id:profile.id}, resolve));
+        }, name);
+        expect(result.success).toBe(true);
+    }
 });
 
 test('a rejected save does not launch a connection or discard the editor', async ({page}) => {
@@ -91,6 +100,7 @@ test('all mobile primary destinations work without an SSH session and tools rema
 test('host density persists and advanced hosts expose their existing settings', async ({page}) => {
     await page.locator('#manageProfilesBtn').click();
     const density = page.locator('#profileDensityBtn');
+    await density.locator('xpath=ancestor::details').locator('summary').click();
     await density.click();
     await expect(density).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('#profileManagementList')).toHaveClass(/is-compact/);
@@ -100,8 +110,11 @@ test('host density persists and advanced hosts expose their existing settings', 
     await page.locator('#profileSearchInput').fill('Post free text');
     const host = page.locator('.profile-management-item').filter({hasText: 'Post free text'});
     await host.locator('.profile-action-menu > summary').click();
-    await host.locator('[data-profile-action="edit"]').click();
+    await host.locator('.profile-action-menu [data-profile-action="edit"]').click();
+    await page.locator('#profileAdvancedSettingsCard > summary').click();
     await expect(page.locator('#profileAdvancedSettingsCard')).toHaveAttribute('open', '');
+    await expect(page.locator('#profileEditorPostConnectMode')).toHaveValue('free_text');
+    await expect(page.locator('#profileEditorStartupCommands')).toHaveValue('printf free-text');
 });
 
 test('host actions retain their menu and keyboard focus across refreshed profile data', async ({page}) => {
@@ -110,19 +123,19 @@ test('host actions retain their menu and keyboard focus across refreshed profile
     const host = page.locator('.profile-management-item').filter({hasText: 'Post free text'});
     const profileId = await host.getAttribute('data-profile-card-id');
     await host.locator('.profile-action-menu > summary').click();
-    await host.locator('[data-profile-action="edit"]').focus();
+    await host.locator('.profile-action-menu [data-profile-action="edit"]').focus();
     await page.evaluate(async id => {
         await new Promise(requestAnimationFrame);
         ProfileManager.setProfiles(ProfileManager.profiles.map(profile => profile.id === id
             ? {...profile, host: 'refreshed-target.invalid'} : profile));
     }, profileId);
     await expect(host.locator('.profile-action-menu')).toHaveAttribute('open', '');
-    await expect(host.locator('[data-profile-action="edit"]')).toBeFocused();
+    await expect(host.locator('.profile-action-menu [data-profile-action="edit"]')).toBeFocused();
     await page.locator('#profileSearchInput').focus();
     await page.evaluate(() => ProfileManager.setProfiles([...ProfileManager.profiles]));
     await expect(page.locator('#profileSearchInput')).toBeFocused();
     await expect(host.locator('.profile-action-menu')).toHaveAttribute('open', '');
-    await host.locator('[data-profile-action="edit"]').click();
+    await host.locator('.profile-action-menu [data-profile-action="edit"]').click();
     await expect(page.locator('#profileEditorHost')).toHaveValue('refreshed-target.invalid');
 });
 
@@ -164,7 +177,7 @@ test('refreshing away an active host action returns focus without retaining stal
     await search.fill('Post free text');
     await expect(host.locator('.profile-action-menu')).not.toHaveAttribute('open', '');
     await host.locator('.profile-action-menu > summary').click();
-    await host.locator('[data-profile-action="edit"]').focus();
+    await host.locator('.profile-action-menu [data-profile-action="edit"]').focus();
     await page.evaluate(id => ProfileManager.setProfiles(
         ProfileManager.profiles.filter(profile => profile.id !== id),
     ), profileId);

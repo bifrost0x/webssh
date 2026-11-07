@@ -258,11 +258,11 @@
             }
         }
 
-        function setMoreOpen(open, {focus = false, restoreFocus = true} = {}) {
+        function setMoreOpen(open, {focus = false, restoreFocus = true, trigger = null} = {}) {
             const wasOpen = moreOpen;
             moreOpen = Boolean(open && isPhone());
             if (moreOpen && !wasOpen) {
-                const active = documentRef.activeElement;
+                const active = trigger || documentRef.activeElement;
                 moreReturnFocus = active && active.isConnected !== false
                     ? active
                     : elements.moreButton;
@@ -302,7 +302,7 @@
         function handleDockClick(event) {
             const view = event.currentTarget?.dataset?.mobileView;
             if (view === 'more') {
-                setMoreOpen(!moreOpen, {focus: true});
+                setMoreOpen(!moreOpen, {focus: true, trigger: event.currentTarget});
                 return;
             }
             const sessionTool = SESSION_TOOL_TARGETS[view];
@@ -404,7 +404,7 @@
             setActiveView,
             setCommandOpen,
             toggleMoreMenu: () => setMoreOpen(!moreOpen, {focus: true}),
-            closeMoreMenu: () => setMoreOpen(false),
+            closeMoreMenu: options => setMoreOpen(false, options),
             getState: () => ({commandOpen, moreOpen}),
         };
         return controller;

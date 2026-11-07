@@ -65,6 +65,30 @@ test('save conflicts keep local content and original revision', async () => {
     assert.equal(model.state.error, 'conflict');
 });
 
+test('unload protection includes hidden drafts and clears only after save or explicit discard', async () => {
+    let finish;
+    const model = api().createController({request: async (id, body) => body
+        ? new Promise(resolve => { finish = () => resolve({...body, revision: 2}); })
+        : {revision: 1, notes: id, directories: [], command_sets: []}});
+    await model.open('one');
+    assert.equal(model.hasUnsaved(), false);
+    model.update({notes: 'keep this'});
+    await model.open('two');
+    assert.equal(model.hasUnsaved(), true);
+    await model.open('one');
+    const saving = model.save();
+    await model.open(null);
+    assert.equal(model.hasUnsaved(), true);
+    finish();
+    await saving;
+    assert.equal(model.hasUnsaved(), false);
+    await model.open('two');
+    model.update({notes: 'discard this'});
+    assert.equal(model.hasUnsaved(), true);
+    await model.open('two', null, true);
+    assert.equal(model.hasUnsaved(), false);
+});
+
 test('stale actions and ad-hoc sessions cannot launch assigned commands or directories', async () => {
     let active = {id: 'a', profileId: 'one', connected: true};
     const calls = [];
@@ -105,4 +129,65 @@ test('an in-flight directory action remains bound to its original open context',
     active = {id: 'b', profileId: 'one', connected: true};
     await model.open('one', 'b');
     assert.equal(validate(), false);
+});
+
+test('pending saves and their completion remain scoped to their host', async () => {
+    const pending = new Map();
+    let renders = 0;
+    const model = api().createController({
+        request: async (id, body) => body
+            ? new Promise(resolve => pending.set(id, () => resolve({...body, revision: 2})))
+            : {revision: 1, notes: id, directories: [], command_sets: []},
+        changed: () => { renders += 1; },
+    });
+    await model.open('one');
+    model.update({notes: 'first host draft'});
+    const firstSave = model.save();
+    await model.open('one');
+    assert.equal(model.state.saving, true);
+    assert.equal(await model.save(), false);
+    await model.open('two');
+    assert.equal(model.state.saving, false);
+    model.update({notes: 'second host draft'});
+    const secondSave = model.save();
+    assert.equal(model.state.saving, true);
+    const beforeCompletion = renders;
+    pending.get('one')();
+    await firstSave;
+    assert.equal(model.state.saving, true);
+    assert.equal(model.state.content.notes, 'second host draft');
+    assert.equal(renders, beforeCompletion);
+    pending.get('two')();
+    await secondSave;
+    assert.equal(model.state.saving, false);
+    assert.equal(model.state.dirty, false);
+    await model.open('one');
+    assert.equal(model.state.content.notes, 'first host draft');
+    assert.equal(model.state.dirty, false);
+});
+
+test('a failed background save keeps its own draft and error without disturbing another host', async () => {
+    let fail;
+    let renders = 0;
+    const model = api().createController({
+        request: async (id, body) => body
+            ? new Promise((_resolve, reject) => { fail = reject; })
+            : {revision: 1, notes: id, directories: [], command_sets: []},
+        changed: () => { renders += 1; },
+    });
+    await model.open('one');
+    model.update({notes: 'keep on error'});
+    const saving = model.save();
+    await model.open('two');
+    const beforeFailure = renders;
+    fail(Object.assign(new Error(), {code:'conflict'}));
+    assert.equal(await saving, false);
+    assert.equal(renders, beforeFailure);
+    assert.equal(model.state.error, null);
+    assert.equal(model.state.saving, false);
+    await model.open('one');
+    assert.equal(model.state.content.notes, 'keep on error');
+    assert.equal(model.state.error, 'conflict');
+    assert.equal(model.state.dirty, true);
+    assert.equal(model.state.saving, false);
 });

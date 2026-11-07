@@ -21,6 +21,21 @@ def create_user(app, username='key-user'):
         return user.id
 
 
+def test_key_upload_storage_failure_does_not_expose_server_path(app, monkeypatch):
+    from app import key_manager
+
+    user_id = create_user(app, 'key-storage-failure')
+
+    def unavailable(_user_id):
+        raise PermissionError('private storage /srv/webssh/accounts/private/keys')
+
+    monkeypatch.setattr(key_manager, 'get_user_keys_dir', unavailable)
+    with app.app_context():
+        key, error = key_manager.save_key(user_id, 'Test key', 'unparsed fixture')
+    assert key is None
+    assert error == 'Unable to store SSH key. Check server storage permissions and available space.'
+
+
 def test_key_store_count_limit_is_atomic_and_delete_remains_available(
         app, monkeypatch, rsa_private_key_pem):
     import config

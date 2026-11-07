@@ -28,7 +28,7 @@
   <line class="accent" x1="720" y1="348" x2="720" y2="368"/>
 
   <!-- Branches -->
-  <path class="flow" d="M 600 420 H 360 Q 352 420 352 428 V 528"/>
+  <path class="flow" d="M 600 420 H 156 Q 148 420 148 428 V 528"/>
   <rect x="436" y="388" width="64" height="16" fill="#f4f7fb"/>
   <text class="label" x="468" y="400" text-anchor="middle">BACKUP</text>
   <path class="flow" d="M 840 420 H 936 Q 944 420 944 428 V 528"/>
@@ -74,12 +74,12 @@
   <text class="tag" x="280" y="548">SNAPSHOT</text>
   <text class="node-title" x="352" y="580" text-anchor="middle">Database + user data</text>
   <text class="node-sub" x="352" y="604" text-anchor="middle">consistent owned state</text>
-  <text class="node-sub" x="352" y="624" text-anchor="middle">secrets stay protected</text>
+  <text class="node-sub" x="352" y="624" text-anchor="middle">export filters credentials</text>
 
   <rect class="store" x="480" y="528" width="176" height="112" rx="8"/>
   <text class="tag" x="496" y="548">ARCHIVE</text>
   <text class="node-title" x="568" y="580" text-anchor="middle">Manifested backup</text>
-  <text class="node-sub" x="568" y="604" text-anchor="middle">private temporary path</text>
+  <text class="node-sub" x="568" y="604" text-anchor="middle">passwords / keys omitted</text>
   <text class="node-sub" x="568" y="624" text-anchor="middle">single-use download</text>
 
   <!-- Restore nodes -->
@@ -108,5 +108,5 @@
   <text class="legend" x="416" y="848">durable archive</text>
   <line x1="600" y1="844" x2="632" y2="844" stroke="#b43f3f" stroke-width="2" stroke-dasharray="8 8"/>
   <text class="legend" x="644" y="848">blocked unsafe path</text>
-  <text class="source" x="1384" y="848" text-anchor="end">current implementation · WebSSH 2.0</text>
+  <text class="source" x="1384" y="848" text-anchor="end">WebSSH 3 candidate</text>
 </svg>
