@@ -34,7 +34,7 @@
 
         <p id="hostDiscoveryError" class="discovery-error" role="alert" hidden></p>
 
-        <section id="hostDiscoveryProgress" class="discovery-progress" hidden aria-live="polite">
+        <section id="hostDiscoveryProgress" class="discovery-progress" hidden>
             <div class="discovery-progress-head">
                 <span id="hostDiscoveryState"></span>
                 <span id="hostDiscoveryCount" class="discovery-count"></span>
@@ -42,6 +42,7 @@
             <div class="discovery-bar" role="progressbar" id="hostDiscoveryBar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="hostDiscoveryState"><span></span></div>
         </section>
 
+        <p id="hostDiscoveryAnnounce" class="sr-only" role="status" aria-live="polite"></p>
         <ul id="hostDiscoveryResults" class="discovery-results" aria-label="Found SSH hosts" data-i18n-aria-label="discovery.results"></ul>
         <p id="hostDiscoveryEmpty" class="discovery-hint" hidden data-i18n="discovery.none">No SSH servers answered in this range.</p>
 

@@ -43,6 +43,9 @@
         let scan = null;
         let timer = 0;
         let returnFocus = null;
+        let resultSignature = '';
+        let announced = '';
+        let pollFailures = 0;
 
         const node = (tag, className, text) => {
             const element = doc.createElement(tag);
@@ -81,7 +84,17 @@
                 {checked: scan.checked, total: scan.total, found: scan.found.length})
                 + (scan.blocked ? ` · ${t('discovery.blocked', '{count} not allowed', {count: scan.blocked})}` : '');
             $('hostDiscoveryEmpty').hidden = scan.state === 'running' || scan.found.length > 0;
+            // Announce state changes and new results, not every progress tick.
+            const message = `${$('hostDiscoveryState').textContent} ${t('discovery.foundCount', '{found} found', {found: scan.found.length})}`;
+            if (message !== announced && (scan.state !== 'running' || scan.found.length || !announced)) {
+                announced = message;
+                $('hostDiscoveryAnnounce').textContent = message;
+            }
+            const signature = JSON.stringify(scan.found.map(entry => [entry.address, entry.port, entry.known, entry.name]));
+            if (signature === resultSignature) return;
+            resultSignature = signature;
             const list = $('hostDiscoveryResults');
+            const focused = list.contains(doc.activeElement) ? doc.activeElement.dataset.result : null;
             list.replaceChildren(...scan.found.map(entry => {
                 const item = node('li', 'discovery-result');
                 const logo = node('span', 'discovery-logo');
@@ -99,6 +112,7 @@
                     const add = node('button', 'btn btn-secondary discovery-add');
                     add.type = 'button';
                     add.setAttribute('aria-label', t('discovery.addLabel', 'Add {name} as a host', {name: entry.name || entry.address}));
+                    add.dataset.result = `${entry.address}:${entry.port}`;
                     add.append(icon('add'), node('span', '', t('discovery.add', 'Add')));
                     add.addEventListener('click', () => {
                         dialog.close();
@@ -108,6 +122,7 @@
                 }
                 return item;
             }));
+            if (focused) list.querySelector(`[data-result="${CSS.escape(focused)}"]`)?.focus({preventScroll: true});
         }
 
         async function poll() {
@@ -115,9 +130,16 @@
             if (!scan || scan.state !== 'running') return;
             try {
                 scan = await request(`/api/discovery/scans/${encodeURIComponent(scan.id)}`);
+                pollFailures = 0;
                 render();
             } catch (error) {
-                showError(error.message);
+                // The scan keeps running on the server; retry a few times before giving up.
+                pollFailures += 1;
+                if (pollFailures >= 3) {
+                    showError(error.message);
+                    return;
+                }
+                timer = win.setTimeout(poll, POLL_MS * 2);
                 return;
             }
             if (scan.state === 'running') timer = win.setTimeout(poll, POLL_MS);
@@ -132,6 +154,9 @@
             if (!ports) { showError(t('discovery.portsInvalid', 'Enter up to three ports between 1 and 65535.')); $('hostDiscoveryPorts').focus(); return; }
             try {
                 scan = await request('/api/discovery/scans', {method: 'POST', body: JSON.stringify({network, ports})});
+                resultSignature = '';
+                announced = '';
+                pollFailures = 0;
                 render();
                 timer = win.setTimeout(poll, POLL_MS);
             } catch (error) {
