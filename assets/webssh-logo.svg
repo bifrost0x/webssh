@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none" role="img" aria-labelledby="brand-title">
+<title id="brand-title">WebSSH</title>
+<rect x="6" y="6" width="116" height="116" rx="11" fill="#091012" stroke="#48a3b1" stroke-width="6"/>
+<path d="m34 35 28 28-28 28" stroke="#48a3b1" stroke-width="8" stroke-linecap="square" stroke-linejoin="miter"/>
+<path d="M70 92h29" stroke="#48a3b1" stroke-width="8"/>
+</svg>

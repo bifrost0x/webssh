@@ -21,6 +21,21 @@ const PUBLISHED_CAPTURE_ASSETS = new Set([
     'workspace-overview.png',
 ]);
 
+// Every published capture shows the same theme, so the README reads as one product.
+const CAPTURE_THEME = 'arctic-ice';
+
+/** Switch the page to the capture theme and let its scene and fonts settle. */
+async function applyCaptureTheme(page) {
+    const changed = await page.evaluate(theme => {
+        const changed = document.body.dataset.theme !== theme;
+        window.ThemePreference?.store?.(theme);
+        document.body.dataset.theme = theme;
+        return changed;
+    }, CAPTURE_THEME);
+    await page.evaluate(() => document.fonts?.ready);
+    if (changed) await page.waitForTimeout(700);
+}
+
 function captureOutputPath(filename) {
     if (typeof filename !== 'string'
         || path.basename(filename) !== filename
@@ -35,6 +50,8 @@ function captureOutputPath(filename) {
 }
 
 module.exports = {
+    CAPTURE_THEME,
     PUBLISHED_CAPTURE_ASSETS,
+    applyCaptureTheme,
     captureOutputPath,
 };
