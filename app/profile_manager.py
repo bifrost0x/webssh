@@ -1012,6 +1012,34 @@ def cache_detected_facts(user_id, profile_id, expected_endpoint, *, platform=Non
 
 
 @user_operation
+def settle_reboot_hint(user_id, profile_id, expected_endpoint, checked_at, *, cleared):
+    """Lower a restart hint, or stop rechecking it, if it is still the one that was read.
+
+    Only the hint from the check stamped checked_at changes; a newer full
+    check replaces detected_maintenance and starts over. Update counts and
+    the check time stay as that check reported them.
+    """
+    if expected_endpoint is None or isinstance(checked_at, bool) or not isinstance(checked_at, (int, float)):
+        return False
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'profiles:{user_id}'):
+            profiles, error = _load_profiles_for_write(user_id)
+            if error:
+                return False
+            for profile in profiles:
+                if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
+                    continue
+                facts = profile.get('detected_maintenance')
+                if (not isinstance(facts, dict) or facts.get('reboot_required') is not True
+                        or facts.get('recheck_stopped') or facts.get('checked_at') != checked_at):
+                    return False
+                change = {'reboot_required': False} if cleared else {'recheck_stopped': True}
+                profile['detected_maintenance'] = {**facts, **change}
+                return save_profiles(user_id, profiles, previous_count=len(profiles))
+    return False
+
+
+@user_operation
 def cache_detected_platform(user_id, profile_id, expected_endpoint, platform):
     """Merge only platform facts into the current owned profile under its lock."""
     if expected_endpoint is None or platform not in PLATFORMS:

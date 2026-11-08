@@ -80,6 +80,19 @@ fi
 '''
 _MAX_PACKAGE_COUNT = 100000
 
+# The restart marker test of MAINTENANCE_COMMAND alone: no package manager,
+# no sudo, no writes. It runs only where that marker was seen before, so its
+# absence means a restart on any system. See recheck_reboot_hint.
+REBOOT_HINT_COMMAND = r'''LC_ALL=C
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export LC_ALL PATH
+if [ -e /var/run/reboot-required ] || [ -e /run/reboot-required ]; then printf 'reboot=yes\n';
+else printf 'reboot=no\n'; fi
+:
+'''
+# Matches the overview, which stops showing facts older than a week.
+REBOOT_HINT_MAX_AGE_SECONDS = 7 * 24 * 3600
+
 
 def parse_maintenance(text, *, max_bytes=1024):
     """Return {'reboot_required', 'updates', 'security_updates'}; unknown values stay None."""
@@ -271,6 +284,80 @@ def services_needed(profile, now=None):
         return True
     current = time.time() if now is None else now
     return not 0 <= current - checked < SERVICE_REFRESH_SECONDS
+
+
+def reboot_hint_needs_check(profile, now=None):
+    """True only while the overview shows a restart hint from a check the user ran."""
+    facts = profile.get('detected_maintenance') if isinstance(profile, dict) else None
+    if not isinstance(facts, dict) or facts.get('reboot_required') is not True or facts.get('recheck_stopped'):
+        return False
+    checked = facts.get('checked_at')
+    if isinstance(checked, bool) or not isinstance(checked, (int, float)):
+        return False
+    age = (time.time() if now is None else now) - checked
+    return -24 * 3600 <= age <= REBOOT_HINT_MAX_AGE_SECONDS
+
+
+def parse_reboot_hint(text, *, max_bytes=64):
+    """Accept exactly the one line REBOOT_HINT_COMMAND prints; banners or extra lines are not an answer."""
+    if not isinstance(text, str) or len(text.encode('utf-8')) > max_bytes:
+        raise ValueError('Invalid restart marker answer')
+    answer = {'reboot=yes': True, 'reboot=no': False}.get(text.strip())
+    if answer is None:
+        raise ValueError('Invalid restart marker answer')
+    return answer
+
+
+def collect_reboot_hint(session_id, *, cancel_event=None):
+    from .session_insights import collect_linux_stats
+    return collect_linux_stats(
+        session_id, timeout=1.5, max_bytes=64,
+        command=REBOOT_HINT_COMMAND, parser=parse_reboot_hint,
+        allow_partial=False, cancel_event=cancel_event,
+    )
+
+
+def recheck_reboot_hint(session_id, user_id, publish, *, cancel_event=None):
+    """Reread only the restart marker on login while a restart hint is shown.
+
+    Hosts without a hint are never asked anything. The hint exists only after
+    the user ran or scheduled the Updates and restart status check, which read
+    the same marker over the same login, so this repeats a read the user
+    already chose. Exactly "reboot=no" lowers the hint, exactly "reboot=yes"
+    keeps it for the next login. Any other answer may come from a forced
+    command (authorized_keys command=, ForceCommand) that the server runs in
+    place of ours, so the recheck stops for this hint until the next full
+    check. All failures leave the PTY alone.
+    """
+    from . import ssh_manager, profile_manager
+    try:
+        with ssh_manager.sessions_lock:
+            session = ssh_manager.sessions.get(session_id)
+            if not session or session.get('user_id') != user_id or not session.get('connected'):
+                return
+            expected = endpoint(session)
+            profile_id = session.get('profile_id')
+        if expected is None or not profile_id or (cancel_event is not None and cancel_event.is_set()):
+            return
+        profile = profile_manager.get_profile(user_id, profile_id)
+        if not profile or endpoint(profile) != expected or not reboot_hint_needs_check(profile):
+            return
+        checked_at = profile['detected_maintenance']['checked_at']
+        answer, error = collect_reboot_hint(session_id, cancel_event=cancel_event)
+        # Busy means another sample held the session; nothing reached the host.
+        if error == 'busy' or answer is True or (cancel_event is not None and cancel_event.is_set()):
+            return
+        with ssh_manager.sessions_lock:
+            current = ssh_manager.sessions.get(session_id)
+            if current is not session or not current.get('connected') or endpoint(current) != expected:
+                return
+        if answer is False and not error:
+            if profile_manager.settle_reboot_hint(user_id, profile_id, expected, checked_at, cleared=True):
+                publish({'profile_id': profile_id})
+            return
+        profile_manager.settle_reboot_hint(user_id, profile_id, expected, checked_at, cleared=False)
+    except Exception:
+        return
 
 
 def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None):

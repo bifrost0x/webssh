@@ -379,3 +379,191 @@ def test_an_empty_automation_probe_keeps_the_last_known_facts(app):
         assert _record_maintenance_facts(user_id, profile, step, {**done, 'stdout': 'reboot=yes\n'}, nullcontext)
         assert not _record_maintenance_facts(user_id, profile, step, {**done, 'stdout': ''}, nullcontext)
         assert profile_manager.get_profile(user_id, profile['id'])['detected_maintenance']['reboot_required'] is True
+
+
+def _restart_hint_session(app, monkeypatch, name, *, checked_at=None, reboot_required=True):
+    import time
+    from app import ssh_manager, profile_manager
+    from tests.test_profile_manager import create_user
+    user_id = create_user(app)
+    with app.app_context():
+        profile, _ = profile_manager.upsert_profile(user_id, dict(name=name, host=f'{name}.example', port=22,
+                                                                  username='deploy', auth_type='password'))
+        assert profile_manager.cache_detected_facts(
+            user_id, profile['id'], host_platform.endpoint(profile),
+            maintenance={'reboot_required': reboot_required, 'updates': 3, 'security_updates': 1},
+            now=time.time() if checked_at is None else checked_at)
+    monkeypatch.setitem(ssh_manager.sessions, name, dict(profile, connected=True, user_id=user_id, profile_id=profile['id']))
+    return user_id, profile
+
+
+def _fake_host(monkeypatch, output, during=None):
+    """A host answering output; None means a timeout, 'busy' a held collector."""
+    from app import session_insights
+    commands = []
+
+    def collect(session_id, **kwargs):
+        if output == 'busy':
+            return None, 'busy'
+        commands.append(kwargs.get('command'))
+        if during:
+            during()
+        if output is None:
+            return None, 'transient'
+        try:
+            return kwargs['parser'](output, max_bytes=kwargs['max_bytes']), None
+        except ValueError:
+            return None, 'unsupported'
+
+    monkeypatch.setattr(session_insights, 'collect_linux_stats', collect)
+    return commands
+
+
+def _hint(app, user_id, profile):
+    from app import profile_manager
+    with app.app_context():
+        return profile_manager.get_profile(user_id, profile['id'])['detected_maintenance']
+
+
+def test_the_login_recheck_reads_only_the_restart_marker():
+    command = host_platform.REBOOT_HINT_COMMAND
+    marker = "if [ -e /var/run/reboot-required ] || [ -e /run/reboot-required ]; then printf 'reboot=yes\\n';"
+    # The same marker test as the check the user already runs, nothing else.
+    assert marker in host_platform.MAINTENANCE_COMMAND and marker in command
+    for forbidden in ('sudo', 'apt', 'dnf', 'timeout', '>', 'rm ', 'touch', 'eval', '. /'):
+        assert forbidden not in command
+
+
+def test_only_the_exact_one_line_answer_counts():
+    assert host_platform.parse_reboot_hint('reboot=yes\n') is True
+    assert host_platform.parse_reboot_hint('reboot=no\n') is False
+    for text in ('', 'reboot=maybe\n', 'Welcome\nreboot=no\n', 'reboot=no\napt=3\n', 'x' * 65, None):
+        with pytest.raises(ValueError):
+            host_platform.parse_reboot_hint(text)
+
+
+def test_a_gone_marker_on_login_lowers_only_the_restart_hint(app, monkeypatch):
+    user_id, profile = _restart_hint_session(app, monkeypatch, 'rebooted')
+    commands = _fake_host(monkeypatch, 'reboot=no\n')
+    published = []
+    with app.app_context():
+        host_platform.recheck_reboot_hint('rebooted', user_id, published.append)
+    saved = _hint(app, user_id, profile)
+    assert commands == [host_platform.REBOOT_HINT_COMMAND]
+    assert published == [{'profile_id': profile['id']}]
+    assert saved['reboot_required'] is False
+    assert (saved['updates'], saved['security_updates']) == (3, 1)
+
+
+def test_a_present_marker_keeps_the_hint_and_asks_again_next_login(app, monkeypatch):
+    user_id, profile = _restart_hint_session(app, monkeypatch, 'pending')
+    commands = _fake_host(monkeypatch, 'reboot=yes\n')
+    with app.app_context():
+        host_platform.recheck_reboot_hint('pending', user_id, pytest.fail)
+        host_platform.recheck_reboot_hint('pending', user_id, pytest.fail)
+    assert len(commands) == 2
+    saved = _hint(app, user_id, profile)
+    assert saved['reboot_required'] is True and 'recheck_stopped' not in saved
+
+
+@pytest.mark.parametrize('output', [None, '', 'reboot=maybe\n', 'Welcome to the jump box\nreboot=no\n', 'x' * 2000])
+def test_an_unclear_answer_keeps_the_hint_and_stops_asking(app, monkeypatch, output):
+    """A forced command can answer in place of ours; it must not run again on every login."""
+    user_id, profile = _restart_hint_session(app, monkeypatch, 'forced')
+    commands = _fake_host(monkeypatch, output)
+    with app.app_context():
+        host_platform.recheck_reboot_hint('forced', user_id, pytest.fail)
+        host_platform.recheck_reboot_hint('forced', user_id, pytest.fail)
+    assert len(commands) == 1
+    saved = _hint(app, user_id, profile)
+    assert saved['reboot_required'] is True and saved['recheck_stopped'] is True
+
+
+def test_a_new_full_check_starts_the_recheck_over(app, monkeypatch):
+    from app import profile_manager
+    user_id, profile = _restart_hint_session(app, monkeypatch, 'renewed')
+    _fake_host(monkeypatch, '')
+    with app.app_context():
+        host_platform.recheck_reboot_hint('renewed', user_id, pytest.fail)
+        assert profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile),
+                                                    maintenance={'reboot_required': True})
+    assert 'recheck_stopped' not in _hint(app, user_id, profile)
+    commands = _fake_host(monkeypatch, 'reboot=no\n')
+    with app.app_context():
+        host_platform.recheck_reboot_hint('renewed', user_id, lambda payload: None)
+    assert len(commands) == 1 and _hint(app, user_id, profile)['reboot_required'] is False
+
+
+def test_a_busy_session_sends_nothing_and_keeps_asking(app, monkeypatch):
+    user_id, profile = _restart_hint_session(app, monkeypatch, 'busy')
+    _fake_host(monkeypatch, 'busy')
+    with app.app_context():
+        host_platform.recheck_reboot_hint('busy', user_id, pytest.fail)
+    assert 'recheck_stopped' not in _hint(app, user_id, profile)
+
+
+def test_a_newer_check_during_the_recheck_is_never_overwritten(app, monkeypatch):
+    from app import profile_manager
+    user_id, profile = _restart_hint_session(app, monkeypatch, 'raced')
+
+    def newer_check():
+        later = _hint(app, user_id, profile)['checked_at'] + 5
+        with app.app_context():
+            assert profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile),
+                                                        maintenance={'reboot_required': True, 'updates': 9}, now=later)
+
+    _fake_host(monkeypatch, 'reboot=no\n', during=newer_check)
+    with app.app_context():
+        host_platform.recheck_reboot_hint('raced', user_id, pytest.fail)
+    saved = _hint(app, user_id, profile)
+    assert saved['reboot_required'] is True and saved['updates'] == 9
+
+
+@pytest.mark.parametrize('change', ['closed', 'replaced', 'moved', 'cancelled'])
+def test_a_session_that_changed_during_the_recheck_writes_nothing(app, monkeypatch, change):
+    import threading
+    from app import ssh_manager
+    user_id, profile = _restart_hint_session(app, monkeypatch, 'changing')
+    cancel = threading.Event()
+
+    def mutate():
+        if change == 'closed':
+            ssh_manager.sessions['changing']['connected'] = False
+        elif change == 'replaced':
+            ssh_manager.sessions['changing'] = dict(ssh_manager.sessions['changing'])
+        elif change == 'moved':
+            ssh_manager.sessions['changing']['host'] = 'elsewhere.example'
+        else:
+            cancel.set()
+
+    _fake_host(monkeypatch, 'reboot=no\n', during=mutate)
+    with app.app_context():
+        host_platform.recheck_reboot_hint('changing', user_id, pytest.fail, cancel_event=cancel)
+    saved = _hint(app, user_id, profile)
+    assert saved['reboot_required'] is True and 'recheck_stopped' not in saved
+
+
+@pytest.mark.parametrize('case', ['no-hint', 'stale', 'stopped', 'other-user', 'moved', 'cancelled', 'quick-connection'])
+def test_hosts_without_a_current_restart_hint_are_never_asked(app, monkeypatch, case):
+    import threading
+    from app import ssh_manager, profile_manager
+    hint = case != 'no-hint'
+    user_id, profile = _restart_hint_session(app, monkeypatch, 'quiet', reboot_required=True if hint else False,
+                                             checked_at=1_000 if case == 'stale' else None)
+    if case == 'stopped':
+        with app.app_context():
+            assert profile_manager.settle_reboot_hint(user_id, profile['id'], host_platform.endpoint(profile),
+                                                      _hint(app, user_id, profile)['checked_at'], cleared=False)
+    session = ssh_manager.sessions['quiet']
+    if case == 'moved':
+        session['host'] = 'elsewhere.example'
+    if case == 'quick-connection':
+        session['profile_id'] = None
+    cancel = threading.Event()
+    if case == 'cancelled':
+        cancel.set()
+    commands = _fake_host(monkeypatch, 'reboot=no\n')
+    with app.app_context():
+        host_platform.recheck_reboot_hint('quiet', user_id + 1 if case == 'other-user' else user_id,
+                                          lambda payload: None, cancel_event=cancel)
+    assert commands == []

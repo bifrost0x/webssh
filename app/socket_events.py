@@ -1745,6 +1745,15 @@ def handle_ssh_connect(data, current_user=None):
                         )
                     except Exception:
                         pass
+                    try:
+                        from .host_platform import recheck_reboot_hint
+                        recheck_reboot_hint(
+                            session_id, current_user.id,
+                            lambda payload: socketio.emit('host_maintenance', payload, to=request.sid),
+                            cancel_event=cancellation,
+                        )
+                    except Exception:
+                        pass
             except StorageCorruptionError as error:
                 if not cancellation.is_set():
                     emit('ssh_error', _storage_error_payload(

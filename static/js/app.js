@@ -1696,6 +1696,11 @@
         if (data.profile_id) ProfileManager.loadProfiles();
     });
 
+    // The login recheck found the restart marker gone; reload the saved facts.
+    socket.on('host_maintenance', data => {
+        if (typeof data?.profile_id === 'string' && data.profile_id) ProfileManager.loadProfiles();
+    });
+
 
     socket.on('ssh_connected', (data) => {
         const requestId = typeof data?.client_request_id === 'string'
