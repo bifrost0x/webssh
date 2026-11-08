@@ -19,4 +19,6 @@ test('ports accept up to three valid numbers and default to 22', () => {
 test('a found endpoint becomes a new host with a short name', () => {
     assert.deepEqual(Discovery.prefill({address: '10.0.0.7', port: 2222, name: 'nas.home.arpa'}), {name: 'nas', host: '10.0.0.7', port: 2222});
     assert.deepEqual(Discovery.prefill({address: '10.0.0.8', port: 22, name: null}), {name: '10.0.0.8', host: '10.0.0.8', port: 22});
+    assert.deepEqual(Discovery.prefill({address: '10.0.0.9', port: 22, name: null, platform: 'debian'}),
+        {name: '10.0.0.9', host: '10.0.0.9', port: 22, platform: 'debian'}, 'the platform the SSH greeting named travels along');
 });

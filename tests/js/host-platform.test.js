@@ -7,6 +7,11 @@ test('manual choice beats detection, detection beats bounded name hints', () => 
     assert.deepEqual(icons.resolve({name: 'Proxmox', detected_platform: 'ubuntu'}), {id: 'ubuntu', source: 'detected'});
     assert.deepEqual(icons.resolve({name: 'Proxmox', detected_platform: 'server'}), {id: 'server', source: 'detected'});
     assert.deepEqual(icons.resolve({name: 'Proxmox node'}), {id: 'proxmox', source: 'hint'});
+    // The SSH greeting from discovery ranks below a real detection and a manual choice, above the name.
+    assert.deepEqual(icons.resolve({name: 'Proxmox node', greeting_platform: 'debian'}), {id: 'debian', source: 'greeting'});
+    assert.deepEqual(icons.resolve({name: 'x', greeting_platform: 'debian', detected_platform: 'proxmox'}), {id: 'proxmox', source: 'detected'});
+    assert.deepEqual(icons.resolve({name: 'x', greeting_platform: 'debian', platform_icon: 'docker'}), {id: 'docker', source: 'manual'});
+    assert.equal(icons.resolve({name: 'x', greeting_platform: 'windows'}).source, 'fallback');
     for (const name of ['notproxmox', 'Ubuntu Proxmox', '<img src=x>', 'x'.repeat(5000)]) {
         assert.equal(icons.resolve({name}).id, 'server');
     }

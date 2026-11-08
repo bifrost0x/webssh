@@ -878,6 +878,10 @@ const ProfileManager = {
             if (!accepted || profileId !== this.editingProfileId || snapshot !== this.editorSnapshot()) return;
         }
         this.showManagementList();
+        const back = this.returnAfterClose;
+        this.returnAfterSave = null;
+        this.returnAfterClose = null;
+        if (back) { back(); return; }
         const buttons = document.querySelectorAll('#profileManagementList .profile-inspect-button');
         Array.from(buttons).find(button => button.dataset.profileId === profileId)?.focus({preventScroll: true});
     },
@@ -1336,7 +1340,11 @@ const ProfileManager = {
     openEditor(profileId = null, options = {}) {
         const modal = document.getElementById('profileManagementModal');
         // Where to go after a successful save: the caller that opened the editor, if it asked.
-        if (!options.confirmed) this.returnAfterSave = typeof options.returnAfterSave === 'function' ? options.returnAfterSave : null;
+        if (!options.confirmed) {
+            this.returnAfterSave = typeof options.returnAfterSave === 'function' ? options.returnAfterSave : null;
+            // Leaving the editor without saving returns there as well.
+            this.returnAfterClose = typeof options.returnAfterClose === 'function' ? options.returnAfterClose : null;
+        }
         if (profileId && profileId === this.editingProfileId && !options.duplicate
             && modal?.classList.contains('has-profile-editor')) {
             document.getElementById('profileEditorName')?.focus();
@@ -1441,12 +1449,17 @@ const ProfileManager = {
         // A new host can start from what discovery found. The values are applied
         // after the baseline, so leaving the form asks before discarding them.
         const prefill = !profile && options.prefill && typeof options.prefill === 'object' ? options.prefill : null;
+        this.greetingPlatform = null;
         if (prefill) {
             const text = (value, size) => (typeof value === 'string' ? value.slice(0, size) : '');
             document.getElementById('profileEditorName').value = text(prefill.name, 100);
             document.getElementById('profileEditorHost').value = text(prefill.host, 255);
             const port = Number(prefill.port);
             if (Number.isInteger(port) && port > 0 && port < 65536) document.getElementById('profileEditorPort').value = port;
+            // What the SSH greeting named; kept only while the address stays the one that was scanned.
+            if (typeof prefill.platform === 'string' && prefill.platform) {
+                this.greetingPlatform = {platform: prefill.platform.slice(0, 32), host: text(prefill.host, 255), port: Number(prefill.port) || 22};
+            }
             document.getElementById('profileEditorUsername')?.focus();
             return;
         }
@@ -1554,6 +1567,10 @@ const ProfileManager = {
         const useTmux = document.getElementById('profileEditorUseTmux');
         if (useTmux) payload.use_tmux = useTmux.checked;
         if (this.editingProfileId) payload.id = this.editingProfileId;
+        const greeting = this.greetingPlatform;
+        if (!this.editingProfileId && greeting && greeting.host === payload.host && greeting.port === payload.port) {
+            payload.greeting_platform = greeting.platform;
+        }
         if (mode === 'command_set') {
             payload.command_set_id = document.getElementById(
                 'profileEditorCommandSetSelect'
@@ -1605,6 +1622,8 @@ const ProfileManager = {
             this.showManagementList();
             const back = this.returnAfterSave;
             this.returnAfterSave = null;
+            this.returnAfterClose = null;
+            this.greetingPlatform = null;
             if (connect) this.connect(saved.id);
             else back?.(saved.id);
         };

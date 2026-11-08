@@ -22,17 +22,20 @@
     function resolve(profile = {}) {
         if (known(profile.platform_icon)) return {id: profile.platform_icon, source: 'manual'};
         if (known(profile.detected_platform)) return {id: profile.detected_platform, source: 'detected'};
+        // Named by the SSH greeting during discovery; a connection later confirms or replaces it.
+        if (known(profile.greeting_platform)) return {id: profile.greeting_platform, source: 'greeting'};
         const name = typeof profile.name === 'string' ? profile.name.slice(0, 128) : '';
         const matches = hints.filter(([, pattern]) => pattern.test(name));
         return matches.length === 1 ? {id: matches[0][0], source: 'hint'} : {id: 'server', source: 'fallback'};
     }
     function render(profile, doc = document) {
-        const identity = profile?.id && known(profile.id) && ['manual', 'detected', 'hint', 'fallback'].includes(profile.source)
+        const identity = profile?.id && known(profile.id) && ['manual', 'detected', 'greeting', 'hint', 'fallback'].includes(profile.source)
             ? profile : resolve(profile);
         const element = doc.createElement('span');
         element.className = 'host-platform-icon';
         element.setAttribute('data-platform', identity.id);
-        const sources = {manual: 'manual choice', detected: 'detected after SSH connection', hint: 'name hint; unverified', fallback: 'platform unknown'};
+        const sources = {manual: 'manual choice', detected: 'detected after SSH connection', greeting: 'SSH greeting; unverified',
+            hint: 'name hint; unverified', fallback: 'platform unknown'};
         const translate = (key, fallback) => globalThis.i18n?.t(key) || fallback;
         const label = identity.id === 'server' ? translate('platform.server', 'Server') : labels[identity.id];
         element.title = `${label} — ${translate(`platform.${identity.source}`, sources[identity.source])}`;
@@ -65,7 +68,8 @@
             && Number(profile.port || 22) === Number(session.port || 22)
             && (profile.jump_host_id || null) === (session.jumpHostId || null);
         return render({name: profile?.name || '', platform_icon: profile?.platform_icon,
-            detected_platform: session.detectedPlatform || (sameEndpoint ? profile?.detected_platform : undefined)}, doc);
+            detected_platform: session.detectedPlatform || (sameEndpoint ? profile?.detected_platform : undefined),
+            greeting_platform: sameEndpoint ? profile?.greeting_platform : undefined}, doc);
     }
     function refreshSessionIcons(manager, profiles = []) {
         if (!manager?.sessions || typeof document === 'undefined') return;

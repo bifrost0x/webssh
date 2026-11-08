@@ -30,10 +30,13 @@
         return [...new Set(ports)];
     }
 
-    /** Values for a new host: a short name from reverse DNS, else the address. */
+    /** Values for a new host: a short name from reverse DNS, else the address,
+     * and the platform the SSH greeting named, if any. */
     function prefill(entry) {
         const name = entry.name ? entry.name.split('.')[0] : '';
-        return {name: name || entry.address, host: entry.address, port: entry.port};
+        const values = {name: name || entry.address, host: entry.address, port: entry.port};
+        if (typeof entry.platform === 'string' && entry.platform) values.platform = entry.platform;
+        return values;
     }
 
     function create({win, doc, t, request, openEditor}) {
@@ -46,6 +49,13 @@
         let resultSignature = '';
         let announced = '';
         let pollFailures = 0;
+        // Endpoints saved from this dialog, even if the host was renamed or given a DNS name.
+        const added = new Set();
+        const endpointKey = entry => `${String(entry.address).toLowerCase()}:${entry.port}`;
+        /** Saved hosts count as known even while a running scan still reports its start-time view. */
+        function savedEndpoints() {
+            return new Set((win.ProfileManager?.profiles || []).map(profile => `${String(profile.host || '').toLowerCase()}:${Number(profile.port || 22)}`));
+        }
 
         const node = (tag, className, text) => {
             const element = doc.createElement(tag);
@@ -90,7 +100,9 @@
                 announced = message;
                 $('hostDiscoveryAnnounce').textContent = message;
             }
-            const signature = JSON.stringify(scan.found.map(entry => [entry.address, entry.port, entry.known, entry.name]));
+            const saved = savedEndpoints();
+            const isKnown = entry => Boolean(entry.known) || added.has(endpointKey(entry)) || saved.has(endpointKey(entry));
+            const signature = JSON.stringify(scan.found.map(entry => [entry.address, entry.port, isKnown(entry), entry.name]));
             if (signature === resultSignature) return;
             resultSignature = signature;
             const list = $('hostDiscoveryResults');
@@ -104,10 +116,10 @@
                     node('span', 'discovery-address', `${entry.address}${entry.port === 22 ? '' : `:${entry.port}`}`),
                     node('span', 'discovery-software', [entry.software, entry.comment].filter(Boolean).join(' · ')));
                 item.append(logo, copy);
-                if (entry.known) {
-                    const saved = node('span', 'discovery-saved');
-                    saved.append(icon('check'), node('span', '', t('discovery.saved', 'Saved')));
-                    item.append(saved);
+                if (isKnown(entry)) {
+                    const badge = node('span', 'discovery-saved');
+                    badge.append(icon('check'), node('span', '', t('discovery.saved', 'Saved')));
+                    item.append(badge);
                 } else {
                     const add = node('button', 'btn btn-secondary discovery-add');
                     add.type = 'button';
@@ -115,8 +127,13 @@
                     add.dataset.result = `${entry.address}:${entry.port}`;
                     add.append(icon('add'), node('span', '', t('discovery.add', 'Add')));
                     add.addEventListener('click', () => {
+                        const key = endpointKey(entry);
                         dialog.close();
-                        openEditor(prefill(entry));
+                        // Saving or leaving the editor brings the user back to these results.
+                        openEditor(prefill(entry), {
+                            saved: () => { added.add(key); open({after: key}); },
+                            closed: () => open({after: key}),
+                        });
                     });
                     item.append(add);
                 }
@@ -180,21 +197,19 @@
             $('hostDiscoveryStart').focus();
         }
 
-        /** Hosts added since the scan are saved now; mark them so they are not added twice. */
-        function markSaved() {
-            if (!scan?.found?.length) return;
-            const saved = new Set((win.ProfileManager?.profiles || []).map(profile => `${String(profile.host || '').toLowerCase()}:${Number(profile.port || 22)}`));
-            scan.found = scan.found.map(entry => saved.has(`${entry.address.toLowerCase()}:${entry.port}`) ? {...entry, known: true} : entry);
-        }
-
-        function open() {
+        function open({after = null} = {}) {
+            if (dialog.open) return;
             returnFocus = doc.activeElement;
-            markSaved();
             if (!$('hostDiscoveryNetwork').value) $('hostDiscoveryNetwork').value = suggestNetwork(win.ProfileManager?.profiles || []);
             showError('');
+            resultSignature = '';
             render();
             dialog.showModal();
-            (scan?.state === 'running' ? $('hostDiscoveryCancel') : $('hostDiscoveryNetwork')).focus();
+            // Back from the editor: continue with the next result that still needs adding.
+            const buttons = after ? [...$('hostDiscoveryResults').querySelectorAll('.discovery-add')] : [];
+            const order = scan?.found?.map(endpointKey) || [];
+            const next = buttons.find(button => order.indexOf(button.dataset.result.toLowerCase()) > order.indexOf(after)) || buttons[0];
+            (next || (after ? $('hostDiscoveryClose') : null) || (scan?.state === 'running' ? $('hostDiscoveryCancel') : $('hostDiscoveryNetwork'))).focus();
             // A scan keeps running while the dialog is closed; reopening shows it.
             if (scan?.state === 'running') poll();
         }
@@ -206,6 +221,7 @@
             win.clearTimeout(timer);
             if (returnFocus?.isConnected && !doc.getElementById('profileEditorView')?.offsetParent) returnFocus.focus?.();
         });
+        win.addEventListener('profile-list-change', () => { if (dialog.open) render(); });
         win.addEventListener('languageChanged', () => {
             resultSignature = '';
             if (dialog.open) render();

@@ -3001,9 +3001,9 @@
                 if (!response.ok) throw new Error(data.error || 'The request failed.');
                 return data;
             },
-            openEditor: values => {
+            openEditor: (values, {saved, closed} = {}) => {
                 if (!window.primaryWorkspaceController?.open('hosts', document.getElementById('profileManagementModal'))) return;
-                ProfileManager.openEditor(null, {prefill: values});
+                ProfileManager.openEditor(null, {prefill: values, returnAfterSave: saved, returnAfterClose: closed});
             },
         }) || null;
         document.querySelectorAll('[data-host-discovery]').forEach(button => {

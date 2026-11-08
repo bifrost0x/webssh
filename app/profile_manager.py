@@ -147,6 +147,8 @@ def _valid_profile(item):
             return False
     if 'sort_order' in item and not _valid_sort_order(item['sort_order']):
         return False
+    if 'greeting_platform' in item and not isinstance(item['greeting_platform'], str):
+        return False
     return True
 
 
@@ -164,7 +166,7 @@ _PROFILE_FIELDS = {
     'jump_host_id', 'startup_mode', 'startup_commands', 'command_id',
     'command_set_id', 'parameters_override', 'use_tmux',
     'group', 'favorite', 'created_at', 'updated_at',
-    'sort_order', 'platform_icon', 'detected_platform',
+    'sort_order', 'platform_icon', 'detected_platform', 'greeting_platform',
 }
 
 
@@ -341,6 +343,9 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
 
     if 'platform_icon' in payload and (not isinstance(payload['platform_icon'], str) or payload['platform_icon'] not in PLATFORMS | {'auto'}):
         return None, 'Invalid platform icon'
+    # What a discovery scan read from the SSH greeting; shown until a connection detects the platform.
+    if 'greeting_platform' in payload and (not isinstance(payload['greeting_platform'], str) or payload['greeting_platform'] not in PLATFORMS):
+        return None, 'Invalid platform icon'
 
     name = payload.get('name')
     host = payload.get('host')
@@ -423,6 +428,8 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     }
     if 'platform_icon' in payload:
         result['platform_icon'] = payload['platform_icon']
+    if 'greeting_platform' in payload:
+        result['greeting_platform'] = payload['greeting_platform']
     if group is not _UNSET and group:
         result['group'] = group
     if favorite is True:
@@ -525,6 +532,10 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                                 result['platform_icon'] = existing['platform_icon']
                             if endpoint(existing) == endpoint(result) and existing.get('detected_platform') in PLATFORMS:
                                 result['detected_platform'] = existing['detected_platform']
+                            # The greeting belongs to an address and port; it goes when either changes.
+                            if ('greeting_platform' not in payload and existing.get('greeting_platform') in PLATFORMS
+                                    and (existing.get('host'), existing.get('port', 22)) == (result.get('host'), result.get('port', 22))):
+                                result['greeting_platform'] = existing['greeting_platform']
                             if 'group' not in payload and existing.get('group'):
                                 result['group'] = existing['group']
                             if (

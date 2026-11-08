@@ -187,3 +187,26 @@ def test_quick_connections_are_never_probed(app, monkeypatch):
         monkeypatch.setattr(host_platform, 'collect_platform', lambda _, **kwargs: (calls.append(1), ('ubuntu', None))[1])
         host_platform.detect_connected_platform('platform-quick', user_id, lambda payload: None)
     assert calls == []
+
+
+def test_greeting_platform_is_validated_and_follows_the_address(app):
+    from app import profile_manager
+    from tests.test_profile_manager import create_user
+    user_id = create_user(app)
+    with app.app_context():
+        payload = dict(name='NAS', host='10.0.0.7', port=22, username='ops', auth_type='password', greeting_platform='ubuntu')
+        profile, error = profile_manager.upsert_profile(user_id, payload)
+        assert error is None
+        assert profile['greeting_platform'] == 'ubuntu'
+        assert 'detected_platform' not in profile
+        # A later edit from the form keeps it while the address and port stay the same.
+        edited = {key: value for key, value in payload.items() if key != 'greeting_platform'}
+        renamed, error = profile_manager.upsert_profile(user_id, dict(edited, id=profile['id'], name='Storage', username='admin'))
+        assert error is None
+        assert renamed['greeting_platform'] == 'ubuntu'
+        moved, error = profile_manager.upsert_profile(user_id, dict(edited, id=profile['id'], host='10.0.0.8'))
+        assert error is None
+        assert 'greeting_platform' not in moved
+        for invalid in ('windows', 3, None, '<b>'):
+            _, error = profile_manager.upsert_profile(user_id, dict(payload, name=f'bad-{invalid}', greeting_platform=invalid))
+            assert error == 'Invalid platform icon'
