@@ -61,8 +61,12 @@ def test_merged_profile_frontend_assets_use_content_addressed_urls():
 def test_index_exposes_only_bounded_numeric_transfer_limits():
     template = read('templates/index.html')
 
-    assert 'window.WEBSSH_TRANSFER_LIMITS = Object.freeze(' in template
-    assert 'transfer_limits | tojson' in template
+    assert "{'transfer': transfer_limits, 'sshInput': ssh_input_limits} | tojson" in template
+    assert template.index('id="websshRuntimeLimits"') < template.index("filename='js/runtime-limits.js'")
+    assert template.index("filename='js/runtime-limits.js'") < template.index("filename='js/i18n.js'")
+    loader = read('static/js/runtime-limits.js')
+    assert 'window.WEBSSH_TRANSFER_LIMITS = Object.freeze(limits.transfer)' in loader
+    assert 'window.WEBSSH_SSH_INPUT_LIMITS = Object.freeze(limits.sshInput)' in loader
 
 
 def test_profile_manager_builds_safe_contextual_launcher_buttons():

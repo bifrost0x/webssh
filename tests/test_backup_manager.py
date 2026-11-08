@@ -1024,6 +1024,57 @@ def test_restore_removes_stale_persistent_files_but_keeps_runtime_files(
     assert persistent_snapshot == _exported_fixture_files(expected)
 
 
+def test_crafted_archive_cannot_replace_runtime_logs_or_temporary_files(
+    tmp_path,
+):
+    restore_dir = tmp_path / 'restore'
+    audit_log = restore_dir / 'logs/security_audit.log'
+    audit_log.parent.mkdir(parents=True)
+    audit_log.write_bytes(b'original audit trail\n')
+    transfer = restore_dir / 'tmp/active-transfer'
+    transfer.parent.mkdir()
+    transfer.write_bytes(b'keep active temp state')
+
+    archive = tmp_path / 'crafted.zip'
+    _write_manifest_archive(archive, {
+        'app.db': _webssh_database_bytes(tmp_path),
+        'logs/security_audit.log': b'forged audit trail\n',
+        'logs/planted.log': b'planted\n',
+        'tmp/active-transfer': b'forged temp state',
+        'tmp/planted': b'planted',
+    })
+
+    restore_backup(archive, restore_dir)
+
+    assert audit_log.read_bytes() == b'original audit trail\n'
+    assert transfer.read_bytes() == b'keep active temp state'
+    assert not (restore_dir / 'logs/planted.log').exists()
+    assert not (restore_dir / 'tmp/planted').exists()
+    assert (restore_dir / 'app.db').is_file()
+
+
+@pytest.mark.parametrize('top', ['Logs', 'LOGS', 'logs.', 'Tmp', 'TMP.'])
+def test_runtime_directory_filter_ignores_case_and_trailing_dots(tmp_path, top):
+    """Case-insensitive file systems map these names onto logs/ and tmp/."""
+    archive = tmp_path / 'crafted.zip'
+    _write_manifest_archive(archive, {
+        'app.db': _webssh_database_bytes(tmp_path),
+        f'{top}/security_audit.log': b'forged',
+    })
+    restore_dir = tmp_path / 'restore'
+    real = restore_dir / ('logs' if top.casefold().startswith('logs') else 'tmp') / 'security_audit.log'
+    real.parent.mkdir(parents=True)
+    real.write_bytes(b'original')
+
+    restore_backup(archive, restore_dir)
+
+    # On a case-sensitive file system the variant would be a separate path; it must not appear either.
+    assert real.read_bytes() == b'original'
+    variant = restore_dir / top / 'security_audit.log'
+    assert not variant.exists() or variant.read_bytes() == b'original'
+    assert (restore_dir / 'app.db').is_file()
+
+
 def test_restore_reverifies_staged_bytes_before_active_writes(
     tmp_path,
     monkeypatch,

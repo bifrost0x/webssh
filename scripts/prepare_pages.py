@@ -259,9 +259,10 @@ def prepare_pages(root: Path, graph_source: Path, output: Path) -> None:
     # SRI covers the packaged local runtime, including reviewed vendor patches.
     runtime = output / GRAPH_VENDOR
     runtime.write_bytes(runtime_bytes)
+    # assets/webssh-logo.svg has fixed capture-theme colors. The app logo takes
+    # its colors from theme variables, which a plain <img> does not have.
     shutil.copytree(root / 'assets', output / 'assets', dirs_exist_ok=True)
     resources = {
-        'static/images/webssh-logo.svg': 'webssh-logo.svg',
         'static/images/theme-backgrounds/carbon-glass.webp': 'carbon-glass.webp',
         'static/vendor/material-icons/material-icons.woff2': 'material-icons.woff2',
         'static/vendor/material-icons/LICENSE': 'material-icons-LICENSE',

@@ -156,6 +156,9 @@ def _valid_profile(item):
     if 'services_checked_at' in item and (isinstance(item['services_checked_at'], bool)
                                           or not isinstance(item['services_checked_at'], (int, float))):
         return False
+    # detected_maintenance is never validated here: a malformed or newer value
+    # must not make the whole profiles document unreadable. Its only reader,
+    # the overview, ignores what it does not understand.
     return True
 
 
@@ -174,7 +177,7 @@ _PROFILE_FIELDS = {
     'command_set_id', 'parameters_override', 'use_tmux',
     'group', 'favorite', 'created_at', 'updated_at',
     'sort_order', 'platform_icon', 'detected_platform', 'greeting_platform',
-    'detected_services', 'services_checked_at',
+    'detected_services', 'services_checked_at', 'detected_maintenance',
 }
 
 
@@ -545,6 +548,8 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                                 result['detected_services'] = existing['detected_services']
                                 if 'services_checked_at' in existing:
                                     result['services_checked_at'] = existing['services_checked_at']
+                            if endpoint(existing) == endpoint(result) and 'detected_maintenance' in existing:
+                                result['detected_maintenance'] = existing['detected_maintenance']
                             # The greeting belongs to an address and port; it goes when either changes.
                             if ('greeting_platform' not in payload and existing.get('greeting_platform') in PLATFORMS
                                     and (existing.get('host'), existing.get('port', 22)) == (result.get('host'), result.get('port', 22))):
@@ -975,10 +980,13 @@ def cache_greeting_platforms(user_id, observed):
 
 
 @user_operation
-def cache_detected_facts(user_id, profile_id, expected_endpoint, *, platform=None, services=None, now=None):
-    """Merge detected platform and service facts into the current owned profile under its lock."""
-    from .host_platform import valid_services
-    if expected_endpoint is None or (platform is None and services is None):
+def cache_detected_facts(user_id, profile_id, expected_endpoint, *, platform=None, services=None,
+                         maintenance=None, now=None):
+    """Merge detected platform, service and maintenance facts into the current owned profile under its lock."""
+    from .host_platform import valid_maintenance, valid_services
+    if expected_endpoint is None or (platform is None and services is None and maintenance is None):
+        return False
+    if maintenance is not None and (not valid_maintenance(maintenance) or 'checked_at' in maintenance):
         return False
     if platform is not None and platform not in PLATFORMS:
         return False
@@ -997,6 +1005,8 @@ def cache_detected_facts(user_id, profile_id, expected_endpoint, *, platform=Non
                 if services is not None:
                     profile['detected_services'] = list(services)
                     profile['services_checked_at'] = time.time() if now is None else now
+                if maintenance is not None:
+                    profile['detected_maintenance'] = {**maintenance, 'checked_at': time.time() if now is None else now}
                 return save_profiles(user_id, profiles, previous_count=len(profiles))
     return False
 

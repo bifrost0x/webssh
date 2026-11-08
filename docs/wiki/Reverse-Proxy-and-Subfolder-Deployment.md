@@ -253,6 +253,11 @@ An incorrect value can either record the proxy address instead of the client or
 trust attacker-supplied forwarding headers. Prefer a simple topology and keep
 the backend network private.
 
+Within that depth WebSSH also trusts `X-Forwarded-Host` and
+`X-Forwarded-Prefix`, which form the address used for redirects and the
+realtime origin check. The outermost proxy must set or remove these headers
+itself, never pass through values a client sent.
+
 ## Validation
 
 ```bash

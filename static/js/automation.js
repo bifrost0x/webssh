@@ -824,6 +824,49 @@
                 await api('/api/automation/runs/' + encodeURIComponent(run.id) + '/cancel', {method:'POST',body:{}});
                 notify(tr('cancellationRequested')); await loadRuns();
             }));
+            // Identical results across hosts, grouped per step; differences stand out.
+            const comparison = runPart(details, 'compare', 'details', 'automation-run-compare');
+            comparison.hidden = run.targets.length < 2 || active || !window.AutomationTools;
+            if (!comparison.hidden) {
+                const result = window.AutomationTools.compareRun(run);
+                const differing = result.steps.filter(step => !step.uniform).length;
+                runText(comparison, 'summary', 'summary', differing ? tr(differing === 1 ? 'compareDiffersOne' : 'compareDiffers', {count: differing}) : tr('compareUniform'), 'automation-run-compare-summary');
+                // Long workflows: show only the steps that differ, unless all agree.
+                const filter = runPart(comparison, 'filter', 'label', 'automation-check automation-compare-filter');
+                if (!filter.firstChild) {
+                    const toggle = node('input'); toggle.type = 'checkbox'; toggle.checked = true;
+                    toggle.addEventListener('change', () => { comparison.dataset.onlyDiffering = String(toggle.checked); });
+                    filter.append(toggle, node('span', tr('compareOnlyDiffering')));
+                    comparison.dataset.onlyDiffering = 'true';
+                }
+                filter.hidden = !differing || differing === result.steps.length;
+                comparison.dataset.filterActive = String(!filter.hidden);
+                const steps = runPart(comparison, 'steps', 'div', 'automation-compare-steps');
+                steps.replaceChildren(...result.steps.map(step => {
+                    const section = node('section', undefined, 'automation-compare-step');
+                    section.dataset.uniform = String(step.uniform);
+                    section.append(node('h5', step.name));
+                    step.groups.forEach(group => {
+                        const entry = node('div', undefined, 'automation-compare-group');
+                        entry.dataset.state = group.status;
+                        entry.append(node('p', tr(group.hosts.length === 1 ? 'compareGroupOne' : 'compareGroup', {count: group.hosts.length, hosts: group.hosts.join(', '),
+                            exit: group.exitCode ?? '—', state: tr(`state.${group.status}`)}), 'automation-compare-hosts'));
+                        if (group.output !== null) {
+                            const pre = node('pre', group.output.length > 2000 ? group.output.slice(0, 2000) + '…' : group.output || tr('diagnostic.empty'));
+                            pre.tabIndex = 0;
+                            entry.append(pre);
+                        }
+                        if (group.errors) {
+                            const errors = node('pre', group.errors.length > 2000 ? group.errors.slice(0, 2000) + '…' : group.errors, 'automation-compare-stderr');
+                            errors.tabIndex = 0; errors.setAttribute('aria-label', 'stderr');
+                            entry.append(errors);
+                        }
+                        if (group.truncated) entry.append(node('p', tr('diagnostic.truncated'), 'automation-warning'));
+                        section.append(entry);
+                    });
+                    return section;
+                }));
+            }
             run.targets.forEach((target, targetIndex) => {
                 const section = runPart(details, 'target-' + targetIndex, 'section', 'automation-run-target');
                 section.dataset.state = target.status;
@@ -1134,7 +1177,24 @@
         translate(); if ($('scheduleFrequency')) updateScheduleBuilder({preserveCron:true}); edit(currentDraft, {preserveSchedule:true}); dirty = wasDirty; renderTargets(); setStage(currentStage, {animate:false});
         historySignature = ''; if (selectedTab === 'runs') action(loadRuns);
     });
-    window.WebSSHAutomation = {openRun, getRunSnapshot, activate: () => action(async () => { try { await loadState(); } catch(error) { if(error.code !== 'disabled')throw error; availability(false); await loadSchedules(); return; } await loadSchedules(); if (selectedTab === 'runs') await loadRuns(); })};
+    // Open a built-in template as an unsaved draft with the given hosts selected.
+    // Used by the overview; nothing is saved or run without the usual review.
+    function openTemplate(templateId, hostIds = []) {
+        return action(async () => {
+            window.primaryWorkspaceController?.open('automation', $('automationNativeView'));
+            const template = window.AutomationTemplates?.create(templateId);
+            if (!template || !await discardChanges()) return;
+            if (!model.profiles.length) await loadState();
+            const language = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
+            edit({name: template.title[language], steps: template.steps, stop_on_error: true});
+            changed(); tab('runbooks');
+            const wanted = new Set(hostIds);
+            document.querySelectorAll('#targetHosts input').forEach(input => { input.checked = !input.disabled && wanted.has(input.value); });
+            updateTargetCount();
+            notify(tr('templateOpenedFor', {count: [...document.querySelectorAll('#targetHosts input:checked')].length}));
+        });
+    }
+    window.WebSSHAutomation = {openRun, openTemplate, getRunSnapshot, activate: () => action(async () => { try { await loadState(); } catch(error) { if(error.code !== 'disabled')throw error; availability(false); await loadSchedules(); return; } await loadSchedules(); if (selectedTab === 'runs') await loadRuns(); })};
     window.addEventListener('load',()=>{window.socket?.on('command_sets_list',()=>setTimeout(renderTemplates,0));window.socket?.on('commands_list',()=>setTimeout(renderEditorSources,0));renderTemplates();});
     translate(); edit();
     if (document.body.dataset.automationEnabled === 'true' || document.querySelector('main[data-native-automation]')?.dataset.automationEnabled === 'true' || nativeCredentials) {

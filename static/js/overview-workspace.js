@@ -442,6 +442,28 @@
                     meta.append(more);
                 }
             }
+            // Updates and restart state as reported by the last run of the Updates and restart status workflow.
+            const upkeep = Model.maintenance(host.profile);
+            if (upkeep) {
+                const checked = upkeep.checkedAt ? new Date(upkeep.checkedAt).toLocaleString(win.i18n?.getLanguage?.() || undefined) : '';
+                const source = tw('maintenanceChecked', 'From the host\'s package cache, checked {time}', {time: checked});
+                if (upkeep.reboot_required) {
+                    const chip = node('span', 'od-chip od-maintenance-chip');
+                    chip.dataset.kind = 'reboot';
+                    chip.title = source;
+                    chip.append(icon('restart_alt'), node('span', '', tw('chipReboot', 'Restart required')));
+                    meta.append(chip);
+                }
+                if (upkeep.updates > 0) {
+                    const chip = node('span', 'od-chip od-maintenance-chip');
+                    chip.dataset.kind = upkeep.security_updates > 0 ? 'security' : 'updates';
+                    chip.title = source;
+                    chip.append(icon('system_update'), node('span', '', upkeep.security_updates > 0
+                        ? tw('chipUpdatesSecurity', '{count} updates, {security} security', {count: upkeep.updates, security: upkeep.security_updates})
+                        : tw('chipUpdates', '{count} updates', {count: upkeep.updates})));
+                    meta.append(chip);
+                }
+            }
             const favoriteLabel = host.favorite
                 ? tw('favoriteRemove', 'Remove {name} from favorites', {name: host.name})
                 : tw('favoriteAdd', 'Add {name} to favorites', {name: host.name});
@@ -478,7 +500,8 @@
             // so focus, hover and scroll position stay where the user left them.
             const signature = JSON.stringify([loaded, win.i18n?.getLanguage?.() || '', visible.map(host => [host.id, host.state, host.name,
                 host.destination, host.favorite, host.group, host.route.kind, host.route.name, host.sessionId, reasonFor(host),
-                win.HostPlatform?.resolve?.(host.profile)?.id || '', win.HostPlatform?.services?.(host.profile) || []])]);
+                win.HostPlatform?.resolve?.(host.profile)?.id || '', win.HostPlatform?.services?.(host.profile) || [],
+                Model.maintenance(host.profile)])]);
             if (signature === state.hostSignature) return;
             state.hostSignature = signature;
             const focusedKey = hostList.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
@@ -513,7 +536,17 @@
                 dismiss.title = tw('dismiss', 'Dismiss');
                 dismiss.dataset.key = `dismiss:${item.key}`;
                 dismiss.append(icon('close'));
-                entry.append(action, dismiss);
+                entry.append(action);
+                const upgrade = item.kind === 'security-updates' ? upgradePlan(item.hostIds) : null;
+                if (upgrade) {
+                    const label = tw('openUpgrade', 'Open upgrade workflow for {count} hosts', {count: upgrade.hostIds.length});
+                    const open = button('od-dismiss', label, () => win.WebSSHAutomation.openTemplate(upgrade.template, upgrade.hostIds));
+                    open.title = label;
+                    open.dataset.key = `upgrade:${item.key}`;
+                    open.append(icon('system_update_alt'));
+                    entry.append(open);
+                }
+                entry.append(dismiss);
                 return entry;
             }));
         }
@@ -564,9 +597,27 @@
                 ? tw('attentionCredentialsOne', '{name}: SSH key missing or saved password changed', {name: hostName(item.hostIds[0])})
                 : tw('attentionCredentials', '{count} hosts: SSH key missing or saved password changed', {count: item.count}),
             item.count === 1 ? () => edit(item.hostIds[0]) : () => filterHosts(item.hostIds, tw('filterCredentials', 'Sign-in needs review'))];
+            case 'reboot': return ['restart_alt', item.count === 1
+                ? tw('attentionRebootOne', '{name}: restart required', {name: hostName(item.hostIds[0])})
+                : tw('attentionReboot', '{count} hosts: restart required', {count: item.count}),
+            item.count === 1 ? () => focusHost(item.hostIds[0]) : () => filterHosts(item.hostIds, tw('filterReboot', 'Restart required'))];
+            case 'security-updates': return ['security_update_warning', item.count === 1
+                ? tw('attentionSecurityOne', '{name}: security updates pending', {name: hostName(item.hostIds[0])})
+                : tw('attentionSecurity', '{count} hosts: security updates pending', {count: item.count}),
+            item.count === 1 ? () => focusHost(item.hostIds[0]) : () => filterHosts(item.hostIds, tw('filterSecurity', 'Security updates pending'))];
             case 'run-failed': return ['error_outline', tw('runFailed', 'Run failed: {name}', {name: item.name}), () => win.WebSSHAutomation?.openRun?.(item.runId)];
             default: return ['schedule', tw('scheduleReview', 'Schedule needs review: {name}', {name: item.name}), openAutomation];
             }
+        }
+        /**
+         * The Debian/Ubuntu upgrade template with only the hosts it supports; update
+         * counts exist only for those. Null while Automation is off. It opens a draft.
+         */
+        function upgradePlan(hostIds = []) {
+            if (!win.WebSSHAutomation?.openTemplate || !state.automationEnabled) return null;
+            const apt = hostIds.filter(id => ['debian', 'ubuntu', 'raspberrypi', 'proxmox']
+                .includes(win.HostPlatform?.resolve?.(profiles().find(profile => profile.id === id) || {})?.id));
+            return apt.length ? {template: 'apt-upgrade', hostIds: apt} : null;
         }
         function hostName(id) {
             const profile = profiles().find(item => item.id === id);
@@ -711,6 +762,7 @@
             renderHostFilter();
             renderTopology(hosts);
             renderHosts(hosts);
+            state.automationEnabled = runInfo.enabled === true;
             renderAttention(attentionItems, allAttention.length - attentionItems.length);
             renderAutomation(runInfo, metrics);
             renderPlatforms(hosts);
@@ -971,11 +1023,25 @@
                 const first = panel?.querySelector('.od-row');
                 if (first && !panel.hidden && panel.dataset.userHidden !== 'true') {
                     panel.scrollIntoView?.({block: 'nearest', behavior: motion() ? 'smooth' : 'auto'});
-                    first.focus({preventScroll: true});
+                    // A mouse click does not show a focus ring, so mark the list visibly as well.
+                    first.focus({preventScroll: true, focusVisible: true});
+                    panel.classList.remove('od-panel-flash');
+                    void panel.offsetWidth;
+                    panel.classList.add('od-panel-flash');
                     return;
                 }
                 const ids = [...new Set(state.attention.flatMap(item => item.hostIds || (item.hostId ? [item.hostId] : [])))];
-                if (ids.length) filterHosts(ids, $('overviewStatusText').textContent);
+                if (ids.length) {
+                    filterHosts(ids, $('overviewStatusText').textContent);
+                    return;
+                }
+                // The list is hidden and no item names a host (a failed run): open the first item directly.
+                const dismissed = new Set(state.dismissed);
+                const item = state.attention.find(entry => !dismissed.has(entry.key));
+                if (item) describeAttention(item)[2]();
+            });
+            $('odAttention')?.addEventListener('animationend', event => {
+                if (event.animationName === 'od-panel-flash') event.currentTarget.classList.remove('od-panel-flash');
             });
             ['session-workspace-change', 'languageChanged', 'automation-runs-updated'].forEach(name => win.addEventListener(name, schedule));
             ['profile-list-change', 'jump-host-list-change', 'host-access-change'].forEach(name => win.addEventListener(name, () => { schedule(); queueReadiness(); }));

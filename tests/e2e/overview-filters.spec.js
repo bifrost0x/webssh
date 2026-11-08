@@ -64,8 +64,11 @@ test('the status pill and grouped attention items lead to exactly the affected h
     expect(Number(status.match(/\d+/)?.[0])).toBeGreaterThanOrEqual(pending.length);
     const pill = page.locator('#overviewStatusButton');
     await expect(pill).toBeEnabled();
+    // With the list already on screen, the click must still answer visibly.
+    await page.locator('#odAttention').scrollIntoViewIfNeeded();
     await pill.click();
     await expect(rows.first()).toBeFocused();
+    await expect(page.locator('#odAttention')).toHaveClass(/od-panel-flash/);
     await page.locator('#odAttention .od-row[data-kind="host-keys"]').click();
     const cards = page.locator('#overviewHostList .od-host');
     await expect(cards).toHaveCount(pending.length);
@@ -146,4 +149,54 @@ test('detected services show on host cards and filter the overview from the plat
     await expect(page.locator('#overviewHostFilter')).toContainText('Docker');
     await page.locator('#overviewHostFilter').click();
     await expect(page.locator('#overviewHostList .od-host')).toHaveCount(ids.length);
+});
+
+test('restart and security update facts appear on host cards and lead to the affected hosts', async ({page}) => {
+    const {ids} = await openWithReadiness(page);
+    const [restart, updates] = ids.slice(-2);
+    await page.evaluate(([restartId, updatesId]) => {
+        const checked = Math.floor(Date.now() / 1000);
+        ProfileManager.profiles.forEach(profile => {
+            if (profile.id === restartId) profile.detected_maintenance = {reboot_required: true, updates: 0, security_updates: 0, checked_at: checked};
+            if (profile.id === updatesId) profile.detected_maintenance = {reboot_required: false, updates: 7, security_updates: 2, checked_at: checked};
+        });
+        window.dispatchEvent(new Event('profile-list-change'));
+    }, [restart, updates]);
+    const restartCard = page.locator(`#overviewHostList .od-host[data-host-id="${restart}"]`);
+    await expect(restartCard.locator('.od-maintenance-chip[data-kind="reboot"]')).toHaveText(/Restart required/);
+    const updatesCard = page.locator(`#overviewHostList .od-host[data-host-id="${updates}"]`);
+    await expect(updatesCard.locator('.od-maintenance-chip[data-kind="security"]')).toHaveText(/7 updates, 2 security/);
+    await expect(updatesCard.locator('.od-maintenance-chip')).toHaveAttribute('title', /package cache/);
+    const row = page.locator('#odAttention .od-row[data-kind="security-updates"]');
+    await expect(row).toBeVisible();
+    await row.click();
+    await expect(page.locator(`#overviewHostList .od-host[data-host-id="${updates}"]`)).toBeVisible();
+    await expect(page.locator('#odAttention .od-row[data-kind="reboot"]')).toBeVisible();
+    expect(await sshAttempts(page)).toEqual([]);
+});
+
+test('pending security updates open the matching upgrade workflow as a draft with exactly those hosts', async ({page}) => {
+    const {ids} = await openWithReadiness(page);
+    await expect.poll(() => page.evaluate(() => window.WebSSHAutomation?.getRunSnapshot?.().enabled === true)).toBe(true);
+    const affected = ids.slice(-2);
+    await page.evaluate(hostIds => {
+        const checked = Math.floor(Date.now() / 1000);
+        ProfileManager.profiles.forEach(profile => {
+            if (hostIds.includes(profile.id)) Object.assign(profile, {detected_platform: 'debian',
+                detected_maintenance: {reboot_required: false, updates: 3, security_updates: 1, checked_at: checked}});
+        });
+        window.dispatchEvent(new Event('profile-list-change'));
+    }, affected);
+    const writes = [];
+    page.on('request', request => { if (request.method() !== 'GET' && request.url().includes('/api/automation/')) writes.push(request.url()); });
+    const open = page.locator('#odAttention [data-key^="upgrade:"]');
+    await expect(open).toBeVisible();
+    await expect(open).toHaveAttribute('aria-label', 'Open upgrade workflow for 2 hosts');
+    await open.click();
+    await expect(page.locator('#runbookName')).toHaveValue('Debian / Ubuntu package upgrade');
+    await expect.poll(() => page.locator('#targetHosts input:checked').evaluateAll(inputs => inputs.map(input => input.value).sort()))
+        .toEqual([...affected].sort());
+    await expect(page.locator('#saveState')).not.toHaveText('');
+    expect(writes).toEqual([]);
+    expect(await sshAttempts(page)).toEqual([]);
 });

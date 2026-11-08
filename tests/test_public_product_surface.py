@@ -146,6 +146,17 @@ def test_packaged_graph_preserves_select_all_and_mobile_style_override(built_sit
     assert 'toggleAllCommunities' in (built_site / 'graph.js').read_text(encoding='utf-8')
 
 
+def test_published_site_uses_the_fixed_capture_theme_logo_and_accent(built_site):
+    # A plain <img> has no theme variables; the app logo would fall back to its sand colors.
+    published = (built_site / 'assets/webssh-logo.svg').read_bytes()
+    assert published == (ROOT / 'assets/webssh-logo.svg').read_bytes()
+    assert b'var(' not in published
+    styles = (ROOT / 'site/styles.css').read_text(encoding='utf-8')
+    assert '--accent-primary: #48a3b1;' in styles
+    for blue in ('#5b9cf6', '#8dbcfb', '#9bc6ff'):
+        assert blue not in styles
+
+
 def test_public_site_avoids_tracking_and_browser_storage():
     for path in (ROOT / 'site').glob('*.js'):
         text = path.read_text(encoding='utf-8')

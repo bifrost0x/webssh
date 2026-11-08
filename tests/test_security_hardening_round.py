@@ -110,6 +110,8 @@ def test_dynamic_responses_are_not_cached_and_headers_are_current(app, client, c
     policy = page.headers['Content-Security-Policy']
     assert "base-uri 'self'" in policy and "object-src 'none'" in policy and "frame-ancestors 'none'" in policy
     assert page.headers['X-XSS-Protection'] == '0'
+    script_policy = next(part.strip() for part in policy.split(';') if part.strip().startswith('script-src'))
+    assert script_policy == "script-src 'self'"
     static = client.get('/static/js/overview-model.js')
     assert 'no-store' not in static.headers.get('Cache-Control', '')
 
@@ -370,3 +372,15 @@ def test_forbidden_and_missing_pages_are_branded_but_apis_unchanged(app, client)
     assert missing.status_code == 404 and 'data-i18n="errors.notFoundTitle"' in missing.get_data(as_text=True)
     api = client.get('/admin/api/users')
     assert api.status_code == 403 and 'errors.forbiddenTitle' not in api.get_data(as_text=True)
+
+
+def test_templates_contain_no_inline_script_the_policy_would_block():
+    import re
+    from pathlib import Path
+    inline_handler = re.compile(r'<[^>]*\son[a-z]+\s*=', re.IGNORECASE)
+    script_tag = re.compile(r'<script\b([^>]*)>', re.IGNORECASE)
+    for template in Path('templates').glob('*.html'):
+        source = template.read_text(encoding='utf-8')
+        assert not inline_handler.search(source), template.name
+        for attributes in script_tag.findall(source):
+            assert 'src=' in attributes or 'type="application/json"' in attributes, (template.name, attributes)

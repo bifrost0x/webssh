@@ -881,8 +881,12 @@ def _restore_archive(archive, data_dir, *, include_remote_credentials):
         manifest.format_version,
         tuple(
             item for item in manifest.files
-            if PurePosixPath(item.path).parts[0]
-            not in _RESTORE_DISCARDED_TOP_LEVEL_DIRECTORIES
+            # Exports never contain runtime logs or temporary files. An archive
+            # that does was edited, and must not replace the audit trail. Case
+            # and trailing dots are ignored like in verify_backup, because
+            # Windows and macOS file systems map "LOGS." onto "logs".
+            if PurePosixPath(item.path).parts[0].casefold().rstrip(' .')
+            not in _BACKUP_EXCLUDED_TOP_LEVEL_DIRECTORIES
             and (
                 include_remote_credentials
                 or not _excluded_remote_credential_path(item.path)
