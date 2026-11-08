@@ -34,12 +34,12 @@
                 <form id="runbookForm"><label for="runbookName" data-auto-i18n="runbookName">Runbook name</label><input id="runbookName" class="form-control" required maxlength="128" autocomplete="off">
                     <div class="automation-builder"><div class="automation-step-list"><div class="automation-section-heading"><h3 data-auto-i18n="steps">Steps</h3><button type="button" id="addStep" class="btn btn-secondary" data-auto-i18n="addStep">Add step</button></div>
 
-                    <details class="automation-source-picker" id="editorLibrary">
- <summary id="editorSourceTitle" data-auto-i18n="editorSourceTitle">Add from library</summary>
+                    <section class="automation-source-picker" id="editorLibrary" aria-labelledby="editorSourceTitle">
+ <h4 id="editorSourceTitle" class="automation-source-title" data-auto-i18n="editorSourceTitle">Add from library</h4>
  <div class="automation-source-controls"><label for="editorSource" data-auto-i18n="editorSourceLabel">Commands, command sets and templates</label><select id="editorSource" class="form-control"></select></div>
  <div id="editorSourcePreview" class="automation-source-preview" aria-live="polite"></div>
  <button id="addEditorSource" type="button" class="btn btn-secondary" data-auto-i18n="editorSourceAdd">Add steps</button>
-</details><div id="runbookSteps"></div></div><section class="automation-command-editor" aria-labelledby="activeStepTitle"><h3 id="activeStepTitle"></h3><p class="automation-hint" data-auto-i18n="stepHint">Each step uses a separate shell. Use complete commands; shell state is not shared. Never put passwords or tokens in commands.</p><div id="activeStepEditor"></div></section></div>
+</section><div id="runbookSteps"></div></div><section class="automation-command-editor" aria-labelledby="activeStepTitle"><h3 id="activeStepTitle"></h3><p class="automation-hint" data-auto-i18n="stepHint">Each step uses a separate shell. Use complete commands; shell state is not shared. Never put passwords or tokens in commands.</p><div id="activeStepEditor"></div></section></div>
                     <label class="automation-check"><input type="checkbox" id="stopOnError" checked><span data-auto-i18n="stopOnError">Stop the run after the first host with an error</span></label>
                     <div class="automation-actions"><button type="submit" id="saveRunbook" class="btn btn-secondary" data-auto-i18n="save">Save runbook</button><span id="saveState" class="automation-hint" role="status"></span></div>
                 </form>

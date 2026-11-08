@@ -46,7 +46,7 @@ test('command library copies are independent and schedule review uses exact targ
  await page.route('**/api/automation/runs',route=>route.fulfill({json:{runs:[]}}));
  await page.goto('/automation');await page.locator('[data-auto-tab=runbooks]').click();
  await page.evaluate(()=>{window.CommandLibrary={commands:[{id:'disk',name:'Disk',command:'df',parameters:'-hP'}]};window.WebSSHSecurityUI.createAccountStepUpClient=()=>({authorize:async()=>({grant:'test'}),header:()=>({'X-Test-Grant':'yes'})});});
- await page.evaluate(()=>window.dispatchEvent(new Event('languageChanged')));await page.locator('#editorSourceTitle').click();
+ await page.evaluate(()=>window.dispatchEvent(new Event('languageChanged')));await expect(page.locator('#editorSource')).toBeVisible();
  await page.locator('#editorSource').selectOption('command:disk');await page.locator('#addEditorSource').click();
  await expect(page.locator('#promptInput')).toHaveValue('-hP');await page.locator('#promptForm button[type="submit"]').click();
  await expect(page.locator('#automationStepDetail textarea')).toHaveValue('df -hP');

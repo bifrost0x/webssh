@@ -13,7 +13,8 @@ test('editor adds commands, sets and templates without replacing the draft or ex
  const writes=[];page.on('request',r=>{if(r.method()!=='GET'&&r.url().includes('/api/automation/'))writes.push(r.url());});
  await page.locator('#newRunbook').click();
  await page.locator('#runbookName').fill('Preserve my draft');
- await page.locator('#editorSourceTitle').click();
+ // The library picker is part of the editor, not hidden behind a disclosure.
+ await expect(page.locator('#editorSource')).toBeVisible();
  await page.locator('#editorSource').selectOption('command:identity');
  await expect(page.locator('#editorSourcePreview code')).toHaveText('id');
  await page.locator('#addEditorSource').click();
@@ -72,8 +73,9 @@ test('compact editor has a clear sequence and reachable library on small screens
  await login(page,'e2e_admin',{workspace:false});await page.goto('/automation');await page.locator('#newRunbook').click();
  for(const width of [390,1440,3440]){
   await page.setViewportSize({width,height:900});await page.locator('#runbookName').scrollIntoViewIfNeeded();
-  await expect(page.locator('#editorSource')).toBeHidden();
+  // The library picker is open on every width, not folded away.
   await expect(page.locator('#editorSourceTitle')).toBeVisible();
+  await expect(page.locator('#editorSource')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:info.outputPath('compact-editor-'+width+'.png')});
  }

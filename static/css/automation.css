@@ -478,9 +478,9 @@ body[data-theme="paper"] [data-native-automation] { color-scheme: light; }
 }
 @media(prefers-reduced-motion:reduce) { [data-native-automation] .automation-view-switch button { transition: none; } }
 /* The library belongs to the sequence, not to a second full-width form. */
-.automation-source-picker { margin: 0 0 16px; padding: 0; border-block: 1px solid var(--ws2-border); }
-.automation-source-picker summary { padding: 12px 0; color: var(--ws2-accent); cursor: pointer; font-weight: 600; }
-.automation-source-picker summary:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 2px; }
+/* Always open: adding from the library is a main way to build a runbook. */
+.automation-source-picker { margin: 0 0 16px; padding: 0 0 16px; border-block: 1px solid var(--ws2-border); }
+.automation-source-title { margin: 0; padding: 12px 0 0; color: var(--ws2-text); font-size: 14px; font-weight: 600; }
 .automation-source-controls label { display: block; margin: 4px 0 8px; font-size: 13px; }
 .automation-source-controls select { width: 100%; min-width: 0; }
 .automation-source-preview { max-height: 240px; overflow: auto; margin-top: 12px; }
