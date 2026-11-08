@@ -126,6 +126,13 @@ thirteen releases, 205 merged PR mappings and 28 implementation-linked issues.
 immutable image identity, SBOM/provenance verification and the resolved browser
 CI timeout. Historical backfill snapshots remain unchanged.
 
+Published on **2026-11-08**: [v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) adds 5 first-included PRs and
+one implementation-linked issue (#312 through #313). The manifest now contains
+fourteen releases, 210 merged PR mappings and 29 implementation-linked issues.
+[Tag CI and native image publication](https://github.com/bifrost0x/webssh/actions/runs/42480130060) passed; the release notes record
+immutable image identity and SBOM/provenance verification. Historical backfill
+snapshots remain unchanged.
+
 For historical backfill:
 
 1. Read all existing native milestones before creating anything; reuse matching versions

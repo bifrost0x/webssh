@@ -55,6 +55,15 @@ the production file removes those previously implicit limits on recreation.
 Existing image-only upgrades do not change container settings. Review the merged
 configuration before recreating containers; keep data and recovery volumes intact.
 
+## v3.0.0 compatibility
+
+The [3.0 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v3.0.0.md)
+cover the published changes and changed defaults. Use `ghcr.io/bifrost0x/webssh:3.0.0`
+or the verified immutable digest in those notes. Existing Compose files from 2.7
+keep working unchanged; see the [version 3 guide](https://github.com/bifrost0x/webssh/blob/main/docs/webssh-3.md)
+for configuration ownership during upgrades. Keep the 2.7 image and the complete
+pre-upgrade volumes for rollback; do not assume 2.7 can open a database already used by 3.0.
+
 ## v2.7.0 compatibility
 
 The [2.7 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v2.7.0.md)
