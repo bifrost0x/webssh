@@ -4,10 +4,13 @@
 #connectionOverview.od {
     --od-radius: 16px;
     --od-gap: 20px;
-    --od-ready: var(--ws2-success);
+    /* Host states: ready in the theme accent, an open session in green.
+       Success (all clear, finished runs) keeps its own green. */
+    --od-ready: var(--ws2-accent);
     --od-action: var(--ws2-warning);
     --od-danger: var(--ws2-danger);
-    --od-live: var(--ws2-accent);
+    --od-live: var(--ws2-success);
+    --od-success: var(--ws2-success);
     --od-muted: var(--ws2-text-secondary);
     display: grid;
     gap: var(--od-gap);
@@ -103,7 +106,7 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-filter-chip .material-icons { font-size: 16px; }
 .od-filter-chip:hover { background: color-mix(in srgb, var(--ws2-accent) 20%, transparent); }
 .od-filter-chip:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 2px; }
-.od-status[data-tone="success"] { --od-tone: var(--od-ready); }
+.od-status[data-tone="success"] { --od-tone: var(--od-success); }
 .od-status[data-tone="warning"] { --od-tone: var(--od-action); }
 .od-status[data-tone="danger"] { --od-tone: var(--od-danger); }
 .od-status-dot { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--od-tone, var(--od-muted)); }
@@ -332,14 +335,14 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-dismiss .material-icons { font-size: 18px; }
 .od-all-clear { display: flex; align-items: center; gap: 12px; padding: 6px 4px; color: var(--ws2-text); font-size: 14px; }
 .od-all-clear[hidden] { display: none; }
-.od-all-clear-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%; background: color-mix(in srgb, var(--od-ready) 18%, transparent); color: var(--od-ready); }
+.od-all-clear-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%; background: color-mix(in srgb, var(--od-success) 18%, transparent); color: var(--od-success); }
 .od-all-clear-mark .material-icons { font-size: 20px; }
 .od-attention-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 10px 0 0; color: var(--od-muted); font-size: 12px; }
 .od-attention-foot[hidden] { display: none; }
 .od-attention-foot .od-link { margin-left: 0; font-size: 12px; }
 .od-error { margin: 8px 0 0; color: var(--od-danger); font-size: 13px; }
 .od-error[hidden] { display: none; }
-.od-attention[data-clear="true"] { border-color: var(--ws2-border); background: linear-gradient(180deg, color-mix(in srgb, var(--od-ready) 6%, var(--ws2-surface)), var(--ws2-surface) 120px); }
+.od-attention[data-clear="true"] { border-color: var(--ws2-border); background: linear-gradient(180deg, color-mix(in srgb, var(--od-success) 6%, var(--ws2-surface)), var(--ws2-surface) 120px); }
 .od-host-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
 .od-host {
     display: grid;
@@ -422,13 +425,13 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-bar { display: flex; align-items: flex-end; min-width: 0; border-radius: 6px; background: color-mix(in srgb, var(--ws2-border) 45%, transparent); }
 .od-bar-stack { display: flex; flex-direction: column; gap: 2px; width: 100%; height: var(--od-fill, 0%); transform-origin: 50% 100%; }
 .od-bar-value { flex: var(--od-count, 1) 1 0; min-height: 4px; border-radius: 5px; }
-.od-bar-value[data-kind="succeeded"] { background: linear-gradient(180deg, color-mix(in srgb, var(--od-ready) 80%, #fff), var(--od-ready)); }
+.od-bar-value[data-kind="succeeded"] { background: linear-gradient(180deg, color-mix(in srgb, var(--od-success) 80%, #fff), var(--od-success)); }
 .od-bar-value[data-kind="failed"] { background: var(--od-danger); }
 .od-bar-value[data-kind="other"] { background: var(--od-action); }
 .od-chart-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--ws2-text-secondary); }
 .od-chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .od-chart-legend strong { color: var(--ws2-text); font-weight: 600; }
-.od-legend-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--od-ready); }
+.od-legend-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--od-success); }
 .od-chart-legend [data-kind="failed"] .od-legend-swatch { background: var(--od-danger); }
 .od-chart-legend [data-kind="other"] .od-legend-swatch { background: var(--od-action); }
 .od-chart-axis { display: flex; justify-content: space-between; margin-top: 8px; color: var(--od-muted); font-size: 12px; }
@@ -445,7 +448,7 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-event-marker { z-index: 1; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--ws2-canvas); border: 1px solid var(--ws2-border); }
 .od-event-marker .material-icons { font-size: 17px; color: var(--od-muted); }
 .od-event[data-kind="session"] .od-event-marker .material-icons { color: var(--od-live); }
-.od-event[data-kind="run-succeeded"] .od-event-marker .material-icons { color: var(--od-ready); }
+.od-event[data-kind="run-succeeded"] .od-event-marker .material-icons { color: var(--od-success); }
 .od-event[data-kind="run-failed"] .od-event-marker .material-icons { color: var(--od-danger); }
 .od-event-text { min-width: 0; overflow-wrap: anywhere; }
 .od-event-time { color: var(--od-muted); font-size: 12px; white-space: nowrap; }
