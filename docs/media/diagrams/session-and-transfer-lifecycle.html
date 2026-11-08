@@ -4,140 +4,135 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>WebSSH session and transfer lifecycle</title>
-  <style>html,body{margin:0;background:#f4f7fb}svg{display:block;width:100%;height:auto}</style>
+  <style>
+    html, body { margin: 0; background: #091012; }
+    svg { display: block; width: 100%; height: auto; }
+  </style>
 </head>
 <body>
 <!--
 Source brief
 - Verified from: app/socket_events.py, app/socket_capacity.py, app/ssh_manager.py,
   app/paramiko_channels.py, app/transfer_routes.py, app/transfer_manager.py,
-  app/binary_transfer.py, app/runtime_lifecycle.py, app/sftp_handler.py.
+  app/binary_transfer.py, app/runtime_lifecycle.py, app/sftp_handler.py,
+  app/network_policy.py.
 - Type: architecture with two ordered lifecycle bands.
-- Claim: terminal data uses authenticated Socket.IO control and a process-local
-  SSH session. Browser uploads/downloads use user-bound single-use HTTP tokens
-  and bounded streaming; server-to-server copies use a bounded background job.
-  File bodies do not use Socket.IO.
+- Claim: terminal data uses authenticated, same-origin Socket.IO control and a
+  process-local SSH session. Browser uploads/downloads use user-bound single-use
+  HTTP tokens and bounded streaming; server-to-server copies use a bounded
+  background job. File bodies do not use Socket.IO.
 - Omitted: individual event names, numeric defaults, preview/editor operations.
+- Colors follow the arctic-ice theme used by the README captures and logo.
+- Font note: WebSSH's named Sora and IBM Plex Mono fonts are not vendored;
+  the portable diagram uses Segoe UI and Cascadia Mono fallbacks.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="session-transfer-title session-transfer-desc">
-  <title id="session-transfer-title">WebSSH session and transfer lifecycle</title>
-  <desc id="session-transfer-desc">Architecture showing realtime terminal traffic through authenticated Socket.IO and process-local SSH state. Browser uploads and downloads use owned transfer records, single-use HTTP tokens, and bounded streams; server-to-server copies branch to a bounded background job without a browser HTTP token.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="session-and-transfer-lifecycle-title session-and-transfer-lifecycle-desc">
+  <title id="session-and-transfer-lifecycle-title">WebSSH session and transfer lifecycle</title>
+  <desc id="session-and-transfer-lifecycle-desc">Architecture showing realtime terminal traffic through an authenticated, same-origin Socket.IO connection and process-local SSH state. Browser uploads and downloads use owned transfer records, single-use HTTP tokens and bounded streams; server-to-server copies branch to a bounded background job without a browser HTTP token. File bodies never use Socket.IO.</desc>
   <defs>
     <style>
-      .title{font:700 32px "Segoe UI",Arial,sans-serif;fill:#15283a}.subtitle{font:16px "Segoe UI",Arial,sans-serif;fill:#52677b}.brand{font:700 20px "Segoe UI",Arial,sans-serif;fill:#245f9e}.band{fill:rgba(36,95,158,.025);stroke:#afc1d2;stroke-width:1.2}.band-label{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;fill:#52677b}.node{fill:#fff;stroke:#3e5368;stroke-width:1.2}.focal{fill:#eaf2fb;stroke:#245f9e;stroke-width:2}.store{fill:#e8eef5;stroke:#52677b;stroke-width:1.2}.node-title{font:600 16px "Segoe UI",Arial,sans-serif;fill:#15283a}.node-sub{font:11px "Cascadia Mono",Consolas,monospace;fill:#52677b}.tag{font:600 8px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;fill:#245f9e}.flow{fill:none;stroke:#52677b;stroke-width:2;marker-end:url(#lifecycle-arrow)}.accent{fill:none;stroke:#245f9e;stroke-width:2.4;marker-end:url(#lifecycle-arrow-link)}.passive{fill:none;stroke:#818c9b;stroke-width:1.6;stroke-dasharray:8 8;marker-end:url(#lifecycle-arrow)}.blocked{fill:none;stroke:#b43f3f;stroke-width:2;stroke-dasharray:8 8}.label{font:600 11px "Cascadia Mono",Consolas,monospace;letter-spacing:.06em;fill:#52677b}.legend{font:12px "Segoe UI",Arial,sans-serif;fill:#52677b}.source{font:11px "Cascadia Mono",Consolas,monospace;fill:#818c9b}
+      .title{font:700 32px "Segoe UI Variable Display","Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .subtitle{font:400 17px "Segoe UI",Arial,sans-serif;fill:#adc0c4}
+      .brand{font:700 26px "Segoe UI Variable Display","Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .zone{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:2px;fill:#80969b}
+      .eyebrow{font:600 10px "Cascadia Mono",Consolas,monospace;letter-spacing:1.5px}
+      .node{font:600 18px "Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .node-s{font:600 16px "Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .meta{font:400 12.5px "Cascadia Mono",Consolas,monospace;fill:#adc0c4}
+      .label{font:600 11px "Cascadia Mono",Consolas,monospace;letter-spacing:1px}
+      .note{font:400 13px "Segoe UI",Arial,sans-serif;fill:#adc0c4}
+      .legend{font:400 14px "Segoe UI",Arial,sans-serif;fill:#adc0c4}
+      .foot{font:400 13px "Cascadia Mono",Consolas,monospace;fill:#80969b}
     </style>
-    <marker id="lifecycle-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#52677b"/></marker>
-    <marker id="lifecycle-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#245f9e"/></marker>
+    <marker id="arrow-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#48a3b1"/></marker><marker id="arrow-soft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#829da4"/></marker><marker id="arrow-opt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#80969b"/></marker><marker id="arrow-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#d4ad61"/></marker>
   </defs>
-
-  <rect width="1440" height="900" fill="#f4f7fb"/>
-  <rect x="0" y="0" width="16" height="900" fill="#245f9e"/>
-  <text class="title" x="56" y="64">Session and transfer lifecycle</text>
-  <text class="subtitle" x="56" y="96">Realtime control and bulk file bodies take deliberately different paths</text>
-  <text class="brand" x="1384" y="64" text-anchor="end">WebSSH</text>
-
-  <rect class="band" x="48" y="148" width="1344" height="248" rx="8"/>
-  <rect x="72" y="140" width="224" height="24" fill="#f4f7fb"/>
-  <text class="band-label" x="80" y="156">REALTIME SSH SESSION</text>
-  <rect class="band" x="48" y="488" width="1344" height="276" rx="8"/>
-  <rect x="72" y="480" width="184" height="24" fill="#f4f7fb"/>
-  <text class="band-label" x="80" y="496">BULK TRANSFER</text>
-
-  <!-- Realtime connectors -->
-  <line class="flow" x1="288" y1="276" x2="360" y2="276"/>
-  <line class="accent" x1="576" y1="276" x2="680" y2="276"/>
-  <line class="accent" x1="920" y1="276" x2="1112" y2="276"/>
-  <rect x="964" y="244" width="104" height="16" fill="#f4f7fb"/>
-  <text class="label" x="1016" y="256" text-anchor="middle">TERMINAL I/O</text>
-
-  <!-- Ownership link from the live SSH state to transfer control. -->
-  <path class="passive" d="M 800 332 V 452 Q 800 460 792 460 H 440 Q 432 460 432 468 V 568"/>
-  <rect x="584" y="428" width="120" height="16" fill="#f4f7fb"/>
-  <text class="label" x="644" y="440" text-anchor="middle">OWNED SESSION</text>
-
-  <!-- Browser transfer path: control record, one-use token, HTTP body. -->
-  <path class="flow" d="M 272 560 H 304 Q 312 560 312 568 V 600 Q 312 608 320 608 H 336"/>
-  <path class="flow" d="M 528 604 H 560 Q 568 604 568 596 V 568 Q 568 560 576 560 H 592"/>
-  <line class="accent" x1="784" y1="560" x2="848" y2="560"/>
-  <path class="accent" d="M 1040 560 H 1080 Q 1088 560 1088 568 V 600 Q 1088 608 1096 608 H 1120"/>
-
-  <!-- Server-to-server path: the control record starts a bounded job. -->
-  <path class="flow" d="M 272 696 H 304 Q 312 696 312 688 V 656 Q 312 648 320 648 H 336"/>
-  <path class="accent" d="M 528 644 H 664 Q 672 644 672 652 V 688 Q 672 696 680 696 H 720"/>
-  <path class="accent" d="M 976 696 H 1080 Q 1088 696 1088 688 V 656 Q 1088 648 1096 648 H 1120"/>
-
-  <!-- Explicitly blocked file-body path into Socket.IO. -->
-  <path class="blocked" d="M 172 520 V 444 Q 172 436 180 436 H 468 V 360"/>
-  <line x1="456" y1="364" x2="480" y2="348" stroke="#b43f3f" stroke-width="3"/>
-  <line x1="456" y1="348" x2="480" y2="364" stroke="#b43f3f" stroke-width="3"/>
-  <rect x="248" y="404" width="232" height="16" fill="#f4f7fb"/>
-  <text class="label" x="364" y="416" text-anchor="middle" fill="#b43f3f">NO FILE BODY OVER SOCKET.IO</text>
-
-  <!-- Nodes: realtime -->
-  <rect class="node" x="72" y="220" width="216" height="112" rx="8"/>
-  <text class="tag" x="88" y="240">BROWSER</text>
-  <text class="node-title" x="180" y="276" text-anchor="middle">Terminal client</text>
-  <text class="node-sub" x="180" y="300" text-anchor="middle">input · resize · output</text>
-
-  <rect class="node" x="360" y="220" width="216" height="112" rx="8"/>
-  <text class="tag" x="376" y="240">ADMISSION</text>
-  <text class="node-title" x="468" y="276" text-anchor="middle">Authenticated Socket.IO</text>
-  <text class="node-sub" x="468" y="300" text-anchor="middle">login · generation · quota</text>
-
-  <rect class="focal" x="680" y="220" width="240" height="112" rx="8"/>
-  <text class="tag" x="696" y="240">PROCESS STATE</text>
-  <text class="node-title" x="800" y="276" text-anchor="middle">SSHSession + Paramiko</text>
-  <text class="node-sub" x="800" y="300" text-anchor="middle">owned channel · bounded reader</text>
-
-  <rect class="node" x="1112" y="220" width="240" height="112" rx="8"/>
-  <text class="tag" x="1128" y="240">REMOTE</text>
-  <text class="node-title" x="1232" y="276" text-anchor="middle">SSH target</text>
-  <text class="node-sub" x="1232" y="300" text-anchor="middle">host key · shell · SFTP</text>
-
-  <!-- Nodes: transfer -->
-  <rect class="node" x="72" y="520" width="200" height="80" rx="8"/>
-  <text class="tag" x="88" y="540">BROWSER</text>
-  <text class="node-title" x="172" y="568" text-anchor="middle">Upload / download</text>
-  <text class="node-sub" x="172" y="588" text-anchor="middle">browser file body</text>
-
-  <rect class="node" x="72" y="656" width="200" height="80" rx="8"/>
-  <text class="tag" x="88" y="676">CONTROL</text>
-  <text class="node-title" x="172" y="704" text-anchor="middle">Server-to-server copy</text>
-  <text class="node-sub" x="172" y="724" text-anchor="middle">owned source + destination</text>
-
-  <rect class="store" x="336" y="568" width="192" height="112" rx="8"/>
-  <text class="tag" x="352" y="588">OWNERSHIP</text>
-  <text class="node-title" x="432" y="624" text-anchor="middle">Transfer record</text>
-  <text class="node-sub" x="432" y="648" text-anchor="middle">quota · progress · cancel</text>
-
-  <rect class="node" x="592" y="520" width="192" height="80" rx="8"/>
-  <text class="tag" x="608" y="540">BROWSER TOKEN</text>
-  <text class="node-title" x="688" y="568" text-anchor="middle">Single-use HTTP token</text>
-  <text class="node-sub" x="688" y="588" text-anchor="middle">user-bound · short-lived</text>
-
-  <rect class="focal" x="848" y="520" width="192" height="80" rx="8"/>
-  <text class="tag" x="864" y="540">BODY</text>
-  <text class="node-title" x="944" y="568" text-anchor="middle">Bounded HTTP stream</text>
-  <text class="node-sub" x="944" y="588" text-anchor="middle">upload · download · archive</text>
-
-  <rect class="focal" x="720" y="656" width="256" height="80" rx="8"/>
-  <text class="tag" x="736" y="676">BACKGROUND</text>
-  <text class="node-title" x="848" y="704" text-anchor="middle">Bounded cancellable job</text>
-  <text class="node-sub" x="848" y="724" text-anchor="middle">no browser HTTP token</text>
-
-  <rect class="node" x="1120" y="568" width="232" height="112" rx="8"/>
-  <text class="tag" x="1136" y="588">REMOTE</text>
-  <text class="node-title" x="1236" y="624" text-anchor="middle">Owned SFTP side</text>
-  <text class="node-sub" x="1236" y="648" text-anchor="middle">source or destination</text>
-
-  <line x1="48" y1="812" x2="1392" y2="812" stroke="#afc1d2" stroke-width="1"/>
-  <line x1="64" y1="844" x2="96" y2="844" stroke="#245f9e" stroke-width="2.4"/>
-  <text class="legend" x="108" y="848">data path</text>
-  <line x1="248" y1="844" x2="280" y2="844" stroke="#818c9b" stroke-width="1.6" stroke-dasharray="8 8"/>
-  <text class="legend" x="292" y="848">ownership reference</text>
-  <line x1="504" y1="844" x2="536" y2="844" stroke="#b43f3f" stroke-width="2" stroke-dasharray="8 8"/>
-  <text class="legend" x="548" y="848">forbidden transport</text>
-  <text class="source" x="1384" y="848" text-anchor="end">WebSSH 3 candidate</text>
+  <rect width="1440" height="900" fill="#091012"/>
+  <text class="title" x="56" y="78">Session and transfer lifecycle</text>
+  <text class="subtitle" x="56" y="110">Realtime control and bulk file bodies take deliberately different paths</text>
+  <g transform="translate(1222 50) scale(0.36)"><rect x="6" y="6" width="116" height="116" rx="11" fill="#091012" stroke="#48a3b1" stroke-width="6"/><path d="m34 35 28 28-28 28" stroke="#48a3b1" stroke-width="8" stroke-linecap="square" fill="none"/><path d="M70 92h29" stroke="#48a3b1" stroke-width="8"/></g>
+  <text class="brand" x="1274" y="83">WebSSH</text>
+  <rect x="40" y="160" width="1360" height="220" rx="14" fill="#0d171a" stroke="#2b4248" stroke-width="1.5" stroke-dasharray="7 7"/>
+  <text class="zone" x="60" y="190">REALTIME SSH SESSION</text>
+  <rect x="40" y="430" width="1360" height="390" rx="14" fill="#0d171a" stroke="#2b4248" stroke-width="1.5" stroke-dasharray="7 7"/>
+  <text class="zone" x="60" y="460">BULK TRANSFER</text>
+  <!-- Realtime nodes -->
+  <rect x="70" y="220" width="250" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="88" y="246" fill="#48a3b1">BROWSER</text>
+  <text class="node" x="195" y="274" text-anchor="middle">Terminal client</text>
+  <text class="meta" x="195" y="298" text-anchor="middle">input · resize</text>
+  <text class="meta" x="195" y="318" text-anchor="middle">output</text>
+  <rect x="380" y="220" width="280" height="118" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="eyebrow" x="398" y="246" fill="#48a3b1">ADMISSION</text>
+  <text class="node" x="520" y="274" text-anchor="middle">Authenticated Socket.IO</text>
+  <text class="meta" x="520" y="298" text-anchor="middle">login · same origin</text>
+  <text class="meta" x="520" y="318" text-anchor="middle">generation · quota</text>
+  <rect x="720" y="220" width="300" height="118" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="eyebrow" x="738" y="246" fill="#48a3b1">PROCESS STATE</text>
+  <text class="node" x="870" y="274" text-anchor="middle">SSHSession + Paramiko</text>
+  <text class="meta" x="870" y="298" text-anchor="middle">owned channel</text>
+  <text class="meta" x="870" y="318" text-anchor="middle">bounded reader</text>
+  <rect x="1100" y="220" width="270" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="1118" y="246" fill="#48a3b1">REMOTE</text>
+  <text class="node" x="1235" y="274" text-anchor="middle">SSH target</text>
+  <text class="meta" x="1235" y="298" text-anchor="middle">host key · shell · SFTP</text>
+  <text class="meta" x="1235" y="318" text-anchor="middle">via network policy</text>
+  <path d="M320 279 H380" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M660 279 H720" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M1020 279 H1100" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <text class="label" x="1060" y="266" fill="#48a3b1" text-anchor="middle">I/O</text>
+  <!-- Transfer nodes -->
+  <rect x="70" y="480" width="250" height="96" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="88" y="506" fill="#48a3b1">BROWSER</text>
+  <text class="node" x="195" y="534" text-anchor="middle">Upload / download</text>
+  <text class="meta" x="195" y="558" text-anchor="middle">browser file body</text>
+  <rect x="70" y="670" width="250" height="96" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="88" y="696" fill="#48a3b1">CONTROL</text>
+  <text class="node" x="195" y="724" text-anchor="middle">Server-to-server copy</text>
+  <text class="meta" x="195" y="748" text-anchor="middle">owned source + destination</text>
+  <rect x="380" y="560" width="250" height="118" rx="12" fill="#132024" stroke="#829da4" stroke-width="1.5"/>
+  <text class="eyebrow" x="398" y="586" fill="#48a3b1">OWNERSHIP</text>
+  <text class="node" x="505" y="614" text-anchor="middle">Transfer record</text>
+  <text class="meta" x="505" y="638" text-anchor="middle">quota · progress</text>
+  <text class="meta" x="505" y="658" text-anchor="middle">cancel</text>
+  <rect x="660" y="480" width="230" height="96" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="678" y="506" fill="#48a3b1">BROWSER TOKEN</text>
+  <text class="node" x="775" y="534" text-anchor="middle">Single-use HTTP token</text>
+  <text class="meta" x="775" y="558" text-anchor="middle">user-bound · short-lived</text>
+  <rect x="920" y="480" width="230" height="96" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="eyebrow" x="938" y="506" fill="#48a3b1">BODY</text>
+  <text class="node" x="1035" y="534" text-anchor="middle">Bounded HTTP stream</text>
+  <text class="meta" x="1035" y="558" text-anchor="middle">upload · download · archive</text>
+  <rect x="790" y="670" width="300" height="96" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="eyebrow" x="808" y="696" fill="#48a3b1">BACKGROUND</text>
+  <text class="node" x="940" y="724" text-anchor="middle">Bounded cancellable job</text>
+  <text class="meta" x="940" y="748" text-anchor="middle">no browser HTTP token</text>
+  <rect x="1190" y="560" width="190" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="1208" y="586" fill="#48a3b1">REMOTE</text>
+  <text class="node" x="1285" y="614" text-anchor="middle">Owned SFTP side</text>
+  <text class="meta" x="1285" y="638" text-anchor="middle">source or</text>
+  <text class="meta" x="1285" y="658" text-anchor="middle">destination</text>
+  <path d="M320 528 H350 V600 H380" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M320 718 H350 V640 H380" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M630 590 H645 V528 H660" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M890 528 H920" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M1150 528 H1170 V600 H1190" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M630 650 H710 V718 H790" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M1090 718 H1170 V640 H1190" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M870 338 V418 H505 V560" fill="none" stroke="#80969b" stroke-width="2" stroke-linejoin="round" stroke-dasharray="7 6" marker-end="url(#arrow-opt)"/>
+  <text class="label" x="884" y="404" fill="#80969b" text-anchor="start">OWNED SESSION</text>
+  <path d="M195 480 V400 H560 V366" fill="none" stroke="#db7376" stroke-width="2" stroke-linejoin="round" stroke-dasharray="7 6"/>
+  <path d="M550 350 l20 24 M570 350 l-20 24" stroke="#db7376" stroke-width="3" stroke-linecap="round"/>
+  <text class="label" x="378" y="392" fill="#db7376" text-anchor="middle">NO FILE BODY OVER SOCKET.IO</text>
+  <line x1="40" y1="836" x2="1400" y2="836" stroke="#2b4248" stroke-width="1"/>
+  <line x1="56" y1="865" x2="86" y2="865" stroke="#48a3b1" stroke-width="2.5"/>
+  <text class="legend" x="98" y="870">data path</text>
+  <line x1="235" y1="865" x2="265" y2="865" stroke="#80969b" stroke-width="2.5" stroke-dasharray="7 6"/>
+  <text class="legend" x="277" y="870">ownership reference</text>
+  <line x1="504" y1="865" x2="534" y2="865" stroke="#db7376" stroke-width="2.5" stroke-dasharray="7 6"/>
+  <text class="legend" x="546" y="870">forbidden transport</text>
+  <rect x="773" y="856" width="26" height="18" rx="4" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="legend" x="811" y="870">enforcement point</text>
+  <text class="foot" x="1384" y="870" text-anchor="end">WebSSH 3.0</text>
 </svg>
 </body>
 </html>
