@@ -423,6 +423,13 @@
             selectedConnectionProfileState = {missingJumpHost: unresolved};
             const select = document.getElementById('jumpHostSelect');
             if (select) select.value = jump ? requiredId : '';
+            // Setting the value in code fires no change event; apply the jump host's
+            // assigned saved password here, as choosing it by hand does.
+            if (jump?.auth_type === 'password') {
+                const jumpPassword = document.getElementById('jumpHostPasswordInput');
+                if (jumpPassword) jumpPassword.value = '';
+                window.CredentialPicker?.restore?.('jumpHostPasswordInput');
+            }
             manager?.updatePasswordVisibility();
             window.setConnectionAdvancedExpanded(Boolean(jump || unresolved));
             refreshConnectionProfileJumpResolution();
@@ -2107,6 +2114,36 @@
             focusTarget = document.getElementById('jumpHostPasswordInput');
         }
         window.requestAnimationFrame(() => focusTarget?.focus());
+        if (mode === 'password' || mode === 'jump-host-password') connectWithAssignedPasswords(profileId);
+    }
+
+    /**
+     * A saved host whose every password (target and jump host) has an assigned
+     * saved password connects without waiting for a click in the form. It goes
+     * through the normal form submission, so all checks there still apply.
+     */
+    async function connectWithAssignedPasswords(profileId) {
+        const picker = window.CredentialPicker;
+        const profile = ProfileManager.profiles.find(item => item.id === profileId);
+        if (!picker?.restore || !profile) return;
+        const jump = profile.jump_host_id ? window.JumpHostManager?.getById(profile.jump_host_id) : null;
+        const needsTarget = profile.auth_type === 'password';
+        const needsJump = jump?.auth_type === 'password';
+        if (!needsTarget && !needsJump) return;
+        try {
+            await Promise.all([
+                needsTarget ? picker.restore('passwordInput') : null,
+                needsJump ? picker.restore('jumpHostPasswordInput') : null,
+            ]);
+        } catch {
+            return;
+        }
+        const modal = document.getElementById('connectionModal');
+        if (!modal?.classList.contains('show') || ProfileManager.selectedProfileId !== profileId) return;
+        const targetReady = !needsTarget || (document.getElementById('authTypeSelect')?.value === 'saved-password'
+            && Boolean(document.getElementById('savedPasswordSelect')?.value));
+        const jumpReady = !needsJump || Boolean(picker.get('jumpHostPasswordInput'));
+        if (targetReady && jumpReady) document.getElementById('connectionForm')?.requestSubmit();
     }
 
     function clearPendingPane() {
