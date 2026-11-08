@@ -4,111 +4,115 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>WebSSH authentication assurance</title>
-  <style>html,body{margin:0;background:#f4f7fb}svg{display:block;width:100%;height:auto}</style>
+  <style>
+    html, body { margin: 0; background: #091012; }
+    svg { display: block; width: 100%; height: auto; }
+  </style>
 </head>
 <body>
 <!--
 Source brief
-- Verified from: app/auth_assurance.py, app/step_up.py,
-  app/step_up_routes.py, app/account_step_up_routes.py, app/totp_routes.py,
-  app/webauthn_routes.py, app/oidc_routes.py, app/ldap_routes.py.
+- Verified from: app/auth_assurance.py, app/step_up.py, app/step_up_routes.py,
+  app/account_step_up_routes.py, app/transport_security.py, app/totp_routes.py,
+  app/webauthn_routes.py, app/oidc_routes.py, app/ldap_routes.py, app/github_auth_routes.py.
 - Type: flowchart. Primary story: verified primary identity produces conservative
   assurance; unmet MFA continues through an owned factor; Recovery is restricted;
-  sensitive Admin mutations require a one-use action-bound grant.
-- Omitted: provider-specific claim values and individual route names.
+  sensitive administrator and account actions require a one-use action-bound grant,
+  reusing a recent strong sign-in when present. Saved passwords also require HTTPS.
+- Omitted: provider-specific claim values, the configurable reuse window and
+  individual route names.
+- Colors follow the arctic-ice theme used by the README captures and logo.
+- Font note: WebSSH's named Sora and IBM Plex Mono fonts are not vendored;
+  the portable diagram uses Segoe UI and Cascadia Mono fallbacks.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="authentication-assurance-title authentication-assurance-desc">
   <title id="authentication-assurance-title">WebSSH authentication assurance</title>
-  <desc id="authentication-assurance-desc">Flowchart showing conservative assurance after primary authentication, optional MFA and restricted Recovery, followed by action-bound administrator step-up for sensitive mutations.</desc>
+  <desc id="authentication-assurance-desc">Flowchart showing conservative assurance after primary authentication with password, LDAP, OIDC, GitHub or Passkey, optional MFA and a restricted Recovery session, followed by an action-bound step-up for sensitive administrator and account actions. A recent strong sign-in is reused; saved passwords also require HTTPS.</desc>
   <defs>
     <style>
-      .title{font:700 32px "Segoe UI",Arial,sans-serif;fill:#15283a}.subtitle{font:16px "Segoe UI",Arial,sans-serif;fill:#52677b}.brand{font:700 20px "Segoe UI",Arial,sans-serif;fill:#245f9e}.panel{fill:rgba(36,95,158,.025);stroke:#afc1d2;stroke-width:1.2}.panel-label{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;fill:#52677b}.node{fill:#fff;stroke:#3e5368;stroke-width:1.2}.focal{fill:#eaf2fb;stroke:#245f9e;stroke-width:2}.restricted{fill:#fff8e8;stroke:#8a6400;stroke-width:1.6}.decision{fill:#fff;stroke:#3e5368;stroke-width:1.4}.node-title{font:600 16px "Segoe UI",Arial,sans-serif;fill:#15283a}.node-sub{font:12px "Cascadia Mono",Consolas,monospace;fill:#52677b}.node-sub-small{font:11px "Cascadia Mono",Consolas,monospace;fill:#52677b}.tag{font:600 8px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;fill:#245f9e}.flow{fill:none;stroke:#52677b;stroke-width:2;marker-end:url(#auth-arrow)}.accent{fill:none;stroke:#245f9e;stroke-width:2.4;marker-end:url(#auth-arrow-link)}.passive{fill:none;stroke:#818c9b;stroke-width:1.6;stroke-dasharray:8 8;marker-end:url(#auth-arrow)}.label{font:600 11px "Cascadia Mono",Consolas,monospace;letter-spacing:.06em;fill:#52677b}.legend{font:12px "Segoe UI",Arial,sans-serif;fill:#52677b}.source{font:11px "Cascadia Mono",Consolas,monospace;fill:#818c9b}
+      .title{font:700 32px "Segoe UI Variable Display","Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .subtitle{font:400 17px "Segoe UI",Arial,sans-serif;fill:#adc0c4}
+      .brand{font:700 26px "Segoe UI Variable Display","Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .zone{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:2px;fill:#80969b}
+      .eyebrow{font:600 10px "Cascadia Mono",Consolas,monospace;letter-spacing:1.5px}
+      .node{font:600 18px "Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .node-s{font:600 16px "Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .meta{font:400 12.5px "Cascadia Mono",Consolas,monospace;fill:#adc0c4}
+      .label{font:600 11px "Cascadia Mono",Consolas,monospace;letter-spacing:1px}
+      .note{font:400 13px "Segoe UI",Arial,sans-serif;fill:#adc0c4}
+      .legend{font:400 14px "Segoe UI",Arial,sans-serif;fill:#adc0c4}
+      .foot{font:400 13px "Cascadia Mono",Consolas,monospace;fill:#80969b}
     </style>
-    <marker id="auth-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#52677b"/></marker>
-    <marker id="auth-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#245f9e"/></marker>
+    <marker id="arrow-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#48a3b1"/></marker><marker id="arrow-soft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#829da4"/></marker><marker id="arrow-opt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#80969b"/></marker><marker id="arrow-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#d4ad61"/></marker>
   </defs>
-
-  <rect width="1440" height="900" fill="#f4f7fb"/>
-  <rect x="0" y="0" width="16" height="900" fill="#245f9e"/>
-  <text class="title" x="56" y="64">Authentication assurance</text>
-  <text class="subtitle" x="56" y="96">Identity, optional MFA, Recovery, and one-use administrator authorization</text>
-  <text class="brand" x="1384" y="64" text-anchor="end">WebSSH</text>
-
-  <rect class="panel" x="48" y="136" width="816" height="636" rx="8"/>
-  <rect x="72" y="128" width="144" height="24" fill="#f4f7fb"/>
-  <text class="panel-label" x="80" y="144">SIGN-IN SESSION</text>
-  <rect class="panel" x="912" y="136" width="480" height="636" rx="8"/>
-  <rect x="936" y="128" width="176" height="24" fill="#f4f7fb"/>
-  <text class="panel-label" x="944" y="144">ADMIN STEP-UP</text>
-
-  <!-- Connectors -->
-  <line class="flow" x1="456" y1="228" x2="456" y2="268"/>
-  <line class="accent" x1="456" y1="364" x2="456" y2="404"/>
-  <line class="flow" x1="456" y1="500" x2="456" y2="520"/>
-
-  <path class="flow" d="M 336 596 H 248 Q 240 596 240 604 V 680"/>
-  <rect x="152" y="612" width="160" height="16" fill="#f4f7fb"/>
-  <text class="label" x="232" y="624" text-anchor="middle">NO · OR FACTOR PASSED</text>
-
-  <path class="flow" d="M 576 596 H 664 Q 672 596 672 604 V 680"/>
-  <rect x="600" y="612" width="80" height="16" fill="#f4f7fb"/>
-  <text class="label" x="640" y="624" text-anchor="middle">RECOVERY</text>
-
-  <line class="flow" x1="1120" y1="340" x2="1120" y2="396"/>
-  <line class="accent" x1="1120" y1="516" x2="1120" y2="572"/>
-
-  <!-- Login nodes -->
-  <rect class="node" x="336" y="164" width="240" height="64" rx="32"/>
-  <text class="node-title" x="456" y="204" text-anchor="middle">Sign-in attempt</text>
-
-  <rect class="node" x="296" y="268" width="320" height="96" rx="8"/>
-  <text class="tag" x="312" y="288">PRIMARY</text>
-  <text class="node-title" x="456" y="312" text-anchor="middle">Verify the selected identity</text>
-  <text class="node-sub" x="456" y="336" text-anchor="middle">password · LDAP · OIDC · Passkey</text>
-
-  <rect class="focal" x="296" y="404" width="320" height="96" rx="8"/>
-  <text class="tag" x="312" y="424">ASSURANCE</text>
-  <text class="node-title" x="456" y="448" text-anchor="middle">Derive conservative assurance</text>
-  <text class="node-sub" x="456" y="472" text-anchor="middle">unmapped evidence stays BASIC</text>
-
-  <polygon class="decision" points="456,520 576,596 456,672 336,596"/>
-  <text class="node-title" x="456" y="584" text-anchor="middle">Account MFA enabled</text>
-  <text class="node-title" x="456" y="608" text-anchor="middle">and still unmet?</text>
-  <text class="node-sub-small" x="456" y="632" text-anchor="middle">Passkey · TOTP · Recovery</text>
-
-  <rect class="node" x="240" y="680" width="240" height="80" rx="40"/>
-  <text class="node-title" x="360" y="716" text-anchor="middle">Normal session</text>
-  <text class="node-sub-small" x="360" y="740" text-anchor="middle">assurance stored server-side</text>
-
-  <rect class="restricted" x="552" y="680" width="240" height="80" rx="8"/>
-  <text class="node-title" x="672" y="716" text-anchor="middle">Restricted security session</text>
-  <text class="node-sub-small" x="672" y="740" text-anchor="middle">factor repair or MFA disable only</text>
-
-  <!-- Administrator nodes -->
-  <rect class="node" x="992" y="220" width="256" height="120" rx="8"/>
-  <text class="tag" x="1008" y="240">ADMIN</text>
-  <text class="node-title" x="1120" y="268" text-anchor="middle">Sensitive mutation</text>
-  <text class="node-sub-small" x="1120" y="292" text-anchor="middle">exact action · exact target</text>
-  <text class="node-sub-small" x="1120" y="312" text-anchor="middle">from the authenticated session</text>
-
-  <rect class="node" x="968" y="396" width="304" height="120" rx="8"/>
-  <text class="tag" x="984" y="416">GATE</text>
-  <text class="node-title" x="1120" y="444" text-anchor="middle">Fresh administrator step-up</text>
-  <text class="node-sub-small" x="1120" y="468" text-anchor="middle">password · LDAP · Passkey · TOTP</text>
-  <text class="node-sub-small" x="1120" y="488" text-anchor="middle">or sufficient OIDC reauthentication</text>
-
-  <rect class="focal" x="992" y="572" width="256" height="112" rx="8"/>
-  <text class="tag" x="1008" y="592">GRANT</text>
-  <text class="node-title" x="1120" y="620" text-anchor="middle">Authorized exact mutation</text>
-  <text class="node-sub-small" x="1120" y="644" text-anchor="middle">one use · max five minutes</text>
-  <text class="node-sub-small" x="1120" y="664" text-anchor="middle">never browser-persisted</text>
-
-  <line x1="48" y1="812" x2="1392" y2="812" stroke="#afc1d2" stroke-width="1"/>
-  <rect x="64" y="836" width="20" height="12" fill="#eaf2fb" stroke="#245f9e"/>
-  <text class="legend" x="96" y="848">assurance or authorization gate</text>
-  <rect x="376" y="836" width="20" height="12" fill="#fff8e8" stroke="#8a6400"/>
-  <text class="legend" x="408" y="848">restricted Recovery session</text>
-  <text class="source" x="1384" y="848" text-anchor="end">WebSSH 3 candidate</text>
+  <rect width="1440" height="900" fill="#091012"/>
+  <text class="title" x="56" y="78">Authentication assurance</text>
+  <text class="subtitle" x="56" y="110">Identity, optional MFA, Recovery and one-use step-up for sensitive actions</text>
+  <g transform="translate(1222 50) scale(0.36)"><rect x="6" y="6" width="116" height="116" rx="11" fill="#091012" stroke="#48a3b1" stroke-width="6"/><path d="m34 35 28 28-28 28" stroke="#48a3b1" stroke-width="8" stroke-linecap="square" fill="none"/><path d="M70 92h29" stroke="#48a3b1" stroke-width="8"/></g>
+  <text class="brand" x="1274" y="83">WebSSH</text>
+  <rect x="40" y="160" width="840" height="660" rx="14" fill="#0d171a" stroke="#2b4248" stroke-width="1.5" stroke-dasharray="7 7"/>
+  <text class="zone" x="60" y="190">SIGN-IN SESSION</text>
+  <rect x="920" y="160" width="480" height="660" rx="14" fill="#0d171a" stroke="#2b4248" stroke-width="1.5" stroke-dasharray="7 7"/>
+  <text class="zone" x="940" y="190">STEP-UP · ADMIN AND ACCOUNT</text>
+  <!-- Sign-in nodes -->
+  <rect x="300" y="196" width="240" height="52" rx="26" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="node" x="420" y="228" text-anchor="middle">Sign-in attempt</text>
+  <rect x="250" y="280" width="340" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="268" y="306" fill="#48a3b1">PRIMARY</text>
+  <text class="node" x="420" y="334" text-anchor="middle">Verify the chosen identity</text>
+  <text class="meta" x="420" y="358" text-anchor="middle">password · LDAP · OIDC</text>
+  <text class="meta" x="420" y="378" text-anchor="middle">GitHub · Passkey</text>
+  <rect x="250" y="432" width="340" height="92" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="eyebrow" x="268" y="458" fill="#48a3b1">ASSURANCE</text>
+  <text class="node" x="420" y="486" text-anchor="middle">Derive conservative assurance</text>
+  <text class="meta" x="420" y="510" text-anchor="middle">unmapped evidence stays BASIC</text>
+  <path d="M420 554 L590 610 L420 666 L250 610 Z" fill="#10191c" stroke="#829da4" stroke-width="1.5"/>
+  <text class="node-s" x="420" y="605" text-anchor="middle">MFA required</text>
+  <text class="node-s" x="420" y="627" text-anchor="middle">and still unmet?</text>
+  <rect x="60" y="712" width="290" height="96" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="78" y="738" fill="#48a3b1">SESSION</text>
+  <text class="node" x="205" y="766" text-anchor="middle">Normal session</text>
+  <text class="meta" x="205" y="790" text-anchor="middle">assurance stored server-side</text>
+  <rect x="490" y="712" width="300" height="96" rx="12" fill="#1d1a12" stroke="#d4ad61" stroke-width="2"/>
+  <text class="eyebrow" x="508" y="738" fill="#d4ad61">RECOVERY</text>
+  <text class="node" x="640" y="766" text-anchor="middle">Restricted security session</text>
+  <text class="meta" x="640" y="790" text-anchor="middle">factor repair or MFA disable</text>
+  <path d="M420 248 V280" fill="none" stroke="#829da4" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow-soft)"/>
+  <path d="M420 398 V432" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M420 524 V554" fill="none" stroke="#829da4" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow-soft)"/>
+  <path d="M250 610 H205 V712" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <text class="label" x="218" y="676" fill="#48a3b1" text-anchor="start">NO · OR PASSKEY / TOTP</text>
+  <path d="M590 610 H640 V712" fill="none" stroke="#d4ad61" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow-warn)"/>
+  <text class="label" x="652" y="676" fill="#d4ad61" text-anchor="start">RECOVERY CODE</text>
+  <!-- Step-up nodes -->
+  <rect x="960" y="214" width="400" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="978" y="240" fill="#48a3b1">ACTION</text>
+  <text class="node" x="1160" y="268" text-anchor="middle">Sensitive action</text>
+  <text class="meta" x="1160" y="292" text-anchor="middle">admin change · saved passwords</text>
+  <text class="meta" x="1160" y="312" text-anchor="middle">automation · MFA and passkeys</text>
+  <rect x="960" y="384" width="400" height="138" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="eyebrow" x="978" y="410" fill="#48a3b1">GATE</text>
+  <text class="node" x="1160" y="438" text-anchor="middle">Fresh step-up</text>
+  <text class="meta" x="1160" y="462" text-anchor="middle">recent strong sign-in is reused</text>
+  <text class="meta" x="1160" y="482" text-anchor="middle">else password · Passkey · TOTP</text>
+  <text class="meta" x="1160" y="502" text-anchor="middle">or OIDC reauthentication</text>
+  <rect x="960" y="574" width="400" height="118" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="eyebrow" x="978" y="600" fill="#48a3b1">GRANT</text>
+  <text class="node" x="1160" y="628" text-anchor="middle">One exact action authorized</text>
+  <text class="meta" x="1160" y="652" text-anchor="middle">one use · max five minutes</text>
+  <text class="meta" x="1160" y="672" text-anchor="middle">never stored in the browser</text>
+  <path d="M1160 332 V384" fill="none" stroke="#829da4" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow-soft)"/>
+  <path d="M1160 522 V574" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <text class="note" x="1160" y="740" text-anchor="middle">Saved passwords are unlocked only over HTTPS.</text>
+  <text class="note" x="1160" y="762" text-anchor="middle">Each grant is bound to the exact action and target.</text>
+  <line x1="40" y1="836" x2="1400" y2="836" stroke="#2b4248" stroke-width="1"/>
+  <rect x="56" y="856" width="26" height="18" rx="4" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="legend" x="94" y="870">assurance or authorization gate</text>
+  <rect x="429" y="856" width="26" height="18" rx="4" fill="#1d1a12" stroke="#d4ad61" stroke-width="2"/>
+  <text class="legend" x="467" y="870">restricted Recovery session</text>
+  <line x1="766" y1="865" x2="796" y2="865" stroke="#48a3b1" stroke-width="2.5"/>
+  <text class="legend" x="808" y="870">admitted path</text>
+  <text class="foot" x="1384" y="870" text-anchor="end">WebSSH 3.0</text>
 </svg>
 </body>
 </html>

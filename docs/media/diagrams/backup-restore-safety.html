@@ -4,7 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>WebSSH backup and restore safety</title>
-  <style>html,body{margin:0;background:#f4f7fb}svg{display:block;width:100%;height:auto}</style>
+  <style>
+    html, body { margin: 0; background: #091012; }
+    svg { display: block; width: 100%; height: auto; }
+  </style>
 </head>
 <body>
 <!--
@@ -16,120 +19,103 @@ Source brief
 - Type: flowchart with two ordered outcomes.
 - Claim: both operations require exact administrator authorization; online
   backup coordinates a consistent snapshot without maintenance mode. Restore
-  validates in a private, quota-bounded namespace before exact confirmation,
-  maintenance mode, and atomic activation.
+  stages in a private, quota-bounded namespace on durable recovery storage
+  (BACKUP_RECOVERY_DURABLE) and validates before exact confirmation, maintenance
+  mode and atomic activation.
 - Omitted: archive field names, endpoint names, and configurable quota values.
+- Colors follow the arctic-ice theme used by the README captures and logo.
+- Font note: WebSSH's named Sora and IBM Plex Mono fonts are not vendored;
+  the portable diagram uses Segoe UI and Cascadia Mono fallbacks.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="backup-restore-title backup-restore-desc">
-  <title id="backup-restore-title">WebSSH backup and restore safety</title>
-  <desc id="backup-restore-desc">Flowchart showing administrator step-up before backup or restore, consistent backup snapshots, private quota-bounded restore staging and validation, exact confirmation, maintenance mode, and atomic activation.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="backup-restore-safety-title backup-restore-safety-desc">
+  <title id="backup-restore-safety-title">WebSSH backup and restore safety</title>
+  <desc id="backup-restore-safety-desc">Flowchart showing administrator step-up before backup or restore, consistent online backup snapshots, private restore staging on durable recovery storage, validation and exact confirmation, then atomic activation.</desc>
   <defs>
     <style>
-      .title{font:700 32px "Segoe UI",Arial,sans-serif;fill:#15283a}.subtitle{font:16px "Segoe UI",Arial,sans-serif;fill:#52677b}.brand{font:700 20px "Segoe UI",Arial,sans-serif;fill:#245f9e}.band{fill:rgba(36,95,158,.025);stroke:#afc1d2;stroke-width:1.2}.band-label{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;fill:#52677b}.node{fill:#fff;stroke:#3e5368;stroke-width:1.2}.focal{fill:#eaf2fb;stroke:#245f9e;stroke-width:2}.store{fill:#e8eef5;stroke:#52677b;stroke-width:1.2}.decision{fill:#fff;stroke:#3e5368;stroke-width:1.4}.node-title{font:600 16px "Segoe UI",Arial,sans-serif;fill:#15283a}.node-sub{font:11px "Cascadia Mono",Consolas,monospace;fill:#52677b}.tag{font:600 8px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;fill:#245f9e}.flow{fill:none;stroke:#52677b;stroke-width:2;marker-end:url(#backup-arrow)}.accent{fill:none;stroke:#245f9e;stroke-width:2.4;marker-end:url(#backup-arrow-link)}.blocked{fill:none;stroke:#b43f3f;stroke-width:2;stroke-dasharray:8 8}.label{font:600 11px "Cascadia Mono",Consolas,monospace;letter-spacing:.06em;fill:#52677b}.legend{font:12px "Segoe UI",Arial,sans-serif;fill:#52677b}.source{font:11px "Cascadia Mono",Consolas,monospace;fill:#818c9b}
+      .title{font:700 32px "Segoe UI Variable Display","Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .subtitle{font:400 17px "Segoe UI",Arial,sans-serif;fill:#adc0c4}
+      .brand{font:700 26px "Segoe UI Variable Display","Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .zone{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:2px;fill:#80969b}
+      .eyebrow{font:600 10px "Cascadia Mono",Consolas,monospace;letter-spacing:1.5px}
+      .node{font:600 18px "Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .node-s{font:600 16px "Segoe UI",Arial,sans-serif;fill:#edf4f5}
+      .meta{font:400 12.5px "Cascadia Mono",Consolas,monospace;fill:#adc0c4}
+      .label{font:600 11px "Cascadia Mono",Consolas,monospace;letter-spacing:1px}
+      .note{font:400 13px "Segoe UI",Arial,sans-serif;fill:#adc0c4}
+      .legend{font:400 14px "Segoe UI",Arial,sans-serif;fill:#adc0c4}
+      .foot{font:400 13px "Cascadia Mono",Consolas,monospace;fill:#80969b}
     </style>
-    <marker id="backup-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#52677b"/></marker>
-    <marker id="backup-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#245f9e"/></marker>
+    <marker id="arrow-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#48a3b1"/></marker><marker id="arrow-soft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#829da4"/></marker><marker id="arrow-opt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#80969b"/></marker><marker id="arrow-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#d4ad61"/></marker>
   </defs>
-
-  <rect width="1440" height="900" fill="#f4f7fb"/>
-  <rect x="0" y="0" width="16" height="900" fill="#245f9e"/>
-  <text class="title" x="56" y="64">Backup and restore safety</text>
-  <text class="subtitle" x="56" y="96">Authorization, consistent snapshots, bounded staging, and atomic restore</text>
-  <text class="brand" x="1384" y="64" text-anchor="end">WebSSH</text>
-
-  <rect class="band" x="48" y="468" width="640" height="288" rx="8"/>
-  <rect x="72" y="460" width="104" height="24" fill="#f4f7fb"/>
-  <text class="band-label" x="80" y="476">BACKUP</text>
-  <rect class="band" x="736" y="468" width="656" height="288" rx="8"/>
-  <rect x="760" y="460" width="112" height="24" fill="#f4f7fb"/>
-  <text class="band-label" x="768" y="476">RESTORE</text>
-
-  <!-- Common authorization path -->
-  <line class="flow" x1="720" y1="216" x2="720" y2="252"/>
-  <line class="accent" x1="720" y1="348" x2="720" y2="368"/>
-
-  <!-- Branches -->
-  <path class="flow" d="M 600 420 H 156 Q 148 420 148 428 V 528"/>
-  <rect x="436" y="388" width="64" height="16" fill="#f4f7fb"/>
-  <text class="label" x="468" y="400" text-anchor="middle">BACKUP</text>
-  <path class="flow" d="M 840 420 H 936 Q 944 420 944 428 V 528"/>
-  <rect x="856" y="388" width="72" height="16" fill="#f4f7fb"/>
-  <text class="label" x="892" y="400" text-anchor="middle">RESTORE</text>
-
-  <!-- Backup sequence -->
-  <line class="flow" x1="224" y1="584" x2="264" y2="584"/>
-  <line class="accent" x1="440" y1="584" x2="480" y2="584"/>
-
-  <!-- Restore sequence -->
-  <line class="flow" x1="952" y1="584" x2="976" y2="584"/>
-  <line class="accent" x1="1168" y1="584" x2="1192" y2="584"/>
-
-  <!-- Unvalidated restore data cannot bypass validation and confirmation. -->
-  <path class="blocked" d="M 856 640 V 688 H 1176"/>
-  <line x1="1168" y1="676" x2="1184" y2="700" stroke="#b43f3f" stroke-width="3"/>
-  <line x1="1184" y1="676" x2="1168" y2="700" stroke="#b43f3f" stroke-width="3"/>
-  <rect x="912" y="656" width="216" height="16" fill="#f4f7fb"/>
-  <text class="label" x="1020" y="668" text-anchor="middle" fill="#b43f3f">UNVALIDATED BYPASS BLOCKED</text>
-
-  <!-- Common nodes -->
-  <rect class="node" x="600" y="152" width="240" height="64" rx="32"/>
-  <text class="node-title" x="720" y="192" text-anchor="middle">Administrator operation</text>
-
-  <rect class="focal" x="560" y="252" width="320" height="96" rx="8"/>
-  <text class="tag" x="576" y="272">AUTHORIZATION</text>
-  <text class="node-title" x="720" y="300" text-anchor="middle">Action-bound administrator step-up</text>
-  <text class="node-sub" x="720" y="324" text-anchor="middle">exact operation · exact target · one use</text>
-
-  <polygon class="decision" points="720,368 840,420 720,472 600,420"/>
-  <text class="node-title" x="720" y="416" text-anchor="middle">Backup or restore?</text>
-  <text class="node-sub" x="720" y="440" text-anchor="middle">explicit operator choice</text>
-
+  <rect width="1440" height="900" fill="#091012"/>
+  <text class="title" x="56" y="78">Backup and restore safety</text>
+  <text class="subtitle" x="56" y="110">Authorization, consistent snapshots, durable staging and atomic restore</text>
+  <g transform="translate(1222 50) scale(0.36)"><rect x="6" y="6" width="116" height="116" rx="11" fill="#091012" stroke="#48a3b1" stroke-width="6"/><path d="m34 35 28 28-28 28" stroke="#48a3b1" stroke-width="8" stroke-linecap="square" fill="none"/><path d="M70 92h29" stroke="#48a3b1" stroke-width="8"/></g>
+  <text class="brand" x="1274" y="83">WebSSH</text>
+  <rect x="580" y="170" width="280" height="56" rx="28" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="node" x="720" y="204" text-anchor="middle">Administrator operation</text>
+  <rect x="520" y="262" width="400" height="96" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="eyebrow" x="538" y="288" fill="#48a3b1">AUTHORIZATION</text>
+  <text class="node" x="720" y="316" text-anchor="middle">Action-bound administrator step-up</text>
+  <text class="meta" x="720" y="340" text-anchor="middle">exact operation · exact target · one use</text>
+  <path d="M720 226 V262" fill="none" stroke="#829da4" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow-soft)"/>
+  <path d="M720 358 V400 H360 V480" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M720 400 H1060 V480" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <text class="label" x="540" y="390" fill="#48a3b1" text-anchor="middle">BACKUP</text>
+  <text class="label" x="900" y="390" fill="#48a3b1" text-anchor="middle">RESTORE</text>
+  <text class="note" x="720" y="424" text-anchor="middle">explicit operator choice</text>
+  <rect x="40" y="480" width="640" height="330" rx="14" fill="#0d171a" stroke="#2b4248" stroke-width="1.5" stroke-dasharray="7 7"/>
+  <text class="zone" x="60" y="510">BACKUP</text>
+  <rect x="720" y="480" width="680" height="330" rx="14" fill="#0d171a" stroke="#2b4248" stroke-width="1.5" stroke-dasharray="7 7"/>
+  <text class="zone" x="740" y="510">RESTORE</text>
   <!-- Backup nodes -->
-  <rect class="node" x="72" y="528" width="152" height="112" rx="8"/>
-  <text class="tag" x="88" y="548">COORDINATE</text>
-  <text class="node-title" x="148" y="580" text-anchor="middle">Snapshot barrier</text>
-  <text class="node-sub" x="148" y="604" text-anchor="middle">coordinate writers</text>
-  <text class="node-sub" x="148" y="624" text-anchor="middle">service stays online</text>
-
-  <rect class="node" x="264" y="528" width="176" height="112" rx="8"/>
-  <text class="tag" x="280" y="548">SNAPSHOT</text>
-  <text class="node-title" x="352" y="580" text-anchor="middle">Database + user data</text>
-  <text class="node-sub" x="352" y="604" text-anchor="middle">consistent owned state</text>
-  <text class="node-sub" x="352" y="624" text-anchor="middle">export filters credentials</text>
-
-  <rect class="store" x="480" y="528" width="176" height="112" rx="8"/>
-  <text class="tag" x="496" y="548">ARCHIVE</text>
-  <text class="node-title" x="568" y="580" text-anchor="middle">Manifested backup</text>
-  <text class="node-sub" x="568" y="604" text-anchor="middle">passwords / keys omitted</text>
-  <text class="node-sub" x="568" y="624" text-anchor="middle">single-use download</text>
-
+  <rect x="56" y="560" width="186" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="74" y="586" fill="#48a3b1">COORDINATE</text>
+  <text class="node" x="149" y="614" text-anchor="middle">Snapshot barrier</text>
+  <text class="meta" x="149" y="638" text-anchor="middle">coordinate writers</text>
+  <text class="meta" x="149" y="658" text-anchor="middle">service stays online</text>
+  <rect x="262" y="560" width="196" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="280" y="586" fill="#48a3b1">SNAPSHOT</text>
+  <text class="node" x="360" y="614" text-anchor="middle">Database + user data</text>
+  <text class="meta" x="360" y="638" text-anchor="middle">consistent owned state</text>
+  <text class="meta" x="360" y="658" text-anchor="middle">credentials filtered</text>
+  <rect x="478" y="560" width="196" height="118" rx="12" fill="#132024" stroke="#829da4" stroke-width="1.5"/>
+  <text class="eyebrow" x="496" y="586" fill="#48a3b1">ARCHIVE</text>
+  <text class="node" x="576" y="614" text-anchor="middle">Manifested backup</text>
+  <text class="meta" x="576" y="638" text-anchor="middle">passwords / keys omitted</text>
+  <text class="meta" x="576" y="658" text-anchor="middle">single-use download</text>
+  <path d="M242 619 H262" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M458 619 H478" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <text class="note" x="360" y="740" text-anchor="middle">Saved passwords and SSH keys need a separate trusted recovery source.</text>
   <!-- Restore nodes -->
-  <rect class="node" x="760" y="528" width="192" height="112" rx="8"/>
-  <text class="tag" x="776" y="548">STAGE</text>
-  <text class="node-title" x="856" y="580" text-anchor="middle">Private staging area</text>
-  <text class="node-sub" x="856" y="604" text-anchor="middle">instance-specific · quota</text>
-  <text class="node-sub" x="856" y="624" text-anchor="middle">bounded upload</text>
-
-  <rect class="node" x="976" y="528" width="192" height="112" rx="8"/>
-  <text class="tag" x="992" y="548">VALIDATE</text>
-  <text class="node-title" x="1072" y="580" text-anchor="middle">Archive + confirmation</text>
-  <text class="node-sub" x="1072" y="604" text-anchor="middle">manifest · schema · paths</text>
-  <text class="node-sub" x="1072" y="624" text-anchor="middle">exact restore intent</text>
-
-  <rect class="focal" x="1192" y="528" width="168" height="112" rx="8"/>
-  <text class="tag" x="1208" y="548">ACTIVATE</text>
-  <text class="node-title" x="1276" y="580" text-anchor="middle">Atomic restore</text>
-  <text class="node-sub" x="1276" y="604" text-anchor="middle">maintenance mode</text>
-  <text class="node-sub" x="1276" y="624" text-anchor="middle">resume or restart</text>
-
-  <line x1="48" y1="812" x2="1392" y2="812" stroke="#afc1d2" stroke-width="1"/>
-  <rect x="64" y="836" width="20" height="12" fill="#eaf2fb" stroke="#245f9e"/>
-  <text class="legend" x="96" y="848">critical authorization or activation</text>
-  <rect x="384" y="836" width="20" height="12" fill="#e8eef5" stroke="#52677b"/>
-  <text class="legend" x="416" y="848">durable archive</text>
-  <line x1="600" y1="844" x2="632" y2="844" stroke="#b43f3f" stroke-width="2" stroke-dasharray="8 8"/>
-  <text class="legend" x="644" y="848">blocked unsafe path</text>
-  <text class="source" x="1384" y="848" text-anchor="end">WebSSH 3 candidate</text>
+  <rect x="740" y="560" width="200" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="758" y="586" fill="#48a3b1">STAGE</text>
+  <text class="node" x="840" y="614" text-anchor="middle">Private staging</text>
+  <text class="meta" x="840" y="638" text-anchor="middle">durable recovery dir</text>
+  <text class="meta" x="840" y="658" text-anchor="middle">quota-bounded upload</text>
+  <rect x="960" y="560" width="210" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
+  <text class="eyebrow" x="978" y="586" fill="#48a3b1">VALIDATE</text>
+  <text class="node" x="1065" y="614" text-anchor="middle">Archive + intent</text>
+  <text class="meta" x="1065" y="638" text-anchor="middle">manifest · schema · paths</text>
+  <text class="meta" x="1065" y="658" text-anchor="middle">exact RESTORE intent</text>
+  <rect x="1190" y="560" width="200" height="118" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="eyebrow" x="1208" y="586" fill="#48a3b1">ACTIVATE</text>
+  <text class="node" x="1290" y="614" text-anchor="middle">Atomic restore</text>
+  <text class="meta" x="1290" y="638" text-anchor="middle">maintenance mode</text>
+  <text class="meta" x="1290" y="658" text-anchor="middle">resume or restart</text>
+  <path d="M940 619 H960" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M1170 619 H1190" fill="none" stroke="#48a3b1" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-main)"/>
+  <path d="M840 678 V752 H1278" fill="none" stroke="#db7376" stroke-width="2" stroke-linejoin="round" stroke-dasharray="7 6"/>
+  <path d="M1280 740 l20 24 M1300 740 l-20 24" stroke="#db7376" stroke-width="3" stroke-linecap="round"/>
+  <text class="label" x="1060" y="742" fill="#db7376" text-anchor="middle">UNVALIDATED BYPASS BLOCKED</text>
+  <line x1="40" y1="836" x2="1400" y2="836" stroke="#2b4248" stroke-width="1"/>
+  <rect x="56" y="856" width="26" height="18" rx="4" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
+  <text class="legend" x="94" y="870">critical authorization or activation</text>
+  <rect x="474" y="856" width="26" height="18" rx="4" fill="#132024" stroke="#829da4" stroke-width="2"/>
+  <text class="legend" x="512" y="870">archive</text>
+  <line x1="631" y1="865" x2="661" y2="865" stroke="#db7376" stroke-width="2.5" stroke-dasharray="7 6"/>
+  <text class="legend" x="673" y="870">blocked unsafe path</text>
+  <text class="foot" x="1384" y="870" text-anchor="end">WebSSH 3.0</text>
 </svg>
 </body>
 </html>
