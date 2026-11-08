@@ -54,11 +54,19 @@ jobs:
           set -eu
           tool_dir="$RUNNER_TEMP/webssh-gitleaks"
           mkdir -p "$tool_dir"
-          curl --fail --silent --show-error --location --retry 3 \
-            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
-            --output "$tool_dir/gitleaks.tar.gz"
-          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $tool_dir/gitleaks.tar.gz" | sha256sum --check
-          tar -xzf "$tool_dir/gitleaks.tar.gz" -C "$tool_dir" gitleaks
+          # GitHub release downloads can fail with HTTP 504 for hours. The same
+          # release from its digest-pinned image is the fallback, never another one.
+          if curl --fail --silent --show-error --location --retry 3 \
+              https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+              --output "$tool_dir/gitleaks.tar.gz"; then
+            echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $tool_dir/gitleaks.tar.gz" | sha256sum --check
+            tar -xzf "$tool_dir/gitleaks.tar.gz" -C "$tool_dir" gitleaks
+          else
+            container="$(docker create ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f)"
+            docker cp "$container:/usr/bin/gitleaks" "$tool_dir/gitleaks"
+            docker rm "$container" >/dev/null
+          fi
+          test "$("$tool_dir/gitleaks" version)" = "v8.30.1"
       - name: Scan tracked source and verify secret-detection canaries
         run: python scripts/check_repository_secrets.py --gitleaks "$RUNNER_TEMP/webssh-gitleaks/gitleaks"
       - name: Classify changes

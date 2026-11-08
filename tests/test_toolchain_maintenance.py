@@ -41,6 +41,20 @@ def test_every_uv_setup_consumes_the_same_required_version():
     assert len(setups) == 6
 
 
+def test_scanner_fallbacks_use_the_same_pinned_release_images():
+    """Images that stand in for failing release downloads carry the exact pinned version."""
+    tests = (ROOT / '.github/workflows/tests.yml').read_text(encoding='utf-8')
+    security = (ROOT / '.github/workflows/security.yml').read_text(encoding='utf-8')
+    gitleaks = re.search(r'gitleaks/releases/download/(v\d+\.\d+\.\d+)/', tests).group(1)
+    assert re.search(r'docker create ghcr\.io/gitleaks/gitleaks@sha256:[0-9a-f]{64}\)', tests)
+    assert f'test "$("$tool_dir/gitleaks" version)" = "{gitleaks}"' in tests
+    syft = re.search(r"syft-version:\s*['\"]?v(\d+\.\d+\.\d+)", security).group(1)
+    assert re.search(r'docker create ghcr\.io/anchore/syft@sha256:[0-9a-f]{64}\)', security)
+    assert f'tool="$RUNNER_TOOL_CACHE/syft/{syft}/x64"' in security
+    assert f'print $2}}\')" = "{syft}"' in security
+    assert security.index('Provide the pinned Syft release') < security.index('anchore/sbom-action@')
+
+
 def test_security_scanners_select_explicit_engines_independent_of_action_defaults():
     engines = {'aquasecurity/trivy-action': 'version', 'anchore/sbom-action': 'syft-version'}
     selected = {name: set() for name in engines}
