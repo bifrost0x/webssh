@@ -11,7 +11,7 @@ test('workflow examples explain scope and load independent editable drafts witho
  await expect.poll(()=>page.locator('#workflowTemplate option').evaluateAll(options=>options.filter(option=>option.value.startsWith('set:')).map(option=>({id:option.value,title:option.textContent})))).toEqual(ownSets);
  const options=await page.locator('#workflowTemplate option').evaluateAll(options=>options.map(o=>({id:o.value,title:o.textContent})));
  const templates=options.filter(item=>!item.id.startsWith('set:'));
- expect(templates).toHaveLength(22);
+ expect(templates).toHaveLength(23);
  expect(options.filter(item=>item.id.startsWith('set:'))).toEqual(ownSets);
  for(const item of templates){
   await page.locator('#workflowTemplate').selectOption(item.id);

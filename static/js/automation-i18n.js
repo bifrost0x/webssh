@@ -654,6 +654,24 @@
     "jumpPasswordMissing": "Kennwort für Jump-Host fehlt",
     "jumpCredentialChanged": "Jump-Host geändert: Kennwort ersetzen"
 });
+    Object.assign(strings.en, {
+    "compareUniform": "Compare hosts: every step returned the same result on all hosts",
+    "compareOnlyDiffering": "Show only steps that differ",
+    "compareDiffers": "Compare hosts: {count} steps differ between hosts",
+    "compareGroup": "{count} hosts · {state} · exit {exit}: {hosts}",
+    "compareDiffersOne": "Compare hosts: 1 step differs between hosts",
+    "compareGroupOne": "1 host · {state} · exit {exit}: {hosts}",
+    "templateOpenedFor": "Template opened as a draft with {count} hosts selected. Review the commands before running."
+    });
+    Object.assign(strings.de, {
+    "compareUniform": "Hosts vergleichen: Jeder Schritt hatte auf allen Hosts dasselbe Ergebnis",
+    "compareOnlyDiffering": "Nur abweichende Schritte zeigen",
+    "compareDiffers": "Hosts vergleichen: {count} Schritte unterscheiden sich zwischen Hosts",
+    "compareGroup": "{count} Hosts · {state} · Exit {exit}: {hosts}",
+    "compareDiffersOne": "Hosts vergleichen: 1 Schritt unterscheidet sich zwischen Hosts",
+    "compareGroupOne": "1 Host · {state} · Exit {exit}: {hosts}",
+    "templateOpenedFor": "Vorlage als Entwurf mit {count} ausgewählten Hosts geöffnet. Befehle vor dem Ausführen prüfen."
+    });
     window.AutomationText = Object.freeze({t(key, values = {}) {
         const lang = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
         let result = strings[lang][key] || strings.en[key] || key;

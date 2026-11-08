@@ -131,11 +131,36 @@
         if (unreachable.length) items.push({kind: 'unreachable', count: unreachable.length, names: unreachable.slice(0, 3).map(host => host.name), hostIds: unreachable.map(host => host.id)});
         const credentials = hostList.filter(host => ['password_changed', 'key_missing'].includes(host.status?.auth));
         if (credentials.length) items.push({kind: 'credentials', count: credentials.length, hostIds: credentials.map(host => host.id)});
+        // Read from the host's own package state when it was last connected; see maintenance().
+        const restart = hostList.filter(host => maintenance(host.profile, now)?.reboot_required === true);
+        if (restart.length) items.push({kind: 'reboot', count: restart.length, hostIds: restart.map(host => host.id)});
+        const security = hostList.filter(host => maintenance(host.profile, now)?.security_updates > 0);
+        if (security.length) items.push({kind: 'security-updates', count: security.length, hostIds: security.map(host => host.id)});
         runs.filter(run => run.outcome === 'failed' && now - Date.parse(run.created_at) < DAY).slice(0, 2)
             .forEach(run => items.push({kind: 'run-failed', name: run.name, runId: run.id}));
         schedules.filter(item => ['needs_review', 'unknown'].includes(item.last_status)).slice(0, 2)
             .forEach(item => items.push({kind: 'schedule-review', name: item.name, scheduleId: item.id, status: item.last_status}));
         return items.map(item => ({...item, key: attentionKey(item)}));
+    }
+
+    /**
+     * Pending updates and a required restart, as the host reported them in the
+     * last run of the Updates and restart status workflow. Unknown values are
+     * null, never guessed.
+     */
+    function maintenance(profile, now = Date.now()) {
+        const facts = profile?.detected_maintenance;
+        if (!facts || typeof facts !== 'object') return null;
+        const count = value => Number.isInteger(value) && value >= 0 && value <= 100000 ? value : null;
+        const checked = Number(facts.checked_at);
+        // Facts older than a week, or dated in the future, are not shown as current.
+        if (!Number.isFinite(checked) || checked <= 0 || now - checked * 1000 > 7 * DAY || checked * 1000 - now > DAY) return null;
+        return {
+            reboot_required: typeof facts.reboot_required === 'boolean' ? facts.reboot_required : null,
+            updates: count(facts.updates),
+            security_updates: count(facts.security_updates),
+            checkedAt: checked * 1000,
+        };
     }
 
     /** 32-bit FNV-1a, enough to tell one set of hosts from another. */
@@ -249,5 +274,5 @@
         return hour < 11 ? 'greetingMorning' : hour < 18 ? 'greetingDay' : 'greetingEvening';
     }
 
-    return {destination, hosts, filter, automationBins, metrics, headline, attention, attentionKey, fingerprint, activity, platforms, topology, greetingKey};
+    return {destination, hosts, filter, automationBins, metrics, headline, attention, attentionKey, maintenance, fingerprint, activity, platforms, topology, greetingKey};
 }));

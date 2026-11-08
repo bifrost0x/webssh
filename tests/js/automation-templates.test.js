@@ -1,6 +1,6 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const catalog=require('../../static/js/automation-templates.js');
 test('workflow examples provide complete bilingual metadata and independent drafts',()=>{
- const list=catalog.list();assert.equal(list.length,22);assert.equal(new Set(list.map(t=>t.id)).size,list.length);
+ const list=catalog.list();assert.equal(list.length,23);assert.equal(new Set(list.map(t=>t.id)).size,list.length);
  for(const item of list){
   const draft=catalog.create(item.id);assert.ok(draft.steps.length>0&&draft.steps.length<=20);
   assert.equal(item.stepCount,draft.steps.length);

@@ -44,6 +44,34 @@ def supported_login(item):
             and bool(item.get('username')) and ':' not in item['username'])
 
 
+def _record_maintenance_facts(user_id, profile, step, result, access):
+    """Store update and restart facts when a step ran exactly the read-only probe.
+
+    This is the only way facts reach the overview: a run the user started or
+    scheduled. Only the unmodified probe without sudo counts, the profile must
+    still have the endpoint the run used, and the output is parsed strictly;
+    the host still controls the values, so they are shown as reported, never
+    acted on. Failures never affect the run.
+    """
+    from .host_platform import MAINTENANCE_COMMAND, endpoint, parse_maintenance
+    if (step.get('command') != MAINTENANCE_COMMAND or step.get('sudo') or result.get('status') != 'succeeded'
+            or result.get('exit_code') != 0 or result.get('output_truncated') or not isinstance(result.get('stdout'), str)):
+        return False
+    try:
+        facts = parse_maintenance(result['stdout'])
+        # A host that reported nothing (no timeout tool, no package lists) keeps its last facts.
+        if all(value is None for value in facts.values()):
+            return False
+        expected = endpoint(profile)
+        if expected is None:
+            return False
+        from . import profile_manager
+        with access():
+            return profile_manager.cache_detected_facts(user_id, profile['id'], expected, maintenance=facts)
+    except Exception:
+        return False
+
+
 def _now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -503,6 +531,7 @@ class AutomationService:
                                 output_remaining -= sum(len(result.get(stream, '').encode('utf-8'))
                                                         for stream in ('stdout', 'stderr'))
                                 target['steps'][step_index].update(result)
+                                _record_maintenance_facts(uid, profile, step, result, access)
                                 # No write here: the next step's "running" record or the
                                 # target's final record persists this result. The write
                                 # before each dispatch stays, so a crash leaves an

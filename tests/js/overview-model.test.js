@@ -143,3 +143,30 @@ test('unchecked hosts count neither as reachable nor as down', () => {
     const metrics = Model.metrics({hostList: hosts, reachability: {web: {state: 'unchecked'}, db: {state: 'reachable'}}});
     assert.deepEqual(metrics.reachability, {checked: 1, reachable: 1});
 });
+
+test('restart and security update facts become grouped attention items; unknown, stale and future-dated stay out', () => {
+    const now = Date.UTC(2026, 10, 8, 12);
+    const checked = now / 1000 - 3600;
+    const facts = [
+        {id: 'a', name: 'a', host: 'a.example', detected_maintenance: {reboot_required: true, updates: 3, security_updates: 1, checked_at: checked}},
+        {id: 'b', name: 'b', host: 'b.example', detected_maintenance: {reboot_required: true, updates: 0, security_updates: 0, checked_at: checked}},
+        {id: 'c', name: 'c', host: 'c.example', detected_maintenance: {reboot_required: null, updates: null, security_updates: null, checked_at: checked}},
+        {id: 'd', name: 'd', host: 'd.example', detected_maintenance: {reboot_required: 'yes', updates: '5', security_updates: -1, checked_at: checked, extra: 1}},
+        {id: 'e', name: 'e', host: 'e.example'},
+        {id: 'stale', name: 'stale', host: 's.example', detected_maintenance: {reboot_required: true, updates: 9, security_updates: 9, checked_at: checked - 8 * 86400}},
+        {id: 'future', name: 'future', host: 'f.example', detected_maintenance: {reboot_required: true, updates: 9, security_updates: 9, checked_at: checked + 2 * 86400}},
+        {id: 'nodate', name: 'nodate', host: 'n.example', detected_maintenance: {reboot_required: true}},
+    ];
+    const hostList = Model.hosts({profiles: facts, readiness: facts.map(({id}) => ({id, state: 'ready'}))});
+    const items = Model.attention({hostList, now});
+    const reboot = items.find(item => item.kind === 'reboot');
+    const security = items.find(item => item.kind === 'security-updates');
+    assert.deepEqual(reboot.hostIds, ['a', 'b']);
+    assert.deepEqual(security.hostIds, ['a']);
+    assert.equal(reboot.key, Model.attentionKey({kind: 'reboot', hostIds: ['b', 'a']}));
+    assert.deepEqual(Model.maintenance(facts[0], now), {reboot_required: true, updates: 3, security_updates: 1, checkedAt: checked * 1000});
+    assert.deepEqual(Model.maintenance(facts[3], now), {reboot_required: null, updates: null, security_updates: null, checkedAt: checked * 1000});
+    for (const index of [4, 5, 6, 7]) assert.equal(Model.maintenance(facts[index], now), null, facts[index].id);
+    // Grouped items count the hosts they cover.
+    assert.equal(Model.headline({hostList, attentionItems: items}).count, 3);
+});

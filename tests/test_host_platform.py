@@ -271,3 +271,111 @@ def test_services_are_detected_weekly_kept_on_edit_and_off_with_a_manual_icon(ap
         # The browser cannot write detection results itself.
         forged, _ = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], detected_services=['plex']))
         assert forged.get('detected_services') != ['plex']
+
+
+@pytest.mark.parametrize('facts, expected', [
+    ('reboot=yes\napt=12\naptsecurity=3', {'reboot_required': True, 'updates': 12, 'security_updates': 3}),
+    # apt-check is not asked; such a line from a host is ignored.
+    ('reboot=yes\naptcheck=12;3', {'reboot_required': True, 'updates': None, 'security_updates': None}),
+    ('reboot=no\napt=4\naptsecurity=1', {'reboot_required': False, 'updates': 4, 'security_updates': 1}),
+    # The probe does not ask dnf or needs-restarting; such lines from a host are ignored.
+    ('dnf=14\ndnfsecurity=6\nrestartcode=1', {'reboot_required': None, 'updates': None, 'security_updates': None}),
+    # Without package lists or tools nothing is claimed.
+    ('reboot=no', {'reboot_required': False, 'updates': None, 'security_updates': None}),
+    ('', {'reboot_required': None, 'updates': None, 'security_updates': None}),
+    ('aptcheck=/usr/lib/update-notifier/apt-check: error', {'reboot_required': None, 'updates': None, 'security_updates': None}),
+    ('apt=2\naptsecurity=9', {'reboot_required': None, 'updates': 2, 'security_updates': 2}),
+    ('apt=9999999\napt=1', {'reboot_required': None, 'updates': None, 'security_updates': None}),
+    ('reboot=$(id)\napt=-1', {'reboot_required': None, 'updates': None, 'security_updates': None}),
+])
+def test_maintenance_facts_are_parsed_conservatively(facts, expected):
+    assert host_platform.parse_maintenance(facts) == expected
+    assert host_platform.valid_maintenance(expected)
+
+
+def test_maintenance_parser_rejects_oversized_and_control_output():
+    for text in ('x' * 2000, 'apt=1\x1b[2J', None):
+        with pytest.raises(ValueError):
+            host_platform.parse_maintenance(text)
+    assert not host_platform.valid_maintenance({'updates': True})
+    assert not host_platform.valid_maintenance({'updates': -1})
+    assert not host_platform.valid_maintenance({'reboot_required': 'yes'})
+    assert not host_platform.valid_maintenance({'extra': 1})
+
+
+def test_maintenance_probe_is_read_only_and_bounded():
+    command = host_platform.MAINTENANCE_COMMAND
+    for forbidden in ('sudo', 'eval ', 'source ', ' rm ', ' exec ', 'apt-get update', 'apt update', 'makecache',
+                      'install', 'upgrade -y', 'refresh'):
+        assert forbidden not in command
+    # Simulation only, under a time limit, without lock, planner log or binary caches, so
+    # nothing is written even as root; apt-check and dnf write caches or logs and are not asked.
+    assert ('timeout 6 apt-get -s -o Debug::NoLocking=1 -o Dir::Log::Planner=/dev/null'
+            ' -o Dir::Cache::pkgcache= -o Dir::Cache::srcpkgcache= upgrade') in command
+    assert 'dnf' not in command and 'apt-check' not in command
+
+
+def test_connecting_never_runs_the_maintenance_probe(app, monkeypatch):
+    """The probe runs only in workflows a user starts or schedules, never on connect."""
+    from app import ssh_manager, profile_manager, session_insights
+    from tests.test_profile_manager import create_user
+    user_id = create_user(app)
+    commands = []
+    monkeypatch.setattr(session_insights, 'collect_linux_stats',
+                        lambda session_id, **kwargs: (commands.append(kwargs.get('command')), (None, 'unsupported'))[1])
+    with app.app_context():
+        profile, _ = profile_manager.upsert_profile(user_id, dict(name='Web', host='web.example', port=22,
+                                                                  username='deploy', auth_type='password'))
+        monkeypatch.setitem(ssh_manager.sessions, 'no-maintenance', dict(profile, connected=True, user_id=user_id,
+                                                                         profile_id=profile['id']))
+        host_platform.detect_connected_platform('no-maintenance', user_id, lambda payload: None)
+    assert commands, 'the existing platform and service probes still run'
+    assert host_platform.MAINTENANCE_COMMAND not in commands
+    assert not hasattr(host_platform, 'collect_maintenance') and not hasattr(host_platform, 'maintenance_needed')
+
+
+def test_malformed_maintenance_facts_never_invalidate_the_profiles_document(app):
+    from app import profile_manager
+    base = {'id': 'x', 'name': 'x', 'host': 'h', 'port': 22, 'username': 'u', 'auth_type': 'password'}
+    for value in ({'updates': 1, 'added_later': {'a': 1}}, 'broken', None, [1]):
+        assert profile_manager._valid_profile({**base, 'detected_maintenance': value})
+
+
+def test_automation_runs_of_the_exact_probe_update_the_overview(app):
+    from contextlib import nullcontext
+    from app import profile_manager
+    from app.automation_service import _record_maintenance_facts
+    from tests.test_profile_manager import create_user
+    user_id = create_user(app)
+    with app.app_context():
+        profile, _ = profile_manager.upsert_profile(user_id, dict(name='Web', host='web.example', port=22, username='deploy',
+                                                                  auth_type='password'))
+        step = {'command': host_platform.MAINTENANCE_COMMAND, 'sudo': False}
+        result = {'status': 'succeeded', 'exit_code': 0, 'output_truncated': False, 'stdout': 'reboot=yes\napt=4\naptsecurity=1\n'}
+        access = nullcontext
+        for changed in ({'sudo': True}, {'command': host_platform.MAINTENANCE_COMMAND + ' '}):
+            assert not _record_maintenance_facts(user_id, profile, {**step, **changed}, result, access)
+        for changed in ({'exit_code': 1}, {'status': 'failed'}, {'output_truncated': True}, {'stdout': 'x' * 5000}):
+            assert not _record_maintenance_facts(user_id, profile, step, {**result, **changed}, access)
+        assert 'detected_maintenance' not in profile_manager.get_profile(user_id, profile['id'])
+        # A host moved since the run was reviewed keeps no foreign facts.
+        assert not _record_maintenance_facts(user_id, dict(profile, host='other.example'), step, result, access)
+        assert _record_maintenance_facts(user_id, profile, step, result, access)
+        saved = profile_manager.get_profile(user_id, profile['id'])['detected_maintenance']
+        assert (saved['reboot_required'], saved['updates'], saved['security_updates']) == (True, 4, 1)
+
+
+def test_an_empty_automation_probe_keeps_the_last_known_facts(app):
+    from contextlib import nullcontext
+    from app import profile_manager
+    from app.automation_service import _record_maintenance_facts
+    from tests.test_profile_manager import create_user
+    user_id = create_user(app)
+    with app.app_context():
+        profile, _ = profile_manager.upsert_profile(user_id, dict(name='Pi', host='pi.example', port=22, username='pi',
+                                                                  auth_type='password'))
+        step = {'command': host_platform.MAINTENANCE_COMMAND, 'sudo': False}
+        done = {'status': 'succeeded', 'exit_code': 0, 'output_truncated': False}
+        assert _record_maintenance_facts(user_id, profile, step, {**done, 'stdout': 'reboot=yes\n'}, nullcontext)
+        assert not _record_maintenance_facts(user_id, profile, step, {**done, 'stdout': ''}, nullcontext)
+        assert profile_manager.get_profile(user_id, profile['id'])['detected_maintenance']['reboot_required'] is True

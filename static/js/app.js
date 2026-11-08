@@ -88,7 +88,8 @@
         if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
-        return div.innerHTML;
+        // Quotes too, so the result is also safe inside attribute values.
+        return div.innerHTML.replaceAll('"', '&quot;').replaceAll('\'', '&#39;');
     };
 
     window.showNotification = function(message, type = 'info', duration) {

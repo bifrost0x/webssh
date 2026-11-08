@@ -124,3 +124,26 @@ def test_real_openssh_runs_through_a_verified_jump_host(peer):
     with pytest.raises(paramiko.AuthenticationException):
         with connect_profile(uid, target, PASSWORD, lambda: False, route=route, route_password='wrong-jump-password'):
             pytest.fail('a wrong jump host password authenticated')
+
+
+def test_real_openssh_maintenance_probe_feeds_the_saved_host(peer):
+    """The read-only probe runs unprivileged on Debian OpenSSH and its facts reach the profile."""
+    from contextlib import nullcontext
+    from app import profile_manager
+    from app.automation_service import _record_maintenance_facts
+    from app.automation_transport import execute_step
+    from app.host_platform import MAINTENANCE_COMMAND, parse_maintenance
+    uid, profile = peer
+    trust(uid)
+    saved, error = profile_manager.upsert_profile(uid, {k: v for k, v in profile.items() if k != 'id'})
+    assert error is None
+    step = dict(name='Updates and restart status', command=MAINTENANCE_COMMAND, timeout=30, sudo=False)
+    with connect_profile(uid, saved, PASSWORD, lambda: False) as transport:
+        result = execute_step(transport, step, lambda: False)
+    assert result['status'] == 'succeeded' and result['exit_code'] == 0, result
+    facts = parse_maintenance(result['stdout'])
+    # Debian always reports the restart marker; counts need downloaded package lists.
+    assert facts['reboot_required'] in (True, False)
+    assert _record_maintenance_facts(uid, saved, step, result, nullcontext)
+    stored = profile_manager.get_profile(uid, saved['id'])['detected_maintenance']
+    assert stored['reboot_required'] == facts['reboot_required'] and stored['checked_at'] > 0

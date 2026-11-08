@@ -41,7 +41,7 @@ def test_all_templates_have_valid_shell_and_report_missing_prerequisites(peer, c
             assert 'missing:' in result['stderr'] or 'requires Darwin' in result['stderr']
 
 
-@pytest.mark.parametrize('template_id', ['inventory', 'disk', 'memory', 'cpu', 'processes', 'network', 'listeners', 'links', 'apt-list', 'apt-upgrade'])
+@pytest.mark.parametrize('template_id', ['inventory', 'disk', 'memory', 'cpu', 'processes', 'network', 'listeners', 'links', 'apt-list', 'apt-upgrade', 'maintenance'])
 def test_linux_template_executes_on_supported_disposable_host(peer, catalog, template_id):
     uid, profile = peer
     trust(uid)

@@ -54,6 +54,73 @@ fi
 :
 '''
 
+# Pending package updates and a required restart. WebSSH never runs this on its
+# own: only a workflow the user starts or explicitly schedules executes it, and
+# the overview takes its result from such a run. Reads only what the host
+# already knows: no package metadata refresh, no lock, no sudo, and no file
+# written, also as root (apt's planner log and binary caches are off). Neither
+# apt-check nor dnf is asked: both write caches or logs even when only reading.
+# Counts therefore lag behind the repositories until the host refreshes them
+# itself; systems without apt report only the restart marker.
+MAINTENANCE_COMMAND = r'''LC_ALL=C
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export LC_ALL PATH
+if [ -e /var/run/reboot-required ] || [ -e /run/reboot-required ]; then printf 'reboot=yes\n';
+elif [ -d /var/lib/dpkg ]; then printf 'reboot=no\n'; fi
+command -v timeout >/dev/null 2>&1 || exit 0
+command -v apt-get >/dev/null 2>&1 || exit 0
+# Without downloaded package lists every count would read 0, so report none.
+set -- /var/lib/apt/lists/*_Packages*
+[ -e "$1" ] || exit 0
+if simulated=$(timeout 6 apt-get -s -o Debug::NoLocking=1 -o Dir::Log::Planner=/dev/null -o Dir::Cache::pkgcache= -o Dir::Cache::srcpkgcache= upgrade 2>/dev/null); then
+  printf 'apt=%s\n' "$(printf '%s\n' "$simulated" | grep -c '^Inst ')"
+  printf 'aptsecurity=%s\n' "$(printf '%s\n' "$simulated" | grep '^Inst ' | grep -ci 'securi')"
+fi
+:
+'''
+_MAX_PACKAGE_COUNT = 100000
+
+
+def parse_maintenance(text, *, max_bytes=1024):
+    """Return {'reboot_required', 'updates', 'security_updates'}; unknown values stay None."""
+    if not isinstance(text, str) or len(text.encode('utf-8')) > max_bytes:
+        raise ValueError('Invalid maintenance facts')
+    if any(ord(char) < 32 and char not in '\n\r\t' for char in text):
+        raise ValueError('Invalid maintenance facts')
+    facts = {}
+    for line in text.splitlines():
+        key, separator, value = line.partition('=')
+        if separator and key not in facts:
+            facts[key] = value.strip()
+
+    def count(value):
+        if value is None or not re.fullmatch(r'[0-9]{1,6}', value):
+            return None
+        number = int(value)
+        return number if number <= _MAX_PACKAGE_COUNT else None
+
+    reboot = {'yes': True, 'no': False}.get(facts.get('reboot'))
+    updates = security = None
+    if 'apt' in facts:
+        updates, security = count(facts['apt']), count(facts.get('aptsecurity'))
+    if updates is not None and security is not None and security > updates:
+        security = updates
+    return {'reboot_required': reboot, 'updates': updates, 'security_updates': security}
+
+
+def valid_maintenance(value):
+    if not isinstance(value, dict) or set(value) - {'reboot_required', 'updates', 'security_updates', 'checked_at'}:
+        return False
+    if value.get('reboot_required') is not None and type(value['reboot_required']) is not bool:
+        return False
+    for field in ('updates', 'security_updates'):
+        number = value.get(field)
+        if number is not None and (type(number) is not int or not 0 <= number <= _MAX_PACKAGE_COUNT):
+            return False
+    checked = value.get('checked_at')
+    return checked is None or (not isinstance(checked, bool) and isinstance(checked, (int, float)))
+
+
 SERVICES = frozenset({
     'docker', 'podman', 'nginx', 'apache', 'caddy', 'mariadb', 'postgresql', 'samba', 'k3s',
     'wireguard', 'nextcloud', 'pihole', 'homeassistant', 'jellyfin', 'plex', 'portainer',

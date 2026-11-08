@@ -38,8 +38,17 @@ sudo, it also lists the image names of running containers and maps known ones
 (for example Nextcloud, Home Assistant, Jellyfin, Plex, Portainer, Traefik,
 Vaultwarden, Immich, Gitea, Paperless, Grafana). Nothing is installed or
 changed, no command is run with elevated rights, and only the recognised names
-are stored with the host in WebSSH. Choosing a manual icon for a host turns
-both probes off for it, which also suits keys restricted to a forced command.
+are stored with the host in WebSSH.
+
+Whether a restart is required and how many package updates are pending is
+never checked automatically. Run the **Updates and restart status** workflow
+template, or approve a schedule for it; the overview then shows a required
+restart and pending security updates under **Needs attention** and on the host
+cards, with the time of the run. Facts older than a week are no longer shown.
+See [Automation](automation.md#keep-restart-and-update-status-current).
+
+Choosing a manual icon for a host turns the platform and service probes off for
+it, which also suits keys restricted to a forced command.
 
 Select **Customize** to arrange the dashboard: drag a panel by its handle,
 resize it from its corner, change its width with the panel buttons, hide it or
@@ -115,7 +124,9 @@ Automation combines editable templates, your command library and command sets.
 Review target hosts before immediate execution, or create a timezone-aware
 schedule. Run history includes bounded stdout/stderr, exit status and duration.
 Unknown outcomes remain explicitly unknown, rather than reported as success.
-Finished runs can be deleted from the history.
+Finished runs can be deleted from the history. Runs on several hosts can be
+compared per step: hosts with the same status, exit code and output are grouped,
+so differences stand out.
 Automation is administrator-controlled and disabled by default. Direct SSH and
 hosts behind one saved jump host are supported; gateway and Tailscale automation
 routes are not supported.

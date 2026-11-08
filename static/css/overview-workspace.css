@@ -415,6 +415,16 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-list, .od-platforms, .od-timeline { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .od-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ws2-text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
 .od-row:hover { background: var(--ws2-row-hover); }
+.od-row:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: -2px; }
+/* The status pill leads here; the panel briefly answers so the click is visible. */
+.od-panel.od-panel-flash { animation: od-panel-flash 1.2s ease-out; }
+@keyframes od-panel-flash {
+    0%, 35% { border-color: var(--ws2-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws2-accent) 35%, transparent); }
+    100% { border-color: var(--ws2-border); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ws2-text) 6%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .od-panel.od-panel-flash { animation-duration: 1ms; animation-delay: 1.2s; border-color: var(--ws2-accent); }
+}
 .od-row .material-icons:first-child { color: var(--od-action); font-size: 20px; }
 .od-row[data-kind="run-failed"] .material-icons:first-child, .od-row[data-kind="jump-missing"] .material-icons:first-child, .od-row[data-kind="unreachable"] .material-icons:first-child { color: var(--od-danger); }
 .od-row .material-icons:last-child { margin-left: auto; color: var(--od-muted); font-size: 18px; }
@@ -437,6 +447,10 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-chart-axis { display: flex; justify-content: space-between; margin-top: 8px; color: var(--od-muted); font-size: 12px; }
 
 .od-service-chip { color: var(--ws2-text); border-color: color-mix(in srgb, var(--ws2-accent) 35%, var(--ws2-border)); }
+.od-maintenance-chip { color: var(--ws2-text); border-color: color-mix(in srgb, var(--od-action) 45%, var(--ws2-border)); }
+.od-maintenance-chip .material-icons { font-size: 14px; color: var(--od-action); }
+.od-maintenance-chip[data-kind="updates"] { border-color: var(--ws2-border); }
+.od-maintenance-chip[data-kind="updates"] .material-icons { color: var(--od-muted); }
 .od-services-title { margin: 16px 4px 8px; color: var(--od-muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .od-services { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0 4px; list-style: none; }
 .od-service {

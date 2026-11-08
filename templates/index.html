@@ -88,7 +88,7 @@
                 <nav class="global-navigation" id="globalNavigation" aria-label="Primary navigation" data-i18n-aria-label="navigation.primary">
                     <button id="overviewNavBtn" class="global-nav-item active" type="button" aria-current="page" aria-label="Overview" data-i18n-aria-label="overview.title" title="Overview" data-i18n-title="overview.title"><span class="material-icons" aria-hidden="true">home</span><span data-i18n="overview.title">Overview</span></button>
                     <button id="workspaceNavBtn" class="global-nav-item" type="button" aria-label="Workspaces" data-i18n-aria-label="navigation.workspaces" title="Workspaces" data-i18n-title="navigation.workspaces"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.workspaces">Workspaces</span></button>
-                    <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()" aria-label="File Manager" data-i18n-aria-label="files.fileManager" title="File Manager" data-i18n-title="files.fileManager"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="workspaceContext.files">Files</span></button>
+                    <button id="fileTransferBtn" class="global-nav-item" type="button" aria-label="File Manager" data-i18n-aria-label="files.fileManager" title="File Manager" data-i18n-title="files.fileManager"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="workspaceContext.files">Files</span></button>
                     <a data-native-automation id="automationNavBtn" class="global-nav-item" href="{{ url_for('automation.page') }}" aria-label="Automation" title="Automation" data-i18n-aria-label="automation.title" data-i18n-title="automation.title"><span class="material-icons" aria-hidden="true">playlist_play</span><span data-i18n="automation.title">Automation</span></a>
                     <button id="commandLibraryBtn" class="global-nav-item" type="button" aria-label="Commands" data-i18n-aria-label="commands.workspace" title="Commands" data-i18n-title="commands.workspace"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
                     <button id="manageProfilesBtn" class="global-nav-item" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts" aria-label="Hosts" data-i18n-aria-label="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
@@ -96,10 +96,10 @@
 
                 <div class="mobile-more-actions" aria-label="Session actions" data-i18n-aria-label="workspace.sessionActions">
                     <button class="mobile-more-action" type="button" data-open-terminal-appearance><span class="material-icons" aria-hidden="true">palette</span><span data-i18n="terminalAppearance.title">Terminal appearance</span></button>
-                    <button id="mobileQuickConnectAction" class="mobile-more-action" type="button" onclick="window.openDefaultConnectionModal?.(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">add_link</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
-                    <button id="mobileToolsAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); window.workspaceLayoutController?.setNotesOpen(true, 'user'); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">edit_note</span><span data-i18n="workspaceContext.notes">Notes</span></button>
-                    <button id="mobileBroadcastAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); window.BroadcastInput?.toggle(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">cell_tower</span><span data-i18n="broadcast.toggle">Broadcast to all open sessions</span></button>
-                    <button id="mobileTranscriptAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); document.getElementById('saveTranscriptBtn').click(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">save</span><span data-i18n="terminal.saveTranscript">Save Transcript</span></button>
+                    <button id="mobileQuickConnectAction" class="mobile-more-action" type="button"><span class="material-icons" aria-hidden="true">add_link</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
+                    <button id="mobileToolsAction" class="mobile-more-action" type="button"><span class="material-icons" aria-hidden="true">edit_note</span><span data-i18n="workspaceContext.notes">Notes</span></button>
+                    <button id="mobileBroadcastAction" class="mobile-more-action" type="button"><span class="material-icons" aria-hidden="true">cell_tower</span><span data-i18n="broadcast.toggle">Broadcast to all open sessions</span></button>
+                    <button id="mobileTranscriptAction" class="mobile-more-action" type="button"><span class="material-icons" aria-hidden="true">save</span><span data-i18n="terminal.saveTranscript">Save Transcript</span></button>
                 </div>
 
                 <span class="header-divider" aria-hidden="true"></span>
@@ -107,7 +107,7 @@
                 <button id="shellSearchBtn" class="shell-search-button" type="button" aria-label="Search actions, hosts, and sessions..." data-i18n-aria-label="palette.searchPlaceholder" title="Search actions, hosts, and sessions..." data-i18n-title="palette.searchPlaceholder"><span class="material-icons" aria-hidden="true">search</span><span data-i18n="palette.search">Search</span><kbd>Ctrl K</kbd></button>
                 <button id="shellConnectBtn" class="btn btn-primary shell-connect-button" type="button" aria-label="Connection" data-i18n-aria-label="navigation.connect" title="Connection" data-i18n-title="navigation.connect"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="navigation.connect">Connection</span></button>
                 <div class="account-selector">
-                    <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" onclick="toggleAccountDropdownHeader(event)" aria-label="Account menu" data-i18n-aria-label="account.menu" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdownHeader">
+                    <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" aria-label="Account menu" data-i18n-aria-label="account.menu" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdownHeader">
                         <span class="account-avatar material-icons" aria-hidden="true">person</span>
                         <span class="account-name">{{ current_user.username }}</span>
                         <span class="account-caret material-icons" aria-hidden="true">expand_more</span>
@@ -183,6 +183,7 @@
             </div>
         </div>
     </header>
+    <script src="{{ static_asset_url(filename='js/header-actions.js') }}"></script>
 
     <nav id="workspaceAccessRail" class="workspace-access-rail" aria-label="Workspace shortcuts" data-i18n-aria-label="workspace.shortcuts">
         <button id="toggleHostRail" class="workspace-access-button" type="button" aria-controls="shellHostAccess" aria-expanded="false" data-i18n-title="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
@@ -1675,10 +1676,8 @@
     <script src="{{ static_asset_url(filename='js/file-edit-diff.js') }}"></script>
     <script src="{{ static_asset_url(filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script>
-        window.WEBSSH_TRANSFER_LIMITS = Object.freeze({{ transfer_limits | tojson }});
-        window.WEBSSH_SSH_INPUT_LIMITS = Object.freeze({{ ssh_input_limits | tojson }});
-    </script>
+    <script id="websshRuntimeLimits" type="application/json">{{ {'transfer': transfer_limits, 'sshInput': ssh_input_limits} | tojson }}</script>
+    <script src="{{ static_asset_url(filename='js/runtime-limits.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/socket-protocol.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/ssh-error-ui.js') }}"></script>
@@ -1745,6 +1744,7 @@
     <script src="{{ static_asset_url(filename='js/automation-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/automation-guidance.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/automation-templates.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/automation-tools.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/automation.js') }}"></script>
     {% if overview_layout != 'classic' %}
     <script src="{{ static_asset_url(filename='js/overview-route-map.js') }}"></script>
@@ -1755,138 +1755,11 @@
     <script src="{{ static_asset_url(filename='js/host-resource-layout.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-file-bridge.js') }}"></script>
-    <script>
-        {% from '_auth_messages.html' import flash_message_keys %}
-        const flashedMessageKeys = {{ flash_message_keys | tojson }};
-        const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
-        flashedMessages.forEach(([category, message]) => {
-            if (!window.showNotification) {
-                return;
-            }
-            const type = category === 'error' ? 'error' : (category === 'success' ? 'success' : 'info');
-            const key = Object.hasOwn(flashedMessageKeys, message) ? flashedMessageKeys[message] : null;
-            showNotification(key ? window.i18n.t(key) : message, type);
-        });
-    </script>
+    {% from '_auth_messages.html' import flash_message_keys %}
+    <script id="websshFlashedMessages" type="application/json">{{ {'keys': flash_message_keys, 'messages': get_flashed_messages(with_categories=true)} | tojson }}</script>
+    <script src="{{ static_asset_url(filename='js/flash-messages.js') }}"></script>
 
-    <script>
-        function initThemeSelectorHeader() {
-            const themes = [
-                { id: 'glass', name: 'Glass Ops', color: '#58a6ff' },
-                { id: 'werkbank', name: 'Werkbank / Sand', color: '#d6c3a1' },
-                { id: 'retro', name: 'Retro Future', color: '#ffb454' },
-                { id: 'solar', name: 'Solar Drift', color: '#6ea8ff' },
-                { id: 'paper', name: 'Paper Ops', color: '#c77d48', light: true },
-                { id: 'noir', name: 'Noir Terminal', color: '#7f91ff' },
-                { id: 'arctic-ice', name: 'Arctic Ice', color: '#06b6d4' },
-                { id: 'rose-gold', name: 'Rose Gold', color: '#f43f5e' },
-                { id: 'cyberpunk-neon', name: 'Cyberpunk Neon', color: '#d946ef' },
-                { id: 'emerald-matrix', name: 'Emerald Matrix', color: '#10b981' },
-                { id: 'obsidian', name: 'Obsidian', color: '#ffffff' }
-            ];
-            const currentTheme = document.body.getAttribute('data-theme') || 'glass';
-            window.ThemePreference?.store(currentTheme);
-            window.addEventListener('storage', event => {
-                if (event.key !== 'websshTheme' || !window.ThemePreference?.isValid(event.newValue)) return;
-                if (document.body.dataset.theme === event.newValue) return;
-                document.body.dataset.theme = event.newValue;
-                window.TerminalManager?.applyThemeToAll();
-                window.dispatchEvent(new CustomEvent('themeChanged', {detail: {theme: event.newValue}}));
-            });
-            const select = document.getElementById('settingsThemeSelect');
-
-            if (select) {
-                select.value = currentTheme;
-                select.addEventListener('change', () => {
-                    applyTheme(select.value);
-                });
-            }
-        }
-
-        function applyTheme(themeId) {
-            if (!window.ThemePreference?.isValid(themeId)) {
-                return;
-            }
-            document.body.setAttribute('data-theme', themeId);
-            window.ThemePreference.store(themeId);
-            if (window.socket) {
-                window.socket.emit('set_theme', { theme: themeId });
-            }
-            const select = document.getElementById('settingsThemeSelect');
-            if (select) select.value = themeId;
-            if (window.TerminalManager && typeof TerminalManager.applyThemeToAll === 'function') {
-                TerminalManager.applyThemeToAll();
-            }
-        }
-
-        function initLanguageSelectorHeader() {
-            const select = document.getElementById('settingsLanguageSelect');
-            const languages = i18n.getLanguages();
-            const currentLang = i18n.getLanguage();
-
-            if (!select) return;
-            select.replaceChildren();
-            languages.forEach(lang => {
-                const option = document.createElement('option');
-                option.value = lang.code;
-                option.textContent = `${lang.flag} ${lang.name}`;
-                select.appendChild(option);
-            });
-            select.value = currentLang;
-            select.addEventListener('change', () => {
-                i18n.setLanguage(select.value);
-            });
-        }
-
-        function closeAccountDropdownHeader() {
-            document.getElementById('accountDropdownHeader')?.classList.remove('show');
-            document.getElementById('accountBtnHeader')?.setAttribute('aria-expanded', 'false');
-        }
-
-        function toggleAccountDropdownHeader(event) {
-            if (event) {
-                event.stopPropagation();
-            }
-            const dropdown = document.getElementById('accountDropdownHeader');
-            if (!dropdown) {
-                return;
-            }
-            if (dropdown.classList.contains('show')) {
-                closeAccountDropdownHeader();
-                return;
-            }
-            dropdown.classList.add('show');
-            document.getElementById('accountBtnHeader')?.setAttribute('aria-expanded', 'true');
-        }
-
-        document.getElementById('accountDropdownHeader')?.addEventListener('click', (e) => {
-            if (e.target.closest('.account-action')) {
-                closeAccountDropdownHeader();
-            }
-        });
-
-        window.addEventListener('click', (e) => {
-            if (!e.target.closest('.account-selector')) {
-                closeAccountDropdownHeader();
-            }
-        });
-
-        document.addEventListener('DOMContentLoaded', () => {
-            initThemeSelectorHeader();
-            initLanguageSelectorHeader();
-            window.webssh2Shell = window.WebSSH2Shell?.init({
-                sessionManager: SessionManager,
-                document,
-            });
-            window.accountWorkspacePulse = window.AccountWorkspacePulseModule?.createAccountWorkspacePulse({
-                sessionManager: SessionManager,
-                document,
-                window,
-                translate: key => window.i18n ? i18n.t(key) : key,
-            });
-            window.accountWorkspacePulse?.init();
-        });
-    </script>
+    <script src="{{ static_asset_url(filename='js/index-shell.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/onboarding.js') }}" defer></script>
 </body>
 </html>
