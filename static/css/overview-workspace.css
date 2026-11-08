@@ -107,7 +107,7 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-search:focus-within { border-color: var(--ws2-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ws2-accent) 22%, transparent); }
 .od-search .material-icons { color: var(--od-muted); }
 .od-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ws2-text); font: inherit; font-size: 16px; outline: none; }
-#connectionOverview.od .od-search input:focus-visible { outline: none; }
+#connectionOverview.od .od-search input:focus-visible { outline: none !important; }
 .od-search kbd { padding: 1px 7px; border: 1px solid var(--ws2-border-strong); border-radius: 6px; font: 12px var(--od-mono); color: var(--od-muted); }
 .od-command .od-ghost-button { min-height: 50px; border-radius: 14px; white-space: nowrap; }
 .od-new-host { min-height: 50px; padding: 0 20px; border-radius: 14px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }

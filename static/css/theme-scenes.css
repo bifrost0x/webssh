@@ -6,6 +6,57 @@ body.webssh-ui {
     --theme-scene-max-width: 1672px;
     --theme-scene-max-height: 941px;
 }
+/* Werkbank tokens live here because every page, including sign-in and error pages, loads this file. */
+body.webssh-ui[data-theme="werkbank"] {
+    color-scheme: dark;
+    --term-background: #121210;
+    --bg-primary: #171715;
+    --bg-secondary: #24231f;
+    --bg-tertiary: #302e27;
+    --bg-hover: #3c382f;
+    --bg-modal: #24231f;
+    --bg-active: #363026;
+    --text-primary: #f0e9dd;
+    --text-secondary: #c9c0b0;
+    --text-muted: #b4a995;
+    --border-color: #494237;
+    --border-hover: #796e5b;
+    --accent-primary: #d6c3a1;
+    --accent-secondary: #bda782;
+    --accent-primary-glow: rgb(214 195 161 / 14%);
+    --accent-on-text: #262119;
+    --btn-primary-text: #262119;
+    --ws2-canvas: #171715;
+    --ws2-surface: #24231f;
+    --ws2-panel: #302e27;
+    --ws2-raised: #3c382f;
+    --ws2-row-hover: #353229;
+    --ws2-border: #494237;
+    --ws2-border-strong: #796e5b;
+    --ws2-text: #f0e9dd;
+    --ws2-text-primary: #f0e9dd;
+    --ws2-text-secondary: #c9c0b0;
+    --ws2-text-muted: #b4a995;
+    --ws2-accent: #d6c3a1;
+    --ws2-accent-strong: #f0dbb4;
+    --ws2-accent-on: #262119;
+    --ws2-focus: #f0dbb4;
+    --ws2-success: #a3c58a;
+    --ws2-warning: #e4bc70;
+    --ws2-danger: #e89786;
+    --success-color: #a3c58a;
+    --warning-color: #e4bc70;
+    --error-color: #e89786;
+    --ui-action-bg: #e9ddc8;
+    --ui-action-fg: #262119;
+    --ui-action-hover: #fff4e0;
+    --ui-selected: color-mix(in srgb, var(--ws2-accent) 10%, var(--ws2-surface));
+    --ws2-shadow: 0 12px 36px #0006;
+    --theme-scene-image: var(--theme-scene-image-source);
+    --theme-background-image-source: var(--theme-scene-image-source);
+    --theme-background-opacity: .07;
+    background-color: var(--ws2-canvas); color: var(--ws2-text);
+}
 body.webssh-ui[data-theme="werkbank"] {
     --theme-scene-image-source: url('../images/theme-scenes/werkbank-sand.webp?v=39a741ead6090f1b');
     --theme-scene-position: 58% 50%;
