@@ -172,4 +172,4 @@ button.command-favorite[aria-pressed="true"] { color: var(--command-favorite-acc
     #commandWorkspaceModal .command-set-usage-filter { max-width: 100%; }
 }
 
-#commandWorkspaceModal #commandSetForm { width: 100%; max-width: 1440px; margin-inline: auto; }
+#commandWorkspaceModal #commandSetForm { width: 100%; max-width: none; margin-inline: 0; }

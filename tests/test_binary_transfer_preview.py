@@ -1,6 +1,37 @@
 from contextlib import contextmanager
 import stat
 from types import SimpleNamespace
+import pytest
+
+
+@pytest.mark.parametrize('kind, expected', [
+    (RuntimeError, 'Unable to read remote file preview'),
+    (PermissionError, 'Permission denied: Cannot read from remote path'),
+    (FileNotFoundError, 'Remote file not found'),
+    (TimeoutError, 'Remote file operation timed out'),
+])
+def test_preview_errors_are_specific_without_exposing_remote_details(monkeypatch, kind, expected):
+    from app import binary_transfer
+
+    def fail(*_args, **_kwargs):
+        raise kind('private-token=/internal/service/credentials')
+
+    monkeypatch.setattr(binary_transfer.sftp_handler, 'open_bound_reader', fail)
+    data, error = binary_transfer.handle_binary_download('owned-session', '/preview.txt')
+    assert data is None
+    assert error == expected
+
+
+def test_preview_preserves_application_authored_operation_error(monkeypatch):
+    from app import binary_transfer
+
+    def fail(*_args, **_kwargs):
+        raise binary_transfer.sftp_handler.SFTPOperationError('Only regular files can be previewed')
+
+    monkeypatch.setattr(binary_transfer.sftp_handler, 'open_bound_reader', fail)
+    assert binary_transfer.handle_binary_download('owned-session', '/preview.txt') == (
+        None, 'Only regular files can be previewed',
+    )
 
 
 def test_preview_download_uses_the_capped_buffered_path(monkeypatch):

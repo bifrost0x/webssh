@@ -1,7 +1,92 @@
 const {test, expect} = require('playwright/test');
+
+test('restored command IDs remain literal attributes and open the correct detail', async ({page}) => {
+    await login(page);
+    await page.evaluate(() => window.CommandLibrary.openLibrary());
+    await expect(page.locator('#commandsList .command-row').first()).toBeVisible();
+    // Opening the library requests a fresh list; a late reply must not replace the fixture below.
+    await page.evaluate(() => { window.socket.off('commands_list'); });
+    const id = 'legacy" data-injected="yes';
+    await page.evaluate(id => {
+        window.CommandLibrary.setCommands([{
+            id, name: 'Restored command', command: 'pwd', parameters: '',
+            description: 'Legacy identifier', os: ['all'], category: 'custom', isSystem: false,
+        }]);
+    }, id);
+    const row = page.locator('#commandsList .command-row');
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('[data-injected]')).toHaveCount(0);
+    await expect(row.locator('.command-inspect-button')).toHaveAttribute('data-cmd-id', id);
+    await row.locator('.command-inspect-button').click();
+    await expect(page.locator('#commandLibraryDetails')).toContainText('Restored command');
+});
+const path = require('node:path');
 const {login, assertNoExternalRequests} = require('./helpers');
 
 test.afterEach(async ({page}) => { await assertNoExternalRequests(page); });
+
+test('command sets retain the compact library search position across themes and widths', async ({page}) => {
+    test.setTimeout(120000);
+    await login(page);
+    await page.evaluate(() => window.CommandLibrary.openLibrary());
+    for (const width of [360, 768, 1440, 3440]) {
+        await page.setViewportSize({width, height: 900});
+        for (const theme of ['glass','solar','paper','noir','arctic-ice','rose-gold','obsidian','retro','cyberpunk-neon','emerald-matrix']) {
+            await page.evaluate(theme => applyTheme(theme), theme);
+            await page.locator('#commandLibraryTab').click();
+            const reference = await page.locator('#commandSearchInput').boundingBox();
+            await page.locator('#commandSetsTab').click();
+            const search = await page.locator('#commandSetManagementSearch').boundingBox();
+            expect(Math.abs(search.y - reference.y), `${theme} ${width}: search position`).toBeLessThanOrEqual(1);
+            expect(search.height).toBeGreaterThanOrEqual(40);
+            await expect(page.locator('#newCommandSetBtn')).toBeInViewport();
+            await expect(page.locator('#commandSetUsageFilter')).toBeVisible();
+            await expect(page.locator('#commandSetsPanel')).toHaveAccessibleDescription('Build reusable command sequences and assign one to any saved connection.');
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+            if (theme === 'glass' && [360, 1440].includes(width)) {
+                await page.screenshot({path: test.info().outputPath(`compact-command-sets-${width}.png`)});
+            }
+        }
+    }
+});
+
+test('system command details open a personal copy without running a session command', async ({page}) => {
+    await page.setViewportSize({width: 1586, height: 991});
+    await login(page);
+    await page.evaluate(() => window.CommandLibrary.openLibrary());
+    await expect(page.locator('.command-row.system-command').first()).toBeVisible();
+    await expect(page.locator('.commands-table-header > span')).toHaveCount(6);
+    await page.locator('#commandSourceFilter').selectOption('personal');
+    await expect(page.locator('.command-row.system-command')).toHaveCount(0);
+    await expect(page.locator('.command-row').first()).toBeVisible();
+    await page.locator('#commandSourceFilter').selectOption('system');
+    expect(await page.evaluate(() => window.CommandLibrary.filteredCommands.every(item => item.isSystem))).toBe(true);
+    await page.locator('#commandSourceFilter').selectOption('all');
+    const command = await page.evaluate(() => window.CommandLibrary.filteredCommands.find(item => item.isSystem && item.command === 'df' && item.parameters === '-h'));
+    expect(command).toBeTruthy();
+    const row = page.locator('.command-row').filter({has: page.locator(`button.command-inspect-button[data-cmd-id="${command.id}"]`)});
+    await row.locator('.command-inspect-button').click();
+    const details = page.locator('#commandLibraryDetails');
+    await expect(details).toBeVisible();
+    expect((await details.boundingBox()).width).toBeCloseTo(420, 0);
+    await expect(details.locator('.command-source-label')).toHaveText('System · read-only');
+    await expect(details.locator('.command-detail-field pre').first()).toHaveText(command.command);
+    await expect(details.locator('.command-detail-field pre').nth(2)).toHaveText('df -h');
+    await expect(details.locator('input, textarea, [contenteditable="true"]')).toHaveCount(0);
+    await expect(details.locator('.command-execution-hint')).toContainText('Run commands from the command tool in a session.');
+    await expect(details.getByRole('button', {name: 'Edit', exact: true})).toHaveCount(0);
+    await expect(details.getByRole('button', {name: 'Delete', exact: true})).toHaveCount(0);
+    await page.screenshot({path: path.join(process.cwd(), 'plans/commands-reference-render.png')});
+    await details.getByRole('button', {name: 'Add to my commands', exact: true}).click();
+    await expect(page.locator('#commandFormName')).toHaveValue(command.name);
+    await expect(page.locator('#commandFormCommand')).toHaveValue(command.command);
+    expect(await page.evaluate(() => window.CommandLibrary.editingCommandId)).toBeNull();
+    expect(await page.evaluate(() => Object.keys(SessionManager.sessions).length)).toBe(0);
+    await page.locator('#cancelCommandFormBtn').click();
+    await details.getByRole('button', {name: 'Back to list', exact: true}).click();
+    await expect(details).toHaveCount(0);
+    await expect(row.locator('.command-inspect-button')).toBeFocused();
+});
 
 test('favorites retain entry type across management and the workspace', async ({page}) => {
     await login(page);

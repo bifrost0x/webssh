@@ -54,11 +54,21 @@ jobs:
           set -eu
           tool_dir="$RUNNER_TEMP/webssh-gitleaks"
           mkdir -p "$tool_dir"
-          curl --fail --silent --show-error --location --retry 3 \
-            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
-            --output "$tool_dir/gitleaks.tar.gz"
-          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $tool_dir/gitleaks.tar.gz" | sha256sum --check
-          tar -xzf "$tool_dir/gitleaks.tar.gz" -C "$tool_dir" gitleaks
+          # GitHub release downloads can fail with HTTP 504 for hours. The same
+          # release from its digest-pinned image is the fallback, never another one.
+          if curl --fail --silent --show-error --location --retry 3 \
+              https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+              --output "$tool_dir/gitleaks.tar.gz"; then
+            echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $tool_dir/gitleaks.tar.gz" | sha256sum --check
+            tar -xzf "$tool_dir/gitleaks.tar.gz" -C "$tool_dir" gitleaks
+          else
+            container="$(docker create ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f)"
+            docker cp "$container:/usr/bin/gitleaks" "$tool_dir/gitleaks"
+            docker rm "$container" >/dev/null
+          fi
+          # The release binary and the image differ only in a leading "v".
+          version="$("$tool_dir/gitleaks" version)"
+          test "${version#v}" = "8.30.1"
       - name: Scan tracked source and verify secret-detection canaries
         run: python scripts/check_repository_secrets.py --gitleaks "$RUNNER_TEMP/webssh-gitleaks/gitleaks"
       - name: Classify changes
@@ -645,6 +655,30 @@ jobs:
             docker volume rm "$WEBSSH_CI_RECOVERY_VOLUME"
           fi
 
+  container-upgrade:
+    needs: dispatch-integrity
+    if: needs.dispatch-integrity.outputs.mode == 'full'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Build this checkout
+        run: docker build --build-arg VCS_REF="${GITHUB_SHA}" --tag "webssh-upgrade:${GITHUB_SHA}" .
+
+      # Published v2.7.0 index (docs/project-history.md). Upgrades its real
+      # data volume with the old and new example Compose, then rolls back.
+      - name: Upgrade a previous-release data volume and roll back
+        env:
+          PREVIOUS_RELEASE_IMAGE: ghcr.io/bifrost0x/webssh@sha256:1a9ac06d0aca3e88bb8f48d0395b8f87e39d33cb2f19be437cca2b8e193aa5d2
+        run: >-
+          python scripts/check_container_upgrade.py
+          --old-image "$PREVIOUS_RELEASE_IMAGE"
+          --new-image "webssh-upgrade:${GITHUB_SHA}"
+
   release-contract:
     needs: [dispatch-integrity, ssh-integration]
     if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
@@ -658,7 +692,7 @@ jobs:
         run: test "$RELEASE_RESULT" = success
 
   all-tests:
-    needs: [dispatch-integrity, dependency-locks, pytest-shards, pytest, redis-rate-limiter, ssh-integration, smb-integration, browser-e2e-shards, browser-fonts, browser-e2e, container-threading-smoke, release-contract]
+    needs: [dispatch-integrity, dependency-locks, pytest-shards, pytest, redis-rate-limiter, ssh-integration, smb-integration, browser-e2e-shards, browser-fonts, browser-e2e, container-threading-smoke, container-upgrade, release-contract]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     permissions:

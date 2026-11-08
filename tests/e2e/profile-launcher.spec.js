@@ -34,7 +34,7 @@ async function dragProfileTo(page, handle, target) {
 
 async function clickProfileMenuAction(profile, action) {
     await profile.locator('.profile-action-menu > summary').click();
-    await profile.locator(`[data-profile-action="${action}"]`).click();
+    await profile.locator(`.profile-action-menu [data-profile-action="${action}"]`).click();
 }
 
 async function clickCommandSetMenuAction(commandSet, action) {
@@ -302,6 +302,7 @@ test('focuses host search and collapses every saved connection section', async (
 
     await expect(search).toBeFocused();
     await expect(collapseAll).toBeEnabled();
+    await page.locator('.management-toolbar-menu').filter({has:collapseAll}).locator('summary').click();
     await collapseAll.click();
     await expect(toggles).not.toHaveCount(0);
     await expect.poll(() => toggles.evaluateAll(elements => (
@@ -324,7 +325,7 @@ test('reorders hosts precisely, persists launcher order, and confirms group remo
     const operations = page.locator('.profile-management-section').filter({
         has: page.locator('[data-profile-group-toggle="group:operations"]'),
     });
-    const operationNames = operations.locator('.profile-management-info strong');
+    const operationNames = operations.locator('.profile-management-info .profile-inspect-button');
     await expect(operationNames).toHaveText(['Ops first', 'Ops second']);
     const firstOperationsHandle = operations.locator('.profile-management-item').filter({
         hasText: 'Ops first',
@@ -340,10 +341,9 @@ test('reorders hosts precisely, persists launcher order, and confirms group remo
     const launcherOperations = page.locator('.profile-launcher-section').filter({
         has: page.locator('.profile-launcher-section-title', {hasText: 'Operations'}),
     });
-    await expect(launcherOperations.locator('.profile-launcher-name')).toHaveText([
-        'Ops second',
-        'Ops first',
-    ]);
+    await expect(launcherOperations.locator('.profile-launcher-card')).toHaveCount(2);
+    await expect(launcherOperations.locator('.profile-launcher-card').nth(0)).toHaveAccessibleName(/^Ops second,/);
+    await expect(launcherOperations.locator('.profile-launcher-card').nth(1)).toHaveAccessibleName(/^Ops first,/);
 
     await page.reload();
     await expect.poll(() => page.evaluate(() => (
@@ -354,7 +354,7 @@ test('reorders hosts precisely, persists launcher order, and confirms group remo
         has: page.locator('[data-profile-group-toggle="group:operations"]'),
     });
     await expect(
-        persistedOperations.locator('.profile-management-info strong'),
+        persistedOperations.locator('.profile-management-info .profile-inspect-button'),
     ).toHaveText(['Ops second', 'Ops first']);
 
     await page.locator('#profileSearchInput').fill('Ops');
@@ -389,7 +389,7 @@ test('reorders hosts precisely, persists launcher order, and confirms group remo
     await page.locator('#confirmProfileMoveBtn').click();
     await expect(page.locator('#profileMoveConfirmationModal')).not.toHaveClass(/show/);
     await expect(page.locator('[data-profile-group-toggle="group:databases"]')).toHaveCount(0);
-    await expect(applications.locator('.profile-management-info strong')).toHaveText([
+    await expect(applications.locator('.profile-management-info .profile-inspect-button')).toHaveText([
         'Application target',
         'Solo database',
     ]);
@@ -692,6 +692,7 @@ test('referenced commands and command sets cannot be deleted', async ({ page }) 
         hasText: 'Guarded direct command',
     });
     await expect(guardedCommand).toHaveCount(1);
+    await guardedCommand.locator('.command-row-menu > summary').click();
     await guardedCommand.locator('.cmd-delete').click();
     await expect(page.locator('.command-set-confirm-dialog')).toBeVisible();
     await page.locator('.command-set-confirm-dialog .btn-danger').click();
@@ -780,7 +781,7 @@ test('the profile launcher remains contained and readable at 375px', async ({ pa
     expect(layout.actionBelowEndpoint).toBe(true);
 });
 
-test('inline key upload and rename actions stay touchable at 375px', async ({ page }) => {
+test('inline key upload and rename actions stay touchable at 375px', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await openProfileManagement(page);
     await page.locator('#newProfileBtn').click();
@@ -802,6 +803,9 @@ test('inline key upload and rename actions stay touchable at 375px', async ({ pa
     expect(inlineLayout.contained).toBe(true);
     expect(inlineLayout.actionHeights.every(height => height >= 44)).toBe(true);
     expect(inlineLayout.documentWidth).toBeLessThanOrEqual(inlineLayout.viewportWidth);
+    await page.locator('#profileEditorUploadKeyBtn').scrollIntoViewIfNeeded();
+    await expect(page.locator('#profileEditorUploadKeyBtn')).toBeInViewport();
+    await page.screenshot({path:testInfo.outputPath('inline-key-mobile.png'),animations:'disabled'});
 
     await page.locator('#mobileMoreBtn').click();
     await page.locator('#workspaceNavBtn').click();

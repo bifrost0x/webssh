@@ -2053,6 +2053,7 @@
     flex: 1;
     min-width: 0;
     align-items: stretch;
+    overflow-x: auto;
 }
 
 .fm-source-tab {
@@ -3245,3 +3246,17 @@
 .fm-embedded-mode .fm-permissions-help summary { justify-content: center; padding: 6px; }
 .fm-embedded-mode .fm-permissions-help summary > span[data-i18n] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 @media (any-pointer: coarse) { .fm-permissions-help summary { min-height: 44px; } }
+
+.fm-permission-access { position: relative; display: inline-flex; }
+.fm-permission-access-help { display: none; }
+.fm-permission-access.is-unavailable:hover .fm-permission-access-help,
+.fm-permission-access.is-unavailable:focus-within .fm-permission-access-help {
+    display: block; position: absolute; top: 100%; left: 0; z-index: 100;
+    width: min(280px, 70vw); padding: 12px; border-radius: 6px;
+    background: var(--bg-secondary); color: var(--text-primary);
+    border: 1px solid var(--error-color, #d96069); box-shadow: 0 4px 16px #0005;
+    font-size: 13px; line-height: 1.5; white-space: normal;
+}
+.fm-permission-access.is-unavailable:hover,
+.fm-permission-access.is-unavailable:focus-within { outline: 1px solid var(--error-color, #d96069); border-radius: 4px; }
+.fm-permission-access-help a { color: var(--accent-primary); text-decoration: underline; }

@@ -57,6 +57,30 @@ jobs:
           cache-from: type=gha,scope=security-amd64
           cache-to: type=gha,mode=max,scope=security-amd64
 
+      - name: Verify native runtime acceptance
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "x86_64"
+          runtime_ref="$(docker image inspect --format '{{.Id}}' "webssh-security:$GITHUB_SHA")"
+          test "$(docker image inspect --format '{{.Architecture}}' "$runtime_ref")" = amd64
+          python scripts/check_hardened_container.py --image "$runtime_ref" \
+            --revision "$GITHUB_SHA" --platform linux/amd64
+
+      - name: Provide the pinned Syft release from its image
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The SBOM action installs Syft from GitHub releases, which can fail
+          # with HTTP 504 for hours. It uses a matching tool-cache entry first,
+          # so seed exactly its syft-version from the digest-pinned image.
+          tool="$RUNNER_TOOL_CACHE/syft/1.55.0/x64"
+          mkdir -p "$tool"
+          container="$(docker create ghcr.io/anchore/syft@sha256:4cc92b64ca74ffca4c94d4c8fcc01f217731375300be14d0b6eeb2e82eaa110a)"
+          docker cp "$container:/syft" "$tool/syft"
+          docker rm "$container" >/dev/null
+          test "$("$tool/syft" version | awk '/^Version:/ {print $2}')" = "1.55.0"
+          touch "$tool.complete"
+
       - name: Generate SPDX JSON SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
@@ -118,11 +142,25 @@ jobs:
           platforms: linux/arm64
           pull: true
           outputs: type=docker,dest=/tmp/webssh-arm64.tar
+          tags: webssh-security:${{ github.sha }}
           build-args: |
             VCS_REF=${{ github.sha }}
             OS_PACKAGE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
           cache-from: type=gha,scope=security-arm64
           cache-to: type=gha,mode=max,scope=security-arm64
+
+      - name: Load ARM64 scan candidate for runtime acceptance
+        if: github.event_name != 'pull_request'
+        run: docker load --input /tmp/webssh-arm64.tar
+
+      - name: Verify native runtime acceptance
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "aarch64"
+          runtime_ref="$(docker image inspect --format '{{.Id}}' "webssh-security:$GITHUB_SHA")"
+          test "$(docker image inspect --format '{{.Architecture}}' "$runtime_ref")" = arm64
+          python scripts/check_hardened_container.py --image "$runtime_ref" \
+            --revision "$GITHUB_SHA" --platform linux/arm64
 
       - name: Scan ARM64 fixable high and critical vulnerabilities
         if: ${{ always() }}

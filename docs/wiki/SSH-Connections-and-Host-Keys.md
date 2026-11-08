@@ -158,9 +158,11 @@ Save a jump host once and reference it from profiles. A jump host can have its
 own hostname, port, remote username, and authentication method.
 
 WebSSH opens the target through Paramiko's existing bounded channel helpers.
-The UI marks a connection as routed through the selected bastion. Deleting or
-changing a referenced jump host can affect saved profiles, so verify dependents
-before removal.
+The UI marks a connection as routed through the selected bastion. Editing a
+saved Jump Host preserves its ID and changes the configuration used by dependent
+profiles on subsequent connections; existing SSH sessions are not restarted.
+Deletion is blocked while profiles reference it. Reassign or remove those
+references before deleting the Jump Host.
 
 ## Connection ownership
 

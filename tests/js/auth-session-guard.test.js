@@ -498,3 +498,22 @@ for (const [name, context, expectedView] of [
         if (context.commandDrafts) assert.deepEqual([...browserWindow.SessionCommandLauncher.parameterDrafts], context.commandDrafts);
     });
 }
+
+test('signing out in one tab sends the other tabs to the sign-in page', () => {
+    const local = storage();
+    const listeners = {};
+    const browserWindow = {localStorage: local, addEventListener: (name, handler) => { listeners[name] = handler; }};
+    guardModule.markSignedOut(browserWindow);
+    assert.match(local.getItem('webssh:signed-out'), /^\d+$/);
+
+    let left = 0;
+    guardModule.watchSignOut(browserWindow, () => { left += 1; });
+    listeners.storage({key: 'other', newValue: '1'});
+    listeners.storage({key: 'webssh:signed-out', newValue: null});
+    assert.equal(left, 0);
+    listeners.storage({key: 'webssh:signed-out', newValue: '1'});
+    assert.equal(left, 1);
+    browserWindow.authSessionRedirectPending = true;
+    listeners.storage({key: 'webssh:signed-out', newValue: '2'});
+    assert.equal(left, 1);
+});

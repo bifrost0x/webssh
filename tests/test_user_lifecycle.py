@@ -182,6 +182,27 @@ class TestUserAccessRevocation:
 
             ssh_manager.sessions.clear()
 
+    def test_failing_credential_revocation_still_disconnects_sockets(self, app, monkeypatch):
+        with app.app_context():
+            from app.auth import register_socket_session
+            from app.models import SocketSession
+            from app.user_lifecycle import revoke_user_access
+
+            user = _create_user('revokefailure')
+            register_socket_session(user.id, 'revoke-sid')
+
+            def broken(_user_id):
+                raise OSError('storage unavailable')
+
+            monkeypatch.setitem(app.extensions, 'credentials', SimpleNamespace(revoke=broken))
+            fake_socketio = SimpleNamespace(server=_FakeSocketServer())
+
+            result = revoke_user_access(user.id, fake_socketio)
+
+            assert fake_socketio.server.disconnected == [('revoke-sid', '/')]
+            assert SocketSession.query.filter_by(user_id=user.id).count() == 0
+            assert result['errors'] == ['credentials:storage unavailable']
+
     def test_admin_lock_revokes_user_access(self, app, client, monkeypatch):
         with app.app_context():
             admin = _create_user('admin', is_admin=True)

@@ -10,6 +10,18 @@ from types import SimpleNamespace
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def exclusive_transfer_file_stub(monkeypatch):
+    from app import sftp_handler
+
+    @contextmanager
+    def exclusive_file(client, path, *, mode=0o600):
+        assert mode in (0o600, None)
+        with client.open(path, 'wb') as remote:
+            yield remote
+    monkeypatch.setattr(sftp_handler, 'open_exclusive_file', exclusive_file)
+
+
 class BoundedReader:
     def __init__(self, payload):
         self.payload = payload
@@ -39,6 +51,10 @@ class BoundedReader:
 
 
 class MemoryWriter(io.BytesIO):
+    def stat(self):
+        return SimpleNamespace(st_mode=stat.S_IFREG | 0o600,
+                               st_size=len(self.getvalue()), st_mtime=1)
+
     def __enter__(self):
         return self
 

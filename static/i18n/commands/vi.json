@@ -1,0 +1,1242 @@
+{
+  "sys-001": {
+    "name": "Cập nhật danh sách gói",
+    "description": "Cập nhật danh sách kho gói APT"
+  },
+  "sys-002": {
+    "name": "Nâng cấp gói",
+    "description": "Nâng cấp tất cả gói đã cài đặt"
+  },
+  "sys-003": {
+    "name": "Cài đặt gói",
+    "description": "Cài đặt gói bằng APT"
+  },
+  "sys-004": {
+    "name": "Gỡ gói",
+    "description": "Gỡ gói bằng APT"
+  },
+  "sys-005": {
+    "name": "Tìm gói",
+    "description": "Tìm kiếm gói"
+  },
+  "sys-006": {
+    "name": "Khởi động lại máy chủ",
+    "description": "Khởi động lại hệ thống ngay lập tức"
+  },
+  "sys-007": {
+    "name": "Tắt máy chủ",
+    "description": "Tắt hệ thống ngay lập tức"
+  },
+  "sys-008": {
+    "name": "Liệt kê dịch vụ",
+    "description": "Liệt kê tất cả dịch vụ systemd"
+  },
+  "sys-009": {
+    "name": "Khởi động dịch vụ",
+    "description": "Khởi động một dịch vụ systemd"
+  },
+  "sys-010": {
+    "name": "Dừng dịch vụ",
+    "description": "Dừng một dịch vụ systemd"
+  },
+  "sys-011": {
+    "name": "Khởi động lại dịch vụ",
+    "description": "Khởi động lại một dịch vụ systemd"
+  },
+  "sys-012": {
+    "name": "Bật dịch vụ",
+    "description": "Bật dịch vụ khi khởi động hệ thống"
+  },
+  "sys-013": {
+    "name": "Tắt dịch vụ",
+    "description": "Tắt dịch vụ khi khởi động hệ thống"
+  },
+  "sys-014": {
+    "name": "Trạng thái dịch vụ",
+    "description": "Kiểm tra trạng thái dịch vụ"
+  },
+  "sys-015": {
+    "name": "Xem nhật ký dịch vụ",
+    "description": "Theo dõi nhật ký dịch vụ"
+  },
+  "sys-016": {
+    "name": "Dung lượng ổ đĩa",
+    "description": "Hiển thị mức sử dụng ổ đĩa"
+  },
+  "sys-017": {
+    "name": "Kích thước thư mục",
+    "description": "Hiển thị kích thước các thư mục"
+  },
+  "sys-018": {
+    "name": "Bộ nhớ trống",
+    "description": "Hiển thị mức sử dụng bộ nhớ"
+  },
+  "sys-019": {
+    "name": "Tiến trình hàng đầu",
+    "description": "Hiển thị trình giám sát tiến trình"
+  },
+  "sys-020": {
+    "name": "Danh sách tiến trình",
+    "description": "Liệt kê tất cả tiến trình"
+  },
+  "sys-021": {
+    "name": "Buộc dừng tiến trình",
+    "description": "Buộc dừng tiến trình"
+  },
+  "sys-022": {
+    "name": "Tìm tiến trình",
+    "description": "Tìm tiến trình theo tên"
+  },
+  "sys-023": {
+    "name": "Thời gian hoạt động",
+    "description": "Hiển thị thời gian hoạt động của hệ thống"
+  },
+  "sys-024": {
+    "name": "Phiên bản kernel",
+    "description": "Hiển thị phiên bản kernel"
+  },
+  "sys-025": {
+    "name": "Thông tin hệ thống",
+    "description": "Hiển thị thông tin hệ thống"
+  },
+  "sys-026": {
+    "name": "Thông tin CPU",
+    "description": "Hiển thị thông tin CPU"
+  },
+  "sys-027": {
+    "name": "Thông tin bộ nhớ",
+    "description": "Hiển thị chi tiết bộ nhớ"
+  },
+  "sys-028": {
+    "name": "Thiết bị khối",
+    "description": "Liệt kê các thiết bị khối"
+  },
+  "sys-029": {
+    "name": "Thiết bị PCI",
+    "description": "Liệt kê các thiết bị PCI"
+  },
+  "sys-030": {
+    "name": "Thiết bị USB",
+    "description": "Liệt kê các thiết bị USB"
+  },
+  "net-001": {
+    "name": "Địa chỉ IP",
+    "description": "Hiển thị tất cả giao diện mạng"
+  },
+  "net-002": {
+    "name": "ifconfig",
+    "description": "Cấu hình mạng (cũ)"
+  },
+  "net-003": {
+    "name": "Ping máy chủ",
+    "description": "Kiểm tra kết nối"
+  },
+  "net-004": {
+    "name": "Truy vết tuyến đường",
+    "description": "Truy vết đường đi của gói tin trên mạng"
+  },
+  "net-005": {
+    "name": "Tra cứu DNS",
+    "description": "Truy vấn DNS"
+  },
+  "net-006": {
+    "name": "Truy vấn Dig",
+    "description": "Truy vấn DNS chi tiết"
+  },
+  "net-007": {
+    "name": "Thống kê mạng",
+    "description": "Hiển thị các cổng đang lắng nghe"
+  },
+  "net-008": {
+    "name": "Thống kê socket",
+    "description": "Phiên bản hiện đại của netstat"
+  },
+  "net-009": {
+    "name": "Tải tệp xuống",
+    "description": "Tải xuống từ URL"
+  },
+  "net-010": {
+    "name": "Yêu cầu cURL",
+    "description": "Yêu cầu HTTP"
+  },
+  "net-011": {
+    "name": "Kiểm tra cổng",
+    "description": "Kiểm tra kết nối tới cổng"
+  },
+  "net-012": {
+    "name": "Trạng thái tường lửa",
+    "description": "Kiểm tra tường lửa UFW"
+  },
+  "net-013": {
+    "name": "Bật tường lửa",
+    "description": "Bật UFW"
+  },
+  "net-014": {
+    "name": "Cho phép cổng",
+    "description": "Cho phép cổng qua tường lửa"
+  },
+  "net-015": {
+    "name": "Chặn cổng",
+    "description": "Chặn cổng"
+  },
+  "net-016": {
+    "name": "Danh sách iptables",
+    "description": "Liệt kê các quy tắc tường lửa"
+  },
+  "net-017": {
+    "name": "Bảng định tuyến",
+    "description": "Hiển thị bảng định tuyến"
+  },
+  "net-018": {
+    "name": "Bộ nhớ đệm ARP",
+    "description": "Hiển thị bộ nhớ đệm ARP"
+  },
+  "net-019": {
+    "name": "Quét mạng",
+    "description": "Quét mạng"
+  },
+  "net-020": {
+    "name": "Quét cổng",
+    "description": "Quét tất cả cổng"
+  },
+  "net-021": {
+    "name": "Hiển thị liên kết IP",
+    "description": "Hiển thị các giao diện mạng"
+  },
+  "net-022": {
+    "name": "Đặt địa chỉ IP",
+    "description": "Cấu hình địa chỉ IP"
+  },
+  "net-023": {
+    "name": "Bật giao diện mạng",
+    "description": "Kích hoạt giao diện mạng"
+  },
+  "net-024": {
+    "name": "Tắt giao diện mạng",
+    "description": "Vô hiệu hóa giao diện mạng"
+  },
+  "net-025": {
+    "name": "Kích thước MTU",
+    "description": "Đặt kích thước MTU"
+  },
+  "net-026": {
+    "name": "Xóa địa chỉ IP",
+    "description": "Xóa tất cả địa chỉ IP"
+  },
+  "net-027": {
+    "name": "Thêm tuyến đường",
+    "description": "Thêm tuyến đường tĩnh"
+  },
+  "net-028": {
+    "name": "Xóa tuyến đường",
+    "description": "Xóa tuyến đường"
+  },
+  "net-029": {
+    "name": "TCP Dump",
+    "description": "Bắt gói tin mạng"
+  },
+  "net-030": {
+    "name": "Liệt kê kết nối",
+    "description": "Liệt kê các kết nối mạng đang mở"
+  },
+  "net-031": {
+    "name": "Tra cứu WHOIS",
+    "description": "Tra cứu WHOIS"
+  },
+  "net-032": {
+    "name": "Giám sát băng thông",
+    "description": "Giám sát mức sử dụng băng thông"
+  },
+  "net-033": {
+    "name": "Tốc độ mạng",
+    "description": "Kiểm tra tốc độ Internet"
+  },
+  "net-034": {
+    "name": "Tệp hosts",
+    "description": "Xem tệp hosts"
+  },
+  "net-035": {
+    "name": "Cấu hình DNS",
+    "description": "Xem cấu hình DNS"
+  },
+  "net-036": {
+    "name": "Địa chỉ MAC",
+    "description": "Hiển thị địa chỉ MAC"
+  },
+  "net-037": {
+    "name": "Đổi địa chỉ MAC",
+    "description": "Giả mạo địa chỉ MAC"
+  },
+  "net-038": {
+    "name": "Đường hầm SSH",
+    "description": "Tạo đường hầm SSH"
+  },
+  "net-039": {
+    "name": "SSH ngược",
+    "description": "Đường hầm SSH ngược"
+  },
+  "net-040": {
+    "name": "Tải lên bằng SCP",
+    "description": "Sao chép an toàn lên máy chủ từ xa"
+  },
+  "net-041": {
+    "name": "Tải xuống bằng SCP",
+    "description": "Sao chép an toàn từ máy chủ từ xa"
+  },
+  "net-042": {
+    "name": "Rsync qua SSH",
+    "description": "Đồng bộ qua SSH"
+  },
+  "net-043": {
+    "name": "Máy chủ HTTP",
+    "description": "Máy chủ HTTP nhanh"
+  },
+  "net-044": {
+    "name": "Lắng nghe cổng",
+    "description": "Lắng nghe cổng bằng netcat"
+  },
+  "net-045": {
+    "name": "Gửi dữ liệu",
+    "description": "Gửi tệp bằng netcat"
+  },
+  "net-046": {
+    "name": "Kiểm tra Telnet",
+    "description": "Kiểm tra kết nối TCP"
+  },
+  "net-047": {
+    "name": "Hiển thị gateway",
+    "description": "Hiển thị gateway mặc định"
+  },
+  "net-048": {
+    "name": "Xóa bộ nhớ đệm DNS",
+    "description": "Xóa bộ nhớ đệm DNS"
+  },
+  "net-049": {
+    "name": "Giao diện mạng",
+    "description": "Hiển thị thống kê giao diện mạng"
+  },
+  "net-050": {
+    "name": "Ping flood",
+    "description": "Ping dồn dập (để kiểm thử)"
+  },
+  "file-001": {
+    "name": "Liệt kê tệp",
+    "description": "Liệt kê tất cả tệp kèm chi tiết"
+  },
+  "file-002": {
+    "name": "Đổi thư mục",
+    "description": "Đổi thư mục hiện tại"
+  },
+  "file-003": {
+    "name": "Thư mục làm việc",
+    "description": "Hiển thị thư mục hiện tại"
+  },
+  "file-004": {
+    "name": "Tạo thư mục",
+    "description": "Tạo thư mục"
+  },
+  "file-005": {
+    "name": "Xóa thư mục",
+    "description": "Xóa thư mục trống"
+  },
+  "file-006": {
+    "name": "Xóa đệ quy",
+    "description": "Xóa tệp/thư mục đệ quy"
+  },
+  "file-007": {
+    "name": "Sao chép tệp",
+    "description": "Sao chép đệ quy"
+  },
+  "file-008": {
+    "name": "Di chuyển tệp",
+    "description": "Di chuyển hoặc đổi tên"
+  },
+  "file-009": {
+    "name": "Xem tệp",
+    "description": "Hiển thị nội dung tệp"
+  },
+  "file-010": {
+    "name": "Xem tệp theo trang",
+    "description": "Xem tệp theo từng trang"
+  },
+  "file-011": {
+    "name": "Head",
+    "description": "20 dòng đầu"
+  },
+  "file-012": {
+    "name": "Tail",
+    "description": "20 dòng cuối"
+  },
+  "file-013": {
+    "name": "Theo dõi nhật ký",
+    "description": "Theo dõi cập nhật của tệp"
+  },
+  "file-014": {
+    "name": "Tìm kiếm bằng grep",
+    "description": "Tìm kiếm trong các tệp"
+  },
+  "file-015": {
+    "name": "Tìm theo tên",
+    "description": "Tìm tệp theo tên"
+  },
+  "file-016": {
+    "name": "Tìm theo kích thước",
+    "description": "Tìm các tệp lớn"
+  },
+  "file-017": {
+    "name": "Tìm tệp đã sửa đổi",
+    "description": "Tìm các tệp gần đây"
+  },
+  "file-018": {
+    "name": "Đổi quyền truy cập",
+    "description": "Đặt quyền truy cập cho tệp"
+  },
+  "file-019": {
+    "name": "Đổi chủ sở hữu",
+    "description": "Đổi chủ sở hữu"
+  },
+  "file-020": {
+    "name": "Loại tệp",
+    "description": "Xác định loại tệp"
+  },
+  "file-021": {
+    "name": "Đếm từ",
+    "description": "Đếm số dòng"
+  },
+  "file-022": {
+    "name": "Tạo tệp trống",
+    "description": "Tạo tệp trống"
+  },
+  "file-023": {
+    "name": "So sánh tệp",
+    "description": "So sánh các tệp"
+  },
+  "file-024": {
+    "name": "Liên kết tượng trưng",
+    "description": "Tạo liên kết tượng trưng"
+  },
+  "file-025": {
+    "name": "Tạo tar",
+    "description": "Tạo tệp tar.gz"
+  },
+  "file-026": {
+    "name": "Giải nén tar",
+    "description": "Giải nén tệp tar.gz"
+  },
+  "file-027": {
+    "name": "Tạo zip",
+    "description": "Tạo tệp zip"
+  },
+  "file-028": {
+    "name": "Giải nén zip",
+    "description": "Giải nén tệp zip"
+  },
+  "file-029": {
+    "name": "Sao chép bằng rsync",
+    "description": "Đồng bộ tệp"
+  },
+  "file-030": {
+    "name": "Dung lượng trống",
+    "description": "Hiển thị dung lượng đĩa"
+  },
+  "file-031": {
+    "name": "Tổng kết dung lượng",
+    "description": "Tổng kích thước thư mục"
+  },
+  "file-032": {
+    "name": "Sắp xếp thư mục lớn",
+    "description": "Tìm các thư mục lớn nhất"
+  },
+  "file-033": {
+    "name": "Tìm tệp trống",
+    "description": "Tìm các tệp trống"
+  },
+  "file-034": {
+    "name": "Tìm thư mục trống",
+    "description": "Tìm các thư mục trống"
+  },
+  "file-035": {
+    "name": "Đếm tệp",
+    "description": "Đếm số tệp"
+  },
+  "file-036": {
+    "name": "Xem dạng cây",
+    "description": "Cây thư mục (2 cấp)"
+  },
+  "file-037": {
+    "name": "Thông tin stat của tệp",
+    "description": "Thông tin chi tiết của tệp"
+  },
+  "file-038": {
+    "name": "Checksum MD5",
+    "description": "Tính mã băm MD5"
+  },
+  "file-039": {
+    "name": "Checksum SHA256",
+    "description": "Tính mã băm SHA256"
+  },
+  "file-040": {
+    "name": "So sánh checksum",
+    "description": "Xác minh tính toàn vẹn của tệp"
+  },
+  "file-041": {
+    "name": "Chia nhỏ tệp",
+    "description": "Chia thành các phần 100MB"
+  },
+  "file-042": {
+    "name": "Ghép tệp",
+    "description": "Gộp các tệp đã chia nhỏ"
+  },
+  "file-043": {
+    "name": "Đổi phần mở rộng",
+    "description": "Đổi tên hàng loạt"
+  },
+  "file-044": {
+    "name": "Chuyển đổi mã hóa",
+    "description": "Chuyển đổi mã hóa của tệp"
+  },
+  "file-045": {
+    "name": "Xóa dòng trùng lặp",
+    "description": "Xóa các dòng trùng lặp"
+  },
+  "file-046": {
+    "name": "Đếm dòng trùng lặp",
+    "description": "Đếm số lần xuất hiện"
+  },
+  "file-047": {
+    "name": "Đảo ngược tệp",
+    "description": "Hiển thị tệp theo thứ tự đảo ngược"
+  },
+  "file-048": {
+    "name": "Làm rỗng tệp",
+    "description": "Xóa nội dung tệp"
+  },
+  "file-049": {
+    "name": "Theo dõi tệp",
+    "description": "Giám sát thay đổi của tệp"
+  },
+  "file-050": {
+    "name": "Hex Dump",
+    "description": "Xem tệp ở dạng hex"
+  },
+  "file-051": {
+    "name": "Mã hóa Base64",
+    "description": "Mã hóa sang base64"
+  },
+  "file-052": {
+    "name": "Giải mã Base64",
+    "description": "Giải mã từ base64"
+  },
+  "file-053": {
+    "name": "Liệt kê ACL",
+    "description": "Hiển thị ACL của tệp"
+  },
+  "file-054": {
+    "name": "Đặt ACL",
+    "description": "Đặt ACL cho tệp"
+  },
+  "file-055": {
+    "name": "Liệt kê thuộc tính",
+    "description": "Hiển thị thuộc tính của tệp"
+  },
+  "file-056": {
+    "name": "Đặt bất biến",
+    "description": "Đặt tệp ở trạng thái bất biến"
+  },
+  "file-057": {
+    "name": "Gỡ bất biến",
+    "description": "Gỡ cờ bất biến"
+  },
+  "file-058": {
+    "name": "Tìm tệp Setuid",
+    "description": "Tìm các tệp SUID"
+  },
+  "file-059": {
+    "name": "Tìm tệp ai cũng ghi được",
+    "description": "Tìm các tệp có thể ghi"
+  },
+  "file-060": {
+    "name": "Hủy tệp an toàn",
+    "description": "Xóa tệp một cách an toàn"
+  },
+  "docker-001": {
+    "name": "Phiên bản Docker",
+    "description": "Hiển thị phiên bản Docker"
+  },
+  "docker-002": {
+    "name": "Liệt kê container",
+    "description": "Liệt kê tất cả container"
+  },
+  "docker-003": {
+    "name": "Liệt kê image",
+    "description": "Liệt kê tất cả image"
+  },
+  "docker-004": {
+    "name": "Kéo image",
+    "description": "Kéo image từ registry"
+  },
+  "docker-005": {
+    "name": "Chạy container",
+    "description": "Chạy container ở chế độ nền"
+  },
+  "docker-006": {
+    "name": "Khởi động container",
+    "description": "Khởi động container đã dừng"
+  },
+  "docker-007": {
+    "name": "Dừng container",
+    "description": "Dừng container đang chạy"
+  },
+  "docker-008": {
+    "name": "Xóa container",
+    "description": "Xóa container"
+  },
+  "docker-009": {
+    "name": "Xóa image",
+    "description": "Xóa image"
+  },
+  "docker-010": {
+    "name": "Nhật ký container",
+    "description": "Theo dõi nhật ký container"
+  },
+  "docker-011": {
+    "name": "Chạy lệnh trong container",
+    "description": "Mở shell trong container"
+  },
+  "docker-012": {
+    "name": "Thống kê container",
+    "description": "Thống kê mức sử dụng tài nguyên"
+  },
+  "docker-013": {
+    "name": "Kiểm tra container",
+    "description": "Thông tin chi tiết của container"
+  },
+  "docker-014": {
+    "name": "Mạng Docker",
+    "description": "Liệt kê các mạng"
+  },
+  "docker-015": {
+    "name": "Volume Docker",
+    "description": "Liệt kê các volume"
+  },
+  "docker-016": {
+    "name": "Compose Up",
+    "description": "Khởi động các dịch vụ compose"
+  },
+  "docker-017": {
+    "name": "Compose Down",
+    "description": "Dừng các dịch vụ compose"
+  },
+  "docker-018": {
+    "name": "Dọn dẹp container",
+    "description": "Xóa các container đã dừng"
+  },
+  "docker-019": {
+    "name": "Dọn dẹp image",
+    "description": "Xóa các image không dùng"
+  },
+  "docker-020": {
+    "name": "Dọn dẹp hệ thống",
+    "description": "Dọn dẹp toàn bộ"
+  },
+  "docker-021": {
+    "name": "Build image",
+    "description": "Build từ Dockerfile"
+  },
+  "docker-022": {
+    "name": "Gắn tag cho image",
+    "description": "Gắn tag cho image"
+  },
+  "docker-023": {
+    "name": "Đẩy image",
+    "description": "Đẩy lên registry"
+  },
+  "docker-024": {
+    "name": "Sao chép từ container",
+    "description": "Sao chép tệp ra ngoài"
+  },
+  "docker-025": {
+    "name": "Sao chép vào container",
+    "description": "Sao chép tệp vào trong"
+  },
+  "docker-026": {
+    "name": "Xuất container",
+    "description": "Xuất container"
+  },
+  "docker-027": {
+    "name": "Nhập image",
+    "description": "Nhập thành image"
+  },
+  "docker-028": {
+    "name": "Lưu image",
+    "description": "Lưu image ra tệp tar"
+  },
+  "docker-029": {
+    "name": "Nạp image",
+    "description": "Nạp image từ tệp tar"
+  },
+  "docker-030": {
+    "name": "Tiến trình container",
+    "description": "Hiển thị các tiến trình của container"
+  },
+  "git-001": {
+    "name": "Git Clone",
+    "description": "Sao chép kho mã"
+  },
+  "git-002": {
+    "name": "Git Status",
+    "description": "Hiển thị trạng thái cây làm việc"
+  },
+  "git-003": {
+    "name": "Git Add All",
+    "description": "Đưa tất cả thay đổi vào vùng chờ"
+  },
+  "git-004": {
+    "name": "Git Commit",
+    "description": "Commit các thay đổi"
+  },
+  "git-005": {
+    "name": "Git Push",
+    "description": "Đẩy lên remote"
+  },
+  "git-006": {
+    "name": "Git Pull",
+    "description": "Tải về và hợp nhất"
+  },
+  "git-007": {
+    "name": "Danh sách nhánh Git",
+    "description": "Liệt kê tất cả nhánh"
+  },
+  "git-008": {
+    "name": "Git Checkout",
+    "description": "Chuyển nhánh"
+  },
+  "git-009": {
+    "name": "Git tạo nhánh mới",
+    "description": "Tạo nhánh mới"
+  },
+  "git-010": {
+    "name": "Git Merge",
+    "description": "Hợp nhất nhánh"
+  },
+  "git-011": {
+    "name": "Git Log",
+    "description": "Hiển thị lịch sử commit"
+  },
+  "git-012": {
+    "name": "Git Diff",
+    "description": "Hiển thị các thay đổi chưa staged"
+  },
+  "git-013": {
+    "name": "Git Stash",
+    "description": "Lưu các thay đổi chưa commit"
+  },
+  "git-014": {
+    "name": "Git Stash Pop",
+    "description": "Áp dụng các thay đổi đã stash"
+  },
+  "git-015": {
+    "name": "Git Reset Hard",
+    "description": "Loại bỏ tất cả thay đổi"
+  },
+  "git-016": {
+    "name": "Git Remote",
+    "description": "Hiển thị URL remote"
+  },
+  "git-017": {
+    "name": "Git Fetch",
+    "description": "Tải về tất cả nhánh"
+  },
+  "git-018": {
+    "name": "Git Rebase",
+    "description": "Rebase lên main"
+  },
+  "git-019": {
+    "name": "Git Tag",
+    "description": "Tạo tag"
+  },
+  "git-020": {
+    "name": "Git Config User",
+    "description": "Đặt tên người dùng"
+  },
+  "git-021": {
+    "name": "Git Config Email",
+    "description": "Đặt email"
+  },
+  "git-022": {
+    "name": "Git xóa nhánh",
+    "description": "Xóa nhánh cục bộ"
+  },
+  "git-023": {
+    "name": "Git xóa nhánh remote",
+    "description": "Xóa nhánh trên remote"
+  },
+  "git-024": {
+    "name": "Git Show Commit",
+    "description": "Hiển thị chi tiết commit"
+  },
+  "git-025": {
+    "name": "Git Blame",
+    "description": "Hiển thị thay đổi theo từng dòng"
+  },
+  "git-026": {
+    "name": "Git Reflog",
+    "description": "Hiển thị nhật ký tham chiếu"
+  },
+  "git-027": {
+    "name": "Git Cherry-pick",
+    "description": "Áp dụng một commit cụ thể"
+  },
+  "git-028": {
+    "name": "Git Clean",
+    "description": "Xóa các tệp chưa được theo dõi"
+  },
+  "git-029": {
+    "name": "Git Submodule Init",
+    "description": "Khởi tạo submodule"
+  },
+  "git-030": {
+    "name": "Git Submodule Update",
+    "description": "Cập nhật submodule"
+  },
+  "db-001": {
+    "name": "Kết nối MySQL",
+    "description": "Kết nối tới MySQL"
+  },
+  "db-002": {
+    "name": "Kết nối PostgreSQL",
+    "description": "Kết nối tới PostgreSQL"
+  },
+  "db-003": {
+    "name": "MySQL Dump",
+    "description": "Sao lưu cơ sở dữ liệu MySQL"
+  },
+  "db-004": {
+    "name": "Khôi phục MySQL",
+    "description": "Khôi phục cơ sở dữ liệu MySQL"
+  },
+  "db-005": {
+    "name": "PostgreSQL Dump",
+    "description": "Sao lưu PostgreSQL"
+  },
+  "db-006": {
+    "name": "Khôi phục PostgreSQL",
+    "description": "Khôi phục PostgreSQL"
+  },
+  "db-007": {
+    "name": "Redis CLI",
+    "description": "Kết nối tới Redis"
+  },
+  "db-008": {
+    "name": "MongoDB Shell",
+    "description": "Kết nối tới MongoDB"
+  },
+  "db-009": {
+    "name": "Mở SQLite",
+    "description": "Mở cơ sở dữ liệu SQLite"
+  },
+  "db-010": {
+    "name": "Redis Ping",
+    "description": "Kiểm tra kết nối Redis"
+  },
+  "db-011": {
+    "name": "MySQL hiển thị cơ sở dữ liệu",
+    "description": "Liệt kê các cơ sở dữ liệu"
+  },
+  "db-012": {
+    "name": "Liệt kê CSDL PostgreSQL",
+    "description": "Liệt kê các cơ sở dữ liệu"
+  },
+  "db-013": {
+    "name": "Khóa Redis",
+    "description": "Liệt kê tất cả khóa Redis"
+  },
+  "db-014": {
+    "name": "Liệt kê CSDL MongoDB",
+    "description": "Liệt kê các cơ sở dữ liệu"
+  },
+  "db-015": {
+    "name": "MySQL cấp quyền truy cập",
+    "description": "Cấp quyền"
+  },
+  "db-016": {
+    "name": "PostgreSQL tạo người dùng",
+    "description": "Tạo người dùng PostgreSQL"
+  },
+  "db-017": {
+    "name": "Redis Flush All",
+    "description": "Xóa toàn bộ dữ liệu Redis"
+  },
+  "db-018": {
+    "name": "MySQL tối ưu bảng",
+    "description": "Tối ưu các bảng MySQL"
+  },
+  "db-019": {
+    "name": "PostgreSQL Vacuum",
+    "description": "Chạy Vacuum cho PostgreSQL"
+  },
+  "db-020": {
+    "name": "Sao lưu SQLite",
+    "description": "Sao lưu SQLite"
+  },
+  "mac-001": {
+    "name": "Cài đặt bằng Homebrew",
+    "description": "Cài đặt bằng Homebrew"
+  },
+  "mac-002": {
+    "name": "Cập nhật Homebrew",
+    "description": "Cập nhật Homebrew"
+  },
+  "mac-003": {
+    "name": "Nâng cấp Homebrew",
+    "description": "Nâng cấp các gói"
+  },
+  "mac-004": {
+    "name": "Tìm kiếm Homebrew",
+    "description": "Tìm kiếm gói"
+  },
+  "mac-005": {
+    "name": "Phiên bản macOS",
+    "description": "Hiển thị phiên bản macOS"
+  },
+  "mac-006": {
+    "name": "Danh sách Homebrew",
+    "description": "Liệt kê các gói đã cài đặt"
+  },
+  "mac-007": {
+    "name": "Thông tin Homebrew",
+    "description": "Hiển thị thông tin gói"
+  },
+  "mac-008": {
+    "name": "Xóa bộ nhớ đệm DNS macOS",
+    "description": "Xóa bộ nhớ đệm DNS"
+  },
+  "mac-009": {
+    "name": "Hiện tệp ẩn",
+    "description": "Hiện các tệp ẩn trong Finder"
+  },
+  "mac-010": {
+    "name": "Khởi động lại Finder",
+    "description": "Khởi động lại Finder"
+  },
+  "user-001": {
+    "name": "Liệt kê người dùng",
+    "description": "Liệt kê người dùng hệ thống"
+  },
+  "user-002": {
+    "name": "Thêm người dùng",
+    "description": "Tạo người dùng kèm thư mục home"
+  },
+  "user-003": {
+    "name": "Xóa người dùng",
+    "description": "Xóa người dùng và thư mục home"
+  },
+  "user-004": {
+    "name": "Đổi mật khẩu",
+    "description": "Đổi mật khẩu người dùng"
+  },
+  "user-005": {
+    "name": "Người dùng đang đăng nhập",
+    "description": "Hiển thị những người dùng đang đăng nhập"
+  },
+  "user-006": {
+    "name": "Lần đăng nhập gần nhất",
+    "description": "Hiển thị 10 lần đăng nhập gần nhất"
+  },
+  "user-007": {
+    "name": "Người dùng hiện tại",
+    "description": "Hiển thị tên người dùng hiện tại"
+  },
+  "user-008": {
+    "name": "Nhóm của người dùng",
+    "description": "Hiển thị các nhóm của người dùng"
+  },
+  "user-009": {
+    "name": "Thêm vào nhóm",
+    "description": "Thêm người dùng vào nhóm"
+  },
+  "user-010": {
+    "name": "Chuyển người dùng",
+    "description": "Chuyển sang người dùng khác"
+  },
+  "user-011": {
+    "name": "Lệnh sudo",
+    "description": "Thực thi với quyền superuser"
+  },
+  "user-012": {
+    "name": "Sửa sudoers",
+    "description": "Chỉnh sửa tệp sudoers"
+  },
+  "user-013": {
+    "name": "Liệt kê quyền sudo",
+    "description": "Liệt kê các quyền sudo"
+  },
+  "user-014": {
+    "name": "Đặt shell người dùng",
+    "description": "Đổi shell của người dùng"
+  },
+  "user-015": {
+    "name": "Khóa người dùng",
+    "description": "Khóa tài khoản người dùng"
+  },
+  "ssh-001": {
+    "name": "Tạo khóa SSH",
+    "description": "Tạo cặp khóa SSH"
+  },
+  "ssh-002": {
+    "name": "Sao chép khóa SSH",
+    "description": "Sao chép khóa sang máy chủ từ xa"
+  },
+  "ssh-003": {
+    "name": "Cấu hình SSH",
+    "description": "Xem cấu hình SSH"
+  },
+  "ssh-004": {
+    "name": "Thêm vào SSH Agent",
+    "description": "Thêm khóa vào agent"
+  },
+  "ssh-005": {
+    "name": "Liệt kê khóa SSH",
+    "description": "Liệt kê các khóa đã nạp"
+  },
+  "ssh-006": {
+    "name": "Quyền khóa SSH",
+    "description": "Sửa quyền của khóa SSH"
+  },
+  "ssh-007": {
+    "name": "Quyền thư mục SSH",
+    "description": "Sửa quyền của thư mục SSH"
+  },
+  "ssh-008": {
+    "name": "Known Hosts",
+    "description": "Xem known hosts"
+  },
+  "ssh-009": {
+    "name": "Xóa known host",
+    "description": "Xóa máy chủ khỏi known_hosts"
+  },
+  "ssh-010": {
+    "name": "Khởi động SSH Agent",
+    "description": "Khởi động SSH agent"
+  },
+  "ssh-011": {
+    "name": "Thông tin chứng chỉ SSL",
+    "description": "Hiển thị chi tiết chứng chỉ"
+  },
+  "ssh-012": {
+    "name": "Tạo chứng chỉ tự ký",
+    "description": "Tạo chứng chỉ SSL"
+  },
+  "ssh-013": {
+    "name": "Kiểm tra SSL từ xa",
+    "description": "Kiểm tra chứng chỉ SSL"
+  },
+  "ssh-014": {
+    "name": "Dấu vân tay SSH",
+    "description": "Hiển thị dấu vân tay của khóa"
+  },
+  "ssh-015": {
+    "name": "SSH chi tiết",
+    "description": "SSH với đầu ra gỡ lỗi"
+  },
+  "perf-001": {
+    "name": "iostat",
+    "description": "Giám sát thống kê I/O"
+  },
+  "perf-002": {
+    "name": "vmstat",
+    "description": "Thống kê bộ nhớ ảo"
+  },
+  "perf-003": {
+    "name": "iotop",
+    "description": "Mức sử dụng I/O theo tiến trình"
+  },
+  "perf-004": {
+    "name": "htop",
+    "description": "Trình xem tiến trình tương tác"
+  },
+  "perf-005": {
+    "name": "Tải trung bình",
+    "description": "Hiển thị tải trung bình"
+  },
+  "perf-006": {
+    "name": "Mức sử dụng CPU",
+    "description": "Thống kê CPU"
+  },
+  "perf-007": {
+    "name": "Mức sử dụng bộ nhớ",
+    "description": "Thống kê bộ nhớ"
+  },
+  "perf-008": {
+    "name": "Mức sử dụng swap",
+    "description": "Hiển thị mức sử dụng swap"
+  },
+  "perf-009": {
+    "name": "Thống kê mạng",
+    "description": "Thống kê mạng"
+  },
+  "perf-010": {
+    "name": "I/O ổ đĩa",
+    "description": "Chỉ hiển thị I/O đang hoạt động"
+  },
+  "perf-011": {
+    "name": "CPU theo tiến trình",
+    "description": "Các tiến trình dùng nhiều CPU nhất"
+  },
+  "perf-012": {
+    "name": "Bộ nhớ theo tiến trình",
+    "description": "Các tiến trình dùng nhiều bộ nhớ nhất"
+  },
+  "perf-013": {
+    "name": "Tệp đang mở",
+    "description": "Liệt kê các tệp đang mở"
+  },
+  "perf-014": {
+    "name": "Luồng của tiến trình",
+    "description": "Liệt kê tất cả luồng"
+  },
+  "perf-015": {
+    "name": "Tài nguyên hệ thống",
+    "description": "Mức sử dụng CPU theo thời gian"
+  },
+  "text-001": {
+    "name": "Thay thế bằng sed",
+    "description": "Thay thế văn bản trong tệp"
+  },
+  "text-002": {
+    "name": "Cột awk",
+    "description": "In các cột cụ thể"
+  },
+  "text-003": {
+    "name": "Sắp xếp tệp",
+    "description": "Sắp xếp các dòng theo thứ tự bảng chữ cái"
+  },
+  "text-004": {
+    "name": "Dòng uniq",
+    "description": "Xóa các dòng trùng lặp"
+  },
+  "text-005": {
+    "name": "Cột cut",
+    "description": "Trích xuất các cột CSV"
+  },
+  "text-006": {
+    "name": "Chuyển ký tự tr",
+    "description": "Chuyển chữ thường thành chữ hoa"
+  },
+  "text-007": {
+    "name": "Định dạng cột",
+    "description": "Định dạng thành các cột"
+  },
+  "text-008": {
+    "name": "Ghép tệp paste",
+    "description": "Gộp các tệp cạnh nhau"
+  },
+  "text-009": {
+    "name": "Nối tệp join",
+    "description": "Nối các tệp theo trường chung"
+  },
+  "text-010": {
+    "name": "Mở rộng tab",
+    "description": "Chuyển tab thành dấu cách"
+  },
+  "text-011": {
+    "name": "Thu gọn dấu cách",
+    "description": "Chuyển dấu cách thành tab"
+  },
+  "text-012": {
+    "name": "Ngắt dòng fold",
+    "description": "Ngắt dòng ở 80 ký tự"
+  },
+  "text-013": {
+    "name": "Đánh số dòng",
+    "description": "Thêm số dòng"
+  },
+  "text-014": {
+    "name": "In đảo ngược",
+    "description": "Đảo ngược từng dòng"
+  },
+  "text-015": {
+    "name": "Xóa dòng trống",
+    "description": "Xóa các dòng rỗng"
+  },
+  "cron-001": {
+    "name": "Liệt kê cron job",
+    "description": "Liệt kê các cron job của người dùng"
+  },
+  "cron-002": {
+    "name": "Sửa cron job",
+    "description": "Chỉnh sửa các cron job của người dùng"
+  },
+  "cron-003": {
+    "name": "Cron hệ thống",
+    "description": "Xem cron hệ thống"
+  },
+  "cron-004": {
+    "name": "Xóa cron",
+    "description": "Xóa tất cả cron của người dùng"
+  },
+  "cron-005": {
+    "name": "Lên lịch với at",
+    "description": "Lên lịch tác vụ chạy một lần"
+  },
+  "web-001": {
+    "name": "Kiểm tra Nginx",
+    "description": "Kiểm tra cấu hình Nginx"
+  },
+  "web-002": {
+    "name": "Nạp lại Nginx",
+    "description": "Nạp lại Nginx"
+  },
+  "web-003": {
+    "name": "Kiểm tra Apache",
+    "description": "Kiểm tra cấu hình Apache"
+  },
+  "web-004": {
+    "name": "Khởi động lại Apache",
+    "description": "Khởi động lại Apache"
+  },
+  "web-005": {
+    "name": "Trạng thái Nginx",
+    "description": "Kiểm tra trạng thái Nginx"
+  },
+  "web-006": {
+    "name": "Trạng thái Apache",
+    "description": "Kiểm tra trạng thái Apache"
+  },
+  "web-007": {
+    "name": "Nhật ký truy cập Nginx",
+    "description": "Theo dõi nhật ký truy cập"
+  },
+  "web-008": {
+    "name": "Nhật ký lỗi Nginx",
+    "description": "Theo dõi nhật ký lỗi"
+  },
+  "web-009": {
+    "name": "Nhật ký truy cập Apache",
+    "description": "Theo dõi nhật ký truy cập"
+  },
+  "web-010": {
+    "name": "Nhật ký lỗi Apache",
+    "description": "Theo dõi nhật ký lỗi"
+  },
+  "kernel-001": {
+    "name": "Nạp module",
+    "description": "Nạp module kernel"
+  },
+  "kernel-002": {
+    "name": "Liệt kê module",
+    "description": "Liệt kê các module đã nạp"
+  },
+  "kernel-003": {
+    "name": "Thông báo kernel",
+    "description": "Hiển thị thông báo của kernel"
+  },
+  "kernel-004": {
+    "name": "Gỡ module",
+    "description": "Gỡ nạp module kernel"
+  },
+  "kernel-005": {
+    "name": "Thông tin module",
+    "description": "Hiển thị thông tin module"
+  }
+}

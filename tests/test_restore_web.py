@@ -52,7 +52,7 @@ def test_session_epoch_invalidates_existing_login(app, client):
     }).status_code == 302
     admin = client.get('/admin')
     assert admin.status_code == 302
-    assert admin.headers['Location'].endswith('/settings#users')
+    assert admin.headers['Location'].endswith('/settings?section=users')
 
     rotate_epoch()
 
@@ -186,7 +186,7 @@ def test_interrupted_restore_sanitizes_rollback_before_epoch_rotation(
     monkeypatch.setattr(maintenance, 'operation_lock', fake_operation_lock)
     monkeypatch.setattr(
         backup_manager,
-        'restore_backup',
+        '_restore_recovery_snapshot',
         lambda source, destination: events.append(
             ('restore', Path(source), Path(destination))
         ),
@@ -303,6 +303,7 @@ def test_failed_restore_runs_emergency_rollback_and_restarts(
             raise RuntimeError('restore failed')
 
     monkeypatch.setattr(service, 'restore_backup', restore)
+    monkeypatch.setattr(service, '_restore_recovery_snapshot', restore)
     monkeypatch.setattr(service, 'reset_cache', lambda: None)
     monkeypatch.setattr(service, 'rotate_epoch', lambda: None)
     monkeypatch.setattr(service, '_clear_restored_runtime_sessions', lambda path: None)

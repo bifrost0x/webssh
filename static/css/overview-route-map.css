@@ -1,0 +1,117 @@
+/* Route tree shares the dashboard palette and keeps its own bounded canvas. */
+#overviewRouteMap { min-width:0; }
+#overviewRouteMap .ssh-map-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+#overviewRouteMap h2 { margin:0; font-size:18px; }
+#overviewRouteMap .ssh-map-count { color:var(--ws2-text-secondary); font-size:12px; white-space:nowrap; }
+#overviewRouteMap .ssh-map-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding-bottom:12px; }
+#overviewRouteMap .ssh-map-toolbar input { flex:1 1 180px; width:0; min-width:100px; }
+#overviewRouteMap button, #overviewRouteMap input { color:var(--ws2-text); background:var(--ws2-canvas); border:1px solid var(--ws2-border); border-radius:5px; min-height:36px; padding:6px 10px; font:inherit; }
+#overviewRouteMap button { cursor:pointer; }
+#overviewRouteMap button:hover { background:var(--ws2-row-hover); border-color:var(--ws2-accent); }
+#overviewRouteMap button:focus-visible, #overviewRouteMap input:focus-visible, #overviewRouteMap .ssh-route-viewport:focus-visible { outline:2px solid var(--ws2-accent); outline-offset:2px; }
+#overviewRouteMap output { min-width:42px; text-align:center; font-variant-numeric:tabular-nums; font-size:12px; }
+#overviewRouteMap .ssh-route-viewport { position:relative; overflow:clip; height:clamp(300px,42dvh,470px); background:var(--ws2-canvas); border:1px solid var(--ws2-border); border-radius:8px; cursor:grab; touch-action:none; }
+#overviewRouteMap .ssh-route-viewport[data-dragging=true] { cursor:grabbing; user-select:none; }
+#overviewRouteMap .ssh-route-canvas { position:absolute; left:0; top:0; width:max-content; display:grid; grid-template-columns:repeat(var(--ssh-branches,1),300px); align-items:start; gap:32px; padding:20px; transform-origin:0 0; }
+#overviewRouteMap .ssh-route-branch { position:relative; display:flex; flex-direction:column; align-items:stretch; gap:36px; min-width:0; }
+#overviewRouteMap .ssh-route-source { position:relative; z-index:1; display:flex; align-items:center; justify-content:center; gap:10px; align-self:center; width:260px; min-height:56px; padding:12px; background:var(--ws2-surface); border:1px solid var(--ws2-accent); border-radius:8px; overflow-wrap:anywhere; font-size:14px; }
+#overviewRouteMap .ssh-route-source .material-icons { color:var(--ws2-accent); }
+#overviewRouteMap .ssh-route-group { position:relative; z-index:1; background:var(--ws2-surface); border:1px solid var(--ws2-border-strong); border-radius:8px; padding:12px; min-width:0; }
+#overviewRouteMap h3 { display:flex; align-items:center; gap:8px; margin:0 0 10px; font-size:13px; }
+#overviewRouteMap h3 span:not(.material-icons) { flex:1; overflow-wrap:anywhere; }
+#overviewRouteMap h3 small { color:var(--ws2-text-secondary); }
+#overviewRouteMap .ssh-route-host { display:flex; align-items:center; gap:4px; border-top:1px solid var(--ws2-border); min-height:48px; }
+#overviewRouteMap .ssh-route-target { flex:1; min-width:0; display:flex; gap:8px; align-items:center; background:transparent; border:0; text-align:left; padding:8px 0; font-size:13px; }
+#overviewRouteMap .ssh-route-target > span:last-child { overflow-wrap:anywhere; }
+#overviewRouteMap .host-platform-icon { flex:0 0 22px; width:22px; height:22px; }
+#overviewRouteMap .overview-host-actions { display:flex; flex:0 0 auto; gap:2px; }
+#overviewRouteMap .overview-host-actions button { width:30px; min-height:32px; padding:3px; display:grid; place-items:center; }
+#overviewRouteMap .overview-host-connect span:not(.material-icons) { display:none; }
+#overviewRouteMap .overview-host-actions .material-icons { font-size:17px; }
+#overviewRouteMap .ssh-route-more { margin-top:10px; width:100%; font-size:12px; }
+#overviewRouteMap svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+#overviewRouteMap svg path { fill:none; stroke:var(--ws2-accent); stroke-width:2; }
+#overviewRouteMap [data-unresolved=true] svg path { stroke:var(--ws2-text-secondary); stroke-dasharray:5 5; }
+#overviewRouteMap .ssh-map-note { color:var(--ws2-text-secondary); font-size:12px; margin:12px 0 0; }
+#overviewRouteMap .ssh-map-empty { padding:20px; color:var(--ws2-text-secondary); }
+@media(prefers-reduced-motion:no-preference) {
+ #overviewRouteMap .ssh-route-branch { animation:ssh-route-enter 320ms ease-out both; }
+}
+@keyframes ssh-route-enter { from { opacity:.5; } to { opacity:1; } }
+
+/* A readable route diagram: lanes represent SSH paths, labels represent groups. */
+#overviewRouteMap .ssh-route-canvas { display:flex; align-items:flex-start; gap:64px; padding:24px; }
+#overviewRouteMap .ssh-map-server { flex:0 0 112px; display:flex; align-items:center; gap:8px; margin-top:20px; padding:16px 10px; background:var(--ws2-surface); border:1px solid var(--ws2-accent); border-radius:8px; z-index:1; }
+#overviewRouteMap .ssh-route-lanes { display:flex; flex-direction:column; gap:32px; }
+#overviewRouteMap .ssh-route-branch { display:grid; grid-template-columns:160px 320px; gap:48px; align-items:start; }
+#overviewRouteMap .ssh-route-source { width:160px; margin-top:20px; display:flex; flex-wrap:wrap; font-size:14px; padding:12px; }
+#overviewRouteMap .ssh-route-source small { flex-basis:100%; text-align:center; color:var(--ws2-text-secondary); }
+#overviewRouteMap .ssh-route-destinations { grid-column:2; position:relative; z-index:1; background:var(--ws2-surface); border:1px solid var(--ws2-border-strong); border-radius:8px; padding:12px; }
+#overviewRouteMap .ssh-route-branch[data-route=direct] .ssh-route-destinations { grid-column:1 / 3; width:320px; }
+#overviewRouteMap .ssh-destination-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; padding-bottom:12px; font-size:14px; }
+#overviewRouteMap .ssh-destination-heading > span { white-space:nowrap; color:var(--ws2-text-secondary); font-size:12px; }
+#overviewRouteMap .ssh-host-label { display:grid; gap:3px; }
+#overviewRouteMap .ssh-host-label small { color:var(--ws2-text-secondary); font-size:12px; }
+#overviewRouteMap .ssh-map-heading h2 { margin-right:auto; }
+#overviewRouteMap .ssh-route-viewport { height:400px; }
+.ssh-map-dialog { width:calc(100vw - 32px); max-width:none; height:calc(100dvh - 32px); max-height:none; padding:20px; border:1px solid var(--ws2-border); border-radius:12px; background:var(--ws2-canvas); color:var(--ws2-text); }
+.ssh-map-dialog::backdrop { background:rgba(0,0,0,.65); }
+.ssh-map-dialog #overviewRouteMap { height:100%; display:flex; flex-direction:column; }
+.ssh-map-dialog #overviewRouteMap .ssh-route-viewport { flex:1; min-height:0; }
+#connectionOverview .overview-module-handle { touch-action:none; }
+#connectionOverview .overview-dashboard-module.is-drop-target { outline:2px solid var(--ws2-accent); outline-offset:3px; }
+@media(max-width:600px) {
+ #overviewRouteMap .ssh-map-toolbar input { flex-basis:100%; width:100%; }
+ #overviewRouteMap .ssh-map-heading { flex-wrap:wrap; }
+ #overviewRouteMap .ssh-map-toolbar button { min-height:44px; min-width:44px; }
+ #overviewRouteMap .ssh-route-viewport { height:320px; }
+ .ssh-map-dialog { padding:12px; width:calc(100vw - 12px); height:calc(100dvh - 12px); }
+}
+
+@media(max-width:600px) {
+ #overviewRouteMap .ssh-route-canvas { flex-direction:column; gap:28px; padding:16px; }
+ #overviewRouteMap .ssh-map-server { flex-basis:auto; margin-top:0; align-self:center; }
+ #overviewRouteMap .ssh-route-branch { display:flex; flex-direction:column; align-items:center; gap:28px; width:300px; }
+ #overviewRouteMap .ssh-route-destinations, #overviewRouteMap .ssh-route-branch[data-route=direct] .ssh-route-destinations { width:300px; }
+ #overviewRouteMap .ssh-route-source { margin-top:0; }
+}
+/* Arrangement controls belong to the expanded canvas, not the dashboard preview. */
+#overviewRouteMap [data-map-node] { position:relative; }
+#overviewRouteMap .ssh-node-drag { position:absolute; top:4px; right:4px; width:30px; height:30px; min-height:30px; padding:3px; display:grid; place-items:center; touch-action:none; cursor:grab; color:var(--ws2-text-secondary); background:var(--ws2-surface); z-index:3; }
+#overviewRouteMap .ssh-node-drag[hidden], #overviewRouteMap .ssh-map-reset[hidden] { display:none; }
+#overviewRouteMap .ssh-destination-heading { padding-right:30px; min-height:28px; }
+#overviewRouteMap .ssh-route-source { padding-top:34px; }
+#overviewRouteMap .ssh-map-server { padding-top:34px; }
+#overviewRouteMap [data-map-node].is-moving { z-index:5; outline:2px solid var(--ws2-accent); }
+#overviewRouteMap [data-map-node].is-moving .ssh-node-drag { cursor:grabbing; }
+
+#overviewRouteMap .ssh-route-host-list { max-height:280px; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+#overviewRouteMap .ssh-route-more { margin:0 0 8px; }
+
+/* Dashboard: route summaries stay readable; host operations live in the expanded map. */
+#overviewRouteMap.is-summary .ssh-route-canvas { gap:32px; }
+#overviewRouteMap.is-summary .ssh-map-server { flex-basis:100px; padding:16px 10px; }
+#overviewRouteMap.is-summary .ssh-route-branch { grid-template-columns:140px 220px; gap:32px; }
+#overviewRouteMap.is-summary .ssh-route-source { width:140px; padding:16px 10px; }
+#overviewRouteMap.is-summary .ssh-route-destinations { width:220px; }
+#overviewRouteMap.is-summary .ssh-destination-heading { padding:0 0 12px; font-size:16px; }
+#overviewRouteMap.is-summary .ssh-destination-heading > span { display:none; }
+#overviewRouteMap .ssh-route-summary { width:100%; display:flex; align-items:center; gap:8px; text-align:left; background:var(--ws2-canvas); padding:10px 12px; }
+#overviewRouteMap .ssh-route-summary strong { font-size:28px; font-variant-numeric:tabular-nums; }
+#overviewRouteMap .ssh-route-summary .material-icons { margin-left:auto; color:var(--ws2-accent); }
+#overviewRouteMap .ssh-summary-groups { font-size:14px; line-height:1.5; color:var(--ws2-text-secondary); margin-top:10px; overflow-wrap:anywhere; }
+@media(max-width:600px) {
+ #overviewRouteMap.is-summary .ssh-route-branch { width:220px; }
+ #overviewRouteMap.is-summary .ssh-map-server { flex-basis:auto; }
+}
+
+#overviewRouteMap .ssh-map-toolbar [hidden] { display:none; }
+#overviewRouteMap.is-summary .ssh-route-viewport { overflow:auto; touch-action:pan-y; cursor:auto; container-type:inline-size; }
+#overviewRouteMap.is-summary .ssh-route-canvas { position:relative; width:max-content; min-width:100%; box-sizing:border-box; justify-content:center; transform:none; }
+#overviewRouteMap.is-summary .ssh-route-lanes { gap:24px; }
+@container (max-width:620px) {
+ #overviewRouteMap.is-summary .ssh-route-canvas { flex-direction:column; align-items:center; gap:24px; padding:16px; }
+ #overviewRouteMap.is-summary .ssh-map-server { flex-basis:auto; margin:0; }
+ #overviewRouteMap.is-summary .ssh-route-branch { width:220px; display:flex; flex-direction:column; align-items:center; gap:24px; }
+ #overviewRouteMap.is-summary .ssh-route-source { margin:0; }
+}

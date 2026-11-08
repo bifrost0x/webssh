@@ -25,6 +25,17 @@ def scan(binary, config, directory, report):
     ], capture_output=True, text=True, check=False)
 
 
+def canary_value(length=64):
+    """Return a random key-shaped value the generic rule cannot skip.
+
+    The generic rule ignores values that contain a common word, and random hex
+    occasionally spells one ("dead", "add"). Alternating letters and digits
+    keeps every letter isolated, so no word can form.
+    """
+    letters, digits = 'abcdefghijklmnopqrstuvwxyz', '0123456789'
+    return ''.join(secrets.choice(digits if index % 2 else letters) for index in range(length))
+
+
 def check_canaries(binary, config, directory):
     # Generate nonfunctional token-shaped strings at runtime, never commit them.
     paths = [
@@ -37,7 +48,7 @@ def check_canaries(binary, config, directory):
         target = directory / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('token = "' + 'ghp_' + secrets.token_hex(18) + '"\n'
-                          + 'api_key = "' + secrets.token_hex(32) + '"\n')
+                          + 'api_key = "' + canary_value() + '"\n')
     # PEM-shaped blocks must also be detected inside both synthetic-key tests.
     key_paths = ['tests/test_key_encryption.py', 'tests/test_key_manager.py']
     for name in key_paths:

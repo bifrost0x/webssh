@@ -20,6 +20,7 @@ from webauthn.helpers.structs import (
 )
 
 import config
+from .app_settings import runtime_feature_enabled
 
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_reauth_rate_limit, password_exceeds_bcrypt_limit
@@ -88,10 +89,31 @@ def _request_data():
 def _action_target(action, data):
     if action not in ACCOUNT_STEP_UP_ACTIONS:
         raise StepUpError("step-up request is invalid")
+    if action in {"automation.run", "automation.schedule", "automation.vault", "credentials.vault"}:
+        from flask import current_app
+        from .automation_store import AutomationError
+        auth_session = current_authentication_session()
+        from .app_settings import is_automation_enabled
+        if (action != 'credentials.vault' and not is_automation_enabled()) or auth_session is None:
+            raise StepUpError("step-up request is invalid")
+        if action == 'credentials.vault' and not request.is_secure:
+            raise StepUpError("step-up request is invalid")
+        target = data.get("target")
+        try:
+            intent = current_app.extensions['credentials' if action == 'credentials.vault' else 'automation'].intent(
+                target, current_user.id, auth_session.id
+            )
+            expected = {'automation.run': {'run'}, 'automation.schedule': {'schedule'},
+                        'automation.vault': {'vault'}, 'credentials.vault': {'vault', 'native'}}[action]
+            if intent['kind'] not in expected:
+                raise AutomationError('invalid_intent')
+        except AutomationError as error:
+            raise StepUpError("step-up request is invalid") from error
+        return target
     if action == "server.operation":
         from .server_operations import get_intent, OperationError
         auth_session = current_authentication_session()
-        if not config.SERVER_OPERATIONS_ENABLED or auth_session is None:
+        if not runtime_feature_enabled('server_operations_enabled') or auth_session is None:
             raise StepUpError("step-up request is invalid")
         target = data.get("target")
         try:

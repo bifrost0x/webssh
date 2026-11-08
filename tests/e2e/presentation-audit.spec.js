@@ -1,6 +1,6 @@
 const {test, expect} = require('playwright/test');
 const {login, installExternalRequestGuard, assertNoExternalRequests} = require('./helpers');
-const themes = ['glass', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'obsidian', 'retro', 'cyberpunk-neon', 'emerald-matrix'];
+const themes = ['werkbank', 'glass', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'obsidian', 'retro', 'cyberpunk-neon', 'emerald-matrix'];
 const languages = ['en', 'vi', 'de', 'fr', 'es', 'zh'];
 
 async function navigate(page, selector) {
@@ -57,25 +57,20 @@ for (const theme of themes) {
         await records(page);
         await page.evaluate(theme => { document.body.dataset.theme = theme; }, theme);
         await navigate(page, '#overviewNavBtn');
-        for (const selector of ['#overviewQuickConnect', '#overviewListBtn', '.overview-empty', '.overview-row-title', '.overview-group-heading']) {
+        await page.locator('#overviewSearch').fill('Server');
+        await expect(page.locator('#overviewHostList .od-host-name')).toHaveCount(5);
+        for (const selector of ['#overviewNewHost', '#overviewSearch', '#overviewTitle', '#overviewHostsTitle', '.od-kpi-value', '.od-host-name', '.od-connect']) {
             expect(await contrast(page, selector), `${theme}: ${selector}`).toBeGreaterThanOrEqual(4.5);
         }
-        for (let tone = 0; tone < 5; tone++) {
-            expect(await contrast(page, `#overviewHosts [data-tone="${tone}"] .overview-group-heading`), `${theme}: group ${tone}`).toBeGreaterThanOrEqual(4.5);
-        }
-        await page.locator('#overviewQuickConnect').hover();
-        expect(await contrast(page, '#overviewQuickConnect'), `${theme}: primary hover`).toBeGreaterThanOrEqual(4.5);
+        await page.locator('#overviewNewHost').hover();
+        expect(await contrast(page, '#overviewNewHost'), `${theme}: create host hover`).toBeGreaterThanOrEqual(4.5);
         await page.mouse.move(0, 0);
         await capture(page, `theme-${theme}-overview`);
-        await page.locator('#overviewGraphBtn').click();
-        await expect(page.locator('#overviewHosts .overview-edges path')).toHaveCount(2);
-        const accents = await page.locator('.overview-jump').evaluate(element => {
-            const style = getComputedStyle(element);
-            return {border: style.borderTopColor, icon: getComputedStyle(element.querySelector('.material-icons')).color};
-        });
-        expect(accents.border).toBe(accents.icon);
-        expect(await contrast(page, '#overviewGraphBtn')).toBeGreaterThanOrEqual(4.5);
+        await expect(page.locator('#odTopology')).toContainText('Bastion');
+        await page.locator('#overviewOpenMap').click();
+        await expect(page.locator('.ssh-map-dialog')).toContainText('Bastion');
         await capture(page, `theme-${theme}-routes`);
+        await page.keyboard.press('Escape');
         await navigate(page, '#manageProfilesBtn');
         await capture(page, `theme-${theme}-hosts`);
         await page.goto('/settings#preferences');
@@ -94,14 +89,16 @@ for (const language of languages) {
             const unchangedNames = ['Server 1', 'Server 2', 'Server 3', 'Server 4', 'Server 5'];
             await navigate(page, '#overviewNavBtn');
             await expect(page.locator('html')).toHaveAttribute('lang', language);
-            await expect(page.locator('#overviewHosts .overview-row-title')).toHaveText(unchangedNames);
-            await expect(page.locator('#overviewTitle')).toHaveText(await page.evaluate(() => i18n.t('overview.heading')));
+            await page.locator('#overviewSearch').fill('Server');
+            await expect(page.locator('#overviewHostList .od-host-name')).toHaveText(unchangedNames);
+            await expect(page.locator('#overviewTitle')).toHaveText(await page.evaluate(() => i18n.t('overviewWorkspace.' + (new Date().getHours() < 11 ? 'greetingMorning' : new Date().getHours() < 18 ? 'greetingDay' : 'greetingEvening')).replace('{name}', 'e2e_admin')));
             await expect(page.locator('#connectionOverview')).not.toContainText(/homelab|demo|placeholder/i);
             await capture(page, `language-${language}-${width}-overview`);
-            await page.locator('#overviewGraphBtn').click();
-            await expect(page.locator('#overviewTitle')).toHaveText(await page.evaluate(() => i18n.t('overview.routesHeading')));
-            await expect(page.locator('#overviewHosts .overview-edges path')).toHaveCount(2);
+            await expect(page.locator('#odTopology')).toContainText('Bastion');
+            await page.locator('#overviewOpenMap').click();
+            await expect(page.locator('.ssh-map-dialog')).toContainText('Bastion');
             await capture(page, `language-${language}-${width}-routes`);
+            await page.keyboard.press('Escape');
             for (const [selector, name] of [['#manageProfilesBtn', 'hosts'], ['#commandLibraryBtn', 'commands'], ['#fileTransferBtn', 'files']]) {
                 await navigate(page, selector);
                 await capture(page, `language-${language}-${width}-${name}`);

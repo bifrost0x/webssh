@@ -1,0 +1,43 @@
+.host-platform-icon {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    vertical-align: middle;
+    color: var(--platform-ink-dark, #aeb8c5);
+    font-size: 20px;
+    line-height: 20px;
+}
+.host-platform-icon:not(.material-icons) {
+    background-color: currentColor;
+    mask-size: contain;
+    mask-position: center;
+    mask-repeat: no-repeat;
+}
+.profile-launcher-name > .host-platform-icon,
+.profile-management-info > strong > .host-platform-icon { margin-inline-end: 8px; }
+.session-platform-icon { display: inline-flex; align-items: center; }
+.session-platform-icon .host-platform-icon { width: 16px; height: 16px; flex-basis: 16px; font-size: 16px; line-height: 16px; }
+
+/* Shared platform identity in overview, saved hosts, management and tabs.
+   Paper needs darker inks; all other themes use luminous brand hues. */
+.host-platform-icon[data-platform="server"] { --platform-ink-dark: #aeb8c5; --platform-ink-light: #4b5968; }
+.host-platform-icon[data-platform="docker"] { --platform-ink-dark: #55b5ff; --platform-ink-light: #0067a5; }
+.host-platform-icon[data-platform="proxmox"] { --platform-ink-dark: #f6a04d; --platform-ink-light: #a14b00; }
+.host-platform-icon[data-platform="raspberrypi"] { --platform-ink-dark: #f46c98; --platform-ink-light: #a22151; }
+.host-platform-icon[data-platform="homeassistant"] { --platform-ink-dark: #4ec9f5; --platform-ink-light: #006e92; }
+.host-platform-icon[data-platform="truenas"] { --platform-ink-dark: #62bce6; --platform-ink-light: #17698f; }
+.host-platform-icon[data-platform="opnsense"] { --platform-ink-dark: #f9956d; --platform-ink-light: #a4441c; }
+.host-platform-icon[data-platform="ubuntu"] { --platform-ink-dark: #ff966f; --platform-ink-light: #a4401e; }
+.host-platform-icon[data-platform="debian"] { --platform-ink-dark: #f4709d; --platform-ink-light: #a22151; }
+.host-platform-icon[data-platform="fedora"] { --platform-ink-dark: #81aef5; --platform-ink-light: #345b9d; }
+.host-platform-icon[data-platform="archlinux"] { --platform-ink-dark: #51c2ed; --platform-ink-light: #006e92; }
+.host-platform-icon[data-platform="alpinelinux"] { --platform-ink-dark: #79b7d5; --platform-ink-light: #275f7e; }
+.host-platform-icon[data-platform="linux"] { --platform-ink-dark: #ebce65; --platform-ink-light: #786000; }
+.host-platform-icon[data-platform="apple"] { --platform-ink-dark: #d6dce3; --platform-ink-light: #515b67; }
+.host-platform-icon[data-platform="freebsd"] { --platform-ink-dark: #ff8585; --platform-ink-light: #a62e35; }
+body[data-theme="paper"] .host-platform-icon { color: var(--platform-ink-light, #4b5968); }
+
+@media (forced-colors: active) {
+    body[data-theme] .host-platform-icon { color: CanvasText; forced-color-adjust: none; }
+}

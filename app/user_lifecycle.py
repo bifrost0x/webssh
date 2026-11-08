@@ -18,6 +18,8 @@ def revoke_user_access(user_id, socketio_instance=None):
     database session metadata from being revoked.
     """
     user_id = int(user_id)
+    from flask import current_app
+    from .discovery_routes import cancel_for_user as cancel_discovery
     result = {
         'transfers': 0,
         'sockets': 0,
@@ -26,6 +28,26 @@ def revoke_user_access(user_id, socketio_instance=None):
         'smb_sources': 0,
         'errors': [],
     }
+
+    credentials = current_app.extensions.get('credentials')
+    automation = current_app.extensions.get('automation')
+    for name, revoke in (
+        ('credentials', credentials.revoke if credentials is not None else None),
+        ('automation', automation.revoke if automation is not None else None),
+        ('discovery', cancel_discovery),
+    ):
+        if revoke is None:
+            continue
+        try:
+            revoke(user_id)
+        except Exception as exc:
+            result['errors'].append(f'{name}:{exc}')
+            log_warning(
+                "Failed to revoke user access",
+                user_id=user_id,
+                resource=name,
+                error=str(exc),
+            )
 
     try:
         from .transfer_routes import transfer_manager
@@ -203,6 +225,8 @@ def delete_user_account(user, socketio_instance=None):
 
         try:
             original, quarantined = quarantine_user_data(user_id)
+            from .automation_schedule import AutomationSchedule
+            AutomationSchedule.query.filter_by(user_id=user_id).delete(synchronize_session=False)
             db.session.delete(user)
             db.session.commit()
         except Exception:

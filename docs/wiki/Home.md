@@ -24,10 +24,15 @@ overview, screenshots, release badges, and source code, visit the
   conservative authentication assurance.
 - Administrative user management, structured audit logs, backup and restore,
   and security controls suitable for a trusted self-hosted deployment.
+- A status-first overview with host readiness, open sessions, automation
+  results, optional reachability checks and items that need attention. Each
+  account arranges the panels freely and can dismiss handled alerts.
+- Native automation with immediate and scheduled runs, optional encrypted saved
+  passwords, and manual discovery of SSH hosts in a network range you choose.
 - A fully local browser runtime: vendored frontend dependencies and no built-in
   telemetry.
 
-The WebSSH 2.0 interface uses a responsive, focused session workspace: terminal,
+The WebSSH 3 interface uses a responsive, focused session workspace: terminal,
 Files, Commands, Notes, and supported Linux insights stay aligned with the
 selected SSH session across desktop, tablet, and mobile layouts.
 
@@ -92,8 +97,10 @@ untrusted networks.
 - Verify host-key fingerprints before accepting first-contact trust and treat changes as incidents.
 - Keep `BLOCK_INTERNAL_SSH=true` for exposed multi-user deployments unless a
   reviewed use case requires private targets.
-- Back up `DATA_DIR` securely; a backup may contain the persisted `SECRET_KEY`
-  and encrypted private keys together.
+- Native WebSSH backup exports exclude saved remote passwords and SSH keys.
+  A complete volume snapshot of `DATA_DIR` still contains those credentials
+  and may contain the persisted `SECRET_KEY`; protect it separately.
+  See [Backup and Restore](Backup-Restore-and-Secret-Rotation) for restore requirements.
 - Use the [Security Model and Hardening](Security-Model-and-Hardening) page as
   the deployment checklist.
 

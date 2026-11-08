@@ -140,6 +140,19 @@ function createHarness(width = 1280) {
     return { controller, state, syncCalls };
 }
 
+test('a user-collapsed tool stays closed when its availability returns', () => {
+    const {controller} = createHarness(1600);
+    controller.init();
+    controller.setContextAvailability('files', true);
+    controller.openContext('files', 'user');
+    controller.closeContext('user');
+    controller.setContextAvailability('files', false);
+    controller.setContextAvailability('files', true);
+    assert.equal(controller.getState().activeContext, null);
+    assert.equal(controller.openContext('files', 'user'), true);
+    assert.equal(controller.getState().activeContext, 'files');
+});
+
 test('breakpointForWidth uses the approved desktop tablet and mobile boundaries', () => {
     const { breakpointForWidth } = require('../../static/js/workspace-layout-controller.js');
 
@@ -148,13 +161,13 @@ test('breakpointForWidth uses the approved desktop tablet and mobile boundaries'
     assert.equal(breakpointForWidth(767), 'mobile');
 });
 
-test('automatic context width grows with the live desktop viewport', () => {
+test('automatic context width stays bounded on wide displays', () => {
     const { defaultContextWidth } = require('../../static/js/workspace-layout-controller.js');
 
-    assert.equal(defaultContextWidth(1280), 360);
-    assert.equal(defaultContextWidth(1536), 384);
-    assert.equal(defaultContextWidth(1920), 440);
-    assert.equal(defaultContextWidth(3440), 440);
+    assert.equal(defaultContextWidth(1280), 340);
+    assert.equal(defaultContextWidth(1536), 340);
+    assert.equal(defaultContextWidth(1920), 340);
+    assert.equal(defaultContextWidth(3440), 340);
 });
 
 test('desktop starts with the last available context open and still allows dismissal', () => {
@@ -170,8 +183,10 @@ test('desktop starts with the last available context open and still allows dismi
     state.elements.contextWorkspaceClose.dispatch('click');
 
     assert.equal(controller.getState().activeContext, null);
-    assert.equal(state.elements.contextWorkspace.hidden, true);
-    assert.equal(state.elements.contextWorkspaceLauncher.hidden, false);
+    assert.equal(state.elements.contextWorkspace.hidden, false);
+    assert.equal(state.elements.contextWorkspace.getAttribute('aria-hidden'), 'false');
+    assert.equal(state.elements.contextWorkspaceLauncher.hidden, true);
+    assert.equal(state.documentRef.activeElement, state.elements.contextCommandsTab);
 });
 
 test('mobile starts with the context workspace closed to keep the terminal reachable', () => {
@@ -277,11 +292,11 @@ test('desktop context width uses automatic sizing without stored state', () => {
 
     controller.init();
 
-    assert.equal(controller.getContextWidth(), 440);
+    assert.equal(controller.getContextWidth(), 340);
     assert.equal(controller.getContextWidthMode(), 'auto');
     assert.equal(
         state.elements.workspace.style.getPropertyValue('--context-workspace-width'),
-        '440px',
+        '340px',
     );
 });
 
@@ -290,7 +305,7 @@ test('legacy default width migrates to auto while custom widths stay manual', ()
     legacyDefault.state.storage.setItem('webssh.workspace.contextWidth', '420');
     legacyDefault.controller.init();
 
-    assert.equal(legacyDefault.controller.getContextWidth(), 440);
+    assert.equal(legacyDefault.controller.getContextWidth(), 340);
     assert.equal(legacyDefault.controller.getContextWidthMode(), 'auto');
 
     const legacyCustom = createHarness(1920);
@@ -304,22 +319,22 @@ test('legacy default width migrates to auto while custom widths stay manual', ()
 test('automatic width follows resize and double click resets manual width to auto', () => {
     const { controller, state, syncCalls } = createHarness(1280);
     controller.init();
-    assert.equal(controller.getContextWidth(), 360);
+    assert.equal(controller.getContextWidth(), 340);
 
     state.setWidth(1920);
     state.listeners.get('resize')?.();
-    assert.equal(controller.getContextWidth(), 440);
+    assert.equal(controller.getContextWidth(), 340);
     assert.ok(syncCalls.length > 0);
 
     state.elements.contextWorkspaceResizer.dispatch('keydown', {
         key: 'ArrowRight',
         preventDefault() {},
     });
-    assert.equal(controller.getContextWidth(), 416);
+    assert.equal(controller.getContextWidth(), 320);
     assert.equal(controller.getContextWidthMode(), 'manual');
 
     state.elements.contextWorkspaceResizer.dispatch('dblclick');
-    assert.equal(controller.getContextWidth(), 440);
+    assert.equal(controller.getContextWidth(), 340);
     assert.equal(controller.getContextWidthMode(), 'auto');
     assert.equal(state.storage.getItem('webssh.workspace.contextWidthMode'), 'auto');
 });
@@ -422,4 +437,55 @@ test('app startup uses the layout controller instead of the legacy resize handle
     assert.doesNotMatch(source, /setupResizeHandle\(\)/);
     assert.doesNotMatch(source, /workspace-notepad-width/);
     assert.doesNotMatch(source, /notepadCollapsed/);
+});
+
+test('desktop vertical rail closes the active tool and remains keyboard reachable', () => {
+    const { controller, state } = createHarness(1920);
+    controller.init();
+    controller.openContext('commands', 'user');
+    assert.equal(state.elements.contextWorkspaceTabs.getAttribute('aria-orientation'), 'vertical');
+    state.elements.contextCommandsTab.dispatch('click');
+    assert.equal(controller.getState().activeContext, null);
+    assert.equal(state.elements.contextWorkspace.hidden, false);
+    assert.equal(state.elements.contextCommandsTab.getAttribute('tabindex'), '0');
+    state.elements.contextWorkspaceTabs.dispatch('keydown', {
+        key: 'ArrowDown', target: state.elements.contextCommandsTab, preventDefault() {},
+    });
+    assert.equal(controller.getState().activeContext, 'notes');
+    assert.equal(state.documentRef.activeElement, state.elements.contextNotesTab);
+});
+
+test('drag resizing measures tool content separately from the fixed rail', () => {
+    const { controller, state } = createHarness(1920);
+    controller.init();
+    state.elements.contextWorkspaceResizer.dispatch('pointerdown', {button: 0, pointerId: 1});
+    state.listeners.get('document:pointermove')?.({clientX: 1408});
+    state.listeners.get('document:pointerup')?.({pointerId: 1});
+    assert.equal(controller.getContextWidth(), 448);
+    assert.equal(state.storage.getItem('webssh.workspace.contextWidth'), '448');
+    assert.equal(controller.getContextWidthMode(), 'manual');
+});
+
+test('shrinking the tool panel returns its focused editor to the visible launcher', () => {
+    const {controller,state} = createHarness(1280);
+    controller.init(); controller.openContext('notes','user');
+    const editor = {id:'notes-editor'};
+    state.elements.contextWorkspace.contains = target => target === editor;
+    state.documentRef.activeElement = editor;
+    state.setWidth(390); controller.reconcile();
+    assert.equal(controller.getState().activeContext, null);
+    assert.equal(state.documentRef.activeElement, state.elements.contextWorkspaceLauncher);
+});
+
+test('losing an active tool returns focus from its hidden panel to the replacement tab', () => {
+    const {controller,state} = createHarness(1280);
+    controller.init(); controller.setContextAvailability('files',true);
+    controller.openContext('files','user');
+    const editor = {id:'file-list'};
+    state.elements.contextFilesPanel.contains = target => target === editor;
+    state.documentRef.activeElement = editor;
+    controller.setContextAvailability('files',false);
+    const replacement = controller.getState().activeContext;
+    assert.notEqual(replacement,'files');
+    assert.equal(state.documentRef.activeElement, state.elements[`context${replacement[0].toUpperCase()}${replacement.slice(1)}Tab`]);
 });

@@ -328,7 +328,7 @@ def test_enabled_admin_routes_allow_administrators(
 
     assert response.status_code == expected_status
     if path == '/admin':
-        assert response.headers['Location'].endswith('/settings#users')
+        assert response.headers['Location'].endswith('/settings?section=users')
 
 
 def test_admin_settings_rejects_non_boolean_without_overwriting(

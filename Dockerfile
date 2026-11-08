@@ -48,6 +48,7 @@ RUN apt-get update \
         ca-certificates \
         libldap2 \
         libsasl2-2 \
+    && apt-get purge --yes mount \
     && rm -rf /var/lib/apt/lists/* \
     && python -m pip check \
     && python -m pip uninstall --yes pip \

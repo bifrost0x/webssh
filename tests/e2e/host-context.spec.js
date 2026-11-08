@@ -33,6 +33,53 @@ async function openContext(page, profileName) {
     await expect(page.locator('#hostContextFields')).toBeVisible();
 }
 
+test('unsaved host notes warn before reloading even without an SSH session', async ({page}) => {
+    await login(page);
+    await openContext(page,'Password review');
+    await page.locator('#hostContextNotes').fill('Do not lose this host draft');
+    const dialogs=[];
+    page.on('dialog',async dialog=>{dialogs.push(dialog.type());await dialog.dismiss();});
+    await page.evaluate(()=>setTimeout(()=>location.reload(),0));
+    await expect.poll(()=>dialogs).toEqual(['beforeunload']);
+    await expect(page.locator('#hostContextNotes')).toHaveValue('Do not lose this host draft');
+    await page.locator('#hostContextReload').click();
+    await expect(page.locator('#hostContextStatus')).toHaveText('Saved');
+    await page.reload();
+    expect(dialogs).toEqual(['beforeunload']);
+});
+
+test('a slow save on another host does not block or disturb the current draft', async ({page}) => {
+    await login(page);
+    let releaseSave;
+    await page.route('**/api/profiles/*/context', async route => {
+        if (route.request().method() !== 'PUT') return route.continue();
+        const body = route.request().postDataJSON();
+        if (!route.request().url().includes('/password-review/')) {
+            return route.fulfill({json:{...body,revision:body.revision+1}});
+        }
+        await new Promise(resolve => {
+            releaseSave = () => route.fulfill({json:{...body,revision:body.revision+1}}).then(resolve);
+        });
+    });
+    await openContext(page,'Password review');
+    await page.locator('#hostContextNotes').fill('Saving first host');
+    await page.locator('#hostContextSave').click();
+    await expect.poll(()=>Boolean(releaseSave)).toBe(true);
+    await page.locator('#hostContextClose').click();
+    await openContext(page,'Ops first');
+    const notes=page.locator('#hostContextNotes');
+    await notes.fill('Editing second host');
+    await expect(page.locator('#hostContextSave')).toBeEnabled();
+    await expect(page.locator('#hostContextStatus')).toHaveText('Unsaved changes');
+    await notes.evaluate(el=>{el.focus();el.setSelectionRange(8,14);});
+    await releaseSave();
+    await expect(notes).toBeFocused();
+    await expect(notes).toHaveValue('Editing second host');
+    expect(await notes.evaluate(el=>[el.selectionStart,el.selectionEnd])).toEqual([8,14]);
+    await page.locator('#hostContextSave').click();
+    await expect(page.locator('#hostContextStatus')).toHaveText('Saved');
+});
+
 test('private context persists per saved profile, preserves conflicts, and leaves global notes unchanged', async ({page}) => {
     await login(page);
     const globalNotes = await page.locator('#sessionNotepad').inputValue();
@@ -82,9 +129,18 @@ test('active session context rejects stale actions and explains ad-hoc sessions 
     await page.locator('#hostContextLaunchers button').click();
     await expect(page.locator('#hostContextStatus')).toContainText('active SSH session changed');
     await page.locator('#hostContextClose').click();
+    // A session started without its saved host still shows the context of the
+    // saved host with exactly the same destination, user and route.
     await page.evaluate(() => {
         SessionManager.sessions['context-fixture'].profileId = null;
         SessionManager.activeSessionId = 'context-fixture';
+        window.HostContext.openActive();
+    });
+    await expect(page.locator('#hostContextDirectories')).toHaveValue('/logs');
+    await page.locator('#hostContextClose').click();
+    // Without a matching saved host it explains that there is no context.
+    await page.evaluate(() => {
+        SessionManager.sessions['context-fixture'].host = 'unsaved.example';
         window.HostContext.openActive();
     });
     await expect(page.locator('#hostContextEmpty')).toBeVisible();

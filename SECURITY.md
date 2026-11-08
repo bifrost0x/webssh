@@ -154,19 +154,30 @@ Instead, report vulnerabilities via:
    flask --app start:app backup verify /secure-backups/webssh.zip
    ```
    Stop every WebSSH process using `DATA_DIR` before create, restore, or
-   rotation operations. Backups contain security-sensitive data and may include
-   the persisted `SECRET_KEY`; encrypt them separately, restrict access, and
-   define retention and secure deletion.
+   rotation operations. Native exports exclude saved remote passwords, legacy
+   password vaults, SSH key directories (including metadata), and quarantined
+   deleted-user data. Normal restore ignores these even in historical archives
+   and clears existing copies. Reimport keys, recreate passwords, reassign
+   credentials, then review and re-enable schedules. Archives retain account
+   authentication data (password hashes, MFA data and provider secrets) and may
+   include the persisted `SECRET_KEY`. They do not automatically remove secrets
+   embedded in commands, notes or run history. Encrypt them separately, restrict
+   access, and define retention and secure deletion. Historical archives are not
+   rewritten and may still contain remote credentials.
 
 10. **Rotate only a persisted application secret**
     ```bash
     flask --app start:app rotate-secret-key --confirm-offline
     ```
-    The command first creates and verifies a backup, stages and verifies every
+    The command first creates and verifies a private internal recovery snapshot,
+    stages and verifies every
     re-encrypted SSH key, and publishes `DATA_DIR/secret_key` last. It refuses
     an externally supplied secret that is missing from or differs from the
     persisted file. Rotate secrets owned by an external secret manager through
-    that manager and a separately controlled key migration.
+    that manager and a separately controlled key migration. Internal recovery
+    snapshots for rotation and failed restores retain encrypted credentials for
+    rollback. They are not downloadable backup exports; restrict access and
+    manage their retention and cleanup separately.
 
 11. **Keep a tested local break-glass administrator**
     OIDC and LDAP remain deployment-gated, while GitHub App authentication is
@@ -233,7 +244,7 @@ upgrade. No persistent-data rollback or format rewrite is required.
 | Limitation | Description | Mitigation |
 |------------|-------------|------------|
 | In-Memory Rate Limiting | Bypassed with multiple workers | Use single worker (default) |
-| TOFU Host Keys | First connection auto-accepted | Review logs for new host keys |
+| TOFU Host Keys | Unknown keys require explicit confirmation before authentication | Verify the fingerprint through a trusted channel before accepting it |
 | Deployment-gated identity features | Passkeys, TOTP, OIDC, and LDAP require both deployment allowance and Admin activation | Configure exact origins/provider settings, validate readiness, and keep local administrator recovery tested before activation |
 | Runtime GitHub authentication | A bad callback, revoked client secret, missing organization permission, or GitHub outage can prevent provider login | Configure the GitHub App in the Admin Panel, use the exact callback, validate organization policy, and keep local administrator recovery tested |
 | OIDC claim semantics vary | `acr` and `amr` do not have universal assurance meanings | Allowlist only values documented and tested for the configured provider; otherwise WebSSH treats the login as basic assurance |

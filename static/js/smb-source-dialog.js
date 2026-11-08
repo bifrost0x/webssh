@@ -111,7 +111,8 @@
                 if (event.target === this.root) this.close({ cancelAttempt: true });
             });
             globalScope.document?.addEventListener?.('keydown', event => {
-                if (event.key === 'Escape' && this.root?.classList?.contains('show')) {
+                if (event.key === 'Escape' && this.root?.classList?.contains('show')
+                        && !globalScope.document?.querySelector?.('.credential-picker-dialog[open]')) {
                     event.preventDefault();
                     event.stopImmediatePropagation?.();
                     this.close({ cancelAttempt: true });
@@ -295,6 +296,7 @@
         }
 
         selectSavedShare(shareId, { focusPassword = true } = {}) {
+            globalScope.CredentialPicker?.clear('smbSourcePassword');
             if (!shareId) {
                 this.selectedSavedId = null;
                 if (this.elements.saved) this.elements.saved.value = '';
@@ -308,6 +310,7 @@
             const selected = this.savedShares.find(item => item.id === shareId);
             if (!selected) return false;
             this.selectedSavedId = selected.id;
+            globalScope.NativeCredentials?.refreshInline?.('smbCredential','smb:'+selected.id);
             if (this.elements.saved) this.elements.saved.value = selected.id;
             this.setValues({
                 host: selected.host,
@@ -316,6 +319,7 @@
                 username: selected.username,
                 password: '',
             });
+            globalScope.CredentialPicker?.restore?.('smbSourcePassword');
             if (this.elements.name) this.elements.name.value = selected.name;
             if (this.elements.deleteSaved) this.elements.deleteSaved.disabled = false;
             if (focusPassword) this.elements.password?.focus?.();
@@ -364,8 +368,32 @@
                 invalid.focus?.();
                 return false;
             }
+            let credential;
+            try { credential = globalScope.NativeCredentials?.inlineDraft('smbCredential'); }
+            catch (error) { this.setStatus(error.message,'error'); return false; }
+            const selectedDefinition=this.savedShares.find(item=>item.id===this.selectedSavedId);
+            const targetChanged=selectedDefinition&&['host','username','share','domain'].some(key=>String(selectedDefinition[key]||'')!==String(definition[key]||''));
+            const select=globalScope.document?.getElementById?.('smbCredentialExisting');
+            const approvalIdentity=this.definitionIdentity()+':'+credential?.credential_id;
+            if(credential?.credential_id&&(targetChanged||select?.dataset.confirmRequired==='true')&&this.confirmedCredentialTarget!==approvalIdentity){
+                globalScope.NativeCredentials.confirmTargetReuse({...definition,port:445}).then(accepted=>{if(accepted&&this.definitionIdentity()+':'+globalScope.NativeCredentials.inlineDraft('smbCredential')?.credential_id===approvalIdentity&&this.root.classList.contains('show')){this.confirmedCredentialTarget=approvalIdentity;this.saveDefinition();}});return false;
+            }
+            if(credential?.credential_id&&credential.credential_id===select?.dataset.assigned&&!targetChanged&&select?.dataset.confirmRequired!=='true')credential=null;
+            const credentialIdentity=globalScope.NativeCredentials?.inlineIdentity?.('smbCredential');
             const requestId = this.requestIdFactory();
+            if (credential?.password && !this.selectedSavedId) {
+                this.pendingShareOperation = {action:'save',requestId,credentialIdentity,definitionIdentity:this.definitionIdentity()};
+                this.setShareBusy(true);
+                globalScope.NativeCredentials.mutate('create_for_resource',{resource_kind:'smb',resource:definition,...credential,username:definition.username,confirm_target:true},null,()=>this.pendingShareOperation?.requestId===requestId && this.definitionIdentity()===this.pendingShareOperation.definitionIdentity && globalScope.NativeCredentials.inlineIdentity('smbCredential')===credentialIdentity && this.root.classList.contains('show')).then(result=>{
+                    if(this.pendingShareOperation?.requestId!==requestId||this.definitionIdentity()!==this.pendingShareOperation.definitionIdentity||globalScope.NativeCredentials.inlineIdentity('smbCredential')!==credentialIdentity||!this.root.classList.contains('show'))return;
+                    const input=this.document?.getElementById?.('smbCredentialPassword') || document.getElementById('smbCredentialPassword');if(input)input.value='';
+                    this.handleShareSaved({request_id:requestId,share:result.resource});
+                }).catch(error=>{if(error.name==='AbortError'){if(this.pendingShareOperation?.requestId===requestId){this.pendingShareOperation=null;this.setShareBusy(false);}return;}this.pendingShareOperation=null;this.setShareBusy(false);if(error.name!=='AbortError')this.setStatus(error.message,'error');});
+                return true;
+            }
             this.pendingShareOperation = {
+                credential,
+                credentialIdentity,
                 action: 'save',
                 requestId,
                 definitionIdentity: this.definitionIdentity(),
@@ -422,6 +450,14 @@
             const operation = this.matchingShareOperation(payload, 'save');
             const share = payload?.share;
             if (!operation || !share || typeof share !== 'object') return false;
+            if (operation.credential) {
+                const credential=operation.credential;delete operation.credential;
+                globalScope.NativeCredentials.mutate(Object.hasOwn(credential,'credential_id')?'assign':'create',{...credential,username:share.username,resource_id:'smb:'+share.id,confirm_target:true,target:{host:share.host,username:share.username,share:share.share,domain:share.domain}},null,()=>this.pendingShareOperation===operation&&this.definitionIdentity()===operation.definitionIdentity&&globalScope.NativeCredentials.inlineIdentity('smbCredential')===operation.credentialIdentity&&this.root.classList.contains('show')).then(()=>{
+                    if(this.pendingShareOperation!==operation||this.definitionIdentity()!==operation.definitionIdentity||!this.root.classList.contains('show'))return;
+                    const input=document.getElementById('smbCredentialPassword');if(input)input.value='';this.handleShareSaved(payload);
+                }).catch(error=>{if(error.name==='AbortError'){if(this.pendingShareOperation===operation){this.pendingShareOperation=null;this.setShareBusy(false);}return;}this.pendingShareOperation=null;this.setShareBusy(false);this.selectedSavedId=share.id;this.setSavedShares([...this.savedShares.filter(item=>item.id!==share.id),share]);this.setStatus(this.t('credentials.assignmentFailed','Share saved, but password assignment failed. Your password draft is preserved. Review the saved target and try again.'),'error');});
+                return true;
+            }
             const formIsUnchanged = this.definitionIdentity()
                 === operation.definitionIdentity;
             const password = formIsUnchanged ? this.passwordValue() : '';
@@ -492,7 +528,7 @@
             if (!values.username || values.username.length > 256 || /[\x00-\x1f]/.test(values.username)) {
                 return this.elements.username;
             }
-            if (!values.password || values.password.length > 4096 || /[\x00-\x1f]/.test(values.password)) {
+            if (!values.credential_id && (!values.password || values.password.length > 4096 || /[\x00-\x1f]/.test(values.password))) {
                 return this.elements.password;
             }
             return null;
@@ -501,6 +537,13 @@
         submit() {
             if (!this.enabled || !this.socket || this.pending) return false;
             const values = this.values();
+            const credentialId = globalScope.CredentialPicker?.get('smbSourcePassword');
+            if (credentialId) {
+                values.credential_id = credentialId;
+                const token = globalScope.CredentialPicker?.token?.('smbSourcePassword');
+                if (token) values.credential_target_token = token;
+                delete values.password;
+            }
             const invalid = this.firstInvalid(values);
             if (invalid) {
                 this.setStatus(

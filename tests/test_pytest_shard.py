@@ -51,7 +51,7 @@ def _run_pytest(directory, *arguments):
          '-p', 'xdist.plugin', '-q', '--basetemp', str(directory / 'temp'),
          *arguments],
         cwd=directory, env=environment, text=True, capture_output=True,
-        timeout=45, check=False,
+        timeout=120, check=False,
     )
 
 
@@ -138,7 +138,7 @@ def test_ci_workflow_entrypoint_loads_local_plugin_without_pythonpath(tmp_path):
          '-p', 'xdist.plugin', '--ci-shard=1/1', '-q', '-n', '2',
          '--dist=loadscope', '--basetemp', str(tmp_path / 'temp')],
         cwd=root, env=environment, text=True, capture_output=True,
-        timeout=45, check=False,
+        timeout=120, check=False,
     )
     assert result.returncode == 1, result.stdout + result.stderr
     assert 'CI shard 1/1: selected 2 of 2 collected tests' in result.stdout

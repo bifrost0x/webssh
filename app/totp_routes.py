@@ -244,6 +244,11 @@ def verify_totp_login():
     except (PendingAuthenticationError, AuthenticationFinalizationError):
         db.session.rollback()
         return jsonify({"error": "Pending authentication is invalid"}), 401
+    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
+        pending.user_id, client_ip, "totp_login_account", config.RATELIMIT_LOGIN_LIMIT,
+    ):
+        log_rate_limit_exceeded("totp_login_account", client_ip)
+        return jsonify({"error": "Too many authentication attempts"}), 429
     data = _bounded_json()
     if not verify_totp(pending.user_id, data.get("code")):
         log_security_event(

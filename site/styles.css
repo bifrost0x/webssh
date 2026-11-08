@@ -291,3 +291,12 @@ code { font-family: var(--font-mono); }
 .demo-music { margin: 1.5rem 0; color: var(--text-secondary); font-size: .85rem; }
 .demo-music summary { cursor: pointer; }
 .demo-music p { margin-top: .7rem; }
+
+/* The visual tour uses the same captures as the versioned documentation. */
+.demo-player video { display:block; width:100%; height:auto; background:#0b0d10; }
+.v3-slides { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; gap:24px; padding:16px 0 28px; }
+.v3-slides figure { flex:0 0 min(100%, 1120px); margin:0; scroll-snap-align:start; }
+.v3-slides img { display:block; width:100%; height:auto; border:1px solid var(--border,#30343a); border-radius:12px; }
+.v3-slides figcaption { padding:12px 0; }
+.demo-page details > img { max-width:100%; height:auto; }
+.historical-tour { margin-block:32px; }

@@ -152,7 +152,7 @@ body.webssh-ui {
 .webssh-account .admin-tab.active { background: var(--ui-selected); color: var(--ws2-accent); border-color: var(--ws2-border); }
 .webssh-account .admin-nav-group { color: var(--ws2-text-muted); font-weight: 500; letter-spacing: .035em; }
 .webssh-account .admin-content { padding: var(--ui-space) var(--ui-space) 60px; }
-.webssh-account .admin-panel { max-width: 1200px; margin-inline: auto; }
+.webssh-account .admin-panel { width: 100%; max-width: none; margin-inline: 0; }
 .webssh-account .admin-page-header { margin-bottom: 24px; }
 .webssh-account .admin-page-header h2 { font-size: 26px; font-weight: 600; letter-spacing: -.025em; }
 .webssh-account .admin-page-header p { color: var(--ws2-text-muted); font-size: 13px; line-height: 1.6; max-width: 80ch; }

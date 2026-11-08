@@ -35,7 +35,8 @@
     }
 
     function finiteNumber(value) {
-        if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
+        if ((typeof value !== 'number' && typeof value !== 'string')
+            || (typeof value === 'string' && !value.trim())) {
             return null;
         }
         const number = Number(value);
@@ -412,6 +413,54 @@
         };
     }
 
+    function hostAutomationRuns(runs, session) {
+        if (!session?.profileId || !session.host || !session.username) return [];
+        return (Array.isArray(runs) ? runs : []).flatMap(run => {
+            const target = run.targets?.find(target => target.id === session.profileId
+                && target.host === session.host && target.username === session.username
+                && Number(target.port) === Number(session.port || 22));
+            return target ? [{run, target}] : [];
+        }).sort((a, b) => Date.parse(b.run.created_at) - Date.parse(a.run.created_at)).slice(0, 5);
+    }
+
+    // Session identity gates late responses; no background polling is needed here.
+    function createAutomationRunsController({fetchRuns, render, enabled}) {
+        let identity = '';
+        let session = null;
+        let visible = false;
+        let generation = 0;
+        let controller = null;
+        function invalidate() { generation++; controller?.abort(); controller = null; }
+        async function refresh() {
+            invalidate();
+            if (!visible || !enabled()) { render({status: 'hidden', rows: []}); return; }
+            if (!session?.profileId) { render({status: 'unbound', rows: []}); return; }
+            const request = generation;
+            const captured = {...session};
+            controller = typeof AbortController === 'function' ? new AbortController() : null;
+            render({status: 'loading', rows: []});
+            try {
+                const result = await fetchRuns(controller?.signal);
+                if (request !== generation) return;
+                render({status: 'ready', rows: hostAutomationRuns(result.runs, captured)});
+            } catch (error) {
+                if (request !== generation) return;
+                render({status: error?.code === 'disabled' ? 'hidden' : 'error', rows: []});
+            }
+        }
+        return {
+            update(nextSession, nextVisible) {
+                const nextIdentity = JSON.stringify([nextSession?.id, nextSession?.profileId,
+                    nextSession?.host, nextSession?.port, nextSession?.username, enabled()]);
+                const changed = nextIdentity !== identity || visible !== Boolean(nextVisible);
+                identity = nextIdentity; session = nextSession; visible = Boolean(nextVisible);
+                if (changed) refresh();
+            },
+            refresh,
+            destroy() { visible = false; invalidate(); },
+        };
+    }
+
     function createController(options) {
         const documentRef = options.document;
         const windowRef = options.window || root;
@@ -468,6 +517,74 @@
         let latestSession = null;
         let latestInventoryState = {};
         let latestModel = null;
+        const automationMount = elements.overlay.querySelector?.('.session-diagnostics-content');
+        const automationSection = automationMount ? documentRef.createElement('section') : null;
+        let automationView = {status: 'hidden', rows: []};
+        const at = (key, fallback, values = {}) => windowRef?.AutomationText?.t?.(key, values) || fallback;
+        function renderAutomation(view) {
+            automationView = view;
+            if (!automationSection) return;
+            automationSection.hidden = view.status === 'hidden';
+            automationSection.replaceChildren();
+            const node = (tag, text, className) => {
+                const element = documentRef.createElement(tag);
+                element.textContent = text;
+                if (className) element.className = className;
+                return element;
+            };
+            automationSection.appendChild(node('h3', at('hostRunsTitle', 'Automation on this host')));
+            automationSection.setAttribute('aria-busy', String(view.status === 'loading'));
+            if (!view.rows.length) {
+                const labels = {
+                    loading: ['hostRunsLoading', 'Loading recent runs…'],
+                    error: ['hostRunsError', 'Recent runs could not be loaded. Refresh diagnostics to retry.'],
+                    unbound: ['hostRunsUnbound', 'Save this connection as a host to match automation runs.'],
+                    ready: ['hostRunsEmpty', 'No recent runs for this host.'],
+                };
+                if (labels[view.status]) automationSection.appendChild(node('p', at(...labels[view.status])));
+            }
+            view.rows.forEach(({run, target}) => {
+                const row = node('article', '', 'session-automation-run');
+                row.appendChild(node('strong', run.name));
+                const status = node('span', at(`state.${target.status}`, target.status), 'automation-state');
+                status.dataset.state = target.status;
+                row.appendChild(status);
+                const date = new Date(run.created_at);
+                const time = node('time', Number.isNaN(date.getTime()) ? '' : date.toLocaleString(windowRef?.i18n?.getLanguage?.() || []));
+                time.dateTime = run.created_at;
+                row.appendChild(time);
+                const steps = Array.isArray(target.steps) ? target.steps : [];
+                steps.forEach(step => {
+                    const state = step.status === 'succeeded' && step.exit_code !== 0 ? 'unknown' : step.status;
+                    row.appendChild(node('small', `${step.name} · ${at(`state.${state}`, state)} · ${at('stepMetrics', `Exit ${step.exit_code ?? '—'} · ${step.duration ?? '—'}s`, {exit: step.exit_code ?? '—', duration: step.duration ?? '—'})}`));
+                });
+                const link = node('button', at('viewRunLog', 'View full log'), 'btn btn-secondary');
+                link.type = 'button';
+                link.addEventListener('click', () => windowRef?.WebSSHAutomation?.openRun?.(run.id, target.id));
+                row.appendChild(link);
+                automationSection.appendChild(row);
+            });
+        }
+        if (automationSection) {
+            automationSection.id = 'sessionDiagnosticsAutomation';
+            automationSection.className = 'session-diagnostics-automation';
+            automationSection.setAttribute('aria-live', 'polite');
+            automationSection.hidden = true;
+            automationMount.appendChild(automationSection);
+        }
+        const automationRuns = createAutomationRunsController({
+            enabled: () => Boolean(automationSection && documentRef.querySelector?.('main[data-native-automation]')?.dataset.automationEnabled === 'true'),
+            render: renderAutomation,
+            async fetchRuns(signal) {
+                const appRoot = documentRef.querySelector?.('meta[name="app-root"]')?.content || '';
+                const response = await windowRef.fetch(appRoot + '/api/automation/runs', {
+                    credentials: 'same-origin', cache: 'no-store', signal,
+                });
+                const data = await response.json();
+                if (!response.ok) { const error = new Error('Automation history unavailable'); error.code = data.code; throw error; }
+                return data;
+            },
+        });
         const managementTrigger = byId('sessionServerManagement');
         managementTrigger?.addEventListener('click', () => {
             windowRef?.ServerOperations?.open(latestState.sessionId, 'system');
@@ -573,6 +690,7 @@
             if (!normalized && expanded) setExpanded(false);
             if (open === normalized) return;
             open = normalized;
+            automationRuns.update(latestSession, open);
             elements.overlay.classList.toggle('hidden', !open);
             elements.overlay.setAttribute('aria-hidden', String(!open));
             if (open) {
@@ -844,6 +962,7 @@
             latestState = state || {};
             latestSession = session || null;
             latestInventoryState = inventoryState || {};
+            automationRuns.update(latestSession, open && Boolean(latestSession?.connected));
             latestModel = buildViewModel(
                 latestState,
                 latestSession,
@@ -999,7 +1118,7 @@
         });
         elements.networkSection?.addEventListener('toggle', scheduleRedraw);
         byId('sessionDiagnosticsHistory')?.addEventListener('toggle', scheduleRedraw);
-        const handleRefresh = () => onRefreshInventory();
+        const handleRefresh = () => { onRefreshInventory(); automationRuns.refresh(); };
         const handleExpand = () => setExpanded(!expanded);
         const handleCollapse = () => setExpanded(false);
         const handleKeydown = event => {
@@ -1007,6 +1126,7 @@
         };
         const handleLanguageChanged = () => {
             updateExpandButton();
+            renderAutomation(automationView);
             rerenderLocal();
         };
         let managementReturn = null;
@@ -1026,7 +1146,7 @@
             }
         };
         const handlePrimaryWorkspaceChange = event => {
-            if (event?.detail?.view === 'workspaces') scheduleRedraw();
+            if (event?.detail?.view === 'workspaces') { scheduleRedraw(); if (open) automationRuns.refresh(); }
         };
         const handleSystemdSearch = event => { filters.systemdQuery = event.target.value; rerenderLocal(); };
         const handleDockerSearch = event => { filters.dockerQuery = event.target.value; rerenderLocal(); };
@@ -1063,6 +1183,7 @@
             close: () => setOpen(false),
             destroy() {
                 setOpen(false);
+                automationRuns.destroy();
                 elements.refresh?.removeEventListener('click', handleRefresh);
                 elements.expand?.removeEventListener('click', handleExpand);
                 elements.close?.removeEventListener('click', handleCollapse);
@@ -1092,5 +1213,5 @@
         };
     }
 
-    return { buildViewModel, canOpenDiagnostics, contextState, createController, formatRate };
+    return { buildViewModel, canOpenDiagnostics, contextState, createController, formatRate, hostAutomationRuns, createAutomationRunsController };
 }));

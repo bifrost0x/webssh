@@ -4,9 +4,11 @@
     if (root.document) root.TerminalFileBridge = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
     'use strict';
+    // A backslash ends single quoting in fish, so such names are not inserted as
+    // typed input; the shell is not known reliably enough to quote them safely.
     function validPath(path) {
         return typeof path === 'string' && path.startsWith('/') && path.length <= 4096
-            && !/[\x00-\x1f\x7f-\x9f]/.test(path);
+            && !/[\x00-\x1f\x7f-\x9f\\]/.test(path);
     }
     function quotePath(path) {
         return validPath(path) ? `'${path.replace(/'/g, `'"'"'`)}'` : null;

@@ -1,3 +1,4 @@
+from .app_settings import runtime_feature_enabled
 from .auth_redirects import public_continuation
 from flask import (Flask, abort, current_app, flash, jsonify, redirect,
                    render_template, request, session, url_for)
@@ -11,8 +12,9 @@ import sys
 import time
 from datetime import timezone
 from .models import db
+from .automation_schedule import AutomationSchedule
 from .auth import (init_auth, authenticate_user, register_user,
-                   check_rate_limit, is_bootstrap_registration_available,
+                   check_rate_limit, check_reauth_rate_limit, is_bootstrap_registration_available,
                    password_exceeds_bcrypt_limit)
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
                               log_login_attempt, log_logout, log_registration, log_password_change)
@@ -20,6 +22,7 @@ from .terminal_appearance import valid_terminal_appearance
 from .user_settings import (
     AUTHENTICATION_SESSION_DURATION_MINUTES,
     DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES,
+    OVERVIEW_REACHABILITY_MODES,
     get_user_settings,
     save_user_settings,
 )
@@ -386,12 +389,68 @@ def _install_engineio_admission(app):
     engineio_server.on('disconnect', handle_engineio_disconnect)
 
 
+def _prepare_data_dir(path):
+    """Create DATA_DIR private to the service account; warn when an existing one is not.
+
+    The container entrypoint already enforces 0700. For source installs a new
+    directory is created 0700 so the database and logs inside are not readable
+    by other local users. An existing directory is left as the operator set it.
+    """
+    created = not path.exists()
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.name != 'posix':
+        return
+    if created:
+        os.chmod(path, 0o700)
+    elif path.stat().st_mode & 0o077:
+        log_warning('DATA_DIR is accessible to other local users; restrict it with chmod 700',
+                    path=str(path))
+
+
+_DEFAULT_PORTS = {'http': 80, 'https': 443}
+_origin_rejections = {'last': 0.0}
+
+
+def _host_and_port(value, scheme):
+    from urllib.parse import urlsplit
+    parts = urlsplit(f'//{value}')
+    if not parts.hostname:
+        return None
+    return parts.hostname.lower().rstrip('.'), parts.port or _DEFAULT_PORTS[scheme]
+
+
+def same_origin_socket_check(origin, environ):
+    """Accept a browser origin only when it names the host and port of this request.
+
+    The Host header is the one the browser sent, or the one ProxyFix restored
+    from a trusted proxy. The scheme is not compared, so TLS termination at a
+    proxy that does not forward the scheme keeps working; one port cannot
+    serve two schemes. Requests without an Origin header never reach this check.
+    """
+    from urllib.parse import urlsplit
+    accepted = False
+    try:
+        parsed = urlsplit(origin or '')
+        if parsed.scheme in _DEFAULT_PORTS and not parsed.username and not parsed.password:
+            expected = _host_and_port(environ.get('HTTP_HOST', ''), parsed.scheme)
+            accepted = expected is not None and _host_and_port(parsed.netloc, parsed.scheme) == expected
+    except ValueError:
+        accepted = False
+    if not accepted:
+        now = time.monotonic()
+        if now - _origin_rejections['last'] > 60:
+            _origin_rejections['last'] = now
+            log_warning('Realtime connection from another origin refused', origin=str(origin)[:200],
+                        host=str(environ.get('HTTP_HOST', ''))[:200])
+    return accepted
+
+
 def _initialize_persistent_storage(app):
     """Initialize storage and schema for serving or explicit CLI mutation."""
     if app.extensions.get('persistent_storage_initialized'):
         return
 
-    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _prepare_data_dir(config.DATA_DIR)
     from .session_epoch import current_epoch
     current_epoch()
     from .audit_logger import initialize_file_logging
@@ -401,6 +460,12 @@ def _initialize_persistent_storage(app):
         from .models import ensure_security_columns, ensure_ssh_session_columns
         ensure_security_columns()
         ensure_ssh_session_columns()
+        from .app_settings import migrate_feature_policies, migrate_runtime_features
+        migrate_runtime_features()
+        migrate_feature_policies(
+            automation_enabled=config.AUTOMATION_ENABLED,
+            credentials_enabled=any(config.USERS_DIR.glob('*/automation-vault.json')),
+        )
         from .auth import ensure_initial_admin, sync_admin_users
         ensure_initial_admin()
         sync_admin_users()
@@ -472,6 +537,61 @@ def create_app(
         )
         return app.response_class(body, status=503, mimetype='text/html')
 
+    from flask_wtf.csrf import CSRFError
+    from werkzeug.exceptions import Forbidden, NotFound
+
+    def _wants_json():
+        return (request.path.startswith(('/api/', '/admin/api/', '/auth/api/'))
+                or request.is_json or request.accept_mimetypes.best == 'application/json')
+
+    def _user_already_loaded():
+        from flask import g
+        return '_login_user' in g
+
+    def _error_page(status, kind, action_url=None, detail=''):
+        # Only reuse a user that the request already loaded: an error page must not
+        # trigger the user loader for requests that were refused before it ran.
+        from flask import g
+        theme = 'glass'
+        user = g.get('_login_user')
+        if user is not None and getattr(user, 'is_authenticated', False):
+            try:
+                theme = get_user_settings(user.id).get('theme', 'glass')
+            except Exception:
+                theme = 'glass'
+        return render_template('error.html', status=status, kind=kind, theme=theme,
+                               action_url=action_url or url_for('index'), detail=detail,
+                               url_prefix=getattr(config, 'APPLICATION_ROOT', '')), status
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(error):
+        """An expired or mismatched form token: nothing ran; offer the form again."""
+        if _wants_json():
+            return jsonify({'error': 'This page expired. Reload it and try again.', 'code': 'csrf_expired'}), 400
+        # The link is rebuilt from the matched route, never from the raw path, so a
+        # crafted path such as //example.com cannot point outside WebSSH.
+        target = None
+        if request.endpoint not in (None, 'logout', 'static') and request.url_rule is not None:
+            try:
+                target = url_for(request.endpoint, **(request.view_args or {}))
+            except Exception:
+                target = None
+        return _error_page(400, 'form_expired', target or url_for('login'), detail=error.description)
+
+    @app.errorhandler(Forbidden)
+    def handle_forbidden(error):
+        # Requests refused before Flask-Login ran (for example a disabled admin
+        # panel) keep the plain response, so the page cannot load the user.
+        if _wants_json() or not _user_already_loaded():
+            return error
+        return _error_page(403, 'forbidden')
+
+    @app.errorhandler(NotFound)
+    def handle_not_found(error):
+        if _wants_json() or request.path.startswith('/static/') or not _user_already_loaded():
+            return error
+        return _error_page(404, 'not_found')
+
     url_prefix = getattr(config, 'APPLICATION_ROOT', '')
     if url_prefix:
         app.config['SESSION_COOKIE_PATH'] = url_prefix
@@ -494,8 +614,8 @@ def create_app(
             ),
             'registration_enabled': registration_available,
             'ssh_gateway_enabled': is_ssh_gateway_enabled(),
-            'tmux_enabled': config.TMUX_ENABLED,
-            'tmux_default': config.TMUX_DEFAULT,
+            'tmux_enabled': runtime_feature_enabled('tmux_enabled'),
+            'tmux_default': runtime_feature_enabled('tmux_default'),
             'admin_panel_enabled': config.ADMIN_PANEL_ENABLED,
             'webauthn_enabled': feature_is_active('passkey'),
             'webauthn_origin': config.WEBAUTHN_ORIGIN,
@@ -713,6 +833,27 @@ def create_app(
     app.register_blueprint(profile_exchange_blueprint)
     app.register_blueprint(host_context_blueprint)
     app.register_blueprint(server_operations_blueprint)
+    from .automation_routes import automation_blueprint
+    from .automation_service import AutomationService
+    from .credential_routes import credentials_blueprint
+    from .credential_service import CredentialService
+    from .onboarding import onboarding_blueprint
+    app.register_blueprint(onboarding_blueprint)
+    from .overview_routes import overview_blueprint
+    app.register_blueprint(overview_blueprint)
+    from .discovery_routes import cancel_all as cancel_discovery, discovery_available, discovery_blueprint
+    app.register_blueprint(discovery_blueprint)
+    app.extensions['runtime_lifecycle'].register_shutdown_callback('host_discovery', cancel_discovery)
+    app.register_blueprint(credentials_blueprint)
+    credentials = app.extensions['credentials'] = CredentialService(app)
+    app.extensions['runtime_lifecycle'].register_shutdown_callback('credentials', credentials.shutdown)
+    app.register_blueprint(automation_blueprint)
+    automation = app.extensions['automation'] = AutomationService(app)
+    from .automation_schedule import ScheduleService
+    app.extensions['automation_schedules'] = ScheduleService(app)
+    app.extensions['runtime_lifecycle'].register_shutdown_callback(
+        'automation', automation.shutdown
+    )
     app.register_blueprint(github_auth_blueprint)
     app.register_blueprint(oidc_blueprint)
     app.register_blueprint(recovery_blueprint)
@@ -765,6 +906,11 @@ def create_app(
         cors_origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
     if cors_origins == ['*']:
         cors_origins = '*'
+    if cors_origins == '*' and not config.SOCKETIO_ALLOW_ANY_ORIGIN:
+        # '*' would let any page on the same site (another port on this host, a
+        # sibling subdomain) open a realtime connection with the user's cookie.
+        cors_origins = same_origin_socket_check
+        log_info('Realtime connections accept the WebSSH origin only; set SOCKETIO_ALLOW_ANY_ORIGIN=true to accept any origin')
 
     socketio.init_app(
         app,
@@ -794,6 +940,7 @@ def create_app(
     @app.after_request
     def add_security_headers(response):
         """Add comprehensive security headers to all responses."""
+        frame_ancestors = "'none'"
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
@@ -802,14 +949,18 @@ def create_app(
             "font-src 'self' data:; "
             "media-src 'self' data:; "
             "connect-src 'self' ws: wss:; "
-            "frame-ancestors 'none';"
+            "base-uri 'self'; "
+            "object-src 'none'; "
+            f"frame-ancestors {frame_ancestors};"
         )
 
         response.headers['X-Frame-Options'] = 'DENY'
 
         response.headers['X-Content-Type-Options'] = 'nosniff'
 
-        response.headers['X-XSS-Protection'] = '1; mode=block'
+        # The legacy XSS auditor is gone from current browsers and could be abused for
+        # cross-site leaks in old ones; the CSP above is the protection.
+        response.headers['X-XSS-Protection'] = '0'
 
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
@@ -817,6 +968,12 @@ def create_app(
 
         if not config.DEBUG:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
+        # Pages and API answers carry account data (CSRF token, user lists, audit
+        # entries); keep them out of browser and proxy caches unless a route chose
+        # its own policy. Static assets keep their caching.
+        if request.endpoint != 'static' and 'Cache-Control' not in response.headers:
+            response.headers['Cache-Control'] = 'no-store'
 
         if (
             request.endpoint != 'static'
@@ -876,6 +1033,8 @@ def create_app(
                     )
 
         try:
+            lifecycle.start_job('credentials-cleanup', credentials.cleanup)
+            lifecycle.start_job('automation-cleanup', automation.cleanup)
             lifecycle.start_job(
                 'inactive_socket_session_cleanup', db_cleanup_task
             )
@@ -901,6 +1060,8 @@ def create_app(
     @app.route('/')
     @login_required
     def index():
+        from .app_settings import is_automation_enabled
+        from .socket_events import initial_inventory
         settings = get_user_settings(current_user.id)
         theme = settings.get('theme', 'glass')
         auth_session = current_authentication_session()
@@ -908,6 +1069,14 @@ def create_app(
             'index.html',
             username=current_user.username,
             theme=theme,
+            initial_inventory=initial_inventory(current_user),
+            overview_layout=settings.get('overview_layout', 'dashboard'),
+            overview_reachability=settings.get('overview_reachability', 'manual'),
+            host_discovery_available=discovery_available(),
+            overview_preferences={'panels': settings.get('overview_panels'),
+                                  'dismissed': settings.get('overview_dismissed', [])},
+            start_page=settings.get('start_page', 'overview'),
+            automation_enabled=is_automation_enabled(),
             terminal_appearance=settings.get('terminal_appearance', {}),
             sync_terminal_directory=settings.get('sync_terminal_directory', True),
             connection_history_scope=connection_history_scope(
@@ -921,7 +1090,7 @@ def create_app(
             ),
             max_editor_file_size=config.MAX_EDITOR_FILE_SIZE,
             smb_enabled=config.SMB_ENABLED,
-            sftp_chmod_enabled=config.SFTP_CHMOD_ENABLED,
+            sftp_chmod_enabled=runtime_feature_enabled('sftp_chmod_enabled'),
             transfer_limits={
                 'uploadBytes': config.MAX_UPLOAD_SIZE,
                 'downloadBytes': config.MAX_DOWNLOAD_SIZE,
@@ -1117,10 +1286,9 @@ def create_app(
             abort(403)
         if request.method == 'POST':
             client_ip = get_client_ip()
-            if config.RATELIMIT_ENABLED and check_rate_limit(
-                client_ip,
-                'change_password',
-                config.RATELIMIT_LOGIN_LIMIT
+            if config.RATELIMIT_ENABLED and (
+                check_rate_limit(client_ip, 'change_password', config.RATELIMIT_LOGIN_LIMIT)
+                or check_reauth_rate_limit(current_user.id, client_ip, 'change_password_account', config.RATELIMIT_LOGIN_LIMIT)
             ):
                 log_rate_limit_exceeded('change_password', client_ip, user=current_user.username)
                 flash('Too many attempts. Please try again later.', 'error')
@@ -1220,6 +1388,9 @@ def create_app(
             'security.html',
             username=current_user.username,
             theme=settings.get('theme', 'glass'),
+            overview_layout=settings.get('overview_layout', 'dashboard'),
+            overview_reachability=settings.get('overview_reachability', 'manual'),
+            start_page=settings.get('start_page', 'overview'),
             recovery_mode=recovery_session_required(auth_session),
             authentication_methods=tuple(
                 {
@@ -1259,6 +1430,9 @@ def create_app(
         if not isinstance(data, dict):
             return jsonify({'error': 'Invalid settings payload'}), 400
         allowed = {
+            'start_page',
+            'overview_layout',
+            'overview_reachability',
             'theme',
             'terminal_appearance',
             'sync_terminal_directory',
@@ -1270,6 +1444,21 @@ def create_app(
             return jsonify({'error': 'Invalid settings payload'}), 400
 
         updates = {}
+        if 'start_page' in data:
+            start_page = data['start_page']
+            if not isinstance(start_page, str) or start_page not in {'overview', 'workspaces'}:
+                return jsonify({'error': 'Invalid start page'}), 400
+            updates['start_page'] = start_page
+        if 'overview_layout' in data:
+            layout = data['overview_layout']
+            if not isinstance(layout, str) or layout not in {'dashboard', 'classic'}:
+                return jsonify({'error': 'Invalid overview layout'}), 400
+            updates['overview_layout'] = layout
+        if 'overview_reachability' in data:
+            mode = data['overview_reachability']
+            if not isinstance(mode, str) or mode not in OVERVIEW_REACHABILITY_MODES:
+                return jsonify({'error': 'Invalid reachability setting'}), 400
+            updates['overview_reachability'] = mode
         if 'terminal_appearance' in data:
             if not valid_terminal_appearance(data['terminal_appearance']):
                 return jsonify({'error': 'Invalid terminal appearance'}), 400
@@ -1280,7 +1469,7 @@ def create_app(
             updates['sync_terminal_directory'] = data['sync_terminal_directory']
         if 'theme' in data:
             valid_themes = {
-                'glass', 'retro', 'solar', 'paper', 'noir',
+                'glass', 'werkbank', 'retro', 'solar', 'paper', 'noir',
                 'arctic-ice', 'rose-gold', 'cyberpunk-neon',
                 'emerald-matrix', 'obsidian',
             }
@@ -1353,7 +1542,8 @@ def create_app(
     @admin_required
     @login_required
     def admin_page():
-        return redirect(f"{url_for('security_center')}#users")
+        # A fragment is browser-side only. Do not override incoming deep links.
+        return redirect(url_for('security_center', section='users'))
 
     @app.route('/admin/api/users', methods=['GET'])
     @admin_required
@@ -1534,8 +1724,13 @@ def create_app(
     @admin_required
     @login_required
     def admin_get_settings():
-        return jsonify({'registration_enabled': is_registration_enabled(),
-                        'ssh_gateway_enabled': is_ssh_gateway_enabled()})
+        from .app_settings import is_credentials_enabled, is_automation_enabled
+        from .app_settings import RUNTIME_FEATURES, runtime_feature_status, native_setting_sources
+        policies = {name: runtime_feature_status(name) for name in RUNTIME_FEATURES}
+        return jsonify({'setting_sources': native_setting_sources(), 'runtime_features': policies, **{name: status['enabled'] for name, status in policies.items()}, 'registration_enabled': is_registration_enabled(),
+                        'ssh_gateway_enabled': is_ssh_gateway_enabled(),
+                        'credentials_enabled': is_credentials_enabled(),
+                        'automation_enabled': is_automation_enabled()})
 
     @app.route('/admin/api/settings', methods=['POST'])
     @admin_required
@@ -1545,6 +1740,21 @@ def create_app(
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({'error': 'Invalid settings payload'}), 400
+        from .app_settings import RUNTIME_FEATURES, runtime_feature_status, set_runtime_feature
+        from .app_settings import native_setting_sources
+        for name, policy in native_setting_sources().items():
+            if name in data and policy['locked'] and policy['source'] != 'production':
+                return jsonify(error='Setting is controlled by deployment configuration', code='deployment_locked', setting=name, policy=policy), 409
+        for name in RUNTIME_FEATURES:
+            if name in data:
+                if type(data[name]) is not bool:
+                    return jsonify(error='Expected a boolean', setting=name), 400
+                status = runtime_feature_status(name)
+                if status['locked']:
+                    return jsonify(error='Setting is controlled by Compose/environment', code='deployment_locked', setting=name, policy=status), 409
+        for feature in ('credentials_enabled', 'automation_enabled'):
+            if feature in data and type(data[feature]) is not bool:
+                return jsonify({'error': f'{feature} must be a boolean'}), 400
         if ('ssh_gateway_enabled' in data
                 and type(data['ssh_gateway_enabled']) is not bool):
             return jsonify({'error': 'ssh_gateway_enabled must be a boolean'}), 400
@@ -1570,8 +1780,20 @@ def create_app(
             val = set_ssh_gateway_enabled(data['ssh_gateway_enabled'])
             log_info("Admin changed SSH gateway setting",
                      admin=current_user.username, ssh_gateway_enabled=val)
-        return jsonify({'registration_enabled': is_registration_enabled(),
-                        'ssh_gateway_enabled': is_ssh_gateway_enabled()})
+        from .app_settings import set_credentials_enabled, set_automation_enabled
+        for feature, setter in (('credentials_enabled', set_credentials_enabled),
+                                ('automation_enabled', set_automation_enabled)):
+            if feature in data:
+                setter(data[feature])
+                from .audit_logger import log_security_event
+                log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
+                                   feature=feature, enabled=data[feature])
+        for name in RUNTIME_FEATURES:
+            if name in data:
+                set_runtime_feature(name, data[name])
+                from .audit_logger import log_security_event
+                log_security_event('RUNTIME_FEATURE_CHANGED', admin=current_user.username, feature=name, enabled=data[name])
+        return admin_get_settings()
 
     @app.route('/admin/api/security-features', methods=['GET'])
     @admin_required

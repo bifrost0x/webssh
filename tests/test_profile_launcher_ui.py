@@ -23,7 +23,8 @@ def test_saved_connection_context_precedes_authentication_method():
     context = template.index('id="connectionProfileContext"')
     auth_method = template.index('id="authTypeSelect"')
     host = template.index('id="hostInput"')
-    assert context < auth_method < host
+    # Destination first, then credentials; the saved-profile context precedes both.
+    assert context < host < auth_method
     assert template.index("filename='js/profile-launcher-utils.js'") < template.index(
         "filename='js/profile-manager.js'"
     )
@@ -287,7 +288,7 @@ def test_submit_keeps_target_pane_until_all_passwords_are_validated():
     end = source.index("document.getElementById('keyUploadForm')", start)
     body = source[start:end]
     assert body.index('const started = startConnection') > body.index(
-        "showNotification('Jump host password is required'"
+        "showNotification((window.i18n ? window.i18n.t('toast.jumpPasswordRequired')"
     )
     assert "document.getElementById('passwordInput').focus()" in body
     assert "document.getElementById('jumpHostPasswordInput').focus()" in body

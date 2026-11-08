@@ -652,6 +652,7 @@ def test_password_tmux_preserves_remote_locale(monkeypatch):
         'tmux_reconnect': True,
         'client_request_id': 'tmux-reconnect-request',
         'profile_id': None,
+        'detected_platform': None,
     }
     channels = clients[0].transport.session_channels
     tmux_channel = next(
@@ -749,6 +750,38 @@ def test_proxy_jump_password_opens_direct_tcpip_channel(monkeypatch):
     )
     assert target.connect_kwargs['sock'] is bastion.transport.forward_channel
     assert ssh_manager.sessions[session_id]['bastion_client'] is bastion
+
+
+@pytest.mark.parametrize('saved_hop', ['target', 'jump'])
+def test_only_the_saved_hop_uses_the_saved_password_strategy(monkeypatch, saved_hop):
+    from app.credential_connections import SavedPasswordAuth
+
+    class Guard:
+        def is_set(self):
+            return False
+
+        def check(self):
+            pass
+
+    clients = install_ssh_clients(monkeypatch)
+    session_id, error = connect_target(
+        password='target-password',
+        proxy_jump_host='bastion.example',
+        proxy_jump_port=2222,
+        proxy_jump_username='jump-user',
+        proxy_jump_password='jump-password',
+        credential_guard=Guard(),
+        saved_password_hops=(saved_hop,),
+    )
+
+    assert error is None
+    assert session_id in ssh_manager.sessions
+    bastion, target = clients
+    saved, typed = (target, bastion) if saved_hop == 'target' else (bastion, target)
+    assert isinstance(saved.connect_kwargs['auth_strategy'], SavedPasswordAuth)
+    # A typed password keeps paramiko's keyboard-interactive fallback.
+    assert 'auth_strategy' not in typed.connect_kwargs
+    assert typed.connect_kwargs['password'] == ('target-password' if typed is target else 'jump-password')
 
 
 def test_proxy_jump_remote_dns_is_rejected_when_internal_blocking_is_on(

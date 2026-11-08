@@ -133,7 +133,7 @@ def test_runtime_cleanup_refuses_directory_symlink(monkeypatch, tmp_path):
     assert marker.read_text(encoding="utf-8") == "keep"
 
 
-def test_runner_starts_compose_and_runs_both_integration_modules(monkeypatch):
+def test_runner_starts_compose_and_runs_all_integration_modules(monkeypatch):
     calls = []
 
     def record_call(args, **kwargs):
@@ -154,9 +154,10 @@ def test_runner_starts_compose_and_runs_both_integration_modules(monkeypatch):
     startup_args, _startup_kwargs = calls[1]
     assert startup_args[-4:] == ["up", "-d", "--build", "--wait"]
     pytest_args, pytest_kwargs = calls[2]
-    assert pytest_args[-2:] == [
+    assert pytest_args[-3:] == [
         "tests/integration/test_paramiko5_openssh.py",
         "tests/integration/test_paramiko5_socketio.py",
+        "tests/integration/test_automation_openssh.py",
     ]
     assert pytest_kwargs["env"]["PARAMIKO5_INTEGRATION"] == "1"
 

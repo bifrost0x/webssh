@@ -34,6 +34,11 @@ function element(id) {
         dispatch(name) { listeners.get(name)?.({currentTarget: node}); },
         setAttribute(name, value) { attributes.set(name, String(value)); },
         removeAttribute(name) { attributes.delete(name); },
+        toggleAttribute(name, force) {
+            if (force) attributes.set(name, '');
+            else attributes.delete(name);
+            return Boolean(force);
+        },
         getAttribute(name) { return attributes.get(name) ?? null; },
         appendChild(child) {
             child.parentNode?.removeChild?.(child);
@@ -146,6 +151,25 @@ test('top-level management views replace the Workspaces surface without changing
     assert.equal(state.elements.workspaceStatusBar.hidden, false);
     assert.equal(state.elements.workspaceNavBtn.getAttribute('aria-current'), 'page');
     assert.equal(state.controller.getActiveView(), 'workspaces');
+});
+
+test('the first view after page load opens without the switch animation', () => {
+    const state = harness();
+    const origin = element('origin');
+    const overview = element('connectionOverview');
+    const hosts = element('profileManagementModal');
+    origin.appendChild(overview);
+    origin.appendChild(hosts);
+    state.controller.init();
+
+    state.controller.open('overview', overview);
+    assert.equal(overview.getAttribute('data-surface-switch'), null);
+
+    state.controller.open('hosts', hosts);
+    assert.equal(hosts.getAttribute('data-surface-switch'), '');
+
+    state.controller.open('overview', overview);
+    assert.equal(overview.getAttribute('data-surface-switch'), '');
 });
 
 test('switching away from the full File Manager restores its embedded session target', () => {

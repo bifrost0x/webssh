@@ -203,7 +203,11 @@ class DragDropManager {
     const items = Array.from(e.dataTransfer?.items || []).filter(item => item.kind === 'file');
     const entries = items.length ? items.map(item => {
       const entry = item.webkitGetAsEntry?.();
-      return entry ? {entry} : {file: item.getAsFile?.()};
+      // Capture ordinary files while DataTransfer is readable. Directory entries
+      // still need their reader; a later entry.file callback is unnecessary for
+      // files and can fail once the browser has closed the drop's data store.
+      const file = entry?.isDirectory ? null : item.getAsFile?.();
+      return file ? {file} : entry ? {entry} : {};
     }).filter(item => item.entry || item.file)
       : Array.from(e.dataTransfer?.files || [], file => ({file}));
     if (!entries.length) return;
@@ -292,7 +296,7 @@ class DragDropManager {
 
   showQuickConnectDialog() {
     if (window.showNotification) {
-      window.showNotification('Please connect to a server first, then try uploading again.', 'warning');
+      window.showNotification((window.i18n ? window.i18n.t('toast.connectBeforeUpload') : 'Please connect to a server first, then try uploading again.'), 'warning');
     }
 
     const connectionModal = document.getElementById('connectionModal');

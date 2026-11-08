@@ -375,7 +375,8 @@ def _release_session_lock(session_id, collector_lock):
 
 def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
                         max_bytes=DEFAULT_MAX_BYTES,
-                        include_diagnostics=False):
+                        include_diagnostics=False, command=None, parser=parse_linux_stats,
+                        allow_partial=True, cancel_event=None):
     """Collect one Linux sample without touching the interactive PTY."""
     if not isinstance(session_id, str) or not session_id:
         return None, 'transient'
@@ -396,7 +397,7 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
         if not transport or not transport.is_active():
             return None, 'transient'
 
-        command = (
+        command = command or (
             LINUX_DIAGNOSTICS_COMMAND
             if include_diagnostics is True
             else LINUX_STATS_COMMAND
@@ -412,11 +413,15 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
         def parse_output():
             try:
                 text = output.decode('utf-8', errors='strict')
-                return parse_linux_stats(text, max_bytes=max_bytes), None
+                return parser(text, max_bytes=max_bytes), None
             except (UnicodeDecodeError, ValueError):
                 return None, 'unsupported'
 
         while True:
+            if cancel_event is not None and cancel_event.is_set():
+                return None, 'transient'
+            if not allow_partial and time.monotonic() >= deadline:
+                return None, 'transient'
             if channel.recv_ready():
                 chunk = channel.recv(min(4096, max_bytes + 1 - len(output)))
                 if not chunk:
@@ -428,7 +433,7 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
             if channel.exit_status_ready():
                 break
             if time.monotonic() >= deadline:
-                if output:
+                if output and allow_partial:
                     return parse_output()
                 return None, 'transient'
             time.sleep(0.02)

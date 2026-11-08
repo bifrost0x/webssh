@@ -38,8 +38,8 @@
     }
 
     function formatKib(value) {
-        const kib = Number(value);
-        if (!Number.isFinite(kib) || kib < 0) return '—';
+        const kib = nonNegativeNumber(value);
+        if (kib === null) return '—';
         const mib = kib / 1024;
         if (mib < 1024) return `${mib.toFixed(1)} MB`;
         return `${(mib / 1024).toFixed(1)} GB`;
@@ -87,7 +87,8 @@
     }
 
     function nonNegativeNumber(value) {
-        if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
+        if ((typeof value !== 'number' && typeof value !== 'string')
+            || (typeof value === 'string' && !value.trim())) {
             return null;
         }
         const number = Number(value);
@@ -105,7 +106,7 @@
         const loadOne = nonNegativeNumber(stats.load?.one);
         const cpuCount = nonNegativeNumber(stats.load?.cpu_count);
         return Object.freeze({
-            sampledAt: Number.isFinite(Number(sampledAt)) ? Number(sampledAt) : null,
+            sampledAt: nonNegativeNumber(sampledAt),
             cpuPercent: boundedPercent(cpuPercent),
             memoryPercent: percent(stats.memory?.used_kib, stats.memory?.total_kib),
             swapPercent: percent(stats.swap?.used_kib, stats.swap?.total_kib),
@@ -327,23 +328,21 @@
 
             let networkRates = null;
             const sampledAt = nowFn();
-            if (stats.network) {
-                const networkSample = {
-                    received_bytes: Number(stats.network.received_bytes),
-                    transmitted_bytes: Number(stats.network.transmitted_bytes),
-                    sampled_at: Number(sampledAt),
-                };
+            const networkSample = {
+                received_bytes: nonNegativeNumber(stats.network?.received_bytes),
+                transmitted_bytes: nonNegativeNumber(stats.network?.transmitted_bytes),
+                sampled_at: nonNegativeNumber(sampledAt),
+            };
+            if (Object.values(networkSample).every(value => value !== null)) {
                 networkRates = calculateNetworkRates(
                     previousNetworkBySession.get(sessionId) || null,
                     networkSample,
                 );
-                if (
-                    Number.isFinite(networkSample.received_bytes)
-                    && Number.isFinite(networkSample.transmitted_bytes)
-                    && Number.isFinite(networkSample.sampled_at)
-                ) {
-                    previousNetworkBySession.set(sessionId, networkSample);
-                }
+                previousNetworkBySession.set(sessionId, networkSample);
+            } else {
+                // A missing observation is not a zero counter. Start a fresh
+                // baseline after the gap instead of inventing a recovery spike.
+                previousNetworkBySession.delete(sessionId);
             }
 
             const metricHistory = metricHistoryBySession.get(sessionId) || [];

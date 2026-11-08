@@ -24,6 +24,7 @@
         window.socket
     );
 
+
     let socketProtocolReloadPending = false;
     let settingsNavigationPending = false;
 
@@ -50,6 +51,10 @@
     }
 
     window.addEventListener('beforeunload', (event) => {
+        const unsavedNotes = window.notepadController?.hasUnsaved() || window.HostContext?.hasUnsaved();
+        const unsavedCommands = window.CommandLibrary?.hasUnsavedChanges()
+            || window.CommandSetManager?.hasUnsavedChanges();
+        const unsavedChanges = unsavedNotes || unsavedCommands;
         if (window.authSessionRedirectPending) {
             window.authSessionRedirectPending = false;
             return;
@@ -57,13 +62,15 @@
         if (socketProtocolReloadPending || settingsNavigationPending) {
             socketProtocolReloadPending = false;
             settingsNavigationPending = false;
-            if (!window.notepadController?.hasUnsaved()) return;
+            if (!unsavedChanges) return;
         }
         const activeSessions = Object.values(SessionManager.sessions).filter(
             session => session.connected
         );
-        if (activeSessions.length > 0 || window.notepadController?.hasUnsaved()) {
-            const message = window.notepadController?.hasUnsaved()
+        if (activeSessions.length > 0 || unsavedChanges) {
+            const message = unsavedCommands
+                ? window.i18n?.t('commandSets.discardHint') || 'Your unsaved changes will be lost.'
+                : unsavedNotes
                 ? window.i18n?.t('notes.unsaved') || 'Your notes have not been saved.'
                 : window.i18n
                 ? window.i18n.t(
@@ -132,7 +139,15 @@
                     }
                 });
             } else {
-                action.href = presentation.action.url;
+                // Only same-site or http(s) targets; a notification never runs a script URL.
+                let target = '#';
+                try {
+                    const url = new URL(String(presentation.action.url || ''), window.location.href);
+                    if (url.protocol === 'http:' || url.protocol === 'https:') target = url.href;
+                } catch {
+                    target = '#';
+                }
+                action.href = target;
             }
             action.textContent = presentation.action.label;
             notification.appendChild(action);
@@ -263,6 +278,11 @@
     };
 
     function openConnectionAssetManager(asset) {
+        if (asset === 'passwords') {
+            window.primaryWorkspaceController?.open('hosts', document.getElementById('credentialManagementView'));
+            window.NativeCredentials?.mount();
+            return;
+        }
         const modalByAsset = {
             hosts: 'profileManagementModal',
             'jump-hosts': 'jumpHostManagementModal',
@@ -311,6 +331,24 @@
         window.ModalManager.open(document.getElementById(modalId));
     }
     window.openConnectionAssetManager = openConnectionAssetManager;
+    document.getElementById?.('automationNavBtn')?.addEventListener('click', event => {
+            event.preventDefault();
+            window.primaryWorkspaceController?.open('automation', document.getElementById('automationNativeView'));
+            window.WebSSHAutomation?.activate();
+    });
+    window.addEventListener('webssh:credentials', () => openConnectionAssetManager('passwords'));
+    window.addEventListener('webssh:credential-resource', async event => {
+        const id = String(event.detail.resource_id || event.detail.id || '');
+        if (id.startsWith('smb:')) {
+            let share=window.sftpFileManager?.smbSourceDialog?.savedShares?.find(item=>item.id===id.slice(4));
+            if(!share){const state=await window.NativeCredentials.load();const resource=state.profiles.find(item=>item.id===id);if(resource)share={...resource,id:id.slice(4)};}
+            if(share)window.sftpFileManager.openSMBSourceDialog(share);
+            return;
+        }
+        openConnectionAssetManager(id.startsWith('jump:') ? 'jump-hosts' : 'hosts');
+        if (id.startsWith('jump:')) window.JumpHostManager?.edit(id.slice(5));
+        else if (!id.startsWith('smb:')) window.ProfileManager?.openEditor(id);
+    });
 
     window.setConnectionAdvancedExpanded = expanded => {
         const advanced = document.getElementById('connectionAdvancedSettings');
@@ -385,6 +423,13 @@
             selectedConnectionProfileState = {missingJumpHost: unresolved};
             const select = document.getElementById('jumpHostSelect');
             if (select) select.value = jump ? requiredId : '';
+            // Setting the value in code fires no change event; apply the jump host's
+            // assigned saved password here, as choosing it by hand does.
+            if (jump?.auth_type === 'password') {
+                const jumpPassword = document.getElementById('jumpHostPasswordInput');
+                if (jumpPassword) jumpPassword.value = '';
+                window.CredentialPicker?.restore?.('jumpHostPasswordInput');
+            }
             manager?.updatePasswordVisibility();
             window.setConnectionAdvancedExpanded(Boolean(jump || unresolved));
             refreshConnectionProfileJumpResolution();
@@ -509,13 +554,13 @@
                 return;
             }
             if (!TerminalManager.hasSearchSupport()) {
-                showNotification('Search not available', 'warning');
+                showNotification((window.i18n ? window.i18n.t('toast.searchUnavailable') : 'Search not available'), 'warning');
                 return;
             }
 
             const activeSession = SessionManager.getActiveSession();
             if (!activeSession) {
-                showNotification('No active session', 'warning');
+                showNotification((window.i18n ? window.i18n.t('toast.noActiveSession') : 'No active session'), 'warning');
                 return;
             }
 
@@ -1051,9 +1096,9 @@
             if (this._previewFullContent == null) return;
             try {
                 await TerminalManager.writeTextToClipboard(this._previewFullContent);
-                showNotification('Copied to clipboard', 'success');
+                showNotification((window.i18n ? window.i18n.t('toast.copied') : 'Copied to clipboard'), 'success');
             } catch {
-                showNotification('Failed to copy', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.copyFailed') : 'Failed to copy'), 'error');
             }
         },
 
@@ -1641,6 +1686,16 @@
         }
     }
 
+    socket.on('host_platform', data => {
+        const platform = data && Object.hasOwn(window.HostPlatform?.labels || {}, data.platform);
+        if (!platform && !Array.isArray(data?.services)) return;
+        const session = SessionManager.sessions[data.session_id];
+        if (session && platform) session.detectedPlatform = data.platform;
+        window.HostPlatform?.refreshSessionIcons(SessionManager, ProfileManager.profiles);
+        if (data.profile_id) ProfileManager.loadProfiles();
+    });
+
+
     socket.on('ssh_connected', (data) => {
         const requestId = typeof data?.client_request_id === 'string'
             ? data.client_request_id
@@ -1786,7 +1841,10 @@
         if (cancelledSessionIds.delete(data.session_id)) {
             return;
         }
-        showNotification(`Session disconnected: ${data.reason}`, 'warning');
+        const session = SessionManager.getSession(data.session_id);
+        if (session?.connected) {
+            showNotification(`Session disconnected: ${data.reason}`, 'warning');
+        }
         SessionManager.updateSessionStatus(data.session_id, 'disconnected');
 
         if (window.sftpFileManager) {
@@ -1795,7 +1853,11 @@
     });
 
     socket.on('session_timeout_warning', (data) => {
-        showNotification(`Session "${data.session_id.substr(0,8)}..." will timeout in 2 minutes due to inactivity. Type anything to keep alive.`, 'warning', 10000);
+        const session = `${String(data?.session_id || '').substr(0, 8)}…`;
+        const text = window.i18n?.t('session.timeoutWarning');
+        showNotification(text && text !== 'session.timeoutWarning'
+            ? text.replace('{session}', session)
+            : `Session "${session}" will time out in 2 minutes due to inactivity. Type anything to keep it alive.`, 'warning', 10000);
     });
 
     socket.on('profiles_list', (data) => {
@@ -1803,13 +1865,16 @@
     });
 
     socket.on('profile_saved', (data) => {
+        const created = !ProfileManager.profiles.some(profile => profile.id === data?.profile?.id);
         ProfileManager.upsertProfile(data?.profile);
-        showNotification('Saved connection updated successfully', 'success');
+        const key = created ? 'profiles.savedCreated' : 'profiles.savedUpdated';
+        const text = window.i18n?.t(key);
+        showNotification(text && text !== key ? text : (created ? 'Host saved' : 'Host updated'), 'success');
     });
 
     socket.on('profile_deleted', (data) => {
         ProfileManager.removeProfile(data?.profile_id);
-        showNotification('Saved connection deleted successfully', 'success');
+        showNotification((window.i18n ? window.i18n.t('toast.hostDeleted') : 'Saved connection deleted successfully'), 'success');
     });
 
     socket.on('keys_list', (data) => {
@@ -1825,7 +1890,7 @@
 
     socket.on('key_uploaded', (data) => {
         ProfileManager.upsertKeySummary(data.key);
-        showNotification('SSH key uploaded successfully', 'success');
+        showNotification((window.i18n ? window.i18n.t('toast.keyUploaded') : 'SSH key uploaded successfully'), 'success');
         document.getElementById('keyUploadForm')?.reset();
     });
 
@@ -1844,7 +1909,7 @@
     });
 
     socket.on('key_deleted', () => {
-        showNotification('SSH key deleted successfully', 'success');
+        showNotification((window.i18n ? window.i18n.t('toast.keyDeleted') : 'SSH key deleted successfully'), 'success');
     });
 
     socket.on('jump_hosts_list', (data) => {
@@ -1854,8 +1919,6 @@
     socket.on('jump_host_saved', (data) => {
         window.JumpHostManager?.upsertJumpHost(data?.jump_host);
         showNotification(window.i18n ? i18n.t('jumphosts.savedOk') : 'Jump host saved', 'success');
-        document.getElementById('jumpHostForm')?.reset();
-        document.getElementById('jhKeyGroup')?.classList.add('hidden');
     });
 
     socket.on('jump_host_deleted', (data) => {
@@ -2051,6 +2114,36 @@
             focusTarget = document.getElementById('jumpHostPasswordInput');
         }
         window.requestAnimationFrame(() => focusTarget?.focus());
+        if (mode === 'password' || mode === 'jump-host-password') connectWithAssignedPasswords(profileId);
+    }
+
+    /**
+     * A saved host whose every password (target and jump host) has an assigned
+     * saved password connects without waiting for a click in the form. It goes
+     * through the normal form submission, so all checks there still apply.
+     */
+    async function connectWithAssignedPasswords(profileId) {
+        const picker = window.CredentialPicker;
+        const profile = ProfileManager.profiles.find(item => item.id === profileId);
+        if (!picker?.restore || !profile) return;
+        const jump = profile.jump_host_id ? window.JumpHostManager?.getById(profile.jump_host_id) : null;
+        const needsTarget = profile.auth_type === 'password';
+        const needsJump = jump?.auth_type === 'password';
+        if (!needsTarget && !needsJump) return;
+        try {
+            await Promise.all([
+                needsTarget ? picker.restore('passwordInput') : null,
+                needsJump ? picker.restore('jumpHostPasswordInput') : null,
+            ]);
+        } catch {
+            return;
+        }
+        const modal = document.getElementById('connectionModal');
+        if (!modal?.classList.contains('show') || ProfileManager.selectedProfileId !== profileId) return;
+        const targetReady = !needsTarget || (document.getElementById('authTypeSelect')?.value === 'saved-password'
+            && Boolean(document.getElementById('savedPasswordSelect')?.value));
+        const jumpReady = !needsJump || Boolean(picker.get('jumpHostPasswordInput'));
+        if (targetReady && jumpReady) document.getElementById('connectionForm')?.requestSubmit();
     }
 
     function clearPendingPane() {
@@ -2284,6 +2377,8 @@
         }
         input.classList.toggle('is-valid', Boolean(isValid));
         input.classList.toggle('is-invalid', isValid === false);
+        if (isValid === false) input.setAttribute('aria-invalid', 'true');
+        else input.removeAttribute('aria-invalid');
         hintEl.textContent = message || '';
         hintEl.classList.toggle('hint-error', isValid === false);
         hintEl.classList.toggle('hint-success', isValid === true);
@@ -2321,7 +2416,7 @@
             if (!passwordInput) return;
             const passwordAuth = authTypeSelect?.value === 'password';
             const gateway = passwordAuth && validation.isGateway(userInput.value);
-            const valid = !passwordAuth || gateway || passwordInput.value.length > 0;
+            const valid = !passwordAuth || gateway || Boolean(window.CredentialPicker?.get('passwordInput')) || passwordInput.value.length > 0;
             setFieldState(passwordInput, passHint,
                 valid ? '' : i18n.t('connection.passwordRequired'), passwordAuth ? valid : null);
             if (passHint && gateway && !passwordInput.value) {
@@ -2334,7 +2429,7 @@
                 validation.isValidUsername(userInput.value, authTypeSelect?.value !== 'tailscale'), 'validation.username');
             const gateway = validation.isGateway(userInput.value);
             if (gateway || gatewayPasswordMode) {
-                if (passwordInput) passwordInput.required = authTypeSelect?.value === 'password' && !gateway;
+                if (passwordInput) passwordInput.required = authTypeSelect?.value === 'password' && !gateway && !window.CredentialPicker?.get('passwordInput');
                 validatePassword();
             }
             gatewayPasswordMode = gateway;
@@ -2399,11 +2494,11 @@
         const active = SessionManager.getActiveSession();
         const terminal = SessionManager.getActiveTerminal();
         if (!active || !terminal) {
-            showNotification('No active session', 'warning');
+            showNotification((window.i18n ? window.i18n.t('toast.noActiveSession') : 'No active session'), 'warning');
             return;
         }
         if (!terminal.hasSelection()) {
-            showNotification('Nothing selected to copy', 'info');
+            showNotification((window.i18n ? window.i18n.t('toast.nothingSelected') : 'Nothing selected to copy'), 'info');
             return;
         }
         TerminalManager.copySelectionToClipboard(terminal)
@@ -2413,24 +2508,24 @@
                     copied ? 'success' : 'info',
                 );
             })
-            .catch(() => showNotification('Clipboard access denied', 'error'));
+            .catch(() => showNotification((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error'));
     }
 
     function pasteClipboardIntoActiveTerminal() {
         const active = SessionManager.getActiveSession();
         if (!active) {
-            showNotification('No active session', 'warning');
+            showNotification((window.i18n ? window.i18n.t('toast.noActiveSession') : 'No active session'), 'warning');
             return;
         }
         if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
-            showNotification('Clipboard access denied', 'error');
+            showNotification((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error');
             return;
         }
         let clipboardText;
         try {
             clipboardText = navigator.clipboard.readText();
         } catch {
-            showNotification('Clipboard access denied', 'error');
+            showNotification((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error');
             return;
         }
         Promise.resolve(clipboardText)
@@ -2446,7 +2541,7 @@
                     }
                 }
             })
-            .catch(() => showNotification('Clipboard access denied', 'error'));
+            .catch(() => showNotification((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error'));
     }
 
     function setupClipboardActions() {
@@ -2456,12 +2551,12 @@
             saveBtn.addEventListener('click', () => {
                 const active = SessionManager.getActiveSession();
                 if (!active) {
-                    showNotification('No active session', 'warning');
+                    showNotification((window.i18n ? window.i18n.t('toast.noActiveSession') : 'No active session'), 'warning');
                     return;
                 }
                 const transcript = TerminalManager.getCleanTranscript(active);
                 if (!transcript) {
-                    showNotification('Transcript is empty', 'info');
+                    showNotification((window.i18n ? window.i18n.t('toast.transcriptEmpty') : 'Transcript is empty'), 'info');
                     return;
                 }
                 const blob = new Blob([transcript], { type: 'text/plain;charset=utf-8' });
@@ -2473,7 +2568,7 @@
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                showNotification('Transcript saved', 'success');
+                showNotification((window.i18n ? window.i18n.t('toast.transcriptSaved') : 'Transcript saved'), 'success');
             });
         }
 
@@ -2564,17 +2659,23 @@
     function setupNotepad() {
         const notepad = document.getElementById('sessionNotepad');
         const status = document.getElementById('notepadSaveStatus');
+        const retry = document.getElementById('notepadRetryBtn');
         if (!notepad || !window.NotepadController) return;
         window.notepadController = window.NotepadController.create({
             socket: window.socket,
             read: () => notepad.value,
             write: value => { notepad.value = value; },
             status: state => {
+                if (retry) retry.hidden = state !== 'failed';
                 if (!status) return;
                 status.textContent = window.i18n.t(`notes.${state}`);
                 status.className = `notepad-save-status ${state}`;
                 status.setAttribute('role', state === 'failed' ? 'alert' : 'status');
             },
+        });
+        retry?.addEventListener('click', () => {
+            window.notepadController.retry();
+            notepad.focus({preventScroll: true});
         });
         notepad.addEventListener('input', () => window.notepadController.changed());
         notepad.addEventListener('focus', () => {
@@ -2643,7 +2744,17 @@
             return null;
         }
 
+        // Views first: the palette also works as a way to move between the main areas.
+        const navButton = id => {
+            const button = document.getElementById(id);
+            return button && !button.hidden && !button.disabled && button.getClientRects().length ? button : null;
+        };
         const actions = [
+            { id: 'view-overview', labelKey: 'overview.title', hint: '', available: () => navButton('overviewNavBtn'), action: () => navButton('overviewNavBtn')?.click() },
+            { id: 'view-workspaces', labelKey: 'navigation.workspaces', hint: '', available: () => navButton('workspaceNavBtn'), action: () => navButton('workspaceNavBtn')?.click() },
+            { id: 'view-hosts', labelKey: 'connectionAssets.hosts', hint: '', available: () => document.getElementById('manageProfilesBtn'), action: () => document.getElementById('manageProfilesBtn')?.click() },
+            { id: 'view-automation', labelKey: 'automation.title', hint: '', available: () => navButton('automationNavBtn'), action: () => navButton('automationNavBtn')?.click() },
+            { id: 'view-settings', labelKey: 'settings.title', hint: '', action: () => { window.location.href = APP_ROOT + '/settings'; } },
             { id: 'quick-connect', labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: openDefaultConnectionModal },
             { id: 'command-library', labelKey: 'commands.library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
             { id: 'file-transfer', labelKey: 'files.fileTransfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
@@ -2664,7 +2775,7 @@
         }
 
         function buildItems() {
-            const translatedActions = actions.map(action => ({
+            const translatedActions = actions.filter(action => !action.available || action.available()).map(action => ({
                 id: action.id,
                 label: translate(action.labelKey, action.labelKey),
                 description: '',
@@ -2720,19 +2831,39 @@
                 && typeof SessionManager.switchSession === 'function'
             ) {
                 closePalette();
+                window.primaryWorkspaceController?.showWorkspaces();
                 SessionManager.switchSession(item.id);
             }
         }
 
-        function render() {
+        function updateSelection(reveal = false) {
+            const options = list.querySelectorAll('.palette-item');
+            options.forEach((option, index) => {
+                option.classList.toggle('active', index === activeIndex);
+                option.setAttribute('aria-selected', String(index === activeIndex));
+            });
+            const active = options[activeIndex];
+            if (active) {
+                input.setAttribute('aria-activedescendant', active.id);
+                if (reveal) active.scrollIntoView({block: 'nearest', inline: 'nearest'});
+            } else input.removeAttribute('aria-activedescendant');
+        }
+
+        function render({resetSelection = false} = {}) {
+            const selected = resetSelection ? null : filtered[activeIndex];
+            const hadResultFocus = list.contains(document.activeElement);
             filtered = buildItems();
-            activeIndex = Math.max(0, Math.min(activeIndex, filtered.length - 1));
+            const retainedIndex = selected ? filtered.findIndex(item => item.kind === selected.kind && item.id === selected.id) : -1;
+            activeIndex = resetSelection ? 0 : selected ? retainedIndex : activeIndex < 0 ? -1 : 0;
             list.replaceChildren();
+            input.removeAttribute('aria-activedescendant');
             if (filtered.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'palette-empty';
                 empty.textContent = translate('palette.noMatches', 'No matches');
+                empty.setAttribute('role', 'status');
                 list.appendChild(empty);
+                if (hadResultFocus) input.focus();
                 return;
             }
             let previousKind = null;
@@ -2750,6 +2881,7 @@
                 }
                 const el = document.createElement('button');
                 el.type = 'button';
+                el.id = `command-palette-option-${index}`;
                 el.className = 'palette-item' + (index === activeIndex ? ' active' : '');
                 el.dataset.paletteKind = item.kind;
                 el.dataset.paletteId = item.id;
@@ -2771,21 +2903,28 @@
                 hint.textContent = item.hint;
                 el.append(copy, hint);
                 el.addEventListener('click', () => activateItem(item));
+                el.addEventListener('focus', () => {
+                    activeIndex = index;
+                    updateSelection();
+                });
                 list.appendChild(el);
             });
+            updateSelection(modal.classList.contains('show'));
+            if (hadResultFocus) (list.querySelector('.palette-item.active') || input).focus({preventScroll: true});
         }
 
         function openPalette() {
             input.value = '';
             activeIndex = 0;
-            render();
+            render({resetSelection: true});
             window.ModalManager.open(modal);
+            list.scrollTop = 0;
             setTimeout(() => input.focus(), 50);
         }
 
         input.addEventListener('input', () => {
             activeIndex = 0;
-            render();
+            render({resetSelection: true});
         });
 
         window.addEventListener('languageChanged', render);
@@ -2801,11 +2940,11 @@
                 activeIndex = filtered.length > 0
                     ? Math.min(activeIndex + 1, filtered.length - 1)
                     : 0;
-                render();
+                updateSelection(true);
                 e.preventDefault();
             } else if (e.key === 'ArrowUp') {
                 activeIndex = Math.max(activeIndex - 1, 0);
-                render();
+                updateSelection(true);
                 e.preventDefault();
             } else if (e.key === 'Enter') {
                 e.preventDefault();
@@ -2843,6 +2982,12 @@
         window.primaryWorkspaceController = window.PrimaryWorkspaceController
             ?.createController({window, document});
         window.primaryWorkspaceController?.init();
+        const restoreNativeRoute = () => {
+            if (location.hash === '#passwords') openConnectionAssetManager('passwords');
+            if (location.hash === '#automation') { window.primaryWorkspaceController?.open('automation', document.getElementById('automationNativeView')); window.WebSSHAutomation?.activate(); }
+        };
+        window.addEventListener('hashchange', restoreNativeRoute);
+        restoreNativeRoute();
 
         SessionManager.init();
         window.mobileAppShell = window.MobileAppShell?.createController({
@@ -2869,16 +3014,57 @@
         window.HostContext?.init();
         ProfileManager.init();
 
-        window.connectionOverview = window.ConnectionOverview?.createController({
+        // The dashboard owns the Overview page when its markup is present; the
+        // established controller keeps the host rail and navigation labels.
+        window.overviewWorkspace = window.OverviewWorkspace?.createController({
             window, document, sessionManager: SessionManager,
+        }) || null;
+        window.connectionOverview = window.ConnectionOverview?.createController({
+            window, document, sessionManager: SessionManager, overviewPage: !window.overviewWorkspace,
         });
         window.connectionOverview?.init();
+        window.overviewWorkspace?.init();
+        window.hostDiscovery = window.HostDiscovery?.create({
+            win: window, doc: document,
+            t: (key, fallback, values = {}) => {
+                let text = window.i18n?.t(key);
+                if (!text || text === key) text = fallback;
+                return Object.entries(values).reduce((value, [name, replacement]) => value.replaceAll(`{${name}}`, String(replacement)), text);
+            },
+            request: async (path, options = {}) => {
+                const appRoot = (document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
+                const response = await fetch(appRoot + path, {credentials: 'same-origin', cache: 'no-store', ...options,
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''}});
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'The request failed.');
+                return data;
+            },
+            openEditor: (values, {saved, closed} = {}) => {
+                if (!window.primaryWorkspaceController?.open('hosts', document.getElementById('profileManagementModal'))) return;
+                ProfileManager.openEditor(null, {prefill: values, returnAfterSave: saved, returnAfterClose: closed});
+            },
+        }) || null;
+        document.querySelectorAll('[data-host-discovery]').forEach(button => {
+            button.hidden = !window.hostDiscovery;
+            button.addEventListener('click', () => window.hostDiscovery?.open());
+        });
 
-        ProfileManager.loadProfiles();
-        ProfileManager.loadKeys();
-        if (window.JumpHostManager) {
-            window.JumpHostManager.load();
+        // The page carries the saved hosts, so the overview draws without waiting
+        // for the socket; the socket lists are only needed when it could not.
+        let inventory = null;
+        try {
+            inventory = JSON.parse(document.getElementById('initialInventory')?.textContent || 'null');
+        } catch {
+            inventory = null;
         }
+        if (inventory) {
+            window.JumpHostManager?.setJumpHosts(inventory.jump_hosts);
+            ProfileManager.setProfiles(inventory.profiles);
+        } else {
+            ProfileManager.loadProfiles();
+            window.JumpHostManager?.load();
+        }
+        ProfileManager.loadKeys();
 
         const newTabBtn = document.getElementById('newTabBtn');
         if (newTabBtn) {
@@ -2908,30 +3094,40 @@
             cancelConnectionAttempt(event.detail?.requestId);
         });
 
-        document.getElementById('connectionForm').addEventListener('submit', (e) => {
+        document.getElementById('connectionForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const host = document.getElementById('hostInput').value;
             const port = document.getElementById('portInput').value;
             const username = document.getElementById('usernameInput').value;
-            const authType = document.getElementById('authTypeSelect').value;
+            const authMode = document.getElementById('authTypeSelect').value;
+            const authType = authMode === 'saved-password' ? 'password' : authMode;
             const password = document.getElementById('passwordInput').value;
+            let credentialId = window.CredentialPicker?.get('passwordInput');
             const keyId = document.getElementById('keySelect').value;
             const targetPane = pendingPaneIndex;
 
             if (!host || !username) {
-                showNotification('Host and username are required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.hostUserRequired') : 'Host and username are required'), 'error');
                 return;
             }
 
-            if (authType === 'password' && !password && !window.ConnectionValidation.isGateway(username)) {
-                showNotification('Password is required', 'error');
+            if (authMode === 'saved-password') {
+                if (e.currentTarget.dataset.credentialPending) return;
+                const form = e.currentTarget; form.dataset.credentialPending = 'true';
+                try { credentialId = await window.CredentialPicker.resolve('passwordInput'); }
+                catch (error) { if (error.name !== 'AbortError') showNotification(error.message, 'error'); return; }
+                finally { delete form.dataset.credentialPending; }
+            }
+
+            if (authType === 'password' && !password && !credentialId && !window.ConnectionValidation.isGateway(username)) {
+                showNotification((window.i18n ? window.i18n.t('toast.passwordRequired') : 'Password is required'), 'error');
                 document.getElementById('passwordInput').focus();
                 return;
             }
 
             if (authType === 'key' && !keyId) {
-                showNotification('SSH key is required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.keyRequired') : 'SSH key is required'), 'error');
                 return;
             }
 
@@ -2964,7 +3160,7 @@
             if (jumpHostId) {
                 const jh = window.JumpHostManager ? window.JumpHostManager.getById(jumpHostId) : null;
                 if (!jh) {
-                    showNotification('Selected jump host not found', 'error');
+                    showNotification((window.i18n ? window.i18n.t('toast.jumpNotFound') : 'Selected jump host not found'), 'error');
                     return;
                 }
                 proxyJump = {
@@ -2976,12 +3172,14 @@
                 };
                 if (jh.auth_type === 'password') {
                     const jhPass = document.getElementById('jumpHostPasswordInput').value;
-                    if (!jhPass) {
-                        showNotification('Jump host password is required', 'error');
+                    const jumpCredentialId = window.CredentialPicker?.get('jumpHostPasswordInput');
+                    if (!jhPass && !jumpCredentialId) {
+                        showNotification((window.i18n ? window.i18n.t('toast.jumpPasswordRequired') : 'Jump host password is required'), 'error');
                         document.getElementById('jumpHostPasswordInput').focus();
                         return;
                     }
-                    proxyJump.password = jhPass;
+                    if (jumpCredentialId) proxyJump.credential_id = jumpCredentialId;
+                    else proxyJump.password = jhPass;
                 } else {
                     proxyJump.key_id = jh.key_id;
                 }
@@ -2996,7 +3194,11 @@
             Object.assign(connectionData, ConnectionCommandManager.getPayload());
 
             if (authType === 'password') {
-                connectionData.password = password;
+                if (credentialId) { connectionData.credential_id = credentialId;
+                    const targetToken = window.CredentialPicker?.token?.('passwordInput');
+                    if (targetToken) connectionData.credential_target_token = targetToken;
+                }
+                else connectionData.password = password;
             } else if (authType === 'key') {
                 connectionData.key_id = keyId;
             }
@@ -3053,6 +3255,8 @@
         });
 
         document.getElementById('jumpHostSelect').addEventListener('change', () => {
+            document.getElementById('jumpHostPasswordInput').value = '';
+            window.CredentialPicker?.restore?.('jumpHostPasswordInput');
             if (window.JumpHostManager) {
                 window.JumpHostManager.updatePasswordVisibility();
             }
@@ -3079,7 +3283,7 @@
             const keyContent = document.getElementById('keyContentInput').value;
 
             if (!name || !keyContent) {
-                showNotification('Key name and content are required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.keyNameContentRequired') : 'Key name and content are required'), 'error');
                 return;
             }
 
@@ -3108,11 +3312,11 @@
             const authType = document.querySelector('input[name="jhAuthType"]:checked').value;
             const keyId = document.getElementById('jhKeySelect').value;
             if (!name || !host || !username) {
-                showNotification('Name, host and username are required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.nameHostUserRequired') : 'Name, host and username are required'), 'error');
                 return;
             }
             if (authType === 'key' && !keyId) {
-                showNotification('SSH key is required', 'error');
+                showNotification((window.i18n ? window.i18n.t('toast.keyRequired') : 'SSH key is required'), 'error');
                 return;
             }
             if (window.JumpHostManager) {
@@ -3233,6 +3437,7 @@
                     form.appendChild(input);
                 }
                 document.body.appendChild(form);
+                window.AuthSessionGuard?.markSignedOut?.();
                 form.submit();
             }
         });
@@ -3240,7 +3445,8 @@
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
                 if (e.target.classList.contains('primary-workspace-view')) return;
-                if (e.target.id === 'sshAuthBannerModal' || e.target.id === 'sshGatewayModal') return;
+                if (e.target.id === 'sshAuthBannerModal' || e.target.id === 'sshGatewayModal' || e.target.id === 'filePreviewModal') return;
+                if (e.target.id === 'commandFormModal' || e.target.id === 'commandWorkspaceModal') return;
                 if (e.target.id === 'connectionModal') {
                     dismissConnectionModal();
                     return;
@@ -3319,6 +3525,7 @@
                             modal.id === 'sftpFileManager'
                             || modal.id === 'sshAuthBannerModal'
                             || modal.id === 'sshGatewayModal'
+                            || modal.id === 'filePreviewModal'
                             || modal.classList.contains('primary-workspace-view')
                         ) return;
                         if (modal.id === 'connectionModal') {
@@ -3406,6 +3613,7 @@
         document.getElementById('accountShortcutsBtn')?.addEventListener('click', openShortcuts);
 
         openPalette = setupCommandPalette();
+        window.openCommandPalette = openPalette;
 
         document.getElementById('closeCommandPaletteModal')?.addEventListener('click', () => {
             window.ModalManager.close(document.getElementById('commandPaletteModal'));

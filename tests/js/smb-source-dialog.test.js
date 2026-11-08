@@ -404,3 +404,15 @@ test('dialog implementation never reads or writes browser storage', () => {
     );
     assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/i);
 });
+
+test('saved SMB credential is emitted as a reference without a password', () => {
+    const {dialog, volatileEmitted} = harness();
+    global.window.CredentialPicker = {get: () => 'smb:saved-1'};
+    try {
+        dialog.open({pane:'right'});
+        dialog.setValues({...validValues(), password:''});
+        assert.equal(dialog.submit(), true);
+        assert.equal(volatileEmitted[0][1].credential_id, 'smb:saved-1');
+        assert.equal(Object.hasOwn(volatileEmitted[0][1], 'password'), false);
+    } finally { delete global.window.CredentialPicker; }
+});

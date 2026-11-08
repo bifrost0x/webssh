@@ -24,7 +24,12 @@ WebSSH includes:
 - Content Security Policy, HSTS in production, frame denial, MIME sniffing prevention, referrer policy, and permissions policy;
 - per-user ownership checks for sessions, transfers, files, profiles, keys, and host-key data;
 - bounded connection, transfer, temporary-storage, and background-work quotas;
-- login, reauthentication, connection, backup, and default rate limits;
+- login, reauthentication, connection, backup, and default rate limits; second
+  factors (TOTP, Recovery Codes) and the password change are also limited per
+  account, so rotating source addresses does not extend guessing;
+- per-account budgets for reachability checks and host discovery, which never
+  log in and follow the SSH target policy;
+- `Cache-Control: no-store` on dynamic pages and API responses;
 - explicit SSH target policy and per-user host-key verification;
 - encrypted private-key storage derived per user;
 - security audit logging and administrator reauthentication;
@@ -74,7 +79,9 @@ successful verified LDAP bind and never claims an existing local username.
 
 ## Data at rest and backups
 
-The SQLite database, user JSON files, known-host data, notes, profiles, commands, and encrypted keys live in `DATA_DIR`. Native backups may also contain the persisted `SECRET_KEY`, making them sufficient to decrypt stored key material. Encrypt backups separately and restrict access and retention.
+The SQLite database, user JSON files, known-host data, notes, profiles, commands, and encrypted keys live in `DATA_DIR`. Native backup exports exclude saved remote passwords (`credentials.json`), legacy `automation-vault.json`, SSH key directories including metadata, and quarantined `deleted_users` data. Normal restore ignores these files even in older archives and clears existing copies. Reimport keys, recreate passwords, reassign credentials, and review and re-enable schedules after restore.
+
+Exports retain account authentication data, including password hashes, MFA data and provider secrets needed for account recovery, and may contain the persisted `SECRET_KEY`. Commands, notes and run history can still contain manually embedded secrets. Encrypt backups separately and restrict access and retention. Historical archives are not rewritten and may still contain remote credentials. Private internal recovery snapshots for failed restores or secret rotation retain encrypted credentials for rollback; they are not downloadable exports and need separately managed access, retention and cleanup.
 
 ## Vulnerability reporting
 

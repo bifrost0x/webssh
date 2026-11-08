@@ -117,13 +117,13 @@ def add_search_metadata(output: Path) -> None:
             nodes[0]['mainEntity'] = {'@id': video_id}
             nodes.append({
                 '@type': 'VideoObject', '@id': video_id,
-                'name': 'WebSSH: Self-Hosted SSH & SFTP in Your Browser',
+                'name': 'WebSSH 3 visual tour',
                 'description': description,
-                'thumbnailUrl': [SITE_URL + 'assets/webssh-youtube-tour.jpg'],
-                'url': 'https://www.youtube.com/watch?v=mw_qXUnYYVs',
-                'embedUrl': 'https://www.youtube-nocookie.com/embed/mw_qXUnYYVs',
-                'uploadDate': '2026-10-18T13:27:58+02:00',
-                'duration': 'PT4M33S', 'inLanguage': 'en',
+                'thumbnailUrl': [SITE_URL + 'assets/dashboard.png'],
+                'contentUrl': SITE_URL + 'assets/webssh-3-tour.webm',
+                'url': url,
+                'uploadDate': '2026-11-04T00:00:00+01:00',
+                'duration': 'PT20S', 'inLanguage': 'en',
                 'width': 1920, 'height': 1080,
                 'about': {'@id': SITE_URL + '#software'},
             })
@@ -137,14 +137,14 @@ def add_search_metadata(output: Path) -> None:
         image = SITE_URL + 'assets/session-workspace.png'
         image_alt = 'WebSSH browser workspace with an SSH terminal and SFTP files side by side'
         if filename == 'demo.html':
-            image = SITE_URL + 'assets/webssh-youtube-tour.jpg'
+            image = SITE_URL + 'assets/dashboard.png'
             image_alt = 'WebSSH product walkthrough with terminals, SFTP files and command sets'
         tags = {
             'og:type': 'website', 'og:site_name': 'WebSSH', 'og:locale': 'en_US',
             'og:title': title, 'og:description': description, 'og:url': url,
-            'og:image': image, 'og:image:type': 'image/jpeg' if filename == 'demo.html' else 'image/png',
-            'og:image:width': '1280' if filename == 'demo.html' else '2560',
-            'og:image:height': '720' if filename == 'demo.html' else '1440', 'og:image:alt': image_alt,
+            'og:image': image, 'og:image:type': 'image/png',
+            'og:image:width': '2560',
+            'og:image:height': '1440', 'og:image:alt': image_alt,
         }
         social = ''.join(f'  <meta property="{key}" content="{escape(value, quote=True)}">\n'
                          for key, value in tags.items())
@@ -171,10 +171,13 @@ class RuntimeAssets(HTMLParser):
     def __init__(self):
         super().__init__()
         self.inline_scripts = []
+        self.vendor_tag = None
         self._script_parts = None
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        if tag == 'script' and attrs.get('src') == '../' + GRAPH_VENDOR:
+            self.vendor_tag = (self.get_starttag_text(), attrs)
         if any(name.startswith('on') for name in attrs):
             raise ValueError('Unexpected inline event handler in Graphify output')
         resource = attrs.get('src')
@@ -213,6 +216,17 @@ def prepare_pages(root: Path, graph_source: Path, output: Path) -> None:
     assets = RuntimeAssets()
     assets.feed(graph_html)
     assets.close()
+    if assets.vendor_tag is None:
+        raise ValueError('Graphify vis-network script was missing')
+    runtime_bytes = (root / 'site' / GRAPH_VENDOR).read_bytes().replace(b'\r\n', b'\n')
+    runtime_digest = base64.b64encode(hashlib.sha384(runtime_bytes).digest()).decode('ascii')
+    original_tag, attributes = assets.vendor_tag
+    attributes['integrity'] = 'sha384-' + runtime_digest
+    replacement_tag = '<script ' + ' '.join(
+        key if value is None else f'{key}="{escape(value, quote=True)}"'
+        for key, value in attributes.items()
+    ) + '>'
+    graph_html = graph_html.replace(original_tag, replacement_tag, 1)
     script_hashes = []
     for body in assets.inline_scripts:
         digest = base64.b64encode(hashlib.sha256(body.encode('utf-8')).digest()).decode('ascii')
@@ -242,9 +256,9 @@ def prepare_pages(root: Path, graph_source: Path, output: Path) -> None:
     for name in ('LICENSE', 'THIRD-PARTY-NOTICES', 'NOTICE'):
         shutil.copyfile(root / name, output / name)
     add_search_metadata(output)
-    # Preserve Graphify's upstream SRI hash even with a Windows CRLF checkout.
+    # SRI covers the packaged local runtime, including reviewed vendor patches.
     runtime = output / GRAPH_VENDOR
-    runtime.write_bytes(runtime.read_bytes().replace(b'\r\n', b'\n'))
+    runtime.write_bytes(runtime_bytes)
     shutil.copytree(root / 'assets', output / 'assets', dirs_exist_ok=True)
     resources = {
         'static/images/webssh-logo.svg': 'webssh-logo.svg',

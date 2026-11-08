@@ -1,7 +1,29 @@
 # Profiles, Jump Hosts and Commands
 
 Saved connection data is private to each WebSSH account. Profiles intentionally
-exclude SSH and jump-host passwords.
+exclude plaintext SSH and jump-host passwords. Optional saved passwords are
+encrypted separately and assigned to hosts or jump hosts; see
+[Credentials](../credentials.md).
+
+## Find hosts in a network
+
+**Find hosts** in the Hosts view, or on the overview's Hosts panel, looks for
+SSH and SFTP servers in a network range you enter (at most 256 addresses and
+three ports). It runs only when you start it and is not offered in the
+`production` profile.
+
+- Each address and port gets one TCP connection. WebSSH reads the greeting an
+  SSH server sends by itself and closes the connection; it never logs in and
+  sends no credentials.
+- Attempts are paced to about three per second with at most three in flight,
+  so a /24 takes roughly 90 seconds. The scan is not hidden: firewalls or
+  intrusion detection may record it. Scan only networks you are responsible for.
+- The SSH network policy applies. Addresses that SSH may not reach are skipped.
+- Results show the address, reverse DNS name, SSH software and a platform hint,
+  and mark endpoints already saved. **Add** opens the new-host form prefilled
+  with name, address and port; leaving it asks before discarding the values.
+- One scan per account runs at a time; ten scans per account per hour. Logging
+  out stops the account's scans.
 
 ## Saved profiles
 
@@ -17,7 +39,7 @@ A profile can store:
 - flat group and sort position;
 - favorite state.
 
-Password-dependent profiles open the connection form at the required field.
+Profiles without a usable saved credential open the connection form at the required field.
 Profiles that need no password, such as a usable stored key or authorized
 Tailscale mode, can launch directly from an empty pane.
 
@@ -33,7 +55,10 @@ they are never stored in profiles.
 Open **Host context** from a saved host's action menu, or from the active
 session's **Notes** tools. Host notes are separate from the global notepad.
 Each saved profile has its own private context, even when two profiles use the
-same hostname. Ad-hoc connections have no saved host context.
+same hostname. A session opened without its saved host, for example through
+Quick Connect, uses the context of the saved host with the same destination,
+user and jump host; with several, the most recently edited one. A connection
+that matches no saved host has no context.
 
 Context supports up to 100000 characters of notes, 20 favorite absolute remote
 directory paths, and references to 20 command sets belonging to your account.
@@ -75,6 +100,21 @@ because the empty group ceases to exist.
 
 Jump hosts are saved separately so several target profiles can reuse one
 bastion. Select the jump host while editing a profile.
+
+Open **Hosts > Jump Hosts**, then choose **Edit** beside a saved entry to change
+its name, address, port, username, authentication method, or stored-key reference.
+Saving keeps the same Jump Host ID, so dependent profiles use the updated
+configuration on subsequent connections. Existing SSH sessions are not restarted.
+Passwords are never stored in plaintext in Jump Host records. Enter one when
+connecting or select an explicitly saved password when the feature is enabled.
+Changing the selected Jump Host in Quick Connect clears the previous bastion's
+password.
+
+**Cancel** asks before discarding a changed draft. Switching application views
+retains the draft. If a save times out, check the saved list before editing or
+adding again: a missing acknowledgement does not establish whether the write
+succeeded. Deletion is blocked while saved profiles still reference the Jump
+Host; update those profiles first.
 
 Use least privilege on the bastion and target. The presence of a jump host does
 not bypass target network policy, session ownership, or host-key verification.

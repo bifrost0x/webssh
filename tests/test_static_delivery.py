@@ -1,6 +1,27 @@
 import gzip
+import pytest
 
 from app.static_delivery import static_asset_version
+
+
+@pytest.mark.parametrize('extension,content_type', [
+    ('.woff2', 'font/woff2'), ('.woff', 'font/woff'),
+    ('.ttf', 'font/ttf'), ('.otf', 'font/otf'),
+])
+def test_font_mime_registration_overrides_incorrect_host_mapping(monkeypatch, tmp_path, extension, content_type):
+    import mimetypes
+    from flask import Flask
+    from app.static_delivery import init_static_delivery
+
+    mimetypes.init()
+    monkeypatch.setitem(mimetypes.types_map, extension, 'application/octet-stream')
+    (tmp_path / ('font' + extension)).write_bytes(b'font-test-bytes')
+    app = Flask('font_mime_test', static_folder=str(tmp_path), static_url_path='/static')
+    init_static_delivery(app)
+    response = app.test_client().get('/static/font' + extension)
+    assert response.status_code == 200
+    assert response.mimetype == content_type
+    assert response.data == b'font-test-bytes'
 
 
 def _asset_url(client, filename):
@@ -216,7 +237,7 @@ def test_webp_backgrounds_keep_image_headers_and_cache_validators(client):
     assets = sorted(Path('static/images/theme-backgrounds').glob('*.webp'))
     assert len(assets) == 10
     scenes = sorted(Path('static/images/theme-scenes').glob('*.webp'))
-    assert len(scenes) == 9
+    assert len(scenes) == 10
     assets.extend(scenes)
     for asset in assets:
         target = _asset_url(client, asset.relative_to('static').as_posix())

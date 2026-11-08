@@ -66,6 +66,25 @@ async function captureDesktopStill(page, filename, testInfo) {
     expect(readPngSize(filePath)).toEqual(DESKTOP_CAPTURE_SIZE);
 }
 
+// Product captures show a healthy inventory: host keys verified and every host
+// reachable. The seeded e2e hosts have no trusted keys and no network.
+async function presentHealthyInventory(page) {
+    const ids = [];
+    await page.route('**/api/overview/status', async route => {
+        const response = await route.fetch();
+        const data = await response.json();
+        (data.hosts || []).forEach(host => {
+            ids.push(host.id);
+            if (host.state === 'action') Object.assign(host, {state: 'ready', host_key: 'trusted', auth: 'ready'});
+        });
+        await route.fulfill({response, json: data});
+    });
+    await page.route('**/api/overview/reachability', route => route.fulfill({json: {
+        results: Object.fromEntries([...new Set(ids)].map((id, index) => [id, {state: 'reachable', latency_ms: 3 + (index % 5) * 2}])),
+        checked_at: Date.now() / 1000 - 90,
+    }}));
+}
+
 async function expectCurrentCaptureTerminology(page) {
     await expect(page.getByText('New Connection', { exact: true })).toHaveCount(0);
     await expect(page.getByText('New SSH Connection', { exact: true })).toHaveCount(0);
@@ -605,7 +624,7 @@ test('captures the focused session workspace and operational context', async ({ 
     await expect(page.locator('#terminalGrid')).toContainText('OpenSSH server');
     await expect(page.locator('#notepadTitle')).toHaveText('Notes');
     await expect(page.locator('header.header')).not.toContainText('E2E');
-    await expect(page.locator('main')).not.toContainText('.local');
+    await expect(page.locator('.main-content')).not.toContainText('.local');
     await expectCurrentCaptureTerminology(page);
     await captureDesktopStill(page, 'workspace-overview.png', testInfo);
 
@@ -937,9 +956,9 @@ test('captures six current Command Sets animation frames without remote actions'
 
     expect(page.viewportSize()).toEqual(DESKTOP_VIEWPORT);
     await expect(page.locator('header.header')).not.toContainText('E2E');
-    await expect(page.locator('main')).not.toContainText('E2E');
+    await expect(page.locator('.main-content')).not.toContainText('E2E');
     await expect(page.locator('header.header')).not.toContainText('.local');
-    await expect(page.locator('main')).not.toContainText('.local');
+    await expect(page.locator('.main-content')).not.toContainText('.local');
     await captureCssFrame(page, frameDirectory, '01-saved-connections.png');
 
     await page.locator('#commandLibraryBtn').click();
@@ -1017,9 +1036,9 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await expect(page.locator('#notepadTitle')).toHaveText('Notes');
     await expect(page.locator('#sessionNotepad')).toHaveValue(/edge-01\.example/);
     await expect(page.locator('header.header')).not.toContainText('E2E');
-    await expect(page.locator('main')).not.toContainText('E2E');
+    await expect(page.locator('.main-content')).not.toContainText('E2E');
     await expect(page.locator('header.header')).not.toContainText('.local');
-    await expect(page.locator('main')).not.toContainText('.local');
+    await expect(page.locator('.main-content')).not.toContainText('.local');
     await expectCurrentCaptureTerminology(page);
     await assertWorkspaceIsContained(page);
     await captureDesktopStill(page, 'multi-session.png', testInfo);
@@ -1027,8 +1046,8 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await page.locator('#accountBtnHeader').click();
     await page.locator('#accountSettingsBtn').click();
     await expect(page).toHaveURL(/\/settings#preferences$/);
-    await expect(page.locator('#settingsThemeSelect option')).toHaveCount(10);
-    await expect(page.locator('#settingsThemeSelect')).toContainText('Glass Ops');
+    await expect(page.locator('#settingsThemeSelect option')).toHaveCount(11);
+    await expect(page.locator('#settingsThemeSelect option[value="werkbank"]')).toHaveText('Werkbank / Sand');
     await expect(page.locator('#settingsThemeSelect')).toContainText('Obsidian');
     const themeBounds = await page.locator('.settings-center-main').boundingBox();
     expect(themeBounds).not.toBeNull();
@@ -1073,7 +1092,7 @@ test('captures the current Security Center assurance overview', async ({ page },
         document.getElementById('githubIdentityStatus').textContent = 'Connected as operations-demo';
     });
     expect(await page.locator('body').innerText()).not.toMatch(/e2e[_-]/i);
-    await expect(page.locator('body')).not.toContainText('E2E');
+    await expect(page.locator('.settings-center-main')).not.toContainText('E2E');
     await captureDesktopStill(page, 'security-center.png', testInfo);
 
     await assertCaptureNetworkClean(page);
@@ -1113,8 +1132,8 @@ test.describe('mobile product capture', () => {
         await expect(page.locator('#sessionTabs')).toContainText('Production Edge');
         await expect(page.locator('#terminalGrid')).toContainText('OpenSSH server');
         await expect(page.locator('#notepadPanel')).toBeHidden();
-        await expect(page.locator('main')).not.toContainText('E2E');
-        await expect(page.locator('main')).not.toContainText('.local');
+        await expect(page.locator('.main-content')).not.toContainText('E2E');
+        await expect(page.locator('.main-content')).not.toContainText('.local');
         await expectCurrentCaptureTerminology(page);
 
         const layout = await page.evaluate(() => ({
@@ -1136,4 +1155,69 @@ test.describe('mobile product capture', () => {
         }
         await assertCaptureNetworkClean(page);
     });
+});
+
+
+test('captures WebSSH 3 dashboard and every supported theme', async ({page}, info) => {
+    await installCaptureNetworkGuard(page);
+    await presentHealthyInventory(page);
+    await login(page);
+    await installSshConnectTrap(page);
+    await sanitizeSeededCatalog(page);
+    await page.locator('#overviewNavBtn').click();
+    await expect(page.locator('#overviewHostList .od-host').first()).toBeVisible();
+    await page.evaluate(()=>{document.querySelector('#connectionOverview').dataset.username='operator';window.dispatchEvent(new Event('languageChanged'));});
+    await expect(page.locator('#overviewTitle')).toContainText('operator');
+    await expect(page.locator('#connectionOverview')).toHaveAttribute('data-settled', /.*/);
+    const themes = ['glass','werkbank','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian'];
+    for (const [index, theme] of themes.entries()) {
+        await page.evaluate(t => { ThemePreference.store(t); document.body.dataset.theme=t; }, theme);
+        await expect(page.locator('body')).toHaveAttribute('data-theme', theme);
+        if (captureAssetsEnabled()) {
+            await page.waitForTimeout(700);
+            const directory=path.resolve('.test-run.tmp/theme-frames');fs.mkdirSync(directory,{recursive:true});
+            await page.screenshot({path:path.join(directory, String(index).padStart(2,'0')+'-'+theme+'.png'),animations:'disabled'});
+        }
+        expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    }
+    await page.evaluate(()=>{ThemePreference.store('arctic-ice');document.body.dataset.theme='arctic-ice';});
+    if (captureAssetsEnabled()) await page.waitForTimeout(700);
+    await captureDesktopStill(page,'dashboard.png',info);
+    await assertCaptureNetworkClean(page);
+});
+
+test('captures dashboard arrangement and host discovery', async ({page}, info) => {
+    await installCaptureNetworkGuard(page);
+    await presentHealthyInventory(page);
+    await login(page);
+    await installSshConnectTrap(page);
+    await sanitizeSeededCatalog(page);
+    await page.evaluate(()=>{ThemePreference.store('arctic-ice');document.body.dataset.theme='arctic-ice';});
+    await page.locator('#overviewNavBtn').click();
+    await expect(page.locator('#overviewHostList .od-host').first()).toBeVisible();
+    await page.evaluate(()=>{document.querySelector('#connectionOverview').dataset.username='operator';window.dispatchEvent(new Event('languageChanged'));});
+    await expect(page.locator('#connectionOverview')).toHaveAttribute('data-settled', /.*/);
+    await page.locator('#overviewCustomize').click();
+    await expect(page.locator('#odEditBar')).toBeVisible();
+    if (captureAssetsEnabled()) await page.waitForTimeout(400);
+    await captureDesktopStill(page, 'dashboard-customize.png', info);
+    await page.locator('#odLayoutDone').click();
+
+    // Discovery results are stubbed: captures never scan a network.
+    const found = [
+        {address: '192.168.10.11', port: 22, name: 'pve.home.arpa', software: 'OpenSSH 9.2p1', comment: 'Debian-2+deb12u3', platform: 'debian', known: true},
+        {address: '192.168.10.24', port: 22, name: 'nas.home.arpa', software: 'OpenSSH 9.6p1', comment: 'Ubuntu-3ubuntu13.5', platform: 'ubuntu', known: false},
+        {address: '192.168.10.31', port: 22, name: 'pi-hole.home.arpa', software: 'OpenSSH 9.2p1', comment: 'Raspbian-2+deb12u3', platform: 'raspberrypi', known: false},
+        {address: '192.168.10.40', port: 2222, name: null, software: 'dropbear 2022.83', comment: '', platform: null, known: false},
+    ];
+    await page.route('**/api/discovery/scans**', route => route.fulfill({status: route.request().method() === 'POST' ? 202 : 200,
+        json: {id: 'capture', network: '192.168.10.0/24', state: 'done', total: 254, checked: 254, blocked: 0, found}}));
+    await page.locator('#odBoard [data-panel="hosts"] .od-panel-head [data-host-discovery]').click();
+    await page.locator('#hostDiscoveryNetwork').fill('192.168.10.0/24');
+    await page.locator('#hostDiscoveryPorts').fill('22, 2222');
+    await page.locator('#hostDiscoveryStart').click();
+    await expect(page.locator('#hostDiscoveryResults > li')).toHaveCount(4);
+    if (captureAssetsEnabled()) await page.waitForTimeout(400);
+    await captureDesktopStill(page, 'host-discovery.png', info);
+    await assertCaptureNetworkClean(page);
 });

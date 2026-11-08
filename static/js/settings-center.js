@@ -38,6 +38,7 @@
         const panels = Array.from(document.querySelectorAll('[data-account-panel]'));
         const adminTabs = Array.from(document.querySelectorAll('.admin-tab[data-tab]'));
         const mobileSelect = document.getElementById('settingsMobileSection');
+        const navigationLinks = Array.from(document.querySelectorAll('a.admin-tab[data-settings-link]'));
         if (!buttons.length || !panels.length) { return; }
 
         const recoveryMode = document.body.dataset.recoveryMode === 'true';
@@ -87,7 +88,7 @@
                     }
                     if (!item.matches('.admin-tab')) { return; }
                     const option = document.createElement('option');
-                    option.value = item.dataset.accountSection || valueForAdminTab(item);
+                    option.value = item.dataset.settingsLink || item.dataset.accountSection || valueForAdminTab(item);
                     option.textContent = item.querySelector('span:last-child')?.textContent
                         || item.textContent.trim();
                     (currentGroup || mobileSelect).appendChild(option);
@@ -135,6 +136,11 @@
             tab.addEventListener('click', hideAccountPanels);
         });
         mobileSelect?.addEventListener('change', () => {
+            const link = navigationLinks.find(item => item.dataset.settingsLink === mobileSelect.value);
+            if (link) {
+                window.location.assign(link.href);
+                return;
+            }
             show(mobileSelect.value, true);
         });
         document.querySelectorAll('[data-account-jump]').forEach(button => {
@@ -156,9 +162,9 @@
                 });
             });
         });
-        show(String(location.hash || '').slice(1), false);
+        show(String(location.hash || '').slice(1) || new URLSearchParams(location.search).get('section') || '', false);
         window.addEventListener('hashchange', () => {
-            show(String(location.hash || '').slice(1), false);
+            show(String(location.hash || '').slice(1) || new URLSearchParams(location.search).get('section') || '', false);
         });
     }
 
@@ -176,6 +182,49 @@
         select.addEventListener('change', () => {
             i18n.setLanguage(select.value);
             setPreferenceStatus(t('settings.languageUpdated', 'Language updated.'));
+        });
+    }
+
+    function initOverviewLayout() {
+        bindPreferenceSelect('settingsOverviewLayout', 'overview_layout');
+        bindPreferenceSelect('settingsOverviewReachability', 'overview_reachability');
+    }
+
+    function bindPreferenceSelect(id, key) {
+        const select = document.getElementById(id);
+        if (!select) return;
+        select.addEventListener('change', async () => {
+            const previous = select.dataset.saved;
+            const requested = select.value;
+            select.disabled = true;
+            setPreferenceStatus(t('settings.saving', 'Saving setting…'));
+            try {
+                await savePreference({[key]: requested});
+                select.dataset.saved = requested;
+                setPreferenceStatus(t('settings.saved', 'Setting saved.'));
+            } catch (error) {
+                select.value = previous;
+                setPreferenceStatus(error.message, true);
+            } finally { select.disabled = false; }
+        });
+    }
+
+    function initStartPage() {
+        const select = document.getElementById('settingsStartPage');
+        if (!select) return;
+        select.addEventListener('change', async () => {
+            const previous = select.dataset.saved;
+            const requested = select.value;
+            select.disabled = true;
+            setPreferenceStatus(t('settings.saving', 'Saving setting…'));
+            try {
+                await savePreference({start_page: requested});
+                select.dataset.saved = requested;
+                setPreferenceStatus(t('settings.saved', 'Setting saved.'));
+            } catch (error) {
+                select.value = previous;
+                setPreferenceStatus(error.message, true);
+            } finally { select.disabled = false; }
         });
     }
 
@@ -214,13 +263,22 @@
         let initialValue = Number.parseInt(storedValue, 10);
         if (!Number.isFinite(initialValue)) { initialValue = 500; }
         initialValue = Math.min(10000, Math.max(50, initialValue));
+        let savedValue = initialValue;
         input.value = String(initialValue);
         input.addEventListener('change', () => {
             let value = Number.parseInt(input.value, 10);
             if (!Number.isFinite(value) || value < 50) { value = 50; }
             if (value > 10000) { value = 10000; }
             input.value = String(value);
-            window.BrowserPreferences?.set('terminalScrollback', value);
+            if (window.BrowserPreferences?.set('terminalScrollback', value) !== true) {
+                input.value = String(savedValue);
+                setPreferenceStatus(t(
+                    'settings.scrollbackFailed',
+                    'Browser storage is unavailable or full. The previous scrollback setting is unchanged.'
+                ), true);
+                return;
+            }
+            savedValue = value;
             setPreferenceStatus(t(
                 'settings.scrollbackSaved',
                 'Scrollback saved in this browser.'
@@ -232,9 +290,19 @@
         const input = document.getElementById(id);
         if (!input) { return; }
         input.checked = document.body.dataset[datasetKey] === 'true';
+        const renderState = () => {
+            const label = input.nextElementSibling;
+            if (!label) { return; }
+            const key = input.checked ? 'common.enabled' : 'common.disabled';
+            label.dataset.i18n = key;
+            label.textContent = t(key, input.checked ? 'Enabled' : 'Disabled');
+        };
+        renderState();
+        window.addEventListener('languageChanged', renderState);
         input.addEventListener('change', async () => {
             const previous = document.body.dataset[datasetKey] === 'true';
             const requested = input.checked;
+            renderState();
             input.disabled = true;
             setPreferenceStatus(t('settings.saving', 'Saving setting…'));
             try {
@@ -246,6 +314,7 @@
                 setPreferenceStatus(error.message, true);
             } finally {
                 input.disabled = false;
+                renderState();
             }
         });
     }
@@ -315,6 +384,8 @@
         initNavigation();
         initLanguage();
         initTheme();
+        initOverviewLayout();
+        initStartPage();
         initScrollback();
         initBooleanPreference(
             'directorySyncDefaultInput',
@@ -328,5 +399,10 @@
         );
         initAuthenticationSessionDuration();
         initDisconnectAction();
+        // Signing out here also tells open workspace tabs (see auth-session-guard.js).
+        document.addEventListener('submit', event => {
+            if (!/\/logout$/.test(new URL(event.target.action, window.location.href).pathname)) return;
+            try { window.localStorage.setItem('webssh:signed-out', String(Date.now())); } catch { /* optional storage */ }
+        });
     });
 })();

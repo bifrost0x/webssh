@@ -1,0 +1,440 @@
+/* The terminal receives all remaining space. Tool content is bounded; the rail
+   stays available without moving session content or replacing its controllers. */
+@media (max-width: 767px), (pointer: coarse) {
+    .webssh-ui #notepadRetryBtn { min-height: 44px; }
+}
+.webssh-ui .workspace {
+    --workspace-tool-rail: 64px;
+    background: var(--ws2-canvas);
+}
+.webssh-ui .workspace .terminal-grid .terminal-pane.active {
+    border-color: var(--ws2-border);
+    box-shadow: none;
+    outline: 0;
+}
+
+.webssh-ui .session-tabs-row {
+    min-height: 44px;
+    padding-block: 0;
+    border-bottom: 1px solid var(--ws2-border);
+    background: var(--ws2-surface);
+}
+.webssh-ui .session-tabs-row :is(.session-tab, .btn-new-tab, .tab-row-icon-btn) {
+    min-height: 34px;
+}
+.webssh-ui .context-workspace {
+    background: var(--ws2-surface);
+    color: var(--ws2-text);
+}
+.webssh-ui .context-workspace-tab[aria-selected="true"] {
+    color: var(--ws2-text);
+    background: color-mix(in srgb, var(--ws2-accent) 10%, var(--ws2-surface));
+}
+.webssh-ui .context-workspace-close[hidden] { display: none !important; }
+.webssh-ui .context-workspace :is(button, input, textarea):focus-visible,
+.webssh-ui #sftpFileManager :is(button, input, select, textarea):focus-visible {
+    outline: 2px solid var(--ws2-accent);
+    outline-offset: 2px;
+}
+.webssh-ui .context-workspace :is(input, textarea) { caret-color: var(--ws2-accent); }
+.webssh-ui :is(.context-workspace, #sftpFileManager) ::selection {
+    color: var(--ws2-text);
+    background: color-mix(in srgb, var(--ws2-accent) 32%, var(--ws2-surface));
+}
+.webssh-ui :is(.context-workspace, #sftpFileManager) * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ws2-border) transparent;
+}
+.webssh-ui .context-workspace .session-panel-eyebrow { display: none; }
+.webssh-ui .context-workspace .notepad-panel { max-height: none; }
+.webssh-ui .context-workspace .notepad-section { padding: 14px; }
+.webssh-ui .context-workspace .notepad-input {
+    padding: 12px;
+    border-radius: 5px;
+    line-height: 1.5;
+}
+.webssh-ui .context-workspace .session-directory-sync {
+    min-height: 44px;
+    width: 100%;
+    justify-content: space-between;
+    flex-direction: row-reverse;
+    margin: 0;
+    font-size: 15px;
+}
+.webssh-ui .context-workspace .session-directory-sync input {
+    appearance: none;
+    position: relative;
+    width: 34px;
+    height: 20px;
+    flex: 0 0 34px;
+    border: 1px solid var(--ws2-border);
+    border-radius: 12px;
+    background: var(--ws2-panel);
+    cursor: pointer;
+}
+.webssh-ui .context-workspace .session-directory-sync input::before {
+    position: absolute;
+    content: '';
+    width: 14px;
+    height: 14px;
+    top: 2px;
+    left: 2px;
+    border-radius: 50%;
+    background: var(--ws2-text);
+}
+.webssh-ui .context-workspace .session-directory-sync input:checked { background: var(--ws2-accent); border-color: var(--ws2-accent); }
+.webssh-ui .context-workspace .session-directory-sync input:checked::before { left: 16px; background: #fff; }
+.webssh-ui .context-workspace .session-panel-header { padding: 4px 12px; }
+
+@media (min-width: 1024px) {
+    .webssh-ui .session-tabs-row,
+    .webssh-ui .session-tabs-row .session-tabs,
+    .webssh-ui .session-tabs-row .tab-row-actions {
+        height: 44px;
+        min-height: 44px;
+        max-height: 44px;
+        padding-block: 0;
+        align-items: center;
+    }
+    .webssh-ui .session-tabs-row :is(.session-tab, .btn-new-tab, .tab-row-icon-btn) {
+        height: 40px;
+        min-height: 40px;
+        max-height: 40px;
+    }
+    .webssh-ui .main-content {
+        width: auto;
+        min-width: 0;
+    }
+    .webssh-ui .workspace.layout-desktop {
+        grid-template-columns: minmax(0, 1fr) var(--workspace-tool-rail);
+    }
+    .webssh-ui .workspace.layout-desktop.context-open {
+        grid-template-columns: minmax(0, 1fr) calc(var(--context-workspace-width, 340px) + var(--workspace-tool-rail));
+    }
+    .webssh-ui .workspace.layout-desktop .context-workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) var(--workspace-tool-rail);
+        grid-template-rows: minmax(0, 1fr);
+        overflow: visible;
+        border: 0;
+        box-shadow: none;
+    }
+    .webssh-ui .workspace.layout-desktop .context-workspace-header {
+        grid-column: 2;
+        grid-row: 1;
+        display: flex;
+        min-height: 0;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 0;
+        border: 0;
+        border-left: 1px solid var(--ws2-border);
+        background: var(--ws2-surface);
+    }
+    .webssh-ui .workspace.layout-desktop .context-workspace-tabs {
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+        gap: 10px;
+        width: 64px;
+    }
+    .webssh-ui .workspace.layout-desktop .context-workspace-tab {
+        width: 64px;
+        min-height: 70px;
+        flex-direction: column;
+        gap: 6px;
+        padding: 9px 2px;
+        border: 0;
+        border-radius: 0 4px 4px 0;
+        font-size: 12px;
+        font-weight: 400;
+    }
+    .webssh-ui .workspace.layout-desktop .context-workspace-tab > span:not(.material-icons) {
+        position: static;
+        width: auto;
+        height: auto;
+        padding: 0;
+        margin: 0;
+        white-space: nowrap;
+        overflow-wrap: normal;
+        font-size: 11px;
+        clip: auto;
+        clip-path: none;
+        overflow: visible;
+    }
+    .webssh-ui .workspace.layout-desktop .context-workspace-tab .material-icons { font-size: 26px; }
+    .webssh-ui .workspace.layout-desktop .context-workspace-tab::after { display: none; }
+    .webssh-ui .workspace.layout-desktop .context-workspace-tab[aria-selected="true"] {
+        box-shadow: inset 2px 0 var(--ws2-accent);
+        background: color-mix(in srgb, var(--ws2-accent) 9%, var(--ws2-surface));
+    }
+    .webssh-ui .workspace.layout-desktop .context-workspace-close { margin-top: auto; }
+    .webssh-ui .workspace.layout-desktop .context-workspace-panels {
+        grid-column: 1;
+        grid-row: 1;
+        min-width: 0;
+        overflow: hidden;
+    }
+    .webssh-ui .workspace.layout-desktop:not(.context-open) .context-workspace-panels { display: none; }
+    .webssh-ui .workspace.layout-desktop .context-workspace-resizer { left: 0; }
+}
+
+/* At laptop widths tools overlay the terminal, preserving its text geometry.
+   Larger workspaces dock the same mounted content beside the terminal. */
+@media (min-width: 1024px) and (max-width: 1439px) {
+    .webssh-ui .workspace.layout-desktop.context-open {
+        grid-template-columns: minmax(0, 1fr) var(--workspace-tool-rail);
+    }
+    .webssh-ui .workspace.layout-desktop.context-open .context-workspace {
+        position: absolute;
+        inset: 0 0 0 auto;
+        width: calc(min(var(--context-workspace-width, 340px), 70vw) + var(--workspace-tool-rail));
+        box-shadow: -12px 0 32px rgb(0 0 0 / 24%);
+    }
+    .webssh-ui .workspace.layout-desktop { position: relative; }
+    .webssh-ui .workspace.layout-desktop.context-open:has(.terminal-grid:not(.split-2):not(.split-4) .profile-launcher-sections) > .terminal-area {
+        margin-inline-end: min(var(--context-workspace-width, 340px), 70vw);
+        width: auto;
+        min-width: 0;
+    }
+}
+
+@media (min-width: 1024px) and (max-height: 800px) {
+    .webssh-ui .workspace.layout-desktop .context-workspace-header { padding-block: 8px; gap: 4px; }
+    .webssh-ui .workspace.layout-desktop .context-workspace-tabs { gap: 4px; }
+    .webssh-ui .workspace.layout-desktop .context-workspace-tab { min-height: 58px; gap: 4px; padding-block: 7px; }
+    .webssh-ui .workspace.layout-desktop .context-workspace-tab > span:not(.material-icons) { font-size: 12px; }
+    .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) { padding: 20px; gap: 8px; }
+    .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher:has(.profile-launcher-sections) .profile-launcher-title { font-size: 24px; }
+}
+
+/* File sources, selection and transfers retain their existing state and DOM.
+   Each pane uses aligned rows with quiet separators instead of file cards. */
+.webssh-ui #sftpFileManager.fm-workspace-mode .modal-body { gap: 10px; padding: 12px 18px; }
+.webssh-ui #sftpFileManager.fm-workspace-mode :is(.fm-pane, .fm-toolbar) {
+    border-radius: 5px;
+    box-shadow: none;
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane {
+    border: 1px solid var(--ws2-border);
+    background: var(--ws2-surface);
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane.active {
+    border-color: var(--ws2-border);
+    box-shadow: inset 0 2px var(--ws2-accent);
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-header { min-height: 62px; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-file-list {
+    padding: 0;
+    background: var(--ws2-canvas);
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-file-item {
+    min-height: 40px;
+    border-bottom: 1px solid color-mix(in srgb, var(--ws2-border) 55%, transparent);
+    background: transparent;
+    transition: background-color 120ms ease-out;
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-file-item:hover {
+    background: var(--ws2-row-hover);
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-file-item.selected {
+    background: color-mix(in srgb, var(--ws2-accent) 15%, var(--ws2-canvas));
+    box-shadow: inset 2px 0 var(--ws2-accent);
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-file-name { font-size: 15px; font-weight: 400; }
+.webssh-ui #sftpFileManager.fm-workspace-mode :is(.fm-file-size, .fm-file-modified, .fm-file-permissions) {
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-file-list-header {
+    min-height: 32px;
+    color: var(--ws2-text-secondary, var(--ws2-text-muted));
+    background: var(--ws2-surface);
+    font-size: 12px;
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-footer {
+    padding: 6px 12px;
+    min-height: 30px;
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-connection-dot { box-shadow: none; }
+.webssh-ui .fm-embedded-mode .fm-file-item { min-height: 44px; padding-block: 8px; }
+
+
+/* Sources own their identity; navigation and file actions form separate rows. */
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-workspace-header {
+    min-height: 64px;
+    padding: 12px 18px;
+    background: var(--ws2-canvas);
+    box-shadow: none;
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-workspace-brand,
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-workspace-title-icon { display: none; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-workspace-header h2 { font-size: 24px; font-weight: 500; }
+body.webssh-ui #primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode #fmModalTitle { position: static; width: auto; height: auto; overflow: visible; clip: auto; clip-path: none; margin-right: 24px; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-workspace-controls { flex: 1; min-width: 0; margin-left: 0; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-layout-switch { order: -1; margin-right: auto; border-radius: 4px; }
+@media (max-width: 767px) {
+    body.webssh-ui #primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode #fmModalTitle { margin-right: 8px; }
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-layout-switch { flex-shrink: 0; }
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-layout-btn { min-width: 44px; min-height: 44px; }
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-permissions-help summary { min-width: 44px; min-height: 44px; padding: 8px; justify-content: center; }
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-permissions-help summary > span[data-i18n] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-layout-btn.active { color: var(--ws2-accent); background: color-mix(in srgb, var(--ws2-accent) 10%, var(--ws2-surface)); box-shadow: inset 0 0 0 1px var(--ws2-accent); }
+.webssh-ui #sftpFileManager.fm-workspace-split .fm-panes { position: relative; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 12px; }
+.webssh-ui #sftpFileManager.fm-workspace-split .fm-transfer-rail { position: absolute; left: 50%; top: 50%; width: 32px; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; }
+.webssh-ui #sftpFileManager.fm-workspace-split .fm-transfer-rail::before { display: none; }
+.webssh-ui #sftpFileManager.fm-workspace-split .fm-transfer-direction { width: 32px; height: 36px; pointer-events: auto; background: var(--ws2-surface); border: 1px solid var(--ws2-border); border-radius: 4px; }
+.webssh-ui #sftpFileManager.fm-workspace-split .fm-transfer-hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-tab { min-width: 220px; max-width: 320px; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-tab-add { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 8px; width: auto; min-width: 120px; padding: 0 12px; font-size: 15px; }
+.webssh-ui .fm-source-tab-copy { display: flex; flex-direction: column; min-width: 0; gap: 4px; }
+.webssh-ui .fm-source-tab-endpoint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--ws2-text-secondary); }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-tab-label { font-size: 15px; font-weight: 500; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-tab-protocol { border: 0; font-size: 12px; color: var(--ws2-text-secondary); }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-tab.active { background: var(--ws2-surface); box-shadow: inset 0 2px var(--ws2-accent); }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-identity :is(.fm-source-identity-name, .fm-source-identity-endpoint, .fm-protocol-badge) { display: none; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-identity { min-height: 26px; padding: 3px 12px; font-size: 12px; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-nav { gap: 8px; min-height: 54px; padding: 8px 12px; flex-wrap: nowrap; background: var(--ws2-canvas); }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-nav-btn { width: 34px; height: 34px; min-width: 34px; border: 1px solid var(--ws2-border); border-radius: 4px; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-breadcrumb { flex: 1; min-width: 0; padding: 0; background: transparent; border: 0; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-path-input { min-height: 34px; padding: 6px 10px; font-size: 14px; text-align: left; direction: ltr; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-toolbar { gap: 8px; min-height: 58px; padding: 6px 12px 12px; flex-wrap: wrap; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-toolbar > button,
+.webssh-ui .fm-action-menu > summary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    min-height: 36px; padding: 6px 11px; border: 1px solid var(--ws2-border);
+    border-radius: 4px; background: transparent; color: var(--ws2-text); font-size: 14px;
+    font-weight: 400; cursor: pointer; white-space: nowrap; list-style: none;
+}
+.webssh-ui .fm-action-menu > summary::-webkit-details-marker { display: none; }
+.webssh-ui .fm-action-menu > summary::marker { content: ''; }
+.webssh-ui .fm-action-menu > summary:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 2px; }
+.webssh-ui .fm-action-menu-new > summary { background: var(--ui-action-bg); border-color: var(--ui-action-bg); color: var(--ui-action-fg); }
+.webssh-ui .fm-action-menu .material-icons { font-size: 20px; }
+.webssh-ui .fm-action-menu .fm-menu-chevron { font-size: 16px; }
+.webssh-ui .fm-action-menu { position: relative; flex: 0 0 auto; }
+.webssh-ui .fm-action-menu[open] { z-index: 30; }
+.webssh-ui .fm-action-menu-items {
+    position: absolute; top: calc(100% + 5px); left: 0; z-index: 30;
+    display: flex; flex-direction: column; min-width: 184px; padding: 5px;
+    border: 1px solid var(--ws2-border); border-radius: 5px;
+    background: var(--ws2-surface); box-shadow: 0 8px 20px rgb(0 0 0 / 24%);
+}
+.webssh-ui .fm-action-menu-more .fm-action-menu-items { left: auto; right: 0; }
+.webssh-ui .fm-action-menu .fm-action-menu-items > button {
+    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+    width: 100%; min-height: 36px; padding: 7px 9px; border: 0; border-radius: 3px;
+    background: transparent; color: var(--ws2-text); text-align: left; font-size: 14px;
+}
+.webssh-ui .fm-action-menu .fm-action-menu-items > button:not(:disabled):hover { background: var(--ws2-row-hover); }
+.webssh-ui .fm-action-menu .fm-action-menu-items > button:disabled { opacity: .45; }
+.webssh-ui .fm-action-menu .fm-action-menu-items > button:is(.is-danger, .btn-danger) { color: var(--ws2-danger); }
+.webssh-ui .fm-action-menu .fm-action-menu-items > button[hidden] { display: none !important; }
+.webssh-ui .fm-action-menu .fm-action-menu-items > button > span:not(.material-icons) { display: inline; position: static; width: auto; height: auto; margin: 0; clip: auto; clip-path: none; overflow: visible; }
+.webssh-ui .fm-embedded-mode .fm-toolbar { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--ws2-border); border-radius: 0; }
+.webssh-ui .fm-embedded-mode .fm-toolbar :is(.fm-toolbar-left, .fm-toolbar-right) { display: contents; }
+.webssh-ui .fm-embedded-mode .fm-toolbar .btn { width: 36px; min-height: 36px; padding: 6px; border: 1px solid var(--ws2-border); border-radius: 4px; }
+.webssh-ui .fm-embedded-mode .fm-action-menu-new > summary { background: transparent; color: var(--ws2-text); border-color: var(--ws2-border); }
+.webssh-ui .fm-embedded-mode .fm-action-menu-more > summary { min-width: 36px; padding-inline: 7px; }
+.webssh-ui .fm-embedded-mode .fm-action-menu-more > summary > span:not(.material-icons) { display: none; }
+.webssh-ui .fm-embedded-mode .fm-action-menu-items .btn { width: 100%; border: 0; padding: 7px 9px; }
+.webssh-ui .fm-embedded-mode .fm-pane-nav { gap: 6px; padding: 10px 12px; }
+.webssh-ui .fm-embedded-mode .fm-pane-nav .fm-nav-btn { width: 32px; height: 32px; min-width: 32px; border: 1px solid var(--ws2-border); }
+.webssh-ui .fm-embedded-mode .fm-breadcrumb { padding: 0; }
+.webssh-ui .fm-embedded-mode .fm-path-input { font-size: 13px; min-height: 32px; }
+.webssh-ui .fm-pane-nav input.fm-path-input { font-weight: 400; }
+.webssh-ui .fm-embedded-mode .fm-file-name { font-size: 15px; font-weight: 400; }
+.webssh-ui .fm-embedded-mode .fm-file-item.selected { background: color-mix(in srgb, var(--ws2-accent) 12%, var(--ws2-canvas)); box-shadow: inset 2px 0 var(--ws2-accent); }
+.webssh-ui .session-files-heading { min-height: 52px; display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--ws2-border); font-size: 20px; font-weight: 500; }
+.webssh-ui .session-files-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.webssh-ui .session-files-open-manager { margin: 12px; min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 1px solid var(--ws2-border); border-radius: 4px; background: var(--ws2-surface); color: var(--ws2-text); font-size: 15px; }
+.webssh-ui .fm-embedded-mode #fmQueue:not(:has(.fm-queue-item)) { display: none; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-queue { border-radius: 4px; box-shadow: none; }
+@media (min-width: 1100px) {
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-toolbar > button > span:not(.material-icons) { display: inline; }
+}
+@media (max-width: 767px), (pointer: coarse) {
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-file-item,
+    .webssh-ui .fm-embedded-mode .fm-file-item { min-height: 48px; }
+    .webssh-ui .fm-action-menu > summary { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-file-item { transition: none; }
+}
+
+/* Until a source is chosen, connection selection is the only useful action. */
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane:has(.fm-source-empty-state) :is(.fm-source-identity, .fm-pane-nav, .fm-pane-toolbar, .fm-file-list-header, .fm-pane-footer) { display: none; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-file-list:has(> .fm-source-empty-state) { display: grid; place-items: center; padding: 24px; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-empty-state { max-width: 400px; margin: 0; padding: 24px; border: 0; border-radius: 0; background: transparent; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-empty-state strong { font-size: 18px; font-weight: 500; }
+.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-empty-state p { max-width: 34ch; font-size: 15px; line-height: 1.5; color: var(--ws2-text-secondary); }
+
+.webssh-ui .context-workspace-tab { color: var(--ws2-text-secondary); }
+.webssh-ui .context-workspace-tab[aria-selected="true"] { color: var(--ws2-text); }
+.webssh-ui .context-workspace-tab[aria-selected="true"] > .material-icons { color: var(--ws2-accent); }
+.webssh-ui :is(#sftpFileManager, .fm-embedded-mode) .fm-file-icon.folder { color: var(--ws2-text-secondary); }
+.webssh-ui :is(#sftpFileManager, .fm-embedded-mode) .fm-file-item.selected .fm-file-icon { color: var(--ws2-accent); }
+.webssh-ui .context-workspace .session-directory-sync input:checked::before { background: var(--ui-action-fg); }
+
+@media (min-width: 768px) and (max-height: 800px) {
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-workspace-header { min-height: 48px; padding-block: 8px; }
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-workspace-header h2 { font-size: 22px; }
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-header { min-height: 52px; }
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-nav { min-height: 46px; padding-block: 6px; }
+    .webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-toolbar { min-height: 48px; padding-block: 6px; }
+}
+/* Compact utilities follow the reference; the terminal grid keeps its budget. */
+.webssh-ui .session-files-heading { min-height: 36px; padding: 7px 12px; font-size: 15px; }
+.webssh-ui .context-workspace .session-directory-sync { min-height: 34px; font-size: 13px; }
+.webssh-ui .fm-embedded-mode .fm-toolbar { padding-block: 6px; gap: 5px; }
+.webssh-ui .fm-embedded-mode .fm-pane-nav { padding-block: 6px; }
+.webssh-ui .fm-embedded-mode .fm-file-item { min-height: 36px; padding-block: 5px; }
+.webssh-ui .fm-embedded-mode .fm-file-name { font-size: 14px; }
+.webssh-ui .session-files-open-manager { min-height: 34px; margin: 8px; font-size: 13px; }
+.webssh-ui .context-workspace .notepad-section { padding: 10px 12px; }
+@media(pointer:coarse){
+ .webssh-ui .fm-embedded-mode .fm-file-item { min-height: 48px; }
+ .webssh-ui .context-workspace .session-directory-sync { min-height: 44px; }
+}
+/* Empty panes have one clear entry; source tabs appear once a source exists. */
+body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane:has(.fm-source-empty-state):not(:has(.fm-source-tab)) > .fm-pane-header { display: none; }
+body.webssh-ui .fm-permissions-help summary { border-color: var(--ws2-border); background: transparent; color: var(--ws2-text-muted); }
+body.webssh-ui .fm-queue-summary { font-weight: 400; font-size: 13px; margin-left: 8px; }
+body.webssh-ui :is(.fm-queue.has-transfer-errors .fm-queue-summary, .workspace-status-transfers.has-transfer-errors) { color: var(--error-color, #e4a798); }
+body.webssh-ui .context-workspace .session-command-item { padding: 8px; gap: 8px; }
+body.webssh-ui .context-workspace .session-command-item-details { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 6px; }
+body.webssh-ui .context-workspace .session-command-item-details > strong { white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+body.webssh-ui .context-workspace .session-command-item-details > .command-kind-badge { justify-self: end; align-self: start; padding: 2px 4px; font-size: 11px; line-height: 1.3; }
+body.webssh-ui .context-workspace .session-command-item-details > :not(strong):not(.command-kind-badge) { grid-column: 1 / -1; }
+
+body.webssh-ui .context-workspace .session-command-item-details > strong { grid-column: 1 / -1; }
+body.webssh-ui .context-workspace .session-command-item-details:has(> .command-kind-badge) > strong { grid-column: 1; }
+body.webssh-ui .context-workspace .session-command-popover-footer { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+body.webssh-ui .context-workspace .session-command-popover-footer > span { flex: 1; min-width: 0; font-size: 12px; line-height: 1.4; }
+body.webssh-ui .context-workspace .session-command-popover-footer > .btn { flex: 0 0 auto; width: auto; min-height: 32px; padding: 4px 6px; font-size: 13px; font-weight: 500; background: transparent; border: 0; text-decoration: underline; text-underline-offset: 3px; }
+/* The terminal input launcher belongs to the terminal, not a full-screen tool. */
+@media (max-width: 767px) {
+    body[data-primary-workspace="workspaces"]:has(#workspace.context-open) #mobileCommandToggle {
+        display: none;
+    }
+}
+/* Short screens keep a usable file list; surrounding controls can scroll. */
+@media (max-width: 767px) {
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .modal-body { overflow-y: auto; padding: 6px 10px; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-panes { flex-shrink: 0; min-height: 390px; grid-template-columns: minmax(0, 1fr); }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-file-list { min-height: 144px; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-header { min-height: 52px; flex-shrink: 0; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-tabs { min-width: 0; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-tab { min-width: 0; flex: 0 0 100%; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-tab-add { min-width: 44px; width: 44px; padding: 0; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-source-tab-add > span:not(.material-icons) { display: none; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-toolbar { gap: 5px; min-height: 56px; padding: 6px; flex-wrap: wrap; flex-shrink: 0; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-toolbar > button,
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-toolbar > details > summary { min-width: 44px; padding-inline: 7px; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-action-menu-more > summary > span:not(.material-icons) { display: none; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-nav { min-height: 56px; padding: 6px; flex-shrink: 0; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-nav .fm-nav-btn { width: 44px; min-width: 44px; height: 44px; }
+    body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-action-menu-items { max-height: 180px; overflow-y: auto; }
+}

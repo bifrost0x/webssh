@@ -57,6 +57,7 @@
             command: base,
             parameters,
             type: 'command',
+            isSystem: command?.isSystem === true,
             id: command?.id || '',
             name: command?.name || base || '',
             description: command?.description || '',
@@ -321,7 +322,12 @@
                         session_id: sessionId,
                         data,
                     }),
-                focusSession: sessionId => getTerminalManager()?.terminals?.[sessionId]?.focus(),
+                focusSession: sessionId => {
+                    const layout = root.workspaceLayoutController;
+                    const mode = layout?.getState?.().mode;
+                    if (mode === 'mobile' || mode === 'tablet') layout.closeContext('user');
+                    getTerminalManager()?.terminals?.[sessionId]?.focus();
+                },
                 notify: (message, type) => root.showNotification?.(message, type),
                 insertedMessage: label => this.t(
                     'sessionCommands.inserted',
@@ -508,7 +514,7 @@
                 const recentKeys = new Set(recentEntries.map(entry => this.entryKey(entry)));
                 if (!this.searchQuery && recentEntries.length) this.renderGroup(list, recentEntries, null, this.t('sessionCommands.recent', 'Recently used'), canInsert);
                 this.renderGroup(list, this.searchQuery ? entries : entries.filter(entry => !recentKeys.has(this.entryKey(entry))), null,
-                    this.t(this.activeSection === 'favorites' ? 'sessionCommands.favorites' : this.activeSection === 'sets' ? 'sessionCommands.sets' : 'sessionCommands.library', this.activeSection === 'favorites' ? 'Favorites' : this.activeSection === 'sets' ? 'Command sets' : 'Library'), canInsert);
+                    !this.searchQuery && recentEntries.length ? this.t(this.activeSection === 'favorites' ? 'sessionCommands.favorites' : this.activeSection === 'sets' ? 'sessionCommands.sets' : 'sessionCommands.library', this.activeSection === 'favorites' ? 'Favorites' : this.activeSection === 'sets' ? 'Command sets' : 'Library') : null, canInsert);
             }
 
             const footer = document.createElement('footer');
@@ -523,7 +529,8 @@
             manage.className = 'btn btn-secondary btn-small';
             manage.textContent = this.t('sessionCommands.manage', 'Manage Commands');
             manage.addEventListener('click', () => {
-                root.CommandSetManager?.openManagement();
+                if (this.activeSection === 'sets') root.CommandSetManager?.openManagement();
+                else getCommandLibrary()?.openLibrary?.();
             });
             footer.append(hint, manage);
             popup.append(tabs, search, sudoOption, list, footer);
@@ -544,9 +551,11 @@
             const document = root.document;
             const section = document.createElement('section');
             section.className = 'session-command-group';
-            const heading = document.createElement('h4');
-            heading.textContent = label;
-            section.appendChild(heading);
+            if (label) {
+                const heading = document.createElement('h4');
+                heading.textContent = label;
+                section.appendChild(heading);
+            }
 
             matching.forEach(savedEntry => {
                 let entry = savedEntry;
@@ -566,8 +575,10 @@
                 details.className = 'session-command-item-details';
                 const name = document.createElement('strong');
                 name.textContent = entry.name;
+                name.title = entry.name;
                 const description = document.createElement('span');
                 description.textContent = entry.description;
+                description.title = entry.description;
                 const preview = document.createElement('code');
                 if (parameterized) preview.className = 'command-parameter-preview';
                 preview.textContent = parameterized
@@ -576,9 +587,17 @@
                 const badge = document.createElement('span');
                 badge.className = `command-kind-badge command-kind-${entry.type}`;
                 badge.textContent = this.t(entry.type === 'set' ? 'commands.commandSet' : 'commands.command', entry.type === 'set' ? 'Command set' : 'Command');
-                details.append(name, badge);
+                details.append(name);
+                if (this.activeSection === 'favorites') details.append(badge);
                 if (entry.description) details.append(description);
                 if (entry.preview || parameterized) details.append(preview);
+                if (entry.isSystem && entry.parameters) {
+                    const notice = document.createElement('p');
+                    notice.className = 'command-template-hint';
+                    notice.textContent = this.t('commands.templateHint', 'Library defaults, not values detected on this host. Review arguments before insertion.');
+                    details.append(notice);
+                }
+
 
                 const insert = document.createElement('button');
                 insert.type = 'button';

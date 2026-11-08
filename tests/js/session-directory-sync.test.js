@@ -554,3 +554,61 @@ test('fragmented multiline paste cannot borrow an earlier primary prompt', () =>
         assert.equal(sync.canSend('paste-integration',pane(3)),false);
     } finally {tracked.dispose();}
 });
+
+function promptTerminal() {
+    let mode, onData;
+    const screen = {row: 4, x: 7, text: 'user:~$'};
+    const terminal = {
+        parser: {registerCsiHandler(_id, fn) { mode = fn; }},
+        onData(fn) { onData = fn; },
+        modes: {bracketedPasteMode: true},
+        buffer: {active: {type: 'normal', baseY: 0, get cursorY() { return screen.row; }, get cursorX() { return screen.x; },
+            getLine: row => (row === screen.row ? {translateToString: () => screen.text} : null)}},
+    };
+    return {terminal, screen, prompt: () => mode([2004]), type: data => onData(data)};
+}
+
+test('after a reload only the server can confirm an empty prompt, and only while nothing was typed here', () => {
+    const t = promptTerminal();
+    sync.trackTerminal('reloaded', t.terminal);
+    sync.beginReplay('reloaded');
+    t.prompt();
+    sync.endReplay('reloaded');
+    assert.equal(sync.canSend('reloaded', {input_idle: false}), false);
+    assert.equal(sync.canSend('reloaded', {}), false);
+    assert.equal(sync.canSend('reloaded', {input_idle: true}), true);
+    // A key typed here may still be on its way to the server: its view no longer decides.
+    t.type('x');
+    assert.equal(sync.canSend('reloaded', {input_idle: true}), false);
+});
+
+test('typing and erasing back to the empty prompt resumes folder sync after a quiet moment', () => {
+    const t = promptTerminal();
+    const realNow = Date.now;
+    let now = 1_000_000;
+    Date.now = () => now;
+    try {
+        sync.trackTerminal('erased', t.terminal);
+        t.prompt();
+        assert.equal(sync.canSend('erased'), true);
+        t.type('l');
+        t.screen.x = 8; t.screen.text = 'user:~$ l';
+        now += 2000;
+        assert.equal(sync.canSend('erased'), false, 'the line still holds input');
+        t.type('\x7f');
+        // The shell erases with real spaces, which stay on the line.
+        t.screen.x = 7; t.screen.text = 'user:~$  ';
+        assert.equal(sync.canSend('erased'), false, 'a key this recent may still be echoing');
+        now += 1000;
+        assert.equal(sync.canSend('erased'), true);
+        // The cursor moved elsewhere on the line: not an empty prompt.
+        t.screen.x = 3;
+        assert.equal(sync.canSend('erased'), false);
+        // A submitted line needs the next real prompt.
+        t.screen.x = 7;
+        sync.noteInput('erased', '\r');
+        assert.equal(sync.canSend('erased'), false);
+    } finally {
+        Date.now = realNow;
+    }
+});

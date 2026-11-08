@@ -7,6 +7,9 @@ const TRANSIENT_CAPTURE_DIRECTORY = path.join(ROOT, '.test-run.tmp', 'captures')
 
 // Only captures consumed by a public repository surface belong in assets/.
 const PUBLISHED_CAPTURE_ASSETS = new Set([
+    'dashboard.png',
+    'dashboard-customize.png',
+    'host-discovery.png',
     'commandlibrary.png',
     'command-set-builder.png',
     'file-edit-review.png',

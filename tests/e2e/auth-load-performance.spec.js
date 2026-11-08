@@ -33,6 +33,7 @@ test('login remains usable while its background is still downloading', async ({ 
     let releaseBackground;
     let backgroundRequested = false;
     const gate = new Promise(resolve => { releaseBackground = resolve; });
+    await page.addInitScript(() => localStorage.setItem('websshTheme', 'glass'));
     await page.route('**/redesign/midnight-lodge.webp*', async route => {
         backgroundRequested = true;
         await gate;

@@ -42,6 +42,7 @@ class BinaryTransferClient {
         this.eventListeners = new Map();
         this.operationQueue = [];
         this.activeOperation = null;
+        this.pendingPreparations = new Map();
         this.setupSocketListeners();
     }
 
@@ -61,6 +62,25 @@ class BinaryTransferClient {
         const canonicalSourceId = this.normalizeSourceId(sourceId);
         const requestId = this.generateId();
         return new Promise((resolve, reject) => {
+            let settled = false;
+            let abandoned = false;
+            let timer;
+            const finish = (failure, acknowledgement) => {
+                if (settled) return;
+                settled = true;
+                abandoned = Boolean(failure);
+                clearTimeout(timer);
+                this.pendingPreparations.delete(requestId);
+                if (failure) reject(new PublicTransferError(this.normalizeFailure(failure)));
+                else resolve(acknowledgement);
+            };
+            if (this.socket.connected === false) {
+                finish({error_code: 'SOURCE_UNAVAILABLE', retryable: false});
+                return;
+            }
+            this.pendingPreparations.set(requestId, finish);
+            timer = setTimeout(() => finish({error_code: 'TIMEOUT', retryable: false}), 15000);
+            timer?.unref?.();
             this.socket.emit('prepare_transfer', {
                 direction,
                 source_id: canonicalSourceId,
@@ -68,13 +88,17 @@ class BinaryTransferClient {
                 request_id: requestId,
                 ...options,
             }, acknowledgement => {
-                if (!acknowledgement || !acknowledgement.success) {
-                    reject(new PublicTransferError(
-                        this.normalizeFailure(acknowledgement),
-                    ));
+                if (settled) {
+                    if (abandoned && acknowledgement?.success && acknowledgement.transfer_id) {
+                        this.socket.emit('cancel_transfer', {transfer_id: acknowledgement.transfer_id}, () => {});
+                    }
                     return;
                 }
-                resolve(acknowledgement);
+                if (!acknowledgement || !acknowledgement.success) {
+                    finish(acknowledgement || {error_code: 'TRANSFER_UNAVAILABLE'});
+                    return;
+                }
+                finish(null, acknowledgement);
             });
         });
     }
@@ -559,6 +583,11 @@ class BinaryTransferClient {
     }
 
     setupSocketListeners() {
+        this.socket.on('disconnect', () => {
+            for (const finish of this.pendingPreparations.values()) {
+                finish({error_code: 'SOURCE_UNAVAILABLE', retryable: false});
+            }
+        });
         this.socket.on('transfer_progress', data => {
             for (const transfer of this.activeTransfers.values()) {
                 if (transfer.transferId !== data.transfer_id || transfer.terminalized) continue;

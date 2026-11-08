@@ -72,7 +72,7 @@ class TemporaryConnectionPool:
             )
             return self.cleanup_handle
 
-    def create_connection(self, host, port, username, password=None, key_path=None, key_content=None, user_id=None, gateway_attempt=None):
+    def create_connection(self, host, port, username, password=None, key_path=None, key_content=None, user_id=None, gateway_attempt=None, credential_guard=None):
         """
         Create a temporary SSH+SFTP connection.
 
@@ -159,11 +159,19 @@ class TemporaryConnectionPool:
                 if password:
                     connect_kwargs['passphrase'] = password
             elif password:
-                connect_kwargs['password'] = password
+                if credential_guard is not None:
+                    from .credential_connections import SavedPasswordAuth
+                    connect_kwargs.pop('look_for_keys', None)
+                    connect_kwargs.pop('allow_agent', None)
+                    connect_kwargs['auth_strategy'] = SavedPasswordAuth(username, password, credential_guard)
+                else:
+                    connect_kwargs['password'] = password
             else:
                 return None, "Either password or SSH key is required"
 
             client.connect(**connect_kwargs)
+            if credential_guard is not None:
+                credential_guard.check()
 
             transport = client.get_transport()
             if transport:

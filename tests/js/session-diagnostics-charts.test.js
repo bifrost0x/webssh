@@ -142,3 +142,12 @@ test('renders root disk history with gaps on the shared load scale', () => {
     ]);
     assert.deepEqual(canvas.calls.filter(call => call[0] === 'lineTo'), [['lineTo', 200, 48]]);
 });
+
+test('invalid values cannot create zero points in diagnostic charts', () => {
+    const invalid = ['  ', [], [5], {}];
+    for (const value of invalid) {
+        const series = charts.buildPressureSeries([{cpuPercent:value, memoryPercent:value}]);
+        assert.deepEqual(series[0].values, [null]);
+        assert.deepEqual(series[1].values, [null]);
+    }
+});

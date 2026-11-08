@@ -1,0 +1,514 @@
+/* Automation extends the shared workspace palette and native form controls. */
+.automation-main { overflow-y: auto; flex: 1; width: 100%; max-width: 1380px; margin: 0 auto; padding: 32px 32px 72px; min-height: 0; }
+.automation-title { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 28px; }
+.automation-title h1 { font-size: clamp(26px, 3vw, 34px); line-height: 1.2; margin: 0 0 8px; font-weight: 600; letter-spacing: -.02em; }
+.automation-title p { margin: 0; color: var(--ws2-text-secondary); }
+.automation-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--ws2-border); margin-bottom: 28px; }
+.automation-tabs button { display: flex; gap: 8px; align-items: center; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--ws2-text-secondary); padding: 0 0 14px; cursor: pointer; }
+.automation-tabs button[aria-current] { color: var(--ws2-text); border-color: var(--ws2-accent); }
+.automation-runbooks { display: grid; grid-template-columns: 244px minmax(0, 1fr); gap: 32px; }
+.automation-library { padding-right: 24px; border-right: 1px solid var(--ws2-border); }
+.automation-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 14px; }
+.automation-section-heading :is(h2, h3) { margin: 0; font-size: 18px; font-weight: 550; }
+.automation-editor { max-width: 920px; min-width: 0; }
+.automation-editor label { display: block; margin: 18px 0 8px; color: var(--ws2-text-secondary); font-size: 13px; }
+.automation-editor .automation-section-heading { margin-top: 28px; }
+.automation-editor > .automation-section-heading { margin-top: 0; }
+.automation-step { padding: 16px 0 20px; border-bottom: 1px solid var(--ws2-border); }
+.automation-step-heading { display: flex; gap: 12px; align-items: center; }
+.automation-step-number { font-variant-numeric: tabular-nums; color: var(--ws2-text-muted); width: 22px; }
+.automation-step-tools { display: flex; gap: 4px; }
+.automation-icon-button { display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; color: var(--ws2-text-secondary); border-radius: 6px; min-width: 34px; min-height: 34px; cursor: pointer; }
+.automation-icon-button:hover { background: var(--ws2-row-hover); color: var(--ws2-text); }
+.automation-step-options { display: flex; gap: 24px; align-items: end; flex-wrap: wrap; }
+.automation-step-options .automation-timeout { width: 160px; }
+.automation-check input { margin-top: 3px; flex: 0 0 auto; }
+.automation-hint { font-size: 13px; color: var(--ws2-text-secondary); line-height: 1.6; margin: 6px 0 14px; max-width: 75ch; }
+.automation-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 20px; }
+.automation-target-section { margin-top: 32px; padding-top: 4px; border-top: 1px solid var(--ws2-border); }
+.automation-host-list { max-height: 320px; overflow-y: auto; margin-top: 12px; }
+.automation-group-list { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.automation-host { display: flex; gap: 12px; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--ws2-border); }
+.automation-host:hover { background: var(--ws2-row-hover); }
+.automation-host label { margin: 0; flex: 1; cursor: pointer; }
+.automation-host strong, .automation-host small { display: block; overflow-wrap: anywhere; }
+.automation-host strong { color: var(--ws2-text); font-size: 14px; font-weight: 550; }
+.automation-host small { color: var(--ws2-text-secondary); font-size: 12px; margin-top: 3px; }
+.automation-host:has(input:disabled) { opacity: .65; }
+.automation-launch { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 24px; padding: 20px 0; }
+.automation-launch p { color: var(--ws2-text-secondary); font-size: 13px; max-width: 48ch; }
+.automation-text-button { background: none; border: 0; color: var(--ws2-accent); text-align: left; padding: 8px 0; cursor: pointer; line-height: 1.5; font-size: 13px; }
+.automation-library-entry { display: block; width: 100%; text-align: left; background: transparent; border: 1px solid transparent; padding: 14px 12px; color: var(--ws2-text); border-radius: 8px; margin-bottom: 4px; cursor: pointer; overflow-wrap: anywhere; }
+.automation-library-entry small { display: block; color: var(--ws2-text-secondary); margin-top: 5px; }
+.automation-library-entry:hover { background: var(--ws2-row-hover); }
+.automation-library-entry[aria-current] { background: var(--ui-selected); border-color: var(--ws2-border-strong); }
+.automation-explanation { max-width: 68ch; line-height: 1.7; color: var(--ws2-text-secondary); }
+.automation-explanation h2 { color: var(--ws2-text); line-height: 1.35; font-size: 24px; margin: 0 0 24px; font-weight: 550; }
+.automation-explanation p { margin-bottom: 20px; }
+.automation-explanation a { color: var(--ws2-accent); }
+.automation-message, .automation-warning { padding: 14px 16px; background: var(--ws2-panel); border: 1px solid var(--ws2-border-strong); border-radius: 8px; color: var(--ws2-text); font-size: 13px; line-height: 1.65; margin-bottom: 20px; overflow-wrap: anywhere; }
+#automationError, #automationPreviewError { border-color: var(--error-color); }
+.automation-dialog { background: var(--ws2-surface, var(--bg-secondary)); color: var(--ws2-text, var(--text-primary)); border: 1px solid var(--ws2-border-strong); border-radius: 12px; padding: 28px; width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; margin: auto; box-shadow: var(--ws2-shadow); }
+.automation-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+.automation-dialog label { display: block; font-size: 13px; color: var(--ws2-text-secondary); margin-bottom: 10px; }
+.automation-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ws2-panel); padding: 14px; border-radius: 6px; font-size: 13px; }
+.automation-dialog h3 { margin: 24px 0 12px; font-size: 16px; }
+.automation-dialog ul { padding-left: 20px; line-height: 1.8; overflow-wrap: anywhere; }
+.automation-prompt { max-width: 480px; }
+.automation-prompt h2 { font-size: 22px; margin-bottom: 16px; }
+.automation-prompt p { color: var(--ws2-text-secondary); line-height: 1.6; }
+.automation-run { padding-block: 24px; border-bottom: 1px solid var(--ws2-border); }
+.automation-run:first-child { padding-top: 8px; }
+.automation-run summary { cursor: pointer; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.automation-run summary strong { font-weight: 550; font-size: 16px; flex: 1; }
+.automation-run time { color: var(--ws2-text-secondary); font-size: 12px; }
+.automation-run-target { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--ws2-border); }
+.automation-run-target h4 { font-size: 14px; margin: 0 0 12px; font-weight: 550; overflow-wrap: anywhere; }
+.automation-run-step { display: grid; grid-template-columns: minmax(0, 1fr) 120px 100px; gap: 16px; padding: 8px 0; color: var(--ws2-text-secondary); font-size: 13px; }
+.automation-run-step span { overflow-wrap: anywhere; }
+.automation-state { color: var(--ws2-text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.automation-state[data-state="succeeded"] { color: var(--success-color); }
+.automation-state[data-state="unknown"], .automation-state[data-state="failed"] { color: var(--warning-color); }
+.automation-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 800px) {
+    .automation-main { padding: 24px 20px 48px; }
+    .automation-runbooks { grid-template-columns: 1fr; gap: 24px; }
+    .automation-library { border-right: 0; border-bottom: 1px solid var(--ws2-border); padding: 0 0 16px; }
+    #runbookList { display: flex; gap: 8px; overflow-x: auto; }
+    .automation-library-entry { min-width: 180px; max-width: 240px; flex: 0 0 auto; }
+}
+@media (max-width: 520px) {
+    .automation-title { align-items: start; flex-direction: column; gap: 16px; }
+    .automation-tabs { gap: 20px; }
+    .automation-tabs button { font-size: 13px; }
+    .automation-main { padding-inline: 16px; }
+    .automation-step-heading { flex-wrap: wrap; }
+    .automation-step-heading input { flex: 1; width: calc(100% - 42px); }
+    .automation-step-tools { margin-left: 28px; }
+    .automation-launch { align-items: stretch; flex-direction: column; gap: 8px; }
+    .automation-run-step { grid-template-columns: minmax(0, 1fr) 85px 64px; gap: 8px; }
+    .automation-dialog { padding: 20px; }
+}
+/* The sequence is the working surface; library and targets stay in reach. */
+.automation-main { max-width: 1960px; padding: 24px 24px 40px; }
+.automation-title { margin-bottom: 20px; }
+.automation-title h1 { font-size: 24px; letter-spacing: normal; }
+.automation-tabs { margin-bottom: 20px; }
+.automation-runbooks { grid-template-columns: 220px minmax(320px, 1fr) minmax(280px, 360px); gap: 0; align-items: start; background: var(--ws2-surface); border: 1px solid var(--ws2-border); border-radius: 8px; }
+.automation-library { padding: 20px 16px; border-right: 1px solid var(--ws2-border); min-width: 0; }
+#runbookList { margin-top: 12px; max-height: 60dvh; overflow: auto; }
+.automation-library-entry { border-radius: 5px; padding: 12px; }
+.automation-editor { padding: 20px 24px; max-width: none; }
+.automation-editor label { font-size: 14px; }
+.automation-editor .automation-section-heading { margin-top: 20px; }
+.automation-editor > .automation-section-heading { margin-top: 0; }
+.automation-section-heading :is(h2,h3) { font-size: 20px; font-weight: 600; }
+.automation-step { position: relative; padding: 12px 0 16px 32px; border-bottom: 0; }
+.automation-step::before { content: ''; position: absolute; left: 12px; top: 36px; bottom: -12px; width: 1px; background: var(--ws2-border-strong); }
+.automation-step:last-child::before { bottom: 20px; }
+.automation-step-number { position: absolute; left: 0; top: 19px; width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--ws2-border-strong); border-radius: 50%; background: var(--ws2-surface); font-size: 13px; }
+.automation-step.is-active .automation-step-number { color: var(--ws2-canvas); background: var(--ws2-accent); border-color: var(--ws2-accent); }
+.automation-step-heading { gap: 4px; }
+.automation-step-heading input { flex: 1; }
+.automation-step-preview { display: block; width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: transparent; border: 0; color: var(--ws2-text-secondary); padding: 12px 0 0; cursor: pointer; font-family: var(--font-mono); font-size: 13px; }
+.automation-step-detail { padding-top: 4px; }
+.automation-step-detail textarea { background: var(--ws2-canvas); min-height: 112px; }
+.automation-target-section { margin: 0; padding: 20px 16px; border-top: 0; border-left: 1px solid var(--ws2-border); min-width: 0; }
+.automation-target-help { font-size: 13px; color: var(--ws2-text-secondary); margin-bottom: 16px; line-height: 1.5; }
+.automation-target-help summary { cursor: pointer; }
+.automation-host-list { max-height: 48dvh; min-height: 120px; }
+.automation-host { gap: 8px; padding: 12px 4px; }
+.automation-host label { min-width: 0; }
+.automation-host-icon { font-size: 20px; color: var(--ws2-text-muted); }
+.automation-host small, .automation-state { font-size: 13px; }
+.automation-host .automation-state { display: block; margin-top: 4px; }
+.automation-launch { flex-direction: column; align-items: stretch; gap: 8px; border-top: 1px solid var(--ws2-border); padding: 16px 0 0; margin-top: 16px; }
+.automation-launch p { margin: 0; }
+.automation-view-switch { display: none; }
+.automation-run-step { grid-template-columns: 24px minmax(0,1fr) 120px 100px; position: relative; align-items: center; }
+.automation-run-symbol { font-size: 20px; }
+.automation-run-step[data-state="running"] .automation-run-symbol { animation: automation-running 1.5s linear infinite; }
+.automation-run-step[data-state="succeeded"] .automation-run-symbol { color: var(--success-color); }
+.automation-run-step[data-state="failed"] .automation-run-symbol { color: var(--error-color); }
+.automation-run-step[data-state="unknown"] .automation-run-symbol { color: var(--warning-color); }
+@keyframes automation-running { to { transform: rotate(360deg); } }
+@media (max-width: 1200px) {
+    .automation-runbooks { grid-template-columns: minmax(320px,1fr) minmax(280px,340px); }
+    .automation-library { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--ws2-border); padding: 12px 20px; display: grid; grid-template-columns: 200px minmax(160px,1fr); gap: 8px 16px; align-items: center; }
+    .automation-library .automation-section-heading { margin: 0; }
+    #runbookList { grid-column: 1/-1; display: flex; gap: 8px; margin: 0; max-height: 144px; overflow: auto; }
+    .automation-library-entry { min-width: 180px; max-width: 260px; flex: 0 0 auto; }
+    #inventoryTemplate { grid-column: 1/-1; padding: 0; }
+}
+@media (max-width: 800px) {
+    .automation-main { padding: 20px 16px 32px; }
+    .automation-runbooks { display: block; }
+    .automation-view-switch { display: flex; gap: 8px; margin: 0 0 12px; }
+    .automation-view-switch button { display: flex; gap: 8px; justify-content: center; flex: 1; min-height: 44px; border: 1px solid var(--ws2-border); border-radius: 5px; background: var(--ws2-surface); color: var(--ws2-text-secondary); cursor: pointer; }
+    .automation-view-switch button[aria-pressed="true"] { background: var(--ui-selected); border-color: var(--ws2-accent); color: var(--ws2-text); }
+    .automation-view-switch button { align-items: center; }
+    .automation-runbooks[data-view="editor"] .automation-target-section, .automation-runbooks[data-view="targets"] :is(.automation-editor,.automation-library) { display: none; }
+    .automation-editor { padding: 16px; }
+    .automation-target-section { border-left: 0; padding: 16px; }
+    .automation-target-section .automation-host-list { max-height: 46dvh; }
+    .automation-library { grid-template-columns: 1fr; padding: 16px; }
+    .automation-step-heading { flex-wrap: wrap; }
+    .automation-step-heading input { flex-basis: calc(100% - 40px); }
+    .automation-step-tools { margin-left: 0; }
+    .automation-icon-button { min-width: 44px; min-height: 44px; }
+    .automation-run-step { grid-template-columns: 24px minmax(0,1fr) 85px 64px; gap: 8px; }
+    .automation-title h1 { font-size: 24px; }
+}
+
+.automation-editor label { margin-top: 12px; margin-bottom: 6px; }
+.automation-step-detail textarea { min-height: 96px; }
+.automation-host-list { max-height: 34dvh; }
+.automation-group-list { gap: 4px 12px; margin-block: 8px; }
+.automation-group-list label.automation-check { margin-block: 4px; }
+.automation-host { padding-block: 8px; }
+#toggleLibrary { display: none; }
+@media (max-width: 800px) {
+    #toggleLibrary { display: inline-flex; margin-left: auto; }
+    .automation-library:not(.is-open) :is(#runbookSearch,#runbookList,#inventoryTemplate) { display: none; }
+    .automation-library { gap: 0; }
+    .automation-library.is-open { gap: 8px; }
+}
+@media (max-width: 600px) {
+    .automation-main { padding-top: 12px; }
+    .automation-title { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .automation-title h1 { font-size: 22px; margin: 0; }
+    .automation-title p { display: none; }
+    .automation-tabs { margin-bottom: 12px; gap: 20px; }
+    .automation-tabs button { min-height: 44px; padding-bottom: 8px; }
+}
+/* Native automation: connected library, ordered commands, contextual execution settings. */
+[data-native-automation] { min-width: 0; }
+[data-native-automation] [hidden] { display: none !important; }
+#automationNativeView { overflow: auto; height: 100%; min-width: 0; }
+#automationNativeView .automation-main { max-width: 1960px; padding: 24px; margin-inline: auto; }
+#automationNativeView .automation-title { display: none; }
+[data-native-automation] .automation-tabs { margin-bottom: 20px; }
+[data-native-automation] .automation-runbooks { display: grid; grid-template-columns: 208px minmax(360px,1fr) 320px; gap: 0; align-items: start; border: 1px solid var(--ws2-border); border-radius: 8px; background: var(--ws2-surface); overflow: hidden; }
+[data-native-automation] .automation-library { padding: 20px 16px; border-right: 1px solid var(--ws2-border); align-self: stretch; background: var(--ws2-panel); }
+[data-native-automation] #runbookList { display: block; max-height: 56dvh; overflow: auto; margin-block: 12px; }
+[data-native-automation] .automation-library-entry { min-width: 0; max-width: none; padding: 10px; border-radius: 5px; }
+[data-native-automation] .automation-editor { padding: 24px; max-width: none; }
+[data-native-automation] .automation-editor > .automation-section-heading { margin-bottom: 20px; }
+[data-native-automation] .automation-editor label { font-size: 14px; }
+[data-native-automation] .automation-editor label.automation-check { display: flex; gap: 8px; align-items: center; }
+[data-native-automation] .automation-editor .automation-hint { max-width: 65ch; }
+[data-native-automation] .automation-step { position: relative; padding: 16px 0; margin: 0; border: 0; border-bottom: 1px solid var(--ws2-border); border-radius: 0; }
+[data-native-automation] .automation-step.is-active { background: none; }
+[data-native-automation] .automation-step::before { display: none; }
+[data-native-automation] .automation-step-number { position: static; flex: 0 0 26px; margin: 0; }
+[data-native-automation] .automation-step-heading { gap: 8px; flex-wrap: wrap; }
+[data-native-automation] .automation-step-heading input { flex: 1 1 150px; min-width: 0; width: 0; }
+[data-native-automation] .automation-step-tools { margin-left: auto; }
+[data-native-automation] .automation-step-preview { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding: 10px 0 0 34px; }
+[data-native-automation] .automation-step-detail { padding-left: 34px; }
+[data-native-automation] .automation-step-detail textarea { width: 100%; min-height: 160px; font-family: var(--font-mono, monospace); resize: vertical; }
+[data-native-automation] .automation-step-options { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; }
+[data-native-automation] .automation-timeout { width: 150px; }
+[data-native-automation] .automation-step-options .automation-check { flex: 1 1 180px; margin: 0; min-height: 44px; }
+[data-native-automation] :is(.automation-step-inspector,.automation-target-section) { min-width: 0; padding: 24px 20px; border-left: 1px solid var(--ws2-border); align-self: stretch; }
+[data-native-automation] .automation-step-inspector h3 { margin: 0 0 16px; font-size: 18px; }
+[data-native-automation] .automation-step-inspector label { display: block; margin: 20px 0 6px; font-size: 14px; }
+[data-native-automation] .automation-step-inspector .form-control { width: 100%; min-width: 0; }
+[data-native-automation] .automation-schedule-summary { border-top: 1px solid var(--ws2-border); padding-top: 16px; margin-top: 24px; line-height: 1.5; font-weight: 500; }
+[data-native-automation] #scheduleForm .btn { margin-top: 16px; width: 100%; }
+[data-native-automation] .automation-view-switch { display: flex; gap: 8px; margin: 0 0 16px; }
+[data-native-automation] .automation-view-switch button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 14px; border: 1px solid var(--ws2-border); border-radius: 5px; background: var(--ws2-surface); color: var(--ws2-text); cursor: pointer; }
+[data-native-automation] .automation-view-switch button[aria-pressed="true"] { background: var(--ui-selected); border-color: var(--ws2-border-strong); }
+[data-native-automation] #reviewWorkspace { margin-left: auto; background: var(--ui-action-bg); color: var(--ui-action-fg); }
+[data-native-automation] [data-inspector="schedule"] .automation-target-section,
+[data-native-automation] .automation-runbooks:not([data-inspector="schedule"]) #automationScheduleInspector { display: none; }
+[data-native-automation] .automation-launch { display: none; }
+[data-native-automation] :is(button,a,input,textarea,select,summary):focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 3px; }
+[data-native-automation] button { transition: background-color 140ms, border-color 140ms; }
+[data-native-automation] button:hover:not(:disabled) { border-color: var(--ws2-border-strong); }
+[data-native-automation] button:disabled { opacity: .55; cursor: not-allowed; }
+[data-native-automation] :is(input,textarea) { caret-color: var(--ws2-accent); }
+[data-native-automation] ::selection { background: var(--ws2-accent); color: var(--ws2-canvas); }
+@media (max-width: 1200px) {
+ [data-native-automation] .automation-runbooks { grid-template-columns: minmax(360px,1fr) 300px; }
+ [data-native-automation] .automation-library { grid-column: 1/-1; display: grid; grid-template-columns: 200px minmax(160px,1fr); gap: 8px 20px; border-right: 0; border-bottom: 1px solid var(--ws2-border); padding: 16px 20px; }
+ [data-native-automation] .automation-library .automation-section-heading { margin: 0; }
+ [data-native-automation] #runbookList { grid-column: 1/-1; display: flex; gap: 8px; margin: 0; max-height: 130px; }
+ [data-native-automation] .automation-library-entry { min-width: 180px; }
+}
+@media (max-width: 800px) {
+ #automationNativeView .automation-main { padding: 12px; }
+ [data-native-automation] .automation-runbooks { display: block; }
+ [data-native-automation] .automation-library { display: block; padding: 16px; }
+ [data-native-automation] .automation-library.is-open #runbookSearch { margin-block: 12px; }
+ [data-native-automation] .automation-editor { padding: 16px; }
+ [data-native-automation] :is(.automation-step-inspector,.automation-target-section) { padding: 20px 16px; border: 0; }
+ [data-native-automation] [data-view="editor"] .automation-target-section,
+ [data-native-automation] [data-view="targets"] :is(.automation-editor,.automation-library),
+ [data-native-automation] [data-view="schedule"] :is(.automation-editor,.automation-library) { display: none; }
+ [data-native-automation] .automation-view-switch { flex-wrap: wrap; gap: 8px; }
+ [data-native-automation] .automation-view-switch button { flex: 1 1 auto; min-height: 44px; padding-inline: 10px; font-size: 14px; }
+ [data-native-automation] .automation-view-switch .material-icons { display: none; }
+ [data-native-automation] #reviewWorkspace { flex: 1 0 100%; }
+ [data-native-automation] .automation-step-heading input { flex-basis: calc(100% - 90px); }
+ [data-native-automation] .automation-step-tools { padding: 0; }
+ [data-native-automation] .automation-step-detail { padding-left: 0; }
+ [data-native-automation] .automation-step-options { gap: 8px; }
+ [data-native-automation] .automation-step-preview { padding-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+ #automationNativeView *, #automationNativeView *::before { animation: none !important; transition: none !important; }
+}
+/* Native time and select affordances follow the actual palette. */
+body:not([data-theme="paper"]) [data-native-automation] { color-scheme: dark; }
+body[data-theme="paper"] [data-native-automation] { color-scheme: light; }
+/* A single editing surface moves forward through the numbered journey. */
+[data-native-automation] .automation-runbooks { display: grid; grid-template-columns: minmax(0, 1fr); overflow: visible; border: 0; background: transparent; }
+[data-native-automation] .automation-library { display: block; grid-column: 1; border: 0; border-bottom: 1px solid var(--ws2-border); background: transparent; padding: 12px 0; margin-bottom: 24px; }
+[data-native-automation] .automation-library .automation-section-heading { margin: 0; }
+[data-native-automation] #toggleLibrary { display: inline-flex; margin-left: auto; }
+[data-native-automation] .automation-library:not(.is-open) :is(#runbookSearch,#runbookList,#inventoryTemplate) { display: none; }
+[data-native-automation] .automation-library.is-open #runbookSearch { margin-block: 12px; max-width: 460px; }
+[data-native-automation] #runbookList { display: flex; flex-wrap: wrap; gap: 12px; max-height: 240px; }
+[data-native-automation] .automation-library-item { flex: 0 1 240px; min-width: 160px; padding-bottom: 8px; }
+[data-native-automation] .automation-library-item .automation-text-button { padding: 6px 10px; }
+[data-native-automation] .automation-stage-context,
+[data-native-automation] .automation-stage-actions,
+[data-native-automation] .automation-runbooks > :is(.automation-editor,.automation-target-section,.automation-step-inspector) { grid-column: 1; width: min(100%, 820px); margin-inline: auto; box-sizing: border-box; }
+[data-native-automation] .automation-stage-context { padding: 0 4px 12px; }
+[data-native-automation] .automation-stage-context p { margin: 0; line-height: 1.5; }
+[data-native-automation] .automation-runbooks > :is(.automation-editor,.automation-target-section,.automation-step-inspector) { display: block; padding: 28px 32px; border: 0; border-radius: 8px; background: var(--ws2-surface); box-shadow: 0 14px 32px -20px rgba(0,0,0,.48); transform-origin: center top; }
+[data-native-automation] .automation-stage-actions { display: flex; flex-wrap: wrap; gap: 12px; padding-block: 20px; align-items: center; }
+[data-native-automation] .automation-stage-actions #reviewWorkspace { margin-left: auto; }
+[data-native-automation] .automation-stage-actions #nextStage { margin-left: auto; }
+[data-native-automation] .automation-stage-actions #nextStage:not([hidden]) + #reviewWorkspace:not([hidden]) { margin-left: 0; }
+[data-native-automation] .automation-stage-number { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--ws2-border-strong); border-radius: 50%; font-variant-numeric: tabular-nums; }
+[data-native-automation] .automation-view-switch { max-width: 820px; margin-inline: auto; }
+[data-native-automation] .automation-view-switch button { flex: 1; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; justify-content: flex-start; }
+[data-native-automation] .automation-view-switch button[aria-pressed="true"] { border-bottom-color: var(--ws2-accent); background: var(--ui-selected); }
+[data-native-automation] .automation-view-switch button[aria-pressed="true"] .automation-stage-number { background: var(--ui-action-bg); color: var(--ui-action-fg); border-color: transparent; }
+[data-native-automation] .automation-target-section .automation-host-list { max-height: none; }
+[data-native-automation] #scheduleForm { max-width: 600px; }
+
+@media (max-width: 800px) {
+ [data-native-automation] .automation-runbooks > .automation-library { display: block; }
+ [data-native-automation] .automation-runbooks > :is(.automation-editor,.automation-target-section,.automation-step-inspector) { padding: 20px 16px; }
+ [data-native-automation] .automation-view-switch { flex-wrap: nowrap; gap: 4px; }
+ [data-native-automation] .automation-view-switch button { flex: 1 1 0; flex-direction: column; align-items: flex-start; padding: 8px; gap: 6px; }
+ [data-native-automation] #mobileTargetCount { display: none; }
+ [data-native-automation] .automation-stage-actions .btn { min-height: 44px; }
+}
+/* Keep the journey compact enough to reach review without losing context. */
+[data-native-automation] .automation-library { margin-bottom: 12px; padding-block: 8px; }
+[data-native-automation] .automation-library .automation-section-heading h2 { margin: 0; }
+[data-native-automation] .automation-stage-context { padding-bottom: 10px; }
+[data-native-automation] .automation-view-switch { margin-bottom: 8px; }
+[data-native-automation] .automation-runbooks > .automation-step-inspector { padding-block: 22px; }
+[data-native-automation] .automation-step-inspector label { margin-top: 12px; }
+[data-native-automation] .automation-step-inspector h3 { margin-bottom: 10px; }
+[data-native-automation] .automation-schedule-summary { margin-top: 16px; padding-top: 12px; }
+@media (min-width: 801px) {
+ [data-native-automation] #scheduleForm { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); column-gap: 20px; max-width: none; }
+ [data-native-automation] #scheduleForm > :is(p,label,select,input,button),
+ [data-native-automation] #scheduleCustomField { grid-column: 1/-1; }
+ [data-native-automation] #scheduleTimeField,
+ [data-native-automation] #scheduleMinuteField { grid-column: 1; }
+ [data-native-automation] :is(#scheduleWeekdayField,#scheduleMonthdayField) { grid-column: 2; }
+ [data-native-automation] #scheduleForm > button { margin-top: 8px; }
+}
+@media (max-width: 800px) {
+ [data-native-automation] .automation-tabs { margin-bottom: 12px; }
+ [data-native-automation] .automation-view-switch button { flex-direction: row; align-items: center; padding: 6px 4px; gap: 6px; min-height: 56px; }
+ [data-native-automation] .automation-stage-number { flex: 0 0 22px; width: 22px; height: 22px; }
+ [data-native-automation] .automation-library { padding-block: 4px; margin-bottom: 10px; }
+ [data-native-automation] .automation-library .automation-section-heading { min-height: 44px; }
+ [data-native-automation] .automation-stage-context { padding-bottom: 10px; }
+ [data-native-automation] .automation-stage-context p { line-height: 1.4; }
+ [data-native-automation] .automation-runbooks > .automation-step-inspector { padding-top: 18px; }
+}
+[data-native-automation] .automation-current-workflow { color: var(--ws2-text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-native-automation] .automation-library .automation-section-heading h2 { flex-shrink: 0; }
+@media (max-width: 800px) {
+ [data-native-automation] .automation-library .automation-section-heading { gap: 8px; }
+ [data-native-automation] .automation-library .automation-section-heading h2 { font-size: 16px; }
+ [data-native-automation] .automation-current-workflow { font-size: 14px; }
+}
+#automationNativeView .automation-main { padding-top: 16px; }
+[data-native-automation] .automation-tabs { margin-bottom: 12px; }
+[data-native-automation] .automation-library { margin-bottom: 8px; }
+@media (max-width: 800px) {
+ #automationNativeView .automation-main { padding-top: 8px; }
+ [data-native-automation] .automation-library { margin-bottom: 4px; }
+}
+
+/* Stable native disclosures keep execution evidence readable while runs refresh. */
+.automation-run-diagnostic { min-width: 0; border-bottom: 1px solid var(--ws2-border); }
+.automation-run .automation-run-step { display: grid; grid-template-columns: 24px minmax(0,1fr) auto minmax(140px,auto) 24px; gap: 12px; min-height: 44px; padding-block: 12px; }
+.automation-run-step::-webkit-details-marker { display: none; }
+.automation-run-step-name { color: var(--ws2-text); font-weight: 500; }
+.automation-run-metrics { font-variant-numeric: tabular-nums; }
+.automation-run-chevron { font-size: 20px; transition: transform 140ms cubic-bezier(.16,1,.3,1); }
+.automation-run-diagnostic[open] > summary .automation-run-chevron { transform: rotate(180deg); }
+.automation-run-output { padding: 0 0 20px 36px; min-width: 0; }
+.automation-output-stream { min-width: 0; margin-top: 16px; }
+.automation-output-stream h5 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
+.automation-output-stream pre { max-height: 320px; max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px 16px; margin: 0; background: var(--ws2-canvas); color: var(--ws2-text); border-radius: 5px; font-family: var(--font-mono,monospace); font-size: 13px; line-height: 1.6; tab-size: 4; }
+.automation-run :is(summary,pre):focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 3px; }
+.automation-run summary { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+ .automation-run .automation-run-step { grid-template-columns: 24px minmax(0,1fr) auto 24px; gap: 8px; }
+ .automation-run-metrics { grid-column: 2 / 4; grid-row: 2; }
+ .automation-run-chevron { grid-column: 4; grid-row: 1; }
+ .automation-run-output { padding-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .automation-run-chevron { transition: none; } }
+.automation-section-description { color: var(--ws2-text-secondary); max-width: 78ch; margin: 0 0 20px; line-height: 1.5; font-size: 14px; }
+.automation-history-tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 240px); gap: 16px; margin-block: 20px; }
+.automation-history-tools label { display: grid; gap: 8px; margin: 0; font-size: 13px; color: var(--ws2-text-secondary); }
+.automation-output-stream pre { background: var(--ws2-canvas); border: 1px solid var(--ws2-border); border-radius: 6px; padding: 16px; line-height: 1.6; }
+@media (max-width: 600px) {
+ .automation-history-tools { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+ .automation-section-description { margin-bottom: 14px; }
+}
+#auto-library .automation-library { border: 0; margin: 0; padding: 0; }
+#auto-library #runbookSearch { max-width: 540px; margin-block: 20px; }
+#auto-library #runbookList { display: grid; grid-template-columns: minmax(0,1fr); max-height: none; gap: 0; overflow: visible; }
+#auto-library .automation-library-item { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 24px; min-width: 0; padding: 20px 12px; border-bottom: 1px solid var(--ws2-border); transition: background-color 160ms ease; }
+#auto-library .automation-library-item:hover { background: var(--ws2-surface); }
+#auto-library .automation-library-entry { border: 0; background: transparent; text-align: left; padding: 0; color: var(--ws2-text); font-size: 17px; }
+#auto-library .automation-library-entry small { font-size: 13px; margin-top: 8px; color: var(--ws2-text-secondary); }
+.automation-workflow-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.automation-workflow-sequence { display: block; margin-top: 8px; color: var(--ws2-text-secondary); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.automation-editor-context { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; min-width: 0; }
+@media (prefers-reduced-motion: reduce) { #auto-library .automation-library-item { transition: none; } }
+#auto-library #inventoryTemplate { margin-top: 20px; }
+@media(max-width:700px) {
+ #auto-library .automation-library-item { grid-template-columns: minmax(0,1fr); gap: 16px; padding-inline: 0; }
+ .automation-workflow-actions .btn { min-height: 44px; }
+ [data-native-automation] .automation-tabs { gap: 16px; overflow-x: auto; }
+ [data-native-automation] .automation-tabs button { white-space: nowrap; flex-shrink: 0; }
+}
+/* The workflow journey shares the management frame; each stage uses a task-specific layout. */
+[data-native-automation] .automation-view-switch { max-width: none; margin-inline: 0; }
+[data-native-automation] .automation-stage-context,
+[data-native-automation] .automation-stage-actions,
+[data-native-automation] .automation-runbooks > :is(.automation-editor,.automation-target-section,.automation-step-inspector) { width: 100%; max-width: none; margin-inline: 0; }
+[data-native-automation] .automation-runbooks { gap: 12px; }
+[data-native-automation] .automation-runbooks > :is(.automation-editor,.automation-target-section,.automation-step-inspector) { padding: 24px; box-shadow: none; }
+[data-native-automation] .automation-editor-context { margin-bottom: 0; }
+[data-native-automation] .automation-stage-context { padding: 0; }
+[data-native-automation] #runbookName { max-width: 720px; }
+.automation-builder { display: grid; grid-template-columns: minmax(300px, 28%) minmax(0,1fr); gap: 32px; margin-top: 28px; align-items: start; }
+.automation-step-list { min-width: 0; }
+[data-native-automation] .automation-step-list > .automation-section-heading { margin-top: 0; }
+[data-native-automation] .automation-step-list .automation-step { padding: 12px; border: 0; border-bottom: 1px solid var(--ws2-border); }
+[data-native-automation] .automation-step-list .automation-step.is-active { background: var(--ui-selected); border-radius: 4px; }
+[data-native-automation] .automation-step-list .automation-step-heading { display: grid; grid-template-columns: 24px minmax(0,1fr) 34px; gap: 8px; }
+[data-native-automation] .automation-step-list .automation-step-tools { grid-column: 2 / 4; justify-content: flex-end; }
+[data-native-automation] .automation-step-list .automation-step-preview { padding: 8px 0 0 32px; }
+.automation-command-editor { min-width: 0; padding-left: 32px; border-left: 1px solid var(--ws2-border); }
+.automation-command-editor h3 { margin: 0 0 20px; font-size: 18px; overflow-wrap: anywhere; }
+[data-native-automation] .automation-command-editor .automation-step-detail { padding: 0; }
+[data-native-automation] .automation-command-editor textarea { min-height: 240px; resize: vertical; }
+[data-native-automation] .automation-target-body { display: grid; grid-template-columns: 260px minmax(0,1fr); gap: 16px 32px; align-items: start; }
+[data-native-automation] .automation-target-body > .automation-section-heading,
+[data-native-automation] .automation-target-help { grid-column: 1/-1; }
+[data-native-automation] #targetSearch { grid-column: 2; grid-row: 3; }
+[data-native-automation] #targetGroups { grid-column: 1; grid-row: 3 / span 2; display: flex; flex-direction: column; gap: 12px; padding-right: 20px; border-right: 1px solid var(--ws2-border); }
+[data-native-automation] #targetGroups label { display: flex; gap: 10px; align-items: start; line-height: 1.5; margin: 0; }
+[data-native-automation] #targetHosts { grid-column: 2; margin-top: 0; max-height: 58dvh; overflow-y: auto; }
+[data-native-automation] #noHosts { grid-column: 2; }
+[data-native-automation] #scheduleForm { max-width: none; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 48px; align-items: start; }
+.automation-schedule-fields { min-width: 0; max-width: 720px; }
+.automation-schedule-review { min-width: 0; padding-left: 32px; border-left: 1px solid var(--ws2-border); }
+.automation-schedule-review h3 { margin: 0 0 16px; font-size: 18px; }
+[data-native-automation] .automation-schedule-review button { width: auto; margin-top: 20px; }
+[data-native-automation] .automation-stage-actions { padding-block: 12px; }
+@media(max-width:900px) {
+ .automation-builder { grid-template-columns: minmax(0,1fr); gap: 24px; }
+ [data-native-automation] #runbookSteps { max-height: 280px; overflow-y: auto; }
+ .automation-command-editor { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--ws2-border); }
+ [data-native-automation] .automation-target-body { grid-template-columns: minmax(0,1fr); gap: 12px; }
+ [data-native-automation] .automation-target-body > :is(#targetSearch,#targetGroups,#targetHosts,#noHosts) { grid-column: 1; grid-row: auto; }
+ [data-native-automation] #targetGroups { padding: 0; border: 0; flex-direction: row; flex-wrap: wrap; gap: 12px 20px; }
+ [data-native-automation] #scheduleForm { grid-template-columns: minmax(0,1fr); gap: 24px; }
+ .automation-schedule-review { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--ws2-border); }
+}
+@media(max-width:600px) {
+ [data-native-automation] .automation-runbooks > :is(.automation-editor,.automation-target-section,.automation-step-inspector) { padding: 16px; }
+ .automation-builder { margin-top: 20px; }
+ [data-native-automation] .automation-command-editor textarea { min-height: 180px; }
+}
+[data-native-automation] .automation-step-list .automation-step-heading input { width: 100%; }
+[data-native-automation] .automation-command-editor textarea { min-height: 200px; }
+@media(max-width:900px) { [data-native-automation] #runbookSteps { max-height: 220px; } }
+.automation-start { display: grid; grid-template-columns: minmax(0,1fr) minmax(360px,1fr); gap: 48px; padding: 28px 0 32px; margin-bottom: 28px; border-bottom: 1px solid var(--ws2-border); }
+.automation-start-copy { max-width: 70ch; }
+.automation-start h2 { margin: 0 0 16px; font-size: 24px; line-height: 1.3; font-weight: 600; }
+.automation-start-copy p { color: var(--ws2-text-secondary); line-height: 1.6; }
+.automation-start-copy ol { padding-left: 22px; margin-top: 24px; }
+.automation-start-copy li { margin-block: 12px; padding-left: 6px; }
+.automation-start-copy li::marker { color: var(--ws2-accent); font-weight: 600; }
+.automation-template-picker { padding: 24px; background: var(--ws2-surface); border-radius: 6px; min-width: 0; }
+.automation-template-picker > label { display: block; font-weight: 600; margin-bottom: 12px; }
+.automation-template-picker select { width: 100%; }
+#workflowTemplatePreview { margin-block: 20px; }
+#workflowTemplateEffect { font-size: 13px; font-weight: 600; color: var(--ws2-text); }
+#workflowTemplateEffect[data-writes=true] { color: var(--ws2-warning, var(--ws2-text)); }
+#workflowTemplateSteps { padding-left: 20px; line-height: 1.7; color: var(--ws2-text-secondary); }
+.automation-template-picker > .automation-hint { margin: 12px 0 0; }
+@media(max-width:800px) {
+ .automation-start { grid-template-columns: minmax(0,1fr); gap: 24px; padding-top: 12px; }
+ .automation-start h2 { font-size: 21px; }
+ .automation-template-picker { padding: 16px; }
+}
+/* One scroll owner keeps the workflow footer reachable at every viewport height. */
+#automationNativeView .automation-main { overflow: visible; min-height: 100%; box-sizing: border-box; padding-bottom: 32px; }
+[data-native-automation] .automation-stage-actions { position: sticky; bottom: 0; z-index: 4; background: var(--ws2-panel); border-top: 1px solid var(--ws2-border-strong); padding: 16px 20px; margin-top: 8px; border-radius: 0 0 8px 8px; flex-wrap: wrap; gap: 12px; }
+[data-native-automation] .automation-runbooks > :is(.automation-editor,.automation-target-section,.automation-step-inspector) { background: var(--ws2-panel); border: 1px solid var(--ws2-border-strong); border-radius: 10px; }
+[data-native-automation] .automation-command-editor { background: var(--ws2-canvas); border: 1px solid var(--ws2-border); border-radius: 8px; padding: 24px; }
+[data-native-automation] .automation-step-list .automation-step.is-active { box-shadow: inset 0 0 0 1px var(--ws2-accent); }
+[data-native-automation] #targetSearch { background: var(--ws2-canvas); }
+[data-native-automation] #targetHosts { max-height: min(48dvh,540px); scroll-padding-block: 8px; }
+[data-native-automation] .automation-host:has(input:checked) { background: var(--ui-selected); }
+[data-native-automation] .automation-view-switch button { transition: background-color 220ms ease, border-color 220ms ease; }
+@media(max-width:700px) {
+ [data-native-automation] .automation-stage-actions { padding: 12px; }
+ [data-native-automation] .automation-command-editor { padding: 16px; }
+}
+@media(prefers-reduced-motion:reduce) { [data-native-automation] .automation-view-switch button { transition: none; } }
+/* The library belongs to the sequence, not to a second full-width form. */
+/* Always open: adding from the library is a main way to build a runbook. */
+.automation-source-picker { margin: 0 0 16px; padding: 0 0 16px; border-block: 1px solid var(--ws2-border); }
+.automation-source-title { margin: 0; padding: 12px 0 0; color: var(--ws2-text); font-size: 14px; font-weight: 600; }
+.automation-source-controls label { display: block; margin: 4px 0 8px; font-size: 13px; }
+.automation-source-controls select { width: 100%; min-width: 0; }
+.automation-source-preview { max-height: 240px; overflow: auto; margin-top: 12px; }
+.automation-source-preview:empty { display: none; }
+.automation-source-preview ol { margin: 12px 0; padding-left: 20px; }
+.automation-source-preview li + li { margin-top: 12px; }
+.automation-source-preview code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ws2-text-secondary); margin-top: 4px; }
+#addEditorSource { margin-block: 12px; }
+[data-native-automation] .automation-builder { grid-template-columns: minmax(280px,340px) minmax(0,1fr); gap: 24px; margin-top: 24px; }
+[data-native-automation] .automation-editor-heading { float: right; margin: 0; }
+[data-native-automation] .automation-editor { padding: 20px 24px; }
+[data-native-automation] #runbookName { max-width: 100%; }
+[data-native-automation] .automation-command-editor { background: transparent; border: 0; border-left: 1px solid var(--ws2-border); border-radius: 0; padding: 0 0 0 24px; }
+[data-native-automation] .automation-command-editor h3 { margin-bottom: 12px; }
+[data-native-automation] .automation-command-editor .automation-hint { margin: 0 0 16px; }
+[data-native-automation] .automation-command-editor textarea { min-height: 220px; background: var(--ws2-canvas); }
+[data-native-automation] .automation-step-list .automation-step-heading { grid-template-columns: 20px minmax(0,1fr) 28px; gap: 6px; }
+[data-native-automation] .automation-step-list .automation-step-heading input { background: transparent; border-color: transparent; padding-inline: 4px; }
+[data-native-automation] .automation-step-list .automation-step-heading input:focus { border-color: var(--ws2-accent); }
+[data-native-automation] .automation-step-list .automation-step-tools { gap: 0; }
+[data-native-automation] .automation-step-list .automation-step { padding: 8px; }
+[data-native-automation] .automation-step-list .automation-step-preview { padding-top: 4px; }
+[data-native-automation] .automation-stage-context { display: none; }
+@media(max-width:900px) {
+ [data-native-automation] .automation-builder { grid-template-columns: minmax(0,1fr); gap: 20px; }
+ [data-native-automation] .automation-editor { padding: 16px; }
+ [data-native-automation] .automation-command-editor { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--ws2-border); }
+}
+
+#automationDisabled { margin: clamp(16px, 4vw, 48px) auto; padding: clamp(20px, 3vw, 36px); border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-secondary); }
+#automationDisabled .btn { margin: 8px 8px 0 0; white-space: normal; }

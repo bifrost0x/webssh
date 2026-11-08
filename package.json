@@ -30,7 +30,10 @@
   },
   "overrides": {
     "eslint": {
-      "minimatch": "11.0.1"
+      "minimatch": "11.0.1",
+      "@eslint/config-array": {
+        "minimatch": "11.0.1"
+      }
     }
   }
 }

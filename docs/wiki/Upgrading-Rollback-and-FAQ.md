@@ -175,9 +175,10 @@ admission, maintenance mode, SQLite, and writable durable storage.
 
 ### Can LDAP users use a local password as fallback?
 
-No. LDAP linking makes the account exclusively directory-managed, removes its
-dormant local password and alternative local factors, and prevents privilege
-mapping. Keep a separate local break-glass administrator.
+No. LDAP linking makes primary authentication exclusively directory-managed,
+removes the dormant local password and an incompatible OIDC mapping, and
+prevents privilege mapping. Existing local MFA factors remain available after
+successful LDAP authentication. Keep a separate local break-glass administrator.
 
 ### Does disabling LDAP restore old passwords?
 

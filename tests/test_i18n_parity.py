@@ -44,7 +44,9 @@ def test_all_locales_have_matching_translation_keys():
     for index, match in enumerate(locale_starts):
         end = locale_starts[index + 1].start() if index + 1 < len(locale_starts) else source.index('\n};', match.end())
         block = source[match.end():end]
-        keys_by_locale[match.group(1)] = set(re.findall(r"^        '([^']+)':", block, re.MULTILINE))
+        # Keys are written with single or double quotes.
+        keys_by_locale[match.group(1)] = set(re.findall(r'''^        ["']([^"']+)["']:''', block, re.MULTILINE))
+    assert len(keys_by_locale.get('en', ())) > 2000, 'the key pattern must match the dictionary format'
 
     assert set(keys_by_locale) == {'en', 'vi', 'de', 'fr', 'es', 'zh'}
     assert all(
@@ -138,7 +140,7 @@ def test_saved_connection_and_quick_connect_terms_are_consistent():
         assert {values[key] for key in quick_keys} == {quick_connect}
         assert {values[key] for key in saved_keys} == {saved_connections}
         assert values['panes.newConnection'] == f'+ {quick_connect}'
-        assert values['fm.newConnection'] == f'+ {quick_connect}...'
+        assert values['fm.newConnection'] in (f'+ {quick_connect}...', f'+ {quick_connect}…')
         assert quick_connect in values['connection.clickToStart']
         assert quick_connect in values['panes.selectSession']
         assert quick_connect in values['panes.assignInfo']
@@ -287,7 +289,7 @@ def test_all_popup_translation_references_exist_in_every_locale():
         )
         locale_keys = set(
             re.findall(
-                r"^        '([^']+)':",
+                r'''^        ["']([^"']+)["']:''',
                 i18n_source[match.end():end],
                 re.MULTILINE,
             )

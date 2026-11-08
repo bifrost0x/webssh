@@ -12,6 +12,7 @@
         files: 'fileTransferBtn',
         hosts: 'manageProfilesBtn',
         commands: 'commandLibraryBtn',
+        automation: 'automationNavBtn',
     });
 
     function createController(options = {}) {
@@ -20,6 +21,7 @@
         const origins = new WeakMap();
         let activeView = 'workspaces';
         let activeElement = null;
+        let surfaceShown = false;
         let initialized = false;
 
         const getSurface = () => browserDocument.getElementById('primaryWorkspaceSurface');
@@ -66,7 +68,7 @@
                 else button.removeAttribute('aria-current');
             });
             if (browserWindow.mobileAppShell?.closeMoreMenu) {
-                browserWindow.mobileAppShell.closeMoreMenu();
+                browserWindow.mobileAppShell.closeMoreMenu({restoreFocus: false});
             } else {
                 browserDocument.querySelector('.header-buttons')?.classList.remove('is-open');
             }
@@ -126,11 +128,14 @@
         }
 
         function open(view, element) {
-            if (!['overview', 'files', 'hosts', 'commands'].includes(view) || !element) return false;
+            if (!['overview', 'files', 'hosts', 'commands', 'automation'].includes(view) || !element) return false;
             const surface = getSurface();
             if (!surface) return false;
 
             deactivateFileManager(view);
+            // The first view after page load appears at once; later switches animate.
+            if (activeElement !== element) element.toggleAttribute('data-surface-switch', surfaceShown);
+            surfaceShown = true;
             if (activeElement && activeElement !== element) hideElement(activeElement);
 
             rememberOrigin(element);
@@ -169,6 +174,7 @@
                 'primary-workspace-view-files',
                 'primary-workspace-view-hosts',
                 'primary-workspace-view-commands',
+                'primary-workspace-view-automation',
             );
             delete element.dataset.primaryWorkspaceView;
             element.hidden = false;
@@ -198,7 +204,10 @@
             browserDocument.body.dataset.primaryWorkspace = 'workspaces';
             showWorkspaceChrome(true);
             setNavigation('workspaces');
-            open('overview', browserDocument.getElementById('connectionOverview'));
+            const startPage = browserDocument.querySelector('meta[name="start-page"]')?.content;
+            if (startPage !== 'workspaces') {
+                open('overview', browserDocument.getElementById('connectionOverview'));
+            }
             return controller;
         }
 

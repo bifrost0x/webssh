@@ -291,8 +291,8 @@ def get_jump_host(user_id, jump_host_id):
 
 
 @user_operation
-def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None):
-    """Validate and store a new jump host. Never stores a password."""
+def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None, jump_host_id=None, on_created=None):
+    """Validate and create or update a user-owned jump host without storing passwords."""
     try:
         if not all([name, host, username, auth_type]):
             return None, "Missing required fields"
@@ -304,7 +304,7 @@ def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None):
             return None, "Invalid host format"
 
         try:
-            port = int(port) if port else 22
+            port = 22 if port is None or port == "" else int(port)
             if not (1 <= port <= 65535):
                 return None, "Port must be between 1 and 65535"
         except (ValueError, TypeError):
@@ -343,14 +343,27 @@ def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None):
             }
             validate_jump_host(jump_host)
             with storage_lock(f'jump_hosts:{user_id}'):
+                transaction_path = _get_file(user_id)
+                transaction_before = transaction_path.read_bytes() if on_created and transaction_path.exists() else None
                 jump_hosts = _load_jump_hosts_for_read_with_lock_held(user_id)
                 previous_count = len(jump_hosts)
-                jump_hosts.append(jump_host)
+                if jump_host_id is not None:
+                    existing = next((item for item in jump_hosts if item['id'] == jump_host_id), None)
+                    if existing is None:
+                        return None, "Jump host not found"
+                    jump_host['id'] = existing['id']
+                    jump_host['created_at'] = existing.get('created_at', jump_host['created_at'])
+                    jump_hosts = [jump_host if item['id'] == jump_host_id else item for item in jump_hosts]
+                else:
+                    jump_hosts.append(jump_host)
                 if save_jump_hosts(
                     user_id,
                     jump_hosts,
                     previous_count=previous_count,
                 ):
+                    if on_created:
+                        from .credential_store import finish_resource_transaction
+                        finish_resource_transaction(transaction_path,transaction_before,jump_host,on_created)
                     log_info("Jump host saved", user_id=user_id, name=name)
                     return jump_host, None
                 return None, "Failed to save jump host"

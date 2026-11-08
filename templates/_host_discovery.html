@@ -1,0 +1,54 @@
+<dialog id="hostDiscoveryDialog" class="discovery-dialog" aria-labelledby="hostDiscoveryTitle" aria-describedby="hostDiscoveryIntro">
+    <form id="hostDiscoveryForm" class="discovery-form" novalidate>
+        <header class="discovery-head">
+            <span class="discovery-mark" aria-hidden="true"><span class="material-icons">radar</span></span>
+            <div>
+                <h2 id="hostDiscoveryTitle" data-i18n="discovery.title">Find SSH hosts</h2>
+                <p id="hostDiscoveryIntro" data-i18n="discovery.intro">Looks for SSH and SFTP servers in a network you choose. Nothing is saved until you add a host.</p>
+            </div>
+            <button type="button" id="hostDiscoveryClose" class="btn-icon" aria-label="Close" data-i18n-aria-label="common.close"><span class="material-icons" aria-hidden="true">close</span></button>
+        </header>
+
+        <div class="discovery-fields">
+            <label for="hostDiscoveryNetwork">
+                <span data-i18n="discovery.network">Network</span>
+                <input id="hostDiscoveryNetwork" class="form-control" autocomplete="off" spellcheck="false" inputmode="text"
+                       placeholder="192.168.1.0/24" aria-describedby="hostDiscoveryNetworkHint" required>
+            </label>
+            <label for="hostDiscoveryPorts">
+                <span data-i18n="discovery.ports">Ports</span>
+                <input id="hostDiscoveryPorts" class="form-control" autocomplete="off" spellcheck="false" inputmode="numeric" value="22" aria-describedby="hostDiscoveryNetworkHint">
+            </label>
+            <p id="hostDiscoveryNetworkHint" class="discovery-hint" data-i18n="discovery.networkHint">Up to 256 addresses, for example a /24. Up to three ports, separated by commas.</p>
+        </div>
+
+        <details class="discovery-how">
+            <summary data-i18n="discovery.howTitle">What the scan does</summary>
+            <ul>
+                <li data-i18n="discovery.howConnect">Opens one TCP connection per address and port, at most about three per second, and only reads the greeting an SSH server sends by itself.</li>
+                <li data-i18n="discovery.howNoLogin">It never logs in, sends no credentials and stores nothing.</li>
+                <li data-i18n="discovery.howPolicy">Addresses that SSH connections are not allowed to reach are skipped.</li>
+                <li data-i18n="discovery.howNotice">The scan is not hidden. Firewalls or intrusion detection on your network may still record it. Only scan networks you are responsible for.</li>
+            </ul>
+        </details>
+
+        <p id="hostDiscoveryError" class="discovery-error" role="alert" hidden></p>
+
+        <section id="hostDiscoveryProgress" class="discovery-progress" hidden>
+            <div class="discovery-progress-head">
+                <span id="hostDiscoveryState"></span>
+                <span id="hostDiscoveryCount" class="discovery-count"></span>
+            </div>
+            <div class="discovery-bar" role="progressbar" id="hostDiscoveryBar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="hostDiscoveryState"><span></span></div>
+        </section>
+
+        <p id="hostDiscoveryAnnounce" class="sr-only" role="status" aria-live="polite"></p>
+        <ul id="hostDiscoveryResults" class="discovery-results" aria-label="Found SSH hosts" data-i18n-aria-label="discovery.results"></ul>
+        <p id="hostDiscoveryEmpty" class="discovery-hint" hidden data-i18n="discovery.none">No SSH servers answered in this range.</p>
+
+        <footer class="discovery-actions">
+            <button type="button" id="hostDiscoveryCancel" class="btn btn-secondary" hidden data-i18n="discovery.stop">Stop scan</button>
+            <button type="submit" id="hostDiscoveryStart" class="btn btn-primary"><span class="material-icons" aria-hidden="true">radar</span><span data-i18n="discovery.start">Start scan</span></button>
+        </footer>
+    </form>
+</dialog>

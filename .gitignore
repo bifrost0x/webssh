@@ -123,3 +123,5 @@ qa-*.md
 
 # Disposable Paramiko/OpenSSH integration-test secrets
 tests/integration/paramiko5/runtime/
+
+.impeccable/

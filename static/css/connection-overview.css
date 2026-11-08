@@ -41,8 +41,6 @@ body.webssh-shell {
 .shell-host > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shell-host .material-icons { flex-shrink: 0; font-size: 14px; color: var(--ws2-text-muted); }
 .shell-host:hover { background: var(--overview-tint); color: var(--ws2-text); }
-#primaryWorkspaceSurface .connection-overview { display: block; width: 100%; height: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--overview-space); color: var(--ws2-text); background: var(--ws2-canvas); box-sizing: border-box; }
-.connection-overview[hidden], .connection-overview [hidden] { display: none !important; }
 .overview-inner { max-width: 1520px; margin-inline: auto; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
 .overview-heading { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 4px 0 0; }
 .overview-heading h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0; min-width: 0; font-size: 26px; font-weight: 600; letter-spacing: -.025em; line-height: 1.3; overflow-wrap: anywhere; }
@@ -77,7 +75,6 @@ body.webssh-shell {
 .overview-row-copy strong { font-weight: 500; }
 .overview-row-copy small { color: var(--ws2-text-muted); font-size: 11px; }
 .overview-row .overview-favorite { color: var(--ws2-text-secondary); font-size: 16px; }
-.overview-group-badge { max-width: 35%; padding: 3px 6px; border-radius: 3px; background: var(--ws2-panel); color: var(--ws2-text-secondary); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .overview-sessions, .overview-history { max-height: 300px; overflow: auto; scrollbar-width: thin; }
 .overview-history .overview-row, .overview-sessions .overview-row { padding-inline: 0; border-bottom-color: color-mix(in srgb, var(--ws2-border) 60%, transparent); }
 .overview-empty { display: flex; align-items: center; gap: 10px; min-height: 72px; margin: 0; padding: 12px 0; color: var(--ws2-text-muted); font-size: 12px; line-height: 1.6; }
@@ -88,9 +85,6 @@ body.webssh-shell {
 .overview-card-note { margin: 12px 0 0; color: var(--ws2-text-muted); font-size: 11px; line-height: 1.6; }
 .overview-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--ws2-border); padding: 10px 16px; }
 .overview-notice { grid-column: 1 / -1; margin: 0; padding: 12px 16px; border: 1px solid var(--ws2-border); border-radius: 6px; color: var(--ws2-text-secondary); font-size: 12px; }
-.overview-inner:has(.overview-notice:not([hidden])) .overview-hosts-card { grid-row: 3 / span 3; }
-.overview-inner:has(.overview-notice:not([hidden])) .overview-recents-card { grid-row: 3; }
-.overview-inner:has(.overview-notice:not([hidden])) .overview-sessions-card { grid-row: 4; }
 .overview-graph :is(.overview-recents-card, .overview-sessions-card) { display: none; }
 .overview-graph .overview-hosts-card { grid-column: 1 / -1; }
 .overview-graph .overview-hosts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; max-height: none; overflow: visible; padding: 24px; }
@@ -148,14 +142,10 @@ body.webssh-shell {
 @media (max-width: 900px) {
     .overview-inner { grid-template-columns: minmax(0, 1fr); gap: 24px; }
     .overview-inner > * { grid-column: 1 !important; grid-row: auto !important; }
-    .overview-hosts-card { order: 1; }
-    .overview-recents-card { order: 2; }
-    .overview-sessions-card { order: 3; }
     .overview-graph .overview-hosts { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 767px), (max-height: 520px) and (pointer: coarse) {
     /* The existing mobile header already offers Quick Connect without a selected session. */
-    .connection-overview[data-session-selected="false"] #overviewQuickConnect { display: none; }
     .overview-heading { align-items: flex-start; flex-wrap: wrap; gap: 12px; }
     .overview-heading h1 { font-size: 24px; }
     .overview-heading .btn, .overview-view-switch button, .overview-link, .overview-group-select select, .overview-filter input { min-height: 44px; }
@@ -178,20 +168,68 @@ body.webssh-shell {
 
 /* Connection launch board: visible records become compact launch tiles; history
  * and existing browser sessions stay in a distinct secondary activity column. */
-.connection-overview:not(.overview-graph) .overview-hosts-card { background: transparent; border: 0; overflow: visible; }
-.connection-overview:not(.overview-graph) .overview-hosts-card .overview-card-heading { padding: 0 0 16px; }
-.connection-overview:not(.overview-graph) .overview-search-row { padding: 0 0 20px; }
-.connection-overview:not(.overview-graph) .overview-hosts { padding: 0 4px 16px 0; }
-.connection-overview:not(.overview-graph) .overview-host-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; }
-.connection-overview:not(.overview-graph) .overview-host-entry .overview-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 10px; min-height: 100px; padding: 20px; border: 1px solid var(--ws2-border-strong); border-radius: 12px; background: var(--ws2-surface); }
-.connection-overview:not(.overview-graph) .overview-host-entry .overview-row-title { font-size: 15px; font-weight: 600; }
-.connection-overview:not(.overview-graph) .overview-host-entry .overview-group-badge { grid-column: 2; grid-row: 2; justify-self: start; }
-.connection-overview:not(.overview-graph) .overview-host-entry .overview-row > .material-icons:last-child { grid-column: 3; grid-row: 2; }
-.connection-overview:not(.overview-graph) .overview-host-entry .overview-favorite { grid-column: 3; grid-row: 1; }
-.connection-overview:not(.overview-graph) :is(.overview-recents-card, .overview-sessions-card) { padding: 20px; background: var(--ws2-surface); border: 1px solid var(--ws2-border); border-radius: 12px; }
-.connection-overview .overview-heading { padding-block: 12px 20px; }
-.connection-overview .overview-heading h1 { font-size: 34px; letter-spacing: -.035em; }
+/* Welcome atlas: an origin, a configured route, and a bounded group inventory. */
+.overview-inventory-origin { display: flex; align-items: center; gap: 12px; padding: 12px 10px; border: 1px solid var(--ws2-border-strong); border-radius: 8px; background: var(--ws2-canvas); color: var(--ws2-text); }
+.overview-inventory-origin > .material-icons { color: var(--ws2-accent); font-size: 32px; }
+.overview-inventory-origin > strong { font-size: 20px; font-weight: 550; }
+.overview-sessions > .overview-row > .host-platform-icon { width: 32px; height: 32px; flex-basis: 32px; }
+.overview-sessions .overview-row-copy { flex: 1; min-width: 0; }
+.overview-sessions .overview-row-copy strong { font-size: 16px; font-weight: 550; }
+.overview-sessions .overview-row-copy small { margin-top: 3px; color: var(--ws2-text-secondary); font-size: 14px; }
+@media (max-width: 1250px) {
+    .overview-inventory-origin { gap: 8px; padding: 10px 8px; }
+    .overview-inventory-origin > strong { font-size: 17px; }
+    .overview-inventory-origin > .material-icons { font-size: 25px; }
+}
 @media (max-width: 767px), (max-height: 520px) and (pointer: coarse) {
-    .connection-overview .overview-heading h1 { font-size: 27px; }
-    .connection-overview:not(.overview-graph) .overview-host-entry .overview-row { min-height: 88px; padding: 16px; }
+    .overview-inventory-origin { justify-self: center; padding: 10px 18px; }
+}
+
+/* An empty session strip remains a compact footer, not a second welcome panel. */
+
+/* Overview composition: the resource strip and the atlas share one grid. */
+@media (max-width: 767px) {
+    .overview-inventory-origin { display: none; }
+}
+
+/* Host actions use the same guarded launcher and editor as host management. */
+.overview-host-actions { display: flex; align-items: center; gap: 6px; }
+.overview-host-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 6px 10px; border: 1px solid var(--ws2-border); border-radius: 4px; background: transparent; color: var(--ws2-text); font: 500 14px/1.4 var(--font-sans); cursor: pointer; }
+.overview-host-actions .overview-host-connect { color: var(--ws2-accent); border-color: color-mix(in srgb, var(--ws2-accent) 45%, var(--ws2-border)); }
+.overview-host-actions button:hover { background: var(--ws2-row-hover); color: var(--ws2-text); }
+.overview-host-actions .material-icons { font-size: 19px; }
+@media (max-width: 650px) {
+    .overview-host-actions button { min-height: 44px; }
+}
+body.webssh-ui[data-theme="glass"] .overview-inventory-origin { background: var(--ws2-panel); border-color: var(--ws2-border-strong); }
+
+/* On smaller desktops the connection map owns the width. News follows the
+   actionable inventory instead of squeezing route labels and group controls. */
+/* Faithful Werkbank composition: stock at left, route rows, flat news footer. */
+.overview-inventory-origin { flex-direction: column; gap: 6px; padding: 16px 8px; text-align: center; }
+.overview-inventory-origin > strong { font-size: 17px; }
+.overview-inventory-origin small { font-size: 13px; color: var(--ws2-text-secondary); }
+
+@media(max-width:1000px){
+ .overview-inventory-sidebar > h2,.overview-inventory-sidebar > h3,#overviewInventoryGroups { display: none; }
+}
+@media(max-width:767px){
+ .overview-inventory-origin { display: none; }
+}
+
+/* Keep inventory beside the network and continuation below it. */
+#connectionOverview .overview-view-switch[hidden] { display: none; }
+
+/* Keep the connection origin in the first screen, even for large inventories. */
+#connectionOverview .overview-inventory-origin { align-self: start; margin-top: 44px; }
+body.webssh-ui #connectionOverview select {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: var(--ws2-surface);
+    color: var(--ws2-text);
+    padding-right: 28px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ws2-text-secondary) 50%), linear-gradient(135deg, var(--ws2-text-secondary) 50%, transparent 50%);
+    background-position: right 13px center, right 8px center;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
 }

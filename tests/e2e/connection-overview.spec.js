@@ -14,29 +14,25 @@ test.beforeEach(async ({page}) => {
 
 test.afterEach(async ({page}) => { await assertNoExternalRequests(page); });
 
-test('overview preserves startup, uses authorized data, and launches through password review', async ({page}) => {
+test('overview presents owned inventory without opening connections', async ({page}) => {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await expect(page.locator('body')).toHaveAttribute('data-primary-workspace', 'workspaces');
     await openOverview(page);
     await expect(page.locator('#overviewTitle')).toBeFocused();
     await expect(page.locator('#overviewNavBtn')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('#overviewHosts')).toContainText('Password review');
-    await expect(page.locator('#overviewHosts')).not.toContainText('password.local');
-    await expect(page.locator('#overviewHosts')).not.toContainText('passworduser');
-    await page.locator('#overviewGraphBtn').click();
-    await expect(page.locator('#overviewGraphLegend')).toBeVisible();
-    await expect(page.locator('#overviewGraphBtn')).toHaveAttribute('aria-pressed', 'true');
-    expect(await page.locator('.overview-edges path').count()).toBe(await page.evaluate(() => {
-        const ids = new Set(window.JumpHostManager.jumpHosts.map(jump => jump.id));
-        return window.ProfileManager.profiles.filter(profile => ids.has(profile.jump_host_id)).length;
-    }));
+    const hosts = page.locator('#overviewHostList .od-host');
+    // Other cases on the shared server may add hosts; the dashboard must show every owned one.
+    const owned = await page.evaluate(() => ProfileManager.profiles.length);
+    expect(owned).toBeGreaterThanOrEqual(20);
+    await expect(hosts).toHaveCount(owned);
+    await expect(page.locator('#overviewHostTotal')).toHaveText(String(owned));
+    await expect(page.locator('#odKpiHosts .od-kpi-value')).toContainText(`/ ${owned}`);
     expect(await sshAttempts(page)).toEqual([]);
-    await page.locator('#overviewHostSearch').fill('Password review');
-    await page.locator('#overviewHosts button').click();
-    await expect(page.locator('#connectionModal')).toHaveClass(/show/);
-    await expect(page.locator('#hostInput')).toHaveValue('password.local');
-    await expect(page.locator('#passwordInput')).toBeFocused();
+    await page.locator('#overviewSearch').fill('Password review');
+    await expect(hosts).toHaveCount(1);
+    await expect(hosts.first()).toContainText('password.local');
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
     expect(await sshAttempts(page)).toEqual([]);
     expect(errors).toEqual([]);
 });
@@ -52,7 +48,7 @@ test('single navigation entries retain Files, Commands, Hosts and recent connect
         await expect(page.locator('#connectionOverview')).toBeHidden();
     }
     await openOverview(page);
-    await page.locator('#overviewQuickConnect').click();
+    await page.locator('#shellConnectBtn').click();
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
     await expect(page.locator('#hostInput')).toBeVisible();
     expect(await sshAttempts(page)).toEqual([]);
@@ -80,11 +76,10 @@ for (const layout of [1, 2, 4]) {
         await expect.poll(() => page.evaluate(() => TerminalManager.terminalReady['overview-0'])).toBe(true);
         await page.evaluate(() => new Promise(resolve => window.__overviewTerminal.write('PRESERVED OUTPUT\r\n', resolve)));
         await openOverview(page);
-        await expect(page.locator('#overviewSessionCount')).toHaveText(String(layout));
+        await expect(page.locator('#overviewHostList .od-host').first()).toBeVisible();
         await page.evaluate(() => window.__overviewTerminal.write('BACKGROUND OUTPUT\r\n'));
-        await page.locator('#overviewGraphBtn').click();
-        await page.locator('#overviewListBtn').click();
-        await page.locator('#overviewSessions button').first().click();
+        await page.locator('#overviewSearch').fill('Password review');
+        await page.locator('#workspaceNavBtn').click();
         await expect(page.locator('body')).toHaveAttribute('data-primary-workspace', 'workspaces');
         await expect.poll(() => page.evaluate(() => {
             const terminal = TerminalManager.terminals['overview-0'];
@@ -104,7 +99,7 @@ for (const layout of [1, 2, 4]) {
     });
 }
 
-test('graph handles empty/loading/missing and large hostile labels without horizontal overflow', async ({page}) => {
+test('host list handles empty/loading and large hostile labels without horizontal overflow', async ({page}) => {
     await page.setViewportSize({width: 390, height: 844});
     await page.emulateMedia({reducedMotion: 'reduce'});
     await openOverview(page);
@@ -112,11 +107,11 @@ test('graph handles empty/loading/missing and large hostile labels without horiz
         window.ProfileManager.profilesLoaded = false;
         window.dispatchEvent(new CustomEvent('profile-list-change'));
     });
-    await expect(page.locator('#overviewHosts')).toContainText('Loading');
-    await page.evaluate(() => window.socket.listeners('error').forEach(listener => listener({error: 'Fixture load error'})));
-    await expect(page.locator('#overviewHosts')).toContainText('Saved connections could not be loaded.');
+    await expect(page.locator('#overviewHostList')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('#overviewHostList .od-skeleton').first()).toBeAttached();
     await page.evaluate(() => window.ProfileManager.setProfiles([]));
-    await expect(page.locator('#overviewHosts')).toContainText('No saved connections');
+    await expect(page.locator('#overviewHostsEmpty')).toBeVisible();
+    await expect(page.locator('#overviewHostList .od-host')).toHaveCount(0);
     await page.evaluate(() => {
         window.JumpHostManager.setJumpHosts([{id: 'jump', name: 'Jump'}]);
         window.ProfileManager.setProfiles(Array.from({length: 120}, (_, index) => ({
@@ -124,46 +119,46 @@ test('graph handles empty/loading/missing and large hostile labels without horiz
             group: index % 2 ? 'A' : 'B', jump_host_id: index % 2 ? 'jump' : 'missing',
         })));
     });
-    await page.locator('#overviewGraphBtn').click();
-    await expect(page.locator('#overviewHosts button')).toHaveCount(120);
-    await expect(page.locator('#overviewHosts img')).toHaveCount(0);
-    await expect(page.locator('.overview-jump')).toHaveCount(1);
-    await expect(page.locator('.overview-edges path')).toHaveCount(60);
-    await expect(page.locator('.overview-route-unlinked').first()).toContainText('unavailable');
+    await expect(page.locator('#overviewHostList .od-host')).toHaveCount(120);
+    await expect(page.locator('#connectionOverview img')).toHaveCount(0);
+    await expect(page.locator('#overviewHostList .od-host').filter({hasText:'Saved jump host unavailable'})).toHaveCount(60);
+    await page.locator('#overviewSearch').fill('Jump');
+    await expect(page.locator('#overviewHostList .od-host')).toHaveCount(60);
+    await expect(page.locator('#overviewHostList [data-host-id="host-119"]')).toBeAttached();
     expect(await page.locator('#connectionOverview').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-    await page.locator('#overviewListBtn').focus();
-    await page.keyboard.press('Enter');
-    await expect(page.locator('#overviewListBtn')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('.overview-route')).toHaveCount(0);
+    await page.locator('#overviewSearch').press('Escape');
+    await expect(page.locator('#overviewHostList .od-host')).toHaveCount(120);
     await page.evaluate(() => window.i18n.setLanguage('de'));
-    await expect(page.locator('#overviewTitle')).toHaveText('SSH-Arbeitsbereiche');
+    await expect(page.locator('#overviewTitle')).toContainText('e2e_admin');
+    await expect(page.locator('#overviewTitle')).toHaveText(/^(Hallo|Guten Morgen|Guten Abend), e2e_admin$/);
     expect(await sshAttempts(page)).toEqual([]);
 });
 
-test('transfer shortcut uses the original queue and updates preserve host focus', async ({page}) => {
+for (const width of [390, 1440]) {
+    test(`overview search opens the existing host editor directly at ${width}px`, async ({page}) => {
+        await page.setViewportSize({width, height:900});
+        await openOverview(page);
+        await page.locator('#overviewSearch').fill('Password review');
+        await page.getByRole('button', {name:'Edit Password review', exact:true}).click();
+        await expect(page.locator('#profileEditorName')).toHaveValue('Password review');
+        await expect(page.locator('#profileEditorHost')).toHaveValue('password.local');
+        expect(await sshAttempts(page)).toEqual([]);
+        expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    });
+    test(`overview search connects through credential review at ${width}px`, async ({page}) => {
+        await page.setViewportSize({width, height:900});
+        await openOverview(page);
+        await page.locator('#overviewSearch').fill('Password review');
+        await page.getByRole('button', {name:'Connect Password review', exact:true}).click();
+        await expect(page.locator('#connectionModal')).toHaveClass(/show/);
+        await expect(page.locator('#hostInput')).toHaveValue('password.local');
+        expect(await sshAttempts(page)).toEqual([]);
+    });
+}
+test('overview favorites launch a ready saved host without inspecting its path first', async ({page})=>{
+    await page.setViewportSize({width:1440,height:900});
     await openOverview(page);
-    await expect(page.locator('#overviewAllTransfers')).toBeHidden();
-    await page.locator('#overviewHosts button').first().focus();
-    await page.evaluate(() => {
-        window.sftpFileManager.transferQueue = [{id: 'fixture-transfer', filename: 'fixture.txt', status: 'active', progress: 37}];
-        window.sftpFileManager.renderTransferQueue();
-    });
-    await expect(page.locator('#overviewTransferCount')).toHaveText('1');
-    await expect(page.locator('#overviewHosts button').first()).toBeFocused();
-    await page.locator('#overviewAllTransfers').click();
-    await expect(page.locator('#sftpFileManager')).toBeVisible();
-    await expect(page.locator('#fmQueue')).not.toHaveClass(/collapsed/);
-    await expect(page.locator('#fmQueueList')).toContainText('fixture.txt');
-    await expect(page.locator('#fmQueueList')).toContainText('37%');
-    await page.evaluate(() => {
-        window.sftpFileManager.transferQueue[0].status = 'error';
-        window.sftpFileManager.renderTransferQueue();
-    });
-    await expect(page.locator('#fmQueueList')).toContainText('Failed');
-    await page.evaluate(() => {
-        window.sftpFileManager.transferQueue = [];
-        window.sftpFileManager.renderTransferQueue();
-    });
-    await openOverview(page);
-    await expect(page.locator('#overviewAllTransfers')).toBeHidden();
+    await page.locator('#overviewHostList').getByRole('button',{name:'Connect Usable key',exact:true}).click();
+    await expect.poll(async()=> (await sshAttempts(page)).length).toBe(1);
+    expect((await sshAttempts(page))[0].payload.profile_id).toBe('usable-key');
 });

@@ -1781,3 +1781,27 @@ body.session-diagnostics-open {
 }
 #sessionDirectorySyncHelp summary { cursor: pointer; margin-top: 6px; }
 #sessionDirectorySyncCommand { width: 100%; margin-top: 8px; resize: vertical; font-family: monospace; }
+
+/* Host-scoped automation history follows the diagnostics panel width. */
+.session-diagnostics-automation {
+    border-top: 1px solid var(--ws2-border, var(--border-color));
+    padding-top: 16px;
+    margin-top: 16px;
+}
+.session-diagnostics-automation h3 { font-size: 15px; margin: 0 0 8px; }
+.session-diagnostics-automation p { font-size: 13px; color: var(--text-secondary); }
+.session-automation-run {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 8px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--ws2-border, var(--border-color));
+    overflow-wrap: anywhere;
+}
+.session-automation-run > strong { font-size: 14px; }
+.session-automation-run > time,
+.session-automation-run > small { grid-column: 1 / -1; color: var(--text-secondary); font-size: 13px; }
+.session-automation-run > button { grid-column: 1 / -1; justify-self: start; margin-top: 4px; }
+@media (pointer: coarse) {
+    .session-automation-run > button { min-height: 44px; }
+}

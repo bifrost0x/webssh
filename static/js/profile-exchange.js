@@ -82,6 +82,9 @@
         let busy = false;
         let snapshot = null;
         let controls = [];
+        const updateSubmit = () => {
+            submit.disabled = busy || !snapshot || !controls.some(item => item.selected.checked && !item.selected.disabled);
+        };
         const invalidate = () => {
             generation++;
             snapshot = null;
@@ -160,6 +163,7 @@
                     selected.type = 'checkbox';
                     selected.disabled = row.blocked;
                     selected.checked = !row.blocked;
+                    selected.addEventListener('change', updateSubmit);
                     selectLabel.append(selected, document.createTextNode(` ${row.name}: ${row.username || '?'}@${row.host}:${row.port}`));
                     section.append(selectLabel, element('p', row.warnings.join(' ')));
                     const userLabel = element('label', t('exchange.username'));
@@ -178,12 +182,12 @@
                     rows.append(section);
                     return {index, selected, username, key: key.select, jump: jump.select};
                 });
-                submit.disabled = !controls.some(item => !item.selected.disabled);
             } catch (error) {
                 if (current === generation) status.textContent = error.message || t('exchange.failed');
             } finally {
                 busy = false;
                 preview.disabled = false;
+                updateSubmit();
             }
         });
         submit.addEventListener('click', async () => {

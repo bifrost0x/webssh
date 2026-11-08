@@ -1,6 +1,15 @@
 (function() {
     'use strict';
 
+    let mfaSubmissionPending = false;
+    function setMfaSubmissionPending(pending) {
+        mfaSubmissionPending = pending;
+        for (const id of ['submitTotpMfa', 'submitRecoveryMfa']) {
+            const button = document.getElementById(id);
+            if (button) button.disabled = pending;
+        }
+    }
+
     function t(key, fallback) {
         const translated = typeof window !== 'undefined'
             ? window.i18n?.t?.(key)
@@ -79,6 +88,8 @@
         }
         input.classList.toggle('is-valid', Boolean(isValid));
         input.classList.toggle('is-invalid', isValid === false);
+        if (isValid === false) input.setAttribute('aria-invalid', 'true');
+        else input.removeAttribute('aria-invalid');
         hintEl.textContent = message || '';
         hintEl.classList.toggle('hint-error', isValid === false);
         hintEl.classList.toggle('hint-success', isValid === true);
@@ -378,6 +389,7 @@
             .replace(/\/$/, '');
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
         const submit = async () => {
+            if (mfaSubmissionPending) return;
             const code = normalizeTotpCode(input.value);
             if (!code) {
                 error.textContent = t(
@@ -387,7 +399,7 @@
                 error.classList.remove('hidden');
                 return;
             }
-            button.disabled = true;
+            setMfaSubmissionPending(true);
             error.classList.add('hidden');
             try {
                 const response = await fetch(root + '/api/totp/auth/verify', {
@@ -413,7 +425,7 @@
                 error.classList.remove('hidden');
                 input.select();
             } finally {
-                button.disabled = false;
+                setMfaSubmissionPending(false);
             }
         };
         button.addEventListener('click', submit);
@@ -505,6 +517,7 @@
             .replace(/\/$/, '');
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
         const submit = async () => {
+            if (mfaSubmissionPending) return;
             const code = input.value.trim();
             if (!code) {
                 error.textContent = t(
@@ -514,7 +527,7 @@
                 error.classList.remove('hidden');
                 return;
             }
-            button.disabled = true;
+            setMfaSubmissionPending(true);
             error.classList.add('hidden');
             try {
                 const response = await fetch(root + '/api/auth/recovery', {
@@ -540,7 +553,7 @@
                 error.classList.remove('hidden');
                 input.select();
             } finally {
-                button.disabled = false;
+                setMfaSubmissionPending(false);
             }
         };
         button.addEventListener('click', submit);
@@ -563,6 +576,15 @@
         setupChangePasswordValidation();
         setupTotpMfa();
         setupRecoveryMfa();
+        // Native autofocus can run after an early user/tab focus in WebKit.
+        // Choose the initial field only before interaction, never steal focus
+        // while a password manager or the user is already entering credentials.
+        if (document.activeElement === document.body
+                && !Array.from(document.querySelectorAll('input:not([type="hidden"])'))
+                    .some(input => input.value)) {
+            Array.from(document.querySelectorAll('[data-initial-focus]'))
+                .find(input => input.getClientRects().length > 0)?.focus();
+        }
     });
 
     if (typeof window !== 'undefined') {

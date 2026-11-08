@@ -22,7 +22,10 @@ test('public product captures are the only captures written to assets', () => {
         [
             'command-set-builder.png',
             'commandlibrary.png',
+            'dashboard-customize.png',
+            'dashboard.png',
             'file-edit-review.png',
+            'host-discovery.png',
             'mobile-workspace.png',
             'multi-session.png',
             'security-center.png',

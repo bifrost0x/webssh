@@ -59,7 +59,7 @@ test('chmod help explains separate modes, optional recursion and preview in ever
         de: [/Dateien/, /Ordner/, /optional/i, /Vorschau/, /anwenden/i],
         vi: [/tệp/, /thư mục/, /tùy chọn/, /xem trước/, /áp dụng/],
         fr: [/fichiers/, /dossiers/, /facultative/, /aperçu/, /appliqu/],
-        es: [/archivos/, /carpetas/, /opcional/, /vista previa/, /apliqu/],
+        es: [/archivos/, /carpetas/, /opcional/, /vista previa/, /aplic/],
         zh: [/文件/, /文件夹/, /可选/, /预览/, /应用/],
     };
     for (const [locale, patterns] of Object.entries(required)) {

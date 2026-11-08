@@ -99,6 +99,11 @@ directories. Set an absolute service-owned directory for a managed deployment:
 export DATA_DIR=/var/lib/webssh
 ```
 
+When WebSSH creates `DATA_DIR`, it makes it accessible to the service account
+only (`0700`). An existing directory is left as it is; WebSSH logs a warning at
+startup if other local users can read it. Restrict it with
+`chmod 700 /var/lib/webssh`.
+
 Back up this directory with WebSSH's native backup tooling rather than copying
 live files independently. See [Data Storage and Persistence](Data-Storage-and-Persistence).
 

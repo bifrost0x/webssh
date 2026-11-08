@@ -7,22 +7,41 @@
 
     function copy(value) { return JSON.parse(JSON.stringify(value)); }
 
+    /**
+     * The saved host a session belongs to. A session started without one (Quick
+     * Connect, or reopened by its destination) uses the saved host with exactly
+     * the same destination, user and route; with several, the latest edited.
+     */
+    function profileFor(session, profiles = []) {
+        if (!session) return null;
+        if (session.profileId) return session.profileId;
+        const host = value => String(value || '').trim().replace(/\.+$/, '').toLowerCase();
+        const matches = profiles.filter(profile => profile?.id && host(profile.host) === host(session.host)
+            && Number(profile.port || 22) === Number(session.port || 22)
+            && profile.username === session.username
+            && (profile.jump_host_id || null) === (session.jumpHostId || null));
+        matches.sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+        return matches[0]?.id || null;
+    }
+
     function createController(deps) {
         const drafts = new Map();
+        const pendingSaves = new Set();
         let epoch = 0;
-        const state = {profileId: null, sessionId: null, content: null, loading: false, dirty: false, error: null};
+        const state = {profileId: null, sessionId: null, content: null, loading: false, saving: false, dirty: false, error: null};
         const changed = () => deps.changed?.(state);
         function currentTarget() {
             const session = deps.getActiveSession?.();
             return session?.connected && session.id === state.sessionId
-                && session.profileId === state.profileId ? session : null;
+                && profileFor(session, deps.profiles?.() || []) === state.profileId ? session : null;
         }
         const controller = {
             state,
             currentTarget,
+            hasUnsaved: () => pendingSaves.size > 0 || Array.from(drafts.values()).some(draft => draft.dirty),
             async open(profileId, sessionId = null, reload = false) {
                 const token = ++epoch;
-                Object.assign(state, {profileId, sessionId, content: null, loading: Boolean(profileId), dirty: false, error: null});
+                Object.assign(state, {profileId, sessionId, content: null, loading: Boolean(profileId), saving: pendingSaves.has(profileId), dirty: false, error: null});
                 if (!profileId) { changed(); return; }
                 if (drafts.has(profileId) && !reload) {
                     Object.assign(state, drafts.get(profileId), {loading: false});
@@ -50,9 +69,10 @@
                 deps.updated?.(state);
             },
             async save() {
-                if (!state.content || state.loading || state.saving) return false;
+                if (!state.content || state.loading || pendingSaves.has(state.profileId)) return false;
                 const profileId = state.profileId;
                 const snapshot = copy(state.content);
+                pendingSaves.add(profileId);
                 state.saving = true;
                 changed();
                 try {
@@ -70,8 +90,11 @@
                     if (state.profileId === profileId) state.error = error.code || 'save_failed';
                     return false;
                 } finally {
-                    state.saving = false;
-                    changed();
+                    pendingSaves.delete(profileId);
+                    if (state.profileId === profileId) {
+                        state.saving = false;
+                        changed();
+                    }
                 }
             },
             async directory(path) {
@@ -186,6 +209,7 @@
         modal = node('hostContextModal');
         if (!modal || controller) return;
         controller = createController({request, changed: render, updated: status, getActiveSession: active,
+            profiles: () => root.ProfileManager?.profiles || [],
             directory: async (sessionId, path, valid) => {
                 const fm = root.getSFTPFileManager?.();
                 if (!fm || !valid()) return false;
@@ -223,13 +247,15 @@
         const session = active();
         heading = label || text('title', 'Host context');
         root.ModalManager.open(modal);
-        controller.open(profileId, session?.profileId === profileId ? session.id : null);
+        const owner = profileFor(session, root.ProfileManager?.profiles || []);
+        controller.open(profileId, owner && owner === profileId ? session.id : null);
     }
 
     function openActive() {
         const session = active();
-        open(session?.profileId || null, session ? `${session.username}@${session.host}:${session.port}` : null);
+        open(profileFor(session, root.ProfileManager?.profiles || []),
+            session ? `${session.username}@${session.host}:${session.port}` : null);
     }
 
-    return {createController, init, open, openActive};
+    return {createController, profileFor, init, open, openActive, hasUnsaved: () => controller?.hasUnsaved() || false};
 }));

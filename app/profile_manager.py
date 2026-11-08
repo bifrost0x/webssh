@@ -1,10 +1,12 @@
 import re
 import ipaddress
+import time
 import uuid
 from datetime import datetime, timezone
 
 import config
 
+from .host_platform import PLATFORMS, endpoint
 from .audit_logger import log_error
 from .connection_storage_policy import (
     ConnectionStorageLimitError,
@@ -146,6 +148,14 @@ def _valid_profile(item):
             return False
     if 'sort_order' in item and not _valid_sort_order(item['sort_order']):
         return False
+    if 'greeting_platform' in item and not isinstance(item['greeting_platform'], str):
+        return False
+    if 'detected_services' in item and not (isinstance(item['detected_services'], list)
+                                            and all(isinstance(entry, str) for entry in item['detected_services'])):
+        return False
+    if 'services_checked_at' in item and (isinstance(item['services_checked_at'], bool)
+                                          or not isinstance(item['services_checked_at'], (int, float))):
+        return False
     return True
 
 
@@ -163,7 +173,8 @@ _PROFILE_FIELDS = {
     'jump_host_id', 'startup_mode', 'startup_commands', 'command_id',
     'command_set_id', 'parameters_override', 'use_tmux',
     'group', 'favorite', 'created_at', 'updated_at',
-    'sort_order',
+    'sort_order', 'platform_icon', 'detected_platform', 'greeting_platform',
+    'detected_services', 'services_checked_at',
 }
 
 
@@ -338,6 +349,12 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     if not isinstance(payload, dict):
         return None, 'Invalid profile data'
 
+    if 'platform_icon' in payload and (not isinstance(payload['platform_icon'], str) or payload['platform_icon'] not in PLATFORMS | {'auto'}):
+        return None, 'Invalid platform icon'
+    # What a discovery scan read from the SSH greeting; shown until a connection detects the platform.
+    if 'greeting_platform' in payload and (not isinstance(payload['greeting_platform'], str) or payload['greeting_platform'] not in PLATFORMS):
+        return None, 'Invalid platform icon'
+
     name = payload.get('name')
     host = payload.get('host')
     username = payload.get('username')
@@ -417,6 +434,10 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
         'key_id': key_id if auth_type == 'key' else None,
         **post_connect,
     }
+    if 'platform_icon' in payload:
+        result['platform_icon'] = payload['platform_icon']
+    if 'greeting_platform' in payload:
+        result['greeting_platform'] = payload['greeting_platform']
     if group is not _UNSET and group:
         result['group'] = group
     if favorite is True:
@@ -431,7 +452,7 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
 
 @user_operation
 def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
-                   skip_duplicate=False):
+                   skip_duplicate=False, on_created=None):
     """Create or update a profile under the per-user coordinator lock."""
     try:
         with storage_lock(f'command-config:{user_id}'):
@@ -474,6 +495,8 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                     validated['startup_commands'] = legacy
 
             with storage_lock(f'profiles:{user_id}'):
+                transaction_path = get_user_profiles_file(user_id)
+                transaction_before = transaction_path.read_bytes() if on_created and transaction_path.exists() else None
                 profiles, error = _load_profiles_for_write(user_id)
                 if error:
                     return None, error
@@ -513,6 +536,19 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                                 'created_at': existing.get('created_at', now),
                                 'updated_at': now,
                             }
+                            if 'platform_icon' not in payload and 'platform_icon' in existing:
+                                result['platform_icon'] = existing['platform_icon']
+                            if endpoint(existing) == endpoint(result) and existing.get('detected_platform') in PLATFORMS:
+                                result['detected_platform'] = existing['detected_platform']
+                            # Detected services describe the same login on the same host.
+                            if endpoint(existing) == endpoint(result) and 'detected_services' in existing:
+                                result['detected_services'] = existing['detected_services']
+                                if 'services_checked_at' in existing:
+                                    result['services_checked_at'] = existing['services_checked_at']
+                            # The greeting belongs to an address and port; it goes when either changes.
+                            if ('greeting_platform' not in payload and existing.get('greeting_platform') in PLATFORMS
+                                    and (existing.get('host'), existing.get('port', 22)) == (result.get('host'), result.get('port', 22))):
+                                result['greeting_platform'] = existing['greeting_platform']
                             if 'group' not in payload and existing.get('group'):
                                 result['group'] = existing['group']
                             if (
@@ -559,6 +595,9 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                     profiles,
                     previous_count=previous_count,
                 ):
+                    if on_created:
+                        from .credential_store import finish_resource_transaction
+                        finish_resource_transaction(transaction_path,transaction_before,result,on_created)
                     return result, None
                 return None, 'Failed to save profile'
     except StorageCorruptionError:
@@ -897,3 +936,86 @@ def assign_command_set(user_id, profile_id, command_set_id):
     except Exception as e:
         log_error('Error assigning command set to profile', user_id=user_id, error=str(e))
         return None, str(e)
+
+
+@user_operation
+def cache_greeting_platforms(user_id, observed):
+    """Record what saved direct hosts' SSH greetings named; return how many changed.
+
+    ``observed`` maps profile ids to ((canonical host, port), platform) as probed.
+    A host edited meanwhile, routed through a jump host or already showing the
+    same hint is left alone; detections and manual choices still take precedence.
+    """
+    from .network_policy import canonicalize_hostname
+    wanted = {key: value for key, value in observed.items() if value and value[1] in PLATFORMS}
+    if not wanted:
+        return 0
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'profiles:{user_id}'):
+            profiles, error = _load_profiles_for_write(user_id)
+            if error:
+                return 0
+            changed = 0
+            for profile in profiles:
+                item = wanted.get(profile.get('id'))
+                if not item or profile.get('jump_host_id'):
+                    continue
+                probed, platform = item
+                try:
+                    current = (canonicalize_hostname(profile.get('host')), int(profile.get('port') or 22))
+                except (TypeError, ValueError):
+                    continue
+                if current != tuple(probed) or profile.get('greeting_platform') == platform:
+                    continue
+                profile['greeting_platform'] = platform
+                changed += 1
+            if changed and save_profiles(user_id, profiles, previous_count=len(profiles)):
+                return changed
+    return 0
+
+
+@user_operation
+def cache_detected_facts(user_id, profile_id, expected_endpoint, *, platform=None, services=None, now=None):
+    """Merge detected platform and service facts into the current owned profile under its lock."""
+    from .host_platform import valid_services
+    if expected_endpoint is None or (platform is None and services is None):
+        return False
+    if platform is not None and platform not in PLATFORMS:
+        return False
+    if services is not None and not valid_services(services):
+        return False
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'profiles:{user_id}'):
+            profiles, error = _load_profiles_for_write(user_id)
+            if error:
+                return False
+            for profile in profiles:
+                if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
+                    continue
+                if platform is not None:
+                    profile['detected_platform'] = platform
+                if services is not None:
+                    profile['detected_services'] = list(services)
+                    profile['services_checked_at'] = time.time() if now is None else now
+                return save_profiles(user_id, profiles, previous_count=len(profiles))
+    return False
+
+
+@user_operation
+def cache_detected_platform(user_id, profile_id, expected_endpoint, platform):
+    """Merge only platform facts into the current owned profile under its lock."""
+    if expected_endpoint is None or platform not in PLATFORMS:
+        return False
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'profiles:{user_id}'):
+            profiles, error = _load_profiles_for_write(user_id)
+            if error:
+                return False
+            for profile in profiles:
+                if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
+                    continue
+                if profile.get('detected_platform') == platform:
+                    return True
+                profile['detected_platform'] = platform
+                return save_profiles(user_id, profiles, previous_count=len(profiles))
+    return False

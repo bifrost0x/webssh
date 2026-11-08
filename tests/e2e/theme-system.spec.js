@@ -3,6 +3,7 @@ const { assertNoExternalRequests, login } = require('./helpers');
 
 const THEME_IDS = [
     'glass',
+    'werkbank',
     'solar',
     'paper',
     'noir',
@@ -16,6 +17,7 @@ const THEME_IDS = [
 
 const PROFESSIONAL_THEME_BACKGROUNDS = {
     glass: 'carbon-glass.webp',
+    werkbank: 'werkbank-sand.webp',
     solar: 'navy-topography.webp',
     paper: 'paper-blueprint.webp',
     noir: 'noir-architecture.webp',
@@ -32,13 +34,13 @@ const FUN_THEME_BACKGROUNDS = {
 
 async function openThemeSettings(page) {
     await page.getByRole('button', { name: 'Account menu' }).click();
-    await page.getByRole('link', { name: 'Settings' }).click();
+    await page.locator('#accountDropdownHeader').getByRole('link', { name: 'Settings', exact: true }).click();
     await expect(page).toHaveURL(/\/settings#preferences$/);
     await page.waitForLoadState('load');
     await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontFamily))
-        .toContain('Inter');
+        .toContain('WebSSH UI');
 }
 
 async function selectTheme(page, selector, themeId) {
@@ -177,7 +179,7 @@ async function readPaperAuthState(page) {
             bodyBackground: getComputedStyle(document.body).backgroundColor,
             titleContrast: contrastFor('.auth-form-panel h1'),
             itemContrast: contrastFor('.auth-form-panel label'),
-            footerContrast: contrastFor('.auth-context-footer'),
+            brandContrast: contrastFor('.auth-context-footer'),
         };
     });
 }
@@ -199,7 +201,7 @@ test('all themes share one typography system without moving the Settings Center'
     const baseline = await readThemeState(page);
 
     const selector = page.getByRole('combobox', { name: 'Theme' });
-    await expect(selector.locator('option')).toHaveCount(10);
+    await expect(selector.locator('option')).toHaveCount(11);
     expect(await selector.locator('option').evaluateAll(options => (
         options.map(option => option.value)
     ))).toEqual(THEME_IDS);
@@ -301,7 +303,7 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
         expect(authState.bodyBackground).toBe('rgb(220, 229, 238)');
         expect(authState.titleContrast).toBeGreaterThanOrEqual(7);
         expect(authState.itemContrast).toBeGreaterThanOrEqual(7);
-        expect(authState.footerContrast).toBeGreaterThanOrEqual(4.5);
+        expect(authState.brandContrast).toBeGreaterThanOrEqual(4.5);
     }
 
     await page.goto('/login');
@@ -313,7 +315,7 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
     expect(mfaState.bodyBackground).toBe('rgb(220, 229, 238)');
     expect(mfaState.titleContrast).toBeGreaterThanOrEqual(7);
     expect(mfaState.itemContrast).toBeGreaterThanOrEqual(7);
-    expect(mfaState.footerContrast).toBeGreaterThanOrEqual(4.5);
+    expect(mfaState.brandContrast).toBeGreaterThanOrEqual(4.5);
 });
 
 test('fun themes use local decorative backgrounds that cannot intercept input', async ({ page }) => {

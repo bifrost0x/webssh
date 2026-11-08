@@ -22,16 +22,18 @@ the provided `docker-compose.ldap.yml` overlay with the same WebSSH image; no
 - The stable `entryUUID` (OpenLDAP) or `objectGUID` (Active Directory) is the
   identity key. A renamed DN can be updated after successful authentication
   without changing account ownership.
-- LDAP users cannot be administrators and cannot fall back to local passwords,
-  passkeys, recovery codes, or OIDC. Keep at least one unlinked local
+- LDAP users cannot be administrators and cannot fall back to local passwords
+  or OIDC. Passkeys, TOTP and Recovery Codes can protect the second step after
+  successful LDAP primary authentication. Keep at least one unlinked local
   break-glass administrator.
 - `LDAP_AUTO_PROVISION=true` creates a non-admin LDAP-managed account only
   after the first successful directory sign-in. It requires an active local
   break-glass administrator and never attaches LDAP to an existing local
   username. Case-insensitive collisions, control characters, and names longer
   than 80 characters are rejected without truncation.
-- Linking destroys the user's dormant local password and all alternative local
-  login factors. Unlinking requires a fresh local password.
+- Linking destroys the user's dormant local password and removes an incompatible
+  OIDC mapping. Existing local MFA factors remain owned by the same account.
+  Unlinking requires a fresh local password.
 - LDAP sessions are revalidated every five minutes by default. A disabled
   feature, directory outage, missing user, changed stable ID, locked account
   excluded by the configured filter, or certificate failure revokes the user's
@@ -176,13 +178,18 @@ docker compose -f docker-compose.yml -f docker-compose.ldap.yml -f docker-compos
 
 ## Rollback and recovery
 
-To stop LDAP immediately, recreate WebSSH from the standard Compose file only:
+To stop LDAP, remove only `docker-compose.ldap.yml` from your existing Compose
+command and retain all other production, hardening and local overlays in their
+original order. For the production example above:
 
 ```bash
-docker compose -f docker-compose.yml up -d --force-recreate
+docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --force-recreate
 ```
 
-This removes the LDAP environment and mount from the container. The named
+For a deployment using only the base and LDAP overlays, the remaining command
+is `docker compose -f docker-compose.yml up -d --force-recreate`.
+
+Removing the LDAP overlay removes its environment and mount from the container. The named
 secret volume remains stored but detached until the overlay is selected again.
 Existing LDAP sessions are invalidated. Local accounts continue normally, but
 linked LDAP accounts intentionally do not regain their old passwords.

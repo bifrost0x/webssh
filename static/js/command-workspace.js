@@ -1,6 +1,7 @@
 /* Shared command library, favorites and reusable command sets. */
 window.CommandWorkspace = {
     activeSection: 'library',
+    scrollPositions: {},
     sections: [
         ['library', 'commandLibraryTab', 'commandLibraryPanel'],
         ['favorites', 'commandFavoritesTab', 'commandFavoritesPanel'],
@@ -11,7 +12,7 @@ window.CommandWorkspace = {
     init() {
         this.sections.forEach(([name, tabId], index) => {
             const tab = document.getElementById(tabId);
-            tab?.addEventListener('click', () => this.select(name, true));
+            tab?.addEventListener('click', () => this.select(name));
             tab?.addEventListener('keydown', async event => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
                 event.preventDefault();
@@ -67,6 +68,9 @@ window.CommandWorkspace = {
         return this.applySelection(next, focusContent);
     },
     applySelection(next, focusContent) {
+        const body = document.querySelector('#commandWorkspaceModal .command-workspace-body');
+        const changed = next !== this.activeSection;
+        if (changed && body) this.scrollPositions[this.activeSection] = body.scrollTop;
         this.activeSection = next;
         try { window.localStorage.setItem(this.storageKey(), next); } catch { /* Storage is optional. */ }
         this.sections.forEach(([name, tabId, panelId]) => {
@@ -77,6 +81,7 @@ window.CommandWorkspace = {
             document.getElementById(panelId)?.classList.toggle('hidden', !active);
         });
         if (next === 'favorites') this.renderFavorites();
+        if (changed && body) body.scrollTop = this.scrollPositions[next] || 0;
         if (focusContent) {
             const id = {library: 'commandSearchInput', favorites: 'commandFavoritesSearch', sets: 'commandSetManagementSearch'}[next];
             setTimeout(() => document.getElementById(id)?.focus(), 0);
@@ -97,7 +102,11 @@ window.CommandWorkspace = {
         const store = window.SessionCommandLauncher;
         store?.ensurePreferences();
         const active = store?.favorites.has(store.entryKey({type: button.dataset.favoriteType, id: button.dataset.favoriteId})) || false;
-        button.textContent = active ? '★' : '☆';
+        const icon = document.createElement('span');
+        icon.className = 'material-icons';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = active ? 'star' : 'star_border';
+        button.replaceChildren(icon);
         button.setAttribute('aria-pressed', String(active));
         button.classList.toggle('active', active);
         const label = this.t(active ? 'sessionCommands.removeFavorite' : 'sessionCommands.addFavorite', active ? 'Remove from favorites' : 'Add to favorites');

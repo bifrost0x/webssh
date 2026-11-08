@@ -29,12 +29,14 @@ test('real browser creates, changes permissions, edits and reopens a remote file
     await expect(page.locator('#fmLeftPane [data-pane-action="newfile"]')).toBeEnabled();
     const name = `browser-mutations-${Date.now()}.txt`;
     try {
+        await page.locator('#fmLeftPane .fm-action-menu-new > summary').click();
         await page.locator('#fmLeftPane [data-pane-action="newfile"]').click();
         let dialog = page.locator('dialog.fm-mutation-dialog');
         await dialog.locator('[name="filename"]').fill(name);
         await dialog.getByRole('button', { name: 'Create file', exact: true }).click();
         await expect(dialog).toHaveCount(0);
         await page.locator('#fmLeftList .fm-file-item').filter({ hasText: name }).click();
+        await page.locator('#fmLeftPane .fm-action-menu-more > summary').click();
         await page.locator('#fmLeftPane [data-pane-action="permissions"]').click();
         dialog = page.locator('dialog.fm-permission-job-dialog');
         await expect(dialog.locator('[name="recursive"]')).not.toBeChecked();
@@ -57,6 +59,7 @@ test('real browser creates, changes permissions, edits and reopens a remote file
         await expect(page.locator('#editorContent')).toHaveValue('verified through the real browser\n');
         await page.evaluate(() => window.FilePreview.close());
         await page.locator('#fmLeftList .fm-file-item').filter({ hasText: name }).click();
+        await page.locator('#fmLeftPane .fm-action-menu-more > summary').click();
         await page.locator('#fmLeftPane [data-pane-action="permissions"]').click();
         dialog = page.locator('dialog.fm-permission-job-dialog');
         await dialog.getByRole('button', { name: 'Preview changes', exact: true }).click();
@@ -65,10 +68,29 @@ test('real browser creates, changes permissions, edits and reopens a remote file
         await page.setViewportSize({ width: 390, height: 844 });
         await page.screenshot({ path: test.info().outputPath('browser-live-mobile.png') });
     } finally {
-        if (!page.isClosed()) await page.evaluate(name => {
+        if (!page.isClosed()) await page.evaluate(async name => {
             window.sftpFileManager.mutationDialog?.close();
-            window.socket.emit('delete_file', { source_id: `sftp-session:${window.liveMutationSession}`, path: `/tmp/${name}`, request_id: 'live-cleanup' });
-            window.liveMutationSocket.disconnect();
-        }, name).catch(() => {});
+            const socket = window.socket;
+            const request = { source_id: `sftp-session:${window.liveMutationSession}`, path: `/tmp/${name}`, request_id: `live-cleanup-${name}` };
+            try {
+                await new Promise((resolve, reject) => {
+                    const matches = data => data?.request_id === request.request_id && data?.source_id === request.source_id && data?.path === request.path;
+                    const finish = error => {
+                        clearTimeout(timer);
+                        socket.off('item_deleted', deleted);
+                        socket.off('error', failed);
+                        error ? reject(error) : resolve();
+                    };
+                    const deleted = data => { if (matches(data)) finish(); };
+                    const failed = data => { if (matches(data)) finish(new Error(data.error || 'Lab cleanup failed')); };
+                    const timer = setTimeout(() => finish(new Error('Lab cleanup timed out')), 10000);
+                    socket.on('item_deleted', deleted);
+                    socket.on('error', failed);
+                    socket.emit('delete_item', request);
+                });
+            } finally {
+                window.liveMutationSocket.disconnect();
+            }
+        }, name);
     }
 });

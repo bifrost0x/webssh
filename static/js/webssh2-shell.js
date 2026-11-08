@@ -94,6 +94,10 @@
         function renderTransfers() {
             const queue = root.sftpFileManager?.transferQueue || [];
             if (elements.transferCount) elements.transferCount.textContent = String(queue.length);
+            const summary = root.sftpFileManager?.getTransferQueueSummary?.();
+            const status = documentRef.getElementById('workspaceStatusTransferState');
+            if (status) status.textContent = summary?.failed ? `· ${summary.text}` : '';
+            elements.transfers?.classList?.toggle('has-transfer-errors', Boolean(summary?.failed));
         }
         elements.transfers?.addEventListener('click', () => {
             documentRef.getElementById('fileTransferBtn')?.click();
@@ -107,7 +111,7 @@
         renderTransfers();
         root.addEventListener?.('session-workspace-change', render);
         root.addEventListener?.('session-removed', render);
-        root.addEventListener?.('languageChanged', render);
+        root.addEventListener?.('languageChanged', () => { render(); renderTransfers(); });
         render();
         return Object.freeze({ render });
     }

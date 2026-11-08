@@ -12,6 +12,7 @@ const surfacePaths = [
     'templates/login.html',
     'templates/register.html',
     'templates/change_password.html',
+    'templates/error.html',
     'static/js/auth.js',
     'static/js/webauthn.js',
     'static/js/security-ui.js',

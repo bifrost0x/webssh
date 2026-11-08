@@ -7,6 +7,9 @@ import zipfile
 from flask import Blueprint, jsonify, request, send_file
 from flask_login import current_user, login_required
 
+import config
+from .auth import check_reauth_rate_limit
+
 from .connection_storage_policy import ConnectionStorageLimitError
 from .jump_host_manager import load_jump_hosts
 from .key_manager import load_key_summaries
@@ -59,6 +62,9 @@ def _data():
 @profile_exchange_blueprint.post('/api/profiles/exchange/preview')
 @login_required
 def preview():
+    # Listing usable keys decrypts every stored key; bound it like the socket key list.
+    if check_reauth_rate_limit(current_user.id, request.remote_addr, 'profile_exchange_preview', config.RATELIMIT_SSH_KEY_LIST):
+        return jsonify({'error': 'Too many import previews. Please wait a moment.'}), 429
     try:
         data = _data()
         result = preview_import(data.get('source'), data.get('format'))
@@ -131,7 +137,7 @@ def import_hosts():
             continue
         payload = {
             field: row[field] for field in
-            ('name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux')
+            ('name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux', 'platform_icon')
             if field in row
         }
         payload.update({

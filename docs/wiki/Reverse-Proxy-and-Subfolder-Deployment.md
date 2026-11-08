@@ -18,13 +18,18 @@ Keep the WebSSH backend reachable only through those layers.
 
 ## Nginx at the domain root
 
+Pass the browser's Host header unchanged, including a non-default port
+(`$http_host`, not `$host`). With `CORS_ORIGINS=*`, realtime connections are
+accepted only from the address the browser used for WebSSH; if the proxy
+rewrites Host, set `TRUSTED_PROXIES` and forward `X-Forwarded-Host`.
+
 ```nginx
 location / {
     proxy_pass http://webssh:5000;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -96,7 +101,7 @@ location /webssh/ {
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;

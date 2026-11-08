@@ -1,0 +1,243 @@
+"""Authenticated HTTP control plane for native automation and write-only vault."""
+import ipaddress
+from flask import Blueprint, current_app, jsonify, request, redirect, url_for
+from flask_login import current_user, login_required
+import config
+from .automation_store import AutomationError, runbooks, save_runbook, delete_runbook
+from .auth_assurance import current_authentication_session
+from .auth import check_reauth_rate_limit
+from .step_up import consume_account_step_up_grant, StepUpError
+from .storage_errors import StorageCorruptionError
+from .quota_manager import QuotaExceeded
+from .profile_manager import load_profiles
+
+automation_blueprint = Blueprint('automation', __name__)
+
+def service():
+    return current_app.extensions['automation']
+
+def _auth():
+    auth = current_authentication_session()
+    if auth is None:
+        raise AutomationError('authentication_required')
+    return auth
+
+def _secure():
+    if request.is_secure:
+        return
+    try:
+        loopback = ipaddress.ip_address(request.remote_addr or '').is_loopback
+    except ValueError:
+        loopback = False
+    proxied = bool(config.TRUSTED_PROXIES) or any(
+        name.lower() == 'forwarded' or name.lower().startswith('x-forwarded-')
+        for name in request.headers.keys()
+    )
+    if not (config.DEBUG and config.DEPLOYMENT_PROFILE == 'homelab'
+            and config.AUTOMATION_ALLOW_INSECURE_LOOPBACK and loopback and not proxied):
+        raise AutomationError('https_required')
+
+def _enabled():
+    from .app_settings import is_automation_enabled
+    if not is_automation_enabled():
+        raise AutomationError('disabled')
+    _secure()
+    if not current_app.extensions['runtime_lifecycle'].accepting_work():
+        raise AutomationError('unavailable')
+
+def _data():
+    value = request.get_json(silent=True)
+    if not isinstance(value, dict):
+        raise AutomationError('invalid_request')
+    return value
+
+def _grant(action, token):
+    try:
+        consume_account_step_up_grant(action, token)
+    except StepUpError as error:
+        raise AutomationError('step_up_required') from error
+
+@automation_blueprint.before_request
+def bounds():
+    request.max_content_length = 256 * 1024
+
+@automation_blueprint.after_request
+def private(response):
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
+@automation_blueprint.errorhandler(AutomationError)
+def failure(error):
+    status = {'authentication_required':401, 'disabled':403, 'https_required':403,
+        'step_up_required':403, 'busy':429, 'not_found':404, 'invalid_intent':409,
+        'preview_changed':409, 'vault_locked':423, 'unavailable':503,
+        'credentials_disabled':403, 'host_key_required':409}.get(error.code, 400)
+    body = dict(error='Automation request could not be completed.', code=error.code)
+    # Names of the user's own saved hosts let the browser say which host to verify.
+    if getattr(error, 'hosts', None):
+        body['hosts'] = error.hosts
+    return jsonify(body), status
+
+@automation_blueprint.errorhandler(StorageCorruptionError)
+def corrupt(_error):
+    return jsonify(error='Automation storage could not be validated.', code='storage_unavailable'), 409
+
+@automation_blueprint.errorhandler(OSError)
+def storage_failure(_error):
+    return jsonify(error='Automation storage is unavailable.', code='storage_unavailable'), 503
+
+@automation_blueprint.errorhandler(QuotaExceeded)
+def quota(_error):
+    return jsonify(error='Automation capacity is exhausted.', code='busy'), 429
+
+@automation_blueprint.get('/automation')
+@login_required
+def page():
+    return redirect(url_for('index') + '#automation')
+
+@automation_blueprint.get('/api/automation/state')
+@login_required
+def state():
+    auth = _auth()
+    _enabled()
+    from .app_settings import is_credentials_enabled
+    return jsonify(enabled=True, credentials_enabled=is_credentials_enabled(), runbooks=runbooks(current_user.id),
+        profiles=[dict(**service().display_target(p), auth_type=p.get('auth_type'),
+            credential_status=service().credentials.credential_status(current_user.id, p) if p.get('auth_type') == 'password' else 'ready',
+            supported=not p.get('jump_host_id') and p.get('auth_type') in {'key','password'}
+            and ':' not in p.get('username', '')) for p in load_profiles(current_user.id)],
+        vault=service().credentials.vault_status(current_user.id, auth.id))
+
+@automation_blueprint.post('/api/automation/runbooks')
+@login_required
+def save():
+    _auth()
+    _enabled()
+    return jsonify(runbook=save_runbook(current_user.id, _data()))
+
+@automation_blueprint.delete('/api/automation/runbooks/<book_id>')
+@login_required
+def remove(book_id):
+    _auth()
+    _enabled()
+    delete_runbook(current_user.id, book_id)
+    return jsonify(deleted=True)
+
+@automation_blueprint.post('/api/automation/preview')
+@login_required
+def preview():
+    auth = _auth()
+    _enabled()
+    return jsonify(service().prepare_run(current_user.id, auth.id, _data()))
+
+@automation_blueprint.post('/api/automation/start')
+@login_required
+def start():
+    auth = _auth()
+    _enabled()
+    data = _data()
+    intent = service().intent(data.get('intent'), current_user.id, auth.id)
+    if intent['kind'] != 'run' or data.get('confirmation') != str(len(intent['targets'])):
+        raise AutomationError('confirmation_required')
+    _grant('automation.run', data.get('intent'))
+    return jsonify(run=service().start(data['intent'], current_user.id, auth.id, data['confirmation'])), 202
+
+@automation_blueprint.get('/api/automation/runs')
+@login_required
+def runs():
+    _auth()
+    _enabled()
+    return jsonify(runs=service().history(current_user.id))
+
+@automation_blueprint.post('/api/automation/runs/<run_id>/cancel')
+@login_required
+def cancel(run_id):
+    _auth()
+    _enabled()
+    service().cancel(current_user.id, run_id)
+    return jsonify(cancellation_requested=True)
+
+@automation_blueprint.post('/api/automation/vault/intents')
+@login_required
+def vault_intent():
+    auth = _auth()
+    _enabled()
+    if check_reauth_rate_limit(current_user.id, request.remote_addr, 'automation_vault', '10 per minute'):
+        raise AutomationError('busy')
+    return jsonify(service().prepare_vault(current_user.id, auth.id, _data()))
+
+@automation_blueprint.post('/api/automation/vault/apply')
+@login_required
+def vault_apply():
+    auth = _auth()
+    _enabled()
+    data = _data()
+    intent = service().intent(data.get('intent'), current_user.id, auth.id)
+    if intent['kind'] != 'vault':
+        raise AutomationError('invalid_intent')
+    _grant('automation.vault', data['intent'])
+    return jsonify(service().apply_vault(data['intent'], current_user.id, auth.id, data))
+
+@automation_blueprint.post('/api/automation/vault/lock')
+@login_required
+def vault_lock():
+    auth = _auth()
+    _enabled()
+    service().lock_vault(current_user.id)
+    return jsonify(service().credentials.vault_status(current_user.id, auth.id))
+
+
+@automation_blueprint.get('/api/automation/schedules')
+@login_required
+def schedules():
+    _auth()
+    _secure()
+    return jsonify(schedules=current_app.extensions['automation_schedules'].list(current_user.id))
+
+
+@automation_blueprint.post('/api/automation/schedules/preview')
+@login_required
+def schedule_preview():
+    auth = _auth()
+    _enabled()
+    return jsonify(current_app.extensions['automation_schedules'].prepare(current_user.id, auth.id, _data()))
+
+
+@automation_blueprint.post('/api/automation/schedules')
+@login_required
+def schedule_apply():
+    auth = _auth()
+    _enabled()
+    data = _data()
+    token = data.get('intent')
+    intent = service().intent(token, current_user.id, auth.id)
+    if intent['kind'] != 'schedule' or data.get('confirmation') != str(len(intent['targets'])):
+        raise AutomationError('confirmation_required')
+    _grant('automation.schedule', token)
+    return jsonify(schedule=current_app.extensions['automation_schedules'].apply(current_user.id, auth.id, token, data['confirmation']))
+
+
+@automation_blueprint.post('/api/automation/schedules/<schedule_id>/pause')
+@login_required
+def schedule_pause(schedule_id):
+    _auth()
+    _secure()
+    return jsonify(schedule=current_app.extensions['automation_schedules'].pause(current_user.id, schedule_id))
+
+
+@automation_blueprint.post('/api/automation/schedules/<schedule_id>/preview-run')
+@login_required
+def schedule_run_preview(schedule_id):
+    auth = _auth()
+    _enabled()
+    return jsonify(current_app.extensions['automation_schedules'].prepare_run(current_user.id, auth.id, schedule_id))
+
+
+@automation_blueprint.delete('/api/automation/schedules/<schedule_id>')
+@login_required
+def schedule_delete(schedule_id):
+    _auth()
+    _secure()
+    current_app.extensions['automation_schedules'].pause(current_user.id, schedule_id, delete=True)
+    return jsonify(deleted=True)

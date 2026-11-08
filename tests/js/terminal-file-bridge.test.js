@@ -91,3 +91,9 @@ test('a delayed insertion cannot close or unlock a newly opened dialog', async (
     assert.equal(node('terminalFileSubmit').disabled, true);
     assert.equal(node('terminalFilePath').value, '/second');
 });
+
+test('paths with a backslash are not typed into a shell, because fish treats it inside single quotes', () => {
+    const Bridge = require('../../static/js/terminal-file-bridge.js');
+    assert.equal(Bridge.quotePath(`/tmp/x${String.fromCharCode(92)}';id;#`), null);
+    assert.equal(Bridge.quotePath('/tmp/plain name'), `'/tmp/plain name'`);
+});

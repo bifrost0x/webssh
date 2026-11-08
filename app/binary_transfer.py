@@ -79,10 +79,10 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None,
             return binary_data.getvalue(), None
 
     except sftp_handler.SFTPOperationError as e:
-        return None, str(e)
+        return None, sftp_handler.public_sftp_error(e, 'Unable to read remote file preview')
     except PermissionError:
         return None, "Permission denied: Cannot read from remote path"
     except FileNotFoundError:
         return None, "Remote file not found"
     except Exception as e:
-        return None, str(e)
+        return None, sftp_handler.public_sftp_error(e, 'Unable to read remote file preview')

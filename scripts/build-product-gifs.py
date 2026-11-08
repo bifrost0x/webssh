@@ -5,6 +5,8 @@ network access is used. Each frame is a real capture; transitions only crossfade
 """
 
 import argparse
+import subprocess
+import tempfile
 from pathlib import Path
 
 from PIL import Image
@@ -40,6 +42,7 @@ def encode(paths, destination):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--capture-root', type=Path, default=ROOT)
+    parser.add_argument('--video', action='store_true', help='Also encode the silent version 3 tour using ffmpeg')
     args = parser.parse_args()
     root = args.capture_root.resolve()
     assets = root / 'assets'
@@ -64,6 +67,27 @@ def main():
             raise ValueError(f"Missing captures for {name}; run product captures first")
     for name, sources in tours.items():
         encode(sources, assets / name)
+    themes = sorted((frames / 'theme-frames').glob('*.png'))
+    if len(themes) != 11:
+        raise ValueError('Capture all eleven themes before encoding')
+    encode(themes, assets / 'webssh-themes.gif')
+    if args.video:
+        slides = [assets / name for name in (
+            'dashboard.png', 'workspace-overview.png', 'sftp-workspace.png',
+            'command-set-builder.png', 'security-center.png',
+        )]
+        with tempfile.TemporaryDirectory() as temporary:
+            sequence = Path(temporary)
+            for index, source in enumerate(slides):
+                with Image.open(source) as image:
+                    image.convert('RGB').resize(SIZE, Image.Resampling.LANCZOS).save(sequence / f'{index:02d}.png')
+            subprocess.run([
+                'ffmpeg', '-y', '-loglevel', 'error', '-framerate', '1/4',
+                '-i', str(sequence / '%02d.png'), '-t', '20', '-r', '24',
+                '-c:v', 'libvpx-vp9', '-crf', '34', '-b:v', '0', '-pix_fmt', 'yuv420p',
+                str(assets / 'webssh-3-tour.webm'),
+            ], check=True)
+        print('webssh-3-tour.webm: five slides, 20s, no audio')
 
 
 if __name__ == '__main__':

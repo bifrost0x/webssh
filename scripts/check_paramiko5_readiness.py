@@ -65,7 +65,7 @@ def _safe_identifier(value):
 
 
 def _safe_metadata_type(value):
-    return value if value in _KNOWN_METADATA_TYPES else 'UNKNOWN'
+    return value if isinstance(value, str) and value in _KNOWN_METADATA_TYPES else 'UNKNOWN'
 
 
 def read_without_migration(user_id, key_path):

@@ -2,6 +2,7 @@ import os
 import secrets
 import ipaddress
 import re
+import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 from datetime import timedelta
@@ -15,6 +16,19 @@ BASE_DIR = Path(__file__).parent
 # override=False ensures real environment variables (Docker, systemd, shell)
 # always take precedence over .env, so existing deployments are unaffected.
 load_dotenv(BASE_DIR / '.env')
+
+
+def _admin_switch_env(name, default):
+    """Parse an environment value that overrides an Admin switch.
+
+    An empty value (for example ``X=`` or ``X=${X:-}`` in Compose) counts as
+    not supplied: it neither locks the Admin switch nor changes the default.
+    """
+    raw_value = os.environ.get(name, '').strip()
+    if not raw_value:
+        return default
+    return raw_value.lower() == 'true'
+
 
 DEPLOYMENT_PROFILE = os.environ.get(
     'DEPLOYMENT_PROFILE',
@@ -52,9 +66,13 @@ WEBAUTHN_ORIGIN = os.environ.get(
 HOST_KEY_MANAGEMENT_ENABLED = (
     os.environ.get('HOST_KEY_MANAGEMENT_ENABLED', 'true').lower() == 'true'
 )
-SERVER_OPERATIONS_ENABLED = (
-    os.environ.get('SERVER_OPERATIONS_ENABLED', 'false').lower() == 'true'
-)
+# Native automation is an explicit operator opt-in.
+AUTOMATION_ENABLED = _admin_switch_env('AUTOMATION_ENABLED', False)
+AUTOMATION_ALLOW_INSECURE_LOOPBACK = os.environ.get(
+    'AUTOMATION_ALLOW_INSECURE_LOOPBACK', 'false'
+).lower() == 'true'
+
+SERVER_OPERATIONS_ENABLED = _admin_switch_env('SERVER_OPERATIONS_ENABLED', False)
 RECOVERY_CODES_ENABLED = (
     os.environ.get('RECOVERY_CODES_ENABLED', 'true').lower() == 'true'
 )
@@ -307,7 +325,7 @@ LDAP_OPERATION_TIMEOUT = _bounded_int_env(
 LDAP_SESSION_REVALIDATION_SECONDS = _bounded_int_env(
     'LDAP_SESSION_REVALIDATION_SECONDS', 300, 60, 3600
 )
-TOTP_ENABLED = os.environ.get('TOTP_ENABLED', 'false').lower() == 'true'
+TOTP_ENABLED = os.environ.get('TOTP_ENABLED', 'true').lower() == 'true'
 OIDC_MFA_AMR_VALUES = _csv_env('OIDC_MFA_AMR_VALUES')
 OIDC_MFA_ACR_VALUES = _csv_env('OIDC_MFA_ACR_VALUES')
 OIDC_PHISHING_RESISTANT_AMR_VALUES = _csv_env(
@@ -431,11 +449,11 @@ _validate_quota_pair(
     False,
 )
 
-# Five permanent cleanup jobs occupy executor slots for the app lifetime.
+# Seven permanent cleanup jobs occupy executor slots for the app lifetime.
 # Reader and transfer capacity must stay available beyond those loops, otherwise
 # an idle cleanup job can starve an accepted SSH session or background transfer.
 BACKGROUND_CLEANUP_JOBS = (
-    5
+    7
     + (1 if LDAP_ENABLED else 0)
     + (
         1
@@ -458,6 +476,16 @@ if BACKGROUND_WORKERS_MIN > BACKGROUND_WORKERS_MAX:
 BACKGROUND_WORKERS = _positive_int_env(
     'BACKGROUND_WORKERS', BACKGROUND_WORKERS_MIN
 )
+if BACKGROUND_WORKERS < BACKGROUND_WORKERS_MIN:
+    # The minimum grows when releases add permanent background jobs. Raising
+    # an explicit value only adds capacity, so existing deployments keep
+    # starting instead of failing on a value that was valid before.
+    print(
+        f'WARNING: BACKGROUND_WORKERS={BACKGROUND_WORKERS} is below the '
+        f'required minimum of {BACKGROUND_WORKERS_MIN}; using '
+        f'{BACKGROUND_WORKERS_MIN}.'
+    )
+    BACKGROUND_WORKERS = BACKGROUND_WORKERS_MIN
 if not BACKGROUND_WORKERS_MIN <= BACKGROUND_WORKERS <= BACKGROUND_WORKERS_MAX:
     raise RuntimeError(
         'CONFIGURATION ERROR: BACKGROUND_WORKERS must be between '
@@ -565,7 +593,7 @@ FILE_CONTROL_MAX_PATH_BYTES = _bounded_int_env(
     'FILE_CONTROL_MAX_PATH_BYTES', 4096, 512, 16 * 1024
 )
 # Explicit operator opt-in; changing permissions requires no-follow support.
-SFTP_CHMOD_ENABLED = os.environ.get('SFTP_CHMOD_ENABLED', 'false').lower() == 'true'
+SFTP_CHMOD_ENABLED = _admin_switch_env('SFTP_CHMOD_ENABLED', False)
 REMOTE_FILENAME_MAX_BYTES = _bounded_int_env(
     'REMOTE_FILENAME_MAX_BYTES', 4096, 255, 16 * 1024
 )
@@ -652,7 +680,8 @@ TAILSCALE_SSH_INTERFACE = os.environ.get(
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 _secret_key = os.environ.get('SECRET_KEY')
-_KNOWN_PLACEHOLDERS = {'<YOUR-SECRET-KEY>', 'changeme', 'secret', 'your-secret-key'}
+# Compared after lower-casing, so every entry is lower case.
+_KNOWN_PLACEHOLDERS = {'<your-secret-key>', 'changeme', 'secret', 'your-secret-key'}
 if not _secret_key or _secret_key.strip().lower() in _KNOWN_PLACEHOLDERS:
     if DEBUG:
         _secret_key = secrets.token_hex(32)
@@ -664,6 +693,24 @@ if not _secret_key or _secret_key.strip().lower() in _KNOWN_PLACEHOLDERS:
         )
 
 SECRET_KEY = _secret_key
+if not DEBUG and len(SECRET_KEY) < 32:
+    # Short keys stay accepted so existing installs keep running, but they
+    # make signed cookies and derived at-rest keys easier to guess offline.
+    print('WARNING: SECRET_KEY is shorter than 32 characters. Generate a longer one with: '
+          'python -c "import secrets; print(secrets.token_hex(32))"', file=sys.stderr)
+
+
+def _cookie_name_env(name, default):
+    value = os.environ.get(name, default)
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', value):
+        raise ValueError(f'{name} must be a non-empty cookie name containing only letters, digits, dots, underscores or hyphens')
+    return value
+
+
+SESSION_COOKIE_NAME = _cookie_name_env('SESSION_COOKIE_NAME', 'session')
+REMEMBER_COOKIE_NAME = _cookie_name_env('REMEMBER_COOKIE_NAME', 'remember_token')
+if SESSION_COOKIE_NAME == REMEMBER_COOKIE_NAME:
+    raise ValueError('SESSION_COOKIE_NAME and REMEMBER_COOKIE_NAME must differ')
 
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
@@ -769,6 +816,20 @@ else:
     CORS_ORIGINS = ['http://localhost:5000', 'http://127.0.0.1:5000']
     if not DEBUG:
         print("INFO: CORS_ORIGINS not set, using localhost only. Set CORS_ORIGINS for other origins.")
+
+# With CORS_ORIGINS='*' the realtime connection still only accepts pages served
+# from the address the browser used for WebSSH itself. Setting this to true
+# accepts any origin again; only for front ends that are deliberately served
+# from another origin. Refused in the production profile.
+SOCKETIO_ALLOW_ANY_ORIGIN = os.environ.get('SOCKETIO_ALLOW_ANY_ORIGIN', 'false').lower() == 'true'
+
+# Manual SSH host discovery in a network range the user names. On by default
+# for homelab installs, off in the production profile unless set explicitly.
+# An empty value counts as unset, like the other switches in .env.example.
+HOST_DISCOVERY_ENABLED = (
+    os.environ.get('HOST_DISCOVERY_ENABLED', '').strip()
+    or ('false' if DEPLOYMENT_PROFILE == 'production' else 'true')
+).lower() == 'true'
 
 RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True') == 'True'
 # Backend for rate-limit counters.
@@ -909,9 +970,12 @@ MAX_RECOVERY_JSON_SIZE = min(
 # When enabled, SSH sessions are wrapped in a tmux session on the remote host.
 # This means commands keep running even if the webssh server restarts.
 # Reconnecting to the same host/user will reattach to the existing tmux session.
-TMUX_ENABLED = os.environ.get('TMUX_ENABLED', 'false').lower() == 'true'
+# tmux is available by default but never preselected: users opt in per
+# connection. Every Compose file shipped before 3.0 set TMUX_ENABLED=true, so
+# this default keeps image-only upgrades and replaced Compose files identical.
+TMUX_ENABLED = _admin_switch_env('TMUX_ENABLED', True)
 TMUX_SESSION_PREFIX = os.environ.get('TMUX_SESSION_PREFIX', 'webssh')
-TMUX_DEFAULT = os.environ.get('TMUX_DEFAULT', 'false').lower() == 'true'
+TMUX_DEFAULT = _admin_switch_env('TMUX_DEFAULT', False)
 
 
 def validate_security_config():
@@ -1213,6 +1277,8 @@ def validate_security_config():
             )
         if ALLOW_CORS_WILDCARD:
             violations.append('ALLOW_CORS_WILDCARD must be false')
+        if SOCKETIO_ALLOW_ANY_ORIGIN:
+            violations.append('SOCKETIO_ALLOW_ANY_ORIGIN must be false')
         if not SESSION_COOKIE_SECURE or not REMEMBER_COOKIE_SECURE:
             violations.append('SESSION_COOKIE_SECURE must be true')
         if REGISTRATION_ENABLED:
@@ -1308,3 +1374,9 @@ def validate_security_config():
 
 
 SECURITY_CONFIG_WARNINGS = validate_security_config()
+
+# Presence is separate from the parsed value: omitted or empty options remain
+# administrable.
+EXPLICIT_ENVIRONMENT_KEYS = frozenset(
+    name for name, value in os.environ.items() if value.strip()
+)

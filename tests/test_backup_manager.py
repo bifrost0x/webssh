@@ -209,6 +209,12 @@ def _write_representative_data(data_dir):
     return files
 
 
+def _exported_fixture_files(files):
+    # The representative source retains keys; portable exports deliberately do not.
+    excluded = {'users/user_1/keys/keys.json', 'users/user_1/keys/key.pem'}
+    return {name: payload for name, payload in files.items() if name not in excluded}
+
+
 def _webssh_database_bytes(tmp_path):
     database_path = tmp_path / 'valid-webssh.db'
     connection = sqlite3.connect(database_path)
@@ -457,6 +463,71 @@ def test_restore_rejects_non_webssh_sqlite_database_before_mutation(tmp_path):
     assert _snapshot(restore_dir) == {'keep.txt': b'keep-current-state'}
 
 
+@pytest.mark.parametrize('schema', [
+    'CREATE TRIGGER imported_trigger AFTER UPDATE ON users BEGIN DELETE FROM users; END',
+    'CREATE VIEW imported_view AS SELECT * FROM users',
+    'CREATE /* comment */ VIRTUAL TABLE imported_search USING fts5(body)',
+    'CREATE VIRTUAL TABLE imported_tree USING rtree(id, min_x, max_x)',
+])
+@pytest.mark.parametrize('recovery', [False, True])
+def test_restore_rejects_executable_schema_before_destination_changes(tmp_path, schema, recovery):
+    database = tmp_path / 'import.db'
+    database.write_bytes(_webssh_database_bytes(tmp_path))
+    with sqlite3.connect(database) as connection:
+        connection.execute(schema)
+    archive = tmp_path / 'unsafe.zip'
+    _write_manifest_archive(archive, {'app.db': database.read_bytes()})
+    destination = tmp_path / 'destination'
+    destination.mkdir()
+    (destination / 'keep.txt').write_bytes(b'original')
+    restore = backup_manager._restore_recovery_snapshot if recovery else restore_backup
+    with pytest.raises(BackupIntegrityError, match='database'):
+        restore(archive, destination)
+    assert _snapshot(destination) == {'keep.txt': b'original'}
+
+
+@pytest.mark.parametrize('sidecar', [
+    'app.db-wal', 'app.db-shm', 'app.db-journal', 'APP.DB-WAL',
+    './app.db-wal', 'app.db-wal.', 'app.db-wal ',
+])
+def test_restore_rejects_sqlite_sidecars_before_mutation(tmp_path, sidecar):
+    archive = tmp_path / 'sidecar.zip'
+    _write_manifest_archive(archive, {
+        'app.db': _webssh_database_bytes(tmp_path), sidecar: b'untrusted sidecar',
+    })
+    destination = tmp_path / 'destination'
+    destination.mkdir()
+    (destination / 'keep.txt').write_bytes(b'original')
+    with pytest.raises(BackupIntegrityError, match='sidecars'):
+        restore_backup(archive, destination)
+    assert _snapshot(destination) == {'keep.txt': b'original'}
+
+
+def test_offline_backup_consolidates_committed_wal_without_data_loss(tmp_path):
+    source = tmp_path / 'source'
+    source.mkdir()
+    (source / 'app.db').write_bytes(_webssh_database_bytes(tmp_path))
+    connection = sqlite3.connect(source / 'app.db')
+    try:
+        connection.execute('PRAGMA journal_mode=WAL')
+        connection.execute('PRAGMA wal_autocheckpoint=0')
+        connection.execute('CREATE TABLE wal_data (value TEXT)')
+        connection.execute("INSERT INTO wal_data VALUES ('committed WAL content')")
+        connection.commit()
+        assert (source / 'app.db-wal').stat().st_size > 0
+        archive = tmp_path / 'wal-backup.zip'
+        manifest = create_backup(source, archive)
+        assert not {item.path for item in manifest.files} & backup_manager.SQLITE_SIDECARS
+        destination = tmp_path / 'restored'
+        restore_backup(archive, destination)
+        with sqlite3.connect(destination / 'app.db') as restored:
+            assert restored.execute('SELECT value FROM wal_data').fetchone() == (
+                'committed WAL content',
+            )
+    finally:
+        connection.close()
+
+
 @pytest.mark.parametrize('command', ('create', 'restore'))
 def test_backup_cli_mutations_reject_a_cross_process_operation_lock(
     app, tmp_path, monkeypatch, command
@@ -559,13 +630,13 @@ def test_create_verify_and_restore_round_trip(tmp_path):
     assert created.format_version == 2
     assert backup_manager.evaluate_backup_compatibility(created).compatible
     assert tuple(item.path for item in created.files) == tuple(
-        sorted(expected_files)
+        sorted(_exported_fixture_files(expected_files))
     )
     assert archive.is_file()
 
     restored_dir = tmp_path / 'restored'
     restore_backup(archive, restored_dir)
-    assert _snapshot(restored_dir) == expected_files
+    assert _snapshot(restored_dir) == _exported_fixture_files(expected_files)
 
 
 def test_create_repetitive_backup_verifies_and_restores_without_changing_source(tmp_path):
@@ -584,7 +655,7 @@ def test_create_repetitive_backup_verifies_and_restores_without_changing_source(
     assert verify_backup(archive) == manifest
     assert _snapshot(data_dir) == expected
     restore_backup(archive, tmp_path / 'restored')
-    assert _snapshot(tmp_path / 'restored') == expected
+    assert _snapshot(tmp_path / 'restored') == _exported_fixture_files(expected)
 
 
 def test_backup_roundtrip_preserves_sqlite_free_pages_and_mixed_members(tmp_path):
@@ -606,7 +677,7 @@ def test_backup_roundtrip_preserves_sqlite_free_pages_and_mixed_members(tmp_path
         assert backup.getinfo('data/app.db').compress_type == zipfile.ZIP_STORED
         assert backup.getinfo('data/binary.bin').compress_type == zipfile.ZIP_DEFLATED
     restore_backup(archive, tmp_path / 'restored')
-    assert _snapshot(tmp_path / 'restored') == expected
+    assert _snapshot(tmp_path / 'restored') == _exported_fixture_files(expected)
     assert _snapshot(data_dir) == expected
 
 
@@ -628,9 +699,9 @@ def test_backup_excludes_runtime_only_files(tmp_path):
     restore_backup(archive, restored_dir)
 
     assert tuple(item.path for item in manifest.files) == tuple(
-        sorted(expected_files)
+        sorted(_exported_fixture_files(expected_files))
     )
-    assert _snapshot(restored_dir) == expected_files
+    assert _snapshot(restored_dir) == _exported_fixture_files(expected_files)
 
 
 def test_restore_discards_current_and_archived_ldap_revocation_fences(
@@ -762,7 +833,7 @@ def test_restore_streams_stage_commit_and_rollback_files(
 
     restore_backup(archive, restore_dir)
 
-    assert _snapshot(restore_dir) == expected
+    assert _snapshot(restore_dir) == _exported_fixture_files(expected)
 
 
 def test_create_rejects_symlinks_without_publishing_archive(tmp_path):
@@ -950,7 +1021,7 @@ def test_restore_removes_stale_persistent_files_but_keeps_runtime_files(
         for path, payload in _snapshot(restore_dir).items()
         if path.split('/', 1)[0] not in {'logs', 'tmp'}
     }
-    assert persistent_snapshot == expected
+    assert persistent_snapshot == _exported_fixture_files(expected)
 
 
 def test_restore_reverifies_staged_bytes_before_active_writes(
@@ -1114,7 +1185,7 @@ def test_restore_stages_in_private_recovery_storage_with_read_only_app_root(tmp_
 
     monkeypatch.setattr(backup_manager.tempfile, 'TemporaryDirectory', require_writable_volume)
     restore_backup(archive, destination)
-    assert _snapshot(destination) == expected
+    assert _snapshot(destination) == _exported_fixture_files(expected)
     assert staging and all(path.is_relative_to(tmp_path / 'recovery') for path in staging)
 
 
@@ -1205,3 +1276,34 @@ def test_cli_backup_does_not_redirect_storage_errors_or_explicit_paths(
     assert len(attempted) == 1
     if explicit:
         assert attempted[0] == destination
+
+
+@pytest.mark.parametrize('recovery_snapshot', (False, True))
+def test_cli_restore_keeps_private_material_only_for_recovery_snapshots(
+    tmp_path, monkeypatch, recovery_snapshot
+):
+    import config
+
+    # A separate DATA_DIR: no in-process app may hold app.db open.
+    data_dir = tmp_path / 'data'
+    _write_representative_data(data_dir)
+    archive = tmp_path / 'rollback.zip'
+    backup_manager._create_recovery_snapshot(data_dir, archive)
+    key_file = data_dir / 'users/user_1/keys/key.pem'
+    key_file.write_bytes(b'changed-after-snapshot')
+    monkeypatch.setattr(config, 'BACKUP_TEMP_DIR', tmp_path / 'operations')
+    arguments = ['backup', 'restore', str(archive), '--confirm-offline']
+    if recovery_snapshot:
+        arguments.append('--recovery-snapshot')
+
+    result = _maintenance_cli(
+        data_dir,
+        *arguments,
+        environment_overrides={'BACKUP_TEMP_DIR': str(config.BACKUP_TEMP_DIR)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    if recovery_snapshot:
+        assert key_file.read_bytes() == b'encrypted-private-key'
+    else:
+        assert not key_file.exists()

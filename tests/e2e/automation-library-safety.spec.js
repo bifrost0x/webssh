@@ -1,0 +1,23 @@
+const {test,expect}=require('playwright/test');
+const {login,assertNoExternalRequests}=require('./helpers');
+test('library treats names as text and failed deletion preserves unrelated drafts',async({page})=>{
+ await login(page,'e2e_admin',{workspace:false});
+ const hostile='<img src=x onerror="window.workflowInjected=true">';
+ const books=[{id:'a',name:'Alpha',steps:[{name:'Identity',command:'id',timeout:30}]},{id:'b',name:hostile,steps:[{name:hostile,command:'id',timeout:30}]}];
+ await page.route('**/api/automation/state',r=>r.fulfill({json:{enabled:true,runbooks:books,profiles:[]}}));
+ await page.route('**/api/automation/runs',r=>r.fulfill({json:{runs:[]}}));
+ await page.route('**/api/automation/schedules',r=>r.fulfill({json:{schedules:[]}}));
+ let release,seen;const gate=new Promise(r=>release=r),requested=new Promise(r=>seen=r);let deletes=0;
+ await page.route('**/api/automation/runbooks/b',async r=>{deletes++;expect(r.request().method()).toBe('DELETE');expect(r.request().headers()['x-csrftoken']).toBeTruthy();seen();await gate;await r.fulfill({status:409,json:{code:'storage_unavailable'}});});
+ await page.goto('/automation');
+ await page.locator('.automation-library-item').filter({hasText:'Alpha'}).getByRole('button',{name:'Edit',exact:true}).click();
+ await page.locator('#runbookName').fill('Unsaved Alpha');await page.locator('#backToWorkflows').click();
+ const row=page.locator('.automation-library-item').filter({hasText:hostile});
+ await expect(row).toHaveCount(1);await expect(row.locator('img')).toHaveCount(0);
+ await row.getByRole('button',{name:'Delete',exact:true}).click();await expect(page.locator('#automationPrompt')).toContainText(hostile);
+ await page.locator('#promptForm button[type=submit]').click();await requested;
+ await expect(row.getByRole('button',{name:'Delete',exact:true})).toBeDisabled();
+ release();await expect(page.locator('#automationError')).toBeVisible();await expect(row).toHaveCount(1);
+ await page.locator('[data-auto-tab=runbooks]').click();await expect(page.locator('#runbookName')).toHaveValue('Unsaved Alpha');
+ expect(deletes).toBe(1);expect(await page.evaluate(()=>window.workflowInjected)).toBeUndefined();await assertNoExternalRequests(page);
+});

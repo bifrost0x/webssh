@@ -67,6 +67,7 @@
                 if (!edited) write(text);
             },
             reconnect: save,
+            retry: save,
             hasUnsaved: () => dirty,
             render: () => status(state),
         };

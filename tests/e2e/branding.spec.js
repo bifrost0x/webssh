@@ -1,7 +1,7 @@
 const {test, expect} = require('playwright/test');
 const {login, installExternalRequestGuard, assertNoExternalRequests} = require('./helpers');
 
-const themes = ['glass', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'obsidian', 'retro', 'cyberpunk-neon', 'emerald-matrix'];
+const themes = ['glass','werkbank', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'obsidian', 'retro', 'cyberpunk-neon', 'emerald-matrix'];
 
 test.afterEach(async ({page}) => assertNoExternalRequests(page));
 
@@ -28,6 +28,7 @@ test('the shared SVG actually inherits colors, without reloading its artwork', a
                 prompt: style.getPropertyValue('--brand-accent').trim(),
                 themeAccent: getComputedStyle(document.body).getPropertyValue('--ws2-accent').trim()};
         });
+        // The restored authentication page uses the theme accent on its logo.
         expect(state.prompt, theme).toBe(state.themeAccent);
         expect(state.width, theme).toBe(64);
         expect(state.height, theme).toBe(64);
@@ -45,7 +46,7 @@ test('branding fits authentication, settings and workspace at mobile and desktop
             await expect(logo).toBeVisible();
             const size = await logo.boundingBox();
             expect(size.width).toBe(size.height);
-            expect(size.width).toBe(route === '/change-password' ? (width === 390 ? 56 : 64) : (width === 390 && route === '/' ? 30 : 32));
+            expect(size.width).toBe(route === '/change-password' ? (width === 390 ? 56 : 64) : (route === '/' ? (width === 390 ? 30 : 32) : 28));
             await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', /^data:image\/svg\+xml,/);
             expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         }

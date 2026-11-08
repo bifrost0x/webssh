@@ -354,6 +354,8 @@
     position: sticky;
     top: 0;
     min-height: calc(100dvh - 58px);
+    max-height: calc(100dvh - 58px);
+    overflow-y: auto;
     padding: 20px 12px 28px;
     border-right: 1px solid var(--border-color);
     background: color-mix(in srgb, var(--bg-secondary) 86%, var(--bg-primary));
@@ -598,7 +600,7 @@
 @media (min-width: 1500px) {
     .settings-center-content {
         display: grid;
-        grid-template-columns: minmax(720px, 1.65fr) minmax(290px, .55fr);
+        grid-template-columns: minmax(0, 1fr) 300px;
         align-items: start;
         gap: 24px;
     }
@@ -847,10 +849,11 @@
 }
 
 .admin-action-menu .admin-actions {
-    position: absolute;
+    position: fixed;
     z-index: 20;
-    top: calc(100% + 6px);
-    right: 0;
+    margin: 0;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
     display: grid;
     width: 180px;
     padding: 6px;
@@ -1142,6 +1145,8 @@
     .admin-navigation {
         position: static;
         min-height: 0;
+        max-height: none;
+        overflow-y: visible;
         padding: 10px;
         border-right: 0;
         border-bottom: 1px solid var(--border-color);
@@ -1312,3 +1317,9 @@ p.operations-metric-note { margin: 8px 0 0; }
     /* Reauthentication must remain above the restore confirmation requesting it. */
     z-index: 9010;
 }
+
+.admin-policy-source { font-size: .85rem; line-height: 1.5; overflow-wrap: anywhere; }
+.admin-policy-source a, .admin-feature-config a { color: var(--accent-primary); text-decoration: underline; }
+
+/* The label states what the switch currently does. */
+.admin-switch input:not(:checked) ~ .admin-switch-on, .admin-switch input:checked ~ .admin-switch-off { display: none; }

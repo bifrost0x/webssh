@@ -82,6 +82,6 @@ test('terminal drop prompts once and binds the target before any upload', async 
     await page.locator('#dropUploadPath').fill('/chosen');
     await page.evaluate(() => { SessionManager.getWorkspaceSession = () => 'first'; });
     await page.locator('#dropUploadForm button[type="submit"]').click();
-    expect(await page.evaluate(() => window.__reviewUploads.map(([source, file, path]) => ({source, name: file.name, path}))))
+    await expect.poll(() => page.evaluate(() => window.__reviewUploads.map(([source, file, path]) => ({source, name: file.name, path}))))
         .toEqual([{source: 'sftp-session:active', name: 'note.txt', path: '/chosen/note.txt'}]);
 });

@@ -24,6 +24,8 @@ Treat `SECRET_KEY` as long-lived installation state. Replacing it without the su
 |---|---|
 | `CORS_ORIGINS` | Comma-separated Socket.IO/browser origin allowlist |
 | `ALLOW_CORS_WILDCARD` | Allows `*`; homelab-only and rejected as a production origin policy |
+| `HOST_DISCOVERY_ENABLED` | Offers manual SSH host discovery in a network range under Hosts → Find hosts | `true`; `false` in production |
+| `SOCKETIO_ALLOW_ANY_ORIGIN` | With `CORS_ORIGINS=*`, realtime connections accept only pages served from the address used for WebSSH. `true` accepts any origin again; rejected in production | `false` |
 | `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none |
 | `SESSION_COOKIE_SECURE` | Sends the session cookie only over HTTPS |
 | `SESSION_TIMEOUT` | Idle SSH session timeout in seconds; default `1800` |
@@ -48,7 +50,7 @@ Prefer `flask create-admin` for controlled deployments. Public registration is i
 | `BLOCK_INTERNAL_SSH` | Blocks SSH connections to loopback, private, link-local, and other protected targets according to the network policy |
 | `SSH_ALLOWED_INTERNAL_NETWORKS` | Comma-separated private networks (CIDR or single addresses) that stay reachable while `BLOCK_INTERNAL_SSH=true`; see below |
 | `PROXY_JUMP_REMOTE_DNS_ALLOWLIST` | Exact hostnames a trusted bastion may resolve remotely |
-| `SERVER_OPERATIONS_ENABLED` | Default `false`; enables reviewed, step-up protected service/container actions, process TERM and reboot on owned SSH sessions |
+| `SERVER_OPERATIONS_ENABLED` | Optional authoritative environment override; otherwise Admin → Integrations controls reviewed, step-up protected service/container actions, process TERM and reboot. Product default: `false` |
 
 `BLOCK_INTERNAL_SSH=true` is appropriate for an Internet-facing gateway but can conflict with homelab use. Resolve and validate the exact target policy before enabling it. Host-key verification remains a separate control.
 
@@ -61,7 +63,7 @@ Prefer `flask create-admin` for controlled deployments. Public registration is i
 | `GUNICORN_THREADS` | `64` | Supported range `8` to `256` |
 | `MAX_SOCKET_CONNECTIONS` | `48` | Global admitted Socket.IO connections |
 | `MAX_SOCKET_CONNECTIONS_PER_USER` | `8` | Per-user Socket.IO connections |
-| `BACKGROUND_WORKERS` | Calculated baseline | Bounded executor; minimum is cleanup jobs plus global SSH-session and background-job quotas |
+| `BACKGROUND_WORKERS` | Calculated baseline | Bounded executor; minimum is cleanup jobs plus global SSH-session and background-job quotas. A lower explicit value is raised to the minimum with a startup warning |
 | `RUNTIME_SHUTDOWN_GRACE_SECONDS` | `5` | Graceful shutdown window; supported range `1` to `30` seconds |
 
 Production requires exactly one Gunicorn worker with `gthread`. Live SSH channels and part of the coordination state are process-local. Increasing worker count does not scale WebSSH safely.
@@ -153,7 +155,7 @@ additional Socket.IO connections.
 | `MAX_PREVIEW_TAIL_LINES` | `10000` |
 | `MAX_SUPPORTED_FILE_SIZE` | `1073741824` (1 GiB) |
 | `SFTP_OPERATION_TIMEOUT` | `30` seconds |
-| `SFTP_CHMOD_ENABLED` | `false`; instance-wide opt-in for SFTP Unix permissions, requiring `lsetstat@openssh.com` v1; separate file/folder modes, optional recursive preview jobs with bounded resource use; SFTP only |
+| `SFTP_CHMOD_ENABLED` | Optional authoritative override; otherwise Admin → Integrations controls SFTP Unix permissions (product default `false`), requiring `lsetstat@openssh.com` v1; separate file/folder modes, optional recursive preview jobs with bounded resource use; SFTP only |
 | `SFTP_MAX_PACKET_BYTES` | `1048576` (1 MiB) |
 | `SFTP_MAX_HANDLE_BYTES` | `16384` (16 KiB) |
 | `MAX_EDITOR_FILE_SIZE` | `5242880` (5 MiB) |
@@ -172,13 +174,9 @@ additional Socket.IO connections.
 
 Bulk uploads and downloads are streamed over HTTP; Socket.IO carries control events and bounded editor content rather than entire files. Align proxy request-body and timeout limits with WebSSH when increasing an application limit.
 
-To enable chmod in Docker Compose, uncomment the existing
-`SFTP_CHMOD_ENABLED=true` line under `environment` and recreate the service;
-changing `.env` alone does not pass this optional setting into the container.
-For a source install, set the variable in the process environment or `.env` and
-restart WebSSH. This grants no extra remote privileges and does not enable SMB
-ACL editing. See [Unix permissions](SFTP-File-Workspace-and-Transfers#unix-permissions)
-for activation, normal use, supported servers and security boundaries.
+Enable file permission changes under **Settings → Administration → Integrations**.
+`SFTP_CHMOD_ENABLED` is an optional authoritative environment override, not a
+required activation step. See [Unix permissions](SFTP-File-Workspace-and-Transfers#unix-permissions).
 
 SFTP directory responses are paged. Declared protocol packet and opaque handle
 size, raw entry count (including `.` and `..`), filename, longname, aggregate
@@ -204,8 +202,8 @@ and jump-host key references remain ownership checked.
 
 | Variable | Default or purpose |
 |---|---|
-| `TMUX_ENABLED` | `false`; enables persistent remote tmux sessions |
-| `TMUX_DEFAULT` | `false`; preselects tmux in the connection dialog |
+| `TMUX_ENABLED` | Optional override of Admin → Integrations; product default `true` (tmux available) |
+| `TMUX_DEFAULT` | Optional override of Admin → Integrations; product default `false` (not preselected) |
 | `TMUX_SESSION_PREFIX` | `webssh` |
 | `HOST_KEY_MANAGEMENT_ENABLED` | `true` |
 | `RECOVERY_CODES_ENABLED` | `true` |
@@ -269,3 +267,75 @@ docker compose \
 ```
 
 Add `-f docker-compose.ldap.yml` when LDAP is enabled. Confirm the effective bind address, origins, cookie mode, registration state, proxy trust, volumes, and secret files before starting the service.
+
+
+## Runtime settings and existing Compose files
+
+Manage file permission changes, server operations, tmux availability and the
+initial tmux selection under **Settings → Administration → Integrations**.
+Sensitive changes require administrator reauthentication and are audited.
+
+For `SFTP_CHMOD_ENABLED`, `SERVER_OPERATIONS_ENABLED`, `TMUX_ENABLED` and
+`TMUX_DEFAULT`, priority is: explicitly supplied environment value, saved Admin
+setting, product default. Both explicit `true` and explicit `false` lock the UI;
+an empty value counts as not supplied.
+Compose/environment includes variables passed by Docker, systemd, a shell or the
+application's `.env`; the application cannot identify which file supplied them.
+Settings shows the key, effective value, stored value and source. Edit or remove
+the variable and recreate the container to release the lock. Existing sessions
+remain open; reload clients and reconnect SFTP after changing capabilities.
+
+Until an administrator changes a switch, its stored value follows the last
+explicit environment value, so removing the variable keeps the behavior the
+operator set last. An administrator's own choice is retained under an override
+and becomes effective again when that override is removed. Without the variable,
+an administrator can enable the feature in the web interface; set it explicitly
+to `false` to keep it off. Older Compose files do not need replacing.
+Server actions and chmod are off by default; tmux is available by default and
+never preselected, matching every Compose file shipped before 3.0.
+Disabling server operations prevents new actions without undoing commands already
+sent to a server. Remote account privileges are never expanded by these switches.
+
+`AUTOMATION_ENABLED` follows the same rule. `REGISTRATION_ENABLED` remains only
+the initial value, as in 2.x: a choice saved in Administration wins, and the
+production profile always prohibits public self-registration. Password storage
+remains an Admin policy. Authentication features retain their separate deployment-capability,
+readiness and Admin-activation checks: allowing a capability does not enroll users
+or bypass provider, HTTPS, origin, RP-ID or recovery checks. Networking, identity
+provider trust, secrets, resource ceilings, mounts and backup recovery paths remain
+deployment configuration. Audit retention is already managed in Administration.
+
+TOTP capability is available by default in 3.0; Admin activation remains off
+until explicitly enabled. `TOTP_ENABLED=false` is the optional operator kill
+switch. Existing enrolled users and saved activation choices are retained.
+
+
+### Existing deployments and new installations
+
+Updating an existing deployment's image through `latest` does not replace its
+Compose file. Keep that file and its custom values. With an old Compose that
+sets `TMUX_ENABLED=true`, version 3.0 continues to use `true`. Administration
+shows Compose/environment as the authoritative source, the exact variable,
+the effective value and the saved Admin value. The switch remains locked while
+the override exists. The first 3.0 start saves the supplied value if no Admin
+value exists; subsequent image updates do not replace saved Admin choices.
+This behavior also applies to `TMUX_DEFAULT`, file permissions and server actions.
+
+The current example Compose is for new installations. It leaves the runtime
+feature overrides commented out so administrators can manage them immediately
+in Administration → Integrations. Product defaults apply until an Admin value
+is saved: tmux available but not preselected; file permissions and server
+operations off. The defaults match the previous example Compose, so replacing
+an old Compose file does not change tmux behavior. See the upgrade table in
+the WebSSH 3 notes for all upgrade paths.
+Network, authentication and other advanced deployment examples remain present.
+
+Moving an existing deployment to Admin-managed settings is optional: start 3.0
+with its original Compose, inspect the saved values, then remove only the
+corresponding environment entries and recreate the container. The saved values
+become effective. The rest of the deployment file stays intact.
+
+Do not replace a customized old Compose with a new-installation template during
+an image upgrade. Removed historical environment values cannot be reconstructed
+if version 3.0 has never seen them. If a saved Admin value differs from the
+current override, inspect it before removing the override.

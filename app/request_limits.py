@@ -28,6 +28,12 @@ def _policy_for_request():
         limit = config.MAX_RECOVERY_JSON_SIZE
     elif request.blueprint == "webauthn":
         limit = config.MAX_WEBAUTHN_JSON_SIZE
+    elif request.endpoint == "host_context.context":
+        limit = 1024 * 1024
+    elif request.endpoint in {
+        "profile_exchange.preview", "profile_exchange.import_hosts",
+    }:
+        limit = 512 * 1024
     elif request.endpoint == "admin_backup.upload_backup":
         limit = config.BACKUP_UPLOAD_MAX_SIZE
     elif request.endpoint in _STREAMING_ENDPOINTS:

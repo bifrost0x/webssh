@@ -11,6 +11,7 @@ from .auth_redirects import public_continuation
 from flask import Blueprint, abort, jsonify, redirect, render_template, request, session
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import insert, literal, select
 
 import config
 
@@ -24,6 +25,7 @@ from .auth_assurance import AssuranceLevel
 from .decorators import admin_required, step_up_required
 from .github_auth_service import (
     GitHubConfigurationError,
+    auto_provision_unrestricted,
     GitHubOrganizationRejected,
     GitHubProviderError,
     GitHubStateError,
@@ -37,7 +39,7 @@ from .github_auth_service import (
     github_auth_is_active,
     update_settings,
 )
-from .models import GitHubIdentity, User, db
+from .models import AuthenticationSession, GitHubIdentity, User, as_naive_utc, db
 
 
 github_auth_blueprint = Blueprint('github_auth', __name__)
@@ -75,6 +77,12 @@ def _begin_authorization(
     challenge = base64.urlsafe_b64encode(
         hashlib.sha256(verifier.encode('ascii')).digest()
     ).decode('ascii').rstrip('=')
+    auth_session = None
+    if purpose == 'link':
+        from .auth_assurance import current_authentication_session
+        auth_session = current_authentication_session()
+        if auth_session is None or auth_session.user_id != user_id:
+            abort(403)
     create_oauth_state(
         state=state,
         session_binding=_binding(),
@@ -84,6 +92,8 @@ def _begin_authorization(
         user_id=user_id,
         step_up_intent_id=step_up_intent_id,
         continuation=continuation,
+        auth_generation=auth_session.auth_generation if auth_session else None,
+        authentication_session_id=auth_session.id if auth_session else None,
     )
     return authorization_url(settings, state=state, code_challenge=challenge)
 
@@ -195,6 +205,16 @@ def _auto_provision(profile):
 def _complete_link(intent, profile):
     if not current_user.is_authenticated or current_user.id != intent.user_id:
         return jsonify({'error': 'GitHub account linking failed'}), 403
+    from .auth_assurance import current_authentication_session
+    auth_session = current_authentication_session()
+    target = db.session.get(User, current_user.id, populate_existing=True)
+    if (
+        target is None or target.is_locked or auth_session is None
+        or auth_session.id != intent.authentication_session_id
+        or auth_session.auth_generation != intent.auth_generation
+        or int(target.auth_generation or 0) != intent.auth_generation
+    ):
+        return jsonify({'error': 'GitHub account linking failed'}), 403
     if current_user.is_ldap_managed:
         return jsonify({'error': 'GitHub cannot be linked to this account'}), 409
     existing = GitHubIdentity.query.filter(
@@ -207,15 +227,29 @@ def _complete_link(intent, profile):
             user=current_user.username, github_user_id=profile.user_id,
         )
         return jsonify({'error': 'GitHub identity is already linked'}), 409
-    row = GitHubIdentity(
-        user_id=current_user.id,
-        github_user_id=profile.user_id,
-        login=profile.login,
-        display_name=profile.display_name,
-        last_verified_at=datetime.now(timezone.utc),
-    )
-    db.session.add(row)
     try:
+        now = as_naive_utc(datetime.now(timezone.utc))
+        eligible = select(
+            User.id, literal(profile.user_id), literal(profile.login),
+            literal(profile.display_name), literal(now),
+        ).select_from(User).join(
+            AuthenticationSession, AuthenticationSession.user_id == User.id,
+        ).where(
+            User.id == target.id,
+            User.is_locked.is_(False),
+            User.auth_generation == intent.auth_generation,
+            ~User.ldap_identity.has(),
+            AuthenticationSession.id == intent.authentication_session_id,
+            AuthenticationSession.auth_generation == intent.auth_generation,
+            AuthenticationSession.expires_at > now,
+        )
+        result = db.session.execute(insert(GitHubIdentity).from_select(
+            ['user_id', 'github_user_id', 'login', 'display_name', 'last_verified_at'],
+            eligible,
+        ))
+        if result.rowcount != 1:
+            db.session.rollback()
+            return jsonify({'error': 'GitHub account linking failed'}), 403
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -242,7 +276,8 @@ def _complete_login(intent, profile, settings):
         github_user_id=profile.user_id
     ).first()
     if identity is None:
-        if not settings.auto_provision:
+        # Settings stored before this rule existed fail closed in production as well.
+        if not settings.auto_provision or auto_provision_unrestricted(settings.auto_provision, settings.allowed_orgs):
             log_security_event(
                 'GITHUB_IDENTITY_REJECTED', level=logging.WARNING,
                 github_user_id=profile.user_id, reason='unlinked',

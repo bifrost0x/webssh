@@ -77,7 +77,10 @@ For automation, `--password-file` accepts a private regular non-symlink file.
 The command does not print or audit the password.
 
 `ADMIN_USERS` is a compatibility option that promotes listed existing users on
-startup. Prefer the explicit CLI for normal administration.
+startup. Prefer the explicit CLI for normal administration. Locked accounts are
+not promoted, and a listed name without an account is reported as a warning:
+remove it or create the account, because whoever registers that name later
+would otherwise become an administrator on the next start.
 
 ## Registration modes
 

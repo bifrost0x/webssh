@@ -102,8 +102,6 @@ class BoundedSFTPClient(paramiko.SFTPClient):
             raise SFTPError('Invalid SFTP version response')
         version = struct.unpack('>I', data[:4])[0]
         self.server_extensions = {}
-        if not config.SFTP_CHMOD_ENABLED:
-            return version
         offset = 4
         extensions = {}
         pairs = 0
@@ -251,3 +249,24 @@ def wait_for_exit_status(channel, *, timeout, poll_interval=0.05):
             raise socket.timeout('SSH command exit status exceeded its deadline')
         time.sleep(min(poll_interval, remaining))
     return channel.recv_exit_status()
+
+def open_exec_channel(transport, command, *, timeout, before_exec=None):
+    """Open one noninteractive command channel with bounded request waits."""
+    import time
+    deadline = time.monotonic() + timeout
+    channel = transport.open_session(timeout=timeout)
+    remaining = max(0, deadline - time.monotonic())
+    channel.settimeout(remaining)
+    guard = _request_guard(channel, remaining)
+    try:
+        if time.monotonic() >= deadline:
+            raise socket.timeout('SSH exec request exceeded its deadline')
+        if before_exec is not None:
+            before_exec()
+        channel.exec_command(command)  # nosec B601 -- explicit user-authored remote runbook
+    except BaseException:
+        channel.close()
+        raise
+    finally:
+        guard.cancel()
+    return channel

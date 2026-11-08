@@ -81,6 +81,7 @@ for (const width of [1536, 390]) {
         await command.locator('.cmd-edit').click();
         await expect(page.locator('#commandFormParams')).toHaveValue('edited');
         await page.locator('#cancelCommandFormBtn').click();
+        await command.locator('.command-row-menu > summary').click();
         await command.locator('.cmd-delete').click();
         await expect(page.locator('.command-set-confirm-dialog')).toBeVisible();
         await page.locator('.command-set-confirm-dialog .btn-danger').click();
@@ -101,6 +102,7 @@ for (const width of [1536, 390]) {
         await openProfileManagement(page);
         await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
         const name = `Persistence bastion ${width}`;
+        await page.locator('#jumpResourceNew').click();
         await page.locator('#jhNameInput').fill(name);
         await page.locator('#jhHostInput').fill('bastion.example');
         await page.locator('#jhPortInput').fill('2222');

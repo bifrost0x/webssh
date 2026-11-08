@@ -86,6 +86,8 @@ class GitHubIntent:
     step_up_intent_id: int | None
     continuation: str
     configuration_generation: int
+    auth_generation: int | None = None
+    authentication_session_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -216,6 +218,11 @@ def github_auth_is_active():
         return False
 
 
+def auto_provision_unrestricted(auto_provision, allowed_orgs):
+    """True when any GitHub account could create a WebSSH account on a production instance."""
+    return bool(auto_provision) and not allowed_orgs and config.DEPLOYMENT_PROFILE == 'production'
+
+
 def update_settings(data, admin_id):
     if not isinstance(data, dict):
         raise GitHubConfigurationError('Invalid GitHub configuration payload')
@@ -253,6 +260,11 @@ def update_settings(data, admin_id):
         row.allowed_orgs_json = json.dumps(
             _normalize_orgs(data['allowed_orgs']), separators=(',', ':')
         )
+    if auto_provision_unrestricted(row.auto_provision, json.loads(row.allowed_orgs_json or '[]')):
+        # Production keeps sign-up closed; automatic accounts need an organization limit there.
+        raise GitHubConfigurationError(
+            'Automatic account creation requires at least one allowed organization in production'
+        )
     if (
         'clear_client_secret' in data
         and type(data['clear_client_secret']) is not bool
@@ -287,6 +299,7 @@ def update_settings(data, admin_id):
 def create_oauth_state(
     *, state, session_binding, code_verifier, purpose, generation,
     user_id=None, step_up_intent_id=None, continuation='/', now=None,
+    auth_generation=None, authentication_session_id=None,
 ):
     if purpose not in _PURPOSES:
         raise GitHubStateError('OAuth purpose is invalid')
@@ -296,6 +309,11 @@ def create_oauth_state(
         raise GitHubStateError('Login state contains account context')
     if purpose == 'link' and (not isinstance(user_id, int) or step_up_intent_id is not None):
         raise GitHubStateError('Link state is invalid')
+    if purpose == 'link' and (
+        type(auth_generation) is not int or auth_generation < 0
+        or type(authentication_session_id) is not int or authentication_session_id < 1
+    ):
+        raise GitHubStateError('Link authentication is unavailable')
     if purpose == 'step_up' and (user_id is not None or not isinstance(step_up_intent_id, int)):
         raise GitHubStateError('Step-up state is invalid')
     now = as_naive_utc(now or datetime.now(timezone.utc))
@@ -312,6 +330,8 @@ def create_oauth_state(
             step_up_intent_id=step_up_intent_id,
             continuation=_safe_continuation(continuation),
             configuration_generation=int(generation),
+            auth_generation=auth_generation if purpose == 'link' else None,
+            authentication_session_id=authentication_session_id if purpose == 'link' else None,
             expires_at=now + _STATE_TTL,
         )
         db.session.add(row)
@@ -332,6 +352,7 @@ def consume_oauth_state(*, state, session_binding, generation, now=None):
             row.code_verifier, row.purpose, row.user_id,
             row.step_up_intent_id, _safe_continuation(row.continuation),
             row.configuration_generation,
+            row.auth_generation, row.authentication_session_id,
         )
         expires_at = row.expires_at
         db.session.delete(row)

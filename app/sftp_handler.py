@@ -188,11 +188,16 @@ def mutation_session(identifier, *, timeout=10.0, authorize=None):
 
 @contextmanager
 def open_exclusive_file(sftp, path, *, mode=0o600):
-    """Create privately without TRUNC and observe the CLOSE acknowledgement."""
+    """Create exclusively without TRUNC and observe the CLOSE acknowledgement.
+
+    ``mode=None`` sends no permission attribute, so the server applies its
+    normal default (umask or a forced ``internal-sftp -m`` mode).
+    """
     from paramiko import SFTPFile
 
     attributes = SFTPAttributes()
-    attributes.st_mode = mode
+    if mode is not None:
+        attributes.st_mode = mode
     command, message = sftp._request(
         CMD_OPEN, sftp._adjust_cwd(path),
         SFTP_FLAG_WRITE | SFTP_FLAG_CREATE | SFTP_FLAG_EXCL, attributes,
@@ -1289,6 +1294,112 @@ def create_directory(session_id, remote_path):
         return False, public_sftp_error(e)
 
 
+@contextmanager
+def atomic_transfer_writer(sftp, path, temporary_path, *, replace, cancelled=None):
+    """Stage, then publish atomically; replacements keep the old permissions.
+
+    A new file gets the server's default permissions, exactly as a plain
+    SFTP upload would. A replacement is staged with 0600, then receives the
+    destination's previous mode before the atomic rename. A server that
+    forces its own create mode is accepted only if the staged file is not
+    more permissive than the file it replaces.
+    """
+    def destination_stat():
+        try:
+            return sftp.lstat(path)
+        except FileNotFoundError:
+            return None
+        except OSError as error:
+            if error.errno == errno.ENOENT:
+                return None
+            raise
+
+    def destination_metadata():
+        info = destination_stat()
+        if info is None:
+            return None
+        metadata = permission_snapshot(info)
+        if metadata['object_type'] != 'file' or metadata['special_bits']:
+            raise AtomicOverwriteUnavailable('atomic replacement is unavailable')
+        return metadata
+
+    original = destination_metadata() if replace else None
+
+    def check_unchanged():
+        try:
+            current = destination_metadata()
+        except (FileMutationError, AtomicOverwriteUnavailable) as error:
+            raise UploadConflict('destination changed during transfer') from error
+        if current != original:
+            raise UploadConflict('destination changed during transfer')
+
+    created = False
+    publishing = False
+    try:
+        staging_mode = 0o600 if original is not None else None
+        with open_exclusive_file(sftp, temporary_path, mode=staging_mode) as remote_file:
+            created = True
+            staged = permission_snapshot(remote_file.stat())
+            if staged['object_type'] != 'file' or staged['special_bits']:
+                raise SFTPOperationError('Staged upload permissions are unsafe')
+            # New content may never be more widely accessible to group or others
+            # while staged than the file it replaces, even on servers that force
+            # a create mode. The owner's bits do not widen exposure: a read-only
+            # original (0444, 0400) is still staged writable for the owner.
+            if original is not None and int(staged['mode'], 8) & ~int(original['mode'], 8) & 0o077:
+                raise SFTPOperationError('Private staging permissions unavailable')
+            yield remote_file
+            if cancelled and cancelled():
+                raise TransferCancelled()
+            if original is not None:
+                check_unchanged()
+                staged = permission_snapshot(remote_file.stat())
+                if staged.get('uid') != original.get('uid'):
+                    raise AtomicOverwriteUnavailable('atomic replacement is unavailable')
+                try:
+                    # Shared directories often give new files the user's primary
+                    # group; an owner who belongs to the original group may restore it.
+                    if staged.get('gid') != original.get('gid'):
+                        remote_file.chown(int(original['uid']), int(original['gid']))
+                    remote_file.chmod(int(original['mode'], 8))
+                except (IOError, OSError, TypeError, ValueError) as error:
+                    raise AtomicOverwriteUnavailable('atomic replacement is unavailable') from error
+                verified = permission_snapshot(remote_file.stat())
+                if any(verified.get(key) != original.get(key) for key in ('uid', 'gid')):
+                    raise AtomicOverwriteUnavailable('atomic replacement is unavailable')
+                if verified['mode'] != original['mode'] or verified['special_bits']:
+                    raise AtomicOverwriteUnavailable('atomic replacement is unavailable')
+        if cancelled and cancelled():
+            raise TransferCancelled()
+        if original is not None:
+            check_unchanged()
+            try:
+                publishing = True
+                sftp.posix_rename(temporary_path, path)
+            except (AttributeError, IOError, OSError) as error:
+                if isinstance(error, AttributeError) or getattr(error, 'sftp_status', None) is not None:
+                    publishing = False
+                raise AtomicOverwriteUnavailable('atomic replacement is unavailable') from error
+        else:
+            if destination_stat() is not None:
+                raise UploadConflict('destination already exists')
+            publishing = True
+            try:
+                sftp.rename(temporary_path, path)
+            except (IOError, OSError) as error:
+                if getattr(error, 'sftp_status', None) is not None:
+                    publishing = False
+                raise
+    finally:
+        # EXCL failure never owns the collided path. An uncertain rename reply
+        # likewise cannot establish which inode remains at either pathname.
+        if created and not publishing:
+            try:
+                sftp.remove(temporary_path)
+            except Exception:
+                pass
+
+
 def upload_request_stream(
     session_id,
     remote_path,
@@ -1313,49 +1424,24 @@ def upload_request_stream(
     transferred = 0
 
     with sftp_session(session_id) as (sftp, _source_type):
-        try:
-            with sftp.file(temporary_path, 'wb') as remote_file:
-                while True:
-                    if cancelled and cancelled():
-                        raise TransferCancelled()
-                    chunk = source.read(chunk_size)
-                    if not chunk:
-                        break
-                    next_size = transferred + len(chunk)
-                    if next_size > max_bytes:
-                        raise UploadSizeExceeded()
-                    remote_file.write(chunk)
-                    transferred = next_size
-                    if progress:
-                        progress(transferred)
-                    if cancelled and cancelled():
-                        raise TransferCancelled()
-
-            if cancelled and cancelled():
-                raise TransferCancelled()
-            try:
-                sftp.stat(safe_path)
-                destination_exists = True
-            except (FileNotFoundError, IOError, OSError):
-                destination_exists = False
-            if destination_exists:
-                if not replace:
-                    raise UploadConflict()
-                # ``rename`` must not be used for replacement: standard SFTP
-                # servers may reject it, and deleting first loses the original.
-                # The OpenSSH posix-rename extension is atomic replacement.
-                try:
-                    sftp.posix_rename(temporary_path, safe_path)
-                except (AttributeError, IOError, OSError) as error:
-                    raise AtomicOverwriteUnavailable() from error
-            else:
-                sftp.rename(temporary_path, safe_path)
-        except Exception:
-            try:
-                sftp.remove(temporary_path)
-            except Exception:
-                pass
-            raise
+        with atomic_transfer_writer(
+            sftp, safe_path, temporary_path, replace=replace, cancelled=cancelled,
+        ) as remote_file:
+            while True:
+                if cancelled and cancelled():
+                    raise TransferCancelled()
+                chunk = source.read(chunk_size)
+                if not chunk:
+                    break
+                next_size = transferred + len(chunk)
+                if next_size > max_bytes:
+                    raise UploadSizeExceeded()
+                remote_file.write(chunk)
+                transferred = next_size
+                if progress:
+                    progress(transferred)
+                if cancelled and cancelled():
+                    raise TransferCancelled()
 
     return transferred
 
@@ -1736,6 +1822,10 @@ def write_file_text(
         except UnicodeEncodeError:
             data = text.encode('utf-8')
 
+        maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
+        if len(data) > maximum:
+            return FileWriteOutcome(success=False, error='File too large to edit')
+
         tmp_path = safe_path + '.webssh-tmp-' + secrets.token_hex(12)
 
         with mutation_session(session_id) as sftp:
@@ -2023,42 +2113,18 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                     aggregate_total,
                 )
 
-            try:
-                with sftp_source.open(src_path, 'rb') as src_file:
-                    with sftp_dest.open(temporary_path, 'wb') as dst_file:
-                        transferred = copy_sftp_stream(
-                            src_file,
-                            dst_file,
-                            cancel_event=cancel_event,
-                            max_bytes=max_bytes - total_transferred,
-                            chunk_size=chunk_size,
-                            progress=report,
-                        )
-                if _is_cancelled(cancel_event):
-                    raise TransferCancelled()
-                try:
-                    sftp_dest.stat(dst_path)
-                    destination_exists = True
-                except (FileNotFoundError, IOError, OSError):
-                    destination_exists = False
-                if destination_exists:
-                    if conflict_policy == 'error':
-                        raise UploadConflict('destination already exists')
-                    try:
-                        sftp_dest.posix_rename(temporary_path, dst_path)
-                    except (AttributeError, IOError, OSError) as error:
-                        raise AtomicOverwriteUnavailable(
-                            'atomic replacement is unavailable'
-                        ) from error
-                else:
-                    sftp_dest.rename(temporary_path, dst_path)
-                total_transferred += transferred
-            except Exception:
-                try:
-                    sftp_dest.remove(temporary_path)
-                except Exception:
-                    pass
-                raise
+            with sftp_source.open(src_path, 'rb') as src_file:
+                with atomic_transfer_writer(
+                    sftp_dest, dst_path, temporary_path,
+                    replace=conflict_policy != 'error',
+                    cancelled=lambda: _is_cancelled(cancel_event),
+                ) as dst_file:
+                    transferred = copy_sftp_stream(
+                        src_file, dst_file, cancel_event=cancel_event,
+                        max_bytes=max_bytes - total_transferred,
+                        chunk_size=chunk_size, progress=report,
+                    )
+            total_transferred += transferred
 
             aggregate_total = (
                 directory_total if directory_total is not None else file_size

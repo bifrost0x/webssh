@@ -167,8 +167,10 @@ def init_static_delivery(app) -> None:
     Dynamic HTML and API responses are deliberately excluded so secrets, CSRF
     tokens, and user-specific data never share a compression context.
     """
-    # Keep the image type deterministic on hosts without a WebP MIME mapping.
+    # Keep bundled media types deterministic across host MIME databases.
     mimetypes.add_type("image/webp", ".webp")
+    for extension in ('woff2', 'woff', 'ttf', 'otf'):
+        mimetypes.add_type('font/' + extension, '.' + extension)
 
     if not isinstance(app.session_interface, SecureCookieSessionInterface):
         raise RuntimeError(

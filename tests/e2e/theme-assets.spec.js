@@ -1,7 +1,7 @@
 const {test, expect} = require('playwright/test');
 const {assertNoExternalRequests, installExternalRequestGuard, login} = require('./helpers');
 
-const themes = ['glass', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'];
+const themes = ['glass','werkbank', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'];
 const scenes = {
     solar: 'solar-observatory.webp', paper: 'paper-pavilion.webp', noir: 'noir-retreat.webp',
     'arctic-ice': 'arctic-fjord.webp', 'rose-gold': 'rose-desert.webp', obsidian: 'obsidian-coast.webp',
@@ -51,19 +51,21 @@ test('theme scenes follow the selected theme on overview and the window desktop'
     await page.locator('.split-btn[data-layout="windows"]').click();
     await expect(page.locator('#terminalGrid')).toHaveClass(/window-mode/);
     await page.locator('#overviewNavBtn').click();
-    await page.locator('#overviewListBtn').click();
     for (const [theme, name] of Object.entries(scenes)) {
         await page.evaluate(value => { document.body.dataset.theme = value; }, theme);
-        await expect(page.locator('.overview-heading')).toHaveCSS('background-image', new RegExp(name));
+        await expect(page.locator('.od-scene')).toHaveCSS('background-image', new RegExp(name));
+        await page.locator('#workspaceNavBtn').click();
+        await expect(page.locator('#terminalGrid')).toBeVisible();
         await expect(page.locator('#terminalGrid')).toHaveCSS('background-image', new RegExp(name));
-        await expect(page.locator('.overview-heading')).toHaveCSS('background-size', 'cover');
-        await page.locator('#overviewGraphBtn').click();
-        await expect(page.locator('.overview-heading')).toHaveCSS('background-image', 'none');
-        await page.locator('#overviewListBtn').click();
+        await page.locator('#overviewNavBtn').click();
+        await expect(page.locator('.od-scene')).toHaveCSS('background-size', 'cover');
+        await expect(page.locator('.od-scene')).toBeVisible();
     }
-    await page.evaluate(() => { document.body.dataset.theme = 'glass'; });
-    await expect(page.locator('.overview-heading')).toHaveCSS('background-image', /midnight-lodge.webp/);
-    await expect(page.locator('#terminalGrid')).toHaveCSS('background-image', /radial-gradient/);
+    await page.evaluate(() => { document.body.dataset.theme = 'werkbank'; });
+    await expect(page.locator('.od-scene')).toHaveCSS('background-image', /werkbank-sand.webp/);
+    await page.locator('#workspaceNavBtn').click();
+    await expect(page.locator('#terminalGrid')).toBeVisible();
+    await expect(page.locator('#terminalGrid')).toHaveCSS('background-image', /werkbank-sand.webp/);
 });
 
 test('login remains usable when storage and the background are unavailable', async ({page}) => {

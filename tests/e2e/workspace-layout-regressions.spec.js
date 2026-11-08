@@ -42,7 +42,10 @@ async function assertContained(page, panelSelector) {
 }
 
 async function wheelToEnd(page, last, panelSelector) {
-    const body = page.locator('#commandWorkspaceModal .command-workspace-body');
+    const table = page.locator('#commandLibraryPanel .commands-table-wrapper');
+    const tableScrolls = panelSelector === '#commandLibraryPanel' && await table.evaluate(element =>
+        /auto|scroll/.test(getComputedStyle(element).overflowY) && element.scrollHeight > element.clientHeight);
+    const body = tableScrolls ? table : page.locator('#commandWorkspaceModal .command-workspace-body');
     const box = await body.boundingBox();
     expect(box.height).toBeGreaterThan(80);
     expect(box.y + box.height).toBeLessThanOrEqual((await page.viewportSize()).height + 1);
@@ -50,13 +53,23 @@ async function wheelToEnd(page, last, panelSelector) {
     await page.mouse.move(box.x + box.width - 12, box.y + Math.min(100, box.height / 2));
     await page.mouse.wheel(0, 420);
     await expect.poll(() => body.evaluate(element => element.scrollTop), {
-        message: 'Wheel input must scroll the command workspace body',
+        message: 'Wheel input must scroll the visible command list',
     }).toBeGreaterThan(before);
-    await expect(async () => {
-        await page.mouse.wheel(0, 100000);
-        expect(await body.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop))
-            .toBeLessThanOrEqual(1);
-    }).toPass({timeout: 10000});
+    // Browsers may clamp a wheel event to one viewport, regardless of delta.
+    // Exercise successive real gestures and require progress on every step.
+    for (let gesture = 0; gesture < 100; gesture++) {
+        const state = await body.evaluate(element => ({
+            top: element.scrollTop,
+            remaining: element.scrollHeight - element.clientHeight - element.scrollTop,
+        }));
+        if (state.remaining <= 1) break;
+        await page.mouse.wheel(0, box.height);
+        await expect.poll(() => body.evaluate(element => element.scrollTop), {
+            message: `Wheel gesture ${gesture + 1} must continue advancing the command list`,
+        }).toBeGreaterThan(state.top);
+    }
+    expect(await body.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop))
+        .toBeLessThanOrEqual(1);
     // Library help follows its final card; bring the complete reachable card into view.
     const target = await last.boundingBox();
     // Wheel upward when trailing help leaves the card's header clipped at the top.
@@ -69,13 +82,14 @@ async function wheelToEnd(page, last, panelSelector) {
 
 for (const width of [360, 733, 1440, 3043]) {
     const height = width < 1000 ? 529 : 900;
-    test(`library and favorites scroll to the final card at ${width}px`, async ({page}) => {
+    test(`library and favorites scroll to the final card at ${width}px`, async ({page}, testInfo) => {
         await page.setViewportSize({width, height});
         await page.emulateMedia({reducedMotion: 'reduce'});
         await login(page);
         await seedCommands(page);
         await expect(page.locator('#commandWorkspaceModal')).toHaveAttribute('role', 'region');
         await assertContained(page, '#commandLibraryPanel');
+        await page.screenshot({path: testInfo.outputPath('command-library.png'), animations: 'disabled'});
         if (width === 3043) {
             const geometry = await page.locator('#commandLibraryPanel').evaluate(panel => ({
                 panelWidth: panel.getBoundingClientRect().width,
@@ -100,7 +114,19 @@ for (const width of [360, 733, 1440, 3043]) {
         await expect(page.locator('#commandFavoritesTab')).toBeFocused();
         await expect(page.locator('#commandFavoritesPanel')).toBeVisible();
         await expect(page.locator('#commandFavoritesList article')).toHaveCount(48);
+        const favoriteWidths = await page.locator('#commandFavoritesList').evaluate(list => ({
+            available: list.clientWidth,
+            cards: [...list.querySelectorAll('article')].map(card => card.getBoundingClientRect().width),
+        }));
+        expect(Math.min(...favoriteWidths.cards), 'Favorite cards must use the list width, not icon-button dimensions')
+            .toBeGreaterThanOrEqual(favoriteWidths.available * 0.9);
         await wheelToEnd(page, page.locator('#commandFavoritesList article').last(), '#commandFavoritesPanel');
+        const workspaceBody = page.locator('#commandWorkspaceModal .command-workspace-body');
+        const favoriteScroll = await workspaceBody.evaluate(element => element.scrollTop);
+        await page.locator('#commandLibraryTab').click();
+        await page.locator('#commandFavoritesTab').click();
+        await expect.poll(() => workspaceBody.evaluate(element => element.scrollTop)).toBe(favoriteScroll);
+
         await page.locator('#commandFavoritesList article').last().locator('button.command-favorite').focus();
         await page.keyboard.press('Space');
         await expect(page.locator('#commandFavoritesList article')).toHaveCount(47);

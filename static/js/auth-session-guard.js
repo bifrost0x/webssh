@@ -10,8 +10,20 @@
     const RESTORE_TTL = 30 * 60 * 1000;
     const LEGACY_STORAGE_KEY = 'webssh:auth-session-return';
     const STORAGE_KEY_PREFIX = `${LEGACY_STORAGE_KEY}:`;
+    const SIGNED_OUT_KEY = 'webssh:signed-out';
     let started = false;
     let dismissWarning = null;
+
+    /** Tell other open tabs that this browser signed out, so they leave instead of failing requests. */
+    function markSignedOut(browserWindow = root) {
+        try { browserWindow.localStorage?.setItem(SIGNED_OUT_KEY, String(Date.now())); } catch { /* optional storage */ }
+    }
+
+    function watchSignOut(browserWindow, onSignedOut) {
+        browserWindow.addEventListener?.('storage', event => {
+            if (event.key === SIGNED_OUT_KEY && event.newValue && !browserWindow.authSessionRedirectPending) onSignedOut();
+        });
+    }
 
     function getSessionManager(browserWindow) {
         // Classic scripts expose this const as a global lexical binding, not
@@ -277,8 +289,9 @@
         const guard = create();
         guard.restore();
         guard.schedule();
+        watchSignOut(root, guard.expire);
         return guard;
     }
 
-    return { create, start, readRestore, saveRestore, restore };
+    return { create, start, readRestore, saveRestore, restore, markSignedOut, watchSignOut };
 }));

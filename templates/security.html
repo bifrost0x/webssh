@@ -24,12 +24,14 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/branding.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/theme-scenes.css') }}">
     <script src="{{ static_asset_url(filename='js/branding.js') }}" defer></script>
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/design-system.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/account-ui.css') }}">
 </head>
 <body class="webssh-ui webssh-account" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}" data-account-mfa-enabled="{{ 'true' if account_mfa_enabled else 'false' }}" data-recovery-enabled="{{ 'true' if recovery_codes_enabled else 'false' }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-authentication-session-duration-minutes="{{ authentication_session_duration_minutes }}">
     <header class="header">
         <div class="header-content">
             <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces">
-                {{ brand_logo("app-brand-logo") }}
+                {{ brand_logo("app-brand-logo") }}<span class="account-brand-name">WebSSH</span>
             </a>
             {% if recovery_mode %}
             <form action="{{ url_for('logout') }}" method="post">
@@ -94,11 +96,33 @@
                     <div><label for="settingsThemeSelect"><strong data-i18n="account.theme">Theme</strong></label><p class="admin-muted" data-i18n="settings.themeHint">Choose the visual theme used across workspaces and settings.</p></div>
                     <select id="settingsThemeSelect" class="form-control settings-preference-control">
                         <optgroup label="Professional Themes" data-i18n-label="settings.professionalThemes">
-                            <option value="glass">Glass Ops</option><option value="solar">Solar Drift</option><option value="paper">Paper Ops</option><option value="noir">Noir Terminal</option><option value="arctic-ice">Arctic Ice</option><option value="rose-gold">Rose Gold</option><option value="obsidian">Obsidian</option>
+                            <option value="glass">Glass Ops</option><option value="werkbank">Werkbank / Sand</option><option value="solar">Solar Drift</option><option value="paper">Paper Ops</option><option value="noir">Noir Terminal</option><option value="arctic-ice">Arctic Ice</option><option value="rose-gold">Rose Gold</option><option value="obsidian">Obsidian</option>
                         </optgroup>
                         <optgroup label="Fun Themes" data-i18n-label="settings.funThemes">
                             <option value="retro">Retro Future</option><option value="cyberpunk-neon">Cyberpunk Neon</option><option value="emerald-matrix">Emerald Matrix</option>
                         </optgroup>
+                    </select>
+                </div>
+                <div class="admin-settings-row">
+                    <div><label for="settingsOverviewLayout"><strong data-i18n="settings.overviewLayout">Overview layout</strong></label><p class="admin-muted" data-i18n="settings.overviewLayoutHint">Choose the dashboard or the classic host, route and session overview. Saved for your account; applies when you next open Overview.</p></div>
+                    <select id="settingsOverviewLayout" class="form-control settings-preference-control" data-saved="{{ overview_layout|default('dashboard') }}">
+                        <option value="dashboard" data-i18n="settings.overviewDashboard"{% if overview_layout != 'classic' %} selected{% endif %}>Dashboard</option>
+                        <option value="classic" data-i18n="settings.overviewClassic"{% if overview_layout == 'classic' %} selected{% endif %}>Classic overview</option>
+                    </select>
+                </div>
+                <div class="admin-settings-row">
+                    <div><label for="settingsOverviewReachability"><strong data-i18n="settings.overviewReachability">Host reachability on Overview</strong></label><p class="admin-muted" data-i18n="settings.overviewReachabilityHint">Checks whether your saved hosts accept connections on their SSH port. Only a TCP connection is opened; no login is attempted. Jump-host routes check the jump host.</p></div>
+                    <select id="settingsOverviewReachability" class="form-control settings-preference-control" data-saved="{{ overview_reachability|default('manual') }}">
+                        <option value="manual" data-i18n="settings.reachabilityManual"{% if overview_reachability not in ('off', 'automatic') %} selected{% endif %}>When I ask</option>
+                        <option value="automatic" data-i18n="settings.reachabilityAutomatic"{% if overview_reachability == 'automatic' %} selected{% endif %}>Automatically while Overview is open</option>
+                        <option value="off" data-i18n="settings.reachabilityOff"{% if overview_reachability == 'off' %} selected{% endif %}>Never</option>
+                    </select>
+                </div>
+                <div class="admin-settings-row">
+                    <div><label for="settingsStartPage"><strong data-i18n="settings.startPage">Start page</strong></label><p class="admin-muted" data-i18n="settings.startPageHint">Choose where WebSSH opens after sign-in. Direct links still open their destination.</p></div>
+                    <select id="settingsStartPage" class="form-control settings-preference-control" data-saved="{{ start_page|default('overview') }}">
+                        <option value="overview" data-i18n="overview.title"{% if start_page != 'workspaces' %} selected{% endif %}>Overview</option>
+                        <option value="workspaces" data-i18n="navigation.workspaces"{% if start_page == 'workspaces' %} selected{% endif %}>Workspaces</option>
                     </select>
                 </div>
                 <div class="admin-settings-row theme-background-settings">
@@ -139,8 +163,8 @@
                     <label class="admin-switch"><input type="checkbox" id="directorySyncDefaultInput" aria-labelledby="directorySyncDefaultLabel" aria-describedby="directorySyncDefaultHint"><span data-i18n="common.enabled">Enabled</span></label>
                 </div>
                 <div class="admin-settings-row">
-                    <div><strong data-i18n="settings.closeConfirmation">Ask before closing a session</strong><p class="admin-muted" data-i18n="settings.closeConfirmationHint">Show a confirmation before closing an SSH tab.</p></div>
-                    <label class="admin-switch"><input type="checkbox" id="confirmSessionCloseInput"><span data-i18n="common.enabled">Enabled</span></label>
+                    <div><strong id="confirmSessionCloseInputLabel" data-i18n="settings.closeConfirmation">Ask before closing a session</strong><p id="confirmSessionCloseInputHint" class="admin-muted" data-i18n="settings.closeConfirmationHint">Show a confirmation before closing an SSH tab.</p></div>
+                    <label class="admin-switch"><input type="checkbox" id="confirmSessionCloseInput" aria-labelledby="confirmSessionCloseInputLabel" aria-describedby="confirmSessionCloseInputHint"><span data-i18n="common.enabled">Enabled</span></label>
                 </div>
                 <div class="admin-settings-row">
                     <div><label for="disconnectSessionActionSelect"><strong data-i18n="settings.disconnectBehavior">When an SSH connection ends</strong></label><p class="admin-muted" data-i18n="settings.disconnectBehaviorHint">Controls what happens after exit, logout, or an unexpected disconnect.</p></div>
@@ -397,19 +421,6 @@
                     <div><dt data-i18n="security.accountProtection">Account protection</dt><dd>{% if account_mfa_enabled %}<span data-i18n="security.mfaEnabled">MFA enabled</span>{% else %}<span data-i18n="security.mfaOptional">MFA optional</span>{% endif %}</dd></div>
                     <div><dt data-i18n="settings.scope">Settings scope</dt><dd>{% if admin_panel_enabled and is_admin %}<span data-i18n="settings.personalAndAdministration">Personal + administration</span>{% else %}<span data-i18n="settings.personal">Personal</span>{% endif %}</dd></div>
                 </dl>
-            </section>
-            <section class="settings-context-card">
-                <span class="settings-context-eyebrow" data-i18n="settings.quickAccess">Quick access</span>
-                <button type="button" class="settings-quick-link" data-account-jump="preferences"><span class="material-icons" aria-hidden="true">tune</span><span data-i18n="account.preferences">Preferences</span></button>
-                <button type="button" class="settings-quick-link" data-account-jump="factors"><span class="material-icons" aria-hidden="true">fingerprint</span><span data-i18n="security.passkeysAndMfa">Passkeys &amp; MFA</span></button>
-                {% if admin_panel_enabled and is_admin %}
-                <button type="button" class="settings-quick-link" data-admin-jump="users"><span class="material-icons" aria-hidden="true">group</span><span data-i18n="settings.userManagement">User management</span></button>
-                <button type="button" class="settings-quick-link" data-admin-jump="authentication"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="settings.authenticationPolicy">Authentication policy</span></button>
-                {% endif %}
-            </section>
-            <section class="settings-context-card settings-context-note">
-                <span class="material-icons" aria-hidden="true">info</span>
-                <p data-i18n="settings.centerSummary">Personal preferences, account security, and administrative controls now share one Settings Center.</p>
             </section>
         </aside>
         {% endif %}

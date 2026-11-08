@@ -386,7 +386,7 @@ const TerminalManager = {
             && this.isCopyShortcut(event, isMac)
         ) {
             this.copySelectionToClipboard(terminal).catch(() => {
-                window.showNotification?.('Clipboard access denied', 'error');
+                window.showNotification?.((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error');
             });
         }
         return shouldProcess;
@@ -441,7 +441,7 @@ const TerminalManager = {
         const width = window.innerWidth;
         if (width < 480) return 12;
         if (width < 768) return 13;
-        return 14;
+        return 16;
     },
 
     isMobile() {
@@ -884,8 +884,24 @@ const TerminalManager = {
     },
 
     stripAnsiSequences(text) {
-        return text
-            .replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, '')
+        const parts = [];
+        let plainStart = 0;
+        for (let index = 0; index < text.length; index++) {
+            if (text[index] !== '\x1b' || text[index + 1] !== ']') continue;
+            parts.push(text.slice(plainStart, index));
+            index += 2;
+            while (index < text.length) {
+                if (text[index] === '\x07') break;
+                if (text[index] === '\x1b' && text[index + 1] === '\\') {
+                    index++;
+                    break;
+                }
+                index++;
+            }
+            plainStart = Math.min(index + 1, text.length);
+        }
+        parts.push(text.slice(plainStart));
+        return parts.join('')
             .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
             .replace(/\x1b[()][0-2]?/g, '')
             .replace(/\x1b[>=]/g, '')
@@ -1033,7 +1049,10 @@ const TerminalManager = {
         if (!batch) {
             batch = {chunks: [], callbacks: [], size: 0, timer: null};
             this.backgroundWrites[terminalKey] = batch;
-            batch.timer = setTimeout(() => this.flushBackgroundOutput(terminalKey), 16);
+            // Coalesce the current delivery burst, then let xterm parse it.
+            // A frame-sized delay holds scarce server ACK slots even though
+            // hidden terminals do not need to wait for a visual repaint.
+            batch.timer = setTimeout(() => this.flushBackgroundOutput(terminalKey), 0);
         }
         batch.chunks.push(data);
         batch.callbacks.push(onWritten);

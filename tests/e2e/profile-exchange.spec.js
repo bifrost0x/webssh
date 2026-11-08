@@ -6,6 +6,7 @@ test.afterEach(async ({page}) => assertNoExternalRequests(page));
 test('known_hosts gets format guidance and repeated warnings stay collapsed', async ({page}) => {
     await login(page);
     await openProfileManagement(page);
+    await page.locator('#importProfilesBtn').locator('xpath=ancestor::details').locator('summary').click();
     await page.locator('#importProfilesBtn').click();
     const dialog = page.getByRole('dialog', {name: 'Import hosts', exact: true});
     await dialog.locator('input[type="file"]').setInputFiles({
@@ -28,15 +29,17 @@ test('known_hosts gets format guidance and repeated warnings stay collapsed', as
     await expect(dialog.locator('.exchange-warnings li')).toHaveCount(12);
 });
 
-test('host import previews, requires explicit submission and skips retries', async ({page}) => {
+test('host import previews, requires explicit submission and skips retries', async ({page}, testInfo) => {
     await login(page);
     await openProfileManagement(page);
+    await page.locator('#importProfilesBtn').locator('xpath=ancestor::details').locator('summary').click();
     await page.locator('#importProfilesBtn').click();
     const dialog = page.getByRole('dialog', {name: 'Import hosts', exact: true});
-    await dialog.getByLabel('Configuration text').fill('Host exchange-browser-test\n HostName example.test\n User deploy');
+    const host = `exchange-${testInfo.project.name || 'default'}.example.test`;
+    await dialog.getByLabel('Configuration text').fill(`Host exchange-browser-test\n HostName ${host}\n User deploy`);
     await expect(dialog.getByRole('button', {name: 'Import selected hosts'})).toBeDisabled();
     await dialog.getByRole('button', {name: 'Preview', exact: true}).click();
-    await expect(dialog.locator('fieldset')).toContainText('deploy@example.test:22');
+    await expect(dialog.locator('fieldset')).toContainText(`deploy@${host}:22`);
     await dialog.getByRole('button', {name: 'Import selected hosts'}).click();
     await expect(dialog.getByRole('status')).toContainText('Imported');
     await dialog.getByRole('button', {name: 'Preview', exact: true}).click();
@@ -44,11 +47,17 @@ test('host import previews, requires explicit submission and skips retries', asy
     await expect(dialog.getByRole('status')).toContainText('Skipped');
     await dialog.getByRole('button', {name: 'Close', exact: true}).click();
     await expect(dialog).toHaveCount(0);
+    await expect.poll(() => page.evaluate(host => window.ProfileManager.profiles.some(profile => profile.host === host), host)).toBe(true);
+    await page.evaluate(host => {
+        const profile = window.ProfileManager.profiles.find(item => item.host === host);
+        return new Promise(resolve => window.socket.emit('delete_profile', {profile_id: profile.id}, resolve));
+    }, host);
 });
 
 test('unsafe routing is blocked and source edits invalidate preview', async ({page}) => {
     await login(page);
     await openProfileManagement(page);
+    await page.locator('#importProfilesBtn').locator('xpath=ancestor::details').locator('summary').click();
     await page.locator('#importProfilesBtn').click();
     const dialog = page.getByRole('dialog', {name: 'Import hosts', exact: true});
     const source = dialog.getByLabel('Configuration text');
@@ -62,4 +71,33 @@ test('unsafe routing is blocked and source edits invalidate preview', async ({pa
     await source.fill('Host changed\n User deploy');
     await expect(dialog.getByRole('button', {name: 'Import selected hosts'})).toBeDisabled();
     await expect(dialog.locator('fieldset')).toHaveCount(0);
+});
+
+test('import availability follows the selected hosts and stays locked after submission', async ({page}) => {
+    await login(page);
+    await openProfileManagement(page);
+    await page.locator('#importProfilesBtn').locator('xpath=ancestor::details').locator('summary').click();
+    await page.locator('#importProfilesBtn').click();
+    const dialog=page.getByRole('dialog',{name:'Import hosts',exact:true});
+    await dialog.getByLabel('Configuration text').fill('Host selection-test\n HostName selection.example\n User deploy');
+    await dialog.getByRole('button',{name:'Preview',exact:true}).click();
+    const selected=dialog.getByRole('checkbox');
+    const submit=dialog.getByRole('button',{name:'Import selected hosts'});
+    await expect(selected).toBeChecked();
+    await selected.uncheck();
+    await expect(submit).toBeDisabled();
+    await selected.check();
+    await expect(submit).toBeEnabled();
+    let finish;
+    await page.route('**/api/profiles/exchange',async route=>{
+        await new Promise(resolve=>{finish=()=>route.fulfill({json:{results:[{index:0,status:'imported'}]}}).then(resolve);});
+    });
+    await submit.click();
+    await expect.poll(()=>Boolean(finish)).toBe(true);
+    await selected.uncheck(); await selected.check();
+    await expect(submit).toBeDisabled();
+    await finish();
+    await expect(dialog.getByRole('status')).toContainText('Imported');
+    await selected.uncheck(); await selected.check();
+    await expect(submit).toBeDisabled();
 });
