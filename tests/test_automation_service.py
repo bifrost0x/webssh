@@ -267,3 +267,40 @@ def test_run_output_budget_retains_current_run_and_still_executes_every_step(app
     assert all(s['output_truncated'] for s in steps)
     assert len(json.dumps(dict(version=1, runs=history)).encode()) <= MAX_STORE_BYTES
     assert user_path(uid, 'automation-runs.json').stat().st_size <= MAX_STORE_BYTES
+
+
+def test_edit_during_run_skips_remaining_hosts_with_reason(app, context, monkeypatch):
+    import time
+    from contextlib import contextmanager
+    import config
+    from app.profile_manager import add_profile, upsert_profile
+    monkeypatch.setattr(config, 'AUTOMATION_ENABLED', True)
+    uid, aid, book, profile = context
+    second, error = add_profile(uid, 'Second', 'second.example', 22, 'operator', 'password')
+    assert error is None
+    service = app.extensions['automation']
+    service.vault.setup(uid, aid, 'separate vault passphrase long enough')
+    service.vault.put(uid, aid, profile, 'remote-password')
+    service.vault.put(uid, aid, second, 'remote-password')
+
+    @contextmanager
+    def connect(*args, **kwargs):
+        yield object()
+
+    def execute(*_args):
+        with app.app_context():
+            assert upsert_profile(uid, dict(second, username='another'))[1] is None
+        return dict(status='succeeded', exit_code=0, duration=.1)
+
+    monkeypatch.setattr('app.automation_service.connect_profile', connect)
+    monkeypatch.setattr('app.automation_service.execute_step', execute)
+    preview = service.prepare_run(uid, aid, dict(runbook_id=book['id'], profile_ids=[profile['id'], second['id']]))
+    service.start(preview['intent'], uid, aid, '2')
+    deadline = time.monotonic() + 5
+    while uid in service._active and time.monotonic() < deadline:
+        time.sleep(.01)
+    record = service.history(uid)[0]
+    first, rest = record['targets']
+    assert first['status'] == 'succeeded'
+    assert (rest['status'], rest['reason']) == ('skipped', 'preview_changed')
+    assert record['status'] == 'failed'

@@ -399,12 +399,21 @@ class AutomationService:
                 for index, profile in enumerate(intent['targets']):
                     if cancelled():
                         break
-                    with access():
-                        self.validate_run(intent)
-                        password = ((self.credentials.schedule_password(uid, profile)
-                                     if intent.get('kind') == 'scheduled'
-                                     else self.credentials.password(uid, aid, profile))
-                                    if profile['auth_type'] == 'password' else None)
+                    try:
+                        with access():
+                            self.validate_run(intent)
+                            password = ((self.credentials.schedule_password(uid, profile)
+                                         if intent.get('kind') == 'scheduled'
+                                         else self.credentials.password(uid, aid, profile))
+                                        if profile['auth_type'] == 'password' else None)
+                    except AutomationError as error:
+                        # Nothing was sent to the remaining hosts: record a definite
+                        # skip with its reason instead of an ambiguous outcome.
+                        reason = error.code if error.code in CONNECTION_REASONS else 'preview_changed'
+                        for remaining in record['targets'][index:]:
+                            remaining['status'] = 'skipped'
+                            remaining['reason'] = reason
+                        break
                     target = record['targets'][index]
                     target['status'] = 'running'
                     persist()
@@ -508,7 +517,7 @@ class AutomationService:
             self.app.extensions['automation_schedules'].cancel_run(
                 user_id, record['schedule_id'], record['claim_id'])
             return
-        if state is None and run_id is not None:
+        if state is None and record is None and run_id is not None:
             raise AutomationError('not_found')
 
     def revoke(self, user_id):
