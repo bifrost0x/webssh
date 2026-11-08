@@ -66,7 +66,9 @@ jobs:
             docker cp "$container:/usr/bin/gitleaks" "$tool_dir/gitleaks"
             docker rm "$container" >/dev/null
           fi
-          test "$("$tool_dir/gitleaks" version)" = "v8.30.1"
+          # The release binary and the image differ only in a leading "v".
+          version="$("$tool_dir/gitleaks" version)"
+          test "${version#v}" = "8.30.1"
       - name: Scan tracked source and verify secret-detection canaries
         run: python scripts/check_repository_secrets.py --gitleaks "$RUNNER_TEMP/webssh-gitleaks/gitleaks"
       - name: Classify changes

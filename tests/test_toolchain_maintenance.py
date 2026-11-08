@@ -47,7 +47,7 @@ def test_scanner_fallbacks_use_the_same_pinned_release_images():
     security = (ROOT / '.github/workflows/security.yml').read_text(encoding='utf-8')
     gitleaks = re.search(r'gitleaks/releases/download/(v\d+\.\d+\.\d+)/', tests).group(1)
     assert re.search(r'docker create ghcr\.io/gitleaks/gitleaks@sha256:[0-9a-f]{64}\)', tests)
-    assert f'test "$("$tool_dir/gitleaks" version)" = "{gitleaks}"' in tests
+    assert f'test "${{version#v}}" = "{gitleaks.lstrip("v")}"' in tests
     syft = re.search(r"syft-version:\s*['\"]?v(\d+\.\d+\.\d+)", security).group(1)
     assert re.search(r'docker create ghcr\.io/anchore/syft@sha256:[0-9a-f]{64}\)', security)
     assert f'tool="$RUNNER_TOOL_CACHE/syft/{syft}/x64"' in security
