@@ -10,7 +10,6 @@ from .auth import check_reauth_rate_limit
 from .step_up import consume_account_step_up_grant, StepUpError
 from .storage_errors import StorageCorruptionError
 from .quota_manager import QuotaExceeded
-from .profile_manager import load_profiles
 
 automation_blueprint = Blueprint('automation', __name__)
 
@@ -73,7 +72,7 @@ def failure(error):
     status = {'authentication_required':401, 'disabled':403, 'https_required':403,
         'step_up_required':403, 'busy':429, 'not_found':404, 'invalid_intent':409,
         'preview_changed':409, 'vault_locked':423, 'unavailable':503,
-        'credentials_disabled':403, 'host_key_required':409}.get(error.code, 400)
+        'credentials_disabled':403, 'host_key_required':409, 'run_active':409}.get(error.code, 400)
     body = dict(error='Automation request could not be completed.', code=error.code)
     # Names of the user's own saved hosts let the browser say which host to verify.
     if getattr(error, 'hosts', None):
@@ -103,12 +102,29 @@ def state():
     auth = _auth()
     _enabled()
     from .app_settings import is_credentials_enabled
+    from .automation_service import supported_login
+    credentials = service().credentials
+    # Resources carry the jump host's fingerprint, which saved-password bindings use.
+    resources = credentials.resources(current_user.id)
+    routes = {item['id']: item for item in resources if item['kind'] == 'jump'}
+
+    def status(item):
+        return credentials.credential_status(current_user.id, item) if item.get('auth_type') == 'password' else 'ready'
+
+    def target(profile):
+        route = routes.get('jump:' + profile['jump_host_id']) if profile.get('jump_host_id') else None
+        entry = dict(**service().display_target(profile), auth_type=profile.get('auth_type'),
+                     credential_status=status(profile),
+                     supported=supported_login(profile) and (route is None and not profile.get('jump_host_id')
+                                                             or supported_login(route)))
+        if route is not None:
+            entry.update(via=route['name'], route_id=route['id'], route_auth_type=route.get('auth_type'),
+                         route_credential_status=status(route))
+        return entry
+
     return jsonify(enabled=True, credentials_enabled=is_credentials_enabled(), runbooks=runbooks(current_user.id),
-        profiles=[dict(**service().display_target(p), auth_type=p.get('auth_type'),
-            credential_status=service().credentials.credential_status(current_user.id, p) if p.get('auth_type') == 'password' else 'ready',
-            supported=not p.get('jump_host_id') and p.get('auth_type') in {'key','password'}
-            and ':' not in p.get('username', '')) for p in load_profiles(current_user.id)],
-        vault=service().credentials.vault_status(current_user.id, auth.id))
+        profiles=[target(item) for item in resources if item['kind'] == 'ssh'],
+        vault=credentials.vault_status(current_user.id, auth.id))
 
 @automation_blueprint.post('/api/automation/runbooks')
 @login_required
@@ -158,6 +174,20 @@ def cancel(run_id):
     _enabled()
     service().cancel(current_user.id, run_id)
     return jsonify(cancellation_requested=True)
+
+@automation_blueprint.delete('/api/automation/runs/<run_id>')
+@login_required
+def delete_run(run_id):
+    _auth()
+    _enabled()
+    return jsonify(deleted=service().delete_runs(current_user.id, [run_id]))
+
+@automation_blueprint.post('/api/automation/runs/clear')
+@login_required
+def clear_runs():
+    _auth()
+    _enabled()
+    return jsonify(deleted=service().delete_runs(current_user.id))
 
 @automation_blueprint.post('/api/automation/vault/intents')
 @login_required

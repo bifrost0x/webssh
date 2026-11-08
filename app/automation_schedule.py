@@ -10,7 +10,7 @@ from .automation_cron import next_due
 from .automation_store import AutomationError, AutomationNotDispatched, profile_fingerprint, runbooks
 from .data_access import user_data_access
 from .models import User, db
-from .profile_manager import load_profiles
+from .automation_service import password_resources
 from .audit_logger import log_security_event
 
 
@@ -89,7 +89,7 @@ class ScheduleService:
             source = dict(id=row.id, revision=row.revision,
                           account=grant['account'], policy=grant['policy'])
             targets = grant['targets']
-            passwords = [t for t in targets if t['auth_type'] == 'password']
+            passwords = password_resources(targets)
             generation = self.automation.credentials.generations(user_id, auth_id, passwords) if passwords else None
             for target in passwords:
                 self.automation.credentials.password(user_id, auth_id, target)
@@ -125,7 +125,7 @@ class ScheduleService:
         revision = self._owned(user_id, schedule_id).revision if schedule_id else None
         preview = self.automation.prepare_run(user_id, auth_id, data)
         payload = self.automation.intent(preview['intent'], user_id, auth_id, consume=True)
-        passwords = [p for p in payload['targets'] if p['auth_type'] == 'password']
+        passwords = password_resources(payload['targets'])
         # Legacy browser leases are deliberately not eligible for unattended use.
         generation = self.automation.credentials.schedule_generations(user_id, passwords) if passwords else None
         payload.update(kind='schedule', cron=data['cron'], timezone=data['timezone'], schedule_id=schedule_id,
@@ -207,12 +207,12 @@ class ScheduleService:
     def _validate_snapshot(self, user_id, grant):
         if grant['account'] != _account(user_id) or grant['policy'] != _policy():
             raise AutomationError('preview_changed')
-        current = {p['id']: p for p in load_profiles(user_id)}
+        current = self.automation.current_targets(user_id)
         if grant['book'] not in runbooks(user_id) or any(
             profile_fingerprint(current.get(p['id'], {})) != profile_fingerprint(p) for p in grant['targets']
         ) or self.automation._key_digests(user_id, grant['targets']) != grant['key_digests']:
             raise AutomationError('preview_changed')
-        passwords = [p for p in grant['targets'] if p['auth_type'] == 'password']
+        passwords = password_resources(grant['targets'])
         if passwords and self.automation.credentials.schedule_generations(user_id, passwords) != grant['vault_generation']:
             raise AutomationError('preview_changed')
 

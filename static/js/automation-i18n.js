@@ -618,6 +618,42 @@
     "diagnostic.pending": "Noch keine Ausgabe erfasst.",
     "diagnostic.empty": "Keine Ausgabe erfasst."
 });
+    Object.assign(strings.en, {
+    "manualRun": "Started manually",
+    "scheduledRun": "Scheduled",
+    "durationSeconds": "{seconds}s",
+    "durationMinutes": "{minutes}m {seconds}s",
+    "deleteRun": "Delete run",
+    "deleteRunLabel": "Delete run {name}",
+    "deleteRunHint": "This removes the result and its captured output from your history. It does not change anything on the hosts.",
+    "runDeleted": "Run deleted.",
+    "clearRuns": "Delete finished runs",
+    "clearRunsHint": "This removes {count} finished runs and their captured output from your history. Running work stays. Nothing changes on the hosts.",
+    "runsDeleted": "{count} runs deleted.",
+    "noFinishedRuns": "There are no finished runs to delete.",
+    "error.run_active": "This run is still active. Stop it or wait until it has finished before deleting it.",
+    "viaJump": "via {name}",
+    "jumpPasswordMissing": "Jump host password missing",
+    "jumpCredentialChanged": "Jump host changed: replace its password"
+});
+    Object.assign(strings.de, {
+    "manualRun": "Manuell gestartet",
+    "scheduledRun": "Geplant",
+    "durationSeconds": "{seconds} s",
+    "durationMinutes": "{minutes} min {seconds} s",
+    "deleteRun": "Lauf löschen",
+    "deleteRunLabel": "Lauf {name} löschen",
+    "deleteRunHint": "Entfernt das Ergebnis und die erfasste Ausgabe aus deinem Verlauf. Auf den Hosts ändert sich nichts.",
+    "runDeleted": "Lauf gelöscht.",
+    "clearRuns": "Abgeschlossene Läufe löschen",
+    "clearRunsHint": "Entfernt {count} abgeschlossene Läufe samt erfasster Ausgabe aus deinem Verlauf. Laufende Arbeit bleibt erhalten. Auf den Hosts ändert sich nichts.",
+    "runsDeleted": "{count} Läufe gelöscht.",
+    "noFinishedRuns": "Es gibt keine abgeschlossenen Läufe zum Löschen.",
+    "error.run_active": "Dieser Lauf ist noch aktiv. Ihn stoppen oder sein Ende abwarten, bevor er gelöscht wird.",
+    "viaJump": "über {name}",
+    "jumpPasswordMissing": "Kennwort für Jump-Host fehlt",
+    "jumpCredentialChanged": "Jump-Host geändert: Kennwort ersetzen"
+});
     window.AutomationText = Object.freeze({t(key, values = {}) {
         const lang = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
         let result = strings[lang][key] || strings.en[key] || key;

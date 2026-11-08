@@ -512,3 +512,49 @@ body[data-theme="paper"] [data-native-automation] { color-scheme: light; }
 
 #automationDisabled { margin: clamp(16px, 4vw, 48px) auto; padding: clamp(20px, 3vw, 36px); border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-secondary); }
 #automationDisabled .btn { margin: 8px 8px 0 0; white-space: normal; }
+
+/* Run history: one compact card per run, colored by outcome, details on demand. */
+.automation-run-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+#runHistory { display: grid; gap: 10px; }
+.automation-run { --run-tone: var(--ws2-text-secondary); padding: 0; border: 1px solid var(--ws2-border); border-left: 3px solid var(--run-tone); border-radius: 8px; background: var(--ws2-panel, var(--ws2-surface)); overflow: hidden; }
+.automation-run:first-child { padding-top: 0; }
+.automation-run[data-state="succeeded"] { --run-tone: var(--success-color); }
+.automation-run:is([data-state="failed"]) { --run-tone: var(--error-color); }
+.automation-run[data-state="unknown"] { --run-tone: var(--warning-color); }
+.automation-run:is([data-state="running"], [data-state="queued"]) { --run-tone: var(--ws2-accent); }
+.automation-run > summary.automation-run-summary { list-style: none; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto auto 36px; align-items: center; gap: 14px; padding: 12px 12px 12px 16px; }
+.automation-run-summary::-webkit-details-marker { display: none; }
+.automation-run-badge { font-size: 22px; color: var(--run-tone); }
+.automation-run[data-state="running"] .automation-run-badge { animation: automation-running 1.5s linear infinite; }
+.automation-run-heading { display: grid; gap: 3px; min-width: 0; }
+.automation-run-heading strong { flex: none; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.automation-run-meta { font-size: 12px; color: var(--ws2-text-secondary); }
+.automation-run-hosts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; min-width: 0; }
+.automation-run-host { padding: 2px 8px; border: 1px solid var(--ws2-border); border-radius: 999px; font-size: 12px; color: var(--ws2-text-secondary); white-space: nowrap; }
+.automation-run-host[data-state="succeeded"] { border-color: color-mix(in srgb, var(--success-color) 45%, transparent); color: var(--success-color); }
+.automation-run-host[data-state="failed"] { border-color: color-mix(in srgb, var(--error-color) 45%, transparent); color: var(--error-color); }
+.automation-run-host[data-state="unknown"] { border-color: color-mix(in srgb, var(--warning-color) 45%, transparent); color: var(--warning-color); }
+.automation-run-summary time { white-space: nowrap; }
+.automation-run-status { padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--run-tone) 14%, transparent); color: var(--run-tone); font-weight: 600; white-space: nowrap; }
+.automation-run .automation-run-status[data-state] { color: var(--run-tone); }
+.automation-run-delete { width: 36px; height: 36px; }
+.automation-run-delete:hover { color: var(--error-color); }
+.automation-run[open] > .automation-run-summary { border-bottom: 1px solid var(--ws2-border); }
+.automation-run > :not(summary) { margin-inline: 16px; }
+.automation-run > .btn { margin-top: 12px; }
+.automation-run > .automation-run-target { margin-top: 12px; padding: 4px 14px 0; border: 1px solid var(--ws2-border); border-radius: 6px; }
+.automation-run > .automation-run-target:last-child { margin-bottom: 16px; }
+.automation-run-target[data-state="failed"] { border-color: color-mix(in srgb, var(--error-color) 40%, var(--ws2-border)); }
+.automation-run-target[data-state="unknown"] { border-color: color-mix(in srgb, var(--warning-color) 40%, var(--ws2-border)); }
+.automation-run-target h4.automation-run-target-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 10px 0 4px; }
+.automation-run-target-name { font-weight: 600; }
+.automation-run-target-address { font-size: 12px; font-weight: 400; color: var(--ws2-text-secondary); }
+.automation-run-target-title .automation-state { margin-left: auto; }
+.automation-run-target .automation-run-diagnostic:last-child { border-bottom: 0; }
+@media (max-width: 900px) {
+ .automation-run > summary.automation-run-summary { grid-template-columns: 24px minmax(0, 1fr) auto 36px; row-gap: 8px; }
+ .automation-run-hosts { grid-column: 2 / 4; grid-row: 2; justify-content: flex-start; }
+ .automation-run-summary time { grid-column: 2; grid-row: 3; }
+ .automation-run-status { grid-column: 3; grid-row: 1; }
+ .automation-run-delete { grid-column: 4; grid-row: 1; }
+}

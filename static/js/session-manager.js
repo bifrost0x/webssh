@@ -721,12 +721,22 @@ const SessionManager = {
         }
     },
 
+    // The saved host's name, while that profile still describes this endpoint.
+    profileNameFor(session) {
+        if (!session?.profileId) return '';
+        const profile = window.ProfileManager?.profiles?.find(item => item.id === session.profileId);
+        if (!profile) return '';
+        const sameHost = String(profile.host || '').toLowerCase() === String(session.host || '').toLowerCase();
+        const sameUser = String(profile.username || '') === String(session.username || '');
+        return sameHost && sameUser ? String(profile.name || '').trim() : '';
+    },
+
     getDisplayLabel(sessionId, username, host) {
         const session = this.sessions[sessionId];
         if (session && session.displayName) {
             return session.displayName;
         }
-        return `${username}@${host}`;
+        return this.profileNameFor(session) || `${username}@${host}`;
     },
 
     renderTabLabelContent(labelEl, sessionId) {
@@ -739,15 +749,27 @@ const SessionManager = {
             nameSpan.textContent = session.displayName;
             labelEl.appendChild(nameSpan);
         } else {
+            const profileName = this.profileNameFor(session);
             const hostSpan = document.createElement('span');
             hostSpan.className = 'tab-host-name';
-            hostSpan.textContent = session.host;
+            hostSpan.textContent = profileName || session.host;
             const userSpan = document.createElement('span');
             userSpan.className = 'tab-user-name';
             userSpan.textContent = session.username;
             labelEl.appendChild(hostSpan);
             labelEl.appendChild(userSpan);
         }
+        labelEl.title = `${session.username}@${session.host}`;
+    },
+
+    refreshSessionLabels() {
+        Object.keys(this.sessions).forEach(sessionId => {
+            const label = document.getElementById(`tab-${sessionId}`)?.querySelector('.tab-label');
+            // Never replace a rename that is in progress.
+            if (label && !label.querySelector('.tab-rename-input')) {
+                this.updateSessionLabel(sessionId);
+            }
+        });
     },
 
     updateSessionLabel(sessionId) {

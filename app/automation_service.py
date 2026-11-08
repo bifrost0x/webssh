@@ -17,13 +17,32 @@ from .credential_service import session_identity
 from .automation_transport import (CONNECTION_REASONS, STEP_REASONS, STEP_OUTPUT_BYTES,
     RUN_OUTPUT_BYTES, connect_profile, connection_reason, execute_step)
 from .data_access import bind_user_data_access, user_data_access
-from .profile_manager import load_profiles
 from .key_manager import read_key_content
 from .quota_manager import quota_manager, QuotaExceeded, QuotaKind
 from .storage_utils import storage_lock
 from .audit_logger import log_security_event
 
 TERMINAL = {'succeeded', 'failed', 'unknown', 'cancelled', 'skipped'}
+
+
+def connection_resources(targets):
+    """Every frozen SSH hop of the targets: each target and its jump host, once."""
+    result = {}
+    for target in targets:
+        for item in (target.get('route'), target):
+            if item is not None:
+                result.setdefault(item['id'], item)
+    return list(result.values())
+
+
+def password_resources(targets):
+    return [item for item in connection_resources(targets) if item['auth_type'] == 'password']
+
+
+def supported_login(item):
+    return (item is not None and item.get('auth_type') in {'key', 'password'}
+            and bool(item.get('username')) and ':' not in item['username'])
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -70,7 +89,9 @@ class AutomationService:
         if (not isinstance(ids, list) or not isinstance(groups, list) or len(ids)+len(groups) > 100
                 or any(not isinstance(value, str) or len(value) > 128 for value in ids+groups)):
             raise AutomationError('invalid_targets')
-        profiles = load_profiles(user_id)
+        resources = self.credentials.resources(user_id)
+        profiles = [item for item in resources if item['kind'] == 'ssh']
+        routes = {item['id']: item for item in resources if item['kind'] == 'jump'}
         by_id = {profile['id']: profile for profile in profiles}
         available_groups = {profile.get('group') for profile in profiles if profile.get('group')}
         if any(value not in by_id for value in ids) or any(value not in available_groups for value in groups):
@@ -81,14 +102,23 @@ class AutomationService:
             raise AutomationError('invalid_targets')
         targets = [profile for profile in profiles if profile['id'] in selected]
         for profile in targets:
-            if (profile.get('jump_host_id') or profile.get('auth_type') not in {'key', 'password'}
-                    or not profile.get('username') or ':' in profile['username']):
+            if not supported_login(profile):
                 raise AutomationError('unsupported_target')
+            if profile.get('jump_host_id'):
+                # The frozen route fingerprint binds the target to this exact jump host.
+                route = routes.get('jump:' + profile['jump_host_id'])
+                if not supported_login(route):
+                    raise AutomationError('unsupported_target')
+                profile['route'] = route
         return targets
+
+    def current_targets(self, user_id):
+        """Owned SSH profiles with the fingerprint of their current jump host."""
+        return {item['id']: item for item in self.credentials.resources(user_id) if item['kind'] == 'ssh'}
 
     def _key_digests(self, user_id, targets):
         result = {}
-        for target in targets:
+        for target in connection_resources(targets):
             if target.get('auth_type') == 'key':
                 result[target['id']] = self._key_digest(user_id, target.get('key_id'))
         return result
@@ -132,11 +162,10 @@ class AutomationService:
                 raise AutomationError('not_found')
             targets = self._inventory(user_id, data)
             self._require_trusted_host_keys(user_id, targets)
-            needs_password = any(target['auth_type'] == 'password' for target in targets)
-            generation = self.credentials.generations(user_id, auth_id, [t for t in targets if t['auth_type'] == 'password']) if needs_password else None
-            for target in targets:
-                if target['auth_type'] == 'password':
-                    self.credentials.password(user_id, auth_id, target)
+            passwords = password_resources(targets)
+            generation = self.credentials.generations(user_id, auth_id, passwords) if passwords else None
+            for resource in passwords:
+                self.credentials.password(user_id, auth_id, resource)
             payload = dict(kind='run', book=book, targets=targets, vault_generation=generation,
                            key_digests=self._key_digests(user_id, targets))
             token = self._remember(user_id, auth_id, payload)
@@ -154,7 +183,7 @@ class AutomationService:
         from .network_policy import canonicalize_hostname
         store = HostKeyStore(user_id, config.KNOWN_HOSTS_FILE, config.USERS_DIR)
         try:
-            missing = [target for target in targets
+            missing = [target for target in connection_resources(targets)
                        if not store.has_trusted_key(canonicalize_hostname(target['host']), target.get('port', 22))]
         except ValueError as error:
             raise AutomationError('invalid_targets') from error
@@ -174,7 +203,7 @@ class AutomationService:
                 return
             if session_identity(uid, aid) != intent['identity']:
                 raise AutomationError('preview_changed')
-            current = {profile['id']: profile for profile in load_profiles(uid)}
+            current = self.current_targets(uid)
             if intent.get('source_schedule'):
                 self.app.extensions['automation_schedules'].validate_manual(intent)
                 book_valid = True
@@ -184,7 +213,7 @@ class AutomationService:
                                                       for t in intent['targets'])
                     or self._key_digests(uid, intent['targets']) != intent['key_digests']):
                 raise AutomationError('preview_changed')
-            if intent['vault_generation'] is not None and self.credentials.generations(uid, aid, [t for t in intent['targets'] if t['auth_type'] == 'password']) != intent['vault_generation']:
+            if intent['vault_generation'] is not None and self.credentials.generations(uid, aid, password_resources(intent['targets'])) != intent['vault_generation']:
                 raise AutomationError('preview_changed')
 
     def prepare_vault(self, user_id, auth_id, data):
@@ -268,6 +297,37 @@ class AutomationService:
                                 step['reason'] = 'run_interrupted'
             result.append(record)
         return result
+
+    def delete_runs(self, user_id, run_ids=None):
+        """Remove the owner's finished runs from the history.
+
+        ``run_ids`` of None removes every run that is not active. A run that
+        is still queued or running is never removed: its record is the only
+        evidence of what reached the hosts.
+        """
+        if run_ids is not None and (
+                not isinstance(run_ids, list) or not 1 <= len(run_ids) <= 50
+                or any(not isinstance(value, str) or not value or len(value) > 64 for value in run_ids)):
+            raise AutomationError('invalid_request')
+        with self._lock:
+            active = {state['record']['id'] for uid, state in self._active.items() if uid == int(user_id)}
+        wanted = None if run_ids is None else set(run_ids)
+        if wanted is not None and wanted & active:
+            raise AutomationError('run_active')
+        with user_data_access(user_id), storage_lock(f'automation-history:{user_id}'):
+            path = user_path(user_id, 'automation-runs.json')
+            document = self._read_history(path)
+            kept = [run for run in document['runs']
+                    if run['id'] in active or (wanted is not None and run['id'] not in wanted)]
+            removed = len(document['runs']) - len(kept)
+            if wanted is not None and removed != len(wanted):
+                raise AutomationError('not_found')
+            if removed:
+                document['runs'] = kept
+                write_document(path, document)
+        if removed:
+            log_security_event('AUTOMATION_RUNS_DELETED', user_id=user_id, count=removed)
+        return removed
 
     def start(self, token, user_id, auth_id, confirmation):
         intent = self.intent(token, user_id, auth_id)
@@ -375,7 +435,7 @@ class AutomationService:
             if checked[1] and intent['vault_generation'] is not None:
                 try:
                     with access():
-                        targets = [t for t in intent['targets'] if t['auth_type'] == 'password']
+                        targets = password_resources(intent['targets'])
                         generation = (self.credentials.schedule_generations(uid, targets)
                                       if intent.get('kind') == 'scheduled'
                                       else self.credentials.generations(uid, aid, targets))
@@ -399,13 +459,19 @@ class AutomationService:
                 for index, profile in enumerate(intent['targets']):
                     if cancelled():
                         break
+                    route = profile.get('route')
+                    def secret(resource):
+                        if resource is None or resource['auth_type'] != 'password':
+                            return None
+                        return (self.credentials.schedule_password(uid, resource)
+                                if intent.get('kind') == 'scheduled'
+                                else self.credentials.password(uid, aid, resource))
+                    password = route_password = None
                     try:
                         with access():
                             self.validate_run(intent)
-                            password = ((self.credentials.schedule_password(uid, profile)
-                                         if intent.get('kind') == 'scheduled'
-                                         else self.credentials.password(uid, aid, profile))
-                                        if profile['auth_type'] == 'password' else None)
+                            password = secret(profile)
+                            route_password = secret(route)
                     except AutomationError as error:
                         # Nothing was sent to the remaining hosts: record a definite
                         # skip with its reason instead of an ambiguous outcome.
@@ -420,7 +486,9 @@ class AutomationService:
                     try:
                         with connect_profile(uid, profile, password, cancelled, own, access=access,
                                 expected_key_digest=intent['key_digests'].get(profile['id']),
-                                validate_auth=lambda: self.validate_run(intent)) as transport:
+                                validate_auth=lambda: self.validate_run(intent), route=route,
+                                route_password=route_password,
+                                route_key_digest=intent['key_digests'].get(route['id']) if route else None) as transport:
                             for step_index, step in enumerate(intent['book']['steps']):
                                 if cancelled():
                                     break
@@ -430,7 +498,8 @@ class AutomationService:
                                 target['steps'][step_index]['status'] = 'running'
                                 persist()
                                 result = execute_step(transport, step, cancelled,
-                                                      (password,) if password else (), output_remaining)
+                                                      tuple(value for value in (password, route_password) if value),
+                                                      output_remaining)
                                 output_remaining -= sum(len(result.get(stream, '').encode('utf-8'))
                                                         for stream in ('stdout', 'stderr'))
                                 target['steps'][step_index].update(result)
@@ -449,7 +518,7 @@ class AutomationService:
                         target['status'] = ('unknown' if any(step['status'] in {'unknown','running'} for step in target['steps'])
                                             else 'cancelled' if cancelled() else 'failed')
                     finally:
-                        password = None
+                        password = route_password = None
                     for step in target['steps']:
                         if step['status'] == 'queued':
                             step['status'] = 'skipped'

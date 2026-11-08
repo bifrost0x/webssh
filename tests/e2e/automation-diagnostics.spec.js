@@ -87,3 +87,44 @@ test('run diagnostics preserve disclosures, selection and scroll across polling 
         await page.screenshot({path:testInfo.outputPath('diagnostics-'+width+'.png'),animations:'disabled'});
     }
 });
+
+test('finished runs can be deleted one by one or together while running work stays', async ({page}, testInfo) => {
+    await login(page, 'e2e_admin', {workspace:false});
+    const step = status => ({name:'Update package lists',status,exit_code:status === 'succeeded' ? 0 : status === 'failed' ? 1 : null,duration:1.2,reason:status === 'failed' ? 'nonzero_exit' : null,stdout:'',stderr:'',output_truncated:false});
+    const run = (id, status, hosts) => ({id,name:'Updates for Linux',created_at:'2026-11-08T12:0'+id.length+':00Z',finished_at:status === 'running' ? undefined : '2026-11-08T12:01:06Z',status,
+        targets:hosts.map(([name, hostStatus]) => ({id:name,name,host:name.toLowerCase() + '.invalid',username:'operator',status:hostStatus,reason:null,steps:[step(hostStatus)]}))});
+    let runs = [run('live', 'running', [['Nextcloud','running']]),
+        run('done', 'succeeded', [['Nextcloud','succeeded'],['Immich','succeeded'],['Node','succeeded']]),
+        run('broken', 'failed', [['Nextcloud','succeeded'],['Node','failed']])];
+    const requests = [];
+    await page.route('**/api/automation/runs**', route => {
+        const request = route.request();
+        const path = new URL(request.url()).pathname;
+        if (request.method() === 'DELETE') { requests.push(['DELETE', path]); runs = runs.filter(item => !path.endsWith('/' + item.id)); return route.fulfill({json:{deleted:1}}); }
+        if (path.endsWith('/clear')) { requests.push(['POST', path]); const removed = runs.filter(item => item.status !== 'running').length; runs = runs.filter(item => item.status === 'running'); return route.fulfill({json:{deleted:removed}}); }
+        return route.fulfill({json:{runs}});
+    });
+    await page.goto('/automation'); await page.locator('[data-auto-tab="runs"]').click();
+    const cards = page.locator('#runHistory > .automation-run');
+    await expect(cards).toHaveCount(3);
+    await expect(cards.nth(0).locator('.automation-run-delete')).toBeHidden();
+    await expect(cards.nth(1)).toHaveAttribute('data-state', 'succeeded');
+    await expect(cards.nth(1).locator('.automation-run-host')).toHaveText(['Nextcloud','Immich','Node','']);
+    await expect(cards.nth(2).locator('.automation-run-host[data-state="failed"]')).toHaveText('Node');
+    for (const width of [390, 1440]) {
+        await page.setViewportSize({width,height:900});
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({path:testInfo.outputPath('run-cards-'+width+'.png'),animations:'disabled',fullPage:true});
+    }
+    await cards.nth(2).locator('.automation-run-delete').click();
+    await expect(cards.nth(2)).not.toHaveAttribute('open', '');
+    await expect(page.locator('#automationPrompt')).toBeVisible();
+    await page.locator('#promptForm button[type="submit"]').click();
+    await expect(cards).toHaveCount(2);
+    await page.locator('#clearRuns').click();
+    await expect(page.locator('#promptHint')).toContainText('1 finished');
+    await page.locator('#promptForm button[type="submit"]').click();
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first()).toHaveAttribute('data-state', 'running');
+    expect(requests).toEqual([['DELETE','/api/automation/runs/broken'],['POST','/api/automation/runs/clear']]);
+});
