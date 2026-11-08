@@ -24,6 +24,7 @@
         {% set _ = platform_assets.urls.update({platform: static_asset_url(filename='icons/platforms/' ~ platform ~ '.svg')}) %}
     {% endfor %}
     <script id="hostPlatformAssets" type="application/json">{{ platform_assets.urls | tojson }}</script>
+    {% if initial_inventory %}<script id="initialInventory" type="application/json">{{ initial_inventory | tojson }}</script>{% endif %}
     <meta name="preview-highlight-script" content="{{ static_asset_url(filename='vendor/highlight/highlight.min.js') }}">
     <meta name="preview-highlight-style" content="{{ static_asset_url(filename='vendor/highlight/github-dark.min.css') }}">
 

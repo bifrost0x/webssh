@@ -3011,11 +3011,22 @@
             button.addEventListener('click', () => window.hostDiscovery?.open());
         });
 
-        ProfileManager.loadProfiles();
-        ProfileManager.loadKeys();
-        if (window.JumpHostManager) {
-            window.JumpHostManager.load();
+        // The page carries the saved hosts, so the overview draws without waiting
+        // for the socket; the socket lists are only needed when it could not.
+        let inventory = null;
+        try {
+            inventory = JSON.parse(document.getElementById('initialInventory')?.textContent || 'null');
+        } catch {
+            inventory = null;
         }
+        if (inventory) {
+            window.JumpHostManager?.setJumpHosts(inventory.jump_hosts);
+            ProfileManager.setProfiles(inventory.profiles);
+        } else {
+            ProfileManager.loadProfiles();
+            window.JumpHostManager?.load();
+        }
+        ProfileManager.loadKeys();
 
         const newTabBtn = document.getElementById('newTabBtn');
         if (newTabBtn) {

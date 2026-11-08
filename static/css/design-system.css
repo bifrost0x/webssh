@@ -156,7 +156,7 @@ body.webssh-ui[data-theme="paper"] { --ui-action-fg: #ffffff; }
 @keyframes ws-inspector-open { from { clip-path: inset(0 0 0 22%); transform: translateX(18px); opacity: .6; } to { clip-path: inset(0); transform: translateX(0); opacity: 1; } }
 @keyframes ws-tool-open { from { clip-path: inset(0 0 0 30%); transform: translateX(20px); opacity: .6; } to { clip-path: inset(0); transform: translateX(0); opacity: 1; } }
 @keyframes ws-surface-open { from { clip-path: inset(0 0 4%); opacity: .7; } to { clip-path: inset(0); opacity: 1; } }
-.webssh-ui .primary-workspace-view[aria-hidden="false"] { animation: ws-surface-open 260ms var(--ui-ease); }
+.webssh-ui .primary-workspace-view[data-surface-switch][aria-hidden="false"] { animation: ws-surface-open 260ms var(--ui-ease); }
 .webssh-ui #profileManagementModal.has-profile-editor #profileEditorView,
 .webssh-ui #commandWorkspaceModal .command-library-details { animation: ws-inspector-open var(--ui-motion-panel) var(--ui-ease); }
 .webssh-ui .context-workspace-panel:not([hidden]) { animation: ws-tool-open var(--ui-motion-panel) var(--ui-ease); }
@@ -164,6 +164,6 @@ body.webssh-ui[data-theme="paper"] { --ui-action-fg: #ffffff; }
     .webssh-ui #profileManagementModal.has-profile-editor #profileEditorView,
     .webssh-ui #commandWorkspaceModal .command-library-details,
     .webssh-ui .context-workspace-panel:not([hidden]) { animation: none; }
-    .webssh-ui .primary-workspace-view[aria-hidden="false"] { animation: none; }
+    .webssh-ui .primary-workspace-view[data-surface-switch][aria-hidden="false"] { animation: none; }
     .webssh-ui :is(.btn, .global-nav-item, .context-workspace-tab, .overview-bundle-button, .overview-host-actions button) { transition: none; }
 }

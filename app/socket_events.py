@@ -2119,6 +2119,25 @@ def _public_profile(current_user, stored_profile):
     return profile
 
 
+def initial_inventory(current_user):
+    """Saved hosts and jump hosts for the first page render, or None.
+
+    It lets the overview draw before the socket handshake. Without it the
+    client falls back to the socket lists, which also report storage problems.
+    """
+    try:
+        return {
+            'profiles': [
+                _public_profile(current_user, stored_profile)
+                for stored_profile in profile_manager.load_profiles(current_user.id)
+            ],
+            'jump_hosts': jump_host_manager.load_jump_hosts(current_user.id),
+        }
+    except Exception as error:
+        log_warning("Initial host inventory unavailable", error=str(error))
+        return None
+
+
 @socketio.on('list_profiles')
 @socket_login_required
 def handle_list_profiles(current_user=None):

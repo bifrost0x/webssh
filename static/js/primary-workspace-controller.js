@@ -21,6 +21,7 @@
         const origins = new WeakMap();
         let activeView = 'workspaces';
         let activeElement = null;
+        let surfaceShown = false;
         let initialized = false;
 
         const getSurface = () => browserDocument.getElementById('primaryWorkspaceSurface');
@@ -132,6 +133,9 @@
             if (!surface) return false;
 
             deactivateFileManager(view);
+            // The first view after page load appears at once; later switches animate.
+            if (activeElement !== element) element.toggleAttribute('data-surface-switch', surfaceShown);
+            surfaceShown = true;
             if (activeElement && activeElement !== element) hideElement(activeElement);
 
             rememberOrigin(element);

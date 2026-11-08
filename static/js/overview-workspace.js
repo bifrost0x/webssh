@@ -108,11 +108,12 @@
         function countUp(element, value, suffix = '') {
             const previous = state.shown.get(element.id || element);
             state.shown.set(element.id || element, value);
-            if (typeof value !== 'number' || !motion() || previous === value) {
+            // The first value appears at once; only later changes count towards it.
+            if (typeof value !== 'number' || typeof previous !== 'number' || !motion() || previous === value) {
                 element.textContent = typeof value === 'number' ? `${value}${suffix}` : value;
                 return;
             }
-            const from = typeof previous === 'number' ? previous : 0;
+            const from = previous;
             const started = win.performance.now();
             const step = now => {
                 const progress = Math.min(1, (now - started) / 700);
@@ -151,8 +152,13 @@
             $('overviewTitle').textContent = tw(Model.greetingKey(new Date().getHours()),
                 {greetingMorning: 'Good morning, {name}', greetingDay: 'Hello, {name}', greetingEvening: 'Good evening, {name}'}[Model.greetingKey(new Date().getHours())],
                 {name});
-            $('overviewDate').textContent = new Date().toLocaleDateString(win.i18n?.getLanguage?.() || undefined,
-                {weekday: 'long', day: 'numeric', month: 'long'});
+            const language = win.i18n?.getLanguage?.() || undefined;
+            const today = new Date();
+            const dateKey = `${language}|${today.toDateString()}`;
+            if (state.dateKey !== dateKey) {
+                state.dateKey = dateKey;
+                $('overviewDate').textContent = today.toLocaleDateString(language, {weekday: 'long', day: 'numeric', month: 'long'});
+            }
             const line = Model.headline({connected: win.socket?.connected !== false, hostList: hosts, attentionItems});
             $('overviewStatus').dataset.tone = line.tone;
             $('overviewStatusText').textContent = {
@@ -244,7 +250,7 @@
             const matching = new Set(Model.filter(hosts, search.value).map(host => host.id));
             // Hysteresis: re-rendering can change the panel width by a scrollbar or a
             // wrapped line, which must not flip the topology layout back and forth.
-            const width = holder.clientWidth;
+            const width = state.topologyWidth ?? holder.clientWidth;
             const narrow = Boolean(width && (state.topologyNarrow ? width < 600 : width < 560));
             state.topologyNarrow = narrow;
             // Like the host cards, the drawing is rebuilt only when what it shows changed.
@@ -263,20 +269,19 @@
             const edges = svg('g', {class: 'od-edges'});
             const nodes = svg('g', {class: 'od-nodes'});
             const hubById = new Map(layout.hubs.map(hub => [hub.key, hub]));
-            layout.hubs.forEach((hub, index) => {
-                edges.append(svg('path', {d: `M${layout.center.x} ${layout.center.y} L${hub.x} ${hub.y}`, class: 'od-edge od-edge-hub', style: `--od-delay:${index * 80}ms`}));
+            layout.hubs.forEach(hub => {
+                edges.append(svg('path', {d: `M${layout.center.x} ${layout.center.y} L${hub.x} ${hub.y}`, class: 'od-edge od-edge-hub'}));
             });
-            layout.nodes.forEach((item, index) => {
+            layout.nodes.forEach(item => {
                 const hub = hubById.get(item.hub);
                 const live = item.host.state === 'live';
                 const middleX = (hub.x + item.x) / 2;
                 edges.append(svg('path', {
                     d: `M${hub.x} ${hub.y} Q${middleX} ${hub.y} ${item.x} ${item.y}`,
                     class: `od-edge${live ? ' od-edge-live' : ''}`, 'data-dim': String(!matching.has(item.host.id)),
-                    style: `--od-delay:${200 + index * 35}ms`,
                 }));
                 const group = svg('g', {class: 'od-node', 'data-state': item.host.state, 'data-dim': String(!matching.has(item.host.id)),
-                    style: `--od-delay:${300 + index * 35}ms`, transform: `translate(${item.x.toFixed(1)} ${item.y.toFixed(1)})`});
+                    transform: `translate(${item.x.toFixed(1)} ${item.y.toFixed(1)})`});
                 const title = svg('title');
                 title.textContent = `${item.host.name} · ${item.host.destination} · ${stateLabel(item.host.state)}`;
                 group.append(title, svg('circle', {r: 14, class: 'od-node-halo'}), svg('circle', {r: 7, class: 'od-node-dot'}));
@@ -414,11 +419,7 @@
                 for (let index = 0; index < 6; index += 1) hostList.append(node('li', 'od-host od-skeleton'));
                 return;
             }
-            visible.forEach((host, index) => {
-                const card = hostCard(host);
-                card.style.setProperty('--od-index', String(Math.min(index, 12)));
-                hostList.append(card);
-            });
+            visible.forEach(host => hostList.append(hostCard(host)));
             if (focusedKey) [...hostList.querySelectorAll('[data-key]')].find(item => item.dataset.key === focusedKey)?.focus({preventScroll: true});
         }
 
@@ -515,11 +516,10 @@
             const chart = node('div', 'od-chart-bars');
             chart.setAttribute('role', 'img');
             chart.setAttribute('aria-label', tw('chartLabel', 'Automation runs per day over 14 days: {runs} runs, {failed} failed', {runs: metrics.automation.runs, failed: metrics.automation.failed}));
-            bins.forEach((bin, index) => {
+            bins.forEach(bin => {
                 const total = bin.succeeded + bin.failed + bin.other;
                 const column = node('div', 'od-bar');
                 column.title = `${dayLabel(bin)}: ${bin.succeeded} ✓ · ${bin.failed} ✕ · ${bin.other} ?`;
-                column.style.setProperty('--od-delay', `${index * 40}ms`);
                 const stack = node('div', 'od-bar-stack');
                 stack.style.setProperty('--od-fill', `${total ? Math.max(8, (total / max) * 100) : 0}%`);
                 [['failed', bin.failed], ['other', bin.other], ['succeeded', bin.succeeded]].forEach(([kind, count]) => {
@@ -619,9 +619,8 @@
             renderPlatforms(hosts);
             renderActivity(hosts, runInfo);
             if (state.firstPaint) {
-                // Entrance animations play once per page load, not on every update.
                 state.firstPaint = false;
-                win.setTimeout(() => { view.dataset.settled = 'true'; }, 1800);
+                view.dataset.settled = 'true';
             }
             if (focusKey) view.querySelector(`[data-key="${CSS.escape(focusKey)}"]`)?.focus({preventScroll: true});
         }
@@ -655,7 +654,8 @@
         }
         function queueReadiness() {
             win.clearTimeout(state.readinessTimer);
-            state.readinessTimer = win.setTimeout(loadReadiness, 400);
+            // The first load runs at once; later changes are coalesced.
+            state.readinessTimer = win.setTimeout(loadReadiness, state.readiness === null ? 0 : 400);
         }
         async function checkReachability() {
             if (state.checking || mode() === 'off' || !profiles().length) return;
@@ -866,11 +866,12 @@
             ['connect', 'disconnect'].forEach(name => win.socket?.on?.(name, schedule));
             win.setInterval(() => { if (!view.hidden && !doc.hidden) schedule(); }, 60 * 1000);
             if (win.ResizeObserver) {
-                let narrow = null;
                 new win.ResizeObserver(entries => {
-                    const width = entries[0].contentRect.width;
-                    const now = narrow ? width < 600 : width < 560;
-                    if (now !== narrow) { narrow = now; schedule(); }
+                    // Layout is clean here, so reading the width costs nothing; renders reuse it.
+                    const width = entries[0].target.clientWidth;
+                    state.topologyWidth = width;
+                    const narrow = Boolean(width && (state.topologyNarrow ? width < 600 : width < 560));
+                    if (narrow !== state.topologyNarrow) schedule();
                 }).observe($('odTopology'));
             }
             render();

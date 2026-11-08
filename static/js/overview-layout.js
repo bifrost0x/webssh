@@ -121,12 +121,14 @@
         };
 
         function measure() {
-            sections.forEach(section => {
-                if (section.hidden || section.dataset.userHidden === 'true') return;
+            // Read every panel first, then write: interleaving forces a layout per panel.
+            const visible = [...sections.values()].filter(section => !section.hidden && section.dataset.userHidden !== 'true');
+            const spans = visible.map(section => {
                 // The margin below a panel is its share of the gap (wider while editing).
                 const below = parseFloat(win.getComputedStyle(section).marginBottom) || gap();
-                section.style.gridRowEnd = `span ${rowsFor(section.getBoundingClientRect().height, below)}`;
+                return rowsFor(section.getBoundingClientRect().height, below);
             });
+            visible.forEach((section, index) => { section.style.gridRowEnd = `span ${spans[index]}`; });
         }
         const observer = win.ResizeObserver ? new win.ResizeObserver(() => win.requestAnimationFrame(measure)) : null;
         sections.forEach(section => observer?.observe(section));

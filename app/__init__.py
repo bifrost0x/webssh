@@ -1061,6 +1061,7 @@ def create_app(
     @login_required
     def index():
         from .app_settings import is_automation_enabled
+        from .socket_events import initial_inventory
         settings = get_user_settings(current_user.id)
         theme = settings.get('theme', 'glass')
         auth_session = current_authentication_session()
@@ -1068,6 +1069,7 @@ def create_app(
             'index.html',
             username=current_user.username,
             theme=theme,
+            initial_inventory=initial_inventory(current_user),
             overview_layout=settings.get('overview_layout', 'dashboard'),
             overview_reachability=settings.get('overview_reachability', 'manual'),
             host_discovery_available=discovery_available(),
