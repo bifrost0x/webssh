@@ -14,13 +14,17 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
 
 import config
-from .audit_logger import log_info
+from .audit_logger import log_info, log_warning
 from .auth import check_user_rate_limit
 
 overview_blueprint = Blueprint('overview', __name__)
 
 MAX_PROBES = 50
 PROBE_TIMEOUT_SECONDS = 3
+# The SSH server speaks first (RFC 4253). Other lines may precede its
+# identification line; read at most this much for one second.
+GREETING_TIMEOUT_SECONDS = 1.0
+GREETING_LIMIT = 1024
 CHECK_DEADLINE_SECONDS = 8
 CACHE_SECONDS = 60
 # The last answer stays on display across page loads, never as a fresh check.
@@ -98,8 +102,34 @@ def status():
     return response
 
 
+def _read_greeting(connection):
+    """Platform named by the server's SSH identification line, read without sending anything."""
+    from .discovery_routes import describe_banner
+    data = b''
+    deadline = time.monotonic() + GREETING_TIMEOUT_SECONDS
+
+    def identification():
+        return next((line for line in data.split(b'\n')[:-1] if line.startswith(b'SSH-')), None)
+
+    try:
+        while identification() is None and len(data) < GREETING_LIMIT:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            connection.settimeout(remaining)
+            chunk = connection.recv(GREETING_LIMIT - len(data))
+            if not chunk:
+                break
+            data += chunk
+    except OSError:
+        return None
+    line = identification()
+    described = describe_banner(line) if line else None
+    return described.get('platform') if described else None
+
+
 def _probe(host, port):
-    """One TCP connect under the network policy; never sends data."""
+    """One TCP connect under the network policy; reads the greeting, never sends data."""
     from .network_policy import open_validated_socket, resolve_allowed_target
     started = time.monotonic()
     try:
@@ -115,8 +145,15 @@ def _probe(host, port):
         connection = open_validated_socket(target, PROBE_TIMEOUT_SECONDS)
     except OSError:
         return dict(state='unreachable')
-    connection.close()
-    return dict(state='reachable', latency_ms=round((time.monotonic() - started) * 1000))
+    latency = round((time.monotonic() - started) * 1000)
+    try:
+        platform = _read_greeting(connection)
+    finally:
+        connection.close()
+    outcome = dict(state='reachable', latency_ms=latency)
+    if platform:
+        outcome['platform'] = platform
+    return outcome
 
 
 def _plans(user_id, wanted=None):
@@ -198,16 +235,29 @@ def reachability():
         with _CACHE_LOCK:
             _IN_FLIGHT.discard(user_id)
     results = {}
+    greetings = {}
     for profile_id, plan in plans.items():
         outcome = dict(outcomes.get(plan['endpoint']) or dict(state='unresolved'))
+        platform = outcome.pop('platform', None)
         if plan['via_jump']:
+            # The probe reached the jump host; its greeting says nothing about the target.
             outcome['via_jump'] = True
+        elif platform:
+            greetings[profile_id] = (plan['endpoint'], platform)
         results[profile_id] = outcome
+    platforms_updated = False
+    if greetings:
+        from .profile_manager import cache_greeting_platforms
+        try:
+            platforms_updated = cache_greeting_platforms(user_id, greetings) > 0
+        except Exception as error:
+            # Platform hints are optional; the reachability answer still stands.
+            log_warning('Platform hints from the reachability check were not stored', user_id=user_id, error=str(error))
     checked_at = time.time()
     with _CACHE_LOCK:
         _CACHE[user_id] = dict(at=time.monotonic(), signature=signature, results=results, checked_at=checked_at)
     log_info('Overview reachability check', user_id=user_id, hosts=len(plans), endpoints=len(endpoints))
-    response = jsonify(results=results, cached=False, checked_at=checked_at)
+    response = jsonify(results=results, cached=False, checked_at=checked_at, platforms_updated=platforms_updated)
     response.headers['Cache-Control'] = 'no-store'
     return response
 

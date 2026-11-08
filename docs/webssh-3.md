@@ -50,10 +50,14 @@ the dashboard checks whether hosts answer:
 | Automatically while Overview is open | Checks run when the dashboard opens and every five minutes while it is visible. |
 | Never | No checks are made. |
 
-A check opens and immediately closes a TCP connection to the SSH port. It does
-not start an SSH handshake and sends no credentials. Hosts behind a jump host
-are reported through the jump host, which is the only system WebSSH contacts
-directly. Checks follow the same network policy as SSH connections
+A check opens a TCP connection to the SSH port, reads for at most one second
+the identification line the server sends by itself, and closes it. It sends
+nothing, starts no SSH handshake and uses no credentials. When that line names
+a platform (for example Debian or Ubuntu), a directly reached host shows it as
+an unverified hint until a connection detects the platform; a detection or a
+manual icon choice always takes precedence. Hosts behind a jump host are
+reported through the jump host, which is the only system WebSSH contacts
+directly, so they get no hint from it. Checks follow the same network policy as SSH connections
 (`BLOCK_INTERNAL_SSH`, `SSH_ALLOWED_INTERNAL_NETWORKS`); blocked destinations
 are reported as blocked, not probed. A check covers at most 50 hosts, results
 are reused for 60 seconds, and each account is rate limited. The last result

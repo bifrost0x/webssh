@@ -723,6 +723,8 @@
             try {
                 const data = await request('/api/overview/reachability', {method: 'POST', body: JSON.stringify({})});
                 state.reachability = data.results || {};
+                // The check read SSH greetings and stored new platform hints; show them.
+                if (data.platforms_updated) win.ProfileManager?.loadProfiles?.();
                 state.reachTargets = targets;
                 pruneReachability();
                 state.checkedAt = Number(data.checked_at) * 1000 || Date.now();

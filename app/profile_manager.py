@@ -926,6 +926,42 @@ def assign_command_set(user_id, profile_id, command_set_id):
 
 
 @user_operation
+def cache_greeting_platforms(user_id, observed):
+    """Record what saved direct hosts' SSH greetings named; return how many changed.
+
+    ``observed`` maps profile ids to ((canonical host, port), platform) as probed.
+    A host edited meanwhile, routed through a jump host or already showing the
+    same hint is left alone; detections and manual choices still take precedence.
+    """
+    from .network_policy import canonicalize_hostname
+    wanted = {key: value for key, value in observed.items() if value and value[1] in PLATFORMS}
+    if not wanted:
+        return 0
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'profiles:{user_id}'):
+            profiles, error = _load_profiles_for_write(user_id)
+            if error:
+                return 0
+            changed = 0
+            for profile in profiles:
+                item = wanted.get(profile.get('id'))
+                if not item or profile.get('jump_host_id'):
+                    continue
+                probed, platform = item
+                try:
+                    current = (canonicalize_hostname(profile.get('host')), int(profile.get('port') or 22))
+                except (TypeError, ValueError):
+                    continue
+                if current != tuple(probed) or profile.get('greeting_platform') == platform:
+                    continue
+                profile['greeting_platform'] = platform
+                changed += 1
+            if changed and save_profiles(user_id, profiles, previous_count=len(profiles)):
+                return changed
+    return 0
+
+
+@user_operation
 def cache_detected_platform(user_id, profile_id, expected_endpoint, platform):
     """Merge only platform facts into the current owned profile under its lock."""
     if expected_endpoint is None or platform not in PLATFORMS:

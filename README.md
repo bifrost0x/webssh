@@ -95,7 +95,8 @@ Upgrading from 2.x? Read the [WebSSH 3 changes and upgrade notes](docs/webssh-3.
   saved passwords and failed runs. Handled items can be dismissed and come back
   when the situation changes.
 - Optional reachability checks (off, on demand, or automatic): one TCP
-  connection to the SSH port under the SSH network policy, no login.
+  connection to the SSH port under the SSH network policy, no login. The
+  server's own greeting gives saved hosts an unverified platform hint.
 - **Find hosts** scans a range you name for SSH and SFTP servers at a gentle,
   fixed pace and opens the host form prefilled. It only runs when you start it.
 - Readable route summaries and an expandable SSH map with saved arrangements.

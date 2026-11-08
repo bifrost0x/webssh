@@ -146,6 +146,13 @@ def test_probe_only_opens_and_closes_a_tcp_connection(monkeypatch):
         def close(self):
             events.append('close')
 
+        def settimeout(self, value):
+            assert 0 < value <= overview_routes.GREETING_TIMEOUT_SECONDS
+
+        def recv(self, size):
+            events.append('recv')
+            return b''
+
         def send(self, *args):  # pragma: no cover - must never be called
             events.append('send')
 
@@ -153,7 +160,8 @@ def test_probe_only_opens_and_closes_a_tcp_connection(monkeypatch):
     monkeypatch.setattr(network_policy, 'open_validated_socket', lambda target, timeout: (events.append(('open', timeout)), Connection())[1])
     result = overview_routes._probe('host.example', 22)
     assert result['state'] == 'reachable' and isinstance(result['latency_ms'], int)
-    assert events == [('open', overview_routes.PROBE_TIMEOUT_SECONDS), 'close']
+    # It only listens for the server's greeting and never sends anything.
+    assert events == [('open', overview_routes.PROBE_TIMEOUT_SECONDS), 'recv', 'close']
 
     def refused(target, timeout):
         raise OSError('refused')
@@ -237,3 +245,77 @@ def test_overview_preferences_reject_invalid_payloads(app, client, context, payl
 
 def test_overview_preferences_require_login(client):
     assert client.put('/api/overview/preferences', json={'dismissed': []}).status_code in (302, 401)
+
+
+class GreetingConnection:
+    def __init__(self, *chunks, error=None):
+        self.chunks, self.error, self.sent, self.closed = list(chunks), error, [], False
+
+    def settimeout(self, value):
+        pass
+
+    def recv(self, size):
+        if self.error:
+            raise self.error
+        return self.chunks.pop(0)[:size] if self.chunks else b''
+
+    def send(self, data):  # pragma: no cover - must never be called
+        self.sent.append(data)
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.mark.parametrize('chunks, platform', [
+    ((b'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n',), 'debian'),
+    ((b'SSH-2.0-OpenSSH_9.6p1 Ubu', b'ntu-3ubuntu13.5\r\n'), 'ubuntu'),
+    ((b'Welcome\r\n', b'SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.5\r\n'), 'ubuntu'),
+    ((b'SSH-2.0-OpenSSH_9.7\r\n',), None),
+    ((b'HTTP/1.1 400 Bad Request\r\n',), None),
+    ((b'x' * 400,), None),
+])
+def test_probe_reads_the_platform_from_the_ssh_greeting(monkeypatch, chunks, platform):
+    from app import network_policy
+    connection = GreetingConnection(*chunks)
+    monkeypatch.setattr(network_policy, 'resolve_allowed_target', lambda *args, **kwargs: object())
+    monkeypatch.setattr(network_policy, 'open_validated_socket', lambda target, timeout: connection)
+    result = overview_routes._probe('host.example', 22)
+    assert result['state'] == 'reachable'
+    assert result.get('platform') == platform
+    assert connection.closed and connection.sent == []
+
+
+def test_a_silent_or_failing_greeting_still_counts_as_reachable(monkeypatch):
+    from app import network_policy
+    connection = GreetingConnection(error=TimeoutError('timed out'))
+    monkeypatch.setattr(network_policy, 'resolve_allowed_target', lambda *args, **kwargs: object())
+    monkeypatch.setattr(network_policy, 'open_validated_socket', lambda target, timeout: connection)
+    result = overview_routes._probe('host.example', 22)
+    assert result['state'] == 'reachable' and 'platform' not in result and connection.closed
+
+
+def test_reachability_stores_greeting_hints_only_for_direct_hosts(app, client, context, monkeypatch):
+    from app.jump_host_manager import add_jump_host, load_jump_hosts
+    from app.profile_manager import add_profile, get_profile
+    uid, _aid, _book, profile = context
+    add_jump_host(uid, 'Bastion', 'bastion.example', 2222, 'ops', 'password')
+    jump = load_jump_hosts(uid)[0]
+    routed, _ = add_profile(uid, 'Routed', 'routed.example', 22, 'operator', 'password', None, jump['id'])
+    monkeypatch.setattr(overview_routes, '_probe', lambda host, port: dict(state='reachable', latency_ms=3, platform='debian'))
+    response = client.post('/api/overview/reachability', json={})
+    assert response.status_code == 200
+    assert response.json['platforms_updated'] is True
+    assert 'platform' not in response.json['results'][profile['id']]
+    with app.app_context():
+        assert get_profile(uid, profile['id'])['greeting_platform'] == 'debian'
+        # The probe reached the bastion; its greeting must not label the target.
+        assert 'greeting_platform' not in get_profile(uid, routed['id'])
+
+
+def test_greeting_hints_skip_hosts_edited_since_the_probe(app, context):
+    from app.profile_manager import cache_greeting_platforms, get_profile
+    uid, _aid, _book, profile = context
+    with app.app_context():
+        assert cache_greeting_platforms(uid, {profile['id']: (('other.example', 22), 'ubuntu')}) == 0
+        assert 'greeting_platform' not in get_profile(uid, profile['id'])
+        assert cache_greeting_platforms(uid, {profile['id']: (('server.example', 22), 'windows')}) == 0
