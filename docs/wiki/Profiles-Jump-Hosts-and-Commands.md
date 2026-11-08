@@ -55,7 +55,10 @@ they are never stored in profiles.
 Open **Host context** from a saved host's action menu, or from the active
 session's **Notes** tools. Host notes are separate from the global notepad.
 Each saved profile has its own private context, even when two profiles use the
-same hostname. Ad-hoc connections have no saved host context.
+same hostname. A session opened without its saved host, for example through
+Quick Connect, uses the context of the saved host with the same destination,
+user and jump host; with several, the most recently edited one. A connection
+that matches no saved host has no context.
 
 Context supports up to 100000 characters of notes, 20 favorite absolute remote
 directory paths, and references to 20 command sets belonging to your account.

@@ -129,9 +129,18 @@ test('active session context rejects stale actions and explains ad-hoc sessions 
     await page.locator('#hostContextLaunchers button').click();
     await expect(page.locator('#hostContextStatus')).toContainText('active SSH session changed');
     await page.locator('#hostContextClose').click();
+    // A session started without its saved host still shows the context of the
+    // saved host with exactly the same destination, user and route.
     await page.evaluate(() => {
         SessionManager.sessions['context-fixture'].profileId = null;
         SessionManager.activeSessionId = 'context-fixture';
+        window.HostContext.openActive();
+    });
+    await expect(page.locator('#hostContextDirectories')).toHaveValue('/logs');
+    await page.locator('#hostContextClose').click();
+    // Without a matching saved host it explains that there is no context.
+    await page.evaluate(() => {
+        SessionManager.sessions['context-fixture'].host = 'unsaved.example';
         window.HostContext.openActive();
     });
     await expect(page.locator('#hostContextEmpty')).toBeVisible();

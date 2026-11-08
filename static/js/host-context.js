@@ -7,6 +7,23 @@
 
     function copy(value) { return JSON.parse(JSON.stringify(value)); }
 
+    /**
+     * The saved host a session belongs to. A session started without one (Quick
+     * Connect, or reopened by its destination) uses the saved host with exactly
+     * the same destination, user and route; with several, the latest edited.
+     */
+    function profileFor(session, profiles = []) {
+        if (!session) return null;
+        if (session.profileId) return session.profileId;
+        const host = value => String(value || '').trim().replace(/\.+$/, '').toLowerCase();
+        const matches = profiles.filter(profile => profile?.id && host(profile.host) === host(session.host)
+            && Number(profile.port || 22) === Number(session.port || 22)
+            && profile.username === session.username
+            && (profile.jump_host_id || null) === (session.jumpHostId || null));
+        matches.sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+        return matches[0]?.id || null;
+    }
+
     function createController(deps) {
         const drafts = new Map();
         const pendingSaves = new Set();
@@ -16,7 +33,7 @@
         function currentTarget() {
             const session = deps.getActiveSession?.();
             return session?.connected && session.id === state.sessionId
-                && session.profileId === state.profileId ? session : null;
+                && profileFor(session, deps.profiles?.() || []) === state.profileId ? session : null;
         }
         const controller = {
             state,
@@ -192,6 +209,7 @@
         modal = node('hostContextModal');
         if (!modal || controller) return;
         controller = createController({request, changed: render, updated: status, getActiveSession: active,
+            profiles: () => root.ProfileManager?.profiles || [],
             directory: async (sessionId, path, valid) => {
                 const fm = root.getSFTPFileManager?.();
                 if (!fm || !valid()) return false;
@@ -229,13 +247,15 @@
         const session = active();
         heading = label || text('title', 'Host context');
         root.ModalManager.open(modal);
-        controller.open(profileId, session?.profileId === profileId ? session.id : null);
+        const owner = profileFor(session, root.ProfileManager?.profiles || []);
+        controller.open(profileId, owner && owner === profileId ? session.id : null);
     }
 
     function openActive() {
         const session = active();
-        open(session?.profileId || null, session ? `${session.username}@${session.host}:${session.port}` : null);
+        open(profileFor(session, root.ProfileManager?.profiles || []),
+            session ? `${session.username}@${session.host}:${session.port}` : null);
     }
 
-    return {createController, init, open, openActive, hasUnsaved: () => controller?.hasUnsaved() || false};
+    return {createController, profileFor, init, open, openActive, hasUnsaved: () => controller?.hasUnsaved() || false};
 }));

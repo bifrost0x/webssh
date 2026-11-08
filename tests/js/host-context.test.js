@@ -191,3 +191,31 @@ test('a failed background save keeps its own draft and error without disturbing 
     assert.equal(model.state.dirty, true);
     assert.equal(model.state.saving, false);
 });
+
+test('a session without its own saved host uses the saved host with the same destination and route', () => {
+    const {profileFor} = api();
+    const profiles = [
+        {id: 'direct', host: 'NAS.example.', port: 22, username: 'ops', updated_at: '2026-01-01'},
+        {id: 'via-jump', host: 'nas.example', port: 22, username: 'ops', jump_host_id: 'bastion'},
+        {id: 'other-user', host: 'nas.example', port: 22, username: 'root'},
+        {id: 'newer', host: 'nas.example', port: 22, username: 'ops', updated_at: '2026-05-01'},
+    ];
+    assert.equal(profileFor({profileId: 'own', host: 'nas.example', port: 22, username: 'ops'}, profiles), 'own');
+    assert.equal(profileFor({host: 'nas.example', port: 22, username: 'ops'}, profiles), 'newer');
+    assert.equal(profileFor({host: 'nas.example', port: 22, username: 'ops', jumpHostId: 'bastion'}, profiles), 'via-jump');
+    assert.equal(profileFor({host: 'nas.example', port: 2222, username: 'ops'}, profiles), null);
+    assert.equal(profileFor(null, profiles), null);
+});
+
+test('actions work for a matched session without its own saved host', async () => {
+    const active = {id: 's1', connected: true, profileId: null, host: 'nas.example', port: 22, username: 'ops'};
+    const calls = [];
+    const model = api().createController({request: async () => ({revision: 1, notes: 'n', directories: ['/srv'], command_sets: []}),
+        getActiveSession: () => active, profiles: () => [{id: 'p', host: 'nas.example', port: 22, username: 'ops'}],
+        directory: (...args) => calls.push(args)});
+    await model.open('p', 's1');
+    assert.equal(model.currentTarget(), active);
+    assert.equal(await model.directory('/srv'), true);
+    active.port = 2222;
+    assert.equal(model.currentTarget(), null, 'a different destination is not this host');
+});
