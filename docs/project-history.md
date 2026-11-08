@@ -47,12 +47,25 @@ These belong to the first official release baseline, not invented pre-1.0 releas
 | [v2.5.0](https://github.com/bifrost0x/webssh/releases/tag/v2.5.0) / 2026-10-05 | Optional gateways and everyday workspace continuity | [#238](https://github.com/bifrost0x/webssh/pull/238): optional Warpgate; #231/#233/#242: workspace and connection usability; #234-#236/#239/#241: terminal correctness; #251: background loading; #252: dependency updates | 17 |
 | [v2.6.0](https://github.com/bifrost0x/webssh/releases/tag/v2.6.0) / 2026-10-23 | Trusted SSH workspaces, reviewable server/file actions, windows and local fonts | #258: subfolder proxy fix; #271/#273: workspace redesign; #279: Nerd Fonts; #280: host trust/context and server operations; #284/#286: file creation/chmod/review; #287: stable action menus | 24 |
 | [v2.7.0](https://github.com/bifrost0x/webssh/releases/tag/v2.7.0) / 2026-11-04 | SSH PAM MFA, tmux navigation, file/command UX, theme-aware branding, security hardening and Apache 2.0 | #304: server MFA; #300/#302: explicit tmux sync; #295/#296: storage and backup boundaries; #298/#299: distribution notices; #309: release documentation | 16 |
+| [v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) / 2026-11-08 | Version 3 workspaces, status-first overview, automation, saved credentials and tour | #311: version 3; #313: listed private networks; #315: HTTPS behind TLS proxies; #316: README captures; #310: 2.7 record | 5 |
 
-The 205 PRs in these release stages are assigned by their **first tagged inclusion**,
+The 210 PRs in these release stages are assigned by their **first tagged inclusion**,
 not by the week in which they merged. The machine-readable
 [release history](release-history.json) lists every PR number, tag SHA, release URL,
 comparison and verified issue-to-implementation link. Direct commits are covered by the
 Git comparisons even though they have no PR to attach to a native milestone.
+
+## v3.0.0 delivery
+
+Published on **2026-11-08** at `c6ecb87c23a1b9369b1534770f248df4a6994933`. The tag first includes
+five merged PRs after v2.7.0: #311 delivers version 3, #313 the listed
+private-network exception (#312), #315 HTTPS detection behind TLS reverse
+proxies without proxy trust, #316 the README captures and #310 the 2.7 record.
+[Tag CI](https://github.com/bifrost0x/webssh/actions/runs/42480130060) and native image publication passed.
+The immutable AMD64/ARM64 index is `ghcr.io/bifrost0x/webssh@sha256:126bfd4c2a35f9d1f7424060bced4b7ecf88bd701f33f7ec8398ffe66333b178`.
+Both platforms retain SPDX SBOM and SLSA provenance, verified directly in GHCR.
+See [release notes](releases/v3.0.0.md) for changes, upgrade precautions and the
+explicit limits of automated acceptance.
 
 ## v2.7.0 delivery
 
