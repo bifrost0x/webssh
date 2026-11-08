@@ -60,4 +60,19 @@ def test_static_site_and_readme_do_not_stretch_the_square_mark():
         for image in re.findall(r'<img[^>]+webssh-logo\.svg[^>]*>', contents):
             assert 'width="40"' in image and 'height="40"' in image
     assert 'width="128"' in (root / 'README.md').read_text(encoding='utf-8').split('</p>', 1)[0]
-    assert 'src="static/images/webssh-logo.svg"' in (root / 'README.md').read_text(encoding='utf-8')
+    assert 'src="assets/webssh-logo.svg"' in (root / 'README.md').read_text(encoding='utf-8')
+
+
+def test_readme_logo_is_the_safe_app_mark_in_the_capture_theme():
+    """GitHub renders the README logo without the app's theme variables, so its colors are fixed."""
+    root = Path(__file__).resolve().parents[1]
+    readme_logo = (root / 'assets/webssh-logo.svg').read_text(encoding='utf-8')
+    app_logo = (root / 'static/images/webssh-logo.svg').read_text(encoding='utf-8')
+    assert 'var(' not in readme_logo
+    assert '#091012' in readme_logo and '#48a3b1' in readme_logo
+    mark = ET.fromstring(readme_logo)
+    assert mark.attrib['viewBox'] == ET.fromstring(app_logo).attrib['viewBox'] == '0 0 128 128'
+    for element in mark.iter():
+        assert element.tag.rsplit('}', 1)[-1] not in ('script', 'foreignObject', 'image', 'text')
+        assert not any(key.startswith('on') for key in element.attrib)
+        assert not any('http' in value for value in element.attrib.values() if 'xmlns' not in value)
