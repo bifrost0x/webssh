@@ -5,6 +5,7 @@ from .automation_store import AutomationError
 from .automation_routes import _auth, _data, _grant, bounds, private, corrupt, storage_failure
 from .auth import check_reauth_rate_limit
 from .storage_errors import StorageCorruptionError
+from .transport_security import request_reached_over_https
 
 credentials_blueprint = Blueprint('credentials', __name__)
 credentials_blueprint.before_request(bounds)
@@ -18,7 +19,7 @@ def service():
 
 
 def _available():
-    if not request.is_secure:
+    if not request_reached_over_https():
         raise AutomationError('https_required')
     if not current_app.extensions['runtime_lifecycle'].accepting_work():
         raise AutomationError('unavailable')
