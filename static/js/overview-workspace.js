@@ -546,6 +546,15 @@
                     open.append(icon('system_update_alt'));
                     entry.append(open);
                 }
+                // A restart hint only changes when the host is asked again; this opens that check as a draft.
+                if (item.kind === 'reboot' && win.WebSSHAutomation?.openTemplate && state.automationEnabled) {
+                    const label = tw('openRecheck', 'Check restart status again for {count} hosts', {count: item.hostIds.length});
+                    const recheck = button('od-dismiss', label, () => win.WebSSHAutomation.openTemplate('maintenance', item.hostIds));
+                    recheck.title = label;
+                    recheck.dataset.key = `recheck:${item.key}`;
+                    recheck.append(icon('refresh'));
+                    entry.append(recheck);
+                }
                 entry.append(dismiss);
                 return entry;
             }));

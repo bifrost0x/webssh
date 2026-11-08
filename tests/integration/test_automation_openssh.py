@@ -147,3 +147,17 @@ def test_real_openssh_maintenance_probe_feeds_the_saved_host(peer):
     assert _record_maintenance_facts(uid, saved, step, result, nullcontext)
     stored = profile_manager.get_profile(uid, saved['id'])['detected_maintenance']
     assert stored['reboot_required'] == facts['reboot_required'] and stored['checked_at'] > 0
+
+
+def test_real_openssh_login_recheck_reads_the_restart_marker(peer):
+    """The login recheck command runs unprivileged on Debian OpenSSH and answers yes or no."""
+    from app.automation_transport import execute_step
+    from app.host_platform import REBOOT_HINT_COMMAND, parse_reboot_hint
+    uid, profile = peer
+    trust(uid)
+    step = dict(name='Restart marker', command=REBOOT_HINT_COMMAND, timeout=10, sudo=False)
+    with connect_profile(uid, profile, PASSWORD, lambda: False) as transport:
+        result = execute_step(transport, step, lambda: False)
+    assert result['status'] == 'succeeded' and result['exit_code'] == 0, result
+    assert result['stderr'] == ''
+    assert parse_reboot_hint(result['stdout']) in (True, False)

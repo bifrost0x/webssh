@@ -200,3 +200,26 @@ test('pending security updates open the matching upgrade workflow as a draft wit
     expect(writes).toEqual([]);
     expect(await sshAttempts(page)).toEqual([]);
 });
+
+test('a restart hint offers to check the same hosts again, as a draft and without contacting them', async ({page}) => {
+    const {ids} = await openWithReadiness(page);
+    await expect.poll(() => page.evaluate(() => window.WebSSHAutomation?.getRunSnapshot?.().enabled === true)).toBe(true);
+    const affected = ids.slice(-2);
+    await page.evaluate(hostIds => {
+        const checked = Math.floor(Date.now() / 1000);
+        ProfileManager.profiles.forEach(profile => {
+            if (hostIds.includes(profile.id)) profile.detected_maintenance = {reboot_required: true, checked_at: checked};
+        });
+        window.dispatchEvent(new Event('profile-list-change'));
+    }, affected);
+    const writes = [];
+    page.on('request', request => { if (request.method() !== 'GET' && request.url().includes('/api/automation/')) writes.push(request.url()); });
+    const recheck = page.locator('#odAttention [data-key^="recheck:"]');
+    await expect(recheck).toHaveAttribute('aria-label', 'Check restart status again for 2 hosts');
+    await recheck.click();
+    await expect(page.locator('#runbookName')).toHaveValue('Updates and restart status');
+    await expect.poll(() => page.locator('#targetHosts input:checked').evaluateAll(inputs => inputs.map(input => input.value).sort()))
+        .toEqual([...affected].sort());
+    expect(writes).toEqual([]);
+    expect(await sshAttempts(page)).toEqual([]);
+});
