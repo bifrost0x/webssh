@@ -87,7 +87,7 @@ def lock():
     service().revoke(current_user.id)
     automation = current_app.extensions.get('automation')
     if automation is not None:
-        automation.cancel(current_user.id)
+        automation.cancel(current_user.id, manual_only=True)
     return jsonify(service().vault_status(current_user.id, auth.id))
 
 

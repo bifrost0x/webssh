@@ -304,3 +304,20 @@ def test_edit_during_run_skips_remaining_hosts_with_reason(app, context, monkeyp
     assert first['status'] == 'succeeded'
     assert (rest['status'], rest['reason']) == ('skipped', 'preview_changed')
     assert record['status'] == 'failed'
+
+
+@pytest.mark.parametrize('schedule_id,stopped', [('schedule-1', False), (None, True)])
+def test_vault_lock_stops_only_browser_started_runs(app, schedule_id, stopped):
+    import threading
+    service = app.extensions['automation']
+    cancel = threading.Event()
+    record = dict(id='run-1', **({'schedule_id': schedule_id} if schedule_id else {}))
+    service._active[4242] = dict(cancel=cancel, resources=[], record=record)
+    try:
+        service.lock_vault(4242)
+        assert cancel.is_set() is stopped
+        service.revoke(4242)
+        # Locking or deleting the account still stops every run.
+        assert cancel.is_set()
+    finally:
+        service._active.pop(4242, None)

@@ -1494,7 +1494,13 @@ test('360px mobile workspace keeps tools available and preserves context across 
     expect(mobileToastGeometry.toastRight).toBeLessThanOrEqual(
         mobileToastGeometry.viewportWidth,
     );
-    await expect.poll(() => page.locator('#sessionCommandsPanel').evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(360);
+    // Measure only after the panel's slide-in has settled; mid-transition boxes are fractional.
+    await expect.poll(() => page.locator('#sessionCommandsPanel').evaluate(element => (
+        document.getAnimations().some(animation => animation.playState === 'running'
+            && animation.effect?.getTiming().iterations !== Infinity
+            && animation.effect?.target?.contains?.(element)) ? Infinity
+            : element.getBoundingClientRect().right
+    ))).toBeLessThanOrEqual(360);
     const commandsGeometry = await page.locator('#sessionCommandsPanel').evaluate(element => ({
         left: element.getBoundingClientRect().left,
         right: element.getBoundingClientRect().right,

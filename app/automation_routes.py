@@ -184,7 +184,7 @@ def vault_apply():
 def vault_lock():
     auth = _auth()
     _enabled()
-    service().revoke(current_user.id)
+    service().lock_vault(current_user.id)
     return jsonify(service().credentials.vault_status(current_user.id, auth.id))
 
 

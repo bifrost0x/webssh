@@ -492,10 +492,12 @@ class AutomationService:
                 self._active.pop(uid, None)
             reservation.release()
 
-    def cancel(self, user_id, run_id=None):
+    def cancel(self, user_id, run_id=None, *, manual_only=False):
         with self._lock:
             state = self._active.get(int(user_id))
             if state is not None and run_id is not None and state['record']['id'] != run_id:
+                state = None
+            if state is not None and manual_only and state['record'].get('schedule_id'):
                 state = None
             if state is not None:
                 state['cancel'].set()
@@ -523,6 +525,13 @@ class AutomationService:
     def revoke(self, user_id):
         self.credentials.revoke(user_id)
         self.cancel(user_id)
+
+    def lock_vault(self, user_id):
+        """Stop work that used the browser vault; schedules use assigned credentials."""
+        self.credentials.revoke(user_id)
+        self.cancel(user_id, manual_only=True)
+        with self._lock:
+            self._intents = {k:v for k,v in self._intents.items() if v['user_id'] != int(user_id)}
         with self._lock:
             self._intents = {k:v for k,v in self._intents.items() if v['user_id'] != int(user_id)}
 
