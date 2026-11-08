@@ -70,6 +70,8 @@ test('headline picks the most severe condition', () => {
     assert.equal(Model.headline({hostList: ready}).key, 'ready');
     assert.equal(Model.headline({hostList: []}).key, 'empty');
     assert.equal(Model.headline({hostList: ready, attentionItems: [{}]}).tone, 'warning');
+    // The headline counts what the items cover, like the KPI: four hosts plus one run are five.
+    assert.equal(Model.headline({hostList: ready, attentionItems: [{kind: 'host-keys', count: 4}, {kind: 'run-failed'}]}).count, 5);
     assert.equal(Model.headline({connected: false, hostList: ready}).key, 'disconnected');
 });
 

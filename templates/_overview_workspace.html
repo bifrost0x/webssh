@@ -5,7 +5,7 @@
                 <h1 id="overviewTitle" tabindex="-1" data-i18n="overview.title">Overview</h1>
                 <p id="overviewDate" class="od-hero-meta"></p>
             </div>
-            <p id="overviewStatus" class="od-status" role="status" data-tone="neutral"><span class="od-status-dot" aria-hidden="true"></span><span id="overviewStatusText"></span></p>
+            <p id="overviewStatus" class="od-status" role="status" data-tone="neutral"><button type="button" id="overviewStatusButton" class="od-status-button" disabled><span class="od-status-dot" aria-hidden="true"></span><span id="overviewStatusText"></span><span class="material-icons od-status-arrow" aria-hidden="true">chevron_right</span></button></p>
             <div class="od-command" role="search">
                 <label class="od-search">
                     <span class="material-icons" aria-hidden="true">search</span>
@@ -51,10 +51,10 @@
                 <div class="od-panel-head">
                     <h2 id="odTopologyTitle" data-i18n="overviewWorkspace.topologyTitle">Infrastructure</h2>
                     <ul class="od-legend">
-                        <li data-state="ready" data-i18n="overviewWorkspace.stateReady">Ready</li>
-                        <li data-state="action" data-i18n="overviewWorkspace.stateAction">Needs action</li>
-                        <li data-state="unreachable" data-i18n="overviewWorkspace.stateUnreachable">Unreachable</li>
-                        <li data-state="live" data-i18n="overviewWorkspace.stateLive">Session open</li>
+                        <li><button type="button" class="od-legend-filter" data-state="ready" aria-pressed="false"><span data-i18n="overviewWorkspace.stateReady">Ready</span><span class="od-legend-count"></span></button></li>
+                        <li><button type="button" class="od-legend-filter" data-state="action" aria-pressed="false"><span data-i18n="overviewWorkspace.stateAction">Needs action</span><span class="od-legend-count"></span></button></li>
+                        <li><button type="button" class="od-legend-filter" data-state="unreachable" aria-pressed="false"><span data-i18n="overviewWorkspace.stateUnreachable">Unreachable</span><span class="od-legend-count"></span></button></li>
+                        <li><button type="button" class="od-legend-filter" data-state="live" aria-pressed="false"><span data-i18n="overviewWorkspace.stateLive">Session open</span><span class="od-legend-count"></span></button></li>
                     </ul>
                     <button id="overviewOpenMap" class="od-link" type="button" data-i18n="overviewWorkspace.routesOpenMap" hidden>Open map</button>
                 </div>
@@ -88,6 +88,7 @@
             <section class="od-panel od-hosts" data-panel="hosts" aria-labelledby="overviewHostsTitle" style="--od-index:7">
                 <div class="od-panel-head">
                     <h2 id="overviewHostsTitle"><span data-i18n="overviewWorkspace.hostsTitle">Hosts</span> <span id="overviewHostTotal" class="od-count"></span></h2>
+                    <button type="button" id="overviewHostFilter" class="od-filter-chip" hidden><span id="overviewHostFilterText"></span><span class="material-icons" aria-hidden="true">close</span></button>
                     <button type="button" class="od-link" data-host-discovery hidden><span data-i18n="discovery.open">Find hosts</span></button>
                 </div>
                 <div class="od-panel-body">

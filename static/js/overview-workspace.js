@@ -48,7 +48,7 @@
         const hostList = $('overviewHostList');
         const mode = () => view.dataset.reachability || 'manual';
         const state = {readiness: null, reachability: null, checkedAt: null, checking: false, reachError: null,
-            shown: new Map(), scheduled: false, readinessTimer: 0, automaticTimer: 0, routeMap: null, firstPaint: true, returnKey: null, topologyNarrow: false,
+            shown: new Map(), scheduled: false, readinessTimer: 0, automaticTimer: 0, routeMap: null, firstPaint: true, returnKey: null, topologyNarrow: false, stateFilter: null, focusId: null, idFilter: null,
             dismissed: [], dismissSequence: 0, attention: [], board: null};
 
         const profiles = () => win.ProfileManager?.profiles || [];
@@ -83,7 +83,6 @@
             card?.scrollIntoView?.({block: 'nearest'});
             (card?.querySelector('.od-connect') || $('overviewTitle'))?.focus({preventScroll: true});
         }
-        const openHosts = () => $('manageProfilesBtn')?.click();
         const openAutomation = () => $('automationNavBtn')?.click();
         function createHost() {
             const manager = win.ProfileManager;
@@ -167,6 +166,7 @@
                 empty: tw('statusEmpty', 'Ready for your first host'),
                 ready: tw('statusReady', 'Everything is ready'),
             }[line.key];
+            $('overviewStatusButton').disabled = line.key !== 'attention';
         }
 
         function renderKpis(hosts, metrics, runInfo) {
@@ -245,9 +245,56 @@
             });
             holder.replaceChildren(list);
         }
+        const stateGroup = value => (value === 'broken' ? 'unreachable' : value);
+        function visibleHosts(hosts) {
+            const shown = state.idFilter ? hosts.filter(host => state.idFilter.ids.has(host.id))
+                : state.focusId ? hosts.filter(host => host.id === state.focusId) : Model.filter(hosts, search.value);
+            return state.stateFilter ? shown.filter(host => stateGroup(host.state) === state.stateFilter) : shown;
+        }
+        const filtered = () => Boolean(state.idFilter || state.focusId || state.stateFilter || search.value.trim());
+        function resetFilters() {
+            search.value = '';
+            state.focusId = null;
+            state.stateFilter = null;
+            state.idFilter = null;
+            schedule();
+        }
+        /** Show exactly the hosts an attention item is about, in the drawing and the cards. */
+        function filterHosts(ids, label) {
+            search.value = '';
+            state.focusId = null;
+            state.stateFilter = null;
+            state.idFilter = {ids: new Set(ids), label};
+            render();
+            const panel = view.querySelector('[data-panel="hosts"]');
+            panel?.scrollIntoView?.({block: 'nearest', behavior: motion() ? 'smooth' : 'auto'});
+            hostList.querySelector('.od-connect')?.focus({preventScroll: true});
+        }
+        function renderHostFilter() {
+            const chip = $('overviewHostFilter');
+            if (!chip) return;
+            chip.hidden = !state.idFilter;
+            if (!state.idFilter) return;
+            $('overviewHostFilterText').textContent = state.idFilter.label;
+            chip.title = tw('showAll', 'Show all hosts');
+            chip.setAttribute('aria-label', `${state.idFilter.label} · ${tw('showAll', 'Show all hosts')}`);
+        }
+        function renderLegend(hosts) {
+            const counts = new Map();
+            hosts.forEach(host => counts.set(stateGroup(host.state), (counts.get(stateGroup(host.state)) || 0) + 1));
+            view.querySelectorAll('.od-legend-filter').forEach(button => {
+                const active = state.stateFilter === button.dataset.state;
+                button.setAttribute('aria-pressed', String(active));
+                button.title = tw('filterState', 'Show only hosts with this state');
+                const count = button.querySelector('.od-legend-count');
+                if (count) count.textContent = String(counts.get(button.dataset.state) || 0);
+            });
+            view.querySelector('.od-legend')?.toggleAttribute('data-filtering', Boolean(state.stateFilter));
+            $('odTopology').toggleAttribute('data-filtered', filtered());
+        }
         function renderTopology(hosts) {
             const holder = $('odTopology');
-            const matching = new Set(Model.filter(hosts, search.value).map(host => host.id));
+            const matching = new Set(visibleHosts(hosts).map(host => host.id));
             // Hysteresis: re-rendering can change the panel width by a scrollbar or a
             // wrapped line, which must not flip the topology layout back and forth.
             const width = state.topologyWidth ?? holder.clientWidth;
@@ -311,7 +358,9 @@
                 nodes.append(group);
             });
             const core = svg('g', {class: 'od-core', transform: `translate(${layout.center.x} ${layout.center.y})`});
-            core.append(svg('circle', {r: 46, class: 'od-core-pulse'}), svg('circle', {r: 40, class: 'od-core-ring'}), svg('circle', {r: 30, class: 'od-core-disc'}));
+            const coreTitle = svg('title');
+            coreTitle.textContent = tw('showAll', 'Show all hosts');
+            core.append(coreTitle, svg('circle', {r: 46, class: 'od-core-pulse'}), svg('circle', {r: 40, class: 'od-core-ring'}), svg('circle', {r: 30, class: 'od-core-disc'}));
             const coreLabel = svg('text', {y: 5, 'text-anchor': 'middle', class: 'od-core-label'});
             coreLabel.textContent = 'WebSSH';
             core.append(coreLabel);
@@ -336,6 +385,10 @@
             }[value] || value;
         }
         function focusHost(id) {
+            // Filter by identity, not by name: "10.10.1.1" must not also match 10.10.1.12.
+            state.focusId = id;
+            state.stateFilter = null;
+            state.idFilter = null;
             search.value = profiles().find(profile => profile.id === id)?.name || '';
             render();
             hostList.querySelector(`[data-host-id="${CSS.escape(id)}"] .od-connect`)?.focus();
@@ -401,7 +454,7 @@
         }
         function renderHosts(hosts) {
             const loaded = win.ProfileManager?.profilesLoaded === true;
-            const visible = Model.filter(hosts, search.value);
+            const visible = visibleHosts(hosts);
             $('overviewHostsEmpty').hidden = !loaded || hosts.length > 0;
             $('overviewHostsNoMatch').hidden = !loaded || !hosts.length || visible.length > 0;
             $('overviewHostTotal').textContent = loaded ? String(visible.length === hosts.length ? hosts.length : `${visible.length} / ${hosts.length}`) : '';
@@ -485,15 +538,16 @@
             case 'host-keys': return ['key', item.count === 1
                 ? tw('attentionHostKeysOne', '{name}: host key not verified yet. Connect once to verify it.', {name: hostName(item.hostIds[0])})
                 : tw('attentionHostKeys', '{count} hosts: host key not verified yet. Connect once to verify it.', {count: item.count}),
-            item.count === 1 ? () => focusHost(item.hostIds[0]) : openHosts];
+            item.count === 1 ? () => focusHost(item.hostIds[0]) : () => filterHosts(item.hostIds, tw('filterHostKeys', 'Host key not verified'))];
             case 'jump-missing': return ['alt_route', tw('jumpMissing', 'Jump host missing for {name}', {name: item.name}), () => edit(item.hostId)];
             case 'unreachable': return ['wifi_off', item.count === 1
                 ? tw('attentionUnreachableOne', '{name} is not reachable', {name: item.names[0]})
-                : tw('attentionUnreachable', '{count} hosts not reachable: {names}', {count: item.count, names: item.names.join(', ')}), () => focusHost(hostIdByName(item.names[0]))];
+                : tw('attentionUnreachable', '{count} hosts not reachable: {names}', {count: item.count, names: item.names.join(', ')}),
+            item.count === 1 ? () => focusHost(item.hostIds?.[0] || hostIdByName(item.names[0])) : () => filterHosts(item.hostIds, tw('stateUnreachable', 'Unreachable'))];
             case 'credentials': return ['password', item.count === 1
                 ? tw('attentionCredentialsOne', '{name}: SSH key missing or saved password changed', {name: hostName(item.hostIds[0])})
                 : tw('attentionCredentials', '{count} hosts: SSH key missing or saved password changed', {count: item.count}),
-            item.count === 1 ? () => edit(item.hostIds[0]) : openHosts];
+            item.count === 1 ? () => edit(item.hostIds[0]) : () => filterHosts(item.hostIds, tw('filterCredentials', 'Sign-in needs review'))];
             case 'run-failed': return ['error_outline', tw('runFailed', 'Run failed: {name}', {name: item.name}), () => win.WebSSHAutomation?.openRun?.(item.runId)];
             default: return ['schedule', tw('scheduleReview', 'Schedule needs review: {name}', {name: item.name}), openAutomation];
             }
@@ -612,6 +666,8 @@
                 reachability: state.reachability});
             renderHero(hosts, attentionItems);
             renderKpis(hosts, metrics, runInfo);
+            renderLegend(hosts);
+            renderHostFilter();
             renderTopology(hosts);
             renderHosts(hosts);
             renderAttention(attentionItems, allAttention.length - attentionItems.length);
@@ -723,11 +779,11 @@
         }
 
         function bindKeyboard() {
-            search.addEventListener('input', schedule);
+            search.addEventListener('input', () => { state.focusId = null; state.idFilter = null; schedule(); });
             search.addEventListener('keydown', event => {
                 if (event.key === 'Enter') { event.preventDefault(); hostList.querySelector('.od-connect')?.click(); }
                 else if (event.key === 'ArrowDown') { event.preventDefault(); hostList.querySelector('.od-connect')?.focus(); }
-                else if (event.key === 'Escape' && search.value) { search.value = ''; schedule(); }
+                else if (event.key === 'Escape' && filtered()) resetFilters();
             });
             doc.addEventListener('keydown', event => {
                 if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || view.hidden) return;
@@ -855,6 +911,29 @@
                 $('overviewRouteMap')?.querySelector('[data-route-map-expand]')?.click();
             });
             $('overviewNavBtn')?.addEventListener('click', openOverview);
+            view.querySelectorAll('.od-legend-filter').forEach(button => button.addEventListener('click', () => {
+                state.focusId = null;
+                state.idFilter = null;
+                state.stateFilter = state.stateFilter === button.dataset.state ? null : button.dataset.state;
+                schedule();
+            }));
+            // A click on empty space or on the WebSSH core shows everything again; host nodes keep their focus click.
+            $('odTopology').addEventListener('click', event => {
+                if (!event.target.closest?.('.od-node') && filtered()) resetFilters();
+            });
+            $('overviewHostFilter')?.addEventListener('click', () => { resetFilters(); search.focus(); });
+            // The status pill leads to what needs attention.
+            $('overviewStatusButton')?.addEventListener('click', () => {
+                const panel = $('odAttention');
+                const first = panel?.querySelector('.od-row');
+                if (first && !panel.hidden && panel.dataset.userHidden !== 'true') {
+                    panel.scrollIntoView?.({block: 'nearest', behavior: motion() ? 'smooth' : 'auto'});
+                    first.focus({preventScroll: true});
+                    return;
+                }
+                const ids = [...new Set(state.attention.flatMap(item => item.hostIds || (item.hostId ? [item.hostId] : [])))];
+                if (ids.length) filterHosts(ids, $('overviewStatusText').textContent);
+            });
             ['session-workspace-change', 'languageChanged', 'automation-runs-updated'].forEach(name => win.addEventListener(name, schedule));
             ['profile-list-change', 'jump-host-list-change', 'host-access-change'].forEach(name => win.addEventListener(name, () => { schedule(); queueReadiness(); }));
             // The first automatic check needs the saved hosts, which may load after init.

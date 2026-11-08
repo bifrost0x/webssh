@@ -113,9 +113,10 @@
     /** Overall headline: the most severe condition wins. */
     function headline({connected = true, hostList = [], attentionItems = []} = {}) {
         if (!connected) return {tone: 'danger', key: 'disconnected'};
-        // Acknowledged items no longer drive the headline.
-        if (attentionItems.some(item => item.kind === 'jump-missing' || item.kind === 'run-failed')) return {tone: 'danger', key: 'attention', count: attentionItems.length};
-        if (attentionItems.length) return {tone: 'warning', key: 'attention', count: attentionItems.length};
+        // Acknowledged items no longer drive the headline. A grouped item counts every host it covers.
+        const count = attentionItems.reduce((sum, item) => sum + (Number.isInteger(item.count) && item.count > 0 ? item.count : 1), 0);
+        if (attentionItems.some(item => item.kind === 'jump-missing' || item.kind === 'run-failed')) return {tone: 'danger', key: 'attention', count};
+        if (attentionItems.length) return {tone: 'warning', key: 'attention', count};
         if (!hostList.length) return {tone: 'neutral', key: 'empty'};
         return {tone: 'success', key: 'ready'};
     }

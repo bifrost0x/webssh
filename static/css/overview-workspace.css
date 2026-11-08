@@ -74,9 +74,8 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
     align-self: start;
     display: inline-flex;
     align-items: center;
-    gap: 10px;
     margin: 0;
-    padding: 8px 16px 8px 12px;
+    padding: 0;
     border: 1px solid color-mix(in srgb, var(--od-tone, var(--od-muted)) 45%, var(--ws2-border));
     border-radius: 999px;
     background: color-mix(in srgb, var(--od-tone, var(--od-muted)) 14%, var(--ws2-surface));
@@ -85,6 +84,25 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
     font-weight: 500;
     backdrop-filter: blur(8px);
 }
+/* The pill is a button while something needs attention; it leads to those items. */
+.od-status-button {
+    display: inline-flex; align-items: center; gap: 10px; padding: 8px 16px 8px 12px;
+    border: 0; border-radius: inherit; background: none; color: inherit; font: inherit; cursor: pointer;
+}
+.od-status-button:disabled { cursor: default; }
+.od-status-button:not(:disabled):hover { background: color-mix(in srgb, var(--od-tone, var(--od-muted)) 14%, transparent); }
+.od-status-button:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 2px; }
+.od-status-arrow { margin: 0 -6px 0 -4px; font-size: 18px; }
+.od-status-button:disabled .od-status-arrow { display: none; }
+.od-filter-chip {
+    display: inline-flex; align-items: center; gap: 4px; max-width: min(100%, 360px); min-height: 26px; padding: 2px 6px 2px 10px;
+    border: 1px solid color-mix(in srgb, var(--ws2-accent) 45%, var(--ws2-border)); border-radius: 999px;
+    background: color-mix(in srgb, var(--ws2-accent) 12%, transparent); color: var(--ws2-text); font: inherit; font-size: 12px; cursor: pointer;
+}
+.od-filter-chip span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od-filter-chip .material-icons { font-size: 16px; }
+.od-filter-chip:hover { background: color-mix(in srgb, var(--ws2-accent) 20%, transparent); }
+.od-filter-chip:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 2px; }
 .od-status[data-tone="success"] { --od-tone: var(--od-ready); }
 .od-status[data-tone="warning"] { --od-tone: var(--od-action); }
 .od-status[data-tone="danger"] { --od-tone: var(--od-danger); }
@@ -173,9 +191,25 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-muted:empty { display: none; }
 
 /* Topology */
-.od-topology .od-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--od-muted); }
-.od-legend li { display: inline-flex; align-items: center; gap: 6px; }
-.od-legend li::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--od-state-color); }
+.od-topology .od-legend { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--od-muted); }
+.od-legend li { display: flex; }
+/* Each state is a toggle that filters the drawing and the host cards. */
+.od-legend-filter {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 2px 10px;
+    border: 1px solid transparent; border-radius: 999px; background: none; color: inherit; font: inherit; cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, opacity .15s ease;
+}
+.od-legend-filter::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--od-state-color); }
+.od-legend-filter:hover { color: var(--ws2-text); background: color-mix(in srgb, var(--od-state-color) 10%, transparent); }
+.od-legend-filter:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 1px; }
+.od-legend-filter[aria-pressed="true"] {
+    color: var(--ws2-text); border-color: color-mix(in srgb, var(--od-state-color) 55%, transparent);
+    background: color-mix(in srgb, var(--od-state-color) 16%, transparent);
+}
+.od-legend[data-filtering] .od-legend-filter:not([aria-pressed="true"]) { opacity: .6; }
+.od-legend-count { min-width: 1ch; font-variant-numeric: tabular-nums; color: var(--od-muted); }
+.od-legend-filter[aria-pressed="true"] .od-legend-count { color: inherit; }
+.od-core { cursor: pointer; }
 .od-legend [data-state="ready"], .od-node[data-state="ready"] { --od-state-color: var(--od-ready); }
 .od-legend [data-state="action"], .od-node[data-state="action"] { --od-state-color: var(--od-action); }
 .od-legend [data-state="unreachable"], .od-node:is([data-state="unreachable"], [data-state="broken"]) { --od-state-color: var(--od-danger); }
