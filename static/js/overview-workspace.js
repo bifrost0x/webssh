@@ -385,7 +385,7 @@
             }[value] || value;
         }
         function focusHost(id) {
-            // Filter by identity, not by name: "10.10.1.1" must not also match 10.10.1.12.
+            // Filter by identity, not by name: "192.0.2.1" must not also match 192.0.2.12.
             state.focusId = id;
             state.stateFilter = null;
             state.idFilter = null;
