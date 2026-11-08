@@ -96,7 +96,8 @@ def _action_target(action, data):
         from .app_settings import is_automation_enabled
         if (action != 'credentials.vault' and not is_automation_enabled()) or auth_session is None:
             raise StepUpError("step-up request is invalid")
-        if action == 'credentials.vault' and not request.is_secure:
+        from .transport_security import request_reached_over_https
+        if action == 'credentials.vault' and not request_reached_over_https():
             raise StepUpError("step-up request is invalid")
         target = data.get("target")
         try:

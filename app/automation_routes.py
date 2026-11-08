@@ -5,6 +5,7 @@ from flask_login import current_user, login_required
 import config
 from .automation_store import AutomationError, runbooks, save_runbook, delete_runbook
 from .auth_assurance import current_authentication_session
+from .transport_security import request_reached_over_https
 from .auth import check_reauth_rate_limit
 from .step_up import consume_account_step_up_grant, StepUpError
 from .storage_errors import StorageCorruptionError
@@ -23,7 +24,7 @@ def _auth():
     return auth
 
 def _secure():
-    if request.is_secure:
+    if request_reached_over_https():
         return
     try:
         loopback = ipaddress.ip_address(request.remote_addr or '').is_loopback
