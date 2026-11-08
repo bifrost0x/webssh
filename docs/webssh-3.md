@@ -1,7 +1,7 @@
 # WebSSH 3
 
-This document describes the version 3 candidate. It does not announce a published
-release; existing release-history entries remain the record of shipped versions.
+This document describes WebSSH 3. The release history remains the record of
+shipped versions.
 
 ## Start where you work
 
@@ -136,7 +136,7 @@ See [Credentials](credentials.md) and the [backup guide](wiki/Backup-Restore-and
 
 ## Media
 
-The README and product tour use browser captures of the version 3 candidate with
+The README and product tour use browser captures of version 3 with
 prepared example data, never a user's servers or credentials. The theme GIF
 shows all eleven themes. The silent video and slide gallery are visual tours;
 they do not claim successful operations on real servers. The previous narrated
@@ -144,7 +144,7 @@ version 2 video is retained only as clearly labeled historical material.
 
 ## Release validation
 
-Version 3 remains a candidate until the final revision passes the release gates.
+A version 3 release is published only after its final revision passes these gates.
 The release workflow derives container tags `3.0.0` and `3.0` from the Git tag
 `v3.0.0`; creating or publishing that tag is a separate release action.
 
