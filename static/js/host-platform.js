@@ -19,6 +19,18 @@
         ['fedora', /\bfedora\b/i], ['archlinux', /\barch[ -]?linux\b/i],
         ['alpinelinux', /\balpine[ -]?linux\b/i], ['freebsd', /\bfreebsd\b/i], ['apple', /\bmacos\b/i],
     ];
+    const serviceLabels = {
+        docker: 'Docker', podman: 'Podman', nginx: 'nginx', apache: 'Apache', caddy: 'Caddy', mariadb: 'MariaDB',
+        postgresql: 'PostgreSQL', samba: 'Samba', k3s: 'k3s', wireguard: 'WireGuard', nextcloud: 'Nextcloud',
+        pihole: 'Pi-hole', homeassistant: 'Home Assistant', jellyfin: 'Jellyfin', plex: 'Plex', portainer: 'Portainer',
+        traefik: 'Traefik', vaultwarden: 'Vaultwarden', immich: 'Immich', gitea: 'Gitea', paperless: 'Paperless',
+        grafana: 'Grafana', adguard: 'AdGuard Home', uptimekuma: 'Uptime Kuma', nginxproxymanager: 'Nginx Proxy Manager',
+    };
+    /** Services detected on the host, as known ids in a stable order. */
+    function services(profile = {}) {
+        const list = Array.isArray(profile?.detected_services) ? profile.detected_services : [];
+        return [...new Set(list.filter(id => Object.hasOwn(serviceLabels, id)))];
+    }
     function resolve(profile = {}) {
         if (known(profile.platform_icon)) return {id: profile.platform_icon, source: 'manual'};
         if (known(profile.detected_platform)) return {id: profile.detected_platform, source: 'detected'};
@@ -80,5 +92,5 @@
             holder.replaceChildren(renderSession(session, profile));
         }
     }
-    return {labels, resolve, render, renderSession, refreshSessionIcons};
+    return {labels, resolve, services, serviceLabels, render, renderSession, refreshSessionIcons};
 });

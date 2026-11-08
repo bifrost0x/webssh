@@ -426,6 +426,22 @@
                 group.append(icon('folder_open'), node('span', '', host.group));
                 meta.append(group);
             }
+            // What runs on the host, as detected when connecting; three at most, the rest counted.
+            const services = win.HostPlatform?.services?.(host.profile) || [];
+            if (services.length) {
+                const labels = services.map(id => win.HostPlatform.serviceLabels[id]);
+                services.slice(0, 3).forEach((id, index) => {
+                    const chip = node('span', 'od-chip od-service-chip', labels[index]);
+                    chip.dataset.service = id;
+                    chip.title = tw('servicesDetected', 'Detected when connecting');
+                    meta.append(chip);
+                });
+                if (services.length > 3) {
+                    const more = node('span', 'od-chip od-service-chip', `+${services.length - 3}`);
+                    more.title = labels.slice(3).join(', ');
+                    meta.append(more);
+                }
+            }
             const favoriteLabel = host.favorite
                 ? tw('favoriteRemove', 'Remove {name} from favorites', {name: host.name})
                 : tw('favoriteAdd', 'Add {name} to favorites', {name: host.name});
@@ -462,7 +478,7 @@
             // so focus, hover and scroll position stay where the user left them.
             const signature = JSON.stringify([loaded, win.i18n?.getLanguage?.() || '', visible.map(host => [host.id, host.state, host.name,
                 host.destination, host.favorite, host.group, host.route.kind, host.route.name, host.sessionId, reasonFor(host),
-                win.HostPlatform?.resolve?.(host.profile)?.id || ''])]);
+                win.HostPlatform?.resolve?.(host.profile)?.id || '', win.HostPlatform?.services?.(host.profile) || []])]);
             if (signature === state.hostSignature) return;
             state.hostSignature = signature;
             const focusedKey = hostList.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
@@ -618,6 +634,7 @@
             const section = $('odPlatforms');
             const entries = Model.platforms(hosts, profile => win.HostPlatform?.resolve?.(profile));
             section.hidden = !entries.length;
+            renderServices(section, hosts);
             const total = Math.max(1, hosts.length);
             section.querySelector('.od-platforms').replaceChildren(...entries.map(entry => {
                 const item = node('li', 'od-platform');
@@ -627,6 +644,30 @@
                 item.append(win.HostPlatform?.render(entry.platform, doc) || icon('dns'), node('span', 'od-platform-name', name), node('span', 'od-count', String(entry.count)), bar);
                 return item;
             }));
+        }
+        /** Detected services with their host counts; each filters the overview to those hosts. */
+        function renderServices(section, hosts) {
+            const counts = new Map();
+            hosts.forEach(host => (win.HostPlatform?.services?.(host.profile) || []).forEach(id => {
+                if (!counts.has(id)) counts.set(id, []);
+                counts.get(id).push(host.id);
+            }));
+            const list = section.querySelector('.od-services');
+            const heading = section.querySelector('.od-services-title');
+            if (!list || !heading) return;
+            heading.hidden = list.hidden = !counts.size;
+            const labels = win.HostPlatform?.serviceLabels || {};
+            list.replaceChildren(...[...counts].sort((a, b) => b[1].length - a[1].length || String(labels[a[0]]).localeCompare(String(labels[b[0]])))
+                .map(([id, ids]) => {
+                    const item = node('li');
+                    const label = labels[id] || id;
+                    const action = button('od-service', tw('serviceFilter', 'Show hosts running {name}', {name: label}),
+                        () => filterHosts(ids, label));
+                    action.dataset.service = id;
+                    action.append(node('span', 'od-service-name', label), node('span', 'od-count', String(ids.length)));
+                    item.append(action);
+                    return item;
+                }));
         }
         function renderActivity(hosts, runInfo) {
             const events = Model.activity({hostList: hosts, sessions: sessions(), history: win.ConnectionHistory?.getHistory?.() || [], runs: runInfo.runs || []});

@@ -55,3 +55,10 @@ test('icons retain per-file content versions and reverse-proxy prefixes', () => 
     assert.equal(icons.render({name: 'Ubuntu'}, doc).style.maskImage,
         'url("/static/icons/platforms/ubuntu.svg")');
 });
+
+test('detected services are limited to known names and deduplicated', () => {
+    assert.deepEqual(icons.services({detected_services: ['docker', 'nextcloud', 'docker', '<img src=x>', 'plex']}), ['docker', 'nextcloud', 'plex']);
+    assert.deepEqual(icons.services({detected_services: 'docker'}), []);
+    assert.deepEqual(icons.services({}), []);
+    assert.equal(icons.serviceLabels.homeassistant, 'Home Assistant');
+});

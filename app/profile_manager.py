@@ -1,5 +1,6 @@
 import re
 import ipaddress
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -149,6 +150,12 @@ def _valid_profile(item):
         return False
     if 'greeting_platform' in item and not isinstance(item['greeting_platform'], str):
         return False
+    if 'detected_services' in item and not (isinstance(item['detected_services'], list)
+                                            and all(isinstance(entry, str) for entry in item['detected_services'])):
+        return False
+    if 'services_checked_at' in item and (isinstance(item['services_checked_at'], bool)
+                                          or not isinstance(item['services_checked_at'], (int, float))):
+        return False
     return True
 
 
@@ -167,6 +174,7 @@ _PROFILE_FIELDS = {
     'command_set_id', 'parameters_override', 'use_tmux',
     'group', 'favorite', 'created_at', 'updated_at',
     'sort_order', 'platform_icon', 'detected_platform', 'greeting_platform',
+    'detected_services', 'services_checked_at',
 }
 
 
@@ -532,6 +540,11 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                                 result['platform_icon'] = existing['platform_icon']
                             if endpoint(existing) == endpoint(result) and existing.get('detected_platform') in PLATFORMS:
                                 result['detected_platform'] = existing['detected_platform']
+                            # Detected services describe the same login on the same host.
+                            if endpoint(existing) == endpoint(result) and 'detected_services' in existing:
+                                result['detected_services'] = existing['detected_services']
+                                if 'services_checked_at' in existing:
+                                    result['services_checked_at'] = existing['services_checked_at']
                             # The greeting belongs to an address and port; it goes when either changes.
                             if ('greeting_platform' not in payload and existing.get('greeting_platform') in PLATFORMS
                                     and (existing.get('host'), existing.get('port', 22)) == (result.get('host'), result.get('port', 22))):
@@ -959,6 +972,33 @@ def cache_greeting_platforms(user_id, observed):
             if changed and save_profiles(user_id, profiles, previous_count=len(profiles)):
                 return changed
     return 0
+
+
+@user_operation
+def cache_detected_facts(user_id, profile_id, expected_endpoint, *, platform=None, services=None, now=None):
+    """Merge detected platform and service facts into the current owned profile under its lock."""
+    from .host_platform import valid_services
+    if expected_endpoint is None or (platform is None and services is None):
+        return False
+    if platform is not None and platform not in PLATFORMS:
+        return False
+    if services is not None and not valid_services(services):
+        return False
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'profiles:{user_id}'):
+            profiles, error = _load_profiles_for_write(user_id)
+            if error:
+                return False
+            for profile in profiles:
+                if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
+                    continue
+                if platform is not None:
+                    profile['detected_platform'] = platform
+                if services is not None:
+                    profile['detected_services'] = list(services)
+                    profile['services_checked_at'] = time.time() if now is None else now
+                return save_profiles(user_id, profiles, previous_count=len(profiles))
+    return False
 
 
 @user_operation

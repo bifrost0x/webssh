@@ -23,7 +23,23 @@ automation at a glance:
   stored configuration only: unknown host keys, missing keys, changed saved
   passwords and missing jump hosts. Loading it never opens an SSH connection.
 - A list of items that need attention, an automation chart with the next
-  scheduled run, a platform breakdown and recent activity.
+  scheduled run, a platform breakdown with detected services, and recent
+  activity. Selecting a service shows the hosts that run it.
+
+### Platform and service detection
+
+When a saved host connects, WebSSH reads a few fixed, read-only facts over a
+separate SSH channel: the platform once (from `/etc/os-release` and similar
+markers), and the services at most once a week. Service detection looks for
+Docker or Podman, active systemd services such as nginx, Apache, Caddy,
+MariaDB, PostgreSQL, Samba, WireGuard and k3s, and Nextcloud or Pi-hole at
+their usual places. If the SSH user may already use Docker or Podman without
+sudo, it also lists the image names of running containers and maps known ones
+(for example Nextcloud, Home Assistant, Jellyfin, Plex, Portainer, Traefik,
+Vaultwarden, Immich, Gitea, Paperless, Grafana). Nothing is installed or
+changed, no command is run with elevated rights, and only the recognised names
+are stored with the host in WebSSH. Choosing a manual icon for a host turns
+both probes off for it, which also suits keys restricted to a forced command.
 
 Select **Customize** to arrange the dashboard: drag a panel by its handle,
 resize it from its corner, change its width with the panel buttons, hide it or

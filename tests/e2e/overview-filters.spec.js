@@ -128,3 +128,22 @@ test('discovery returns after the editor, keeps added hosts marked and passes th
     }
     expect(await sshAttempts(page)).toEqual([]);
 });
+
+test('detected services show on host cards and filter the overview from the platforms panel', async ({page}) => {
+    const {ids} = await openWithReadiness(page);
+    await page.evaluate(([first, second]) => {
+        ProfileManager.setProfiles(ProfileManager.profiles.map(profile => profile.id === first
+            ? {...profile, detected_services: ['docker', 'nextcloud', 'nginx', 'postgresql', 'grafana']}
+            : profile.id === second ? {...profile, detected_services: ['docker']} : profile));
+    }, ids);
+    const card = page.locator(`#overviewHostList .od-host[data-host-id="${ids[0]}"]`);
+    await expect(card.locator('.od-service-chip')).toHaveText(['Docker', 'Nextcloud', 'nginx', '+2']);
+    await expect(card.locator('.od-service-chip').last()).toHaveAttribute('title', 'PostgreSQL, Grafana');
+    const docker = page.locator('#odPlatforms .od-service[data-service="docker"]');
+    await expect(docker.locator('.od-count')).toHaveText('2');
+    await docker.click();
+    await expect(page.locator('#overviewHostList .od-host')).toHaveCount(2);
+    await expect(page.locator('#overviewHostFilter')).toContainText('Docker');
+    await page.locator('#overviewHostFilter').click();
+    await expect(page.locator('#overviewHostList .od-host')).toHaveCount(ids.length);
+});

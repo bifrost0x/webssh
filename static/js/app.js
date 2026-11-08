@@ -1680,9 +1680,10 @@
     }
 
     socket.on('host_platform', data => {
-        if (!data || !Object.hasOwn(window.HostPlatform?.labels || {}, data.platform)) return;
+        const platform = data && Object.hasOwn(window.HostPlatform?.labels || {}, data.platform);
+        if (!platform && !Array.isArray(data?.services)) return;
         const session = SessionManager.sessions[data.session_id];
-        if (session) session.detectedPlatform = data.platform;
+        if (session && platform) session.detectedPlatform = data.platform;
         window.HostPlatform?.refreshSessionIcons(SessionManager, ProfileManager.profiles);
         if (data.profile_id) ProfileManager.loadProfiles();
     });

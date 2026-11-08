@@ -210,3 +210,64 @@ def test_greeting_platform_is_validated_and_follows_the_address(app):
         for invalid in ('windows', 3, None, '<b>'):
             _, error = profile_manager.upsert_profile(user_id, dict(payload, name=f'bad-{invalid}', greeting_platform=invalid))
             assert error == 'Invalid platform icon'
+
+
+def test_services_map_fixed_facts_and_known_images_only():
+    facts = '\n'.join([
+        'service=docker', 'service=unit:nginx', 'service=unit:mysql', 'service=wireguard',
+        'service=unit:sshd', 'service=evil',
+        'image=lscr.io/linuxserver/nextcloud:latest',
+        'image=ghcr.io/home-assistant/home-assistant:stable',
+        'image=jc21/nginx-proxy-manager:latest',
+        'image=postgres:16', 'image=redis:7', 'image=nginx:alpine',
+        'image=$(rm -rf /)', 'unrelated=nextcloud',
+    ])
+    assert host_platform.parse_services(facts) == [
+        'docker', 'homeassistant', 'mariadb', 'nextcloud', 'nginx', 'nginxproxymanager', 'postgresql', 'wireguard',
+    ]
+    assert host_platform.parse_services('') == []
+    for text in ['service=docker\x00', 'x' * 7000]:
+        with pytest.raises(ValueError):
+            host_platform.parse_services(text)
+
+
+def test_service_probe_is_read_only_and_bounded():
+    command = host_platform.SERVICES_COMMAND
+    for forbidden in ('sudo', 'eval ', 'source ', '. /etc/', ' rm ', ' exec ', 'docker run', 'docker exec', 'inspect'):
+        assert forbidden not in command
+    # Containers are listed by image name only, with a time limit and a line limit.
+    assert "ps --format '{{.Image}}'" in command and 'timeout 2' in command and 'head -n 30' in command
+    assert 'docker' not in host_platform.PLATFORM_COMMAND
+
+
+def test_services_are_detected_weekly_kept_on_edit_and_off_with_a_manual_icon(app, monkeypatch):
+    from app import ssh_manager, profile_manager
+    from tests.test_profile_manager import create_user
+    user_id = create_user(app)
+    events, calls = [], []
+    with app.app_context():
+        payload = dict(name='NAS', host='nas.example', port=22, username='deploy', auth_type='password')
+        profile, _ = profile_manager.upsert_profile(user_id, payload)
+        session = dict(profile, connected=True, user_id=user_id, profile_id=profile['id'])
+        monkeypatch.setitem(ssh_manager.sessions, 'services-test', session)
+        monkeypatch.setattr(host_platform, 'collect_platform', lambda _, **kwargs: ('debian', None))
+        monkeypatch.setattr(host_platform, 'collect_services',
+                            lambda _, **kwargs: (calls.append(1), (['docker', 'nextcloud'], None))[1])
+        host_platform.detect_connected_platform('services-test', user_id, events.append)
+        assert events[-1] == {'session_id': 'services-test', 'profile_id': profile['id'],
+                              'platform': 'debian', 'services': ['docker', 'nextcloud']}
+        saved = profile_manager.get_profile(user_id, profile['id'])
+        assert saved['detected_services'] == ['docker', 'nextcloud']
+        # A second connection within the week does not probe again.
+        host_platform.detect_connected_platform('services-test', user_id, events.append)
+        assert len(calls) == 1
+        assert host_platform.services_needed(saved, now=saved['services_checked_at'] + host_platform.SERVICE_REFRESH_SECONDS + 1)
+        # Editing the name keeps them; moving the host drops them.
+        renamed, _ = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], name='Storage'))
+        assert renamed['detected_services'] == ['docker', 'nextcloud']
+        moved, _ = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], host='other.example'))
+        assert 'detected_services' not in moved
+        assert not host_platform.needs_detection(dict(moved, platform_icon='proxmox'))
+        # The browser cannot write detection results itself.
+        forged, _ = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], detected_services=['plex']))
+        assert forged.get('detected_services') != ['plex']
