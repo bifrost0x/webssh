@@ -16,7 +16,8 @@ from . import paramiko_channels
 from .automation_store import AutomationError
 from .host_key_store import HostKeyStore, HostKeyNotAccepted, RevokedHostKeyError
 from .key_manager import read_key_content
-from .network_policy import audit_internal_allowlist_use, resolve_allowed_target, open_validated_socket
+from .network_policy import (audit_internal_allowlist_use, canonicalize_hostname, open_validated_socket,
+                             proxy_jump_remote_dns_allowed, resolve_allowed_target)
 from .quota_manager import quota_manager, QuotaKind
 from .ssh_key_loader import load_private_key
 
@@ -72,70 +73,128 @@ def connection_reason(error):
 def command_for(step):
     return 'sudo -n -- sh -c ' + shlex.quote(step['command']) if step['sudo'] else step['command']
 
+def _allowed_target(host, port):
+    return resolve_allowed_target(host, port, allow_internal=not config.BLOCK_INTERNAL_SSH,
+                                  allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS)
+
+
+def _destination_behind_jump(profile):
+    """Apply the interactive ProxyJump rules to the target behind a jump host.
+
+    A locally resolvable target must pass the network policy and is reached by
+    its validated address. A name that only the jump host can resolve is
+    allowed when internal SSH is open or the name is on the remote DNS allowlist.
+    """
+    host = canonicalize_hostname(profile['host'])
+    port = int(profile.get('port', 22))
+    try:
+        target = _allowed_target(host, port)
+    except ValueError:
+        if config.BLOCK_INTERNAL_SSH and not proxy_jump_remote_dns_allowed(
+                host, config.PROXY_JUMP_REMOTE_DNS_ALLOWLIST):
+            raise
+        return host, port, (host, port)
+    audit_internal_allowlist_use(target, 'automation_target')
+    return target.hostname, target.port, (target.ip, target.port)
+
+
+def _connect_client(user_id, profile, password, sock, hostname, port, hold, access,
+                    expected_key_digest, authentication_cancelled):
+    client = hold(paramiko.SSHClient())
+    with access():
+        store = HostKeyStore(user_id, config.KNOWN_HOSTS_FILE, config.USERS_DIR)
+        store.load_into(client)
+        client.set_missing_host_key_policy(store.missing_key_policy())
+        if profile.get('auth_type') == 'key':
+            content, error = read_key_content(user_id, profile.get('key_id'))
+            if error or not content:
+                raise AutomationError('key_unavailable')
+            if expected_key_digest is not None and hashlib.sha256(content.encode()).hexdigest() != expected_key_digest:
+                raise AutomationError('preview_changed')
+            source = _StrictPrivateKey(profile['username'], load_private_key(content),
+                                       lambda: authentication_cancelled())
+            content = None
+        else:
+            source = _StrictPassword(profile['username'], lambda: password,
+                                     lambda: authentication_cancelled())
+    guard = threading.Timer(15, client.close)
+    guard.daemon = True
+    guard.start()
+    try:
+        client.connect(hostname=hostname, port=port, username=profile['username'],
+            sock=sock, timeout=10, banner_timeout=10, auth_timeout=10,
+            channel_timeout=10, allow_agent=False, look_for_keys=False,
+            auth_strategy=_Authentication(source))
+    finally:
+        guard.cancel()
+        password = None
+        source = None
+    return client
+
+
 @contextmanager
 def connect_profile(user_id, profile, password, cancelled, own=lambda _resource: None, *,
-                    access=nullcontext, expected_key_digest=None, validate_auth=None):
-    client = None
-    connected = None
+                    access=nullcontext, expected_key_digest=None, validate_auth=None,
+                    route=None, route_password=None, route_key_digest=None):
+    """Open an authenticated SSH transport, optionally through one jump host.
+
+    Both hops use the account's verified host keys, the SSH network policy
+    and their own credentials; nothing is accepted on first use.
+    """
+    opened = []
+
+    def hold(resource):
+        opened.append(resource)
+        own(resource)
+        return resource
+
+    def authentication_cancelled():
+        if cancelled():
+            return True
+        if validate_auth is not None:
+            with access():
+                validate_auth()
+        return False
+
+    timeout = min(config.SSH_CONNECT_TIMEOUT, 10)
     with quota_manager.reserve(QuotaKind.SSH_SESSION, user_id):
         try:
             if cancelled():
                 raise AutomationError('cancelled')
-            target = resolve_allowed_target(profile['host'], profile.get('port', 22),
-                                             allow_internal=not config.BLOCK_INTERNAL_SSH,
-                                             allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS)
-            audit_internal_allowlist_use(target, 'automation_target')
-            connected = open_validated_socket(target, min(config.SSH_CONNECT_TIMEOUT, 10))
-            own(connected)
-            if cancelled():
-                raise AutomationError('cancelled')
-            client = paramiko.SSHClient()
-            own(client)
-            with access():
-                store = HostKeyStore(user_id, config.KNOWN_HOSTS_FILE, config.USERS_DIR)
-                store.load_into(client)
-                client.set_missing_host_key_policy(store.missing_key_policy())
-                if profile.get('auth_type') == 'key':
-                    content, error = read_key_content(user_id, profile.get('key_id'))
-                    if error or not content:
-                        raise AutomationError('key_unavailable')
-                    if expected_key_digest is not None and hashlib.sha256(content.encode()).hexdigest() != expected_key_digest:
-                        raise AutomationError('preview_changed')
-                    source = _StrictPrivateKey(profile['username'], load_private_key(content),
-                                               lambda: authentication_cancelled())
-                    content = None
-                else:
-                    source = _StrictPassword(profile['username'], lambda: password,
-                                             lambda: authentication_cancelled())
-            def authentication_cancelled():
+            if route is None:
+                target = _allowed_target(profile['host'], profile.get('port', 22))
+                audit_internal_allowlist_use(target, 'automation_target')
+                hostname, port = target.hostname, target.port
+                sock = hold(open_validated_socket(target, timeout))
+            else:
+                hostname, port, destination = _destination_behind_jump(profile)
+                bastion = _allowed_target(route['host'], route.get('port', 22))
+                audit_internal_allowlist_use(bastion, 'automation_jump_host')
+                bastion_socket = hold(open_validated_socket(bastion, timeout))
                 if cancelled():
-                    return True
-                if validate_auth is not None:
-                    with access():
-                        validate_auth()
-                return False
+                    raise AutomationError('cancelled')
+                bastion_client = _connect_client(user_id, route, route_password, bastion_socket,
+                                                 bastion.hostname, bastion.port, hold, access,
+                                                 route_key_digest, authentication_cancelled)
+                route_password = None
+                if cancelled():
+                    raise AutomationError('cancelled')
+                sock = hold(bastion_client.get_transport().open_channel(
+                    'direct-tcpip', destination, ('127.0.0.1', 0), timeout=timeout))
             if cancelled():
                 raise AutomationError('cancelled')
-            guard = threading.Timer(15, client.close)
-            guard.daemon = True
-            guard.start()
-            try:
-                client.connect(hostname=target.hostname, port=target.port, username=profile['username'],
-                    sock=connected, timeout=10, banner_timeout=10, auth_timeout=10,
-                    channel_timeout=10, allow_agent=False, look_for_keys=False,
-                    auth_strategy=_Authentication(source))
-            finally:
-                guard.cancel()
-                password = None
-                source = None
+            client = _connect_client(user_id, profile, password, sock, hostname, port, hold, access,
+                                     expected_key_digest, authentication_cancelled)
+            password = None
             if cancelled():
                 raise AutomationError('cancelled')
             yield client.get_transport()
         finally:
-            if client is not None:
-                client.close()
-            if connected is not None:
-                connected.close()
+            for resource in reversed(opened):
+                try:
+                    resource.close()
+                except Exception:
+                    pass
 
 STEP_OUTPUT_BYTES = 8 * 1024
 RUN_OUTPUT_BYTES = 64 * 1024

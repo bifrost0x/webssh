@@ -115,8 +115,10 @@ Automation combines editable templates, your command library and command sets.
 Review target hosts before immediate execution, or create a timezone-aware
 schedule. Run history includes bounded stdout/stderr, exit status and duration.
 Unknown outcomes remain explicitly unknown, rather than reported as success.
-Automation is administrator-controlled and disabled by default. Direct SSH is
-supported; jump-host, gateway and Tailscale automation routes are not supported.
+Finished runs can be deleted from the history.
+Automation is administrator-controlled and disabled by default. Direct SSH and
+hosts behind one saved jump host are supported; gateway and Tailscale automation
+routes are not supported.
 See [Automation](automation.md) for prerequisites, sudo behavior, output limits,
 schedule invalidation and cancellation boundaries.
 

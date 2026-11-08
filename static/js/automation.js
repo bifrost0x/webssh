@@ -89,7 +89,7 @@
         'invalid_passphrase', 'invalid_runbook', 'invalid_request', 'invalid_targets', 'unsupported_target',
         'key_unavailable', 'preview_changed', 'invalid_intent', 'confirmation_required', 'step_up_required',
         'invalid_schedule', 'storage_limit', 'storage_unavailable', 'not_found', 'acknowledgement_required', 'unavailable',
-        'credentials_disabled', 'credential_target_changed', 'host_key_required', 'cancelled']);
+        'credentials_disabled', 'credential_target_changed', 'host_key_required', 'cancelled', 'run_active']);
     function notify(message, error = false) {
         const target = $(error ? 'automationError' : 'automationNotice');
         target.textContent = message;
@@ -557,13 +557,20 @@
             input.indeterminate = selected > 0 && selected < members.length;
         });
     }
+    function hopCredentialStatus(id, authType, status, available) {
+        if (authType === 'key') return 'sshKey';
+        if (status === 'ready' || available === true) return 'storedUnverified';
+        if (status === 'changed') return 'credentialChanged';
+        const stored = model.vault.credentials.find(item => item.profile_id === id);
+        return stored?.valid ? 'storedUnverified' : 'missingPassword';
+    }
     function targetCredentialStatus(profile) {
         if (!profile.supported) return 'unsupported';
-        if (profile.auth_type === 'key') return 'sshKey';
-        if (profile.credential_status === 'ready' || profile.credential_available === true) return 'storedUnverified';
-        if (profile.credential_status === 'changed') return 'credentialChanged';
-        const stored = model.vault.credentials.find(item => item.profile_id === profile.id);
-        return stored?.valid ? 'storedUnverified' : 'missingPassword';
+        const own = hopCredentialStatus(profile.id, profile.auth_type, profile.credential_status, profile.credential_available);
+        if (!profile.route_id || ['missingPassword', 'credentialChanged'].includes(own)) return own;
+        // A run needs both hops; name the jump host when only its password is missing.
+        const route = hopCredentialStatus(profile.route_id, profile.route_auth_type, profile.route_credential_status);
+        return route === 'missingPassword' ? 'jumpPasswordMissing' : route === 'credentialChanged' ? 'jumpCredentialChanged' : own;
     }
 
     function openCredential(profileId) {
@@ -587,13 +594,15 @@
             const input = node('input'); input.type = 'checkbox'; input.value = profile.id;
             input.id = `target-${profile.id}`; input.disabled = !profile.supported; input.checked = !input.disabled && previous.ids.includes(profile.id);
             const label = node('label'); label.htmlFor = input.id;
-            label.append(node('strong', profile.name || profile.host), node('small', `${profile.username}@${profile.host}:${profile.port || 22}${profile.group ? ` · ${profile.group}` : ''}`));
+            label.append(node('strong', profile.name || profile.host), node('small', `${profile.username}@${profile.host}:${profile.port || 22}${profile.via ? ` · ${tr('viaJump', {name: profile.via})}` : ''}${profile.group ? ` · ${profile.group}` : ''}`));
             const marker = node('span', 'dns', 'material-icons automation-host-icon'); marker.setAttribute('aria-hidden', 'true');
             const statusKey = targetCredentialStatus(profile);
             const status = node('span', tr(statusKey), 'automation-state'); status.dataset.credentialStatus = profile.id;
             label.append(status); row.append(input, marker, label);
-            if (profile.supported && profile.auth_type !== 'key') {
-                const button = iconButton('key', tr(statusKey === 'credentialChanged' ? 'replacePassword' : 'credentials'), () => openCredential(profile.id));
+            const jumpCredential = ['jumpPasswordMissing', 'jumpCredentialChanged'].includes(statusKey);
+            if (profile.supported && (profile.auth_type !== 'key' || jumpCredential)) {
+                const resourceId = jumpCredential ? profile.route_id : profile.id;
+                const button = iconButton('key', tr(['credentialChanged', 'jumpCredentialChanged'].includes(statusKey) ? 'replacePassword' : 'credentials'), () => openCredential(resourceId));
                 button.dataset.credentialAction = profile.id; row.append(button);
             }
             input.addEventListener('change', updateTargetCount); $('targetHosts').append(row);
@@ -729,6 +738,25 @@
         return child;
     }
     const diagnosticReasons = new Set(['nonzero_exit','timeout','cancelled','output_limit','channel_lost','acknowledgement_lost','dispatch_failed','run_interrupted']);
+    const runIcons = {succeeded:'check_circle', failed:'error', unknown:'help', running:'sync', queued:'schedule', cancelled:'cancel', skipped:'remove_circle_outline'};
+    function runDuration(run) {
+        if (!run.finished_at) return '';
+        const seconds = Math.max(0, Math.round((Date.parse(run.finished_at) - Date.parse(run.created_at)) / 1000));
+        if (!Number.isFinite(seconds)) return '';
+        return seconds < 60 ? tr('durationSeconds', {seconds}) : tr('durationMinutes', {minutes: Math.floor(seconds / 60), seconds: seconds % 60});
+    }
+    async function deleteRun(run) {
+        if (await question(tr('deleteRun'), run.name + '\n\n' + tr('deleteRunHint'), {confirm:true}) !== '') return;
+        await api('/api/automation/runs/' + encodeURIComponent(run.id), {method:'DELETE'});
+        notify(tr('runDeleted')); await loadRuns();
+    }
+    async function clearRuns() {
+        const finished = knownRuns.filter(run => !['queued','running'].includes(run.status)).length;
+        if (!finished) { notify(tr('noFinishedRuns')); return; }
+        if (await question(tr('clearRuns'), tr('clearRunsHint', {count: finished}), {confirm:true}) !== '') return;
+        const result = await api('/api/automation/runs/clear', {method:'POST', body:{}});
+        notify(tr('runsDeleted', {count: result.deleted})); await loadRuns();
+    }
     let runsRequest = 0;
     async function loadRuns() {
         const request = ++runsRequest;
@@ -757,23 +785,52 @@
         result.runs.forEach((run, index) => {
             const exists = [...history.children].some(item => item.dataset.resultKey === run.id);
             const details = runPart(history, run.id, 'details', 'automation-run'); details.dataset.runId = run.id;
-            if (!exists) { details.open = index === 0; history.insertBefore(details, history.children[index] || null); }
-            const summary = runPart(details, 'summary', 'summary');
-            runText(summary, 'name', 'strong', run.name);
-            const date = runText(summary, 'date', 'time', new Date(run.created_at).toLocaleString()); date.dateTime = run.created_at;
-            runText(summary, 'status', 'span', tr(`state.${run.status}`), 'automation-state').dataset.state = run.status;
+            const active = ['queued','running'].includes(run.status);
+            // Older cards start collapsed so a long history stays scannable; the newest and running work stay open.
+            if (!exists) { details.open = index === 0 || active; history.insertBefore(details, history.children[index] || null); }
+            details.dataset.state = run.status;
             const steps = run.targets.flatMap(target => target.steps);
             const confirmed = steps.filter(step => step.status === 'succeeded' && step.exit_code === 0).length;
-            runText(details, 'totals', 'p', tr('runTotals', {hosts:run.targets.length, confirmed, total:steps.length}), 'automation-hint');
+            const summary = runPart(details, 'summary', 'summary', 'automation-run-summary');
+            const badge = runText(summary, 'badge', 'span', runIcons[run.status] || 'radio_button_unchecked', 'material-icons automation-run-badge');
+            badge.setAttribute('aria-hidden', 'true');
+            const heading = runPart(summary, 'heading', 'span', 'automation-run-heading');
+            runText(heading, 'name', 'strong', run.name);
+            runText(heading, 'meta', 'span', [tr(run.schedule_id ? 'scheduledRun' : 'manualRun'),
+                tr('runTotals', {hosts:run.targets.length, confirmed, total:steps.length}), runDuration(run)].filter(Boolean).join(' · '), 'automation-run-meta');
+            const hosts = runPart(summary, 'hosts', 'span', 'automation-run-hosts');
+            const shown = run.targets.slice(0, 4);
+            [...hosts.children].forEach(child => { if (!shown.some((_target, i) => child.dataset.resultKey === 'host-' + i) && child.dataset.resultKey !== 'more') child.remove(); });
+            shown.forEach((target, i) => { runText(hosts, 'host-' + i, 'span', target.name, 'automation-run-host').dataset.state = target.status; });
+            const more = runText(hosts, 'more', 'span', run.targets.length > 4 ? '+' + (run.targets.length - 4) : '', 'automation-run-host');
+            more.hidden = run.targets.length <= 4;
+            const date = runText(summary, 'date', 'time', new Date(run.created_at).toLocaleString()); date.dateTime = run.created_at;
+            runText(summary, 'status', 'span', tr(`state.${run.status}`), 'automation-state automation-run-status').dataset.state = run.status;
+            const remove = runPart(summary, 'delete', 'button', 'automation-icon-button automation-run-delete');
+            if (!remove.firstChild) {
+                remove.type = 'button';
+                const glyph = node('span', 'delete', 'material-icons'); glyph.setAttribute('aria-hidden', 'true'); remove.append(glyph);
+                remove.addEventListener('click', event => {
+                    // A button inside <summary> would otherwise also toggle the card.
+                    event.preventDefault(); event.stopPropagation();
+                    action(() => deleteRun(run));
+                });
+            }
+            remove.title = tr('deleteRun'); remove.setAttribute('aria-label', tr('deleteRunLabel', {name: run.name}));
+            remove.hidden = active;
             const cancel = runPart(details, 'cancel', 'button', 'btn btn-secondary');
-            cancel.type = 'button'; cancel.textContent = tr('cancelRun'); cancel.hidden = !['queued','running'].includes(run.status);
+            cancel.type = 'button'; cancel.textContent = tr('cancelRun'); cancel.hidden = !active;
             if (!exists) cancel.addEventListener('click', () => action(async () => {
                 await api('/api/automation/runs/' + encodeURIComponent(run.id) + '/cancel', {method:'POST',body:{}});
                 notify(tr('cancellationRequested')); await loadRuns();
             }));
             run.targets.forEach((target, targetIndex) => {
                 const section = runPart(details, 'target-' + targetIndex, 'section', 'automation-run-target');
-                runText(section, 'title', 'h4', target.name + ' · ' + target.username + '@' + target.host + ' · ' + tr(`state.${target.status}`));
+                section.dataset.state = target.status;
+                const title = runPart(section, 'title', 'h4', 'automation-run-target-title');
+                runText(title, 'name', 'span', target.name, 'automation-run-target-name');
+                runText(title, 'address', 'span', target.username + '@' + target.host, 'automation-run-target-address');
+                runText(title, 'status', 'span', tr(`state.${target.status}`), 'automation-state').dataset.state = target.status;
                 runText(section, 'reason', 'p', target.reason ? tr(errors.has(target.reason) ? 'error.' + target.reason : 'result.' + target.reason) : '', 'automation-hint').hidden = !target.reason;
                 target.steps.forEach((step, stepIndex) => {
                     const state = step.status === 'succeeded' && step.exit_code !== 0 ? 'unknown' : step.status;
@@ -1067,6 +1124,7 @@
     $('promptCancel').addEventListener('click', () => settlePrompt(null));
     $('automationPrompt').addEventListener('cancel', event => { event.preventDefault(); settlePrompt(null); });
     $('refreshRuns').addEventListener('click', () => action(loadRuns));
+    $('clearRuns')?.addEventListener('click', () => action(clearRuns));
     window.addEventListener('pagehide', () => {
         document.querySelectorAll('input[type="password"]').forEach(input => { input.value = ''; });
     });
