@@ -267,6 +267,7 @@ const ProfileManager = {
         this.profiles = Array.isArray(profiles) ? profiles : [];
         this.profilesLoaded = true;
         window.HostPlatform?.refreshSessionIcons(typeof SessionManager !== 'undefined' ? SessionManager : null, this.profiles);
+        if (typeof SessionManager !== 'undefined') SessionManager.refreshSessionLabels?.();
         this.renderProfileSelect();
         this.renderManagementList();
         this.refreshEmptyPanes();
