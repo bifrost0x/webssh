@@ -167,7 +167,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           tailscale_authorization=None,
                           cancel_event=None, client_request_id=None,
                           jump_host_id=None, gateway_attempt=None, profile_id=None,
-                          credential_guard=None):
+                          credential_guard=None, saved_password_hops=('target', 'jump')):
     """
     Create a new SSH connection and return session ID.
 
@@ -334,7 +334,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     )
                     bastion_auth.pop('look_for_keys', None)
                     bastion_auth.pop('allow_agent', None)
-                elif credential_guard is not None and proxy_jump_password:
+                elif credential_guard is not None and proxy_jump_password and 'jump' in saved_password_hops:
                     from .credential_connections import SavedPasswordAuth
                     bastion_auth.pop('password', None)
                     bastion_auth.pop('look_for_keys', None)
@@ -458,7 +458,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             elif key_path:
                 auth_kwargs['key_filename'] = key_path
             elif password:
-                if credential_guard is not None:
+                # Typed passwords keep paramiko's keyboard-interactive fallback.
+                if credential_guard is not None and 'target' in saved_password_hops:
                     from .credential_connections import SavedPasswordAuth
                     auth_kwargs.pop('look_for_keys', None)
                     auth_kwargs.pop('allow_agent', None)

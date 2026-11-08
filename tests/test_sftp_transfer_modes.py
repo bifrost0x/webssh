@@ -21,6 +21,8 @@ class Remote:
         self.requested_modes = []
         # None models a server that applies its umask or forced create mode.
         self.default_mode = 0o644
+        self.chown_error = None
+        self.chmod_error = None
 
     def lstat(self, path):
         if self.original is None:
@@ -54,7 +56,14 @@ def remote(monkeypatch):
                 return client.staged
 
             def chmod(self, mode):
+                if client.chmod_error:
+                    raise client.chmod_error
                 client.staged.st_mode = stat.S_IFREG | mode
+
+            def chown(self, uid, gid):
+                if client.chown_error:
+                    raise client.chown_error
+                client.staged.st_uid, client.staged.st_gid = uid, gid
         with Writer() as writer:
             yield writer
     monkeypatch.setattr(sftp_handler, 'open_exclusive_file', exclusive)
@@ -72,9 +81,21 @@ def test_transfer_stays_private_until_payload_complete_and_retains_mode(remote, 
     assert remote.published == [('/stage', '/target')]
 
 
-@pytest.mark.parametrize('field,value', [('st_uid', 1001), ('st_gid', 1001)])
-def test_transfer_refuses_to_change_owner_or_group(remote, field, value):
-    setattr(remote.staged, field, value)
+def test_transfer_restores_the_original_group_in_shared_directories(remote):
+    remote.original.st_gid = 33
+    with sftp_handler.atomic_transfer_writer(remote, '/target', '/stage', replace=True):
+        pass
+    assert remote.staged.st_gid == 33
+    assert remote.published == [('/stage', '/target')]
+
+
+@pytest.mark.parametrize('setup', [
+    lambda remote: setattr(remote.staged, 'st_uid', 1001),
+    lambda remote: (setattr(remote.staged, 'st_gid', 1001), setattr(remote, 'chown_error', PermissionError('not a member'))),
+    lambda remote: setattr(remote, 'chmod_error', OSError('setstat unsupported')),
+])
+def test_transfer_refuses_to_change_owner_or_group(remote, setup):
+    setup(remote)
     with pytest.raises(sftp_handler.AtomicOverwriteUnavailable):
         with sftp_handler.atomic_transfer_writer(remote, '/target', '/stage', replace=True):
             pass

@@ -1354,10 +1354,19 @@ def atomic_transfer_writer(sftp, path, temporary_path, *, replace, cancelled=Non
             if original is not None:
                 check_unchanged()
                 staged = permission_snapshot(remote_file.stat())
-                if any(staged.get(key) != original.get(key) for key in ('uid', 'gid')):
+                if staged.get('uid') != original.get('uid'):
                     raise AtomicOverwriteUnavailable('atomic replacement is unavailable')
-                remote_file.chmod(int(original['mode'], 8))
+                try:
+                    # Shared directories often give new files the user's primary
+                    # group; an owner who belongs to the original group may restore it.
+                    if staged.get('gid') != original.get('gid'):
+                        remote_file.chown(int(original['uid']), int(original['gid']))
+                    remote_file.chmod(int(original['mode'], 8))
+                except (IOError, OSError, TypeError, ValueError) as error:
+                    raise AtomicOverwriteUnavailable('atomic replacement is unavailable') from error
                 verified = permission_snapshot(remote_file.stat())
+                if any(verified.get(key) != original.get(key) for key in ('uid', 'gid')):
+                    raise AtomicOverwriteUnavailable('atomic replacement is unavailable')
                 if verified['mode'] != original['mode'] or verified['special_bits']:
                     raise AtomicOverwriteUnavailable('atomic replacement is unavailable')
         if cancelled and cancelled():

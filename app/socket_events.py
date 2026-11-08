@@ -1589,6 +1589,11 @@ def handle_ssh_connect(data, current_user=None):
                     client_request_id=client_request_id,
                     **({'credential_guard': _CombinedCancellation(
                         client_cancel_event, lifecycle_cancel_event, credential_guards=credential_guards,
+                    ), 'saved_password_hops': tuple(
+                        hop for hop, saved in (
+                            ('target', data.get('credential_id') is not None),
+                            ('jump', bool(proxy_jump) and proxy_jump.get('credential_id') is not None),
+                        ) if saved
                     )} if credential_guards else {}),
                     **({'gateway_attempt': gateway_attempt} if gateway_attempt is not None else {}),
                 )
