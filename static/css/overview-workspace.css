@@ -487,3 +487,8 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
     .od-icon-button, .od-connect { min-height: 44px; }
     .od-icon-button { width: 44px; flex-basis: 44px; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+    .od-host { transition: none; }
+    .od-host:hover, .od-host:focus-within { transform: none; }
+}

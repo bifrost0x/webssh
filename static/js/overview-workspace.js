@@ -49,7 +49,7 @@
         const mode = () => view.dataset.reachability || 'manual';
         const state = {readiness: null, reachability: null, checkedAt: null, checking: false, reachError: null,
             shown: new Map(), scheduled: false, readinessTimer: 0, automaticTimer: 0, routeMap: null, firstPaint: true, returnKey: null, topologyNarrow: false,
-            dismissed: [], attention: [], board: null};
+            dismissed: [], dismissSequence: 0, attention: [], board: null};
 
         const profiles = () => win.ProfileManager?.profiles || [];
         const sessions = () => sessionManager?.getAllSessions?.() || [];
@@ -449,14 +449,18 @@
         }
         async function saveDismissed(next) {
             const previous = state.dismissed;
+            // Only the latest save may apply its answer or roll back.
+            const sequence = ++state.dismissSequence;
             // Keep the most recent acknowledgements within the stored limit.
             state.dismissed = [...new Set(next)].slice(-100);
             $('odAttentionError').hidden = true;
             schedule();
             try {
                 const data = await request('/api/overview/preferences', {method: 'PUT', body: JSON.stringify({dismissed: state.dismissed})});
+                if (sequence !== state.dismissSequence) return;
                 state.dismissed = Array.isArray(data.dismissed) ? data.dismissed : state.dismissed;
             } catch {
+                if (sequence !== state.dismissSequence) return;
                 state.dismissed = previous;
                 $('odAttentionError').textContent = tw('dismissFailed', 'The change could not be saved. Try again.');
                 $('odAttentionError').hidden = false;
@@ -658,10 +662,13 @@
             state.checking = true;
             state.reachError = null;
             schedule();
+            // Snapshot before the request: an address edited meanwhile must not inherit the result.
+            const targets = reachTargets();
             try {
                 const data = await request('/api/overview/reachability', {method: 'POST', body: JSON.stringify({})});
                 state.reachability = data.results || {};
-                state.reachTargets = reachTargets();
+                state.reachTargets = targets;
+                pruneReachability();
                 state.checkedAt = Number(data.checked_at) * 1000 || Date.now();
             } catch (error) {
                 state.reachError = error.code === 'busy' ? tw('reachBusy', 'Too many checks. Try again in a minute.') : tw('reachFailed', 'The check could not be completed.');

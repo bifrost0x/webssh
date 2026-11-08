@@ -172,7 +172,7 @@
         }
         function updateNavigation() {
             const key = {overview: 'overview.title', workspaces: 'navigation.workspaces',
-                hosts: 'connectionAssets.hosts', files: 'files.fileManager', commands: 'commands.workspace'}[
+                hosts: 'connectionAssets.hosts', files: 'files.fileManager', commands: 'commands.workspace', automation: 'automation.title'}[
                 win.primaryWorkspaceController?.getActiveView()] || 'navigation.workspaces';
             byId('shellLocation').dataset.i18n = key;
             byId('shellLocation').textContent = t(key);

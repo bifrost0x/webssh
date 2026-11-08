@@ -73,3 +73,7 @@
     .discovery-result { grid-template-columns: 36px minmax(0, 1fr); }
     .discovery-result > :last-child { grid-column: 1 / -1; justify-self: start; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+    .discovery-bar > span { transition: none; }
+}

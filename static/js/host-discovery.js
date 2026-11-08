@@ -128,8 +128,12 @@
         async function poll() {
             win.clearTimeout(timer);
             if (!scan || scan.state !== 'running') return;
+            const id = scan.id;
             try {
-                scan = await request(`/api/discovery/scans/${encodeURIComponent(scan.id)}`);
+                const latest = await request(`/api/discovery/scans/${encodeURIComponent(id)}`);
+                // A cancel or a new scan answered meanwhile is newer than this poll.
+                if (!scan || scan.id !== id || scan.state !== 'running') return;
+                scan = latest;
                 pollFailures = 0;
                 render();
             } catch (error) {
@@ -139,10 +143,11 @@
                     showError(error.message);
                     return;
                 }
-                timer = win.setTimeout(poll, POLL_MS * 2);
+                if (dialog.open) timer = win.setTimeout(poll, POLL_MS * 2);
                 return;
             }
-            if (scan.state === 'running') timer = win.setTimeout(poll, POLL_MS);
+            // Reopening the dialog resumes polling.
+            if (scan.state === 'running' && dialog.open) timer = win.setTimeout(poll, POLL_MS);
         }
 
         async function start(event) {
@@ -201,7 +206,10 @@
             win.clearTimeout(timer);
             if (returnFocus?.isConnected && !doc.getElementById('profileEditorView')?.offsetParent) returnFocus.focus?.();
         });
-        win.addEventListener('languageChanged', () => { if (dialog.open) render(); });
+        win.addEventListener('languageChanged', () => {
+            resultSignature = '';
+            if (dialog.open) render();
+        });
         return {open};
     }
 

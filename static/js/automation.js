@@ -891,9 +891,13 @@
         setStage('schedule');
         if ($('scheduleFrequency')) $('scheduleFrequency').focus(); else $('scheduleCron').focus();
     }
+    let schedulesRequest = 0;
     async function loadSchedules() {
         if (!$('scheduleList')) return;
+        const request = ++schedulesRequest;
         const result = await api('/api/automation/schedules');
+        // An older answer must not bring back a schedule that was just paused or deleted.
+        if (request !== schedulesRequest) return;
         knownSchedules = Array.isArray(result.schedules) ? result.schedules : [];
         publishRunSnapshot();
         $('scheduleList').replaceChildren();

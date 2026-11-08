@@ -237,6 +237,8 @@ window.JumpHostManager = {
         }
         window.socket.timeout(15000).emit('save_jump_host', payload, async (error, result) => {
             this.pending = false;
+            // A closed or edited form must still leave its disabled pending state.
+            try {
             if (error) {
                 this.unknownOutcome = true;
                 window.showNotification?.(this.t('common.saveUnknownTitle', 'Save outcome unknown'), 'error');
@@ -251,8 +253,10 @@ window.JumpHostManager = {
                 if (!current()) return;
                 this.resetEditor();
             }
-            this.renderEditorState();
-            this.renderList();
+            } finally {
+                this.renderEditorState();
+                this.renderList();
+            }
         });
     },
 
