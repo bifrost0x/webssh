@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { test, expect } = require('playwright/test');
 const { openWorkspace, login, assertNoExternalRequests } = require('./helpers');
-const { captureOutputPath } = require('./capture-output');
+const { applyCaptureTheme, captureOutputPath } = require('./capture-output');
 
 for (const width of [390, 1920]) {
     test(`expanding session files preserves the host, folder and existing tabs at ${width}px`, async ({page}) => {
@@ -1115,6 +1115,7 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
     expect(resizedContextWidth).toBeGreaterThan(initialContextWidth);
 
     if (captureAssetsEnabled()) {
+        await applyCaptureTheme(page);
         const screenshotPath = capturePath('session-workspace.png');
         await page.screenshot({
             path: screenshotPath,

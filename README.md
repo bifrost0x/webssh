@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="static/images/webssh-logo.svg" alt="WebSSH" width="128" height="128">
+  <img src="assets/webssh-logo.svg" alt="WebSSH" width="128" height="128">
 </p>
 
 <p align="center">
-  <strong>WebSSH 3 — your self-hosted SSH, files and automation workspace.</strong>
+  <strong>WebSSH 3 - your self-hosted SSH, files and automation workspace.</strong>
 </p>
 
 <p align="center">

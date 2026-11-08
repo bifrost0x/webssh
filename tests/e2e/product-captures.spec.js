@@ -7,7 +7,7 @@ const {
     login,
     openKeyManagement,
 } = require('./helpers');
-const { captureOutputPath: repositoryCaptureOutputPath } = require('./capture-output');
+const { applyCaptureTheme, captureOutputPath: repositoryCaptureOutputPath } = require('./capture-output');
 
 const DESKTOP_VIEWPORT = { width: 1920, height: 1080 };
 const DESKTOP_DEVICE_SCALE_FACTOR = 4 / 3;
@@ -57,6 +57,7 @@ function readPngSize(filePath) {
 
 async function captureDesktopStill(page, filename, testInfo) {
     if (!captureAssetsEnabled()) return;
+    await applyCaptureTheme(page);
     const filePath = captureOutputPath(testInfo, filename);
     await page.screenshot({
         path: filePath,
@@ -213,6 +214,7 @@ async function seedCommandSetAnimationCatalog(page) {
 
 async function captureCssFrame(page, frameDirectory, filename) {
     if (!captureAssetsEnabled()) return;
+    await applyCaptureTheme(page);
     const filePath = path.join(frameDirectory, filename);
     await page.screenshot({
         path: filePath,
@@ -1145,6 +1147,7 @@ test.describe('mobile product capture', () => {
         expect(layout.bodyWidth).toBeLessThanOrEqual(layout.viewportWidth);
 
         if (captureAssetsEnabled()) {
+            await applyCaptureTheme(page);
             const filePath = captureOutputPath(testInfo, 'mobile-workspace.png');
             await page.screenshot({
                 path: filePath,
