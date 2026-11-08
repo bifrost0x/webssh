@@ -144,9 +144,11 @@ version 2 video is retained only as clearly labeled historical material.
 
 ## Release validation
 
-A version 3 release is published only after its final revision passes these gates.
-The release workflow derives container tags `3.0.0` and `3.0` from the Git tag
-`v3.0.0`; creating or publishing that tag is a separate release action.
+[v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) was published on
+2026-11-08 after its tag revision passed these gates; the
+[release notes](releases/v3.0.0.md) record the image identity. Later version 3
+releases follow the same gates. The release workflow derives container tags
+`3.0.0` and `3.0` from the Git tag `v3.0.0`.
 
 Before publication:
 
