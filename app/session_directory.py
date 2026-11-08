@@ -155,6 +155,8 @@ def collect_directory(session_id, timeout=2.0):
         if channel.recv_exit_status() != 0:
             return None, 'unsupported'
         result = parse_directory(output)
+        with ssh_manager.sessions_lock:
+            result['input_idle'] = ssh_manager.prompt_input_idle(session)
         if session.get('use_tmux') and session.get('tmux_session_name'):
             # tmux itself uses the outer terminal's alternate screen. The
             # probe above separately rejects an alternate screen inside its pane.

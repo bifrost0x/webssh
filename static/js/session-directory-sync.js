@@ -8,6 +8,8 @@
     const inputs = new Map();
     const directoryObservers = new Set();
 
+    const ERASED_INPUT_QUIET_MS = 1000;
+
     function parseOsc7(data) {
         if (typeof data !== 'string' || data.length < 8 || data.length > 8192) return null;
         let url;
@@ -28,14 +30,32 @@
         return { host: url.hostname, path };
     }
 
+    /** Where the cursor stands and what its line shows; null when the buffer cannot tell. */
+    function cursorLine(terminal) {
+        const buffer = terminal?.buffer?.active;
+        if (!buffer || !Number.isInteger(buffer.baseY) || !Number.isInteger(buffer.cursorY)
+                || typeof buffer.getLine !== 'function') return null;
+        const row = buffer.baseY + buffer.cursorY;
+        // Erasing writes real spaces over the typed text; they do not count as input.
+        const text = buffer.getLine(row)?.translateToString?.(true)?.replace(/ +$/, '');
+        return typeof text === 'string' ? { row, x: buffer.cursorX, text } : null;
+    }
+
     function trackTerminal(sessionId, terminal) {
-        const state = { dirty: true, version: 0, terminal, pasting: false, submitted: false, submitOutput: false };
+        // dirtyReason says why the prompt is unconfirmed: nothing seen yet, a
+        // transcript replay, or typing in this browser.
+        const state = { dirty: true, dirtyReason: 'initial', mark: null, lastInputAt: 0, version: 0, terminal,
+            pasting: false, submitted: false, submitOutput: false };
         inputs.set(sessionId, state);
         // Readline/ZLE announce the start of an editable prompt with DEC 2004.
         // Return false so xterm still handles the mode itself. An alternate
         // screen and the remote foreground-process check are separate guards.
         const promptDisposable = terminal.parser.registerCsiHandler({ prefix: '?', final: 'h' }, params => {
-            if (params.includes(2004) && !state.replayDepth && !state.promptShell) state.dirty = false;
+            if (params.includes(2004) && !state.replayDepth && !state.promptShell) {
+                state.dirty = false;
+                state.dirtyReason = null;
+                state.mark = null;
+            }
             return false;
         });
         const inputDisposable = terminal.onData(data => noteInput(sessionId, data, true));
@@ -78,7 +98,12 @@
         if (reply?.[0] === data) return;
         const state = inputs.get(sessionId);
         if (state) {
+            // The first key at a confirmed prompt records how the empty line
+            // looks, before its echo arrives. Erasing back to it is recognised.
+            if (!state.dirty) state.mark = cursorLine(state.terminal);
             state.dirty = true;
+            state.dirtyReason = 'input';
+            state.lastInputAt = Date.now();
             state.version += 1;
             // onData also fires for input sent through SSHInput. Only the
             // shared sender counts submissions; local events still fence probes.
@@ -108,6 +133,8 @@
         state.replayDepth = (state.replayDepth || 0) + 1;
         state.promptShell = null;
         state.dirty = true;
+        state.dirtyReason = 'replay';
+        state.mark = null;
         state.version += 1;
         state.submitted = state.submitOutput = false;
     }
@@ -117,8 +144,11 @@
         if (!state) return;
         state.replayDepth = Math.max(0, (state.replayDepth || 0) - 1);
         // An old prompt in the transcript may be followed by unfinished input.
-        // Require a subsequent live prompt boundary before sending a command.
+        // Require a subsequent live prompt boundary, or the server's word that
+        // nothing was typed since the shell's last prompt, before sending.
         state.dirty = true;
+        state.dirtyReason = 'replay';
+        state.mark = null;
     }
 
     function observePrompt(sessionId, directory) {
@@ -159,9 +189,17 @@
             // needs the explicitly installed primary-prompt integration.
             return false;
         }
-        return Boolean(state && !state.dirty
-            && state.terminal.buffer.active.type === 'normal'
-            && state.terminal.modes.bracketedPasteMode);
+        if (state.terminal.buffer.active.type !== 'normal' || !state.terminal.modes.bracketedPasteMode) return false;
+        if (!state.dirty) return true;
+        // Nothing was typed in this browser since the reload or reconnect: the
+        // server saw every byte since the shell's last prompt and says none came.
+        if (state.dirtyReason !== 'input') return directory?.input_idle === true;
+        // Typed and erased again: the line is back to exactly the empty prompt,
+        // and no key is so recent that its echo could still be on its way.
+        const mark = state.mark;
+        const line = mark && !state.submitted && Date.now() - state.lastInputAt >= ERASED_INPUT_QUIET_MS
+            ? cursorLine(state.terminal) : null;
+        return Boolean(line && line.row === mark.row && line.x === mark.x && line.text === mark.text);
     }
 
     function confirmNavigation(sessionId, version) {

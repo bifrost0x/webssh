@@ -289,3 +289,50 @@ def test_untrusted_prompt_marker_cannot_confirm_readiness(marker):
     else:
         with pytest.raises(ValueError):
             directory.parse_directory(payload)
+
+
+class InputChannel:
+    def __init__(self):
+        self.sent = []
+    def send(self, data):
+        self.sent.append(data)
+        return len(data)
+
+
+@pytest.mark.parametrize('chunks', [
+    ['motd\r\n\x1b[?2004huser@host:~$ '],
+    ['motd\r\n\x1b[?20', '04huser@host:~$ '],
+    ['\x1b', '[?2004h', '$ '],
+])
+def test_server_knows_when_nothing_was_typed_since_the_last_prompt(monkeypatch, chunks):
+    session = {'connected': True, 'output_buffer': [], 'output_buffer_size': 0, 'channel': InputChannel()}
+    monkeypatch.setattr(ssh_manager, 'sessions', {'s': session})
+    idle = lambda: ssh_manager.prompt_input_idle(session)
+    assert not idle(), 'a new shell is not at a prompt until it says so'
+    for chunk in chunks:
+        ssh_manager.record_output('s', chunk)
+    assert idle()
+    # Automatic terminal replies are not typing.
+    assert ssh_manager.send_ssh_input('s', '\x1b]11;rgb:1e1e/1e1e/1e1e\x07') == (True, None)
+    assert idle()
+    assert ssh_manager.send_ssh_input('s', 'l') == (True, None)
+    assert not idle()
+    ssh_manager.record_output('s', 's\r\n\x1b[?2004l\r\nfile\r\n')
+    assert not idle()
+    ssh_manager.record_output('s', '\x1b[?2004huser@host:~$ ')
+    assert idle()
+    # A full-screen program never counts as an empty prompt, even if it enables bracketed paste.
+    ssh_manager.record_output('s', '\x1b[?1049h\x1b[?2004h')
+    assert not idle()
+    ssh_manager.record_output('s', '\x1b[?1049l\x1b[?2004h$ ')
+    assert idle()
+
+
+def test_probe_reports_whether_input_is_idle(monkeypatch):
+    session = setup_session(monkeypatch, Channel())
+    result, _ = directory.collect_directory('a')
+    assert result['input_idle'] is False
+    session['prompt_idle'] = True
+    monkeypatch.setattr(ssh_manager, '_open_exec_channel', lambda *args, **kw: Channel())
+    result, _ = directory.collect_directory('a')
+    assert result['input_idle'] is True

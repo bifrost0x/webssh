@@ -1,5 +1,6 @@
 import paramiko
 from paramiko.auth_strategy import AuthStrategy, NoneAuth
+import re
 import shlex
 import time
 import uuid
@@ -768,6 +769,44 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             except Exception:
                 pass
 
+# Folder sync may only type into an empty shell prompt. Readline and ZLE turn
+# bracketed paste on when an editable prompt starts and off when a line is
+# accepted; full-screen programs switch to the alternate screen. The server
+# sees every byte in both directions, so this survives a browser reload.
+_PROMPT_MODE = re.compile(r'\x1b\[\?(2004|1049|1047|47)([hl])')
+_PROMPT_MODE_PREFIX = re.compile(r'\x1b(?:\[(?:\?[0-9]{0,4})?)?$')
+_TERMINAL_REPLIES = re.compile(
+    r'\x1b\[[?>]?[0-9;]*c'
+    r'|\x1b\](?:10|11|12);rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4}(?:\x1b\\|\x07)',
+    re.IGNORECASE,
+)
+
+
+def _note_prompt_output(session, text):
+    """Track prompt and screen modes from output. The caller holds sessions_lock."""
+    scan = session.get('prompt_scan_tail', '') + text
+    for mode, flag in _PROMPT_MODE.findall(scan):
+        if mode == '2004':
+            session['prompt_idle'] = flag == 'h'
+        else:
+            session['alternate_screen'] = flag == 'h'
+    # Keep only an unfinished escape sequence; a complete one must not count twice.
+    pending = _PROMPT_MODE_PREFIX.search(scan[-8:])
+    session['prompt_scan_tail'] = pending.group(0) if pending else ''
+
+
+def _note_prompt_input(session, data):
+    """Any real input leaves the prompt; terminal replies are not typing. Caller holds the lock."""
+    text = data.decode('utf-8', 'ignore') if isinstance(data, bytes) else str(data)
+    if _TERMINAL_REPLIES.sub('', text):
+        session['prompt_idle'] = False
+
+
+def prompt_input_idle(session):
+    """True while the shell shows a prompt and nothing was typed since. Caller holds the lock."""
+    return bool(session.get('prompt_idle')) and not session.get('alternate_screen')
+
+
 def record_output(session_id, decoded_data, *, now=None):
     """Append one output chunk and return its monotone session sequence."""
     activity_time = time.time() if now is None else now
@@ -778,6 +817,7 @@ def record_output(session_id, decoded_data, *, now=None):
         sequence = session.get('output_sequence', 0) + 1
         session['output_sequence'] = sequence
         session['last_activity'] = activity_time
+        _note_prompt_output(session, decoded_data)
         buf = session.get('output_buffer')
         if buf is not None:
             buf.append(decoded_data)
@@ -958,6 +998,8 @@ def send_ssh_input(
                 return False, "Session not connected"
 
             channel = session['channel']
+            # Before sending: the shell may answer with its next prompt at once.
+            _note_prompt_input(session, data)
 
         if require_complete:
             remaining = data.encode('utf-8') if isinstance(data, str) else data
