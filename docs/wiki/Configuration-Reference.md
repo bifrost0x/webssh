@@ -26,7 +26,7 @@ Treat `SECRET_KEY` as long-lived installation state. Replacing it without the su
 | `ALLOW_CORS_WILDCARD` | Allows `*`; homelab-only and rejected as a production origin policy |
 | `HOST_DISCOVERY_ENABLED` | Offers manual SSH host discovery in a network range under Hosts → Find hosts | `true`; `false` in production |
 | `SOCKETIO_ALLOW_ANY_ORIGIN` | With `CORS_ORIGINS=*`, realtime connections accept only pages served from the address used for WebSSH. `true` accepts any origin again; rejected in production | `false` |
-| `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none |
+| `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none. Saved passwords and automation still work behind a TLS proxy at `0`: a page the browser loaded over `https://` from the same host counts as HTTPS. Set it to trust forwarded client addresses |
 | `SESSION_COOKIE_SECURE` | Sends the session cookie only over HTTPS |
 | `SESSION_TIMEOUT` | Idle SSH session timeout in seconds; default `1800` |
 

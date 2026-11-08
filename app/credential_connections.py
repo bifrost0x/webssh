@@ -4,6 +4,7 @@ import time
 from flask import current_app, request
 
 from .automation_store import AutomationError
+from .transport_security import request_reached_over_https
 from paramiko.auth_strategy import AuthStrategy
 
 
@@ -35,7 +36,7 @@ class CredentialGuard:
         from .auth_assurance import current_authentication_session
         from copy import deepcopy
         auth = current_authentication_session()
-        if not request.is_secure or auth is None or auth.user_id != user_id:
+        if not request_reached_over_https() or auth is None or auth.user_id != user_id:
             raise AutomationError('authentication_required')
         self.app = current_app._get_current_object()
         self.service = self.app.extensions['credentials']
@@ -84,7 +85,7 @@ def connection_password(user_id, kind, data):
         return data.get('password')
     from .auth_assurance import current_authentication_session
     auth = current_authentication_session()
-    if not request.is_secure:
+    if not request_reached_over_https():
         raise AutomationError('https_required')
     if auth is None or auth.user_id != user_id:
         raise AutomationError('authentication_required')

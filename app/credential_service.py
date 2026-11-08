@@ -8,6 +8,7 @@ import time
 
 from flask import has_request_context, request
 from .automation_store import AutomationError, profile_fingerprint, remember_intent, text, MAX_STORE_BYTES
+from .transport_security import request_reached_over_https
 from .automation_vault import Vault
 from .audit_logger import log_security_event
 from .data_access import user_data_access
@@ -130,7 +131,7 @@ class CredentialService:
 
     def _connection_resource(self, user_id, kind, resource_id, connection):
         # Background callers have already admitted the secure browser request.
-        if has_request_context() and not request.is_secure:
+        if has_request_context() and not request_reached_over_https():
             raise AutomationError('https_required')
         if not self.app.extensions['runtime_lifecycle'].accepting_work():
             raise AutomationError('unavailable')
@@ -322,7 +323,7 @@ class CredentialService:
         from .app_settings import is_credentials_enabled
         if not erase and not is_credentials_enabled():
             raise AutomationError('credentials_disabled')
-        if has_request_context() and not request.is_secure:
+        if has_request_context() and not request_reached_over_https():
             raise AutomationError('https_required')
         if not self.app.extensions['runtime_lifecycle'].accepting_work():
             raise AutomationError('unavailable')
