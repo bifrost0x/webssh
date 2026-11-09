@@ -185,7 +185,9 @@ def test_lock_generator_reuses_committed_pins_unless_upgrade_is_explicit():
     script = Path("scripts/lock_requirements.ps1").read_text(encoding="utf-8")
 
     assert "[switch]$Upgrade" in script
-    assert "Copy-Item -LiteralPath $committedLock -Destination $temporaryLock" in script
+    assert "[System.IO.File]::ReadAllLines($committedLock)" in script
+    assert "[System.IO.File]::WriteAllLines($temporaryLock, [string[]]$seedLines" in script
+    assert "Where-Object { $_ -notmatch '^\\s*--hash=' }" in script
     assert 'if ($Upgrade)' in script
     assert '$compileArguments += "--upgrade"' in script
 

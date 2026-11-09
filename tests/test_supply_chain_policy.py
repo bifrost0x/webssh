@@ -413,6 +413,75 @@ def test_dependabot_vendor_refresh_executes_only_trusted_automation_scripts():
     assert snapshot < checkout < verification < generation
 
 
+def _dependabot_job(name):
+    workflow = (WORKFLOWS / 'dependabot-vendor.yml').read_text(encoding='utf-8')
+    jobs = re.split(r'^  (?=[a-z-]+:\n)', workflow.split('\njobs:\n', 1)[1], flags=re.M)
+    return next(job for job in jobs if job.startswith(f'{name}:\n'))
+
+
+def test_dependabot_workflow_grants_write_access_per_job_only():
+    workflow = (WORKFLOWS / 'dependabot-vendor.yml').read_text(encoding='utf-8')
+    header = workflow.split('\njobs:\n', 1)[0]
+
+    assert re.search(r'^permissions: \{\}$', header, re.MULTILINE)
+    for name, ecosystem, prefix in (
+        ('refresh-vendor', 'npm', 'dependabot/npm_and_yarn/'),
+        ('refresh-python-locks', 'pip', 'dependabot/pip/'),
+    ):
+        job = _dependabot_job(name)
+        assert re.search(
+            r'permissions:\n\s+contents: write\n\s+pull-requests: read\n\s+actions: write\n',
+            job,
+        ), name
+        assert "github.event.workflow_run.actor.login == 'dependabot[bot]'" in job
+        assert "github.event.workflow_run.conclusion == 'failure'" in job
+        assert "github.event.workflow_run.event == 'pull_request'" in job
+        assert (
+            'github.event.workflow_run.head_repository.full_name == github.repository'
+            in job
+        )
+        assert f"startsWith(github.event.workflow_run.head_branch, '{prefix}')" in job
+        assert f'--ecosystem {ecosystem}' in job
+        assert job.count('--ecosystem ') == 2, name
+        assert 'persist-credentials: false' in job
+        assert 'secrets.' not in job
+
+
+def test_dependabot_python_lock_refresh_runs_only_trusted_generators():
+    job = _dependabot_job('refresh-python-locks')
+
+    setup_uv = job.index('astral-sh/setup-uv@')
+    validation = job.index('scripts/dependabot_vendor.py validate')
+    snapshot = job.index(
+        'sha256sum scripts/lock_requirements.ps1 scripts/dependabot_vendor.py uv.toml'
+    )
+    checkout = job.index('git checkout --detach FETCH_HEAD')
+    verification = job.index('sha256sum --check "$RUNNER_TEMP/trusted-script-checksums"')
+    copy = job.index('cp scripts/dependabot_vendor.py "$RUNNER_TEMP/dependabot_vendor.py"')
+    inputs = job.index('python "$RUNNER_TEMP/dependabot_vendor.py" check-python-inputs')
+    generation = job.index('-File scripts/lock_requirements.ps1\n')
+    check = job.index('-File scripts/lock_requirements.ps1 -Check')
+    stage = job.index('python "$RUNNER_TEMP/dependabot_vendor.py" stage')
+    remote_check = job.index('git ls-remote origin')
+    credentials = job.index('gh auth setup-git')
+    push = job.index('git push origin "HEAD:refs/heads/${HEAD_REF}"')
+
+    assert setup_uv < validation < snapshot < checkout < verification < copy
+    assert copy < inputs < generation < check < stage < remote_check < credentials < push
+    assert 'version-file: uv.toml' in job
+    assert 'enable-cache: false' in job
+    assert "UV_NO_BUILD: '1'" in job
+    assert "python-version: '3.11'" in job
+    assert '-Upgrade' not in job
+    assert 'pip install' not in job
+    assert '[dependabot skip]' in job
+    assert 'gh workflow run tests.yml --ref "$HEAD_REF" -f expected_sha="$EXPECTED_SHA"' in job
+
+    generate = job.split('- name: Regenerate Python locks', 1)[1].split('- name:', 1)[0]
+    assert 'GH_TOKEN' not in generate
+    assert 'github.token' not in generate
+
+
 def test_trivy_suppressions_are_justified_and_expire():
     policy = json.loads(
         (ROOT / '.trivyignore.yaml').read_text(encoding='utf-8')

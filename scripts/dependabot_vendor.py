@@ -1,4 +1,10 @@
-"""Validate the trust boundary for automated Dependabot vendor updates."""
+"""Validate the trust boundary for automated Dependabot follow-up commits.
+
+Two Dependabot ecosystems need generated files that Dependabot cannot produce
+itself: npm updates need refreshed ``static/vendor`` assets, and pip updates
+need lock files from ``scripts/lock_requirements.ps1``. Each ecosystem has a
+fixed profile; nothing outside a profile's files is ever accepted or staged.
+"""
 
 import argparse
 import json
@@ -6,15 +12,71 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from typing import Callable, NamedTuple
 
 
 DEPENDABOT = 'dependabot[bot]'
-BRANCH = re.compile(
-    r'dependabot/npm_and_yarn/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}'
-)
 SHA = re.compile(r'[0-9a-f]{40}')
-ALLOWED_STATUSES = {'added', 'modified', 'removed'}
 MANIFESTS = {'package.json', 'package-lock.json'}
+PYTHON_INPUTS = ('requirements.in', 'requirements-test.in', 'requirements-graph.in')
+PYTHON_LOCKS = ('requirements.txt', 'requirements-test.txt', 'requirements-graph.txt')
+_SPECIFIER = r'(?:===|==|~=|!=|<=|>=|<|>)\s*[A-Za-z0-9.*+!]+'
+# Plain names with version specifiers only: no URLs, extras, markers, options
+# or index overrides that could redirect resolution away from the default index.
+PYTHON_REQUIREMENT = re.compile(
+    r'[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?'
+    rf'(?:\s*{_SPECIFIER}(?:\s*,\s*{_SPECIFIER})*)?'
+)
+PYTHON_INCLUDE = re.compile(r'-r ([a-z.-]+)')
+
+
+def _vendor_filename(filename):
+    if filename in MANIFESTS:
+        return True
+    return (
+        filename.startswith('static/vendor/')
+        and '..' not in filename.split('/')
+        and not filename.endswith('/')
+    )
+
+
+def _vendor_staged(filename):
+    return filename.startswith('static/vendor/') and '..' not in filename.split('/')
+
+
+class Profile(NamedTuple):
+    branch: re.Pattern
+    allowed_file: Callable[[str], bool]
+    allowed_statuses: frozenset
+    required_files: frozenset
+    failed_job: re.Pattern
+    failed_step: str
+    stage_command: tuple
+    staged_file: Callable[[str], bool]
+
+
+PROFILES = {
+    'npm': Profile(
+        branch=re.compile(r'dependabot/npm_and_yarn/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}'),
+        allowed_file=_vendor_filename,
+        allowed_statuses=frozenset({'added', 'modified', 'removed'}),
+        required_files=frozenset({'package-lock.json'}),
+        failed_job=re.compile(r'browser-e2e(?: \([1-9][0-9]*/[1-9][0-9]*\))?'),
+        failed_step='Check vendored frontend assets',
+        stage_command=('git', 'add', '--all', '--', 'static/vendor'),
+        staged_file=_vendor_staged,
+    ),
+    'pip': Profile(
+        branch=re.compile(r'dependabot/pip/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}'),
+        allowed_file=frozenset(PYTHON_INPUTS + PYTHON_LOCKS).__contains__,
+        allowed_statuses=frozenset({'modified'}),
+        required_files=frozenset(PYTHON_LOCKS),
+        failed_job=re.compile(r'dependency-locks'),
+        failed_step='Check dependency locks',
+        stage_command=('git', 'add', '--', *PYTHON_LOCKS),
+        staged_file=frozenset(PYTHON_LOCKS).__contains__,
+    ),
+}
 
 
 def _load(path, expected_type):
@@ -32,17 +94,8 @@ def _require(condition, message):
         raise ValueError(message)
 
 
-def _allowed_filename(filename):
-    if filename in MANIFESTS:
-        return True
-    return (
-        filename.startswith('static/vendor/')
-        and '..' not in filename.split('/')
-        and not filename.endswith('/')
-    )
-
-
-def validate(event, pull_request, files, jobs):
+def validate(event, pull_request, files, jobs, ecosystem='npm'):
+    profile = PROFILES[ecosystem]
     run = event.get('workflow_run', {})
     repository = event.get('repository', {})
     repo_name = repository.get('full_name')
@@ -62,9 +115,9 @@ def validate(event, pull_request, files, jobs):
     )
     _require(
         isinstance(head_ref, str)
-        and BRANCH.fullmatch(head_ref)
+        and profile.branch.fullmatch(head_ref)
         and '..' not in head_ref,
-        'workflow head branch is not an npm Dependabot branch',
+        f'workflow head branch is not a Dependabot {ecosystem} branch',
     )
     _require(isinstance(head_sha, str) and SHA.fullmatch(head_sha), 'invalid head SHA')
 
@@ -112,27 +165,27 @@ def validate(event, pull_request, files, jobs):
         _require(isinstance(item, dict), 'changed-file entry has an invalid shape')
         filename = item.get('filename')
         _require(
-            isinstance(filename, str) and _allowed_filename(filename),
+            isinstance(filename, str) and profile.allowed_file(filename),
             f'disallowed changed file: {filename}',
         )
         _require(
-            item.get('status') in ALLOWED_STATUSES,
+            item.get('status') in profile.allowed_statuses,
             f'disallowed change status for {filename}',
         )
         filenames.append(filename)
     _require(len(filenames) == len(set(filenames)), 'duplicate changed-file entries')
-    _require('package-lock.json' in filenames, 'package-lock.json was not changed')
+    _require(
+        profile.required_files.intersection(filenames),
+        f'none of {", ".join(sorted(profile.required_files))} was changed',
+    )
 
     job_items = jobs.get('jobs')
     _require(isinstance(job_items, list), 'workflow jobs have an invalid shape')
-    failed_vendor_check = any(
-        re.fullmatch(
-            r'browser-e2e(?: \([1-9][0-9]*/[1-9][0-9]*\))?',
-            str(job.get('name', '')),
-        )
+    failed_check = any(
+        profile.failed_job.fullmatch(str(job.get('name', '')))
         and job.get('conclusion') == 'failure'
         and any(
-            step.get('name') == 'Check vendored frontend assets'
+            step.get('name') == profile.failed_step
             and step.get('conclusion') == 'failure'
             for step in job.get('steps', [])
             if isinstance(step, dict)
@@ -140,16 +193,35 @@ def validate(event, pull_request, files, jobs):
         for job in job_items
         if isinstance(job, dict)
     )
-    _require(failed_vendor_check, 'vendor check did not fail')
+    _require(failed_check, f'{profile.failed_step!r} did not fail')
 
     return head_ref, head_sha, pr_number
 
 
-def stage_vendor(root):
+def check_python_inputs(root):
+    """Reject lock inputs that could change where or what uv resolves."""
+    root = Path(root)
+    for name in PYTHON_INPUTS:
+        path = root / name
+        _require(path.is_file() and not path.is_symlink(), f'{name} is not a regular file')
+        for number, raw in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+            line = raw.strip()
+            if not line or line.startswith('#'):
+                continue
+            include = PYTHON_INCLUDE.fullmatch(line)
+            _require(
+                PYTHON_REQUIREMENT.fullmatch(line)
+                or (include and include.group(1) in PYTHON_INPUTS and include.group(1) != name),
+                f'{name}:{number} is not a plain pinned requirement',
+            )
+
+
+def stage(root, ecosystem='npm'):
+    profile = PROFILES[ecosystem]
     root = Path(root).resolve()
     _require((root / '.git').exists(), 'stage root is not a Git repository')
     subprocess.run(
-        ['git', 'add', '--all', '--', 'static/vendor'],
+        list(profile.stage_command),
         cwd=root,
         check=True,
         capture_output=True,
@@ -164,12 +236,8 @@ def stage_vendor(root):
     )
     staged = [name for name in result.stdout.split('\0') if name]
     _require(
-        all(
-            name.startswith('static/vendor/')
-            and '..' not in name.split('/')
-            for name in staged
-        ),
-        'staged changes escaped static/vendor',
+        all(profile.staged_file(name) for name in staged),
+        'staged changes escaped the generated files',
     )
     return bool(staged)
 
@@ -178,17 +246,24 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest='command', required=True)
     validate_parser = subparsers.add_parser('validate')
+    validate_parser.add_argument('--ecosystem', choices=sorted(PROFILES), default='npm')
     validate_parser.add_argument('--event', required=True)
     validate_parser.add_argument('--pull-request', required=True)
     validate_parser.add_argument('--files', required=True)
     validate_parser.add_argument('--jobs', required=True)
     validate_parser.add_argument('--github-output', required=True)
+    inputs_parser = subparsers.add_parser('check-python-inputs')
+    inputs_parser.add_argument('--root', required=True)
     stage_parser = subparsers.add_parser('stage')
+    stage_parser.add_argument('--ecosystem', choices=sorted(PROFILES), default='npm')
     stage_parser.add_argument('--root', required=True)
     stage_parser.add_argument('--github-output', required=True)
     args = parser.parse_args(argv)
 
     try:
+        if args.command == 'check-python-inputs':
+            check_python_inputs(args.root)
+            return 0
         if args.command == 'validate':
             event = _load(args.event, dict)
             pull_request = _load(args.pull_request, dict)
@@ -199,6 +274,7 @@ def main(argv=None):
                 pull_request,
                 files,
                 jobs,
+                args.ecosystem,
             )
             lines = [
                 f'head_ref={head_ref}',
@@ -206,10 +282,10 @@ def main(argv=None):
                 f'pr_number={pr_number}',
             ]
         else:
-            lines = [f'changed={str(stage_vendor(args.root)).lower()}']
+            lines = [f'changed={str(stage(args.root, args.ecosystem)).lower()}']
         with Path(args.github_output).open('a', encoding='utf-8', newline='\n') as output:
             output.write('\n'.join(lines) + '\n')
-    except (ValueError, subprocess.CalledProcessError) as exc:
+    except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as exc:
         print(f'ERROR: {exc}', file=sys.stderr)
         return 1
     return 0

@@ -31,7 +31,9 @@ Verify locks without modifying them:
 .\scripts\lock_requirements.ps1 -Check
 ```
 
-Use `-Upgrade` for an intentional refresh of all allowed resolutions; the default preserves existing pins where possible. `-Check` and `-Upgrade` cannot be combined. Do not hand-edit generated lock files. A dependency change must update the input, all applicable lock outputs, and relevant compatibility tests. Preserve the Python 3.11 marker branches when newer Python versions select different packages.
+Use `-Upgrade` for an intentional refresh of all allowed resolutions; the default preserves existing pins where possible. `-Check` and `-Upgrade` cannot be combined. Do not hand-edit generated lock files. A dependency change must update the input, all applicable lock outputs, and relevant compatibility tests. Preserve the Python 3.11 marker branches when newer Python versions select different packages. Existing lock files only seed version preferences; their hash lines are discarded and every hash is taken from the package index, so `-Check` also rejects added or duplicated hashes.
+
+Dependabot's pip updater rewrites the lock files without this script. When the `dependency-locks` check of a Dependabot pip pull request fails, the `Dependabot vendor refresh` workflow validates the pull request, reruns the lock script with the pinned uv and pushes only the three lock files as a follow-up commit. It accepts only Dependabot-authored `dependabot/pip/*` branches that change nothing but the requirement inputs and locks, and lock inputs limited to plain version specifiers.
 
 ## Python tests
 

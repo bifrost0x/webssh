@@ -38,7 +38,7 @@ def test_every_uv_setup_consumes_the_same_required_version():
                 assert 'version-file: uv.toml' in block, path
                 assert not re.search(r'^\s+version:', block, re.M), path
                 setups.append(path)
-    assert len(setups) == 6
+    assert len(setups) == 7
 
 
 def test_scanner_fallbacks_use_the_same_pinned_release_images():
@@ -113,3 +113,49 @@ try {
         assert '-Check and -Upgrade cannot be used together' in result.stderr
         assert 'resolver must not run' not in result.stderr
     assert {name: (tmp_path / (name + '.txt')).read_bytes() for name in names} == original
+
+
+def test_lock_generator_never_seeds_the_resolver_with_committed_hashes(tmp_path):
+    """uv keeps seeded hash lines unverified, so -Check could not detect added hashes."""
+    pwsh = shutil.which('pwsh')
+    if not pwsh:
+        pytest.skip('PowerShell is required to exercise the real lock generator')
+    scripts = tmp_path / 'scripts'
+    scripts.mkdir()
+    shutil.copyfile(ROOT / 'scripts/lock_requirements.ps1', scripts / 'lock_requirements.ps1')
+    names = ('requirements', 'requirements-test', 'requirements-graph')
+    bogus = '--hash=sha256:' + 'ab' * 32
+    for name in names:
+        (tmp_path / (name + '.in')).write_text('example==1\n', encoding='utf-8')
+        (tmp_path / (name + '.txt')).write_text(
+            '--require-hashes\n'
+            "example==1 ; sys_platform == 'win32' \\\n"
+            f'    {bogus} \\\n'
+            f'    {bogus}\n'
+            '    # via -r requirements.in\n',
+            encoding='utf-8',
+        )
+    seeds = tmp_path / 'seeds'
+    seeds.mkdir()
+    runner = tmp_path / 'run.ps1'
+    runner.write_text('''function global:uv {
+    $outputIndex = [array]::IndexOf($args, '--output-file') + 1
+    $output = $args[$outputIndex]
+    Copy-Item -LiteralPath $output -Destination (Join-Path $env:LOCK_TEST_SEEDS (Split-Path $output -Leaf))
+    [System.IO.File]::WriteAllText($output, "example==1`n")
+    $global:LASTEXITCODE = 0
+}
+try { & ./scripts/lock_requirements.ps1 -Check; exit 0 }
+catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
+''', encoding='utf-8')
+    result = subprocess.run([pwsh, '-NoProfile', '-File', str(runner)], cwd=tmp_path,
+                            env={**os.environ, 'LOCK_TEST_SEEDS': str(seeds)},
+                            capture_output=True, text=True, encoding='utf-8', timeout=30)
+    assert result.returncode == 1
+    assert 'requirements.txt is out of date' in result.stderr
+    seed = (seeds / 'requirements.txt').read_text(encoding='utf-8')
+    assert seed.splitlines() == [
+        '--require-hashes',
+        "example==1 ; sys_platform == 'win32'",
+        '    # via -r requirements.in',
+    ]
