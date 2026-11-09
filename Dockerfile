@@ -81,6 +81,9 @@ RUN chmod +x /app/entrypoint.sh
 # override with a named/bind volume (see docker-compose.yml) for real durability.
 VOLUME /app/data
 
+# Last so a new revision never invalidates the cached layers above.
+ENV WEBSSH_REVISION=$VCS_REF
+
 USER appuser
 
 EXPOSE 5000

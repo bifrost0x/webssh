@@ -30,6 +30,7 @@ from .app_settings import (is_registration_enabled, set_registration_enabled,
                            is_ssh_gateway_enabled, set_ssh_gateway_enabled)
 from .storage_errors import StorageCorruptionError
 from .tailscale_ssh import user_can_use_tailscale_ssh
+from .version import display_version
 from .runtime_lifecycle import RuntimeLifecycle
 from .browser_identity import connection_history_scope
 from .auth_assurance import clear_browser_authentication, current_authentication_session
@@ -634,7 +635,12 @@ def create_app(
                 config.HOST_KEY_MANAGEMENT_ENABLED
             ),
             'audit_export_enabled': config.AUDIT_EXPORT_ENABLED,
-            'tailscale_ssh_allowed': user_can_use_tailscale_ssh(current_user)
+            'tailscale_ssh_allowed': user_can_use_tailscale_ssh(current_user),
+            # Only signed-in users see the version, so the public sign-in
+            # pages do not help fingerprint an instance.
+            'webssh_version': (
+                display_version() if current_user.is_authenticated else ''
+            ),
         }
 
     @app.before_request

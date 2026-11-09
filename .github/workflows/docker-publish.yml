@@ -57,6 +57,13 @@ jobs:
         shell: bash
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="$(python3 -c "import runpy; print(runpy.run_path('app/version.py')['VERSION'])")"
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "Tag $GITHUB_REF_NAME does not match app/version.py ($version)" >&2
+              exit 1
+            fi
+          fi
           echo "IMAGE_REF=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
