@@ -459,9 +459,9 @@ def test_graph_pages_toolchain_versions_are_explicit():
 
     assert 'version-file: uv.toml' in workflow
     assert 'uv pip install --require-hashes -r requirements-graph.txt' in workflow
-    assert 'graphifyy==0.9.97' in graph_input
+    assert 'graphifyy==0.9.103' in graph_input
     assert '--require-hashes' in graph_lock
-    assert 'graphifyy==0.9.97' in graph_lock
+    assert 'graphifyy==0.9.103' in graph_lock
 
 
 def test_workflows_use_an_explicit_runner_release():
