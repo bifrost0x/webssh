@@ -909,18 +909,28 @@ for (const width of [390, 1440]) {
         await page.setViewportSize({width, height: 844});
         const launcher = page.locator('.profile-launcher').first();
         await expect(launcher.locator('.profile-launcher-card').first()).toBeVisible();
-        const styles = await launcher.evaluate(element => ({
-            titleSize: getComputedStyle(element.querySelector('.profile-launcher-title')).fontSize,
-            sectionsFlex: getComputedStyle(element.querySelector('.profile-launcher-sections')).flexGrow,
-            sectionsMaxHeight: getComputedStyle(element.querySelector('.profile-launcher-sections')).maxHeight,
-            actionAlign: getComputedStyle(element.querySelector('.profile-launcher-new')).alignSelf,
-            searchWidth: element.querySelector('.profile-launcher-search').getBoundingClientRect().width,
-            contentWidth: element.clientWidth - parseFloat(getComputedStyle(element).paddingLeft) - parseFloat(getComputedStyle(element).paddingRight),
-        }));
+        const styles = await launcher.evaluate(element => {
+            const launcherStyle = getComputedStyle(element);
+            const launcherRect = element.getBoundingClientRect();
+            const actionRect = element.querySelector('.profile-launcher-new').getBoundingClientRect();
+            const contentRight = launcherRect.left + element.clientLeft + element.clientWidth - parseFloat(launcherStyle.paddingRight);
+            return {
+                titleSize: getComputedStyle(element.querySelector('.profile-launcher-title')).fontSize,
+                sectionsFlex: getComputedStyle(element.querySelector('.profile-launcher-sections')).flexGrow,
+                sectionsMaxHeight: getComputedStyle(element.querySelector('.profile-launcher-sections')).maxHeight,
+                actionRightGap: contentRight - actionRect.right,
+                actionWidth: actionRect.width,
+                searchWidth: element.querySelector('.profile-launcher-search').getBoundingClientRect().width,
+                contentWidth: element.clientWidth - parseFloat(launcherStyle.paddingLeft) - parseFloat(launcherStyle.paddingRight),
+            };
+        });
         expect(styles.titleSize).toBe(width < 768 ? '24px' : '28px');
         expect(styles.sectionsFlex).toBe('1');
         expect(styles.sectionsMaxHeight).toBe('none');
-        expect(styles.actionAlign).toBe('flex-end');
+        // Assert the end alignment geometrically: browsers differ in how they
+        // serialize the computed align-self keyword (flex-end vs flow-end).
+        expect(Math.abs(styles.actionRightGap)).toBeLessThanOrEqual(1);
+        expect(styles.actionWidth).toBeLessThan(styles.contentWidth - 1);
         expect(Math.abs(styles.searchWidth - styles.contentWidth)).toBeLessThanOrEqual(1);
     });
 }
