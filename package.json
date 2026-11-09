@@ -25,8 +25,8 @@
     "@xterm/xterm": "6.0.0"
   },
   "devDependencies": {
-    "eslint": "10.13.0",
-    "playwright": "^1.64.1"
+    "eslint": "10.14.0",
+    "playwright": "^1.65.0"
   },
   "overrides": {
     "eslint": {
