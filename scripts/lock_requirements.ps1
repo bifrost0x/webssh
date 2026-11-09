@@ -24,7 +24,13 @@ function New-LockFile {
     $temporaryLock = Join-Path $temporaryDirectory $LockName
     $committedLock = Join-Path $projectRoot $LockName
     if (Test-Path -LiteralPath $committedLock) {
-        Copy-Item -LiteralPath $committedLock -Destination $temporaryLock
+        # The committed lock seeds version preferences only. uv would carry its
+        # hash lines over unverified, so an added or duplicated hash would
+        # survive regeneration and pass -Check; hashes always come from the index.
+        $seedLines = [System.IO.File]::ReadAllLines($committedLock) |
+            Where-Object { $_ -notmatch '^\s*--hash=' } |
+            ForEach-Object { $_ -replace '\s*\\$', '' }
+        [System.IO.File]::WriteAllLines($temporaryLock, [string[]]$seedLines, [System.Text.UTF8Encoding]::new($false))
     }
     $compileArguments = @(
         "pip", "compile", $InputFile,
