@@ -107,6 +107,7 @@ See [SFTP permissions](SFTP-File-Workspace-and-Transfers.md) and
 
 - `/health` returns 200.
 - `/ready` returns 200.
+- The account menu and **Settings** show the expected WebSSH version.
 - Administrator and standard-user login work.
 - Existing stored-key metadata is readable.
 - A direct SSH terminal opens.
@@ -205,6 +206,14 @@ password and CA secret volume is intentionally excluded.
 WebSSH stores first-use trust persistently. A changed key can indicate a server
 rebuild, DNS/IP reassignment, or interception. Verify the new fingerprint out of
 band, remove the old trust record deliberately, and reconnect.
+
+### Which WebSSH version is running?
+
+Signed-in users see it at the bottom of the account menu (on phones: **More**,
+then the user name) and, on wide screens, in the **Settings** side panel, for
+example `3.0.0 (1a2b3c4)`. The part in parentheses is the source commit of an
+official image; builds between releases keep the last release number but a
+different commit. Sign-in pages do not show the version.
 
 ### Can I use a CDN for frontend libraries?
 

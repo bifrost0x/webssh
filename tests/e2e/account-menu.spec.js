@@ -122,6 +122,12 @@ test('account menu and settings stay inside a mobile viewport', async ({ page })
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
     await expect(page.locator('#accountSettingsBtn')).toBeVisible();
     await expect(page.locator('#logoutBtn')).toBeVisible();
+    const version = page.locator('#accountDropdownHeader [data-webssh-version]');
+    await version.scrollIntoViewIfNeeded();
+    await expect(version).toBeVisible();
+    await expect(version).toHaveText(/^\d+\.\d+\.\d+( \([0-9a-f]{7}\))?$/);
+    const versionBounds = await version.boundingBox();
+    expect(versionBounds.x + versionBounds.width).toBeLessThanOrEqual(390);
 
     await page.locator('#accountSettingsBtn').click();
     await expect(page).toHaveURL(/\/settings#preferences$/);

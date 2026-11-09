@@ -419,6 +419,7 @@
                         {% else %}<span data-i18n="security.methodUnknown">{{ primary_method.label }}</span>{% endif %}
                     </dd></div>
                     <div><dt data-i18n="security.accountProtection">Account protection</dt><dd>{% if account_mfa_enabled %}<span data-i18n="security.mfaEnabled">MFA enabled</span>{% else %}<span data-i18n="security.mfaOptional">MFA optional</span>{% endif %}</dd></div>
+                    <div><dt data-i18n="settings.webSshVersion">WebSSH version</dt><dd data-webssh-version>{{ webssh_version }}</dd></div>
                     <div><dt data-i18n="settings.scope">Settings scope</dt><dd>{% if admin_panel_enabled and is_admin %}<span data-i18n="settings.personalAndAdministration">Personal + administration</span>{% else %}<span data-i18n="settings.personal">Personal</span>{% endif %}</dd></div>
                 </dl>
             </section>

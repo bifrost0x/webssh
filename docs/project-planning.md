@@ -35,7 +35,9 @@ This setup does not add or reorganize a Project.
 5. **Validate delivery.** Keep the release-readiness issue open after feature PRs merge.
    Check the exact candidate, required CI, native image scans, relevant real-environment
    acceptance and upgrade/recovery behavior. Link the evidence, not just a checkbox.
-6. **Publish and verify.** Tag the reviewed candidate, publish release notes, and verify
+6. **Publish and verify.** Set `VERSION` in `app/version.py` in the same change as the
+   release notes; the tag build refuses a tag that differs from it. Tag the reviewed
+   candidate, publish release notes, and verify
    the tag-triggered pipeline, versioned AMD64/ARM64 image and SBOM/provenance. Only then
    close the readiness issue and milestone; move the outcome into completed history.
 
