@@ -339,7 +339,8 @@ def test_demo_links_bypass_previously_cached_tour(built_site):
         assert all(parse_qs(link.query) == {'v': [revision]} for link in demo_links)
     readme = (ROOT / 'README.md').read_text(encoding='utf-8')
     page = Page(readme)
-    assert 'site/demo.html' in page.links()
+    assert packager().SITE_URL + 'demo.html' in page.links()
+    assert 'site/demo.html' not in page.links()
     assert 'assets/dashboard.png' in readme
     assert 'assets/webssh-themes.gif' in readme
     assert 'Watch the 60-second' not in readme
