@@ -152,8 +152,8 @@ See [Credentials](credentials.md) and the [backup guide](wiki/Backup-Restore-and
 The README and product tour use browser captures of version 3 with
 prepared example data, never a user's servers or credentials. The theme GIF
 shows all eleven themes. The silent video and slide gallery are visual tours;
-they do not claim successful operations on real servers. The previous narrated
-version 2 video is retained only as clearly labeled historical material.
+they do not claim successful operations on real servers. The narrated tour on
+the product site shows version 3 with the same kind of prepared example data.
 
 ## Release validation
 

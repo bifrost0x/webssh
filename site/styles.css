@@ -293,9 +293,6 @@ code { font-family: var(--font-mono); }
 .youtube-consent p { max-width: 80ch; margin-top: .8rem; color: var(--text-secondary); font-size: .9rem; }
 .youtube-consent .button, .youtube-controls button { cursor: pointer; font: inherit; }
 .youtube-status { color: var(--text-secondary); font-size: .9rem; margin-top: .8rem; }
-.demo-music { margin: 1.5rem 0; color: var(--text-secondary); font-size: .85rem; }
-.demo-music summary { cursor: pointer; }
-.demo-music p { margin-top: .7rem; }
 
 /* The visual tour uses the same captures as the versioned documentation. */
 .demo-player video { display:block; width:100%; height:auto; background:#0b0d10; }
@@ -304,4 +301,4 @@ code { font-family: var(--font-mono); }
 .v3-slides img { display:block; width:100%; height:auto; border:1px solid var(--border,#30343a); border-radius:12px; }
 .v3-slides figcaption { padding:12px 0; }
 .demo-page details > img { max-width:100%; height:auto; }
-.historical-tour { margin-block:32px; }
+.narrated-tour { margin-block:32px; }

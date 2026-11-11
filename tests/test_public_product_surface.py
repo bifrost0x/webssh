@@ -290,12 +290,12 @@ def test_demo_is_opt_in_and_has_local_preview_and_text_alternatives(built_site):
                for tag, attrs in page.tags)
     assert any(tag == 'img' and attrs.get('src') == 'assets/webssh-youtube-tour.jpg'
                for tag, attrs in page.tags)
-    assert 'https://www.youtube.com/watch?v=mw_qXUnYYVs' in page.links()
+    assert 'https://www.youtube.com/watch?v=0G0Y6NdgKr0' in page.links()
     assert 'assets/webssh-youtube-tour.en.vtt' in page.links()
     assert '#transcript' in page.links() and 'privacy.html#youtube' in page.links()
-    assert len([tag for tag, _ in page.tags if tag == 'time']) == 10
+    assert len([tag for tag, _ in page.tags if tag == 'time']) == 8
     assert 'example data' in html and 'English narration' in html
-    assert '4:33' in html and '60 seconds' not in html and 'no speech' not in html
+    assert '2:17' in html and 'Historical' not in html and '60 seconds' not in html and 'no speech' not in html
     assert "frame-src https://www.youtube-nocookie.com;" in packager().SearchMetadata(html).policies[0]
     assert '<noscript>' in html
     privacy = (built_site / 'privacy.html').read_text(encoding='utf-8')

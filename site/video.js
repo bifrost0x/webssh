@@ -17,7 +17,7 @@ if (videoStage && videoPlaceholder && loadVideoButton && removeVideoButton && vi
     frame.allowFullscreen = true;
     // YouTube requires a referrer; disclose only the site origin, never a page path or query.
     frame.referrerPolicy = 'strict-origin-when-cross-origin';
-    frame.src = 'https://www.youtube-nocookie.com/embed/mw_qXUnYYVs?playsinline=1&cc_lang_pref=en&cc_load_policy=1';
+    frame.src = 'https://www.youtube-nocookie.com/embed/0G0Y6NdgKr0?playsinline=1&cc_lang_pref=en&cc_load_policy=1';
     videoPlaceholder.hidden = true;
     videoStage.append(frame);
     removeVideoButton.hidden = false;
