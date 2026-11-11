@@ -8,7 +8,8 @@
 
 <p align="center">
   <a href="https://getwebssh.com/">Product site</a> ·
-  <a href="site/demo.html">Watch the full tour</a> ·
+  <a href="https://getwebssh.com/demo.html">Watch the full tour</a> ·
+  <a href="#quick-start">Quick Start</a> ·
   <a href="https://github.com/bifrost0x/webssh/wiki">Documentation</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Container image</a> ·
@@ -24,13 +25,14 @@
   <a href="https://getwebssh.com/code-graph/"><img src="https://img.shields.io/badge/Interactive%20Code--Map-open-6f42c1" alt="Interactive code map"></a>
   <a href="https://github.com/bifrost0x/webssh/releases"><img src="https://img.shields.io/github/v/release/bifrost0x/webssh?display_name=tag&sort=semver" alt="Latest release"></a>
   <a href="https://github.com/bifrost0x/webssh/stargazers"><img src="https://img.shields.io/github/stars/bifrost0x/webssh?style=flat&logo=github" alt="GitHub stars"></a>
+  <a href="https://selfhost.directory/project/webssh"><img src="https://selfhost.directory/badge/webssh.svg" alt="Listed on selfhost.directory"></a>
   <img src="https://img.shields.io/badge/telemetry-none-2ea44f" alt="No telemetry">
 </p>
 
 ## Product tour
 
 <p align="center">
-  <a href="site/demo.html">
+  <a href="https://getwebssh.com/demo.html">
     <img src="assets/dashboard.png" alt="WebSSH 3 dashboard with saved SSH routes and infrastructure" width="1100">
   </a>
 </p>
@@ -47,31 +49,6 @@ a hosted control plane or runtime CDN dependencies.
   </p>
 </details>
 
-## New in WebSSH 3
-
-<table>
-  <tr>
-    <td width="33%" valign="top">
-      <h3>Status-first overview</h3>
-      Host readiness, open sessions, automation results and reachability at a
-      glance. Arrange panels freely, dismiss handled alerts and find hosts with
-      <kbd>/</kbd>.
-    </td>
-    <td width="33%" valign="top">
-      <h3>Native automation</h3>
-      Run command sets and templates now or on a schedule, with exact-target
-      review, saved passwords or keys and bounded per-step output.
-    </td>
-    <td width="33%" valign="top">
-      <h3>Find SSH hosts</h3>
-      Scan a network range you choose for SSH and SFTP servers, gently and only
-      on request, then add a host from a prefilled form.
-    </td>
-  </tr>
-</table>
-
-Upgrading from 2.x? Read the [WebSSH 3 changes and upgrade notes](docs/webssh-3.md).
-
 ## Why WebSSH
 
 - **One workspace, not a terminal tab.** Keep SSH sessions, SFTP sources,
@@ -85,35 +62,25 @@ Upgrading from 2.x? Read the [WebSSH 3 changes and upgrade notes](docs/webssh-3.
 
 ## Features
 
+The [WebSSH Wiki](https://github.com/bifrost0x/webssh/wiki) covers each area in
+depth. Upgrading from 2.x? Read the
+[WebSSH 3 changes and upgrade notes](docs/webssh-3.md).
+
 ### Overview and automation
 
-- Status-first overview: host readiness from stored configuration, open
-  sessions, 14-day automation results, reachability and recent activity.
-- Free layout per account: drag, resize, hide and restore panels, with keyboard
-  controls and a reset to the default arrangement.
+- Status overview with host readiness, open sessions, automation results,
+  reachability and recent activity, in a layout you arrange per account.
 - **Needs attention** lists unverified host keys, missing jump hosts, changed
-  saved passwords and failed runs. Handled items can be dismissed and come back
-  when the situation changes.
-- Optional reachability checks (off, on demand, or automatic): one TCP
-  connection to the SSH port under the SSH network policy, no login.
-- Hosts show their platform and services such as Docker or Nextcloud, read-only
-  over SSH without elevated rights.
-- **Find hosts** scans a range you name for SSH and SFTP servers at a gentle,
-  fixed pace and opens the host form prefilled. It only runs when you start it.
-- Readable route summaries and an expandable SSH map with saved arrangements.
-- A classic overview remains available, with a per-account choice of Overview
-  or Workspaces as the start page after sign-in.
-- Reusable workflows from commands, command sets and templates, immediate runs,
-  cron schedules, cancellation and bounded per-step output history, for saved
-  hosts or complete groups. Administrators enable Automation; it is disabled by
-  default and requires HTTPS.
-- Optional encrypted, per-account passwords shared by saved hosts and supported
-  connection types. Administrators enable this under Integrations.
-- Application backup exports exclude stored passwords and SSH private keys.
-  Keep a separate credential recovery plan before restoring.
+  saved passwords and failed runs.
+- **Find hosts** scans a network range you name for SSH and SFTP servers, only
+  on request, and opens the host form prefilled.
+- Automation runs commands, command sets and templates now or on a cron
+  schedule, for saved hosts or complete groups. Administrators enable it; it is
+  disabled by default and requires HTTPS.
+- Optional encrypted, per-account saved passwords, enabled by an administrator.
 
-See the [WebSSH 3 changes and upgrade notes](docs/webssh-3.md),
-[automation guide](docs/automation.md) and [credential guide](docs/credentials.md).
+See the [automation guide](docs/automation.md) and
+[credential guide](docs/credentials.md).
 
 <details>
   <summary>See all eleven themes in WebSSH 3</summary>
@@ -124,37 +91,27 @@ See the [WebSSH 3 changes and upgrade notes](docs/webssh-3.md),
 ### Terminal workspace
 
 - Multiple SSH sessions with tabs and 1-, 2-, or 4-pane layouts.
-- Optional persistent remote shells through tmux, with session-local mouse
-  scrolling and folder synchronization after explicit Bash prompt setup.
 - Saved connections, jump hosts, key, password, SSH server PAM MFA, and
   optional Tailscale SSH authentication paths.
+- Optional persistent remote shells through tmux.
 - Broadcast input, terminal search, transcripts, reconnect controls, and
   configurable scrollback.
-- Per-account terminal appearance with four self-hosted Nerd Font Mono families
-  (JetBrains Mono, Hack, Fira Mono, and Source Code Pro), local font selection,
-  and live shell, code, and character previews.
 - Session-aware Files, Commands, Diagnostics, and Notes contexts.
 - **Active Session Monitoring** for supported Linux resource and runtime data.
 - **Expanded Diagnostics** for resource history, processes, systemd services,
   and Docker containers.
 - **Clipboard-Only Service Actions** that prepare allowlisted commands without
   executing the service change inside WebSSH.
-
-Fonts and Nerd Font symbols are served locally; see the
-[terminal font guide](static/vendor/terminal-fonts/README.md).
+- Per-account terminal appearance with four locally served Nerd Font Mono
+  families; see the [terminal font guide](static/vendor/terminal-fonts/README.md).
 
 ### Files and transfers
 
-- Source-first SFTP and opt-in SMB workspace with independent tabs and one or
-  two file panes.
+- SFTP file workspace with independent tabs and one or two file panes; SMB
+  sources are opt-in.
 - Uploads, downloads, previews, inline text editing, and common file operations.
-- Streamed HTTP bulk transfers with Socket.IO limited to control events and
-  bounded editor content.
 - Server-to-server transfers across SFTP and SMB sources with progress,
   cancellation, explicit conflict handling, and a shared transfer queue.
-- Same-source moves between folders without silently replacing existing items.
-- Stable, visible transfer reasons such as permission denied, conflict,
-  unavailable source, timeout, and configured-limit violations.
 - Per-user ownership checks, size limits, quotas, and path validation.
 
 SMB is disabled by default (`SMB_ENABLED=false`) and needs an exact
@@ -169,8 +126,8 @@ for authentication, access checks, limits and the trust boundary.
 - Local multi-user accounts with isolated profiles, keys, files, settings, and
   SSH host trust.
 - Optional Passkeys, authenticator apps (TOTP), and one-time Recovery Codes.
-- Optional OIDC, admin-configured GitHub App, and LDAP/Active Directory sign-in with conservative account
-  linking and assurance handling.
+- Optional OIDC, admin-configured GitHub App, and LDAP/Active Directory
+  sign-in.
 - Action-bound confirmation for protected account and administrative changes.
 - Encrypted SSH private-key storage and per-user known-host decisions.
 - CSRF protection, secure response headers, rate limits, request limits, audit
@@ -180,10 +137,9 @@ for authentication, access checks, limits and the trust boundary.
 
 - Docker and Docker Compose deployment with a persistent data volume.
 - Health and readiness endpoints for deployment checks.
-- User administration, registration controls, security feature gates, and
-  structured audit export and retention.
-- Consistent online backups and restore with maintenance mode, staging
-  isolation, quotas, explicit confirmation, and bounded execution.
+- User administration, registration controls, and structured audit export and
+  retention.
+- Online backup and restore with maintenance mode and explicit confirmation.
 - Optional Redis-backed rate-limit counters.
 - Vendored browser dependencies, a same-origin Content Security Policy, and no
   built-in telemetry.
@@ -288,9 +244,7 @@ changes and keeps factors and SSH trust in one account-owned view.
 
 ## Quick Start
 
-The supplied Compose file is intended for evaluation and trusted homelab
-networks. It stores the database, generated application secret, user data, and
-encrypted keys in the `webssh_data` volume.
+Requires Docker with the Compose plugin on `linux/amd64` or `linux/arm64`.
 
 ```bash
 mkdir webssh-deployment
@@ -301,13 +255,14 @@ docker compose up -d
 
 Open <http://localhost:5000>. On a new instance, create the first administrator
 immediately from a trusted network. The one-time browser bootstrap closes after
-that account exists.
+that account exists. Readiness: `curl -fsS http://localhost:5000/ready`.
 
-Verify readiness with `curl -fsS http://localhost:5000/ready`.
-
-The supplied Compose file follows `latest`. For controlled upgrades, pin a
-published version or verified image digest, keep Compose files from the same
-release, and back up the data with matching secrets. See
+The supplied Compose file is intended for evaluation and trusted homelab
+networks. It stores the database, generated application secret, user data, and
+encrypted keys in the `webssh_data` volume, and it follows `latest`. For
+controlled upgrades, pin a published version or verified image digest, keep
+Compose files from the same release, and back up the data with matching
+secrets. See
 [upgrade and rollback guidance](https://github.com/bifrost0x/webssh/wiki/Upgrading-Rollback-and-FAQ).
 
 Do not expose this homelab configuration to the Internet unchanged. Read the
@@ -379,7 +334,9 @@ so the security and runtime boundaries can be reviewed before implementation.
 - Use [Issues](https://github.com/bifrost0x/webssh/issues) for reproducible bugs.
 - Report vulnerabilities privately through
   [GitHub Security Advisories](https://github.com/bifrost0x/webssh/security/advisories/new).
-- Support ongoing work through [Buy Me a Coffee](https://buymeacoffee.com/bifrost0x).
+- Support ongoing work through [GitHub Sponsors](https://github.com/sponsors/bifrost0x),
+  [Patreon](https://www.patreon.com/bifrost0x) or
+  [Buy Me a Coffee](https://buymeacoffee.com/bifrost0x).
 
 ## Star History
 
