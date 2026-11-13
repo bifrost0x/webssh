@@ -300,7 +300,7 @@
                                     <summary data-i18n="workspace.directorySync.setup">Set up Bash prompt detection</summary>
                                     <p data-i18n="workspace.directorySync.setupHint">Run the copied block yourself at an empty Bash prompt in this pane. No configuration files are changed. Wait for detection, then press Enter. The helper stays until this shell exits, even with sync off.</p>
                                     <button type="button" id="sessionDirectorySyncCopy" data-source="{{ static_asset_url(filename='shell/tmux-sync.bash') }}" data-i18n="workspace.directorySync.copy">Copy activation command</button>
-                                    <textarea id="sessionDirectorySyncCommand" readonly rows="6" aria-label="Bash activation command" hidden></textarea>
+                                    <textarea id="sessionDirectorySyncCommand" readonly rows="6" aria-label="Bash activation command" data-i18n-aria-label="workspace.directorySync.commandLabel" hidden></textarea>
                                 </details>
                             </div>
                             <div class="session-files-mount" id="sessionFilesMount"></div><button type="button" id="sessionFilesOpenManager" class="btn btn-secondary session-files-open-manager"><span class="material-icons" aria-hidden="true">open_in_new</span><span data-i18n="fm.openFileManager">Open File Manager</span></button>
@@ -1064,7 +1064,7 @@
     </div>
 
 <section id="credentialManagementView" hidden aria-labelledby="credentialManagementTitle">
- <nav class="connection-asset-nav" aria-label="Connection resources"><button type="button" class="connection-asset-nav-item" data-connection-asset="hosts" data-i18n="connectionAssets.hosts">Hosts</button><button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button><button type="button" class="connection-asset-nav-item" data-connection-asset="keys" data-i18n="connectionAssets.keys">SSH Keys</button><button type="button" class="connection-asset-nav-item active" aria-current="page" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
+ <nav class="connection-asset-nav" aria-label="Connection resources" data-i18n-aria-label="connectionAssets.navigation"><button type="button" class="connection-asset-nav-item" data-connection-asset="hosts" data-i18n="connectionAssets.hosts">Hosts</button><button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button><button type="button" class="connection-asset-nav-item" data-connection-asset="keys" data-i18n="connectionAssets.keys">SSH Keys</button><button type="button" class="connection-asset-nav-item active" aria-current="page" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
  <header class="native-credential-toolbar"><h2 id="credentialManagementTitle" data-i18n="credentials.title">Passwords</h2><input type="search" data-credential-search class="form-control" aria-label="Search passwords" data-i18n-aria-label="credentials.search" placeholder="Search passwords" data-i18n-placeholder="credentials.search"><button type="button" class="btn btn-primary" data-credential-new data-i18n="credentials.new">New password</button></header>
  <p role="status"></p>
  <div class="native-credential-workspace"><div class="native-credential-list" data-credential-list></div><aside data-credential-detail hidden></aside></div>
@@ -1621,15 +1621,15 @@
                     <button class="btn btn-primary" id="previewBinaryDownload" data-i18n="preview.downloadFile">Download File</button>
                 </div>
                 <div class="preview-image hidden" id="previewImage">
-                    <img id="previewImageElement" alt="Image preview" />
+                    <img id="previewImageElement" alt="Image preview" data-i18n-alt="preview.imageAlt" />
                 </div>
                 <div class="preview-content" id="previewContent">
                     <div class="preview-line-numbers" id="previewLineNumbers"></div>
                     <pre><code id="previewCode"></code></pre>
                 </div>
                 <div class="preview-truncated hidden" id="previewTruncated">
-                    <span class="material-icons">info</span>
-                    <span>File truncated - showing first <span id="previewTruncatedSize"></span> of <span id="previewTotalSize"></span></span>
+                    <span class="material-icons" aria-hidden="true">info</span>
+                    <span><span data-i18n="preview.truncatedPrefix">File truncated - showing first</span> <span id="previewTruncatedSize"></span> <span data-i18n="preview.truncatedOf">of</span> <span id="previewTotalSize"></span></span>
                 </div>
                 <div class="file-editor hidden" id="fileEditor">
                     <div class="editor-toolbar">

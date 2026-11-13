@@ -502,3 +502,28 @@ def test_settings_rail_links_to_the_funding_profiles(app, client):
         # External links must not get a handle on the WebSSH window.
         assert 'target="_blank"' in link.group(0)
         assert 'rel="noopener noreferrer"' in link.group(0)
+
+
+def test_workspace_strings_follow_the_selected_language():
+    template = (ROOT / "templates/index.html").read_text(encoding="utf-8")
+    assert 'data-i18n="preview.truncatedPrefix"' in template
+    assert 'data-i18n="preview.truncatedOf"' in template
+    assert 'data-i18n-alt="preview.imageAlt"' in template
+    assert 'data-i18n-aria-label="workspace.directorySync.commandLabel"' in template
+    import re
+    navs = re.findall(r'<nav class="connection-asset-nav"[^>]*>', template)
+    assert navs and all('data-i18n-aria-label="connectionAssets.navigation"' in nav for nav in navs)
+
+    scripts = {
+        name: (ROOT / "static/js" / name).read_text(encoding="utf-8")
+        for name in (
+            "session-manager.js", "profile-manager.js",
+            "drag-drop-manager.js", "sftp-file-manager.js",
+        )
+    }
+    assert "'Persistent tmux session'" not in scripts["session-manager.js"]
+    assert "setAttribute('aria-label', 'Cancel connection')" not in scripts["session-manager.js"]
+    assert "status.textContent = 'Key name and content are required'" not in scripts["profile-manager.js"]
+    assert "hint.textContent = 'Connect to a server first'" not in scripts["drag-drop-manager.js"]
+    assert 'data-i18n-placeholder="fm.qc.passwordPlaceholder"' in scripts["sftp-file-manager.js"]
+    assert 'id="fmQcPwToggle" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility"' in scripts["sftp-file-manager.js"]

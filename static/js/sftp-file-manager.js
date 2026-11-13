@@ -1528,9 +1528,9 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                         <div class="form-group" id="fmQcPasswordGroup">
                             <label for="fmQcPassword" data-i18n="fm.qc.password">Password</label>
                             <div class="input-wrapper with-toggle">
-                                <input type="password" id="fmQcPassword" class="form-control" placeholder="Enter password">
-                                <button type="button" class="password-toggle" id="fmQcPwToggle" aria-label="Toggle password visibility">
-                                    <span class="material-icons">visibility</span>
+                                <input type="password" id="fmQcPassword" class="form-control" placeholder="Enter password" data-i18n-placeholder="fm.qc.passwordPlaceholder">
+                                <button type="button" class="password-toggle" id="fmQcPwToggle" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">
+                                    <span class="material-icons" aria-hidden="true">visibility</span>
                                 </button>
                             </div>
                         </div>
@@ -6320,6 +6320,11 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                 const key = el.getAttribute('data-i18n-aria-label');
                 const translation = window.i18n.t(key);
                 if (translation) el.setAttribute('aria-label', translation);
+            });
+            this.qcModal.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
+                const translation = window.i18n.t(key);
+                if (translation) el.setAttribute('placeholder', translation);
             });
         }
     }
