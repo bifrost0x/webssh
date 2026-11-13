@@ -423,6 +423,17 @@
                     <div><dt data-i18n="settings.scope">Settings scope</dt><dd>{% if admin_panel_enabled and is_admin %}<span data-i18n="settings.personalAndAdministration">Personal + administration</span>{% else %}<span data-i18n="settings.personal">Personal</span>{% endif %}</dd></div>
                 </dl>
             </section>
+            {% if support_links_enabled %}
+            <section class="settings-context-card settings-support-card" aria-labelledby="settingsSupportTitle">
+                <span class="settings-context-eyebrow" id="settingsSupportTitle" data-i18n="settings.supportProject">Support WebSSH</span>
+                <p class="settings-support-hint" data-i18n="settings.supportProjectHint">WebSSH is free and open source. Support ongoing development:</p>
+                <ul class="settings-support-links">
+                    <li><a class="settings-quick-link" href="https://github.com/sponsors/bifrost0x" target="_blank" rel="noopener noreferrer"><span class="material-icons" aria-hidden="true">favorite</span><span>GitHub Sponsors</span></a></li>
+                    <li><a class="settings-quick-link" href="https://www.patreon.com/bifrost0x" target="_blank" rel="noopener noreferrer"><span class="material-icons" aria-hidden="true">volunteer_activism</span><span>Patreon</span></a></li>
+                    <li><a class="settings-quick-link" href="https://buymeacoffee.com/bifrost0x" target="_blank" rel="noopener noreferrer"><span class="material-icons" aria-hidden="true">local_cafe</span><span>Buy Me a Coffee</span></a></li>
+                </ul>
+            </section>
+            {% endif %}
         </aside>
         {% endif %}
         </div>

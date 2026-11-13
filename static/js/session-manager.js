@@ -329,7 +329,7 @@ const SessionManager = {
             const tmuxBadge = document.createElement('span');
             tmuxBadge.className = 'tab-tmux-badge material-icons';
             tmuxBadge.textContent = 'push_pin';
-            tmuxBadge.title = 'Persistent tmux session' + (sess.tmuxSessionName ? ': ' + sess.tmuxSessionName : '');
+            tmuxBadge.title = (window.i18n ? i18n.t('session.persistentTmux') : 'Persistent session (tmux)') + (sess.tmuxSessionName ? ': ' + sess.tmuxSessionName : '');
             tab.appendChild(tmuxBadge);
         }
         const tabReconnect = document.createElement('span');
@@ -676,8 +676,11 @@ const SessionManager = {
         tabClose.dataset.pendingId = requestId;
         tabClose.classList.add('material-icons');
         tabClose.textContent = 'close';
-        tabClose.setAttribute('aria-label', 'Cancel connection');
-        tabClose.setAttribute('title', 'Cancel connection');
+        const cancelLabel = window.i18n ? i18n.t('connection.authBannerCancel') : 'Cancel connection';
+        tabClose.setAttribute('aria-label', cancelLabel);
+        tabClose.setAttribute('title', cancelLabel);
+        tabClose.dataset.i18nAriaLabel = 'connection.authBannerCancel';
+        tabClose.dataset.i18nTitle = 'connection.authBannerCancel';
 
         tab.appendChild(statusDot);
         tab.appendChild(tabLabel);

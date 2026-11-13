@@ -126,6 +126,11 @@ test('account menu and settings stay inside a mobile viewport', async ({ page })
     await version.scrollIntoViewIfNeeded();
     await expect(version).toBeVisible();
     await expect(version).toHaveText(/^\d+\.\d+\.\d+( \([0-9a-f]{7}\))?$/);
+    const support = page.locator('#accountSupportLink');
+    await expect(support).toBeVisible();
+    await expect(support).toHaveAttribute('href', 'https://github.com/bifrost0x/webssh?sponsor=1');
+    await expect(support).toHaveAttribute('target', '_blank');
+    await expect(support).toHaveAttribute('rel', 'noopener noreferrer');
     const versionBounds = await version.boundingBox();
     expect(versionBounds.x + versionBounds.width).toBeLessThanOrEqual(390);
 
@@ -140,4 +145,63 @@ test('account menu and settings stay inside a mobile viewport', async ({ page })
         document: document.documentElement.scrollWidth,
     }));
     expect(layout.document).toBeLessThanOrEqual(layout.viewport);
+});
+
+test('settings side panel lists the support links below the account facts', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await login(page, 'e2e_user', { workspace: false });
+    await page.goto('/settings');
+
+    const rail = page.locator('.settings-context-rail');
+    const support = rail.locator('.settings-support-card');
+    await expect(support).toBeVisible();
+    const links = support.getByRole('link');
+    await expect(links).toHaveCount(3);
+    for (const [index, name] of ['GitHub Sponsors', 'Patreon', 'Buy Me a Coffee'].entries()) {
+        await expect(links.nth(index)).toHaveAccessibleName(name);
+    }
+    const accountBounds = await rail.locator('.settings-account-card').boundingBox();
+    const supportBounds = await support.boundingBox();
+    expect(supportBounds.y).toBeGreaterThan(accountBounds.y + accountBounds.height);
+
+    // Answer the new tab locally; the test must not reach the real site.
+    await page.context().route('https://github.com/**', route => route.fulfill({ body: 'sponsors' }));
+    const opened = page.context().waitForEvent('page');
+    await support.getByRole('link', { name: 'GitHub Sponsors' }).click();
+    const popup = await opened;
+    expect(popup.url()).toBe('https://github.com/sponsors/bifrost0x');
+    expect(await popup.evaluate(() => window.opener)).toBeNull();
+    await popup.close();
+    await expect(page).toHaveURL(/\/settings/);
+});
+
+test('administrators can hide the support links for all users', async ({ page }) => {
+    async function setSupportLinks(enabled) {
+        await page.goto('/settings#integrations');
+        const toggle = page.locator('#settingSupportLinks');
+        await expect(toggle).toBeEnabled();
+        if ((await toggle.isChecked()) === enabled) return;
+        await toggle.setChecked(enabled);
+        await expect(page.locator('#stepUpModal')).toHaveClass(/show/);
+        await page.locator('#stepUpPassword').fill('browser-password');
+        await page.locator('#stepUpSubmit').click();
+        await expect(toggle).toBeEnabled();
+        await expect(toggle).toBeChecked({ checked: enabled });
+    }
+
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await login(page);
+    await expect(page.locator('#settingSupportLinks')).toHaveCount(0);
+    try {
+        await setSupportLinks(false);
+        await page.reload();
+        await expect(page.locator('#settingSupportLinks')).not.toBeChecked();
+        await expect(page.locator('.settings-support-card')).toHaveCount(0);
+        await page.goto('/');
+        await expect(page.locator('#accountSupportLink')).toHaveCount(0);
+    } finally {
+        await setSupportLinks(true);
+    }
+    await page.reload();
+    await expect(page.locator('.settings-support-card')).toBeVisible();
 });

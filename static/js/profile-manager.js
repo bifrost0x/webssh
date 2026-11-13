@@ -1879,7 +1879,7 @@ const ProfileManager = {
         const keyContent = contentInput?.value || '';
         if (!name || !keyContent) {
             if (status) {
-                status.textContent = 'Key name and content are required';
+                status.textContent = this.t('toast.keyNameContentRequired', 'Key name and content are required');
                 status.classList.add('error');
             }
             return;

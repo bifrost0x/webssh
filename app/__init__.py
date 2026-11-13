@@ -27,7 +27,8 @@ from .user_settings import (
     save_user_settings,
 )
 from .app_settings import (is_registration_enabled, set_registration_enabled,
-                           is_ssh_gateway_enabled, set_ssh_gateway_enabled)
+                           is_ssh_gateway_enabled, set_ssh_gateway_enabled,
+                           is_support_links_enabled, set_support_links_enabled)
 from .storage_errors import StorageCorruptionError
 from .tailscale_ssh import user_can_use_tailscale_ssh
 from .version import display_version
@@ -640,6 +641,9 @@ def create_app(
             # pages do not help fingerprint an instance.
             'webssh_version': (
                 display_version() if current_user.is_authenticated else ''
+            ),
+            'support_links_enabled': (
+                current_user.is_authenticated and is_support_links_enabled()
             ),
         }
 
@@ -1735,6 +1739,7 @@ def create_app(
         policies = {name: runtime_feature_status(name) for name in RUNTIME_FEATURES}
         return jsonify({'setting_sources': native_setting_sources(), 'runtime_features': policies, **{name: status['enabled'] for name, status in policies.items()}, 'registration_enabled': is_registration_enabled(),
                         'ssh_gateway_enabled': is_ssh_gateway_enabled(),
+                        'support_links_enabled': is_support_links_enabled(),
                         'credentials_enabled': is_credentials_enabled(),
                         'automation_enabled': is_automation_enabled()})
 
@@ -1764,6 +1769,9 @@ def create_app(
         if ('ssh_gateway_enabled' in data
                 and type(data['ssh_gateway_enabled']) is not bool):
             return jsonify({'error': 'ssh_gateway_enabled must be a boolean'}), 400
+        if ('support_links_enabled' in data
+                and type(data['support_links_enabled']) is not bool):
+            return jsonify({'error': 'support_links_enabled must be a boolean'}), 400
         if 'registration_enabled' in data:
             if type(data['registration_enabled']) is not bool:
                 return jsonify({
@@ -1786,6 +1794,10 @@ def create_app(
             val = set_ssh_gateway_enabled(data['ssh_gateway_enabled'])
             log_info("Admin changed SSH gateway setting",
                      admin=current_user.username, ssh_gateway_enabled=val)
+        if 'support_links_enabled' in data:
+            val = set_support_links_enabled(data['support_links_enabled'])
+            log_info("Admin changed support links setting",
+                     admin=current_user.username, support_links_enabled=val)
         from .app_settings import set_credentials_enabled, set_automation_enabled
         for feature, setter in (('credentials_enabled', set_credentials_enabled),
                                 ('automation_enabled', set_automation_enabled)):

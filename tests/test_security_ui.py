@@ -476,3 +476,54 @@ def test_start_page_persists_without_changing_other_preferences(app, client):
     assert b'data-saved="workspaces"' in client.get('/settings').data
     assert client.post('/api/account/preferences', json={'start_page': 'overview'}).status_code == 200
     assert b'name="start-page" content="overview"' in client.get('/').data
+
+
+def test_settings_rail_links_to_the_funding_profiles(app, client):
+    import re
+
+    _create_user(app, "settings_supporter")
+    _login(client, "settings_supporter")
+
+    page = client.get("/settings").data.decode()
+
+    assert 'data-i18n="settings.supportProject"' in page
+    funding = (ROOT / ".github/FUNDING.yml").read_text(encoding="utf-8")
+    profiles = dict(re.findall(r"^(\w+):\s*(\S+)$", funding, re.MULTILINE))
+    expected = {
+        "github": "https://github.com/sponsors/{}",
+        "patreon": "https://www.patreon.com/{}",
+        "buy_me_a_coffee": "https://buymeacoffee.com/{}",
+    }
+    assert set(profiles) == set(expected)
+    for platform, url in expected.items():
+        href = url.format(profiles[platform])
+        link = re.search(r'<a [^>]*href="' + re.escape(href) + r'"[^>]*>', page)
+        assert link, href
+        # External links must not get a handle on the WebSSH window.
+        assert 'target="_blank"' in link.group(0)
+        assert 'rel="noopener noreferrer"' in link.group(0)
+
+
+def test_workspace_strings_follow_the_selected_language():
+    template = (ROOT / "templates/index.html").read_text(encoding="utf-8")
+    assert 'data-i18n="preview.truncatedPrefix"' in template
+    assert 'data-i18n="preview.truncatedOf"' in template
+    assert 'data-i18n-alt="preview.imageAlt"' in template
+    assert 'data-i18n-aria-label="workspace.directorySync.commandLabel"' in template
+    import re
+    navs = re.findall(r'<nav class="connection-asset-nav"[^>]*>', template)
+    assert navs and all('data-i18n-aria-label="connectionAssets.navigation"' in nav for nav in navs)
+
+    scripts = {
+        name: (ROOT / "static/js" / name).read_text(encoding="utf-8")
+        for name in (
+            "session-manager.js", "profile-manager.js",
+            "drag-drop-manager.js", "sftp-file-manager.js",
+        )
+    }
+    assert "'Persistent tmux session'" not in scripts["session-manager.js"]
+    assert "setAttribute('aria-label', 'Cancel connection')" not in scripts["session-manager.js"]
+    assert "status.textContent = 'Key name and content are required'" not in scripts["profile-manager.js"]
+    assert "hint.textContent = 'Connect to a server first'" not in scripts["drag-drop-manager.js"]
+    assert 'data-i18n-placeholder="fm.qc.passwordPlaceholder"' in scripts["sftp-file-manager.js"]
+    assert 'id="fmQcPwToggle" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility"' in scripts["sftp-file-manager.js"]

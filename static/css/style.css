@@ -4157,6 +4157,12 @@ body.keyboard-open.notepad-focused .notepad-panel {
     display: none;
 }
 
+.account-item .account-item-external {
+    margin-left: auto;
+    color: var(--text-secondary);
+    font-size: 15px;
+}
+
 .account-version {
     margin: 6px 4px 0;
     padding: 8px 10px 4px;

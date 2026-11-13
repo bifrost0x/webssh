@@ -331,7 +331,7 @@ class DragDropManager {
       if (session) {
         hint.textContent = `${session.username}@${session.host} — ${this.t('dropUpload.chooseFolder', 'Choose a destination folder after dropping.')}`;
       } else {
-        hint.textContent = 'Connect to a server first';
+        hint.textContent = this.t('dropUpload.noSession', 'Connect to a server first');
       }
     }
   }

@@ -288,45 +288,6 @@
     margin: 13px 0;
 }
 
-.session-cpu-gauge {
-    display: grid;
-    width: 82px;
-    height: 82px;
-    padding: 7px;
-    border-radius: 50%;
-    background: conic-gradient(var(--gauge-color, var(--accent-primary)) calc(var(--value) * 1%), var(--bg-hover) 0);
-    place-items: center;
-}
-
-.session-cpu-gauge::before {
-    content: '';
-    grid-area: 1 / 1;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    background: var(--bg-secondary);
-}
-
-.session-cpu-gauge > div {
-    z-index: 1;
-    grid-area: 1 / 1;
-    text-align: center;
-}
-
-.session-cpu-gauge strong {
-    display: block;
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: 17px;
-}
-
-.session-cpu-gauge span {
-    color: var(--text-muted);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-}
-
 .session-cpu-chart {
     width: 100%;
     height: 72px;
@@ -370,8 +331,7 @@
     transition: width 0.35s ease;
 }
 
-.session-resource.warning .session-resource-track span,
-.session-cpu-gauge.warning {
+.session-resource.warning .session-resource-track span {
     --gauge-color: var(--warning-color, #d29922);
 }
 
@@ -379,8 +339,7 @@
     background: var(--warning-color, #d29922);
 }
 
-.session-resource.critical .session-resource-track span,
-.session-cpu-gauge.critical {
+.session-resource.critical .session-resource-track span {
     --gauge-color: var(--danger-color, #f85149);
 }
 
