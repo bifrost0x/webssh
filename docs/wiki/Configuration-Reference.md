@@ -305,6 +305,11 @@ or bypass provider, HTTPS, origin, RP-ID or recovery checks. Networking, identit
 provider trust, secrets, resource ceilings, mounts and backup recovery paths remain
 deployment configuration. Audit retention is already managed in Administration.
 
+Signed-in users see links to support WebSSH development in the account menu
+and the Settings side panel. **Project support links** in Administration →
+Integrations hides them for all users; the links load nothing from external
+sites until a user follows one.
+
 TOTP capability is available by default in 3.0; Admin activation remains off
 until explicitly enabled. `TOTP_ENABLED=false` is the optional operator kill
 switch. Existing enrolled users and saved activation choices are retained.

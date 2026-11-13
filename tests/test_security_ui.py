@@ -476,3 +476,29 @@ def test_start_page_persists_without_changing_other_preferences(app, client):
     assert b'data-saved="workspaces"' in client.get('/settings').data
     assert client.post('/api/account/preferences', json={'start_page': 'overview'}).status_code == 200
     assert b'name="start-page" content="overview"' in client.get('/').data
+
+
+def test_settings_rail_links_to_the_funding_profiles(app, client):
+    import re
+
+    _create_user(app, "settings_supporter")
+    _login(client, "settings_supporter")
+
+    page = client.get("/settings").data.decode()
+
+    assert 'data-i18n="settings.supportProject"' in page
+    funding = (ROOT / ".github/FUNDING.yml").read_text(encoding="utf-8")
+    profiles = dict(re.findall(r"^(\w+):\s*(\S+)$", funding, re.MULTILINE))
+    expected = {
+        "github": "https://github.com/sponsors/{}",
+        "patreon": "https://www.patreon.com/{}",
+        "buy_me_a_coffee": "https://buymeacoffee.com/{}",
+    }
+    assert set(profiles) == set(expected)
+    for platform, url in expected.items():
+        href = url.format(profiles[platform])
+        link = re.search(r'<a [^>]*href="' + re.escape(href) + r'"[^>]*>', page)
+        assert link, href
+        # External links must not get a handle on the WebSSH window.
+        assert 'target="_blank"' in link.group(0)
+        assert 'rel="noopener noreferrer"' in link.group(0)

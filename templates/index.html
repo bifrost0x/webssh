@@ -143,6 +143,9 @@
                         <a id="accountSettingsBtn" class="account-item account-action" href="{{ url_for('security_center') }}#preferences"><span class="account-item-icon material-icons" aria-hidden="true">settings</span> <span data-i18n="settings.title">Settings</span></a>
                         <button id="restartTour" class="account-item account-action" type="button"><span class="material-icons" aria-hidden="true">explore</span><span>Product tour</span></button>
                         <button id="accountShortcutsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">keyboard</span> <span data-i18n="shortcuts.title">Keyboard Shortcuts</span></button>
+                        {% if support_links_enabled %}
+                        <a id="accountSupportLink" class="account-item account-action" href="https://github.com/bifrost0x/webssh?sponsor=1" target="_blank" rel="noopener noreferrer"><span class="account-item-icon material-icons" aria-hidden="true">favorite</span> <span data-i18n="settings.supportProject">Support WebSSH</span><span class="account-item-icon material-icons account-item-external" aria-hidden="true">open_in_new</span></a>
+                        {% endif %}
 
                         <div class="account-divider" role="separator"></div>
                         <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">logout</span> <span data-i18n="auth.logout">Logout</span></button>

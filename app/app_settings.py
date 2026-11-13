@@ -22,6 +22,7 @@ _BOOLEAN_SETTINGS = (
     'server_operations_enabled',
     'tmux_enabled',
     'tmux_default',
+    'support_links_enabled',
 )
 
 
@@ -118,6 +119,23 @@ def set_ssh_gateway_enabled(value):
     with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
         data = _load_with_lock_held()
         data['ssh_gateway_enabled'] = value
+        if not _valid_settings(data):
+            return False
+        _save(data)
+    return value
+
+
+def is_support_links_enabled():
+    """Project support links are shown unless an administrator hid them."""
+    return _load().get('support_links_enabled') is not False
+
+
+def set_support_links_enabled(value):
+    if type(value) is not bool:
+        return False
+    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
+        data = _load_with_lock_held()
+        data['support_links_enabled'] = value
         if not _valid_settings(data):
             return False
         _save(data)

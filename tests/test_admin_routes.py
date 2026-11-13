@@ -420,6 +420,40 @@ def test_invalid_gateway_setting_does_not_change_registration(app, client):
     assert app_settings.is_ssh_gateway_enabled() is False
 
 
+def test_support_links_setting_requires_step_up_and_hides_the_links(app, client):
+    from app import app_settings
+    _prepare_role(app, client, 'admin')
+    sponsor = b'href="https://github.com/bifrost0x/webssh?sponsor=1"'
+    assert client.get('/admin/api/settings').get_json()['support_links_enabled'] is True
+    assert sponsor in client.get('/').data
+    assert b'settings-support-card' in client.get('/settings').data
+
+    response = client.post('/admin/api/settings', json={'support_links_enabled': False})
+    assert response.status_code == 403
+    assert app_settings.is_support_links_enabled() is True
+
+    for enabled in (False, True):
+        response = client.post('/admin/api/settings', json={'support_links_enabled': enabled},
+            headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+        assert response.status_code == 200
+        assert response.get_json()['support_links_enabled'] is enabled
+        assert app_settings.is_support_links_enabled() is enabled
+        assert (sponsor in client.get('/').data) is enabled
+        assert (b'settings-support-card' in client.get('/settings').data) is enabled
+
+
+def test_invalid_support_links_setting_is_rejected(app, client):
+    from app import app_settings
+    _prepare_role(app, client, 'admin')
+    response = client.post('/admin/api/settings',
+        json={'support_links_enabled': 'false', 'ssh_gateway_enabled': True},
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+    assert response.status_code == 400
+    assert app_settings.is_support_links_enabled() is True
+    assert app_settings.is_ssh_gateway_enabled() is False
+    assert app_settings.set_support_links_enabled('false') is False
+
+
 def test_security_feature_status_exposes_all_supported_gates(app, client):
     _prepare_role(app, client, 'admin')
 

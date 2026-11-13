@@ -1378,7 +1378,7 @@
                 gateway.checked = data.ssh_gateway_enabled === true;
                 gateway.disabled = false;
             }
-            for (const [id, key] of [['settingCredentials', 'credentials_enabled'], ['settingAutomation', 'automation_enabled']]) {
+            for (const [id, key] of [['settingCredentials', 'credentials_enabled'], ['settingAutomation', 'automation_enabled'], ['settingSupportLinks', 'support_links_enabled']]) {
                 const input = document.getElementById(id);
                 if (input && !settingsWrites.has(key)) {
                     input.checked = data[key] === true;
@@ -1551,7 +1551,7 @@
                 target.disabled = false;
             }
         });
-        for (const [id, key] of [['settingCredentials', 'credentials_enabled'], ['settingAutomation', 'automation_enabled']]) {
+        for (const [id, key] of [['settingCredentials', 'credentials_enabled'], ['settingAutomation', 'automation_enabled'], ['settingSupportLinks', 'support_links_enabled']]) {
             document.getElementById(id)?.addEventListener('change', async (event) => {
                 const input = event.target;
                 const enabled = input.checked;
