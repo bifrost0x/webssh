@@ -279,6 +279,10 @@
     };
 
     function openConnectionAssetManager(asset) {
+        // Resource views open behind the connection dialog, so leave it first.
+        if (document.getElementById('connectionModal')?.classList.contains('show')) {
+            dismissConnectionModal();
+        }
         if (asset === 'passwords') {
             window.primaryWorkspaceController?.open('hosts', document.getElementById('credentialManagementView'));
             window.NativeCredentials?.mount();
@@ -303,7 +307,7 @@
             ProfileManager.loadKeys();
             if (asset === 'jump-hosts') {
                 window.JumpHostManager?.load();
-            window.SocksProxyManager?.load();
+                window.SocksProxyManager?.load();
                 window.JumpHostManager?.renderList();
             }
             const view = document.getElementById(modalId);
@@ -432,6 +436,11 @@
             const unresolved = !proxy || Boolean(session.jumpHostId || session.viaJump) || session.reconnectRouteKnown === false;
             if (applyToForm) {
                 selectedConnectionProfileState = {requiredSocksProxyId: session.socksProxyId || '', missingSocksProxy: unresolved};
+                const jumpSelect = document.getElementById('jumpHostSelect');
+                if (jumpSelect) jumpSelect.value = '';
+                const jumpPassword = document.getElementById('jumpHostPasswordInput');
+                if (jumpPassword) jumpPassword.value = '';
+                window.JumpHostManager?.updatePasswordVisibility();
                 manager?.selectReference(document.getElementById('socksProxySelect'), session.socksProxyId);
                 const password = document.getElementById('socksProxyPasswordInput');
                 if (password) password.value = '';
@@ -450,6 +459,10 @@
             || session.reconnectRouteKnown === false);
         if (applyToForm) {
             selectedConnectionProfileState = {missingJumpHost: unresolved};
+            const socksSelect = document.getElementById('socksProxySelect');
+            if (socksSelect) socksSelect.value = '';
+            const socksPassword = document.getElementById('socksProxyPasswordInput');
+            if (socksPassword) socksPassword.value = '';
             const select = document.getElementById('jumpHostSelect');
             if (select) select.value = jump ? requiredId : '';
             // Setting the value in code fires no change event; apply the jump host's
@@ -460,6 +473,8 @@
                 window.CredentialPicker?.restore?.('jumpHostPasswordInput');
             }
             manager?.updatePasswordVisibility();
+            window.SocksProxyManager?.updatePasswordVisibility();
+            window.SocksProxyManager?.updateRouteControls();
             window.setConnectionAdvancedExpanded(Boolean(jump || unresolved));
             refreshConnectionProfileJumpResolution();
             if (jump?.auth_type === 'password') {

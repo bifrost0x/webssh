@@ -278,8 +278,6 @@ window.SocksProxyManager = {
                 this.unknownOutcome = true;
                 window.showNotification?.(this.t('common.saveUnknownTitle', 'Save outcome unknown'), 'error');
                 this.load();
-            } else if (!result?.success) {
-                window.showNotification?.(result?.error || this.t('socksproxies.saveFailed', 'Could not save the SOCKS5 proxy.'), 'error');
             } else if (result?.success) {
                 if (!current()) return;
                 this.upsertSocksProxy(result.socks_proxy);
@@ -298,9 +296,11 @@ window.SocksProxyManager = {
     },
 
     handleUsageError(data) {
-        const count = /^SOCKS proxy is used by (\d+)/.exec(data?.error || '')?.[1];
-        if (!count || !Array.isArray(data.usages)) return false;
-        const message = this.t('socksproxies.inUse', 'This SOCKS5 proxy is used by {count} host(s)').replace('{count}', count);
+        const match = /^SOCKS proxy is used by (\d+)( persistent)?/.exec(data?.error || '');
+        if (!match || !Array.isArray(data.usages)) return false;
+        const message = (match[2]
+            ? this.t('socksproxies.inUseSessions', 'This SOCKS5 proxy is still used by {count} persistent session(s). Close them before deleting the proxy')
+            : this.t('socksproxies.inUse', 'This SOCKS5 proxy is used by {count} host(s)')).replace('{count}', match[1]);
         window.showNotification?.(message + ': ' + data.usages.slice(0, 20).join(', '), 'error');
         return true;
     },

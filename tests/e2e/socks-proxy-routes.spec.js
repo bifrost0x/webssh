@@ -182,6 +182,38 @@ test('deletion of a referenced SOCKS proxy reports its hosts', async ({page}) =>
     await expect(page.locator('.notification').filter({hasText:/SOCKS.*used by/})).toHaveCount(1);
 });
 
+test('managing proxies from the connection dialog leaves the dialog', async ({page}) => {
+    await login(page);
+    await page.locator('#workspaceRecentBtn').click();
+    await expect(page.locator('#connectionModal')).toHaveClass(/\bshow\b/);
+    await page.locator('#connectionAdvancedSettings').evaluate(element => { element.open = true; });
+    await page.locator('#connectionModal [data-connection-asset="socks-proxies"]').click();
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/\bshow\b/);
+    await expect(page.locator('#socksProxyManagementModal')).toBeVisible();
+    await expect(page.locator('#socksProxiesList .key-item').first()).toBeVisible();
+});
+
+test('programmatic jump and SOCKS routes replace each other in the connection form', async ({page}) => {
+    await login(page);
+    await page.locator('#workspaceRecentBtn').click();
+    await page.locator('#connectionAdvancedSettings').evaluate(element => { element.open = true; });
+    await expect.poll(() => page.evaluate(() => JumpHostManager.loaded && SocksProxyManager.loaded)).toBe(true);
+    const ids = await page.evaluate(() => ({
+        jump: JumpHostManager.jumpHosts[0].id,
+        socks: SocksProxyManager.socksProxies.find(proxy => proxy.auth_type === 'none').id,
+    }));
+    await page.locator('#socksProxySelect').selectOption(ids.socks);
+    await page.evaluate(id => window.prepareSessionReconnectJump({jumpHostId: id, reconnectRouteKnown: true}, {applyToForm: true}), ids.jump);
+    await expect(page.locator('#jumpHostSelect')).toHaveValue(ids.jump);
+    await expect(page.locator('#socksProxySelect')).toHaveValue('');
+    await expect(page.locator('#socksProxySelect')).toBeDisabled();
+    await expect(page.locator('#connectionRouteHint')).toBeVisible();
+    await page.evaluate(id => window.prepareSessionReconnectJump({socksProxyId: id, viaSocks: true, reconnectRouteKnown: true}, {applyToForm: true}), ids.socks);
+    await expect(page.locator('#socksProxySelect')).toHaveValue(ids.socks);
+    await expect(page.locator('#jumpHostSelect')).toHaveValue('');
+    await expect(page.locator('#jumpHostSelect')).toBeDisabled();
+});
+
 test('SOCKS overview and route map identify the proxy and missing references', async ({page}) => {
     const errors=[];
     page.on('pageerror',error=>errors.push(error.message));
