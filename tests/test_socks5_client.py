@@ -52,8 +52,11 @@ def _peer(script):
     finally:
         if connection is not None:
             connection.close()
-        listener.close()
-        thread.join(4)
+        # Early client rejection can precede acceptance of the queued connection.
+        try:
+            thread.join(4)
+        finally:
+            listener.close()
         assert not thread.is_alive(), 'SOCKS5 test peer did not stop'
         if errors:
             raise errors[0]
@@ -100,6 +103,28 @@ def _assert_failure(script, code, **kwargs):
         assert caught.value.code == code
         assert connection.fileno() == -1
         return caught.value
+
+
+def test_early_rejection_keeps_queued_connection_available_to_delayed_peer(monkeypatch):
+    accept_allowed = threading.Event()
+    accepted = threading.Event()
+    original_accept = socket.socket.accept
+    original_join = threading.Thread.join
+
+    def delayed_accept(listener):
+        assert accept_allowed.wait(3), 'Peer cleanup did not start'
+        connection = original_accept(listener)
+        accepted.set()
+        return connection
+
+    def join_after_client_finishes(thread, *args, **kwargs):
+        accept_allowed.set()
+        return original_join(thread, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, 'accept', delayed_accept)
+    monkeypatch.setattr(threading.Thread, 'join', join_after_client_finishes)
+    _assert_failure(_expect_closed, 'socks_auth_failed', username='', password='secret')
+    assert accepted.is_set()
 
 
 @pytest.mark.parametrize('version', [b'\x01', b'\x05'])
