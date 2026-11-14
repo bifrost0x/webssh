@@ -123,6 +123,9 @@ def state():
         if route is not None:
             entry.update(via=route['name'], route_id=route['id'], route_auth_type=route.get('auth_type'),
                          route_credential_status=status(route))
+        if profile.get('socks_proxy_id'):
+            entry.update(socks_proxy_id=profile['socks_proxy_id'],
+                         unsupported_reason='SOCKS5 routes are not supported for automation yet')
         return entry
 
     return jsonify(enabled=True, credentials_enabled=is_credentials_enabled(), runbooks=runbooks(current_user.id),

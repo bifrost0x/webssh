@@ -19,7 +19,7 @@ class ContextError(ValueError):
 
 
 @user_operation
-def bind_profile(user_id, profile_id, host, port, username, jump_host_id, *, optional=False):
+def bind_profile(user_id, profile_id, host, port, username, jump_host_id, *, socks_proxy_id=None, optional=False):
     """Bind only an explicitly selected, owned profile with the actual route."""
     if profile_id is None:
         return None
@@ -34,6 +34,7 @@ def bind_profile(user_id, profile_id, host, port, username, jump_host_id, *, opt
             and int(profile.get('port', 22)) == int(port)
             and profile['username'] == username
             and (profile.get('jump_host_id') or None) == (jump_host_id or None)
+            and (profile.get('socks_proxy_id') or None) == (socks_proxy_id or None)
         )
     except (ValueError, TypeError, KeyError):
         matches = False

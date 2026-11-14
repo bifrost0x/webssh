@@ -101,6 +101,7 @@ def recovery_check():
     from .profile_manager import load_profiles
     from .key_manager import load_keys
     from .jump_host_manager import load_jump_hosts
+    from .socks_proxy_manager import load_socks_proxies
     from .host_key_store import HostKeyStore
     with user_data_access(current_user.id):
         if request.method == 'POST':
@@ -122,6 +123,7 @@ def recovery_check():
         profiles = load_profiles(current_user.id)
         keys = {key['id'] for key in load_keys(current_user.id)}
         jumps = {jump['id'] for jump in load_jump_hosts(current_user.id)}
+        socks = {proxy['id'] for proxy in load_socks_proxies(current_user.id)}
         credentials = current_app.extensions['credentials']
         resources = {item['id']: item for item in credentials.resources(current_user.id) if item.get('kind') == 'ssh'}
         trust = HostKeyStore(current_user.id, config.KNOWN_HOSTS_FILE, config.USERS_DIR).trust_checker()
@@ -134,8 +136,11 @@ def recovery_check():
                 credential = 'ready' if resource and credentials.credential_status(current_user.id, resource) == 'ready' else 'password_required'
             else:
                 credential = 'interactive'
+            route = 'missing_jump' if host.get('jump_host_id') and host['jump_host_id'] not in jumps else 'configured'
+            if host.get('socks_proxy_id') and host['socks_proxy_id'] not in socks:
+                route = 'missing_socks'
             hosts.append(dict(id=host['id'], name=host['name'], credential=credential,
-                              route='missing_jump' if host.get('jump_host_id') and host['jump_host_id'] not in jumps else 'configured',
+                              route=route,
                               host_key='trusted' if trust(host['host'], host.get('port', 22)) else 'review_required'))
         schedules = current_app.extensions['automation_schedules'].list(current_user.id)
         with storage_lock('restore-recovery-check'):

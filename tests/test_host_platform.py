@@ -55,6 +55,34 @@ def test_invalid_platform_override_rejected(app):
         assert error == 'Invalid platform icon'
 
 
+def test_socks_route_change_discards_old_facts_and_rejects_late_probe(app):
+    from app import profile_manager, socks_proxy_manager
+    from tests.test_profile_manager import create_user
+    user_id = create_user(app)
+    with app.app_context():
+        proxy, error = socks_proxy_manager.add_socks_proxy(user_id, 'Route', 'proxy.example', 1080)
+        assert error is None
+        payload = dict(name='Target', host='example.test', port=22, username='deploy', auth_type='password')
+        profile, error = profile_manager.upsert_profile(user_id, payload)
+        assert error is None
+        old_endpoint = host_platform.endpoint(profile)
+        assert profile_manager.cache_detected_facts(
+            user_id, profile['id'], old_endpoint, platform='ubuntu', services=['docker'],
+        )
+        changed, error = profile_manager.upsert_profile(
+            user_id, dict(payload, id=profile['id'], socks_proxy_id=proxy['id']),
+        )
+        assert error is None
+        assert 'detected_platform' not in changed
+        assert 'detected_services' not in changed
+        assert not profile_manager.cache_detected_facts(
+            user_id, profile['id'], old_endpoint, platform='debian', services=['nginx'],
+        )
+        assert profile_manager.cache_detected_facts(
+            user_id, profile['id'], host_platform.endpoint(changed), platform='debian',
+        )
+
+
 def test_detection_task_checks_session_ownership_and_uses_facts(app, monkeypatch):
     from app import ssh_manager, profile_manager
     from tests.test_profile_manager import create_user

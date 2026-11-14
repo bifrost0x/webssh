@@ -60,18 +60,30 @@ def _endpoint(record):
 
 def _readiness(user_id, profiles, jumps, keys):
     from .host_key_store import HostKeyStore
+    from .socks_proxy_manager import load_socks_proxies
     trusted = HostKeyStore(user_id, config.KNOWN_HOSTS_FILE, config.USERS_DIR).trust_checker()
     credentials = current_app.extensions.get('credentials')
     # Credential bindings are fingerprinted against the resource view, which
     # includes the jump route; use the same view as real connections.
-    resources = {item['id']: item for item in credentials.resources(user_id) if item.get('kind') == 'ssh'} if credentials else {}
+    resources = {item['id']: item for item in credentials.resources(user_id)} if credentials else {}
     key_ids = {key.get('id') for key in keys}
     jump_by_id = {jump.get('id'): jump for jump in jumps}
+    socks_by_id = {proxy['id']: proxy for proxy in load_socks_proxies(user_id)}
     result = []
     for profile in profiles:
         endpoint = _endpoint(profile)
         jump = jump_by_id.get(profile.get('jump_host_id')) if profile.get('jump_host_id') else None
         route = 'direct' if not profile.get('jump_host_id') else 'jump' if jump else 'missing'
+        socks_proxy_id = profile.get('socks_proxy_id')
+        proxy = socks_by_id.get(socks_proxy_id)
+        socks_auth = None
+        if socks_proxy_id:
+            route = 'socks' if proxy and not profile.get('jump_host_id') and profile.get('auth_type') != 'tailscale' else 'missing'
+            if proxy:
+                resource = resources.get('socks:' + socks_proxy_id)
+                socks_auth = ('ready' if proxy['auth_type'] == 'none' else
+                              'saved' if credentials and resource and credentials.credential_status(user_id, resource) == 'ready'
+                              else 'password_required')
         host_key = 'trusted' if endpoint and trusted(*endpoint) else 'unknown'
         if profile.get('auth_type') == 'key':
             auth = 'ready' if profile.get('key_id') in key_ids else 'key_missing'
@@ -82,11 +94,16 @@ def _readiness(user_id, profiles, jumps, keys):
             auth = 'prompt'
         if route == 'missing':
             state = 'broken'
-        elif host_key != 'trusted' or auth in {'key_missing', 'password_changed'}:
+        elif host_key != 'trusted' or auth in {'key_missing', 'password_changed'} or socks_auth == 'password_required':
             state = 'action'
         else:
             state = 'ready'
-        result.append(dict(id=profile.get('id'), state=state, route=route, host_key=host_key, auth=auth))
+        row = dict(id=profile.get('id'), state=state, route=route, host_key=host_key, auth=auth)
+        if socks_proxy_id:
+            row.update(socks_proxy_id=socks_proxy_id, via_socks=True)
+            if socks_auth is not None:
+                row['socks_auth'] = socks_auth
+        result.append(row)
     return result
 
 
@@ -158,8 +175,10 @@ def _probe(host, port):
 
 def _plans(user_id, wanted=None):
     from .data_access import user_data_access
+    from .socks_proxy_manager import load_socks_proxies
     with user_data_access(user_id):
         profiles, jumps, _keys = _owned_inventory(user_id)
+        socks_by_id = {proxy['id']: proxy for proxy in load_socks_proxies(user_id)}
     jump_by_id = {jump.get('id'): jump for jump in jumps}
     plans = {}
     for profile in profiles:
@@ -168,10 +187,17 @@ def _plans(user_id, wanted=None):
         if len(plans) >= MAX_PROBES:
             break
         record = jump_by_id.get(profile.get('jump_host_id')) if profile.get('jump_host_id') else profile
+        socks_proxy_id = profile.get('socks_proxy_id')
+        if socks_proxy_id:
+            record = socks_by_id.get(socks_proxy_id)
+            if profile.get('jump_host_id') or profile.get('auth_type') == 'tailscale':
+                record = None
         endpoint = _endpoint(record) if record else None
-        plans[profile.get('id')] = dict(endpoint=endpoint, via_jump=bool(profile.get('jump_host_id')))
+        plans[profile.get('id')] = dict(endpoint=endpoint, via_jump=bool(profile.get('jump_host_id')),
+                                       via_socks=bool(socks_proxy_id), socks_proxy_id=socks_proxy_id)
     # A stored answer belongs to exactly this set of destinations.
-    signature = tuple(sorted((key, str(plan['endpoint']), plan['via_jump']) for key, plan in plans.items()))
+    signature = tuple(sorted((key, str(plan['endpoint']), plan['via_jump'], plan['socks_proxy_id'] or '')
+                             for key, plan in plans.items()))
     return plans, signature
 
 
@@ -239,7 +265,10 @@ def reachability():
     for profile_id, plan in plans.items():
         outcome = dict(outcomes.get(plan['endpoint']) or dict(state='unresolved'))
         platform = outcome.pop('platform', None)
-        if plan['via_jump']:
+        if plan['via_socks']:
+            # The proxy endpoint's greeting never describes the SSH target.
+            outcome['via_socks'] = True
+        elif plan['via_jump']:
             # The probe reached the jump host; its greeting says nothing about the target.
             outcome['via_jump'] = True
         elif platform:

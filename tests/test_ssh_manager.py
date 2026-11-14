@@ -239,6 +239,135 @@ def connect_target(**overrides):
     return ssh_manager.create_ssh_connection(**kwargs)
 
 
+def socks_route(**changes):
+    fields = dict(proxy_id='saved-proxy', host='proxy.example', port=1080,
+                  auth_type='none', username='', password=None, remote_dns=True)
+    fields.update(changes)
+    return ssh_manager.SocksProxyRoute(**fields)
+
+
+def test_socks_transport_uses_proxy_socket_and_target_host_identity(monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+    monkeypatch.setattr(ssh_manager.config, 'BLOCK_INTERNAL_SSH', False)
+    tunnels = []
+
+    def tunnel(sock, destination, **kwargs):
+        tunnels.append((sock, destination, kwargs))
+        return sock
+
+    monkeypatch.setattr(ssh_manager, 'open_socks5_tunnel', tunnel, raising=False)
+    session_id, error = connect_target(password='target-secret', socks_proxy=socks_route())
+    assert error is None
+    assert len(clients) == 1
+    assert len(clients.opened_sockets) == 1
+    assert clients.opened_sockets[0].host == 'proxy.example'
+    assert clients[0].connect_kwargs['hostname'] == 'target.example'
+    assert clients[0].connect_kwargs['sock'] is clients.opened_sockets[0]
+    assert tunnels[0][1].hostname == 'target.example'
+    assert ssh_manager.get_session(session_id)['socks_proxy_id'] == 'saved-proxy'
+    assert ssh_manager.get_session(session_id)['via_socks'] is True
+    assert 'password' not in ssh_manager.sessions[session_id]
+    assert 'socks_proxy' not in ssh_manager.sessions[session_id]
+
+
+@pytest.mark.parametrize('extra,message', [
+    ({'proxy_jump_host': 'jump.example'}, 'either a jump host or a SOCKS5 proxy'),
+    ({'auth_type': 'tailscale'}, 'Tailscale SSH cannot be used with a SOCKS5 proxy'),
+])
+def test_socks_route_conflicts_stop_before_reservation(monkeypatch, extra, message):
+    monkeypatch.setattr(ssh_manager.quota_manager, 'reserve',
+                        lambda *a, **kw: pytest.fail('invalid route reserved quota'))
+    session_id, error = connect_target(socks_proxy=socks_route(), **extra)
+    assert session_id is None
+    assert message in str(error)
+
+
+@pytest.mark.parametrize('host,proxy_host', [('127.0.0.1', 'proxy.example'),
+                                         ('target.example', '127.0.0.1')])
+def test_socks_blocked_target_or_proxy_opens_no_socket(monkeypatch, host, proxy_host):
+    clients = install_ssh_clients(monkeypatch)
+    monkeypatch.setattr(ssh_manager, 'resolve_allowed_target', network_policy.resolve_allowed_target)
+    monkeypatch.setattr(socket, 'getaddrinfo', lambda *a, **kw: [
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, '', ('1.1.1.1', 22)),
+    ])
+    monkeypatch.setattr(ssh_manager.config, 'BLOCK_INTERNAL_SSH', True)
+    monkeypatch.setattr(ssh_manager.config, 'SOCKS_REMOTE_DNS_ALLOWLIST', ())
+    session_id, error = connect_target(host=host, socks_proxy=socks_route(host=proxy_host))
+    assert session_id is None
+    assert 'not allowed' in str(error)
+    assert clients.opened_sockets == []
+    assert clients == []
+
+
+@pytest.mark.parametrize('code', ['socks_auth_failed', 'socks_connection_refused',
+                                 'socks_timeout', 'socks_protocol_error'])
+def test_socks_error_has_context_closes_socket_and_never_falls_back(monkeypatch, code):
+    from app.socks5_client import Socks5Error
+    clients = install_ssh_clients(monkeypatch)
+
+    def fail(*args, **kwargs):
+        raise Socks5Error(code)
+
+    monkeypatch.setattr(ssh_manager, 'open_socks5_tunnel', fail, raising=False)
+    released = []
+    original_release = ssh_manager.release_reservation
+
+    def release(reservation):
+        released.append(reservation)
+        original_release(reservation)
+
+    monkeypatch.setattr(ssh_manager, 'release_reservation', release)
+    session_id, error = connect_target(socks_proxy=socks_route())
+    assert session_id is None
+    assert error.code == code
+    assert error.context == 'socks_proxy'
+    assert len(clients.opened_sockets) == 1
+    assert clients.opened_sockets[0].closed
+    assert clients == []
+    assert len(released) == 1 and released[0].released
+
+
+def test_socks_unreachable_endpoint_has_safe_error(monkeypatch):
+    install_ssh_clients(monkeypatch)
+
+    def unreachable(*args, **kwargs):
+        raise OSError('proxy secret diagnostic')
+
+    monkeypatch.setattr(ssh_manager, 'open_validated_socket', unreachable)
+    session_id, error = connect_target(socks_proxy=socks_route())
+    assert session_id is None
+    assert error.code == 'socks_proxy_unreachable'
+    assert error.context == 'socks_proxy'
+    assert 'secret diagnostic' not in str(error)
+
+
+def test_socks_password_lease_is_fresh_before_handshake(monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+
+    class Revoked:
+        def is_set(self):
+            return False
+
+        def check(self):
+            raise ValueError('revoked')
+
+    def negotiate(sock, destination, **kwargs):
+        assert kwargs['cancelled']() is True
+        from app.socks5_client import Socks5Error
+        raise Socks5Error('connection_cancelled')
+
+    monkeypatch.setattr(ssh_manager, 'open_socks5_tunnel', negotiate, raising=False)
+    route = socks_route(auth_type='password', username='proxy-login', password='proxy-secret')
+    assert 'proxy-secret' not in repr(route)
+    assert 'proxy-login' not in repr(route)
+    session_id, error = connect_target(socks_proxy=route, credential_guard=Revoked(),
+                                     saved_password_hops=('socks',))
+    assert session_id is None
+    assert str(error) == 'Connection cancelled'
+    assert len(clients.opened_sockets) == 1
+    assert clients.opened_sockets[0].closed
+
+
 def test_tailscale_backend_requires_exact_authorization_before_resolving(
     monkeypatch,
 ):
