@@ -287,8 +287,10 @@
         const modalByAsset = {
             hosts: 'profileManagementModal',
             'jump-hosts': 'jumpHostManagementModal',
+            'socks-proxies': 'socksProxyManagementModal',
             keys: 'keyManagementModal',
         };
+        if (asset === 'socks-proxies') { window.SocksProxyManager?.load(); window.SocksProxyManager?.renderList(); }
         const modalId = modalByAsset[asset];
         if (!modalId) return;
 
@@ -301,6 +303,7 @@
             ProfileManager.loadKeys();
             if (asset === 'jump-hosts') {
                 window.JumpHostManager?.load();
+            window.SocksProxyManager?.load();
                 window.JumpHostManager?.renderList();
             }
             const view = document.getElementById(modalId);
@@ -310,7 +313,7 @@
         }
 
         const currentModal = document.querySelector(
-            '#profileManagementModal.show, #jumpHostManagementModal.show, #keyManagementModal.show',
+            '#profileManagementModal.show, #jumpHostManagementModal.show, #socksProxyManagementModal.show, #keyManagementModal.show',
         );
         const switchingFromHosts = currentModal?.id === 'profileManagementModal';
         if (currentModal) {
@@ -327,6 +330,7 @@
         }
         if (asset === 'jump-hosts') {
             window.JumpHostManager?.load();
+            window.SocksProxyManager?.load();
             window.JumpHostManager?.renderList();
         }
         window.ModalManager.open(document.getElementById(modalId));
@@ -346,6 +350,7 @@
             if(share)window.sftpFileManager.openSMBSourceDialog(share);
             return;
         }
+        if (id.startsWith('socks:')) { openConnectionAssetManager('socks-proxies'); window.SocksProxyManager?.edit(id.slice(6)); return; }
         openConnectionAssetManager(id.startsWith('jump:') ? 'jump-hosts' : 'hosts');
         if (id.startsWith('jump:')) window.JumpHostManager?.edit(id.slice(5));
         else if (!id.startsWith('smb:')) window.ProfileManager?.openEditor(id);
@@ -396,6 +401,12 @@
         if (jumpSelect) jumpSelect.value = '';
         const jumpPassword = document.getElementById('jumpHostPasswordInput');
         if (jumpPassword) jumpPassword.value = '';
+        const socksSelect = document.getElementById('socksProxySelect');
+        if (socksSelect) socksSelect.value = '';
+        const socksPassword = document.getElementById('socksProxyPasswordInput');
+        if (socksPassword) socksPassword.value = '';
+        window.SocksProxyManager?.updatePasswordVisibility();
+        window.SocksProxyManager?.updateRouteControls();
         window.JumpHostManager?.updatePasswordVisibility();
         window.ConnectionCommandManager?.clear();
         ProfileManager.clearLegacyCommands();
@@ -415,6 +426,23 @@
     };
 
     window.prepareSessionReconnectJump = (session, {applyToForm = false} = {}) => {
+        if (session.socksProxyId || session.viaSocks) {
+            const manager = window.SocksProxyManager;
+            const proxy = manager?.loaded === true ? manager.getById(session.socksProxyId) : null;
+            const unresolved = !proxy || Boolean(session.jumpHostId || session.viaJump) || session.reconnectRouteKnown === false;
+            if (applyToForm) {
+                selectedConnectionProfileState = {requiredSocksProxyId: session.socksProxyId || '', missingSocksProxy: unresolved};
+                manager?.selectReference(document.getElementById('socksProxySelect'), session.socksProxyId);
+                const password = document.getElementById('socksProxyPasswordInput');
+                if (password) password.value = '';
+                manager?.updatePasswordVisibility();
+                manager?.updateRouteControls();
+                window.CredentialPicker?.restore?.('socksProxyPasswordInput');
+                window.setConnectionAdvancedExpanded(true);
+                if (unresolved) window.showNotification?.(window.i18n?.t('connection.socksProxyMissing') || 'SOCKS5 proxy missing', 'error');
+            }
+            return {requiresForm: unresolved || proxy?.auth_type === 'password', socksProxy: proxy && !unresolved ? {socks_proxy_id: proxy.id} : null};
+        }
         const requiredId = session.jumpHostId || '';
         const manager = window.JumpHostManager;
         const jump = manager?.loaded === true && requiredId ? manager.getById(requiredId) : null;
@@ -1825,6 +1853,7 @@
             key => window.i18n?.t?.(key),
             APP_ROOT,
         ) || { message: `SSH Error: ${data.error}`, type: 'error' };
+        if (presentation.action?.asset === 'socks-proxies') presentation.action.onClick = () => openConnectionAssetManager('socks-proxies');
         showNotification(presentation);
 
         if (!isCurrentRequest) {
@@ -1918,6 +1947,16 @@
         showNotification((window.i18n ? window.i18n.t('toast.keyDeleted') : 'SSH key deleted successfully'), 'success');
     });
 
+    socket.on('socks_proxies_list', data => window.SocksProxyManager?.setSocksProxies(data.socks_proxies));
+    socket.on('socks_proxy_saved', data => {
+        window.SocksProxyManager?.upsertSocksProxy(data?.socks_proxy);
+        showNotification(window.i18n?.t('socksproxies.savedOk') || 'SOCKS5 proxy saved', 'success');
+    });
+    socket.on('socks_proxy_deleted', data => {
+        window.SocksProxyManager?.removeSocksProxy(data?.socks_proxy_id);
+        showNotification(window.i18n?.t('socksproxies.deleted') || 'SOCKS5 proxy deleted', 'success');
+    });
+
     socket.on('jump_hosts_list', (data) => {
         if (window.JumpHostManager) window.JumpHostManager.setJumpHosts(data.jump_hosts);
     });
@@ -1933,6 +1972,7 @@
     });
 
     socket.on('error', (data) => {
+        if (window.SocksProxyManager?.handleUsageError(data)) return;
         if (FilePreview.handleSocketError(data)) return;
         if (window.sftpFileManager?.handlesSocketError?.(data)) return;
         showNotification(`Error: ${data.error}`, 'error');
@@ -2082,9 +2122,12 @@
             window.clearConnectionProfileState();
             return null;
         }
+        const requiredSocksProxyId = profile.socks_proxy_id || '';
         const requiredJumpHostId = profile.jump_host_id || '';
         selectedConnectionProfileState = {
             profileId,
+            requiredSocksProxyId,
+            missingSocksProxy: Boolean(requiredSocksProxyId && !window.SocksProxyManager?.getById(requiredSocksProxyId)),
             requiresKey: profile.auth_type === 'key',
             pendingKeyId: profile.auth_type === 'key' ? profile.key_id || null : null,
             missingJumpHost: Boolean(
@@ -2116,11 +2159,13 @@
         let focusTarget = document.getElementById('connectBtn');
         if (mode === 'password') {
             focusTarget = document.getElementById('passwordInput');
+        } else if (mode === 'socks-proxy-password') {
+            focusTarget = document.getElementById('socksProxyPasswordInput');
         } else if (mode === 'jump-host-password') {
             focusTarget = document.getElementById('jumpHostPasswordInput');
         }
         window.requestAnimationFrame(() => focusTarget?.focus());
-        if (mode === 'password' || mode === 'jump-host-password') connectWithAssignedPasswords(profileId);
+        if (['password', 'jump-host-password', 'socks-proxy-password'].includes(mode)) connectWithAssignedPasswords(profileId);
     }
 
     /**
@@ -2135,11 +2180,13 @@
         const jump = profile.jump_host_id ? window.JumpHostManager?.getById(profile.jump_host_id) : null;
         const needsTarget = profile.auth_type === 'password';
         const needsJump = jump?.auth_type === 'password';
-        if (!needsTarget && !needsJump) return;
+        const needsSocks = window.SocksProxyManager?.getById(profile.socks_proxy_id)?.auth_type === 'password';
+        if (!needsTarget && !needsJump && !needsSocks) return;
         try {
             await Promise.all([
                 needsTarget ? picker.restore('passwordInput') : null,
                 needsJump ? picker.restore('jumpHostPasswordInput') : null,
+                needsSocks ? picker.restore('socksProxyPasswordInput') : null,
             ]);
         } catch {
             return;
@@ -2149,7 +2196,8 @@
         const targetReady = !needsTarget || (document.getElementById('authTypeSelect')?.value === 'saved-password'
             && Boolean(document.getElementById('savedPasswordSelect')?.value));
         const jumpReady = !needsJump || Boolean(picker.get('jumpHostPasswordInput'));
-        if (targetReady && jumpReady) document.getElementById('connectionForm')?.requestSubmit();
+        const socksReady = !needsSocks || Boolean(picker.get('socksProxyPasswordInput'));
+        if (targetReady && jumpReady && socksReady) document.getElementById('connectionForm')?.requestSubmit();
     }
 
     function clearPendingPane() {
@@ -2348,6 +2396,7 @@
             getContext: () => ({
                 keys: ProfileManager.keys,
                 jumpHosts: window.JumpHostManager?.jumpHosts || [],
+                socksProxies: window.SocksProxyManager?.socksProxies || [],
             }),
             getDefaultPaneIndex,
             isBusy: () => Boolean(currentConnectRequestId),
@@ -3063,6 +3112,7 @@
         }
         if (inventory) {
             window.JumpHostManager?.setJumpHosts(inventory.jump_hosts);
+            window.SocksProxyManager?.setSocksProxies(inventory.socks_proxies);
             ProfileManager.setProfiles(inventory.profiles);
         } else {
             ProfileManager.loadProfiles();
@@ -3158,6 +3208,39 @@
                 return;
             }
 
+            const socksProxyId = document.getElementById('socksProxySelect')?.value || '';
+            const requiredSocksProxyId = selectedConnectionProfileState?.requiredSocksProxyId;
+            if ((requiredSocksProxyId && socksProxyId !== requiredSocksProxyId)
+                || (selectedConnectionProfileState?.missingSocksProxy && !socksProxyId)) {
+                showNotification(window.i18n?.t('connection.socksProxyMissing') || 'SOCKS5 proxy missing', 'error');
+                return;
+            }
+            if ((socksProxyId && document.getElementById('jumpHostSelect').value)
+                || (authType === 'tailscale' && (socksProxyId || document.getElementById('jumpHostSelect').value))) {
+                showNotification(window.i18n?.t('connection.routeConflict') || 'Choose one compatible route.', 'error');
+                return;
+            }
+            let socksProxy = null;
+            if (socksProxyId) {
+                const proxy = window.SocksProxyManager?.getById(socksProxyId);
+                if (!proxy) { showNotification(window.i18n?.t('connection.socksProxyMissing') || 'SOCKS5 proxy missing', 'error'); return; }
+                socksProxy = {socks_proxy_id: socksProxyId};
+                if (proxy.auth_type === 'password') {
+                    const password = document.getElementById('socksProxyPasswordInput').value;
+                    const credential = window.CredentialPicker?.get('socksProxyPasswordInput');
+                    if (!password && !credential) {
+                        showNotification(window.i18n?.t('connection.socksProxyPasswordRequired') || 'SOCKS5 proxy password is required', 'error');
+                        document.getElementById('socksProxyPasswordInput').focus();
+                        return;
+                    }
+                    if (credential) {
+                        socksProxy.credential_id = credential;
+                        const token = window.CredentialPicker?.token?.('socksProxyPasswordInput');
+                        if (token) socksProxy.credential_target_token = token;
+                    } else socksProxy.password = password;
+                }
+            }
+
             // Optional jump host (bastion) — chosen from the saved list
             const jumpHostId = document.getElementById('jumpHostSelect').value;
             let proxyJump = null;
@@ -3210,6 +3293,7 @@
             if (proxyJump) {
                 connectionData.proxy_jump = proxyJump;
             }
+            if (socksProxy) connectionData.socks_proxy = socksProxy;
             const contextProfileId = SessionManager.pendingReconnectProfileId
                 || window.ProfileManager?.connectionProfileId?.(connectionData);
             if (contextProfileId) connectionData.profile_id = contextProfileId;
@@ -3252,12 +3336,18 @@
 
             document.getElementById('passwordInput').value = '';
             document.getElementById('jumpHostPasswordInput').value = '';
+            document.getElementById('socksProxyPasswordInput').value = '';
         });
 
         document.getElementById('authTypeSelect').addEventListener('change', (e) => {
             ProfileManager.handleAuthTypeChange(e.target.value);
         });
 
+        document.getElementById('socksProxySelect')?.addEventListener('change', () => {
+            document.getElementById('socksProxyPasswordInput').value = '';
+            window.CredentialPicker?.restore?.('socksProxyPasswordInput');
+            window.SocksProxyManager?.updatePasswordVisibility();
+        });
         document.getElementById('jumpHostSelect').addEventListener('change', () => {
             document.getElementById('jumpHostPasswordInput').value = '';
             window.CredentialPicker?.restore?.('jumpHostPasswordInput');

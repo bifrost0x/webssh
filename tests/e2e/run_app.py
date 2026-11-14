@@ -38,7 +38,7 @@ def _profile(name, host, username, auth_type, **extra):
 
 
 def _seed_launcher_profiles(admin, user):
-    from app import jump_host_manager, key_manager, profile_manager
+    from app import jump_host_manager, key_manager, profile_manager, socks_proxy_manager
 
     private_key = ed25519.Ed25519PrivateKey.generate().private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -59,6 +59,16 @@ def _seed_launcher_profiles(admin, user):
     )
     if error:
         raise RuntimeError(error)
+
+    socks_proxies = []
+    for auth_type in ('none', 'password'):
+        proxy, error = socks_proxy_manager.add_socks_proxy(
+            admin.id, f'E2E {auth_type} SOCKS proxy', 'proxy.example', 1080,
+            auth_type=auth_type, username='proxyuser' if auth_type == 'password' else '', remote_dns=True,
+        )
+        if error:
+            raise RuntimeError(error)
+        socks_proxies.append(proxy)
 
     admin_profiles = [
         _profile(
@@ -126,6 +136,9 @@ def _seed_launcher_profiles(admin, user):
             key_id=key['id'],
             jump_host_id='missing-jump-host',
         ),
+        _profile('SOCKS key host', 'socks-target.example', 'keyuser', 'key', key_id=key['id'], socks_proxy_id=socks_proxies[0]['id']),
+        _profile('SOCKS password host', 'socks-auth-target.example', 'keyuser', 'key', key_id=key['id'], socks_proxy_id=socks_proxies[1]['id']),
+        _profile('Missing SOCKS host', 'socks-missing.example', 'keyuser', 'key', key_id=key['id'], socks_proxy_id='missing-socks-proxy'),
         _profile('Authorized Tailscale', 'tail-node', 'root', 'tailscale'),
     ]
     if not profile_manager.save_profiles(admin.id, admin_profiles):

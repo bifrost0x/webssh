@@ -278,10 +278,14 @@ def test_hosts_are_prominent_and_connection_assets_share_navigation():
         template,
         re.DOTALL,
     )
-    assert len(asset_menus) == 4
+    assert len(asset_menus) == 5
     for menu in asset_menus:
-        for asset in ('hosts', 'jump-hosts', 'keys', 'passwords'):
+        for asset in ('hosts', 'jump-hosts', 'socks-proxies', 'keys', 'passwords'):
             assert menu.count(f'data-connection-asset="{asset}"') == 1
+        assert menu.index('data-connection-asset="jump-hosts"') < menu.index('data-connection-asset="socks-proxies"') < menu.index('data-connection-asset="keys"')
+    assert 'id="socksProxyManagementModal"' in template
+    assert 'id="socksProxyForm"' in template
+    assert 'id="socksProxiesList"' in template
     assert 'function openConnectionAssetManager(asset)' in app_source
     assert "openConnectionAssetManager('keys')" in app_source
 

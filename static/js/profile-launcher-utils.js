@@ -22,6 +22,7 @@
         const keys = Array.isArray(context.keys) ? context.keys : [];
         const jumpHosts = Array.isArray(context.jumpHosts) ? context.jumpHosts : [];
         const needsTargetPassword = profile.auth_type === 'password';
+        if (profile.socks_proxy_id && (profile.jump_host_id || profile.auth_type === 'tailscale')) return 'review';
 
         if (profile.auth_type === 'key') {
             if (!hasKey(keys, profile.key_id)) {
@@ -36,6 +37,11 @@
             return 'review';
         }
 
+        if (profile.socks_proxy_id) {
+            const proxy = (context.socksProxies || []).find(item => item?.id === profile.socks_proxy_id);
+            if (!proxy || !['none', 'password'].includes(proxy.auth_type)) return 'review';
+            return needsTargetPassword ? 'password' : proxy.auth_type === 'password' ? 'socks-proxy-password' : 'connect';
+        }
         if (!profile.jump_host_id) {
             return needsTargetPassword ? 'password' : 'connect';
         }
@@ -68,7 +74,8 @@
         const awaitingJumpHosts = profile?.jump_host_id && context.jumpHostsLoaded === false;
         const awaitingKeys = context.keysLoaded === false
             && (profile?.auth_type === 'key' || jumpHost?.auth_type === 'key');
-        if (context.connected !== true && (awaitingJumpHosts || awaitingKeys)) {
+        const awaitingSocks = profile?.socks_proxy_id && context.socksProxiesLoaded === false;
+        if (context.connected !== true && (awaitingJumpHosts || awaitingKeys || awaitingSocks)) {
             return {
                 state: 'loading', launchMode: 'loading', pending: true,
                 labelKey: 'connection.readinessLoading', label: 'Checking credentials…',
@@ -83,8 +90,9 @@
             const jumpHost = (context.jumpHosts || []).find(item => item?.id === profile?.jump_host_id);
             const missingKey = (profile?.auth_type === 'key' && !hasKey(context.keys, profile.key_id))
                 || (jumpHost?.auth_type === 'key' && !hasKey(context.keys, jumpHost.key_id));
-            if (missingKey) state = 'key-missing';
-            else if (launchMode === 'password' || launchMode === 'jump-host-password') state = 'password-needed';
+            if (profile?.socks_proxy_id && !(context.socksProxies || []).some(item => item?.id === profile.socks_proxy_id)) state = 'socks-missing';
+            else if (missingKey) state = 'key-missing';
+            else if (['password', 'jump-host-password', 'socks-proxy-password'].includes(launchMode)) state = 'password-needed';
             else if (launchMode === 'connect' && buildDirectConnectionData(profile, context)) state = 'saved';
         }
         const labels = {
@@ -92,10 +100,11 @@
             saved: ['readinessSaved', 'Saved'],
             'password-needed': ['readinessPassword', 'Password needed'],
             'key-missing': ['readinessKey', 'Key missing or unavailable'],
+            'socks-missing': ['socksProxyMissing', 'SOCKS5 proxy missing'],
             review: ['readinessReview', 'Review connection'],
         };
         const [key, label] = labels[state];
-        const review = state === 'key-missing' || state === 'review';
+        const review = state === 'key-missing' || state === 'review' || state === 'socks-missing';
         return {
             state, launchMode, label, labelKey: `connection.${key}`,
             actionKey: review ? 'connection.actionReview' : 'connection.actionConnect',
@@ -166,6 +175,7 @@
         if (!postConnect) return null;
         Object.assign(result, postConnect);
 
+        if (profile.socks_proxy_id) result.socks_proxy = {socks_proxy_id: profile.socks_proxy_id};
         if (!profile.jump_host_id) return result;
 
         const jumpHost = (
@@ -214,7 +224,7 @@
             || Boolean(value.command_set_id)
             || Boolean(String(value.startup_commands || '').trim())
         );
-        return Boolean(value.jump_host_id || value.use_tmux === true || hasPostConnect);
+        return Boolean(value.jump_host_id || value.socks_proxy_id || value.use_tmux === true || hasPostConnect);
     }
 
     function compareText(left, right) {

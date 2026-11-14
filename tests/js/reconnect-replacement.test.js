@@ -34,7 +34,7 @@ function setup() {
         showNotification() {}, rememberTransientId(set, id) {set.add(id);},
         APP_ROOT: '',
     };
-    vm.runInNewContext(`let currentConnectRequestId = null, connectionModalRequestId = null, pendingPaneIndex = null, connectSeconds = 0, connectTimer = null;
+    vm.runInNewContext(`let selectedConnectionProfileState = null; let currentConnectRequestId = null, connectionModalRequestId = null, pendingPaneIndex = null, connectSeconds = 0, connectTimer = null;
         const pendingRequestPaneMap = new Map(), pendingReconnectSessionMap = new Map();
         const cancelledConnectRequestIds = new Set(), cancellingConnectRequestIds = new Set(), completedWhileCancellingRequestIds = new Set();
         function discardLateConnection() {}

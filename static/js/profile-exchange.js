@@ -18,6 +18,8 @@
             },
             ...(body ? {body: JSON.stringify(body)} : {})
         });
+        const omitted = Number(response.headers.get('X-WebSSH-SOCKS-Routes-Omitted'));
+        if (response.ok && omitted > 0) window.showNotification?.(t('connection.socksProxyNotExported') + ' (' + omitted + ')', 'warning');
         if (response.ok && response.headers.get('Content-Type')?.includes('application/zip')) {
             return response.blob();
         }
@@ -152,7 +154,7 @@
                 if (result.warnings.length) {
                     warnings.append(element('summary', `${t('exchange.warnings')} (${result.warnings.length})`));
                     const list = element('ul');
-                    for (const warning of result.warnings) list.append(element('li', warning));
+                    for (const warning of result.warnings) list.append(element('li', warning === 'SOCKS5 route not exported' ? t('connection.socksProxyNotExported') : warning));
                     warnings.append(list);
                     warnings.hidden = false;
                 }
@@ -165,7 +167,7 @@
                     selected.checked = !row.blocked;
                     selected.addEventListener('change', updateSubmit);
                     selectLabel.append(selected, document.createTextNode(` ${row.name}: ${row.username || '?'}@${row.host}:${row.port}`));
-                    section.append(selectLabel, element('p', row.warnings.join(' ')));
+                    section.append(selectLabel, element('p', row.warnings.map(warning => warning === 'SOCKS5 route not exported' ? t('connection.socksProxyNotExported') : warning).join(' ')));
                     const userLabel = element('label', t('exchange.username'));
                     const username = element('input', undefined, 'form-control');
                     username.value = row.username;

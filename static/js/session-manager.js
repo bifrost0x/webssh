@@ -1,5 +1,9 @@
 /* exported SessionManager */
 const SessionManager = {
+    socksLabel(session) {
+        const name = window.SocksProxyManager?.getById(session.socksProxyId)?.name || '';
+        return (window.i18n?.t('connection.socksProxyVia') || 'via SOCKS5 {name}').replace('{name}', name).trim();
+    },
     endpointKey(host, port, username) {
         return String(username).includes(':')
             ? 'gateway:v1:' + JSON.stringify([host, String(port), username])
@@ -124,6 +128,8 @@ const SessionManager = {
             auth_type: data.auth_type,
             via_jump: data.via_jump,
             jump_host_id: data.jump_host_id,
+            via_socks: data.via_socks,
+            socks_proxy_id: data.socks_proxy_id,
             profile_id: data.profile_id,
             detected_platform: data.detected_platform,
             reconnect_route_known: data.reconnect_route_known,
@@ -181,6 +187,8 @@ const SessionManager = {
             displayName: display_name || null,
             viaJump: data.via_jump || null,
             jumpHostId: data.jump_host_id || null,
+            viaSocks: data.via_socks === true,
+            socksProxyId: data.socks_proxy_id || null,
             profileId: data.profile_id || null,
             reconnectRouteKnown: data.reconnect_route_known === true,
             useTmux: true,
@@ -262,6 +270,8 @@ const SessionManager = {
             displayName: storedName || null,
             viaJump: sessionData.via_jump || null,
             jumpHostId: sessionData.jump_host_id || null,
+            viaSocks: sessionData.via_socks === true,
+            socksProxyId: sessionData.socks_proxy_id || null,
             profileId: sessionData.profile_id || null,
             detectedPlatform: sessionData.detected_platform,
             reconnectRouteKnown: sessionData.reconnect_route_known,
@@ -318,6 +328,14 @@ const SessionManager = {
         if (window.HostPlatform) platformIcon.append(window.HostPlatform.renderSession(iconSession, iconProfile));
         tab.insertBefore(platformIcon, tabLabel);
         const sess = this.sessions[sessionId];
+        if (sess?.viaSocks || sess?.socksProxyId) {
+            const badge = document.createElement('span');
+            badge.className = 'tab-jump-badge material-icons';
+            badge.textContent = 'lan';
+            badge.title = this.socksLabel(sess);
+            badge.setAttribute('aria-label', badge.title);
+            tab.appendChild(badge);
+        }
         if (sess && sess.viaJump) {
             const jumpBadge = document.createElement('span');
             jumpBadge.className = 'tab-jump-badge material-icons';
@@ -503,7 +521,7 @@ const SessionManager = {
         }
 
         const route = this.reconnectRoute(session);
-        if (route.requiresForm || ((session.viaJump || session.jumpHostId)
+        if (route.requiresForm || ((session.viaJump || session.jumpHostId || session.viaSocks || session.socksProxyId)
                 && !session.keyId && session.authType !== 'tailscale')) {
             this.prefillConnectionForm(sessionId, true);
             return;
@@ -572,6 +590,7 @@ const SessionManager = {
                             connectionData.key_id = keyId;
                         }
                         if (route.proxyJump) connectionData.proxy_jump = route.proxyJump;
+                        if (route.socksProxy) connectionData.socks_proxy = route.socksProxy;
                         window.SSHGatewayDialog?.prepare(connectionData);
                         window.socket.emit('ssh_connect', connectionData);
                         const message = window.i18n
@@ -913,6 +932,7 @@ const SessionManager = {
             viaSpan.textContent = `${via} ${session.viaJump}`;
             notesEl.appendChild(viaSpan);
         }
+        if (session.viaSocks || session.socksProxyId) notesEl.appendChild(document.createTextNode('  ·  ' + this.socksLabel(session)));
         notesEl.classList.remove('empty');
     },
 
@@ -1658,7 +1678,7 @@ const SessionManager = {
         if (window.prepareSessionReconnectJump) {
             return window.prepareSessionReconnectJump(session);
         }
-        return {requiresForm: Boolean(session.viaJump || session.jumpHostId
+        return {requiresForm: Boolean(session.viaJump || session.jumpHostId || session.viaSocks || session.socksProxyId
             || session.reconnectRouteKnown === false)};
     },
 
@@ -1799,6 +1819,7 @@ const SessionManager = {
                 connectionData.key_id = keyId;
             }
             if (route.proxyJump) connectionData.proxy_jump = route.proxyJump;
+            if (route.socksProxy) connectionData.socks_proxy = route.socksProxy;
             window.SSHGatewayDialog?.prepare(connectionData);
             window.socket.emit('ssh_connect', connectionData);
             const label = `${username}@${host}`;
@@ -2497,6 +2518,7 @@ const SessionManager = {
         const parts = [session.displayName
             ? `${session.username}@${session.host}:${session.port}`
             : `SSH · ${session.port}`];
+        if (session.viaSocks || session.socksProxyId) parts.push(this.socksLabel(session));
         if (session.viaJump) {
             parts.push(`${this.windowText('connection.via', 'via')} ${session.viaJump}`);
         }

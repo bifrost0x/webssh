@@ -223,11 +223,13 @@ def test_hosts_and_commands_share_the_resource_navigation_anatomy(app, client):
 
     assert response.status_code == 200
     for surface in (b'id="profileManagementModal"', b'id="jumpHostManagementModal"',
-                    b'id="commandWorkspaceModal"'):
+                    b'id="socksProxyManagementModal"', b'id="commandWorkspaceModal"'):
         assert surface in response.data
-    assert response.data.count(b'class="management-resource-title"') == 3
-    assert response.data.count(b'Connection resources') >= 3
+    assert response.data.count(b'class="management-resource-title"') == 4
+    assert response.data.count(b'Connection resources') >= 4
     assert b'class="connection-asset-nav-item active"' in response.data
+    assert b'class="connection-asset-nav-item active" data-connection-asset="socks-proxies" aria-current="page"' in response.data
+    assert _versioned_asset_marker(app, 'js/socks-proxy-manager.js') in response.data
 
 
 def test_platform_icons_have_content_addressed_urls(app, client):

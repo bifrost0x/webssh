@@ -26,6 +26,26 @@
     }
 
     function describeSSHError(data, translate, appRoot = '') {
+        const socksErrors = {
+            socks_proxy_failure: ['socksProxyFailure', 'The SOCKS5 proxy reported a general failure.'],
+            socks_not_allowed: ['socksNotAllowed', 'The SOCKS5 proxy does not allow this connection.'],
+            socks_network_unreachable: ['socksNetworkUnreachable', 'The SOCKS5 proxy cannot reach the target network.'],
+            socks_host_unreachable: ['socksHostUnreachable', 'The SOCKS5 proxy cannot reach the target host.'],
+            socks_connection_refused: ['socksConnectionRefused', 'The target refused the connection through the SOCKS5 proxy.'],
+            socks_ttl_expired: ['socksTtlExpired', 'The connection through the SOCKS5 proxy timed out.'],
+            socks_unsupported: ['socksUnsupported', 'The SOCKS5 proxy does not support this request.'],
+            socks_protocol_error: ['socksProtocolError', 'The SOCKS5 proxy sent an invalid response.'],
+            socks_proxy_unreachable: ['socksProxyUnreachable', 'The SOCKS5 proxy could not be reached.'],
+            socks_timeout: ['socksTimeout', 'The SOCKS5 proxy did not respond in time.'],
+            socks_auth_required: ['socksAuthRequired', 'The SOCKS5 proxy requires a username and password.'],
+            socks_auth_rejected: ['socksAuthRejected', 'The SOCKS5 proxy does not accept username and password login.'],
+            socks_auth_failed: ['socksAuthFailed', 'SOCKS5 proxy login failed. Check the username and password.'],
+        };
+        if (Object.hasOwn(socksErrors, data?.code)) {
+            const [key, fallback] = socksErrors[data.code];
+            return {message: translated(translate, `sshErrors.${key}`, fallback), type: 'error', duration: 12000,
+                action: {label: translated(translate, 'sshErrors.socksReview', 'Review SOCKS5 proxy'), asset: 'socks-proxies'}};
+        }
         if (data?.code === 'host_key_changed') {
             return {
                 message: translated(

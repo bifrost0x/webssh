@@ -8,9 +8,10 @@
 
     // Deliberately whitelist display fields. Addresses, users, credentials and
     // arbitrary graph relationships never enter this presentation model.
-    function buildAccessModel(profiles = [], jumpHosts = [], jumpsLoaded = false) {
+    function buildAccessModel(profiles = [], jumpHosts = [], jumpsLoaded = false, socksProxies = [], socksLoaded = false) {
         const jumps = new Map(jumpHosts.filter(jump => jump && typeof jump.id === 'string')
             .map(jump => [jump.id, {id: jump.id, name: String(jump.name || '')}]));
+        const socks = new Map(socksProxies.filter(proxy => proxy && typeof proxy.id === 'string').map(proxy => [proxy.id, {id: proxy.id, name: String(proxy.name || '')}]));
         const seen = new Set();
         const hosts = profiles.filter(profile => {
             if (!profile || typeof profile.id !== 'string' || seen.has(profile.id)) return false;
@@ -19,6 +20,7 @@
         }).map(profile => {
             const jump = jumpsLoaded && profile.jump_host_id
                 ? jumps.get(profile.jump_host_id) : null;
+            const proxy = socksLoaded && profile.socks_proxy_id ? socks.get(profile.socks_proxy_id) : null;
             return {
                 id: profile.id,
                 name: String(profile.name || ''),
@@ -26,8 +28,9 @@
                 favorite: profile.favorite === true,
                 platform: globalThis.HostPlatform?.resolve(profile) || {id: 'server', source: 'fallback'},
                 order: Number(profile.sort_order) || 0,
-                routeRef: typeof profile.jump_host_id === 'string' ? profile.jump_host_id : '',
-                route: profile.jump_host_id ? (jump ? 'configured' : (jumpsLoaded ? 'unavailable' : 'loading')) : 'none',
+                routeRef: typeof profile.socks_proxy_id === 'string' ? profile.socks_proxy_id : typeof profile.jump_host_id === 'string' ? profile.jump_host_id : '',
+                ...(profile.socks_proxy_id ? {routeKind: 'socks', socks: proxy || null} : {}),
+                route: profile.socks_proxy_id ? (proxy ? 'configured' : (socksLoaded ? 'unavailable' : 'loading')) : profile.jump_host_id ? (jump ? 'configured' : (jumpsLoaded ? 'unavailable' : 'loading')) : 'none',
                 jump: jump || null,
             };
         });

@@ -181,14 +181,14 @@
             note.textContent=t('Saved SSH routes · not a reachability check','Gespeicherte SSH-Wege · keine Erreichbarkeitsprüfung');
             if(!loaded()){count.textContent='';canvas.replaceChildren(el('p','ssh-map-empty',t('Loading hosts…','Hosts werden geladen…')));fingerprint='';return;}
             const all=model(),query=search.value.trim().toLocaleLowerCase();
-            const hosts=all.filter(h=>!query || [h.name,h.group,h.jump?.name||''].join(' ').toLocaleLowerCase().includes(query));
+            const hosts=all.filter(h=>!query || [h.name,h.group,h.socks?.name||h.jump?.name||''].join(' ').toLocaleLowerCase().includes(query));
             count.textContent=hosts.length+' / '+all.length+' '+t('hosts');
             const signature=JSON.stringify([hosts,query,[...expanded],window.i18n?.currentLang,dialog.open]);
             if(signature===fingerprint){layout();return;}fingerprint=signature;
             const focused=document.activeElement?.dataset.sshMapFocus;
             const branches=new Map();
             for(const h of hosts){
-                const id=h.route==='none'?'direct':h.route+':'+h.routeRef;
+                const id=h.route==='none'?'direct':(h.routeKind==='socks'?'socks:':'')+h.route+':'+h.routeRef;
                 if(!branches.has(id))branches.set(id,{sample:h,groups:new Map()});
                 const groups=branches.get(id).groups;if(!groups.has(h.group))groups.set(h.group,[]);groups.get(h.group).push(h);
             }
@@ -199,9 +199,9 @@
             for(const [id,{sample,groups}] of branches){
                 const branch=el('section','ssh-route-branch');branch.dataset.route=id;
                 const direct=sample.route==='none';
-                const sourceName=direct?t('Direct SSH','Direktes SSH'):sample.jump?.name||t('Unresolved jump host','Ungeklärter Jump Host');
+                const sourceName=direct?t('Direct SSH','Direktes SSH'):sample.socks?.name||sample.jump?.name||(sample.routeKind==='socks'?window.i18n.t('connection.socksProxyMissing'):t('Unresolved jump host','Ungeklärter Jump Host'));
                 if(!direct){
-                    const source=el('div','ssh-route-source');source.append(icon('vpn_key'),el('strong','',sourceName),el('small','',window.i18n.t('connection.jumpHost')));movable(source,id+':gateway',sourceName);branch.append(source);
+                    const source=el('div','ssh-route-source');source.append(icon(sample.routeKind==='socks'?'lan':'vpn_key'),el('strong','',sourceName),el('small','',window.i18n.t(sample.routeKind==='socks'?'connection.socksProxy':'connection.jumpHost')));movable(source,id+':gateway',sourceName);branch.append(source);
                 }
                 const items=[...groups.values()].flat(), destinations=el('div','ssh-route-destinations');
                 const header=el('div','ssh-destination-heading');header.append(el('strong','',direct?t('Direct connections','Direkte Verbindungen'):t('Via ','Über ')+sourceName),el('span','',items.length+' '+t('hosts')));destinations.append(header);movable(destinations,id+':hosts',direct?t('Direct connections','Direkte Verbindungen'):t('Via ','\u00dcber ')+sourceName);

@@ -13,12 +13,13 @@
      * the same destination, user and route; with several, the latest edited.
      */
     function profileFor(session, profiles = []) {
-        if (!session) return null;
+        if (!session || (session.viaSocks && !session.socksProxyId)) return null;
         if (session.profileId) return session.profileId;
         const host = value => String(value || '').trim().replace(/\.+$/, '').toLowerCase();
         const matches = profiles.filter(profile => profile?.id && host(profile.host) === host(session.host)
             && Number(profile.port || 22) === Number(session.port || 22)
             && profile.username === session.username
+            && (profile.socks_proxy_id || null) === (session.socksProxyId || null)
             && (profile.jump_host_id || null) === (session.jumpHostId || null));
         matches.sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
         return matches[0]?.id || null;

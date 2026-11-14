@@ -34,14 +34,20 @@
         root.showResourceEditor = show;
         const hide = () => { root.classList.remove('has-resource-editor'); add.focus(); };
         add.addEventListener('click', () => {
-            if (kind === 'jump') {
+            if (kind === 'socks') {
+                if (!window.SocksProxyManager.canDiscard()) return;
+                window.SocksProxyManager.resetEditor();
+            } else if (kind === 'jump') {
                 if (!window.JumpHostManager.canDiscard()) return;
                 window.JumpHostManager.resetEditor();
             }
             show();
         });
         close.addEventListener('click', () => {
-            if (kind === 'jump') {
+            if (kind === 'socks') {
+                if (!window.SocksProxyManager.canDiscard()) return;
+                window.SocksProxyManager.resetEditor();
+            } else if (kind === 'jump') {
                 if (!window.JumpHostManager.canDiscard()) return;
                 window.JumpHostManager.resetEditor();
             } else {
@@ -67,6 +73,7 @@
     }
     document.addEventListener('DOMContentLoaded', () => {
         install('jumpHostManagementModal', 'jump', 'jumpHostForm', 'jumpHostsList', 'jumphosts.addNew', 'Add Jump Host');
+        install('socksProxyManagementModal', 'socks', 'socksProxyForm', 'socksProxiesList', 'socksproxies.addNew', 'Add SOCKS5 Proxy');
         install('keyManagementModal', 'key', 'keyUploadForm', 'keysList', 'keys.uploadNewKey', 'Upload New Key');
     });
 })();

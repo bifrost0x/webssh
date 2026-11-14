@@ -326,6 +326,8 @@ const ProfileManager = {
         return ProfileLauncherUtils.determineLaunchMode(profile, {
             keys: this.keys,
             jumpHosts: window.JumpHostManager?.jumpHosts || [],
+            socksProxies: window.SocksProxyManager?.socksProxies || [],
+            socksProxiesLoaded: window.SocksProxyManager?.loaded,
         });
     },
 
@@ -436,6 +438,8 @@ const ProfileManager = {
                     keysLoaded: this.keysLoaded,
                     jumpHostsLoaded: window.JumpHostManager?.loaded,
                     jumpHosts: window.JumpHostManager?.jumpHosts || [],
+            socksProxies: window.SocksProxyManager?.socksProxies || [],
+            socksProxiesLoaded: window.SocksProxyManager?.loaded,
                 });
                 const mode = readiness.launchMode;
                 const action = document.createElement('span');
@@ -785,6 +789,12 @@ const ProfileManager = {
         }
         window.CredentialPicker?.restore?.('passwordInput');
         window.CredentialPicker?.restore?.('jumpHostPasswordInput');
+        window.SocksProxyManager?.selectReference(document.getElementById('socksProxySelect'), profile.socks_proxy_id);
+        const socksPassword = document.getElementById('socksProxyPasswordInput');
+        if (socksPassword) socksPassword.value = '';
+        window.SocksProxyManager?.updatePasswordVisibility();
+        window.SocksProxyManager?.updateRouteControls();
+        window.CredentialPicker?.restore?.('socksProxyPasswordInput');
         const useTmuxCheck = document.getElementById('useTmuxCheck');
         if (useTmuxCheck) useTmuxCheck.checked = profile.use_tmux === true;
         window.setConnectionAdvancedExpanded?.(
@@ -800,7 +810,8 @@ const ProfileManager = {
         const profile = this.profiles.find(item => item.id === this.selectedProfileId);
         if (!profile || profile.host !== data.host || Number(profile.port || 22) !== Number(data.port)
                 || profile.username !== data.username
-                || (profile.jump_host_id || null) !== (data.proxy_jump?.jump_host_id || null)) return null;
+                || (profile.jump_host_id || null) !== (data.proxy_jump?.jump_host_id || null)
+                || (profile.socks_proxy_id || null) !== (data.socks_proxy?.socks_proxy_id || null)) return null;
         return profile.id;
     },
 
@@ -810,6 +821,7 @@ const ProfileManager = {
     },
 
     handleAuthTypeChange(authType) {
+        window.SocksProxyManager?.updateRouteControls();
         const passwordGroup = document.getElementById('passwordGroup');
         const keyGroup = document.getElementById('keyGroup');
 
@@ -858,6 +870,7 @@ const ProfileManager = {
         this.loadProfiles();
         this.loadKeys();
         window.JumpHostManager?.load();
+        window.SocksProxyManager?.load();
         if (!window.primaryWorkspaceController?.open('hosts', modal)) {
             window.ModalManager?.open(modal);
         }
@@ -1312,6 +1325,11 @@ const ProfileManager = {
             this.t('connection.noJumpHost', 'None (direct connection)'),
             jump => `${jump.name} (${jump.username}@${jump.host}:${jump.port})`,
         );
+        const socksSelect = document.getElementById('profileEditorSocksProxySelect');
+        const selectedSocks = socksSelect?.value;
+        this._fillSelect(socksSelect, window.SocksProxyManager?.socksProxies || [], this.t('connection.socksProxyNone', 'None'), proxy => `${proxy.name} (${proxy.host}:${proxy.port})`);
+        window.SocksProxyManager?.selectReference(socksSelect, selectedSocks);
+        window.SocksProxyManager?.updateRouteControls();
         this._fillSelect(
             document.getElementById('profileEditorCommandSelect'),
             window.CommandLibrary?.commands || [],
@@ -1417,6 +1435,7 @@ const ProfileManager = {
 
         document.getElementById('profileEditorKeySelect').value = profile?.key_id || '';
         document.getElementById('profileEditorJumpHostSelect').value = profile?.jump_host_id || '';
+        window.SocksProxyManager?.selectReference(document.getElementById('profileEditorSocksProxySelect'), profile?.socks_proxy_id);
         document.getElementById('profileEditorPostConnectMode').value = profile
             ? this.inferPostConnectMode(profile)
             : 'none';
@@ -1474,6 +1493,7 @@ const ProfileManager = {
     },
 
     updateEditorVisibility() {
+        window.SocksProxyManager?.updateRouteControls();
         const authType = document.getElementById('profileEditorAuthType')?.value;
         document.getElementById('profileEditorKeyGroup')?.classList.toggle(
             'hidden', authType !== 'key'
@@ -1563,8 +1583,12 @@ const ProfileManager = {
             auth_type: document.getElementById('profileEditorAuthType').value,
             key_id: document.getElementById('profileEditorKeySelect').value || null,
             jump_host_id: document.getElementById('profileEditorJumpHostSelect').value || null,
+            socks_proxy_id: document.getElementById('profileEditorSocksProxySelect')?.value || null,
             startup_mode: mode,
         };
+        if ((payload.socks_proxy_id && payload.jump_host_id) || (payload.auth_type === 'tailscale' && (payload.socks_proxy_id || payload.jump_host_id))) {
+            window.showNotification?.(this.t('connection.routeConflict', 'Choose one compatible route.'), 'error'); return;
+        }
         const useTmux = document.getElementById('profileEditorUseTmux');
         if (useTmux) payload.use_tmux = useTmux.checked;
         if (this.editingProfileId) payload.id = this.editingProfileId;
@@ -1596,7 +1620,7 @@ const ProfileManager = {
         const credentialDraft = credentialChoice === '__new' ? {name:document.getElementById('profileEditorCredentialName').value.trim(),password:document.getElementById('profileEditorCredentialPassword').value} : null;
         const assigned = document.getElementById('profileEditorCredential')?.dataset.assigned || '';
         const original = this.profiles.find(item => item.id === payload.id);
-        const targetChanged = original && ['host','port','username','auth_type','key_id','jump_host_id'].some(key => String(original[key] || '') !== String(payload[key] || ''));
+        const targetChanged = original && ['host','port','username','auth_type','key_id','jump_host_id','socks_proxy_id'].some(key => String(original[key] || '') !== String(payload[key] || ''));
         const confirmationRequired = document.getElementById('profileEditorCredential')?.dataset.confirmRequired === 'true';
         const needsAssignment = credentialChoice === '__new' || confirmationRequired || credentialChoice !== assigned || (targetChanged && Boolean(credentialChoice));
         const editorId = this.editingProfileId;
@@ -1644,10 +1668,10 @@ const ProfileManager = {
             if (!acknowledgement?.success || !needsAssignment) { completeSave(acknowledgement); return; }
             try {
                 if (credentialChoice === '__new') {
-                    await window.NativeCredentials.mutate('create', {...credentialDraft, username: payload.username, resource_id: acknowledgement.profile.id, confirm_target: true, target: {host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id,jump_host_id:payload.jump_host_id}}, null, current);
+                    await window.NativeCredentials.mutate('create', {...credentialDraft, username: payload.username, resource_id: acknowledgement.profile.id, confirm_target: true, target: {host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id,jump_host_id:payload.jump_host_id,socks_proxy_id:payload.socks_proxy_id}}, null, current);
                     if (!current()) return;
                 } else {
-                    await window.NativeCredentials.mutate('assign', {resource_id: acknowledgement.profile.id, credential_id: credentialChoice || null, confirm_target: true, target: {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, key_id: payload.key_id}}, null, current);
+                    await window.NativeCredentials.mutate('assign', {resource_id: acknowledgement.profile.id, credential_id: credentialChoice || null, confirm_target: true, target: {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, socks_proxy_id: payload.socks_proxy_id, key_id: payload.key_id}}, null, current);
                 }
                 if (!current()) return;
                 completeSave(acknowledgement);

@@ -78,6 +78,7 @@
     function renderSession(session = {}, profile, doc = document) {
         const sameEndpoint = profile && canonicalHost(profile.host) === canonicalHost(session.host) && profile.username === session.username
             && Number(profile.port || 22) === Number(session.port || 22)
+            && (profile.socks_proxy_id || null) === (session.socksProxyId || null)
             && (profile.jump_host_id || null) === (session.jumpHostId || null);
         return render({name: profile?.name || '', platform_icon: profile?.platform_icon,
             detected_platform: session.detectedPlatform || (sameEndpoint ? profile?.detected_platform : undefined),
