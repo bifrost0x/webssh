@@ -518,6 +518,7 @@ body[data-theme] .ws-window .terminal-pane.active {
     top: calc(100% + 8px);
     z-index: 1100;
     width: 230px;
+    max-width: calc(100vw - 24px);
     max-height: calc(100dvh - 120px);
     overflow-y: auto;
     padding: 8px;
@@ -529,6 +530,7 @@ body[data-theme] .ws-window .terminal-pane.active {
 
 .workspace-layout-options .split-controls,
 .workspace-layout-options .window-arrange-controls,
+.workspace-preset-options,
 .workspace-layout-presets {
     display: grid;
     gap: 4px;
@@ -555,6 +557,16 @@ body[data-theme] .ws-window .terminal-pane.active {
 }
 
 .workspace-layout-options .material-icons { font-size: 18px; }
+.workspace-preset-btn .material-icons { flex: 0 0 auto; }
+.workspace-preset-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+.workspace-preset-options .tab-row-icon-btn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: -2px;
+}
 .workspace-layout-hint {
     padding: 6px 10px;
     color: var(--text-muted);
