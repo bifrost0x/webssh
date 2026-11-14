@@ -174,7 +174,7 @@ def test_persistent_tmux_reconnect_cannot_drop_or_replace_socks_route(app, monke
     _, emitted = call(app, monkeypatch, events.handle_ssh_connect, sid,
                       connect_payload(use_tmux=True, reconnect_tmux_name='saved_tmux', **extra))
     assert not jobs
-    assert emitted[0][1]['error'] == 'Saved SOCKS5 proxy route no longer matches this session'
+    assert emitted[0][1]['error'] == 'This persistent session uses a different SOCKS5 route. Close it and connect again.'
 
 
 def test_combined_credential_check_bypasses_cached_poll_result():

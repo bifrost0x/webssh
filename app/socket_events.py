@@ -1547,7 +1547,7 @@ def handle_ssh_connect(data, current_user=None):
                     if ((existing.socks_proxy_id or existing.via_socks or saved_socks_proxy_id)
                             and (not existing.socks_proxy_id
                                  or existing.socks_proxy_id != saved_socks_proxy_id)):
-                        emit_error('Saved SOCKS5 proxy route no longer matches this session')
+                        emit_error('This persistent session uses a different SOCKS5 route. Close it and connect again.')
                         return
                     reconnect_tmux_name = raw_name
 
@@ -2533,10 +2533,9 @@ def handle_delete_jump_host(data, current_user=None):
 @socketio.on('list_socks_proxies')
 @socket_login_required
 def handle_list_socks_proxies(current_user=None):
+    # Reads stay outside the mutation budget, as for jump hosts: a throttled list
+    # would show every routed host as having a missing proxy.
     try:
-        limited = _connection_mutation_rate_limit(current_user)
-        if limited:
-            return limited
         emit('socks_proxies_list', {
             'socks_proxies': socks_proxy_manager.load_socks_proxies(current_user.id),
         })
@@ -2586,6 +2585,21 @@ def handle_delete_socks_proxy(data, current_user=None):
         proxy_id = data.get('socks_proxy_id')
         if not isinstance(proxy_id, str) or not proxy_id or len(proxy_id) > 64:
             return _command_set_error('SOCKS proxy ID required')
+        # Reattaching a persistent tmux session requires its original proxy, so
+        # deleting that proxy would strand the session.
+        persistent = SSHSession.query.filter_by(
+            user_id=current_user.id, is_persistent=True, socks_proxy_id=proxy_id,
+        ).order_by(SSHSession.id).all()
+        if persistent:
+            labels = [
+                session.display_name or f'{session.username}@{session.host}'
+                for session in persistent[:20]
+            ]
+            noun = 'session' if len(persistent) == 1 else 'sessions'
+            return _command_set_error(
+                f'SOCKS proxy is used by {len(persistent)} persistent {noun}',
+                labels,
+            )
         success, error, usages = socks_proxy_manager.delete_socks_proxy(current_user.id, proxy_id)
         if not success:
             return _command_set_error(error, usages)

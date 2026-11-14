@@ -295,6 +295,8 @@ def test_socks_blocked_target_or_proxy_opens_no_socket(monkeypatch, host, proxy_
     session_id, error = connect_target(host=host, socks_proxy=socks_route(host=proxy_host))
     assert session_id is None
     assert 'not allowed' in str(error)
+    # Users must be able to tell a blocked proxy from a blocked target.
+    assert str(error).startswith('SOCKS5 proxy:') is (proxy_host == '127.0.0.1')
     assert clients.opened_sockets == []
     assert clients == []
 

@@ -174,6 +174,10 @@ def open_socks5_tunnel(sock, destination, *, username=None, password=None,
         version, reply, reserved, address_type = _recv_exact(sock, 4, deadline, cancelled)
         if version != 5 or reserved != 0:
             raise Socks5Error('socks_protocol_error')
+        # The socket is closed on failure, so a failed reply needs no bound
+        # address; proxies that truncate it still report the real reason.
+        if reply != 0:
+            raise Socks5Error(_REPLY_CODES.get(reply, 'socks_protocol_error'))
         if address_type == 1:
             address_length = 4
         elif address_type == 4:
@@ -186,8 +190,6 @@ def open_socks5_tunnel(sock, destination, *, username=None, password=None,
             raise Socks5Error('socks_protocol_error')
         _recv_exact(sock, address_length, deadline, cancelled)
         _recv_exact(sock, 2, deadline, cancelled)
-        if reply != 0:
-            raise Socks5Error(_REPLY_CODES.get(reply, 'socks_protocol_error'))
         _remaining(deadline, cancelled)
         succeeded = True
     except Socks5Error as error:

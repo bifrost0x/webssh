@@ -85,6 +85,56 @@ def test_socks_crud_rejects_used_proxy_and_limits_mutations(app, monkeypatch):
         assert result == {'success': False, 'error': 'limited'}
 
 
+def test_socks_delete_keeps_proxy_of_persistent_sessions(app, monkeypatch):
+    from app import socks_proxy_manager
+    from app.models import SSHSession, db
+    owner, sid = user_socket(app, 'socks_persistent')
+    other, _ = user_socket(app, 'socks_persistent_other')
+    with app.app_context():
+        proxy, error = socks_proxy_manager.add_socks_proxy(owner, 'Proxy', 'proxy.example', 1080)
+        assert error is None
+
+        def session_row(session_id, user_id, persistent, display_name=None):
+            db.session.add(SSHSession(
+                session_id=session_id, user_id=user_id, host='target.example', port=22,
+                username='ops', connected=False, is_persistent=persistent,
+                tmux_session_name='webssh_' + session_id.replace('-', '_'),
+                display_name=display_name, socks_proxy_id=proxy['id'], via_socks=True,
+            ))
+
+        session_row('plain-session', owner, False)
+        session_row('foreign-session', other, True)
+        session_row('tmux-session', owner, True, display_name='Build box')
+        db.session.commit()
+
+    denied, emitted = call(app, monkeypatch, events.handle_delete_socks_proxy, sid,
+                           {'socks_proxy_id': proxy['id']})
+    assert denied == {
+        'success': False,
+        'error': 'SOCKS proxy is used by 1 persistent session',
+        'code': 'in_use',
+        'usages': ['Build box'],
+    }
+    assert emitted == [('error', denied)]
+    with app.app_context():
+        assert socks_proxy_manager.get_socks_proxy(owner, proxy['id']) is not None
+        SSHSession.query.filter_by(session_id='tmux-session').delete()
+        db.session.commit()
+
+    deleted, _ = call(app, monkeypatch, events.handle_delete_socks_proxy, sid,
+                      {'socks_proxy_id': proxy['id']})
+    assert deleted == {'success': True, 'socks_proxy_id': proxy['id']}
+
+
+def test_socks_list_is_not_limited_by_mutation_budget(app, monkeypatch):
+    _, sid = user_socket(app, 'socks_list_budget')
+    monkeypatch.setattr(events, '_connection_mutation_rate_limit',
+                        lambda user: pytest.fail('listing consumed the mutation budget'))
+    result, emitted = call(app, monkeypatch, events.handle_list_socks_proxies, sid)
+    assert result is None
+    assert emitted == [('socks_proxies_list', {'socks_proxies': []})]
+
+
 @pytest.mark.parametrize('payload', [{}, {'port': True}, {'remote_dns': 'false'}])
 def test_socks_crud_invalid_payload_is_safe(app, monkeypatch, payload):
     _, sid = user_socket(app, 'socks_invalid')

@@ -428,11 +428,14 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 remote_dns_allowlist=config.SOCKS_REMOTE_DNS_ALLOWLIST,
             )
             host, port = destination.hostname, destination.port
-            proxy_target = resolve_allowed_target(
-                socks_proxy.host, socks_proxy.port,
-                allow_internal=not config.BLOCK_INTERNAL_SSH,
-                allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
-            )
+            try:
+                proxy_target = resolve_allowed_target(
+                    socks_proxy.host, socks_proxy.port,
+                    allow_internal=not config.BLOCK_INTERNAL_SSH,
+                    allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
+                )
+            except ValueError as error:
+                raise ValueError(f'SOCKS5 proxy: {error}') from error
             audit_internal_allowlist_use(proxy_target, 'socks_proxy')
             try:
                 validated_socket = open_validated_socket(proxy_target, config.SSH_CONNECT_TIMEOUT)

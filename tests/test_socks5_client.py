@@ -204,6 +204,24 @@ def test_reply_errors_have_stable_safe_codes_and_close_socket(reply, code, messa
     assert str(error) == message
 
 
+@pytest.mark.parametrize('reply_header,code', [
+    (b'\x05\x02\x00\x01', 'socks_not_allowed'),
+    (b'\x05\x05\x00\x00', 'socks_connection_refused'),
+    (b'\x05\x04\x00\x03', 'socks_host_unreachable'),
+    (b'\x05\x09\x00\x01', 'socks_protocol_error'),
+    (b'\x05\x02\x01\x01', 'socks_protocol_error'),
+])
+def test_failure_reply_reports_reason_without_bound_address(reply_header, code):
+    def script(connection):
+        _exchange([
+            (b'\x05\x01\x00', b'\x05\x00'),
+            (_IPV4_REQUEST, reply_header),
+        ])(connection)
+        _expect_closed(connection)
+
+    _assert_failure(script, code)
+
+
 @pytest.mark.parametrize('credentials,greeting,response,code', [
     ({}, b'\x05\x01\x00', b'\x05\xff', 'socks_auth_required'),
     ({'username': 'user', 'password': 'secret'}, b'\x05\x01\x02', b'\x05\xff', 'socks_auth_rejected'),
