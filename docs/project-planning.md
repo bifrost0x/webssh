@@ -144,6 +144,13 @@ holds the 17 PRs merged since v3.0.0, issues #327 and #334 and release record
 [#338](https://github.com/bifrost0x/webssh/issues/338). The manifest records this in
 `native_milestone_followups`; earlier snapshots remain unchanged.
 
+Published on **2026-11-14**: [v3.1.0](https://github.com/bifrost0x/webssh/releases/tag/v3.1.0) adds 18 first-included PRs and
+two implementation-linked issues (#327, #334). The manifest now contains
+fifteen releases, 228 merged PR mappings and 31 implementation-linked issues.
+[Tag CI and native image publication](https://github.com/bifrost0x/webssh/actions/runs/43615783301) passed; the release notes record
+immutable image identity and SBOM/provenance verification. Release record #338
+and milestone 15 are closed.
+
 For historical backfill:
 
 1. Read all existing native milestones before creating anything; reuse matching versions

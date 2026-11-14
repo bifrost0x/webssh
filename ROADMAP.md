@@ -4,10 +4,9 @@ WebSSH is a self-hosted SSH and file workspace. This roadmap explains the direct
 the current release focus, and the evidence behind completed work. It is not a release-date
 promise or a replacement for issues, pull requests, and release notes.
 
-Release preparation updated: **2026-11-14**. Version **3.1.0** is selected from
-`origin/main`; the latest published release remains
-[v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) until tag and image
-publication are verified. Check linked GitHub items for newer status.
+Release status updated: **2026-11-14**, [v3.1.0](https://github.com/bifrost0x/webssh/releases/tag/v3.1.0) at
+[`4eac73c`](https://github.com/bifrost0x/webssh/commit/4eac73cbc319206bce7887e8dba0643a8b0c7ad5).
+Check linked GitHub items for newer status.
 
 ## Product direction
 
@@ -19,20 +18,20 @@ publication are verified. Check linked GitHub items for newer status.
 These themes summarize the existing product and published release history; they do not
 add new feature commitments.
 
-## Now: prepare v3.1.0
+## Now: WebSSH 3.1 published
 
-The [3.1.0 candidate notes](docs/releases/v3.1.0.md) cover per-host SOCKS5 proxy
+The [3.1.0 release notes](docs/releases/v3.1.0.md) cover per-host SOCKS5 proxy
 routes, automation through saved jump hosts, browser login management,
 workspace presets, a task-first overview, the in-app version display, a stricter
 script policy, restore hardening and dependency updates. The scope comes from
-changes merged since v3.0.0 and is tracked in the
-[v3.1.0 milestone](https://github.com/bifrost0x/webssh/milestone/15); it adds no
-further feature commitment.
+changes merged since v3.0.0 and is recorded in the closed
+[v3.1.0 milestone](https://github.com/bifrost0x/webssh/milestone/15).
 
-Publication requires the exact final candidate's CI, native image scans and
-versioned AMD64/ARM64 image, SBOM and provenance verification, recorded in
-[#338](https://github.com/bifrost0x/webssh/issues/338). Data used by 3.1 must not
-be opened with 3.0.0; roll back by restoring the pre-upgrade volumes.
+[Tag CI and native image publication](https://github.com/bifrost0x/webssh/actions/runs/43615783301) passed on `4eac73cbc319206bce7887e8dba0643a8b0c7ad5`.
+Linux AMD64 and ARM64 images retain SPDX SBOM and SLSA provenance; the immutable
+digest is in the release notes and [#338](https://github.com/bifrost0x/webssh/issues/338).
+Data used by 3.1 must not be opened with 3.0.0; roll back by restoring the
+pre-upgrade volumes. Automated gates do not certify every deployment.
 
 ## Published: WebSSH 3.0
 
@@ -85,6 +84,7 @@ deployment supported. Do not promote an idea into a promised release by listing 
 | [v2.6.0](https://github.com/bifrost0x/webssh/releases/tag/v2.6.0) | Redesigned windows/workspace, trusted hosts, reviewable server/file actions, opt-in chmod, local fonts and startup improvements |
 | [v2.7.0](https://github.com/bifrost0x/webssh/releases/tag/v2.7.0) | SSH PAM MFA, explicit tmux folder sync, file/command UX, theme-aware branding, storage hardening and Apache 2.0 |
 | [v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) | Terminal-centered workspaces, status-first overview, discovery, automation, saved credentials and a per-account tour |
+| [v3.1.0](https://github.com/bifrost0x/webssh/releases/tag/v3.1.0) | SOCKS5 proxy routes, automation through jump hosts, browser login management, workspace presets and script-policy/restore hardening |
 
 ## How this is maintained
 
@@ -101,7 +101,7 @@ The 2026-10-23 v2.6.0 update adds 24 PRs and three implementation-linked issues,
 closes release record #289 and milestone 12, and tracks current deployment acceptance in #288.
 On 2026-11-14 the missing v2.7.0 and v3.0.0 milestones were created from the
 manifest, assigned their first-included PRs and issues, and closed; the open
-v3.1.0 milestone holds the work merged since v3.0.0.
+v3.1.0 milestone held the work merged since v3.0.0 and closed with the release.
 
 The historical mapping was reconstructed on 2026-10-03. It does not imply that these
 milestones or this roadmap existed at the time. Actual GitHub milestone creation and
