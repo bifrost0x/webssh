@@ -317,7 +317,15 @@
   },
   "net-050": {
     "name": "Ping flood",
-    "description": "Ping de inundación (pruebas)"
+    "description": "Envía tráfico ping continuo hasta interrumpirlo. Puede saturar redes y destinos; puede requerir privilegios elevados."
+  },
+  "net-051": {
+    "name": "Ping a un host (Windows)",
+    "description": "Enviar cuatro solicitudes ICMP con ping de Windows; sustituir hostname por el destino previsto."
+  },
+  "net-052": {
+    "name": "Conexiones y puertos en escucha (Windows)",
+    "description": "Muestra conexiones y puertos TCP/UDP en escucha con direcciones numéricas e identificadores de proceso mediante netstat nativo de Windows."
   },
   "file-001": {
     "name": "Listar archivos",

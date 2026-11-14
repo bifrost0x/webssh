@@ -317,7 +317,15 @@
   },
   "net-050": {
     "name": "Ping-Flood",
-    "description": "Ping-Flood (zu Testzwecken)"
+    "description": "Sendet bis zum Abbruch kontinuierlich Flood-Ping-Verkehr. Kann Netzwerke und Ziele überlasten; erhöhte Rechte können erforderlich sein."
+  },
+  "net-051": {
+    "name": "Host anpingen (Windows)",
+    "description": "Vier ICMP-Echo-Anfragen mit Windows-Ping senden; hostname durch das gewünschte Ziel ersetzen."
+  },
+  "net-052": {
+    "name": "Verbindungen und lauschende Ports (Windows)",
+    "description": "Zeigt Verbindungen und lauschende TCP-/UDP-Ports mit numerischen Adressen und Prozess-IDs über das native Windows-netstat."
   },
   "file-001": {
     "name": "Dateien auflisten",

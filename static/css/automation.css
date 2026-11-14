@@ -516,7 +516,7 @@ body[data-theme="paper"] [data-native-automation] { color-scheme: light; }
 /* Run history: one compact card per run, colored by outcome, details on demand. */
 .automation-run-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 #runHistory { display: grid; gap: 10px; }
-.automation-run { --run-tone: var(--ws2-text-secondary); padding: 0; border: 1px solid var(--ws2-border); border-left: 3px solid var(--run-tone); border-radius: 8px; background: var(--ws2-panel, var(--ws2-surface)); overflow: hidden; }
+.automation-run { --run-tone: var(--ws2-text-secondary); padding: 0; border: 1px solid var(--ws2-border);  border-radius: 8px; background: var(--ws2-panel, var(--ws2-surface)); overflow: hidden; }
 .automation-run:first-child { padding-top: 0; }
 .automation-run[data-state="succeeded"] { --run-tone: var(--success-color); }
 .automation-run:is([data-state="failed"]) { --run-tone: var(--error-color); }
@@ -542,7 +542,7 @@ body[data-theme="paper"] [data-native-automation] { color-scheme: light; }
 .automation-run[open] > .automation-run-summary { border-bottom: 1px solid var(--ws2-border); }
 .automation-run > :not(summary) { margin-inline: 16px; }
 .automation-run > .btn { margin-top: 12px; }
-.automation-run > .automation-run-target { margin-top: 12px; padding: 4px 14px 0; border: 1px solid var(--ws2-border); border-radius: 6px; }
+.automation-run > .automation-run-target { margin-top: 12px; padding: 4px 0 0; border: 0; border-top: 1px solid var(--ws2-border); border-radius: 0; }
 .automation-run > .automation-run-target:last-child { margin-bottom: 16px; }
 .automation-run-target[data-state="failed"] { border-color: color-mix(in srgb, var(--error-color) 40%, var(--ws2-border)); }
 .automation-run-target[data-state="unknown"] { border-color: color-mix(in srgb, var(--warning-color) 40%, var(--ws2-border)); }
@@ -578,3 +578,30 @@ body[data-theme="paper"] [data-native-automation] { color-scheme: light; }
 .automation-compare-filter { margin: 10px 0 0; font-size: 13px; }
 .automation-compare-filter[hidden] { display: none; }
 .automation-run-compare[data-filter-active="true"][data-only-differing="true"] .automation-compare-step[data-uniform="true"] { display: none; }
+
+.automation-source-controls input[type="search"] { width: 100%; min-width: 0; margin-bottom: 8px; }
+
+
+
+/* Results lead; storage and output guidance remain available on demand. */
+#auto-runs .automation-history-tools { margin-block: 16px; gap: 12px; }
+.automation-results-help { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--ws2-border); color: var(--ws2-text-secondary); }
+.automation-results-help summary { width: fit-content; cursor: pointer; font-size: 13px; }
+.automation-results-help .automation-hint { max-width: 75ch; line-height: 1.6; }
+.automation-results-help summary:focus-visible, .automation-run-summary:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 3px; }
+.automation-results-empty { padding: 40px 16px; text-align: center; }
+.automation-results-empty > .material-icons { font-size: 32px; color: var(--ws2-text-secondary); }
+.automation-results-empty h3 { margin: 12px 0 8px; }
+.automation-results-empty .automation-hint { margin: 0 auto 20px; max-width: 52ch; }
+.automation-run > .automation-run-actions { padding-top: 12px; }
+.automation-run-summary time, .automation-run-metrics { font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+ #auto-runs > .automation-section-heading { align-items: flex-start; gap: 12px; }
+ #auto-runs > .automation-section-heading .automation-run-actions { justify-content: flex-start; }
+ .automation-run > summary.automation-run-summary { gap: 8px; padding: 12px; grid-template-columns: 22px minmax(0,1fr) 32px; }
+ .automation-run-status { grid-column: 2; grid-row: 2; justify-self: start; }
+ .automation-run-delete { grid-column: 3; grid-row: 1; }
+ .automation-run-hosts { grid-column: 2 / 4; grid-row: 3; }
+ .automation-run-summary time { grid-column: 2 / 4; grid-row: 4; font-size: 12px; }
+ .automation-run-host { white-space: normal; overflow-wrap: anywhere; }
+}

@@ -301,3 +301,12 @@
     .webssh-ui #keyManagementModal .key-item-actions .btn { min-height: 44px; }
 }
 .command-template-hint { color: var(--ws2-text-secondary); font-size: 13px; line-height: 1.5; margin-block: 8px; overflow-wrap: anywhere; }
+
+/* Keep the return action reachable while reading long command templates. */
+.webssh-ui .command-impact-label { display: block; color: var(--ws2-text-secondary); font-size: 13px; line-height: 1.5; }
+@media (max-width: 1120px) {
+    .webssh-ui #commandWorkspaceModal .command-library-details > .management-inspector-heading { position: sticky; top: 0; z-index: 1; background: var(--ws2-surface, var(--bg-primary)); padding-block: 8px; }
+    .webssh-ui #commandWorkspaceModal .command-library-details .management-inspector-heading > h3 { flex: 1 1 auto; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+    .webssh-ui #commandWorkspaceModal .command-library-details .inspector-return { display: inline-flex; flex: 0 0 auto; width: auto; min-inline-size: max-content; min-height: 44px; white-space: nowrap; text-align: start; max-width: none; }
+    .webssh-ui #commandWorkspaceModal .command-library-details .inspector-return-label { flex: 0 0 auto; white-space: nowrap; }
+}

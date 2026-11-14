@@ -69,9 +69,9 @@ test('system command details open a personal copy without running a session comm
     const details = page.locator('#commandLibraryDetails');
     await expect(details).toBeVisible();
     expect((await details.boundingBox()).width).toBeCloseTo(420, 0);
-    await expect(details.locator('.command-source-label')).toHaveText('System · read-only');
-    await expect(details.locator('.command-detail-field pre').first()).toHaveText(command.command);
-    await expect(details.locator('.command-detail-field pre').nth(2)).toHaveText('df -h');
+    await expect(details.locator('.command-source-label')).toHaveText('System · fixed template');
+    await expect(details.locator('.command-detail-field pre').first()).toHaveText('df -h');
+    await expect(details.locator('.command-detail-field pre').nth(2)).toHaveText('-h');
     await expect(details.locator('input, textarea, [contenteditable="true"]')).toHaveCount(0);
     await expect(details.locator('.command-execution-hint')).toContainText('Run commands from the command tool in a session.');
     await expect(details.getByRole('button', {name: 'Edit', exact: true})).toHaveCount(0);
@@ -188,4 +188,106 @@ test('command editor Escape keeps unsaved text unless discard is confirmed', asy
     await expect(confirmation).toBeVisible();
     await confirmation.locator('.btn-danger').click();
     await expect(page.locator('#commandFormModal')).not.toBeVisible();
+});
+
+
+test('mobile catalog separates inspection defaults from advanced effects and returns to its filtered list', async ({page}) => {
+    await page.setViewportSize({width: 360, height: 740});
+    await login(page);
+    await page.evaluate(() => window.CommandLibrary.openLibrary());
+    await expect(page.locator('#commandsList .command-row').first()).toBeVisible();
+    expect(await page.evaluate(() => window.CommandLibrary.filteredCommands.some(item => item.id === 'file-006'))).toBe(false);
+    await page.locator('#commandSearchInput').fill('rm -rf');
+    const row = page.locator('#commandsList .command-row').filter({has: page.locator('[data-cmd-id="file-006"]')});
+    await expect(row).toBeVisible();
+    await row.locator('.command-inspect-button').click();
+    const details = page.locator('#commandLibraryDetails');
+    await expect(details.locator('.command-impact-label')).toHaveText('Deletes or overwrites data');
+    await expect(details.locator('.command-source-label')).toHaveText('System · fixed template');
+    await details.evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await expect(details.getByRole('button', {name:'Back to list', exact:true})).toBeInViewport();
+    await details.getByRole('button', {name:'Back to list', exact:true}).click();
+    await expect(page.locator('#commandSearchInput')).toHaveValue('rm -rf');
+    await expect(row.locator('.command-inspect-button')).toBeFocused();
+    await page.locator('#commandSearchInput').fill('ping');
+    await page.locator('#commandLibraryPanel .os-filter-btn[data-os="windows"]').click();
+    expect(await page.evaluate(() => window.CommandLibrary.filteredCommands.filter(item => item.command === 'ping').map(item => item.parameters))).toEqual(['-n 4 hostname']);
+    expect(await page.evaluate(() => Object.keys(SessionManager.sessions).length)).toBe(0);
+});
+
+for (const width of [360, 390]) for (const language of ['en', 'de']) {
+    test(`mobile inspector return label fits at ${width}px in ${language}`, async ({page}) => {
+        await page.setViewportSize({width, height: 740});
+        await login(page);
+        await page.evaluate(async language => {
+            window.i18n.setLanguage(language);
+            window.CommandLibrary.openLibrary();
+            await window.CommandLibrary.applyLanguage();
+        }, language);
+        await page.locator('#commandSearchInput').fill('apt upgrade');
+        await page.locator('[data-cmd-id="sys-002"].command-inspect-button').click();
+        const back = page.locator('#commandLibraryDetails .inspector-return');
+        await expect(back).toBeInViewport();
+        const dimensions = await back.evaluate(button => {
+            const label = button.querySelector('.inspector-return-label');
+            const range = document.createRange();
+            range.selectNodeContents(label);
+            const style = getComputedStyle(label);
+            return {
+                buttonWidth: button.getBoundingClientRect().width,
+                panelScrollLeft: button.closest('aside').scrollLeft,
+                panelClientWidth: button.closest('aside').clientWidth,
+                panelScrollWidth: button.closest('aside').scrollWidth,
+                headingWidth: button.parentElement.getBoundingClientRect().width,
+                titleWidth: button.parentElement.querySelector('h3').clientWidth,
+                titleScrollWidth: button.parentElement.querySelector('h3').scrollWidth,
+                labelWidth: label.clientWidth,
+                labelScrollWidth: label.scrollWidth,
+                lines: range.getClientRects().length,
+                height: label.getBoundingClientRect().height,
+                lineHeight: parseFloat(style.lineHeight),
+            };
+        });
+        expect(dimensions.panelScrollLeft).toBe(0);
+        expect(dimensions.panelScrollWidth).toBeLessThanOrEqual(dimensions.panelClientWidth + 1);
+        expect(dimensions.headingWidth).toBeLessThanOrEqual(dimensions.panelClientWidth + 1);
+        expect(dimensions.titleScrollWidth).toBeLessThanOrEqual(dimensions.titleWidth + 1);
+        expect(dimensions.lines).toBe(1);
+        expect(dimensions.labelWidth).toBeGreaterThan(50);
+        expect(dimensions.labelScrollWidth).toBeLessThanOrEqual(dimensions.labelWidth + 1);
+        expect(dimensions.height).toBeLessThanOrEqual(dimensions.lineHeight + 1);
+        expect(dimensions.buttonWidth).toBeGreaterThan(dimensions.labelWidth + 28);
+        await page.screenshot({path:test.info().outputPath(`return-label-${width}-${language}.png`), animations:'disabled'});
+        await back.click();
+        await expect(page.locator('#commandSearchInput')).toHaveValue('apt upgrade');
+    });
+}
+
+
+test('command inspector keeps the exact command and impact visible with keyboard accessible guidance', async ({page}) => {
+    await login(page);
+    await page.evaluate(() => window.CommandLibrary.openLibrary());
+    await expect(page.locator('.command-row').first()).toBeVisible();
+    await page.evaluate(() => {
+        window.socket.off('commands_list');
+        window.CommandLibrary.commands = [{id: 'refinement-fixture', name: 'Upgrade installed packages', command: 'sudo apt', parameters: 'upgrade', description: 'Upgrade installed packages using the configured package repositories.', os: ['linux'], isSystem: true, safety: {impact: 'changes-system', tool: 'apt', command: 'sudo apt', parameters: 'upgrade'}}];
+        window.CommandLibrary.selectCommand('refinement-fixture');
+    });
+    const details = page.locator('#commandLibraryDetails');
+    for (const width of [1440, 390]) {
+        await page.setViewportSize({width, height: 1000});
+        await expect(details.locator('.command-detail-field pre').first()).toBeInViewport();
+        await expect(details.locator('.command-impact-label')).toHaveText('Changes system or data');
+        await expect(details.locator('.command-impact-label')).toBeInViewport();
+        await expect(details.locator('.command-detail-guidance')).not.toHaveAttribute('open', '');
+        await page.screenshot({path: test.info().outputPath(`command-inspector-${width}.png`)});
+        const summary = details.locator('summary');
+        await summary.focus();
+        await page.keyboard.press('Enter');
+        await expect(details.locator('.command-detail-guidance')).toHaveAttribute('open', '');
+        await expect(details.locator('.command-template-hint').filter({hasText: 'not a safety guarantee'})).toBeVisible();
+        await page.screenshot({path: test.info().outputPath(`command-inspector-expanded-${width}.png`)});
+        await summary.click();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
 });

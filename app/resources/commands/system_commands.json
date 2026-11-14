@@ -9,7 +9,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "apt",
+      "command": "apt update",
+      "parameters": ""
+    }
   },
   {
     "id": "sys-002",
@@ -21,7 +27,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "apt",
+      "command": "apt upgrade",
+      "parameters": "-y"
+    }
   },
   {
     "id": "sys-003",
@@ -33,7 +45,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "apt",
+      "command": "apt install",
+      "parameters": "package-name"
+    }
   },
   {
     "id": "sys-004",
@@ -45,7 +63,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "apt",
+      "command": "apt remove",
+      "parameters": "package-name"
+    }
   },
   {
     "id": "sys-005",
@@ -57,7 +81,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "apt",
+      "command": "apt search",
+      "parameters": "keyword"
+    }
   },
   {
     "id": "sys-006",
@@ -70,7 +100,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "reboot",
+      "command": "reboot",
+      "parameters": ""
+    }
   },
   {
     "id": "sys-007",
@@ -83,7 +119,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "shutdown",
+      "command": "shutdown",
+      "parameters": "-h now"
+    }
   },
   {
     "id": "sys-008",
@@ -95,7 +137,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "systemctl",
+      "command": "systemctl list-units",
+      "parameters": "--type=service"
+    }
   },
   {
     "id": "sys-009",
@@ -107,7 +155,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "systemctl",
+      "command": "systemctl start",
+      "parameters": "service-name"
+    }
   },
   {
     "id": "sys-010",
@@ -119,7 +173,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "systemctl",
+      "command": "systemctl stop",
+      "parameters": "service-name"
+    }
   },
   {
     "id": "sys-011",
@@ -131,7 +191,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "systemctl",
+      "command": "systemctl restart",
+      "parameters": "service-name"
+    }
   },
   {
     "id": "sys-012",
@@ -143,7 +209,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "systemctl",
+      "command": "systemctl enable",
+      "parameters": "service-name"
+    }
   },
   {
     "id": "sys-013",
@@ -155,7 +227,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "systemctl",
+      "command": "systemctl disable",
+      "parameters": "service-name"
+    }
   },
   {
     "id": "sys-014",
@@ -167,7 +245,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "systemctl",
+      "command": "systemctl status",
+      "parameters": "service-name"
+    }
   },
   {
     "id": "sys-015",
@@ -179,7 +263,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "journalctl",
+      "command": "journalctl -u",
+      "parameters": "service-name -f"
+    }
   },
   {
     "id": "sys-016",
@@ -193,7 +283,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "df",
+      "command": "df",
+      "parameters": "-h"
+    }
   },
   {
     "id": "sys-017",
@@ -207,7 +303,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "du",
+      "command": "du",
+      "parameters": "-sh *"
+    }
   },
   {
     "id": "sys-018",
@@ -219,7 +321,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "free",
+      "command": "free",
+      "parameters": "-h"
+    }
   },
   {
     "id": "sys-019",
@@ -233,7 +341,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "top",
+      "command": "top",
+      "parameters": ""
+    }
   },
   {
     "id": "sys-020",
@@ -247,7 +361,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ps",
+      "command": "ps aux",
+      "parameters": ""
+    }
   },
   {
     "id": "sys-021",
@@ -261,7 +381,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "kill",
+      "command": "kill",
+      "parameters": "-9 PID"
+    }
   },
   {
     "id": "sys-022",
@@ -275,7 +401,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "pgrep",
+      "command": "pgrep",
+      "parameters": "process-name"
+    }
   },
   {
     "id": "sys-023",
@@ -289,7 +421,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "uptime",
+      "command": "uptime",
+      "parameters": ""
+    }
   },
   {
     "id": "sys-024",
@@ -303,7 +441,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "uname",
+      "command": "uname",
+      "parameters": "-r"
+    }
   },
   {
     "id": "sys-025",
@@ -317,7 +461,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "uname",
+      "command": "uname",
+      "parameters": "-a"
+    }
   },
   {
     "id": "sys-026",
@@ -329,7 +479,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "lscpu",
+      "command": "lscpu",
+      "parameters": ""
+    }
   },
   {
     "id": "sys-027",
@@ -341,7 +497,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "cat",
+      "command": "cat /proc/meminfo",
+      "parameters": ""
+    }
   },
   {
     "id": "sys-028",
@@ -353,7 +515,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "lsblk",
+      "command": "lsblk",
+      "parameters": ""
+    }
   },
   {
     "id": "sys-029",
@@ -365,7 +533,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "lspci",
+      "command": "lspci",
+      "parameters": ""
+    }
   },
   {
     "id": "sys-030",
@@ -377,7 +551,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "lsusb",
+      "command": "lsusb",
+      "parameters": ""
+    }
   },
   {
     "id": "net-001",
@@ -389,7 +569,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ip",
+      "command": "ip addr show",
+      "parameters": ""
+    }
   },
   {
     "id": "net-002",
@@ -403,7 +589,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ifconfig",
+      "command": "ifconfig",
+      "parameters": ""
+    }
   },
   {
     "id": "net-003",
@@ -412,10 +604,18 @@
     "parameters": "-c 4 hostname",
     "description": "Test connectivity",
     "os": [
-      "all"
+      "linux",
+      "macos",
+      "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "ping",
+      "command": "ping",
+      "parameters": "-c 4 hostname"
+    }
   },
   {
     "id": "net-004",
@@ -427,7 +627,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "traceroute",
+      "command": "traceroute",
+      "parameters": "hostname"
+    }
   },
   {
     "id": "net-005",
@@ -439,7 +645,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "nslookup",
+      "command": "nslookup",
+      "parameters": "hostname"
+    }
   },
   {
     "id": "net-006",
@@ -453,7 +665,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "dig",
+      "command": "dig",
+      "parameters": "hostname"
+    }
   },
   {
     "id": "net-007",
@@ -462,10 +680,16 @@
     "parameters": "-tuln",
     "description": "Show listening ports",
     "os": [
-      "all"
+      "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "netstat",
+      "command": "netstat",
+      "parameters": "-tuln"
+    }
   },
   {
     "id": "net-008",
@@ -477,7 +701,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ss",
+      "command": "ss",
+      "parameters": "-tuln"
+    }
   },
   {
     "id": "net-009",
@@ -491,7 +721,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "wget",
+      "command": "wget",
+      "parameters": "URL"
+    }
   },
   {
     "id": "net-010",
@@ -503,7 +739,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "curl",
+      "command": "curl",
+      "parameters": "-I URL"
+    }
   },
   {
     "id": "net-011",
@@ -517,7 +759,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "nc",
+      "command": "nc",
+      "parameters": "-zv hostname port"
+    }
   },
   {
     "id": "net-012",
@@ -529,7 +777,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ufw",
+      "command": "ufw status",
+      "parameters": ""
+    }
   },
   {
     "id": "net-013",
@@ -541,7 +795,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ufw",
+      "command": "ufw enable",
+      "parameters": ""
+    }
   },
   {
     "id": "net-014",
@@ -553,7 +813,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ufw",
+      "command": "ufw allow",
+      "parameters": "port"
+    }
   },
   {
     "id": "net-015",
@@ -565,7 +831,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ufw",
+      "command": "ufw deny",
+      "parameters": "port"
+    }
   },
   {
     "id": "net-016",
@@ -577,7 +849,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "iptables",
+      "command": "iptables",
+      "parameters": "-L -n -v"
+    }
   },
   {
     "id": "net-017",
@@ -589,7 +867,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ip",
+      "command": "ip route show",
+      "parameters": ""
+    }
   },
   {
     "id": "net-018",
@@ -603,7 +887,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "arp",
+      "command": "arp",
+      "parameters": "-a"
+    }
   },
   {
     "id": "net-019",
@@ -617,7 +907,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "nmap",
+      "command": "nmap",
+      "parameters": "-sn 192.168.1.0/24"
+    }
   },
   {
     "id": "net-020",
@@ -631,7 +927,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "nmap",
+      "command": "nmap",
+      "parameters": "-p- hostname"
+    }
   },
   {
     "id": "net-021",
@@ -643,7 +945,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ip",
+      "command": "ip link show",
+      "parameters": ""
+    }
   },
   {
     "id": "net-022",
@@ -655,7 +963,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ip",
+      "command": "ip addr add",
+      "parameters": "192.168.1.10/24 dev eth0"
+    }
   },
   {
     "id": "net-023",
@@ -667,7 +981,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ip",
+      "command": "ip link set",
+      "parameters": "eth0 up"
+    }
   },
   {
     "id": "net-024",
@@ -679,7 +999,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ip",
+      "command": "ip link set",
+      "parameters": "eth0 down"
+    }
   },
   {
     "id": "net-025",
@@ -691,7 +1017,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ip",
+      "command": "ip link set",
+      "parameters": "eth0 mtu 1500"
+    }
   },
   {
     "id": "net-026",
@@ -703,7 +1035,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ip",
+      "command": "ip addr flush",
+      "parameters": "dev eth0"
+    }
   },
   {
     "id": "net-027",
@@ -715,7 +1053,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ip",
+      "command": "ip route add",
+      "parameters": "10.0.0.0/8 via 192.168.1.1"
+    }
   },
   {
     "id": "net-028",
@@ -727,7 +1071,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ip",
+      "command": "ip route del",
+      "parameters": "10.0.0.0/8"
+    }
   },
   {
     "id": "net-029",
@@ -741,7 +1091,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "tcpdump",
+      "command": "tcpdump",
+      "parameters": "-i eth0 -n"
+    }
   },
   {
     "id": "net-030",
@@ -755,7 +1111,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "lsof",
+      "command": "lsof",
+      "parameters": "-i"
+    }
   },
   {
     "id": "net-031",
@@ -769,7 +1131,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "whois",
+      "command": "whois",
+      "parameters": "domain.com"
+    }
   },
   {
     "id": "net-032",
@@ -783,7 +1151,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "iftop",
+      "command": "iftop",
+      "parameters": ""
+    }
   },
   {
     "id": "net-033",
@@ -797,7 +1171,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "speedtest-cli",
+      "command": "speedtest-cli",
+      "parameters": ""
+    }
   },
   {
     "id": "net-034",
@@ -811,7 +1191,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "cat",
+      "command": "cat /etc/hosts",
+      "parameters": ""
+    }
   },
   {
     "id": "net-035",
@@ -825,7 +1211,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "cat",
+      "command": "cat /etc/resolv.conf",
+      "parameters": ""
+    }
   },
   {
     "id": "net-036",
@@ -837,7 +1229,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ip",
+      "command": "ip link show",
+      "parameters": "eth0 | grep link/ether"
+    }
   },
   {
     "id": "net-037",
@@ -849,7 +1247,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ip",
+      "command": "ip link set",
+      "parameters": "eth0 address 00:11:22:33:44:55"
+    }
   },
   {
     "id": "net-038",
@@ -861,7 +1265,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "ssh",
+      "command": "ssh",
+      "parameters": "-L 8080:localhost:80 user@host"
+    }
   },
   {
     "id": "net-039",
@@ -873,7 +1283,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "ssh",
+      "command": "ssh",
+      "parameters": "-R 8080:localhost:80 user@host"
+    }
   },
   {
     "id": "net-040",
@@ -885,7 +1301,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "scp",
+      "command": "scp",
+      "parameters": "file user@host:/path"
+    }
   },
   {
     "id": "net-041",
@@ -897,7 +1319,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "scp",
+      "command": "scp",
+      "parameters": "user@host:/path/file ."
+    }
   },
   {
     "id": "net-042",
@@ -911,7 +1339,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "rsync",
+      "command": "rsync",
+      "parameters": "-avz -e ssh source/ user@host:/dest/"
+    }
   },
   {
     "id": "net-043",
@@ -923,7 +1357,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "python3",
+      "command": "python3 -m http.server",
+      "parameters": "8000"
+    }
   },
   {
     "id": "net-044",
@@ -937,7 +1377,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "nc",
+      "command": "nc",
+      "parameters": "-l -p 1234"
+    }
   },
   {
     "id": "net-045",
@@ -951,7 +1397,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "nc",
+      "command": "nc",
+      "parameters": "hostname 1234 < file"
+    }
   },
   {
     "id": "net-046",
@@ -965,7 +1417,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "telnet",
+      "command": "telnet",
+      "parameters": "hostname port"
+    }
   },
   {
     "id": "net-047",
@@ -977,7 +1435,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ip",
+      "command": "ip route",
+      "parameters": "| grep default"
+    }
   },
   {
     "id": "net-048",
@@ -989,7 +1453,13 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "systemd-resolve",
+      "command": "systemd-resolve --flush-caches",
+      "parameters": ""
+    }
   },
   {
     "id": "net-049",
@@ -1001,19 +1471,69 @@
       "linux"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ip",
+      "command": "ip -s link",
+      "parameters": ""
+    }
   },
   {
     "id": "net-050",
     "name": "Ping Flood",
     "command": "ping",
     "parameters": "-f hostname",
-    "description": "Flood ping (testing)",
+    "description": "Send continuous flood-ping traffic until interrupted. Can overload networks and targets; elevated privileges may be required.",
     "os": [
-      "all"
+      "linux",
+      "macos",
+      "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "ping",
+      "command": "ping",
+      "parameters": "-f hostname"
+    }
+  },
+  {
+    "id": "net-051",
+    "name": "Ping Host (Windows)",
+    "command": "ping",
+    "parameters": "-n 4 hostname",
+    "description": "Send four ICMP echo requests using Windows ping; replace hostname with the intended target.",
+    "os": [
+      "windows"
+    ],
+    "category": "network",
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "ping",
+      "command": "ping",
+      "parameters": "-n 4 hostname"
+    }
+  },
+  {
+    "id": "net-052",
+    "name": "Connections and Listening Ports (Windows)",
+    "command": "netstat",
+    "parameters": "-ano",
+    "description": "Show connections and listening TCP/UDP ports with numeric addresses and owning process IDs using native Windows netstat.",
+    "os": [
+      "windows"
+    ],
+    "category": "network",
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "netstat",
+      "command": "netstat",
+      "parameters": "-ano"
+    }
   },
   {
     "id": "file-001",
@@ -1027,7 +1547,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ls",
+      "command": "ls",
+      "parameters": "-lah"
+    }
   },
   {
     "id": "file-002",
@@ -1041,7 +1567,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "cd",
+      "command": "cd",
+      "parameters": "/path"
+    }
   },
   {
     "id": "file-003",
@@ -1055,7 +1587,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "pwd",
+      "command": "pwd",
+      "parameters": ""
+    }
   },
   {
     "id": "file-004",
@@ -1069,7 +1607,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "mkdir",
+      "command": "mkdir",
+      "parameters": "-p path/to/dir"
+    }
   },
   {
     "id": "file-005",
@@ -1083,7 +1627,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "rmdir",
+      "command": "rmdir",
+      "parameters": "directory"
+    }
   },
   {
     "id": "file-006",
@@ -1097,7 +1647,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "rm",
+      "command": "rm",
+      "parameters": "-rf path"
+    }
   },
   {
     "id": "file-007",
@@ -1111,7 +1667,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "cp",
+      "command": "cp",
+      "parameters": "-r source dest"
+    }
   },
   {
     "id": "file-008",
@@ -1125,7 +1687,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "mv",
+      "command": "mv",
+      "parameters": "source dest"
+    }
   },
   {
     "id": "file-009",
@@ -1139,7 +1707,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "cat",
+      "command": "cat",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-010",
@@ -1153,7 +1727,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "less",
+      "command": "less",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-011",
@@ -1167,7 +1747,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "head",
+      "command": "head",
+      "parameters": "-n 20 filename"
+    }
   },
   {
     "id": "file-012",
@@ -1181,7 +1767,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "tail",
+      "command": "tail",
+      "parameters": "-n 20 filename"
+    }
   },
   {
     "id": "file-013",
@@ -1195,7 +1787,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "tail",
+      "command": "tail",
+      "parameters": "-f filename"
+    }
   },
   {
     "id": "file-014",
@@ -1209,7 +1807,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "grep",
+      "command": "grep",
+      "parameters": "-r \"pattern\" ."
+    }
   },
   {
     "id": "file-015",
@@ -1223,7 +1827,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "find",
+      "command": "find",
+      "parameters": ". -name \"*.txt\""
+    }
   },
   {
     "id": "file-016",
@@ -1237,7 +1847,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "find",
+      "command": "find",
+      "parameters": ". -size +100M"
+    }
   },
   {
     "id": "file-017",
@@ -1251,7 +1867,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "find",
+      "command": "find",
+      "parameters": ". -mtime -7"
+    }
   },
   {
     "id": "file-018",
@@ -1265,7 +1887,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "chmod",
+      "command": "chmod",
+      "parameters": "755 filename"
+    }
   },
   {
     "id": "file-019",
@@ -1279,7 +1907,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "chown",
+      "command": "chown",
+      "parameters": "user:group file"
+    }
   },
   {
     "id": "file-020",
@@ -1293,7 +1927,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "file",
+      "command": "file",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-021",
@@ -1307,7 +1947,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "wc",
+      "command": "wc",
+      "parameters": "-l filename"
+    }
   },
   {
     "id": "file-022",
@@ -1321,7 +1967,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "touch",
+      "command": "touch",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-023",
@@ -1335,7 +1987,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "diff",
+      "command": "diff",
+      "parameters": "file1 file2"
+    }
   },
   {
     "id": "file-024",
@@ -1349,7 +2007,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ln",
+      "command": "ln",
+      "parameters": "-s /path/to/file link"
+    }
   },
   {
     "id": "file-025",
@@ -1363,7 +2027,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "tar",
+      "command": "tar",
+      "parameters": "-czf archive.tar.gz dir/"
+    }
   },
   {
     "id": "file-026",
@@ -1377,7 +2047,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "tar",
+      "command": "tar",
+      "parameters": "-xzf archive.tar.gz"
+    }
   },
   {
     "id": "file-027",
@@ -1391,7 +2067,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "zip",
+      "command": "zip",
+      "parameters": "-r archive.zip dir/"
+    }
   },
   {
     "id": "file-028",
@@ -1405,7 +2087,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "unzip",
+      "command": "unzip",
+      "parameters": "archive.zip"
+    }
   },
   {
     "id": "file-029",
@@ -1419,7 +2107,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "rsync",
+      "command": "rsync",
+      "parameters": "-avz source/ dest/"
+    }
   },
   {
     "id": "file-030",
@@ -1433,7 +2127,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "df",
+      "command": "df",
+      "parameters": "-h ."
+    }
   },
   {
     "id": "file-031",
@@ -1447,7 +2147,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "du",
+      "command": "du",
+      "parameters": "-sh"
+    }
   },
   {
     "id": "file-032",
@@ -1461,7 +2167,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "du",
+      "command": "du",
+      "parameters": "-h | sort -rh | head -20"
+    }
   },
   {
     "id": "file-033",
@@ -1475,7 +2187,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "find",
+      "command": "find",
+      "parameters": ". -type f -empty"
+    }
   },
   {
     "id": "file-034",
@@ -1489,7 +2207,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "find",
+      "command": "find",
+      "parameters": ". -type d -empty"
+    }
   },
   {
     "id": "file-035",
@@ -1503,7 +2227,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "find",
+      "command": "find",
+      "parameters": ". -type f | wc -l"
+    }
   },
   {
     "id": "file-036",
@@ -1517,7 +2247,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "tree",
+      "command": "tree",
+      "parameters": "-L 2"
+    }
   },
   {
     "id": "file-037",
@@ -1531,7 +2267,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "stat",
+      "command": "stat",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-038",
@@ -1540,12 +2282,16 @@
     "parameters": "filename",
     "description": "Calculate MD5 hash",
     "os": [
-      "linux",
-      "macos",
-      "bsd"
+      "linux"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "md5sum",
+      "command": "md5sum",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-039",
@@ -1554,12 +2300,16 @@
     "parameters": "filename",
     "description": "Calculate SHA256 hash",
     "os": [
-      "linux",
-      "macos",
-      "bsd"
+      "linux"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "sha256sum",
+      "command": "sha256sum",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-040",
@@ -1568,12 +2318,16 @@
     "parameters": "-c checksums.txt",
     "description": "Verify file integrity",
     "os": [
-      "linux",
-      "macos",
-      "bsd"
+      "linux"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "md5sum",
+      "command": "md5sum",
+      "parameters": "-c checksums.txt"
+    }
   },
   {
     "id": "file-041",
@@ -1587,7 +2341,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "split",
+      "command": "split",
+      "parameters": "-b 100M file"
+    }
   },
   {
     "id": "file-042",
@@ -1601,7 +2361,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "cat",
+      "command": "cat",
+      "parameters": "file.part* > file"
+    }
   },
   {
     "id": "file-043",
@@ -1615,7 +2381,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "rename",
+      "command": "rename",
+      "parameters": "'s/\\.txt$/\\.md/' *.txt"
+    }
   },
   {
     "id": "file-044",
@@ -1629,7 +2401,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "iconv",
+      "command": "iconv",
+      "parameters": "-f ISO-8859-1 -t UTF-8 file"
+    }
   },
   {
     "id": "file-045",
@@ -1643,7 +2421,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "sort",
+      "command": "sort file | uniq",
+      "parameters": ""
+    }
   },
   {
     "id": "file-046",
@@ -1657,7 +2441,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "sort",
+      "command": "sort file | uniq -c",
+      "parameters": ""
+    }
   },
   {
     "id": "file-047",
@@ -1671,7 +2461,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "tac",
+      "command": "tac",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-048",
@@ -1685,7 +2481,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "truncate",
+      "command": "truncate",
+      "parameters": "-s 0 filename"
+    }
   },
   {
     "id": "file-049",
@@ -1699,7 +2501,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "watch",
+      "command": "watch",
+      "parameters": "-n 1 cat filename"
+    }
   },
   {
     "id": "file-050",
@@ -1713,7 +2521,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "hexdump",
+      "command": "hexdump",
+      "parameters": "-C filename"
+    }
   },
   {
     "id": "file-051",
@@ -1727,7 +2541,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "base64",
+      "command": "base64",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-052",
@@ -1741,7 +2561,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "base64",
+      "command": "base64",
+      "parameters": "-d filename"
+    }
   },
   {
     "id": "file-053",
@@ -1753,7 +2579,13 @@
       "linux"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "getfacl",
+      "command": "getfacl",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-054",
@@ -1765,7 +2597,13 @@
       "linux"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "setfacl",
+      "command": "setfacl",
+      "parameters": "-m u:user:rw filename"
+    }
   },
   {
     "id": "file-055",
@@ -1777,7 +2615,13 @@
       "linux"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "lsattr",
+      "command": "lsattr",
+      "parameters": "filename"
+    }
   },
   {
     "id": "file-056",
@@ -1789,7 +2633,13 @@
       "linux"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "chattr",
+      "command": "chattr",
+      "parameters": "+i filename"
+    }
   },
   {
     "id": "file-057",
@@ -1801,7 +2651,13 @@
       "linux"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "chattr",
+      "command": "chattr",
+      "parameters": "-i filename"
+    }
   },
   {
     "id": "file-058",
@@ -1815,7 +2671,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "find",
+      "command": "find",
+      "parameters": "/ -perm -4000"
+    }
   },
   {
     "id": "file-059",
@@ -1829,7 +2691,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "find",
+      "command": "find",
+      "parameters": "/ -perm -002"
+    }
   },
   {
     "id": "file-060",
@@ -1843,7 +2711,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "shred",
+      "command": "shred",
+      "parameters": "-u filename"
+    }
   },
   {
     "id": "docker-001",
@@ -1855,7 +2729,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "docker",
+      "command": "docker",
+      "parameters": "--version"
+    }
   },
   {
     "id": "docker-002",
@@ -1867,7 +2747,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "docker",
+      "command": "docker ps",
+      "parameters": "-a"
+    }
   },
   {
     "id": "docker-003",
@@ -1879,7 +2765,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "docker",
+      "command": "docker images",
+      "parameters": ""
+    }
   },
   {
     "id": "docker-004",
@@ -1891,7 +2783,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker pull",
+      "parameters": "image:tag"
+    }
   },
   {
     "id": "docker-005",
@@ -1903,7 +2801,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker run",
+      "parameters": "-d --name name image"
+    }
   },
   {
     "id": "docker-006",
@@ -1915,7 +2819,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker start",
+      "parameters": "container"
+    }
   },
   {
     "id": "docker-007",
@@ -1927,7 +2837,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker stop",
+      "parameters": "container"
+    }
   },
   {
     "id": "docker-008",
@@ -1939,7 +2855,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "docker",
+      "command": "docker rm",
+      "parameters": "container"
+    }
   },
   {
     "id": "docker-009",
@@ -1951,7 +2873,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "docker",
+      "command": "docker rmi",
+      "parameters": "image"
+    }
   },
   {
     "id": "docker-010",
@@ -1963,7 +2891,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker logs",
+      "parameters": "-f container"
+    }
   },
   {
     "id": "docker-011",
@@ -1975,7 +2909,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker exec",
+      "parameters": "-it container /bin/bash"
+    }
   },
   {
     "id": "docker-012",
@@ -1987,7 +2927,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "docker",
+      "command": "docker stats",
+      "parameters": ""
+    }
   },
   {
     "id": "docker-013",
@@ -1999,7 +2945,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "docker",
+      "command": "docker inspect",
+      "parameters": "container"
+    }
   },
   {
     "id": "docker-014",
@@ -2011,7 +2963,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "docker",
+      "command": "docker network ls",
+      "parameters": ""
+    }
   },
   {
     "id": "docker-015",
@@ -2023,7 +2981,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "docker",
+      "command": "docker volume ls",
+      "parameters": ""
+    }
   },
   {
     "id": "docker-016",
@@ -2035,7 +2999,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker-compose",
+      "command": "docker-compose up",
+      "parameters": "-d"
+    }
   },
   {
     "id": "docker-017",
@@ -2047,7 +3017,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker-compose",
+      "command": "docker-compose down",
+      "parameters": ""
+    }
   },
   {
     "id": "docker-018",
@@ -2059,7 +3035,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "docker",
+      "command": "docker container prune",
+      "parameters": "-f"
+    }
   },
   {
     "id": "docker-019",
@@ -2071,7 +3053,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "docker",
+      "command": "docker image prune",
+      "parameters": "-a"
+    }
   },
   {
     "id": "docker-020",
@@ -2083,7 +3071,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "docker",
+      "command": "docker system prune",
+      "parameters": "-a --volumes"
+    }
   },
   {
     "id": "docker-021",
@@ -2095,7 +3089,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker build",
+      "parameters": "-t myimage ."
+    }
   },
   {
     "id": "docker-022",
@@ -2107,7 +3107,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker tag",
+      "parameters": "image newtag"
+    }
   },
   {
     "id": "docker-023",
@@ -2119,7 +3125,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker push",
+      "parameters": "image:tag"
+    }
   },
   {
     "id": "docker-024",
@@ -2131,7 +3143,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker cp",
+      "parameters": "container:/path ./local"
+    }
   },
   {
     "id": "docker-025",
@@ -2143,7 +3161,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker cp",
+      "parameters": "./local container:/path"
+    }
   },
   {
     "id": "docker-026",
@@ -2155,7 +3179,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker export",
+      "parameters": "container > backup.tar"
+    }
   },
   {
     "id": "docker-027",
@@ -2167,7 +3197,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker import",
+      "parameters": "backup.tar"
+    }
   },
   {
     "id": "docker-028",
@@ -2179,7 +3215,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker save",
+      "parameters": "-o image.tar image"
+    }
   },
   {
     "id": "docker-029",
@@ -2191,7 +3233,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "docker",
+      "command": "docker load",
+      "parameters": "-i image.tar"
+    }
   },
   {
     "id": "docker-030",
@@ -2203,7 +3251,13 @@
       "all"
     ],
     "category": "docker",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "docker",
+      "command": "docker top",
+      "parameters": "container"
+    }
   },
   {
     "id": "git-001",
@@ -2215,7 +3269,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git clone",
+      "parameters": "repo-url"
+    }
   },
   {
     "id": "git-002",
@@ -2227,7 +3287,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "git",
+      "command": "git status",
+      "parameters": ""
+    }
   },
   {
     "id": "git-003",
@@ -2239,7 +3305,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git add",
+      "parameters": "."
+    }
   },
   {
     "id": "git-004",
@@ -2251,7 +3323,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git commit",
+      "parameters": "-m \"message\""
+    }
   },
   {
     "id": "git-005",
@@ -2263,7 +3341,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git push",
+      "parameters": "origin main"
+    }
   },
   {
     "id": "git-006",
@@ -2275,7 +3359,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git pull",
+      "parameters": ""
+    }
   },
   {
     "id": "git-007",
@@ -2287,7 +3377,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "git",
+      "command": "git branch",
+      "parameters": "-a"
+    }
   },
   {
     "id": "git-008",
@@ -2299,7 +3395,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git checkout",
+      "parameters": "branch"
+    }
   },
   {
     "id": "git-009",
@@ -2311,7 +3413,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git checkout",
+      "parameters": "-b newbranch"
+    }
   },
   {
     "id": "git-010",
@@ -2323,7 +3431,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git merge",
+      "parameters": "branch"
+    }
   },
   {
     "id": "git-011",
@@ -2335,7 +3449,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "git",
+      "command": "git log",
+      "parameters": "--oneline --graph --all"
+    }
   },
   {
     "id": "git-012",
@@ -2347,7 +3467,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "git",
+      "command": "git diff",
+      "parameters": ""
+    }
   },
   {
     "id": "git-013",
@@ -2359,7 +3485,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git stash",
+      "parameters": ""
+    }
   },
   {
     "id": "git-014",
@@ -2371,7 +3503,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git stash pop",
+      "parameters": ""
+    }
   },
   {
     "id": "git-015",
@@ -2383,7 +3521,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "git",
+      "command": "git reset",
+      "parameters": "--hard HEAD"
+    }
   },
   {
     "id": "git-016",
@@ -2395,7 +3539,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "git",
+      "command": "git remote",
+      "parameters": "-v"
+    }
   },
   {
     "id": "git-017",
@@ -2407,7 +3557,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git fetch",
+      "parameters": "--all"
+    }
   },
   {
     "id": "git-018",
@@ -2419,7 +3575,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git rebase",
+      "parameters": "main"
+    }
   },
   {
     "id": "git-019",
@@ -2431,7 +3593,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git tag",
+      "parameters": "v1.0.0"
+    }
   },
   {
     "id": "git-020",
@@ -2443,7 +3611,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git config",
+      "parameters": "--global user.name \"Name\""
+    }
   },
   {
     "id": "git-021",
@@ -2455,7 +3629,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git config",
+      "parameters": "--global user.email \"email\""
+    }
   },
   {
     "id": "git-022",
@@ -2467,7 +3647,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "git",
+      "command": "git branch",
+      "parameters": "-d branchname"
+    }
   },
   {
     "id": "git-023",
@@ -2479,7 +3665,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "git",
+      "command": "git push origin",
+      "parameters": "--delete branchname"
+    }
   },
   {
     "id": "git-024",
@@ -2491,7 +3683,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "git",
+      "command": "git show",
+      "parameters": "commit-hash"
+    }
   },
   {
     "id": "git-025",
@@ -2503,7 +3701,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "git",
+      "command": "git blame",
+      "parameters": "filename"
+    }
   },
   {
     "id": "git-026",
@@ -2515,7 +3719,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "git",
+      "command": "git reflog",
+      "parameters": ""
+    }
   },
   {
     "id": "git-027",
@@ -2527,7 +3737,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git cherry-pick",
+      "parameters": "commit-hash"
+    }
   },
   {
     "id": "git-028",
@@ -2539,7 +3755,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "git",
+      "command": "git clean",
+      "parameters": "-fd"
+    }
   },
   {
     "id": "git-029",
@@ -2551,7 +3773,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git submodule",
+      "parameters": "init"
+    }
   },
   {
     "id": "git-030",
@@ -2563,7 +3791,13 @@
       "all"
     ],
     "category": "git",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "git",
+      "command": "git submodule",
+      "parameters": "update --remote"
+    }
   },
   {
     "id": "db-001",
@@ -2575,7 +3809,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "mysql",
+      "command": "mysql",
+      "parameters": "-u user -p"
+    }
   },
   {
     "id": "db-002",
@@ -2587,7 +3827,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "psql",
+      "command": "psql",
+      "parameters": "-U user -d database"
+    }
   },
   {
     "id": "db-003",
@@ -2599,7 +3845,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "mysqldump",
+      "command": "mysqldump",
+      "parameters": "-u user -p db > backup.sql"
+    }
   },
   {
     "id": "db-004",
@@ -2611,7 +3863,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "mysql",
+      "command": "mysql",
+      "parameters": "-u user -p db < backup.sql"
+    }
   },
   {
     "id": "db-005",
@@ -2623,7 +3881,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "pg_dump",
+      "command": "pg_dump",
+      "parameters": "-U user db > backup.sql"
+    }
   },
   {
     "id": "db-006",
@@ -2635,7 +3899,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "psql",
+      "command": "psql",
+      "parameters": "-U user db < backup.sql"
+    }
   },
   {
     "id": "db-007",
@@ -2647,7 +3917,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "redis-cli",
+      "command": "redis-cli",
+      "parameters": ""
+    }
   },
   {
     "id": "db-008",
@@ -2659,7 +3935,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "mongosh",
+      "command": "mongosh",
+      "parameters": ""
+    }
   },
   {
     "id": "db-009",
@@ -2671,7 +3953,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "sqlite3",
+      "command": "sqlite3",
+      "parameters": "database.db"
+    }
   },
   {
     "id": "db-010",
@@ -2683,7 +3971,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "redis-cli",
+      "command": "redis-cli",
+      "parameters": "ping"
+    }
   },
   {
     "id": "db-011",
@@ -2695,7 +3989,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "mysql",
+      "command": "mysql",
+      "parameters": "-u user -p -e 'SHOW DATABASES;'"
+    }
   },
   {
     "id": "db-012",
@@ -2707,7 +4007,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "psql",
+      "command": "psql",
+      "parameters": "-U user -l"
+    }
   },
   {
     "id": "db-013",
@@ -2719,7 +4025,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "redis-cli",
+      "command": "redis-cli",
+      "parameters": "KEYS '*'"
+    }
   },
   {
     "id": "db-014",
@@ -2731,7 +4043,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "mongosh",
+      "command": "mongosh",
+      "parameters": "--eval 'show dbs'"
+    }
   },
   {
     "id": "db-015",
@@ -2743,7 +4061,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "mysql",
+      "command": "mysql",
+      "parameters": "-e \"GRANT ALL ON db.* TO 'user'@'%'\""
+    }
   },
   {
     "id": "db-016",
@@ -2755,7 +4079,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "createuser",
+      "command": "createuser",
+      "parameters": "-U postgres username"
+    }
   },
   {
     "id": "db-017",
@@ -2767,7 +4097,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "redis-cli",
+      "command": "redis-cli",
+      "parameters": "FLUSHALL"
+    }
   },
   {
     "id": "db-018",
@@ -2779,7 +4115,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "mysqlcheck",
+      "command": "mysqlcheck",
+      "parameters": "-o database"
+    }
   },
   {
     "id": "db-019",
@@ -2791,7 +4133,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "vacuumdb",
+      "command": "vacuumdb",
+      "parameters": "-U user -d database"
+    }
   },
   {
     "id": "db-020",
@@ -2803,7 +4151,13 @@
       "all"
     ],
     "category": "database",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "sqlite3",
+      "command": "sqlite3",
+      "parameters": "db.sqlite \".backup backup.db\""
+    }
   },
   {
     "id": "mac-001",
@@ -2815,7 +4169,13 @@
       "macos"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "brew",
+      "command": "brew install",
+      "parameters": "package"
+    }
   },
   {
     "id": "mac-002",
@@ -2827,7 +4187,13 @@
       "macos"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "brew",
+      "command": "brew update",
+      "parameters": ""
+    }
   },
   {
     "id": "mac-003",
@@ -2839,7 +4205,13 @@
       "macos"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "brew",
+      "command": "brew upgrade",
+      "parameters": ""
+    }
   },
   {
     "id": "mac-004",
@@ -2851,7 +4223,13 @@
       "macos"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "brew",
+      "command": "brew search",
+      "parameters": "keyword"
+    }
   },
   {
     "id": "mac-005",
@@ -2863,7 +4241,13 @@
       "macos"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "sw_vers",
+      "command": "sw_vers",
+      "parameters": ""
+    }
   },
   {
     "id": "mac-006",
@@ -2875,7 +4259,13 @@
       "macos"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "brew",
+      "command": "brew list",
+      "parameters": ""
+    }
   },
   {
     "id": "mac-007",
@@ -2887,7 +4277,13 @@
       "macos"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "brew",
+      "command": "brew info",
+      "parameters": "package"
+    }
   },
   {
     "id": "mac-008",
@@ -2899,7 +4295,13 @@
       "macos"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "dscacheutil",
+      "command": "sudo dscacheutil",
+      "parameters": "-flushcache"
+    }
   },
   {
     "id": "mac-009",
@@ -2911,7 +4313,13 @@
       "macos"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "defaults",
+      "command": "defaults write com.apple.finder",
+      "parameters": "AppleShowAllFiles YES"
+    }
   },
   {
     "id": "mac-010",
@@ -2923,7 +4331,13 @@
       "macos"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "killall",
+      "command": "killall",
+      "parameters": "Finder"
+    }
   },
   {
     "id": "user-001",
@@ -2936,7 +4350,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "cat",
+      "command": "cat /etc/passwd",
+      "parameters": ""
+    }
   },
   {
     "id": "user-002",
@@ -2948,7 +4368,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "useradd",
+      "command": "useradd",
+      "parameters": "-m username"
+    }
   },
   {
     "id": "user-003",
@@ -2960,7 +4386,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "userdel",
+      "command": "userdel",
+      "parameters": "-r username"
+    }
   },
   {
     "id": "user-004",
@@ -2974,7 +4406,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "passwd",
+      "command": "passwd",
+      "parameters": "username"
+    }
   },
   {
     "id": "user-005",
@@ -2988,7 +4426,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "who",
+      "command": "who",
+      "parameters": ""
+    }
   },
   {
     "id": "user-006",
@@ -3002,7 +4446,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "last",
+      "command": "last",
+      "parameters": "-n 10"
+    }
   },
   {
     "id": "user-007",
@@ -3016,7 +4466,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "whoami",
+      "command": "whoami",
+      "parameters": ""
+    }
   },
   {
     "id": "user-008",
@@ -3030,7 +4486,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "groups",
+      "command": "groups",
+      "parameters": "username"
+    }
   },
   {
     "id": "user-009",
@@ -3042,7 +4504,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "usermod",
+      "command": "usermod",
+      "parameters": "-aG group username"
+    }
   },
   {
     "id": "user-010",
@@ -3056,7 +4524,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "su",
+      "command": "su",
+      "parameters": "- username"
+    }
   },
   {
     "id": "user-011",
@@ -3070,7 +4544,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "sudo",
+      "command": "sudo",
+      "parameters": "command"
+    }
   },
   {
     "id": "user-012",
@@ -3084,7 +4564,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "visudo",
+      "command": "visudo",
+      "parameters": ""
+    }
   },
   {
     "id": "user-013",
@@ -3098,7 +4584,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "sudo",
+      "command": "sudo",
+      "parameters": "-l"
+    }
   },
   {
     "id": "user-014",
@@ -3112,7 +4604,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "chsh",
+      "command": "chsh",
+      "parameters": "-s /bin/bash username"
+    }
   },
   {
     "id": "user-015",
@@ -3124,7 +4622,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "passwd",
+      "command": "passwd",
+      "parameters": "-l username"
+    }
   },
   {
     "id": "ssh-001",
@@ -3138,7 +4642,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ssh-keygen",
+      "command": "ssh-keygen",
+      "parameters": "-t ed25519 -C \"email\""
+    }
   },
   {
     "id": "ssh-002",
@@ -3152,7 +4662,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ssh-copy-id",
+      "command": "ssh-copy-id",
+      "parameters": "user@host"
+    }
   },
   {
     "id": "ssh-003",
@@ -3166,7 +4682,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "cat",
+      "command": "cat ~/.ssh/config",
+      "parameters": ""
+    }
   },
   {
     "id": "ssh-004",
@@ -3180,7 +4702,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ssh-add",
+      "command": "ssh-add",
+      "parameters": "~/.ssh/id_ed25519"
+    }
   },
   {
     "id": "ssh-005",
@@ -3194,7 +4722,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ssh-add",
+      "command": "ssh-add",
+      "parameters": "-l"
+    }
   },
   {
     "id": "ssh-006",
@@ -3208,7 +4742,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "chmod",
+      "command": "chmod",
+      "parameters": "600 ~/.ssh/id_ed25519"
+    }
   },
   {
     "id": "ssh-007",
@@ -3222,7 +4762,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "chmod",
+      "command": "chmod",
+      "parameters": "700 ~/.ssh"
+    }
   },
   {
     "id": "ssh-008",
@@ -3236,7 +4782,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "cat",
+      "command": "cat ~/.ssh/known_hosts",
+      "parameters": ""
+    }
   },
   {
     "id": "ssh-009",
@@ -3250,7 +4802,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "ssh-keygen",
+      "command": "ssh-keygen",
+      "parameters": "-R hostname"
+    }
   },
   {
     "id": "ssh-010",
@@ -3262,7 +4820,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "eval",
+      "command": "eval $(ssh-agent)",
+      "parameters": ""
+    }
   },
   {
     "id": "ssh-011",
@@ -3274,7 +4838,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "openssl",
+      "command": "openssl x509",
+      "parameters": "-in cert.pem -text -noout"
+    }
   },
   {
     "id": "ssh-012",
@@ -3286,7 +4856,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "openssl",
+      "command": "openssl req",
+      "parameters": "-x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365"
+    }
   },
   {
     "id": "ssh-013",
@@ -3298,7 +4874,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "openssl",
+      "command": "openssl s_client",
+      "parameters": "-connect host:443"
+    }
   },
   {
     "id": "ssh-014",
@@ -3312,7 +4894,13 @@
       "bsd"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ssh-keygen",
+      "command": "ssh-keygen",
+      "parameters": "-lf ~/.ssh/id_ed25519.pub"
+    }
   },
   {
     "id": "ssh-015",
@@ -3324,7 +4912,13 @@
       "all"
     ],
     "category": "network",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "network-load",
+      "tool": "ssh",
+      "command": "ssh",
+      "parameters": "-vvv user@host"
+    }
   },
   {
     "id": "perf-001",
@@ -3336,7 +4930,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "iostat",
+      "command": "iostat",
+      "parameters": "-x 1"
+    }
   },
   {
     "id": "perf-002",
@@ -3348,7 +4948,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "vmstat",
+      "command": "vmstat",
+      "parameters": "1"
+    }
   },
   {
     "id": "perf-003",
@@ -3360,7 +4966,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "iotop",
+      "command": "iotop",
+      "parameters": ""
+    }
   },
   {
     "id": "perf-004",
@@ -3374,7 +4986,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "htop",
+      "command": "htop",
+      "parameters": ""
+    }
   },
   {
     "id": "perf-005",
@@ -3386,7 +5004,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "cat",
+      "command": "cat /proc/loadavg",
+      "parameters": ""
+    }
   },
   {
     "id": "perf-006",
@@ -3398,7 +5022,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "mpstat",
+      "command": "mpstat",
+      "parameters": "1"
+    }
   },
   {
     "id": "perf-007",
@@ -3410,7 +5040,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "vmstat",
+      "command": "vmstat",
+      "parameters": "-s"
+    }
   },
   {
     "id": "perf-008",
@@ -3422,7 +5058,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "swapon",
+      "command": "swapon",
+      "parameters": "--show"
+    }
   },
   {
     "id": "perf-009",
@@ -3434,7 +5076,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "nstat",
+      "command": "nstat",
+      "parameters": ""
+    }
   },
   {
     "id": "perf-010",
@@ -3446,7 +5094,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "iotop",
+      "command": "iotop",
+      "parameters": "-o"
+    }
   },
   {
     "id": "perf-011",
@@ -3455,12 +5109,16 @@
     "parameters": "--sort=-%cpu | head -10",
     "description": "Top CPU processes",
     "os": [
-      "linux",
-      "macos",
-      "bsd"
+      "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ps",
+      "command": "ps aux",
+      "parameters": "--sort=-%cpu | head -10"
+    }
   },
   {
     "id": "perf-012",
@@ -3469,12 +5127,16 @@
     "parameters": "--sort=-%mem | head -10",
     "description": "Top memory processes",
     "os": [
-      "linux",
-      "macos",
-      "bsd"
+      "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ps",
+      "command": "ps aux",
+      "parameters": "--sort=-%mem | head -10"
+    }
   },
   {
     "id": "perf-013",
@@ -3488,7 +5150,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "lsof",
+      "command": "lsof",
+      "parameters": ""
+    }
   },
   {
     "id": "perf-014",
@@ -3502,7 +5170,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "ps",
+      "command": "ps",
+      "parameters": "-eLf"
+    }
   },
   {
     "id": "perf-015",
@@ -3514,7 +5188,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "sar",
+      "command": "sar",
+      "parameters": "-u 1 5"
+    }
   },
   {
     "id": "text-001",
@@ -3528,7 +5208,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "sed",
+      "command": "sed",
+      "parameters": "'s/old/new/g' file"
+    }
   },
   {
     "id": "text-002",
@@ -3542,7 +5228,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "awk",
+      "command": "awk",
+      "parameters": "'{print $1, $3}' file"
+    }
   },
   {
     "id": "text-003",
@@ -3556,7 +5248,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "sort",
+      "command": "sort",
+      "parameters": "file"
+    }
   },
   {
     "id": "text-004",
@@ -3570,7 +5268,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "uniq",
+      "command": "uniq",
+      "parameters": "file"
+    }
   },
   {
     "id": "text-005",
@@ -3584,7 +5288,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "cut",
+      "command": "cut",
+      "parameters": "-d',' -f1,3 file.csv"
+    }
   },
   {
     "id": "text-006",
@@ -3598,7 +5308,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "tr",
+      "command": "tr",
+      "parameters": "'a-z' 'A-Z' < file"
+    }
   },
   {
     "id": "text-007",
@@ -3612,7 +5328,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "column",
+      "command": "column",
+      "parameters": "-t file"
+    }
   },
   {
     "id": "text-008",
@@ -3626,7 +5348,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "paste",
+      "command": "paste",
+      "parameters": "file1 file2"
+    }
   },
   {
     "id": "text-009",
@@ -3640,7 +5368,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "join",
+      "command": "join",
+      "parameters": "file1 file2"
+    }
   },
   {
     "id": "text-010",
@@ -3654,7 +5388,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "expand",
+      "command": "expand",
+      "parameters": "file"
+    }
   },
   {
     "id": "text-011",
@@ -3668,7 +5408,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "unexpand",
+      "command": "unexpand",
+      "parameters": "file"
+    }
   },
   {
     "id": "text-012",
@@ -3682,7 +5428,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "fold",
+      "command": "fold",
+      "parameters": "-w 80 file"
+    }
   },
   {
     "id": "text-013",
@@ -3696,7 +5448,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "nl",
+      "command": "nl",
+      "parameters": "file"
+    }
   },
   {
     "id": "text-014",
@@ -3710,7 +5468,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "rev",
+      "command": "rev",
+      "parameters": "file"
+    }
   },
   {
     "id": "text-015",
@@ -3724,7 +5488,13 @@
       "bsd"
     ],
     "category": "files",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "grep",
+      "command": "grep",
+      "parameters": "-v '^$' file"
+    }
   },
   {
     "id": "cron-001",
@@ -3738,7 +5508,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "crontab",
+      "command": "crontab",
+      "parameters": "-l"
+    }
   },
   {
     "id": "cron-002",
@@ -3752,7 +5528,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "crontab",
+      "command": "crontab",
+      "parameters": "-e"
+    }
   },
   {
     "id": "cron-003",
@@ -3764,7 +5546,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "cat",
+      "command": "cat /etc/crontab",
+      "parameters": ""
+    }
   },
   {
     "id": "cron-004",
@@ -3778,7 +5566,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "deletes-data",
+      "tool": "crontab",
+      "command": "crontab",
+      "parameters": "-r"
+    }
   },
   {
     "id": "cron-005",
@@ -3790,7 +5584,13 @@
       "all"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "at",
+      "command": "at",
+      "parameters": "now + 1 hour"
+    }
   },
   {
     "id": "web-001",
@@ -3804,7 +5604,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "nginx",
+      "command": "nginx",
+      "parameters": "-t"
+    }
   },
   {
     "id": "web-002",
@@ -3818,7 +5624,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "nginx",
+      "command": "nginx",
+      "parameters": "-s reload"
+    }
   },
   {
     "id": "web-003",
@@ -3832,7 +5644,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "apachectl",
+      "command": "apachectl",
+      "parameters": "configtest"
+    }
   },
   {
     "id": "web-004",
@@ -3846,7 +5664,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "apachectl",
+      "command": "apachectl",
+      "parameters": "restart"
+    }
   },
   {
     "id": "web-005",
@@ -3858,7 +5682,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "systemctl",
+      "command": "systemctl status",
+      "parameters": "nginx"
+    }
   },
   {
     "id": "web-006",
@@ -3870,7 +5700,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "systemctl",
+      "command": "systemctl status",
+      "parameters": "apache2"
+    }
   },
   {
     "id": "web-007",
@@ -3884,7 +5720,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "tail",
+      "command": "tail",
+      "parameters": "-f /var/log/nginx/access.log"
+    }
   },
   {
     "id": "web-008",
@@ -3898,7 +5740,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "tail",
+      "command": "tail",
+      "parameters": "-f /var/log/nginx/error.log"
+    }
   },
   {
     "id": "web-009",
@@ -3912,7 +5760,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "tail",
+      "command": "tail",
+      "parameters": "-f /var/log/apache2/access.log"
+    }
   },
   {
     "id": "web-010",
@@ -3926,7 +5780,13 @@
       "bsd"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "tail",
+      "command": "tail",
+      "parameters": "-f /var/log/apache2/error.log"
+    }
   },
   {
     "id": "kernel-001",
@@ -3938,7 +5798,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "modprobe",
+      "command": "modprobe",
+      "parameters": "module-name"
+    }
   },
   {
     "id": "kernel-002",
@@ -3950,7 +5816,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "lsmod",
+      "command": "lsmod",
+      "parameters": ""
+    }
   },
   {
     "id": "kernel-003",
@@ -3962,7 +5834,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "dmesg",
+      "command": "dmesg",
+      "parameters": "| tail -50"
+    }
   },
   {
     "id": "kernel-004",
@@ -3974,7 +5852,13 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "changes-system",
+      "tool": "modprobe",
+      "command": "modprobe",
+      "parameters": "-r module-name"
+    }
   },
   {
     "id": "kernel-005",
@@ -3986,6 +5870,12 @@
       "linux"
     ],
     "category": "system",
-    "isSystem": true
+    "isSystem": true,
+    "safety": {
+      "impact": "read-only",
+      "tool": "modinfo",
+      "command": "modinfo",
+      "parameters": "module-name"
+    }
   }
 ]

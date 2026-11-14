@@ -26,6 +26,7 @@
     <script src="{{ static_asset_url(filename='js/branding.js') }}" defer></script>
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/design-system.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/account-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/customer-workflows.css') }}">
 </head>
 <body class="webssh-ui webssh-account" data-theme="{{ theme|default('glass') }}">
     <header class="header">
@@ -360,6 +361,7 @@
                 <p data-i18n="backup.sensitiveWarning">Native backups exclude saved remote passwords and SSH keys, but retain application secrets and account authentication data. Store every downloaded archive encrypted and off-host.</p>
             </div>
 
+            <div class="backup-coverage"><h3 data-i18n="customer.coverageTitle">Backup coverage</h3><p data-i18n="customer.included">Includes configuration and account authentication data.</p><p data-i18n="customer.excluded">Excludes remote passwords, SSH keys and live sessions. Re-provision credentials and review schedules after restore.</p><button type="button" class="btn btn-secondary" data-recovery-check data-i18n="customer.recoveryTitle">Recovery check</button></div>
             <div class="admin-backup-grid">
                 <div class="admin-setting-row">
                     <h2 data-i18n="backup.create">Create backup</h2>
@@ -544,6 +546,8 @@
     <script src="{{ static_asset_url(filename='js/security-ui.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/restore-status-flow.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/admin.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/customer-workflows-i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/customer-workflows.js') }}"></script>
 </body>
 </html>
 {% endif %}

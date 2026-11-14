@@ -1252,7 +1252,7 @@
             }
             for (const id of ['editorDraftBtn', 'editorReloadBtn']) {
                 const button = document.getElementById(id);
-                if (button) button.hidden = !unknown;
+                if (button) button.hidden = id === 'editorDraftBtn' ? false : !unknown;
             }
             if (unknown) {
                 const message = window.i18n ? i18n.t('editor.saveOutcomeUnknown')

@@ -97,6 +97,8 @@ See the [automation guide](docs/automation.md) and
 - Broadcast input, terminal search, transcripts, reconnect controls, and
   configurable scrollback.
 - Session-aware Files, Commands, Diagnostics, and Notes contexts.
+- Named, account-owned workspace presets for pane layouts and saved hosts,
+  with explicit connections and visible session-continuity guidance.
 - **Active Session Monitoring** for supported Linux resource and runtime data.
 - **Expanded Diagnostics** for resource history, processes, systemd services,
   and Docker containers.

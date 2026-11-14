@@ -233,11 +233,18 @@ def _webssh_database_bytes(tmp_path):
 
 
 def _snapshot(directory):
-    return {
+    result = {
         path.relative_to(directory).as_posix(): path.read_bytes()
         for path in directory.rglob('*')
         if path.is_file()
     }
+    # Normal restore adds guidance metadata; persistent payload bytes stay exact.
+    if 'recovery-check.json' in result:
+        marker = json.loads(result.pop('recovery-check.json'))
+        assert set(marker) == {'restored_at', 'remote_credentials_excluded'}
+        assert marker['remote_credentials_excluded'] is True
+        assert marker['restored_at']
+    return result
 
 
 def _corrupt_archive_member(source, destination, member):

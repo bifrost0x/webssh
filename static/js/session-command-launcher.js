@@ -57,6 +57,10 @@
             command: base,
             parameters,
             type: 'command',
+            safety: command?.isSystem === true && command?.safety
+                && command.safety.command === base && command.safety.parameters === parameters
+                && ['read-only', 'changes-system', 'deletes-data', 'network-load'].includes(command.safety.impact)
+                ? command.safety : null,
             isSystem: command?.isSystem === true,
             id: command?.id || '',
             name: command?.name || base || '',
@@ -590,6 +594,19 @@
                 details.append(name);
                 if (this.activeSection === 'favorites') details.append(badge);
                 if (entry.description) details.append(description);
+                const impact = document.createElement('span');
+                impact.className = 'command-impact-label';
+                const updateImpact = current => {
+                    impact.textContent = this.t(`commandSafety.${current.safety?.impact || 'unknown'}`, 'Impact not classified');
+                };
+                updateImpact(entry);
+                details.append(impact);
+                if (entry.safety) {
+                    const scope = document.createElement('p');
+                    scope.className = 'command-template-hint';
+                    scope.textContent = this.t('commandSafety.scope', 'Impact describes this exact template, not a safety guarantee. Changed arguments, interactive actions and sudo can change the effect.');
+                    details.append(scope);
+                }
                 if (entry.preview || parameterized) details.append(preview);
                 if (entry.isSystem && entry.parameters) {
                     const notice = document.createElement('p');
@@ -696,6 +713,7 @@
                     const updatePreview = () => {
                         const updated = commandEntry({ ...savedEntry, parameters: input.value });
                         preview.textContent = insertTextFor(updated, this.useSudo);
+                        updateImpact(updated);
                         currentAvailable = canInsert && updated.available;
                         insert.disabled = inserting || !currentAvailable;
                     };

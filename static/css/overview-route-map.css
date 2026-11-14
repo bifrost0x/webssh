@@ -85,7 +85,8 @@
 #overviewRouteMap [data-map-node].is-moving { z-index:5; outline:2px solid var(--ws2-accent); }
 #overviewRouteMap [data-map-node].is-moving .ssh-node-drag { cursor:grabbing; }
 
-#overviewRouteMap .ssh-route-host-list { max-height:280px; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+#overviewRouteMap .ssh-route-host-list { max-height:280px; overflow:auto; overscroll-behavior:auto; scrollbar-width:thin; }
+.ssh-map-dialog #overviewRouteMap .ssh-route-host-list { overscroll-behavior:contain; }
 #overviewRouteMap .ssh-route-more { margin:0 0 8px; }
 
 /* Dashboard: route summaries stay readable; host operations live in the expanded map. */

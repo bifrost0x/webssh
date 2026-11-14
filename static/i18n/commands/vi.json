@@ -317,7 +317,15 @@
   },
   "net-050": {
     "name": "Ping flood",
-    "description": "Ping dồn dập (để kiểm thử)"
+    "description": "Gửi lưu lượng ping dồn dập liên tục cho đến khi ngắt. Có thể gây quá tải mạng và máy đích; có thể cần quyền nâng cao."
+  },
+  "net-051": {
+    "name": "Ping máy chủ (Windows)",
+    "description": "Gửi bốn yêu cầu ICMP bằng ping của Windows; thay hostname bằng đích mong muốn."
+  },
+  "net-052": {
+    "name": "Kết nối và cổng đang lắng nghe (Windows)",
+    "description": "Hiển thị kết nối và cổng TCP/UDP đang lắng nghe cùng địa chỉ dạng số và mã tiến trình bằng netstat có sẵn trên Windows."
   },
   "file-001": {
     "name": "Liệt kê tệp",

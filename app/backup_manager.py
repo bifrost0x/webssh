@@ -858,7 +858,10 @@ def _verify_staged_files(stage, manifest):
 
 def restore_backup(archive, data_dir):
     """Restore an export; discard remote credentials even from older archives."""
-    return _restore_archive(archive, data_dir, include_remote_credentials=False)
+    result = _restore_archive(archive, data_dir, include_remote_credentials=False)
+    from .customer_workflows import mark_restore_recovery
+    mark_restore_recovery(data_dir)
+    return result
 
 
 def _restore_recovery_snapshot(archive, data_dir):

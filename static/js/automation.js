@@ -163,6 +163,7 @@
     }
     function translate() {
         document.querySelectorAll('[data-auto-i18n]').forEach(element => { element.textContent = tr(element.dataset.autoI18n); });
+        document.querySelectorAll('[data-auto-label]').forEach(element => { element.setAttribute('aria-label', tr(element.dataset.autoLabel)); });
         document.querySelectorAll('[data-auto-placeholder]').forEach(element => { element.placeholder = tr(element.dataset.autoPlaceholder); });
         const language = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
         document.querySelectorAll('main[data-native-automation], .automation-dialog').forEach(element => {
@@ -263,6 +264,7 @@
     }
     function renderEditorSources() {
         const select=$('editorSource');if(!select)return;
+        const selectedSource=editorSource();
         const previous=select.value, language=window.i18n?.getLanguage()==='de'?'de':'en';
         const placeholder=node('option',tr('editorSourceChoose'));placeholder.value='';select.replaceChildren(placeholder);
         const groups=[
@@ -270,7 +272,12 @@
             [tr('ownCommandSets'),(window.CommandSetManager?.commandSets || []).map(c=>({id:'set:'+c.id,name:c.name}))],
             [tr('editorSourceTemplates'),(window.AutomationTemplates?.list() || []).map(c=>({id:c.id,name:c.title[language]}))]
         ];
-        groups.forEach(([label,items])=>{if(!items.length)return;const group=node('optgroup');group.label=label;items.forEach(item=>{const option=node('option',item.name);option.value=item.id;group.append(option);});select.append(group);});
+        const search = ($('editorSourceSearch')?.value || '').trim().toLocaleLowerCase();
+        groups.forEach(([label,items])=>{items=items.filter(item=>!search || item.name.toLocaleLowerCase().includes(search));if(!items.length)return;const group=node('optgroup');group.label=label;items.forEach(item=>{const option=node('option',item.name);option.value=item.id;group.append(option);});select.append(group);});
+        if (previous && ![...select.options].some(option=>option.value===previous)) {
+            const source=selectedSource;
+            if(source) { const option=node('option', source.libraryCommand?.name || source.title?.[language] || source.steps[0].name); option.value=previous; select.append(option); }
+        }
         if([...select.options].some(option=>option.value===previous))select.value=previous;
         previewEditorSource();
     }
@@ -781,7 +788,16 @@
         const history = $('runHistory');
         const retained = new Set(result.runs.map(run => run.id));
         [...history.children].forEach(child => { if (!retained.has(child.dataset.resultKey)) child.remove(); });
-        if (!result.runs.length) runText(history, 'empty', 'p', tr('noRuns'), 'automation-hint');
+        if (!result.runs.length) {
+            const empty = runPart(history, 'empty', 'div', 'automation-results-empty');
+            const icon = runText(empty, 'icon', 'span', 'history', 'material-icons'); icon.setAttribute('aria-hidden', 'true');
+            runText(empty, 'title', 'h3', tr('noResultsTitle'));
+            runText(empty, 'hint', 'p', tr('noRuns'), 'automation-hint');
+            const browse = runPart(empty, 'browse', 'button', 'btn btn-secondary');
+            browse.type = 'button'; browse.textContent = tr('browseWorkflows');
+            browse.onclick = () => tab('library');
+        }
+        $('clearRuns').disabled = !result.runs.some(run => !['queued','running'].includes(run.status));
         result.runs.forEach((run, index) => {
             const exists = [...history.children].some(item => item.dataset.resultKey === run.id);
             const details = runPart(history, run.id, 'details', 'automation-run'); details.dataset.runId = run.id;
@@ -818,6 +834,13 @@
             }
             remove.title = tr('deleteRun'); remove.setAttribute('aria-label', tr('deleteRunLabel', {name: run.name}));
             remove.hidden = active;
+            const exports=runPart(details,'exports','div','automation-run-actions');
+            ['json','csv'].forEach(format=>{
+                const link=runPart(exports,format,'a','btn btn-secondary');
+                link.textContent=tr('exportRun',{format:format.toUpperCase()});
+                link.href=(document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/,'')+'/api/automation/runs/'+encodeURIComponent(run.id)+'/export?format='+format;
+                link.setAttribute('download','workflow-run.'+format);
+            });
             const cancel = runPart(details, 'cancel', 'button', 'btn btn-secondary');
             cancel.type = 'button'; cancel.textContent = tr('cancelRun'); cancel.hidden = !active;
             if (!exists) cancel.addEventListener('click', () => action(async () => {
@@ -1133,6 +1156,7 @@
         document.querySelector('.automation-library').classList.toggle('is-open', open);
         if (open) $('runbookSearch').focus();
     });
+    $('editorSourceSearch')?.addEventListener('input', renderEditorSources);
     $('runbookSearch').addEventListener('input', renderBooks);
     document.querySelectorAll('[data-workspace-view]').forEach(button => button.addEventListener('click', () => {
         setStage(button.dataset.workspaceView, {focus:true});

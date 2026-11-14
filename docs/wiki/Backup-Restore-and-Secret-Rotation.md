@@ -127,3 +127,7 @@ Test the full sequence on an isolated instance:
 9. Record the observed recovery time and required secret material.
 
 An untested archive is not a verified recovery capability.
+
+## Recovery checklist in the application
+
+The backup page lists included configuration/account data and excluded remote credentials/live sessions separately. Normal export restores write a small informational `recovery-check.json` timestamp; private rollback restore does not create a new successful-restore marker. **Recovery check** uses the signed-in account’s current host/key/password and schedule metadata to guide re-provisioning. It does not import excluded credentials, approve host keys, test connectivity or enable schedules. The timestamp is not a restore-drill result.

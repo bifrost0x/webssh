@@ -274,3 +274,9 @@ Open quotes, continuations, here-documents, running commands, copy mode and unfi
 ### Repeating the real tmux checks
 
 Run `node tests/integration/tmux_sync.cjs` after installing the project Node dependencies and Playwright Chromium. On Linux it uses Python 3 and tmux; on Windows it uses Ubuntu under WSL. The test creates its own tmux server and synthetic shell configuration, checks actual xterm/controller behavior, and removes only those test resources. It verifies continuation blocking, repeated folder changes, Unicode/quoted paths, checkbox recovery, prompt/exit-status preservation, configuration hashes, pane identity and detach/reattach.
+
+## Named workspace presets
+
+Open **Workspace presets** in the desktop terminal toolbar or account menu. Save a name, one/two/four panes and up to that many of your saved hosts. Presets belong to your account and retain only layout and host references, never passwords, commands or terminal output. Applying prepares the layout and offers an explicit Connect button for each host; it never logs in or executes commands by itself. Existing assigned sessions stay in place, and a smaller preset does not shrink their layout. More than four open floating windows must be docked or reduced before applying a preset. Deleted hosts are shown as unavailable; remove the affected preset and save updated choices.
+
+The session continuity message distinguishes browser transport loss from remote SSH disconnection and explains the different normal-SSH and tmux guarantees. Reconnection never proves that a previous command succeeded; inspect the remote state before repeating work.

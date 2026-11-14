@@ -6,6 +6,8 @@ const {login}=require('./helpers');
 test('Hosts management preserves platform colors in the actual host rows',async({page},info)=>{
  await login(page,'e2e_admin',{workspace:false});
  await page.evaluate(()=>ProfileManager.openManagement());
+ // Finish the management refresh before installing the rendering fixture.
+ await page.evaluate(() => new Promise(resolve => window.socket.emit('list_profiles', resolve)));
  await page.evaluate(()=>{const profile=ProfileManager.profiles[0];ProfileManager.setProfiles(['ubuntu','docker','proxmox','debian'].map(platform=>({...profile,id:platform,name:platform,platform_icon:platform})));});
  const icons=page.locator('#profileManagementList .profile-row-platform');await expect(icons).toHaveCount(4);
  for(const theme of ['glass','werkbank','retro','solar','paper','noir','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian']){

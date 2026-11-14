@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const espree = require('espree');
+const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../../static/js/i18n.js'), 'utf8');
 const ast = espree.parse(source, {ecmaVersion: 'latest'});
@@ -15,12 +16,42 @@ const locales = Object.fromEntries(table.properties.map(locale => [
 ]));
 const placeholders = value => (value.match(/\{\{?\w+\}?\}|%[sd]/g) || []).sort();
 
+// Feature bundles register dictionaries before DOMContentLoaded. Include them
+// in the same contract checks as the core table, without hiding missing locale
+// keys behind the runtime's English fallback.
+const bundleRoot = path.join(__dirname, '../../static/js');
+const registered = Object.fromEntries(Object.entries(locales).map(([language, entries]) => [language, Object.fromEntries(entries)]));
+const featureBundles = fs.readdirSync(bundleRoot).filter(file => file.endsWith('-i18n.js'))
+    .filter(file => fs.readFileSync(path.join(bundleRoot, file), 'utf8').includes('.addTranslations('));
+for (const file of featureBundles) {
+    const dictionaries = {};
+    const window = {i18n: {addTranslations(language, values) {
+        assert.ok(Object.hasOwn(registered, language), `${file}: unsupported language ${language}`);
+        dictionaries[language] = {...dictionaries[language], ...values};
+        Object.assign(registered[language], values);
+    }}};
+    vm.runInNewContext(fs.readFileSync(path.join(bundleRoot, file), 'utf8'), {window});
+    test(`${file} supplies complete nonempty translations and matching placeholders in every language`, () => {
+        assert.deepEqual(Object.keys(dictionaries).sort(), Object.keys(locales).sort());
+        const english = dictionaries.en;
+        for (const [language, values] of Object.entries(dictionaries)) {
+            assert.deepEqual(Object.keys(values).sort(), Object.keys(english).sort(), language);
+            for (const [key, value] of Object.entries(values)) {
+                assert.equal(typeof value, 'string', `${language}: ${key}`);
+                assert.ok(value.trim(), `${language}: ${key}`);
+                assert.deepEqual(placeholders(value), placeholders(english[key]), `${language}: ${key}`);
+            }
+        }
+    });
+}
+
+
 test('translation table includes every supported language', () => {
     assert.deepEqual(Object.keys(locales).sort(), ['de', 'en', 'es', 'fr', 'vi', 'zh']);
 });
 
 test('all HTML templates reference existing translation keys', () => {
-    const english = Object.fromEntries(locales.en);
+    const english = registered.en;
     const templateRoot = path.join(__dirname, '../../templates');
     const templates = fs.readdirSync(templateRoot, {recursive: true}).filter(file => file.endsWith('.html'));
     assert.ok(templates.length > 0, 'No templates found');

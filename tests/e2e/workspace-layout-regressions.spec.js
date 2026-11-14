@@ -24,6 +24,10 @@ async function seedCommands(page) {
         });
         window.CommandWorkspace.open('library');
     });
+    // This layout fixture includes system templates without catalog safety metadata.
+    // Exercise the complete list through the same filter available to users.
+    await page.locator('#commandImpactFilter').selectOption('all');
+    await expect(page.locator('#commandsList .command-row')).toHaveCount(40);
 }
 
 async function assertContained(page, panelSelector) {

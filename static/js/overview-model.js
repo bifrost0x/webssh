@@ -86,8 +86,11 @@
 
     function metrics({hostList = [], sessions = [], runs = [], schedules = [], reachability = null, now = Date.now()} = {}) {
         const total = hostList.length;
-        const known = hostList.filter(host => host.state !== 'unknown');
-        const readyCount = hostList.filter(host => ['ready', 'live'].includes(host.state)).length;
+        // TCP reachability is a separate observation, not configuration readiness.
+        const configurationState = host => host.sessionId ? 'ready'
+            : host.route?.kind === 'missing' ? 'broken' : host.status?.state || 'unknown';
+        const known = hostList.filter(host => configurationState(host) !== 'unknown');
+        const readyCount = hostList.filter(host => configurationState(host) === 'ready').length;
         const bins = automationBins(runs, now);
         const finished = bins.reduce((sum, bin) => sum + bin.succeeded + bin.failed + bin.other, 0);
         const succeeded = bins.reduce((sum, bin) => sum + bin.succeeded, 0);
@@ -270,9 +273,34 @@
         return {center, hubs, nodes, width, height};
     }
 
+    /** Saved-host shortcuts only: stale history can never resurrect a deleted host. */
+    function workFirst({hostList = [], history = [], sessions = [], limit = 6} = {}) {
+        const used = new Set();
+        const take = list => list.filter(host => !used.has(host.id) && used.add(host.id)).slice(0, limit);
+        const liveHosts = hostList.filter(host => host.sessionId);
+        const adHoc = sessions.filter(session => session.connected === true && !liveHosts.some(host => host.sessionId === session.id))
+            .map(session => ({id: `session:${session.id}`, sessionId: session.id,
+                name: String(session.displayName || session.host || ''), destination: destination(session)}));
+        const resume = take([...liveHosts, ...adHoc]);
+        const favorites = take(hostList.filter(host => host.favorite));
+        const recent = take([...history].filter(entry => Number.isFinite(Number(entry.timestamp)))
+            .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+            .map(entry => hostList.find(host => sameEndpoint(entry, host.profile))).filter(Boolean));
+        const saved = resume.length || favorites.length || recent.length ? [] : hostList.slice(0, limit);
+        return {resume, favorites, recent, saved};
+    }
+
+    /** These are observations, never acknowledgements or predictions of login success. */
+    function setupProgress(host, fileSessions = new Set()) {
+        const live = Boolean(host?.sessionId);
+        return {host: Boolean(host?.profile?.host && host?.profile?.username), auth: live,
+            trust: host?.status?.host_key === 'trusted' || live,
+            terminal: live, files: live && fileSessions.has(host.sessionId)};
+    }
+
     function greetingKey(hour) {
         return hour < 11 ? 'greetingMorning' : hour < 18 ? 'greetingDay' : 'greetingEvening';
     }
 
-    return {destination, hosts, filter, automationBins, metrics, headline, attention, attentionKey, maintenance, fingerprint, activity, platforms, topology, greetingKey};
+    return {workFirst, setupProgress, destination, hosts, filter, automationBins, metrics, headline, attention, attentionKey, maintenance, fingerprint, activity, platforms, topology, greetingKey};
 }));

@@ -270,7 +270,8 @@ test('a failed dismissal keeps the item and says so', async ({page}) => {
     await expect(rows).toHaveCount(count);
 });
 
-test('the layout can be arranged by keyboard and mouse, survives reload and resets', async ({page}) => {
+for (const slowFrames of [false, true]) {
+test(`the layout can be arranged by keyboard and mouse, survives reload and resets${slowFrames ? ' at low frame rate' : ''}`, async ({page}) => {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.setViewportSize({width: 1600, height: 1000});
@@ -301,6 +302,22 @@ test('the layout can be arranged by keyboard and mouse, survives reload and rese
     await expect(page.locator('#odHiddenPanels [data-show-panel="platforms"]')).toBeVisible();
     // Mouse: drag Activity onto Topology, resize Hosts from its corner.
     await page.locator('[data-panel="activity"] [data-panel-handle]').hover();
+    if (slowFrames) await page.evaluate(() => {
+        // Model a busy renderer at about 12 fps without slowing network or timers.
+        const nativeCancel = window.cancelAnimationFrame.bind(window);
+        const pending = new Map();
+        let sequence = -1;
+        window.requestAnimationFrame = callback => {
+            const id = sequence--;
+            pending.set(id, setTimeout(() => { pending.delete(id); callback(performance.now()); }, 80));
+            return id;
+        };
+        window.cancelAnimationFrame = id => {
+            if (id >= 0) return nativeCancel(id);
+            clearTimeout(pending.get(id));
+            pending.delete(id);
+        };
+    });
     await page.mouse.down();
     // Hold at the top edge until the board scrolls, then drop on Topology.
     const frame = await page.locator('#connectionOverview').boundingBox();
@@ -345,6 +362,7 @@ test('the layout can be arranged by keyboard and mouse, survives reload and rese
     expect(await sshAttempts(page)).toEqual([]);
     expect(errors).toEqual([]);
 });
+}
 
 test('a saved layout stacks on phones without fixed heights', async ({page}) => {
     await login(page, 'e2e_admin', {workspace: false});

@@ -239,12 +239,15 @@ class ScheduleService:
         # Recover ambiguous claims independently of the next cron occurrence.
         # Revoking the revision fences surviving workers; only fresh approval
         # can resume scheduling and the unknown outcome remains visible.
-        db.session.execute(update(AutomationSchedule).where(
-            AutomationSchedule.claim_id.is_not(None),
-            or_(AutomationSchedule.claimed_at.is_(None),
-                AutomationSchedule.claimed_at < now.timestamp() - 1860)
-        ).values(enabled=False, last_status='unknown', claim_id=None,
-                 claimed_at=None, revision=AutomationSchedule.revision + 1))
+        interrupted = [(row.id, row.revision, row.claim_id)
+            for row in AutomationSchedule.query.filter(AutomationSchedule.claim_id.is_not(None),
+                or_(AutomationSchedule.claimed_at.is_(None), AutomationSchedule.claimed_at < now.timestamp() - 1860)).all()]
+        for sid, rev, claim in interrupted:
+            db.session.execute(update(AutomationSchedule).where(
+                AutomationSchedule.id == sid, AutomationSchedule.revision == rev,
+                AutomationSchedule.claim_id == claim
+            ).values(enabled=False, last_status='unknown', claim_id=None,
+                     claimed_at=None, revision=rev + 1))
         db.session.commit()
         from .app_settings import is_automation_enabled
         if not is_automation_enabled() or not self.app.extensions['runtime_lifecycle'].accepting_work():

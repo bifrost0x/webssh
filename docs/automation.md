@@ -74,3 +74,10 @@ Most examples collect inventory or diagnostics. The Debian/Ubuntu and Fedora/RHE
 Saved command sets are available in a separate group in the template selector. Importing creates a copy as one shell step, preserving the resolved sequence and its shell context. Parameterized sets request fixed values and use the existing server-side parameter resolver. Missing references or oversized commands must be repaired before import. Later changes to the original set do not update a workflow copy.
 
 Overview displays up to five recent runs, prioritizing queued and running jobs, with confirmed step counts and a direct link to the expanded run log. Status refreshes while Overview is visible; a failed refresh is marked as stale rather than shown as a successful result. The workflow action bar stays reachable while the editor and destination list scroll. Motion follows the reduced-motion preference.
+
+
+## Export and retention
+
+Each retained run has **Export JSON** and **Export CSV** actions. Exports require the same authenticated owner and transport protections as run history. They contain the currently retained metadata and bounded stdout/stderr; they do not recover deleted or truncated output. CSV cells that could be interpreted as spreadsheet formulas are prefixed with an apostrophe. Exported output can still contain sensitive remote data; store it appropriately.
+
+The account history retains at most 50 runs within a 1 MiB document limit, so older results can be removed sooner when the size bound is reached. Per-step output becomes visible after that step finishes, including long-running steps. A silent running step does not imply that it failed or is safe to repeat. Unknown outcomes require checking the remote system before starting again.
