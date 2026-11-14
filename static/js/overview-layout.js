@@ -26,6 +26,8 @@
     const PANELS = DEFAULTS.map(item => item.id);
 
     const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+    // Match 14px at 60fps, without slowing down on busy renderers or jumping after a pause.
+    const dragScrollDistance = elapsedMs => 840 * clamp(elapsedMs, 0, 100) / 1000;
     const defaults = () => DEFAULTS.map(item => ({...item}));
 
     /** Accept a stored layout, drop what is unknown and append new panels. */
@@ -278,12 +280,15 @@
             let pointerX = event.clientX;
             let pointerY = event.clientY;
             let scrolling = 0;
+            let previousFrame = win.performance.now();
             // Near the top or bottom edge the overview scrolls, so a panel can travel the whole board.
             const scroller = board.closest('#connectionOverview') || doc.scrollingElement;
-            const autoScroll = () => {
+            const autoScroll = timestamp => {
+                const distance = dragScrollDistance(timestamp - previousFrame);
+                previousFrame = timestamp;
                 const frame = scroller.getBoundingClientRect();
                 const edge = 70;
-                const speed = pointerY < frame.top + edge ? -14 : pointerY > frame.bottom - edge ? 14 : 0;
+                const speed = pointerY < frame.top + edge ? -distance : pointerY > frame.bottom - edge ? distance : 0;
                 if (speed) { scroller.scrollTop += speed; place(pointerX, pointerY); }
                 scrolling = win.requestAnimationFrame(autoScroll);
             };
@@ -372,5 +377,5 @@
         };
     }
 
-    return {COLUMNS, ROW, PANELS, defaults, normalize, isDefault, move, moveBefore, resize, setHidden, rowsFor, widthFromPointer, heightFromPointer, createBoard};
+    return {COLUMNS, ROW, PANELS, defaults, normalize, isDefault, move, moveBefore, resize, setHidden, rowsFor, widthFromPointer, heightFromPointer, dragScrollDistance, createBoard};
 }));

@@ -53,3 +53,14 @@ test('attention keys change with the situation they describe', () => {
         assert.match(key, /^[a-z-]+:[A-Za-z0-9_.-]{1,64}$/, 'keys stay within what the server accepts');
     }
 });
+
+test('drag autoscroll travels the same distance across frame rates and bounds stalled frames', () => {
+    for (const fps of [10, 12, 20, 30, 60, 120]) {
+        const distance = Array.from({length:fps}, () => Layout.dragScrollDistance(1000 / fps)).reduce((a, b) => a + b, 0);
+        assert.ok(Math.abs(distance - 840) < .001, `${fps} fps preserves elapsed-time speed`);
+    }
+    assert.ok(Math.abs(Layout.dragScrollDistance(1000 / 60) - 14) < .001);
+    assert.equal(Layout.dragScrollDistance(5000), 84, 'a stalled or background frame cannot jump across the board');
+    assert.equal(Layout.dragScrollDistance(0), 0);
+    assert.equal(Layout.dragScrollDistance(-1), 0);
+});
