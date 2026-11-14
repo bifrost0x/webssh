@@ -35,12 +35,19 @@ async function login(page, username = 'e2e_admin', {workspace = true, tour = 'ac
         const response = await page.request.post('/api/account/tour', {data:{state:'completed',acknowledged:true},headers:{'X-CSRFToken':await page.locator('meta[name="csrf-token"]').getAttribute('content')}});
         expect(response.ok()).toBe(true);
     }
+    await waitForInventory(page);
+    if (workspace) await openWorkspace(page);
+}
+
+async function waitForInventory(page) {
     await expect.poll(() => page.evaluate(() => (
         window.ProfileManager?.profilesLoaded === true
+        && window.ProfileManager?.keysLoaded === true
         && window.JumpHostManager?.loaded === true
+        && window.SocksProxyManager?.loaded === true
+        && window.socket?.connected === true
         && Array.isArray(window.JumpHostManager?.jumpHosts)
     ))).toBe(true);
-    if (workspace) await openWorkspace(page);
 }
 
 async function openWorkspace(page) {
@@ -217,6 +224,7 @@ module.exports = {
     keyUploadAttempts,
     launchProfile,
     login,
+    waitForInventory,
     openKeyManagement,
     openProfileManagement,
     observeConnectionModal,

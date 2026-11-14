@@ -1,5 +1,5 @@
 const {test, expect} = require('playwright/test');
-const {login, assertNoExternalRequests, installSshConnectTrap} = require('./helpers');
+const {login, waitForInventory, assertNoExternalRequests, installSshConnectTrap} = require('./helpers');
 
 // Group arrangement lives in the classic overview layout.
 const setLayout = async (page, value) => {
@@ -20,7 +20,7 @@ test.afterEach(async ({page}) => {
 });
 
 async function fixtures(page) {
-    await expect.poll(() => page.evaluate(() => window.ProfileManager?.profilesLoaded && window.JumpHostManager?.loaded)).toBe(true);
+    await waitForInventory(page);
     await page.evaluate(() => {
         JumpHostManager.setJumpHosts([{id:'arrange-jump',name:'Bastion'}]);
         ProfileManager.setProfiles([

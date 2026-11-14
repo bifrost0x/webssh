@@ -50,7 +50,9 @@ test('all matching hosts remain reachable in the list and after resize',async({p
   await page.locator('#overviewSearch').fill('Group '+String(group).padStart(2,'0'));
   await expect(rows).toHaveCount(40);
   const last=rows.last().locator('.od-connect');
-  await last.scrollIntoViewIfNeeded();await last.focus();
+  await expect(rows.last()).toHaveAttribute('data-host-id',`scale-${group*40+39}`);
+  // Keyboard focus scrolls the current card into view, including after a status refresh.
+  await last.focus();
   await expect(last).toBeInViewport();
   await expect(last).toBeFocused();
  }

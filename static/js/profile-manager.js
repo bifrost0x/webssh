@@ -1313,12 +1313,15 @@ const ProfileManager = {
     },
 
     renderEditorSelects() {
+        const keySelect = document.getElementById('profileEditorKeySelect');
+        const selectedKey = keySelect?.value;
         this._fillSelect(
-            document.getElementById('profileEditorKeySelect'),
+            keySelect,
             this.keys,
             this.t('connection.selectSSHKey', 'Select SSH Key'),
             key => `${key.name} (${key.key_type})`,
         );
+        this.selectEditorKey(selectedKey);
         this._fillSelect(
             document.getElementById('profileEditorJumpHostSelect'),
             window.JumpHostManager?.jumpHosts || [],
@@ -1343,6 +1346,21 @@ const ProfileManager = {
             commandSet => commandSet.name,
         );
         this.renderEditorCommandPreview();
+    },
+
+    selectEditorKey(keyId) {
+        const select = document.getElementById('profileEditorKeySelect');
+        if (!select) return;
+        if (keyId && !Array.from(select.options).some(option => option.value === keyId)) {
+            // Keep the saved reference while its asynchronous inventory is loading.
+            const option = document.createElement('option');
+            option.value = keyId;
+            option.textContent = this.keysLoaded
+                ? this.t('connection.readinessKey', 'Key missing or unavailable')
+                : this.t('operations.loading', 'Loading…');
+            select.appendChild(option);
+        }
+        select.value = keyId || '';
     },
 
     duplicateProfileName(name) {
@@ -1433,7 +1451,7 @@ const ProfileManager = {
         document.getElementById('profileEditorUsername').value = profile?.username || '';
         document.getElementById('profileEditorAuthType').value = profile?.auth_type || 'password';
 
-        document.getElementById('profileEditorKeySelect').value = profile?.key_id || '';
+        this.selectEditorKey(profile?.key_id);
         document.getElementById('profileEditorJumpHostSelect').value = profile?.jump_host_id || '';
         window.SocksProxyManager?.selectReference(document.getElementById('profileEditorSocksProxySelect'), profile?.socks_proxy_id);
         document.getElementById('profileEditorPostConnectMode').value = profile
