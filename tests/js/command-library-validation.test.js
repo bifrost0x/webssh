@@ -275,3 +275,43 @@ test('unknown command save outcome needs explicit confirmation before a retry', 
     await Promise.resolve();
     assert.equal(state.emitted.length, 1);
 });
+
+test('default browsing hides known disruptive templates but search and all-tasks retain them', () => {
+    const {library} = setup();
+    library.renderCommandsList = () => {};
+    const records = JSON.parse(fs.readFileSync(path.join(__dirname, '../../app/resources/commands/system_commands.json'), 'utf8'));
+    library.setCommands(records);
+    assert.equal(library.filteredCommands.some(item => item.id === 'file-006'), false);
+    assert.equal(library.filteredCommands.some(item => item.id === 'sys-016'), true);
+    library.searchCommands('rm -rf');
+    assert.equal(library.filteredCommands.some(item => item.id === 'file-006'), true);
+    library.currentImpact = 'all';
+    library.searchCommands('');
+    assert.equal(library.filteredCommands.length, records.length);
+});
+
+test('catalog explicitly classifies known effects and provides a correct Windows ping template', () => {
+    const records = JSON.parse(fs.readFileSync(path.join(__dirname, '../../app/resources/commands/system_commands.json'), 'utf8'));
+    for (const record of records) {
+        assert.ok(['read-only', 'changes-system', 'deletes-data', 'network-load'].includes(record.safety?.impact), record.id);
+        assert.ok(record.safety.tool, record.id);
+    }
+    assert.equal(records.find(item => item.id === 'file-006').safety.impact, 'deletes-data');
+    assert.equal(records.find(item => item.id === 'net-050').safety.impact, 'network-load');
+    const unix = records.find(item => item.id === 'net-003');
+    assert.equal(unix.os.includes('windows'), false);
+    assert.equal(unix.os.includes('all'), false);
+    assert.equal(records.find(item => item.id === 'net-050').os.includes('all'), false);
+    assert.ok(records.some(item => item.command === 'ping' && item.os.includes('windows') && item.parameters === '-n 4 hostname'));
+});
+
+test('GNU-specific templates stay on Linux and Windows receives native netstat arguments', () => {
+    const records = JSON.parse(fs.readFileSync(path.join(__dirname, '../../app/resources/commands/system_commands.json'), 'utf8'));
+    for (const id of ['net-007','perf-011','perf-012','file-038','file-039','file-040']) {
+        assert.deepEqual(records.find(item => item.id === id).os, ['linux'], id);
+    }
+    const windows = records.find(item => item.command === 'netstat' && item.os.includes('windows'));
+    assert.ok(windows);
+    assert.equal(windows.parameters, '-ano');
+    assert.equal(windows.safety.impact, 'read-only');
+});

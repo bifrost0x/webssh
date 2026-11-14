@@ -65,6 +65,7 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/overview-workspace.css') }}">
     {% endif %}
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/onboarding.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/customer-workflows.css') }}">
 </head>
 <body class="webssh-shell webssh-ui" data-primary-workspace="overview" data-sftp-chmod-enabled="{{ 'true' if sftp_chmod_enabled else 'false' }}" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
@@ -141,6 +142,8 @@
 
                         <div class="account-divider" role="separator"></div>
                         <a id="accountSettingsBtn" class="account-item account-action" href="{{ url_for('security_center') }}#preferences"><span class="account-item-icon material-icons" aria-hidden="true">settings</span> <span data-i18n="settings.title">Settings</span></a>
+                        <button type="button" data-workspace-presets class="account-action" data-i18n="customer.presetsTitle">Workspace presets</button>
+                        <button type="button" data-recovery-check class="account-action" data-i18n="customer.recoveryTitle">Recovery check</button>
                         <button id="restartTour" class="account-item account-action" type="button"><span class="material-icons" aria-hidden="true">explore</span><span>Product tour</span></button>
                         <button id="accountShortcutsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">keyboard</span> <span data-i18n="shortcuts.title">Keyboard Shortcuts</span></button>
                         {% if support_links_enabled %}
@@ -180,6 +183,7 @@
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
                     <span class="material-icons" aria-hidden="true">cell_tower</span>
                 </button>
+                <button id="workspacePresetsBtn" data-workspace-presets class="terminal-tool-btn" type="button" data-i18n="customer.presetsTitle">Workspace presets</button>
                 <button class="tab-row-icon-btn" id="saveTranscriptBtn" title="Save Transcript" aria-label="Save transcript" data-i18n-title="terminal.saveTranscript" data-i18n-aria-label="terminal.saveTranscript">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"></path><rect x="8" y="4" width="8" height="5"></rect><rect x="8" y="15" width="8" height="4" rx="1"></rect></svg>
                 </button>
@@ -188,6 +192,12 @@
         </div>
     </header>
     <script src="{{ static_asset_url(filename='js/header-actions.js') }}"></script>
+    <aside id="restoreRecoveryNotice" class="restore-recovery-notice" aria-labelledby="restoreRecoveryNoticeTitle" hidden>
+        <strong id="restoreRecoveryNoticeTitle" data-i18n="customer.recoveryNoticeTitle">Review recovery after restore</strong>
+        <p data-i18n="customer.recoveryNoticeBody">This instance was restored. Review your missing remote credentials, host trust and schedules before resuming work.</p>
+        <button type="button" class="btn btn-secondary" data-recovery-check data-i18n="customer.openRecoveryChecklist">Open recovery checklist</button>
+    </aside>
+
 
     <nav id="workspaceAccessRail" class="workspace-access-rail" aria-label="Workspace shortcuts" data-i18n-aria-label="workspace.shortcuts">
         <button id="toggleHostRail" class="workspace-access-button" type="button" aria-controls="shellHostAccess" aria-expanded="false" data-i18n-title="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
@@ -339,6 +349,7 @@
             </aside>
         </div>
     </main>
+    <p id="workspaceContinuity" class="workspace-continuity" role="status" hidden></p>
     <footer class="workspace-status-bar" id="workspaceStatusBar" hidden aria-label="Workspace status" data-i18n-aria-label="workspace.status">
         <span class="workspace-status-state" id="workspaceStatusState" data-i18n="workspace.noActiveSession">No active session</span>
         <span hidden><strong data-i18n="workspace.target">Target</strong> <span id="workspaceStatusTarget">—</span></span>
@@ -1683,6 +1694,9 @@
     <script id="websshRuntimeLimits" type="application/json">{{ {'transfer': transfer_limits, 'sshInput': ssh_input_limits} | tojson }}</script>
     <script src="{{ static_asset_url(filename='js/runtime-limits.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/command-safety-i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/work-first-i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/customer-workflows-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/socket-protocol.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/ssh-error-ui.js') }}"></script>
 
@@ -1763,6 +1777,7 @@
     <script id="websshFlashedMessages" type="application/json">{{ {'keys': flash_message_keys, 'messages': get_flashed_messages(with_categories=true)} | tojson }}</script>
     <script src="{{ static_asset_url(filename='js/flash-messages.js') }}"></script>
 
+    <script src="{{ static_asset_url(filename='js/customer-workflows.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/index-shell.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/onboarding.js') }}" defer></script>
 </body>

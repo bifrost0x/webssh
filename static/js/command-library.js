@@ -3,6 +3,7 @@ const CommandLibrary = {
     filteredCommands: [],
     currentOs: 'all',
     currentSource: 'all',
+    currentImpact: 'recommended',
     searchQuery: '',
     editingCommandId: null,
     selectedCommandId: null,
@@ -177,6 +178,30 @@ const CommandLibrary = {
             label.append(text, select);
             toolbar.insertBefore(label, toolbar.querySelector('.management-panel-actions'));
         }
+        if (!document.getElementById('commandImpactFilter')) {
+            const label = document.createElement('label');
+            label.className = 'command-source-filter';
+            const text = document.createElement('span');
+            text.textContent = window.i18n?.t('commandSafety.browse') || 'Browse';
+            text.setAttribute('data-i18n', 'commandSafety.browse');
+            const select = document.createElement('select');
+            select.id = 'commandImpactFilter';
+            select.className = 'form-control';
+            for (const value of ['recommended', 'all']) {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = window.i18n?.t(`commandSafety.${value}`) || value;
+                option.setAttribute('data-i18n', `commandSafety.${value}`);
+                select.append(option);
+            }
+            select.value = this.currentImpact;
+            select.addEventListener('change', () => {
+                this.currentImpact = select.value;
+                this.searchCommands(this.searchQuery);
+            });
+            label.append(text, select);
+            toolbar.insertBefore(label, toolbar.querySelector('.management-panel-actions'));
+        }
         const header = document.querySelector('#commandLibraryPanel .commands-table-header');
         if (header) {
             header.replaceChildren();
@@ -282,13 +307,14 @@ const CommandLibrary = {
             || (command.os || ['all']).some(os => os.toLowerCase() === 'all' || os.toLowerCase() === this.currentOs.toLowerCase()))
             && (this.currentSource === 'all' || (command.isSystem ? 'system' : 'personal') === this.currentSource));
         if (!query) {
-            this.filteredCommands = commands;
+            this.filteredCommands = commands.filter(command => this.currentImpact === 'all'
+                || !command.isSystem || this.commandSafety(command)?.impact === 'read-only');
         } else {
             const lowerQuery = query.toLowerCase();
             this.filteredCommands = commands.filter(cmd => {
                 const matchesEnglish = (
                     cmd.name.toLowerCase().includes(lowerQuery) ||
-                    cmd.command.toLowerCase().includes(lowerQuery) ||
+                    `${cmd.command} ${cmd.parameters || ''}`.toLowerCase().includes(lowerQuery) ||
                     cmd.parameters.toLowerCase().includes(lowerQuery) ||
                     cmd.description.toLowerCase().includes(lowerQuery) ||
                     String(cmd.sourceName || '').toLowerCase().includes(lowerQuery) ||
@@ -380,6 +406,7 @@ const CommandLibrary = {
                 <div class="command-cell command-name">
                     <button type="button" class="command-inspect-button" data-cmd-id="${this.escapeHtml(cmd.id)}" aria-controls="commandLibraryDetails" aria-expanded="${cmd.id === this.selectedCommandId}">${this.escapeHtml(cmd.name)}</button>
                     <div class="command-desc">${this.escapeHtml(cmd.description)}</div>
+                    <span class="command-impact-label">${this.escapeHtml(this.impactLabel(cmd))}</span>
                 </div>
                 <div class="command-cell command-text">
                     <code>${this.escapeHtml(cmd.command + (cmd.parameters ? ` ${cmd.parameters}` : ''))}</code>
@@ -455,9 +482,22 @@ const CommandLibrary = {
         };
     },
 
+    commandSafety(command) {
+        const safety = command.safety;
+        return command.isSystem && safety && safety.command === command.command
+            && safety.parameters === (command.parameters || '')
+            && ['read-only', 'changes-system', 'deletes-data', 'network-load'].includes(safety.impact)
+            ? safety : null;
+    },
+
+    impactLabel(command) {
+        const impact = this.commandSafety(command)?.impact || 'unknown';
+        return window.i18n?.t(`commandSafety.${impact}`) || impact;
+    },
+
     commandSourceLabel(command) {
         const key = command.isSystem ? 'commands.systemSource' : 'commands.personalSource';
-        return window.i18n?.t(key) || (command.isSystem ? 'System · read-only' : 'Personal');
+        return window.i18n?.t(key) || (command.isSystem ? 'System · fixed template' : 'Personal');
     },
 
     selectCommand(commandId) {
@@ -526,6 +566,20 @@ const CommandLibrary = {
         source.className = 'command-source-label';
         source.textContent = this.commandSourceLabel(command);
         details.append(header, source);
+        const safety = this.commandSafety(command);
+        const impact = document.createElement('p');
+        impact.className = 'command-impact-label';
+        impact.textContent = this.impactLabel(command);
+        details.append(impact);
+        if (safety) {
+            const prerequisites = document.createElement('p');
+            prerequisites.className = 'command-template-hint';
+            prerequisites.textContent = `${window.i18n?.t('commandSafety.requires') || 'Required on target'}: ${safety.tool} · ${(command.os || []).join(', ')}. ${window.i18n?.t('commandSafety.prerequisites') || 'Check the installed tool, shell, permissions and arguments before use.'}`;
+            const scope = document.createElement('p');
+            scope.className = 'command-template-hint';
+            scope.textContent = window.i18n?.t('commandSafety.scope') || 'Impact describes this exact template, not a safety guarantee. Changed arguments, interactive actions and sudo can change the effect.';
+            details.append(prerequisites, scope);
+        }
         const fields = [
             ['commands.command', 'Command', command.command, true],
             ...(command.parameters ? [

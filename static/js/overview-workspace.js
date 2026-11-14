@@ -44,10 +44,12 @@
             return element;
         };
 
+        const wf = (key, fallback, values) => t(`workFirst.${key}`, fallback, values);
+        const fileSessions = new Set();
         const search = $('overviewSearch');
         const hostList = $('overviewHostList');
         const mode = () => view.dataset.reachability || 'manual';
-        const state = {readiness: null, reachability: null, checkedAt: null, checking: false, reachError: null,
+        const state = {readiness: null, reachability: null, checkedAt: null, readinessAt: null, checking: false, reachError: null,
             shown: new Map(), scheduled: false, readinessTimer: 0, automaticTimer: 0, routeMap: null, firstPaint: true, returnKey: null, topologyNarrow: false, stateFilter: null, focusId: null, idFilter: null,
             dismissed: [], dismissSequence: 0, attention: [], board: null};
 
@@ -65,7 +67,7 @@
             state.returnKey = `connect:${host.id}`;
             showWorkspaces();
             if (host.sessionId && sessionManager?.getSession?.(host.sessionId)) sessionManager.switchSession(host.sessionId);
-            else win.launchProfileForPane?.(host.id);
+            else if (host.profile) win.launchProfileForPane?.(host.id);
         }
         function edit(hostId) {
             const manager = win.ProfileManager;
@@ -146,6 +148,74 @@
             countUp(number, value, suffix);
         }
 
+        function renderWorkFirst(hosts) {
+            const holder = $('overviewShortcuts');
+            if (!holder) return;
+            const groups = Model.workFirst({hostList: visibleHosts(hosts), sessions: filtered() ? [] : sessions(), history: win.ConnectionHistory?.getHistory?.() || []});
+            const signature = JSON.stringify([groups, win.i18n?.getLanguage?.()]);
+            if (state.shortcutSignature !== signature) {
+                state.shortcutSignature = signature;
+                holder.replaceChildren();
+                Object.entries(groups).forEach(([kind, list]) => {
+                    if (!list.length) return;
+                    const group = node('section', 'od-shortcut-group');
+                    group.append(node('h3', '', wf(kind, {resume:'Resume sessions', favorites:'Favorites', recent:'Recent hosts', saved:'Saved hosts'}[kind])));
+                    list.forEach(host => {
+                        const action = button('od-shortcut', host.name, () => connect(host), host.name);
+                        action.dataset.key = `shortcut:${host.id}`;
+                        action.append(node('small', '', host.destination));
+                        group.append(action);
+                    });
+                    holder.append(group);
+                });
+                if (!holder.childElementCount) holder.append(button('btn btn-secondary', null, createHost, t('profiles.newHost', 'New host')));
+            }
+            const select = $('overviewSetupHost');
+            const chosen = select.value;
+            const options = JSON.stringify([hosts.map(host => [host.id, host.name]), win.i18n?.getLanguage?.()]);
+            if (options !== state.setupOptions) {
+                state.setupOptions = options;
+                select.replaceChildren();
+                if (!hosts.length) select.append(node('option', '', wf('noHost', 'Create a saved host to begin')));
+                hosts.forEach(host => { const option = node('option', '', host.name); option.value = host.id; select.append(option); });
+                if (hosts.some(host => host.id === chosen)) select.value = chosen;
+                select.disabled = !hosts.length;
+            }
+            const host = hosts.find(item => item.id === select.value);
+            const progress = Model.setupProgress(host, fileSessions);
+            if (!state.setupInitialized && win.ProfileManager?.profilesLoaded === true) {
+                state.setupInitialized = true;
+                if (!hosts.length) $('overviewFirstConnection').open = true;
+            }
+            const setupSignature = JSON.stringify([host?.id, progress, host?.status, win.i18n?.getLanguage?.()]);
+            if (setupSignature === state.setupSignature) return;
+            state.setupSignature = setupSignature;
+            const list = $('overviewSetupSteps'); list.replaceChildren();
+            const names = {host:'Save host and username', auth:'Authenticate to the host', trust:'Verify the SSH host key', terminal:'Open a terminal', files:'Open Files for this session'};
+            const nextStep = Object.keys(progress).find(key => !progress[key]);
+            Object.entries(progress).forEach(([key, done]) => {
+                const row = node('li', 'od-setup-step'); row.dataset.step = key; row.dataset.complete = String(done);
+                row.append(icon(done ? 'check_circle' : 'radio_button_unchecked'), node('span', '', wf(key, names[key])));
+                const label = done ? wf('verified', 'Observed') : wf('pending', 'Pending');
+                row.append(node('small', '', label));
+                if (key === nextStep) {
+                    const action = () => {
+                        if (!host) return createHost();
+                        if (key === 'host' || (key === 'auth' && ['key_missing', 'password_changed'].includes(host.status?.auth))) return edit(host.id);
+                        connect(host);
+                        if (key === 'files' && host.sessionId) {
+                            win.workspaceLayoutController?.openContext?.('files', 'user');
+                            win.sessionWorkspace?.openSftpPanel?.();
+                        }
+                    };
+                    row.append(button('od-link', null, action, !host ? t('profiles.newHost', 'New host')
+                        : key === 'host' || (key === 'auth' && ['key_missing', 'password_changed'].includes(host.status?.auth)) ? t('common.edit', 'Edit')
+                            : key === 'files' && host.sessionId ? wf('openFiles', 'Open Files') : t('connection.actionConnect', 'Connect')));
+                }
+                list.append(row);
+            });
+        }
+
         function renderHero(hosts, attentionItems) {
             const name = view.dataset.username || '';
             $('overviewTitle').textContent = tw(Model.greetingKey(new Date().getHours()),
@@ -164,7 +234,7 @@
                 disconnected: t('overview.stale', 'Connection to WebSSH interrupted. Displayed data may be out of date.'),
                 attention: line.count === 1 ? tw('statusOneIssue', '1 item needs attention') : tw('statusIssues', '{count} items need attention', {count: line.count}),
                 empty: tw('statusEmpty', 'Ready for your first host'),
-                ready: tw('statusReady', 'Everything is ready'),
+                ready: wf('configReady', 'Saved configuration is ready'),
             }[line.key];
             $('overviewStatusButton').disabled = line.key !== 'attention';
         }
@@ -175,7 +245,7 @@
             // Readiness arrives separately; never show a provisional count.
             const known = loaded && (metrics.hosts.loaded || !total);
             kpi('odKpiHosts', {
-                label: tw('kpiHosts', 'Hosts ready'), iconName: 'dns',
+                label: wf('configTitle', 'Configuration readiness'), iconName: 'dns',
                 value: known ? ready : '–', suffix: known ? ` / ${total}` : '',
                 sub: !known ? tw('loading', 'Loading…') : !total ? tw('kpiHostsNone', 'No saved hosts yet')
                     : needsAttention > 0 ? tw('kpiHostsAttention', '{count} need attention', {count: needsAttention}) : tw('kpiHostsAll', 'All hosts ready'),
@@ -218,7 +288,7 @@
             }
             const result = metrics.reachability;
             kpi('odKpiReach', {
-                label: tw('kpiReach', 'Reachable'), iconName: 'sensors',
+                label: wf('tcpTitle', 'TCP reachability'), iconName: 'sensors',
                 value: current === 'off' ? tw('kpiOff', 'Off') : result ? result.reachable : '–',
                 suffix: result && current !== 'off' ? ` / ${result.checked}` : '',
                 sub: state.reachError || (current === 'off' ? tw('reachOff', 'Reachability checks are off')
@@ -380,7 +450,7 @@
         }
         function stateLabel(value) {
             return {
-                ready: tw('stateReady', 'Ready'), action: tw('stateAction', 'Needs action'), broken: tw('stateBroken', 'Route broken'),
+                ready: wf('configReady', 'Saved configuration is ready'), action: tw('stateAction', 'Needs action'), broken: tw('stateBroken', 'Route broken'),
                 unreachable: tw('stateUnreachable', 'Unreachable'), live: tw('stateLive', 'Session open'), unknown: tw('loading', 'Loading…'),
             }[value] || value;
         }
@@ -487,7 +557,12 @@
             connectButton.dataset.key = `connect:${host.id}`;
             connectButton.append(icon(host.sessionId ? 'east' : 'terminal'), node('span', '', primary));
             bottom.append(badge, editButton, connectButton);
-            item.append(top, meta, bottom);
+            const context = node('p', 'od-host-context');
+            context.textContent = wf('configHint', 'Configuration checks do not test login or permissions.');
+            if (state.readinessAt) context.append(node('small', '', wf('configChecked', 'Configuration checked {time}', {time: new Date(state.readinessAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
+            if (host.reach && state.checkedAt) context.append(node('small', '', wf('tcpChecked', 'TCP {state} · {time}', {state: wf(host.reach.state, host.reach.state), time: new Date(state.checkedAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
+            if (host.reach) context.append(node('small', '', wf('tcpHint', 'TCP checks do not authenticate. For jump routes only the jump host is checked.')));
+            item.append(top, meta, bottom, context);
             return item;
         }
         function renderHosts(hosts) {
@@ -501,7 +576,7 @@
             const signature = JSON.stringify([loaded, win.i18n?.getLanguage?.() || '', visible.map(host => [host.id, host.state, host.name,
                 host.destination, host.favorite, host.group, host.route.kind, host.route.name, host.sessionId, reasonFor(host),
                 win.HostPlatform?.resolve?.(host.profile)?.id || '', win.HostPlatform?.services?.(host.profile) || [],
-                Model.maintenance(host.profile)])]);
+                Model.maintenance(host.profile)]), state.readinessAt, state.checkedAt]);
             if (signature === state.hostSignature) return;
             state.hostSignature = signature;
             const focusedKey = hostList.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
@@ -765,6 +840,7 @@
             state.attention = allAttention;
             const metrics = Model.metrics({hostList: hosts, sessions: sessions(), runs: runInfo.runs || [], schedules: runInfo.schedules || [],
                 reachability: state.reachability});
+            renderWorkFirst(hosts);
             renderHero(hosts, attentionItems);
             renderKpis(hosts, metrics, runInfo);
             renderLegend(hosts);
@@ -805,6 +881,7 @@
             try {
                 const data = await request('/api/overview/status');
                 state.readiness = Array.isArray(data.hosts) ? data.hosts : [];
+                state.readinessAt = Number(data.generated_at) * 1000 || Date.now();
             } catch {
                 // Readiness is optional context; hosts still render without it.
             }
@@ -1051,6 +1128,11 @@
             });
             $('odAttention')?.addEventListener('animationend', event => {
                 if (event.animationName === 'od-panel-flash') event.currentTarget.classList.remove('od-panel-flash');
+            });
+            $('overviewSetupHost')?.addEventListener('change', schedule);
+            win.socket?.on?.('directory_listing', data => {
+                const id = typeof data?.source_id === 'string' && data.source_id.startsWith('sftp-session:') ? data.source_id.slice(13) : null;
+                if (id && Array.isArray(data.files) && sessionManager?.getSession?.(id)?.connected) { fileSessions.add(id); schedule(); }
             });
             ['session-workspace-change', 'languageChanged', 'automation-runs-updated'].forEach(name => win.addEventListener(name, schedule));
             ['profile-list-change', 'jump-host-list-change', 'host-access-change'].forEach(name => win.addEventListener(name, () => { schedule(); queueReadiness(); }));

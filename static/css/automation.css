@@ -578,3 +578,7 @@ body[data-theme="paper"] [data-native-automation] { color-scheme: light; }
 .automation-compare-filter { margin: 10px 0 0; font-size: 13px; }
 .automation-compare-filter[hidden] { display: none; }
 .automation-run-compare[data-filter-active="true"][data-only-differing="true"] .automation-compare-step[data-uniform="true"] { display: none; }
+
+.automation-source-controls input[type="search"] { width: 100%; min-width: 0; margin-bottom: 8px; }
+
+.automation-notifications .automation-check { display: flex; align-items: flex-start; gap: 8px; }

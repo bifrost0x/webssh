@@ -540,3 +540,31 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
     .od-host { transition: none; }
     .od-host:hover, .od-host:focus-within { transform: none; }
 }
+
+/* Task shortcuts precede the customizable board without changing saved layouts. */
+.od-work-first { margin: 0 0 1.5rem; padding: 1.1rem; border: 1px solid var(--ws2-border); border-radius: 12px; background: var(--ws2-panel); color: var(--ws2-text); }
+.od-work-first .od-panel-head { flex-wrap: wrap; gap: .75rem; padding: 0 0 .9rem; }
+.od-work-first h2 { margin: 0; font-size: 1.05rem; }
+.od-shortcuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 1rem; }
+.od-shortcut-group { min-width: 0; }
+.od-shortcut-group h3 { font-size: .85rem; margin: 0 0 .5rem; color: var(--ws2-text-secondary); }
+.od-shortcut { display: flex; flex-direction: column; align-items: flex-start; width: 100%; min-height: 44px; padding: .55rem .75rem; margin: .3rem 0; text-align: left; border: 1px solid var(--ws2-border); border-radius: 8px; background: var(--ws2-surface); color: var(--ws2-text); overflow-wrap: anywhere; cursor: pointer; }
+.od-shortcut small { color: var(--ws2-text-secondary); }
+.od-shortcut:focus-visible, .od-first-connection summary:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 3px; }
+.od-first-connection { margin-top: 1rem; border-top: 1px solid var(--ws2-border); padding-top: .75rem; }
+.od-first-connection summary { cursor: pointer; padding: .4rem 0; font-weight: 600; }
+.od-first-connection p { color: var(--ws2-text-secondary); font-size: .85rem; line-height: 1.5; }
+.od-first-connection select { max-width: 100%; margin: .5rem 0; }
+.od-first-connection ol { padding: 0; list-style: none; display: grid; gap: .5rem; }
+.od-setup-step { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; min-height: 44px; }
+.od-setup-step > span:not(.material-icons) { flex: 1 1 160px; }
+.od-setup-step small { color: var(--ws2-text-secondary); }
+.od-setup-step[data-complete="true"] > .material-icons { color: var(--ws2-success); }
+.od-host-context { margin: .2rem .9rem .75rem; font-size: .72rem; color: var(--ws2-text-secondary); line-height: 1.45; }
+.od-host-context small { display: block; font-size: inherit; }
+
+.od-work-first a { color: var(--ws2-accent); text-decoration: underline; text-underline-offset: .2em; border-radius: 3px; }
+.od-work-first a:hover { color: var(--ws2-text); text-decoration-thickness: 2px; }
+.od-work-first a:focus-visible { color: var(--ws2-text); background: var(--ws2-surface); outline: 2px solid var(--ws2-focus, var(--ws2-accent)); outline-offset: 4px; }
+.od-shortcut:hover { border-color: var(--ws2-accent); background: color-mix(in srgb, var(--ws2-accent) 10%, var(--ws2-surface)); }
+.od-first-connection select { border-color: var(--ws2-border); background: var(--ws2-surface); color: var(--ws2-text); }

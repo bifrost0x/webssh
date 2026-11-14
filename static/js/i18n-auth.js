@@ -1107,6 +1107,14 @@ const storedLanguage = BrowserPreferences.get('language', 'en');
 const i18n = {
     currentLang: translations[storedLanguage] ? storedLanguage : 'en',
 
+    addTranslations(lang, values) {
+        if (!Object.hasOwn(translations, lang) || !values || typeof values !== 'object' || Array.isArray(values)) return false;
+        for (const [key, value] of Object.entries(values)) {
+            if (typeof value === 'string' && !['__proto__', 'constructor', 'prototype'].includes(key)) translations[lang][key] = value;
+        }
+        return true;
+    },
+
     t(key) {
         const activeTranslations = translations[this.currentLang] || translations.en;
         return activeTranslations[key] || translations.en[key] || key;

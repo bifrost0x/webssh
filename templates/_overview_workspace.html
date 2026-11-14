@@ -25,7 +25,20 @@
                 </button>
             </div>
         </header>
-        </header>
+
+        <section id="overviewWorkFirst" class="od-work-first" aria-labelledby="workFirstTitle">
+            <div class="od-panel-head"><h2 id="workFirstTitle" data-i18n="workFirst.title">Continue working</h2>
+                <a href="{{ url_for('security_center') }}#preferences" data-i18n="workFirst.startPage">Choose your start page</a></div>
+            <div id="overviewShortcuts" class="od-shortcuts"></div>
+            <details id="overviewFirstConnection" class="od-first-connection">
+                <summary data-i18n="workFirst.setup">Your first connection, step by step</summary>
+                <p data-i18n="workFirst.setupHint">Progress reflects your selected host and this browser's live session. Nothing connects or trusts a key automatically.</p>
+                <label for="overviewSetupHost" data-i18n="workFirst.selectHost">Host to set up</label>
+                <select id="overviewSetupHost" class="form-control"></select>
+                <ol id="overviewSetupSteps"></ol>
+                <p data-i18n="workFirst.automationHint">A successful interactive connection does not approve a workflow or schedule. Automation needs its own credentials, host trust and approval.</p>
+            </details>
+        </section>
 
         <div id="odEditBar" class="od-edit-bar" role="toolbar" aria-labelledby="odEditTitle" hidden>
             <div class="od-edit-copy">

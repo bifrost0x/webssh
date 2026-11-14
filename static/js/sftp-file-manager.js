@@ -6010,6 +6010,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                 <div class="fm-transfer-info">
                     <div class="fm-transfer-name">${this.escapeHtml(t.filename)}</div>
                     ${reason ? `<div class="fm-transfer-error" role="status">${reason}</div>` : ''}
+                    ${t.status === 'error' && window.CustomerWorkflows ? `<details class="fm-recovery-guidance"><summary>${this.escapeHtml(this.t('customer.nextSteps', 'What can I do?'))}</summary><p>${this.escapeHtml(this.t('customer.' + window.CustomerWorkflows.adviceKey(t.errorCode), 'Inspect the destination before repeating this operation.'))}</p><p>${this.escapeHtml([t.sourcePath, t.targetPath].filter(Boolean).join(' → '))}</p></details>` : ''}
                     ${retryHint ? `<div class="fm-transfer-error">${this.escapeHtml(retryHint)}</div>` : ''}
                     ${t.status === 'active' ? `
                         <div class="fm-transfer-progress-bar" role="progressbar" aria-label="${this.escapeHtml(t.filename)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.max(0, Math.min(100, Number(t.progress) || 0))}">

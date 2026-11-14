@@ -39,3 +39,7 @@ Never put secrets in commands, exported profiles, URLs, browser storage or logs.
 Existing automation-vault.json files remain intact. **Import existing vault** asks for the old passphrase once and imports named entries and valid assignments. The old ciphertext is not deleted. Failed import leaves it recoverable; repeating the same source revision does not duplicate records. Changed old destination bindings require explicit correction.
 
 New installations need no vault passphrase. A lost old passphrase cannot be repaired by the new store: import the existing vault using the original passphrase or enter remote passwords again. Native backup restore does not restore the legacy vault. Older versions do not understand the named store; downgrade requires a compatible backup, not overwriting new data.
+
+## Recovery check
+
+After a portable restore, open **Account → Recovery check** (administrators can also open it from **Backup & Restore**). The checklist shows only your own saved hosts, missing keys/password assignments, host-trust decisions and schedule state. It inspects configuration without opening remote connections, testing credentials or granting approvals. Re-provision credentials from your separate trusted source, review each host, and explicitly approve schedules again. The last-restore timestamp is informational and does not certify recovery.

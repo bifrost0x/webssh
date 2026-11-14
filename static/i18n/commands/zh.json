@@ -317,7 +317,15 @@
   },
   "net-050": {
     "name": "Ping 洪泛",
-    "description": "洪泛 Ping（测试用）"
+    "description": "持续发送洪泛 ping 流量，直到中断。可能使网络和目标过载；可能需要提升权限。"
+  },
+  "net-051": {
+    "name": "Ping 主机（Windows）",
+    "description": "使用 Windows ping 发送四次 ICMP 回显请求；将 hostname 替换为目标主机。"
+  },
+  "net-052": {
+    "name": "连接和侦听端口（Windows）",
+    "description": "使用 Windows 自带的 netstat 显示连接和侦听的 TCP/UDP 端口，包括数字地址和所属进程 ID。"
   },
   "file-001": {
     "name": "列出文件",

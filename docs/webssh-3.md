@@ -253,3 +253,11 @@ A rollback to 2.x ignores the stored Admin values and follows its environment.
 
 Authentication capabilities retain separate readiness and activation checks.
 TOTP capability is available by default; Admin activation remains required.
+
+## Task-first access and recovery guidance
+
+The dashboard offers active sessions, favorites and recent hosts before its detailed panels, falling back to saved hosts for new accounts. The first-connection checklist observes host configuration, authentication, host trust, terminal and Files progress without connecting automatically. Configuration readiness and TCP reachability remain separate; neither certifies remote login or permissions. Existing classic and customized dashboard layouts remain available.
+
+The command library distinguishes a fixed system template from its known effect. Inspection browsing keeps advanced commands available through search or All tasks. Exact-template impact hints do not validate custom arguments or guarantee a safe remote result.
+
+Workspace presets retain account-owned host references and pane choices without storing credentials or replaying commands. After a portable restore, an account-specific reminder opens Recovery check; marking the steps reviewed dismisses only that reminder and does not verify recovery or authorize any connection or schedule. See the terminal, credentials and backup guides for details.

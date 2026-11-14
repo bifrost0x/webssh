@@ -239,13 +239,22 @@ class ScheduleService:
         # Recover ambiguous claims independently of the next cron occurrence.
         # Revoking the revision fences surviving workers; only fresh approval
         # can resume scheduling and the unknown outcome remains visible.
-        db.session.execute(update(AutomationSchedule).where(
-            AutomationSchedule.claim_id.is_not(None),
-            or_(AutomationSchedule.claimed_at.is_(None),
-                AutomationSchedule.claimed_at < now.timestamp() - 1860)
-        ).values(enabled=False, last_status='unknown', claim_id=None,
-                 claimed_at=None, revision=AutomationSchedule.revision + 1))
+        interrupted = [(row.id, row.user_id, row.revision, row.claim_id, row.last_status)
+            for row in AutomationSchedule.query.filter(AutomationSchedule.claim_id.is_not(None),
+                or_(AutomationSchedule.claimed_at.is_(None), AutomationSchedule.claimed_at < now.timestamp() - 1860)).all()]
+        recovered = []
+        for sid, uid, rev, claim, previous_status in interrupted:
+            changed = db.session.execute(update(AutomationSchedule).where(
+                AutomationSchedule.id == sid, AutomationSchedule.revision == rev,
+                AutomationSchedule.claim_id == claim
+            ).values(enabled=False, last_status='unknown', claim_id=None,
+                     claimed_at=None, revision=rev + 1))
+            if changed.rowcount and previous_status != 'unknown':
+                recovered.append(uid)
         db.session.commit()
+        from .automation_notifications import notify
+        for uid in recovered:
+            notify(uid, 'unknown')
         from .app_settings import is_automation_enabled
         if not is_automation_enabled() or not self.app.extensions['runtime_lifecycle'].accepting_work():
             return
@@ -288,19 +297,25 @@ class ScheduleService:
                                       last_status='skipped' if transient else 'needs_review')
                         if not transient:
                             values.update(enabled=False, revision=rev + 2)
-                        db.session.execute(update(AutomationSchedule).where(
+                        changed = db.session.execute(update(AutomationSchedule).where(
                             AutomationSchedule.id == sid, AutomationSchedule.claim_id == claim
                         ).values(**values))
                         db.session.commit()
+                        if changed.rowcount and not transient:
+                            notify(uid, 'needs_review')
                     except Exception:
                         # Never retry an ambiguous dispatch automatically.
-                        db.session.execute(update(AutomationSchedule).where(
+                        changed = db.session.execute(update(AutomationSchedule).where(
                             AutomationSchedule.id == sid, AutomationSchedule.claim_id == claim
                         ).values(enabled=False, last_status='unknown'))
                         db.session.commit()
+                        if changed.rowcount:
+                            notify(uid, 'unknown')
             except Exception:
                 db.session.rollback()
-                db.session.execute(update(AutomationSchedule).where(
+                changed = db.session.execute(update(AutomationSchedule).where(
                     AutomationSchedule.id == sid, AutomationSchedule.revision == rev
                 ).values(enabled=False, last_status='needs_review', revision=rev + 1))
                 db.session.commit()
+                if changed.rowcount:
+                    notify(uid, 'needs_review')

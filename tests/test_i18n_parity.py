@@ -1,4 +1,5 @@
 import re
+import json
 from pathlib import Path
 
 
@@ -269,17 +270,31 @@ def test_all_popup_translation_references_exist_in_every_locale():
                 source,
             )
         )
-        referenced_keys.update(
-            re.findall(
-                r"(?:i18n\.t|window\.i18n\.t|this\.t|(?<![\w.])t)"
-                r"\(\s*'([a-z][a-zA-Z0-9_.-]+)'",
-                source,
-            )
-        )
+        for call in re.finditer(
+            r"(i18n\.t|window\.i18n\.t|this\.t|(?<![\w.])t)"
+            r"\(\s*'([a-z][a-zA-Z0-9_.-]+)'(?=\s*[,\)])", source
+        ):
+            key = call.group(2)
+            if source_path.name == 'customer-workflows.js' and call.group(1) == 't':
+                key = 'customer.' + key
+            referenced_keys.add(key)
 
     locale_starts = list(
         re.finditer(r'^    (en|vi|de|fr|es|zh): \{$', i18n_source, re.MULTILINE)
     )
+    focused_keys = {locale: set() for locale in TERMINOLOGY}
+    for path in Path('static/js').glob('*-i18n.js'):
+        module = path.read_text(encoding='utf-8')
+        if '.addTranslations(' not in module:
+            continue
+        declaration = re.search(r'const (?:bundles|dictionaries) =\s*', module)
+        assert declaration, f'{path}: focused dictionaries must remain inspectable'
+        bundles, _ = json.JSONDecoder().raw_decode(module[declaration.end():])
+        assert set(bundles) == set(TERMINOLOGY), f'{path}: missing locale'
+        assert all(set(values) == set(bundles['en']) for values in bundles.values()), path
+        for locale, values in bundles.items():
+            assert all(isinstance(value, str) and value for value in values.values()), path
+            focused_keys[locale].update(values)
     missing_by_locale = {}
     for index, match in enumerate(locale_starts):
         end = (
@@ -294,7 +309,7 @@ def test_all_popup_translation_references_exist_in_every_locale():
                 re.MULTILINE,
             )
         )
-        missing = sorted(referenced_keys - locale_keys)
+        missing = sorted(referenced_keys - locale_keys - focused_keys[match.group(1)])
         if missing:
             missing_by_locale[match.group(1)] = missing
 

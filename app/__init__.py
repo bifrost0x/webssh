@@ -849,6 +849,8 @@ def create_app(
     from .credential_service import CredentialService
     from .onboarding import onboarding_blueprint
     app.register_blueprint(onboarding_blueprint)
+    from .customer_workflows import customer_workflows_blueprint
+    app.register_blueprint(customer_workflows_blueprint)
     from .overview_routes import overview_blueprint
     app.register_blueprint(overview_blueprint)
     from .discovery_routes import cancel_all as cancel_discovery, discovery_available, discovery_blueprint

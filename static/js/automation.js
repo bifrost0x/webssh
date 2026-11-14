@@ -145,7 +145,7 @@
         busy = true;
         notify('', true);
         notify('');
-        const controls = [...document.querySelectorAll('#automationApp button[type="submit"], .automation-dialog button[type="submit"], #previewRun, #reviewWorkspace, #scheduleList button, #openSchedule, #runbookList button, #newRunbook, #inventoryTemplate, #useWorkflowTemplate')];
+        const controls = [...document.querySelectorAll('#automationApp button[type="submit"], .automation-dialog button[type="submit"], #previewRun, #reviewWorkspace, #scheduleList button, #openSchedule, #runbookList button, #newRunbook, #inventoryTemplate, #useWorkflowTemplate, #workflowNotifications')];
         controls.forEach(button => { button.disabled = true; });
         document.body.setAttribute('aria-busy', 'true');
         try { await task(); } catch (error) {
@@ -163,6 +163,7 @@
     }
     function translate() {
         document.querySelectorAll('[data-auto-i18n]').forEach(element => { element.textContent = tr(element.dataset.autoI18n); });
+        document.querySelectorAll('[data-auto-label]').forEach(element => { element.setAttribute('aria-label', tr(element.dataset.autoLabel)); });
         document.querySelectorAll('[data-auto-placeholder]').forEach(element => { element.placeholder = tr(element.dataset.autoPlaceholder); });
         const language = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
         document.querySelectorAll('main[data-native-automation], .automation-dialog').forEach(element => {
@@ -263,6 +264,7 @@
     }
     function renderEditorSources() {
         const select=$('editorSource');if(!select)return;
+        const selectedSource=editorSource();
         const previous=select.value, language=window.i18n?.getLanguage()==='de'?'de':'en';
         const placeholder=node('option',tr('editorSourceChoose'));placeholder.value='';select.replaceChildren(placeholder);
         const groups=[
@@ -270,7 +272,12 @@
             [tr('ownCommandSets'),(window.CommandSetManager?.commandSets || []).map(c=>({id:'set:'+c.id,name:c.name}))],
             [tr('editorSourceTemplates'),(window.AutomationTemplates?.list() || []).map(c=>({id:c.id,name:c.title[language]}))]
         ];
-        groups.forEach(([label,items])=>{if(!items.length)return;const group=node('optgroup');group.label=label;items.forEach(item=>{const option=node('option',item.name);option.value=item.id;group.append(option);});select.append(group);});
+        const search = ($('editorSourceSearch')?.value || '').trim().toLocaleLowerCase();
+        groups.forEach(([label,items])=>{items=items.filter(item=>!search || item.name.toLocaleLowerCase().includes(search));if(!items.length)return;const group=node('optgroup');group.label=label;items.forEach(item=>{const option=node('option',item.name);option.value=item.id;group.append(option);});select.append(group);});
+        if (previous && ![...select.options].some(option=>option.value===previous)) {
+            const source=selectedSource;
+            if(source) { const option=node('option', source.libraryCommand?.name || source.title?.[language] || source.steps[0].name); option.value=previous; select.append(option); }
+        }
         if([...select.options].some(option=>option.value===previous))select.value=previous;
         previewEditorSource();
     }
@@ -611,6 +618,13 @@
         filterTargets();
         updateTargetCount();
     }
+    function renderNotificationStatus() {
+        const preferences=model.notifications || {enabled:false,available:false,delivery:'never'};
+        const toggle=$('workflowNotifications');
+        if (!toggle) return;
+        toggle.checked=preferences.enabled;
+        $('workflowNotificationStatus').textContent=tr(preferences.available ? 'notificationDelivery.'+preferences.delivery : 'notificationUnavailable');
+    }
     async function loadState({initial = false} = {}) {
         const generation = authorizationGeneration;
         const sequence = ++stateRequestSequence;
@@ -622,6 +636,7 @@
         model = {...result, runbooks: result.runbooks || [], vault:result.vault || {credentials:[],unlocked:false}};
         lastStateRefresh = Date.now();
         if (initial || targetsChanged) renderTargets();
+        renderNotificationStatus();
         if (initial) edit(model.runbooks[0]);
         else if (booksChanged) renderBooks();
     }
@@ -818,6 +833,13 @@
             }
             remove.title = tr('deleteRun'); remove.setAttribute('aria-label', tr('deleteRunLabel', {name: run.name}));
             remove.hidden = active;
+            const exports=runPart(details,'exports','div','automation-run-actions');
+            ['json','csv'].forEach(format=>{
+                const link=runPart(exports,format,'a','btn btn-secondary');
+                link.textContent=tr('exportRun',{format:format.toUpperCase()});
+                link.href=(document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/,'')+'/api/automation/runs/'+encodeURIComponent(run.id)+'/export?format='+format;
+                link.setAttribute('download','workflow-run.'+format);
+            });
             const cancel = runPart(details, 'cancel', 'button', 'btn btn-secondary');
             cancel.type = 'button'; cancel.textContent = tr('cancelRun'); cancel.hidden = !active;
             if (!exists) cancel.addEventListener('click', () => action(async () => {
@@ -1133,6 +1155,15 @@
         document.querySelector('.automation-library').classList.toggle('is-open', open);
         if (open) $('runbookSearch').focus();
     });
+    $('editorSourceSearch')?.addEventListener('input', renderEditorSources);
+    $('workflowNotifications')?.addEventListener('change', () => action(async()=>{
+        const generation=authorizationGeneration;
+        stateRequestSequence += 1;
+        try {
+            const result=await api('/api/automation/notifications',{method:'POST',body:{enabled:$('workflowNotifications').checked}});
+            if (generation === authorizationGeneration) model.notifications=result.notifications;
+        } finally { renderNotificationStatus(); }
+    }));
     $('runbookSearch').addEventListener('input', renderBooks);
     document.querySelectorAll('[data-workspace-view]').forEach(button => button.addEventListener('click', () => {
         setStage(button.dataset.workspaceView, {focus:true});
@@ -1174,7 +1205,7 @@
     window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
     window.addEventListener('languageChanged', () => {
         const currentDraft = draft(); const wasDirty = dirty; const currentStage = $('auto-runbooks').dataset.view;
-        translate(); if ($('scheduleFrequency')) updateScheduleBuilder({preserveCron:true}); edit(currentDraft, {preserveSchedule:true}); dirty = wasDirty; renderTargets(); setStage(currentStage, {animate:false});
+        translate(); renderNotificationStatus(); if ($('scheduleFrequency')) updateScheduleBuilder({preserveCron:true}); edit(currentDraft, {preserveSchedule:true}); dirty = wasDirty; renderTargets(); setStage(currentStage, {animate:false});
         historySignature = ''; if (selectedTab === 'runs') action(loadRuns);
     });
     // Open a built-in template as an unsaved draft with the given hosts selected.

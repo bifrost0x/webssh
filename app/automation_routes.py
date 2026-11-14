@@ -1,6 +1,9 @@
 """Authenticated HTTP control plane for native automation and write-only vault."""
 import ipaddress
-from flask import Blueprint, current_app, jsonify, request, redirect, url_for
+import csv
+import io
+import json
+from flask import Blueprint, current_app, jsonify, request, redirect, url_for, Response
 from flask_login import current_user, login_required
 import config
 from .automation_store import AutomationError, runbooks, save_runbook, delete_runbook
@@ -10,6 +13,9 @@ from .auth import check_reauth_rate_limit
 from .step_up import consume_account_step_up_grant, StepUpError
 from .storage_errors import StorageCorruptionError
 from .quota_manager import QuotaExceeded
+
+from .automation_notifications import status as notification_status
+from .automation_store import notification_preferences
 
 automation_blueprint = Blueprint('automation', __name__)
 
@@ -124,7 +130,8 @@ def state():
 
     return jsonify(enabled=True, credentials_enabled=is_credentials_enabled(), runbooks=runbooks(current_user.id),
         profiles=[target(item) for item in resources if item['kind'] == 'ssh'],
-        vault=credentials.vault_status(current_user.id, auth.id))
+        vault=credentials.vault_status(current_user.id, auth.id),
+        notifications=notification_status(current_user.id))
 
 @automation_blueprint.post('/api/automation/runbooks')
 @login_required
@@ -272,3 +279,54 @@ def schedule_delete(schedule_id):
     _secure()
     current_app.extensions['automation_schedules'].pause(current_user.id, schedule_id, delete=True)
     return jsonify(deleted=True)
+
+
+@automation_blueprint.post('/api/automation/notifications')
+@login_required
+def notifications_update():
+    _auth()
+    _enabled()
+    data = _data()
+    if set(data) != {'enabled'} or type(data['enabled']) is not bool:
+        raise AutomationError('invalid_request')
+    notification_preferences(current_user.id, enabled=data['enabled'])
+    return jsonify(notifications=notification_status(current_user.id))
+
+
+@automation_blueprint.get('/api/automation/runs/<run_id>/export')
+@login_required
+def export_run(run_id):
+    _auth()
+    _enabled()
+    format_name = request.args.get('format', 'json')
+    if format_name not in {'json', 'csv'}:
+        raise AutomationError('invalid_request')
+    # Same validated, size-bounded, owner-fenced source as the run history UI.
+    run = next((item for item in service().history(current_user.id) if item['id'] == run_id), None)
+    if run is None:
+        raise AutomationError('not_found')
+    if format_name == 'json':
+        body = json.dumps(run, ensure_ascii=True)
+        mimetype = 'application/json'
+    else:
+        output = io.StringIO(newline='')
+        writer = csv.writer(output)
+        writer.writerow(['run_id', 'workflow', 'created_at', 'finished_at', 'run_status',
+            'target_id', 'target', 'host', 'port', 'username', 'group', 'target_status', 'target_reason',
+            'step', 'status', 'reason', 'exit_code', 'duration', 'output_truncated', 'stdout', 'stderr'])
+        def safe(value):
+            value = '' if value is None else str(value)
+            return "'" + value if value.lstrip('\ufeff \t\r\n\v\f').startswith(('=', '+', '-', '@')) or value.startswith(('\t', '\r', '\n')) else value
+        for target in run['targets']:
+            for step in target['steps']:
+                values = [run['id'], run['name'], run['created_at'], run.get('finished_at'), run['status'],
+                    target['id'], target['name'], target['host'], target['port'], target['username'], target['group'],
+                    target['status'], target['reason'], step['name'], step['status'], step.get('reason'),
+                    step['exit_code'], step['duration'], step.get('output_truncated'),
+                    step.get('stdout', ''), step.get('stderr', '')]
+                writer.writerow([safe(value) for value in values])
+        body, mimetype = output.getvalue(), 'text/csv'
+    response = Response(body, mimetype=mimetype)
+    response.headers['Content-Disposition'] = f'attachment; filename="workflow-run.{format_name}"'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response

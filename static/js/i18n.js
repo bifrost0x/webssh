@@ -324,7 +324,7 @@ const translations = {
         "fm.new": "New",
         "fm.more": "More…",
         "fm.openFileManager": "Open File Manager",
-        "commands.systemSource": "System · read-only",
+        "commands.systemSource": "System · fixed template",
         "commands.personalSource": "Personal",
         "commands.details": "Command details",
         "commands.selectDetails": "Select a command to view its details.",
@@ -2373,7 +2373,7 @@ const translations = {
         'commands.currentOs': 'Current OS',
         'commands.detecting': 'Detecting...',
         'commands.helpTip': "Press F1 to open this library anytime. Choose “Insert into terminal”, review the command, and press Enter when ready to run it.",
-        'commands.helpSystem': 'System commands (gray background) are read-only. User commands can be edited or deleted.',
+        'commands.helpSystem': 'System templates cannot be edited in the catalog. They can still change or delete data when run. Copy one to customize it. Personal commands can be edited or deleted.',
         'commands.namePlaceholder': 'e.g., Update System',
         'commands.commandPlaceholder': 'e.g., apt update',
         'commands.parametersPlaceholder': 'e.g., -y',
@@ -2756,7 +2756,7 @@ const translations = {
         "fm.new": "Mới",
         "fm.more": "Thêm…",
         "fm.openFileManager": "Mở trình quản lý tệp",
-        "commands.systemSource": "Hệ thống · chỉ đọc",
+        "commands.systemSource": "Hệ thống · mẫu cố định",
         "commands.personalSource": "Cá nhân",
         "commands.details": "Chi tiết lệnh",
         "commands.selectDetails": "Chọn một lệnh để xem chi tiết.",
@@ -4805,7 +4805,7 @@ const translations = {
         'commands.currentOs': 'OS hiện tại',
         'commands.detecting': 'Đang phát hiện...',
         'commands.helpTip': "Nhấn F1 để mở thư viện này bất kỳ lúc nào. Chọn “Chèn vào terminal”, kiểm tra lệnh rồi nhấn Enter khi sẵn sàng chạy.",
-        'commands.helpSystem': 'Các lệnh hệ thống (nền xám) là chỉ đọc. Các lệnh của người dùng có thể được chỉnh sửa hoặc xóa.',
+        'commands.helpSystem': 'Không thể sửa mẫu hệ thống trong danh mục. Khi chạy, lệnh vẫn có thể thay đổi hoặc xóa dữ liệu. Sao chép để tùy chỉnh. Có thể sửa hoặc xóa lệnh cá nhân.',
         'commands.namePlaceholder': 'Ví dụ: Cập nhật hệ thống',
         'commands.commandPlaceholder': 'Ví dụ: apt update',
         'commands.parametersPlaceholder': 'Ví dụ: -y',
@@ -5192,7 +5192,7 @@ const translations = {
         "fm.new": "Neu",
         "fm.more": "Mehr…",
         "fm.openFileManager": "Dateimanager öffnen",
-        "commands.systemSource": "System · schreibgeschützt",
+        "commands.systemSource": "System · feste Vorlage",
         "commands.personalSource": "Eigener Befehl",
         "commands.details": "Befehlsdetails",
         "commands.selectDetails": "Wähle einen Befehl, um seine Details zu sehen.",
@@ -7240,7 +7240,7 @@ const translations = {
         'commands.currentOs': 'Aktuelles OS',
         'commands.detecting': 'Erkennung läuft...',
         'commands.helpTip': "Drücke F1, um diese Bibliothek jederzeit zu öffnen. Wähle „Ins Terminal einfügen“, prüfe den Befehl und drücke zum Ausführen die Eingabetaste.",
-        'commands.helpSystem': 'Systembefehle (grauer Hintergrund) sind schreibgeschützt. Benutzerbefehle können bearbeitet oder gelöscht werden.',
+        'commands.helpSystem': 'Systemvorlagen sind im Katalog nicht bearbeitbar. Ihre Ausführung kann trotzdem Daten ändern oder löschen. Zum Anpassen kopieren. Persönliche Befehle lassen sich bearbeiten oder löschen.',
         'commands.namePlaceholder': 'z.B. System aktualisieren',
         'commands.commandPlaceholder': 'z.B. apt update',
         'commands.parametersPlaceholder': 'z.B. -y',
@@ -7623,7 +7623,7 @@ const translations = {
         "fm.new": "Nouveau",
         "fm.more": "Plus…",
         "fm.openFileManager": "Ouvrir le gestionnaire de fichiers",
-        "commands.systemSource": "Système · lecture seule",
+        "commands.systemSource": "Système · modèle fixe",
         "commands.personalSource": "Personnel",
         "commands.details": "Détails de la commande",
         "commands.selectDetails": "Sélectionnez une commande pour afficher ses détails.",
@@ -9671,7 +9671,7 @@ const translations = {
         'commands.currentOs': 'OS actuel',
         'commands.detecting': 'Détection...',
         'commands.helpTip': "Appuyez sur F1 pour ouvrir cette bibliothèque à tout moment. Choisissez « Insérer dans le terminal », vérifiez la commande, puis appuyez sur Entrée pour l’exécuter.",
-        'commands.helpSystem': 'Les commandes système (fond gris) sont en lecture seule. Les commandes utilisateur peuvent être modifiées ou supprimées.',
+        'commands.helpSystem': 'Les modèles système ne sont pas modifiables dans le catalogue. Leur exécution peut modifier ou supprimer des données. Copiez-les pour les adapter. Les commandes personnelles restent modifiables.',
         'commands.namePlaceholder': 'par ex., Mettre à jour le système',
         'commands.commandPlaceholder': 'par ex., apt update',
         'commands.parametersPlaceholder': 'par ex., -y',
@@ -10054,7 +10054,7 @@ const translations = {
         "fm.new": "Nuevo",
         "fm.more": "Más…",
         "fm.openFileManager": "Abrir el gestor de archivos",
-        "commands.systemSource": "Sistema · solo lectura",
+        "commands.systemSource": "Sistema · plantilla fija",
         "commands.personalSource": "Personal",
         "commands.details": "Detalles del comando",
         "commands.selectDetails": "Selecciona un comando para ver sus detalles.",
@@ -12102,7 +12102,7 @@ const translations = {
         'commands.currentOs': 'OS actual',
         'commands.detecting': 'Detectando...',
         'commands.helpTip': "Pulsa F1 para abrir esta biblioteca en cualquier momento. Elige «Insertar en el terminal», revisa el comando y pulsa Intro cuando quieras ejecutarlo.",
-        'commands.helpSystem': 'Los comandos del sistema (fondo gris) son de solo lectura. Los comandos de usuario se pueden editar o eliminar.',
+        'commands.helpSystem': 'Las plantillas del sistema no se editan en el catálogo. Su ejecución puede cambiar o borrar datos. Cópielas para adaptarlas. Los comandos personales se pueden editar o eliminar.',
         'commands.namePlaceholder': 'p. ej., Actualizar sistema',
         'commands.commandPlaceholder': 'p. ej., apt update',
         'commands.parametersPlaceholder': 'p. ej., -y',
@@ -12484,7 +12484,7 @@ const translations = {
         "fm.new": "新建",
         "fm.more": "更多…",
         "fm.openFileManager": "打开文件管理器",
-        "commands.systemSource": "系统 · 只读",
+        "commands.systemSource": "系统 · 固定模板",
         "commands.personalSource": "个人",
         "commands.details": "命令详情",
         "commands.selectDetails": "选择一个命令以查看详情。",
@@ -14532,7 +14532,7 @@ const translations = {
         'commands.currentOs': '当前系统',
         'commands.detecting': '检测中…',
         'commands.helpTip': "随时按 F1 打开此命令库。选择“插入终端”，检查命令，然后在准备执行时按回车键。",
-        'commands.helpSystem': '系统命令（灰色背景）为只读。用户命令可以编辑或删除。',
+        'commands.helpSystem': '系统模板无法在目录中编辑，但执行时仍可能修改或删除数据。请复制后自定义。个人命令可以编辑或删除。',
         'commands.namePlaceholder': '例如：更新系统',
         'commands.commandPlaceholder': '例如：apt update',
         'commands.parametersPlaceholder': '例如：-y',
@@ -14620,6 +14620,14 @@ const storedLanguage = BrowserPreferences.get('language', 'en');
 
 const i18n = {
     currentLang: translations[storedLanguage] ? storedLanguage : 'en',
+
+    addTranslations(lang, values) {
+        if (!Object.hasOwn(translations, lang) || !values || typeof values !== 'object' || Array.isArray(values)) return false;
+        for (const [key, value] of Object.entries(values)) {
+            if (typeof value === 'string' && !['__proto__', 'constructor', 'prototype'].includes(key)) translations[lang][key] = value;
+        }
+        return true;
+    },
 
     t(key) {
         const activeTranslations = translations[this.currentLang] || translations.en;

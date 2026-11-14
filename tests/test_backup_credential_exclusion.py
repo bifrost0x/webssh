@@ -55,7 +55,10 @@ def test_export_excludes_remote_credentials_and_preserves_live_data(tmp_path, mo
     assert snapshot(source) == before
     restored = tmp_path / 'restored'
     backup_manager.restore_backup(archive, restored)
-    assert snapshot(restored) == {k: v for k, v in before.items() if k not in PRIVATE_FILES}
+    actual = snapshot(restored)
+    import json
+    assert json.loads(actual.pop('recovery-check.json'))['remote_credentials_excluded'] is True
+    assert actual == {k: v for k, v in before.items() if k not in PRIVATE_FILES}
 
 
 def test_legacy_restore_drops_credentials_but_private_recovery_preserves_them(tmp_path, monkeypatch):
@@ -68,7 +71,10 @@ def test_legacy_restore_drops_credentials_but_private_recovery_preserves_them(tm
     destination = tmp_path / 'restored'
     seed(destination)
     backup_manager.restore_backup(archive, destination)
-    assert snapshot(destination) == {k: v for k, v in original.items() if k not in PRIVATE_FILES}
+    actual = snapshot(destination)
+    import json
+    assert json.loads(actual.pop('recovery-check.json'))['remote_credentials_excluded'] is True
+    assert actual == {k: v for k, v in original.items() if k not in PRIVATE_FILES}
     backup_manager._restore_recovery_snapshot(archive, destination)
     assert snapshot(destination) == original
 

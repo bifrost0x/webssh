@@ -44,9 +44,9 @@ test('system details preserve literal remote text and offer own-copy without exe
     const details = document.getElementById('commandLibraryDetails');
     assert.ok(panel.classList.contains('has-command-details'));
     assert.equal(details.children[0].children[0].textContent, '<img onerror=bad>');
-    assert.equal(details.children[1].textContent, 'System · read-only');
-    assert.equal(details.children[2].children[1].textContent, 'df');
-    assert.equal(details.children[3].children[1].textContent, '-h');
+    assert.equal(details.children[1].textContent, 'System · fixed template');
+    assert.equal(details.children.filter(child => child.className === 'command-detail-field')[0].children[1].textContent, 'df');
+    assert.equal(details.children.filter(child => child.className === 'command-detail-field')[1].children[1].textContent, '-h');
     const actions = details.children.find(child => child.className === 'management-inspector-actions');
     assert.deepEqual(actions.children.map(child => child.textContent).filter(Boolean), ['Add to my commands']);
     actions.children[0].onclick();
@@ -71,8 +71,8 @@ test('personal command details retain edit and delete actions and a catalog refr
     library.commands[1].description = 'Updated safely';
     library.renderCommandDetails();
     details = document.getElementById('commandLibraryDetails');
-    assert.equal(details.children[4].children[1].textContent, 'echo safe');
-    assert.equal(details.children[5].children[1].textContent, 'Updated safely');
+    assert.equal(details.children.filter(child => child.className === 'command-detail-field')[2].children[1].textContent, 'echo safe');
+    assert.equal(details.children.filter(child => child.className === 'command-detail-field')[3].children[1].textContent, 'Updated safely');
 });
 
 test('the compact catalog loads subsequent chunks from its scrolling wrapper', () => {

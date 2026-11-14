@@ -85,6 +85,12 @@ def _defaults_for_user(user):
 
 
 def _valid_settings(value):
+    from .customer_workflows import valid_presets, valid_recovery_timestamp
+    if isinstance(value, dict) and 'recovery_reviewed_at' in value and not (
+            value['recovery_reviewed_at'] == '' or valid_recovery_timestamp(value['recovery_reviewed_at'])):
+        return False
+    if isinstance(value, dict) and "workspace_presets" in value and not valid_presets(value["workspace_presets"]):
+        return False
     if not isinstance(value, dict):
         return False
     if value.get('schema_version') != CURRENT_STORAGE_VERSIONS['settings']:
@@ -143,6 +149,12 @@ def _valid_settings(value):
 
 
 def _valid_settings_update(value):
+    from .customer_workflows import valid_presets, valid_recovery_timestamp
+    if isinstance(value, dict) and 'recovery_reviewed_at' in value and not (
+            value['recovery_reviewed_at'] == '' or valid_recovery_timestamp(value['recovery_reviewed_at'])):
+        return False
+    if isinstance(value, dict) and "workspace_presets" in value and not valid_presets(value["workspace_presets"]):
+        return False
     return (
         isinstance(value, dict)
         and ('start_page' not in value or (isinstance(value['start_page'], str)
