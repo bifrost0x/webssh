@@ -670,7 +670,9 @@ test('captures seeded command and connection option surfaces at Full HD scale', 
     await expect(page.locator('#commandWorkspaceModal')).toHaveClass(/show/);
     await page.locator('#commandLibraryTab').click();
     await expect(page.locator('#commandLibraryTab')).toContainText('Command Library');
-    await expect(page.locator('#commandsList')).toContainText('Update Package Lists');
+    await expect(page.locator('#commandImpactFilter')).toHaveValue('recommended');
+    await expect(page.locator('#commandsList')).toContainText('Search Package');
+    await expect(page.locator('#commandsList')).not.toContainText('Update Package Lists');
     await expect(page.locator('#commandWorkspaceModal')).not.toContainText('E2E');
     await expectCurrentCaptureTerminology(page);
     await captureDesktopStill(page, 'commandlibrary.png', testInfo);

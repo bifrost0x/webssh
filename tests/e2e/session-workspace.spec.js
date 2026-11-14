@@ -1571,6 +1571,7 @@ for (const width of [360, 1920]) {
             // Opening the library refreshes its catalog. Drain that response
             // before replacing it with the deliberate 95-command scroll fixture.
             await page.evaluate(() => new Promise(resolve => window.socket.emit('list_commands', {os_filter: null}, resolve)));
+            await page.locator('#commandImpactFilter').selectOption('all');
             await page.evaluate(() => {
                 const original = window.CommandLibrary.commands[0];
                 window.CommandLibrary.setCommands(Array.from({ length: 95 }, (_, index) => ({
@@ -3204,6 +3205,12 @@ test('diagnostics charts keep stable dimensions across primary workspace navigat
         styleWidth: canvas.style.width,
         styleHeight: canvas.style.height,
     })));
+    // Opening <details> schedules a chart redraw on the next animation frame.
+    // Wait for both backing buffers instead of capturing the HTML defaults.
+    await expect.poll(() => canvases.evaluateAll(elements => elements.every(canvas =>
+        canvas.width === Math.round(canvas.clientWidth * window.devicePixelRatio)
+        && canvas.height === Math.round(canvas.clientHeight * window.devicePixelRatio)
+    ))).toBe(true);
     const initial = await dimensions();
     expect(initial).toHaveLength(2);
     expect(initial.every(({ clientWidth, clientHeight }) => clientWidth > 0 && clientHeight > 0)).toBe(true);
@@ -3221,7 +3228,7 @@ test('diagnostics charts keep stable dimensions across primary workspace navigat
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
     }
 
-    expect(await dimensions()).toEqual(initial);
+    await expect.poll(dimensions).toEqual(initial);
     await assertNoExternalRequests(page);
 });
 
