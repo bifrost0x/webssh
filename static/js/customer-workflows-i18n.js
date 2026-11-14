@@ -8,6 +8,8 @@
         "customer.recoverySchedulesTitle": "Review schedules",
         "customer.recoveryTestTitle": "Test a connection",
         "customer.noPresets": "No presets yet. Save a layout and host selection below.",
+        "customer.noSavedPresets": "No saved presets.",
+        "customer.retry": "Retry",
         "customer.newPreset": "New preset",
         "customer.presetSaved": "Preset saved.",
 
@@ -63,6 +65,8 @@
         "customer.reloadRecovery": "Reload recovery checklist"
     },
     "de": {
+        "customer.noSavedPresets": "Keine gespeicherten Presets.",
+        "customer.retry": "Erneut versuchen",
         "customer.recoveryKeysTitle": "Zugangsdaten ergänzen",
         "customer.recoveryHostsTitle": "Hosts und Vertrauen prüfen",
         "customer.recoverySchedulesTitle": "Zeitpläne prüfen",
@@ -123,6 +127,8 @@
         "customer.reloadRecovery": "Checkliste neu laden"
     },
     "fr": {
+        "customer.noSavedPresets": "Aucun préréglage enregistré.",
+        "customer.retry": "Réessayer",
         "customer.recoveryKeysTitle": "Rétablir les identifiants",
         "customer.recoveryHostsTitle": "Vérifier les hôtes et leur confiance",
         "customer.recoverySchedulesTitle": "Vérifier les planifications",
@@ -183,6 +189,8 @@
         "customer.reloadRecovery": "Recharger la liste"
     },
     "es": {
+        "customer.noSavedPresets": "No hay preajustes guardados.",
+        "customer.retry": "Reintentar",
         "customer.recoveryKeysTitle": "Restablecer credenciales",
         "customer.recoveryHostsTitle": "Revisar hosts y confianza",
         "customer.recoverySchedulesTitle": "Revisar programaciones",
@@ -243,6 +251,8 @@
         "customer.reloadRecovery": "Recargar lista de recuperación"
     },
     "vi": {
+        "customer.noSavedPresets": "Chưa có bố cục được lưu.",
+        "customer.retry": "Thử lại",
         "customer.recoveryKeysTitle": "Khôi phục thông tin đăng nhập",
         "customer.recoveryHostsTitle": "Kiểm tra máy chủ và độ tin cậy",
         "customer.recoverySchedulesTitle": "Kiểm tra lịch chạy",
@@ -303,6 +313,8 @@
         "customer.reloadRecovery": "Tải lại danh sách khôi phục"
     },
     "zh": {
+        "customer.noSavedPresets": "暂无已保存的预设。",
+        "customer.retry": "重试",
         "customer.recoveryKeysTitle": "恢复凭据",
         "customer.recoveryHostsTitle": "检查主机及信任",
         "customer.recoverySchedulesTitle": "检查计划",
