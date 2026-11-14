@@ -5,8 +5,8 @@
   "baseline_commit": "dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
   "native_milestone_backfill": "applied_with_exceptions",
   "method": "First tagged release containing each merged PR's merge_commit_sha, with every compare page retrieved. The first release includes all prior verified PR merges. Issues require an explicit implementation link.",
-  "expected_merged_pr_count": 210,
-  "expected_implementation_linked_issue_count": 29,
+  "expected_merged_pr_count": 228,
+  "expected_implementation_linked_issue_count": 31,
   "historical": [
     {
       "title": "v1.0.0",
@@ -602,6 +602,53 @@
       "image_digest": "sha256:126bfd4c2a35f9d1f7424060bced4b7ecf88bd701f33f7ec8398ffe66333b178",
       "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/42480130060",
       "milestone_number": 14
+    },
+    {
+      "title": "v3.1.0",
+      "state": "closed",
+      "goal": "Per-host SOCKS5 proxy routes, automation through saved jump hosts, browser login management, workspace presets and script-policy/restore hardening",
+      "previous_release": "v3.0.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v3.0.0...v3.1.0",
+      "description": "Published v3.1.0 on 2026-11-14. Per-host SOCKS5 proxy routes, automation through saved jump hosts with run comparison and deletion, an updates and restart status template, browser login management and access transparency, a task-first overview with workspace presets, local support reports, the in-app version display, project support links, a stricter script policy, restore hardening and dependency updates. Tag CI and native image checks passed. Deployment-specific acceptance is not inferred from CI.",
+      "pull_requests": [
+        317,
+        318,
+        319,
+        320,
+        321,
+        324,
+        325,
+        326,
+        328,
+        329,
+        330,
+        331,
+        332,
+        333,
+        335,
+        336,
+        337,
+        339
+      ],
+      "issues": [
+        {
+          "number": 327,
+          "implemented_by": 328,
+          "evidence": "GitHub closingIssuesReferences for PR #328"
+        },
+        {
+          "number": 334,
+          "implemented_by": 336,
+          "evidence": "GitHub closingIssuesReferences for PR #336"
+        }
+      ],
+      "published_at": "2026-11-14T16:36:27Z",
+      "tag_commit": "4eac73cbc319206bce7887e8dba0643a8b0c7ad5",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v3.1.0",
+      "release_notes": "docs/releases/v3.1.0.md",
+      "milestone_number": 15,
+      "image_digest": "sha256:8714d603a359b7fb9dd210cddf1d8afaaef1b405b4ddfbfc7f3a275bddc13a9f",
+      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/43615783301"
     }
   ],
   "excluded_issues": [
@@ -737,49 +784,7 @@
       "verification": "v2.7.0 and v3.0.0 had no native milestone after publication. Both were created from the first-tagged-inclusion mapping above, assigned their PRs and implementation-linked issues, and closed. v3.1.0 holds the 17 PRs first included after v3.0.0, issues #327 and #334 and release record #338. Superseded Dependabot PRs #322 and #323 are not assigned. No due dates were added; milestone creation dates are the actual 2026-11-14 dates."
     }
   ],
-  "candidate": {
-    "title": "v3.1.0",
-    "state": "prepared",
-    "previous_release": "v3.0.0",
-    "base_commit": "b7b1ff5b31c61405634196dec96d53b994d6359d",
-    "goal": "Per-host SOCKS5 proxy routes, automation through saved jump hosts, browser login management, workspace presets and script-policy/restore hardening",
-    "compare_url": "https://github.com/bifrost0x/webssh/compare/v3.0.0...main",
-    "release_notes": "docs/releases/v3.1.0.md",
-    "milestone_number": 15,
-    "release_gate": 338,
-    "pull_requests": [
-      317,
-      318,
-      319,
-      320,
-      321,
-      324,
-      325,
-      326,
-      328,
-      329,
-      330,
-      331,
-      332,
-      333,
-      335,
-      336,
-      337
-    ],
-    "issues": [
-      {
-        "number": 327,
-        "implemented_by": 328,
-        "evidence": "GitHub closingIssuesReferences for PR #328"
-      },
-      {
-        "number": 334,
-        "implemented_by": 336,
-        "evidence": "GitHub closingIssuesReferences for PR #336"
-      }
-    ],
-    "publication_status": "Pending final candidate review, CI, tag and native image verification"
-  },
+  "candidate": null,
   "updated_on": "2026-11-14",
   "release_updates": [
     {
@@ -885,6 +890,41 @@
       "image_digest": "sha256:126bfd4c2a35f9d1f7424060bced4b7ecf88bd701f33f7ec8398ffe66333b178",
       "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/42480130060",
       "note": "First tagged inclusion determines release membership. #310 records v2.7.0 and closes the 2.6 acceptance follow-up #288, which is not an implementation link. Dated historical snapshots remain unchanged; no new native milestone assignment is claimed."
+    },
+    {
+      "version": "v3.1.0",
+      "published_at": "2026-11-14T16:36:27Z",
+      "tag_commit": "4eac73cbc319206bce7887e8dba0643a8b0c7ad5",
+      "milestone_number": 15,
+      "milestone_state": "closed",
+      "assigned_additional_pull_requests": [
+        317,
+        318,
+        319,
+        320,
+        321,
+        324,
+        325,
+        326,
+        328,
+        329,
+        330,
+        331,
+        332,
+        333,
+        335,
+        336,
+        337,
+        339
+      ],
+      "assigned_implementation_linked_issues": [
+        327,
+        334
+      ],
+      "closed_release_gate": 338,
+      "image_digest": "sha256:8714d603a359b7fb9dd210cddf1d8afaaef1b405b4ddfbfc7f3a275bddc13a9f",
+      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/43615783301",
+      "note": "First tagged inclusion determines release membership; #339 prepared the release and is the tag commit. Superseded Dependabot PRs #322 and #323 are not counted. Dated historical snapshots remain unchanged."
     }
   ]
 }
