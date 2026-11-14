@@ -561,7 +561,7 @@
             connectButton.append(icon(host.sessionId ? 'east' : 'terminal'), node('span', '', primary));
             bottom.append(badge, editButton, connectButton);
             const context = node('details', 'od-host-context');
-            context.dataset.hostId = host.id;
+            context.dataset.contextHostId = host.id;
             context.open = openHostContexts.has(host.id);
             const summary = node('summary', '', wf('configTitle', 'Configuration readiness'));
             summary.dataset.key = `context:${host.id}`;
@@ -590,8 +590,8 @@
             const focusedKey = hostList.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
             hostList.setAttribute('aria-busy', String(!loaded));
             hostList.querySelectorAll('.od-host-context').forEach(context => {
-                if (context.open) openHostContexts.add(context.dataset.hostId);
-                else openHostContexts.delete(context.dataset.hostId);
+                if (context.open) openHostContexts.add(context.dataset.contextHostId);
+                else openHostContexts.delete(context.dataset.contextHostId);
             });
             hostList.replaceChildren();
             if (!loaded) {
@@ -1142,6 +1142,22 @@
                 if (event.animationName === 'od-panel-flash') event.currentTarget.classList.remove('od-panel-flash');
             });
             $('overviewSetupHost')?.addEventListener('change', schedule);
+            view.addEventListener('wheel', event => {
+                if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.shiftKey || !event.deltaY || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+                const body = event.target.closest?.('[data-panel][data-fixed-height="true"] > .od-panel-body');
+                if (!body || !view.contains(body)) return;
+                const canScroll = element => event.deltaY < 0 ? element.scrollTop > 0
+                    : element.scrollTop + element.clientHeight < element.scrollHeight - 1;
+                // Keep nested controls and overflowing lists native until their edge.
+                for (let element = event.target; element && body.contains(element); element = element.parentElement) {
+                    if (['auto', 'scroll'].includes(win.getComputedStyle(element).overflowY) && canScroll(element)) return;
+                }
+                if (!canScroll(view)) return;
+                // Some browsers keep the wheel latched to a panel after it reaches its edge.
+                const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? view.clientHeight : 1;
+                event.preventDefault();
+                view.scrollTop += event.deltaY * unit;
+            }, {passive: false});
             win.socket?.on?.('directory_listing', data => {
                 const id = typeof data?.source_id === 'string' && data.source_id.startsWith('sftp-session:') ? data.source_id.slice(13) : null;
                 if (id && Array.isArray(data.files) && sessionManager?.getSession?.(id)?.connected) { fileSessions.add(id); schedule(); }

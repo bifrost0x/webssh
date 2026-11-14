@@ -3,6 +3,7 @@ const {login,installSshConnectTrap,sshAttempts}=require('./helpers');
 test('system command arguments are explicitly library defaults, not discovered host values',async({page})=>{
  await login(page);await installSshConnectTrap(page);
  await page.evaluate(()=>CommandLibrary.openLibrary());
+ await page.evaluate(() => new Promise(resolve => window.socket.emit('list_commands', {os_filter:null}, resolve)));
  await expect.poll(()=>page.evaluate(()=>CommandLibrary.commands.some(c=>c.id==='net-022'))).toBe(true);
  await page.evaluate(()=>CommandLibrary.selectCommand('net-022'));
  await expect(page.locator('#commandLibraryDetails .command-template-hint').filter({hasText:'not values detected'})).toBeVisible();

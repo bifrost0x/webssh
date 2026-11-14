@@ -222,6 +222,37 @@ def test_overview_preferences_round_trip_and_render(app, client, context):
     assert client.put('/api/overview/preferences', json={'panels': None}).json['panels'] is None
 
 
+@pytest.mark.parametrize('kind', ['reboot', 'security-updates'])
+def test_maintenance_attention_dismissal_persists_with_existing_items(app, client, context, kind):
+    from app.user_settings import get_user_settings
+    previous = ['run-failed:r1', 'host-keys:a1b2']
+    assert client.put('/api/overview/preferences', json={'dismissed': previous}).status_code == 200
+    expected = [*previous, f'{kind}:node-1']
+    response = client.put('/api/overview/preferences', json={'dismissed': expected})
+    assert response.status_code == 200
+    assert response.json['dismissed'] == expected
+    assert get_user_settings(context[0])['overview_dismissed'] == expected
+    from app.auth import register_user
+    other, error = register_user('dismissal_other', 'password123')
+    assert error is None
+    assert get_user_settings(other.id)['overview_dismissed'] == []
+    # A fresh page embeds the persisted choices; rendering must not filter them out.
+    assert f'{kind}:node-1' in client.get('/').data.decode()
+    assert client.put('/api/overview/preferences', json={'dismissed': previous}).json['dismissed'] == previous
+
+
+@pytest.mark.parametrize('kind', ['reboot', 'security-updates'])
+@pytest.mark.parametrize('fingerprint', ['', '<script>', 'host:extra', 'x' * 160])
+def test_maintenance_attention_dismissal_rejects_malformed_keys(app, client, context, kind, fingerprint):
+    from app.user_settings import get_user_settings
+    previous = ['host-keys:existing']
+    assert client.put('/api/overview/preferences', json={'dismissed': previous}).status_code == 200
+    response = client.put('/api/overview/preferences', json={'dismissed': [*previous, f'{kind}:{fingerprint}']})
+    assert response.status_code == 400
+    assert response.json['code'] == 'invalid_dismissed'
+    assert get_user_settings(context[0])['overview_dismissed'] == previous
+
+
 @pytest.mark.parametrize('payload', [
     {}, [], {'other': 1}, {'panels': 'all'},
     {'panels': [{'id': 'hosts', 'w': 2, 'h': None, 'hidden': False}]},

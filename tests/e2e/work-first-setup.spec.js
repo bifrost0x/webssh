@@ -113,7 +113,7 @@ test('host context keeps disclosure and keyboard focus after profile updates', a
         ProfileManager.setProfiles([{id:'context-host', name:'Context host', host:'192.0.2.31', username:'operator'}]);
     });
     const summary = page.locator('[data-key="context:context-host"]');
-    const details = page.locator('.od-host-context[data-host-id="context-host"]');
+    const details = page.locator('.od-host-context[data-context-host-id="context-host"]');
     await summary.click();
     await expect(details).toHaveAttribute('open', '');
     await summary.focus();

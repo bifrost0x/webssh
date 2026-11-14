@@ -265,7 +265,8 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-board > [data-panel] { grid-column: span var(--od-span, 12); margin-bottom: var(--od-gap); display: flex; flex-direction: column; }
 .od-board > [data-panel][data-user-hidden="true"] { display: none; }
 .od-board > [data-panel][data-fixed-height="true"] { height: var(--od-height); }
-.od-board > [data-panel][data-fixed-height="true"] > .od-panel-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+/* Fixed panels scroll their own overflow, then pass the wheel to the overview. */
+.od-board > [data-panel][data-fixed-height="true"] > .od-panel-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: auto; scrollbar-gutter: stable; }
 .od-board > [data-panel][data-fixed-height="true"] .od-topology-svg { height: 100%; max-height: none; }
 .od-board > [data-panel][data-fixed-height="true"] .od-topology-canvas { height: 100%; }
 .od-panel-body { min-width: 0; }

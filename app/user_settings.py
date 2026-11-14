@@ -19,7 +19,7 @@ OVERVIEW_PANELS = ('kpis', 'topology', 'hosts', 'attention', 'automation', 'plat
 OVERVIEW_PANEL_WIDTHS = range(3, 13)
 OVERVIEW_PANEL_HEIGHTS = range(8, 161)
 OVERVIEW_DISMISSED_LIMIT = 100
-_DISMISSED_KINDS = frozenset({'host-keys', 'jump-missing', 'unreachable', 'credentials', 'run-failed', 'schedule-review'})
+_DISMISSED_KINDS = frozenset({'host-keys', 'jump-missing', 'unreachable', 'credentials', 'reboot', 'security-updates', 'run-failed', 'schedule-review'})
 
 
 def valid_overview_layout(value):
