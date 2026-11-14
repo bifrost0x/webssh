@@ -18,6 +18,14 @@ Sending a saved password to a destination it is not yet assigned to is treated l
 
 Changing address, port, username, authentication mode, jump route, SMB domain or share invalidates its destination approval. Explicitly approve the new target before reuse. Names and groups do not change its access identity. SSH host-key verification, ownership, interactive MFA, protocol policy and quotas remain enforced.
 
+The password list counts assignments that need review. Each assignment in the
+detail view shows **Ready** or **Review required**. Use **Review and authorize
+again** to reload the current destination, inspect its exact address and account,
+and confirm it through the existing target-bound authorization and account
+verification. Cancelling leaves the assignment unusable; a concurrently changed
+destination or assignment requires a fresh review. This does not test the remote
+password or bypass host-key verification.
+
 ## Availability and encryption
 
 New credentials have no separate passphrase or 15-minute unlock. The server decrypts them for authorized connections and explicitly approved schedules. The browser receives references, not saved passwords.

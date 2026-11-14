@@ -1039,6 +1039,7 @@
                 kpis: tw('kpisLabel', 'Key figures'), topology: tw('topologyTitle', 'Infrastructure'), hosts: tw('hostsTitle', 'Hosts'),
                 attention: tw('attentionTitle', 'Needs attention'), automation: tw('automationTitle', 'Automation'),
                 platforms: tw('platformsTitle', 'Platforms'), activity: tw('activityTitle', 'Activity'),
+                continue: wf('title', 'Continue working'),
             }[id] || id;
         }
         function announce(message) {

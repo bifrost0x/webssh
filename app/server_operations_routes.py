@@ -9,6 +9,7 @@ from .app_settings import runtime_feature_enabled
 from . import server_operations as operations
 from .audit_logger import log_security_event
 from .auth_assurance import current_authentication_session
+from .account_sessions import login_cancellation_check
 from .step_up import consume_account_step_up_grant, StepUpError
 
 server_operations_blueprint = Blueprint('server_operations', __name__)
@@ -64,7 +65,7 @@ def capabilities(session_id):
 @server_operations_blueprint.post('/api/server-operations/read')
 @login_required
 def read():
-    _auth()
+    auth = _auth()
     data = _data()
     action = data.get('action')
     if not isinstance(action, str) or action not in operations.READ_ACTIONS:
@@ -73,10 +74,9 @@ def read():
                                        use_sudo=data.get('use_sudo', False))
     session_id = data.get('session_id')
     session = operations.owned_session(session_id, current_user.id)
-    lifecycle = current_app.extensions['runtime_lifecycle']
     result = operations.execute_command(
         session_id, current_user.id, session, command,
-        cancelled=lambda: not lifecycle.accepting_work(),
+        cancelled=login_cancellation_check(auth),
     )
     if action == 'process.list' and result.get('status') == 'completed':
         result['processes'] = operations.parse_process_list(result.get('output', ''))
@@ -123,11 +123,10 @@ def execute():
     log_security_event('SERVER_OPERATION_REQUESTED', user=current_user.username,
                        action=intent.action, session_id=intent.session_id)
     try:
-        lifecycle = current_app.extensions['runtime_lifecycle']
         result = operations.execute_command(
             intent.session_id, current_user.id, intent.session, intent.command,
             mutating=True, expected_client=intent.client,
-            cancelled=lambda: not lifecycle.accepting_work(),
+            cancelled=login_cancellation_check(auth),
         )
     except operations.OperationError as error:
         log_security_event('SERVER_OPERATION_RESULT', user=current_user.username,

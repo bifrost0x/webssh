@@ -553,6 +553,7 @@ const TerminalManager = {
         }
 
         terminal.open(container);
+        window.TerminalPasteGuard?.attach(sessionId, terminal);
 
         this.compositionDisposers[key]?.();
         this.compositionDisposers[key] = this.setupAndroidCompositionGuard(terminal);

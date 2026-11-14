@@ -275,8 +275,14 @@ def test_all_popup_translation_references_exist_in_every_locale():
             r"\(\s*'([a-z][a-zA-Z0-9_.-]+)'(?=\s*[,\)])", source
         ):
             key = call.group(2)
-            if source_path.name == 'customer-workflows.js' and call.group(1) == 't':
-                key = 'customer.' + key
+            local_prefixes = {
+                'customer-workflows.js': 'customer.',
+                'broadcast-input.js': 'terminalSafety.',
+                'terminal-paste-guard.js': 'terminalSafety.',
+                'support-report.js': 'supportReport.',
+            }
+            if call.group(1) == 't':
+                key = local_prefixes.get(source_path.name, '') + key
             referenced_keys.add(key)
 
     locale_starts = list(

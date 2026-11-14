@@ -39,8 +39,7 @@ test('state filters, node focus and a click on empty space shape the drawing and
     await page.locator('#odTopology .od-node').first().click();
     await expect(cards).toHaveCount(1);
     await expect(page.locator('.od-legend-filter[aria-pressed="true"]')).toHaveCount(0);
-    const box = await page.locator('#odTopology').boundingBox();
-    await page.mouse.click(box.x + 8, box.y + 8);
+    await page.locator('#odTopology').click({position: {x: 8, y: 8}});
     await expect(cards).toHaveCount(ids.length);
     await expect(page.locator('#overviewSearch')).toHaveValue('');
 

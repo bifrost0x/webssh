@@ -1,0 +1,22 @@
+.account-login-list { list-style: none; margin: 0; padding: 0; }
+.account-login-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border-color, #ffffff20); }
+.account-login-row p { margin: 5px 0 0; overflow-wrap: anywhere; }
+.account-controls-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.account-impact-dialog { margin: auto; color: var(--text-primary, #e7eaf3); background: var(--bg-secondary, #182030); border: 1px solid var(--border-color, #ffffff30); border-radius: 12px; padding: 24px; width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: hidden; box-sizing: border-box; }
+.account-impact-dialog[open] { display: flex; flex-direction: column; }
+.account-impact-dialog h2, .account-impact-dialog > .account-controls-actions { flex: 0 0 auto; }
+.account-impact-body { overflow: auto; min-height: 0; }
+.account-impact-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
+.account-impact-counts dt { color: var(--text-secondary); font-size: .75rem; }
+.account-impact-counts dd { margin: 5px 0 0; font-size: 1.65rem; font-weight: 600; }
+.account-impact-warning { color: var(--warning-color, #e4b15b); font-weight: 500; }
+.account-login-effect { grid-column: 2; }
+.account-login-effect summary { cursor: pointer; color: var(--text-secondary); font-size: .85rem; }
+.account-login-effect p { padding: 10px 0; }
+.account-impact-dialog::backdrop { background: #0009; }
+.account-impact-dialog h2 { margin: 0 0 18px; font-size: 1.2rem; }
+.account-impact-dialog p { margin: 10px 0; line-height: 1.5; font-size: .9rem; overflow-wrap: anywhere; }
+.account-impact-accounts { padding-left: 20px; }
+.account-impact-accounts strong { overflow-wrap: anywhere; }
+.account-impact-dialog summary { cursor: pointer; padding: 10px 0; }
+@media (max-width: 600px) { .account-login-row { align-items: flex-start; flex-direction: column; } .account-impact-dialog { padding: 18px; } .account-login-effect { grid-column: 1 / -1; } }

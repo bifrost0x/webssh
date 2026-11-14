@@ -1,0 +1,22 @@
+.support-report-dialog { margin: auto; padding: 0; width: min(44rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; }
+.support-report-dialog[open] { display: flex; flex-direction: column; }
+.support-report-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+.support-report-header, .support-report-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem; padding: 1rem 1.5rem; }
+.support-report-header { border-bottom: 1px solid var(--border-color); }
+.support-report-footer { justify-content: flex-end; border-top: 1px solid var(--border-color); }
+.support-report-header h2 { margin: 0; font-size: 1.2rem; }
+.support-report-body { padding: 1.25rem 1.5rem; overflow: auto; overscroll-behavior: contain; min-height: 0; scrollbar-width: thin; }
+.support-report-body p { margin: 0 0 1rem; font-size: .875rem; line-height: 1.55; max-width: 70ch; }
+.support-report-form { display: grid; gap: .5rem; }
+.support-report-form label { font-size: .875rem; font-weight: 600; }
+.support-report-form label:not(:first-child) { margin-top: .5rem; }
+.support-report-form .form-control { width: 100%; box-sizing: border-box; font-size: 1rem; min-height: 2.75rem; }
+.support-report-form .btn { justify-self: start; margin-block: .5rem 1rem; }
+.support-report-dialog .btn { min-height: 2.75rem; white-space: normal; }
+.support-report-body h3 { font-size: .875rem; margin: 1rem 0 .75rem; }
+.support-report-body pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 1rem; margin: 0; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 6px; font-size: .8125rem; line-height: 1.6; }
+.support-report-dialog :is(button, input, select, pre):focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; }
+.support-report-dialog :disabled { opacity: .55; cursor: not-allowed; }
+.support-report-dialog ::selection { background: var(--accent-primary); color: var(--bg-primary); }
+[data-support-report] { min-height: 2.75rem; white-space: normal; }
+@media (max-width: 540px) { .support-report-header, .support-report-footer, .support-report-body { padding: 1rem; } .support-report-footer .btn { flex: 1 1 9rem; } }

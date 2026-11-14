@@ -44,14 +44,14 @@ test('impact guidance and template mutability remain distinct in all six languag
     }
 });
 
-test('customer recovery and continuity guidance covers dynamic and visible states in every language', () => {
+test('customer recovery guidance covers dynamic and visible states in every language', () => {
     const fs = require('node:fs');
     const vm = require('node:vm');
     const file = 'static/js/customer-workflows-i18n.js';
     assert.equal(fs.existsSync(file), true, 'Customer workflow dictionary must be shipped');
     const dictionaries = {};
     vm.runInNewContext(fs.readFileSync(file, 'utf8'), {window:{i18n:{addTranslations(language, values) {dictionaries[language]=values;}}}});
-    const required = ['continuity.none','continuity.transport','continuity.tmux','continuity.tmuxDisconnected','continuity.normal','continuity.disconnected','permission','unknown','conflict','source','failure','extraWindowLayout','key_required','password_required','interactive','nextSteps'];
+    const required = ['permission','unknown','conflict','source','failure','extraWindowLayout','key_required','password_required','interactive','nextSteps'];
     const controller = fs.readFileSync('static/js/customer-workflows.js','utf8');
     for (const match of controller.matchAll(/\bt\('([a-zA-Z]+)'\)/g)) required.push(match[1]);
     for (const language of ['en','de','fr','es','vi','zh']) {

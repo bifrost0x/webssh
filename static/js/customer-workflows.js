@@ -18,12 +18,6 @@
         // Metadata identifiers carry no authority; HTTP homelabs lack randomUUID.
         return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
     }
-    function continuityKey(session, transport) {
-        if (!session) return 'none';
-        if (session.connected && !transport) return 'transport';
-        if (session.useTmux) return session.connected ? 'tmux' : 'tmuxDisconnected';
-        return session.connected ? 'normal' : 'disconnected';
-    }
     function adviceKey(code) {
         if (code === 'PERMISSION_DENIED') return 'permission';
         if (code === 'OUTCOME_UNKNOWN' || code === 'TIMEOUT') return 'unknown';
@@ -108,6 +102,8 @@
             }catch(error){loading.remove();report(modal,error);}
         }
         async function openPresets() {
+            const picker=document.getElementById('workspaceLayoutPicker');
+            if(picker?.open){picker.open=false;picker.querySelector('summary')?.focus();}
             const modal=dialog(t('presetsTitle'));modal.body.append(el('p',t('presetsHint'),'customer-intro'));
             const loading=el('p',t('loading'),'customer-muted');loading.role='status';modal.body.append(loading);
             let presets;
@@ -164,17 +160,7 @@
         }
         document.querySelectorAll('[data-workspace-presets]').forEach(item=>item.addEventListener('click',openPresets));
         document.querySelectorAll('[data-recovery-check]').forEach(item=>item.addEventListener('click',openRecovery));
-        const status=document.getElementById('workspaceContinuity');
-        function renderContinuity() {
-            if(!status)return;
-            const manager=sessions;const session=manager?.getSession(manager.getWorkspaceSession?.() || manager.getActiveSession?.());
-            status.textContent=t('continuity.'+continuityKey(session,root.socket?.connected!==false));
-            status.hidden=!session;
-        }
-        root.addEventListener('session-workspace-change',renderContinuity);root.addEventListener('languageChanged',renderContinuity);
-        for(const event of ['connect','disconnect','ssh_disconnected','ssh_session_restored']) root.socket?.on(event,()=>root.setTimeout(renderContinuity,0));
-        renderContinuity();
         refreshRecoveryNotice();
     }
-    return {layoutAssignments, presetId, continuityKey, adviceKey, init};
+    return {layoutAssignments, presetId, adviceKey, init};
 }));

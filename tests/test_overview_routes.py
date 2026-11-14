@@ -222,6 +222,20 @@ def test_overview_preferences_round_trip_and_render(app, client, context):
     assert client.put('/api/overview/preferences', json={'panels': None}).json['panels'] is None
 
 
+def test_continue_working_layout_persists_with_existing_panel_preferences(app, client, context):
+    from app.user_settings import get_user_settings
+    panels = [
+        {'id': 'hosts', 'w': 8, 'h': None, 'hidden': False},
+        {'id': 'continue', 'w': 6, 'h': 40, 'hidden': True},
+    ]
+    response = client.put('/api/overview/preferences', json={'panels': panels})
+    assert response.status_code == 200
+    assert response.json['panels'] == panels
+    assert get_user_settings(context[0])['overview_panels'] == panels
+    assert client.put('/api/overview/preferences', json={'dismissed': []}).json['panels'] == panels
+    assert '"id": "continue"' in client.get('/').data.decode()
+
+
 @pytest.mark.parametrize('kind', ['reboot', 'security-updates'])
 def test_maintenance_attention_dismissal_persists_with_existing_items(app, client, context, kind):
     from app.user_settings import get_user_settings

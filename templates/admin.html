@@ -18,6 +18,7 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/account-controls.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
@@ -361,7 +362,14 @@
                 <p data-i18n="backup.sensitiveWarning">Native backups exclude saved remote passwords and SSH keys, but retain application secrets and account authentication data. Store every downloaded archive encrypted and off-host.</p>
             </div>
 
-            <div class="backup-coverage"><h3 data-i18n="customer.coverageTitle">Backup coverage</h3><p data-i18n="customer.included">Includes configuration and account authentication data.</p><p data-i18n="customer.excluded">Excludes remote passwords, SSH keys and live sessions. Re-provision credentials and review schedules after restore.</p><button type="button" class="btn btn-secondary" data-recovery-check data-i18n="customer.recoveryTitle">Recovery check</button></div>
+            <div class="backup-coverage">
+                <details>
+                    <summary data-i18n="customer.coverageTitle">Backup coverage</summary>
+                    <p class="admin-muted" data-i18n="customer.included">Includes configuration, account sign-in data, profiles, commands, workflows and user settings.</p>
+                    <p class="admin-muted" data-i18n="customer.excluded">Portable backups exclude saved remote passwords, SSH private keys and live sessions. Re-provision remote credentials after restore.</p>
+                </details>
+                <button type="button" class="btn btn-secondary" data-recovery-check data-i18n="customer.recoveryTitle">Recovery check</button>
+            </div>
             <div class="admin-backup-grid">
                 <div class="admin-setting-row">
                     <h2 data-i18n="backup.create">Create backup</h2>
@@ -544,6 +552,8 @@
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/security-ui.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/account-controls-i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/account-controls.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/restore-status-flow.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/admin.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/customer-workflows-i18n.js') }}"></script>

@@ -194,6 +194,11 @@ def ensure_security_columns():
 
     ensure_user_columns()
     inspector = inspect(db.engine)
+    if 'socket_sessions' in inspector.get_table_names():
+        columns = {column['name'] for column in inspector.get_columns('socket_sessions')}
+        if 'authentication_session_id' not in columns:
+            db.session.execute(text('ALTER TABLE socket_sessions ADD COLUMN authentication_session_id INTEGER'))
+            db.session.commit()
     if 'github_oauth_states' in inspector.get_table_names():
         github_columns = {column['name'] for column in inspector.get_columns('github_oauth_states')}
         for name in ('auth_generation', 'authentication_session_id'):
@@ -265,6 +270,8 @@ class SocketSession(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     last_activity = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     user_agent = db.Column(db.String(256))
+    # Metadata only: deleting a login must not be blocked by live transports.
+    authentication_session_id = db.Column(db.Integer, nullable=True)
 
     def __repr__(self):
         return f'<SocketSession user_id={self.user_id} sid={self.socket_sid[:8]}...>'

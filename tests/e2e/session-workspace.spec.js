@@ -2991,6 +2991,9 @@ test('Escape respects focused controls outside embedded Files', async ({ page })
 
     await page.locator('#broadcastToggleBtn').click();
     await expect(page.locator('#broadcastBar')).toBeVisible();
+    await expect(page.locator('#broadcastRecipientDialog')).toBeVisible();
+    await page.locator('#broadcastRecipientList input[value="workspace-linux"]').check();
+    await page.locator('#broadcastRecipientApply').click();
     await expect(page.locator('#broadcastInput')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(page.locator('#broadcastBar')).toBeHidden();

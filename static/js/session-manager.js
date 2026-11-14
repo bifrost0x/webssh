@@ -634,6 +634,9 @@ const SessionManager = {
         }
 
         if (this.sessions[sessionId]) {
+            if (status !== 'connected') {
+                this.sessions[sessionId].inputGeneration = (this.sessions[sessionId].inputGeneration || 0) + 1;
+            }
             this.sessions[sessionId].connected = (status === 'connected');
         }
 
@@ -1092,6 +1095,7 @@ const SessionManager = {
     },
 
     notifyWorkspaceChange() {
+        window.TerminalPasteGuard?.onWorkspaceChange();
         if (!window.dispatchEvent || !window.CustomEvent) {
             return;
         }

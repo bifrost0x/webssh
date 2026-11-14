@@ -5,6 +5,7 @@ test('workspace presets survive reload and require explicit host connection', as
     await login(page);
     await installSshConnectTrap(page);
     await page.evaluate(()=>Object.defineProperty(window.crypto,'randomUUID',{value:undefined,configurable:true}));
+    await page.locator('#workspaceLayoutPicker > summary').click();
     await page.locator('#workspacePresetsBtn').click();
     const dialog=page.getByRole('dialog', {name:'Workspace presets',exact:true});
     await expect(dialog).toBeVisible();
@@ -21,6 +22,7 @@ test('workspace presets survive reload and require explicit host connection', as
     await dialog.getByRole('button',{name:'Close',exact:true}).click();
     await page.reload();
     await page.locator('#workspaceNavBtn').click();
+    await page.locator('#workspaceLayoutPicker > summary').click();
     await page.locator('#workspacePresetsBtn').click();
     await expect(page.getByRole('dialog').getByRole('heading',{name:'Daily operations',exact:true})).toBeVisible();
     await page.getByRole('dialog').locator('section').filter({has:page.getByRole('heading',{name:'Daily operations',exact:true})}).getByRole('button',{name:'Remove preset',exact:true}).click();
@@ -42,7 +44,7 @@ test('recovery guidance names omitted credentials and current owned hosts on mob
     await dialog.getByRole('button',{name:'Close',exact:true}).click();
 });
 
-test('session lifecycle explicitly separates transport recovery and normal SSH lifetime',async({page})=>{
+test('session changes do not add a permanent paragraph below the terminal',async({page})=>{
     await login(page);
     await page.evaluate(()=>{
         const session={id:'continuity-fixture',host:'synthetic.example',username:'operator',connected:true,useTmux:false};
@@ -51,9 +53,9 @@ test('session lifecycle explicitly separates transport recovery and normal SSH l
         SessionManager.getWorkspaceSession=()=>session.id;
         window.dispatchEvent(new Event('session-workspace-change'));
     });
-    await expect(page.locator('#workspaceContinuity')).toContainText('Normal SSH');
+    await expect(page.locator('#workspaceContinuity')).toHaveCount(0);
     await page.evaluate(()=>{SessionManager.sessions['continuity-fixture'].useTmux=true;window.dispatchEvent(new Event('session-workspace-change'));});
-    await expect(page.locator('#workspaceContinuity')).toContainText('tmux');
+    await expect(page.locator('#workspaceContinuity')).toHaveCount(0);
     await page.evaluate(()=>{delete SessionManager.sessions['continuity-fixture'];SessionManager.activeSessionId=null;window.dispatchEvent(new Event('session-workspace-change'));});
-    await expect(page.locator('#workspaceContinuity')).toBeHidden();
+    await expect(page.locator('#workspaceContinuity')).toHaveCount(0);
 });

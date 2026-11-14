@@ -9,7 +9,20 @@ function setup(send, connected = true) {
     const declaration = source.indexOf('let mobileSendPending =');
     const start = declaration < 0 ? source.indexOf('const sendMobileInput =') : declaration;
     const end = source.indexOf('\n        if (mobileInput)', start);
-    const context = {mobileInput: {value: 'original'}, SessionManager: {getActiveSession: () => 's'}, window: {socket: {connected}, SSHInput: {sendText: send}}};
+    const session = {id: 's', host: 'alpha.example', username: 'ops', connected};
+    const elements = new Map();
+    const context = {mobileInput: {value: 'original'}, SessionManager: {getActiveSession: () => 's', getSession: () => session},
+        window: {socket: {connected}, SSHInput: {sendText: send}},
+        document: {
+            addEventListener(event, callback) { if (event === 'DOMContentLoaded') callback(); },
+            getElementById(id) {
+                if (!elements.has(id)) elements.set(id, {dataset: {}, listeners: {}, checked: false, focus() {},
+                    addEventListener(event, callback) {this.listeners[event] = callback;},
+                    showModal() {this.open = true;}, close() {this.open = false;}});
+                return elements.get(id);
+            }
+        }};
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../static/js/terminal-paste-guard.js'), 'utf8'), context);
     vm.runInNewContext(source.slice(start, end) + '\nglobalThis.send = sendMobileInput;', context);
     return context;
 }
@@ -50,10 +63,25 @@ test('successful mobile delivery clears only the submitted text', async () => {
     assert.equal(context.mobileInput.value, '');
 });
 
-test('mobile submit sends multiline text through the text input path', async () => {
+test('mobile multiline submit sends through text transport only after review', async () => {
     const delivered = [];
     const context = setup(async (id, value) => { delivered.push([id, value]); return true; });
     context.mobileInput.value = 'first\nsecond';
-    await context.send();
+    const pending = context.send();
+    assert.deepEqual(delivered, []);
+    assert.equal(context.document.getElementById('terminalPasteDialog').open, true);
+    await context.document.getElementById('terminalPasteConfirm').listeners.click();
+    await pending;
     assert.deepEqual(delivered, [['s', 'first\nsecond\r']]);
+});
+
+test('cancelled mobile review preserves the draft and sends nothing', async () => {
+    const delivered = [];
+    const context = setup(async (id, value) => {delivered.push([id, value]); return true;});
+    context.mobileInput.value = 'first\nsecond';
+    const pending = context.send();
+    context.document.getElementById('terminalPasteCancel').listeners.click();
+    await pending;
+    assert.deepEqual(delivered, []);
+    assert.equal(context.mobileInput.value, 'first\nsecond');
 });

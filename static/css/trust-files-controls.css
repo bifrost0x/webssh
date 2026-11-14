@@ -1,0 +1,25 @@
+.fm-queue-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border-color); }
+.fm-queue-controls label { display: flex; align-items: center; gap: 8px; flex: 1 1 230px; min-width: 0; }
+.fm-queue-controls select { min-width: 0; width: auto; flex: 1; padding: 5px 8px; }
+.fm-queue-controls button { padding: 5px 10px; }
+.fm-queue.collapsed .fm-queue-controls { display: none; }
+.fm-transfer-endpoints { font-size: 12px; color: var(--text-secondary); white-space: normal; overflow-wrap: anywhere; margin: 3px 0; }
+.effective-trust-target { padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.effective-trust-target summary { cursor: pointer; overflow-wrap: anywhere; }
+.effective-trust-key { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; }
+.effective-trust-key code { white-space: normal; overflow-wrap: anywhere; }
+.effective-trust-pagination[hidden] { display: none; }
+.trust-deletion-dialog { margin: auto; width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow: auto; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; }
+.trust-deletion-dialog::backdrop { background: #0009; }
+.trust-deletion-dialog h2, .trust-deletion-dialog h3, .trust-deletion-dialog p { margin-bottom: 12px; }
+.trust-deletion-dialog code { overflow-wrap: anywhere; }
+.trust-deletion-dialog > div { margin-top: 16px; }
+.trust-deletion-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
+.credential-assignment-status { display: block; font-size: 12px; color: var(--text-secondary); margin: 5px 0; }
+.credential-assignment-invalid .credential-assignment-status { color: var(--warning-color, var(--text-primary)); }
+@media (max-width: 600px) {
+    .fm-queue-controls label { flex-basis: 100%; }
+    .fm-queue-controls button { min-height: 36px; }
+    .credential-assignments ~ ul { padding-left: 18px; }
+    .credential-assignments ~ ul li { margin-bottom: 12px; }
+}

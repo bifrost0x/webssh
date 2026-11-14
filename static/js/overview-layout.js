@@ -22,6 +22,7 @@
         {id: 'hosts', w: 8, h: null, hidden: false},
         {id: 'platforms', w: 4, h: null, hidden: false},
         {id: 'activity', w: 4, h: null, hidden: false},
+        {id: 'continue', w: 12, h: null, hidden: false},
     ];
     const PANELS = DEFAULTS.map(item => item.id);
 

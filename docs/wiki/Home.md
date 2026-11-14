@@ -26,7 +26,9 @@ overview, screenshots, release badges, and source code, visit the
   and security controls suitable for a trusted self-hosted deployment.
 - A status-first overview with host readiness, open sessions, automation
   results, optional reachability checks and items that need attention. Each
-  account arranges the panels freely and can dismiss handled alerts.
+  account arranges the panels freely and can dismiss handled alerts. The
+  Continue working panel starts at the bottom; use Customize to move, resize,
+  hide or restore it. Existing saved layouts keep their arrangement.
 - Native automation with immediate and scheduled runs, optional encrypted saved
   passwords, and manual discovery of SSH hosts in a network range you choose.
 - A fully local browser runtime: vendored frontend dependencies and no built-in
