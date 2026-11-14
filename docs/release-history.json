@@ -571,7 +571,8 @@
       "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v2.7.0",
       "release_notes": "docs/releases/v2.7.0.md",
       "image_digest": "sha256:1a9ac06d0aca3e88bb8f48d0395b8f87e39d33cb2f19be437cca2b8e193aa5d2",
-      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/41798705520"
+      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/41798705520",
+      "milestone_number": 13
     },
     {
       "title": "v3.0.0",
@@ -599,7 +600,8 @@
       "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v3.0.0",
       "release_notes": "docs/releases/v3.0.0.md",
       "image_digest": "sha256:126bfd4c2a35f9d1f7424060bced4b7ecf88bd701f33f7ec8398ffe66333b178",
-      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/42480130060"
+      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/42480130060",
+      "milestone_number": 14
     }
   ],
   "excluded_issues": [
@@ -706,8 +708,79 @@
     ],
     "verification": "All 185 accessible planned items matched their intended milestone through the GitHub API. Browser milestone overview confirmed 10 closed and 1 open. Release-readiness issue #248 remains open. No due dates were added."
   },
-  "candidate": null,
-  "updated_on": "2026-11-08",
+  "native_milestone_followups": [
+    {
+      "applied_on": "2026-11-14",
+      "milestones": [
+        {
+          "number": 13,
+          "title": "v2.7.0",
+          "state": "closed",
+          "url": "https://github.com/bifrost0x/webssh/milestone/13",
+          "assigned_items": 17
+        },
+        {
+          "number": 14,
+          "title": "v3.0.0",
+          "state": "closed",
+          "url": "https://github.com/bifrost0x/webssh/milestone/14",
+          "assigned_items": 6
+        },
+        {
+          "number": 15,
+          "title": "v3.1.0",
+          "state": "open",
+          "url": "https://github.com/bifrost0x/webssh/milestone/15",
+          "assigned_items": 20
+        }
+      ],
+      "verification": "v2.7.0 and v3.0.0 had no native milestone after publication. Both were created from the first-tagged-inclusion mapping above, assigned their PRs and implementation-linked issues, and closed. v3.1.0 holds the 17 PRs first included after v3.0.0, issues #327 and #334 and release record #338. Superseded Dependabot PRs #322 and #323 are not assigned. No due dates were added; milestone creation dates are the actual 2026-11-14 dates."
+    }
+  ],
+  "candidate": {
+    "title": "v3.1.0",
+    "state": "prepared",
+    "previous_release": "v3.0.0",
+    "base_commit": "b7b1ff5b31c61405634196dec96d53b994d6359d",
+    "goal": "Per-host SOCKS5 proxy routes, automation through saved jump hosts, browser login management, workspace presets and script-policy/restore hardening",
+    "compare_url": "https://github.com/bifrost0x/webssh/compare/v3.0.0...main",
+    "release_notes": "docs/releases/v3.1.0.md",
+    "milestone_number": 15,
+    "release_gate": 338,
+    "pull_requests": [
+      317,
+      318,
+      319,
+      320,
+      321,
+      324,
+      325,
+      326,
+      328,
+      329,
+      330,
+      331,
+      332,
+      333,
+      335,
+      336,
+      337
+    ],
+    "issues": [
+      {
+        "number": 327,
+        "implemented_by": 328,
+        "evidence": "GitHub closingIssuesReferences for PR #328"
+      },
+      {
+        "number": 334,
+        "implemented_by": 336,
+        "evidence": "GitHub closingIssuesReferences for PR #336"
+      }
+    ],
+    "publication_status": "Pending final candidate review, CI, tag and native image verification"
+  },
+  "updated_on": "2026-11-14",
   "release_updates": [
     {
       "version": "v2.5.0",

@@ -55,6 +55,16 @@ the production file removes those previously implicit limits on recreation.
 Existing image-only upgrades do not change container settings. Review the merged
 configuration before recreating containers; keep data and recovery volumes intact.
 
+## v3.1.0 compatibility
+
+The [3.1 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v3.1.0.md)
+cover the changes. Existing 3.0 Compose files keep working unchanged; the new
+`SOCKS_REMOTE_DNS_ALLOWLIST` and `SOCKS_PROXY_MAX_RECORDS` settings are optional.
+The upgrade adds database columns and a per-user SOCKS5 proxy store. Keep the
+3.0.0 image and the complete pre-upgrade volumes for rollback, and do not start
+3.0.0 on data used by 3.1: it ignores SOCKS5 routes and would connect routed
+hosts directly. Reload open browser tabs after upgrading.
+
 ## v3.0.0 compatibility
 
 The [3.0 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v3.0.0.md)

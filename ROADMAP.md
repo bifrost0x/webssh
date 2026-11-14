@@ -4,9 +4,10 @@ WebSSH is a self-hosted SSH and file workspace. This roadmap explains the direct
 the current release focus, and the evidence behind completed work. It is not a release-date
 promise or a replacement for issues, pull requests, and release notes.
 
-Release status updated: **2026-11-08**, [v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) at
-[`c6ecb87`](https://github.com/bifrost0x/webssh/commit/c6ecb87c23a1b9369b1534770f248df4a6994933).
-Check linked GitHub items for newer status.
+Release preparation updated: **2026-11-14**. Version **3.1.0** is selected from
+`origin/main`; the latest published release remains
+[v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) until tag and image
+publication are verified. Check linked GitHub items for newer status.
 
 ## Product direction
 
@@ -18,7 +19,22 @@ Check linked GitHub items for newer status.
 These themes summarize the existing product and published release history; they do not
 add new feature commitments.
 
-## Now: WebSSH 3.0 published
+## Now: prepare v3.1.0
+
+The [3.1.0 candidate notes](docs/releases/v3.1.0.md) cover per-host SOCKS5 proxy
+routes, automation through saved jump hosts, browser login management,
+workspace presets, a task-first overview, the in-app version display, a stricter
+script policy, restore hardening and dependency updates. The scope comes from
+changes merged since v3.0.0 and is tracked in the
+[v3.1.0 milestone](https://github.com/bifrost0x/webssh/milestone/15); it adds no
+further feature commitment.
+
+Publication requires the exact final candidate's CI, native image scans and
+versioned AMD64/ARM64 image, SBOM and provenance verification, recorded in
+[#338](https://github.com/bifrost0x/webssh/issues/338). Data used by 3.1 must not
+be opened with 3.0.0; roll back by restoring the pre-upgrade volumes.
+
+## Published: WebSSH 3.0
 
 Version 3 combines a customizable dashboard and SSH topology, a selectable
 start page and classic overview, consistent host and credential management,
@@ -74,7 +90,7 @@ deployment supported. Do not promote an idea into a promised release by listing 
 
 - [Project history](docs/project-history.md): what shipped, documented reasons and lessons.
 - [Planning and release workflow](docs/project-planning.md): how issues, PRs and milestones fit together.
-- [Milestones](https://github.com/bifrost0x/webssh/milestones): native release grouping, with twelve published-release milestones closed.
+- [Milestones](https://github.com/bifrost0x/webssh/milestones): native release grouping, with every published-release milestone closed.
 - [Retrospective mapping](docs/release-history.json): release/PR/issue membership, milestone numbers and backfill verification.
 
 The native milestone backfill was applied on 2026-10-04: 185 items assigned and
@@ -83,6 +99,9 @@ manifest. The 2026-10-05 release update adds PRs #249-#252 to v2.5.0, closes
 release-readiness issue #248 and recorded the then-open operational follow-up #254.
 The 2026-10-23 v2.6.0 update adds 24 PRs and three implementation-linked issues,
 closes release record #289 and milestone 12, and tracks current deployment acceptance in #288.
+On 2026-11-14 the missing v2.7.0 and v3.0.0 milestones were created from the
+manifest, assigned their first-included PRs and issues, and closed; the open
+v3.1.0 milestone holds the work merged since v3.0.0.
 
 The historical mapping was reconstructed on 2026-10-03. It does not imply that these
 milestones or this roadmap existed at the time. Actual GitHub milestone creation and

@@ -135,6 +135,15 @@ fourteen releases, 210 merged PR mappings and 29 implementation-linked issues.
 immutable image identity and SBOM/provenance verification. Historical backfill
 snapshots remain unchanged.
 
+Applied on **2026-11-14**: v2.7.0 and v3.0.0 had been published without a native
+milestone. [Milestone 13](https://github.com/bifrost0x/webssh/milestone/13) (v2.7.0,
+16 PRs and #303) and [milestone 14](https://github.com/bifrost0x/webssh/milestone/14)
+(v3.0.0, 5 PRs and #312) were created from the manifest mapping, verified and
+closed. The proposed [v3.1.0 milestone](https://github.com/bifrost0x/webssh/milestone/15)
+holds the 17 PRs merged since v3.0.0, issues #327 and #334 and release record
+[#338](https://github.com/bifrost0x/webssh/issues/338). The manifest records this in
+`native_milestone_followups`; earlier snapshots remain unchanged.
+
 For historical backfill:
 
 1. Read all existing native milestones before creating anything; reuse matching versions
