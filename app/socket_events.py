@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from functools import wraps
 from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager,
-               session_insights, runtime_inventory, smb_share_manager)
+               session_insights, runtime_inventory, smb_share_manager, socks_proxy_manager)
 from .decorators import socket_login_required
 from .login_access import serialize_login_access
 from .auth import (
@@ -348,6 +348,8 @@ class _CombinedCancellation:
         )
 
     def check(self):
+        for guard in self._credential_guards:
+            guard.check()
         if self.is_set():
             raise AutomationError('vault_locked')
 
@@ -1069,6 +1071,8 @@ def restore_user_sessions(user_id, socket_sid):
                 'auth_type': session.get('auth_type', db_session.auth_type),
                 'via_jump': session.get('via_jump'),
                 'jump_host_id': session.get('jump_host_id'),
+                'socks_proxy_id': session.get('socks_proxy_id', db_session.socks_proxy_id),
+                'via_socks': bool(session.get('via_socks', db_session.via_socks)),
                 'profile_id': session.get('profile_id'),
                 'detected_platform': session.get('detected_platform'),
                 'reconnect_route_known': session.get('reconnect_route_known', False),
@@ -1107,6 +1111,8 @@ def restore_user_sessions(user_id, socket_sid):
                 'key_id': db_session.key_id,
                 'auth_type': db_session.auth_type,
                 'jump_host_id': db_session.jump_host_id,
+                'socks_proxy_id': db_session.socks_proxy_id,
+                'via_socks': bool(db_session.via_socks),
                 'profile_id': db_session.profile_id,
                 'via_jump': db_session.via_jump,
                 'reconnect_route_known': db_session.reconnect_route_known,
@@ -1176,12 +1182,13 @@ def handle_ssh_connect(data, current_user=None):
     key_content = None
     bastion_password = None
     bastion_key_content = None
+    socks_password = None
     client_request_id = None
     socket_sid = request.sid
     client_cancel_event = threading.Event()
     credential_guards = []
     try:
-        data = data if isinstance(data, dict) else {}
+        data = dict(data) if isinstance(data, dict) else {}
         client_request_id = _ssh_request_id(data) or None
         if not current_app.extensions[
             'runtime_lifecycle'
@@ -1302,6 +1309,49 @@ def handle_ssh_connect(data, current_user=None):
         saved_jump_host_id = (
             proxy_jump.get('jump_host_id') if proxy_jump else None
         )
+        socks_proxy = None
+        saved_socks_proxy_id = None
+        if 'socks_proxy' in data or data.get('socks_proxy_id'):
+            socks_payload = data.get('socks_proxy')
+            saved_socks_proxy_id = (
+                socks_payload.get('socks_proxy_id') if isinstance(socks_payload, dict) else None
+            )
+            if (not isinstance(saved_socks_proxy_id, str) or not saved_socks_proxy_id
+                    or len(saved_socks_proxy_id) > 64
+                    or (data.get('socks_proxy_id')
+                        and data['socks_proxy_id'] != saved_socks_proxy_id)):
+                emit_error('SOCKS proxy reference not found')
+                return
+            if proxy_jump or data.get('jump_host_id'):
+                emit_error('A host can use either a jump host or a SOCKS5 proxy, not both')
+                return
+            if auth_type == 'tailscale':
+                emit_error('Tailscale SSH cannot be used with a SOCKS5 proxy')
+                return
+            socks_proxy = socks_proxy_manager.get_socks_proxy(current_user.id, saved_socks_proxy_id)
+            if socks_proxy is None:
+                emit_error('SOCKS proxy reference not found')
+                return
+            socks_proxy = dict(socks_proxy, kind='socks')
+            if socks_proxy['auth_type'] == 'password':
+                socks_password = socks_payload.get('password')
+                for field in ('credential_id', 'credential_target_token'):
+                    if socks_payload.get(field) is not None:
+                        socks_proxy[field] = socks_payload[field]
+                if not socks_password and socks_proxy.get('credential_id') is None:
+                    emit_error('SOCKS5 proxy password required')
+                    return
+            data['socks_proxy'] = {'socks_proxy_id': saved_socks_proxy_id}
+            socks_payload = None
+
+        # Optional context may detach from an edited profile, but never discard
+        # its saved SOCKS route and thereby send SSH credentials directly.
+        if data.get('profile_id'):
+            selected_profile = profile_manager.get_profile(current_user.id, data['profile_id'])
+            if (selected_profile and (selected_profile.get('socks_proxy_id') or saved_socks_proxy_id)
+                    and (selected_profile.get('socks_proxy_id') or None) != saved_socks_proxy_id):
+                emit_error('Saved host no longer matches this connection. Select it again or use Quick Connect.')
+                return
         if saved_jump_host_id:
             live_jump_host = jump_host_manager.get_jump_host(
                 current_user.id, saved_jump_host_id
@@ -1364,9 +1414,23 @@ def handle_ssh_connect(data, current_user=None):
             if proxy_jump and proxy_jump.get('credential_id') is not None:
                 credential_guards.append(CredentialGuard(current_user.id, 'jump', proxy_jump))
                 bastion_password = connection_password(current_user.id, 'jump', proxy_jump)
+            if socks_proxy and socks_proxy.get('credential_id') is not None:
+                if socks_password:
+                    raise AutomationError('invalid_request')
+                credential_guards.append(CredentialGuard(current_user.id, 'socks', socks_proxy))
+                socks_password = connection_password(current_user.id, 'socks', socks_proxy)
         except AutomationError as error:
             emit('ssh_error', dict(credential_error(error), client_request_id=client_request_id))
             return
+
+        if socks_proxy and socks_proxy['auth_type'] == 'password':
+            try:
+                valid_password = isinstance(socks_password, str) and 1 <= len(socks_password.encode('utf-8')) <= 255
+            except UnicodeError:
+                valid_password = False
+            if not valid_password:
+                emit_error('SOCKS5 proxy password must contain 1 to 255 UTF-8 bytes')
+                return
 
         if auth_type == 'key' and key_id:
             key_content, key_error = key_manager.read_key_content(
@@ -1390,7 +1454,7 @@ def handle_ssh_connect(data, current_user=None):
         # The target may be internal when reached via a bastion (legitimate).
         host, port, username, error = _validate_ssh_params(
             data.get('host'), data.get('port', 22), data.get('username'),
-            allow_internal=bool(proxy_jump), allow_gateway=auth_type != 'tailscale'
+            allow_internal=bool(proxy_jump or socks_proxy), allow_gateway=auth_type != 'tailscale'
         )
         if error:
             emit_error(error)
@@ -1401,6 +1465,7 @@ def handle_ssh_connect(data, current_user=None):
             profile_id = bind_profile(
                 current_user.id, data.get('profile_id'), host, port, username,
                 saved_jump_host_id, optional=data.get('profile_context_optional') is True,
+                socks_proxy_id=saved_socks_proxy_id,
             )
         except ContextError:
             emit_error('Saved host no longer matches this connection. Select it again or use Quick Connect.')
@@ -1479,6 +1544,11 @@ def handle_ssh_connect(data, current_user=None):
                     is_persistent=True
                 ).first()
                 if existing:
+                    if ((existing.socks_proxy_id or existing.via_socks or saved_socks_proxy_id)
+                            and (not existing.socks_proxy_id
+                                 or existing.socks_proxy_id != saved_socks_proxy_id)):
+                        emit_error('Saved SOCKS5 proxy route no longer matches this session')
+                        return
                     reconnect_tmux_name = raw_name
 
         app = current_app._get_current_object()
@@ -1519,7 +1589,9 @@ def handle_ssh_connect(data, current_user=None):
             'key_content': key_content,
             'bastion_password': bastion_password,
             'bastion_key_content': bastion_key_content,
+            'socks_password': socks_password,
         }
+        socks_password = None
         if gateway_attempt is None:
             attempt = {
                 'cancel_event': client_cancel_event,
@@ -1578,6 +1650,11 @@ def handle_ssh_connect(data, current_user=None):
                     proxy_jump_username=bastion_username,
                     proxy_jump_password=local_bastion_password,
                     proxy_jump_key_content=local_bastion_key_content,
+                    **({'socks_proxy': ssh_manager.SocksProxyRoute(
+                        proxy_id=saved_socks_proxy_id, host=socks_proxy['host'], port=socks_proxy['port'],
+                        auth_type=socks_proxy['auth_type'], username=socks_proxy['username'],
+                        password=credentials.pop('socks_password', None), remote_dns=socks_proxy['remote_dns'],
+                    )} if socks_proxy else {}),
                     use_tmux=use_tmux,
                     reconnect_tmux_name=reconnect_tmux_name,
                     auth_type=auth_type,
@@ -1595,6 +1672,7 @@ def handle_ssh_connect(data, current_user=None):
                         hop for hop, saved in (
                             ('target', data.get('credential_id') is not None),
                             ('jump', bool(proxy_jump) and proxy_jump.get('credential_id') is not None),
+                            ('socks', bool(socks_proxy) and socks_proxy.get('credential_id') is not None),
                         ) if saved
                     )} if credential_guards else {}),
                     **({'gateway_attempt': gateway_attempt} if gateway_attempt is not None else {}),
@@ -1691,6 +1769,8 @@ def handle_ssh_connect(data, current_user=None):
                         key_id=key_id,
                         auth_type=auth_type,
                         jump_host_id=saved_jump_host_id,
+                        socks_proxy_id=saved_socks_proxy_id,
+                        via_socks=socks_proxy is not None,
                         profile_id=profile_id,
                         via_jump=bastion_host,
                         reconnect_route_known=True,
@@ -1715,6 +1795,8 @@ def handle_ssh_connect(data, current_user=None):
                     'client_request_id': client_request_id,
                     'via_jump': bastion_host,
                     'jump_host_id': saved_jump_host_id,
+                    'socks_proxy_id': saved_socks_proxy_id,
+                    'via_socks': socks_proxy is not None,
                     'profile_id': profile_id,
                     'reconnect_route_known': True,
                     'use_tmux': actual_use_tmux,
@@ -1841,6 +1923,7 @@ def handle_ssh_connect(data, current_user=None):
         key_content = None
         bastion_password = None
         bastion_key_content = None
+        socks_password = None
 
 
 @socketio.on('ssh_connect_cancel')
@@ -2091,6 +2174,8 @@ def handle_ssh_disconnect(data, current_user=None):
                         is_persistent=True,
                         tmux_session_name=ssh_session.tmux_session_name,
                         jump_host_id=ssh_session.jump_host_id,
+                        socks_proxy_id=ssh_session.socks_proxy_id,
+                        via_socks=ssh_session.via_socks,
                         via_jump=ssh_session.via_jump,
                     ).first()
                 if ssh_session.is_persistent and (not preserve_tmux or replacement):
@@ -2143,6 +2228,7 @@ def initial_inventory(current_user):
                 for stored_profile in profile_manager.load_profiles(current_user.id)
             ],
             'jump_hosts': jump_host_manager.load_jump_hosts(current_user.id),
+            'socks_proxies': socks_proxy_manager.load_socks_proxies(current_user.id),
         }
     except Exception as error:
         log_warning("Initial host inventory unavailable", error=str(error))
@@ -2443,6 +2529,75 @@ def handle_delete_jump_host(data, current_user=None):
     except Exception as e:
         log_error("Failed to delete jump host", error=str(e))
         emit('error', {'error': 'Failed to delete jump host'})
+
+@socketio.on('list_socks_proxies')
+@socket_login_required
+def handle_list_socks_proxies(current_user=None):
+    try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        emit('socks_proxies_list', {
+            'socks_proxies': socks_proxy_manager.load_socks_proxies(current_user.id),
+        })
+    except ConnectionStorageLimitError as error:
+        return _command_set_error(str(error))
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as error:
+        log_error('Failed to load SOCKS proxies', error_type=type(error).__name__)
+        return _command_set_error('Failed to load SOCKS proxies')
+
+
+@socketio.on('save_socks_proxy')
+@socket_login_required
+def handle_save_socks_proxy(data, current_user=None):
+    try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = data if isinstance(data, dict) else {}
+        proxy, error = socks_proxy_manager.add_socks_proxy(
+            user_id=current_user.id, name=data.get('name'), host=data.get('host'),
+            port=data.get('port', 1080), auth_type=data.get('auth_type', 'none'),
+            username=data.get('username', ''), remote_dns=data.get('remote_dns', True),
+            socks_proxy_id=data.get('socks_proxy_id'),
+        )
+        if error:
+            return _command_set_error(error)
+        payload = {'success': True, 'socks_proxy': proxy}
+        emit('socks_proxy_saved', payload)
+        return payload
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as error:
+        log_error('Failed to save SOCKS proxy', error_type=type(error).__name__)
+        return _command_set_error('Failed to save SOCKS proxy')
+
+
+@socketio.on('delete_socks_proxy')
+@socket_login_required
+def handle_delete_socks_proxy(data, current_user=None):
+    try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = data if isinstance(data, dict) else {}
+        proxy_id = data.get('socks_proxy_id')
+        if not isinstance(proxy_id, str) or not proxy_id or len(proxy_id) > 64:
+            return _command_set_error('SOCKS proxy ID required')
+        success, error, usages = socks_proxy_manager.delete_socks_proxy(current_user.id, proxy_id)
+        if not success:
+            return _command_set_error(error, usages)
+        payload = {'success': True, 'socks_proxy_id': proxy_id}
+        emit('socks_proxy_deleted', payload)
+        return payload
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as error:
+        log_error('Failed to delete SOCKS proxy', error_type=type(error).__name__)
+        return _command_set_error('Failed to delete SOCKS proxy')
+
 
 def _key_summary_rate_limit(current_user):
     if check_socket_rate_limit(
@@ -4166,6 +4321,15 @@ def handle_quick_connect(data, current_user=None):
         emit('quick_connect_error', payload)
 
     try:
+        data = data if isinstance(data, dict) else {}
+        selected_profile = (
+            profile_manager.get_profile(current_user.id, data['profile_id'])
+            if data.get('profile_id') else None
+        )
+        if ('socks_proxy' in data or data.get('socks_proxy_id')
+                or (selected_profile and selected_profile.get('socks_proxy_id'))):
+            send_error({'error': 'Quick SFTP does not support SOCKS5 proxy routes. Connect through a terminal session.'})
+            return
         if not current_app.extensions[
             'runtime_lifecycle'
         ].accepting_work():
@@ -5624,7 +5788,8 @@ def _start_gateway_quick_connect(data, user, host, port, username, password, key
     """Run only selector-based Quick SFTP asynchronously with bounded admission."""
     request_id = _ssh_request_id(data)
     if (data.get('gateway_interaction') != 1 or not request_id
-            or data.get('proxy_jump') or data.get('auth_type') == 'tailscale'):
+            or data.get('proxy_jump') or data.get('auth_type') == 'tailscale'
+            or 'socks_proxy' in data or data.get('socks_proxy_id')):
         emit('quick_connect_error', {'error': 'Unsupported gateway client or route',
                                    'client_request_id': request_id})
         return

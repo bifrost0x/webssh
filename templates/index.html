@@ -745,12 +745,13 @@
                                     <span class="material-icons" aria-hidden="true">tune</span>
                                     <span>
                                         <strong data-i18n="connection.advancedSettings">Advanced Settings</strong>
-                                        <small data-i18n="connection.advancedSettingsHint">Jump host, post-connect actions, and persistence.</small>
+                                        <small data-i18n="connection.advancedSettingsHint">Route, post-connect actions, and persistence.</small>
                                     </span>
                                     <span class="material-icons connection-advanced-chevron" aria-hidden="true">expand_more</span>
                                 </summary>
                                 <div class="connection-advanced-content">
 
+                    <fieldset class="connection-route-fields"><legend data-i18n="connection.route">Route</legend>
                     <div class="form-group">
                         <label for="jumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
                         <select id="jumpHostSelect" class="form-control">
@@ -767,6 +768,21 @@
                         </div>
                         <div class="field-hint" data-i18n="connection.jumpHostPasswordHint">This bastion uses password auth — enter its password (never stored).</div>
                     </div>
+                    <div class="form-group">
+                        <label for="socksProxySelect" data-i18n="connection.socksProxy">SOCKS5 Proxy</label>
+                        <select id="socksProxySelect" class="form-control"><option value="" data-i18n="connection.socksProxyNone">None</option></select>
+                        <button type="button" class="btn btn-secondary btn-sm" data-connection-asset="socks-proxies" data-i18n="connection.socksProxyManage">Manage SOCKS5 proxies in the connection resources.</button>
+                    </div>
+                    <p id="connectionRouteHint" class="field-hint" role="status" hidden></p>
+                    <div class="form-group hidden" id="socksProxyPasswordGroup">
+                        <label for="socksProxyPasswordInput" data-i18n="connection.socksProxyPassword">SOCKS5 Proxy Password</label>
+                        <div class="input-wrapper with-toggle">
+                            <input type="password" id="socksProxyPasswordInput" class="form-control" autocomplete="current-password">
+                            <button type="button" class="password-toggle material-icons" data-target="socksProxyPasswordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
+                        </div>
+                        <div class="field-hint" data-i18n="connection.socksProxyPasswordHint">This proxy uses password login. Enter its password; it is not stored unless you save it.</div>
+                    </div>
+                    </fieldset>
 
                     <div class="form-group post-connect-config">
                         <div class="post-connect-label">
@@ -862,6 +878,7 @@
                     <p class="connection-asset-nav-label" data-i18n="connectionAssets.navigation">Connection resources</p>
                     <button type="button" class="connection-asset-nav-item active" data-connection-asset="hosts" aria-current="page"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts"><span class="material-icons" aria-hidden="true">alt_route</span><span data-i18n="connectionAssets.jumpHosts">Jump Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="socks-proxies"><span class="material-icons" aria-hidden="true">lan</span><span data-i18n="socksproxies.title">SOCKS5 Proxies</span></button>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="keys"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
                 <button type="button" class="connection-asset-nav-item" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
                 <section id="profileManagementView">
@@ -962,7 +979,7 @@
                                         <span class="material-icons" aria-hidden="true">tune</span>
                                         <div>
                                             <h3 id="profileAdvancedSettingsTitle" data-i18n="connection.advancedSettings">Advanced Settings</h3>
-                                            <p data-i18n="connection.advancedSettingsHint">Jump host, post-connect actions, and persistence.</p>
+                                            <p data-i18n="connection.advancedSettingsHint">Route, post-connect actions, and persistence.</p>
                                         </div>
                                         <span class="material-icons profile-advanced-chevron" aria-hidden="true">expand_more</span>
                                     </summary>                        <div class="form-group"><label for="profileEditorPlatformIcon" data-i18n="platform.label">Platform icon</label>
@@ -987,10 +1004,15 @@
                             <small data-i18n="platform.help">Automatic checks platform facts after connecting over SSH. Choose an icon to override detection.</small>
                         </div>
 
+                        <fieldset class="connection-route-fields"><legend data-i18n="connection.route">Route</legend>
                         <div class="form-group">
                             <label for="profileEditorJumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
                             <select id="profileEditorJumpHostSelect" class="form-control"></select>
                         </div>
+                        <div class="form-group"><label for="profileEditorSocksProxySelect" data-i18n="connection.socksProxy">SOCKS5 Proxy</label><select id="profileEditorSocksProxySelect" class="form-control"><option value="" data-i18n="connection.socksProxyNone">None</option></select>
+                        <button type="button" class="btn btn-secondary btn-sm" data-connection-asset="socks-proxies" data-i18n="connection.socksProxyManage">Manage SOCKS5 proxies in the connection resources.</button></div>
+                        <p id="profileEditorRouteHint" class="field-hint" role="status" hidden></p>
+                        </fieldset>
                         <div class="form-group">
                             <label for="profileEditorPostConnectMode" data-i18n="connection.runAfterConnect">Run after connecting</label>
                             <select id="profileEditorPostConnectMode" class="form-control">
@@ -1080,7 +1102,8 @@
     </div>
 
 <section id="credentialManagementView" hidden aria-labelledby="credentialManagementTitle">
- <nav class="connection-asset-nav" aria-label="Connection resources" data-i18n-aria-label="connectionAssets.navigation"><button type="button" class="connection-asset-nav-item" data-connection-asset="hosts" data-i18n="connectionAssets.hosts">Hosts</button><button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button><button type="button" class="connection-asset-nav-item" data-connection-asset="keys" data-i18n="connectionAssets.keys">SSH Keys</button><button type="button" class="connection-asset-nav-item active" aria-current="page" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
+ <nav class="connection-asset-nav" aria-label="Connection resources" data-i18n-aria-label="connectionAssets.navigation"><button type="button" class="connection-asset-nav-item" data-connection-asset="hosts" data-i18n="connectionAssets.hosts">Hosts</button><button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="socks-proxies"><span class="material-icons" aria-hidden="true">lan</span><span data-i18n="socksproxies.title">SOCKS5 Proxies</span></button><button type="button" class="connection-asset-nav-item" data-connection-asset="keys" data-i18n="connectionAssets.keys">SSH Keys</button><button type="button" class="connection-asset-nav-item active" aria-current="page" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
  <header class="native-credential-toolbar"><h2 id="credentialManagementTitle" data-i18n="credentials.title">Passwords</h2><input type="search" data-credential-search class="form-control" aria-label="Search passwords" data-i18n-aria-label="credentials.search" placeholder="Search passwords" data-i18n-placeholder="credentials.search"><button type="button" class="btn btn-primary" data-credential-new data-i18n="credentials.new">New password</button></header>
  <p role="status"></p>
  <div class="native-credential-workspace"><div class="native-credential-list" data-credential-list></div><aside data-credential-detail hidden></aside></div>
@@ -1100,6 +1123,7 @@
                     <p class="connection-asset-nav-label" data-i18n="connectionAssets.navigation">Connection resources</p>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts"><span class="material-icons" aria-hidden="true">alt_route</span><span data-i18n="connectionAssets.jumpHosts">Jump Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="socks-proxies"><span class="material-icons" aria-hidden="true">lan</span><span data-i18n="socksproxies.title">SOCKS5 Proxies</span></button>
                     <button type="button" class="connection-asset-nav-item active" data-connection-asset="keys" aria-current="page"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
                 <button type="button" class="connection-asset-nav-item" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
 
@@ -1288,6 +1312,7 @@
                     <p class="connection-asset-nav-label" data-i18n="connectionAssets.navigation">Connection resources</p>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
                     <button type="button" class="connection-asset-nav-item active" data-connection-asset="jump-hosts" aria-current="page"><span class="material-icons" aria-hidden="true">alt_route</span><span data-i18n="connectionAssets.jumpHosts">Jump Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="socks-proxies"><span class="material-icons" aria-hidden="true">lan</span><span data-i18n="socksproxies.title">SOCKS5 Proxies</span></button>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="keys"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
                 <button type="button" class="connection-asset-nav-item" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
                 <div class="connection-asset-layout">
@@ -1339,6 +1364,75 @@
                         <h3 data-i18n="jumphosts.saved">Saved Jump Hosts</h3>
                     </div>
                     <div id="jumpHostsList" class="keys-list"></div>
+                </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-wide" id="socksProxyManagementModal" role="dialog" aria-modal="true" aria-labelledby="socksProxyManagementTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="socksProxyManagementTitle" data-i18n="socksproxies.manage">Manage SOCKS5 Proxys</h2>
+                <button type="button" class="close material-icons" id="closeSocksProxyModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
+            </div>
+            <div class="modal-body">
+                <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
+                    <div class="management-resource-title"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></div>
+                    <p class="connection-asset-nav-label" data-i18n="connectionAssets.navigation">Connection resources</p>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts"><span class="material-icons" aria-hidden="true">alt_route</span><span data-i18n="connectionAssets.jumpHosts">Jump Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item active" data-connection-asset="socks-proxies" aria-current="page"><span class="material-icons" aria-hidden="true">lan</span><span data-i18n="socksproxies.title">SOCKS5 Proxies</span></button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="keys"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
+                <button type="button" class="connection-asset-nav-item" data-connection-asset="passwords"><span class="material-icons" aria-hidden="true">password</span><span data-i18n="credentials.title">Passwords</span></button></nav>
+                <div class="connection-asset-layout">
+                <section class="key-upload-section manager-card">
+                    <div class="manager-card-header">
+                        <span class="material-icons" aria-hidden="true">add_link</span>
+                        <h3 id="socksProxyEditorTitle" data-i18n="socksproxies.addNew">Add SOCKS5 Proxy</h3>
+                    </div>
+                    <form id="socksProxyForm">
+                        <div class="form-group">
+                            <label for="spNameInput" data-i18n="socksproxies.name">Name</label>
+                            <input type="text" id="spNameInput" maxlength="128" class="form-control" placeholder="Office proxy" data-i18n-placeholder="socksproxies.namePlaceholder" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group flex-2">
+                                <label for="spHostInput" data-i18n="connection.host">Host</label>
+                                <input type="text" id="spHostInput" maxlength="253" class="form-control" placeholder="proxy.example.com" required spellcheck="false" autocapitalize="none">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label for="spPortInput" data-i18n="connection.port">Port</label>
+                                <input type="number" id="spPortInput" class="form-control" value="1080" min="1" max="65535" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label data-i18n="connection.authMethod">Authentication Method</label>
+                            <div class="auth-type-selector" role="group" aria-label="Authentication Method" data-i18n-aria-label="connection.authMethod">
+                                <label class="radio-label"><input type="radio" name="spAuthType" value="none" checked> <span data-i18n="socksproxies.noAuthentication">No authentication</span></label>
+                                <label class="radio-label"><input type="radio" name="spAuthType" value="password"> <span data-i18n="socksproxies.passwordAuthentication">Username and password</span></label>
+                            </div>
+                        </div>
+                        <div class="form-group hidden" id="spUsernameGroup">
+                            <label for="spUsernameInput" data-i18n="auth.username">Username</label>
+                            <input type="text" id="spUsernameInput" class="form-control" maxlength="255" spellcheck="false" autocapitalize="none">
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label"><input type="checkbox" id="spRemoteDns" checked> <span data-i18n="socksproxies.remoteDns">Resolve host names through the proxy</span></label>
+                            <p class="field-hint" data-i18n="socksproxies.remoteDnsHint">Recommended. Names that only exist in the proxy's network keep working. When WebSSH blocks internal targets, only names your administrator allows are sent to the proxy.</p>
+                        </div>
+                        <p class="field-hint" data-socks-password-hint hidden data-i18n="socksproxies.passwordHint">Enter the proxy password when connecting, or explicitly save a reusable password.</p>
+                        <p class="field-hint" data-socks-password-hint hidden data-i18n="socksproxies.passwordWarning">SOCKS5 sends the proxy password unencrypted. Use password login only on networks you trust. Your SSH session itself stays encrypted.</p>
+                        <p id="spSaveStatus" class="field-hint" role="status" hidden></p>
+                        <div class="form-actions"><button type="button" id="cancelSocksProxyEdit" class="btn btn-secondary" data-i18n="common.cancel" hidden>Cancel</button><button type="submit" id="saveSocksProxyBtn" class="btn btn-primary"><span data-i18n="socksproxies.add">Add SOCKS5 Proxy</span></button></div>
+                    </form>
+                </section>
+                <section class="keys-list-section manager-card">
+                    <div class="manager-card-header">
+                        <span class="material-icons" aria-hidden="true">history</span>
+                        <h3 data-i18n="socksproxies.saved">Saved SOCKS5 Proxys</h3>
+                    </div>
+                    <div id="socksProxiesList" class="keys-list"></div>
                 </section>
                 </div>
             </div>
@@ -1744,6 +1838,7 @@
     <script src="{{ static_asset_url(filename='js/host-discovery.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/profile-exchange.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/jump-host-manager.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/socks-proxy-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/command-library.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/command-set-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/connection-command-manager.js') }}"></script>

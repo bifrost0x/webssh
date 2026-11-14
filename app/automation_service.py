@@ -41,6 +41,7 @@ def password_resources(targets):
 
 def supported_login(item):
     return (item is not None and item.get('auth_type') in {'key', 'password'}
+            and not item.get('socks_proxy_id') and item.get('kind') != 'socks'
             and bool(item.get('username')) and ':' not in item['username'])
 
 

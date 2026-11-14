@@ -92,7 +92,7 @@ def _jump_host_migration_payload(path, document):
     try:
         return enforce_store_transition(
             path=path,
-            other_path=path.parent / 'profiles.json',
+            other_paths=(path.parent / 'profiles.json', path.parent / 'socks_proxies.json'),
             prospective_document=document,
             prospective_count=len(jump_hosts),
             previous_count=None,
@@ -163,7 +163,7 @@ def save_jump_hosts(
             return False
         payload = enforce_store_transition(
             path=f,
-            other_path=f.parent / 'profiles.json',
+            other_paths=(f.parent / 'profiles.json', f.parent / 'socks_proxies.json'),
             prospective_document=document,
             prospective_count=len(jump_hosts),
             previous_count=previous_count,

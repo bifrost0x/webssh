@@ -88,15 +88,20 @@ def export():
     batches = export_batches(
         load_profiles(current_user.id), load_jump_hosts(current_user.id),
     )
+    omitted = sum(bool(host.get('socks_route_omitted')) for batch in batches for host in batch['hosts'])
     if len(batches) == 1:
-        return jsonify(batches[0])
+        response = jsonify(batches[0])
+        response.headers['X-WebSSH-SOCKS-Routes-Omitted'] = str(omitted)
+        return response
     output = io.BytesIO()
     with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_STORED) as archive:
         for number, batch in enumerate(batches, 1):
             archive.writestr(f'webssh-hosts-{number}.json', json.dumps(batch))
     output.seek(0)
-    return send_file(output, mimetype='application/zip',
-                     as_attachment=True, download_name='webssh-hosts.zip')
+    response = send_file(output, mimetype='application/zip',
+                         as_attachment=True, download_name='webssh-hosts.zip')
+    response.headers['X-WebSSH-SOCKS-Routes-Omitted'] = str(omitted)
+    return response
 
 
 @profile_exchange_blueprint.post('/api/profiles/exchange')

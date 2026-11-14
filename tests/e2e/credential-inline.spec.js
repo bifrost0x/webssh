@@ -26,6 +26,26 @@ test('destination changes during authorization cannot reuse a pending token',asy
  await expect.poll(()=>Boolean(pending)).toBe(true);await page.locator('#hostInput').fill('changed');await pending.fulfill({json:{credential_target_token:'obsolete'}});
  expect(await page.evaluate(()=>window.result)).toBe('AbortError');expect(await page.evaluate(()=>window.CredentialPicker.token('passwordInput'))).toBeNull();
 });
+
+test('SOCKS target authorization includes the selected route and clears it for direct connections',async({page})=>{
+ await setup(page);const requests=[];
+ await page.route('**/api/credentials/authorize-target',r=>{requests.push(r.request().postDataJSON());return r.fulfill({json:{credential_target_token:'token-'+requests.length}});});
+ await page.evaluate(()=>{
+  const select=document.createElement('select');select.id='socksProxySelect';
+  for(const [value,text] of [['','Direct'],['proxy-a','Operations proxy']]) {const option=document.createElement('option');option.value=value;option.textContent=text;select.append(option);}
+  document.querySelector('form').append(select);
+ });
+ await page.locator('#socksProxySelect').selectOption('proxy-a');
+ await page.locator('#authTypeSelect').selectOption('saved-password');await page.locator('#savedPasswordSelect').selectOption('named');
+ await page.evaluate(()=>window.CredentialPicker.resolve('passwordInput'));
+ expect(requests[0].target).toEqual({host:'host',port:22,username:'alice',auth_type:'password',jump_host_id:null,socks_proxy_id:'proxy-a'});
+ await page.locator('#socksProxySelect').selectOption('');
+ expect(await page.evaluate(()=>window.CredentialPicker.token('passwordInput'))).toBeNull();
+ await expect(page.locator('#savedPasswordSelect')).toHaveValue('');
+ await page.locator('#savedPasswordSelect').selectOption('named');
+ await page.evaluate(()=>window.CredentialPicker.resolve('passwordInput'));
+ expect(requests[1].target).toEqual({host:'host',port:22,username:'alice',auth_type:'password',jump_host_id:null});
+});
 test('rotation or revoked target authorization fails closed and preserves the selected name',async({page})=>{
  await setup(page);await page.route('**/api/credentials/authorize-target',r=>r.fulfill({status:409,json:{code:'preview_changed'}}));
  await page.locator('#authTypeSelect').selectOption('saved-password');await page.locator('#savedPasswordSelect').selectOption('named');

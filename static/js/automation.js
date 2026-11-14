@@ -604,7 +604,7 @@
             label.append(node('strong', profile.name || profile.host), node('small', `${profile.username}@${profile.host}:${profile.port || 22}${profile.via ? ` · ${tr('viaJump', {name: profile.via})}` : ''}${profile.group ? ` · ${profile.group}` : ''}`));
             const marker = node('span', 'dns', 'material-icons automation-host-icon'); marker.setAttribute('aria-hidden', 'true');
             const statusKey = targetCredentialStatus(profile);
-            const status = node('span', tr(statusKey), 'automation-state'); status.dataset.credentialStatus = profile.id;
+            const status = node('span', profile.socks_proxy_id ? window.i18n.t('connection.socksProxyAutomation') : tr(statusKey), 'automation-state'); status.dataset.credentialStatus = profile.id;
             label.append(status); row.append(input, marker, label);
             const jumpCredential = ['jumpPasswordMissing', 'jumpCredentialChanged'].includes(statusKey);
             if (profile.supported && (profile.auth_type !== 'key' || jumpCredential)) {

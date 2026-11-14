@@ -259,12 +259,12 @@ def _connection_store_user(username):
 @click.option(
     '--kind',
     required=True,
-    type=click.Choice(('profiles', 'jump-hosts'), case_sensitive=True),
+    type=click.Choice(('profiles', 'jump-hosts', 'socks-proxies'), case_sensitive=True),
 )
 @click.option('--confirm-offline', is_flag=True)
 def connection_store_list(username, kind, confirm_offline):
     """List bounded, non-secret record summaries for offline recovery."""
-    from . import jump_host_manager, profile_manager
+    from . import jump_host_manager, profile_manager, socks_proxy_manager
     from .backup_coordination import OperationBusyError, operation_lock
     from .connection_storage_policy import ConnectionStorageLimitError
     from .storage_errors import StorageCorruptionError
@@ -279,6 +279,8 @@ def connection_store_list(username, kind, confirm_offline):
                 )
                 if error:
                     raise click.ClickException(error)
+            elif kind == 'socks-proxies':
+                records = socks_proxy_manager.load_socks_proxy_recovery_summaries(user.id)
             else:
                 records = (
                     jump_host_manager.load_jump_host_recovery_summaries(
@@ -303,7 +305,7 @@ def connection_store_list(username, kind, confirm_offline):
 @click.option(
     '--kind',
     required=True,
-    type=click.Choice(('profiles', 'jump-hosts'), case_sensitive=True),
+    type=click.Choice(('profiles', 'jump-hosts', 'socks-proxies'), case_sensitive=True),
 )
 @click.option('--selector', required=True, metavar='SELECTOR')
 @click.option('--confirm-offline', is_flag=True)
@@ -314,7 +316,7 @@ def connection_store_delete(
     confirm_offline,
 ):
     """Delete one exact legacy record while WebSSH is stopped."""
-    from . import jump_host_manager, profile_manager
+    from . import jump_host_manager, profile_manager, socks_proxy_manager
     from .backup_coordination import OperationBusyError, operation_lock
     from .storage_errors import StorageCorruptionError
 
@@ -328,6 +330,10 @@ def connection_store_delete(
                         user.id,
                         selector,
                     )
+                )
+            elif kind == 'socks-proxies':
+                deleted, error, _usages = (
+                    socks_proxy_manager.delete_socks_proxy_recovery_record(user.id, selector)
                 )
             else:
                 deleted, error, _usages = (
@@ -346,7 +352,8 @@ def connection_store_delete(
                 kind=kind,
                 selector=selector,
             )
-            label = 'profile' if kind == 'profiles' else 'jump-host'
+            label = {'profiles': 'profile', 'jump-hosts': 'jump-host',
+                     'socks-proxies': 'SOCKS-proxy'}[kind]
             click.echo(f'Deleted one {label} recovery record.')
     except (OperationBusyError, StorageCorruptionError) as exc:
         raise click.ClickException(str(exc)) from exc

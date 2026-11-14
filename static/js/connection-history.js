@@ -20,7 +20,18 @@
             return null;
         }
         if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
-        return { host, port, username, timestamp };
+        const route = {};
+        for (const field of ['socks_proxy_id', 'jump_host_id']) {
+            const value = entry[field];
+            if (value === undefined || value === null || value === '') continue;
+            if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(value)) return null;
+            route[field] = value;
+        }
+        // Unknown or conflicting routes must not become direct history entries.
+        if ((entry.via_socks && !route.socks_proxy_id)
+            || (entry.via_jump && !route.jump_host_id)
+            || (route.socks_proxy_id && route.jump_host_id)) return null;
+        return { host, port, username, timestamp, ...route };
     }
 
     function createConnectionHistory(options = {}) {
@@ -111,15 +122,19 @@
             }
         }
 
-        function addConnection(host, port, username) {
+        function addConnection(host, port, username, route = {}) {
             if (!storageKey) return;
 
-            const entry = normalizeEntry({ host, port, username, timestamp: now() });
+            const entry = normalizeEntry({ host, port, username, timestamp: now(),
+                socks_proxy_id: route?.socks_proxy_id, jump_host_id: route?.jump_host_id,
+                via_socks: route?.via_socks, via_jump: route?.via_jump });
             if (!entry) return;
             const history = getHistory().filter(item => !(
                 item.host === entry.host
                 && item.port === entry.port
                 && item.username === entry.username
+                && item.socks_proxy_id === entry.socks_proxy_id
+                && item.jump_host_id === entry.jump_host_id
             ));
             history.unshift(entry);
             persist(history.slice(0, maxItems));

@@ -37,7 +37,9 @@
             persistence: session.useTmux
                 ? `tmux${session.tmuxSessionName ? ` · ${session.tmuxSessionName}` : ''}`
                 : t('workspace.standardSession', 'Standard session'),
-            transport: session.viaJump
+            transport: session.viaSocks || session.socksProxyId
+                ? `SSH ${SessionManager.socksLabel(session)}`
+                : session.viaJump
                 ? `SSH ${t('connection.via', 'via')} ${session.viaJump}`
                 : 'SSH'
         };

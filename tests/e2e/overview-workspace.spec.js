@@ -1,5 +1,5 @@
 const {test, expect} = require('playwright/test');
-const {login, installSshConnectTrap, sshAttempts, assertNoExternalRequests} = require('./helpers');
+const {login, waitForInventory, installSshConnectTrap, sshAttempts, assertNoExternalRequests} = require('./helpers');
 
 // The e2e server is shared within a lane; restore the account's overview state even after a failure.
 test.afterEach(async ({page}) => {
@@ -23,7 +23,7 @@ async function setReachability(page, mode) {
 
 async function openOverview(page) {
     await page.goto('/');
-    await expect.poll(() => page.evaluate(() => window.ProfileManager?.profilesLoaded === true)).toBe(true);
+    await waitForInventory(page);
     await expect(page.locator('#overviewHostList .od-host:not(.od-skeleton)').first()).toBeVisible();
 }
 
@@ -407,4 +407,30 @@ test('saving a host opened from the overview returns to the overview with that h
     await editor.locator('button[type="submit"]:not(#saveConnectProfileBtn)').click();
     await expect(page.locator('#connectionOverview')).toBeVisible();
     await expect(page.locator(`#overviewHostList [data-host-id="${hostId}"] .od-connect`)).toBeFocused();
+});
+
+test('opening a host before keys load preserves its exact key through refresh and save', async ({page}) => {
+    await login(page, 'e2e_admin', {workspace: false});
+    await expect.poll(() => page.evaluate(() => ProfileManager.keysLoaded)).toBe(true);
+    const keyId = await page.evaluate(() => {
+        window.__delayedEditorKeys = ProfileManager.keys;
+        ProfileManager.keys = [];
+        ProfileManager.keysLoaded = false;
+        ProfileManager.loadKeys = () => {};
+        return ProfileManager.profiles.find(profile => profile.id === 'usable-key').key_id;
+    });
+    const card = page.locator('#overviewHostList [data-host-id="usable-key"]');
+    await card.getByRole('button', {name: 'Edit Usable key', exact: true}).click();
+    const select = page.locator('#profileEditorKeySelect');
+    await expect(select).toHaveValue(keyId);
+    await page.evaluate(() => ProfileManager.setKeys([
+        {id: 'unrelated-key', name: 'Unrelated key', key_type: 'Ed25519'},
+        ...window.__delayedEditorKeys,
+    ]));
+    await expect(select).toHaveValue(keyId);
+    const saved = page.evaluate(() => new Promise(resolve => window.socket.once('profile_saved', resolve)));
+    await page.locator('#profileEditorForm button[type="submit"]:not(#saveConnectProfileBtn)').click();
+    expect((await saved).profile.key_id).toBe(keyId);
+    await expect(page.locator('#connectionOverview')).toBeVisible();
+    await expect(card.locator('.od-connect')).toBeFocused();
 });

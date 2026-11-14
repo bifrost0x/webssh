@@ -70,8 +70,8 @@ depth. Upgrading from 2.x? Read the
 
 - Status overview with host readiness, open sessions, automation results,
   reachability and recent activity, in a layout you arrange per account.
-- **Needs attention** lists unverified host keys, missing jump hosts, changed
-  saved passwords and failed runs.
+- **Needs attention** lists unverified host keys, missing jump hosts or SOCKS5
+  proxies, changed saved passwords and failed runs.
 - **Find hosts** scans a network range you name for SSH and SFTP servers, only
   on request, and opens the host form prefilled.
 - Automation runs commands, command sets and templates now or on a cron
@@ -93,6 +93,8 @@ See the [automation guide](docs/automation.md) and
 - Multiple SSH sessions with tabs and 1-, 2-, or 4-pane layouts.
 - Saved connections, jump hosts, key, password, SSH server PAM MFA, and
   optional Tailscale SSH authentication paths.
+- Per-host [SOCKS5 proxy routes](docs/wiki/Profiles-Jump-Hosts-and-Commands.md#socks5-proxies)
+  for terminal sessions and their SFTP files, with optional proxy login and remote DNS.
 - Optional persistent remote shells through tmux.
 - Broadcast input, terminal search, transcripts, reconnect controls, and
   configurable scrollback.

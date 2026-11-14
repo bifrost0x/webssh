@@ -141,6 +141,10 @@ def connect_profile(user_id, profile, password, cancelled, own=lambda _resource:
     Both hops use the account's verified host keys, the SSH network policy
     and their own credentials; nothing is accepted on first use.
     """
+    if profile.get('socks_proxy_id') or profile.get('kind') == 'socks' or (
+        route and (route.get('kind') == 'socks' or route.get('socks_proxy_id'))
+    ):
+        raise AutomationError('unsupported_target')
     opened = []
 
     def hold(resource):

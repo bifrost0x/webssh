@@ -1626,13 +1626,13 @@ body:has(.auth-container) {
 /* Professional resource workspaces for Hosts and Commands. */
 .primary-workspace-surface #profileManagementModal > .modal-content > .modal-body,
 .primary-workspace-surface #keyManagementModal > .modal-content > .modal-body,
-.primary-workspace-surface #jumpHostManagementModal > .modal-content > .modal-body {
+.primary-workspace-surface :is(#jumpHostManagementModal, #socksProxyManagementModal) > .modal-content > .modal-body {
     padding: 0;
 }
 
 .primary-workspace-surface .profile-management-modal-body,
 .primary-workspace-surface #keyManagementModal > .modal-content > .modal-body,
-.primary-workspace-surface #jumpHostManagementModal > .modal-content > .modal-body {
+.primary-workspace-surface :is(#jumpHostManagementModal, #socksProxyManagementModal) > .modal-content > .modal-body {
     display: grid;
     grid-template-columns: 210px minmax(0, 1fr);
     align-items: stretch;
@@ -2053,7 +2053,7 @@ body:has(.auth-container) {
 @media (max-width: 900px) {
     .primary-workspace-surface .profile-management-modal-body,
     .primary-workspace-surface #keyManagementModal > .modal-content > .modal-body,
-    .primary-workspace-surface #jumpHostManagementModal > .modal-content > .modal-body,
+    .primary-workspace-surface :is(#jumpHostManagementModal, #socksProxyManagementModal) > .modal-content > .modal-body,
     .primary-workspace-surface .command-workspace-layout {
         grid-template-columns: 170px minmax(0, 1fr);
     }
@@ -2072,7 +2072,7 @@ body:has(.auth-container) {
 @media (max-width: 680px) {
     .primary-workspace-surface .profile-management-modal-body,
     .primary-workspace-surface #keyManagementModal > .modal-content > .modal-body,
-    .primary-workspace-surface #jumpHostManagementModal > .modal-content > .modal-body,
+    .primary-workspace-surface :is(#jumpHostManagementModal, #socksProxyManagementModal) > .modal-content > .modal-body,
     .primary-workspace-surface .command-workspace-layout {
         display: flex;
         flex-direction: column;
@@ -5497,3 +5497,6 @@ body[data-theme="paper"]:has(.auth-access-dock) {
 }
 
 .session-tabs-row > .context-workspace-launcher .material-icons { width: 18px; flex: 0 0 18px; }
+
+.connection-route-fields { border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin: 0 0 16px; min-width: 0; }
+.connection-route-fields legend { padding: 0 6px; font-weight: 600; }

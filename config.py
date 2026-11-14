@@ -316,6 +316,32 @@ def parse_tailscale_ssh_target(raw_value):
     return canonical_host, port
 
 
+def parse_remote_dns_allowlist(raw_value, name):
+    """Validate exact DNS names at startup without resolving them locally."""
+    names = []
+    for raw_entry in str(raw_value or '').split(','):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+        try:
+            if any(character in entry for character in ':[]%'):
+                raise ValueError('Only hostnames are permitted')
+            canonical, _port = parse_tailscale_ssh_target(entry)
+            try:
+                ipaddress.ip_address(canonical)
+            except ValueError:
+                pass
+            else:
+                raise ValueError('IP literals are not permitted')
+        except ValueError:
+            raise RuntimeError(
+                f'CONFIGURATION ERROR: {name} accepts only exact DNS hostnames'
+            ) from None
+        if canonical not in names:
+            names.append(canonical)
+    return tuple(names)
+
+
 LDAP_CONNECT_TIMEOUT = _bounded_int_env(
     'LDAP_CONNECT_TIMEOUT', 5, 1, 15
 )
@@ -637,6 +663,9 @@ PROFILE_MAX_RECORDS = _bounded_int_env(
 JUMP_HOST_MAX_RECORDS = _bounded_int_env(
     'JUMP_HOST_MAX_RECORDS', 100, 10, 1000
 )
+SOCKS_PROXY_MAX_RECORDS = _bounded_int_env(
+    'SOCKS_PROXY_MAX_RECORDS', 100, 10, 1000
+)
 CONNECTION_STORE_MAX_BYTES = _bounded_int_env(
     'CONNECTION_STORE_MAX_BYTES',
     2 * 1024 * 1024,
@@ -657,8 +686,8 @@ CONNECTION_STORE_RECOVERY_MAX_BYTES = _bounded_int_env(
 )
 CONNECTION_STORE_RECOVERY_MAX_RECORDS = _bounded_int_env(
     'CONNECTION_STORE_RECOVERY_MAX_RECORDS',
-    max(10_000, PROFILE_MAX_RECORDS, JUMP_HOST_MAX_RECORDS),
-    max(PROFILE_MAX_RECORDS, JUMP_HOST_MAX_RECORDS),
+    max(10_000, PROFILE_MAX_RECORDS, JUMP_HOST_MAX_RECORDS, SOCKS_PROXY_MAX_RECORDS),
+    max(PROFILE_MAX_RECORDS, JUMP_HOST_MAX_RECORDS, SOCKS_PROXY_MAX_RECORDS),
     100_000,
 )
 
@@ -902,6 +931,10 @@ PROXY_JUMP_REMOTE_DNS_ALLOWLIST = tuple(
         'PROXY_JUMP_REMOTE_DNS_ALLOWLIST', ''
     ).split(',')
     if entry.strip()
+)
+# Separate trust decision: an SSH bastion's DNS permission never admits a SOCKS route.
+SOCKS_REMOTE_DNS_ALLOWLIST = parse_remote_dns_allowlist(
+    os.environ.get('SOCKS_REMOTE_DNS_ALLOWLIST', ''), 'SOCKS_REMOTE_DNS_ALLOWLIST',
 )
 # Private networks that stay reachable while BLOCK_INTERNAL_SSH=true. Entries
 # must lie inside the ranges below; loopback, link-local, multicast and other

@@ -12,7 +12,9 @@ MAX_RECORDS = 100
 _FIELDS = {
     'name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux',
     'requires_key', 'jump_alias', 'auth_type', 'platform_icon',
+    'socks_route_omitted', 'warnings',
 }
+SOCKS_ROUTE_WARNING = 'SOCKS5 route not exported'
 _ALIAS = re.compile(r'^[a-zA-Z0-9_.-]{1,128}$')
 _KNOWN_HOST = re.compile(
     r'^\s*(?:@(?:cert-authority|revoked)\s+)?\S+\s+'
@@ -45,6 +47,13 @@ def _username(value):
 
 
 def _record(values):
+    if 'socks_route_omitted' in values and values['socks_route_omitted'] is not True:
+        raise ExchangeError('Host document contains unsupported fields.')
+    if 'warnings' in values and (
+        values.get('socks_route_omitted') is not True
+        or values['warnings'] != [SOCKS_ROUTE_WARNING]
+    ):
+        raise ExchangeError('Host document contains unsupported fields.')
     row = {field: value for field, value in values.items() if field in _FIELDS}
     row.setdefault('name', '')
     row.setdefault('host', row['name'])
@@ -55,6 +64,9 @@ def _record(values):
         row['requires_key'] = True
     row['warnings'] = []
     row['blocked'] = False
+    if row.get('socks_route_omitted'):
+        row['blocked'] = True
+        row['warnings'].append(SOCKS_ROUTE_WARNING)
     if (
         not _text(row['name']) or not row['name'].strip()
         or not _text(row['host'], 253) or not _is_valid_host(row['host'])
@@ -222,6 +234,9 @@ def export_profiles(profiles, jump_hosts):
         row['requires_key'] = profile.get('auth_type') == 'key'
         if profile.get('jump_host_id'):
             row['jump_alias'] = jumps.get(profile['jump_host_id'], 'Unresolved jump host')
+        if profile.get('socks_proxy_id'):
+            row['socks_route_omitted'] = True
+            row['warnings'] = [SOCKS_ROUTE_WARNING]
         hosts.append(row)
     return {'format': 'webssh-hosts', 'version': 1, 'hosts': hosts}
 

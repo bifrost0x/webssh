@@ -8,9 +8,10 @@
 
     // Deliberately whitelist display fields. Addresses, users, credentials and
     // arbitrary graph relationships never enter this presentation model.
-    function buildAccessModel(profiles = [], jumpHosts = [], jumpsLoaded = false) {
+    function buildAccessModel(profiles = [], jumpHosts = [], jumpsLoaded = false, socksProxies = [], socksLoaded = false) {
         const jumps = new Map(jumpHosts.filter(jump => jump && typeof jump.id === 'string')
             .map(jump => [jump.id, {id: jump.id, name: String(jump.name || '')}]));
+        const socks = new Map(socksProxies.filter(proxy => proxy && typeof proxy.id === 'string').map(proxy => [proxy.id, {id: proxy.id, name: String(proxy.name || '')}]));
         const seen = new Set();
         const hosts = profiles.filter(profile => {
             if (!profile || typeof profile.id !== 'string' || seen.has(profile.id)) return false;
@@ -19,14 +20,16 @@
         }).map(profile => {
             const jump = jumpsLoaded && profile.jump_host_id
                 ? jumps.get(profile.jump_host_id) : null;
+            const proxy = socksLoaded && profile.socks_proxy_id ? socks.get(profile.socks_proxy_id) : null;
             return {
                 id: profile.id,
                 name: String(profile.name || ''),
                 group: String(profile.group || ''),
                 favorite: profile.favorite === true,
                 order: Number(profile.sort_order) || 0,
-                route: profile.jump_host_id ? (jump ? 'configured' : (jumpsLoaded ? 'unavailable' : 'loading')) : 'none',
+                route: profile.socks_proxy_id ? (proxy ? 'configured' : (socksLoaded ? 'unavailable' : 'loading')) : profile.jump_host_id ? (jump ? 'configured' : (jumpsLoaded ? 'unavailable' : 'loading')) : 'none',
                 jump: jump || null,
+                ...(profile.socks_proxy_id ? {routeKind: 'socks', socks: proxy || null} : {}),
             };
         });
         hosts.sort((a, b) => a.group.localeCompare(b.group) || a.order - b.order || a.name.localeCompare(b.name));
@@ -147,7 +150,7 @@
         function orderedModel(profiles, jumps, loaded) {
             displayGroupOrder = currentGroupOrder();
             displayGroupRanks = new Map(displayGroupOrder.map((group, index) => [group, index]));
-            return buildAccessModel(profiles, jumps, loaded).sort((a, b) => displayGroupRanks.get(a.group) - displayGroupRanks.get(b.group));
+            return buildAccessModel(profiles, jumps, loaded, win.SocksProxyManager?.socksProxies || [], win.SocksProxyManager?.loaded).sort((a, b) => displayGroupRanks.get(a.group) - displayGroupRanks.get(b.group));
         }
         function saveGroupOrder(next) {
             if (!win.ProfileManager?.profilesLoaded) return;
@@ -349,7 +352,7 @@
                     const row = node('li', 'overview-host-entry');
                     if (showUnlinked) {
                         const key = host.route === 'loading' ? 'overview.loading'
-                            : host.route === 'unavailable' ? 'overview.missingJump' : 'overview.noJump';
+                            : host.route === 'unavailable' ? (host.routeKind === 'socks' ? 'connection.socksProxyMissing' : 'overview.missingJump') : 'overview.noJump';
                         row.append(node('span', 'overview-route-unlinked', t(key)));
                     }
                     row.append(hostButton(host), moveControl(host));
@@ -397,17 +400,19 @@
             const branches = new Map();
             const unlinked = [];
             hosts.forEach(host => {
-                if (!host.jump) { unlinked.push(host); return; }
-                if (!branches.has(host.jump.id)) branches.set(host.jump.id, {jump: host.jump, hosts: []});
-                branches.get(host.jump.id).hosts.push(host);
+                const route = host.socks || host.jump;
+                if (!route) { unlinked.push(host); return; }
+                const key = (host.routeKind || 'jump') + ':' + route.id;
+                if (!branches.has(key)) branches.set(key, {jump: route, socks: host.routeKind === 'socks', hosts: []});
+                branches.get(key).hosts.push(host);
             });
             container.dataset.routeBranches = String(branches.size);
-            branches.forEach(({jump, hosts: targets}) => {
+            branches.forEach(({jump, socks, hosts: targets}) => {
                 const branch = node('section', 'overview-graph-branch');
                 branch.dataset.jumpId = jump.id;
                 branch.setAttribute('aria-label', `${t('overview.configuredRoute')}: ${jump.name}`);
                 const source = node('div', 'overview-jump');
-                source.append(icon('hub'), node('span', '', jump.name || t('connectionAssets.jumpHosts')));
+                source.append(icon(socks ? 'lan' : 'hub'), node('span', '', jump.name || t(socks ? 'socksproxies.title' : 'connectionAssets.jumpHosts')));
                 const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
                 svg.classList.add('overview-edges');
                 svg.setAttribute('aria-hidden', 'true');
@@ -662,7 +667,7 @@
             byId('overviewListBtn').addEventListener('click', () => setGraph(false));
             byId('overviewGraphBtn').addEventListener('click', () => setGraph(true));
             byId('overviewExpandRoutes').addEventListener('click', () => setGraph(true));
-            ['profile-list-change', 'jump-host-list-change', 'session-workspace-change',
+            ['profile-list-change', 'jump-host-list-change', 'socks-proxy-list-change', 'session-workspace-change',
                 'primary-workspace-change', 'languageChanged'].forEach(event => win.addEventListener(event, schedule));
             ['profile-list-change', 'languageChanged', 'primary-workspace-change', 'session-workspace-change'].forEach(event => win.addEventListener(event, renderSidebar));
             win.addEventListener('primary-workspace-change', updateNavigation);

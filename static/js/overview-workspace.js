@@ -59,6 +59,7 @@
         const snapshot = () => win.WebSSHAutomation?.getRunSnapshot?.() || {enabled: false, runs: [], schedules: []};
         const hostModel = () => Model.hosts({
             profiles: profiles(), jumps: win.JumpHostManager?.jumpHosts || [], jumpsLoaded: win.JumpHostManager?.loaded === true,
+            socks: win.SocksProxyManager?.socksProxies || [], socksLoaded: win.SocksProxyManager?.loaded === true,
             sessions: sessions(), readiness: state.readiness, reachability: state.reachability,
         });
 
@@ -76,6 +77,7 @@
             if (!win.primaryWorkspaceController?.open('hosts', $('profileManagementModal'))) return;
             manager.loadKeys?.();
             win.JumpHostManager?.load?.();
+            win.SocksProxyManager?.load?.();
             manager.openEditor(hostId, {returnAfterSave: returnToOverview});
         }
         /** After saving from the overview, come back to it with the saved host in view. */
@@ -96,6 +98,7 @@
             }
             manager.loadKeys?.();
             win.JumpHostManager?.load?.();
+            win.SocksProxyManager?.load?.();
             manager.openEditor(null, {returnAfterSave: returnToOverview});
         }
         const relative = timestamp => {
@@ -309,7 +312,7 @@
             const list = node('ul', 'od-route-list');
             layout.hubs.forEach(hub => {
                 const item = node('li', 'od-route-item');
-                const name = hub.kind === 'direct' ? tw('routeDirect', 'Direct') : hub.kind === 'jump' ? tw('routeVia', 'via {name}', {name: hub.name}) : t('overview.missingJump', 'Saved jump host unavailable');
+                const name = hub.kind === 'direct' ? tw('routeDirect', 'Direct') : ['jump', 'socks'].includes(hub.kind) ? tw('routeVia', 'via {name}', {name: hub.name}) : (hub.hosts[0]?.profile?.socks_proxy_id ? t('connection.socksProxyMissing', 'SOCKS5 proxy missing') : t('overview.missingJump', 'Saved jump host unavailable'));
                 const dots = node('ul', 'od-route-dots');
                 dots.setAttribute('aria-hidden', 'true');
                 hub.hosts.forEach(host => { const dot = node('li'); dot.dataset.state = host.state; dot.title = host.name; dots.append(dot); });
@@ -417,7 +420,7 @@
             });
             layout.hubs.forEach(hub => {
                 const group = svg('g', {class: 'od-hub', 'data-kind': hub.kind, transform: `translate(${hub.x.toFixed(1)} ${hub.y.toFixed(1)})`});
-                const text = hub.kind === 'direct' ? tw('routeDirect', 'Direct') : hub.kind === 'jump' ? hub.name : t('overview.missingJump', 'Saved jump host unavailable');
+                const text = hub.kind === 'direct' ? tw('routeDirect', 'Direct') : ['jump', 'socks'].includes(hub.kind) ? hub.name : (hub.hosts[0]?.profile?.socks_proxy_id ? t('connection.socksProxyMissing', 'SOCKS5 proxy missing') : t('overview.missingJump', 'Saved jump host unavailable'));
                 const width = Math.max(70, Math.min(170, text.length * 8 + 28));
                 group.append(svg('rect', {x: -width / 2, y: -16, width, height: 32, rx: 16, class: 'od-hub-box'}));
                 const label = svg('text', {y: 5, 'text-anchor': 'middle', class: 'od-hub-label'});
@@ -443,13 +446,15 @@
         }
         function finishTopology(holder, hosts, layout) {
             const jumps = layout.hubs.filter(hub => hub.kind === 'jump').length;
+            const socks = layout.hubs.filter(hub => hub.kind === 'socks').length;
             holder.setAttribute('role', 'img');
-            holder.setAttribute('aria-label', tw('topologySummary', '{hosts} hosts, {direct} direct, {jumps} jump hosts, {live} with an open session', {
-                hosts: hosts.length, direct: hosts.filter(host => host.route.kind === 'direct').length, jumps,
-                live: hosts.filter(host => host.state === 'live').length,
-            }));
+            const counts = {hosts: hosts.length, direct: hosts.filter(host => host.route.kind === 'direct').length,
+                jumps, socks, live: hosts.filter(host => host.state === 'live').length};
+            holder.setAttribute('aria-label', socks
+                ? t('connection.socksProxyTopologySummary', '{hosts} hosts, {direct} direct, {jumps} jump hosts, {socks} SOCKS5 proxies, {live} with an open session', counts)
+                : tw('topologySummary', '{hosts} hosts, {direct} direct, {jumps} jump hosts, {live} with an open session', counts));
             view.querySelector('.od-topology').hidden = !hosts.length;
-            $('overviewOpenMap').hidden = !jumps || !state.routeMap;
+            $('overviewOpenMap').hidden = !(jumps + socks) || !state.routeMap;
         }
         function stateLabel(value) {
             return {
@@ -468,7 +473,8 @@
         }
         function reasonFor(host) {
             if (host.state === 'live') return tw('reasonLive', 'Session open');
-            if (host.state === 'broken') return t('overview.missingJump', 'Saved jump host unavailable');
+            if (host.state === 'broken') return host.profile?.socks_proxy_id ? t('connection.socksProxyMissing', 'SOCKS5 proxy missing') : t('overview.missingJump', 'Saved jump host unavailable');
+            if (host.state === 'unreachable' && host.reach?.via_socks) return t('sshErrors.socksProxyUnreachable', 'The SOCKS5 proxy could not be reached.');
             if (host.state === 'unreachable') return host.reach?.via_jump ? tw('reasonJumpUnreachable', 'Jump host not reachable') : tw('reasonUnreachable', 'SSH port not reachable');
             if (host.status?.host_key === 'unknown') return tw('reasonHostKey', 'Host key not verified yet');
             if (host.status?.auth === 'key_missing') return tw('reasonKeyMissing', 'SSH key missing');
@@ -489,10 +495,10 @@
             const meta = node('div', 'od-host-meta');
             const route = node('span', 'od-chip');
             route.dataset.route = host.route.kind;
-            route.append(icon(host.route.kind === 'direct' ? 'arrow_forward' : 'alt_route'),
+            route.append(icon(host.route.kind === 'direct' ? 'arrow_forward' : host.route.kind === 'socks' ? 'lan' : 'alt_route'),
                 node('span', '', host.route.kind === 'direct' ? tw('routeDirect', 'Direct')
-                    : host.route.kind === 'jump' ? tw('routeVia', 'via {name}', {name: host.route.name})
-                        : t('overview.missingJump', 'Saved jump host unavailable')));
+                    : ['jump', 'socks'].includes(host.route.kind) ? tw('routeVia', 'via {name}', {name: host.route.name})
+                        : host.profile?.socks_proxy_id ? t('connection.socksProxyMissing', 'SOCKS5 proxy missing') : t('overview.missingJump', 'Saved jump host unavailable')));
             meta.append(route);
             if (host.group) {
                 const group = node('span', 'od-chip');
@@ -569,7 +575,7 @@
                 node('small', '', wf('configHint', 'Configuration checks do not test login or permissions.')));
             if (state.readinessAt) context.append(node('small', '', wf('configChecked', 'Configuration checked {time}', {time: new Date(state.readinessAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
             if (host.reach && state.checkedAt) context.append(node('small', '', wf('tcpChecked', 'TCP {state} · {time}', {state: wf(host.reach.state, host.reach.state), time: new Date(state.checkedAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
-            if (host.reach) context.append(node('small', '', wf('tcpHint', 'TCP checks do not authenticate. For jump routes only the jump host is checked.')));
+            if (host.reach) context.append(node('small', '', host.reach.via_socks ? t('connection.socksProxyProbeHint', 'Only the SOCKS5 proxy endpoint was checked, not the target.') : wf('tcpHint', 'TCP checks do not authenticate. For jump routes only the jump host is checked.')));
             item.append(top, meta, bottom, context);
             return item;
         }
@@ -684,6 +690,7 @@
                 ? tw('attentionHostKeysOne', '{name}: host key not verified yet. Connect once to verify it.', {name: hostName(item.hostIds[0])})
                 : tw('attentionHostKeys', '{count} hosts: host key not verified yet. Connect once to verify it.', {count: item.count}),
             item.count === 1 ? () => focusHost(item.hostIds[0]) : () => filterHosts(item.hostIds, tw('filterHostKeys', 'Host key not verified'))];
+            case 'socks-missing': return ['lan', t('connection.socksProxyMissing', 'SOCKS5 proxy missing') + ': ' + item.name, () => edit(item.hostId)];
             case 'jump-missing': return ['alt_route', tw('jumpMissing', 'Jump host missing for {name}', {name: item.name}), () => edit(item.hostId)];
             case 'unreachable': return ['wifi_off', item.count === 1
                 ? tw('attentionUnreachableOne', '{name} is not reachable', {name: item.names[0]})
@@ -927,7 +934,7 @@
             }
         }
         // A result belongs to the address and route that were checked.
-        const reachTarget = profile => [profile.host, profile.port || 22, profile.jump_host_id || ''].join('|');
+        const reachTarget = profile => [profile.host, profile.port || 22, profile.jump_host_id || '', profile.socks_proxy_id || ''].join('|');
         function reachTargets() {
             return new Map(profiles().map(profile => [profile.id, reachTarget(profile)]));
         }
@@ -1001,7 +1008,7 @@
             return win.OverviewRouteMap.create({
                 root: mount,
                 loaded: () => win.ProfileManager?.profilesLoaded === true,
-                model: () => win.ConnectionOverview.buildAccessModel(profiles(), win.JumpHostManager?.jumpHosts || [], win.JumpHostManager?.loaded),
+                model: () => win.ConnectionOverview.buildAccessModel(profiles(), win.JumpHostManager?.jumpHosts || [], win.JumpHostManager?.loaded, win.SocksProxyManager?.socksProxies || [], win.SocksProxyManager?.loaded),
                 hostActions: host => {
                     const actions = node('div', 'overview-host-actions');
                     const connectButton = button('overview-host-connect', `${t('connection.actionConnect', 'Connect')} ${host.name}`, () => {
@@ -1164,7 +1171,7 @@
                 if (id && Array.isArray(data.files) && sessionManager?.getSession?.(id)?.connected) { fileSessions.add(id); schedule(); }
             });
             ['session-workspace-change', 'languageChanged', 'automation-runs-updated'].forEach(name => win.addEventListener(name, schedule));
-            ['profile-list-change', 'jump-host-list-change', 'host-access-change'].forEach(name => win.addEventListener(name, () => { schedule(); queueReadiness(); }));
+            ['profile-list-change', 'jump-host-list-change', 'socks-proxy-list-change', 'host-access-change'].forEach(name => win.addEventListener(name, () => { schedule(); queueReadiness(); }));
             // The first automatic check needs the saved hosts, which may load after init.
             win.addEventListener('profile-list-change', () => {
                 pruneReachability();

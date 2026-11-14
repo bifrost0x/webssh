@@ -21,6 +21,7 @@ STORE_DOCUMENTS = {
     'profiles': {'profiles': []},
     'command_sets': {'command_sets': []},
     'jump_hosts': {'jump_hosts': []},
+    'socks_proxies': {'socks_proxies': []},
     'keys': {'keys': []},
     'settings': {'theme': 'glass'},
     'app_settings': {'registration_enabled': True},

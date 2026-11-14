@@ -252,8 +252,8 @@ def open_validated_socket(target, timeout, *, required_interface=None):
         raise
 
 
-def proxy_jump_remote_dns_allowed(hostname, allowlist):
-    """Match a remote-only ProxyJump target against an exact hostname list."""
+def remote_dns_allowed(hostname, allowlist):
+    """Match a remote-DNS target against an exact hostname-only allowlist."""
     try:
         candidate = canonicalize_hostname(hostname)
     except ValueError:
@@ -276,3 +276,56 @@ def proxy_jump_remote_dns_allowed(hostname, allowlist):
             if entry == candidate:
                 return True
     return False
+
+
+proxy_jump_remote_dns_allowed = remote_dns_allowed
+
+
+def socks_destination(
+    host, port, remote_dns, *, allow_internal=False,
+    allowed_internal_networks=(), remote_dns_allowlist=(),
+):
+    """Select a pinned address or an explicitly permitted remote-DNS name."""
+    from .socks5_client import RemoteName
+
+    if type(remote_dns) is not bool:
+        raise ValueError('Invalid remote DNS setting')
+    canonical = canonicalize_hostname(host)
+    if '%' in canonical:
+        raise ValueError('Scoped addresses cannot be used through a SOCKS5 proxy')
+    if isinstance(port, bool) or not isinstance(port, (int, str)):
+        raise ValueError('Invalid port number')
+    try:
+        port = int(port)
+    except (TypeError, ValueError) as error:
+        raise ValueError('Invalid port number') from error
+    if not 1 <= port <= 65535:
+        raise ValueError('Port must be between 1 and 65535')
+    try:
+        ipaddress.ip_address(canonical)
+        literal = True
+    except ValueError:
+        literal = False
+
+    if not literal and remote_dns and (
+        allow_internal or remote_dns_allowed(canonical, remote_dns_allowlist)
+    ):
+        if not allow_internal:
+            from .audit_logger import log_info
+            log_info(
+                'SOCKS target admitted by remote DNS allowlist',
+                role='socks_target', host=canonical, port=port,
+            )
+        return RemoteName(canonical, port)
+
+    try:
+        target = resolve_allowed_target(
+            canonical, port, allow_internal=allow_internal,
+            allowed_internal_networks=allowed_internal_networks,
+        )
+    except ValueError:
+        if remote_dns and not allow_internal:
+            raise ValueError('Connections to this address are not allowed') from None
+        raise
+    audit_internal_allowlist_use(target, 'socks_target')
+    return target

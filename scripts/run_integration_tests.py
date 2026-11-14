@@ -19,6 +19,7 @@ INTEGRATION_MODULES = [
     "tests/integration/test_paramiko5_socketio.py",
     # The Socket.IO singleton fixture owns its initial server registration.
     "tests/integration/test_automation_openssh.py",
+    "tests/integration/test_socks_openssh.py",
 ]
 
 
@@ -85,6 +86,9 @@ def main(*, browser=False) -> int:
             "PARAMIKO5_PROXY_TARGET_HOST": "target",
             "PARAMIKO5_PROXY_TARGET_PORT": "22",
             "PROXY_JUMP_REMOTE_DNS_ALLOWLIST": "target",
+            "PARAMIKO5_SOCKS_TARGET_HOST": "target",
+            "PARAMIKO5_SOCKS_TARGET_PORT": "22",
+            "SOCKS_REMOTE_DNS_ALLOWLIST": "target",
             "PARAMIKO5_BASTION_HOST": "127.0.0.1",
             "PARAMIKO5_BASTION_PORT": "2222",
             "PARAMIKO5_CHANGED_HOST": "127.0.0.1",

@@ -6,6 +6,7 @@ import time
 import uuid
 import socket
 import codecs
+from dataclasses import dataclass, field, replace
 from threading import Lock, Timer
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
@@ -16,7 +17,9 @@ from .network_policy import (
     open_validated_socket,
     proxy_jump_remote_dns_allowed,
     resolve_allowed_target,
+    socks_destination,
 )
+from .socks5_client import Socks5Error, open_socks5_tunnel
 from .ssh_key_loader import load_private_key as _load_private_key
 from .ssh_errors import SSHConnectionError
 from .startup_commands import to_terminal_input
@@ -35,6 +38,17 @@ sessions_lock = Lock()
 TMUX_KILL_TIMEOUT = 2.0
 TMUX_PROBE_TIMEOUT = 2.0
 SSH_AUTH_BANNER_MAX_CHARS = 16 * 1024
+
+
+@dataclass(frozen=True)
+class SocksProxyRoute:
+    proxy_id: str
+    host: str
+    port: int
+    auth_type: str
+    username: str = field(default='', repr=False)
+    password: str | None = field(default=None, repr=False)
+    remote_dns: bool = True
 
 
 def _tmux_session_command(tmux_command, session_name, *, reconnect=False):
@@ -168,7 +182,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           tailscale_authorization=None,
                           cancel_event=None, client_request_id=None,
                           jump_host_id=None, gateway_attempt=None, profile_id=None,
-                          credential_guard=None, saved_password_hops=('target', 'jump')):
+                          credential_guard=None, saved_password_hops=('target', 'jump', 'socks'),
+                          socks_proxy=None):
     """
     Create a new SSH connection and return session ID.
 
@@ -206,6 +221,18 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
     except (TypeError, ValueError):
         return None, "User identity is required"
     user_id = host_key_store.user_id
+
+    if socks_proxy is not None:
+        if not isinstance(socks_proxy, SocksProxyRoute):
+            return None, 'SOCKS proxy reference not found'
+        if proxy_jump_host or jump_host_id:
+            return None, 'A host can use either a jump host or a SOCKS5 proxy, not both'
+        if auth_type == 'tailscale':
+            return None, 'Tailscale SSH cannot be used with a SOCKS5 proxy'
+        if socks_proxy.auth_type not in {'none', 'password'}:
+            return None, 'Invalid SOCKS5 proxy authentication method'
+        if socks_proxy.auth_type == 'password' and not socks_proxy.password:
+            return None, 'SOCKS5 proxy password required'
 
     if auth_type == 'tailscale' and proxy_jump_host:
         return None, 'Tailscale SSH cannot be used with a jump host'
@@ -393,6 +420,49 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     error_type=type(e).__name__,
                 )
                 return None, "Jump host connection failed"
+        elif socks_proxy is not None:
+            destination = socks_destination(
+                host, port, socks_proxy.remote_dns,
+                allow_internal=not config.BLOCK_INTERNAL_SSH,
+                allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
+                remote_dns_allowlist=config.SOCKS_REMOTE_DNS_ALLOWLIST,
+            )
+            host, port = destination.hostname, destination.port
+            proxy_target = resolve_allowed_target(
+                socks_proxy.host, socks_proxy.port,
+                allow_internal=not config.BLOCK_INTERNAL_SSH,
+                allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
+            )
+            audit_internal_allowlist_use(proxy_target, 'socks_proxy')
+            try:
+                validated_socket = open_validated_socket(proxy_target, config.SSH_CONNECT_TIMEOUT)
+            except OSError:
+                failure = Socks5Error('socks_proxy_unreachable')
+                return None, SSHConnectionError(str(failure), code=failure.code, context='socks_proxy')
+            if gateway_attempt is not None:
+                gateway_attempt.own(validated_socket)
+
+            def socks_cancelled():
+                if credential_guard is not None and 'socks' in saved_password_hops:
+                    try:
+                        credential_guard.check()
+                    except Exception:
+                        return True
+                return connection_cancelled()
+
+            try:
+                sock = open_socks5_tunnel(
+                    validated_socket, destination,
+                    username=socks_proxy.username if socks_proxy.auth_type == 'password' else None,
+                    password=socks_proxy.password if socks_proxy.auth_type == 'password' else None,
+                    deadline=time.monotonic() + config.SSH_CONNECT_TIMEOUT,
+                    cancelled=socks_cancelled,
+                )
+            except Socks5Error as error:
+                return None, SSHConnectionError(str(error), code=error.code, context='socks_proxy')
+            finally:
+                socks_proxy = replace(socks_proxy, password=None)
+            log_info('SOCKS proxy connection established', proxy_id=socks_proxy.proxy_id)
         else:
             target = (
                 tailscale_authorization.resolved_target
@@ -610,6 +680,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'bastion_client': bastion_client,
                 'proxy_jump_host': proxy_jump_host,
                 'jump_host_id': jump_host_id,
+                'socks_proxy_id': socks_proxy.proxy_id if socks_proxy else None,
+                'via_socks': socks_proxy is not None,
                 'profile_id': profile_id,
                 'auth_type': auth_type,
                 'use_tmux': use_tmux,
@@ -1166,6 +1238,8 @@ def get_session(session_id):
                 'connected': session['connected'],
                 'via_jump': session.get('proxy_jump_host'),
                 'jump_host_id': session.get('jump_host_id'),
+                **({'socks_proxy_id': session['socks_proxy_id'], 'via_socks': True}
+                   if session.get('socks_proxy_id') else {}),
                 'profile_id': session.get('profile_id'),
                 'reconnect_route_known': True,
                 'detected_platform': session.get('detected_platform'),

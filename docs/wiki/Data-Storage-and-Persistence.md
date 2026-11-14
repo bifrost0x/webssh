@@ -23,6 +23,7 @@ DATA_DIR/
 |       |-- commands.json
 |       |-- command_sets.json
 |       |-- jump_hosts.json
+|       |-- socks_proxies.json
 |       |-- settings.json
 |       |-- notes.json
 |       |-- host_context.json
@@ -49,22 +50,63 @@ SQLite is part of the one-process architecture. Do not run multiple independent 
 
 ## Per-user files
 
-Profiles, commands, command sets, jump hosts, application settings, notes, encrypted SSH keys, and known-host trust are isolated below `users/user_<id>/`. Every application access must also enforce authenticated user ownership; path separation alone is not the authorization control.
+Profiles, commands, command sets, jump hosts, SOCKS5 proxies, application settings, notes, encrypted SSH keys, and known-host trust are isolated below `users/user_<id>/`. Every application access must also enforce authenticated user ownership; path separation alone is not the authorization control.
+
+### SOCKS5 route metadata
+
+`socks_proxies.json` contains a `schema_version` of `2` and a `socks_proxies`
+array. Each record contains a UUID `id`, `name`, `host`, integer `port`,
+`auth_type` (`none` or `password`), `username`, boolean `remote_dns`, and
+`created_at`. Password authentication requires a username of 1–255 UTF-8 bytes;
+without authentication the username is empty. IDs are unique. Malformed records,
+duplicate IDs and unknown fields are rejected without overwriting the store.
+
+Profiles contain only an optional `socks_proxy_id` reference. The server resolves
+that reference from the owning account's live store before saving or connecting.
+It cannot coexist with a jump-host route or Tailscale SSH. Proxy passwords are
+not part of either JSON document: reusable passwords belong to the encrypted
+`credentials.json` store, with a separate `socks:<id>` resource assignment.
+
+Profile and route mutations share the `command-config:<user_id>` coordinator
+before their store locks. All three connection files count toward
+`CONNECTION_CONFIG_MAX_BYTES`; `CONNECTION_STORE_MAX_BYTES` bounds each file.
+A missing proxy file represents an empty store, including after restoring an
+older backup. A corrupt file is never treated as an empty one.
 
 ## Atomic JSON updates
 
 JSON-backed state follows a full load-modify-save cycle while holding the shared storage lock. Writes use an atomic temporary-file replacement and filesystem synchronization. Corrupt JSON is not silently replaced with an empty default because doing so could turn a recoverable incident into permanent data loss.
 
 Do not edit these files while WebSSH is running. Use the UI or supported APIs.
-For an oversized legacy profile or jump-host store, stop every process and use
+For an oversized profile, jump-host or SOCKS5-proxy store, stop every process and use
 the `connection-store` Flask CLI so recovery remains inside the configured hard
 byte and record ceilings; avoid hand-editing JSON.
 
+For example, list bounded proxy summaries and delete one exact record with the
+selector returned by that listing:
+
+```bash
+python -m flask --app start connection-store list \
+  --username USER --kind socks-proxies --confirm-offline
+python -m flask --app start connection-store delete \
+  --username USER --kind socks-proxies --selector SELECTOR --confirm-offline
+```
+
+Recovery still refuses to delete a proxy referenced by saved hosts. It permits
+shrinking an oversized store, never growing it, and enforces the separate hard
+recovery ceilings before and after parsing. List again after each deletion.
+
 ## Additive migrations
 
-Persisted JSON schemas are migrated additively. Profiles currently use schema version 3; command sets, jump hosts, keys, settings, application settings, and SMB shares use version 2. Before changing a file, migration creates a private backup and writes the upgraded representation atomically. The profile v3 migration removes transient Tailscale launch-authorization state from disk; that state is derived from the live server policy for each response.
+Persisted JSON schemas are migrated additively. Profiles currently use schema version 3; command sets, jump hosts, SOCKS5 proxies, keys, settings, application settings, and SMB shares use version 2. Before changing a file, migration creates a private backup and writes the upgraded representation atomically. The profile v3 migration removes transient Tailscale launch-authorization state from disk; that state is derived from the live server policy for each response.
 
 Database changes likewise preserve existing installations. Always take a verified native backup before upgrading across versions.
+
+Saved SSH sessions add nullable `socks_proxy_id` and boolean `via_socks` columns.
+The additive migration leaves existing rows without a proxy and sets
+`via_socks=false`; it does not rewrite existing connection profiles. SOCKS proxy
+JSON migrations from unversioned data through versions 1 and 2 only add or advance
+the schema marker.
 
 ### Workspace upgrade and rollback
 

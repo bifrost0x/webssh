@@ -8,6 +8,11 @@ Backups remain highly sensitive even though native exports exclude saved remote 
 
 The archive covers persistent `DATA_DIR` configuration and account state. Native exports exclude named password stores (`credentials.json`), legacy `automation-vault.json`, SSH key directories (both metadata and private keys), and quarantined `deleted_users` data. Transient logs, temporary uploads, incomplete transfers, and runtime-only SSH channels are also excluded.
 
+SOCKS5 proxy metadata (`users/user_<id>/socks_proxies.json`) and profile route
+references are included. Proxy passwords are excluded with the named password
+store; the proxy file contains only connection metadata. Older backups without
+this file restore with an empty proxy store.
+
 These are specific file exclusions, not general secret detection: commands, notes, profiles and retained run history can still contain manually embedded secrets. Historical archives are not rewritten and may still contain remote credentials. Protect their retention and rotate remote credentials when old copies must stop working.
 
 Current archives use format version 2. The verifier also understands legacy format version 1/schema 0 for compatibility. Validation checks the manifest, file checksums, declared sizes, member paths, member count, compression behavior, and archive-wide limits before restore.
@@ -29,7 +34,7 @@ Do not rely on the short-lived browser download as retention. Move the archive i
 
 ## Restore in the web interface
 
-Restore is deliberately disruptive and strongly confirmed. Normal web and CLI restore ignore excluded credential files even in older archives and clear existing copies to prevent accidental reuse by a different restored account. After restore, reimport SSH keys, recreate saved remote passwords and reassign credentials to hosts, jump hosts and SMB sources. Review and explicitly re-enable schedules before unattended execution.
+Restore is deliberately disruptive and strongly confirmed. Normal web and CLI restore ignore excluded credential files even in older archives and clear existing copies to prevent accidental reuse by a different restored account. After restore, reimport SSH keys, recreate saved remote passwords and reassign credentials to hosts, jump hosts, SOCKS5 proxies and SMB sources. Review and explicitly re-enable schedules before unattended execution. The recovery checklist marks missing SOCKS proxies for review; it never reconnects a routed host directly or restores an excluded proxy password.
 
 Online restore is enabled only when `BACKUP_TEMP_DIR` is an absolute, private,
 durable directory outside `DATA_DIR` and `BACKUP_RECOVERY_DURABLE=true` records

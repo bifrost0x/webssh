@@ -257,7 +257,8 @@ def endpoint(profile):
     port = profile.get('port', 22)
     if not isinstance(username, str) or not username or type(port) is not int or not 1 <= port <= 65535:
         return None
-    return (host, port, username, profile.get('jump_host_id') or None)
+    return (host, port, username, profile.get('jump_host_id') or None,
+            profile.get('socks_proxy_id') or None)
 
 def needs_detection(profile, now=None):
     """Probe only saved hosts in automatic mode without a result or a recent service check.

@@ -3,6 +3,8 @@ import socket
 
 import pytest
 
+from app import network_policy
+
 from app.network_policy import (
     ResolvedTarget,
     audit_internal_allowlist_use,
@@ -16,6 +18,113 @@ from app.network_policy import (
 def addr(family, ip, port=22, socktype=socket.SOCK_STREAM):
     sockaddr = (ip, port, 0, 0) if family == socket.AF_INET6 else (ip, port)
     return family, socktype, socket.IPPROTO_TCP, '', sockaddr
+
+
+@pytest.mark.parametrize('remote_dns', [False, True])
+@pytest.mark.parametrize('allow_internal', [False, True])
+@pytest.mark.parametrize('ip', ['10.0.0.8', '127.0.0.1', '::1', '1.1.1.1'])
+def test_socks_literal_policy_never_uses_remote_dns(
+    monkeypatch, remote_dns, allow_internal, ip,
+):
+    monkeypatch.setattr(socket, 'getaddrinfo', lambda *a, **kw: pytest.fail('unexpected DNS'))
+    arguments = dict(allow_internal=allow_internal, remote_dns_allowlist=(ip,))
+    if not allow_internal and ip != '1.1.1.1':
+        with pytest.raises(ValueError, match='not allowed'):
+            network_policy.socks_destination(ip, 2222, remote_dns, **arguments)
+    else:
+        result = network_policy.socks_destination(ip, 2222, remote_dns, **arguments)
+        assert isinstance(result, ResolvedTarget)
+        assert (result.ip, result.port) == (ip, 2222)
+
+
+@pytest.mark.parametrize('remote_dns', [False, True])
+@pytest.mark.parametrize('allow_internal', [False, True])
+@pytest.mark.parametrize('allowlisted', [False, True])
+def test_socks_hostname_dns_policy_matrix(
+    monkeypatch, remote_dns, allow_internal, allowlisted,
+):
+    calls = []
+
+    def resolve(host, port, **kwargs):
+        calls.append((host, port))
+        return [addr(socket.AF_INET, '10.0.0.8', port)]
+
+    monkeypatch.setattr(socket, 'getaddrinfo', resolve)
+    arguments = dict(
+        allow_internal=allow_internal,
+        remote_dns_allowlist=('xn--bcher-kva.example',) if allowlisted else (),
+    )
+    if remote_dns and (allow_internal or allowlisted):
+        result = network_policy.socks_destination('BÜCHER.example.', 2222, remote_dns, **arguments)
+        assert (result.hostname, result.port) == ('xn--bcher-kva.example', 2222)
+        assert not isinstance(result, ResolvedTarget)
+        assert calls == []
+    elif not allow_internal:
+        with pytest.raises(ValueError, match='not allowed'):
+            network_policy.socks_destination('BÜCHER.example.', 2222, remote_dns, **arguments)
+        assert calls == [('xn--bcher-kva.example', 2222)]
+    else:
+        result = network_policy.socks_destination('BÜCHER.example.', 2222, remote_dns, **arguments)
+        assert result.ip == '10.0.0.8'
+        assert calls == [('xn--bcher-kva.example', 2222)]
+
+
+def test_socks_unlisted_remote_name_pins_public_address(monkeypatch):
+    calls = []
+
+    def resolve(host, port, **kwargs):
+        calls.append((host, port))
+        return [addr(socket.AF_INET, '1.1.1.1', port)]
+
+    monkeypatch.setattr(socket, 'getaddrinfo', resolve)
+    result = network_policy.socks_destination('public.example', 22, True)
+    assert result.ip == '1.1.1.1'
+    assert result.hostname == 'public.example'
+    assert calls == [('public.example', 22)]
+
+
+def test_socks_remote_name_never_falls_back_after_local_dns_failure(monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise socket.gaierror('private DNS detail')
+
+    monkeypatch.setattr(socket, 'getaddrinfo', unavailable)
+    with pytest.raises(ValueError, match='^Connections to this address are not allowed$'):
+        network_policy.socks_destination('unlisted.internal', 22, True)
+
+
+def test_socks_internal_network_exception_and_remote_dns_are_audited(monkeypatch):
+    from app import audit_logger
+
+    records = []
+    monkeypatch.setattr(audit_logger, 'log_info', lambda message, **kw: records.append(kw))
+    target = network_policy.socks_destination(
+        '10.0.0.8', 22, True,
+        allowed_internal_networks=(ipaddress.ip_network('10.0.0.0/24'),),
+    )
+    assert target.via_internal_allowlist
+    network_policy.socks_destination(
+        'bastion-only.internal', 22, True,
+        remote_dns_allowlist=('bastion-only.internal',),
+    )
+    assert len(records) == 2
+    assert all(record['role'] == 'socks_target' for record in records)
+    assert records[1]['host'] == 'bastion-only.internal'
+
+
+def test_remote_dns_matcher_retains_jump_alias_and_rejects_ips():
+    assert network_policy.remote_dns_allowed is proxy_jump_remote_dns_allowed
+    assert network_policy.remote_dns_allowed('TARGET.', ('target',))
+    assert not network_policy.remote_dns_allowed('child.target', ('target',))
+    assert not network_policy.remote_dns_allowed('127.0.0.1', ('127.0.0.1',))
+
+
+@pytest.mark.parametrize('host,port,remote_dns', [
+    ('bad*name', 22, True), ('host', 0, True), ('host', 65536, True),
+    ('host', True, True), ('host', 22, 'false'), ('fe80::1%eth0', 22, True),
+])
+def test_socks_policy_rejects_invalid_wire_destination(host, port, remote_dns):
+    with pytest.raises(ValueError):
+        network_policy.socks_destination(host, port, remote_dns, allow_internal=True)
 
 
 class RecordingSocket:

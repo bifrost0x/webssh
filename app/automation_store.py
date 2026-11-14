@@ -70,8 +70,12 @@ def profile_fingerprint(profile):
     )}
     # Preserve the existing SSH binding for v1 vaults. Namespaced resources have
     # explicit types and their additional security-relevant connection fields.
-    if profile.get('kind') in {'jump', 'smb'}:
+    if profile.get('socks_proxy_id'):
+        fields['socks_proxy_id'] = profile['socks_proxy_id']
+    if profile.get('kind') in {'jump', 'smb', 'socks'}:
         fields['kind'] = profile['kind']
+    if profile.get('kind') == 'socks':
+        fields['remote_dns'] = profile.get('remote_dns', True)
     if profile.get('kind') == 'smb':
         fields.update(domain=profile.get('domain', ''), share=profile.get('share'))
     if profile.get('route_fingerprint'):

@@ -15,6 +15,7 @@ from .data_access import user_data_access
 from .models import AuthenticationSession, User, as_naive_utc, db
 from .profile_manager import load_profiles
 from .jump_host_manager import load_jump_hosts
+from .socks_proxy_manager import load_socks_proxies
 from .smb_share_manager import load_smb_shares
 
 def session_identity(user_id, auth_id):
@@ -86,23 +87,32 @@ class CredentialService:
             if coordinator_held:
                 from .profile_manager import _load_profiles_for_read_with_lock_held
                 from .jump_host_manager import _load_jump_hosts_for_read_with_lock_held
+                from .socks_proxy_manager import _load_socks_proxies_for_read_with_lock_held
                 from .smb_share_manager import _load_with_lock_held
                 jumps=_load_jump_hosts_for_read_with_lock_held(user_id)
+                proxies=_load_socks_proxies_for_read_with_lock_held(user_id)
                 profiles=_load_profiles_for_read_with_lock_held(user_id)
                 shares=_load_with_lock_held(user_id)
             else:
                 jumps=load_jump_hosts(user_id)
+                proxies=load_socks_proxies(user_id)
                 profiles=load_profiles(user_id)
                 shares=load_smb_shares(user_id)
             by_id = {item['id']: item for item in jumps}
+            typed_proxies = [dict(item, id='socks:'+item['id'], kind='socks') for item in proxies]
+            proxies_by_id = {item['id']: typed for item, typed in zip(proxies, typed_proxies)}
             result = []
             for item in profiles:
                 resource = dict(item, kind='ssh')
                 if item.get('jump_host_id'):
                     jump = by_id.get(item['jump_host_id'])
                     resource['route_fingerprint'] = profile_fingerprint(jump or {})
+                if item.get('socks_proxy_id'):
+                    proxy = proxies_by_id.get(item['socks_proxy_id'])
+                    resource['route_fingerprint'] = profile_fingerprint(proxy or {})
                 result.append(resource)
             result.extend(dict(item, id='jump:'+item['id'], kind='jump') for item in jumps)
+            result.extend(typed_proxies)
             result.extend(dict(item, id='smb:'+item['id'], kind='smb', port=445,
                                auth_type='password') for item in shares)
             return result
@@ -136,12 +146,19 @@ class CredentialService:
         if not self.app.extensions['runtime_lifecycle'].accepting_work():
             raise AutomationError('unavailable')
         resource = self.resolve_resource(user_id, resource_id)
-        if (kind not in {'ssh', 'jump', 'smb'} or resource['kind'] != kind
+        if (kind not in {'ssh', 'jump', 'smb', 'socks'} or resource['kind'] != kind
                 or resource.get('auth_type') != 'password' or not isinstance(connection, dict)):
             raise AutomationError('invalid_targets')
-        defaults = dict(port=445 if kind == 'smb' else 22, auth_type='password',
-                        key_id=None, jump_host_id=None, domain='')
+        defaults = dict(port=445 if kind == 'smb' else 1080 if kind == 'socks' else 22,
+                        auth_type='password', key_id=None, jump_host_id=None,
+                        socks_proxy_id=None, remote_dns=True, domain='')
         fields = ('host', 'port', 'username', 'auth_type', 'key_id', 'jump_host_id')
+        if kind == 'ssh':
+            fields += ('socks_proxy_id',)
+            if resource.get('socks_proxy_id'):
+                self.resolve_resource(user_id, 'socks:'+resource['socks_proxy_id'])
+        if kind == 'socks':
+            fields += ('remote_dns',)
         if kind == 'smb':
             fields += ('domain', 'share')
         if any(connection.get(field, defaults.get(field)) != resource.get(field, defaults.get(field))
@@ -514,7 +531,7 @@ class CredentialService:
         rid=data.get('credential_id')
         record=self.named.record(self.named.read(uid),rid)
         from .app_settings import credentials_policy_revision
-        route=self.resolve_resource(uid,'jump:'+target['jump_host_id']) if target.get('jump_host_id') else None
+        route=self._target_route(uid, target)
         token=self._remember(uid,aid,dict(kind='target',target=target,credential_id=rid,version=record['version'],policy=credentials_policy_revision(),route_fingerprint=profile_fingerprint(route) if route else None))
         return dict(credential_target_token=token)
 
@@ -531,7 +548,7 @@ class CredentialService:
         if record['version']!=intent['version']: raise AutomationError('credential_target_changed')
         from .app_settings import credentials_policy_revision
         if intent['policy']!=credentials_policy_revision(): raise AutomationError('invalid_intent')
-        route=self.resolve_resource(uid,'jump:'+target['jump_host_id']) if target.get('jump_host_id') else None
+        route=self._target_route(uid, target)
         if intent['route_fingerprint']!=(profile_fingerprint(route) if route else None):
             raise AutomationError('credential_target_changed')
         return dict(version=record['version'],policy=credentials_policy_revision(),session=session_identity(uid,aid))
@@ -543,24 +560,22 @@ class CredentialService:
         return decrypt(uid,rid,record['ciphertext'])
 
     def create_for_resource(self, uid, data):
-        from . import profile_manager, jump_host_manager, smb_share_manager
+        from . import profile_manager, jump_host_manager, smb_share_manager, socks_proxy_manager
         self._named_enabled()
         kind=data.get('resource_kind'); payload=data.get('resource')
-        if kind not in {'ssh','jump','smb'} or not isinstance(payload,dict) or payload.get('id'):
+        if kind not in {'ssh','jump','smb','socks'} or not isinstance(payload,dict) or payload.get('id'):
             raise AutomationError('invalid_request')
         if data.get('confirm_target') is not True: raise AutomationError('confirmation_required')
         if kind!='smb' and payload.get('auth_type')!='password': raise AutomationError('invalid_targets')
         with user_data_access(uid):
             result={}
             callback_error=[]
-            route=None
-            if kind=='ssh' and payload.get('jump_host_id'):
-                route=self.resolve_resource(uid,'jump:'+payload['jump_host_id'])
-                route=dict(route,id=payload['jump_host_id'])
-                route.pop('kind',None)
             def created(record):
                 resource=dict(record,id=('' if kind=='ssh' else kind+':')+record['id'],kind=kind)
                 if kind=='smb': resource.update(port=445,auth_type='password')
+                # The manager holds command-config through the callback, so
+                # route writers cannot change the approved binding mid-write.
+                route=self._target_route(uid, record, coordinator_held=True) if kind=='ssh' else None
                 if route: resource['route_fingerprint']=profile_fingerprint(route)
                 def store(doc):
                     credential=self.named.create(uid,doc,data)
@@ -572,6 +587,10 @@ class CredentialService:
                     raise
             if kind=='ssh': record,error=profile_manager.upsert_profile(uid,payload,on_created=created)
             elif kind=='smb': record,error=smb_share_manager.upsert_smb_share(uid,payload,on_created=created)
+            elif kind=='socks':
+                fields={key:payload.get(key) for key in ('name','host','port','username','auth_type')}
+                fields['remote_dns']=payload.get('remote_dns', True)
+                record,error=socks_proxy_manager.add_socks_proxy(uid,**fields,on_created=created)
             else:
                 fields={key:payload.get(key) for key in ('name','host','port','username','auth_type','key_id','jump_host_id')}
                 record,error=jump_host_manager.add_jump_host(uid,**fields,on_created=created)
@@ -579,19 +598,62 @@ class CredentialService:
             if error or not record: raise AutomationError('invalid_targets')
             return result
 
+    def _target_route(self, uid, target, *, coordinator_held=False):
+        """Resolve the live owned route, retaining the historical jump hash."""
+        if target.get('socks_proxy_id'):
+            prefix, reference = 'socks:', target['socks_proxy_id']
+        elif target.get('jump_host_id'):
+            prefix, reference = 'jump:', target['jump_host_id']
+        else:
+            return None
+        if coordinator_held:
+            from .jump_host_manager import _load_jump_hosts_for_read_with_lock_held
+            from .socks_proxy_manager import _load_socks_proxies_for_read_with_lock_held
+            loader = (_load_socks_proxies_for_read_with_lock_held if prefix=='socks:'
+                      else _load_jump_hosts_for_read_with_lock_held)
+            matches = [item for item in loader(uid) if item['id']==reference]
+            if len(matches)!=1: raise AutomationError('invalid_targets')
+            route = dict(matches[0])
+            if prefix=='socks:': route.update(id=prefix+reference, kind='socks')
+        else:
+            route=self.resolve_resource(uid, prefix+reference)
+            if prefix=='jump:':
+                route=dict(route,id=reference)
+                route.pop('kind',None)
+        return route
+
     @staticmethod
     def _normalize_target(target):
         from .credential_connections import _saved_route
+        if not isinstance(target, dict):
+            raise AutomationError('credential_target_changed')
         is_smb=bool(target.get('share'))
+        is_socks=target.get('kind')=='socks'
         jump=target.get('jump_host_id')
-        if target.get('proxy_jump'):
+        socks=None if is_socks else target.get('socks_proxy_id')
+        if target.get('proxy_jump') is not None:
             saved=_saved_route(target)
             if jump and jump!=saved: raise AutomationError('credential_target_changed')
             jump=saved
-        return dict(host=target.get('host'),port=target.get('port') or (445 if is_smb else 22),
+        if target.get('socks_proxy') is not None:
+            saved=_saved_route(target, 'socks')
+            if is_socks or (socks and socks!=saved): raise AutomationError('credential_target_changed')
+            socks=saved
+        if ((socks and (jump or is_smb or target.get('auth_type')=='tailscale'))
+                or (is_socks and (jump or is_smb))
+                or any(value is not None and not isinstance(value, str) for value in (jump, socks))):
+            raise AutomationError('credential_target_changed')
+        result=dict(host=target.get('host'),port=target.get('port') or (445 if is_smb else 1080 if is_socks else 22),
                     username=target.get('username'),auth_type=target.get('auth_type') or 'password',
                     key_id=target.get('key_id'),jump_host_id=jump,domain=(target.get('domain') or '') if is_smb else None,
                     share=target.get('share') if is_smb else None)
+        if socks:
+            result['socks_proxy_id']=socks
+        if is_socks:
+            remote_dns=target.get('remote_dns', True)
+            if type(remote_dns) is not bool: raise AutomationError('credential_target_changed')
+            result.update(kind='socks', remote_dns=remote_dns)
+        return result
 
     def apply_native_assignment(self, uid, aid, token, mutation):
         """Compare an approved destination while all destination writers are fenced."""

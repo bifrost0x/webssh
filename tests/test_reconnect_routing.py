@@ -4,7 +4,7 @@ import pytest
 from types import SimpleNamespace
 
 
-@pytest.mark.parametrize('replacement_kind', ['same', 'plain', 'other_tmux', 'other_route'])
+@pytest.mark.parametrize('replacement_kind', ['same', 'plain', 'other_tmux', 'other_route', 'other_socks_route'])
 def test_preserved_tmux_keeps_recovery_row_unless_replacement_reattached_it(app, monkeypatch, replacement_kind):
     import app.socket_events as events
     from app.auth import register_user
@@ -25,6 +25,9 @@ def test_preserved_tmux_keeps_recovery_row_unless_replacement_reattached_it(app,
             replacement.tmux_session_name = 'different-tmux'
         if replacement_kind == 'other_route':
             replacement.jump_host_id = 'different-bastion'
+        if replacement_kind == 'other_socks_route':
+            replacement.socks_proxy_id = 'different-proxy'
+            replacement.via_socks = True
         db.session.commit()
         events.handle_ssh_disconnect.__wrapped__(
             {'session_id': 'original', 'preserve_tmux': True, 'replacement_session_id': 'replacement'},
@@ -71,7 +74,8 @@ def test_replacement_disconnect_cannot_close_another_users_session(app, monkeypa
     assert errors[0][0] == 'ssh_error'
 
 
-def test_restore_preserves_active_and_persistent_route_metadata(app, monkeypatch):
+@pytest.mark.parametrize('route', ['jump', 'socks'])
+def test_restore_preserves_active_and_persistent_route_metadata(app, monkeypatch, route):
     from app import ssh_manager
     from app.auth import register_user
     from app.models import SSHSession, db
@@ -85,7 +89,10 @@ def test_restore_preserves_active_and_persistent_route_metadata(app, monkeypatch
     monkeypatch.setattr(ssh_manager, 'get_output_snapshot', lambda _id: ('', 0))
     monkeypatch.setattr(ssh_manager, 'get_session', lambda _id: {
         'connected': True, 'use_tmux': True, 'auth_type': 'key',
-        'via_jump': 'bastion.example', 'jump_host_id': 'saved-bastion',
+        'via_jump': 'bastion.example' if route == 'jump' else None,
+        'jump_host_id': 'saved-bastion' if route == 'jump' else None,
+        'socks_proxy_id': 'saved-proxy' if route == 'socks' else None,
+        'via_socks': route == 'socks',
         'reconnect_route_known': True,
     })
     with app.app_context():
@@ -97,7 +104,10 @@ def test_restore_preserves_active_and_persistent_route_metadata(app, monkeypatch
                 host='private.example', port=22, username='alice',
                 connected=connected, is_persistent=True, key_id='target-key',
                 auth_type='key', tmux_session_name='persistent',
-                jump_host_id='saved-bastion', via_jump='bastion.example',
+                jump_host_id='saved-bastion' if route == 'jump' else None,
+                via_jump='bastion.example' if route == 'jump' else None,
+                socks_proxy_id='saved-proxy' if route == 'socks' else None,
+                via_socks=route == 'socks',
                 reconnect_route_known=True,
             ))
         db.session.commit()
@@ -107,7 +117,9 @@ def test_restore_preserves_active_and_persistent_route_metadata(app, monkeypatch
         'ssh_session_restored', 'persistent_session_available'}]
     assert len(routes) == 2
     for payload in routes:
-        assert payload['jump_host_id'] == 'saved-bastion'
-        assert payload['via_jump'] == 'bastion.example'
+        assert payload['jump_host_id'] == ('saved-bastion' if route == 'jump' else None)
+        assert payload['via_jump'] == ('bastion.example' if route == 'jump' else None)
+        assert payload['socks_proxy_id'] == ('saved-proxy' if route == 'socks' else None)
+        assert payload['via_socks'] == (route == 'socks')
         assert payload['reconnect_route_known'] is True
         assert payload['key_id'] == 'target-key'

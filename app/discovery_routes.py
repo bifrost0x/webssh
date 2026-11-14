@@ -155,8 +155,9 @@ def _known_endpoints(user_id):
     from .data_access import user_data_access
     from .jump_host_manager import load_jump_hosts
     from .profile_manager import load_profiles
+    from .socks_proxy_manager import load_socks_proxies
     with user_data_access(user_id):
-        records = [*load_profiles(user_id), *load_jump_hosts(user_id)]
+        records = [*load_profiles(user_id), *load_jump_hosts(user_id), *load_socks_proxies(user_id)]
     return {(str(item.get('host') or '').lower(), int(item.get('port') or 22)) for item in records}
 
 

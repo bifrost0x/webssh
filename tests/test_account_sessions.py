@@ -96,9 +96,13 @@ def test_revocation_disconnects_only_selected_socket_and_cancels_stream(app, mon
     from app import socketio, socket_events, ssh_manager
     from app.models import SocketSession
     from app.socket_protocol import SOCKET_WIRE_REVISION
-    from app.transfer_routes import transfer_manager
+    from app import transfer_routes
+    from app.transfer_manager import TransferManager
     from app.file_sources import SourceHoldSet
     importlib.reload(socket_events)
+    transfer_manager = TransferManager()
+    monkeypatch.setattr(transfer_routes, 'transfer_manager', transfer_manager)
+    monkeypatch.setattr(socket_events, 'transfer_manager', transfer_manager)
     current = _login(app, create=True)
     selected = _login(app)
     untouched = _login(app, 'another_owner', create=True)

@@ -411,15 +411,17 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                     keysLoaded: window.ProfileManager?.keysLoaded,
                     jumpHostsLoaded: window.JumpHostManager?.loaded,
                     jumpHosts: window.JumpHostManager?.jumpHosts || [],
+                    socksProxies: window.SocksProxyManager?.socksProxies || [],
+                    socksProxiesLoaded: window.SocksProxyManager?.loaded,
                 })
                 : { labelKey: 'connection.readinessSaved', label: 'Saved', actionKey: 'connection.actionReview', action: 'Review' };
             return {
                 key: `profile:${profile.id}`,
-                disabled: readiness.pending === true,
+                disabled: readiness.pending === true || Boolean(profile.socks_proxy_id),
                 label: profile.name || `${profile.username}@${profile.host}`,
                 endpoint: `${profile.username}@${profile.host}:${profile.port || 22}`,
                 protocol: 'SFTP',
-                status: this.t(readiness.labelKey, readiness.label),
+                status: profile.socks_proxy_id ? this.t('connection.socksProxyQuickSftp', 'Connect a terminal first to use SFTP through SOCKS5.') : this.t(readiness.labelKey, readiness.label),
                 readiness: readiness.state || 'review',
                 favorite: profile.favorite === true,
                 group: profile.group || '',
@@ -498,6 +500,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             return this.openSMBSourceDialog(source.savedSmbShare, pane);
         }
         if (source.profileId) {
+            const profile = (window.ProfileManager?.profiles || this.qcProfiles || []).find(item => item.id === source.profileId);
+            if (profile?.socks_proxy_id) { this.showNotification(this.t('connection.socksProxyQuickSftp', 'Connect a terminal first to use SFTP through SOCKS5.'), 'warning'); return null; }
             this.pendingQuickConnectPane = pane;
             this.openQuickConnect(source.profileId);
             return null;
@@ -2880,7 +2884,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                 const select = document.getElementById('fmQcProfile');
                 select.innerHTML = '<option value="">-- Enter manually --</option>';
                 this.qcProfiles = data.profiles || [];
-                this.qcProfiles.forEach(profile => {
+                this.qcProfiles.filter(profile => !profile.socks_proxy_id).forEach(profile => {
                     const option = document.createElement('option');
                     option.value = profile.id;
                     option.textContent = `${profile.name} (${profile.username}@${profile.host})`;
@@ -2921,6 +2925,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
     }
 
     onProfileSelect(profileId) {
+        this.pendingQuickConnectProfileId = profileId || null;
         window.CredentialPicker?.clear('fmQcPassword');
         if (!profileId) {
             document.getElementById('fmQcHost').value = '';
@@ -2932,6 +2937,12 @@ class SFTPFileManager extends window.FileDirectoryRequests {
 
         const profile = (this.qcProfiles || []).find(p => p.id == profileId);
         if (!profile) return;
+        if (profile.socks_proxy_id) {
+            document.getElementById('fmQcHost').value = '';
+            document.getElementById('fmQcPassword').value = '';
+            this.showNotification(this.t('connection.socksProxyQuickSftp', 'Connect a terminal first to use SFTP through SOCKS5.'), 'warning');
+            return;
+        }
 
         document.getElementById('fmQcHost').value = profile.host || '';
         document.getElementById('fmQcPort').value = profile.port || 22;
@@ -2990,6 +3001,13 @@ class SFTPFileManager extends window.FileDirectoryRequests {
     }
 
     submitQuickConnect() {
+        const selectedId = document.getElementById('fmQcProfile')?.value || this.pendingQuickConnectProfileId;
+        const profile = (window.ProfileManager?.profiles || this.qcProfiles || []).find(item => String(item.id) === String(selectedId));
+        const selectedProfile = (this.qcProfiles || []).find(item => String(item.id) === String(selectedId));
+        if (profile?.socks_proxy_id || selectedProfile?.socks_proxy_id) {
+            this.showNotification(this.t('connection.socksProxyQuickSftp', 'Connect a terminal first to use SFTP through SOCKS5.'), 'warning');
+            return;
+        }
         const host = document.getElementById('fmQcHost').value.trim();
         const port = parseInt(document.getElementById('fmQcPort').value) || 22;
         const rawUsername = document.getElementById('fmQcUsername').value;

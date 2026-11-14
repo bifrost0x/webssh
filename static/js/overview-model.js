@@ -14,7 +14,9 @@
     }
 
     function sameEndpoint(entry, profile) {
-        return String(entry.host || '') === String(profile.host || '')
+        return (entry.socksProxyId || null) === (profile.socks_proxy_id || null)
+            && !(entry.viaSocks && !entry.socksProxyId)
+            && String(entry.host || '') === String(profile.host || '')
             && Number(entry.port || 22) === Number(profile.port || 22)
             && String(entry.username || '') === String(profile.username || '');
     }
@@ -24,14 +26,19 @@
      * reachability result. State precedence: live > broken > unreachable >
      * action > ready. "unknown" means readiness has not loaded yet.
      */
-    function hosts({profiles = [], jumps = [], jumpsLoaded = false, sessions = [], readiness = null, reachability = null} = {}) {
+    function hosts({profiles = [], jumps = [], jumpsLoaded = false, socks = [], socksLoaded = false, sessions = [], readiness = null, reachability = null} = {}) {
         const jumpById = new Map(jumps.map(jump => [jump.id, jump]));
+        const socksById = new Map(socks.map(proxy => [proxy.id, proxy]));
         const ready = new Map((readiness || []).map(item => [item.id, item]));
         const seen = new Set();
         return profiles.filter(profile => profile && typeof profile.id === 'string' && !seen.has(profile.id) && seen.add(profile.id))
             .map(profile => {
                 const jump = profile.jump_host_id ? jumpById.get(profile.jump_host_id) : null;
-                const route = !profile.jump_host_id ? {kind: 'direct', name: null, id: null}
+                const proxy = socksById.get(profile.socks_proxy_id);
+                const route = profile.socks_proxy_id
+                    ? proxy ? {kind: 'socks', name: String(proxy.name || proxy.host || ''), id: proxy.id}
+                        : {kind: socksLoaded ? 'missing' : 'loading', name: null, id: profile.socks_proxy_id}
+                    : !profile.jump_host_id ? {kind: 'direct', name: null, id: null}
                     : jump ? {kind: 'jump', name: String(jump.name || jump.host || ''), id: jump.id}
                         : {kind: jumpsLoaded ? 'missing' : 'loading', name: null, id: profile.jump_host_id};
                 const session = sessions.find(item => item.connected === true
@@ -118,7 +125,7 @@
         if (!connected) return {tone: 'danger', key: 'disconnected'};
         // Acknowledged items no longer drive the headline. A grouped item counts every host it covers.
         const count = attentionItems.reduce((sum, item) => sum + (Number.isInteger(item.count) && item.count > 0 ? item.count : 1), 0);
-        if (attentionItems.some(item => item.kind === 'jump-missing' || item.kind === 'run-failed')) return {tone: 'danger', key: 'attention', count};
+        if (attentionItems.some(item => ['jump-missing', 'socks-missing', 'run-failed'].includes(item.kind))) return {tone: 'danger', key: 'attention', count};
         if (attentionItems.length) return {tone: 'warning', key: 'attention', count};
         if (!hostList.length) return {tone: 'neutral', key: 'empty'};
         return {tone: 'success', key: 'ready'};
@@ -129,7 +136,7 @@
         const hostKeys = hostList.filter(host => host.status?.host_key === 'unknown' && host.state !== 'live');
         if (hostKeys.length) items.push({kind: 'host-keys', count: hostKeys.length, hostIds: hostKeys.map(host => host.id)});
         hostList.filter(host => host.state === 'broken').slice(0, 3)
-            .forEach(host => items.push({kind: 'jump-missing', name: host.name, hostId: host.id}));
+            .forEach(host => items.push({kind: host.profile?.socks_proxy_id ? 'socks-missing' : 'jump-missing', name: host.name, hostId: host.id}));
         const unreachable = hostList.filter(host => host.state === 'unreachable');
         if (unreachable.length) items.push({kind: 'unreachable', count: unreachable.length, names: unreachable.slice(0, 3).map(host => host.name), hostIds: unreachable.map(host => host.id)});
         const credentials = hostList.filter(host => ['password_changed', 'key_missing'].includes(host.status?.auth));
@@ -228,8 +235,9 @@
     function topology(hostList = [], {width = 1200, height = null, perHub = 12} = {}) {
         const groups = new Map();
         hostList.forEach(host => {
-            const kind = host.route.kind === 'jump' ? 'jump' : host.route.kind === 'direct' ? 'direct' : 'missing';
-            const key = kind === 'jump' ? `jump:${host.route.id}` : kind;
+            const kind = ['jump', 'socks'].includes(host.route.kind) ? host.route.kind : host.route.kind === 'direct' ? 'direct' : 'missing';
+            const key = ['jump', 'socks'].includes(kind) ? `${kind}:${host.route.id}`
+                : kind === 'missing' && host.profile?.socks_proxy_id ? 'socks-missing' : kind;
             if (!groups.has(key)) groups.set(key, {key, kind, name: host.route.name, hosts: []});
             groups.get(key).hosts.push(host);
         });

@@ -97,10 +97,12 @@ async function sanitizeSeededCatalog(page) {
         commands: window.CommandLibrary?.commands?.length || 0,
         commandSets: window.CommandSetManager?.commandSets?.length || 0,
         keys: window.ProfileManager?.keys?.length || 0,
+        socksLoaded: window.SocksProxyManager?.loaded === true,
     }))).toMatchObject({
         commands: expect.any(Number),
         commandSets: 2,
         keys: 1,
+        socksLoaded: true,
     });
     await page.evaluate(() => {
         const commandNames = {
@@ -161,6 +163,12 @@ async function sanitizeSeededCatalog(page) {
             name: 'Operations bastion',
             host: 'bastion.example',
             username: 'jump',
+        })));
+        window.SocksProxyManager.setSocksProxies(window.SocksProxyManager.socksProxies.map(proxy => ({
+            ...proxy,
+            name: proxy.auth_type === 'password' ? 'Operations proxy' : 'Network relay',
+            host: 'proxy.example',
+            username: proxy.auth_type === 'password' ? 'operator' : '',
         })));
         const profileDetails = {
             'password-review': ['Production gateway', 'gateway.example', 'ops'],

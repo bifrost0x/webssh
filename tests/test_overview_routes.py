@@ -236,8 +236,8 @@ def test_continue_working_layout_persists_with_existing_panel_preferences(app, c
     assert '"id": "continue"' in client.get('/').data.decode()
 
 
-@pytest.mark.parametrize('kind', ['reboot', 'security-updates'])
-def test_maintenance_attention_dismissal_persists_with_existing_items(app, client, context, kind):
+@pytest.mark.parametrize('kind', ['reboot', 'security-updates', 'socks-missing'])
+def test_attention_dismissal_persists_with_existing_items_and_can_be_restored(app, client, context, kind):
     from app.user_settings import get_user_settings
     previous = ['run-failed:r1', 'host-keys:a1b2']
     assert client.put('/api/overview/preferences', json={'dismissed': previous}).status_code == 200
@@ -253,11 +253,13 @@ def test_maintenance_attention_dismissal_persists_with_existing_items(app, clien
     # A fresh page embeds the persisted choices; rendering must not filter them out.
     assert f'{kind}:node-1' in client.get('/').data.decode()
     assert client.put('/api/overview/preferences', json={'dismissed': previous}).json['dismissed'] == previous
+    assert get_user_settings(context[0])['overview_dismissed'] == previous
+    assert f'{kind}:node-1' not in client.get('/').data.decode()
 
 
-@pytest.mark.parametrize('kind', ['reboot', 'security-updates'])
+@pytest.mark.parametrize('kind', ['reboot', 'security-updates', 'socks-missing'])
 @pytest.mark.parametrize('fingerprint', ['', '<script>', 'host:extra', 'x' * 160])
-def test_maintenance_attention_dismissal_rejects_malformed_keys(app, client, context, kind, fingerprint):
+def test_attention_dismissal_rejects_malformed_keys(app, client, context, kind, fingerprint):
     from app.user_settings import get_user_settings
     previous = ['host-keys:existing']
     assert client.put('/api/overview/preferences', json={'dismissed': previous}).status_code == 200

@@ -71,7 +71,7 @@
                 modal.body.append(list,coverage);
                 for(const host of data.hosts) {
                     const row=el('div','', 'customer-row');
-                    const problems=[host.credential==='ready' ? null : t(host.credential),host.route==='missing_jump'?t('missingJump'):null,host.host_key==='review_required'?t('trustReview'):null].filter(Boolean);
+                    const problems=[host.credential==='ready' ? null : t(host.credential),host.route==='missing_jump'?t('missingJump'):host.route==='missing_socks'?t('missingSocks'):null,host.host_key==='review_required'?t('trustReview'):null].filter(Boolean);
                     const content=el('div');content.append(el('strong',host.name),el('p',problems.join(' · ') || t('prepared'),'customer-muted'));row.append(content);
                     if(root.ProfileManager) row.append(button(t('editHost'),()=>{modal.close(); root.document.getElementById('manageProfilesBtn')?.click();root.ProfileManager.openEditor(host.id);}));
                     steps.recoveryHosts.append(row);

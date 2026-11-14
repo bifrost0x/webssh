@@ -130,9 +130,16 @@ def _valid_profile(item):
     ):
         if not _optional_string(item, field):
             return False
-    for field in ('key_id', 'jump_host_id'):
+    for field in ('key_id', 'jump_host_id', 'socks_proxy_id'):
         if not _optional_string(item, field, allow_none=True):
             return False
+    socks_proxy_id = item.get('socks_proxy_id')
+    if socks_proxy_id and (
+        len(socks_proxy_id) > 64
+        or item.get('jump_host_id')
+        or item.get('auth_type') == 'tailscale'
+    ):
+        return False
     if 'port' in item and type(item['port']) is not int:
         return False
     if 'auth_type' in item and item['auth_type'] not in {
@@ -173,7 +180,7 @@ def _valid_profile_document(value):
 
 _PROFILE_FIELDS = {
     'id', 'name', 'host', 'port', 'username', 'auth_type', 'key_id',
-    'jump_host_id', 'startup_mode', 'startup_commands', 'command_id',
+    'jump_host_id', 'socks_proxy_id', 'startup_mode', 'startup_commands', 'command_id',
     'command_set_id', 'parameters_override', 'use_tmux',
     'group', 'favorite', 'created_at', 'updated_at',
     'sort_order', 'platform_icon', 'detected_platform', 'greeting_platform',
@@ -187,7 +194,7 @@ def _profile_migration_payload(profiles_file, document):
     try:
         return enforce_store_transition(
             path=profiles_file,
-            other_path=profiles_file.parent / 'jump_hosts.json',
+            other_paths=(profiles_file.parent / 'jump_hosts.json', profiles_file.parent / 'socks_proxies.json'),
             prospective_document=document,
             prospective_count=len(profiles),
             previous_count=None,
@@ -328,7 +335,7 @@ def save_profiles(
 
         payload = enforce_store_transition(
             path=profiles_file,
-            other_path=profiles_file.parent / 'jump_hosts.json',
+            other_paths=(profiles_file.parent / 'jump_hosts.json', profiles_file.parent / 'socks_proxies.json'),
             prospective_document=document,
             prospective_count=len(stored_profiles),
             previous_count=previous_count,
@@ -398,6 +405,15 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
         return None, 'Invalid auth_type'
     if auth_type == 'tailscale' and payload.get('jump_host_id'):
         return None, 'Tailscale SSH cannot be used with a jump host'
+    socks_proxy_id = payload.get('socks_proxy_id')
+    if socks_proxy_id is not None and (
+        not isinstance(socks_proxy_id, str) or len(socks_proxy_id) > 64
+    ):
+        return None, 'Invalid SOCKS proxy reference'
+    if socks_proxy_id and payload.get('jump_host_id'):
+        return None, 'A host can use either a jump host or a SOCKS5 proxy, not both'
+    if socks_proxy_id and auth_type == 'tailscale':
+        return None, 'Tailscale SSH cannot be used with a SOCKS5 proxy'
 
     group, error = _normalize_group(payload.get('group', _UNSET))
     if error:
@@ -450,6 +466,8 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     jump_host_id = payload.get('jump_host_id')
     if jump_host_id:
         result['jump_host_id'] = str(jump_host_id)[:64]
+    if socks_proxy_id:
+        result['socks_proxy_id'] = socks_proxy_id
     return result, None
 
 
@@ -488,6 +506,15 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                 if jump_host is None:
                     return None, 'Jump host not found'
 
+            socks_proxy_id = validated.get('socks_proxy_id')
+            if socks_proxy_id:
+                from .socks_proxy_manager import (
+                    _get_socks_proxy_with_coordinator_held,
+                )
+
+                if _get_socks_proxy_with_coordinator_held(user_id, socks_proxy_id) is None:
+                    return None, 'SOCKS proxy not found'
+
             if preserve_legacy_fallback and payload.get('startup_commands'):
                 legacy, error = normalize_startup_commands(
                     payload['startup_commands']
@@ -512,7 +539,7 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                         same_name = existing.get('name', '').casefold() == validated['name'].casefold()
                         same_endpoint = all(
                             existing.get(field) == validated.get(field)
-                            for field in ('host', 'port', 'username', 'jump_host_id')
+                            for field in ('host', 'port', 'username', 'jump_host_id', 'socks_proxy_id')
                         )
                         if same_name or same_endpoint:
                             return None, 'Duplicate profile'
@@ -616,7 +643,8 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
 
 @user_operation
 def add_profile(user_id, name, host, port, username, auth_type, key_id=None,
-                jump_host_id=None, startup_commands=None, command_set_id=None):
+                jump_host_id=None, startup_commands=None, command_set_id=None,
+                socks_proxy_id=None):
     """Compatibility wrapper for callers that create legacy profile payloads."""
     payload = {
         'name': name,
@@ -626,6 +654,7 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None,
         'auth_type': auth_type,
         'key_id': key_id,
         'jump_host_id': jump_host_id,
+        'socks_proxy_id': socks_proxy_id,
     }
     if startup_commands is not None:
         payload['startup_commands'] = startup_commands
@@ -963,7 +992,7 @@ def cache_greeting_platforms(user_id, observed):
             changed = 0
             for profile in profiles:
                 item = wanted.get(profile.get('id'))
-                if not item or profile.get('jump_host_id'):
+                if not item or profile.get('jump_host_id') or profile.get('socks_proxy_id'):
                     continue
                 probed, platform = item
                 try:

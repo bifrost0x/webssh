@@ -1,5 +1,5 @@
 const {test, expect} = require('playwright/test');
-const {login, installSshConnectTrap, sshAttempts, assertNoExternalRequests} = require('./helpers');
+const {login, waitForInventory, installSshConnectTrap, sshAttempts, assertNoExternalRequests} = require('./helpers');
 
 // Readiness is stubbed so the states are known: the first three hosts wait for a host key check.
 async function openWithReadiness(page) {
@@ -12,6 +12,7 @@ async function openWithReadiness(page) {
     await page.route('**/api/overview/status', route => route.fulfill({json: {hosts: ids.map(id => pending.includes(id)
         ? {id, state: 'action', host_key: 'unknown'} : {id, state: 'ready'})}}));
     await page.goto('/');
+    await waitForInventory(page);
     await expect(page.locator('#overviewHostList .od-host:not(.od-skeleton)').first()).toBeVisible();
     await expect(page.locator('#overviewHostList .od-host[data-state="unknown"]')).toHaveCount(0);
     await installSshConnectTrap(page);
@@ -59,8 +60,7 @@ test('the status pill and grouped attention items lead to exactly the affected h
     const rows = page.locator('#odAttention .od-row');
     const covered = await page.evaluate(() => window.overviewWorkspace && document.querySelectorAll('#odAttention .od-row').length);
     expect(covered).toBeGreaterThan(0);
-    const status = await page.locator('#overviewStatusText').textContent();
-    expect(Number(status.match(/\d+/)?.[0])).toBeGreaterThanOrEqual(pending.length);
+    await expect.poll(async () => Number((await page.locator('#overviewStatusText').textContent()).match(/\d+/)?.[0])).toBeGreaterThanOrEqual(pending.length);
     const pill = page.locator('#overviewStatusButton');
     await expect(pill).toBeEnabled();
     // With the list already on screen, the click must still answer visibly.

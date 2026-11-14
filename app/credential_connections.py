@@ -8,12 +8,36 @@ from .transport_security import request_reached_over_https
 from paramiko.auth_strategy import AuthStrategy
 
 
-def _saved_route(data):
-    route = data.get('proxy_jump')
-    if route and (not isinstance(route, dict) or not isinstance(route.get('jump_host_id'), str)
-                  or not route['jump_host_id']):
+def _saved_route(data, kind='jump'):
+    field, reference = ('socks_proxy', 'socks_proxy_id') if kind == 'socks' else ('proxy_jump', 'jump_host_id')
+    route = data.get(field)
+    if route is not None and (not isinstance(route, dict) or not isinstance(route.get(reference), str)
+                              or not route[reference]):
         raise AutomationError('credential_target_changed')
-    return route.get('jump_host_id') if isinstance(route, dict) else None
+    return route.get(reference) if isinstance(route, dict) else None
+
+
+def _connection_target(kind, data):
+    """Keep the proxy endpoint distinct from a host's nested route."""
+    from .credential_service import CredentialService
+    connection = dict(data)
+    if kind in {'ssh', 'jump', 'socks'}:
+        connection['kind'] = kind
+        connection.setdefault('auth_type', 'password')
+        connection.setdefault('port', 1080 if kind == 'socks' else 22)
+        if kind == 'jump':
+            connection['jump_host_id'] = _saved_route(data)
+        connection = CredentialService._normalize_target(connection)
+        if kind == 'ssh':
+            # Only nested routes are consumed by the SSH transport. A claimed
+            # profile reference alone must not authorize a direct connection.
+            connection['jump_host_id'] = _saved_route(data)
+            socks_id = _saved_route(data, 'socks')
+            if socks_id:
+                connection['socks_proxy_id'] = socks_id
+            else:
+                connection.pop('socks_proxy_id', None)
+    return connection
 
 
 class SavedPasswordAuth(AuthStrategy):
@@ -40,13 +64,11 @@ class CredentialGuard:
             raise AutomationError('authentication_required')
         self.app = current_app._get_current_object()
         self.service = self.app.extensions['credentials']
-        connection = deepcopy({key: value for key, value in data.items() if key in {
+        connection = _connection_target(kind, data)
+        connection = deepcopy({key: value for key, value in connection.items() if key in {
             'host', 'port', 'username', 'auth_type', 'key_id', 'jump_host_id', 'domain', 'share',
+            'socks_proxy_id', 'remote_dns', 'kind',
         }})
-        if kind in {'ssh', 'jump'}:
-            connection.setdefault('auth_type', 'password')
-            connection.setdefault('port', 22)
-            connection['jump_host_id'] = _saved_route(data)
         self.target_token=data.get('credential_target_token')
         self.target_args=(user_id,auth.id,data['credential_id'],connection,self.target_token)
         self.args = (user_id, auth.id, kind, data['credential_id'], connection)
@@ -91,11 +113,7 @@ def connection_password(user_id, kind, data):
         raise AutomationError('authentication_required')
     if not isinstance(reference, str) or not reference or data.get('password'):
         raise AutomationError('invalid_request')
-    connection = dict(data)
-    if kind in {'ssh', 'jump'}:
-        connection.setdefault('auth_type', 'password')
-        connection.setdefault('port', 22)
-        connection['jump_host_id'] = _saved_route(data)
+    connection = _connection_target(kind, data)
     if data.get('credential_target_token'):
         return current_app.extensions['credentials'].target_password(user_id,auth.id,reference,connection,data['credential_target_token'])
     return current_app.extensions['credentials'].connection_password(

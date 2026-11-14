@@ -1,5 +1,6 @@
 import inspect
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -7,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from scripts import run_integration_tests
+from tests.integration import conftest as integration_guards
+from tests.integration.socks_forwarder import SocksForwarder
 from tests.integration import test_paramiko5_openssh
 from tests.integration import test_paramiko5_socketio
 
@@ -154,10 +157,11 @@ def test_runner_starts_compose_and_runs_all_integration_modules(monkeypatch):
     startup_args, _startup_kwargs = calls[1]
     assert startup_args[-4:] == ["up", "-d", "--build", "--wait"]
     pytest_args, pytest_kwargs = calls[2]
-    assert pytest_args[-3:] == [
+    assert pytest_args[-4:] == [
         "tests/integration/test_paramiko5_openssh.py",
         "tests/integration/test_paramiko5_socketio.py",
         "tests/integration/test_automation_openssh.py",
+        "tests/integration/test_socks_openssh.py",
     ]
     assert pytest_kwargs["env"]["PARAMIKO5_INTEGRATION"] == "1"
 
@@ -235,6 +239,86 @@ def test_runner_targets_the_compose_service_from_inside_the_bastion(monkeypatch)
     assert environment["PARAMIKO5_PROXY_TARGET_HOST"] == "target"
     assert environment["PARAMIKO5_PROXY_TARGET_PORT"] == "22"
     assert environment["PROXY_JUMP_REMOTE_DNS_ALLOWLIST"] == "target"
+
+
+def test_runner_overrides_socks_targets_and_remote_dns_allowlist(monkeypatch):
+    calls = []
+    monkeypatch.setenv('PARAMIKO5_SOCKS_TARGET_HOST', 'production.example')
+    monkeypatch.setenv('PARAMIKO5_SOCKS_TARGET_PORT', '22222')
+    monkeypatch.setenv('SOCKS_REMOTE_DNS_ALLOWLIST', 'production.example')
+    monkeypatch.setattr(
+        run_integration_tests, 'run',
+        lambda args, **kwargs: calls.append((args, kwargs)) or 0,
+    )
+
+    assert run_integration_tests.main() == 0
+
+    environment = calls[2][1]['env']
+    assert environment['PARAMIKO5_SOCKS_TARGET_HOST'] == 'target'
+    assert environment['PARAMIKO5_SOCKS_TARGET_PORT'] == '22'
+    assert environment['SOCKS_REMOTE_DNS_ALLOWLIST'] == 'target'
+
+
+@pytest.mark.parametrize('variable,value', [
+    ('PARAMIKO5_SOCKS_TARGET_HOST', 'production.example'),
+    ('PARAMIKO5_SOCKS_TARGET_PORT', '22222'),
+    ('SOCKS_REMOTE_DNS_ALLOWLIST', 'production.example'),
+    ('SOCKS_REMOTE_DNS_ALLOWLIST', None),
+])
+def test_integration_guard_rejects_unsafe_socks_targets(monkeypatch, variable, value):
+    environment = {
+        'PARAMIKO5_INTEGRATION': '1',
+        'PARAMIKO5_DISPOSABLE_LAB': '1',
+        'PARAMIKO5_TARGET_HOST': '127.0.0.1',
+        'PARAMIKO5_TARGET_PORT': '2223',
+        'PARAMIKO5_PROXY_TARGET_HOST': 'target',
+        'PARAMIKO5_PROXY_TARGET_PORT': '22',
+        'PARAMIKO5_BASTION_HOST': '127.0.0.1',
+        'PARAMIKO5_BASTION_PORT': '2222',
+        'PARAMIKO5_CHANGED_HOST': '127.0.0.1',
+        'PARAMIKO5_CHANGED_PORT': '2224',
+        'PROXY_JUMP_REMOTE_DNS_ALLOWLIST': 'target',
+        'PARAMIKO5_SOCKS_TARGET_HOST': 'target',
+        'PARAMIKO5_SOCKS_TARGET_PORT': '22',
+        'SOCKS_REMOTE_DNS_ALLOWLIST': 'target',
+    }
+    for name, expected in environment.items():
+        monkeypatch.setenv(name, expected)
+    if value is None:
+        monkeypatch.delenv(variable)
+    else:
+        monkeypatch.setenv(variable, value)
+
+    with pytest.raises(pytest.UsageError, match='disposable runner targets'):
+        integration_guards.pytest_configure(None)
+
+
+@pytest.mark.parametrize('host,port', [
+    ('production.example', 22), ('target', 2222), ('127.0.0.1', 2223),
+])
+def test_socks_fixture_refuses_every_destination_outside_disposable_target(monkeypatch, host, port):
+    attempted_connections = []
+
+    def refuse_upstream(*args, **_kwargs):
+        attempted_connections.append(args)
+        raise AssertionError('Unexpected upstream connection')
+
+    monkeypatch.setattr(socket, 'create_connection', refuse_upstream)
+    with SocksForwarder() as proxy, socket.socket() as client:
+        client.settimeout(3)
+        client.connect((proxy.host, proxy.port))
+        client.sendall(b'\x05\x01\x00')
+        assert client.recv(2) == b'\x05\x00'
+        encoded = host.encode('ascii')
+        client.sendall(b'\x05\x01\x00\x03' + bytes([len(encoded)]) + encoded + port.to_bytes(2, 'big'))
+        response = bytearray()
+        while len(response) < 10:
+            chunk = client.recv(10 - len(response))
+            assert chunk
+            response.extend(chunk)
+        assert bytes(response) == b'\x05\x02\x00\x01' + b'\x00' * 6
+        assert proxy.disconnected.wait(3)
+        assert attempted_connections == []
 
 
 def test_direct_layer_proxy_uses_the_bastion_visible_target(monkeypatch):

@@ -11,7 +11,7 @@ Open **Quick Connect** or launch a saved profile. A connection includes:
 - SSH port, normally `22`;
 - remote operating-system username;
 - password, stored SSH key, or authorized Tailscale SSH mode;
-- optional jump host;
+- optional jump host or SOCKS5 proxy;
 - optional persistent tmux selection;
 - optional post-connect command or command set.
 
@@ -180,6 +180,66 @@ saved Jump Host preserves its ID and changes the configuration used by dependent
 profiles on subsequent connections; existing SSH sessions are not restarted.
 Deletion is blocked while profiles reference it. Reassign or remove those
 references before deleting the Jump Host.
+
+## SOCKS5 proxies
+
+Save a reusable proxy in **Hosts > SOCKS5 Proxies** and select it under the
+host's **Route** settings. WebSSH first opens a policy-checked TCP connection to
+that proxy, negotiates SOCKS5 CONNECT, then starts the normal SSH connection
+through the tunnel. The proxy has no SSH host key. The target's canonical name
+and port remain its host-key identity, including when a validated IP address is
+sent through SOCKS. Trust prompts, changed-key rejection and revocation remain
+unchanged.
+
+The proxy endpoint follows `BLOCK_INTERNAL_SSH` and
+`SSH_ALLOWED_INTERNAL_NETWORKS` exactly like a direct SSH destination. There is
+no loopback exception: a local `127.0.0.1:9050` or `ssh -D` listener requires
+`BLOCK_INTERNAL_SSH=false`, which is incompatible with the production profile.
+Inside a container, `127.0.0.1` refers to that container, not the Docker host.
+
+The proxy's **Resolve host names through the proxy** setting (`remote_dns`)
+defaults to `true`. Target routing follows this table; local validation also
+honors `SSH_ALLOWED_INTERNAL_NETWORKS` when internal addresses are blocked.
+
+| Target | `remote_dns` | `BLOCK_INTERNAL_SSH` | Destination sent to the proxy |
+|---|---|---|---|
+| IPv4 or IPv6 literal | Either | `false` | The IP address |
+| IPv4 or IPv6 literal | Either | `true` | The IP address only if network policy allows it |
+| Hostname | `false` | Either | A locally resolved, policy-validated IP address |
+| Hostname | `true` | `false` | The canonical hostname; no local DNS query |
+| Hostname exactly in `SOCKS_REMOTE_DNS_ALLOWLIST` | `true` | `true` | The canonical hostname; no local DNS query |
+| Other hostname | `true` | `true` | A locally resolved, policy-validated IP address; failure rejects the connection |
+
+`SOCKS_REMOTE_DNS_ALLOWLIST` is separate from
+`PROXY_JUMP_REMOTE_DNS_ALLOWLIST`: permission to use a bastion's DNS does not
+grant permission to use a SOCKS proxy's DNS. Both lists match exact canonical
+hostnames, not suffixes; wildcards and IP literals are invalid. A SOCKS allowlist
+entry applies to that target name through any otherwise allowed saved proxy,
+not to a single proxy ID. Review which proxies your users can reach.
+
+Remote DNS is an explicit trust decision. WebSSH cannot inspect the target IP
+chosen by the proxy, so its local private-address policy cannot constrain that
+resolution. Allow only names and proxy networks you trust; leave the allowlist
+empty if this delegation is not acceptable. The proxy's returned bound address
+does not grant network-policy permission. Remote-DNS allowances and private
+network exceptions are audited.
+
+SOCKS username/password authentication is unencrypted on the WebSSH-to-proxy
+connection. Use it only on a trusted network or over a separately protected
+transport. The target's SSH credentials and session remain encrypted end to
+end; the proxy can still observe the requested destination. Proxy passwords are
+entered for a connection or explicitly saved in the encrypted
+[password store](../credentials.md), never in profiles or proxy metadata.
+
+Terminal sessions and their SFTP channels share the tunnel. Reconnects resolve
+the saved proxy again from the current user's store. Failed or missing proxies
+never fall back to direct SSH. Overview checks test only the proxy endpoint,
+not target reachability, SSH authentication or host trust.
+
+Standalone Quick SFTP and Automation do not support SOCKS routes. SOCKS cannot
+be combined with a jump host or Tailscale SSH. Only SOCKS5 TCP CONNECT with no
+authentication or username/password is supported; `ProxyCommand`, environment
+proxy variables, SOCKS4 and HTTP CONNECT are not connection mechanisms here.
 
 ## Connection ownership
 

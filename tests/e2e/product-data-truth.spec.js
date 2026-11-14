@@ -5,11 +5,12 @@ test('system command arguments are explicitly library defaults, not discovered h
  await page.evaluate(()=>CommandLibrary.openLibrary());
  await page.evaluate(() => new Promise(resolve => window.socket.emit('list_commands', {os_filter:null}, resolve)));
  await expect.poll(()=>page.evaluate(()=>CommandLibrary.commands.some(c=>c.id==='net-022'))).toBe(true);
- await page.evaluate(()=>CommandLibrary.selectCommand('net-022'));
+ await page.locator('#commandImpactFilter').selectOption('all');
+ await page.locator('#commandSearchInput').fill('ip addr add');
+ await page.locator('.command-inspect-button[data-cmd-id="net-022"]').click();
  await expect(page.locator('#commandLibraryDetails .command-template-hint').filter({hasText:'not values detected'})).toBeVisible();
  await expect(page.locator('#commandLibraryDetails')).toContainText('192.168.1.10/24 dev eth0');
  await page.evaluate(()=>i18n.setLanguage('de'));
- await page.evaluate(()=>CommandLibrary.selectCommand('net-022'));
  await expect(page.locator('#commandLibraryDetails .command-template-hint').filter({hasText:'keine erkannten Serverwerte'})).toBeVisible();
  expect(await sshAttempts(page)).toEqual([]);
 });
