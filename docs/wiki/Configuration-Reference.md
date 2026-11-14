@@ -50,11 +50,36 @@ Prefer `flask create-admin` for controlled deployments. Public registration is i
 | `BLOCK_INTERNAL_SSH` | Blocks SSH connections to loopback, private, link-local, and other protected targets according to the network policy |
 | `SSH_ALLOWED_INTERNAL_NETWORKS` | Comma-separated private networks (CIDR or single addresses) that stay reachable while `BLOCK_INTERNAL_SSH=true`; see below |
 | `PROXY_JUMP_REMOTE_DNS_ALLOWLIST` | Exact hostnames a trusted bastion may resolve remotely |
+| `SOCKS_REMOTE_DNS_ALLOWLIST` | Comma-separated exact target hostnames a trusted SOCKS5 proxy may resolve when `remote_dns=true` and internal targets are blocked; empty by default |
 | `SERVER_OPERATIONS_ENABLED` | Optional authoritative environment override; otherwise Admin → Integrations controls reviewed, step-up protected service/container actions, process TERM and reboot. Product default: `false` |
 
 `BLOCK_INTERNAL_SSH=true` is appropriate for an Internet-facing gateway but can conflict with homelab use. Resolve and validate the exact target policy before enabling it. Host-key verification remains a separate control.
 
-`SSH_ALLOWED_INTERNAL_NETWORKS` keeps `BLOCK_INTERNAL_SSH=true` in place and re-admits only the listed private networks, for example `10.20.0.0/16,fd00:20::/64`. It applies to direct targets, Jump Hosts and file-transfer connections, and it is accepted by the production profile. Entries must lie inside `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` or `fc00::/7`; host bits, broader networks or any other range stop startup. Loopback, link-local (including cloud metadata addresses), multicast, reserved and IPv4-mapped IPv6 addresses always stay blocked. Every connection admitted through the list is recorded in the audit log.
+`SSH_ALLOWED_INTERNAL_NETWORKS` keeps `BLOCK_INTERNAL_SSH=true` in place and re-admits only the listed private networks, for example `10.20.0.0/16,fd00:20::/64`. It applies to direct targets, Jump Hosts, SOCKS5 proxy endpoints, locally validated SOCKS destinations and file-transfer connections, and it is accepted by the production profile. Entries must lie inside `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` or `fc00::/7`; host bits, broader networks or any other range stop startup. Loopback, link-local (including cloud metadata addresses), multicast, reserved and IPv4-mapped IPv6 addresses always stay blocked. Every connection admitted through the list is recorded in the audit log.
+
+`SOCKS_REMOTE_DNS_ALLOWLIST` is independent of the ProxyJump allowlist. Names are
+canonicalized at startup; wildcards, IP literals and names with a port are
+rejected. An entry permits remote resolution of that exact target name through
+any saved proxy whose own endpoint passes policy. It does not permit access to
+an otherwise blocked proxy endpoint. For example, an operator who trusts the
+proxy at `10.20.0.10:1080` to resolve one private target could configure:
+
+```dotenv
+BLOCK_INTERNAL_SSH=true
+SSH_ALLOWED_INTERNAL_NETWORKS=10.20.0.10/32
+SOCKS_REMOTE_DNS_ALLOWLIST=db.private.example
+```
+
+Save the proxy separately in the UI and enable its **Resolve host names through
+the proxy** option. WebSSH cannot validate the final IP chosen by remote DNS;
+the example delegates that decision to the proxy. Without an exact allowlist
+match, names are resolved and policy-checked locally instead. IP-literal
+targets always follow address policy. See the complete
+[SOCKS5 routing table](SSH-Connections-and-Host-Keys#socks5-proxies).
+
+Loopback proxies require `BLOCK_INTERNAL_SSH=false` and cannot be re-admitted
+through `SSH_ALLOWED_INTERNAL_NETWORKS` in production. No `ALL_PROXY` or other
+global proxy environment setting selects a route; hosts reference saved proxies.
 
 ## Runtime capacity
 
@@ -189,14 +214,22 @@ reflected.
 |---|---:|
 | `PROFILE_MAX_RECORDS` | `500` |
 | `JUMP_HOST_MAX_RECORDS` | `100` |
+| `SOCKS_PROXY_MAX_RECORDS` | `100` (supported range `10`–`1000`) |
 | `CONNECTION_STORE_MAX_BYTES` | `2097152` (2 MiB per store) |
 | `CONNECTION_CONFIG_MAX_BYTES` | `4194304` (4 MiB combined) |
+
+The per-store byte limit applies separately to `profiles.json`, `jump_hosts.json`
+and `socks_proxies.json`. The combined limit counts all three files for one user;
+it is not a separate allowance for each route type. The SOCKS record limit also
+contributes to the minimum permitted `CONNECTION_STORE_RECOVERY_MAX_RECORDS`.
 
 Legacy stores above a normal limit are quarantined from the browser UI. After
 stopping every WebSSH process, `flask --app start connection-store list` and
 `connection-store delete` provide a non-secret, bounded recovery path up to
 the separate recovery ceilings shown above. Growth is rejected, and profile
-and jump-host key references remain ownership checked.
+and route/key references remain ownership checked. Recovery accepts
+`--kind profiles`, `--kind jump-hosts` or `--kind socks-proxies`; route deletion remains
+blocked while profiles reference the record.
 
 ## Feature switches and tmux
 

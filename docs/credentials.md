@@ -4,11 +4,11 @@ Administrators enable **Save passwords** in **Administration → Integrations**.
 
 ## Create and assign
 
-Open **Hosts → Passwords**, beside SSH Keys. Give the entry a recognizable name, optionally suggest a username, and enter its password. Assign one entry to several of your SSH hosts, jump hosts or SMB sources. You can also create a password while configuring a new connection. Saving neither connects nor changes the password on the remote server.
+Open **Hosts → Passwords**, beside SSH Keys. Give the entry a recognizable name, optionally suggest a username, and enter its password. Assign one entry to several of your SSH hosts, jump hosts, SOCKS5 proxies or SMB sources. You can also create a password while configuring a new connection. Saving neither connects nor changes the password on the remote server.
 
 The host's username remains authoritative. The same assigned SSH credential serves terminal, SFTP and supported Automation connections. In Quick Connect choose **Saved password** as the authentication method, then select an entry. Connecting authorizes that exact destination without creating a permanent host. Manual one-time input remains available.
 
-The detail view shows assigned destinations. **Assign to hosts** opens a searchable checklist of password-authenticated SSH hosts with their addresses, usernames and current assignments. Select the hosts and apply the changes; filtering preserves your selection. If a batch partly fails, completed assignments remain visible and the remaining selections are preserved for retry. You can also select the saved password in a host, jump-host or SMB editor. Save pending password edits before changing assignments.
+The detail view shows assigned destinations. **Assign to hosts** opens a searchable checklist of password-authenticated SSH hosts with their addresses, usernames and current assignments. Select the hosts and apply the changes; filtering preserves your selection. If a batch partly fails, completed assignments remain visible and the remaining selections are preserved for retry. You can also select the saved password in a host, jump-host, SOCKS5-proxy or SMB editor. Save pending password edits before changing assignments.
 
 Each saved resource has exactly one password assignment. Selecting a different entry shows the previous and new password names and asks for confirmation. A checklist batch presents all replacements together. Cancel leaves the assignments unchanged; concurrent assignment changes are rejected and require a fresh review. Applying the same password to the same destination preserves existing schedule authorization.
 
@@ -16,7 +16,7 @@ Sending a saved password to a destination it is not yet assigned to is treated l
 
 **Replace password** accepts a new value; saved passwords are never returned by the API or displayed. Renaming does not replace a secret. Remove assignments before deleting an entry in use; assignments of deleted hosts no longer count. While an administrator has disabled password storage, you can still delete your entries, which also removes their assignments.
 
-Changing address, port, username, authentication mode, jump route, SMB domain or share invalidates its destination approval. Explicitly approve the new target before reuse. Names and groups do not change its access identity. SSH host-key verification, ownership, interactive MFA, protocol policy and quotas remain enforced.
+Changing address, port, username, authentication mode, jump or SOCKS route, SMB domain or share invalidates its destination approval. Changing a SOCKS proxy's remote-DNS setting also invalidates its binding and bindings that depend on that route. Explicitly approve the new target before reuse. Names and groups do not change its access identity. SSH host-key verification, ownership, interactive MFA, protocol policy and quotas remain enforced.
 
 The password list counts assignments that need review. Each assignment in the
 detail view shows **Ready** or **Review required**. Use **Review and authorize
@@ -25,6 +25,27 @@ and confirm it through the existing target-bound authorization and account
 verification. Cancelling leaves the assignment unusable; a concurrently changed
 destination or assignment requires a fresh review. This does not test the remote
 password or bypass host-key verification.
+
+## SOCKS5 proxy passwords
+
+A proxy configured for username/password authentication needs its own password,
+separate from the target's SSH password. Enter it for that connection, or assign
+a named password in **SOCKS5 Proxies** or **Passwords**. The proxy's saved username
+is authoritative; a proxy using no authentication cannot receive a password
+assignment. No password is written to `socks_proxies.json` or `profiles.json`.
+
+The assignment binds the proxy address, port, username, authentication type and
+remote-DNS setting. Hosts using that proxy also bind its current route identity.
+Proxy edits require reviewing affected assignments before reuse; hosts without
+a SOCKS route keep their existing password bindings.
+
+SOCKS5 sends the proxy login unencrypted between WebSSH and the proxy. HTTPS to
+the WebSSH browser does not encrypt that separate connection. Use proxy password
+authentication only on trusted networks or over a separately secured transport.
+The tunneled SSH connection, including its target password and SFTP traffic,
+retains normal SSH encryption and host-key verification. SOCKS routes are not
+supported by Automation or standalone Quick SFTP; use a terminal session's
+Files source for SFTP through the proxy.
 
 ## Availability and encryption
 
@@ -37,6 +58,11 @@ Named passwords use AES-256-GCM with fresh 96-bit nonces. HKDF derives domain-se
 Preserve the exact original **SECRET_KEY** securely with deployment recovery material. Do not assume a data-only archive contains an externally supplied environment secret. Credential files cannot be decrypted with a different key.
 
 Native backup exports exclude named password records (`credentials.json`), legacy `automation-vault.json`, SSH key directories including metadata, and quarantined `deleted_users` data. Normal restore ignores these files even in older archives and removes existing copies to prevent credential reuse by a different restored account. Recreate passwords, reimport SSH keys and reassign credentials after restore; review and re-enable schedules.
+
+Proxy metadata in `socks_proxies.json` is included in the native backup, but its
+assigned passwords are excluded with the other named credentials. Recreate and
+reassign proxy passwords after restore. A backup predating proxy metadata
+restores with an empty proxy store.
 
 Historical backups are not rewritten and may still contain replaced/deleted passwords and SSH keys. Rotate credentials on the actual servers when those copies must stop working. Private internal recovery snapshots retain encrypted credentials for failed-restore or secret-rotation rollback; they are separate from downloadable exports and require restricted access and their own retention and cleanup. Backups still retain account authentication data and may retain the application secret. Encrypt them separately and store them off-host. These exclusions do not detect arbitrary secrets embedded in commands, notes or run history.
 

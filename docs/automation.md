@@ -8,6 +8,13 @@ Enable **Automation** in **Administration → Integrations**. This persisted run
 
 Save and verify SSH hosts first. Unknown, changed or revoked host keys are rejected, never automatically accepted. Direct SSH and hosts behind one saved jump host are supported with usable stored keys or assigned passwords. Each hop needs its own verified host key and credential: a password-based jump host needs its own saved password. The jump host and a target it reaches by address follow the SSH network policy; a target name that only the jump host can resolve must be on `PROXY_JUMP_REMOTE_DNS_ALLOWLIST` while internal SSH is blocked, exactly as for interactive connections. Changing the jump host invalidates reviewed runs and approved schedules. Gateways, Tailscale SSH and interactive prompts remain unsupported by this execution engine.
 
+Hosts with a SOCKS5 proxy route are also unsupported for immediate runs,
+workflows and schedules. Readiness explains that limitation, and execution
+rejects the target instead of connecting directly. Changing an approved host
+to a SOCKS route invalidates the existing schedule's target authorization and
+requires review. Interactive terminal sessions and their SFTP source remain
+available through the proxy.
+
 ## Run now
 
 1. Open **Automation → Workflows** in the main application. The searchable list shows saved workflows with their steps and **Execute now**, **Edit** and **Delete** actions. Choose **New** or **Edit** to open the separate **Editor** tab. Switching back to Workflows preserves the editor draft; deleting requires confirmation of the named workflow.

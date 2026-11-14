@@ -1,8 +1,8 @@
 # Profiles, Jump Hosts and Commands
 
 Saved connection data is private to each WebSSH account. Profiles intentionally
-exclude plaintext SSH and jump-host passwords. Optional saved passwords are
-encrypted separately and assigned to hosts or jump hosts; see
+exclude plaintext SSH, jump-host and SOCKS5 proxy passwords. Optional saved
+passwords are encrypted separately and assigned to the corresponding host or route; see
 [Credentials](../credentials.md).
 
 ## Find hosts in a network
@@ -32,7 +32,7 @@ A profile can store:
 - display name;
 - hostname, port, and remote username;
 - selected stored key;
-- selected jump host;
+- selected jump host or SOCKS5 proxy;
 - tmux preference;
 - Tailscale authorization mode when allowed;
 - post-connect startup behavior;
@@ -44,7 +44,7 @@ Profiles that need no password, such as a usable stored key or authorized
 Tailscale mode, can launch directly from an empty pane.
 
 Use **Duplicate** in the Hosts manager to create a new draft from an existing
-profile. The draft copies connection, authentication-reference, jump-host,
+profile. The draft copies connection, authentication-reference, route,
 group, and post-connect settings, adds a localized “copy” suffix to the
 bounded name, and has no source profile ID. Saving therefore creates a separate
 profile and never overwrites the original. Passwords remain excluded because
@@ -57,7 +57,7 @@ session's **Notes** tools. Host notes are separate from the global notepad.
 Each saved profile has its own private context, even when two profiles use the
 same hostname. A session opened without its saved host, for example through
 Quick Connect, uses the context of the saved host with the same destination,
-user and jump host; with several, the most recently edited one. A connection
+user and route; with several, the most recently edited one. A connection
 that matches no saved host has no context.
 
 Context supports up to 100000 characters of notes, 20 favorite absolute remote
@@ -119,9 +119,61 @@ Host; update those profiles first.
 Use least privilege on the bastion and target. The presence of a jump host does
 not bypass target network policy, session ownership, or host-key verification.
 
-Saved profiles and jump hosts have per-field, record-count, and serialized-byte
-budgets. The defaults permit 500 profiles, 100 jump hosts, 2 MiB per store, and
-4 MiB combined. Mutations share a per-user rate limit. The normal UI
+For bastion-only DNS names that cannot resolve locally, configure an exact
+`PROXY_JUMP_REMOTE_DNS_ALLOWLIST`. Do not use wildcards.
+
+## SOCKS5 proxies
+
+Open **Hosts > SOCKS5 Proxies** to save a proxy once and reuse it for several
+hosts. Enter a name, hostname or IP address, and port (default `1080`). Choose
+**No authentication** or **Username and password**. Password login requires a
+username of 1–255 UTF-8 bytes; the SSH target keeps its own username and
+authentication method.
+
+In the connection dialog or host editor, choose the proxy under **Route**.
+A host uses one route: direct, one jump host, or one SOCKS5 proxy. Clear an
+existing jump-host selection before choosing a proxy. Tailscale SSH uses its
+own direct connection and cannot be combined with either route.
+
+**Resolve host names through the proxy** is enabled by default. When internal
+targets are blocked, only exact names in the administrator's separate
+`SOCKS_REMOTE_DNS_ALLOWLIST` use remote DNS; other names must resolve locally to
+an allowed address. See the [DNS decision table](SSH-Connections-and-Host-Keys#socks5-proxies)
+before enabling this for a production instance.
+
+Enter the proxy password when connecting, or explicitly assign a saved password
+when password storage is enabled. Proxy records never contain passwords.
+SOCKS5 sends its username and password unencrypted between WebSSH and the proxy;
+use password login only over a trusted network or a separately protected path.
+SSH authentication and traffic to the target remain encrypted, and target
+host-key verification still applies.
+
+Terminal sessions, their SFTP browsing and transfers, and terminal reconnects
+retain the selected route. The session shows **via SOCKS5**. Overview
+reachability checks contact only the proxy endpoint: a reachable proxy does not
+prove that it can reach or authenticate to the target. A missing proxy requires
+review, and a failed proxy never causes a direct connection attempt.
+
+**Edit** keeps the proxy's ID; dependent hosts use its current configuration on
+their next connection. Existing sessions are not restarted. **Delete** requires
+confirmation and is blocked while saved hosts reference the proxy; the error
+lists up to 20 affected host names and the total count. If a save times out,
+check the saved list before retrying because the write may already have succeeded.
+
+SOCKS5 routes are unsupported in standalone **Quick SFTP** and Automation runs
+or schedules. They cannot be combined with Tailscale SSH or a jump-host chain.
+For SFTP through a proxy, first open
+a terminal session and use that session's Files source. Only SOCKS5 TCP CONNECT
+with no authentication or username/password is supported; SOCKS4, HTTP CONNECT,
+UDP, BIND and GSSAPI are not supported. WebSSH does not use `ALL_PROXY` or execute
+`ProxyCommand`.
+
+## Connection storage limits and recovery
+
+Saved profiles, jump hosts and SOCKS5 proxies have per-field, record-count, and
+serialized-byte budgets. Defaults permit 500 profiles, 100 jump hosts and
+100 SOCKS5 proxies, 2 MiB per store, and 4 MiB combined across all three stores.
+Mutations share a per-user rate limit. The normal UI
 quarantines a legacy store above those limits so a large payload cannot be
 expanded through Socket.IO. Stop every WebSSH process, then use the bounded
 recovery CLI to discover non-secret record summaries and opaque selectors, then
@@ -134,16 +186,13 @@ python -m flask --app start connection-store delete \
   --username USER --kind profiles --selector SELECTOR --confirm-offline
 ```
 
-Use `--kind jump-hosts` for the jump-host store. Recovery enforces the separate
-byte and record ceilings before and after parsing, never prints startup
-commands or unknown fields, and retains jump-host reference protection. The
-opaque selector binds one record's current ordinal and content, so repeated or
+Use `--kind jump-hosts` for jump hosts or `--kind socks-proxies` for SOCKS5 proxies.
+Recovery enforces the separate byte and record ceilings before and after parsing,
+never prints startup commands or unknown fields, and retains both route stores'
+reference protection. The opaque selector binds one record's current ordinal and content, so repeated or
 truncated display IDs cannot delete the wrong record; list again after every
 successful deletion. No mutation may grow an oversized store. Stored key
 references must belong to the same WebSSH account.
-
-For bastion-only DNS names that cannot resolve locally, configure an exact
-`PROXY_JUMP_REMOTE_DNS_ALLOWLIST`. Do not use wildcards.
 
 ## Command library
 
@@ -276,8 +325,8 @@ behavior.
 
 ## Data integrity
 
-Profiles, jump hosts, commands, command sets, and settings are JSON stores below
-the owning user's data directory. Updates perform a complete load-modify-save
+Profiles, jump hosts, SOCKS5 proxies, commands, command sets, and settings are
+JSON stores below the owning user's data directory. Updates perform a complete load-modify-save
 cycle under a logical storage lock and replace files atomically.
 
 Corrupt JSON is reported as storage corruption instead of silently becoming an
@@ -321,10 +370,19 @@ mapped again at import. Large exports download a ZIP containing bounded JSON
 batches; extract it and import each JSON file separately. Metadata still
 contains hostnames and usernames, so share it only with intended recipients.
 
+SOCKS5 routes are not portable in this exchange format. Each affected host is
+exported with `socks_route_omitted: true` and **SOCKS5 route not exported**;
+proxy IDs and credentials are omitted. The import preview repeats the warning
+and blocks that host, so it cannot silently become a direct connection. Recreate
+the host and explicitly select an owned proxy instead. Raw `socks_proxy_id` or
+inline proxy fields in an import are rejected. A `ProxyCommand` that invokes a
+SOCKS client is still unsupported and is never evaluated.
+
 ### Profile launch still asks for a password
 
-The profile depends on a password for the target or jump host, or the selected
-stored key is unavailable. Passwords are deliberately not persisted.
+The profile needs a password for the target, jump host or SOCKS5 proxy, or the
+selected stored key is unavailable. Passwords are not stored in profiles or
+route records; explicitly saved passwords live in the separate encrypted store.
 
 ### A post-connect set did not run
 
