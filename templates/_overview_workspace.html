@@ -117,20 +117,22 @@
                     <p id="odActivityEmpty" class="od-muted" data-i18n="overviewWorkspace.activityEmpty">Connections and automation runs will appear here.</p>
                 </div>
             </section>
+            <section id="overviewWorkFirst" class="od-panel od-work-first" data-panel="continue" aria-labelledby="workFirstTitle" style="--od-index:10">
+                <div class="od-panel-head"><h2 id="workFirstTitle" data-i18n="workFirst.title">Continue working</h2>
+                    <a href="{{ url_for('security_center') }}#preferences" data-i18n="workFirst.startPage">Choose your start page</a></div>
+                <div class="od-panel-body">
+                    <div id="overviewShortcuts" class="od-shortcuts"></div>
+                    <details id="overviewFirstConnection" class="od-first-connection">
+                        <summary><span data-i18n="workFirst.setup">First connection</span><span id="overviewSetupCount" class="od-setup-count"></span></summary>
+                        <p data-i18n="workFirst.setupHint">Progress reflects your selected host and this browser's live session. Nothing connects or trusts a key automatically.</p>
+                        <div class="od-setup-target"><label for="overviewSetupHost" data-i18n="workFirst.selectHost">Host to set up</label>
+                        <select id="overviewSetupHost" class="form-control"></select></div>
+                        <ol id="overviewSetupSteps"></ol>
+                        <p data-i18n="workFirst.automationHint">A successful interactive connection does not approve a workflow or schedule. Automation needs its own credentials, host trust and approval.</p>
+                    </details>
+                </div>
+            </section>
         </div>
         <script type="application/json" id="overviewPreferences">{{ overview_preferences|default({'panels': None, 'dismissed': []})|tojson }}</script>
         <div class="od-route-map-home"><section id="overviewRouteMap" class="overview-card"></section></div>
-        <section id="overviewWorkFirst" class="od-work-first" aria-labelledby="workFirstTitle">
-            <div class="od-panel-head"><h2 id="workFirstTitle" data-i18n="workFirst.title">Continue working</h2>
-                <a href="{{ url_for('security_center') }}#preferences" data-i18n="workFirst.startPage">Choose your start page</a></div>
-            <div id="overviewShortcuts" class="od-shortcuts"></div>
-            <details id="overviewFirstConnection" class="od-first-connection">
-                <summary><span data-i18n="workFirst.setup">First connection</span><span id="overviewSetupCount" class="od-setup-count"></span></summary>
-                <p data-i18n="workFirst.setupHint">Progress reflects your selected host and this browser's live session. Nothing connects or trusts a key automatically.</p>
-                <div class="od-setup-target"><label for="overviewSetupHost" data-i18n="workFirst.selectHost">Host to set up</label>
-                <select id="overviewSetupHost" class="form-control"></select></div>
-                <ol id="overviewSetupSteps"></ol>
-                <p data-i18n="workFirst.automationHint">A successful interactive connection does not approve a workflow or schedule. Automation needs its own credentials, host trust and approval.</p>
-            </details>
-        </section>
     </section>

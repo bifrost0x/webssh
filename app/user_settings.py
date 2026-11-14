@@ -15,7 +15,7 @@ OVERVIEW_REACHABILITY_MODES = frozenset({'off', 'manual', 'automatic'})
 
 # Overview panels the account can arrange. Widths are columns of a 12-column
 # grid; a height of None follows the content, otherwise it is in 8px rows.
-OVERVIEW_PANELS = ('kpis', 'topology', 'hosts', 'attention', 'automation', 'platforms', 'activity')
+OVERVIEW_PANELS = ('kpis', 'topology', 'hosts', 'attention', 'automation', 'platforms', 'activity', 'continue')
 OVERVIEW_PANEL_WIDTHS = range(3, 13)
 OVERVIEW_PANEL_HEIGHTS = range(8, 161)
 OVERVIEW_DISMISSED_LIMIT = 100

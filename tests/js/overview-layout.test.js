@@ -5,6 +5,22 @@ const Model = require('../../static/js/overview-model.js');
 
 const ids = layout => layout.filter(item => !item.hidden).map(item => item.id);
 
+test('continue working defaults to the bottom and extends old layouts without changing their panels', () => {
+    const panel = {id: 'continue', w: 12, h: null, hidden: false};
+    assert.deepEqual(Layout.defaults().at(-1), panel);
+    const legacy = Layout.defaults().filter(item => item.id !== 'continue').reverse();
+    legacy[0] = {...legacy[0], w: 5, h: 30, hidden: true};
+    assert.deepEqual(Layout.normalize(legacy), [...legacy, panel]);
+});
+
+test('continue working uses the shared move, resize, hide and restore operations', () => {
+    let layout = Layout.moveBefore(Layout.defaults(), 'continue', 'kpis');
+    layout = Layout.resize(layout, 'continue', {w: 6, h: 40});
+    layout = Layout.setHidden(layout, 'continue', true);
+    assert.deepEqual(Layout.normalize(layout)[0], {id: 'continue', w: 6, h: 40, hidden: true});
+    assert.equal(ids(Layout.setHidden(layout, 'continue', false))[0], 'continue');
+});
+
 test('a missing or foreign layout falls back to the default and keeps known values', () => {
     assert.deepEqual(Layout.normalize(null), Layout.defaults());
     const layout = Layout.normalize([{id: 'hosts', w: 40, h: 2}, {id: 'news', w: 6}, {id: 'hosts', w: 4}, null]);

@@ -20,7 +20,9 @@ for (const width of [390, 1440]) {
         const first = page.locator('#overviewWorkFirst');
         await expect(first.getByRole('button', {name:'Favorite task host',exact:true})).toBeVisible();
         await expect(first.getByRole('button', {name:'Recent task host',exact:true})).toBeVisible();
-        expect(await first.boundingBox().then(box => box.y)).toBeGreaterThanOrEqual(await page.locator('#odBoard').boundingBox().then(box => box.y + box.height));
+        expect(await first.evaluate(element => [...element.parentElement.children]
+            .filter(panel => panel !== element && panel.getClientRects().length)
+            .every(panel => element.getBoundingClientRect().top >= panel.getBoundingClientRect().bottom))).toBe(true);
         await first.scrollIntoViewIfNeeded();
         await expect(page.locator('#overviewSetupCount')).toHaveText('1 / 5');
         await page.screenshot({path:path.join(process.env.WEBSSH_E2E_OUTPUT_DIR || 'test-results', `home-${width}-collapsed.png`)});

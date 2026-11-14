@@ -542,8 +542,9 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
     .od-host:hover, .od-host:focus-within { transform: none; }
 }
 
-/* Task shortcuts precede the customizable board without changing saved layouts. */
+/* Task shortcuts share the board's arrangement, sizing and visibility controls. */
 .od-work-first { padding: 16px 20px; border: 1px solid var(--ws2-border); border-radius: var(--od-radius); background: var(--ws2-panel); color: var(--ws2-text); }
+.od-board[data-editing="true"] > .od-work-first { padding-top: 28px; }
 .od-work-first .od-panel-head { flex-wrap: wrap; gap: 8px; padding: 0 0 12px; }
 .od-work-first h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .od-work-first .od-panel-head a { font-size: 12px; }

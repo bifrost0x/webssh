@@ -281,7 +281,7 @@ test(`the layout can be arranged by keyboard and mouse, survives reload and rese
     await installSshConnectTrap(page);
     const order = () => page.locator('#odBoard > [data-panel]').evaluateAll(nodes => nodes
         .filter(node => node.dataset.userHidden !== 'true').sort((a, b) => Number(a.style.order) - Number(b.style.order)).map(node => node.dataset.panel));
-    const defaults = ['kpis', 'topology', 'attention', 'automation', 'hosts', 'platforms', 'activity'];
+    const defaults = ['kpis', 'topology', 'attention', 'automation', 'hosts', 'platforms', 'activity', 'continue'];
     expect(await order()).toEqual(defaults);
 
     await page.locator('#overviewCustomize').click();

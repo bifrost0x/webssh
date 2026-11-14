@@ -52,8 +52,9 @@ for (const width of [1440, 390]) {
         await expect(section).toBeVisible();
         expect(await section.evaluate(element => {
             const board = document.getElementById('odBoard');
-            return Boolean(board.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING)
-                && element.getBoundingClientRect().top >= board.getBoundingClientRect().bottom;
+            const others = [...board.children].filter(panel => panel !== element && panel.getClientRects().length);
+            return element.parentElement === board && others.every(panel =>
+                element.getBoundingClientRect().top >= panel.getBoundingClientRect().bottom);
         })).toBe(true);
         await section.scrollIntoViewIfNeeded();
         await page.screenshot({path: path.join('plans', 'support-report', `overview-bottom-${width}.png`)});
