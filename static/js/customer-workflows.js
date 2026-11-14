@@ -8,8 +8,7 @@
         const assigned = [...new Set(existing.filter(Boolean))];
         if (assigned.length > 4) throw new RangeError('Too many assigned sessions');
         const needed = [1, 2, 4].find(count => count >= assigned.length);
-        const layout = Math.max([1, 2, 4].includes(requested) ? requested : 1,
-            [1, 2, 4].includes(current) ? current : needed, needed);
+        const layout = Math.max([1, 2, 4].includes(requested) ? requested : 1, needed);
         const slots = current === 'windows' || existing.slice(layout).some(Boolean) ? assigned : existing;
         return {layout, assignments: Array.from({length: layout}, (_, index) => slots[index] || null)};
     }
@@ -101,30 +100,114 @@
 
             }catch(error){loading.remove();report(modal,error);}
         }
+        const picker=document.getElementById('workspaceLayoutPicker');
+        const presetOptions=document.getElementById('workspacePresetOptions');
+        let savedPresets=[];
+        let presetState='idle';
+        let presetError=null;
+        let presetLoad=null;
+        let presetRevision=0;
+        function applyPreset(preset) {
+            if(!sessions) return false;
+            let next;
+            try { next=layoutAssignments(preset.layout,sessions.paneAssignments,sessions.layout); }
+            catch { throw Error(t('extraWindowLayout')); }
+            sessions.applyPaneAssignments(next.layout,next.assignments);
+            document.getElementById('workspaceNavBtn')?.click();
+            return true;
+        }
+        function renderPresetOptions() {
+            if(!presetOptions) return;
+            presetOptions.replaceChildren();
+            if(presetState!=='error') {
+                for(const preset of savedPresets) {
+                    const item=button('',event=>{
+                        // Rendering can remove the click target before the outside-click handler runs.
+                        event.stopPropagation();
+                        try {
+                            if(!applyPreset(preset)) return;
+                            picker.open=false;
+                            picker.querySelector('summary')?.focus();
+                        } catch(error) {
+                            presetError=error;
+                            renderPresetOptions();
+                            const alert=presetOptions.querySelector('[role="alert"]');
+                            alert?.focus({preventScroll:true});
+                            alert?.scrollIntoView({block:'nearest'});
+                        }
+                    });
+                    item.className='tab-row-icon-btn workspace-preset-btn';
+                    item.dataset.workspacePresetId=preset.id;
+                    item.disabled=presetState==='loading';
+                    const icon=el('span','view_quilt','material-icons');icon.setAttribute('aria-hidden','true');
+                    item.append(icon,el('span',preset.name,'workspace-preset-name'));
+                    presetOptions.append(item);
+                }
+            }
+            if(presetState==='loading' || (presetState==='ready' && !savedPresets.length)) {
+                const status=el('p',t(presetState==='loading'?'loading':'noSavedPresets'),'workspace-layout-hint');
+                status.role='status';presetOptions.append(status);
+            }
+            if(presetError) {
+                const alert=el('p',presetError.message,'workspace-layout-hint');
+                alert.role='alert';alert.tabIndex=-1;presetOptions.append(alert);
+            }
+            if(presetState==='error') {
+                const retry=button(t('retry'),async event=>{
+                    event.stopPropagation();
+                    try { await loadPresets(); } catch { /* The menu displays the load error. */ }
+                    if(picker.open) (presetOptions.querySelector('button:not(:disabled)') || document.getElementById('workspacePresetsBtn'))?.focus();
+                });
+                retry.className='tab-row-icon-btn';presetOptions.append(retry);
+            }
+        }
+        function loadPresets() {
+            if(presetLoad) return presetLoad;
+            const revision=presetRevision;
+            presetState='loading';presetError=null;renderPresetOptions();
+            presetLoad=(async()=>{
+                try {
+                    const data=await api('workspace-presets');
+                    // A completed save takes precedence over an older pending read.
+                    if(revision===presetRevision) {savedPresets=data.presets;presetState='ready';}
+                    return savedPresets;
+                } catch(error) {
+                    if(revision!==presetRevision) return savedPresets;
+                    presetState='error';presetError=error;throw error;
+                } finally {
+                    presetLoad=null;
+                    if(revision===presetRevision) renderPresetOptions();
+                }
+            })();
+            return presetLoad;
+        }
+        picker?.addEventListener('toggle',()=>{
+            if(picker.open) loadPresets().catch(()=>{ /* The built-in layouts remain available. */ });
+        });
         async function openPresets() {
-            const picker=document.getElementById('workspaceLayoutPicker');
             if(picker?.open){picker.open=false;picker.querySelector('summary')?.focus();}
             const modal=dialog(t('presetsTitle'));modal.body.append(el('p',t('presetsHint'),'customer-intro'));
             const loading=el('p',t('loading'),'customer-muted');loading.role='status';modal.body.append(loading);
             let presets;
-            try {presets=(await api('workspace-presets')).presets;}catch(error){loading.remove();report(modal,error);return;}
+            try {presets=await loadPresets();}catch(error){loading.remove();if(modal.isConnected)report(modal,error);return;}
             loading.remove();
             if(!modal.isConnected) return;
             const saved=el('div','','customer-presets');modal.body.append(saved);
-            async function save(next) { const data=await api('workspace-presets',{presets:next}); presets=data.presets; render(); }
+            async function save(next) {
+                const data=await api('workspace-presets',{presets:next});
+                presetRevision++;
+                presets=data.presets;savedPresets=presets;presetState='ready';presetError=null;
+                renderPresetOptions();render();
+            }
             function render() {
                 saved.replaceChildren();if(!presets.length)saved.append(el('p',t('noPresets'),'customer-empty'));
                 for(const preset of presets) {
                     const row=el('section','', 'customer-row');const info=el('div','','customer-preset-info');info.append(el('h3',preset.name),el('p',t('layout')+': '+preset.layout,'customer-muted'));row.append(info);const actions=el('div','','customer-row-actions');
                     const choices=el('div','','customer-preset-connections'); choices.hidden=true;
                     const apply=button(t('applyLayout'),()=>{
-                        const manager=sessions; if(!manager)return;
-                        if(manager.windowMode && manager.paneAssignments.filter(Boolean).length>4){report(modal,Error(t('extraWindowLayout')));return;}
-                        let next;
-                        try { next=layoutAssignments(preset.layout,manager.paneAssignments,manager.layout); }
-                        catch { report(modal,Error(t('extraWindowLayout')));return; }
-                        manager.applyPaneAssignments(next.layout,next.assignments);
-                        document.getElementById('workspaceNavBtn')?.click(); choices.hidden=false;apply.setAttribute('aria-expanded','true');
+                        try { if(!applyPreset(preset))return; }
+                        catch(error) {report(modal,error);return;}
+                        choices.hidden=false;apply.setAttribute('aria-expanded','true');
                     });apply.setAttribute('aria-expanded','false');actions.append(apply);
                     for(const id of preset.profile_ids) {
                         const profile=root.ProfileManager?.profiles.find(item=>item.id===id);
