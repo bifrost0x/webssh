@@ -108,6 +108,14 @@ The additive migration leaves existing rows without a proxy and sets
 JSON migrations from unversioned data through versions 1 and 2 only add or advance
 the schema marker.
 
+Releases without SOCKS5 support keep an unknown `socks_proxy_id` in profiles but
+ignore it, so a downgraded instance connects those hosts directly. Saved
+passwords stay unusable there because their route binding no longer matches, but
+SSH keys and passwords entered at connect time would reach the target without
+the proxy. Before downgrading, remove the SOCKS5 route from every host in the
+updated application, or restore the complete pre-upgrade backup with its
+matching secret into a separate directory.
+
 ### Workspace upgrade and rollback
 
 The workspace update adds a nullable `profile_id` column to saved SSH sessions.

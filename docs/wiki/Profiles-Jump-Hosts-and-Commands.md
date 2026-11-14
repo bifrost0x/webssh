@@ -157,7 +157,9 @@ review, and a failed proxy never causes a direct connection attempt.
 **Edit** keeps the proxy's ID; dependent hosts use its current configuration on
 their next connection. Existing sessions are not restarted. **Delete** requires
 confirmation and is blocked while saved hosts reference the proxy; the error
-lists up to 20 affected host names and the total count. If a save times out,
+lists up to 20 affected host names and the total count. It is also blocked while
+a persistent tmux session was opened through the proxy, because that session can
+only be resumed over its original route; close the session first. If a save times out,
 check the saved list before retrying because the write may already have succeeded.
 
 SOCKS5 routes are unsupported in standalone **Quick SFTP** and Automation runs
