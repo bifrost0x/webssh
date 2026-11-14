@@ -51,13 +51,14 @@
             const previous = document.activeElement;
             const modal = el('dialog', '', 'customer-dialog');
             const heading = el('h2', title); heading.id='customerDialogTitle'; modal.setAttribute('aria-labelledby', heading.id);
-            modal.append(heading, button(t('close'), () => modal.close()));
+            const header=el('header','','customer-dialog-header');header.append(heading,button(t('close'),()=>modal.close()));modal.body=el('div','','customer-dialog-body');modal.footer=el('footer','','customer-dialog-footer');modal.append(header,modal.body,modal.footer);
             modal.addEventListener('close', () => { modal.remove(); previous?.focus(); }, {once:true});
             document.body.append(modal); modal.showModal(); return modal;
         }
         function report(modal, error) {
-            let status=modal.querySelector('[role="alert"]'); if (!status) { status=el('p');status.role='alert';modal.append(status); }
+            let status=modal.querySelector('[role="alert"]'); if (!status) { status=el('p','','customer-feedback');status.role='alert';modal.body.prepend(status); }
             status.textContent=error.message || t('requestFailed');
+            status.tabIndex=-1;status.focus({preventScroll:true});status.scrollIntoView({block:'nearest'});
         }
         const notice = document.getElementById('restoreRecoveryNotice');
         async function refreshRecoveryNotice() {
@@ -66,27 +67,27 @@
             catch { /* Optional guidance must not block normal work. */ }
         }
         async function openRecovery() {
-            const modal=dialog(t('recoveryTitle')); modal.append(el('p',t('recoveryHint')));
-            const loading=el('p',t('loading'));modal.append(loading);
+            const modal=dialog(t('recoveryTitle')); modal.body.append(el('p',t('recoveryHint'),'customer-intro'));
+            const loading=el('p',t('loading'),'customer-muted');loading.role='status';modal.body.append(loading);
             try {
                 const data=await api('recovery-check'); if (!modal.isConnected) return; loading.remove();
-                modal.append(el('h3',t('coverageTitle')),el('p',t('included')),el('p',t('excluded')));
-                if(data.restored_at) modal.append(el('p',t('restoredAt')+' '+new Date(data.restored_at).toLocaleString(root.i18n?.getLanguage?.())));
-                const list=el('ol');
-                for(const key of ['recoveryKeys','recoveryHosts','recoverySchedules','recoveryTest']) list.append(el('li',t(key)));
-                modal.append(list);
+                const coverage=el('details','','customer-disclosure');coverage.append(el('summary',t('coverageTitle')),el('p',t('included')),el('p',t('excluded')));
+                if(data.restored_at) modal.body.append(el('p',t('restoredAt')+' '+new Date(data.restored_at).toLocaleString(root.i18n?.getLanguage?.())));
+                const list=el('ol','','customer-checklist');const steps={};
+                for(const key of ['recoveryKeys','recoveryHosts','recoverySchedules','recoveryTest']) {const step=el('li');step.append(el('h3',t(key+'Title')),el('p',t(key)));list.append(step);steps[key]=step;}
+                modal.body.append(list,coverage);
                 for(const host of data.hosts) {
                     const row=el('div','', 'customer-row');
                     const problems=[host.credential==='ready' ? null : t(host.credential),host.route==='missing_jump'?t('missingJump'):null,host.host_key==='review_required'?t('trustReview'):null].filter(Boolean);
-                    row.append(el('strong',host.name),el('p',problems.join(' · ') || t('prepared')));
+                    const content=el('div');content.append(el('strong',host.name),el('p',problems.join(' · ') || t('prepared'),'customer-muted'));row.append(content);
                     if(root.ProfileManager) row.append(button(t('editHost'),()=>{modal.close(); root.document.getElementById('manageProfilesBtn')?.click();root.ProfileManager.openEditor(host.id);}));
-                    modal.append(row);
+                    steps.recoveryHosts.append(row);
                 }
-                if(!data.hosts.length) modal.append(el('p',t('noHosts')));
-                for(const schedule of data.schedules) modal.append(el('p',schedule.name+' · '+t(schedule.enabled?'scheduleEnabled':'scheduleReview')));
-                const schedules=el('a',t('openSchedules'),'btn btn-secondary');schedules.href=(document.querySelector('meta[name="app-root"]')?.content || '')+'/automation#schedules';modal.append(schedules);
+                if(!data.hosts.length) steps.recoveryHosts.append(el('p',t('noHosts'),'customer-muted'));
+                for(const schedule of data.schedules) {const row=el('div','','customer-row');const content=el('div');content.append(el('strong',schedule.name),el('p',t(schedule.enabled?'scheduleEnabled':'scheduleReview'),'customer-muted'));row.append(content);steps.recoverySchedules.append(row);}
+                const schedules=el('a',t('openSchedules'),'btn btn-secondary');schedules.href=(document.querySelector('meta[name="app-root"]')?.content || '')+'/automation#schedules';steps.recoverySchedules.append(schedules);
                 if (data.needs_review && data.restored_at) {
-                    const acknowledgement=el('p',t('recoveryReviewHint'));modal.append(acknowledgement);
+                    const acknowledgement=el('p',t('recoveryReviewHint'),'customer-muted');acknowledgement.id='recoveryReviewHint';modal.footer.append(acknowledgement);
                     const review=button(t('reviewRecovery'),async()=>{
                         review.disabled=true;
                         try {
@@ -97,36 +98,38 @@
                             if (error.status===409) {
                                 await refreshRecoveryNotice();
                                 report(modal,Error(t('recoveryChanged')));
-                                modal.append(button(t('reloadRecovery'),()=>{modal.close();openRecovery();}));
+                                modal.footer.append(button(t('reloadRecovery'),()=>{modal.close();openRecovery();}));
                             } else {review.disabled=false;report(modal,error);}
                         }
                     });
-                    review.dataset.reviewRecovery='';modal.append(review);
+                    review.dataset.reviewRecovery='';review.className='btn btn-primary';review.setAttribute('aria-describedby','recoveryReviewHint');modal.footer.append(review);
                 }
 
             }catch(error){loading.remove();report(modal,error);}
         }
         async function openPresets() {
-            const modal=dialog(t('presetsTitle'));modal.append(el('p',t('presetsHint')));
+            const modal=dialog(t('presetsTitle'));modal.body.append(el('p',t('presetsHint'),'customer-intro'));
+            const loading=el('p',t('loading'),'customer-muted');loading.role='status';modal.body.append(loading);
             let presets;
-            try {presets=(await api('workspace-presets')).presets;}catch(error){report(modal,error);return;}
+            try {presets=(await api('workspace-presets')).presets;}catch(error){loading.remove();report(modal,error);return;}
+            loading.remove();
             if(!modal.isConnected) return;
-            const saved=el('div');modal.append(saved);
+            const saved=el('div','','customer-presets');modal.body.append(saved);
             async function save(next) { const data=await api('workspace-presets',{presets:next}); presets=data.presets; render(); }
             function render() {
-                saved.replaceChildren();
+                saved.replaceChildren();if(!presets.length)saved.append(el('p',t('noPresets'),'customer-empty'));
                 for(const preset of presets) {
-                    const row=el('section','', 'customer-row');row.append(el('h3',preset.name));
-                    const choices=el('div'); choices.hidden=true;
-                    row.append(button(t('applyLayout'),()=>{
+                    const row=el('section','', 'customer-row');const info=el('div','','customer-preset-info');info.append(el('h3',preset.name),el('p',t('layout')+': '+preset.layout,'customer-muted'));row.append(info);const actions=el('div','','customer-row-actions');
+                    const choices=el('div','','customer-preset-connections'); choices.hidden=true;
+                    const apply=button(t('applyLayout'),()=>{
                         const manager=sessions; if(!manager)return;
                         if(manager.windowMode && manager.paneAssignments.filter(Boolean).length>4){report(modal,Error(t('extraWindowLayout')));return;}
                         let next;
                         try { next=layoutAssignments(preset.layout,manager.paneAssignments,manager.layout); }
                         catch { report(modal,Error(t('extraWindowLayout')));return; }
                         manager.applyPaneAssignments(next.layout,next.assignments);
-                        document.getElementById('workspaceNavBtn')?.click(); choices.hidden=false;
-                    }));
+                        document.getElementById('workspaceNavBtn')?.click(); choices.hidden=false;apply.setAttribute('aria-expanded','true');
+                    });apply.setAttribute('aria-expanded','false');actions.append(apply);
                     for(const id of preset.profile_ids) {
                         const profile=root.ProfileManager?.profiles.find(item=>item.id===id);
                         const connect=button(profile ? t('connect')+' '+profile.name : t('missingHost'),()=>{
@@ -135,27 +138,27 @@
                             root.launchProfileForPane?.(id,free>=0?free:undefined);
                         });connect.disabled=!profile;choices.append(connect);
                     }
-                    row.append(choices,button(t('removePreset'),async()=>{try{await save(presets.filter(item=>item.id!==preset.id));}catch(error){report(modal,error);}}));
+                    const remove=button(t('removePreset'),async()=>{remove.disabled=true;try{await save(presets.filter(item=>item.id!==preset.id));}catch(error){remove.disabled=false;report(modal,error);}});remove.classList.add('customer-remove');actions.append(remove);row.append(actions,choices);
                     saved.append(row);
                 }
             }
             render();
-            const form=el('form');const name=el('input');name.required=true;name.maxLength=80;name.id='workspacePresetName';
+            const form=el('form','','customer-preset-form');form.id='workspacePresetForm';form.append(el('h3',t('newPreset')));const name=el('input');name.required=true;name.maxLength=80;name.id='workspacePresetName';
             const label=el('label',t('presetName'));label.htmlFor=name.id;
             const layout=el('select');layout.id='workspacePresetLayout';const layoutLabel=el('label',t('layout'));layoutLabel.htmlFor=layout.id;
             for(const count of [1,2,4]){const option=el('option',String(count));option.value=String(count);layout.append(option);}layout.value=String([1,2,4].includes(sessions?.layout) ? sessions.layout : [1,2,4].find(count=>count>=(sessions?.paneAssignments?.filter(Boolean).length || 1)) || 4);
-            form.append(label,name,layoutLabel,layout);
+            const fields=el('div','','customer-form-fields');const nameField=el('div');nameField.append(label,name);const layoutField=el('div');layoutField.append(layoutLabel,layout);fields.append(nameField,layoutField);form.append(fields);
             const hosts=el('fieldset');hosts.append(el('legend',t('chooseHosts')));
             const current=new Set(sessions?.getAllSessions?.().map(item=>item.profileId));
             for(const profile of root.ProfileManager?.profiles || []) { const label=el('label','', 'customer-choice');const check=el('input');check.type='checkbox';check.value=profile.id;check.checked=current.has(profile.id);label.append(check,document.createTextNode(profile.name));hosts.append(label); }
-            form.append(hosts);const submit=el('button',t('savePreset'),'btn btn-primary');submit.type='submit';form.append(submit);modal.append(form);
+            if(!hosts.querySelector('input'))hosts.append(el('p',t('noHosts'),'customer-muted'));form.append(hosts);const submit=el('button',t('savePreset'),'btn btn-primary');submit.type='submit';submit.setAttribute('form',form.id);modal.footer.append(submit);modal.body.append(form);
             form.addEventListener('submit',async event=>{
-                event.preventDefault();submit.disabled=true;
+                event.preventDefault();submit.disabled=true;modal.querySelector('[role=alert]')?.remove();
                 try {
                     const ids=[...hosts.querySelectorAll('input:checked')].map(item=>item.value);
                     if(ids.length>Number(layout.value))throw Error(t('tooManyHosts'));
                     if(presets.length>=12)throw Error(t('presetLimit'));
-                    await save([...presets,{id:presetId(root.crypto),name:name.value.trim(),layout:Number(layout.value),profile_ids:ids}]);name.value='';
+                    await save([...presets,{id:presetId(root.crypto),name:name.value.trim(),layout:Number(layout.value),profile_ids:ids}]);name.value='';let feedback=modal.body.querySelector('.customer-saved');if(!feedback){feedback=el('p','','customer-saved');feedback.role='status';saved.after(feedback);}feedback.textContent=t('presetSaved');
                 }catch(error){report(modal,error);}finally{submit.disabled=false;}
             });
         }

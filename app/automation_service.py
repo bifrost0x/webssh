@@ -306,7 +306,6 @@ class AutomationService:
 
     def history(self, user_id):
         recovered = False
-        manual_attention = False
         # Match start()'s lock ordering. A new dispatch cannot appear between the
         # active snapshot and persisting an orphan's one-time unknown transition.
         with self._lock, user_data_access(user_id), storage_lock(f'automation-history:{user_id}'):
@@ -319,7 +318,6 @@ class AutomationService:
                     record = active[record['id']]
                 elif record['status'] not in TERMINAL:
                     recovered = True
-                    manual_attention = manual_attention or not record.get('schedule_id')
                     record['status'] = 'unknown'
                     for target in record['targets']:
                         if target['status'] not in TERMINAL:
@@ -332,9 +330,6 @@ class AutomationService:
                 result.append(record)
             if recovered:
                 write_document(path, document)
-        if manual_attention:
-            from .automation_notifications import notify
-            notify(user_id, 'unknown')
         return result
 
     def delete_runs(self, user_id, run_ids=None):
@@ -591,8 +586,6 @@ class AutomationService:
                 except Exception:
                     pass
                 log_security_event('AUTOMATION_RUN_FINISHED', user_id=uid, outcome=record['status'])
-                from .automation_notifications import notify
-                notify(uid, record['status'])
                 if intent.get('kind') == 'scheduled':
                     try:
                         self.app.extensions['automation_schedules'].finish(intent, record['status'])

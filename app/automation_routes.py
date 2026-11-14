@@ -14,9 +14,6 @@ from .step_up import consume_account_step_up_grant, StepUpError
 from .storage_errors import StorageCorruptionError
 from .quota_manager import QuotaExceeded
 
-from .automation_notifications import status as notification_status
-from .automation_store import notification_preferences
-
 automation_blueprint = Blueprint('automation', __name__)
 
 def service():
@@ -130,8 +127,7 @@ def state():
 
     return jsonify(enabled=True, credentials_enabled=is_credentials_enabled(), runbooks=runbooks(current_user.id),
         profiles=[target(item) for item in resources if item['kind'] == 'ssh'],
-        vault=credentials.vault_status(current_user.id, auth.id),
-        notifications=notification_status(current_user.id))
+        vault=credentials.vault_status(current_user.id, auth.id))
 
 @automation_blueprint.post('/api/automation/runbooks')
 @login_required
@@ -279,18 +275,6 @@ def schedule_delete(schedule_id):
     _secure()
     current_app.extensions['automation_schedules'].pause(current_user.id, schedule_id, delete=True)
     return jsonify(deleted=True)
-
-
-@automation_blueprint.post('/api/automation/notifications')
-@login_required
-def notifications_update():
-    _auth()
-    _enabled()
-    data = _data()
-    if set(data) != {'enabled'} or type(data['enabled']) is not bool:
-        raise AutomationError('invalid_request')
-    notification_preferences(current_user.id, enabled=data['enabled'])
-    return jsonify(notifications=notification_status(current_user.id))
 
 
 @automation_blueprint.get('/api/automation/runs/<run_id>/export')

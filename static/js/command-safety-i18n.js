@@ -2,6 +2,7 @@
 (function () {
     const bundles = {
     "en": {
+        "commandSafety.guidance": "Usage and template details",
         "commandSafety.browse": "Browse",
         "commandSafety.recommended": "Inspection templates + personal",
         "commandSafety.all": "All tasks (includes advanced)",
@@ -15,6 +16,7 @@
         "commandSafety.scope": "Impact describes this exact template, not a safety guarantee. Changed arguments, interactive actions and sudo can change the effect."
     },
     "de": {
+        "commandSafety.guidance": "Verwendung und Vorlagendetails",
         "commandSafety.browse": "Ansicht",
         "commandSafety.recommended": "Prüfvorlagen + eigene Befehle",
         "commandSafety.all": "Alle Aufgaben (auch erweiterte)",
@@ -28,6 +30,7 @@
         "commandSafety.scope": "Die Wirkung bezieht sich auf diese genaue Vorlage und ist keine Sicherheitsgarantie. Andere Argumente, interaktive Aktionen und sudo können die Wirkung ändern."
     },
     "fr": {
+        "commandSafety.guidance": "Utilisation et détails du modèle",
         "commandSafety.browse": "Afficher",
         "commandSafety.recommended": "Modèles de contrôle + personnels",
         "commandSafety.all": "Toutes les tâches (avancées incluses)",
@@ -41,6 +44,7 @@
         "commandSafety.scope": "L’effet décrit ce modèle exact, sans garantie de sécurité. D’autres arguments, les actions interactives et sudo peuvent le modifier."
     },
     "es": {
+        "commandSafety.guidance": "Uso y detalles de la plantilla",
         "commandSafety.browse": "Ver",
         "commandSafety.recommended": "Plantillas de consulta + personales",
         "commandSafety.all": "Todas las tareas (incluidas avanzadas)",
@@ -54,6 +58,7 @@
         "commandSafety.scope": "El efecto describe esta plantilla exacta, sin garantizar su seguridad. Otros argumentos, acciones interactivas y sudo pueden cambiarlo."
     },
     "vi": {
+        "commandSafety.guidance": "Cách dùng và chi tiết mẫu",
         "commandSafety.browse": "Hiển thị",
         "commandSafety.recommended": "Mẫu kiểm tra + lệnh cá nhân",
         "commandSafety.all": "Tất cả tác vụ (gồm nâng cao)",
@@ -67,6 +72,7 @@
         "commandSafety.scope": "Tác động mô tả đúng mẫu này, không bảo đảm an toàn. Tham số khác, thao tác tương tác và sudo có thể thay đổi tác động."
     },
     "zh": {
+        "commandSafety.guidance": "用法和模板详情",
         "commandSafety.browse": "显示",
         "commandSafety.recommended": "检查模板和个人命令",
         "commandSafety.all": "所有任务（包括高级任务）",

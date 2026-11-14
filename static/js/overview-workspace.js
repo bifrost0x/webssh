@@ -46,6 +46,7 @@
 
         const wf = (key, fallback, values) => t(`workFirst.${key}`, fallback, values);
         const fileSessions = new Set();
+        const openHostContexts = new Set();
         const search = $('overviewSearch');
         const hostList = $('overviewHostList');
         const mode = () => view.dataset.reachability || 'manual';
@@ -161,9 +162,10 @@
                     const group = node('section', 'od-shortcut-group');
                     group.append(node('h3', '', wf(kind, {resume:'Resume sessions', favorites:'Favorites', recent:'Recent hosts', saved:'Saved hosts'}[kind])));
                     list.forEach(host => {
-                        const action = button('od-shortcut', host.name, () => connect(host), host.name);
+                        const action = button('od-shortcut', host.name, () => connect(host));
+                        action.append(node('span', '', host.name));
                         action.dataset.key = `shortcut:${host.id}`;
-                        action.append(node('small', '', host.destination));
+                        action.append(node('small', '', host.destination), icon(kind === 'resume' ? 'east' : 'terminal'));
                         group.append(action);
                     });
                     holder.append(group);
@@ -183,6 +185,7 @@
             }
             const host = hosts.find(item => item.id === select.value);
             const progress = Model.setupProgress(host, fileSessions);
+            $('overviewSetupCount').textContent = `${Object.values(progress).filter(Boolean).length} / ${Object.keys(progress).length}`;
             if (!state.setupInitialized && win.ProfileManager?.profilesLoaded === true) {
                 state.setupInitialized = true;
                 if (!hosts.length) $('overviewFirstConnection').open = true;
@@ -557,8 +560,13 @@
             connectButton.dataset.key = `connect:${host.id}`;
             connectButton.append(icon(host.sessionId ? 'east' : 'terminal'), node('span', '', primary));
             bottom.append(badge, editButton, connectButton);
-            const context = node('p', 'od-host-context');
-            context.textContent = wf('configHint', 'Configuration checks do not test login or permissions.');
+            const context = node('details', 'od-host-context');
+            context.dataset.hostId = host.id;
+            context.open = openHostContexts.has(host.id);
+            const summary = node('summary', '', wf('configTitle', 'Configuration readiness'));
+            summary.dataset.key = `context:${host.id}`;
+            context.append(summary,
+                node('small', '', wf('configHint', 'Configuration checks do not test login or permissions.')));
             if (state.readinessAt) context.append(node('small', '', wf('configChecked', 'Configuration checked {time}', {time: new Date(state.readinessAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
             if (host.reach && state.checkedAt) context.append(node('small', '', wf('tcpChecked', 'TCP {state} · {time}', {state: wf(host.reach.state, host.reach.state), time: new Date(state.checkedAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
             if (host.reach) context.append(node('small', '', wf('tcpHint', 'TCP checks do not authenticate. For jump routes only the jump host is checked.')));
@@ -581,6 +589,10 @@
             state.hostSignature = signature;
             const focusedKey = hostList.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
             hostList.setAttribute('aria-busy', String(!loaded));
+            hostList.querySelectorAll('.od-host-context').forEach(context => {
+                if (context.open) openHostContexts.add(context.dataset.hostId);
+                else openHostContexts.delete(context.dataset.hostId);
+            });
             hostList.replaceChildren();
             if (!loaded) {
                 for (let index = 0; index < 6; index += 1) hostList.append(node('li', 'od-host od-skeleton'));

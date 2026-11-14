@@ -3,6 +3,14 @@
     'use strict';
     const dictionaries = {
     "en": {
+        "customer.recoveryKeysTitle": "Restore credentials",
+        "customer.recoveryHostsTitle": "Review hosts and trust",
+        "customer.recoverySchedulesTitle": "Review schedules",
+        "customer.recoveryTestTitle": "Test a connection",
+        "customer.noPresets": "No presets yet. Save a layout and host selection below.",
+        "customer.newPreset": "New preset",
+        "customer.presetSaved": "Preset saved.",
+
         "customer.recoveryTitle": "Recovery check",
         "customer.recoveryHint": "Checks your account configuration without connecting to hosts or proving reachability.",
         "customer.coverageTitle": "Backup coverage",
@@ -61,6 +69,14 @@
         "customer.reloadRecovery": "Reload recovery checklist"
     },
     "de": {
+        "customer.recoveryKeysTitle": "Zugangsdaten ergänzen",
+        "customer.recoveryHostsTitle": "Hosts und Vertrauen prüfen",
+        "customer.recoverySchedulesTitle": "Zeitpläne prüfen",
+        "customer.recoveryTestTitle": "Verbindung testen",
+        "customer.noPresets": "Noch keine Vorlagen. Speichere unten ein Layout mit Host-Auswahl.",
+        "customer.newPreset": "Neue Vorlage",
+        "customer.presetSaved": "Vorlage gespeichert.",
+
         "customer.recoveryTitle": "Wiederherstellung prüfen",
         "customer.recoveryHint": "Prüft die Konfiguration deines Kontos, ohne Hosts zu verbinden oder deren Erreichbarkeit nachzuweisen.",
         "customer.coverageTitle": "Umfang des Backups",
@@ -119,6 +135,14 @@
         "customer.reloadRecovery": "Checkliste neu laden"
     },
     "fr": {
+        "customer.recoveryKeysTitle": "Rétablir les identifiants",
+        "customer.recoveryHostsTitle": "Vérifier les hôtes et leur confiance",
+        "customer.recoverySchedulesTitle": "Vérifier les planifications",
+        "customer.recoveryTestTitle": "Tester une connexion",
+        "customer.noPresets": "Aucun préréglage. Enregistrez une disposition et des hôtes ci-dessous.",
+        "customer.newPreset": "Nouveau préréglage",
+        "customer.presetSaved": "Préréglage enregistré.",
+
         "customer.recoveryTitle": "Vérifier la restauration",
         "customer.recoveryHint": "Vérifie la configuration de votre compte sans connexion aux hôtes ni vérification de leur accessibilité.",
         "customer.coverageTitle": "Contenu de la sauvegarde",
@@ -177,6 +201,14 @@
         "customer.reloadRecovery": "Recharger la liste"
     },
     "es": {
+        "customer.recoveryKeysTitle": "Restablecer credenciales",
+        "customer.recoveryHostsTitle": "Revisar hosts y confianza",
+        "customer.recoverySchedulesTitle": "Revisar programaciones",
+        "customer.recoveryTestTitle": "Probar una conexión",
+        "customer.noPresets": "Aún no hay preajustes. Guarda abajo una disposición y una selección de hosts.",
+        "customer.newPreset": "Nuevo preajuste",
+        "customer.presetSaved": "Preajuste guardado.",
+
         "customer.recoveryTitle": "Comprobar recuperación",
         "customer.recoveryHint": "Comprueba la configuración de su cuenta sin conectar con hosts ni verificar su accesibilidad.",
         "customer.coverageTitle": "Contenido de la copia",
@@ -235,6 +267,14 @@
         "customer.reloadRecovery": "Recargar lista de recuperación"
     },
     "vi": {
+        "customer.recoveryKeysTitle": "Khôi phục thông tin đăng nhập",
+        "customer.recoveryHostsTitle": "Kiểm tra máy chủ và độ tin cậy",
+        "customer.recoverySchedulesTitle": "Kiểm tra lịch chạy",
+        "customer.recoveryTestTitle": "Thử kết nối",
+        "customer.noPresets": "Chưa có mẫu. Lưu bố cục và lựa chọn máy chủ bên dưới.",
+        "customer.newPreset": "Mẫu mới",
+        "customer.presetSaved": "Đã lưu mẫu.",
+
         "customer.recoveryTitle": "Kiểm tra khôi phục",
         "customer.recoveryHint": "Kiểm tra cấu hình tài khoản của bạn mà không kết nối hoặc xác minh khả năng truy cập máy chủ.",
         "customer.coverageTitle": "Phạm vi sao lưu",
@@ -293,6 +333,14 @@
         "customer.reloadRecovery": "Tải lại danh sách khôi phục"
     },
     "zh": {
+        "customer.recoveryKeysTitle": "恢复凭据",
+        "customer.recoveryHostsTitle": "检查主机及信任",
+        "customer.recoverySchedulesTitle": "检查计划",
+        "customer.recoveryTestTitle": "测试连接",
+        "customer.noPresets": "暂无预设。请在下方保存布局和主机选择。",
+        "customer.newPreset": "新建预设",
+        "customer.presetSaved": "预设已保存。",
+
         "customer.recoveryTitle": "恢复检查",
         "customer.recoveryHint": "检查您账户的配置，不连接主机，也不验证主机是否可达。",
         "customer.coverageTitle": "备份范围",

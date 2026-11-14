@@ -145,7 +145,7 @@
         busy = true;
         notify('', true);
         notify('');
-        const controls = [...document.querySelectorAll('#automationApp button[type="submit"], .automation-dialog button[type="submit"], #previewRun, #reviewWorkspace, #scheduleList button, #openSchedule, #runbookList button, #newRunbook, #inventoryTemplate, #useWorkflowTemplate, #workflowNotifications')];
+        const controls = [...document.querySelectorAll('#automationApp button[type="submit"], .automation-dialog button[type="submit"], #previewRun, #reviewWorkspace, #scheduleList button, #openSchedule, #runbookList button, #newRunbook, #inventoryTemplate, #useWorkflowTemplate')];
         controls.forEach(button => { button.disabled = true; });
         document.body.setAttribute('aria-busy', 'true');
         try { await task(); } catch (error) {
@@ -618,13 +618,6 @@
         filterTargets();
         updateTargetCount();
     }
-    function renderNotificationStatus() {
-        const preferences=model.notifications || {enabled:false,available:false,delivery:'never'};
-        const toggle=$('workflowNotifications');
-        if (!toggle) return;
-        toggle.checked=preferences.enabled;
-        $('workflowNotificationStatus').textContent=tr(preferences.available ? 'notificationDelivery.'+preferences.delivery : 'notificationUnavailable');
-    }
     async function loadState({initial = false} = {}) {
         const generation = authorizationGeneration;
         const sequence = ++stateRequestSequence;
@@ -636,7 +629,6 @@
         model = {...result, runbooks: result.runbooks || [], vault:result.vault || {credentials:[],unlocked:false}};
         lastStateRefresh = Date.now();
         if (initial || targetsChanged) renderTargets();
-        renderNotificationStatus();
         if (initial) edit(model.runbooks[0]);
         else if (booksChanged) renderBooks();
     }
@@ -796,7 +788,16 @@
         const history = $('runHistory');
         const retained = new Set(result.runs.map(run => run.id));
         [...history.children].forEach(child => { if (!retained.has(child.dataset.resultKey)) child.remove(); });
-        if (!result.runs.length) runText(history, 'empty', 'p', tr('noRuns'), 'automation-hint');
+        if (!result.runs.length) {
+            const empty = runPart(history, 'empty', 'div', 'automation-results-empty');
+            const icon = runText(empty, 'icon', 'span', 'history', 'material-icons'); icon.setAttribute('aria-hidden', 'true');
+            runText(empty, 'title', 'h3', tr('noResultsTitle'));
+            runText(empty, 'hint', 'p', tr('noRuns'), 'automation-hint');
+            const browse = runPart(empty, 'browse', 'button', 'btn btn-secondary');
+            browse.type = 'button'; browse.textContent = tr('browseWorkflows');
+            browse.onclick = () => tab('library');
+        }
+        $('clearRuns').disabled = !result.runs.some(run => !['queued','running'].includes(run.status));
         result.runs.forEach((run, index) => {
             const exists = [...history.children].some(item => item.dataset.resultKey === run.id);
             const details = runPart(history, run.id, 'details', 'automation-run'); details.dataset.runId = run.id;
@@ -1156,14 +1157,6 @@
         if (open) $('runbookSearch').focus();
     });
     $('editorSourceSearch')?.addEventListener('input', renderEditorSources);
-    $('workflowNotifications')?.addEventListener('change', () => action(async()=>{
-        const generation=authorizationGeneration;
-        stateRequestSequence += 1;
-        try {
-            const result=await api('/api/automation/notifications',{method:'POST',body:{enabled:$('workflowNotifications').checked}});
-            if (generation === authorizationGeneration) model.notifications=result.notifications;
-        } finally { renderNotificationStatus(); }
-    }));
     $('runbookSearch').addEventListener('input', renderBooks);
     document.querySelectorAll('[data-workspace-view]').forEach(button => button.addEventListener('click', () => {
         setStage(button.dataset.workspaceView, {focus:true});
@@ -1205,7 +1198,7 @@
     window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
     window.addEventListener('languageChanged', () => {
         const currentDraft = draft(); const wasDirty = dirty; const currentStage = $('auto-runbooks').dataset.view;
-        translate(); renderNotificationStatus(); if ($('scheduleFrequency')) updateScheduleBuilder({preserveCron:true}); edit(currentDraft, {preserveSchedule:true}); dirty = wasDirty; renderTargets(); setStage(currentStage, {animate:false});
+        translate(); if ($('scheduleFrequency')) updateScheduleBuilder({preserveCron:true}); edit(currentDraft, {preserveSchedule:true}); dirty = wasDirty; renderTargets(); setStage(currentStage, {animate:false});
         historySignature = ''; if (selectedTab === 'runs') action(loadRuns);
     });
     // Open a built-in template as an unsaved draft with the given hosts selected.

@@ -33,6 +33,8 @@ test('recovery guidance names omitted credentials and current owned hosts on mob
     await page.evaluate(()=>document.querySelector('[data-recovery-check]').click());
     const dialog=page.getByRole('dialog',{name:'Recovery check',exact:true});
     await expect(dialog).toBeVisible();
+    await expect(dialog.locator('.customer-disclosure')).not.toHaveAttribute('open','');
+    await dialog.getByText('Backup coverage',{exact:true}).click();
     await expect(dialog.getByText(/Portable backups exclude/)).toBeVisible();
     await expect(dialog.getByText('Unauthorized Tailscale',{exact:true})).toBeVisible();
     await expect(dialog.getByText('Password review',{exact:true})).toHaveCount(0);

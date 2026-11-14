@@ -27,22 +27,19 @@ test('source search preserves selected source and draft, without execution',asyn
 });
 
 
-test('account alert opt-in is visible and unavailable delivery is explained on desktop and mobile',async({page},info)=>{
- await login(page,'e2e_admin',{workspace:false});await page.goto('/automation');
+test('result guidance is available on demand without external notification requests',async({page})=>{
+ await login(page,'e2e_admin',{workspace:false});
+ const notificationRequests=[];
+ page.on('request',request=>{if(request.url().includes('/api/automation/notifications'))notificationRequests.push(request.url());});
+ await page.goto('/automation');
  await page.locator('[data-auto-tab="runs"]').click();
- await expect(page.locator('#workflowNotifications')).not.toBeChecked();
- await expect(page.locator('#workflowNotificationStatus')).toContainText('unavailable');
- const saved=page.waitForResponse(response=>response.url().endsWith('/api/automation/notifications')&&response.request().method()==='POST');
- await page.locator('#workflowNotifications').check();await saved;
- await expect(page.locator('#workflowNotifications')).toBeChecked();
- await expect(page.getByText('Only the latest 50 runs', {exact:false})).toBeVisible();
- await expect(page.getByText('Step output appears after the step completes.',{exact:false})).toBeVisible();
- for (const width of [390,1440]) {
-  await page.setViewportSize({width,height:900});
-  await page.locator('#workflowNotifications').scrollIntoViewIfNeeded();
-  await expect(page.locator('#workflowNotifications')).toBeVisible();
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.screenshot({path:info.outputPath('workflow-alerts-'+width+'.png')});
- }
- await page.locator('#workflowNotifications').uncheck();
+ await expect(page.locator('#workflowNotifications')).toHaveCount(0);
+ const help=page.locator('.automation-results-help');
+ await expect(help.locator('[data-auto-i18n="retentionExplanation"]')).toBeHidden();
+ await help.locator('summary').focus();await page.keyboard.press('Enter');
+ await expect(help).toContainText('Only the latest 50 runs');
+ await expect(help.locator('[data-auto-i18n="stepOutputExplanation"]')).toBeVisible();
+ await page.locator('#refreshRuns').click();
+ await expect(help).toHaveAttribute('open','');
+ expect(notificationRequests).toEqual([]);
 });

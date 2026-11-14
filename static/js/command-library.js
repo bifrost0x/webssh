@@ -562,43 +562,59 @@ const CommandLibrary = {
             });
         };
         header.append(title, close);
-        const source = document.createElement('p');
-        source.className = 'command-source-label';
-        source.textContent = this.commandSourceLabel(command);
-        details.append(header, source);
+        details.append(header);
         const safety = this.commandSafety(command);
-        const impact = document.createElement('p');
-        impact.className = 'command-impact-label';
-        impact.textContent = this.impactLabel(command);
-        details.append(impact);
-        if (safety) {
-            const prerequisites = document.createElement('p');
-            prerequisites.className = 'command-template-hint';
-            prerequisites.textContent = `${window.i18n?.t('commandSafety.requires') || 'Required on target'}: ${safety.tool} · ${(command.os || []).join(', ')}. ${window.i18n?.t('commandSafety.prerequisites') || 'Check the installed tool, shell, permissions and arguments before use.'}`;
-            const scope = document.createElement('p');
-            scope.className = 'command-template-hint';
-            scope.textContent = window.i18n?.t('commandSafety.scope') || 'Impact describes this exact template, not a safety guarantee. Changed arguments, interactive actions and sudo can change the effect.';
-            details.append(prerequisites, scope);
-        }
-        const fields = [
-            ['commands.command', 'Command', command.command, true],
-            ...(command.parameters ? [
-                ['commands.parameters', 'Parameters', command.parameters, true],
-                ['commands.preview', 'Preview', `${command.command} ${command.parameters}`, true],
-            ] : []),
-            ['commands.description', 'Description', command.description, false],
-            ['commands.operatingSystems', 'Operating systems', (command.os || ['all']).join(', '), false],
-        ];
-        fields.forEach(([key, fallback, value, code]) => {
-            const field = document.createElement('div');
-            field.className = 'command-detail-field';
+        const field = (key, fallback, value, code = false) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'command-detail-field';
             const label = document.createElement('h4');
             label.textContent = window.i18n?.t(key) || fallback;
             const content = document.createElement(code ? 'pre' : 'p');
             content.textContent = value || '—';
-            field.append(label, content);
-            details.append(field);
-        });
+            wrapper.append(label, content);
+            return wrapper;
+        };
+        details.append(field('commands.command', 'Command', [command.command, command.parameters].filter(Boolean).join(' '), true));
+        const metadata = document.createElement('div');
+        metadata.className = 'command-detail-metadata';
+        const impact = document.createElement('span');
+        impact.className = 'command-impact-label';
+        impact.dataset.impact = safety?.impact || 'unknown';
+        impact.textContent = this.impactLabel(command);
+        const source = document.createElement('span');
+        source.className = 'command-source-label';
+        source.textContent = this.commandSourceLabel(command);
+        metadata.append(impact, source);
+        details.append(metadata);
+        const description = document.createElement('p');
+        description.className = 'command-detail-description';
+        description.textContent = command.description || '—';
+        details.append(description);
+        const prerequisites = document.createElement('p');
+        prerequisites.className = 'command-detail-prerequisites';
+        prerequisites.textContent = safety
+            ? `${window.i18n?.t('commandSafety.requires') || 'Required on target'}: ${safety.tool} · ${(command.os || ['all']).join(', ')}`
+            : `${window.i18n?.t('commands.operatingSystems') || 'Operating systems'}: ${(command.os || ['all']).join(', ')}`;
+        details.append(prerequisites);
+        const guidance = document.createElement('details');
+        guidance.className = 'command-detail-guidance';
+        const summary = document.createElement('summary');
+        summary.textContent = window.i18n?.t('commandSafety.guidance') || 'Usage and template details';
+        guidance.append(summary);
+        if (safety) {
+            for (const key of ['prerequisites', 'scope']) {
+                const note = document.createElement('p');
+                note.className = 'command-template-hint';
+                note.textContent = window.i18n?.t(`commandSafety.${key}`) || (key === 'scope'
+                    ? 'Impact describes this exact template, not a safety guarantee. Changed arguments, interactive actions and sudo can change the effect.'
+                    : 'Check the installed tool, shell, permissions and arguments before use.');
+                guidance.append(note);
+            }
+        }
+        if (command.parameters) {
+            guidance.append(field('commands.command', 'Command', command.command, true));
+            guidance.append(field('commands.parameters', 'Parameters', command.parameters, true));
+        }
         if (command.isSystem && command.parameters) {
             const notice = document.createElement('p');
             notice.className = 'command-template-hint';
@@ -633,7 +649,8 @@ const CommandLibrary = {
         hintText.setAttribute('data-i18n', 'commands.executionHint');
         hintText.textContent = window.i18n?.t('commands.executionHint') || 'Run commands from the command tool in a session.';
         hint.append(hintIcon, hintText);
-        details.append(hint);
+        guidance.append(hint);
+        details.append(guidance);
     },
 
     showAddCommandForm(options = {}) {

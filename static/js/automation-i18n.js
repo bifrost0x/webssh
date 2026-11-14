@@ -673,22 +673,16 @@
     "templateOpenedFor": "Vorlage als Entwurf mit {count} ausgewählten Hosts geöffnet. Befehle vor dem Ausführen prüfen."
     });
     Object.assign(strings.en, {
+        resultsHelp:'Output, retention & exports', noResultsTitle:'No results yet', browseWorkflows:'Choose a workflow',
         sourceSearch:'Search commands, command sets and templates', exportRun:'Export {format}',
         retentionExplanation:'Only the latest 50 runs are retained, within a 1 MiB account history limit. Older runs may be removed sooner when the limit is reached. Exports include only currently retained results and bounded output.',
         stepOutputExplanation:'Step output appears after the step completes. A long-running step can stay silent until its timeout. Unknown results require checking the host before another run; they are never replayed automatically.',
-        notificationOptIn:'Send external alerts for failed, unknown or reapproval-required workflows',
-        notificationPrivacy:'Optional for this account. Alerts go to the administrator-configured HTTPS service and contain only an event type and status, without account, host, command or output content. Delivery errors do not change the run result. No retry or replay.',
-        notificationUnavailable:'External alerts unavailable: an administrator must configure a valid HTTPS endpoint. Your preference is retained.',
-        'notificationDelivery.pending':'Alert waiting for one delivery attempt.', 'notificationDelivery.never':'No alert delivery attempted.', 'notificationDelivery.sent':'Last alert delivered.', 'notificationDelivery.failed':'Last alert delivery could not be confirmed. Check the external service with your administrator; no automatic retry.', 'notificationDelivery.unavailable':'Last alert could not be sent because the service was unavailable.'
     });
     Object.assign(strings.de, {
+        resultsHelp:'Ausgabe, Aufbewahrung & Exporte', noResultsTitle:'Noch keine Ergebnisse', browseWorkflows:'Workflow auswählen',
         sourceSearch:'Befehle, Command Sets und Vorlagen suchen', exportRun:'{format} exportieren',
         retentionExplanation:'Gespeichert werden maximal die letzten 50 Läufe innerhalb von 1 MiB Verlauf pro Konto. Bei Erreichen des Limits werden ältere Läufe früher entfernt. Exporte enthalten nur noch gespeicherte Ergebnisse und begrenzte Ausgabe.',
         stepOutputExplanation:'Die Ausgabe erscheint nach Abschluss eines Schritts. Lange Schritte können bis zum Timeout ohne Ausgabe bleiben. Bei unklarem Ergebnis vor einem weiteren Lauf den Host prüfen; es erfolgt keine automatische Wiederholung.',
-        notificationOptIn:'Externe Hinweise bei Fehlern, unklarem Ergebnis oder nötiger neuer Workflow-Freigabe senden',
-        notificationPrivacy:'Optional für dieses Konto. Hinweise gehen an den administrativ konfigurierten HTTPS-Dienst und enthalten nur Ereignistyp und Status, keine Konto-, Host-, Befehls- oder Ausgabedaten. Zustellfehler ändern kein Laufergebnis. Keine automatische Wiederholung.',
-        notificationUnavailable:'Externe Hinweise nicht verfügbar: Ein Administrator muss einen gültigen HTTPS-Endpunkt konfigurieren. Die Einstellung bleibt gespeichert.',
-        'notificationDelivery.pending':'Hinweis wartet auf einen Zustellversuch.', 'notificationDelivery.never':'Noch kein Zustellversuch.', 'notificationDelivery.sent':'Letzter Hinweis zugestellt.', 'notificationDelivery.failed':'Letzte Zustellung nicht bestätigt. Den externen Dienst mit dem Administrator prüfen; keine automatische Wiederholung.', 'notificationDelivery.unavailable':'Letzter Hinweis konnte wegen fehlendem Dienst nicht gesendet werden.'
     });
     window.AutomationText = Object.freeze({t(key, values = {}) {
         const lang = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';

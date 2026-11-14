@@ -70,8 +70,8 @@ test('system command details open a personal copy without running a session comm
     await expect(details).toBeVisible();
     expect((await details.boundingBox()).width).toBeCloseTo(420, 0);
     await expect(details.locator('.command-source-label')).toHaveText('System · fixed template');
-    await expect(details.locator('.command-detail-field pre').first()).toHaveText(command.command);
-    await expect(details.locator('.command-detail-field pre').nth(2)).toHaveText('df -h');
+    await expect(details.locator('.command-detail-field pre').first()).toHaveText('df -h');
+    await expect(details.locator('.command-detail-field pre').nth(2)).toHaveText('-h');
     await expect(details.locator('input, textarea, [contenteditable="true"]')).toHaveCount(0);
     await expect(details.locator('.command-execution-hint')).toContainText('Run commands from the command tool in a session.');
     await expect(details.getByRole('button', {name: 'Edit', exact: true})).toHaveCount(0);
@@ -262,3 +262,32 @@ for (const width of [360, 390]) for (const language of ['en', 'de']) {
         await expect(page.locator('#commandSearchInput')).toHaveValue('apt upgrade');
     });
 }
+
+
+test('command inspector keeps the exact command and impact visible with keyboard accessible guidance', async ({page}) => {
+    await login(page);
+    await page.evaluate(() => window.CommandLibrary.openLibrary());
+    await expect(page.locator('.command-row').first()).toBeVisible();
+    await page.evaluate(() => {
+        window.socket.off('commands_list');
+        window.CommandLibrary.commands = [{id: 'refinement-fixture', name: 'Upgrade installed packages', command: 'sudo apt', parameters: 'upgrade', description: 'Upgrade installed packages using the configured package repositories.', os: ['linux'], isSystem: true, safety: {impact: 'changes-system', tool: 'apt', command: 'sudo apt', parameters: 'upgrade'}}];
+        window.CommandLibrary.selectCommand('refinement-fixture');
+    });
+    const details = page.locator('#commandLibraryDetails');
+    for (const width of [1440, 390]) {
+        await page.setViewportSize({width, height: 1000});
+        await expect(details.locator('.command-detail-field pre').first()).toBeInViewport();
+        await expect(details.locator('.command-impact-label')).toHaveText('Changes system or data');
+        await expect(details.locator('.command-impact-label')).toBeInViewport();
+        await expect(details.locator('.command-detail-guidance')).not.toHaveAttribute('open', '');
+        await page.screenshot({path: test.info().outputPath(`command-inspector-${width}.png`)});
+        const summary = details.locator('summary');
+        await summary.focus();
+        await page.keyboard.press('Enter');
+        await expect(details.locator('.command-detail-guidance')).toHaveAttribute('open', '');
+        await expect(details.locator('.command-template-hint').filter({hasText: 'not a safety guarantee'})).toBeVisible();
+        await page.screenshot({path: test.info().outputPath(`command-inspector-expanded-${width}.png`)});
+        await summary.click();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+});

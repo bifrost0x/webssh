@@ -31,10 +31,10 @@
                 <a href="{{ url_for('security_center') }}#preferences" data-i18n="workFirst.startPage">Choose your start page</a></div>
             <div id="overviewShortcuts" class="od-shortcuts"></div>
             <details id="overviewFirstConnection" class="od-first-connection">
-                <summary data-i18n="workFirst.setup">Your first connection, step by step</summary>
+                <summary><span data-i18n="workFirst.setup">First connection</span><span id="overviewSetupCount" class="od-setup-count"></span></summary>
                 <p data-i18n="workFirst.setupHint">Progress reflects your selected host and this browser's live session. Nothing connects or trusts a key automatically.</p>
-                <label for="overviewSetupHost" data-i18n="workFirst.selectHost">Host to set up</label>
-                <select id="overviewSetupHost" class="form-control"></select>
+                <div class="od-setup-target"><label for="overviewSetupHost" data-i18n="workFirst.selectHost">Host to set up</label>
+                <select id="overviewSetupHost" class="form-control"></select></div>
                 <ol id="overviewSetupSteps"></ol>
                 <p data-i18n="workFirst.automationHint">A successful interactive connection does not approve a workflow or schedule. Automation needs its own credentials, host trust and approval.</p>
             </details>

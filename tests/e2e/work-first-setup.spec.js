@@ -1,3 +1,4 @@
+const path = require('node:path');
 const {test, expect} = require('playwright/test');
 const {login, installSshConnectTrap, sshAttempts, assertNoExternalRequests} = require('./helpers');
 
@@ -20,10 +21,13 @@ for (const width of [390, 1440]) {
         await expect(first.getByRole('button', {name:'Favorite task host',exact:true})).toBeVisible();
         await expect(first.getByRole('button', {name:'Recent task host',exact:true})).toBeVisible();
         expect(await first.boundingBox().then(box => box.y)).toBeLessThan(await page.locator('#odBoard').boundingBox().then(box => box.y));
+        await expect(page.locator('#overviewSetupCount')).toHaveText('1 / 5');
+        await page.screenshot({path:path.join(process.env.WEBSSH_E2E_OUTPUT_DIR || 'test-results', `home-${width}-collapsed.png`)});
         await first.locator('summary').click();
         await page.locator('#overviewSetupHost').selectOption('wf-favorite');
         await expect(page.locator('[data-step="host"]')).toHaveAttribute('data-complete','true');
         for (const step of ['auth','trust','terminal','files']) await expect(page.locator(`[data-step="${step}"]`)).toHaveAttribute('data-complete','false');
+        await page.screenshot({path:path.join(process.env.WEBSSH_E2E_OUTPUT_DIR || 'test-results', `home-${width}-guide.png`)});
         // Merely opening the guide, changing its target, or searching never connects.
         await page.locator('#overviewSetupHost').selectOption('wf-recent');
         await page.locator('#overviewSearch').fill('Recent task host');
@@ -100,4 +104,41 @@ test('mobile saved-host fallback offers existing destinations before metrics and
     await page.keyboard.press('Shift+Tab');
     await expect(link).toBeFocused();
     expect(await link.evaluate(el=>getComputedStyle(el).outlineStyle)).not.toBe('none');
+});
+
+
+test('host context keeps disclosure and keyboard focus after profile updates', async ({page}) => {
+    await login(page, 'e2e_admin', {workspace:false});
+    await page.evaluate(() => {
+        ProfileManager.setProfiles([{id:'context-host', name:'Context host', host:'192.0.2.31', username:'operator'}]);
+    });
+    const summary = page.locator('[data-key="context:context-host"]');
+    const details = page.locator('.od-host-context[data-host-id="context-host"]');
+    await summary.click();
+    await expect(details).toHaveAttribute('open', '');
+    await summary.focus();
+    await page.evaluate(() => {
+        ProfileManager.setProfiles([{id:'context-host', name:'Renamed context host', host:'192.0.2.31', username:'operator'}]);
+    });
+    await expect(page.locator('#overviewHostList')).toContainText('Renamed context host');
+    await expect(details).toHaveAttribute('open', '');
+    await expect(summary).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(details).not.toHaveAttribute('open');
+    await page.evaluate(() => {
+        ProfileManager.setProfiles([{id:'context-host', name:'Updated context host', host:'192.0.2.31', username:'operator'}]);
+    });
+    await expect(page.locator('#overviewHostList')).toContainText('Updated context host');
+    await expect(details).not.toHaveAttribute('open');
+    await expect(summary).toBeFocused();
+});
+
+test('mobile setup exposes completion status to assistive technology', async ({page}) => {
+    await page.setViewportSize({width:390, height:900});
+    await login(page, 'e2e_admin', {workspace:false});
+    await page.evaluate(() => ProfileManager.setProfiles([{id:'accessible-host', name:'Accessible host', host:'192.0.2.32', username:'operator'}]));
+    await page.locator('#overviewFirstConnection summary').click();
+    await expect(page.locator('#overviewSetupSteps [data-step="host"]')).toHaveAttribute('data-complete', 'true');
+    expect(await page.locator('#overviewSetupSteps [data-step="host"]').ariaSnapshot()).toContain('Observed');
+    expect(await page.locator('#overviewSetupSteps [data-step="auth"]').ariaSnapshot()).toContain('Pending');
 });

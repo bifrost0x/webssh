@@ -167,25 +167,3 @@ def delete_runbook(user_id, book_id):
             raise AutomationError('not_found')
         document['runbooks'] = [book for book in document['runbooks'] if book['id'] != book_id]
         write_document(path, document)
-
-@user_operation
-def notification_preferences(user_id, enabled=None, delivery=None):
-    """Separate additive document: existing workflow/history formats stay unchanged."""
-    def valid(doc):
-        return (isinstance(doc, dict) and set(doc) == {'version', 'enabled', 'delivery'}
-                and doc['version'] == 1 and type(doc['enabled']) is bool
-                and doc['delivery'] in {'never', 'pending', 'sent', 'failed', 'unavailable'})
-    with storage_lock(f'automation-notifications:{user_id}'):
-        path = user_path(user_id, 'automation-notifications.json')
-        document = read_document(path, dict(version=1, enabled=False, delivery='never'), valid)
-        if enabled is not None:
-            if type(enabled) is not bool:
-                raise AutomationError('invalid_request')
-            document['enabled'] = enabled
-        if delivery is not None:
-            if delivery not in {'pending', 'sent', 'failed', 'unavailable'}:
-                raise AutomationError('invalid_request')
-            document['delivery'] = delivery
-        if enabled is not None or delivery is not None:
-            write_document(path, document)
-        return document
