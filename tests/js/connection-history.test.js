@@ -174,3 +174,46 @@ test('keeps at most ten entries and excludes the exact 30-day boundary', () => {
     assert.equal(retained[0].host, 'inside.internal');
     assert.equal(retained.some(entry => entry.host === 'boundary.internal'), false);
 });
+
+test('history retains route identity and never persists connection secrets', () => {
+    const storage = createStorage();
+    const history = createConnectionHistory({storage, scope:'user-route', now:()=>1_000});
+    history.addConnection('target.internal',22,'user',{socks_proxy_id:'proxy-a',via_socks:true,
+        password:'target-secret',credential_id:'private-credential',credential_target_token:'private-token',
+        socks_proxy:{password:'proxy-secret',username:'proxy-user',host:'private-proxy'}});
+    assert.deepEqual(history.getHistory(),[{host:'target.internal',port:22,username:'user',timestamp:1_000,socks_proxy_id:'proxy-a'}]);
+    const persisted=storage.getItem(history.storageKey);
+    for (const secret of ['target-secret','proxy-secret','private-credential','private-token','proxy-user','private-proxy']) assert.equal(persisted.includes(secret),false);
+});
+
+test('history deduplicates by endpoint and route without replacing direct or other proxies', () => {
+    const history=createConnectionHistory({storage:createStorage(),scope:'user-route',now:()=>1_000});
+    history.addConnection('target.internal',22,'user');
+    history.addConnection('target.internal',22,'user',{socks_proxy_id:'proxy-a'});
+    history.addConnection('target.internal',22,'user',{socks_proxy_id:'proxy-b'});
+    history.addConnection('target.internal',22,'user',{jump_host_id:'jump-a'});
+    history.addConnection('target.internal',22,'user',{socks_proxy_id:'proxy-a'});
+    assert.equal(history.getHistory().length,4);
+    assert.equal(history.getHistory()[0].socks_proxy_id,'proxy-a');
+    assert.equal(history.getHistory().filter(entry=>!entry.socks_proxy_id&&!entry.jump_host_id).length,1);
+});
+
+test('invalid or unknown routed histories are discarded instead of normalized into direct routes', () => {
+    const entries=[
+        {socks_proxy_id:42}, {socks_proxy_id:{}}, {socks_proxy_id:'x'.repeat(65)},
+        {socks_proxy_id:'bad/reference'}, {via_socks:true}, {via_socks:true,socks_proxy_id:''},
+        {socks_proxy_id:'proxy',jump_host_id:'jump'}, {via_jump:true},
+    ].map(route=>({host:'target.internal',port:22,username:'user',timestamp:1_000,...route}));
+    const storage=createStorage({'recentConnections:user-route':JSON.stringify(entries)});
+    const history=createConnectionHistory({storage,scope:'user-route',now:()=>1_001});
+    assert.deepEqual(history.getHistory(),[]);
+    history.addConnection('target.internal',22,'user',{via_socks:true});
+    assert.deepEqual(history.getHistory(),[]);
+});
+
+test('inactive account cleanup preserves SOCKS route references', () => {
+    const entry={host:'target.internal',port:22,username:'user',timestamp:1_000,socks_proxy_id:'proxy-a'};
+    const storage=createStorage({'recentConnections:other':JSON.stringify([entry])});
+    createConnectionHistory({storage,scope:'active',now:()=>1_001});
+    assert.deepEqual(JSON.parse(storage.getItem('recentConnections:other')),[entry]);
+});

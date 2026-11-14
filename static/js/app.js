@@ -507,6 +507,17 @@
                 const label = document.createElement('span');
                 label.className = 'recent-conn-label';
                 label.textContent = `${conn.username}@${conn.host}:${conn.port}`;
+                if (conn.socks_proxy_id) {
+                    const proxy = window.SocksProxyManager?.getById(conn.socks_proxy_id);
+                    const route = proxy
+                        ? (window.i18n?.t('connection.socksProxyVia') || 'via SOCKS5 {name}').replace('{name}', proxy.name)
+                        : window.i18n?.t('connection.socksProxyMissing') || 'SOCKS5 proxy missing';
+                    label.textContent += ` · ${route}`;
+                } else if (conn.jump_host_id) {
+                    const jump = window.JumpHostManager?.getById(conn.jump_host_id);
+                    label.textContent += ` · ${window.i18n?.t('connection.jumpHost') || 'Jump Host'}${jump ? ': ' + jump.name : ''}`;
+                }
+                option.setAttribute('aria-label', label.textContent);
                 const time = document.createElement('span');
                 time.className = 'recent-conn-time';
                 time.textContent = this.formatTime(conn.timestamp);
@@ -516,6 +527,12 @@
                     document.getElementById('hostInput').value = conn.host;
                     document.getElementById('portInput').value = conn.port;
                     document.getElementById('usernameInput').value = conn.username;
+                    if (conn.socks_proxy_id || conn.jump_host_id) {
+                        window.prepareSessionReconnectJump({
+                            socksProxyId: conn.socks_proxy_id, viaSocks: Boolean(conn.socks_proxy_id),
+                            jumpHostId: conn.jump_host_id, reconnectRouteKnown: true,
+                        }, {applyToForm: true});
+                    }
                     document.getElementById('passwordInput').focus();
                 });
                 container.appendChild(option);
@@ -1813,7 +1830,10 @@
             : `Connected to ${data.username}@${data.host}`;
         showNotification(connMsg, 'success');
 
-        ConnectionHistory.addConnection(data.host, data.port, data.username);
+        ConnectionHistory.addConnection(data.host, data.port, data.username, {
+            socks_proxy_id: data.socks_proxy_id, via_socks: data.via_socks,
+            jump_host_id: data.jump_host_id, via_jump: data.via_jump,
+        });
 
     });
 
