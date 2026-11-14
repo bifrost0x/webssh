@@ -2527,6 +2527,7 @@
             showNotification((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error');
             return;
         }
+        const binding = window.TerminalPasteGuard?.capture(active, TerminalManager.terminals[active]);
         let clipboardText;
         try {
             clipboardText = navigator.clipboard.readText();
@@ -2536,16 +2537,7 @@
         }
         Promise.resolve(clipboardText)
             .then(text => {
-                if (window.socket && text) {
-                    const terminal = TerminalManager.terminals[active];
-                    if (terminal?.paste) {
-                        terminal.paste(text);
-                    } else if (window.SSHInput) {
-                        window.SSHInput.sendText(active, text);
-                    } else {
-                        window.socket.emit('ssh_input', { session_id: active, data: text.replace(/\r\n|\n/g, '\r') });
-                    }
-                }
+                if (text) return window.TerminalPasteGuard?.paste(binding, text);
             })
             .catch(() => showNotification((window.i18n ? window.i18n.t('toast.clipboardDenied') : 'Clipboard access denied'), 'error'));
     }
@@ -2590,13 +2582,9 @@
             try {
                 let sent = false;
                 if (window.socket?.connected === true) {
-                    const data = submitted + '\r';
-                    if (window.SSHInput) {
-                        sent = await window.SSHInput.sendText(active, data);
-                    } else {
-                        window.socket.emit('ssh_input', { session_id: active, data: data.replace(/\r\n|\n/g, '\r') });
-                        sent = true;
-                    }
+                    const binding = window.TerminalPasteGuard?.capture(active);
+                    sent = await window.TerminalPasteGuard?.review(binding, submitted,
+                        value => window.SSHInput?.sendText(active, value + '\r'));
                 }
                 if (sent && mobileInput.value === submitted) mobileInput.value = '';
             } finally {
@@ -2605,6 +2593,16 @@
         };
 
         if (mobileInput) {
+            // Input[type=text] strips line breaks. Review the original clipboard
+            // before the browser can silently turn several commands into one.
+            mobileInput.addEventListener('paste', event => {
+                const text = event.clipboardData?.getData('text/plain') || '';
+                if (!window.TerminalPasteGuard?.needsReview(text)) return;
+                event.preventDefault();
+                const active = SessionManager.getActiveSession();
+                const binding = window.TerminalPasteGuard.capture(active, TerminalManager.terminals[active]);
+                window.TerminalPasteGuard.paste(binding, text);
+            });
             mobileInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();

@@ -9,7 +9,7 @@ The terminal supports:
 
 - multiple session tabs;
 - one-, two-, and four-pane layouts;
-- broadcast input across open sessions;
+- broadcast input to explicitly selected sessions;
 - a command palette with `Ctrl+K`;
 - terminal search with `Ctrl+F`;
 - tab switching with `Ctrl+1` through `Ctrl+9`;
@@ -101,8 +101,22 @@ capability checks and application-specific setup.
 
 ## Broadcast input
 
-Broadcast mode sends the same input to every open SSH session. Treat it as a
-high-impact operation:
+Broadcast mode sends the same input to explicitly selected connected SSH
+sessions. Opening broadcast shows a recipient picker with each `user@host:port`
+and session identifier, so sessions with identical names remain distinguishable.
+The selection stays fixed: new sessions are not added automatically. A removed,
+disconnected or reconnected recipient blocks sending until you choose the
+recipients again. Use **Recipients** to review or change the selection.
+
+The compact command field preserves pasted line breaks; pasting or editing does
+not send anything. Press **Shift+Enter** to add a line, or **Enter** / **Send to
+selected** to submit. Multiline or control-character input opens the same safety
+preview used by terminal paste, listing every selected recipient. Confirmation
+is bound to that complete selection; changing it or reconnecting a recipient
+cancels the pending send. Cancel keeps the draft. Broadcast appends Enter when
+sending, including after removal of trailing line breaks in the preview.
+
+Treat broadcast as a high-impact operation:
 
 - verify the visible target set;
 - start with a harmless command;
@@ -110,6 +124,30 @@ high-impact operation:
 - disable broadcast immediately after the intended action.
 
 WebSSH does not interpret whether a command is safe for every target.
+The command is retained if a recipient rejects input. A partial-send warning
+means some sessions may already have executed it; inspect those sessions before
+retrying.
+
+## Review pasted terminal input
+
+Pasting a safe single line into a terminal remains immediate. Text containing
+line breaks or control characters opens a preview showing the exact destination
+and visible markers such as `[LF]`, `[CR]`, `[TAB]` and `[ESC]`. You can remove
+trailing line breaks before confirming. This is an input review, not a judgment
+that the command is safe.
+
+The review covers browser and context-menu paste, the command palette's
+**Paste Clipboard** action, and the mobile command input. Pasting such text into
+the mobile command field opens the same review before the browser can strip line
+breaks; confirmation pastes directly into the displayed terminal. Cancel sends
+nothing. Switching sessions, closing a session or losing its connection cancels
+the pending review, including an outstanding clipboard read. Reconnect and
+switching back do not reuse the earlier approval.
+
+Confirmed terminal paste retains xterm's bracketed-paste behavior when the
+remote application enables it. A terminal without bracketed-paste support may
+execute each pasted line immediately. Input continues through the existing
+UTF-8 chunking and backpressure handling.
 
 ## Focused session workspace
 

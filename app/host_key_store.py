@@ -23,6 +23,9 @@ from .storage_utils import (
 )
 
 
+_PREVIEW_SECRET = os.urandom(32)
+
+
 class HostKeyNotAccepted(paramiko.SSHException):
     """First-contact trust requires an explicit interactive decision."""
 
@@ -274,6 +277,94 @@ class HostKeyStore:
     def missing_key_policy(self, decision=None, context="target") -> paramiko.MissingHostKeyPolicy:
         return _PerUserMissingHostKeyPolicy(self, decision, context)
 
+    def effective_targets(self, targets):
+        """Explain matching trust for caller-owned endpoints, never host patterns.
+
+        This is a configuration snapshot, not a verification of a remote server.
+        Resolve entries in the same order and with the same revocation matcher
+        as the connection layer. Global aliases, comments and key material are
+        deliberately excluded from this user-facing projection.
+        """
+        with self._account_access(), storage_lock("host_keys:global"), storage_lock(self._lock_key):
+            global_file = self._load_or_empty(self.global_path)
+            user_file = self._load_or_empty(self.user_path)
+        return self._effective_target_reports(targets, global_file, user_file)
+
+    @staticmethod
+    def _effective_target_reports(targets, global_file, user_file):
+        layered = _LayeredHostKeys(global_file, user_file)
+        reports = []
+        for target in targets:
+            host, port = target['host'], int(target.get('port') or 22)
+            hostname = host if port == 22 else f'[{host}]:{port}'
+            effective = layered.lookup(hostname) or {}
+            selected = set()
+            keys = []
+            for scope, parsed in [('user', user_file), ('global', global_file)]:
+                for collection, revoked in [(parsed.trusted, False), (parsed.revoked, True)]:
+                    for entry in collection._entries:
+                        if not _entry_matches_hostname(hostname, entry):
+                            continue
+                        algorithm = entry.key.get_name()
+                        if revoked or layered.is_revoked(hostname, entry.key):
+                            status = 'revoked'
+                        elif algorithm not in selected and effective.get(algorithm) == entry.key:
+                            status = 'effective'
+                            selected.add(algorithm)
+                        else:
+                            status = 'overridden'
+                        fingerprint = base64.b64encode(hashlib.sha256(entry.key.asbytes()).digest()).decode('ascii').rstrip('=')
+                        keys.append({'scope': scope, 'algorithm': algorithm,
+                                     'fingerprint': f'SHA256:{fingerprint}', 'status': status})
+            reports.append({key: target[key] for key in ('id', 'name', 'kind') if key in target}
+                           | {'host': host, 'port': port, 'keys': keys})
+        return reports
+
+    def _preview_revision(self, entry_id, global_file, user_file):
+        # Opaque, process-local optimistic concurrency token; it must not expose
+        # a digest that could be used to guess unrelated global host inventory.
+        payload = (str(self.user_id).encode() + b'\0' + entry_id.encode()
+                   + hashlib.sha256(global_file.raw).digest()
+                   + hashlib.sha256(user_file.raw).digest())
+        return hmac.new(_PREVIEW_SECRET, payload, hashlib.sha256).hexdigest()
+
+    def deletion_impact(self, entry_id, targets):
+        """Preview exact personal-entry deletion without writing either store."""
+        with self._account_access(), storage_lock("host_keys:global"), storage_lock(self._lock_key):
+            global_file = self._load_or_empty(self.global_path)
+            user_file = self._load_or_empty(self.user_path)
+            kept = []
+            removed = None
+            for raw_line in user_file.raw.splitlines(keepends=True):
+                metadata = self._management_entry(
+                    raw_line.rstrip(b'\r\n'), scope='user',
+                    owner_id=self.user_id, timestamp=None,
+                )
+                if metadata is not None and metadata['id'] == entry_id:
+                    fields = raw_line.decode('utf8').strip().split()
+                    if fields[0].startswith('@'):
+                        fields.pop(0)
+                    removed = HostKeyEntry.from_line(' '.join(fields[:3]))
+                else:
+                    kept.append(raw_line)
+            if removed is None:
+                return None
+            names = [target['host'] if int(target.get('port') or 22) == 22
+                     else f"[{target['host']}]:{int(target['port'])}" for target in targets]
+            affected = [target for target, hostname in zip(targets, names)
+                        if _entry_matches_hostname(hostname, removed)]
+            unresolved = any(
+                '*' in pattern or '?' in pattern
+                or not any(_host_pattern_matches(hostname, pattern) for hostname in names)
+                for pattern in removed.hostnames if not pattern.startswith('!')
+            )
+            remaining = self._parse_raw(b''.join(kept))
+            return {
+                'revision': self._preview_revision(entry_id, global_file, user_file),
+                'targets': self._effective_target_reports(affected, global_file, remaining),
+                'unresolved': unresolved,
+            }
+
     def record(self, hostname: str, key: paramiko.PKey) -> None:
         """Append a first-seen key without rewriting the user's raw file."""
         with self._account_access(), storage_lock("host_keys:global"), storage_lock(self._lock_key):
@@ -323,15 +414,23 @@ class HostKeyStore:
                 owner_id=self.user_id,
             )
 
-    def delete_entry(self, entry_id):
+    def delete_entry(self, entry_id, *, expected_revision=None):
         """Delete one trusted user key while preserving unrelated raw lines."""
-        with self._account_access():
-            return self.delete_file_entry(
+        with self._account_access(), storage_lock("host_keys:global"), storage_lock(self._lock_key):
+            if expected_revision is not None:
+                revision = self._preview_revision(
+                    entry_id, self._load_or_empty(self.global_path),
+                    self._load_or_empty(self.user_path),
+                )
+                if (not isinstance(expected_revision, str)
+                        or not re.fullmatch(r'[0-9a-f]{64}', expected_revision)
+                        or not hmac.compare_digest(expected_revision, revision)):
+                    raise ValueError('trust_changed')
+            return self._delete_file_entry_locked(
                 self.user_path,
                 entry_id,
                 scope="user",
                 owner_id=self.user_id,
-                lock_key=self._lock_key,
             )
 
     @classmethod
@@ -369,33 +468,37 @@ class HostKeyStore:
         lock_key,
     ):
         access = bind_user_data_access(owner_id) if scope == 'user' else None
+        with (access() if access is not None else nullcontext()), storage_lock(lock_key):
+            return cls._delete_file_entry_locked(path, entry_id, scope=scope, owner_id=owner_id)
+
+    @classmethod
+    def _delete_file_entry_locked(cls, path, entry_id, *, scope, owner_id):
         if not isinstance(entry_id, str) or not re.fullmatch(
             r"[0-9a-f]{64}", entry_id
         ):
             return False
         path = Path(path)
-        with (access() if access is not None else nullcontext()), storage_lock(lock_key):
-            try:
-                raw = path.read_bytes()
-            except FileNotFoundError:
-                return False
-            kept = []
-            removed = False
-            for raw_line in raw.splitlines(keepends=True):
-                candidate = cls._management_entry(
-                    raw_line.rstrip(b"\r\n"),
-                    scope=scope,
-                    owner_id=owner_id,
-                    timestamp=None,
-                )
-                if candidate is not None and candidate["id"] == entry_id:
-                    removed = True
-                    continue
-                kept.append(raw_line)
-            if not removed:
-                return False
-            atomic_write_bytes(path, b"".join(kept), mode=0o600)
-            return True
+        try:
+            raw = path.read_bytes()
+        except FileNotFoundError:
+            return False
+        kept = []
+        removed = False
+        for raw_line in raw.splitlines(keepends=True):
+            candidate = cls._management_entry(
+                raw_line.rstrip(b"\r\n"),
+                scope=scope,
+                owner_id=owner_id,
+                timestamp=None,
+            )
+            if candidate is not None and candidate["id"] == entry_id:
+                removed = True
+                continue
+            kept.append(raw_line)
+        if not removed:
+            return False
+        atomic_write_bytes(path, b"".join(kept), mode=0o600)
+        return True
 
     @classmethod
     def add_file_entry(cls, path, value, *, scope, owner_id, lock_key):
@@ -570,6 +673,10 @@ class HostKeyStore:
     @staticmethod
     def _load_strict(path: Path) -> _ParsedHostKeyFile:
         raw = Path(path).read_bytes()
+        return HostKeyStore._parse_raw(raw)
+
+    @staticmethod
+    def _parse_raw(raw: bytes) -> _ParsedHostKeyFile:
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:

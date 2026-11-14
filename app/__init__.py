@@ -816,7 +816,9 @@ def create_app(
     from .audit_export import audit_export_blueprint
     from .admin_backup import admin_backup_blueprint
     from .account_step_up_routes import account_step_up_blueprint
+    from .account_sessions import account_sessions_blueprint
     from .health import health_blueprint
+    from .support_report import support_report_blueprint
     from .host_key_routes import host_key_blueprint
     from .profile_exchange_routes import profile_exchange_blueprint
     from .host_context_routes import host_context_blueprint
@@ -835,8 +837,10 @@ def create_app(
             oidc_ready = True
     app.register_blueprint(audit_export_blueprint)
     app.register_blueprint(account_step_up_blueprint)
+    app.register_blueprint(account_sessions_blueprint)
     app.register_blueprint(admin_backup_blueprint)
     app.register_blueprint(health_blueprint)
+    app.register_blueprint(support_report_blueprint)
     from .operations import operations_blueprint
     app.register_blueprint(operations_blueprint)
     app.register_blueprint(host_key_blueprint)
@@ -1827,6 +1831,23 @@ def create_app(
             ],
         })
 
+    @app.get('/admin/api/security-features/<feature_name>/impact')
+    @admin_required
+    @login_required
+    def admin_security_feature_impact(feature_name):
+        from .auth_assurance import current_authentication_session
+        from .security_feature_impact import feature_impact_preview
+        from .security_features import UnknownSecurityFeature
+        auth = current_authentication_session()
+        if auth is None:
+            abort(401)
+        try:
+            response = jsonify(feature_impact_preview(feature_name, current_user.id, auth.id))
+        except UnknownSecurityFeature:
+            abort(404)
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
     @app.route(
         '/admin/api/security-features/<feature_name>',
         methods=['POST'],
@@ -1849,12 +1870,17 @@ def create_app(
         if not isinstance(data, dict) or type(data.get('enabled')) is not bool:
             return jsonify({'error': 'enabled must be a boolean'}), 400
         try:
+            # Keep approval verification and gate mutation in one SQLite write
+            # transaction: another account/factor edit must not slip between.
+            from sqlalchemy import text
+            db.session.execute(text('BEGIN IMMEDIATE'))
             current_status = feature_status(feature_name)
             if (
                 current_status.active
                 and data['enabled'] is False
                 and data.get('confirm_session_fallback') is not True
             ):
+                db.session.rollback()
                 log_warning(
                     'Security feature change needs fallback confirmation',
                     admin=current_user.username,
@@ -1870,6 +1896,18 @@ def create_app(
                     ),
                     'feature': current_status.to_dict(),
                 }), 409
+            if current_status.active and data['enabled'] is False:
+                from .auth_assurance import current_authentication_session
+                from .security_feature_impact import verify_impact_approval
+                auth = current_authentication_session()
+                if auth is None or not verify_impact_approval(
+                    data.get('impact_approval'), feature_name, current_user.id, auth.id,
+                ):
+                    db.session.rollback()
+                    return jsonify({
+                        'error': 'Account configuration changed or approval expired. Review the impact again.',
+                        'code': 'feature_impact_changed',
+                    }), 409
             status = set_feature_active(
                 feature_name,
                 data['enabled'],
@@ -1878,6 +1916,7 @@ def create_app(
         except UnknownSecurityFeature:
             abort(404)
         except FeatureUnavailable as exc:
+            db.session.rollback()
             return jsonify({
                 'error': exc.status.reason,
                 'feature': exc.status.to_dict(),

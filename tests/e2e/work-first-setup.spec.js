@@ -20,7 +20,8 @@ for (const width of [390, 1440]) {
         const first = page.locator('#overviewWorkFirst');
         await expect(first.getByRole('button', {name:'Favorite task host',exact:true})).toBeVisible();
         await expect(first.getByRole('button', {name:'Recent task host',exact:true})).toBeVisible();
-        expect(await first.boundingBox().then(box => box.y)).toBeLessThan(await page.locator('#odBoard').boundingBox().then(box => box.y));
+        expect(await first.boundingBox().then(box => box.y)).toBeGreaterThanOrEqual(await page.locator('#odBoard').boundingBox().then(box => box.y + box.height));
+        await first.scrollIntoViewIfNeeded();
         await expect(page.locator('#overviewSetupCount')).toHaveText('1 / 5');
         await page.screenshot({path:path.join(process.env.WEBSSH_E2E_OUTPUT_DIR || 'test-results', `home-${width}-collapsed.png`)});
         await first.locator('summary').click();
@@ -64,7 +65,7 @@ test('setup marks authentication and files only after observed session and direc
     await expect(page.locator('[data-step="terminal"]')).toHaveAttribute('data-complete','false');
     await expect(page.locator('[data-step="files"]')).toHaveAttribute('data-complete','false');
 });
-test('mobile saved-host fallback offers existing destinations before metrics and retains explicit launch', async ({page}) => {
+test('mobile saved-host fallback retains explicit launch below the overview panels', async ({page}) => {
     await page.setViewportSize({width:390,height:900});
     await login(page,'e2e_admin',{workspace:false});
     await installSshConnectTrap(page);

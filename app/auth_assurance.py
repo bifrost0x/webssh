@@ -32,6 +32,7 @@ from .models import (
 )
 from .session_epoch import current_epoch
 from .totp_service import disable_totp_mfa
+from .login_access import serialize_login_access
 
 
 _PENDING_TTL = timedelta(minutes=5)
@@ -406,6 +407,7 @@ def invalidate_user_authentication(
     return row
 
 
+@serialize_login_access
 def finalize_login(pending, *, methods, strong_authenticated_at=None):
     """Create the sole authenticated browser-session record."""
     if not isinstance(pending, PendingAuthentication):

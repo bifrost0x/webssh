@@ -12,6 +12,7 @@ from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager,
                session_insights, runtime_inventory, smb_share_manager)
 from .decorators import socket_login_required
+from .login_access import serialize_login_access
 from .auth import (
     check_socket_rate_limit,
     get_user_from_socket,
@@ -796,6 +797,7 @@ def _reject_socket_protocol_mismatch(auth, user):
 
 @socketio.on('connect')
 @_close_transport_after_rejected_connect
+@serialize_login_access
 def handle_connect(auth=None):
     """Handle client connection - authenticate and restore sessions."""
     from .maintenance_mode import is_active

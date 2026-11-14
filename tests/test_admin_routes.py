@@ -594,6 +594,7 @@ def test_disabling_active_feature_requires_session_fallback_confirmation(
         json={
             'enabled': False,
             'confirm_session_fallback': True,
+            'impact_approval': client.get('/admin/api/security-features/totp/impact').get_json()['approval'],
         },
         headers=password_step_up_headers(
             client, 'security_feature.update', 'totp'

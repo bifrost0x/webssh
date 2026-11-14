@@ -1,0 +1,52 @@
+/* Focused safety controls reuse the existing workspace palette and buttons. */
+.terminal-safety-dialog {
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg, 12px);
+    padding: 24px;
+    margin: auto;
+    width: min(640px, calc(100vw - 32px));
+    max-height: calc(100dvh - 32px);
+    overflow: auto;
+    box-sizing: border-box;
+}
+.terminal-safety-dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.terminal-safety-dialog h2 { font-size: 20px; margin: 0 0 16px; }
+.terminal-safety-dialog p { margin: 0 0 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.terminal-safety-target { font-family: var(--font-mono); font-size: 14px; white-space: pre-wrap; }
+.terminal-paste-preview {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    padding: 16px;
+    margin: 16px 0;
+    max-height: 36dvh;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    line-height: 1.5;
+    unicode-bidi: plaintext;
+}
+.terminal-safety-option, .terminal-recipient { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.terminal-safety-dialog input[type=checkbox] { accent-color: var(--accent-primary); flex-shrink: 0; width: 18px; height: 18px; }
+.terminal-safety-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.terminal-safety-actions .btn { min-height: 44px; }
+.terminal-recipient-list { max-height: 45dvh; overflow-y: auto; }
+.terminal-recipient { padding: 12px 0; border-bottom: 1px solid var(--border-color); cursor: pointer; }
+.terminal-recipient > span { min-width: 0; overflow-wrap: anywhere; }
+.terminal-recipient strong, .terminal-recipient small { display: block; }
+.terminal-recipient small { margin-top: 4px; color: var(--text-secondary); font-size: 14px; }
+#broadcastBar { flex-wrap: wrap; }
+#broadcastInput { resize: vertical; min-height: 42px; max-height: 180px; line-height: 1.5; }
+.broadcast-selection { flex: 0 0 100%; min-width: 0; font-size: 13px; }
+#broadcastTargets { display: block; overflow-wrap: anywhere; max-height: 72px; overflow-y: auto; }
+#broadcastSelectionStatus { display: block; margin-top: 4px; }
+#broadcastRecipientError { color: var(--error-color); }
+@media (max-width: 600px) {
+    .terminal-safety-dialog { padding: 20px; font-size: 16px; }
+    #broadcastInput { flex-basis: 100%; font-size: 16px; }
+    .terminal-safety-actions { justify-content: stretch; }
+    .terminal-safety-actions .btn { flex: 1 1 auto; }
+}

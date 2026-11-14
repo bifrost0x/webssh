@@ -9,10 +9,12 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from collections.abc import Mapping
+from flask import has_request_context, session
 
 from .file_sources import SourceHoldSet
 from .quota_manager import QuotaKind, quota_manager as default_quota_manager
 from .runtime_lifecycle import RuntimeShuttingDown
+from .login_access import serialize_login_access
 
 
 class TransferState(Enum):
@@ -213,6 +215,7 @@ class TransferManager:
             self._accepting = True
         return binding
 
+    @serialize_login_access
     def create(
         self,
         user_id,
@@ -261,6 +264,11 @@ class TransferManager:
 
         now = self._clock()
         try:
+            if has_request_context() and session.get('_auth_session'):
+                from .auth_assurance import current_authentication_session
+                auth = current_authentication_session()
+                if auth is None or str(auth.user_id) != user_id:
+                    raise ValueError('authentication is no longer available')
             with self._lock:
                 if not self._accepting:
                     raise RuntimeShuttingDown(

@@ -1,0 +1,21 @@
+<dialog id="terminalPasteDialog" class="terminal-safety-dialog" aria-labelledby="terminalPasteTitle" aria-describedby="terminalPasteTarget terminalPasteWarning">
+    <h2 id="terminalPasteTitle" data-i18n="terminalSafety.pasteTitle">Review terminal paste</h2>
+    <p id="terminalPasteTarget" class="terminal-safety-target"></p>
+    <p id="terminalPasteWarning" data-i18n="terminalSafety.pasteWarning">This text contains line breaks or control characters. Pasting can execute commands or change terminal behavior. Review the full text before sending.</p>
+    <pre id="terminalPastePreview" class="terminal-paste-preview" tabindex="0"></pre>
+    <label class="terminal-safety-option"><input type="checkbox" id="terminalPasteTrim"><span data-i18n="terminalSafety.trim">Remove trailing line breaks</span></label>
+    <div class="terminal-safety-actions">
+        <button type="button" class="btn btn-secondary" id="terminalPasteCancel" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="terminalPasteConfirm" data-i18n="terminalSafety.pasteConfirm">Paste to this terminal</button>
+    </div>
+</dialog>
+<dialog id="broadcastRecipientDialog" class="terminal-safety-dialog" aria-labelledby="broadcastRecipientTitle" aria-describedby="broadcastRecipientHelp">
+    <h2 id="broadcastRecipientTitle" data-i18n="terminalSafety.recipientsTitle">Choose broadcast recipients</h2>
+    <p id="broadcastRecipientHelp" data-i18n="terminalSafety.frozen">Only the selected sessions receive input. New sessions are not added.</p>
+    <div id="broadcastRecipientList" class="terminal-recipient-list"></div>
+    <p id="broadcastRecipientError" role="alert"></p>
+    <div class="terminal-safety-actions">
+        <button type="button" class="btn btn-secondary" id="broadcastRecipientCancel" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="broadcastRecipientApply" data-i18n="terminalSafety.useSelection">Use selection</button>
+    </div>
+</dialog>

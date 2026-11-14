@@ -291,6 +291,7 @@
         const body = document.getElementById('hostKeyList');
         if (!body) { return; }
         const data = await api('/api/host-keys');
+        window.EffectiveHostTrust?.load(api);
         body.replaceChildren();
         for (const entry of data.entries || []) {
             const row = document.createElement('tr');
@@ -312,15 +313,19 @@
             button.className = 'btn btn-danger';
             button.textContent = presentation.action;
             button.addEventListener('click', async () => {
-                if (!window.confirm(
-                    window.WebSSHSecurityUI.hostKeyConfirmation(
-                        entry,
-                        hostLabel,
-                        t
-                    )
-                )) { return; }
-                await api(`/api/host-keys/${entry.id}`, { method: 'DELETE' });
-                await loadHostKeys();
+                button.disabled = true;
+                try {
+                    const impact = await api(`/api/host-keys/${entry.id}/deletion-impact`);
+                    if (!window.EffectiveHostTrust || !impact.revision) throw new Error(t('trustFiles.loadFailed', 'Effective trust could not be loaded. Refresh to try again.'));
+                    if (!await window.EffectiveHostTrust.confirmDeletion(entry, hostLabel, impact)) return;
+                    await api(`/api/host-keys/${entry.id}`, {method: 'DELETE', headers: {'If-Match': impact.revision}});
+                    await loadHostKeys();
+                } catch (error) {
+                    notify(error.message, 'error');
+                } finally {
+                    button.disabled = false;
+                    if (button.isConnected) button.focus();
+                }
             });
             action.appendChild(button);
             row.appendChild(action);

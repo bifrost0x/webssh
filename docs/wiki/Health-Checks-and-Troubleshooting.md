@@ -159,6 +159,19 @@ Slow or refused work can result from thread, socket, SSH, transfer, temporary-by
 
 ## Safe evidence collection
 
+Open **Settings → Security overview → Support report** to generate a
+local snapshot on demand. Select the affected area and optionally enter the
+SMB reference shown by an error. Review the full JSON preview before copying
+or downloading it. Nothing is sent to a support service automatically.
+
+The report includes the WebSSH version, UTC generation time, feature
+availability and local readiness checks. Administrators additionally receive
+three allowlisted deployment flags. It excludes usernames, host addresses,
+paths, logs, terminal contents and credentials. It does not test SSH targets
+or identity providers; feature availability does not prove a successful
+connection. Changing the report options clears the old preview. Add your
+reproduction steps and the actual error time separately when sharing it.
+
 When requesting help, include:
 
 - exact WebSSH version or commit;

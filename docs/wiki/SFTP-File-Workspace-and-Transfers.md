@@ -4,6 +4,18 @@ The File Workspace uses SFTP over SSH and can optionally open temporary SMB
 shares. SFTP can reuse active terminal sessions, open saved SSH hosts, or
 create temporary SFTP-only connections.
 
+## Transfer history
+
+The transfer panel keeps active, cancelling and failed or unconfirmed jobs
+ahead of finished history. Use **Show** to filter active work, failures or
+finished transfers, and **Previous** / **Next** to browse pages of 20 entries.
+Older entries remain reachable when new transfers arrive. Each row shows its
+source and destination; browser uploads and downloads explicitly identify
+**This browser**. Remote addresses are captured when the transfer is queued,
+so switching or closing a source tab does not relabel an existing transfer.
+Cancellation, failure details and supported recovery actions remain on each row.
+This history belongs to the current page and is not a persistent transfer log.
+
 ## Sources and tabs
 
 The source launcher offers:

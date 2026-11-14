@@ -1063,7 +1063,7 @@
                 openSecurityAction(action, userId, username);
                 return;
             }
-            if (action === 'delete' && !window.confirm(t('admin.confirmDelete', 'Delete this user permanently?'))) { return; }
+            if (action === 'delete' && !window.confirm(window.WebSSHAccountControls.deletionConfirmation(username, t))) { return; }
             doUserAction(userId, action);
         });
         document.getElementById('closeSecurityAction')?.addEventListener('click', closeSecurityAction);
@@ -1496,25 +1496,22 @@
             const featureName = target.dataset.securityFeature;
             if (securityFeatureWrites.has(featureName)) { return; }
             const enabling = target.checked;
-            if (!enabling && !window.confirm(
-                window.WebSSHSecurityUI.featureDisableWarning(
-                    { name: featureName },
-                    securityFeatureLabel(featureName),
-                    t
-                )
-            )) {
-                target.checked = true;
-                return;
-            }
             target.disabled = true;
             securityFeatureWrites.add(featureName);
             securityFeatureReadGeneration += 1;
             try {
+                let impactApproval;
+                if (!enabling) {
+                    const preview = await api(`/admin/api/security-features/${encodeURIComponent(featureName)}/impact`);
+                    if (!await window.WebSSHAccountControls.confirmFeatureImpact(preview, securityFeatureLabel(featureName), t)) return;
+                    impactApproval = preview.approval;
+                }
                 const data = await stepUpApi('security_feature.update', featureName, `/admin/api/security-features/${encodeURIComponent(featureName)}`, {
                     method: 'POST',
                     body: {
                         enabled: enabling,
-                        confirm_session_fallback: !enabling
+                        confirm_session_fallback: !enabling,
+                        impact_approval: impactApproval
                     }
                 });
                 if (data.feature?.name === featureName) {
@@ -1529,6 +1526,8 @@
                 securityFeatureWrites.delete(featureName);
                 renderSecurityFeatures(securityFeatureSnapshot);
                 await loadSecurityFeatures();
+                Array.from(document.querySelectorAll('input[data-security-feature]'))
+                    .find(input => input.dataset.securityFeature === featureName)?.focus();
             }
         });
         document.getElementById('settingSshGateway')?.addEventListener('change', async (e) => {

@@ -107,6 +107,8 @@ test('panel edge forwarding respects zoom modifiers and normalizes wheel units',
     await positionPanel(page, selector);
     const result = await page.locator(selector).evaluate(body => {
         const overview = document.getElementById('connectionOverview');
+        // Keep enough upward space after the work-first section moved below the board.
+        overview.scrollTop = overview.clientHeight + 32;
         const emit = options => {
             const before = overview.scrollTop;
             const event = new WheelEvent('wheel', {bubbles:true, cancelable:true, deltaY:-1, ...options});

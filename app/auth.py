@@ -338,12 +338,16 @@ def register_socket_session(user_id, socket_sid, user_agent=None):
     Returns:
         SocketSession object
     """
+    from flask import has_request_context
+    from .auth_assurance import current_authentication_session
+    auth = current_authentication_session() if has_request_context() else None
     SocketSession.query.filter_by(socket_sid=socket_sid).delete()
 
     socket_session = SocketSession(
         user_id=user_id,
         socket_sid=socket_sid,
-        user_agent=user_agent
+        user_agent=user_agent,
+        authentication_session_id=auth.id if auth and auth.user_id == user_id else None,
     )
     db.session.add(socket_session)
     db.session.commit()

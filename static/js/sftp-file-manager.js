@@ -1370,6 +1370,17 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                             </span>
                             <span class="fm-queue-toggle material-icons" id="fmQueueToggle" aria-hidden="true">expand_more</span>
                         </button>
+                        <div class="fm-queue-controls" id="fmQueueControls">
+                            <label>${this.t('trustFiles.filter', 'Show')} <select id="fmQueueFilter" class="form-control">
+                                <option value="all">${this.t('trustFiles.all', 'All · active and failed first')}</option>
+                                <option value="active">${this.t('trustFiles.active', 'Active')}</option>
+                                <option value="error">${this.t('trustFiles.errors', 'Failed / unconfirmed')}</option>
+                                <option value="history">${this.t('trustFiles.history', 'Finished')}</option>
+                            </select></label>
+                            <button type="button" id="fmQueuePrevious" class="btn btn-secondary">${this.t('trustFiles.previous', 'Previous')}</button>
+                            <span id="fmQueuePage" role="status"></span>
+                            <button type="button" id="fmQueueNext" class="btn btn-secondary">${this.t('trustFiles.next', 'Next')}</button>
+                        </div>
                         <div class="fm-queue-list" id="fmQueueList"></div>
                     </div>
 
@@ -1775,6 +1786,18 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         this.setupDropZones();
 
         document.getElementById('fmQueueHeader').addEventListener('click', () => this.toggleQueue());
+        document.getElementById('fmQueueFilter').addEventListener('change', event => {
+            this.transferQueueFilter = event.target.value;
+            this.transferQueuePage = 0;
+            this.renderTransferQueue();
+        });
+        for (const [id, direction] of [['fmQueuePrevious', -1], ['fmQueueNext', 1]]) {
+            document.getElementById(id).addEventListener('click', () => {
+                this.transferQueuePage = (this.transferQueuePage || 0) + direction;
+                this.renderTransferQueue();
+                document.getElementById('fmQueueList').scrollTop = 0;
+            });
+        }
         document.getElementById('fmQueueList').addEventListener('click', (event) => {
             const recovery = event.target.closest('[data-transfer-recover]');
             if (recovery) {
@@ -5077,6 +5100,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                 filename: item.name,
                 sourcePath: sourcePath,
                 targetPath: targetPath,
+                sourcePane: {source: {...sourcePane.source}},
+                targetPane: {source: {...targetPane.source}},
                 size: item.size || 0,
                 sourceIds,
                 requestId,
@@ -5479,6 +5504,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         const sourcesRetained = transfer.sourcesRetained === true;
         delete transfer.sourcesRetained;
         transfer.sourceIds = this.getTransferSourceIds(transfer);
+        transfer.endpoints = this.describeTransferEndpoints(transfer);
         if (!sourcesRetained) this.retainTransferSources(transfer.sourceIds);
         transfer.status = 'pending';
         transfer.progress = 0;
@@ -5963,11 +5989,59 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         return {active, failed, unconfirmed, total, text};
     }
 
+    describeTransferEndpoints(transfer) {
+        if (transfer.endpoints) return transfer.endpoints;
+        const browser = this.t('trustFiles.browser', 'This browser');
+        const endpoint = (id, pane, path) => {
+            const source = pane?.source || (id ? this.findPaneStateEntry(id)?.state?.source : null);
+            const label = source?.endpoint || source?.label || this.t('trustFiles.remote', 'Remote source');
+            return [label, path].filter(Boolean).join(' · ');
+        };
+        if (transfer.type === 'upload') return {
+            source: `${browser} · ${transfer.filename}`,
+            destination: endpoint(transfer.sourceId, transfer.targetPane, transfer.targetPath)
+        };
+        if (transfer.type === 'download') return {
+            source: endpoint(transfer.sourceId, transfer.sourcePane, transfer.sourcePath),
+            destination: `${browser} · ${transfer.filename}`
+        };
+        return {
+            source: endpoint(transfer.sourceIds?.[0], transfer.sourcePane, transfer.sourcePath),
+            destination: endpoint(transfer.sourceIds?.[1], transfer.targetPane, transfer.targetPath)
+        };
+    }
+
+    getTransferQueuePage() {
+        const active = item => ['pending', 'active', 'cancelling'].includes(item.status);
+        const filter = this.transferQueueFilter || 'all';
+        const ordered = this.transferQueue.filter(item => filter === 'active' ? active(item)
+            : filter === 'error' ? item.status === 'error'
+                : filter === 'history' ? !active(item) && item.status !== 'error' : true);
+        if (filter === 'all') {
+            // Stable order keeps pending cancellation and failed outcomes ahead
+            // of completed history, even when new transfers keep arriving.
+            ordered.sort((a, b) => (active(a) ? 0 : a.status === 'error' ? 1 : 2)
+                - (active(b) ? 0 : b.status === 'error' ? 1 : 2));
+        }
+        const pages = Math.max(1, Math.ceil(ordered.length / 20));
+        const page = Math.max(0, Math.min(pages - 1, this.transferQueuePage || 0));
+        this.transferQueuePage = page;
+        return {entries: ordered.slice(page * 20, (page + 1) * 20), total: ordered.length, page, pages};
+    }
+
     renderTransferQueue() {
         window.dispatchEvent?.(new CustomEvent('file-transfer-queue-change'));
         const container = document.getElementById('fmQueueList');
         const badge = document.getElementById('fmQueueBadge');
         const queue = document.getElementById('fmQueue');
+        if (!container || !badge) return;
+        const page = this.getTransferQueuePage();
+        const pageLabel = document.getElementById('fmQueuePage');
+        if (pageLabel) pageLabel.textContent = `${page.page + 1} / ${page.pages} · ${page.total}`;
+        const previous = document.getElementById('fmQueuePrevious');
+        const next = document.getElementById('fmQueueNext');
+        if (previous) previous.disabled = page.page === 0;
+        if (next) next.disabled = page.page + 1 >= page.pages;
         const summary = this.getTransferQueueSummary();
         const summaryElement = document.getElementById('fmQueueSummary');
         if (summaryElement && summaryElement.textContent !== summary.text) summaryElement.textContent = summary.text;
@@ -5977,6 +6051,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             - Number(container.scrollTop || 0)
             - Number(container.clientHeight || 0)
         ) <= 24;
+        const previousScrollTop = container.scrollTop;
         const tailId = this.transferQueue.length > 0
             ? String(this.transferQueue[this.transferQueue.length - 1].id)
             : null;
@@ -5986,12 +6061,16 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         badge.textContent = summary.total;
         badge.style.display = summary.total > 0 ? 'inline' : 'none';
 
-        if (this.transferQueue.length === 0) {
+        if (page.entries.length === 0) {
             container.innerHTML = `<div class="fm-empty" style="padding: 20px;">${this.t('fm.noTransfers', 'No transfers')}</div>`;
             return;
         }
 
-        container.innerHTML = this.transferQueue.slice(-20).map(t => {
+        const focused = document.activeElement?.dataset;
+        const focusedId = focused?.transferCancel || focused?.transferRecover;
+        const openDetails = new Set(Array.from(container.querySelectorAll?.('details[open]') || [], node => node.closest('[data-transfer-id]')?.dataset.transferId));
+        container.innerHTML = page.entries.map(t => {
+            const endpoints = this.describeTransferEndpoints(t);
             const reason = t.status === 'error'
                 ? this.escapeHtml(t.error || this.transferFailureMessage(t.errorCode))
                 : '';
@@ -6003,12 +6082,13 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                 ? this.t('transfer.reviewDestination', 'Check the destination before starting the transfer again.')
                 : '';
             return `
-            <div class="fm-transfer-item ${t.status}"${reason ? ` title="${reason}"` : ''}>
+            <div class="fm-transfer-item ${t.status}" data-transfer-id="${this.escapeHtml(String(t.id))}"${reason ? ` title="${reason}"` : ''}>
                 <div class="fm-transfer-icon ${t.type}">
                     ${t.type === 'upload' ? '⬆️' : t.type === 'download' ? '⬇️' : '↔️'}
                 </div>
                 <div class="fm-transfer-info">
                     <div class="fm-transfer-name">${this.escapeHtml(t.filename)}</div>
+                    <div class="fm-transfer-endpoints">${this.escapeHtml(endpoints.source)} → ${this.escapeHtml(endpoints.destination)}</div>
                     ${reason ? `<div class="fm-transfer-error" role="status">${reason}</div>` : ''}
                     ${t.status === 'error' && window.CustomerWorkflows ? `<details class="fm-recovery-guidance"><summary>${this.escapeHtml(this.t('customer.nextSteps', 'What can I do?'))}</summary><p>${this.escapeHtml(this.t('customer.' + window.CustomerWorkflows.adviceKey(t.errorCode), 'Inspect the destination before repeating this operation.'))}</p><p>${this.escapeHtml([t.sourcePath, t.targetPath].filter(Boolean).join(' → '))}</p></details>` : ''}
                     ${retryHint ? `<div class="fm-transfer-error">${this.escapeHtml(retryHint)}</div>` : ''}
@@ -6030,7 +6110,12 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             </div>
         `;
         }).join('');
-        if (!queue?.classList?.contains('collapsed') && (appended || nearBottom)) {
+        container.scrollTop = previousScrollTop;
+        for (const row of container.querySelectorAll?.('[data-transfer-id]') || []) {
+            if (openDetails.has(row.dataset.transferId)) row.querySelector('details')?.setAttribute('open', '');
+            if (focusedId === row.dataset.transferId) row.querySelector(focused?.transferCancel ? '[data-transfer-cancel]' : '[data-transfer-recover]')?.focus({preventScroll:true});
+        }
+        if (!focusedId && page.page === 0 && !queue?.classList?.contains('collapsed') && (appended || nearBottom)) {
             this.scrollTransferQueueToEnd(tailId);
         }
     }
@@ -6069,7 +6154,10 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                 expectedTailId !== null
                 && this.renderedQueueTailId !== expectedTailId
             ) return;
-            container.scrollTop = container.scrollHeight;
+            const prioritized = (!this.transferQueueFilter || this.transferQueueFilter === 'all')
+                && this.transferQueue?.length > 20
+                && this.transferQueue.some(item => ['pending', 'active', 'cancelling', 'error'].includes(item.status));
+            container.scrollTop = prioritized ? 0 : container.scrollHeight;
         });
     }
 

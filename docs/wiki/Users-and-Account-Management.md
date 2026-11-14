@@ -104,6 +104,16 @@ user to change it.
 Passwords are bcrypt hashes at rest. New or changed passwords are limited to
 72 bytes after UTF-8 encoding because of bcrypt's input boundary.
 
+## Browser logins
+
+To end selected browser access without locking the account, open **Settings →
+Security overview → Active logins**. Revoke one other login or all other logins.
+The current login and account-owned SSH/tmux sessions remain available; the
+selected browser connections, transfers and login-bound jobs are interrupted.
+See [account access controls](https://github.com/bifrost0x/webssh/blob/main/docs/account-access-controls.md)
+for exact revocation effects and the impact preview before disabling an
+authentication method.
+
 ## Locking an account
 
 Locking prevents new HTTP and Socket.IO authorization. WebSSH also revokes the
@@ -130,6 +140,11 @@ DATA_DIR/deleted_users/user_<id>_<uuid>
 This quarantine prevents a future numeric user ID from inheriting the deleted
 account's files. It is retention, not secure erasure. Operators must define a
 review and secure-disposal policy for `deleted_users`.
+
+The confirmation states that files are retained. Follow the
+[operator cleanup guidance](https://github.com/bifrost0x/webssh/blob/main/docs/account-access-controls.md#account-deletion-and-retained-files)
+to remove a verified quarantine directory later; existing backups have their
+own retention lifecycle.
 
 If database deletion fails, WebSSH attempts to move the quarantined directory
 back into the active namespace.

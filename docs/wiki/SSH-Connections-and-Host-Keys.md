@@ -74,8 +74,25 @@ verified global trust record. A simultaneous approval cannot overwrite a
 conflicting stored key.
 
 Trust is scoped to the relevant user or administrator-managed global store.
-Users can inspect and revoke their own trust records in the Security Center;
-administrators can manage global trust.
+Users can inspect and delete their own trust records in the Security Center;
+administrators can manage global trust and explicit revocation records.
+
+**Personal SSH trust** also explains the effective keys for your saved SSH
+profiles and jump hosts: fingerprint, algorithm, personal or global source,
+overridden keys and revocations. This is a configuration snapshot, not a live
+connection check. Global aliases and unrelated global hosts are not listed.
+Personal keys take precedence for each algorithm; revocations in either store
+block the matching key. Search and pagination keep larger target lists usable.
+
+The personal management table remains available for entries with no saved
+profile. Deleting a personal entry does not revoke the key: another personal
+entry or global trust may become effective. Before deletion, the preview shows
+the exact remaining fingerprints and sources for affected saved targets,
+including remaining revocations. Unmatched aliases, hashes and other wildcard
+matches are explicitly marked as unknown. No connection is opened and no global
+inventory is disclosed. A changed trust store invalidates the preview and the
+delete request requires a fresh review. Removing a revocation can allow a
+previously blocked key again. Verify fingerprints before reconnecting.
 
 ## Add global host trust
 

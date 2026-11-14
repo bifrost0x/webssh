@@ -30,6 +30,45 @@ def list_user_host_keys():
     return jsonify({"entries": store.list_entries()})
 
 
+def _owned_ssh_targets():
+    from .profile_manager import load_profiles
+    from .jump_host_manager import load_jump_hosts
+
+    # Never accept hostnames or a user selector from the request: matching a
+    # global wildcard/hash must not become an arbitrary host-inventory oracle.
+    targets = []
+    for kind, records in [('ssh', load_profiles(current_user.id)),
+                          ('jump', load_jump_hosts(current_user.id))]:
+        for item in records:
+            targets.append({'id': item['id'], 'name': item.get('name', ''),
+                            'kind': kind, 'host': item['host'],
+                            'port': item.get('port') or 22})
+    return targets
+
+
+@host_key_blueprint.get("/api/host-keys/effective")
+@login_required
+def list_effective_host_keys():
+    _require_enabled()
+    store = HostKeyStore(current_user.id, config.KNOWN_HOSTS_FILE, config.USERS_DIR)
+    response = jsonify({'targets': store.effective_targets(_owned_ssh_targets())})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@host_key_blueprint.get("/api/host-keys/<entry_id>/deletion-impact")
+@login_required
+def preview_user_host_key_deletion(entry_id):
+    _require_enabled()
+    store = HostKeyStore(current_user.id, config.KNOWN_HOSTS_FILE, config.USERS_DIR)
+    impact = store.deletion_impact(entry_id, _owned_ssh_targets())
+    if impact is None:
+        return jsonify({'error': 'Host key not found'}), 404
+    response = jsonify(impact)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 @host_key_blueprint.delete("/api/host-keys/<entry_id>")
 @login_required
 def delete_user_host_key(entry_id):
@@ -39,7 +78,11 @@ def delete_user_host_key(entry_id):
         config.KNOWN_HOSTS_FILE,
         config.USERS_DIR,
     )
-    if not store.delete_entry(entry_id):
+    try:
+        removed = store.delete_entry(entry_id, expected_revision=request.headers.get('If-Match'))
+    except ValueError:
+        return jsonify({'error': 'Trust changed. Reload and review the deletion again.', 'code': 'trust_changed'}), 409
+    if not removed:
         return jsonify({"error": "Host key not found"}), 404
     log_security_event(
         "SSH_HOST_KEY_DELETED",

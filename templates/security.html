@@ -18,6 +18,8 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/account-controls.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/trust-files-controls.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
@@ -26,6 +28,7 @@
     <script src="{{ static_asset_url(filename='js/branding.js') }}" defer></script>
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/design-system.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/account-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/support-report.css') }}">
 </head>
 <body class="webssh-ui webssh-account" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}" data-account-mfa-enabled="{{ 'true' if account_mfa_enabled else 'false' }}" data-recovery-enabled="{{ 'true' if recovery_codes_enabled else 'false' }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-authentication-session-duration-minutes="{{ authentication_session_duration_minutes }}">
     <header class="header">
@@ -176,7 +179,7 @@
         {% endif %}
 
         <section class="admin-panel settings-account-panel{% if recovery_mode %} hidden{% endif %}" data-account-panel="security-overview">
-            <div class="admin-page-header"><div><h2 data-i18n="settings.securityOverview">Security overview</h2><p data-i18n="settings.securityOverviewHint">Review how this account signs in and confirms protected changes.</p></div></div>
+            <div class="admin-page-header"><div><h2 data-i18n="settings.securityOverview">Security overview</h2><p data-i18n="settings.securityOverviewHint">Review how this account signs in and confirms protected changes.</p></div><button type="button" class="btn btn-secondary" data-support-report data-i18n="supportReport.title">Support report</button></div>
         <section class="security-assurance-overview" id="securityAssuranceOverview" aria-labelledby="securityAssuranceTitle">
             <div class="security-overview-heading">
                 <div>
@@ -246,6 +249,15 @@
             <pre id="passkeyMfaRecoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
             {% endif %}
         </section>
+        {% if not recovery_mode %}
+        <section class="admin-settings-surface" aria-labelledby="accountLoginsTitle">
+            <div class="admin-settings-intro"><h3 id="accountLoginsTitle" data-i18n="accountControls.title">Active logins</h3><p class="admin-muted" data-i18n="accountControls.shortHint">Review where your account is signed in.</p></div>
+            <div class="account-controls-actions"><button type="button" class="btn btn-secondary" id="accountRefreshLogins" data-i18n="admin.refresh">Refresh</button><button type="button" class="btn btn-danger" id="accountRevokeOthers" disabled data-i18n="accountControls.revokeOthers">Revoke all other logins</button></div>
+            <details class="account-login-effect"><summary data-i18n="accountControls.effectTitle">What does revocation do?</summary><p class="admin-muted" data-i18n="accountControls.hint">Review browser logins for your account. Revoking a login disconnects its browser connections and cancels its transfers and login-bound jobs. Shared SSH/tmux sessions and schedules remain available to valid logins.</p></details>
+            <ul id="accountLoginList" class="account-login-list"></ul>
+            <p id="accountLoginStatus" role="status" aria-live="polite" class="admin-muted"></p>
+        </section>
+        {% endif %}
         <section class="admin-settings-surface settings-security-methods" aria-labelledby="settingsSecurityMethodsTitle">
             <div class="admin-settings-intro"><h3 id="settingsSecurityMethodsTitle" data-i18n="settings.securityMethods">Security methods</h3><p class="admin-muted" data-i18n="settings.securityMethodsHint">Review the credentials and recovery options available to this account.</p></div>
             <div class="admin-settings-row settings-security-method-row">
@@ -381,10 +393,12 @@
         <section class="admin-panel settings-account-panel hidden" data-account-panel="ssh-host-trust">
             <div class="admin-page-header"><div><h2 data-i18n="security.personalSshTrust">Personal SSH trust</h2><p data-i18n="security.personalSshTrustHint">Review SSH host keys trusted by this account.</p></div></div>
         <section class="admin-setting-row" style="max-width:none;">
+            <div id="effectiveHostTrust"></div>
             <div class="admin-toolbar">
                 <h2 data-i18n="security.sshHostTrust">SSH host trust</h2>
                 <button class="btn btn-secondary" id="hostKeyRefresh" data-i18n="admin.refresh">Refresh</button>
             </div>
+            <p class="admin-muted" data-i18n="trustFiles.deleteHint">Deleting a personal entry does not revoke the server key. Other personal or global trust may still apply; removing a revocation may allow a key again.</p>
             <div class="admin-table-wrap">
                 <table class="admin-table">
                     <thead><tr><th data-i18n="security.host">Host</th><th data-i18n="security.status">Status</th><th data-i18n="security.algorithm">Algorithm</th><th data-i18n="security.fingerprint">Fingerprint</th><th data-i18n="security.action">Action</th></tr></thead>
@@ -479,8 +493,14 @@
     <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/account-controls-i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/trust-files-i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/account-controls.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/support-report-i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/support-report.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/settings-center.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/security-ui.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/effective-host-trust.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/webauthn.js') }}"></script>
     {% if admin_panel_enabled and is_admin and not recovery_mode %}
     <script src="{{ static_asset_url(filename='js/restore-status-flow.js') }}"></script>
