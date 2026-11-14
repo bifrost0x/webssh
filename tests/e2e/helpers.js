@@ -169,6 +169,7 @@ async function openResponsiveHeader(page, target) {
 }
 
 async function openProfileManagement(page) {
+    await waitForInventory(page);
     const trigger = page.locator('#manageProfilesBtn');
     await openResponsiveHeader(page, trigger);
     await trigger.click();
