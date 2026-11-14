@@ -14,6 +14,8 @@ SECURITY_ENV_NAMES = {
     'BLOCK_INTERNAL_SSH',
     'BOOTSTRAP_REGISTRATION_ENABLED',
     'SSH_ALLOWED_INTERNAL_NETWORKS',
+    'SOCKS_REMOTE_DNS_ALLOWLIST',
+    'SOCKS_PROXY_MAX_RECORDS',
     'CORS_ORIGINS',
     'DEBUG',
     'DEPLOYMENT_PROFILE',
@@ -80,6 +82,33 @@ def _production_env(**overrides):
         else:
             env[name] = value
     return env
+
+
+@pytest.mark.parametrize('value', ['*.internal', '127.0.0.1', '::1', '[::1]', 'host:1080', 'bad name'])
+def test_socks_remote_dns_allowlist_rejects_invalid_entries_at_startup(value):
+    result = _load_config(_production_env(SOCKS_REMOTE_DNS_ALLOWLIST=value))
+    assert result.returncode != 0
+    assert 'SOCKS_REMOTE_DNS_ALLOWLIST' in result.stderr
+
+
+def test_socks_remote_dns_allowlist_is_canonical_and_separate():
+    result = _load_config(
+        _production_env(SOCKS_REMOTE_DNS_ALLOWLIST=' BÜCHER.example.,target,target ',
+                        PROXY_JUMP_REMOTE_DNS_ALLOWLIST='jump-only'),
+        'import config, json; print(json.dumps([config.SOCKS_REMOTE_DNS_ALLOWLIST, '
+        'config.PROXY_JUMP_REMOTE_DNS_ALLOWLIST, config.SOCKS_PROXY_MAX_RECORDS]))',
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == [
+        ['xn--bcher-kva.example', 'target'], ['jump-only'], 100,
+    ]
+
+
+@pytest.mark.parametrize('value', ['9', '1001', 'invalid'])
+def test_socks_record_limit_rejects_invalid_configuration(value):
+    result = _load_config(_production_env(SOCKS_PROXY_MAX_RECORDS=value))
+    assert result.returncode != 0
+    assert 'SOCKS_PROXY_MAX_RECORDS' in result.stderr
 
 
 def _load_config(env, code='import config'):
