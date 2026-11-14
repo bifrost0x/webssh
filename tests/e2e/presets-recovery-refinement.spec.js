@@ -11,8 +11,10 @@ for(const width of [1440,390]) {
     let presets=[];
     await page.route('**/api/account/workspace-presets',route=>{if(route.request().method()==='PUT')presets=route.request().postDataJSON().presets;return route.fulfill({json:{presets}});});
     const folder=path.join(process.cwd(),'plans','presets-recovery-refinement');fs.mkdirSync(folder,{recursive:true});
-    if(width<600){await page.locator('#mobileMoreBtn').click();await page.locator('#accountBtnHeader').click();}
-    const entry=width<600 ? page.locator('#accountDropdownHeader [data-workspace-presets]') : page.locator('#workspacePresetsBtn');
+    await expect(page.locator('#accountDropdownHeader [data-workspace-presets]')).toHaveCount(0);
+    const layout=page.locator('#workspaceLayoutPicker > summary');
+    await layout.click();
+    const entry=page.locator('#workspaceLayoutPicker #workspacePresetsBtn');
     await expect(entry).toBeVisible();
     await expect(entry).toHaveAccessibleName('Workspace presets');
     const entryBounds=await entry.boundingBox();
@@ -45,6 +47,8 @@ for(const width of [1440,390]) {
     expect(bounds.y).toBeGreaterThanOrEqual(bodyBounds.y);
     expect(bounds.y+bounds.height).toBeLessThanOrEqual(bodyBounds.y+bodyBounds.height+1);
     await dialog.getByRole('button',{name:'Close',exact:true}).click();
+    await expect(layout).toBeFocused();
+    await expect(page.locator('#workspaceLayoutPicker')).not.toHaveAttribute('open','');
     await page.route('**/api/account/recovery-check',route=>route.fulfill({json:{restored_at:'2026-11-14T08:00:00Z',needs_review:true,hosts:[{id:'synthetic-lab',name:'Lab server',credential:'key_required',route:'missing_jump',host_key:'review_required'}],schedules:[{name:'Inspect system health',enabled:false}]}}));
     await page.evaluate(()=>document.querySelector('[data-recovery-check]').click());
     dialog=page.getByRole('dialog');

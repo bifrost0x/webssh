@@ -147,10 +147,6 @@ body.webssh-ui[data-theme="glass"] {
     .overview-heading-copy { max-width: 460px; }
     .connection-overview:not(.overview-graph) .overview-hosts { grid-template-columns: minmax(0, 1fr); }
 }
-@media (min-width: 1101px) and (not ((max-height: 520px) and (pointer: coarse))) {
-    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .brand-wordmark { display: none; }
-    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .app-brand-logo { width: 38px; }
-}
 @media (max-width: 900px) { .overview-route-card { order: 2; } .overview-recents-card { order: 3; } .overview-sessions-card { order: 4; } }
 @media (max-width: 767px), (max-height: 520px) and (pointer: coarse) {
     .webssh-shell .brand-wordmark { font-size: 19px; }

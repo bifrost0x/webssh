@@ -5,12 +5,6 @@ test('preset layout preserves existing assigned sessions and never connects', ()
     assert.deepEqual(helpers.layoutAssignments(1, ['a', 'b'], 2), {layout: 2, assignments: ['a', 'b']});
     assert.deepEqual(helpers.layoutAssignments(4, ['a', null], 2), {layout: 4, assignments: ['a', null, null, null]});
 });
-test('session continuity distinguishes transport from remote process guarantees', () => {
-    assert.equal(helpers.continuityKey({connected:true, useTmux:true}, false), 'transport');
-    assert.equal(helpers.continuityKey({connected:false, useTmux:true}, true), 'tmuxDisconnected');
-    assert.equal(helpers.continuityKey({connected:true, useTmux:false}, true), 'normal');
-    assert.equal(helpers.continuityKey(null, true), 'none');
-});
 test('failure advice never recommends retry for ambiguous or permission failures', () => {
     assert.equal(helpers.adviceKey('PERMISSION_DENIED'), 'permission');
     assert.equal(helpers.adviceKey('OUTCOME_UNKNOWN'), 'unknown');

@@ -144,7 +144,6 @@
 
                         <div class="account-divider" role="separator"></div>
                         <a id="accountSettingsBtn" class="account-item account-action" href="{{ url_for('security_center') }}#preferences"><span class="account-item-icon material-icons" aria-hidden="true">settings</span> <span data-i18n="settings.title">Settings</span></a>
-                        <button type="button" data-workspace-presets class="account-item account-action"><span class="account-item-icon material-icons" aria-hidden="true">view_quilt</span><span data-i18n="customer.presetsTitle">Workspace presets</span></button>
                         <button type="button" data-recovery-check class="account-item account-action"><span class="account-item-icon material-icons" aria-hidden="true">fact_check</span><span data-i18n="customer.recoveryTitle">Recovery check</span></button>
                         <button id="restartTour" class="account-item account-action" type="button"><span class="material-icons" aria-hidden="true">explore</span><span>Product tour</span></button>
                         <button id="accountShortcutsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">keyboard</span> <span data-i18n="shortcuts.title">Keyboard Shortcuts</span></button>
@@ -167,7 +166,7 @@
             <div class="tab-row-actions">
                 <button class="tab-row-icon-btn" id="terminalAppearanceBtn" type="button" data-open-terminal-appearance title="Terminal appearance" aria-label="Terminal appearance" data-i18n-title="terminalAppearance.title" data-i18n-aria-label="terminalAppearance.title"><span class="material-icons" aria-hidden="true">palette</span></button>
                 <details class="workspace-layout-picker" id="workspaceLayoutPicker">
-                    <summary><span class="material-icons" aria-hidden="true">dashboard</span><span data-i18n="panes.layout">Layout</span><span class="material-icons" aria-hidden="true">expand_more</span></summary>
+                    <summary aria-label="Layout" data-i18n-aria-label="panes.layout"><span class="material-icons" aria-hidden="true">dashboard</span><span data-i18n="panes.layout">Layout</span><span class="material-icons" aria-hidden="true">expand_more</span></summary>
                     <div class="workspace-layout-options">
                         <div class="split-controls" aria-label="Split layout" data-i18n-aria-label="panes.layout">
                             <button class="split-btn active" data-layout="1" title="Single pane" aria-label="Single pane" data-i18n-title="panes.single" data-i18n-aria-label="panes.single"><span class="material-icons" aria-hidden="true">crop_square</span><span data-i18n="panes.single">Single pane</span></button>
@@ -180,12 +179,14 @@
                             <button type="button" class="tab-row-icon-btn" data-window-arrange="cascade" title="Cascade windows" aria-label="Cascade windows" data-i18n-title="windows.cascade" data-i18n-aria-label="windows.cascade"><span class="material-icons" aria-hidden="true">filter_none</span><span data-i18n="windows.cascade">Cascade windows</span></button>
                             <p class="workspace-layout-hint" data-i18n="windows.snapHint">Drag a title bar to an edge to snap; to a corner for a quarter.</p>
                         </div>
+                        <div class="workspace-layout-presets">
+                            <button id="workspacePresetsBtn" data-workspace-presets class="tab-row-icon-btn" type="button"><span class="material-icons" aria-hidden="true">view_quilt</span><span data-i18n="customer.presetsTitle">Workspace presets</span></button>
+                        </div>
                     </div>
                 </details>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
                     <span class="material-icons" aria-hidden="true">cell_tower</span>
                 </button>
-                <button id="workspacePresetsBtn" data-workspace-presets class="tab-row-icon-btn" type="button" title="Workspace presets" aria-label="Workspace presets" data-i18n-title="customer.presetsTitle" data-i18n-aria-label="customer.presetsTitle"><span class="material-icons" aria-hidden="true">view_quilt</span></button>
                 <button class="tab-row-icon-btn" id="saveTranscriptBtn" title="Save Transcript" aria-label="Save transcript" data-i18n-title="terminal.saveTranscript" data-i18n-aria-label="terminal.saveTranscript">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"></path><rect x="8" y="4" width="8" height="5"></rect><rect x="8" y="15" width="8" height="4" rx="1"></rect></svg>
                 </button>
@@ -353,7 +354,6 @@
             </aside>
         </div>
     </main>
-    <p id="workspaceContinuity" class="workspace-continuity" role="status" hidden></p>
     <footer class="workspace-status-bar" id="workspaceStatusBar" hidden aria-label="Workspace status" data-i18n-aria-label="workspace.status">
         <span class="workspace-status-state" id="workspaceStatusState" data-i18n="workspace.noActiveSession">No active session</span>
         <span hidden><strong data-i18n="workspace.target">Target</strong> <span id="workspaceStatusTarget">—</span></span>

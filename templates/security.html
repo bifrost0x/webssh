@@ -29,6 +29,9 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/design-system.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/account-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/support-report.css') }}">
+    {% if admin_panel_enabled and is_admin and not recovery_mode %}
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/customer-workflows.css') }}">
+    {% endif %}
 </head>
 <body class="webssh-ui webssh-account" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}" data-account-mfa-enabled="{{ 'true' if account_mfa_enabled else 'false' }}" data-recovery-enabled="{{ 'true' if recovery_codes_enabled else 'false' }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-authentication-session-duration-minutes="{{ authentication_session_duration_minutes }}">
     <header class="header">
@@ -503,6 +506,8 @@
     <script src="{{ static_asset_url(filename='js/effective-host-trust.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/webauthn.js') }}"></script>
     {% if admin_panel_enabled and is_admin and not recovery_mode %}
+    <script src="{{ static_asset_url(filename='js/customer-workflows-i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/customer-workflows.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/restore-status-flow.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/admin.js') }}"></script>
     {% endif %}

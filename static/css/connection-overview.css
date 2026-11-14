@@ -156,16 +156,6 @@ body.webssh-shell {
     .overview-card-heading { gap: 8px; }
 }
 @media (min-width: 768px) and (max-height: 650px) { .webssh-shell .shell-groups { display: none !important; } }
-/* Compact navigation preserves the existing two/four-pane working widths. */
-@media (min-width: 1101px) and (not ((max-height: 520px) and (pointer: coarse))) {
-    body.webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) { --shell-rail: 72px; }
-    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .header-title-row { padding: 0 6px; }
-    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .app-brand-logo { width: 60px; }
-    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .global-nav-item { justify-content: center; padding: 11px; }
-    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .global-nav-item span:not(.material-icons),
-    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .shell-groups { display: none; }
-}
-
 /* Connection launch board: visible records become compact launch tiles; history
  * and existing browser sessions stay in a distinct secondary activity column. */
 /* Welcome atlas: an origin, a configured route, and a bounded group inventory. */

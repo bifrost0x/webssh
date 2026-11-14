@@ -528,12 +528,14 @@ body[data-theme] .ws-window .terminal-pane.active {
 }
 
 .workspace-layout-options .split-controls,
-.workspace-layout-options .window-arrange-controls {
+.workspace-layout-options .window-arrange-controls,
+.workspace-layout-presets {
     display: grid;
     gap: 4px;
 }
 
-.workspace-layout-options .window-arrange-controls {
+.workspace-layout-options .window-arrange-controls,
+.workspace-layout-presets {
     border-top: 1px solid var(--border-color);
     margin-top: 6px;
     padding-top: 6px;
@@ -612,7 +614,10 @@ body.terminal-window-mode .session-tab.is-minimized:hover {
 }
 
 @media (max-width: 767px) {
-    .workspace-layout-picker { display: none; }
+    .session-tabs-row > .tab-row-actions { display:flex; }
+    .tab-row-actions > :not(.workspace-layout-picker) { display:none; }
+    .workspace-layout-picker > summary { width:32px; padding:0; justify-content:center; }
+    .workspace-layout-picker > summary > :not(:first-child) { display:none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

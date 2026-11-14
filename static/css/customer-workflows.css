@@ -47,9 +47,13 @@
 .customer-saved { color:var(--ws2-success, #4ade80); font-size:.875rem; }
 .customer-dialog :disabled { opacity:.55; cursor:not-allowed; }
 @media (max-width:540px) { .customer-dialog-header, .customer-dialog-footer { padding:.75rem 1rem; } .customer-dialog-body { padding:1rem; } .customer-dialog fieldset { grid-template-columns:1fr; } .customer-row-actions { width:100%; } .customer-row-actions .btn:first-child { flex:1; } .customer-dialog-footer > .btn { width:100%; } }
-.workspace-continuity { margin: .25rem .75rem; max-width: 75ch; color: var(--ws2-text-secondary, var(--text-secondary)); font-size: .875rem; line-height: 1.5; }
 .fm-recovery-guidance { margin-block: .5rem; font-size: .875rem; line-height: 1.5; overflow-wrap: anywhere; }
-.backup-coverage { margin-block: 1rem; line-height: 1.6; }
+.backup-coverage { display:flex; align-items:flex-start; flex-wrap:wrap; gap:.75rem 1.5rem; margin-block:1rem; padding-bottom:1rem; border-bottom:1px solid var(--border-color); }
+.backup-coverage details { flex:1 1 18rem; min-width:0; }
+.backup-coverage summary { width:fit-content; padding-block:.5rem; cursor:pointer; font-size:.875rem; font-weight:600; }
+.backup-coverage p { max-width:80ch; margin:.5rem 0 0; line-height:1.6; }
+.backup-coverage .btn { flex:none; margin:0; }
+.backup-coverage summary:focus-visible { outline:2px solid var(--accent-primary); outline-offset:3px; }
 
 .customer-dialog a { color: var(--ws2-accent, var(--accent-color, #58a6ff)); text-underline-offset: .2em; }
 .customer-dialog :is(button,a,input,select,summary):focus-visible { outline: 2px solid var(--ws2-accent, var(--accent-color, #58a6ff)); outline-offset: 3px; }
