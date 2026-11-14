@@ -20,6 +20,7 @@ CURRENT_STORAGE_VERSIONS = {
     'profiles': 3,
     'command_sets': 2,
     'jump_hosts': 2,
+    'socks_proxies': 2,
     'keys': 2,
     'settings': 2,
     'app_settings': 2,
@@ -83,6 +84,14 @@ def migrate_jump_hosts_v0_to_v1(document):
 
 
 def migrate_jump_hosts_v1_to_v2(document):
+    return _version_document(document, 2)
+
+
+def migrate_socks_proxies_v0_to_v1(document):
+    return _version_document(document, 1)
+
+
+def migrate_socks_proxies_v1_to_v2(document):
     return _version_document(document, 2)
 
 

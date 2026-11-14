@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from functools import wraps
 from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager,
-               session_insights, runtime_inventory, smb_share_manager)
+               session_insights, runtime_inventory, smb_share_manager, socks_proxy_manager)
 from .decorators import socket_login_required
 from .login_access import serialize_login_access
 from .auth import (
@@ -2143,6 +2143,7 @@ def initial_inventory(current_user):
                 for stored_profile in profile_manager.load_profiles(current_user.id)
             ],
             'jump_hosts': jump_host_manager.load_jump_hosts(current_user.id),
+            'socks_proxies': socks_proxy_manager.load_socks_proxies(current_user.id),
         }
     except Exception as error:
         log_warning("Initial host inventory unavailable", error=str(error))
@@ -2443,6 +2444,75 @@ def handle_delete_jump_host(data, current_user=None):
     except Exception as e:
         log_error("Failed to delete jump host", error=str(e))
         emit('error', {'error': 'Failed to delete jump host'})
+
+@socketio.on('list_socks_proxies')
+@socket_login_required
+def handle_list_socks_proxies(current_user=None):
+    try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        emit('socks_proxies_list', {
+            'socks_proxies': socks_proxy_manager.load_socks_proxies(current_user.id),
+        })
+    except ConnectionStorageLimitError as error:
+        return _command_set_error(str(error))
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as error:
+        log_error('Failed to load SOCKS proxies', error_type=type(error).__name__)
+        return _command_set_error('Failed to load SOCKS proxies')
+
+
+@socketio.on('save_socks_proxy')
+@socket_login_required
+def handle_save_socks_proxy(data, current_user=None):
+    try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = data if isinstance(data, dict) else {}
+        proxy, error = socks_proxy_manager.add_socks_proxy(
+            user_id=current_user.id, name=data.get('name'), host=data.get('host'),
+            port=data.get('port', 1080), auth_type=data.get('auth_type', 'none'),
+            username=data.get('username', ''), remote_dns=data.get('remote_dns', True),
+            socks_proxy_id=data.get('socks_proxy_id'),
+        )
+        if error:
+            return _command_set_error(error)
+        payload = {'success': True, 'socks_proxy': proxy}
+        emit('socks_proxy_saved', payload)
+        return payload
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as error:
+        log_error('Failed to save SOCKS proxy', error_type=type(error).__name__)
+        return _command_set_error('Failed to save SOCKS proxy')
+
+
+@socketio.on('delete_socks_proxy')
+@socket_login_required
+def handle_delete_socks_proxy(data, current_user=None):
+    try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = data if isinstance(data, dict) else {}
+        proxy_id = data.get('socks_proxy_id')
+        if not isinstance(proxy_id, str) or not proxy_id or len(proxy_id) > 64:
+            return _command_set_error('SOCKS proxy ID required')
+        success, error, usages = socks_proxy_manager.delete_socks_proxy(current_user.id, proxy_id)
+        if not success:
+            return _command_set_error(error, usages)
+        payload = {'success': True, 'socks_proxy_id': proxy_id}
+        emit('socks_proxy_deleted', payload)
+        return payload
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as error:
+        log_error('Failed to delete SOCKS proxy', error_type=type(error).__name__)
+        return _command_set_error('Failed to delete SOCKS proxy')
+
 
 def _key_summary_rate_limit(current_user):
     if check_socket_rate_limit(

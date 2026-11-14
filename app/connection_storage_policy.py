@@ -1,4 +1,4 @@
-"""Prospective quotas for saved connection and jump-host metadata."""
+"""Prospective quotas for saved connection and route metadata."""
 
 from hashlib import sha256
 import hmac
@@ -20,6 +20,8 @@ PROFILE_GROUP_MAX_BYTES = 256
 PROFILE_REFERENCE_MAX_BYTES = 128
 PROFILE_STARTUP_MAX_BYTES = 64 * 1024
 JUMP_HOST_NAME_MAX_BYTES = 512
+SOCKS_PROXY_NAME_MAX_BYTES = 512
+SOCKS_PROXY_USERNAME_MAX_BYTES = 255
 _RECOVERY_SELECTOR_PATTERN = re.compile(
     r'r1:(0|[1-9][0-9]{0,9}):([0-9a-f]{64})'
 )
@@ -61,6 +63,7 @@ def validate_profile(profile, legacy=None):
         ('group', PROFILE_GROUP_MAX_BYTES, 'profile group'),
         ('key_id', PROFILE_REFERENCE_MAX_BYTES, 'key reference'),
         ('jump_host_id', PROFILE_REFERENCE_MAX_BYTES, 'jump-host reference'),
+        ('socks_proxy_id', PROFILE_REFERENCE_MAX_BYTES, 'SOCKS-proxy reference'),
         ('command_id', PROFILE_REFERENCE_MAX_BYTES, 'command reference'),
         ('command_set_id', PROFILE_REFERENCE_MAX_BYTES, 'command-set reference'),
         ('startup_commands', PROFILE_STARTUP_MAX_BYTES, 'startup commands'),
@@ -97,6 +100,18 @@ def _file_size(path):
         return Path(path).stat().st_size
     except FileNotFoundError:
         return 0
+
+
+def validate_socks_proxy(proxy, legacy=None):
+    """Enforce UTF-8 field budgets without storing proxy credentials."""
+    legacy = legacy if isinstance(legacy, dict) else {}
+    for field, maximum, label in (
+        ('id', PROFILE_REFERENCE_MAX_BYTES, 'SOCKS-proxy id'),
+        ('name', SOCKS_PROXY_NAME_MAX_BYTES, 'SOCKS-proxy name'),
+        ('host', PROFILE_HOST_MAX_BYTES, 'SOCKS-proxy host'),
+        ('username', SOCKS_PROXY_USERNAME_MAX_BYTES, 'SOCKS-proxy username'),
+    ):
+        bounded_text(proxy.get(field), maximum, label, legacy.get(field))
 
 
 def _serialize_document(document, *, compact=False):
@@ -181,7 +196,8 @@ def resolve_recovery_record_selector(scope, records, selector):
 def enforce_store_transition(
     *,
     path,
-    other_path,
+    other_path=None,
+    other_paths=(),
     prospective_document,
     prospective_count,
     previous_count,
@@ -198,7 +214,11 @@ def enforce_store_transition(
     """
     path = Path(path)
     current_size = _file_size(path)
-    other_size = _file_size(other_path)
+    siblings = {Path(sibling).resolve() for sibling in other_paths}
+    if other_path is not None:
+        siblings.add(Path(other_path).resolve())
+    siblings.discard(path.resolve())
+    other_size = sum(_file_size(sibling) for sibling in siblings)
     if prospective_count > maximum_count and (
         previous_count is None or prospective_count > previous_count
     ):
