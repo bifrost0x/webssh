@@ -7,6 +7,7 @@
         const native = state?.enabled && state.credentials?.some(item => item.uses?.some(use => String(use.resource_id || use.id) === String(id) && use.valid !== false));
         const legacy = state?.enabled !== false && state?.vault?.unlocked && state.vault.credentials?.some(item => String(item.profile_id) === String(id) && item.valid === true);
         return Boolean(id && resource && (native || legacy)
+            && String(resource.socks_proxy_id || '') === String(target.socks_proxy_id || '')
             && Object.entries(target).every(([key, value]) => key === 'port'
                 ? Number(resource[key] || 22) === Number(value || 22)
                 : String(resource[key] || '') === String(value || '')));
@@ -161,7 +162,7 @@
     const value = id => document.getElementById(id)?.value || '';
     function install() {
         attach('passwordInput', () => window.ProfileManager?.selectedProfileId || null,
-            () => ({host: value('hostInput'), port: Number(value('portInput')) || 22, username: value('usernameInput'), auth_type: value('authTypeSelect') === 'saved-password' ? 'password' : value('authTypeSelect') || 'password', jump_host_id: value('jumpHostSelect') || null, socks_proxy_id: value('socksProxySelect') || null}), 'connectionModal');
+            () => ({host: value('hostInput'), port: Number(value('portInput')) || 22, username: value('usernameInput'), auth_type: value('authTypeSelect') === 'saved-password' ? 'password' : value('authTypeSelect') || 'password', jump_host_id: value('jumpHostSelect') || null, ...(value('socksProxySelect') ? {socks_proxy_id: value('socksProxySelect')} : {})}), 'connectionModal');
         attach('socksProxyPasswordInput', () => value('socksProxySelect') ? `socks:${value('socksProxySelect')}` : null,
             () => { const proxy = window.SocksProxyManager?.getById(value('socksProxySelect')); return {host: proxy?.host, port: proxy?.port, username: proxy?.username, auth_type: proxy?.auth_type, remote_dns: proxy?.remote_dns}; }, 'connectionModal');
         attach('jumpHostPasswordInput', () => value('jumpHostSelect') ? `jump:${value('jumpHostSelect')}` : null,

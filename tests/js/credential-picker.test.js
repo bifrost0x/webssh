@@ -31,3 +31,16 @@ test('SMB credential selection binds the share and domain as well as host and us
     assert.equal(picker.available(state, 'smb:1', {...target, share: 'private'}), false);
     assert.equal(picker.available(state, 'smb:1', {...target, domain: 'other'}), false);
 });
+
+test('SSH credential availability distinguishes an omitted direct route from a SOCKS route', () => {
+    const picker = load();
+    const target = {host: 'host', port: 22, username: 'alice', auth_type: 'password', jump_host_id: null};
+    const resource = {id: 'profile', ...target, socks_proxy_id: 'proxy-a'};
+    const state = {enabled: true, profiles: [resource], credentials: [{uses: [{resource_id: 'profile', valid: true}]}]};
+    assert.equal(picker.available(state, 'profile', target), false);
+    assert.equal(picker.available(state, 'profile', {...target, socks_proxy_id: 'proxy-a'}), true);
+    assert.equal(picker.available(state, 'profile', {...target, socks_proxy_id: 'proxy-b'}), false);
+    resource.socks_proxy_id = null;
+    assert.equal(picker.available(state, 'profile', target), true);
+    assert.equal(picker.available(state, 'profile', {...target, socks_proxy_id: 'proxy-a'}), false);
+});
