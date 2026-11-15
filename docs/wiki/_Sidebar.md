@@ -7,6 +7,7 @@
 
 - [Installation from Source](Installation-from-Source)
 - [Docker and Docker Compose](Docker-and-Docker-Compose)
+- [Install on Unraid](Install-on-Unraid)
 - [Production Deployment](Production-Deployment)
 - [Reverse Proxy and Subfolder Deployment](Reverse-Proxy-and-Subfolder-Deployment)
 - [Upgrading, Rollback, and FAQ](Upgrading-Rollback-and-FAQ)

@@ -213,6 +213,10 @@ Test both the new default and the user's explicit override.
 Relevant release validation includes:
 
 - container build and startup;
+- runtime identities in `scripts/check_hardened_container.py`: the default
+  user, the hardened overlay, a custom UID and the shipped Unraid template;
+- the Unraid template's ports, paths and variables against
+  `docker-compose.yml` (`tests/test_unraid_template.py`);
 - Gunicorn `gthread`, exactly one worker, and thread/socket reserve;
 - `/health` and `/ready` behavior;
 - graceful shutdown and transfer cleanup;
@@ -220,6 +224,9 @@ Relevant release validation includes:
 - SPDX SBOM and provenance;
 - Trivy results for fixable High/Critical findings;
 - CodeQL for Python, JavaScript/TypeScript, and Actions.
+
+A new or changed setting, port or volume in `docker-compose.yml` must reach
+`unraid/webssh.xml` in the same change; the template test fails otherwise.
 
 Always associate CI evidence with the exact commit under review. A green run from an older SHA is not evidence for a newer change.
 

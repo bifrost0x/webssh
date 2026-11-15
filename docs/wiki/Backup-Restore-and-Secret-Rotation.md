@@ -82,8 +82,8 @@ they are only usable with the same `SECRET_KEY`.
 
 Without `--destination`, `backup create --confirm-offline` retains the parent of
 `DATA_DIR` as its default when writable. On a read-only or permission-restricted
-parent, it writes to the private instance directory under `BACKUP_TEMP_DIR` and
-prints the exact archive path. Explicit destinations are never redirected.
+parent, such as `/app` in the official image, it writes to the private instance
+directory under `BACKUP_TEMP_DIR` and prints the exact archive path. Explicit destinations are never redirected.
 The supplied Compose recovery volume persists fallback archives; custom paths
 must provide their own durability. Copy the result to encrypted off-host storage.
 An archive in a one-off container's writable layer disappears with that container.

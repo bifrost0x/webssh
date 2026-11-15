@@ -2,6 +2,12 @@
 
 The official image is published at `ghcr.io/bifrost0x/webssh`. The container
 runs as a non-root user and starts Gunicorn with one `gthread` worker.
+Application code under `/app` belongs to root and is read-only for that user;
+WebSSH writes only to `/app/data`, `/app/recovery` and temporary directories.
+Keep custom write paths such as `DATA_DIR` or `TRANSFER_TEMP_DIR` on a mounted
+volume.
+
+On Unraid, use the template described in [Install on Unraid](Install-on-Unraid).
 
 ## Persistent volume
 

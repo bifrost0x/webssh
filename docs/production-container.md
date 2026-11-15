@@ -33,7 +33,9 @@ it. It is intended for the current image; test older or derived images before
 applying these restrictions. Existing installations can use the current image
 with their established deployment settings without enabling this overlay.
 
-The standard image runs as UID/GID 1000. With hardening enabled, writable
+The standard image runs as UID/GID 1000. Application code under `/app`
+belongs to root and is read-only for that user in every profile; only the data
+and recovery directories are writable. With hardening enabled, writable
 locations are:
 
 | Path | Purpose | Lifetime |
@@ -57,6 +59,8 @@ recursively before the first start. Current images ship a placeholder in
 recreation. Docker never copies into a volume that already has content. A
 recovery volume provisioned with an older image that has never been started
 is still empty: change its ownership once more after updating the image.
+Without the hardened overlay, a numeric user without a writable home gets a
+private Gunicorn runtime directory under `/tmp` when `XDG_RUNTIME_DIR` is unset.
 
 | Compose variable | Hardened default | Purpose |
 | --- | --- | --- |
@@ -90,10 +94,10 @@ a restore also rejects recovery storage overlapping its actual destination.
 Provision space for the archive, extracted files and rollback copies. Restore
 writes use atomic file copies, so recovery can reside on a separate filesystem.
 
-`flask --app start:app backup create --confirm-offline` still uses the parent
-of `DATA_DIR` when writable. If that directory is read-only or denies writes,
-the command uses the private per-instance directory under `BACKUP_TEMP_DIR`
-and prints the archive's actual path. An explicit `--destination` is never
+`flask --app start:app backup create --confirm-offline` uses the parent of
+`DATA_DIR` when writable. In the official image that parent is the read-only
+`/app`, so the command uses the private per-instance directory under
+`BACKUP_TEMP_DIR` and prints the archive's actual path. An explicit `--destination` is never
 redirected; insufficient space, source-read errors and existing destinations
 still fail. With the supplied Compose files, fallback archives reside on the
 persistent recovery volume. With custom settings, use durable backup storage
@@ -137,11 +141,13 @@ sidecar. Production target policy and interface checks still apply.
 
 `scripts/check_hardened_container.py --image IMAGE --revision COMMIT_SHA
 --platform linux/amd64` exercises the established production setup, optional
-hardening, and hardening with a custom UID/GID, transfer path and larger tmpfs. It checks
+hardening, hardening with a custom UID/GID, transfer path and larger tmpfs, and
+the shipped Unraid template (its user, restrictions, variables and paths) on
+folders owned by `nobody:users` with mode `0777`. It checks
 revision, readiness, filesystem/process restrictions, a 160 MiB scratch write,
 online backup, offline CLI backup, restore, SQLite integrity, restart and graceful
 shutdown. Use `linux/arm64` for the other release platform. `--profile` can select
-`compatible`, `hardened` or `hardened-custom`; CI/release checks run all three.
+`compatible`, `hardened`, `hardened-custom` or `unraid`; CI/release checks run all four.
 The helper uses anonymous volumes and uniquely labelled disposable containers,
 and checks ownership before removing them. It does not use deployment data.
 Image scanning and immutable release-candidate checks remain required. These

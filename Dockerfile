@@ -61,13 +61,19 @@ COPY templates/ /app/templates/
 COPY static/ /app/static/
 COPY deployment/ldap_secret_cli.py /app/deployment/ldap_secret_cli.py
 COPY config.py start.py LICENSE THIRD-PARTY-NOTICES NOTICE /app/
+COPY entrypoint.sh /app/entrypoint.sh
 
+# Application code stays root-owned and read-only for the service, so a
+# compromised process cannot change code that later starts or health checks
+# run. Only the data and recovery directories belong to the service account.
 # Docker seeds an empty named volume from the image on every new container and
 # resets its root to the image directory's owner. The placeholder leaves the
 # recovery volume non-empty after the first copy, so a custom-UID volume keeps
 # its provisioned ownership when the container is recreated. Docker never
 # copies into a volume that already has content.
-RUN chown -R appuser:appuser /app && \
+RUN chown -R root:root /app && \
+    chmod -R go-w /app && \
+    chmod 755 /app/entrypoint.sh && \
     mkdir -p /app/data/logs /app/data/keys /app/recovery /run/webssh-auth && \
     chown -R appuser:appuser /app/data && \
     chown appuser:appuser /app/recovery && \
@@ -78,9 +84,6 @@ RUN chown -R appuser:appuser /app && \
     chmod 700 /app/recovery && \
     chmod 700 /run/webssh-auth && \
     install -o appuser -g appuser -m 600 /dev/null /app/recovery/.webssh-volume
-
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
 
 # Persist the data dir (SQLite DB, encrypted keys, auto-generated SECRET_KEY).
 # Auto-creates an anonymous volume on `docker run` so state survives restarts;
