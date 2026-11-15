@@ -41,6 +41,19 @@ This setup does not add or reorganize a Project.
    the tag-triggered pipeline, versioned AMD64/ARM64 image and SBOM/provenance. Only then
    close the readiness issue and milestone; move the outcome into completed history.
 
+   Use a lightweight tag on the merged candidate commit, not an annotated tag:
+
+   ```bash
+   git tag v3.2.0 <candidate-sha>
+   git push origin v3.2.0
+   gh release create v3.2.0 --verify-tag --notes-file docs/releases/v3.2.0.md
+   ```
+
+   GitHub shows a lightweight tag as verified when its commit is signed, which holds
+   for merges made on GitHub. An annotated tag is an object of its own and shows as
+   unverified unless the tag itself is signed. Releases are immutable, so a published
+   tag cannot be replaced afterwards; v2.7.0 to v3.1.0 carry unsigned annotated tags.
+
 Milestone progress is a count of closed work items, not effort completed or proof that
 a version has shipped. A nearly complete milestone with a blocked release gate is still
 not a published release. Issues and PRs can both represent the same outcome, so do not
