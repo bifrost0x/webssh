@@ -74,7 +74,7 @@ for (const width of [360, 870, 3043]) {
         await page.setViewportSize({width, height: 662});
         await login(page);
         await openProfileManagement(page);
-        await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
+        await page.locator('#profileManagementModal .connection-asset-nav [data-connection-asset="jump-hosts"]').click();
         await expect(page.locator('#jumpHostManagementModal')).toBeVisible();
         await page.locator('#jumpResourceNew').click();
         await page.locator('#jhNameInput').fill('Navigation draft');

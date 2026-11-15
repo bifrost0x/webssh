@@ -43,7 +43,7 @@ for (const width of [360, 733, 1440, 3043]) {
         await page.locator('#newProfileBtn').click();
         await expect(page.locator('#profileEditorView')).toBeVisible();
         await page.locator('#cancelProfileEditorBtn').click();
-        await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
+        await page.locator('#profileManagementModal .connection-asset-nav [data-connection-asset="jump-hosts"]').click();
         await page.evaluate(() => new Promise(resolve => window.socket.emit('list_jump_hosts', resolve)));
         await page.evaluate(() => window.JumpHostManager.setJumpHosts([]));
         await expectEmptyRegion(page, '#jumpHostsList .no-items');

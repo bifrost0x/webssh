@@ -284,6 +284,16 @@ def test_hosts_are_prominent_and_connection_assets_share_navigation():
             assert menu.count(f'data-connection-asset="{asset}"') == 1
         assert menu.index('data-connection-asset="jump-hosts"') < menu.index('data-connection-asset="socks-proxies"') < menu.index('data-connection-asset="keys"')
     assert 'id="socksProxyManagementModal"' in template
+    route_fieldsets = re.findall(
+        r'<fieldset class="connection-route-fields">(.*?)</fieldset>',
+        template,
+        re.DOTALL,
+    )
+    assert len(route_fieldsets) == 2
+    for fieldset in route_fieldsets:
+        assert fieldset.count('data-connection-asset="jump-hosts"') == 1
+        assert fieldset.count('data-connection-asset="socks-proxies"') == 1
+        assert fieldset.index('data-connection-asset="jump-hosts"') < fieldset.index('data-connection-asset="socks-proxies"')
     assert 'id="socksProxyForm"' in template
     assert 'id="socksProxiesList"' in template
     assert 'function openConnectionAssetManager(asset)' in app_source

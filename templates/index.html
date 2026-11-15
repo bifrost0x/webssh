@@ -757,7 +757,7 @@
                         <select id="jumpHostSelect" class="form-control">
                             <option value="" data-i18n="connection.noJumpHost">None (direct connection)</option>
                         </select>
-                        <div class="field-hint" data-i18n="connection.jumpHostHint">Manage jump hosts in the account menu.</div>
+                        <button type="button" class="btn btn-secondary btn-sm" data-connection-asset="jump-hosts" data-i18n="connection.jumpHostManage">Manage jump hosts</button>
                     </div>
 
                     <div class="form-group hidden" id="jumpHostPasswordGroup">
@@ -1008,6 +1008,7 @@
                         <div class="form-group">
                             <label for="profileEditorJumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
                             <select id="profileEditorJumpHostSelect" class="form-control"></select>
+                            <button type="button" class="btn btn-secondary btn-sm" data-connection-asset="jump-hosts" data-i18n="connection.jumpHostManage">Manage jump hosts</button>
                         </div>
                         <div class="form-group"><label for="profileEditorSocksProxySelect" data-i18n="connection.socksProxy">SOCKS5 Proxy</label><select id="profileEditorSocksProxySelect" class="form-control"><option value="" data-i18n="connection.socksProxyNone">None</option></select>
                         <button type="button" class="btn btn-secondary btn-sm" data-connection-asset="socks-proxies" data-i18n="connection.socksProxyManage">Manage SOCKS5 proxies</button></div>

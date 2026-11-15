@@ -100,7 +100,7 @@ for (const width of [1536, 390]) {
         await page.setViewportSize({width, height: 960});
         await login(page);
         await openProfileManagement(page);
-        await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
+        await page.locator('#profileManagementModal .connection-asset-nav [data-connection-asset="jump-hosts"]').click();
         const name = `Persistence bastion ${width}`;
         await page.locator('#jumpResourceNew').click();
         await page.locator('#jhNameInput').fill(name);
@@ -112,14 +112,14 @@ for (const width of [1536, 390]) {
         await expect(item).toContainText('tester@bastion.example:2222');
         await page.reload();
         await openProfileManagement(page);
-        await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
+        await page.locator('#profileManagementModal .connection-asset-nav [data-connection-asset="jump-hosts"]').click();
         await expect(item).toContainText('tester@bastion.example:2222');
         page.once('dialog', dialog => dialog.accept());
         await item.getByRole('button', {name: 'Delete', exact: true}).click();
         await expect(item).toHaveCount(0);
         await page.reload();
         await openProfileManagement(page);
-        await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
+        await page.locator('#profileManagementModal .connection-asset-nav [data-connection-asset="jump-hosts"]').click();
         await expect(item).toHaveCount(0);
         await assertNoExternalRequests(page);
     });

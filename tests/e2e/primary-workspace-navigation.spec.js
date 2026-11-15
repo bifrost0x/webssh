@@ -103,7 +103,7 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
         '#profileManagementList',
     ));
 
-    await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
+    await page.locator('#profileManagementModal .connection-asset-nav [data-connection-asset="jump-hosts"]').click();
     await expect(page.locator('#jumpHostManagementModal')).toBeVisible();
     await expect(page.locator('#manageProfilesBtn')).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('.main-content')).toBeHidden();
