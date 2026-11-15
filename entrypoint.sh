@@ -20,7 +20,7 @@ export DATA_DIR
 if ! mkdir -p "$DATA_DIR/logs" "$DATA_DIR/keys" \
     || ! chmod 700 "$DATA_DIR" "$DATA_DIR/logs" "$DATA_DIR/keys"; then
     runtime_id="$(id -u):$(id -g)"
-    echo "ERROR: $DATA_DIR is not writable by the container user $runtime_id." >&2
+    echo "ERROR: $DATA_DIR must be owned and writable by the container user $runtime_id." >&2
     echo "Give the mounted host directory to that user, for example: chown -R $runtime_id <host directory>" >&2
     exit 1
 fi

@@ -18,7 +18,14 @@ registration for the first account.
   or follow [Production Deployment](Production-Deployment) for HTTPS through a
   reverse proxy with the production profile.
 - The first account created in the browser becomes the administrator. Open the
-  WebUI and create it right after installation.
+  WebUI and create it right after installation. To close that window entirely,
+  add the variable `BOOTSTRAP_REGISTRATION_ENABLED` with the value `false`
+  before you apply the template, then create the administrator from the Unraid
+  terminal:
+
+  ```bash
+  docker exec -it WebSSH /app/entrypoint.sh flask --app start:app create-admin --username admin
+  ```
 
 ## Install the template
 
@@ -61,43 +68,70 @@ as described in [SSH Connections and Host Keys](SSH-Connections-and-Host-Keys).
 
 ## Container user and appdata permissions
 
-The template sets **Extra Parameters** to `--user 99:100`, so WebSSH runs as
-`nobody:users` and never as root. When you apply a template, Unraid creates
-missing appdata folders and gives them to `nobody:users`, so the first start
-can write them. WebSSH then restricts the folders to mode `0700`.
+The template sets **Extra Parameters** to
+`--user 99:100 --cap-drop ALL --security-opt no-new-privileges:true`, so
+WebSSH runs as `nobody:users`, never as root, without Linux capabilities and
+without privilege gains through setuid programs. When you apply a template,
+Unraid creates missing appdata folders and gives them to `nobody:users`, so the
+first start can write them. WebSSH then restricts the folders to mode `0700`.
 
-Keep `--user 99:100`. Without it, the image runs as its built-in user (UID
-1000), which cannot write the folders Unraid created.
+Keep these parameters. Without `--user`, the image runs as its built-in user
+(UID 1000), which cannot write the folders Unraid created.
 
-If the log shows `is not writable by the container user 99:100`, the folders
-belong to another user, for example because they were created from the
-terminal as root or restored from another system. Stop the container, then run:
+If the log shows `must be owned and writable by the container user 99:100`,
+the folders belong to another user, for example because they were created from
+the terminal as root or restored from another system. Stop the container, then
+run:
 
 ```bash
 chown -R 99:100 /mnt/user/appdata/webssh
 ```
 
-To run WebSSH as another numeric user, change both **Extra Parameters** and the
-owner of the appdata folders to the same IDs. Do not use `0:0`.
-
 ### Moving an existing Docker Compose installation
 
 Compose installations store data as the image's built-in user (UID 1000).
 Copy the data and recovery volumes into the appdata folders while the old
-container is stopped, then either run the `chown` command above or set
-**Extra Parameters** to `--user 1000:1000`. Keep the same data folder, because
-it contains the application secret that decrypts stored keys.
+container is stopped, then run the `chown` command above. Keep the same data
+folder, because it contains the application secret that decrypts stored keys.
 
 ## Keep appdata private
 
 The data folder contains the application secret next to the encrypted SSH keys
 and passwords. Anyone who can read both can decrypt them.
 
+`99:100` is the identity most Unraid containers and guest access to shares use.
+Mode `0700` keeps other users out, but not other processes running as `99:100`:
+a container with that identity that maps `/mnt/user` or `/mnt/user/appdata` can
+read WebSSH's data.
+
+- Do not map `/mnt/user` or the `appdata` share into other containers that run
+  as `99:100`, or run WebSSH as a dedicated user instead (see below).
 - Do not export the `appdata` share over SMB or NFS.
+- Leave the WebSSH appdata folder out of permission-reset tools such as
+  **New Permissions**.
 - Back up the data and recovery folders encrypted and off the server.
 - Use the built-in backup described in
   [Backup, Restore, and Secret Rotation](Backup-Restore-and-Secret-Rotation)
   before major updates.
+
+### Run as a dedicated user
+
+A numeric ID that no other container or Unraid account uses isolates WebSSH's
+data from them. Unraid accounts usually start at 1000, so pick a higher unused
+number, for example `10000`. Stop the container, give the folders to that ID
+and change only the `--user` value in **Extra Parameters**:
+
+```bash
+chown -R 10000:10000 /mnt/user/appdata/webssh
+```
+
+```text
+--user 10000:10000 --cap-drop ALL --security-opt no-new-privileges:true
+```
+
+Do not use `0:0`. If you later change the folder paths, create and `chown` the
+new folders before the first start, because Unraid gives new folders to
+`nobody:users`.
 
 ## Updates
 

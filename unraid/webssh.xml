@@ -3,7 +3,8 @@
   Unraid template for WebSSH. Keep ports, container paths and variables in sync
   with the homelab profile in docker-compose.yml; tests/test_unraid_template.py
   enforces this. ExtraParams runs the image as nobody:users, the owner Unraid
-  gives to appdata folders it creates for a template.
+  gives to appdata folders it creates for a template, without capabilities
+  and without setuid privilege gains.
 -->
 <Container version="2">
   <Name>WebSSH</Name>
@@ -21,12 +22,12 @@ Security: WebSSH is an SSH gateway. Anyone who can sign in can reach the SSH tar
 
 First start: the first account created in the browser becomes the administrator. Open the WebUI and create it right after installation, before anyone else can reach the instance.
 
-The container runs as nobody:users (99:100), never as root. Unraid creates the appdata folders for that user on installation. The template sets no secret; WebSSH generates its application secret on first start and keeps it in the data folder.</Overview>
+The container runs as nobody:users (99:100) without Linux capabilities, never as root. Unraid creates the appdata folders for that user on installation. Other containers running as 99:100 with access to the appdata share can read WebSSH's data; the install guide explains how to isolate it. The template sets no secret; WebSSH generates its application secret on first start and keeps it in the data folder.</Overview>
   <Category>Network:Management Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:5000]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/bifrost0x/webssh/main/unraid/webssh.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/webssh-icon.png</Icon>
-  <ExtraParams>--user 99:100</ExtraParams>
+  <ExtraParams>--user 99:100 --cap-drop ALL --security-opt no-new-privileges:true</ExtraParams>
   <PostArgs/>
   <License>Apache-2.0</License>
   <Requires>Keep the appdata folders private. Their contents include the application secret and encrypted SSH keys.</Requires>

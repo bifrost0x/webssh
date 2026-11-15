@@ -104,7 +104,7 @@ def test_unwritable_data_dir_names_the_container_user_and_fix(tmp_path):
     identity = f'{os.getuid()}:{os.getgid()}'
     assert result.returncode == 1
     assert result.stdout == ''
-    assert f'is not writable by the container user {identity}' in result.stderr
+    assert f'must be owned and writable by the container user {identity}' in result.stderr
     assert f'chown -R {identity} <host directory>' in result.stderr
     assert not (data_dir / 'secret_key').exists()
 

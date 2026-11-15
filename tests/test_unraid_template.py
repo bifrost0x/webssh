@@ -19,6 +19,8 @@ IMAGE = 'ghcr.io/bifrost0x/webssh:latest'
 # Unraid creates missing template paths as nobody:users; the image must run as
 # exactly that identity to write them (dynamix.docker.manager xmlToCommand).
 UNRAID_USER = '--user 99:100'
+# Running without capabilities and setuid gains costs nothing as a non-root user.
+EXTRA_PARAMS = f'{UNRAID_USER} --cap-drop ALL --security-opt no-new-privileges:true'
 CONFIG_ATTRIBUTES = {
     'Name', 'Target', 'Default', 'Mode', 'Description', 'Type', 'Display', 'Required', 'Mask',
 }
@@ -137,8 +139,8 @@ def test_template_runs_as_the_unraid_appdata_owner_without_secrets():
     root = template()
     variables = {entry.get('Target'): entry for entry in configs('Variable')}
 
-    # Only the user switch; never root, privileges, capabilities or devices.
-    assert root.findtext('ExtraParams') == UNRAID_USER
+    # Only the user switch and restrictions; never root, privileges or devices.
+    assert root.findtext('ExtraParams') == EXTRA_PARAMS
     assert (root.findtext('PostArgs') or '') == ''
     assert 'SECRET_KEY' not in variables
     for name, entry in variables.items():
@@ -169,6 +171,6 @@ def test_install_guide_documents_the_template_and_its_identity():
     guide = (ROOT / 'docs' / 'wiki' / 'Install-on-Unraid.md').read_text(encoding='utf-8')
 
     assert template().findtext('TemplateURL') in guide
-    assert UNRAID_USER in guide
+    assert EXTRA_PARAMS in guide
     assert 'chown -R 99:100' in guide
     assert 'assets/webssh-icon.png' in guide

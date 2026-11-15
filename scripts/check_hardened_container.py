@@ -4,6 +4,7 @@ identity using disposable containers."""
 import argparse
 import json
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import time
@@ -13,6 +14,7 @@ from uuid import uuid4
 from xml.etree import ElementTree
 
 TEMPLATE = Path(__file__).resolve().parents[1] / 'unraid' / 'webssh.xml'
+UNRAID_RESTRICTIONS = ['--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true']
 
 
 PROBE = r'''
@@ -45,7 +47,9 @@ if runtime_id is not None:
         status = Path(f'/proc/{process}/status').read_text()
         assert f'Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n' in status, status
         assert f'Gid:\t{gid}\t{gid}\t{gid}\t{gid}\n' in status, status
-        assert 'CapEff:\t0000000000000000' in status, status
+        for field in ('CapPrm', 'CapEff', 'CapBnd', 'CapAmb'):
+            assert f'{field}:\t0000000000000000' in status, status
+        assert 'NoNewPrivs:\t1' in status, status
     for path in (Path('/app/data'), Path('/app/recovery')):
         metadata = path.stat()
         assert (metadata.st_uid, metadata.st_gid, metadata.st_mode & 0o777) == (uid, gid, 0o700)
@@ -143,16 +147,22 @@ def unraid_template():
     """Read the runtime contract of unraid/webssh.xml from this checkout."""
     root = ElementTree.parse(TEMPLATE).getroot()
     arguments = shlex.split(root.findtext('ExtraParams') or '')
-    if len(arguments) != 2 or arguments[0] != '--user':
-        raise ValueError('The Unraid template may only set --user in ExtraParams')
+    # Only the identity switch and restrictions; never privileges or devices.
+    if (len(arguments) != 6 or arguments[0] != '--user'
+            or arguments[2:] != UNRAID_RESTRICTIONS
+            or not re.fullmatch(r'[1-9][0-9]*:[1-9][0-9]*', arguments[1])):
+        raise ValueError('Unexpected ExtraParams in the Unraid template')
     uid, gid = (int(value) for value in arguments[1].split(':'))
     configs = root.findall('Config')
     environment = {entry.get('Target'): entry.get('Default')
                    for entry in configs if entry.get('Type') == 'Variable'}
     paths = [entry.get('Target') for entry in configs if entry.get('Type') == 'Path']
+    if not all(re.fullmatch(r'/[A-Za-z0-9_./-]+', path) for path in paths):
+        raise ValueError('Unexpected container path in the Unraid template')
     if '/app/data' not in paths or environment.get('BACKUP_TEMP_DIR') not in paths:
         raise ValueError('The Unraid template must persist data and recovery')
-    return {'identity': (uid, gid), 'environment': environment, 'paths': paths}
+    return {'identity': (uid, gid), 'environment': environment, 'paths': paths,
+            'restrictions': arguments[2:]}
 
 
 def check_image(image, revision, platform, profile='hardened'):
@@ -200,7 +210,8 @@ def check_image(image, revision, platform, profile='hardened'):
         # paths empty with mode 0777 and owner nobody:users before the start.
         template = unraid_template()
         unraid_id = template['identity']
-        restrictions.extend(['--user', f'{unraid_id[0]}:{unraid_id[1]}'])
+        restrictions.extend(['--user', f'{unraid_id[0]}:{unraid_id[1]}',
+                             *template['restrictions']])
         environment = []
         for key, value in template['environment'].items():
             environment.extend(['--env', f'{key}={value}'])

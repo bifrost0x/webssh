@@ -40,7 +40,7 @@ docker compose logs --tail=200 webssh
 
 If the service repeatedly restarts, inspect the first startup error rather than only the last health-check failure. Common causes are an invalid production configuration, missing/incorrect secret permissions, an unwritable data volume, or a port collision.
 
-An unwritable data volume stops the container with an error such as `ERROR: /app/data is not writable by the container user 99:100.` followed by the matching `chown` command. Give the mounted host directory to that numeric user while the container is stopped; on Unraid see [Install on Unraid](Install-on-Unraid).
+An unwritable data volume stops the container with an error such as `ERROR: /app/data must be owned and writable by the container user 99:100.` followed by the matching `chown` command. Give the mounted host directory to that numeric user while the container is stopped; on Unraid see [Install on Unraid](Install-on-Unraid).
 
 ## Browser cannot connect
 

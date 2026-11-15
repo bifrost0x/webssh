@@ -133,8 +133,8 @@ sidecar. Production target policy and interface checks still apply.
 `scripts/check_hardened_container.py --image IMAGE --revision COMMIT_SHA
 --platform linux/amd64` exercises the established production setup, optional
 hardening, hardening with a custom UID/GID, transfer path and larger tmpfs, and
-the Unraid template's `--user 99:100` on folders owned by `nobody:users` with
-mode `0777`. It checks
+the shipped Unraid template (its user, restrictions, variables and paths) on
+folders owned by `nobody:users` with mode `0777`. It checks
 revision, readiness, filesystem/process restrictions, a 160 MiB scratch write,
 online backup, offline CLI backup, restore, SQLite integrity, restart and graceful
 shutdown. Use `linux/arm64` for the other release platform. `--profile` can select
