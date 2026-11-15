@@ -128,12 +128,21 @@ INTERNAL_REVIEW_MARKERS = (
 
 _ASSISTANT_NAMES = r'(?:claude|codex|copilot|gemini|chatgpt|cursor|aider|devin|jules)'
 
+# Assistant identities are recognized by their account address, never by the
+# display name alone: "Jules Martin" or "Devin Smith" are legitimate co-authors.
+_ASSISTANT_ADDRESS = (
+    r'(?:[^@\s<>]*@(?:[\w-]+\.)*(?:anthropic|openai|cursor)\.com'
+    r'|\d+\+copilot@users\.noreply\.github\.com'
+    rf'|[^@\s<>]*(?:{_ASSISTANT_NAMES}|github-advanced-security)[^@\s<>]*'
+    r'\[bot\]@users\.noreply\.github\.com)'
+)
+
 # Tool attribution that coding assistants add to commit messages and PR text.
 # Plain mentions such as "ignore .claude/" stay allowed; only attribution forms
 # and session links are rejected.
 ATTRIBUTION_MARKERS = (
     re.compile(
-        rf'^\s*co-authored-by:[^\n]*(?:{_ASSISTANT_NAMES}|anthropic|openai)',
+        rf'^\s*co-authored-by:[^\n<]*<\s*{_ASSISTANT_ADDRESS}\s*>',
         re.IGNORECASE | re.MULTILINE,
     ),
     re.compile(rf'^\s*{_ASSISTANT_NAMES}-session:', re.IGNORECASE | re.MULTILINE),
@@ -146,11 +155,11 @@ ATTRIBUTION_MARKERS = (
     re.compile(r'noreply@(?:anthropic|openai)\.com', re.IGNORECASE),
 )
 
-# Identities and branch prefixes are matched only for names that cannot be a
-# person or a project topic ("cursor" is a terminal concept, "Jules" a name).
+ASSISTANT_EMAIL = re.compile(rf'^{_ASSISTANT_ADDRESS}$', re.IGNORECASE)
+
+# Branch prefixes only for names that cannot be a project topic
+# ("cursor" is a terminal concept).
 _ASSISTANT_ACCOUNTS = r'(?:claude|codex|copilot|gemini|chatgpt)'
-ASSISTANT_NAME = re.compile(rf'^{_ASSISTANT_ACCOUNTS}(?:\s*\[bot\])?$', re.IGNORECASE)
-ASSISTANT_EMAIL = re.compile(r'@(?:anthropic|openai)\.com$', re.IGNORECASE)
 ASSISTANT_BRANCH = re.compile(rf'^{_ASSISTANT_ACCOUNTS}/', re.IGNORECASE)
 
 
@@ -297,12 +306,11 @@ def attribution_violations(label: str, text: str) -> list[Violation]:
 
 
 def commit_violations(root: Path, revision_range: str) -> list[Violation]:
-    """Check author, committer and message of every commit in the range."""
+    """Check author and committer address and message of every commit in the range."""
     if revision_range.startswith('-'):
         raise ValueError(f'invalid revision range: {revision_range}')
     result = subprocess.run(
-        ['git', 'log', '-z',
-         '--format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce%x1f%B', revision_range, '--'],
+        ['git', 'log', '-z', '--format=%H%x1f%ae%x1f%ce%x1f%B', revision_range, '--'],
         cwd=root,
         check=True,
         stdout=subprocess.PIPE,
@@ -311,14 +319,12 @@ def commit_violations(root: Path, revision_range: str) -> list[Violation]:
     for record in result.stdout.split(b'\0'):
         if not record.strip():
             continue
-        fields = record.decode('utf-8', errors='replace').split('\x1f', 5)
-        if len(fields) != 6:
+        fields = record.decode('utf-8', errors='replace').split('\x1f', 3)
+        if len(fields) != 4:
             raise ValueError('unexpected git log output')
-        sha, author, author_email, committer, committer_email, message = fields
+        sha, author_email, committer_email, message = fields
         label = f'commit {sha[:12]}'
-        if any(ASSISTANT_NAME.match(name.strip()) for name in (author, committer)) or any(
-            ASSISTANT_EMAIL.search(email.strip()) for email in (author_email, committer_email)
-        ):
+        if any(ASSISTANT_EMAIL.match(email.strip()) for email in (author_email, committer_email)):
             violations.append(Violation(label, 'coding-assistant author or committer identity'))
         violations.extend(attribution_violations(label, message))
     return violations
