@@ -49,12 +49,27 @@ These belong to the first official release baseline, not invented pre-1.0 releas
 | [v2.7.0](https://github.com/bifrost0x/webssh/releases/tag/v2.7.0) / 2026-11-04 | SSH PAM MFA, tmux navigation, file/command UX, theme-aware branding, security hardening and Apache 2.0 | #304: server MFA; #300/#302: explicit tmux sync; #295/#296: storage and backup boundaries; #298/#299: distribution notices; #309: release documentation | 16 |
 | [v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) / 2026-11-08 | Version 3 workspaces, status-first overview, automation, saved credentials and tour | #311: version 3; #313: listed private networks; #315: HTTPS behind TLS proxies; #316: README captures; #310: 2.7 record | 5 |
 | [v3.1.0](https://github.com/bifrost0x/webssh/releases/tag/v3.1.0) / 2026-11-14 | SOCKS5 proxy routes, automation through jump hosts, browser login management, workspace presets and hardening | #336/#337: SOCKS5 routes (#334); #319/#320/#321: automation; #332/#333/#335: overview, presets and access transparency; #328: version display (#327); #324-#326: dependencies | 18 |
+| [v3.2.0](https://github.com/bifrost0x/webssh/releases/tag/v3.2.0) / 2026-11-15 | Unraid template, read-only application code, custom-UID recovery volumes and jump host management | #346: Unraid template and read-only `/app`; #345: recovery volume placeholder; #343: jump host button; #341/#342/#344: image retention, attribution checks, lightweight tags | 8 |
 
-The 228 PRs in these release stages are assigned by their **first tagged inclusion**,
+The 236 PRs in these release stages are assigned by their **first tagged inclusion**,
 not by the week in which they merged. The machine-readable
 [release history](release-history.json) lists every PR number, tag SHA, release URL,
 comparison and verified issue-to-implementation link. Direct commits are covered by the
 Git comparisons even though they have no PR to attach to a native milestone.
+
+## v3.2.0 delivery
+
+Published on **2026-11-15** at `5c5c8edd53ca547d32add20edef5bc3292b526cf`. The tag first includes
+8 merged PRs after v3.1.0: the Unraid template, read-only application code and
+clearer start-up errors (#346), custom-UID recovery volumes across recreation
+(#345), jump host management from route settings (#343), image manifest
+retention (#341), attribution checks (#342), lightweight release tags (#344),
+the v3.1.0 record (#340) and the release preparation (#348).
+[Tag CI](https://github.com/bifrost0x/webssh/actions/runs/43699318358) and native image publication passed.
+The immutable AMD64/ARM64 index is `ghcr.io/bifrost0x/webssh@sha256:c2edfb472515a896db38eddf52b44aafbbb5a31530090be41cfefea4ff486f09`.
+Both platforms retain SPDX SBOM and SLSA provenance, verified directly in GHCR.
+See [release notes](releases/v3.2.0.md) for changes, upgrade precautions and the
+explicit limits of automated acceptance.
 
 ## v3.1.0 delivery
 
