@@ -4,9 +4,10 @@ WebSSH is a self-hosted SSH and file workspace. This roadmap explains the direct
 the current release focus, and the evidence behind completed work. It is not a release-date
 promise or a replacement for issues, pull requests, and release notes.
 
-Release status updated: **2026-11-14**, [v3.1.0](https://github.com/bifrost0x/webssh/releases/tag/v3.1.0) at
-[`4eac73c`](https://github.com/bifrost0x/webssh/commit/4eac73cbc319206bce7887e8dba0643a8b0c7ad5).
-Check linked GitHub items for newer status.
+Release preparation updated: **2026-11-15**. Version **3.2.0** is selected from
+`origin/main`; the latest published release remains
+[v3.1.0](https://github.com/bifrost0x/webssh/releases/tag/v3.1.0) until tag and image
+publication are verified. Check linked GitHub items for newer status.
 
 ## Product direction
 
@@ -18,7 +19,21 @@ Check linked GitHub items for newer status.
 These themes summarize the existing product and published release history; they do not
 add new feature commitments.
 
-## Now: WebSSH 3.1 published
+## Now: prepare v3.2.0
+
+The [3.2.0 candidate notes](docs/releases/v3.2.0.md) cover an Unraid Community
+Apps template, read-only application code in the image, custom-UID recovery
+volumes that survive container recreation and jump host management from route
+settings. The scope comes from changes merged since v3.1.0 and is tracked in the
+[v3.2.0 milestone](https://github.com/bifrost0x/webssh/milestone/16); it adds no
+further feature commitment.
+
+Publication requires the exact final candidate's CI, native image scans and
+versioned AMD64/ARM64 image, SBOM and provenance verification, recorded in
+[#347](https://github.com/bifrost0x/webssh/issues/347). The Community Apps
+listing follows publication; it needs acceptance on a real Unraid server.
+
+## Published: WebSSH 3.1
 
 The [3.1.0 release notes](docs/releases/v3.1.0.md) cover per-host SOCKS5 proxy
 routes, automation through saved jump hosts, browser login management,
