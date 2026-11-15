@@ -88,7 +88,7 @@ for (const width of [1440, 1024, 390]) {
         await expect(page.locator('#profileEditorForm')).toBeVisible();
         await capture(page, 'host-editor', width);
         await page.locator('#cancelProfileEditorBtn').click();
-        await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
+        await page.locator('#profileManagementModal .connection-asset-nav [data-connection-asset="jump-hosts"]').click();
         await expect(page.locator('#jumpHostForm')).toBeHidden();
         await page.locator('#jumpResourceNew').click();
         await expect(page.locator('#jumpHostForm')).toBeVisible();

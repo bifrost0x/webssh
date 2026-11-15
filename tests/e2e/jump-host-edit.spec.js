@@ -2,7 +2,7 @@ const {test, expect} = require('playwright/test');
 const {login, openProfileManagement} = require('./helpers');
 async function openJumps(page) {
     await openProfileManagement(page);
-    await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
+    await page.locator('#profileManagementModal .connection-asset-nav [data-connection-asset="jump-hosts"]').click();
 }
 for (const width of [390, 1536]) {
     test(`jump host edits retain identity, references and drafts at ${width}`, async ({page}) => {
@@ -121,4 +121,15 @@ test('changing the jump host clears the password for the previous bastion', asyn
     await page.evaluate(() => { document.getElementById('jumpHostPasswordInput').value = 'previous-bastion-secret'; });
     await page.locator('#jumpHostSelect').selectOption('');
     await expect(page.locator('#jumpHostPasswordInput')).toHaveValue('');
+});
+
+test('managing jump hosts from the connection dialog leaves the dialog', async ({page}) => {
+    await login(page);
+    await page.locator('#workspaceRecentBtn').click();
+    await expect(page.locator('#connectionModal')).toHaveClass(/\bshow\b/);
+    await page.locator('#connectionAdvancedSettings').evaluate(element => { element.open = true; });
+    await page.locator('#connectionModal [data-connection-asset="jump-hosts"]').click();
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/\bshow\b/);
+    await expect(page.locator('#jumpHostManagementModal')).toBeVisible();
+    await expect(page.locator('#jumpHostsList .key-item').first()).toBeVisible();
 });
