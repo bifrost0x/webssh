@@ -113,10 +113,19 @@ def wait_ready(container):
     raise RuntimeError('Hardened container did not become ready')
 
 
+def remove_container(container, label, owner):
+    actual_owner = docker('inspect', '--format',
+                          '{{ index .Config.Labels "' + label + '" }}', container)
+    if actual_owner != owner:
+        raise RuntimeError('Refusing cleanup of an unrelated container')
+    docker('rm', '--force', '--volumes', container)
+
+
 def check_image(image, revision, platform, profile='hardened'):
     owner = uuid4().hex
     label = 'webssh.hardening-test'
     containers = []
+    volumes = []
     hardened = profile != 'compatible'
     runtime_id = 1234 if profile == 'hardened-custom' else 1000
     restrictions = ['--platform', platform, '--label', f'{label}={owner}']
@@ -147,16 +156,28 @@ def check_image(image, revision, platform, profile='hardened'):
     probe_script = PROBE.replace('__HARDENED__', repr(hardened))
     restore_script = RESTORE.replace('__HARDENED__', repr(hardened))
     try:
-        container = docker('create', *restrictions, *environment,
-                           '--volume', '/app/recovery', '--publish', '127.0.0.1::5000', image)
+        if profile == 'hardened-custom':
+            # Named volumes behave like Compose: Docker seeds them from the image
+            # whenever a new container mounts them while they are still empty.
+            for name in ('data', 'recovery'):
+                volume = f'webssh-hardening-{owner}-{name}'
+                docker('volume', 'create', '--label', f'{label}={owner}', volume)
+                volumes.append(volume)
+            mounts = ['--volume', f'{volumes[0]}:/app/data',
+                      '--volume', f'{volumes[1]}:/app/recovery']
+        else:
+            mounts = ['--volume', '/app/recovery']
+        create_args = (*restrictions, *environment, *mounts,
+                       '--publish', '127.0.0.1::5000', image)
+        container = docker('create', *create_args)
         containers.append(container)
         actual_revision = docker('inspect', '--format',
                                  '{{ index .Config.Labels "org.opencontainers.image.revision" }}', container)
         if actual_revision != revision:
             raise ValueError('Hardened runtime candidate has the wrong revision')
         if profile == 'hardened-custom':
-            # Provision only this test's fresh anonymous volumes for its custom
-            # identity, just as an operator provisions a bind/named mount.
+            # Provision only this test's fresh volumes for its custom identity,
+            # just as an operator provisions a bind/named mount.
             provision = docker(
                 'create', '--platform', platform, '--label', f'{label}={owner}',
                 '--network', 'none', '--read-only', '--user', '0:0',
@@ -171,6 +192,13 @@ def check_image(image, revision, platform, profile='hardened'):
             docker('start', '--attach', provision, capture=False)
             if docker('inspect', '--format', '{{.State.ExitCode}}', provision) != '0':
                 raise RuntimeError('Could not provision custom-identity test volumes')
+            # Recreate before the first start, as `compose up --force-recreate`
+            # or an image update does. The provisioned ownership must survive.
+            for stale in (provision, container):
+                remove_container(stale, label, owner)
+                containers.remove(stale)
+            container = docker('create', *create_args)
+            containers.append(container)
         docker('start', container)
         wait_ready(container)
         docker('exec', container, '/app/entrypoint.sh', 'python', '-c', probe_script, capture=False)
@@ -197,11 +225,13 @@ def check_image(image, revision, platform, profile='hardened'):
         raise
     finally:
         for container in reversed(containers):
-            actual_owner = docker('inspect', '--format',
-                                 '{{ index .Config.Labels "' + label + '" }}', container)
+            remove_container(container, label, owner)
+        for volume in volumes:
+            actual_owner = docker('volume', 'inspect', '--format',
+                                  '{{ index .Labels "' + label + '" }}', volume)
             if actual_owner != owner:
-                raise RuntimeError('Refusing cleanup of an unrelated container')
-            docker('rm', '--force', '--volumes', container)
+                raise RuntimeError('Refusing cleanup of an unrelated volume')
+            docker('volume', 'rm', volume)
 
 
 def main():

@@ -50,6 +50,13 @@ For a custom `user:` setting, set `WEBSSH_RUNTIME_UID` and `WEBSSH_RUNTIME_GID`
 to the same numeric IDs and provision matching permissions on the persistent
 mounts. These variables set runtime-mount ownership; they do not change the
 container user or recursively change existing data permissions.
+Docker seeds a new, empty named volume from the image when a container is
+created, so create the service first, then change ownership of both volumes
+recursively before the first start. Current images ship a placeholder in
+`/app/recovery`; the provisioned ownership then survives container
+recreation. Docker never copies into a volume that already has content. A
+recovery volume provisioned with an older image that has never been started
+is still empty: change its ownership once more after updating the image.
 
 | Compose variable | Hardened default | Purpose |
 | --- | --- | --- |
