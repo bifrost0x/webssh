@@ -55,6 +55,18 @@ the production file removes those previously implicit limits on recreation.
 Existing image-only upgrades do not change container settings. Review the merged
 configuration before recreating containers; keep data and recovery volumes intact.
 
+## v3.2.0 compatibility
+
+The [3.2 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v3.2.0.md)
+cover the published changes. Use `ghcr.io/bifrost0x/webssh:3.2.0` or the verified
+immutable digest in those notes. Existing Compose files keep working unchanged and
+there is no data format change, so 3.1.0 can run on the same volumes again.
+Application code under `/app` is now read-only for the service user: an offline
+`backup create` without `--destination` writes to the recovery directory instead of
+`/app`, and a custom write path under `/app` without its own volume stops the
+container at start. Unraid users can install from the template described in
+[Install on Unraid](Install-on-Unraid).
+
 ## v3.1.0 compatibility
 
 The [3.1 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v3.1.0.md)

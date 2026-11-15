@@ -164,6 +164,14 @@ fifteen releases, 228 merged PR mappings and 31 implementation-linked issues.
 immutable image identity and SBOM/provenance verification. Release record #338
 and milestone 15 are closed.
 
+Published on **2026-11-15**: [v3.2.0](https://github.com/bifrost0x/webssh/releases/tag/v3.2.0) adds 8 first-included PRs and no
+implementation-linked issues. The manifest now contains sixteen releases, 236
+merged PR mappings and 31 implementation-linked issues. It was the first release
+tagged with a lightweight tag on the merged candidate commit.
+[Tag CI and native image publication](https://github.com/bifrost0x/webssh/actions/runs/43699318358) passed; the release notes record
+immutable image identity and SBOM/provenance verification. Release record #347
+and milestone 16 are closed.
+
 For historical backfill:
 
 1. Read all existing native milestones before creating anything; reuse matching versions

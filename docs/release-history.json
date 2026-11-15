@@ -5,7 +5,7 @@
   "baseline_commit": "dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
   "native_milestone_backfill": "applied_with_exceptions",
   "method": "First tagged release containing each merged PR's merge_commit_sha, with every compare page retrieved. The first release includes all prior verified PR merges. Issues require an explicit implementation link.",
-  "expected_merged_pr_count": 228,
+  "expected_merged_pr_count": 236,
   "expected_implementation_linked_issue_count": 31,
   "historical": [
     {
@@ -649,6 +649,32 @@
       "milestone_number": 15,
       "image_digest": "sha256:8714d603a359b7fb9dd210cddf1d8afaaef1b405b4ddfbfc7f3a275bddc13a9f",
       "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/43615783301"
+    },
+    {
+      "title": "v3.2.0",
+      "state": "closed",
+      "goal": "Unraid Community Apps template, read-only application code, custom-UID recovery volumes across recreation and jump host management from route settings",
+      "previous_release": "v3.1.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v3.1.0...v3.2.0",
+      "description": "Published v3.2.0 on 2026-11-15. An Unraid Community Apps template, read-only application code in the image, custom-UID recovery volumes that survive container recreation, clearer start-up errors, jump host management from route settings, image manifest retention, attribution checks and lightweight release tags. Tag CI and native image checks passed. Acceptance on a real Unraid server, the Community Apps submission scan and deployment-specific acceptance are not inferred from CI.",
+      "pull_requests": [
+        340,
+        341,
+        342,
+        343,
+        344,
+        345,
+        346,
+        348
+      ],
+      "issues": [],
+      "published_at": "2026-11-15T09:36:39Z",
+      "tag_commit": "5c5c8edd53ca547d32add20edef5bc3292b526cf",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v3.2.0",
+      "release_notes": "docs/releases/v3.2.0.md",
+      "milestone_number": 16,
+      "image_digest": "sha256:c2edfb472515a896db38eddf52b44aafbbb5a31530090be41cfefea4ff486f09",
+      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/43699318358"
     }
   ],
   "excluded_issues": [
@@ -784,28 +810,7 @@
       "verification": "v2.7.0 and v3.0.0 had no native milestone after publication. Both were created from the first-tagged-inclusion mapping above, assigned their PRs and implementation-linked issues, and closed. v3.1.0 holds the 17 PRs first included after v3.0.0, issues #327 and #334 and release record #338. Superseded Dependabot PRs #322 and #323 are not assigned. No due dates were added; milestone creation dates are the actual 2026-11-14 dates."
     }
   ],
-  "candidate": {
-    "title": "v3.2.0",
-    "state": "prepared",
-    "previous_release": "v3.1.0",
-    "base_commit": "c8922da90e9bd8ebc8fb6f96a506f629fd52e46e",
-    "goal": "Unraid Community Apps template, read-only application code, custom-UID recovery volumes across recreation and jump host management from route settings",
-    "compare_url": "https://github.com/bifrost0x/webssh/compare/v3.1.0...main",
-    "release_notes": "docs/releases/v3.2.0.md",
-    "milestone_number": 16,
-    "release_gate": 347,
-    "pull_requests": [
-      340,
-      341,
-      342,
-      343,
-      344,
-      345,
-      346
-    ],
-    "issues": [],
-    "publication_status": "Pending final candidate review, CI, tag and native image verification"
-  },
+  "candidate": null,
   "updated_on": "2026-11-15",
   "release_updates": [
     {
@@ -946,6 +951,28 @@
       "image_digest": "sha256:8714d603a359b7fb9dd210cddf1d8afaaef1b405b4ddfbfc7f3a275bddc13a9f",
       "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/43615783301",
       "note": "First tagged inclusion determines release membership; #339 prepared the release and is the tag commit. Superseded Dependabot PRs #322 and #323 are not counted. Dated historical snapshots remain unchanged."
+    },
+    {
+      "version": "v3.2.0",
+      "published_at": "2026-11-15T09:36:39Z",
+      "tag_commit": "5c5c8edd53ca547d32add20edef5bc3292b526cf",
+      "milestone_number": 16,
+      "milestone_state": "closed",
+      "assigned_additional_pull_requests": [
+        340,
+        341,
+        342,
+        343,
+        344,
+        345,
+        346,
+        348
+      ],
+      "assigned_implementation_linked_issues": [],
+      "closed_release_gate": 347,
+      "image_digest": "sha256:c2edfb472515a896db38eddf52b44aafbbb5a31530090be41cfefea4ff486f09",
+      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/43699318358",
+      "note": "First tagged inclusion determines release membership; #348 prepared the release and is the tag commit. Dated historical snapshots remain unchanged."
     }
   ]
 }

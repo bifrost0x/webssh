@@ -158,11 +158,12 @@ the product site shows version 3 with the same kind of prepared example data.
 ## Release validation
 
 [v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) was published on
-2026-11-08 and [v3.1.0](https://github.com/bifrost0x/webssh/releases/tag/v3.1.0) on
-2026-11-14, each after its tag revision passed these gates; the release notes
-([3.0.0](releases/v3.0.0.md), [3.1.0](releases/v3.1.0.md)) record the image
-identity. The release workflow derives container tags such as `3.1.0` and `3.1`
-from the Git tag `v3.1.0`.
+2026-11-08, [v3.1.0](https://github.com/bifrost0x/webssh/releases/tag/v3.1.0) on
+2026-11-14 and [v3.2.0](https://github.com/bifrost0x/webssh/releases/tag/v3.2.0) on
+2026-11-15, each after its tag revision passed these gates; the release notes
+([3.0.0](releases/v3.0.0.md), [3.1.0](releases/v3.1.0.md),
+[3.2.0](releases/v3.2.0.md)) record the image identity. The release workflow
+derives container tags such as `3.2.0` and `3.2` from the Git tag `v3.2.0`.
 
 Before publication:
 
