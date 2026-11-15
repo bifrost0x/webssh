@@ -51,7 +51,9 @@ Keep the data and recovery volumes writable by the effective container user.
 For a custom `user:` setting, set `WEBSSH_RUNTIME_UID` and `WEBSSH_RUNTIME_GID`
 to the same numeric IDs and provision matching permissions on the persistent
 mounts. These variables set runtime-mount ownership; they do not change the
-container user or recursively change existing data permissions.
+container user or recursively change existing data permissions. Without the
+hardened overlay, a numeric user without a writable home gets a private
+Gunicorn runtime directory under `/tmp` when `XDG_RUNTIME_DIR` is unset.
 
 | Compose variable | Hardened default | Purpose |
 | --- | --- | --- |

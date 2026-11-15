@@ -3,6 +3,7 @@
 This guide starts a persistent WebSSH instance for evaluation or homelab use.
 For an Internet-facing installation, continue with
 [Production Deployment](Production-Deployment) before accepting users.
+On Unraid, use [Install on Unraid](Install-on-Unraid) instead.
 
 ## Prerequisites
 

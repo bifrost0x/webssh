@@ -9,7 +9,7 @@ Start from the repository's `.env.example`. The tables below describe the operat
 | Variable | Purpose | Default or requirement |
 |---|---|---|
 | `SECRET_KEY` | Encrypts and signs security-sensitive state | Required for direct production starts. The container entrypoint can generate and persist it in the data volume. |
-| `DATA_DIR` | Canonical SQLite, key, log, and generated-secret root | `/app/data` in the container; container overrides must be absolute and persistent |
+| `DATA_DIR` | Canonical SQLite, key, log, and generated-secret root | `/app/data` in the container; container overrides must be absolute and on a mounted volume, because the rest of `/app` is read-only |
 | `DEPLOYMENT_PROFILE` | Selects deployment safeguards | `homelab`; use `production` for Internet-facing deployments |
 | `DEBUG` | Flask debug mode | `False`; never enable in production |
 | `HOST` | Application bind address | `127.0.0.1` outside the container |

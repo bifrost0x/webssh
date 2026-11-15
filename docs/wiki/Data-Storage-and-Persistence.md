@@ -148,7 +148,7 @@ User deletion first moves the user's directory to a quarantine area under `delet
 
 ## Permissions
 
-Run the container or process under a dedicated identity and restrict `DATA_DIR` to it. Secret files should be read-only wherever possible. Avoid network filesystems with weak locking or atomic-rename semantics unless their behavior has been tested with SQLite and WebSSH's write pattern.
+Run the container or process under a dedicated identity and restrict `DATA_DIR` to it. A numeric ID shared with other containers, such as `99:100` on Unraid, does not isolate the data from them; see [Install on Unraid](Install-on-Unraid). Secret files should be read-only wherever possible. Avoid network filesystems with weak locking or atomic-rename semantics unless their behavior has been tested with SQLite and WebSSH's write pattern.
 
 ## Backup rule
 

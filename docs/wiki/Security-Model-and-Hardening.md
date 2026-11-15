@@ -33,7 +33,10 @@ WebSSH includes:
 - explicit SSH target policy and per-user host-key verification;
 - encrypted private-key storage derived per user;
 - security audit logging and administrator reauthentication;
-- bounded maintenance, shutdown, backup, and restore workflows.
+- bounded maintenance, shutdown, backup, and restore workflows;
+- a container image that runs as a non-root user and keeps its application
+  code root-owned and read-only for that user, so a compromised process cannot
+  change the code that later starts or health checks run.
 
 These are defense layers, not a reason to expose a default homelab configuration directly to the Internet.
 

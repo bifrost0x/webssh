@@ -68,7 +68,9 @@ Start a [Discussion](https://github.com/bifrost0x/webssh/discussions) for featur
 
 For substantial work, state the user problem, expected outcome and acceptance criteria
 in the linked issue/proposal. Include the reason for the chosen approach, validation,
-compatibility/security impact and remaining rollout checks in the PR. Maintainers assign
+compatibility/security impact and remaining rollout checks in the PR. A new or changed
+setting, port or volume in `docker-compose.yml` also updates the Unraid template
+`unraid/webssh.xml` in the same PR; `tests/test_unraid_template.py` enforces this. Maintainers assign
 accepted work to a release milestone; merging does not itself publish a release.
 See the [planning and release workflow](docs/project-planning.md) for the lightweight cycle.
 
