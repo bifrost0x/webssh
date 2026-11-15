@@ -143,6 +143,14 @@ def wait_ready(container):
     raise RuntimeError('Hardened container did not become ready')
 
 
+def remove_container(container, label, owner):
+    actual_owner = docker('inspect', '--format',
+                          '{{ index .Config.Labels "' + label + '" }}', container)
+    if actual_owner != owner:
+        raise RuntimeError('Refusing cleanup of an unrelated container')
+    docker('rm', '--force', '--volumes', container)
+
+
 def unraid_template():
     """Read the runtime contract of unraid/webssh.xml from this checkout."""
     root = ElementTree.parse(TEMPLATE).getroot()
@@ -169,6 +177,7 @@ def check_image(image, revision, platform, profile='hardened'):
     owner = uuid4().hex
     label = 'webssh.hardening-test'
     containers = []
+    volumes = []
     hardened = profile not in {'compatible', 'unraid'}
     runtime_id = 1234 if profile == 'hardened-custom' else 1000
     restrictions = ['--platform', platform, '--label', f'{label}={owner}']
@@ -197,11 +206,10 @@ def check_image(image, revision, platform, profile='hardened'):
     if profile in {'compatible', 'hardened-custom'}:
         environment.extend(['--env', 'TRANSFER_TEMP_DIR=/tmp/custom-transfers'])
     unraid_id = None
-    volumes = ['--volume', '/app/recovery']
     provision = None
     if profile == 'hardened-custom':
-        # Provision only this test's fresh anonymous volumes for its custom
-        # identity, just as an operator provisions a bind/named mount.
+        # Provision only this test's fresh volumes for its custom identity,
+        # just as an operator provisions a bind/named mount.
         provision = (runtime_id, runtime_id, None,
                      ['/app/data', '/app/data/logs', '/app/data/keys', '/app/recovery'])
     if profile == 'unraid':
@@ -215,16 +223,30 @@ def check_image(image, revision, platform, profile='hardened'):
         environment = []
         for key, value in template['environment'].items():
             environment.extend(['--env', f'{key}={value}'])
-        volumes = []
-        for target in template['paths']:
-            volumes.extend(['--mount', f'type=volume,target={target},volume-nocopy=true'])
         provision = (*unraid_id, 0o777, template['paths'])
     probe_script = (PROBE.replace('__HARDENED__', repr(hardened))
                     .replace('__RUNTIME_ID__', repr(unraid_id)))
     restore_script = RESTORE
     try:
-        container = docker('create', *restrictions, *environment,
-                           *volumes, '--publish', '127.0.0.1::5000', image)
+        if profile == 'hardened-custom':
+            # Named volumes behave like Compose: Docker seeds them from the image
+            # whenever a new container mounts them while they are still empty.
+            for name in ('data', 'recovery'):
+                volume = f'webssh-hardening-{owner}-{name}'
+                docker('volume', 'create', '--label', f'{label}={owner}', volume)
+                volumes.append(volume)
+            mounts = ['--volume', f'{volumes[0]}:/app/data',
+                      '--volume', f'{volumes[1]}:/app/recovery']
+        elif profile == 'unraid':
+            # Empty mount roots, like the bind mounts Unraid creates.
+            mounts = []
+            for target in template['paths']:
+                mounts.extend(['--mount', f'type=volume,target={target},volume-nocopy=true'])
+        else:
+            mounts = ['--volume', '/app/recovery']
+        create_args = (*restrictions, *environment, *mounts,
+                       '--publish', '127.0.0.1::5000', image)
+        container = docker('create', *create_args)
         containers.append(container)
         actual_revision = docker('inspect', '--format',
                                  '{{ index .Config.Labels "org.opencontainers.image.revision" }}', container)
@@ -247,6 +269,15 @@ def check_image(image, revision, platform, profile='hardened'):
             docker('start', '--attach', provisioner, capture=False)
             if docker('inspect', '--format', '{{.State.ExitCode}}', provisioner) != '0':
                 raise RuntimeError('Could not provision custom-identity test volumes')
+        if profile == 'hardened-custom':
+            # Recreate before the first start, as `compose up --force-recreate`
+            # or an image update does. The provisioned ownership must survive.
+            # The Unraid profile models bind mounts, which Docker never seeds.
+            for stale in (provisioner, container):
+                remove_container(stale, label, owner)
+                containers.remove(stale)
+            container = docker('create', *create_args)
+            containers.append(container)
         docker('start', container)
         wait_ready(container)
         if unraid_id is not None:
@@ -278,11 +309,13 @@ def check_image(image, revision, platform, profile='hardened'):
         raise
     finally:
         for container in reversed(containers):
-            actual_owner = docker('inspect', '--format',
-                                 '{{ index .Config.Labels "' + label + '" }}', container)
+            remove_container(container, label, owner)
+        for volume in volumes:
+            actual_owner = docker('volume', 'inspect', '--format',
+                                  '{{ index .Labels "' + label + '" }}', volume)
             if actual_owner != owner:
-                raise RuntimeError('Refusing cleanup of an unrelated container')
-            docker('rm', '--force', '--volumes', container)
+                raise RuntimeError('Refusing cleanup of an unrelated volume')
+            docker('volume', 'rm', volume)
 
 
 def main():

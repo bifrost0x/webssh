@@ -66,6 +66,11 @@ COPY entrypoint.sh /app/entrypoint.sh
 # Application code stays root-owned and read-only for the service, so a
 # compromised process cannot change code that later starts or health checks
 # run. Only the data and recovery directories belong to the service account.
+# Docker seeds an empty named volume from the image on every new container and
+# resets its root to the image directory's owner. The placeholder leaves the
+# recovery volume non-empty after the first copy, so a custom-UID volume keeps
+# its provisioned ownership when the container is recreated. Docker never
+# copies into a volume that already has content.
 RUN chown -R root:root /app && \
     chmod -R go-w /app && \
     chmod 755 /app/entrypoint.sh && \
@@ -77,7 +82,8 @@ RUN chown -R root:root /app && \
     chmod 700 /app/data/logs && \
     chmod 700 /app/data/keys && \
     chmod 700 /app/recovery && \
-    chmod 700 /run/webssh-auth
+    chmod 700 /run/webssh-auth && \
+    install -o appuser -g appuser -m 600 /dev/null /app/recovery/.webssh-volume
 
 # Persist the data dir (SQLite DB, encrypted keys, auto-generated SECRET_KEY).
 # Auto-creates an anonymous volume on `docker run` so state survives restarts;

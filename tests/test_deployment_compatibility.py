@@ -94,3 +94,14 @@ def test_explicit_hardening_supports_custom_capacity_and_runtime_owner():
     assert any(m.startswith('/tmp:') and 'size=768m' in m for m in service['tmpfs'])
     assert any(m.startswith('/run/webssh:') and 'uid=1234' in m and 'gid=1234' in m
                for m in service['tmpfs'])
+
+
+def test_image_recovery_directory_is_never_empty():
+    # An empty image directory would let Docker reset a provisioned, still
+    # empty named recovery volume to UID 1000 on every recreated container.
+    dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
+    assert 'install -o appuser -g appuser -m 600 /dev/null /app/recovery/.webssh-volume' in dockerfile
+    checker = (ROOT / 'scripts' / 'check_hardened_container.py').read_text(encoding='utf-8')
+    assert "docker('volume', 'create'" in checker
+    # The custom-identity profile recreates its container after provisioning.
+    assert checker.count("docker('create', *create_args)") == 2
