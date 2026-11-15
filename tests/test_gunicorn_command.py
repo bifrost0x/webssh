@@ -163,4 +163,6 @@ def test_container_ci_checks_graceful_shutdown_after_readiness():
 def test_container_ci_checks_the_unraid_runtime_identity():
     checker = Path("scripts/check_hardened_container.py").read_text(encoding="utf-8")
     assert "profiles = ('compatible', 'hardened', 'hardened-custom', 'unraid')" in checker
-    assert "restrictions.extend(['--user', '99:100'])" in checker
+    # The profile starts the shipped template, not a copy of its values.
+    assert "TEMPLATE = Path(__file__).resolve().parents[1] / 'unraid' / 'webssh.xml'" in checker
+    assert "template = unraid_template()" in checker

@@ -3,11 +3,16 @@ identity using disposable containers."""
 
 import argparse
 import json
+from pathlib import Path
+import shlex
 import subprocess
 import time
 import urllib.error
 import urllib.request
 from uuid import uuid4
+from xml.etree import ElementTree
+
+TEMPLATE = Path(__file__).resolve().parents[1] / 'unraid' / 'webssh.xml'
 
 
 PROBE = r'''
@@ -134,6 +139,22 @@ def wait_ready(container):
     raise RuntimeError('Hardened container did not become ready')
 
 
+def unraid_template():
+    """Read the runtime contract of unraid/webssh.xml from this checkout."""
+    root = ElementTree.parse(TEMPLATE).getroot()
+    arguments = shlex.split(root.findtext('ExtraParams') or '')
+    if len(arguments) != 2 or arguments[0] != '--user':
+        raise ValueError('The Unraid template may only set --user in ExtraParams')
+    uid, gid = (int(value) for value in arguments[1].split(':'))
+    configs = root.findall('Config')
+    environment = {entry.get('Target'): entry.get('Default')
+                   for entry in configs if entry.get('Type') == 'Variable'}
+    paths = [entry.get('Target') for entry in configs if entry.get('Type') == 'Path']
+    if '/app/data' not in paths or environment.get('BACKUP_TEMP_DIR') not in paths:
+        raise ValueError('The Unraid template must persist data and recovery')
+    return {'identity': (uid, gid), 'environment': environment, 'paths': paths}
+
+
 def check_image(image, revision, platform, profile='hardened'):
     owner = uuid4().hex
     label = 'webssh.hardening-test'
@@ -174,15 +195,19 @@ def check_image(image, revision, platform, profile='hardened'):
         provision = (runtime_id, runtime_id, None,
                      ['/app/data', '/app/data/logs', '/app/data/keys', '/app/recovery'])
     if profile == 'unraid':
-        # The Unraid template runs --user 99:100 on appdata folders that Unraid
-        # creates empty with mode 0777 and owner nobody:users.
-        unraid_id = (99, 100)
-        restrictions.extend(['--user', '99:100'])
-        volumes = [
-            '--mount', 'type=volume,target=/app/data,volume-nocopy=true',
-            '--mount', 'type=volume,target=/app/recovery,volume-nocopy=true',
-        ]
-        provision = (*unraid_id, 0o777, ['/app/data', '/app/recovery'])
+        # Start exactly what the shipped template describes: its user switch,
+        # variables and container paths. Unraid creates missing appdata host
+        # paths empty with mode 0777 and owner nobody:users before the start.
+        template = unraid_template()
+        unraid_id = template['identity']
+        restrictions.extend(['--user', f'{unraid_id[0]}:{unraid_id[1]}'])
+        environment = []
+        for key, value in template['environment'].items():
+            environment.extend(['--env', f'{key}={value}'])
+        volumes = []
+        for target in template['paths']:
+            volumes.extend(['--mount', f'type=volume,target={target},volume-nocopy=true'])
+        provision = (*unraid_id, 0o777, template['paths'])
     probe_script = (PROBE.replace('__HARDENED__', repr(hardened))
                     .replace('__RUNTIME_ID__', repr(unraid_id)))
     restore_script = RESTORE
