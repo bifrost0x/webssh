@@ -1,0 +1,73 @@
+name: Prune Image Candidates
+
+# Removes stale candidate-<run_id>-<attempt> tags that were never promoted or
+# were superseded, plus untagged manifests no surviving tagged index needs.
+# Release tags and everything they reference are never deleted.
+
+on:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Delete the planned versions (unchecked = dry run)
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  prune:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # Share the publisher lock so pruning never races a promotion.
+    concurrency:
+      group: image-publish-${{ github.repository }}
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout trusted pruning script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Plan and prune stale candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ github.event.repository.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          prune_args=()
+          if [ "$APPLY" = "true" ]; then
+            prune_args+=(--apply)
+          fi
+          python3 scripts/prune_image_candidates.py \
+            --owner "$OWNER" --package "${PACKAGE,,}" \
+            --image "ghcr.io/${GITHUB_REPOSITORY,,}" \
+            --output image-prune.json "${prune_args[@]}"
+
+      - name: Upload pruning evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-prune-${{ github.run_id }}-${{ github.run_attempt }}
+          path: image-prune.json
+          if-no-files-found: ignore
+          retention-days: 30
