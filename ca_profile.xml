@@ -7,10 +7,11 @@ This repository publishes one app: WebSSH, from the multi-architecture image ghc
 
 WebSSH is an SSH gateway. Keep it on your LAN or behind a VPN, and follow the production guide before exposing it through a reverse proxy.
 
-Support: https://github.com/bifrost0x/webssh/issues
+Support thread: https://forums.unraid.net/topic/201292-support-bifrost0x-webssh/
+Bug reports and feature requests: https://github.com/bifrost0x/webssh/issues
 Unraid install guide: https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Install-on-Unraid.md
   </Profile>
   <Icon>https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/webssh-icon.png</Icon>
   <WebPage>https://getwebssh.com</WebPage>
-  <!-- TODO: add <Forum> with the Unraid forum support thread once it exists. -->
+  <Forum>https://forums.unraid.net/topic/201292-support-bifrost0x-webssh/</Forum>
 </CommunityApplications>

@@ -167,6 +167,17 @@ def test_ca_profile_is_complete():
     assert 'https://github.com/bifrost0x/webssh/issues' in root.findtext('Profile')
 
 
+def test_support_thread_is_the_same_everywhere():
+    profile = ElementTree.parse(PROFILE).getroot()
+    forum = profile.findtext('Forum')
+    guide = (ROOT / 'docs' / 'wiki' / 'Install-on-Unraid.md').read_text(encoding='utf-8')
+
+    assert re.fullmatch(r'https://forums\.unraid\.net/topic/[0-9]+-[a-z0-9-]+/', forum or '')
+    assert template().findtext('Support') == forum
+    assert forum in profile.findtext('Profile')
+    assert forum in guide
+
+
 def test_install_guide_documents_the_template_and_its_identity():
     guide = (ROOT / 'docs' / 'wiki' / 'Install-on-Unraid.md').read_text(encoding='utf-8')
 

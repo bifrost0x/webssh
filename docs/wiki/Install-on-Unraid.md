@@ -162,4 +162,5 @@ create a backup if you may need the data later, then delete
 - **Cannot reach an SSH host:** the container uses Unraid's bridge network.
   Hosts must be reachable from Docker containers on the server.
 
-Report problems as [GitHub issues](https://github.com/bifrost0x/webssh/issues).
+Ask Unraid questions in the [support thread](https://forums.unraid.net/topic/201292-support-bifrost0x-webssh/) and report bugs as
+[GitHub issues](https://github.com/bifrost0x/webssh/issues).
