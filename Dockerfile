@@ -62,6 +62,11 @@ COPY static/ /app/static/
 COPY deployment/ldap_secret_cli.py /app/deployment/ldap_secret_cli.py
 COPY config.py start.py LICENSE THIRD-PARTY-NOTICES NOTICE /app/
 
+# Docker seeds an empty named volume from the image on every new container and
+# resets its root to the image directory's owner. The placeholder leaves the
+# recovery volume non-empty after the first copy, so a custom-UID volume keeps
+# its provisioned ownership when the container is recreated. Docker never
+# copies into a volume that already has content.
 RUN chown -R appuser:appuser /app && \
     mkdir -p /app/data/logs /app/data/keys /app/recovery /run/webssh-auth && \
     chown -R appuser:appuser /app/data && \
@@ -71,7 +76,8 @@ RUN chown -R appuser:appuser /app && \
     chmod 700 /app/data/logs && \
     chmod 700 /app/data/keys && \
     chmod 700 /app/recovery && \
-    chmod 700 /run/webssh-auth
+    chmod 700 /run/webssh-auth && \
+    install -o appuser -g appuser -m 600 /dev/null /app/recovery/.webssh-volume
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
