@@ -784,8 +784,29 @@
       "verification": "v2.7.0 and v3.0.0 had no native milestone after publication. Both were created from the first-tagged-inclusion mapping above, assigned their PRs and implementation-linked issues, and closed. v3.1.0 holds the 17 PRs first included after v3.0.0, issues #327 and #334 and release record #338. Superseded Dependabot PRs #322 and #323 are not assigned. No due dates were added; milestone creation dates are the actual 2026-11-14 dates."
     }
   ],
-  "candidate": null,
-  "updated_on": "2026-11-14",
+  "candidate": {
+    "title": "v3.2.0",
+    "state": "prepared",
+    "previous_release": "v3.1.0",
+    "base_commit": "c8922da90e9bd8ebc8fb6f96a506f629fd52e46e",
+    "goal": "Unraid Community Apps template, read-only application code, custom-UID recovery volumes across recreation and jump host management from route settings",
+    "compare_url": "https://github.com/bifrost0x/webssh/compare/v3.1.0...main",
+    "release_notes": "docs/releases/v3.2.0.md",
+    "milestone_number": 16,
+    "release_gate": 347,
+    "pull_requests": [
+      340,
+      341,
+      342,
+      343,
+      344,
+      345,
+      346
+    ],
+    "issues": [],
+    "publication_status": "Pending final candidate review, CI, tag and native image verification"
+  },
+  "updated_on": "2026-11-15",
   "release_updates": [
     {
       "version": "v2.5.0",
