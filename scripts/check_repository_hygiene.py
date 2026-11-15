@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
+import json
+import os
 import re
 import hashlib
 import subprocess
@@ -121,6 +124,34 @@ INTERNAL_REVIEW_MARKERS = (
         re.IGNORECASE | re.MULTILINE,
     ),
 )
+
+
+_ASSISTANT_NAMES = r'(?:claude|codex|copilot|gemini|chatgpt|cursor|aider|devin|jules)'
+
+# Tool attribution that coding assistants add to commit messages and PR text.
+# Plain mentions such as "ignore .claude/" stay allowed; only attribution forms
+# and session links are rejected.
+ATTRIBUTION_MARKERS = (
+    re.compile(
+        rf'^\s*co-authored-by:[^\n]*(?:{_ASSISTANT_NAMES}|anthropic|openai)',
+        re.IGNORECASE | re.MULTILINE,
+    ),
+    re.compile(rf'^\s*{_ASSISTANT_NAMES}-session:', re.IGNORECASE | re.MULTILINE),
+    re.compile(
+        rf'\bgenerated (?:with|by|using)\s+\[?{_ASSISTANT_NAMES}\b',
+        re.IGNORECASE,
+    ),
+    re.compile(r'https?://claude\.ai/code\b', re.IGNORECASE),
+    re.compile(r'https?://chatgpt\.com/codex\b', re.IGNORECASE),
+    re.compile(r'noreply@(?:anthropic|openai)\.com', re.IGNORECASE),
+)
+
+# Identities and branch prefixes are matched only for names that cannot be a
+# person or a project topic ("cursor" is a terminal concept, "Jules" a name).
+_ASSISTANT_ACCOUNTS = r'(?:claude|codex|copilot|gemini|chatgpt)'
+ASSISTANT_NAME = re.compile(rf'^{_ASSISTANT_ACCOUNTS}(?:\s*\[bot\])?$', re.IGNORECASE)
+ASSISTANT_EMAIL = re.compile(r'@(?:anthropic|openai)\.com$', re.IGNORECASE)
+ASSISTANT_BRANCH = re.compile(rf'^{_ASSISTANT_ACCOUNTS}/', re.IGNORECASE)
 
 
 @dataclass(frozen=True, order=True)
@@ -259,14 +290,92 @@ def scan_repository(root: Path = ROOT, paths: list[str] | None = None) -> list[V
     return sorted(set(violations))
 
 
-def main() -> int:
+def attribution_violations(label: str, text: str) -> list[Violation]:
+    if any(pattern.search(text) for pattern in ATTRIBUTION_MARKERS):
+        return [Violation(label, 'coding-assistant attribution or session link')]
+    return []
+
+
+def commit_violations(root: Path, revision_range: str) -> list[Violation]:
+    """Check author, committer and message of every commit in the range."""
+    if revision_range.startswith('-'):
+        raise ValueError(f'invalid revision range: {revision_range}')
+    result = subprocess.run(
+        ['git', 'log', '-z',
+         '--format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce%x1f%B', revision_range, '--'],
+        cwd=root,
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    violations: list[Violation] = []
+    for record in result.stdout.split(b'\0'):
+        if not record.strip():
+            continue
+        fields = record.decode('utf-8', errors='replace').split('\x1f', 5)
+        if len(fields) != 6:
+            raise ValueError('unexpected git log output')
+        sha, author, author_email, committer, committer_email, message = fields
+        label = f'commit {sha[:12]}'
+        if any(ASSISTANT_NAME.match(name.strip()) for name in (author, committer)) or any(
+            ASSISTANT_EMAIL.search(email.strip()) for email in (author_email, committer_email)
+        ):
+            violations.append(Violation(label, 'coding-assistant author or committer identity'))
+        violations.extend(attribution_violations(label, message))
+    return violations
+
+
+def pull_request_violations(event: dict) -> list[Violation]:
+    pull_request = event.get('pull_request')
+    if not isinstance(pull_request, dict):
+        raise ValueError('pull_request event without pull_request payload')
+    label = f'pull request #{pull_request.get("number")}'
+    text = '\n'.join(
+        value for value in (pull_request.get('title'), pull_request.get('body'))
+        if isinstance(value, str)
+    )
+    violations = attribution_violations(label, text)
+    head_ref = (pull_request.get('head') or {}).get('ref') or ''
+    if ASSISTANT_BRANCH.match(head_ref):
+        violations.append(Violation(label, f'coding-assistant branch name: {head_ref}'))
+    return violations
+
+
+def pull_request_scan(root: Path, event_path: str) -> list[Violation]:
+    event = json.loads(Path(event_path).read_text(encoding='utf-8'))
+    violations = pull_request_violations(event)
+    base = event['pull_request']['base']['sha']
+    head = event['pull_request']['head']['sha']
+    for value in (base, head):
+        if not re.fullmatch(r'[0-9a-f]{40}', value or ''):
+            raise ValueError('pull_request event without commit SHAs')
+    violations.extend(commit_violations(root, f'{base}..{head}'))
+    return violations
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        '--commits',
+        metavar='RANGE',
+        help='also check commits in this range, e.g. origin/main..HEAD',
+    )
+    args = parser.parse_args(argv)
+
     violations = scan_repository()
+    if args.commits:
+        violations.extend(commit_violations(ROOT, args.commits))
+    event_path = os.environ.get('GITHUB_EVENT_PATH')
+    if os.environ.get('GITHUB_EVENT_NAME') == 'pull_request' and event_path:
+        violations.extend(pull_request_scan(ROOT, event_path))
     if violations:
         print('Repository hygiene check failed:')
-        for violation in violations:
+        for violation in sorted(set(violations)):
             print(f'- {violation.path}: {violation.reason}')
         return 1
-    print('Repository hygiene check passed: no forbidden paths, internal notes or orphaned media found.')
+    print(
+        'Repository hygiene check passed: no forbidden paths, internal notes, '
+        'orphaned media or assistant attribution found.'
+    )
     return 0
 
 
