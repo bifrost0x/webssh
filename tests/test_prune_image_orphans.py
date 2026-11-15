@@ -6,14 +6,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.prune_image_orphans import apply, child_digests, list_versions, plan
+from scripts.prune_image_orphans import DEFAULT_MIN_AGE_DAYS, apply, child_digests, list_versions, plan
 
 
 IMAGE = 'ghcr.io/bifrost0x/webssh'
 NOW = datetime(2026, 11, 15, tzinfo=timezone.utc)
-OLD = (NOW - timedelta(days=30)).isoformat().replace('+00:00', 'Z')
+OLD = (NOW - timedelta(days=120)).isoformat().replace('+00:00', 'Z')
 YOUNG = (NOW - timedelta(days=1)).isoformat().replace('+00:00', 'Z')
-MIN_AGE = timedelta(days=14)
+MIN_AGE = timedelta(days=DEFAULT_MIN_AGE_DAYS)
 INDEX = 'application/vnd.oci.image.index.v1+json'
 MANIFEST = 'application/vnd.oci.image.manifest.v1+json'
 
@@ -93,7 +93,7 @@ def test_only_unreferenced_untagged_versions_are_removed():
         ],
         {digest('a'): [digest('b')], digest('f'): [digest('7'), digest('b')]},
     )
-    registry.versions[5]['created_at'] = (NOW - timedelta(days=60)).isoformat().replace('+00:00', 'Z')
+    registry.versions[5]['created_at'] = (NOW - timedelta(days=150)).isoformat().replace('+00:00', 'Z')
     result = _plan(registry)
     assert _deleted_ids(result) == [6, 5]
     assert result['kept_tagged'] == 2
@@ -110,6 +110,21 @@ def test_young_candidates_and_in_flight_native_builds_are_kept():
         {digest('f'): [digest('8')]},
     )
     assert _deleted_ids(_plan(registry)) == []
+
+
+def test_orphans_younger_than_the_default_retention_are_kept():
+    assert DEFAULT_MIN_AGE_DAYS == 90
+    just_inside = (NOW - timedelta(days=89)).isoformat().replace('+00:00', 'Z')
+    just_outside = (NOW - timedelta(days=90)).isoformat().replace('+00:00', 'Z')
+    registry = Registry(
+        [
+            version(1, 'a', ['latest']),
+            version(2, '7', [], created=just_inside),
+            version(3, '8', [], created=just_outside),
+        ],
+        {},
+    )
+    assert _deleted_ids(_plan(registry)) == [3]
 
 
 def test_tagged_versions_are_never_deleted_whatever_their_tags():

@@ -39,6 +39,7 @@ MANIFEST_TYPES = INDEX_TYPES | frozenset({
     'application/vnd.docker.distribution.manifest.v2+json',
 })
 PAGE_SIZE = 100
+DEFAULT_MIN_AGE_DAYS = 90
 MAX_PAGES = 100
 
 Runner = Callable[..., Any]
@@ -165,7 +166,7 @@ def main() -> None:
     parser.add_argument('--owner', required=True)
     parser.add_argument('--package', required=True)
     parser.add_argument('--image', required=True, help='e.g. ghcr.io/owner/package')
-    parser.add_argument('--min-age-days', type=int, default=14)
+    parser.add_argument('--min-age-days', type=int, default=DEFAULT_MIN_AGE_DAYS)
     parser.add_argument('--max-deletions', type=int, default=200)
     parser.add_argument('--apply', action='store_true', help='Delete; otherwise only plan')
     parser.add_argument('--output', type=Path, required=True)
