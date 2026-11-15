@@ -1,8 +1,9 @@
-name: Prune Image Candidates
+name: Prune Orphaned Image Manifests
 
-# Removes stale candidate-<run_id>-<attempt> tags that were never promoted or
-# were superseded, plus untagged manifests no surviving tagged index needs.
-# Release tags and everything they reference are never deleted.
+# Removes untagged manifests that no tagged index references (leftovers of
+# runs that failed before assembly). Tagged versions, candidates included,
+# and everything they reference are never deleted, so download counts of
+# tagged versions are preserved.
 
 on:
   schedule:
@@ -45,7 +46,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Plan and prune stale candidates
+      - name: Plan and prune orphaned manifests
         env:
           GH_TOKEN: ${{ github.token }}
           APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
@@ -58,7 +59,7 @@ jobs:
           if [ "$APPLY" = "true" ]; then
             prune_args+=(--apply)
           fi
-          python3 scripts/prune_image_candidates.py \
+          python3 scripts/prune_image_orphans.py \
             --owner "$OWNER" --package "${PACKAGE,,}" \
             --image "ghcr.io/${GITHUB_REPOSITORY,,}" \
             --output image-prune.json "${prune_args[@]}"

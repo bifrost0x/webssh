@@ -1,19 +1,17 @@
-"""Prune stale release candidates and unreferenced manifests from GHCR.
+"""Prune unreferenced, untagged manifests from GHCR.
 
-The publisher writes every assembled multi-platform index as
-``candidate-<run_id>-<run_attempt>`` before promotion. Promotion copies that
-index to release tags, so a promoted candidate shares its digest with a release
-tag; superseded or rejected candidates keep only their candidate tag forever.
-Native per-platform builds and their attestations are pushed untagged.
+Native per-platform builds and their attestations are pushed untagged and
+only become reachable once a run assembles them into a tagged index. Runs
+that fail before assembly leave orphans behind that nothing can pull by tag.
 
-This script removes, after a minimum age:
-
-* versions whose only tags are candidate tags, and
-* untagged versions that no surviving tagged index references.
+This script removes, after a minimum age, untagged versions that no tagged
+index references. Tagged versions, including candidate-<run_id>-<attempt>
+tags, are never deleted: GHCR attributes download counts to versions, and
+removing a version may remove its downloads from the package total.
 
 It fails closed: any registry or API error, any unexpected tag or manifest
 shape, or a plan larger than ``--max-deletions`` aborts before the first
-deletion. Versions carrying any non-candidate tag are never touched.
+deletion.
 """
 
 from __future__ import annotations
@@ -30,7 +28,6 @@ from typing import Any
 
 DIGEST = re.compile(r'sha256:[0-9a-f]{64}')
 TAG = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}')
-CANDIDATE_TAG = re.compile(r'candidate-[1-9][0-9]*-[1-9][0-9]*')
 OWNER = re.compile(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})')
 PACKAGE = re.compile(r'[a-z0-9][a-z0-9._-]{0,99}')
 INDEX_TYPES = frozenset({
@@ -125,44 +122,33 @@ def child_digests(image: str, digest: str, *, runner: Runner = subprocess.run) -
     return children
 
 
-def is_release(version: dict[str, Any]) -> bool:
-    return any(not CANDIDATE_TAG.fullmatch(tag) for tag in version['tags'])
-
-
 def plan(versions: list[dict[str, Any]], image: str, now: datetime, min_age: timedelta,
          *, runner: Runner = subprocess.run) -> dict[str, Any]:
     """Decide what to delete; read-only."""
     cutoff = now - min_age
-    stale_candidates = [
-        version for version in versions
-        if version['tags'] and not is_release(version) and version['created_at'] <= cutoff
-    ]
-    doomed = {version['id'] for version in stale_candidates}
-    survivors = [version for version in versions if version['tags'] and version['id'] not in doomed]
+    tagged = [version for version in versions if version['tags']]
     referenced: set[str] = set()
-    for version in survivors:
+    for version in tagged:
         referenced |= child_digests(image, version['digest'], runner=runner)
-    orphans = [
-        version for version in versions
-        if not version['tags'] and version['created_at'] <= cutoff
-        and version['digest'] not in referenced
-    ]
-    # Parents first, so no surviving index ever points at a deleted child.
-    deletions = sorted(stale_candidates, key=lambda v: v['created_at']) + \
-        sorted(orphans, key=lambda v: v['created_at'])
-    for version in deletions:
-        if is_release(version) or version['digest'] in referenced:
+    orphans = sorted(
+        (version for version in versions
+         if not version['tags'] and version['created_at'] <= cutoff
+         and version['digest'] not in referenced),
+        key=lambda v: v['created_at'],
+    )
+    for version in orphans:
+        if version['tags'] or version['digest'] in referenced:
             raise AssertionError(f'Refusing to delete protected version {version["id"]}')
     return {
         'image': image,
         'cutoff': cutoff.isoformat(),
         'versions': len(versions),
-        'kept_tagged': len(survivors),
+        'kept_tagged': len(tagged),
         'referenced_children': len(referenced),
         'deletions': [
             {'id': v['id'], 'digest': v['digest'], 'tags': v['tags'],
              'created_at': v['created_at'].isoformat()}
-            for v in deletions
+            for v in orphans
         ],
     }
 

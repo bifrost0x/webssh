@@ -1,4 +1,4 @@
-"""Candidate pruning must never touch release tags or manifests they reference."""
+"""Orphan pruning must never touch tagged versions or manifests they reference."""
 
 from datetime import datetime, timedelta, timezone
 import json
@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.prune_image_candidates import apply, child_digests, list_versions, plan
+from scripts.prune_image_orphans import apply, child_digests, list_versions, plan
 
 
 IMAGE = 'ghcr.io/bifrost0x/webssh'
@@ -81,23 +81,22 @@ def test_promoted_candidate_and_release_children_survive():
     assert _deleted_ids(_plan(registry)) == []
 
 
-def test_stale_superseded_candidate_and_its_exclusive_children_are_removed():
+def test_only_unreferenced_untagged_versions_are_removed():
     registry = Registry(
         [
             version(1, 'a', ['latest', 'candidate-10-1']),
             version(2, 'b', []),
-            version(3, 'f', ['candidate-8-1']),
-            version(4, '7', []),
-            version(5, '8', []),
+            version(3, 'f', ['candidate-8-1']),  # superseded candidate stays
+            version(4, '7', []),                 # child of that candidate
+            version(5, '8', []),                 # orphan of a failed run
+            version(6, '9', []),                 # older orphan
         ],
         {digest('a'): [digest('b')], digest('f'): [digest('7'), digest('b')]},
     )
+    registry.versions[5]['created_at'] = (NOW - timedelta(days=60)).isoformat().replace('+00:00', 'Z')
     result = _plan(registry)
-    # The candidate index goes before its children; shared child b survives.
-    assert _deleted_ids(result) == [3, 4, 5]
-    # A doomed candidate is never inspected, so its children are not protected.
-    assert ['docker', 'buildx', 'imagetools', 'inspect', '--raw', f'{IMAGE}@{digest("f")}'] \
-        not in registry.calls
+    assert _deleted_ids(result) == [6, 5]
+    assert result['kept_tagged'] == 2
 
 
 def test_young_candidates_and_in_flight_native_builds_are_kept():
@@ -113,12 +112,12 @@ def test_young_candidates_and_in_flight_native_builds_are_kept():
     assert _deleted_ids(_plan(registry)) == []
 
 
-def test_any_non_candidate_tag_protects_a_version():
+def test_tagged_versions_are_never_deleted_whatever_their_tags():
     registry = Registry(
         [
-            version(1, 'a', ['candidate-1-1', 'sha256-' + 'a' * 64 + '.sig']),
-            version(2, 'b', ['candidate-01-1']),
-            version(3, 'c', ['candidate-2-1-extra']),
+            version(1, 'a', ['candidate-1-1']),
+            version(2, 'b', ['candidate-2-1', 'sha256-' + 'a' * 64 + '.sig']),
+            version(3, 'c', ['main']),
         ],
         {},
     )
