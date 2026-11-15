@@ -237,6 +237,15 @@ integrity model.
 Under `DATA_DIR`: `/app/data` in the container and `./data` by default for a
 source checkout. See [Data Storage and Persistence](Data-Storage-and-Persistence).
 
+### Why does a custom path under `/app` report `Permission denied`?
+
+Application code under `/app` belongs to root and is read-only for the service
+user. Only `/app/data` and `/app/recovery` are writable. A setting such as
+`DATA_DIR=/app/custom` without its own volume would also lose its contents on
+every image update, so mount a volume at that path or keep the defaults.
+Offline CLI backups without `--destination` therefore go to the recovery
+directory instead of `/app`; the command prints the archive path.
+
 ### How do I report a vulnerability?
 
 Do not open a public issue. Use the repository's private

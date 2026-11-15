@@ -304,6 +304,8 @@ def test_runtime_image_excludes_repository_only_tooling():
         'AGENTS.md',
         'design-qa.md',
         'docker-compose*.yml',
+        'ca_profile.xml',
+        'unraid/',
         'package*.json',
         'playwright.config.js',
         'requirements-graph.*',

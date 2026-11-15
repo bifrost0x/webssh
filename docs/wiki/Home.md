@@ -44,6 +44,7 @@ selected SSH session across desktop, tablet, and mobile layouts.
 |---|---|
 | Try WebSSH on a trusted network | [Quick Start](Quick-Start) |
 | Understand volumes, images, and Compose | [Docker and Docker Compose](Docker-and-Docker-Compose) |
+| Install from an Unraid template | [Install on Unraid](Install-on-Unraid) |
 | Expose WebSSH through HTTPS | [Production Deployment](Production-Deployment) |
 | Configure every environment setting | [Configuration Reference](Configuration-Reference) |
 | Connect to SSH hosts safely | [SSH Connections and Host Keys](SSH-Connections-and-Host-Keys) |

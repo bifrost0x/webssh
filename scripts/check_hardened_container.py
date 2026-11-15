@@ -1,4 +1,5 @@
-"""Exercise production compatibility and opt-in restrictions using disposable containers."""
+"""Exercise production compatibility, opt-in restrictions and the Unraid runtime
+identity using disposable containers."""
 
 import argparse
 import json
@@ -18,20 +19,37 @@ from app.online_backup import create_online_backup
 from app.storage_utils import atomic_write_json
 
 hardened = __HARDENED__
+runtime_id = __RUNTIME_ID__
+# The application root is root-owned in every profile; read-only adds EROFS.
 probe = Path('/app/.hardening-probe')
+try:
+    probe.write_text('must not succeed')
+except OSError as error:
+    assert error.errno == (errno.EROFS if hardened else errno.EACCES), error
+else:
+    raise AssertionError('Application root is writable')
+status = Path('/proc/self/status').read_text()
 if hardened:
-    try:
-        probe.write_text('must not succeed')
-    except OSError as error:
-        assert error.errno == errno.EROFS, error
-    else:
-        raise AssertionError('Application root is writable')
-    status = Path('/proc/self/status').read_text()
     assert 'CapEff:\t0000000000000000' in status
     assert 'NoNewPrivs:\t1' in status
-else:
-    probe.write_text('legacy writable root')
-    probe.unlink()
+if runtime_id is not None:
+    # An arbitrary numeric user without a passwd entry or writable home, as
+    # Unraid runs it: the server and this probe use exactly that identity.
+    uid, gid = runtime_id
+    for process in ('self', '1'):
+        status = Path(f'/proc/{process}/status').read_text()
+        assert f'Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n' in status, status
+        assert f'Gid:\t{gid}\t{gid}\t{gid}\t{gid}\n' in status, status
+        assert 'CapEff:\t0000000000000000' in status, status
+    for path in (Path('/app/data'), Path('/app/recovery')):
+        metadata = path.stat()
+        assert (metadata.st_uid, metadata.st_gid, metadata.st_mode & 0o777) == (uid, gid, 0o700)
+    server = dict(line.split('=', 1) for line in
+                  Path('/proc/1/environ').read_text().split('\0') if '=' in line)
+    runtime = Path(server['XDG_RUNTIME_DIR'])
+    assert runtime.parent == Path('/tmp') and runtime.name.startswith('webssh-runtime.')
+    metadata = runtime.stat()
+    assert (metadata.st_uid, metadata.st_mode & 0o777) == (uid, 0o700)
 with tempfile.TemporaryFile() as handle:
     handle.write(b'temporary upload/export data')
     handle.seek(0)
@@ -73,7 +91,10 @@ result = subprocess.run(
     capture_output=True, text=True, check=False,
 )
 assert result.returncode == 0, result.stdout + result.stderr
-expected = ensure_backup_temp_dir() if __HARDENED__ else Path('/app')
+# The service cannot write the parent of DATA_DIR, so the CLI falls back to
+# its private recovery namespace instead of the container's writable layer.
+expected = ensure_backup_temp_dir()
+assert not list(Path('/app').glob('webssh-backup-*.zip'))
 archives = list(expected.glob('webssh-backup-*.zip'))
 assert len(archives) == 1, result.stdout
 verify_backup(archives[0])
@@ -117,7 +138,7 @@ def check_image(image, revision, platform, profile='hardened'):
     owner = uuid4().hex
     label = 'webssh.hardening-test'
     containers = []
-    hardened = profile != 'compatible'
+    hardened = profile not in {'compatible', 'unraid'}
     runtime_id = 1234 if profile == 'hardened-custom' else 1000
     restrictions = ['--platform', platform, '--label', f'{label}={owner}']
     if hardened:
@@ -144,35 +165,59 @@ def check_image(image, revision, platform, profile='hardened'):
         environment.extend(['--env', 'XDG_RUNTIME_DIR=/run/webssh'])
     if profile in {'compatible', 'hardened-custom'}:
         environment.extend(['--env', 'TRANSFER_TEMP_DIR=/tmp/custom-transfers'])
-    probe_script = PROBE.replace('__HARDENED__', repr(hardened))
-    restore_script = RESTORE.replace('__HARDENED__', repr(hardened))
+    unraid_id = None
+    volumes = ['--volume', '/app/recovery']
+    provision = None
+    if profile == 'hardened-custom':
+        # Provision only this test's fresh anonymous volumes for its custom
+        # identity, just as an operator provisions a bind/named mount.
+        provision = (runtime_id, runtime_id, None,
+                     ['/app/data', '/app/data/logs', '/app/data/keys', '/app/recovery'])
+    if profile == 'unraid':
+        # The Unraid template runs --user 99:100 on appdata folders that Unraid
+        # creates empty with mode 0777 and owner nobody:users.
+        unraid_id = (99, 100)
+        restrictions.extend(['--user', '99:100'])
+        volumes = [
+            '--mount', 'type=volume,target=/app/data,volume-nocopy=true',
+            '--mount', 'type=volume,target=/app/recovery,volume-nocopy=true',
+        ]
+        provision = (*unraid_id, 0o777, ['/app/data', '/app/recovery'])
+    probe_script = (PROBE.replace('__HARDENED__', repr(hardened))
+                    .replace('__RUNTIME_ID__', repr(unraid_id)))
+    restore_script = RESTORE
     try:
         container = docker('create', *restrictions, *environment,
-                           '--volume', '/app/recovery', '--publish', '127.0.0.1::5000', image)
+                           *volumes, '--publish', '127.0.0.1::5000', image)
         containers.append(container)
         actual_revision = docker('inspect', '--format',
                                  '{{ index .Config.Labels "org.opencontainers.image.revision" }}', container)
         if actual_revision != revision:
             raise ValueError('Hardened runtime candidate has the wrong revision')
-        if profile == 'hardened-custom':
-            # Provision only this test's fresh anonymous volumes for its custom
-            # identity, just as an operator provisions a bind/named mount.
-            provision = docker(
+        if provision is not None:
+            uid, gid, mode, paths = provision
+            chmod = f'os.chmod(path, {mode:#o}), ' if mode is not None else ''
+            provisioner = docker(
                 'create', '--platform', platform, '--label', f'{label}={owner}',
                 '--network', 'none', '--read-only', '--user', '0:0',
                 '--cap-drop', 'ALL', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE',
-                '--security-opt', 'no-new-privileges:true',
+                '--cap-add', 'FOWNER', '--security-opt', 'no-new-privileges:true',
                 '--volumes-from', container, '--entrypoint', 'python', image,
                 '-c', "import os; from pathlib import Path; "
-                "paths = ['/app/data', '/app/data/logs', '/app/data/keys', '/app/recovery']; "
-                f"[(os.chown(path, {runtime_id}, {runtime_id})) for path in paths if Path(path).exists()]",
+                f"paths = {paths!r}; "
+                f"[(os.chown(path, {uid}, {gid}), {chmod}) for path in paths if Path(path).exists()]",
             )
-            containers.append(provision)
-            docker('start', '--attach', provision, capture=False)
-            if docker('inspect', '--format', '{{.State.ExitCode}}', provision) != '0':
+            containers.append(provisioner)
+            docker('start', '--attach', provisioner, capture=False)
+            if docker('inspect', '--format', '{{.State.ExitCode}}', provisioner) != '0':
                 raise RuntimeError('Could not provision custom-identity test volumes')
         docker('start', container)
         wait_ready(container)
+        if unraid_id is not None:
+            logs = subprocess.run(['docker', 'logs', container], capture_output=True,
+                                  text=True, check=True)
+            if 'Control server error' in logs.stdout + logs.stderr:
+                raise RuntimeError('Gunicorn could not create its control socket')
         docker('exec', container, '/app/entrypoint.sh', 'python', '-c', probe_script, capture=False)
         docker('stop', '--time', '35', container)
         if docker('inspect', '--format', '{{.State.ExitCode}}', container) != '0':
@@ -210,9 +255,9 @@ def main():
     parser.add_argument('--revision', required=True)
     parser.add_argument('--platform', default='linux/amd64', choices=('linux/amd64', 'linux/arm64'))
     parser.add_argument('--profile', default='all',
-                        choices=('all', 'compatible', 'hardened', 'hardened-custom'))
+                        choices=('all', 'compatible', 'hardened', 'hardened-custom', 'unraid'))
     args = parser.parse_args()
-    profiles = ('compatible', 'hardened', 'hardened-custom') if args.profile == 'all' else (args.profile,)
+    profiles = ('compatible', 'hardened', 'hardened-custom', 'unraid') if args.profile == 'all' else (args.profile,)
     for profile in profiles:
         check_image(args.image, args.revision, args.platform, profile)
 

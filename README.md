@@ -313,6 +313,7 @@ its [versioned source](docs/wiki/Home.md) is reviewed with the code.
 | Goal | Guide |
 |---|---|
 | Install with Docker | [Docker and Docker Compose](https://github.com/bifrost0x/webssh/wiki/Docker-and-Docker-Compose) |
+| Install on Unraid | [Install on Unraid](https://github.com/bifrost0x/webssh/wiki/Install-on-Unraid) |
 | Deploy behind HTTPS | [Production Deployment](https://github.com/bifrost0x/webssh/wiki/Production-Deployment) |
 | Configure every setting | [Configuration Reference](https://github.com/bifrost0x/webssh/wiki/Configuration-Reference) |
 | Connect and verify hosts | [SSH Connections and Host Keys](https://github.com/bifrost0x/webssh/wiki/SSH-Connections-and-Host-Keys) |

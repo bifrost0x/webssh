@@ -35,6 +35,7 @@ WIKI_PAGE_NAMES = {
     "Quick-Start.md",
     "Installation-from-Source.md",
     "Docker-and-Docker-Compose.md",
+    "Install-on-Unraid.md",
     "Production-Deployment.md",
     "Reverse-Proxy-and-Subfolder-Deployment.md",
     "Upgrading-Rollback-and-FAQ.md",

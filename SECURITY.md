@@ -219,6 +219,8 @@ and MFA-reset operations still revoke the target account as documented.
 ### Container Security
 
 The Docker image runs as non-root user (`appuser`) with:
+- Application code owned by root and read-only for the service user; only the
+  data and recovery directories are writable
 - Restricted file permissions (0700 on data directories)
 - No unnecessary capabilities
 - Health check enabled

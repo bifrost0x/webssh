@@ -35,7 +35,7 @@ root = Path('/app')
 for name, digest in json.load(sys.stdin).items():
     assert (root / name).is_file(), f'Missing runtime file: {name}'
     assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest, f'Changed runtime file: {name}'
-for name in ['site', 'assets', 'docs', 'tests', 'scripts', '.git']:
+for name in ['site', 'assets', 'docs', 'tests', 'scripts', 'unraid', 'ca_profile.xml', '.git']:
     assert not (root / name).exists(), f'Unexpected repository-only path: {name}'
 assert not list(root.glob('static/images/theme-backgrounds/*.png'))
 print('Packaged runtime files match the tested source; repository-only assets excluded.')
@@ -78,7 +78,7 @@ print('Packaged runtime files match the tested source; repository-only assets ex
         for name in probes:
             if (payload / name).exists():
                 raise RuntimeError(f'Docker included a private-file canary: {name}')
-        for name in ['site', 'assets', 'docs', 'tests', 'scripts']:
+        for name in ['site', 'assets', 'docs', 'tests', 'scripts', 'unraid', 'ca_profile.xml']:
             if (payload / name).exists():
                 raise RuntimeError(f'Docker included repository-only files: {name}')
         if list(payload.glob('static/images/theme-backgrounds/*.png')):

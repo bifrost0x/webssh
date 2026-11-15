@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Unraid template for WebSSH. Keep ports, container paths and variables in sync
+  with the homelab profile in docker-compose.yml; tests/test_unraid_template.py
+  enforces this. ExtraParams runs the image as nobody:users, the owner Unraid
+  gives to appdata folders it creates for a template.
+-->
+<Container version="2">
+  <Name>WebSSH</Name>
+  <Repository>ghcr.io/bifrost0x/webssh:latest</Repository>
+  <Registry>https://github.com/bifrost0x/webssh/pkgs/container/webssh</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/bifrost0x/webssh/issues</Support>
+  <Project>https://github.com/bifrost0x/webssh</Project>
+  <ReadMe>https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Install-on-Unraid.md</ReadMe>
+  <Overview>WebSSH is a self-hosted, multi-user SSH and SFTP client in the browser: terminals with optional persistent tmux sessions, a file workspace, saved hosts, jump hosts and SOCKS5 routes, encrypted keys, host-key verification, commands, backup and restore.
+
+Security: WebSSH is an SSH gateway. Anyone who can sign in can reach the SSH targets its network allows. This template uses the homelab profile for a trusted LAN. Do not publish it to the internet; for remote access use a VPN, or a reverse proxy with HTTPS and the production profile described in the production deployment guide: https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Production-Deployment.md
+
+First start: the first account created in the browser becomes the administrator. Open the WebUI and create it right after installation, before anyone else can reach the instance.
+
+The container runs as nobody:users (99:100), never as root. Unraid creates the appdata folders for that user on installation. The template sets no secret; WebSSH generates its application secret on first start and keeps it in the data folder.</Overview>
+  <Category>Network:Management Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:5000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/bifrost0x/webssh/main/unraid/webssh.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/webssh-icon.png</Icon>
+  <ExtraParams>--user 99:100</ExtraParams>
+  <PostArgs/>
+  <License>Apache-2.0</License>
+  <Requires>Keep the appdata folders private. Their contents include the application secret and encrypted SSH keys.</Requires>
+  <ExtraSearchTerms>ssh sftp terminal web browser gateway tmux</ExtraSearchTerms>
+  <Screenshot>https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/workspace-overview.png</Screenshot>
+  <Config Name="WebUI port" Target="5000" Default="5000" Mode="tcp" Description="HTTP port of the web interface. Keep it on your LAN." Type="Port" Display="always" Required="true" Mask="false">5000</Config>
+  <Config Name="Data" Target="/app/data" Default="/mnt/user/appdata/webssh/data" Mode="rw" Description="Database, generated application secret, encrypted keys and user files. Back it up and keep it private." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/webssh/data</Config>
+  <Config Name="Recovery" Target="/app/recovery" Default="/mnt/user/appdata/webssh/recovery" Mode="rw" Description="Durable backup and restore staging, including rollback copies. Keep it outside the data folder." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/webssh/recovery</Config>
+  <Config Name="Deployment profile" Target="DEPLOYMENT_PROFILE" Default="homelab" Mode="" Description="homelab keeps HTTP and private-network compatibility for a trusted LAN. Use production only behind HTTPS as documented." Type="Variable" Display="always" Required="true" Mask="false">homelab</Config>
+  <Config Name="Allowed origins" Target="CORS_ORIGINS" Default="*" Mode="" Description="Origins allowed to open WebSSH. '*' accepts any address you use on the LAN; set exact origins such as http://tower:5000 to restrict it." Type="Variable" Display="always" Required="true" Mask="false">*</Config>
+  <Config Name="Allow origin wildcard" Target="ALLOW_CORS_WILDCARD" Default="true" Mode="" Description="Permits '*' in Allowed origins for the homelab profile. Set false when you list exact origins." Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Trusted proxies" Target="TRUSTED_PROXIES" Default="0" Mode="" Description="Number of reverse proxies in front of WebSSH. 0 for direct LAN access." Type="Variable" Display="always" Required="true" Mask="false">0</Config>
+  <Config Name="Secure cookies" Target="SESSION_COOKIE_SECURE" Default="false" Mode="" Description="Set true when WebSSH is only reached over HTTPS." Type="Variable" Display="always" Required="true" Mask="false">false</Config>
+  <Config Name="tmux session prefix" Target="TMUX_SESSION_PREFIX" Default="webssh" Mode="" Description="Name prefix for persistent tmux sessions on remote hosts." Type="Variable" Display="advanced" Required="false" Mask="false">webssh</Config>
+  <Config Name="TOTP available" Target="TOTP_ENABLED" Default="true" Mode="" Description="Deployment-level switch for authenticator-app MFA. Administrators still decide in the interface whether users can enroll." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="OIDC MFA amr values" Target="OIDC_MFA_AMR_VALUES" Default="" Mode="" Description="Only for OpenID Connect: signed amr values your provider documents as MFA. Leave empty otherwise." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="OIDC MFA acr values" Target="OIDC_MFA_ACR_VALUES" Default="" Mode="" Description="Only for OpenID Connect: signed acr values your provider documents as MFA. Leave empty otherwise." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="OIDC phishing-resistant amr values" Target="OIDC_PHISHING_RESISTANT_AMR_VALUES" Default="" Mode="" Description="Only for OpenID Connect: signed amr values for phishing-resistant MFA. Leave empty otherwise." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="OIDC phishing-resistant acr values" Target="OIDC_PHISHING_RESISTANT_ACR_VALUES" Default="" Mode="" Description="Only for OpenID Connect: signed acr values for phishing-resistant MFA. Leave empty otherwise." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="OIDC step-up acr values" Target="OIDC_STEP_UP_ACR_VALUES" Default="" Mode="" Description="Only for OpenID Connect: acr values requested for step-up authentication. Leave empty otherwise." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Step-up maximum age" Target="STEP_UP_MAX_AGE_SECONDS" Default="300" Mode="" Description="Seconds a step-up authentication stays valid for sensitive administrator actions." Type="Variable" Display="advanced" Required="false" Mask="false">300</Config>
+  <Config Name="Backup staging directory" Target="BACKUP_TEMP_DIR" Default="/app/recovery" Mode="" Description="Container path for backup and restore staging. Keep the default so it uses the Recovery folder." Type="Variable" Display="advanced" Required="true" Mask="false">/app/recovery</Config>
+  <Config Name="Durable recovery" Target="BACKUP_RECOVERY_DURABLE" Default="true" Mode="" Description="Confirms that the Recovery folder is persistent storage, which online restore requires." Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+</Container>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommunityApplications>
+  <Profile>
+WebSSH is a self-hosted, multi-user SSH and SFTP client in the browser, maintained in the open at github.com/bifrost0x/webssh under the Apache License 2.0.
+
+This repository publishes one app: WebSSH, from the multi-architecture image ghcr.io/bifrost0x/webssh (amd64 and arm64). The Unraid template lives next to the source, so new settings, ports or volumes ship together with the template change.
+
+WebSSH is an SSH gateway. Keep it on your LAN or behind a VPN, and follow the production guide before exposing it through a reverse proxy.
+
+Support: https://github.com/bifrost0x/webssh/issues
+Unraid install guide: https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Install-on-Unraid.md
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/webssh-icon.png</Icon>
+  <WebPage>https://getwebssh.com</WebPage>
+  <!-- TODO: add <Forum> with the Unraid forum support thread once it exists. -->
+</CommunityApplications>

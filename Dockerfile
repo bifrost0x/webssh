@@ -61,8 +61,14 @@ COPY templates/ /app/templates/
 COPY static/ /app/static/
 COPY deployment/ldap_secret_cli.py /app/deployment/ldap_secret_cli.py
 COPY config.py start.py LICENSE THIRD-PARTY-NOTICES NOTICE /app/
+COPY entrypoint.sh /app/entrypoint.sh
 
-RUN chown -R appuser:appuser /app && \
+# Application code stays root-owned and read-only for the service, so a
+# compromised process cannot change code that later starts or health checks
+# run. Only the data and recovery directories belong to the service account.
+RUN chown -R root:root /app && \
+    chmod -R go-w /app && \
+    chmod 755 /app/entrypoint.sh && \
     mkdir -p /app/data/logs /app/data/keys /app/recovery /run/webssh-auth && \
     chown -R appuser:appuser /app/data && \
     chown appuser:appuser /app/recovery && \
@@ -72,9 +78,6 @@ RUN chown -R appuser:appuser /app && \
     chmod 700 /app/data/keys && \
     chmod 700 /app/recovery && \
     chmod 700 /run/webssh-auth
-
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
 
 # Persist the data dir (SQLite DB, encrypted keys, auto-generated SECRET_KEY).
 # Auto-creates an anonymous volume on `docker run` so state survives restarts;

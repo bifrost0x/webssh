@@ -143,6 +143,9 @@ scripts/
 .graphifyignore
 .env.example
 docker-compose*.yml
+# Unraid Community Apps metadata and template
+ca_profile.xml
+unraid/
 
 # Distribution / packaging
 build/

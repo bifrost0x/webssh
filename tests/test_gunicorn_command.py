@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import re
 
 
 def container_smoke_workflow():
@@ -34,6 +35,24 @@ def test_image_prepares_private_recovery_mountpoint_before_dropping_root():
     assert "mkdir -p /app/data/logs /app/data/keys /app/recovery" in setup
     assert "chown appuser:appuser /app/recovery" in setup
     assert "chmod 700 /app/recovery" in setup
+
+
+def test_application_code_is_root_owned_and_read_only_for_the_service():
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+    runtime_stage = dockerfile.rsplit("\nFROM ", 1)[1]
+    setup = runtime_stage.split("\nUSER appuser\n", 1)[0]
+    final = runtime_stage.split("\nUSER appuser\n", 1)[1]
+
+    assert not re.search(r"chown -R appuser:appuser /app(?:\s|$)", setup)
+    assert "chown -R root:root /app && \\\n    chmod -R go-w /app && \\" in setup
+    assert "chmod 755 /app/entrypoint.sh" in setup
+    # Every runtime input is copied before ownership is normalized, and no
+    # later instruction adds files the service could own.
+    normalize = setup.index("chown -R root:root /app")
+    assert max(match.start() for match in re.finditer(r"^COPY ", setup, re.MULTILINE)) < normalize
+    assert not re.search(r"^(?:COPY|ADD|RUN) ", final, re.MULTILINE)
+    # Only the mutable state directories belong to the service account.
+    assert "chown -R appuser:appuser /app/data" in setup
 
 
 def test_container_ci_run_is_labeled_with_the_workflow_attempt_identity():
@@ -138,3 +157,10 @@ def test_container_ci_checks_graceful_shutdown_after_readiness():
     assert 'if [ "$actual_label" != "$WEBSSH_CI_CONTAINER_LABEL_VALUE" ]; then' in shutdown_step
     assert 'docker stop --time 35 "$WEBSSH_CI_CONTAINER"' in workflow
     assert 'docker inspect --format' in workflow
+
+
+
+def test_container_ci_checks_the_unraid_runtime_identity():
+    checker = Path("scripts/check_hardened_container.py").read_text(encoding="utf-8")
+    assert "profiles = ('compatible', 'hardened', 'hardened-custom', 'unraid')" in checker
+    assert "restrictions.extend(['--user', '99:100'])" in checker

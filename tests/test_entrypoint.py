@@ -18,7 +18,14 @@ pytestmark = pytest.mark.skipif(
 ENTRYPOINT = Path(__file__).parents[1] / 'entrypoint.sh'
 
 
-def _run_entrypoint(data_dir, *, secret=None):
+PRINT_STATE = (
+    'import os; '
+    'print(os.environ["DATA_DIR"]); '
+    'print(os.environ["SECRET_KEY"])'
+)
+
+
+def _run_entrypoint(data_dir, *, secret=None, extra=None, code=PRINT_STATE):
     environment = {
         **os.environ,
         'PATH': f'{Path(sys.executable).parent}:{os.environ.get("PATH", "")}',
@@ -28,18 +35,13 @@ def _run_entrypoint(data_dir, *, secret=None):
         environment.pop('SECRET_KEY', None)
     else:
         environment['SECRET_KEY'] = secret
+    for key, value in (extra or {}).items():
+        if value is None:
+            environment.pop(key, None)
+        else:
+            environment[key] = value
     return subprocess.run(
-        [
-            '/bin/bash',
-            str(ENTRYPOINT),
-            sys.executable,
-            '-c',
-            (
-                'import os; '
-                'print(os.environ["DATA_DIR"]); '
-                'print(os.environ["SECRET_KEY"])'
-            ),
-        ],
+        ['/bin/bash', str(ENTRYPOINT), sys.executable, '-c', code],
         env=environment,
         text=True,
         capture_output=True,
@@ -81,3 +83,62 @@ def test_relative_data_dir_is_rejected_before_writing_state(tmp_path):
     assert result.returncode == 1
     assert result.stdout == ''
     assert 'DATA_DIR must be an absolute path' in result.stderr
+
+
+unprivileged = pytest.mark.skipif(
+    sys.platform == 'linux' and os.geteuid() == 0,
+    reason='Root bypasses the directory permissions under test',
+)
+PRINT_RUNTIME = 'import os; print(os.environ.get("XDG_RUNTIME_DIR", ""))'
+
+
+@unprivileged
+def test_unwritable_data_dir_names_the_container_user_and_fix(tmp_path):
+    data_dir = tmp_path / 'foreign-mount'
+    data_dir.mkdir(mode=0o500)
+    try:
+        result = _run_entrypoint(data_dir)
+    finally:
+        data_dir.chmod(0o700)
+
+    identity = f'{os.getuid()}:{os.getgid()}'
+    assert result.returncode == 1
+    assert result.stdout == ''
+    assert f'is not writable by the container user {identity}' in result.stderr
+    assert f'chown -R {identity} <host directory>' in result.stderr
+    assert not (data_dir / 'secret_key').exists()
+
+
+@unprivileged
+def test_runtime_directory_is_private_when_home_is_not_writable(tmp_path):
+    home = tmp_path / 'read-only-home'
+    home.mkdir(mode=0o500)
+    scratch = tmp_path / 'scratch'
+    scratch.mkdir()
+    try:
+        result = _run_entrypoint(tmp_path / 'data', code=PRINT_RUNTIME, extra={
+            'HOME': str(home), 'XDG_RUNTIME_DIR': None, 'TMPDIR': str(scratch),
+        })
+    finally:
+        home.chmod(0o700)
+
+    assert result.returncode == 0, result.stderr
+    runtime = Path(result.stdout.splitlines()[-1])
+    assert runtime.parent == scratch and runtime.name.startswith('webssh-runtime.')
+    assert stat.S_IMODE(runtime.stat().st_mode) == 0o700
+    assert runtime.stat().st_uid == os.getuid()
+
+
+@pytest.mark.parametrize('extra, expected', [
+    ({'XDG_RUNTIME_DIR': None}, ''),
+    ({'XDG_RUNTIME_DIR': '/run/webssh'}, '/run/webssh'),
+])
+def test_existing_runtime_settings_are_left_unchanged(tmp_path, extra, expected):
+    home = tmp_path / 'home'
+    home.mkdir()
+
+    result = _run_entrypoint(tmp_path / 'data', code=PRINT_RUNTIME,
+                             extra={'HOME': str(home), **extra})
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines()[-1] == expected
