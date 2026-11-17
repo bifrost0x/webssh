@@ -530,9 +530,9 @@ def test_graph_pages_toolchain_versions_are_explicit():
 
     assert 'version-file: uv.toml' in workflow
     assert 'uv pip install --require-hashes -r requirements-graph.txt' in workflow
-    assert 'graphifyy==0.9.103' in graph_input
+    assert 'graphifyy==0.9.105' in graph_input
     assert '--require-hashes' in graph_lock
-    assert 'graphifyy==0.9.103' in graph_lock
+    assert 'graphifyy==0.9.105' in graph_lock
 
 
 def test_workflows_use_an_explicit_runner_release():
@@ -601,7 +601,7 @@ def test_font_browsers_and_python_shards_are_required_parallel_gates():
     fonts = workflow.split('\n  browser-fonts:', 1)[1].split('\n  browser-e2e:', 1)[0]
     assert 'matrix:' not in fonts
     assert "WEBSSH_E2E_FAST_HASHING: '1'" in fonts
-    assert "python-version: '3.14'" in fonts
+    assert "python-version: '3.15'" in fonts
     for browser, port in (('firefox', '4173'), ('webkit', '4174')):
         assert 'node scripts/install-ci-chromium.js ' + browser in fonts
         assert 'WEBSSH_E2E_PORT=' + port in fonts
@@ -627,7 +627,7 @@ def test_font_job_uses_hosted_runtime_and_locked_browser_launch_checks():
     assert 'runs-on: ubuntu-24.04' in fonts
     assert 'container:' not in fonts
     assert 'PLAYWRIGHT_BROWSERS_PATH:' not in fonts
-    assert "python-version: '3.14'" in fonts
+    assert "python-version: '3.15'" in fonts
     assert "node-version: '24'" in fonts
     assert 'run: npm ci' in fonts
     for browser in ('firefox', 'webkit'):
@@ -823,7 +823,7 @@ def test_minimum_python_and_both_redis_versions_share_the_lock_gate():
     }
     assert set(re.findall(r'tests/test_([a-z_]+)\.py', minimum)) == expected
     assert "python_version: '3.11'" not in shards
-    assert shards.count("python_version: '3.14'") == 3
+    assert shards.count("python_version: '3.15'") == 3
     for version, port, digest in (
         ('7', 6379, '57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541'),
         ('8', 6380, '0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0'),
@@ -849,7 +849,7 @@ def test_minimum_python_and_both_redis_versions_share_the_lock_gate():
 def test_protocol_labs_share_one_runner_and_keep_required_aggregate_checks():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
     ssh = workflow.split('\n  ssh-integration:', 1)[1].split('\n  smb-integration:', 1)[0]
-    assert "python-version: '3.14'" in ssh and "node-version: '24'" in ssh
+    assert "python-version: '3.15'" in ssh and "node-version: '24'" in ssh
     assert 'astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2' in ssh
     assert 'cache: npm' in ssh
     buildx = 'run: docker buildx version'

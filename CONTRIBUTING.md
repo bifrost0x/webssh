@@ -21,7 +21,7 @@ Thanks for your interest in contributing! This project is open to contributions 
 Follow [Development and Testing](docs/wiki/Development-and-Testing.md) for
 hash-locked dependency installation, an isolated test data directory, Node tooling,
 and the required checks. Python 3.11 is the minimum; the production container uses
-Python 3.14. Browser assets are already vendored, so no frontend build is needed
+Python 3.15. Browser assets are already vendored, so no frontend build is needed
 to start the application.
 
 ### Project Structure
