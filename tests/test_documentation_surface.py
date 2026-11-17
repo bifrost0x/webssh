@@ -421,7 +421,7 @@ def test_supported_python_versions_are_documented():
     """Development docs retain both the support floor and production runtime."""
     development = wiki_text("Development-and-Testing.md")
     assert "Python 3.11" in development
-    assert "Python 3.14" in development
+    assert "Python 3.15" in development
 
 
 def test_ldap_documentation_selects_overlay_for_every_helper_command():
@@ -523,7 +523,7 @@ def workflow_job(workflow, job_name):
 
 def test_python_runtime_contract_stays_synchronized():
     minimum_python = "3.11"
-    production_python = "3.14"
+    production_python = "3.15"
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/tests.yml").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -538,9 +538,9 @@ def test_python_runtime_contract_stays_synchronized():
         f"FROM python:{production_python}-slim@sha256:"
     )
     assert matrix_entries == [
-        (production_python, "pytest (Python 3.14 shard 1/3)"),
-        (production_python, "pytest (Python 3.14 shard 2/3)"),
-        (production_python, "pytest (Python 3.14 shard 3/3)"),
+        (production_python, "pytest (Python 3.15 shard 1/3)"),
+        (production_python, "pytest (Python 3.15 shard 2/3)"),
+        (production_python, "pytest (Python 3.15 shard 3/3)"),
     ]
     assert "python-version: ${{ matrix.python_version }}" in pytest_job
     compatibility_job = workflow_job(workflow, "dependency-locks")
