@@ -166,8 +166,19 @@ test('desktop: Herdr session mode is usable in the WebSSH terminal', async ({ pa
     const first = lab('snapshot');
     expect(first).toMatchObject({ running: true, panes: 1, tabs: 1 });
 
-    // Prefix: ctrl+b v splits the pane.
+    // Prefix: ctrl+b v splits the pane. The terminal consumes ctrl+b, so the
+    // browser does not act on it (Firefox would open its bookmarks sidebar).
+    await page.evaluate(() => {
+        window.prefixKeys = [];
+        // xterm also stops propagation, so read the outcome after dispatch.
+        window.addEventListener('keydown', event => {
+            if (event.ctrlKey && event.key.toLowerCase() === 'b') {
+                setTimeout(() => window.prefixKeys.push(event.defaultPrevented));
+            }
+        }, true);
+    });
     await prefix(page, id, 'v');
+    await expect.poll(() => page.evaluate(() => window.prefixKeys)).toEqual([true]);
     await expect.poll(() => lab('snapshot').panes, { message: 'split through the prefix' }).toBe(2);
     await page.screenshot({ path: test.info().outputPath('desktop-split.png') });
 
@@ -180,6 +191,30 @@ test('desktop: Herdr session mode is usable in the WebSSH terminal', async ({ pa
     point = await cell(page, id, state.cols - 8, row + 2);
     await page.mouse.click(point.x, point.y);
     await expect.poll(() => lab('snapshot').focused, { message: 'right pane focused' }).not.toBe(first.focused);
+
+    // Right click: Herdr gets it instead of the browser menu; Shift keeps the browser menu.
+    await page.evaluate(() => {
+        window.contextMenus = [];
+        window.addEventListener('contextmenu', event => window.contextMenus.push(event.defaultPrevented));
+    });
+    point = await cell(page, id, state.cols - 12, row + 4);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await page.keyboard.up('Shift');
+    await page.keyboard.press('Escape');
+    // Firefox does not even deliver Shift+right click to the page.
+    expect(await page.evaluate(() => window.contextMenus.includes(true))).toBe(false);
+    await page.evaluate(() => { window.contextMenus = []; });
+    const panesBeforeMenu = lab('snapshot').panes;
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    state = await waitScreen(page, id, shows('Split down'), 'Herdr pane menu');
+    expect(await page.evaluate(() => window.contextMenus)).toEqual([true]);
+    const menuRow = state.lines.findIndex(line => line.includes('Split down'));
+    point = await cell(page, id, state.lines[menuRow].indexOf('Split down') + 3, menuRow);
+    await page.mouse.click(point.x, point.y);
+    await expect.poll(() => lab('snapshot').panes, { message: 'split from the pane menu' })
+        .toBe(panesBeforeMenu + 1);
+    await page.screenshot({ path: test.info().outputPath('desktop-menu-split.png') });
 
     // Resizing the window redraws Herdr at the new size and back.
     const before = { cols: state.cols, rows: state.rows };

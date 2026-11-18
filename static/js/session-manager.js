@@ -229,6 +229,7 @@ const SessionManager = {
                 sessionData.use_tmux && sessionData.tmux_session_name
             ),
             restoredOutput: sessionData.restored === true,
+            herdrMouseMenu: sessionData.use_herdr === true && !sessionData.use_tmux,
         });
         TerminalManager.attachTerminal(session_id, terminalId);
         TerminalManager.setupInputHandler(session_id, (data) => {
