@@ -149,6 +149,20 @@ def overview_allowed(user_id, profile_id):
     return is_herdr_enabled() and _profile_allows_overview(user_id, profile_id)
 
 
+def session_mode_allowed(user_id, profile_id):
+    """True when the overview is allowed and the saved host selects Herdr as its session."""
+    from . import profile_manager
+    from .app_settings import is_herdr_enabled
+    if not is_herdr_enabled() or not profile_id:
+        return False
+    profile = profile_manager.get_profile(user_id, profile_id)
+    return (
+        isinstance(profile, dict)
+        and profile.get('herdr') is True
+        and profile.get('use_herdr') is True
+    )
+
+
 def session_flags(session):
     """Herdr fields of the session data sent to the browser."""
     from .app_settings import is_herdr_enabled

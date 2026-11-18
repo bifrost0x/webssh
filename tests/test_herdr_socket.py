@@ -426,8 +426,9 @@ def test_runtime_session_info_carries_the_herdr_flags(monkeypatch):
     assert ssh_manager.get_session('legacy')['use_herdr'] is False
 
 
+@pytest.mark.parametrize('use_herdr', [False, True])
 @pytest.mark.parametrize('enabled', [True, False])
-def test_restored_session_data_follows_the_switch(app, monkeypatch, enabled):
+def test_restored_session_data_follows_the_switch(app, monkeypatch, enabled, use_herdr):
     from app.models import SSHSession, db
     owner, _ = user_socket(app, 'herdr_restore')
     enable(app, enabled)
@@ -435,7 +436,7 @@ def test_restored_session_data_follows_the_switch(app, monkeypatch, enabled):
         db.session.add(SSHSession(session_id='herdr-live', user_id=owner, host='target.example',
                                   port=22, username='ops', connected=True))
         db.session.commit()
-    runtime = {'connected': True, 'herdr': True, 'use_herdr': False}
+    runtime = {'connected': True, 'herdr': True, 'use_herdr': use_herdr}
     monkeypatch.setattr(events.ssh_manager, 'get_session', lambda _id: runtime)
     monkeypatch.setattr(events.ssh_manager, 'get_output_snapshot', lambda _id: ('', 0))
     monkeypatch.setattr(events, '_public_file_source', lambda *_args: None)
@@ -445,4 +446,203 @@ def test_restored_session_data_follows_the_switch(app, monkeypatch, enabled):
         events.restore_user_sessions(owner, 'restoring-socket')
     restored = [data for event, data in emitted if event == 'ssh_session_restored']
     assert len(restored) == 1
-    assert restored[0]['herdr'] is enabled and restored[0]['use_herdr'] is False
+    # A running Herdr session stays what it is when the switch is turned off.
+    assert restored[0]['herdr'] is enabled and restored[0]['use_herdr'] is use_herdr
+
+
+SESSION_HOST = {'herdr': True, 'use_herdr': True}
+
+
+def connect_with(app, monkeypatch, sid, **payload):
+    jobs, connections = capture_connections(app, monkeypatch)
+    _, emitted = call(app, monkeypatch, events.handle_ssh_connect, sid, connect_payload(**payload))
+    for job in jobs:
+        assert job.join(3)
+    return connections, emitted
+
+
+@pytest.mark.parametrize('enabled,options,browser,expected', [
+    (True, SESSION_HOST, {'use_herdr': True}, True),
+    # The saved host alone does not switch a connection into the session mode.
+    (True, SESSION_HOST, {}, False),
+    (True, SESSION_HOST, {'use_herdr': 'true'}, False),
+    (True, {'herdr': True}, {'use_herdr': True}, False),
+    (True, {}, {'herdr': True, 'use_herdr': True}, False),
+    (False, SESSION_HOST, {'use_herdr': True}, False),
+])
+def test_connect_grants_the_session_mode_only_from_switch_and_saved_host(
+        app, monkeypatch, enabled, options, browser, expected):
+    owner, sid = user_socket(app, 'herdr_mode')
+    enable(app, enabled)
+    profile = saved_host(app, owner, **options)
+    connections, emitted = connect_with(app, monkeypatch, sid, profile_id=profile['id'], **browser)
+    assert len(connections) == 1, emitted
+    assert connections[0].get('use_herdr', False) is expected
+    if expected:
+        assert connections[0]['herdr'] is True and connections[0]['startup_commands'] == ''
+
+
+def test_quick_connect_never_gets_the_session_mode(app, monkeypatch):
+    _, sid = user_socket(app, 'herdr_mode_quick')
+    enable(app)
+    connections, _ = connect_with(app, monkeypatch, sid, herdr=True, use_herdr=True)
+    assert len(connections) == 1
+    assert 'use_herdr' not in connections[0] and 'herdr' not in connections[0]
+
+
+def test_another_users_saved_host_never_grants_the_session_mode(app, monkeypatch):
+    other, _ = user_socket(app, 'herdr_mode_owner')
+    _, sid = user_socket(app, 'herdr_mode_thief')
+    enable(app)
+    foreign = saved_host(app, other, **SESSION_HOST)
+    connections, _ = connect_with(app, monkeypatch, sid, profile_id=foreign['id'],
+                                  profile_context_optional=True, use_herdr=True)
+    assert len(connections) == 1 and 'use_herdr' not in connections[0]
+
+
+@pytest.mark.parametrize('enabled', [True, False])
+@pytest.mark.parametrize('payload,message', [
+    ({'use_tmux': True}, 'tmux and Herdr cannot be combined'),
+    ({'use_tmux': True, 'reconnect_tmux_name': 'webssh_ops_target_22_deadbeef'},
+     'tmux and Herdr cannot be combined'),
+    ({'startup_commands': 'uptime'}, 'Herdr session mode cannot be combined with startup commands'),
+    ({'startup_mode': 'free_text', 'startup_commands': 'uptime'},
+     'Herdr session mode cannot be combined with startup commands'),
+])
+def test_contradictory_session_mode_requests_are_rejected(app, monkeypatch, enabled, payload, message):
+    owner, sid = user_socket(app, 'herdr_mode_conflict')
+    enable(app, enabled)
+    profile = saved_host(app, owner, **SESSION_HOST)
+    connections, emitted = connect_with(app, monkeypatch, sid, profile_id=profile['id'],
+                                        use_herdr=True, **payload)
+    assert connections == []
+    assert [(event, data['error']) for event, data in emitted] == [('ssh_error', message)]
+
+
+def reconnect_payload(profile_id):
+    """What the browser sends when the user reconnects a tab."""
+    return dict(profile_id=profile_id, profile_context_optional=True, use_herdr=True,
+                use_tmux=False, reconnect_tmux_name=None)
+
+
+def test_reconnect_of_a_tab_attaches_to_herdr_again(app, monkeypatch):
+    owner, sid = user_socket(app, 'herdr_mode_reconnect')
+    enable(app)
+    profile = saved_host(app, owner, **SESSION_HOST)
+    connections, _ = connect_with(app, monkeypatch, sid, **reconnect_payload(profile['id']))
+    assert connections[0]['use_herdr'] is True and connections[0]['profile_id'] == profile['id']
+
+
+@pytest.mark.parametrize('change', ['moved', 'deleted', 'mode_off', 'overview_off', 'switch_off'])
+def test_reconnect_falls_back_to_a_normal_shell_when_the_grant_is_gone(app, monkeypatch, change):
+    from app import profile_manager
+    owner, sid = user_socket(app, 'herdr_mode_lost')
+    enable(app)
+    profile = saved_host(app, owner, **SESSION_HOST)
+    with app.app_context():
+        if change == 'moved':
+            assert profile_manager.upsert_profile(owner, {**profile, 'host': 'moved.example'})[1] is None
+        elif change == 'deleted':
+            assert profile_manager.delete_profile(owner, profile['id'])
+        elif change == 'mode_off':
+            assert profile_manager.upsert_profile(owner, {**profile, 'use_herdr': False})[1] is None
+        elif change == 'overview_off':
+            assert profile_manager.upsert_profile(
+                owner, {**profile, 'herdr': False, 'use_herdr': False})[1] is None
+    if change == 'switch_off':
+        enable(app, False)
+    connections, emitted = connect_with(app, monkeypatch, sid, **reconnect_payload(profile['id']))
+    assert len(connections) == 1, emitted
+    assert 'use_herdr' not in connections[0]
+
+
+def connected_payload(app, monkeypatch, sid, runtime, **payload):
+    from threading import Event
+    from flask import request
+    from app import host_platform
+    from app.models import SSHSession
+    emitted = []
+    monkeypatch.setattr(events, 'emit', lambda event, data=None, **kw: emitted.append((event, data)))
+    monkeypatch.setattr(events, '_validate_ssh_params',
+                        lambda host, port, user, **kw: (host, int(port), user, None))
+    monkeypatch.setattr(events.ssh_manager, 'create_ssh_connection', lambda **kw: ('herdr-mode', None))
+    monkeypatch.setattr(events.ssh_manager, 'get_session', lambda _id: runtime)
+    monkeypatch.setattr(events, '_public_file_source', lambda *args: {})
+    monkeypatch.setattr(host_platform, 'detect_connected_platform', lambda *args, **kwargs: None)
+
+    def run(name, target, **kwargs):
+        target(Event())
+        return SimpleNamespace(cancel=lambda: None)
+    monkeypatch.setattr(app.extensions['runtime_lifecycle'], 'start_job', run)
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        events.handle_ssh_connect(connect_payload(**payload))
+    with app.app_context():
+        stored = SSHSession.query.filter_by(session_id='herdr-mode').first()
+        stored = None if stored is None else (stored.is_persistent, stored.tmux_session_name)
+    return [data for event, data in emitted if event == 'ssh_connected'], stored
+
+
+@pytest.mark.parametrize('actual', [True, False])
+def test_session_data_carries_the_actual_session_mode(app, monkeypatch, actual):
+    owner, sid = user_socket(app, 'herdr_mode_data')
+    enable(app)
+    profile = saved_host(app, owner, **SESSION_HOST)
+    runtime = {'use_tmux': False, 'herdr': True, 'use_herdr': actual, 'tmux_session_name': None}
+    connected, stored = connected_payload(app, monkeypatch, sid, runtime,
+                                          profile_id=profile['id'], use_herdr=True,
+                                          display_name='Agents')
+    assert len(connected) == 1
+    assert connected[0]['use_herdr'] is actual and connected[0]['herdr'] is True
+    assert connected[0]['use_tmux'] is False and connected[0]['tmux_session_name'] is None
+    assert connected[0]['display_name'] is None
+    assert stored == (False, None)
+
+
+class RecordingTransport:
+    def __init__(self):
+        self.sessions_opened = 0
+
+    def is_active(self):
+        return True
+
+    def open_session(self, timeout=None):
+        self.sessions_opened += 1
+        raise AssertionError('nothing may run on the host')
+
+
+def herdr_runtime_session(owner, transport, **fields):
+    closed = []
+    client = SimpleNamespace(get_transport=lambda: transport, close=lambda: closed.append('client'))
+    channel = SimpleNamespace(close=lambda: closed.append('channel'))
+    session = {'connected': True, 'user_id': owner, 'client': client, 'channel': channel,
+               'herdr': True, 'use_herdr': True, 'use_tmux': False, 'tmux_session_name': None,
+               'tmux_reconnect': False, **fields}
+    return session, closed
+
+
+@pytest.mark.parametrize('preserve', [False, True])
+def test_disconnecting_a_herdr_session_opens_no_channel(app, monkeypatch, preserve):
+    owner, sid = user_socket(app, 'herdr_mode_close')
+    transport = RecordingTransport()
+    session, closed = herdr_runtime_session(owner, transport)
+    monkeypatch.setattr(ssh_manager, 'sessions', {'herdr-live': session})
+    monkeypatch.setattr(events, 'verify_session_ownership', lambda session_id, user_id: True)
+    call(app, monkeypatch, events.handle_ssh_disconnect, sid,
+         {'session_id': 'herdr-live', 'preserve_tmux': preserve})
+    assert 'herdr-live' not in ssh_manager.sessions
+    assert transport.sessions_opened == 0 and closed == ['channel', 'client']
+
+
+def test_discarding_a_late_herdr_connection_opens_no_channel(app, monkeypatch):
+    owner, sid = user_socket(app, 'herdr_mode_discard')
+    transport = RecordingTransport()
+    session, closed = herdr_runtime_session(
+        owner, transport, client_request_id='herdr-request', host='target.example',
+        port=22, username='ops')
+    monkeypatch.setattr(ssh_manager, 'sessions', {'herdr-late': session})
+    monkeypatch.setattr(events, 'verify_session_ownership', lambda session_id, user_id: True)
+    result, _ = call(app, monkeypatch, events.handle_ssh_discard_late_connection, sid,
+                     {'session_id': 'herdr-late', 'client_request_id': 'herdr-request'})
+    assert result == {'success': True}
+    assert transport.sessions_opened == 0 and closed == ['channel', 'client']

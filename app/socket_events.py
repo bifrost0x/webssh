@@ -1304,6 +1304,13 @@ def handle_ssh_connect(data, current_user=None):
         if startup_commands_error:
             emit_error(startup_commands_error)
             return
+        requested_herdr_session = data.get('use_herdr') is True
+        if requested_herdr_session and data.get('use_tmux'):
+            emit_error('tmux and Herdr cannot be combined')
+            return
+        if requested_herdr_session and startup_commands:
+            emit_error('Herdr session mode cannot be combined with startup commands')
+            return
 
         proxy_jump = data.get('proxy_jump')
         if not isinstance(proxy_jump, dict):
@@ -1482,6 +1489,10 @@ def handle_ssh_connect(data, current_user=None):
         # Only the bound, owned saved host grants the Herdr overview; nothing
         # the browser sends can enable it.
         herdr_overview = herdr.overview_allowed(current_user.id, profile_id)
+        herdr_session = (
+            requested_herdr_session and herdr_overview
+            and herdr.session_mode_allowed(current_user.id, profile_id)
+        )
 
         if auth_type not in {'password', 'key', 'tailscale'}:
             emit_error('Invalid authentication method')
@@ -1652,6 +1663,7 @@ def handle_ssh_connect(data, current_user=None):
                     jump_host_id=saved_jump_host_id,
                     **({'profile_id': profile_id} if profile_id else {}),
                     **({'herdr': True} if herdr_overview else {}),
+                    **({'use_herdr': True} if herdr_session else {}),
                     proxy_jump_port=bastion_port,
                     proxy_jump_username=bastion_username,
                     proxy_jump_password=local_bastion_password,

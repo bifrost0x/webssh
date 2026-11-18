@@ -1301,3 +1301,124 @@ def test_allowlisted_jump_host_and_target_are_both_admitted(monkeypatch):
         ('target', 'fd00::22', True),
         ('jump_host', '10.0.0.2', True),
     ]
+
+
+def herdr_commands(clients):
+    return [channel.command for channel in clients[0].transport.session_channels if channel.command]
+
+
+def test_herdr_session_mode_probes_then_starts_herdr_on_a_pty(monkeypatch):
+    from app import herdr
+    clients = install_ssh_clients(monkeypatch)
+    session_id, error = connect_target(password='secret', herdr=True, use_herdr=True)
+    assert error is None
+    assert herdr_commands(clients) == [herdr.AVAILABLE_COMMAND, herdr.SESSION_COMMAND]
+    probe, terminal = clients[0].transport.session_channels
+    assert probe.closed and probe.pty is None
+    assert terminal.pty == ('xterm-256color', 80, 24) and not terminal.shell_invoked
+    session = ssh_manager.get_session(session_id)
+    assert session['use_herdr'] is True and session['herdr'] is True
+    assert session['use_tmux'] is False and session['tmux_session_name'] is None
+    assert ssh_manager.sessions[session_id]['channel'] is terminal
+
+
+@pytest.mark.parametrize('granted', [False, None, 'yes', 1])
+def test_herdr_session_mode_needs_the_server_grant(monkeypatch, granted):
+    clients = install_ssh_clients(monkeypatch)
+    extra = {} if granted is None else {'herdr': granted}
+    session_id, error = connect_target(password='secret', use_herdr=True, **extra)
+    assert error is None
+    assert herdr_commands(clients) == []
+    assert any(channel.shell_invoked for channel in clients[0].transport.session_channels)
+    assert ssh_manager.get_session(session_id)['use_herdr'] is False
+
+
+def test_herdr_session_mode_is_off_by_default(monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+    session_id, error = connect_target(password='secret', herdr=True)
+    assert error is None
+    assert herdr_commands(clients) == []
+    assert ssh_manager.get_session(session_id)['use_herdr'] is False
+
+
+def _fail_probe_with_status(status):
+    def recv_exit_status(self):
+        return status if self.command and 'command -v herdr' in self.command else 0
+    return recv_exit_status
+
+
+@pytest.mark.parametrize('failure', ['missing', 'not_found', 'timeout', 'open_error', 'exec_error'])
+def test_herdr_probe_failure_falls_back_to_a_normal_shell(monkeypatch, failure):
+    from app import herdr
+    clients = install_ssh_clients(monkeypatch)
+    if failure == 'missing':
+        monkeypatch.setattr(FakeChannel, 'recv_exit_status', _fail_probe_with_status(1))
+    elif failure == 'not_found':
+        monkeypatch.setattr(FakeChannel, 'recv_exit_status', _fail_probe_with_status(127))
+    elif failure == 'timeout':
+        def never_ready(self):
+            return not (self.command and 'command -v herdr' in self.command)
+        monkeypatch.setattr(FakeChannel, 'exit_status_ready', never_ready)
+        monkeypatch.setattr(ssh_manager, 'HERDR_PROBE_TIMEOUT', 0.05)
+        monkeypatch.setattr(ssh_manager.paramiko_channels.time, 'sleep', lambda _s: None)
+    elif failure == 'open_error':
+        real_open = ssh_manager._open_exec_channel
+
+        def open_channel(transport, command, **kwargs):
+            if command == herdr.AVAILABLE_COMMAND:
+                raise paramiko.SSHException('channel refused')
+            return real_open(transport, command, **kwargs)
+        monkeypatch.setattr(ssh_manager, '_open_exec_channel', open_channel)
+    else:
+        real_exec = FakeChannel.exec_command
+
+        def exec_command(self, command):
+            real_exec(self, command)
+            if command == herdr.AVAILABLE_COMMAND:
+                raise OSError('exec failed')
+        monkeypatch.setattr(FakeChannel, 'exec_command', exec_command)
+    session_id, error = connect_target(password='secret', herdr=True, use_herdr=True)
+    assert error is None
+    assert herdr.SESSION_COMMAND not in herdr_commands(clients)
+    channels = clients[0].transport.session_channels
+    assert any(channel.shell_invoked for channel in channels)
+    assert all(channel.closed for channel in channels if channel.command == herdr.AVAILABLE_COMMAND)
+    session = ssh_manager.get_session(session_id)
+    assert session['use_herdr'] is False and session['herdr'] is True
+
+
+@pytest.mark.parametrize('extra,message', [
+    ({'use_tmux': True}, 'tmux and Herdr cannot be combined'),
+    ({'use_tmux': True, 'reconnect_tmux_name': 'existing_session'}, 'tmux and Herdr cannot be combined'),
+    ({'startup_commands': 'uptime'}, 'Herdr session mode cannot be combined with startup commands'),
+])
+def test_herdr_session_mode_conflicts_stop_before_any_connection(monkeypatch, extra, message):
+    clients = install_ssh_clients(monkeypatch)
+    assert connect_target(password='secret', herdr=True, use_herdr=True, **extra) == (None, message)
+    assert clients == [] and ssh_manager.sessions == {}
+
+
+def test_closing_a_herdr_session_runs_nothing_on_the_host(monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+    session_id, _ = connect_target(password='secret', herdr=True, use_herdr=True)
+    opened = len(clients[0].transport.session_channels)
+    assert ssh_manager.close_session(session_id, kill_tmux=True) is True
+    assert len(clients[0].transport.session_channels) == opened
+    assert clients[0].closed
+
+
+def test_cancelled_herdr_setup_closes_without_running_anything_else(monkeypatch):
+    from app import herdr
+    clients = install_ssh_clients(monkeypatch)
+    cancel = threading.Event()
+    real_exec = FakeChannel.exec_command
+
+    def exec_command(self, command):
+        real_exec(self, command)
+        if command == herdr.SESSION_COMMAND:
+            cancel.set()
+    monkeypatch.setattr(FakeChannel, 'exec_command', exec_command)
+    assert connect_target(password='secret', herdr=True, use_herdr=True,
+                          cancel_event=cancel) == (None, 'Connection cancelled')
+    assert herdr_commands(clients) == [herdr.AVAILABLE_COMMAND, herdr.SESSION_COMMAND]
+    assert ssh_manager.sessions == {} and clients[0].closed
