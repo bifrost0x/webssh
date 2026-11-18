@@ -18,18 +18,18 @@ def encode(agents, panes=None, **snapshot):
 
 
 def agent(pane_id='w1:p1', **fields):
-    return {'pane_id': pane_id, 'agent': 'codex', 'agent_status': 'idle',
+    return {'pane_id': pane_id, 'agent': 'tester', 'agent_status': 'idle',
             'cwd': '/srv/app', **fields}
 
 
 def test_recorded_snapshot_yields_the_expected_agents():
     assert herdr.parse_snapshot(FIXTURE.read_bytes()) == {
         'agents': [
-            {'id': 'w1:p1', 'kind': 'claude', 'label': 'build',
+            {'id': 'w1:p1', 'kind': 'builder', 'label': 'build',
              'cwd': '/home/deploy', 'status': 'working'},
-            {'id': 'w1:p2', 'kind': 'codex', 'label': 'reviewer',
+            {'id': 'w1:p2', 'kind': 'tester', 'label': 'reviewer',
              'cwd': '/home/deploy', 'status': 'blocked'},
-            {'id': 'w1:p4', 'kind': 'pi', 'label': '',
+            {'id': 'w1:p4', 'kind': 'deployer', 'label': '',
              'cwd': '/home/deploy', 'status': 'idle'},
         ],
         'truncated': False,
@@ -53,18 +53,18 @@ def test_output_exposes_only_the_documented_fields():
         layouts=[{'secret': True}], workspaces=[{'label': 'secret'}], future='secret',
     ))
     assert result == {'agents': [{
-        'id': 'w1:p1', 'kind': 'codex', 'label': 'api', 'cwd': '/srv/app', 'status': 'idle',
+        'id': 'w1:p1', 'kind': 'tester', 'label': 'api', 'cwd': '/srv/app', 'status': 'idle',
     }], 'truncated': False}
     assert 'secret' not in json.dumps(result)
 
 
 def test_kind_prefers_the_display_name_and_label_prefers_the_agent_name():
     result = herdr.parse_snapshot(encode(
-        [agent(display_agent='Codex CLI', name='reviewer'), agent('w1:p2')],
+        [agent(display_agent='Build runner', name='reviewer'), agent('w1:p2')],
         panes=[{'pane_id': 'w1:p1', 'label': 'ignored'}, {'pane_id': 'w1:p2', 'label': 'logs'}],
     ))
     assert [(item['kind'], item['label']) for item in result['agents']] == [
-        ('Codex CLI', 'reviewer'), ('codex', 'logs'),
+        ('Build runner', 'reviewer'), ('tester', 'logs'),
     ]
 
 

@@ -113,13 +113,13 @@ def test_running_server_reports_its_agents(agent_host):
     assert run(agent_host, f'{HERDR} pane rename w1:p1 build >/dev/null')[0] == 0
     assert run(
         agent_host,
-        f'{HERDR} pane report-agent w1:p1 --source lab --agent codex --state blocked >/dev/null',
+        f'{HERDR} pane report-agent w1:p1 --source lab --agent builder --state blocked >/dev/null',
     )[0] == 0
     ssh_manager.sessions['agentuser']['herdr_snapshot_not_before'] = 0
     snapshot, reason = query('agentuser')
     assert reason is None
     assert snapshot == {'truncated': False, 'agents': [{
-        'id': 'w1:p1', 'kind': 'codex', 'label': 'build',
+        'id': 'w1:p1', 'kind': 'builder', 'label': 'build',
         'cwd': '/home/agentuser', 'status': 'blocked',
     }]}
 

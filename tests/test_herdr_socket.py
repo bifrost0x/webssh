@@ -15,7 +15,7 @@ pytestmark = pytest.mark.usefixtures('direct_socket_authentication')
 
 SNAPSHOT = json.dumps({'id': 'cli:api:snapshot', 'result': {
     'type': 'session_snapshot',
-    'snapshot': {'agents': [{'pane_id': 'w1:p1', 'agent': 'codex', 'agent_status': 'working',
+    'snapshot': {'agents': [{'pane_id': 'w1:p1', 'agent': 'builder', 'agent_status': 'working',
                              'cwd': '/srv/app'}], 'panes': []},
 }}).encode() + b'\n'
 NO_SERVER = (b'{"id":"cli:api:snapshot","error":{"code":"server_not_running",'
@@ -128,7 +128,7 @@ def test_owned_session_returns_agents(overview, monkeypatch):
     session, opened = live_session(monkeypatch, overview.owner, overview.profile['id'], channel)
     assert request_snapshot(overview, monkeypatch) == {
         'success': True, 'truncated': False, 'reason': None,
-        'agents': [{'id': 'w1:p1', 'kind': 'codex', 'label': '', 'cwd': '/srv/app', 'status': 'working'}],
+        'agents': [{'id': 'w1:p1', 'kind': 'builder', 'label': '', 'cwd': '/srv/app', 'status': 'working'}],
     }
     assert opened == [(herdr.SNAPSHOT_COMMAND, herdr.SNAPSHOT_TIMEOUT, {})]
     assert channel.closed and not session['herdr_snapshot_lock'].locked()
