@@ -109,10 +109,18 @@ def test_commands_share_one_lookup_prefix_and_contain_no_variable_text():
     prefix = 'PATH="$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin"'
     assert herdr.PATH_PREFIX == prefix
     assert herdr.AVAILABLE_COMMAND == f"sh -c '{prefix}; command -v herdr >/dev/null 2>&1'"
-    assert herdr.SNAPSHOT_COMMAND == f"sh -c '{prefix}; exec herdr api snapshot'"
+    assert herdr.SNAPSHOT_COMMAND == (
+        f"sh -c '{prefix}; herdr api snapshot & p=$!; "
+        '(sleep 5; kill "$p") >/dev/null 2>&1 & w=$!; '
+        'wait "$p"; s=$?; kill "$w" >/dev/null 2>&1; exit "$s"'
+        "'"
+    )
     assert herdr.SESSION_COMMAND == f"sh -c '{prefix}; exec herdr'"
     for command in (herdr.AVAILABLE_COMMAND, herdr.SNAPSHOT_COMMAND, herdr.SESSION_COMMAND):
         assert command.count("'") == 2 and command.count(prefix) == 1
+    # The host limit outlasts the read deadline, and a session that timed out
+    # is not asked again before the stuck call has been ended on the host.
+    assert herdr.SNAPSHOT_TIMEOUT < 5 < herdr.TIMEOUT_SNAPSHOT_INTERVAL
 
 
 def test_owned_session_returns_agents(overview, monkeypatch):
@@ -138,7 +146,7 @@ def test_disabled_switch_answers_disabled_without_opening_a_channel(overview, mo
 def test_switch_turned_off_between_two_requests_stops_the_second(overview, monkeypatch):
     session, opened = live_session(monkeypatch, overview.owner, overview.profile['id'])
     assert request_snapshot(overview, monkeypatch)['success'] is True
-    session['herdr_snapshot_started'] -= herdr.MIN_SNAPSHOT_INTERVAL
+    session['herdr_snapshot_not_before'] = 0
     enable(overview.app, False)
     assert request_snapshot(overview, monkeypatch)['reason'] == 'disabled'
     assert len(opened) == 1
@@ -212,9 +220,37 @@ def test_second_request_within_the_interval_is_busy(overview, monkeypatch):
     assert request_snapshot(overview, monkeypatch)['success'] is True
     assert request_snapshot(overview, monkeypatch)['reason'] == 'busy'
     assert len(opened) == 1
-    session['herdr_snapshot_started'] -= herdr.MIN_SNAPSHOT_INTERVAL
+    session['herdr_snapshot_not_before'] = 0
     assert request_snapshot(overview, monkeypatch)['success'] is True
     assert len(opened) == 2
+
+
+def test_timeout_keeps_the_session_busy_for_the_longer_interval(overview, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(herdr.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(herdr.time, 'sleep', lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    channel = Channel(b'', b'', finishes=False)
+    session, opened = live_session(monkeypatch, overview.owner, overview.profile['id'], channel)
+    assert herdr.collect_snapshot('live') == (None, 'timeout')
+    timed_out_at = clock[0]
+    assert timed_out_at - 1000.0 == pytest.approx(herdr.SNAPSHOT_TIMEOUT, abs=0.05)
+
+    channel.finishes, channel.output = True, SNAPSHOT
+    clock[0] = timed_out_at + herdr.MIN_SNAPSHOT_INTERVAL + 1
+    assert herdr.collect_snapshot('live') == (None, 'busy')
+    clock[0] = timed_out_at + herdr.TIMEOUT_SNAPSHOT_INTERVAL - 0.1
+    assert herdr.collect_snapshot('live') == (None, 'busy')
+    assert len(opened) == 1
+
+    clock[0] = timed_out_at + herdr.TIMEOUT_SNAPSHOT_INTERVAL
+    assert herdr.collect_snapshot('live')[1] is None
+    # After an answer the normal interval applies again.
+    channel.output = SNAPSHOT
+    clock[0] += herdr.MIN_SNAPSHOT_INTERVAL - 0.1
+    assert herdr.collect_snapshot('live') == (None, 'busy')
+    clock[0] += 0.1
+    assert herdr.collect_snapshot('live')[1] is None
+    assert len(opened) == 3
 
 
 def test_overlapping_request_for_the_same_session_is_busy(overview, monkeypatch):
@@ -233,7 +269,7 @@ def test_fifth_concurrent_request_in_the_process_is_busy(overview, monkeypatch):
         assert slots.acquire(blocking=False)
     assert herdr.collect_snapshot('live') == (None, 'busy')
     assert opened == [] and not session['herdr_snapshot_lock'].locked()
-    assert 'herdr_snapshot_started' not in session
+    assert 'herdr_snapshot_not_before' not in session
     slots.release()
     assert herdr.collect_snapshot('live')[1] is None
     # The finished request returned its slot: exactly one is free again.
@@ -251,6 +287,8 @@ def test_fifth_concurrent_request_in_the_process_is_busy(overview, monkeypatch):
     (Channel(b'', b'', 1), 'unavailable'),
     (Channel(b'', NO_SERVER, 2), 'unavailable'),
     (Channel(SNAPSHOT, b'', 126), 'unavailable'),
+    # Ended by the host-side limit (SIGTERM).
+    (Channel(b'', b'', 143), 'unavailable'),
     (Channel(b'not json', b'', 0), 'invalid'),
     (Channel(b'', b'', 0), 'invalid'),
     (Channel(NO_SERVER, b'', 0), 'invalid'),
@@ -289,7 +327,7 @@ def test_command_that_never_finishes_times_out_and_frees_the_session(overview, m
     assert channel.closed and not session['herdr_snapshot_lock'].locked()
     assert herdr._snapshot_slots.acquire(blocking=False)
     herdr._snapshot_slots.release()
-    session['herdr_snapshot_started'] -= herdr.MIN_SNAPSHOT_INTERVAL
+    session['herdr_snapshot_not_before'] = 0
     channel.finishes, channel.output, channel.closed = True, SNAPSHOT, False
     assert herdr.collect_snapshot('live')[1] is None
 

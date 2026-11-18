@@ -110,11 +110,21 @@ def parse_snapshot(payload):
 # single-quoted script reaches sh unchanged whatever the login shell is.
 PATH_PREFIX = 'PATH="$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin"'
 AVAILABLE_COMMAND = f"sh -c '{PATH_PREFIX}; command -v herdr >/dev/null 2>&1'"
-SNAPSHOT_COMMAND = f"sh -c '{PATH_PREFIX}; exec herdr api snapshot'"
+# The CLI waits for its server without a deadline, and closing an exec
+# channel without a PTY does not signal the remote process. A watchdog on the
+# host therefore ends a stuck call; it is detached from the channel's output
+# so it cannot hold the channel open, and the call's exit status is kept.
+SNAPSHOT_COMMAND = (
+    f"sh -c '{PATH_PREFIX}; herdr api snapshot & p=$!; "
+    '(sleep 5; kill "$p") >/dev/null 2>&1 & w=$!; '
+    'wait "$p"; s=$?; kill "$w" >/dev/null 2>&1; exit "$s"'
+    "'"
+)
 SESSION_COMMAND = f"sh -c '{PATH_PREFIX}; exec herdr'"
 
 SNAPSHOT_TIMEOUT = 3.0
 MIN_SNAPSHOT_INTERVAL = 4.0
+TIMEOUT_SNAPSHOT_INTERVAL = 30.0
 MAX_CONCURRENT_SNAPSHOTS = 4
 MAX_ERROR_BYTES = 4096
 
@@ -223,12 +233,12 @@ def collect_snapshot(session_id, timeout=SNAPSHOT_TIMEOUT):
     channel = None
     try:
         now = time.monotonic()
-        if now - session.get('herdr_snapshot_started', -MIN_SNAPSHOT_INTERVAL) < MIN_SNAPSHOT_INTERVAL:
+        if now < session.get('herdr_snapshot_not_before', now):
             return None, 'busy'
         slot_taken = _snapshot_slots.acquire(blocking=False)
         if not slot_taken:
             return None, 'busy'
-        session['herdr_snapshot_started'] = now
+        session['herdr_snapshot_not_before'] = now + MIN_SNAPSHOT_INTERVAL
         deadline = now + timeout
         transport = client.get_transport() if client else None
         if not transport or not transport.is_active():
@@ -237,6 +247,8 @@ def collect_snapshot(session_id, timeout=SNAPSHOT_TIMEOUT):
             transport, SNAPSHOT_COMMAND, timeout=timeout,
         )
         reason, output, errors = _read_snapshot(channel, deadline)
+        if reason == 'timeout':
+            raise TimeoutError('Herdr snapshot exceeded its deadline')
         if reason:
             return None, reason
         exit_status = channel.recv_exit_status()
@@ -246,6 +258,8 @@ def collect_snapshot(session_id, timeout=SNAPSHOT_TIMEOUT):
     except ValueError:
         return None, 'invalid'
     except (socket.timeout, TimeoutError):
+        # A host that does not answer is asked again much less often.
+        session['herdr_snapshot_not_before'] = time.monotonic() + TIMEOUT_SNAPSHOT_INTERVAL
         return None, 'timeout'
     except Exception:
         return None, 'unavailable'
