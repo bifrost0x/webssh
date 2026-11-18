@@ -78,7 +78,8 @@ function shownText(root) {
     return root.ownText + root.children.map(shownText).join('');
 }
 
-function harness({profiles, sessions, enabled = true, translate} = {}) {
+// Polling uses jitter; tests pass a fixed sequence so every run is the same.
+function harness({profiles, sessions, enabled = true, translate, random = () => 0.5} = {}) {
     const {doc, section, $} = fakeDocument();
     const view = {hidden: false};
     let clock = 1_700_000_000_000;
@@ -110,6 +111,7 @@ function harness({profiles, sessions, enabled = true, translate} = {}) {
         onOpenSession: (sessionId, profileId) => opened.push([sessionId, profileId]),
         onConnect: profileId => connects.push(profileId),
         onOpenHosts: () => hostsOpened.push(true),
+        random,
     });
     controller.start();
     function advance(ms) {
@@ -336,44 +338,51 @@ test('busy is passed over silently and asked again after a short random delay', 
 });
 
 test('three hosts all get an answer from a server that serves two at a time', () => {
-    const profiles = ['p1', 'p2', 'p3'].map(id => ({id, name: id, herdr: true}));
-    const sessions = profiles.map(profile => ({id: `s-${profile.id}`, profileId: profile.id, connected: true, herdr: true}));
-    const h = harness({profiles, sessions});
-    // A slow server: two queries run at once, a third is busy until a slot frees.
-    let running = 0;
-    const serve = () => {
-        for (const request of h.requests) {
-            if (request.handled) continue;
-            request.handled = true;
-            if (running >= 2) {
-                request.ack(h.fail('busy'));
-                continue;
+    // Shortest, middle and longest retry delay, and a sequence that once came last.
+    for (const values of [[0], [0.5], [1], [0.238, 0.823]]) {
+        let draw = 0;
+        const random = () => values[draw++ % values.length];
+        const profiles = ['p1', 'p2', 'p3'].map(id => ({id, name: id, herdr: true}));
+        const sessions = profiles.map(profile => ({id: `s-${profile.id}`, profileId: profile.id, connected: true, herdr: true}));
+        const h = harness({profiles, sessions, random});
+        // A slow server: two queries run at once, a third is busy until a slot frees.
+        let running = 0;
+        const serve = () => {
+            for (const request of h.requests) {
+                if (request.handled) continue;
+                request.handled = true;
+                if (running >= 2) {
+                    request.ack(h.fail('busy'));
+                    continue;
+                }
+                running += 1;
+                request.finishAt = request.at + 3000;
             }
-            running += 1;
-            request.finishAt = request.at + 3000;
-        }
-        for (const request of h.requests) {
-            if (request.finishAt !== undefined && !request.done && request.finishAt <= h.now()) {
-                request.done = true;
-                running -= 1;
-                request.ack(h.ok([agent(request.data.session_id)]));
+            for (const request of h.requests) {
+                if (request.finishAt !== undefined && !request.done && request.finishAt <= h.now()) {
+                    request.done = true;
+                    running -= 1;
+                    request.ack(h.ok([agent(request.data.session_id)]));
+                }
             }
+        };
+        // Still before the regular 10 second question after the first answers.
+        for (let elapsed = 0; elapsed < 12000; elapsed += 100) {
+            h.advance(100);
+            serve();
         }
-    };
-    for (let elapsed = 0; elapsed < 8000; elapsed += 100) {
-        h.advance(100);
-        serve();
-    }
-    assert.deepEqual(profiles.map(profile => h.controller.hostState(profile.id).kind), ['agents', 'agents', 'agents']);
-    // First questions are spread out rather than sent together.
-    const first = profiles.map(profile => h.requests.find(request => request.data.session_id === `s-${profile.id}`).at);
-    assert.equal(new Set(first).size, 3);
-    // Busy is retried after one to three seconds, never at once.
-    const busy = h.requests.filter(request => request.finishAt === undefined && request.handled);
-    for (const request of busy) {
-        const retry = h.requests.find(next => next.at > request.at && next.data.session_id === request.data.session_id);
-        assert.ok(retry, 'busy host is asked again');
-        assert.ok(retry.at - request.at >= 1000 && retry.at - request.at <= 3000, String(retry.at - request.at));
+        assert.deepEqual(profiles.map(profile => h.controller.hostState(profile.id).kind), ['agents', 'agents', 'agents'], String(values));
+        // First questions are spread out rather than sent together.
+        const first = profiles.map(profile => h.requests.find(request => request.data.session_id === `s-${profile.id}`).at);
+        assert.equal(new Set(first).size, 3);
+        // Busy is retried after one to three seconds, never at once.
+        const busy = h.requests.filter(request => request.finishAt === undefined && request.handled);
+        assert.ok(busy.length > 0, 'the third host meets a busy server');
+        for (const request of busy) {
+            const retry = h.requests.find(next => next.at > request.at && next.data.session_id === request.data.session_id);
+            assert.ok(retry, 'busy host is asked again');
+            assert.ok(retry.at - request.at >= 1000 && retry.at - request.at <= 3000, String(retry.at - request.at));
+        }
     }
 });
 
