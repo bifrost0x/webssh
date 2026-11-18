@@ -90,6 +90,26 @@ def test_profile_command_set_and_integration_contracts_remain_registered():
     assert RETAINED_RESPONSE_EVENTS <= emitted
 
 
+def test_herdr_snapshot_is_answered_by_acknowledgement_only():
+    tree = ast.parse(SOCKET_EVENTS.read_text(encoding='utf-8'))
+    handlers, emitted = _server_inventory()
+    handler = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == 'handle_request_herdr_snapshot'
+    )
+
+    assert 'request_herdr_snapshot' in handlers
+    assert not any(event.startswith('herdr') for event in emitted)
+    assert not any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'emit'
+        for node in ast.walk(handler)
+    )
+    assert any(
+        isinstance(decorator, ast.Name) and decorator.id == 'socket_login_required'
+        for decorator in handler.decorator_list
+    )
+
+
 def test_transfer_control_contracts_have_client_and_server_halves():
     handlers, _ = _server_inventory()
     client_source = BINARY_TRANSFER_CLIENT.read_text(encoding='utf-8')

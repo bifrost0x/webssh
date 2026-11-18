@@ -11,6 +11,7 @@ from functools import wraps
 from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager,
                session_insights, runtime_inventory, smb_share_manager, socks_proxy_manager)
+from . import herdr
 from .decorators import socket_login_required
 from .login_access import serialize_login_access
 from .auth import (
@@ -1078,6 +1079,7 @@ def restore_user_sessions(user_id, socket_sid):
                 'reconnect_route_known': session.get('reconnect_route_known', False),
                 'key_id': db_session.key_id,
                 'use_tmux': session.get('use_tmux', False),
+                **herdr.session_flags(session),
                 'tmux_session_name': session.get('tmux_session_name'),
                 'display_name': db_session.display_name,
                 'buffered_output': buffered_output,
@@ -1477,6 +1479,9 @@ def handle_ssh_connect(data, current_user=None):
             else:
                 emit_error('Saved host no longer matches this connection. Select it again or use Quick Connect.')
                 return
+        # Only the bound, owned saved host grants the Herdr overview; nothing
+        # the browser sends can enable it.
+        herdr_overview = herdr.overview_allowed(current_user.id, profile_id)
 
         if auth_type not in {'password', 'key', 'tailscale'}:
             emit_error('Invalid authentication method')
@@ -1646,6 +1651,7 @@ def handle_ssh_connect(data, current_user=None):
                     proxy_jump_host=bastion_host,
                     jump_host_id=saved_jump_host_id,
                     **({'profile_id': profile_id} if profile_id else {}),
+                    **({'herdr': True} if herdr_overview else {}),
                     proxy_jump_port=bastion_port,
                     proxy_jump_username=bastion_username,
                     proxy_jump_password=local_bastion_password,
@@ -1800,6 +1806,7 @@ def handle_ssh_connect(data, current_user=None):
                     'profile_id': profile_id,
                     'reconnect_route_known': True,
                     'use_tmux': actual_use_tmux,
+                    **herdr.session_flags(created_session),
                     'key_id': key_id,
                     'auth_type': auth_type,
                     'tmux_session_name': created_tmux_name,
@@ -3605,6 +3612,38 @@ def handle_request_session_directory(data, current_user=None):
         return {'success': False, 'reason': 'unavailable'}
     result, reason = session_directory.collect_directory(session_id)
     return {'success': result is not None, 'directory': result, 'reason': reason}
+
+
+@socketio.on('request_herdr_snapshot')
+@socket_login_required
+def handle_request_herdr_snapshot(data, current_user=None):
+    """Return the Herdr agents of the caller's own connected session."""
+    from .app_settings import is_herdr_enabled
+
+    def answer(snapshot, reason):
+        return {
+            'success': snapshot is not None,
+            'agents': snapshot['agents'] if snapshot else [],
+            'truncated': bool(snapshot and snapshot['truncated']),
+            'reason': reason,
+        }
+
+    session_id = data.get('session_id') if isinstance(data, dict) else None
+    if not isinstance(session_id, str) or not 0 < len(session_id) <= 128:
+        return answer(None, 'unavailable')
+    if not is_herdr_enabled():
+        return answer(None, 'disabled')
+    # The panel polls every ten seconds per host; the budget leaves room for
+    # every admitted socket without letting one account queue remote commands.
+    requests_per_minute = max(30, config.MAX_SOCKET_CONNECTIONS_PER_USER * 12)
+    if check_socket_rate_limit(
+            current_user.id,
+            'herdr_snapshot',
+            f'{requests_per_minute} per minute'):
+        return answer(None, 'busy')
+    if not verify_session_ownership(session_id, current_user.id):
+        return answer(None, 'unavailable')
+    return answer(*herdr.collect_snapshot(session_id))
 
 
 @socketio.on('request_session_insights')

@@ -779,6 +779,8 @@ def test_password_tmux_preserves_remote_locale(monkeypatch):
         'reconnect_route_known': True,
         'auth_type': 'password',
         'use_tmux': True,
+        'herdr': False,
+        'use_herdr': False,
         'tmux_session_name': 'existing_session',
         'tmux_reconnect': True,
         'client_request_id': 'tmux-reconnect-request',

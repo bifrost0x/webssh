@@ -6,7 +6,10 @@ cleaned agent list ever leaves this module.
 """
 import json
 import re
+import socket
+import time
 import unicodedata
+from threading import BoundedSemaphore, Lock
 
 MAX_SNAPSHOT_BYTES = 262144
 MAX_AGENTS = 64
@@ -98,3 +101,159 @@ def parse_snapshot(payload):
             'status': status if isinstance(status, str) and status in STATUSES else 'unknown',
         })
     return {'agents': agents, 'truncated': truncated}
+
+
+# One lookup prefix for every Herdr command, so the overview and the session
+# mode always resolve the same binary. The official installer places it in
+# ~/.local/bin, which a non-login exec channel does not search. The fixed
+# candidates are appended, so the account's own PATH keeps priority, and the
+# single-quoted script reaches sh unchanged whatever the login shell is.
+PATH_PREFIX = 'PATH="$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin"'
+AVAILABLE_COMMAND = f"sh -c '{PATH_PREFIX}; command -v herdr >/dev/null 2>&1'"
+SNAPSHOT_COMMAND = f"sh -c '{PATH_PREFIX}; exec herdr api snapshot'"
+SESSION_COMMAND = f"sh -c '{PATH_PREFIX}; exec herdr'"
+
+SNAPSHOT_TIMEOUT = 3.0
+MIN_SNAPSHOT_INTERVAL = 4.0
+MAX_CONCURRENT_SNAPSHOTS = 4
+MAX_ERROR_BYTES = 4096
+
+_snapshot_slots = BoundedSemaphore(MAX_CONCURRENT_SNAPSHOTS)
+_ERROR_REASONS = {
+    'server_not_running': 'no_server',
+    'protocol_mismatch': 'incompatible',
+}
+
+
+def _profile_allows_overview(user_id, profile_id):
+    if not profile_id:
+        return False
+    from . import profile_manager
+    profile = profile_manager.get_profile(user_id, profile_id)
+    return isinstance(profile, dict) and profile.get('herdr') is True
+
+
+def overview_allowed(user_id, profile_id):
+    """True when the integration is on and the user's own saved host opts in."""
+    from .app_settings import is_herdr_enabled
+    return is_herdr_enabled() and _profile_allows_overview(user_id, profile_id)
+
+
+def session_flags(session):
+    """Herdr fields of the session data sent to the browser."""
+    from .app_settings import is_herdr_enabled
+    overview = session.get('herdr') is True and is_herdr_enabled()
+    return {'herdr': overview, 'use_herdr': session.get('use_herdr') is True}
+
+
+def _failure_reason(exit_status, error_output):
+    """Map the CLI's exit status and JSON error line to a public reason."""
+    if exit_status == 127:
+        return 'not_installed'
+    if exit_status != 1:
+        return 'unavailable'
+    for line in reversed(bytes(error_output).splitlines()):
+        try:
+            document = json.loads(line.decode('utf-8'))
+        except (ValueError, RecursionError):
+            continue
+        error = document.get('error') if isinstance(document, dict) else None
+        code = error.get('code') if isinstance(error, dict) else None
+        if isinstance(code, str):
+            return _ERROR_REASONS.get(code, 'unavailable')
+    return 'unavailable'
+
+
+def _read_snapshot(channel, deadline):
+    """Read the bounded command output; return (reason, output, errors)."""
+    output = bytearray()
+    errors = bytearray()
+    while True:
+        if time.monotonic() >= deadline:
+            return 'timeout', output, errors
+        progressed = False
+        if channel.recv_ready():
+            chunk = channel.recv(MAX_SNAPSHOT_BYTES + 1 - len(output))
+            if chunk:
+                progressed = True
+                output.extend(chunk)
+                if len(output) > MAX_SNAPSHOT_BYTES:
+                    return 'invalid', output, errors
+        if channel.recv_stderr_ready():
+            # Drain the stream so a noisy command cannot stall on a full
+            # window; only the first bytes are kept for classification.
+            chunk = channel.recv_stderr(MAX_ERROR_BYTES)
+            if chunk:
+                progressed = True
+                errors.extend(chunk[:MAX_ERROR_BYTES - len(errors)])
+        if progressed:
+            continue
+        if channel.exit_status_ready():
+            return None, output, errors
+        time.sleep(0.02)
+
+
+def collect_snapshot(session_id, timeout=SNAPSHOT_TIMEOUT):
+    """Query one connected session's Herdr server without ever starting it.
+
+    Returns (snapshot, None) or (None, reason). The caller has already
+    verified that the session belongs to the requesting user.
+    """
+    from . import ssh_manager
+    from .app_settings import is_herdr_enabled
+
+    if not is_herdr_enabled():
+        return None, 'disabled'
+    with ssh_manager.sessions_lock:
+        session = ssh_manager.sessions.get(session_id)
+        if not session or not session.get('connected'):
+            return None, 'disconnected'
+        if session.get('herdr') is not True:
+            return None, 'not_enabled'
+        user_id = session.get('user_id')
+        profile_id = session.get('profile_id')
+        client = session.get('client')
+        lock = session.setdefault('herdr_snapshot_lock', Lock())
+    # The saved host may have lost the option since the session connected.
+    if not _profile_allows_overview(user_id, profile_id):
+        return None, 'not_enabled'
+    if not lock.acquire(blocking=False):
+        return None, 'busy'
+    slot_taken = False
+    channel = None
+    try:
+        now = time.monotonic()
+        if now - session.get('herdr_snapshot_started', -MIN_SNAPSHOT_INTERVAL) < MIN_SNAPSHOT_INTERVAL:
+            return None, 'busy'
+        slot_taken = _snapshot_slots.acquire(blocking=False)
+        if not slot_taken:
+            return None, 'busy'
+        session['herdr_snapshot_started'] = now
+        deadline = now + timeout
+        transport = client.get_transport() if client else None
+        if not transport or not transport.is_active():
+            return None, 'disconnected'
+        channel = ssh_manager._open_exec_channel(
+            transport, SNAPSHOT_COMMAND, timeout=timeout,
+        )
+        reason, output, errors = _read_snapshot(channel, deadline)
+        if reason:
+            return None, reason
+        exit_status = channel.recv_exit_status()
+        if exit_status != 0:
+            return None, _failure_reason(exit_status, errors)
+        return parse_snapshot(output), None
+    except ValueError:
+        return None, 'invalid'
+    except (socket.timeout, TimeoutError):
+        return None, 'timeout'
+    except Exception:
+        return None, 'unavailable'
+    finally:
+        try:
+            if channel is not None:
+                channel.close()
+        finally:
+            if slot_taken:
+                _snapshot_slots.release()
+            lock.release()

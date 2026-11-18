@@ -183,7 +183,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           cancel_event=None, client_request_id=None,
                           jump_host_id=None, gateway_attempt=None, profile_id=None,
                           credential_guard=None, saved_password_hops=('target', 'jump', 'socks'),
-                          socks_proxy=None):
+                          socks_proxy=None, herdr=False):
     """
     Create a new SSH connection and return session ID.
 
@@ -688,6 +688,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'profile_id': profile_id,
                 'auth_type': auth_type,
                 'use_tmux': use_tmux,
+                'herdr': herdr is True,
+                'use_herdr': False,
                 'tmux_session_name': tmux_session_name,
                 'tmux_reconnect': bool(
                     use_tmux
@@ -1248,6 +1250,8 @@ def get_session(session_id):
                 'detected_platform': session.get('detected_platform'),
                 'auth_type': session.get('auth_type', 'password'),
                 'use_tmux': session.get('use_tmux', False),
+                'herdr': session.get('herdr') is True,
+                'use_herdr': session.get('use_herdr') is True,
                 'tmux_session_name': session.get('tmux_session_name'),
                 'tmux_reconnect': session.get('tmux_reconnect', False),
                 'client_request_id': session.get('client_request_id'),
