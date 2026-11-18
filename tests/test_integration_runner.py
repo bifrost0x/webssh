@@ -157,11 +157,12 @@ def test_runner_starts_compose_and_runs_all_integration_modules(monkeypatch):
     startup_args, _startup_kwargs = calls[1]
     assert startup_args[-4:] == ["up", "-d", "--build", "--wait"]
     pytest_args, pytest_kwargs = calls[2]
-    assert pytest_args[-4:] == [
+    assert pytest_args[-5:] == [
         "tests/integration/test_paramiko5_openssh.py",
         "tests/integration/test_paramiko5_socketio.py",
         "tests/integration/test_automation_openssh.py",
         "tests/integration/test_socks_openssh.py",
+        "tests/integration/test_herdr_openssh.py",
     ]
     assert pytest_kwargs["env"]["PARAMIKO5_INTEGRATION"] == "1"
 

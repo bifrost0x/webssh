@@ -20,6 +20,7 @@ INTEGRATION_MODULES = [
     # The Socket.IO singleton fixture owns its initial server registration.
     "tests/integration/test_automation_openssh.py",
     "tests/integration/test_socks_openssh.py",
+    "tests/integration/test_herdr_openssh.py",
 ]
 
 

@@ -68,7 +68,7 @@ python scripts/run_integration_tests.py --browser
 
 On Linux, use `npx playwright install --with-deps chromium` when browser system
 libraries are not installed. Docker Compose must be available; loopback ports
-2222-2224 and 4184 must be free. Set `WEBSSH_E2E_PORT` to choose another browser
+2222-2225 and 4184 must be free. Set `WEBSSH_E2E_PORT` to choose another browser
 port. The runner uses temporary application, backup and transfer data, creates
 disposable SSH keys, and tears down its lab after success or failure. It refuses
 missing Node/Playwright prerequisites before touching the lab. Do not run two
