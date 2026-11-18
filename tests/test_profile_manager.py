@@ -360,6 +360,34 @@ def test_command_set_cannot_be_assigned_to_a_herdr_session_profile(app):
         assert path.read_bytes() == original
 
 
+def test_herdr_options_survive_other_profile_writers_and_a_file_copy(app):
+    from app import profile_manager
+
+    source = create_user(app, 'profile-herdr-source')
+    restored = create_user(app, 'profile-herdr-restored')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(
+            source, _herdr_payload(herdr=True, use_herdr=True))
+        assert error is None
+        _, error = profile_manager.update_profile_organization(
+            source, profile['id'], {'group': 'Agents', 'favorite': True})
+        assert error is None
+        assert profile_manager.cache_detected_platform(
+            source, profile['id'], (profile['host'], profile['port'], profile['username']), 'debian',
+        ) in (True, False)
+        stored = profile_manager.load_profiles(source)[0]
+        assert stored['herdr'] is True and stored['use_herdr'] is True
+        assert stored['group'] == 'Agents' and stored['favorite'] is True
+
+        # Backups and restores copy the per-user document byte for byte.
+        target = profile_manager.get_user_profiles_file(restored)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(profile_manager.get_user_profiles_file(source).read_bytes())
+        assert profile_manager.load_profiles(restored) == profile_manager.load_profiles(source)
+        assert profile_manager.save_profiles(restored, profile_manager.load_profiles(restored))
+        assert profile_manager.load_profiles(restored)[0]['use_herdr'] is True
+
+
 @pytest.mark.parametrize('field', ['herdr', 'use_herdr'])
 def test_stored_non_boolean_herdr_option_is_not_a_valid_profile(app, field):
     from app import profile_manager
