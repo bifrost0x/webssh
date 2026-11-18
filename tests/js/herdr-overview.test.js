@@ -132,7 +132,7 @@ function harness({profiles, sessions, enabled = true, translate, random = () => 
         windowListeners, socketListeners, hosts: () => $('odAgentsHosts')};
 }
 
-const agent = (id, extra = {}) => ({id, kind: 'claude', label: `task ${id}`, cwd: `/srv/${id}`, status: 'working', ...extra});
+const agent = (id, extra = {}) => ({id, kind: 'builder', label: `task ${id}`, cwd: `/srv/${id}`, status: 'working', ...extra});
 
 test('statuses show an icon and a word as a hint from Herdr, unknown values become Unknown', () => {
     const h = harness();
@@ -198,7 +198,7 @@ test('foreign text stays literal text, loses control characters and is fully rea
     const longLabel = 'Migrate the billing service '.repeat(8);
     const longPath = `/home/deploy/${'nested/'.repeat(100)}end`;
     h.reply(0, h.ok([
-        {id: 'x1', kind: 'claude', label: '<img src=x onerror=alert(1)>', cwd: '/tmp/"><script>alert(1)</script>', status: 'working',
+        {id: 'x1', kind: 'builder', label: '<img src=x onerror=alert(1)>', cwd: '/tmp/"><script>alert(1)</script>', status: 'working',
             tokens: 4242, title: 'pane title', layout: {split: true}},
         {id: 'x2', kind: 'k\u0007i\u001bnd\u202e', label: `\u2066${longLabel}\u0085`, cwd: longPath, status: 'blocked'},
         {id: 'x3', kind: '', label: '', cwd: '', status: 'unknown'},
@@ -514,10 +514,10 @@ test('a list read earlier stays visible but marked stale after timeout, invalid 
 test('a row opens its session; rows keep focus across refreshes and carry a full name', () => {
     const h = harness();
     h.advance(0);
-    h.reply(0, h.ok([agent('a'), agent('b', {kind: 'codex', label: 'fix tests', cwd: '/srv/api', status: 'blocked'})]));
+    h.reply(0, h.ok([agent('a'), agent('b', {kind: 'tester', label: 'fix tests', cwd: '/srv/api', status: 'blocked'})]));
     let row = byClass(h.hosts(), 'od-agent')[1];
     assert.equal(row.getAttribute('aria-label'),
-        'fix tests, codex, /srv/api, Status reported by Herdr: Blocked, Open the session on web-01');
+        'fix tests, tester, /srv/api, Status reported by Herdr: Blocked, Open the session on web-01');
     row.focus();
     h.advance(herdr.INTERVAL);
     h.reply(1, h.ok([agent('a'), agent('b', {status: 'done'})]));
