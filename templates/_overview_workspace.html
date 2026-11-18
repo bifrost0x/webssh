@@ -74,6 +74,26 @@
                     <p id="odAttentionError" class="od-error" role="alert" hidden></p>
                 </div>
             </section>
+            {% if herdr_enabled %}
+            <section id="odAgents" class="od-panel od-agents" data-panel="agents" aria-labelledby="odAgentsTitle" hidden style="--od-index:6">
+                <div class="od-panel-head">
+                    <h2 id="odAgentsTitle"><span data-i18n="herdr.agentsTitle">Agents</span> <span id="odAgentsTotal" class="od-count"></span></h2>
+                </div>
+                <div class="od-panel-body">
+                    <p id="odAgentsHint" class="od-agents-hint" hidden><span class="material-icons" aria-hidden="true">info</span><span data-i18n="herdr.agentsHint">Status as reported by Herdr. It can lag behind or be wrong, so open the session before you rely on it.</span></p>
+                    <div id="odAgentsHosts" class="od-agents-hosts"></div>
+                    <div id="odAgentsEmpty" class="od-empty" hidden>
+                        <span class="od-empty-node od-empty-node-host" aria-hidden="true"><span class="material-icons">smart_toy</span></span>
+                        <h3 data-i18n="herdr.emptyTitle">No host uses Herdr yet</h3>
+                        <p data-i18n="herdr.emptyBody">Turn on “Herdr on this host” in the advanced settings of a host. Its agents appear here while you are connected.</p>
+                        <div class="od-empty-actions"><button id="odAgentsEmptyAction" class="btn btn-secondary" type="button" data-i18n="herdr.emptyAction">Open hosts</button></div>
+                    </div>
+                    <p id="odAgentsDisabled" class="od-agents-state" data-tone="warning" hidden><span class="material-icons" aria-hidden="true">block</span><span data-i18n="herdr.reasonDisabled">Herdr was turned off by an administrator. Agents are no longer read.</span></p>
+                    <p id="odAgentsFoot" class="od-agents-foot" data-i18n="herdr.refreshNote" hidden>Refreshed every 10 seconds while this panel is visible.</p>
+                    <p id="odAgentsStatus" class="sr-only" role="status" aria-live="polite"></p>
+                </div>
+            </section>
+            {% endif %}
             <section id="odAutomation" class="od-panel" data-panel="automation" aria-labelledby="odAutomationTitle" hidden style="--od-index:6">
                 <div class="od-panel-head">
                     <h2 id="odAutomationTitle" data-i18n="overviewWorkspace.automationTitle">Automation</h2>

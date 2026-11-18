@@ -580,3 +580,62 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
     .od-shortcuts { gap: 12px; }
     .od-setup-step small { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
+
+/* Agents panel: what Herdr reports on hosts that opt in. */
+.od-agents-hint { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; color: var(--od-muted); font-size: 12px; line-height: 1.45; }
+.od-agents-hint .material-icons { flex: 0 0 16px; margin-top: 1px; font-size: 16px; }
+.od-agents-hosts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; align-items: start; }
+.od-agents-host { min-width: 0; padding: 10px 6px 6px; border: 1px solid var(--ws2-border); border-radius: 14px; background: var(--ws2-canvas); }
+.od-agents-host-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 8px 6px; }
+.od-agents-host-head h3 { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od-agents-updated { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; color: var(--od-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.od-agents-updated .material-icons { font-size: 14px; }
+.od-agents-host[data-stale="true"] .od-agents-updated { color: var(--ws2-text); }
+.od-agents-host[data-stale="true"] .od-agents-updated .material-icons { color: var(--od-action); }
+.od-agents-host[data-stale="true"] .od-agents-list { opacity: .62; }
+.od-agents-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+.od-row.od-agent { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto 18px; gap: 10px; min-height: 48px; padding: 6px 8px; }
+.od-row.od-agent > .material-icons:first-child { color: var(--od-muted); }
+.od-agent-copy { display: grid; gap: 1px; min-width: 0; }
+.od-agent-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od-agent-label[data-empty="true"] { color: var(--od-muted); font-style: italic; font-weight: 400; }
+.od-agent-meta { display: flex; gap: 6px; min-width: 0; color: var(--od-muted); font-size: 12px; }
+.od-agent-kind { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Right-to-left clipping puts the ellipsis at the start of the path; the text itself stays isolated left-to-right. */
+.od-agent-cwd { flex: 1 1 0; min-width: 0; direction: rtl; text-align: left; font-family: var(--od-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od-agent-cwd[data-empty="true"] { direction: ltr; font-family: inherit; }
+
+/* A dashed outline and a neutral fill: the status is a hint from Herdr, not a
+   measured state. Icon and word carry the meaning, colour only supports them. */
+.od-agent-status {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px 2px 6px;
+    border: 1px dashed color-mix(in srgb, var(--od-status-color, var(--ws2-border-strong)) 60%, var(--ws2-border));
+    border-radius: 999px; color: var(--ws2-text); font-size: 12px; line-height: 18px; white-space: nowrap;
+}
+.od-row.od-agent .od-agent-status .material-icons { margin: 0; font-size: 15px; color: var(--od-status-color, var(--od-muted)); }
+.od-agent-status[data-status="working"] { --od-status-color: var(--od-ready); }
+.od-agent-status[data-status="blocked"] { --od-status-color: var(--od-action); }
+.od-agent-status[data-status="done"] { --od-status-color: var(--od-success); }
+
+.od-agents-state, .od-agents-note { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 6px 8px 8px; font-size: 13px; line-height: 1.45; }
+.od-agents-state { color: var(--ws2-text); }
+.od-agents-note { color: var(--od-muted); font-size: 12px; }
+.od-agents-state > .material-icons, .od-agents-note > .material-icons { flex: 0 0 18px; margin-top: 1px; font-size: 18px; color: var(--od-muted); }
+.od-agents-state[data-tone="warning"] > .material-icons, .od-agents-note[data-tone="warning"] > .material-icons { color: var(--od-action); }
+.od-agents-state > span:nth-child(2) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.od-agents-state .od-connect { flex: 0 0 auto; }
+.od-agents-more { margin: 2px 8px 4px; }
+.od-agents-foot { margin: 12px 0 0; color: var(--od-muted); font-size: 12px; }
+.od-agents-skeleton { min-height: 48px; margin: 0 2px 4px; border-radius: 10px; }
+.od-agents .od-empty { padding: 20px 12px; }
+.od-agents .od-empty h3 { font-size: 16px; }
+@media (max-width: 640px) {
+    .od-row.od-agent { min-height: 56px; }
+    .od-agents-state { flex-wrap: wrap; }
+    /* Narrow screens show up to two lines of the path instead of clipping its start. */
+    .od-agent-meta { flex-wrap: wrap; row-gap: 0; }
+    .od-agent-kind { max-width: 100%; }
+    .od-agent-cwd { flex-basis: 100%; direction: ltr; white-space: normal; overflow-wrap: anywhere;
+        display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+}
