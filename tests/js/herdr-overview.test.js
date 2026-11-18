@@ -126,7 +126,7 @@ function harness({profiles, sessions, enabled = true, translate} = {}) {
     const reply = (index, result) => requests[index].ack(result);
     const ok = agents => ({success: true, agents, truncated: false, reason: null});
     const fail = reason => ({success: false, agents: [], truncated: false, reason});
-    return {controller, doc, section, view, $, state, requests, opened, connects, hostsOpened, timers, advance, reply, ok, fail,
+    return {now: () => clock, controller, doc, section, view, $, state, requests, opened, connects, hostsOpened, timers, advance, reply, ok, fail,
         windowListeners, socketListeners, hosts: () => $('odAgentsHosts')};
 }
 
@@ -319,7 +319,7 @@ test('polling pauses while the panel, the overview or the document is hidden', (
     assert.equal(h.requests.length, 1);
 });
 
-test('busy is passed over silently and the next question follows the normal interval', () => {
+test('busy is passed over silently and asked again after a short random delay', () => {
     const h = harness();
     h.advance(0);
     h.reply(0, h.ok([agent('a')]));
@@ -329,8 +329,73 @@ test('busy is passed over silently and the next question follows the normal inte
     assert.equal(shownText(h.hosts()), before);
     assert.equal(h.$('odAgentsStatus').textContent, '');
     assert.equal(h.controller.hostState('p1').interval, herdr.INTERVAL);
-    h.advance(herdr.INTERVAL);
+    h.advance(999);
+    assert.equal(h.requests.length, 2);
+    h.advance(2001);
     assert.equal(h.requests.length, 3);
+});
+
+test('three hosts all get an answer from a server that serves two at a time', () => {
+    const profiles = ['p1', 'p2', 'p3'].map(id => ({id, name: id, herdr: true}));
+    const sessions = profiles.map(profile => ({id: `s-${profile.id}`, profileId: profile.id, connected: true, herdr: true}));
+    const h = harness({profiles, sessions});
+    // A slow server: two queries run at once, a third is busy until a slot frees.
+    let running = 0;
+    const serve = () => {
+        for (const request of h.requests) {
+            if (request.handled) continue;
+            request.handled = true;
+            if (running >= 2) {
+                request.ack(h.fail('busy'));
+                continue;
+            }
+            running += 1;
+            request.finishAt = request.at + 3000;
+        }
+        for (const request of h.requests) {
+            if (request.finishAt !== undefined && !request.done && request.finishAt <= h.now()) {
+                request.done = true;
+                running -= 1;
+                request.ack(h.ok([agent(request.data.session_id)]));
+            }
+        }
+    };
+    for (let elapsed = 0; elapsed < 8000; elapsed += 100) {
+        h.advance(100);
+        serve();
+    }
+    assert.deepEqual(profiles.map(profile => h.controller.hostState(profile.id).kind), ['agents', 'agents', 'agents']);
+    // First questions are spread out rather than sent together.
+    const first = profiles.map(profile => h.requests.find(request => request.data.session_id === `s-${profile.id}`).at);
+    assert.equal(new Set(first).size, 3);
+    // Busy is retried after one to three seconds, never at once.
+    const busy = h.requests.filter(request => request.finishAt === undefined && request.handled);
+    for (const request of busy) {
+        const retry = h.requests.find(next => next.at > request.at && next.data.session_id === request.data.session_id);
+        assert.ok(retry, 'busy host is asked again');
+        assert.ok(retry.at - request.at >= 1000 && retry.at - request.at <= 3000, String(retry.at - request.at));
+    }
+});
+
+test('busy retries stay bounded and then fall back to the interval', () => {
+    const h = harness();
+    h.advance(0);
+    const gaps = [];
+    for (let round = 0; round < 5; round += 1) {
+        const index = h.requests.length - 1;
+        h.reply(index, h.fail('busy'));
+        while (h.requests.length === index + 1) h.advance(100);
+        gaps.push(h.requests[index + 1].at - h.requests[index].at);
+    }
+    assert.ok(gaps.slice(0, 3).every(gap => gap >= 1000 && gap <= 3000), gaps.join());
+    assert.ok(gaps.slice(3).every(gap => gap >= herdr.INTERVAL), gaps.join());
+    // A served answer allows quick retries again.
+    h.reply(h.requests.length - 1, h.ok([agent('a')]));
+    h.advance(herdr.INTERVAL);
+    h.reply(h.requests.length - 1, h.fail('busy'));
+    const before = h.requests.length;
+    h.advance(3000);
+    assert.equal(h.requests.length, before + 1);
 });
 
 test('disabled ends polling and shows the reason', () => {
@@ -356,7 +421,8 @@ test('not_enabled takes the host out of the panel without a reload', () => {
         profiles: [{id: 'p1', name: 'web-01', herdr: true}, {id: 'p2', name: 'ci', herdr: true}],
         sessions: [{id: 's1', profileId: 'p1', connected: true, herdr: true}, {id: 's2', profileId: 'p2', connected: true, herdr: true}],
     });
-    h.advance(0);
+    // The second host is asked shortly after the first.
+    h.advance(500);
     h.reply(0, h.fail('not_enabled'));
     h.reply(1, h.ok([agent('a')]));
     assert.deepEqual(byClass(h.hosts(), 'od-agents-host').map(el => el.dataset.host), ['p2']);
@@ -373,12 +439,14 @@ test('timeouts double the distance up to 60 seconds and the first success resets
     h.advance(0);
     for (const answer of ['timeout', 'timeout', 'timeout', 'timeout', 'busy', 'success', 'timeout']) {
         const index = h.requests.length - 1;
+        const repliedAt = h.now();
         h.reply(index, answer === 'success' ? h.ok([agent('a')]) : h.fail(answer));
-        const sentAt = h.requests[index].at;
-        while (h.requests.length === index + 1) h.advance(1000);
-        gaps.push(h.requests[index + 1].at - sentAt);
+        while (h.requests.length === index + 1) h.advance(100);
+        gaps.push(h.requests[index + 1].at - repliedAt);
     }
-    assert.deepEqual(gaps, [20000, 40000, 60000, 60000, 60000, 10000, 20000]);
+    // Busy leaves the backoff as it is and is retried after one to three seconds.
+    assert.deepEqual([...gaps.slice(0, 4), ...gaps.slice(5)], [20000, 40000, 60000, 60000, 10000, 20000]);
+    assert.ok(gaps[4] >= 1000 && gaps[4] <= 3000, String(gaps[4]));
     assert.deepEqual([10000, 'timeout', 'timeout', 'timeout', 'timeout'].slice(1).reduce((list, reason) => [...list, herdr.nextInterval(list.at(-1), reason)], [10000]),
         [10000, 20000, 40000, 60000, 60000]);
     assert.equal(herdr.nextInterval(60000, null), 10000);

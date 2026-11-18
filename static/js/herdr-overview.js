@@ -13,6 +13,12 @@
     const MAX_INTERVAL = 60000;
     // The server ends a query after three seconds; a lost acknowledgement must not stall the host.
     const ACK_TIMEOUT = 10000;
+    // The server runs few queries per user at once: start hosts apart and
+    // retry a busy one soon, but only a few times before the regular interval.
+    const STAGGER = 500;
+    const BUSY_RETRY_MIN = 1000;
+    const BUSY_RETRY_SPREAD = 2000;
+    const BUSY_QUICK_RETRIES = 3;
     const VISIBLE_ROWS = 6;
     const MAX_AGENTS = 64;
     const LIMITS = {kind: 120, label: 120, cwd: 512};
@@ -116,6 +122,7 @@
         const setTimer = options.setTimeout || ((fn, delay) => win.setTimeout(fn, delay));
         const clearTimer = options.clearTimeout || (id => win.clearTimeout(id));
         const language = options.language || (() => undefined);
+        const random = options.random || Math.random;
         const $ = id => doc.getElementById(id);
         const entries = new Map();
         const excluded = new Set();
@@ -219,8 +226,16 @@
                     Object.assign(entry, {kind: 'reason', reason, stale: false, at: 0, agents: [], truncated: false});
                 }
             }
-            if (reason !== 'busy') entry.interval = nextInterval(entry.interval, reason);
-            entry.nextAt = now() + entry.interval;
+            if (reason === 'busy' && entry.busyRetries < BUSY_QUICK_RETRIES) {
+                entry.busyRetries += 1;
+                entry.nextAt = now() + BUSY_RETRY_MIN + Math.round(random() * BUSY_RETRY_SPREAD);
+            } else {
+                if (reason !== 'busy') {
+                    entry.interval = nextInterval(entry.interval, reason);
+                    entry.busyRetries = 0;
+                }
+                entry.nextAt = now() + entry.interval;
+            }
             if (visible()) schedule(entry);
             render();
         }
@@ -241,11 +256,13 @@
                 stop(entry);
                 entries.delete(id);
             });
+            let starting = 0;
             listed.forEach(profile => {
                 let entry = entries.get(profile.id);
                 if (!entry) {
                     entry = {profileId: profile.id, sessionId: undefined, kind: 'loading', reason: null, stale: false, at: 0,
-                        agents: [], truncated: false, interval: INTERVAL, nextAt: 0, timer: null, guard: null, token: null};
+                        agents: [], truncated: false, interval: INTERVAL, nextAt: 0, busyRetries: 0,
+                        timer: null, guard: null, token: null};
                     entries.set(profile.id, entry);
                 }
                 entry.name = profile.name || profile.host || profile.id;
@@ -259,7 +276,9 @@
                 stop(entry);
                 entry.sessionId = sessionId;
                 entry.interval = INTERVAL;
-                entry.nextAt = 0;
+                entry.busyRetries = 0;
+                // Hosts that start together are asked one after another.
+                entry.nextAt = sessionId ? now() + STAGGER * starting++ : 0;
                 if (!sessionId) {
                     Object.assign(entry, {kind: 'reason', reason: 'disconnected', stale: false, at: 0, agents: [], truncated: false});
                 } else if (entry.at) {
