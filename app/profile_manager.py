@@ -150,7 +150,7 @@ def _valid_profile(item):
         'none', 'free_text', 'command', 'command_set',
     }:
         return False
-    for field in ('use_tmux', 'favorite'):
+    for field in ('use_tmux', 'favorite', 'herdr', 'use_herdr'):
         if field in item and type(item[field]) is not bool:
             return False
     if 'sort_order' in item and not _valid_sort_order(item['sort_order']):
@@ -181,7 +181,7 @@ def _valid_profile_document(value):
 _PROFILE_FIELDS = {
     'id', 'name', 'host', 'port', 'username', 'auth_type', 'key_id',
     'jump_host_id', 'socks_proxy_id', 'startup_mode', 'startup_commands', 'command_id',
-    'command_set_id', 'parameters_override', 'use_tmux',
+    'command_set_id', 'parameters_override', 'use_tmux', 'herdr', 'use_herdr',
     'group', 'favorite', 'created_at', 'updated_at',
     'sort_order', 'platform_icon', 'detected_platform', 'greeting_platform',
     'detected_services', 'services_checked_at', 'detected_maintenance',
@@ -424,6 +424,12 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     use_tmux = payload.get('use_tmux', _UNSET)
     if use_tmux is not _UNSET and type(use_tmux) is not bool:
         return None, 'use_tmux must be a boolean'
+    herdr_options = {}
+    for field in ('herdr', 'use_herdr'):
+        if field in payload:
+            if type(payload[field]) is not bool:
+                return None, f'{field} must be a boolean'
+            herdr_options[field] = payload[field]
 
     key_id = payload.get('key_id')
     if auth_type == 'key' and not key_id:
@@ -463,12 +469,26 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
         result['favorite'] = True
     if use_tmux is not _UNSET:
         result['use_tmux'] = use_tmux
+    result.update(herdr_options)
     jump_host_id = payload.get('jump_host_id')
     if jump_host_id:
         result['jump_host_id'] = str(jump_host_id)[:64]
     if socks_proxy_id:
         result['socks_proxy_id'] = socks_proxy_id
     return result, None
+
+
+def _herdr_mode_error(profile):
+    """Return why a merged profile cannot use the Herdr session mode."""
+    if profile.get('use_herdr') is not True:
+        return None
+    if profile.get('herdr') is not True:
+        return 'Herdr session mode requires the Herdr option'
+    if profile.get('use_tmux') is True:
+        return 'A host can use either tmux or Herdr, not both'
+    if infer_mode(profile) != 'none':
+        return 'Herdr session mode cannot be combined with startup commands'
+    return None
 
 
 @user_operation
@@ -593,6 +613,12 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                                 and 'use_tmux' in existing
                             ):
                                 result['use_tmux'] = existing['use_tmux']
+                            for field in ('herdr', 'use_herdr'):
+                                if field not in payload and field in existing:
+                                    result[field] = existing[field]
+                            error = _herdr_mode_error(result)
+                            if error:
+                                return None, error
                             if _group_key(existing_group) == _group_key(target_group):
                                 result['sort_order'] = (
                                     existing['sort_order']
@@ -610,6 +636,9 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                     else:
                         return None, 'Profile not found'
                 else:
+                    error = _herdr_mode_error(validated)
+                    if error:
+                        return None, error
                     result = {
                         **validated,
                         'id': str(uuid.uuid4()),
@@ -952,6 +981,8 @@ def assign_command_set(user_id, profile_id, command_set_id):
                     return None, error
                 for profile in profiles:
                     if profile.get('id') == profile_id:
+                        if profile.get('use_herdr') is True:
+                            return None, 'Herdr session mode cannot be combined with startup commands'
                         profile['startup_mode'] = 'command_set'
                         profile['command_set_id'] = command_set['id']
                         validate_profile(profile)

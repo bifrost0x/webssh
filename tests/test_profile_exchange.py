@@ -200,3 +200,54 @@ def test_gateway_selector_metadata_roundtrip():
     row = preview_import(json.dumps(document), 'json')['records'][0]
     assert not row['blocked']
     assert row['username'] == 'alice:server1'
+
+
+def test_herdr_options_roundtrip_through_export_and_import(app, client):
+    user_id = _login(app, client)
+    document = export_profiles([
+        {'name': 'Agents', 'host': 'agents.example', 'username': 'deploy',
+         'auth_type': 'password', 'herdr': True, 'use_herdr': True},
+        {'name': 'Plain', 'host': 'plain.example', 'username': 'deploy', 'auth_type': 'password'},
+    ], [])
+    assert document['hosts'][0]['herdr'] is True and document['hosts'][0]['use_herdr'] is True
+    assert 'herdr' not in document['hosts'][1] and 'use_herdr' not in document['hosts'][1]
+    rows = preview_import(json.dumps(document), 'json')['records']
+    assert not rows[0]['blocked'] and rows[0]['herdr'] is True and rows[0]['use_herdr'] is True
+    result = client.post('/api/profiles/exchange', json={
+        'format': 'json', 'source': json.dumps(document),
+        'selections': [{'index': 0}, {'index': 1}],
+    })
+    assert result.status_code == 200
+    assert [item['status'] for item in result.json['results']] == ['imported', 'imported']
+    from app.profile_manager import load_profiles
+    with app.app_context():
+        stored = {profile['name']: profile for profile in load_profiles(user_id)}
+    assert stored['Agents']['herdr'] is True and stored['Agents']['use_herdr'] is True
+    assert 'herdr' not in stored['Plain'] and 'use_herdr' not in stored['Plain']
+
+
+@pytest.mark.parametrize('field', ['herdr', 'use_herdr'])
+@pytest.mark.parametrize('value', ['true', 1, None])
+def test_import_blocks_non_boolean_herdr_options(field, value):
+    document = {'format': 'webssh-hosts', 'version': 1, 'hosts': [{
+        'name': 'Agents', 'host': 'agents.example', 'username': 'deploy', field: value,
+    }]}
+    row = preview_import(json.dumps(document), 'json')['records'][0]
+    assert row['blocked']
+    assert 'Invalid connection metadata.' in row['warnings']
+
+
+def test_import_reports_conflicting_herdr_session_mode(app, client):
+    user_id = _login(app, client)
+    document = {'format': 'webssh-hosts', 'version': 1, 'hosts': [{
+        'name': 'Agents', 'host': 'agents.example', 'username': 'deploy',
+        'herdr': True, 'use_herdr': True, 'use_tmux': True,
+    }]}
+    result = client.post('/api/profiles/exchange', json={
+        'format': 'json', 'source': json.dumps(document), 'selections': [{'index': 0}],
+    })
+    assert result.status_code == 200
+    assert result.json['results'][0]['status'] == 'error'
+    from app.profile_manager import load_profiles
+    with app.app_context():
+        assert load_profiles(user_id) == []
