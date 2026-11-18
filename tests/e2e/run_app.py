@@ -447,6 +447,8 @@ def main():
         register_output_load(socketio, app)
         from workspace_restore import register_workspace_restore
         register_workspace_restore(socketio)
+        from herdr_fixture import register_herdr_fixture
+        register_herdr_fixture(socketio)
 
         socketio.run(
             app,
