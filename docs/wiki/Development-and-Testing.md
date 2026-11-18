@@ -57,6 +57,8 @@ they do not replace the relevant full gate before release.
 
 The tracked integration runner can also create an SFTP file through the browser,
 set its permissions, edit it and verify both content and mode after reopening.
+It also drives the Herdr session mode through the real terminal on desktop and
+mobile viewports against the lab's pinned Herdr host.
 Install the hash-locked Python test requirements, Node dependencies and Chromium,
 then run the complete Python and browser integration against the same Docker lab:
 

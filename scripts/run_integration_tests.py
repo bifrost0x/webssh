@@ -22,6 +22,10 @@ INTEGRATION_MODULES = [
     "tests/integration/test_socks_openssh.py",
     "tests/integration/test_herdr_openssh.py",
 ]
+BROWSER_CONFIGS = [
+    "tests/integration/playwright.file-mutations.config.js",
+    "tests/integration/playwright.herdr.config.js",
+]
 
 
 def returncode(result):
@@ -122,12 +126,15 @@ def main(*, browser=False) -> int:
                 )
                 if returncode(tests) or not browser:
                     return returncode(tests)
-                return returncode(run(
-                    [node, str(browser_cli), 'test', '--config',
-                     'tests/integration/playwright.file-mutations.config.js', '--forbid-only'],
-                    cwd=PROJECT_ROOT,
-                    env=environment,
-                ))
+                for browser_config in BROWSER_CONFIGS:
+                    result = returncode(run(
+                        [node, str(browser_cli), 'test', '--config', browser_config, '--forbid-only'],
+                        cwd=PROJECT_ROOT,
+                        env=environment,
+                    ))
+                    if result:
+                        return result
+                return 0
         finally:
             run([*compose, "down", "-v"], cwd=PROJECT_ROOT)
     finally:
