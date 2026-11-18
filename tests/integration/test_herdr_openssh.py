@@ -24,6 +24,11 @@ SERVER_ANSWERS = f'{HERDR} api snapshot >/dev/null 2>&1'
 COUNT_HERDR = 'cat /proc/[0-9]*/comm 2>/dev/null | grep -c -x herdr'
 
 
+def query(username):
+    """Query the lab session as its owner, like the socket event does."""
+    return herdr.collect_snapshot(username, ssh_manager.sessions[username]['user_id'])
+
+
 def connect(username):
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -64,7 +69,7 @@ def lab(app, monkeypatch):
         def session(username):
             profile, error = profile_manager.upsert_profile(user.id, {
                 'name': f'Lab {username}', 'host': HOST, 'port': PORT, 'username': username,
-                'auth_type': 'password', 'herdr': True,
+                'auth_type': 'password', 'herdr': True, 'use_herdr': True,
             })
             assert error is None
             client = connect(username)
@@ -95,7 +100,7 @@ def test_binary_outside_the_exec_path_is_found_by_every_command(agent_host):
 
 
 def test_without_a_server_nothing_is_started(agent_host):
-    assert herdr.collect_snapshot('agentuser') == (None, 'no_server')
+    assert query('agentuser') == (None, 'no_server')
     assert run(agent_host, COUNT_HERDR)[1] == '0'
     assert run(agent_host, 'test -e "$HOME/.config/herdr"')[0] != 0
 
@@ -103,7 +108,7 @@ def test_without_a_server_nothing_is_started(agent_host):
 def test_running_server_reports_its_agents(agent_host):
     start_server(agent_host)
     assert run(agent_host, f'{HERDR} workspace create --label lab --no-focus >/dev/null')[0] == 0
-    assert herdr.collect_snapshot('agentuser') == ({'agents': [], 'truncated': False}, None)
+    assert query('agentuser') == ({'agents': [], 'truncated': False}, None)
 
     assert run(agent_host, f'{HERDR} pane rename w1:p1 build >/dev/null')[0] == 0
     assert run(
@@ -111,7 +116,7 @@ def test_running_server_reports_its_agents(agent_host):
         f'{HERDR} pane report-agent w1:p1 --source lab --agent codex --state blocked >/dev/null',
     )[0] == 0
     ssh_manager.sessions['agentuser']['herdr_snapshot_not_before'] = 0
-    snapshot, reason = herdr.collect_snapshot('agentuser')
+    snapshot, reason = query('agentuser')
     assert reason is None
     assert snapshot == {'truncated': False, 'agents': [{
         'id': 'w1:p1', 'kind': 'codex', 'label': 'build',
@@ -122,7 +127,7 @@ def test_running_server_reports_its_agents(agent_host):
 def test_host_without_herdr_is_not_installed(lab):
     client = lab('testuser')
     assert run(client, herdr.AVAILABLE_COMMAND)[0] != 0
-    assert herdr.collect_snapshot('testuser') == (None, 'not_installed')
+    assert query('testuser') == (None, 'not_installed')
 
 
 def install_fake_herdr(client, script):
@@ -144,11 +149,11 @@ def test_stuck_command_is_ended_on_the_host(lab):
     install_fake_herdr(client, '#!/bin/sh\nwhile :; do sleep 1; done\n')
     try:
         started = time.monotonic()
-        assert herdr.collect_snapshot('testuser') == (None, 'timeout')
+        assert query('testuser') == (None, 'timeout')
         assert herdr.SNAPSHOT_TIMEOUT <= time.monotonic() - started < herdr.SNAPSHOT_TIMEOUT + 2
         # Closing the channel did not end it; the host-side limit does.
         assert run(client, COUNT_HERDR)[1] == '1'
-        assert herdr.collect_snapshot('testuser') == (None, 'busy')
+        assert query('testuser') == (None, 'busy')
         deadline = started + 10
         while run(client, COUNT_HERDR)[1] != '0':
             assert time.monotonic() < deadline, 'stuck Herdr call survived the host limit'
@@ -187,9 +192,10 @@ def terminals(lab, tmp_path, monkeypatch):
     opened = []
 
     def open_terminal(username, **options):
-        user_id = ssh_manager.sessions[username]['user_id']
+        owner = ssh_manager.sessions[username]
         session_id, error = ssh_manager.create_ssh_connection(
-            host=HOST, port=PORT, username=username, password=PASSWORD, user_id=user_id,
+            host=HOST, port=PORT, username=username, password=PASSWORD, user_id=owner['user_id'],
+            profile_id=owner['profile_id'],
             host_key_decision=lambda details: details['fingerprint'].startswith('SHA256:'),
             **options,
         )
@@ -227,7 +233,7 @@ def test_session_mode_starts_herdr_and_a_second_connection_attaches(agent_host, 
     read_until(first_channel, b'\x1b[?1049h')
     wait_for_server(agent_host, 'session mode did not start a Herdr server')
     # Found only through the fixed lookup, like the overview.
-    assert herdr.collect_snapshot('agentuser')[1] is None
+    assert query('agentuser')[1] is None
     marker = 'attachmark'
     assert run(agent_host, f'{HERDR} workspace create --label {marker} --no-focus >/dev/null')[0] == 0
     ssh_manager.sessions['agentuser']['herdr_snapshot_not_before'] = 0
@@ -251,4 +257,4 @@ def test_session_mode_without_herdr_is_a_normal_shell(lab, terminals):
     assert ssh_manager.get_session(session_id)['use_herdr'] is False
     channel.send("printf 'shell%s\\n' ready\n")
     read_until(channel, b'shellready')
-    assert herdr.collect_snapshot('testuser') == (None, 'not_installed')
+    assert query('testuser') == (None, 'not_installed')

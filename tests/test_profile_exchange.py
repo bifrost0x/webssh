@@ -226,6 +226,27 @@ def test_herdr_options_roundtrip_through_export_and_import(app, client):
     assert 'herdr' not in stored['Plain'] and 'use_herdr' not in stored['Plain']
 
 
+# The fields a release without Herdr exports, and accepts as the whole set.
+RELEASED_EXPORT_FIELDS = {'name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux',
+                          'auth_type', 'platform_icon', 'requires_key'}
+
+
+@pytest.mark.parametrize('stored', [{}, {'herdr': False}, {'herdr': False, 'use_herdr': False}])
+def test_host_without_herdr_exports_exactly_as_before(stored):
+    profile = {'name': 'Renamed', 'host': 'plain.example', 'port': 22, 'username': 'deploy',
+               'group': 'Lab', 'favorite': False, 'use_tmux': True, 'auth_type': 'password'}
+    exported = export_profiles([{**profile, **stored}], [])['hosts'][0]
+    assert exported == export_profiles([profile], [])['hosts'][0]
+    assert set(exported) <= RELEASED_EXPORT_FIELDS
+
+
+def test_only_enabled_herdr_options_are_exported():
+    exported = export_profiles([{'name': 'Overview', 'host': 'agents.example', 'username': 'deploy',
+                                 'auth_type': 'password', 'herdr': True, 'use_herdr': False}], [])
+    assert exported['hosts'][0]['herdr'] is True
+    assert 'use_herdr' not in exported['hosts'][0]
+
+
 @pytest.mark.parametrize('field', ['herdr', 'use_herdr'])
 @pytest.mark.parametrize('value', ['true', 1, None])
 def test_import_blocks_non_boolean_herdr_options(field, value):

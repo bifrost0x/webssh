@@ -126,9 +126,13 @@ SNAPSHOT_TIMEOUT = 3.0
 MIN_SNAPSHOT_INTERVAL = 4.0
 TIMEOUT_SNAPSHOT_INTERVAL = 30.0
 MAX_CONCURRENT_SNAPSHOTS = 4
+# One account may not take the whole process-wide budget.
+MAX_USER_SNAPSHOTS = 2
 MAX_ERROR_BYTES = 4096
 
 _snapshot_slots = BoundedSemaphore(MAX_CONCURRENT_SNAPSHOTS)
+_user_snapshots = {}
+_user_snapshots_lock = Lock()
 _ERROR_REASONS = {
     'server_not_running': 'no_server',
     'protocol_mismatch': 'incompatible',
@@ -217,11 +221,29 @@ def _read_snapshot(channel, deadline):
         time.sleep(0.02)
 
 
-def collect_snapshot(session_id, timeout=SNAPSHOT_TIMEOUT):
+def _take_user_slot(user_id):
+    with _user_snapshots_lock:
+        running = _user_snapshots.get(user_id, 0)
+        if running >= MAX_USER_SNAPSHOTS:
+            return False
+        _user_snapshots[user_id] = running + 1
+        return True
+
+
+def _release_user_slot(user_id):
+    with _user_snapshots_lock:
+        running = _user_snapshots.get(user_id, 0) - 1
+        if running > 0:
+            _user_snapshots[user_id] = running
+        else:
+            _user_snapshots.pop(user_id, None)
+
+
+def collect_snapshot(session_id, user_id, timeout=SNAPSHOT_TIMEOUT):
     """Query one connected session's Herdr server without ever starting it.
 
-    Returns (snapshot, None) or (None, reason). The caller has already
-    verified that the session belongs to the requesting user.
+    Returns (snapshot, None) or (None, reason). Only the session's owner may
+    query it, whatever the caller has checked before.
     """
     from . import ssh_manager
     from .app_settings import is_herdr_enabled
@@ -232,9 +254,11 @@ def collect_snapshot(session_id, timeout=SNAPSHOT_TIMEOUT):
         session = ssh_manager.sessions.get(session_id)
         if not session or not session.get('connected'):
             return None, 'disconnected'
+        owner = session.get('user_id')
+        if user_id is None or type(owner) is not type(user_id) or owner != user_id:
+            return None, 'unavailable'
         if session.get('herdr') is not True:
             return None, 'not_enabled'
-        user_id = session.get('user_id')
         profile_id = session.get('profile_id')
         client = session.get('client')
         lock = session.setdefault('herdr_snapshot_lock', Lock())
@@ -243,11 +267,14 @@ def collect_snapshot(session_id, timeout=SNAPSHOT_TIMEOUT):
         return None, 'not_enabled'
     if not lock.acquire(blocking=False):
         return None, 'busy'
-    slot_taken = False
+    slot_taken = user_slot_taken = False
     channel = None
     try:
         now = time.monotonic()
         if now < session.get('herdr_snapshot_not_before', now):
+            return None, 'busy'
+        user_slot_taken = _take_user_slot(user_id)
+        if not user_slot_taken:
             return None, 'busy'
         slot_taken = _snapshot_slots.acquire(blocking=False)
         if not slot_taken:
@@ -284,4 +311,6 @@ def collect_snapshot(session_id, timeout=SNAPSHOT_TIMEOUT):
         finally:
             if slot_taken:
                 _snapshot_slots.release()
+            if user_slot_taken:
+                _release_user_slot(user_id)
             lock.release()

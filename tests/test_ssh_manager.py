@@ -1303,11 +1303,29 @@ def test_allowlisted_jump_host_and_target_are_both_admitted(monkeypatch):
     ]
 
 
+@pytest.fixture
+def herdr_grant(monkeypatch):
+    """The server's Herdr decision as re-checked when the terminal channel opens."""
+    grant = {'overview': True, 'session': True, 'checked': []}
+
+    def overview(user_id, profile_id):
+        grant['checked'].append(('overview', user_id, profile_id))
+        return grant['overview']
+
+    def session(user_id, profile_id):
+        grant['checked'].append(('session', user_id, profile_id))
+        return grant['session']
+
+    monkeypatch.setattr(ssh_manager, 'herdr_overview_allowed', overview)
+    monkeypatch.setattr(ssh_manager, 'herdr_session_mode_allowed', session)
+    return grant
+
+
 def herdr_commands(clients):
     return [channel.command for channel in clients[0].transport.session_channels if channel.command]
 
 
-def test_herdr_session_mode_probes_then_starts_herdr_on_a_pty(monkeypatch):
+def test_herdr_session_mode_probes_then_starts_herdr_on_a_pty(herdr_grant, monkeypatch):
     from app import herdr
     clients = install_ssh_clients(monkeypatch)
     session_id, error = connect_target(password='secret', herdr=True, use_herdr=True)
@@ -1323,7 +1341,7 @@ def test_herdr_session_mode_probes_then_starts_herdr_on_a_pty(monkeypatch):
 
 
 @pytest.mark.parametrize('granted', [False, None, 'yes', 1])
-def test_herdr_session_mode_needs_the_server_grant(monkeypatch, granted):
+def test_herdr_session_mode_needs_the_server_grant(herdr_grant, monkeypatch, granted):
     clients = install_ssh_clients(monkeypatch)
     extra = {} if granted is None else {'herdr': granted}
     session_id, error = connect_target(password='secret', use_herdr=True, **extra)
@@ -1333,7 +1351,7 @@ def test_herdr_session_mode_needs_the_server_grant(monkeypatch, granted):
     assert ssh_manager.get_session(session_id)['use_herdr'] is False
 
 
-def test_herdr_session_mode_is_off_by_default(monkeypatch):
+def test_herdr_session_mode_is_off_by_default(herdr_grant, monkeypatch):
     clients = install_ssh_clients(monkeypatch)
     session_id, error = connect_target(password='secret', herdr=True)
     assert error is None
@@ -1348,7 +1366,7 @@ def _fail_probe_with_status(status):
 
 
 @pytest.mark.parametrize('failure', ['missing', 'not_found', 'timeout', 'open_error', 'exec_error'])
-def test_herdr_probe_failure_falls_back_to_a_normal_shell(monkeypatch, failure):
+def test_herdr_probe_failure_falls_back_to_a_normal_shell(herdr_grant, monkeypatch, failure):
     from app import herdr
     clients = install_ssh_clients(monkeypatch)
     if failure == 'missing':
@@ -1392,13 +1410,13 @@ def test_herdr_probe_failure_falls_back_to_a_normal_shell(monkeypatch, failure):
     ({'use_tmux': True, 'reconnect_tmux_name': 'existing_session'}, 'tmux and Herdr cannot be combined'),
     ({'startup_commands': 'uptime'}, 'Herdr session mode cannot be combined with startup commands'),
 ])
-def test_herdr_session_mode_conflicts_stop_before_any_connection(monkeypatch, extra, message):
+def test_herdr_session_mode_conflicts_stop_before_any_connection(herdr_grant, monkeypatch, extra, message):
     clients = install_ssh_clients(monkeypatch)
     assert connect_target(password='secret', herdr=True, use_herdr=True, **extra) == (None, message)
     assert clients == [] and ssh_manager.sessions == {}
 
 
-def test_closing_a_herdr_session_runs_nothing_on_the_host(monkeypatch):
+def test_closing_a_herdr_session_runs_nothing_on_the_host(herdr_grant, monkeypatch):
     clients = install_ssh_clients(monkeypatch)
     session_id, _ = connect_target(password='secret', herdr=True, use_herdr=True)
     opened = len(clients[0].transport.session_channels)
@@ -1407,7 +1425,7 @@ def test_closing_a_herdr_session_runs_nothing_on_the_host(monkeypatch):
     assert clients[0].closed
 
 
-def test_cancelled_herdr_setup_closes_without_running_anything_else(monkeypatch):
+def test_cancelled_herdr_setup_closes_without_running_anything_else(herdr_grant, monkeypatch):
     from app import herdr
     clients = install_ssh_clients(monkeypatch)
     cancel = threading.Event()
@@ -1422,3 +1440,82 @@ def test_cancelled_herdr_setup_closes_without_running_anything_else(monkeypatch)
                           cancel_event=cancel) == (None, 'Connection cancelled')
     assert herdr_commands(clients) == [herdr.AVAILABLE_COMMAND, herdr.SESSION_COMMAND]
     assert ssh_manager.sessions == {} and clients[0].closed
+
+
+def test_withdrawn_session_mode_is_rechecked_before_any_herdr_command(herdr_grant, monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+    herdr_grant['session'] = False
+    session_id, error = connect_target(password='secret', herdr=True, use_herdr=True,
+                                       profile_id='saved-host')
+    assert error is None
+    assert herdr_commands(clients) == []
+    assert any(channel.shell_invoked for channel in clients[0].transport.session_channels)
+    session = ssh_manager.get_session(session_id)
+    assert session['use_herdr'] is False and session['herdr'] is True
+    assert ('session', 7, 'saved-host') in herdr_grant['checked']
+
+
+def test_withdrawn_overview_is_not_granted_to_the_new_session(herdr_grant, monkeypatch):
+    install_ssh_clients(monkeypatch)
+    herdr_grant['overview'] = False
+    session_id, error = connect_target(password='secret', herdr=True, profile_id='saved-host')
+    assert error is None
+    assert ssh_manager.get_session(session_id)['herdr'] is False
+    assert ('overview', 7, 'saved-host') in herdr_grant['checked']
+
+
+@pytest.mark.parametrize('failing', ['overview', 'session'])
+def test_a_failing_recheck_withholds_herdr(herdr_grant, monkeypatch, failing):
+    clients = install_ssh_clients(monkeypatch)
+
+    def broken(*_args):
+        raise OSError('settings unavailable')
+    monkeypatch.setattr(ssh_manager, f'herdr_{"overview" if failing == "overview" else "session_mode"}_allowed', broken)
+    session_id, error = connect_target(password='secret', herdr=True, use_herdr=True, profile_id='saved-host')
+    assert error is None
+    session = ssh_manager.get_session(session_id)
+    if failing == 'session':
+        assert herdr_commands(clients) == [] and session['use_herdr'] is False
+    else:
+        assert session['herdr'] is False
+
+
+def test_switch_turned_off_during_the_banner_prompt_stops_herdr(app, monkeypatch):
+    """The admin disables Herdr while the user still answers a server prompt."""
+    from app import app_settings, profile_manager
+    from app.auth import register_user
+    clients = install_ssh_clients(monkeypatch)
+    monkeypatch.setattr(FakeTransport, 'banner', 'Authorised use only', raising=False)
+    monkeypatch.setattr(FakeTransport, '__init__', _transport_with_banner(FakeTransport.__init__))
+    with app.app_context():
+        user, error = register_user('herdr_banner', 'password-123')
+        assert error is None
+        assert app_settings.set_herdr_enabled(True) is True
+        profile, error = profile_manager.upsert_profile(user.id, {
+            'name': 'Agents', 'host': 'target.example', 'port': 22, 'username': 'alice',
+            'auth_type': 'password', 'herdr': True, 'use_herdr': True,
+        })
+        assert error is None
+
+        switched = []
+
+        def answer_banner(_banner, _context):
+            switched.append(app_settings.set_herdr_enabled(False))
+            return True
+
+        session_id, error = connect_target(
+            password='secret', user_id=user.id, profile_id=profile['id'], herdr=True,
+            use_herdr=True, auth_banner_decision=answer_banner,
+        )
+    assert switched == [False], error
+    assert error is None
+    assert herdr_commands(clients) == []
+    session = ssh_manager.get_session(session_id)
+    assert session['use_herdr'] is False and session['herdr'] is False
+
+
+def _transport_with_banner(original):
+    def init(self):
+        original(self)
+        self.banner = 'Authorised use only'
+    return init

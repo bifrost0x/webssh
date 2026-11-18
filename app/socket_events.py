@@ -3655,7 +3655,7 @@ def handle_request_herdr_snapshot(data, current_user=None):
         return answer(None, 'busy')
     if not verify_session_ownership(session_id, current_user.id):
         return answer(None, 'unavailable')
-    return answer(*herdr.collect_snapshot(session_id))
+    return answer(*herdr.collect_snapshot(session_id, current_user.id))
 
 
 @socketio.on('request_session_insights')

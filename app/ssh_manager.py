@@ -27,6 +27,8 @@ from .tailscale_ssh import TailscaleSSHAuthorization
 from . import paramiko_channels
 from .herdr import AVAILABLE_COMMAND as HERDR_AVAILABLE_COMMAND
 from .herdr import SESSION_COMMAND as HERDR_SESSION_COMMAND
+from .herdr import overview_allowed as herdr_overview_allowed
+from .herdr import session_mode_allowed as herdr_session_mode_allowed
 from .quota_manager import (
     QuotaExceeded,
     QuotaKind,
@@ -174,6 +176,15 @@ def _probe_tmux_session(session):
                 probe_channel.close()
             except Exception:
                 pass
+
+
+def _herdr_still_allowed(check, user_id, profile_id):
+    """Re-check a Herdr grant; host-key, banner and MFA prompts may have taken long."""
+    try:
+        return check(user_id, profile_id) is True
+    except Exception as error:
+        log_warning("Herdr grant could not be confirmed", error_type=type(error).__name__)
+        return False
 
 
 def _herdr_available(transport):
@@ -684,7 +695,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         elif use_herdr:
             # Not persistent and unnamed: Herdr keeps its own default session,
             # and nothing is ever stopped on the host when this channel closes.
-            herdr_available = _herdr_available(transport)
+            herdr_available = (
+                _herdr_still_allowed(herdr_session_mode_allowed, user_id, profile_id)
+                and _herdr_available(transport)
+            )
             if connection_cancelled():
                 return None, "Connection cancelled"
             if herdr_available:
@@ -720,6 +734,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         session_id = str(uuid.uuid4())
         disconnect_notice = {}
+        # The overview is granted to the session only if it still holds now.
+        herdr = herdr is True and _herdr_still_allowed(herdr_overview_allowed, user_id, profile_id)
 
         time.sleep(0.1)
 

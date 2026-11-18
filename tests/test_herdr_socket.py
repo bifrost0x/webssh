@@ -231,25 +231,25 @@ def test_timeout_keeps_the_session_busy_for_the_longer_interval(overview, monkey
     monkeypatch.setattr(herdr.time, 'sleep', lambda seconds: clock.__setitem__(0, clock[0] + seconds))
     channel = Channel(b'', b'', finishes=False)
     session, opened = live_session(monkeypatch, overview.owner, overview.profile['id'], channel)
-    assert herdr.collect_snapshot('live') == (None, 'timeout')
+    assert herdr.collect_snapshot('live', overview.owner) == (None, 'timeout')
     timed_out_at = clock[0]
     assert timed_out_at - 1000.0 == pytest.approx(herdr.SNAPSHOT_TIMEOUT, abs=0.05)
 
     channel.finishes, channel.output = True, SNAPSHOT
     clock[0] = timed_out_at + herdr.MIN_SNAPSHOT_INTERVAL + 1
-    assert herdr.collect_snapshot('live') == (None, 'busy')
+    assert herdr.collect_snapshot('live', overview.owner) == (None, 'busy')
     clock[0] = timed_out_at + herdr.TIMEOUT_SNAPSHOT_INTERVAL - 0.1
-    assert herdr.collect_snapshot('live') == (None, 'busy')
+    assert herdr.collect_snapshot('live', overview.owner) == (None, 'busy')
     assert len(opened) == 1
 
     clock[0] = timed_out_at + herdr.TIMEOUT_SNAPSHOT_INTERVAL
-    assert herdr.collect_snapshot('live')[1] is None
+    assert herdr.collect_snapshot('live', overview.owner)[1] is None
     # After an answer the normal interval applies again.
     channel.output = SNAPSHOT
     clock[0] += herdr.MIN_SNAPSHOT_INTERVAL - 0.1
-    assert herdr.collect_snapshot('live') == (None, 'busy')
+    assert herdr.collect_snapshot('live', overview.owner) == (None, 'busy')
     clock[0] += 0.1
-    assert herdr.collect_snapshot('live')[1] is None
+    assert herdr.collect_snapshot('live', overview.owner)[1] is None
     assert len(opened) == 3
 
 
@@ -258,7 +258,7 @@ def test_overlapping_request_for_the_same_session_is_busy(overview, monkeypatch)
     lock.acquire()
     _, opened = live_session(monkeypatch, overview.owner, overview.profile['id'],
                              herdr_snapshot_lock=lock)
-    assert herdr.collect_snapshot('live') == (None, 'busy')
+    assert herdr.collect_snapshot('live', overview.owner) == (None, 'busy')
     assert opened == [] and lock.locked()
 
 
@@ -267,14 +267,89 @@ def test_fifth_concurrent_request_in_the_process_is_busy(overview, monkeypatch):
     slots = herdr._snapshot_slots
     for _ in range(herdr.MAX_CONCURRENT_SNAPSHOTS):
         assert slots.acquire(blocking=False)
-    assert herdr.collect_snapshot('live') == (None, 'busy')
+    assert herdr.collect_snapshot('live', overview.owner) == (None, 'busy')
     assert opened == [] and not session['herdr_snapshot_lock'].locked()
     assert 'herdr_snapshot_not_before' not in session
     slots.release()
-    assert herdr.collect_snapshot('live')[1] is None
+    assert herdr.collect_snapshot('live', overview.owner)[1] is None
     # The finished request returned its slot: exactly one is free again.
     assert slots.acquire(blocking=False)
     assert not slots.acquire(blocking=False)
+
+
+def test_snapshot_of_another_users_session_is_unavailable(overview, monkeypatch):
+    session, opened = live_session(monkeypatch, overview.owner, overview.profile['id'])
+    for intruder in (overview.owner + 1000, None, str(overview.owner)):
+        assert herdr.collect_snapshot('live', intruder) == (None, 'unavailable')
+    assert opened == [] and 'herdr_snapshot_lock' not in session
+    assert 'herdr_snapshot_not_before' not in session
+    for _ in range(herdr.MAX_CONCURRENT_SNAPSHOTS):
+        assert herdr._snapshot_slots.acquire(blocking=False)
+
+
+class HeldChannel(Channel):
+    """A command that runs until the test lets it finish."""
+
+    def __init__(self, release):
+        super().__init__()
+        self.release = release
+
+    def recv_ready(self):
+        return self.release.is_set() and super().recv_ready()
+
+    def exit_status_ready(self):
+        return self.release.is_set()
+
+
+def test_one_user_holds_at_most_two_queries(overview, app, monkeypatch):
+    from threading import Event, Thread
+    other, _ = user_socket(app, 'herdr_other_user')
+    other_profile = saved_host(app, other, herdr=True)
+    release, started = Event(), []
+    transport = SimpleNamespace(is_active=lambda: True)
+    client = SimpleNamespace(get_transport=lambda: transport)
+    sessions = {
+        name: {'connected': True, 'user_id': owner, 'profile_id': profile, 'herdr': True, 'client': client}
+        for name, owner, profile in (
+            ('first', overview.owner, overview.profile['id']),
+            ('second', overview.owner, overview.profile['id']),
+            ('third', overview.owner, overview.profile['id']),
+            ('foreign', other, other_profile['id']),
+        )
+    }
+    monkeypatch.setattr(ssh_manager, 'sessions', sessions)
+    monkeypatch.setattr(herdr, '_snapshot_slots', herdr.BoundedSemaphore(herdr.MAX_CONCURRENT_SNAPSHOTS))
+
+    def open_channel(_transport, command, *, timeout, **kwargs):
+        started.append(command)
+        return HeldChannel(release) if len(started) <= 2 else Channel()
+
+    monkeypatch.setattr(ssh_manager, '_open_exec_channel', open_channel)
+    results = {}
+
+    def query(name):
+        with app.app_context():
+            results[name] = herdr.collect_snapshot(name, overview.owner)
+
+    threads = [Thread(target=query, args=(name,)) for name in ('first', 'second')]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + 3
+    while len(started) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert len(started) == 2
+    try:
+        assert herdr.collect_snapshot('third', overview.owner) == (None, 'busy')
+        assert 'herdr_snapshot_not_before' not in sessions['third']
+        # Other users keep their share of the process-wide limit.
+        assert herdr.collect_snapshot('foreign', other)[1] is None
+    finally:
+        release.set()
+        for thread in threads:
+            thread.join(3)
+    assert [results[name][1] for name in ('first', 'second')] == [None, None]
+    assert herdr.collect_snapshot('third', overview.owner)[1] is None
+    assert herdr._user_snapshots == {}
 
 
 @pytest.mark.parametrize('channel,reason', [
@@ -322,14 +397,14 @@ def test_command_that_never_finishes_times_out_and_frees_the_session(overview, m
     channel = Channel(b'', b'', finishes=False)
     session, opened = live_session(monkeypatch, overview.owner, overview.profile['id'], channel)
     started = time.monotonic()
-    assert herdr.collect_snapshot('live', timeout=0.2) == (None, 'timeout')
+    assert herdr.collect_snapshot('live', overview.owner, timeout=0.2) == (None, 'timeout')
     assert 0.2 <= time.monotonic() - started < 2
     assert channel.closed and not session['herdr_snapshot_lock'].locked()
     assert herdr._snapshot_slots.acquire(blocking=False)
     herdr._snapshot_slots.release()
     session['herdr_snapshot_not_before'] = 0
     channel.finishes, channel.output, channel.closed = True, SNAPSHOT, False
-    assert herdr.collect_snapshot('live')[1] is None
+    assert herdr.collect_snapshot('live', overview.owner)[1] is None
 
 
 @pytest.mark.parametrize('error,reason', [
@@ -343,7 +418,7 @@ def test_channel_failures_release_every_limit(overview, monkeypatch, error, reas
         raise error
 
     monkeypatch.setattr(ssh_manager, '_open_exec_channel', fail)
-    assert herdr.collect_snapshot('live') == (None, reason)
+    assert herdr.collect_snapshot('live', overview.owner) == (None, reason)
     assert not session['herdr_snapshot_lock'].locked()
     for _ in range(herdr.MAX_CONCURRENT_SNAPSHOTS):
         assert herdr._snapshot_slots.acquire(blocking=False)
@@ -352,7 +427,7 @@ def test_channel_failures_release_every_limit(overview, monkeypatch, error, reas
 def test_inactive_transport_is_disconnected(overview, monkeypatch):
     session, opened = live_session(monkeypatch, overview.owner, overview.profile['id'])
     session['client'] = SimpleNamespace(get_transport=lambda: SimpleNamespace(is_active=lambda: False))
-    assert herdr.collect_snapshot('live') == (None, 'disconnected')
+    assert herdr.collect_snapshot('live', overview.owner) == (None, 'disconnected')
     assert opened == []
 
 
