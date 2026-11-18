@@ -138,6 +138,8 @@ const SessionManager = {
             file_source: data.file_source,
             use_tmux: data.use_tmux,
             tmux_session_name: data.tmux_session_name,
+            herdr: data.herdr,
+            use_herdr: data.use_herdr,
             restored: true,
         };
 
@@ -277,6 +279,8 @@ const SessionManager = {
             reconnectRouteKnown: sessionData.reconnect_route_known,
             useTmux: sessionData.use_tmux || false,
             tmuxSessionName: sessionData.tmux_session_name || null,
+            herdr: sessionData.herdr === true,
+            useHerdr: sessionData.use_herdr === true,
             keyId: sessionData.key_id || null,
             authType: sessionData.auth_type || 'password',
             fileSource: sessionData.file_source || null,
@@ -342,6 +346,13 @@ const SessionManager = {
             jumpBadge.textContent = 'alt_route';
             jumpBadge.title = 'via ' + sess.viaJump;
             tab.appendChild(jumpBadge);
+        }
+        if (sess && sess.useHerdr && !sess.useTmux) {
+            const herdrBadge = document.createElement('span');
+            herdrBadge.className = 'tab-herdr-badge material-icons';
+            herdrBadge.textContent = 'view_quilt';
+            herdrBadge.title = window.i18n ? i18n.t('herdr.sessionMode') : 'Herdr';
+            tab.appendChild(herdrBadge);
         }
         if (sess && sess.useTmux) {
             const tmuxBadge = document.createElement('span');
@@ -556,6 +567,7 @@ const SessionManager = {
             const displayName = session.displayName;
             const useTmux = session.useTmux;
             const tmuxSessionName = session.tmuxSessionName;
+            const useHerdr = session.useHerdr === true && !useTmux;
             const keyId = session.keyId;
             const authType = session.authType || (keyId ? 'key' : 'password');
 
@@ -582,10 +594,14 @@ const SessionManager = {
                             profile_context_optional: true,
                             client_request_id: `reconnect_${Date.now().toString(36)}`,
                             auth_type: authType,
-                            use_tmux: useTmux,
-                            reconnect_tmux_name: useTmux ? tmuxSessionName : null,
                             display_name: displayName
                         };
+                        if (useHerdr) {
+                            connectionData.use_herdr = true;
+                        } else {
+                            connectionData.use_tmux = useTmux;
+                            connectionData.reconnect_tmux_name = useTmux ? tmuxSessionName : null;
+                        }
                         if (authType === 'key') {
                             connectionData.key_id = keyId;
                         }
@@ -604,6 +620,7 @@ const SessionManager = {
                 setTimeout(() => {
                     window.clearConnectionProfileState();
                     this.pendingReconnectProfileId = session.profileId || null;
+                    this.pendingReconnectHerdr = useHerdr;
                     const hostInput = document.getElementById('hostInput');
                     const portInput = document.getElementById('portInput');
                     const userInput = document.getElementById('usernameInput');
@@ -621,6 +638,11 @@ const SessionManager = {
                         const tmuxCheck = document.getElementById('useTmuxCheck');
                         if (tmuxCheck) tmuxCheck.checked = true;
                         this.pendingReconnectTmux = tmuxSessionName || null;
+                    } else if (useHerdr) {
+                        // A deployment-wide tmux default would otherwise win over Herdr.
+                        const tmuxCheck = document.getElementById('useTmuxCheck');
+                        if (tmuxCheck) tmuxCheck.checked = false;
+                        this.pendingReconnectTmux = null;
                     }
 
                     const modal = document.getElementById('connectionModal');
@@ -1712,6 +1734,7 @@ const SessionManager = {
 
         window.clearConnectionProfileState();
         this.pendingReconnectProfileId = session.profileId || null;
+        this.pendingReconnectHerdr = session.useHerdr === true && !session.useTmux;
         this.pendingReconnectSessionId = session.connected && !session.isPersistentCandidate
             ? sessionId : null;
         const hostInput = document.getElementById('hostInput');
@@ -1757,6 +1780,11 @@ const SessionManager = {
             // Store the tmux session name for reconnection
             this.pendingReconnectTmux = session.tmuxSessionName || null;
         } else {
+            if (this.pendingReconnectHerdr) {
+                // A deployment-wide tmux default would otherwise win over Herdr.
+                const tmuxCheck = document.getElementById('useTmuxCheck');
+                if (tmuxCheck) tmuxCheck.checked = false;
+            }
             this.pendingReconnectTmux = null;
         }
 
@@ -1833,6 +1861,7 @@ const SessionManager = {
     pendingDisplayName: null,
 
     pendingReconnectTmux: null,
+    pendingReconnectHerdr: false,
 
     getActiveSession() {
         return this.activeSessionId;
@@ -2523,6 +2552,9 @@ const SessionManager = {
             parts.push(`${this.windowText('connection.via', 'via')} ${session.viaJump}`);
         }
         const badges = [];
+        if (session.useHerdr && !session.useTmux) {
+            badges.push({icon: 'view_quilt', title: this.windowText('herdr.sessionMode', 'Herdr')});
+        }
         if (session.useTmux) {
             badges.push({
                 icon: 'push_pin',

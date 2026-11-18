@@ -780,7 +780,8 @@ body[data-theme="paper"] .terminal-pane {
     cursor: help;
 }
 
-.tab-tmux-badge {
+.tab-tmux-badge,
+.tab-herdr-badge {
     font-size: 11px;
     margin-left: 2px;
     opacity: 0.85;

@@ -367,6 +367,7 @@
 
     let selectedConnectionProfileState = null;
     const pendingReconnectSessionMap = new Map();
+    const herdrFallbackNotified = new Set();
 
     function hasUsableConnectionKey(keyId) {
         return Boolean(keyId) && ProfileManager.keys.some(
@@ -401,6 +402,7 @@
         SessionManager.pendingReconnectProfileId = null;
         SessionManager.pendingReconnectSessionId = null;
         SessionManager.pendingReconnectTmux = null;
+        SessionManager.pendingReconnectHerdr = false;
         const jumpSelect = document.getElementById('jumpHostSelect');
         if (jumpSelect) jumpSelect.value = '';
         const jumpPassword = document.getElementById('jumpHostPasswordInput');
@@ -1801,6 +1803,7 @@
             stopConnectTimer();
             setConnectLoading(false);
             SessionManager.pendingReconnectTmux = null;
+            SessionManager.pendingReconnectHerdr = false;
             SessionManager.pendingReconnectProfileId = null;
             SessionManager.pendingDisplayName = null;
             currentConnectRequestId = null;
@@ -1811,6 +1814,16 @@
         }
 
         const sessionId = SessionManager.createSession(data);
+        // Tell once per host and page load; reconnects of the same host stay quiet.
+        if (!herdrFallbackNotified.has(data.profile_id)
+                && window.ProfileLauncherUtils?.herdrFellBack(window.ProfileManager?.getProfile?.(data.profile_id), data)) {
+            herdrFallbackNotified.add(data.profile_id);
+            showNotification(
+                (window.i18n?.t('herdr.sessionFallback') || 'Herdr was not found on {host}. A standard shell was started instead.')
+                    .replace('{host}', data.host || ''),
+                'info',
+            );
+        }
         const replacedSessionId = pendingReconnectSessionMap.get(requestId);
         pendingReconnectSessionMap.delete(requestId);
         if (SessionManager.pendingReconnectSessionId === replacedSessionId) {
@@ -2378,6 +2391,7 @@
     function dismissConnectionModal() {
         SessionManager.pendingReconnectSessionId = null;
         SessionManager.pendingReconnectTmux = null;
+        SessionManager.pendingReconnectHerdr = false;
         SessionManager.pendingDisplayName = null;
         const modalRequestId = connectionModalRequestId;
         const targetPane = pendingPaneIndex;
@@ -3346,6 +3360,11 @@
                     connectionData.display_name = SessionManager.pendingDisplayName;
                 }
             }
+            if (window.ProfileLauncherUtils?.requestsHerdrSession({
+                profile: window.ProfileManager?.getProfile?.(contextProfileId),
+                reconnect: SessionManager.pendingReconnectHerdr === true,
+                connectionData,
+            })) connectionData.use_herdr = true;
 
             const started = startConnection(connectionData, targetPane, SessionManager.pendingReconnectSessionId);
             if (!started) return;

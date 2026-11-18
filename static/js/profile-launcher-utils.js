@@ -174,6 +174,7 @@
         const postConnect = profilePostConnectPayload(profile);
         if (!postConnect) return null;
         Object.assign(result, postConnect);
+        if (requestsHerdrSession({profile, connectionData: result})) result.use_herdr = true;
 
         if (profile.socks_proxy_id) result.socks_proxy = {socks_proxy_id: profile.socks_proxy_id};
         if (!profile.jump_host_id) return result;
@@ -201,6 +202,61 @@
         }
         result.proxy_jump = proxyJump;
         return result;
+    }
+
+    /** The one terminal session mode a saved host uses; tmux wins over a contradictory record. */
+    function sessionModeOf(profile, tmuxDefault = false) {
+        if (!profile) return tmuxDefault ? 'tmux' : 'shell';
+        if (profile.use_tmux === true) return 'tmux';
+        return profile.herdr === true && profile.use_herdr === true ? 'herdr' : 'shell';
+    }
+
+    /**
+     * What the host editor offers for Herdr. The block appears with the integration
+     * or for a host that already carries Herdr values; without either the editor
+     * keeps its tmux checkbox. The Herdr mode needs the host option and no startup
+     * command, and a choice that is no longer allowed falls back to the plain shell.
+     */
+    function herdrEditorState({enabled, tmuxAvailable, saved, herdr, mode, startupMode}) {
+        const visible = enabled === true || saved?.herdr === true || saved?.use_herdr === true;
+        let reason = '';
+        if (enabled === true && herdr !== true) reason = 'needsOption';
+        else if (enabled === true && (startupMode || 'none') !== 'none') reason = 'noStartup';
+        let selected = ['shell', 'tmux', 'herdr'].includes(mode) ? mode : 'shell';
+        if (selected === 'tmux' && tmuxAvailable !== true) selected = 'shell';
+        if (selected === 'herdr' && reason) selected = 'shell';
+        return {
+            visible,
+            optionLocked: enabled !== true,
+            herdrLocked: enabled !== true || reason !== '',
+            reason,
+            mode: selected,
+        };
+    }
+
+    /** Fields the host editor writes for the session mode, or null while it keeps the tmux checkbox. */
+    function herdrEditorPayload(input) {
+        const state = herdrEditorState(input);
+        if (!state.visible) return null;
+        const payload = {};
+        if (input.enabled === true) payload.herdr = input.herdr === true;
+        else if (state.mode === 'herdr') return payload;
+        payload.use_herdr = state.mode === 'herdr';
+        if (input.tmuxAvailable === true || payload.use_herdr) payload.use_tmux = state.mode === 'tmux';
+        return payload;
+    }
+
+    /** Herdr is requested for a Herdr host or a Herdr reconnect, never with tmux or a startup command. */
+    function requestsHerdrSession({profile = null, reconnect = false, connectionData = {}}) {
+        const wanted = reconnect === true || (profile?.herdr === true && profile?.use_herdr === true);
+        return wanted && connectionData.use_tmux !== true
+            && (connectionData.startup_mode || 'none') === 'none';
+    }
+
+    /** The server allowed Herdr for this host but started a plain shell: Herdr is missing there. */
+    function herdrFellBack(profile, session) {
+        return profile?.herdr === true && profile?.use_herdr === true
+            && session?.herdr === true && session?.use_herdr !== true && session?.use_tmux !== true;
     }
 
     function formatEndpoint(profile) {
@@ -442,7 +498,12 @@
         filterAndSortProfiles,
         formatEndpoint,
         getProfileReadiness,
+        herdrEditorPayload,
+        herdrEditorState,
+        herdrFellBack,
+        requestsHerdrSession,
         resolveProfileDrop,
+        sessionModeOf,
         usesAdvancedConnectionSettings,
     };
 }));

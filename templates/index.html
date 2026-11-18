@@ -1051,7 +1051,7 @@
                             <pre id="profileEditorCommandPreview" class="command-set-preview empty" aria-live="polite"></pre>
                         </div>
                         {% if tmux_enabled %}
-                        <div class="form-group">
+                        <div class="form-group" id="profileEditorTmuxGroup">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="profileEditorUseTmux" data-default="{{ 'true' if tmux_default else 'false' }}" {% if tmux_default %}checked{% endif %}>
                                 <span data-i18n="session.persistentTmux">Persistent session (tmux)</span>
@@ -1059,6 +1059,33 @@
                             <div class="field-hint" data-i18n="session.persistentTmuxHint">Keeps terminal alive on the remote host even when you close the browser or server restarts. Reattaches to existing tmux session automatically.</div>
                         </div>
                         {% endif %}
+                        <div id="profileEditorHerdrBlock" class="hidden">
+                            <p id="profileEditorHerdrDisabled" class="profile-herdr-notice hidden" role="note"><span class="material-icons" aria-hidden="true">block</span><span data-i18n="herdr.profileDisabled">Herdr is turned off for this WebSSH instance. The Herdr settings of this host are kept and apply again once an administrator turns the integration on. Until then no agents are read and the host connects with a standard shell.</span></p>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="profileEditorHerdr" aria-describedby="profileEditorHerdrHint">
+                                    <span data-i18n="herdr.profileOption">Herdr on this host</span>
+                                </label>
+                                <div id="profileEditorHerdrHint" class="field-hint" data-i18n="herdr.profileOptionHint">While a session of yours is connected, WebSSH asks Herdr on this host which agents are running and lists them under Agents on the Overview. Nothing is installed, started or changed on the host.</div>
+                            </div>
+                            <fieldset class="connection-route-fields session-mode-fields"><legend data-i18n="session.mode">Terminal session</legend>
+                                <label class="radio-label session-mode-option">
+                                    <input type="radio" name="profileEditorSessionMode" id="profileEditorModeShell" value="shell">
+                                    <span><span data-i18n="session.modeShell">Standard shell</span><small data-i18n="session.modeShellHint">Ends when the connection closes.</small></span>
+                                </label>
+                                {% if tmux_enabled %}
+                                <label class="radio-label session-mode-option">
+                                    <input type="radio" name="profileEditorSessionMode" id="profileEditorModeTmux" value="tmux">
+                                    <span><span data-i18n="session.persistentTmux">Persistent session (tmux)</span><small data-i18n="session.persistentTmuxHint">Keeps terminal alive on the remote host even when you close the browser or server restarts. Reattaches to existing tmux session automatically.</small></span>
+                                </label>
+                                {% endif %}
+                                <label class="radio-label session-mode-option">
+                                    <input type="radio" name="profileEditorSessionMode" id="profileEditorModeHerdr" value="herdr" aria-describedby="profileEditorHerdrModeReason">
+                                    <span><span data-i18n="herdr.sessionMode">Herdr</span><small data-i18n="herdr.sessionModeHint">Opens Herdr's default session and reattaches to it when you reconnect. If Herdr is not installed, a standard shell starts instead.</small></span>
+                                </label>
+                                <p id="profileEditorHerdrModeReason" class="field-hint hidden" role="status" aria-live="polite"></p>
+                            </fieldset>
+                        </div>
                                 </details>
                             </div>
                         </div>
