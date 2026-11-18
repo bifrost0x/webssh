@@ -997,6 +997,11 @@ body[data-theme="paper"] .terminal-pane {
     stroke-linejoin: round;
 }
 
+/* The display rule above would otherwise override the hidden attribute. */
+.tab-row-icon-btn[hidden] {
+    display: none;
+}
+
 .tab-row-icon-btn:hover {
     background: var(--bg-hover);
     border-color: var(--border-color);
@@ -1260,6 +1265,50 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
 
 .broadcast-bar.hidden {
     display: none;
+}
+
+/* Herdr control bar: one row that scrolls sideways instead of widening the page. */
+.herdr-control-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 4px 8px;
+    margin: 0 0 8px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.herdr-control-bar[hidden] {
+    display: none;
+}
+
+.herdr-control-btn {
+    min-width: 32px;
+    min-height: 30px;
+}
+
+.herdr-control-btn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 1px;
+}
+
+.herdr-control-key {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+    .herdr-control-btn {
+        min-width: 40px;
+        min-height: 40px;
+    }
 }
 
 .broadcast-bar-label {

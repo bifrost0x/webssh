@@ -2865,7 +2865,26 @@
             { id: 'save-transcript', labelKey: 'terminal.saveTranscript', hint: '', action: () => document.getElementById('saveTranscriptBtn').click() },
             { id: 'copy-selection', labelKey: 'terminal.copySelection', hint: '', action: copyActiveTerminalSelection },
             { id: 'paste-clipboard', labelKey: 'terminal.pasteClipboard', hint: '', action: pasteClipboardIntoActiveTerminal },
-            { id: 'keyboard-shortcuts', labelKey: 'shortcuts.title', hint: 'Ctrl+?', action: () => openShortcuts() }
+            { id: 'keyboard-shortcuts', labelKey: 'shortcuts.title', hint: 'Ctrl+?', action: () => openShortcuts() },
+            // Herdr actions appear only while the active session runs Herdr.
+            {
+                id: 'herdr-toggle-bar',
+                labelKey: 'herdr.barToggle',
+                fallback: 'Show or hide the Herdr controls',
+                descriptionKey: 'herdr.barLabel',
+                hint: '',
+                available: () => window.herdrControlBar?.available() === true,
+                action: () => window.herdrControlBar?.toggle(),
+            },
+            ...(window.HerdrControlBar?.ACTIONS || []).map(herdrAction => ({
+                id: `herdr-${herdrAction.id}`,
+                labelKey: herdrAction.labelKey,
+                fallback: herdrAction.title,
+                descriptionKey: 'herdr.barLabel',
+                hint: herdrAction.id === 'prefix' ? herdrAction.hint : `Ctrl+B ${herdrAction.hint}`,
+                available: () => window.herdrControlBar?.available() === true,
+                action: () => window.herdrControlBar?.run(herdrAction.id),
+            }))
         ];
         const actionMap = new Map(actions.map(action => [action.id, action.action]));
 
@@ -2879,8 +2898,8 @@
         function buildItems() {
             const translatedActions = actions.filter(action => !action.available || action.available()).map(action => ({
                 id: action.id,
-                label: translate(action.labelKey, action.labelKey),
-                description: '',
+                label: translate(action.labelKey, action.fallback || action.labelKey),
+                description: action.descriptionKey ? translate(action.descriptionKey, 'Herdr') : '',
                 hint: action.hint,
             }));
             return CommandPaletteUtils.buildItems({

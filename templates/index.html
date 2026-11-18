@@ -186,6 +186,9 @@
                         </div>
                     </div>
                 </details>
+                <button class="tab-row-icon-btn" id="herdrBarToggleBtn" type="button" aria-pressed="true" aria-controls="herdrControlBar" title="Herdr controls" aria-label="Herdr controls" hidden>
+                    <span class="material-icons" aria-hidden="true">keyboard</span>
+                </button>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
                     <span class="material-icons" aria-hidden="true">cell_tower</span>
                 </button>
@@ -255,6 +258,7 @@
             <button class="btn btn-secondary broadcast-close material-icons" id="broadcastCloseBtn" type="button" aria-label="Close broadcast" data-i18n-aria-label="workspace.closeBroadcast">close</button>
             <div class="broadcast-selection"><span id="broadcastTargets"></span><span id="broadcastSelectionStatus" role="status"></span></div>
         </div>
+        <div class="herdr-control-bar" id="herdrControlBar" role="toolbar" aria-label="Herdr controls" hidden></div>
         <div class="workspace" id="workspace">
             <div class="terminal-area">
                 <div class="session-main-split" id="sessionMainSplit">
@@ -1902,6 +1906,7 @@
     <script src="{{ static_asset_url(filename='js/overview-model.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/overview-layout.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/herdr-overview.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/herdr-control-bar.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/overview-workspace.js') }}"></script>
     {% endif %}
     <script src="{{ static_asset_url(filename='js/host-resource-layout.js') }}"></script>

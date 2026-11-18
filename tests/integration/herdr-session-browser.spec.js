@@ -120,6 +120,23 @@ async function prefix(page, id, key) {
     await page.keyboard.press(key);
 }
 
+/** The Herdr control bar sends the same bytes as the prefix keys. */
+async function splitFromControlBar(page, screenshot, { toolbarToggle = true } = {}) {
+    // On phones the session toolbar keeps only the layout picker, as for every tool.
+    if (toolbarToggle) await expect(page.locator('#herdrBarToggleBtn')).toBeVisible();
+    await expect(page.locator('#herdrBarToggleBtn')).toHaveAttribute('aria-pressed', 'true');
+    const before = lab('snapshot').panes;
+    const button = page.locator('#herdrControlBar [data-herdr-action="splitRight"]');
+    await expect(button).toHaveAttribute('aria-label', 'Split right');
+    await button.click();
+    await expect.poll(() => lab('snapshot').panes, { message: 'split from the control bar' }).toBe(before + 1);
+    // The terminal keeps the keyboard after the click.
+    expect(await page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea'))).toBe(true);
+    // The bar never widens the page.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath(screenshot) });
+}
+
 async function reconnectTab(page, id) {
     const before = await sessionIds(page);
     page.once('dialog', dialog => dialog.accept());
@@ -215,6 +232,14 @@ test('desktop: Herdr session mode is usable in the WebSSH terminal', async ({ pa
     await expect.poll(() => lab('snapshot').panes, { message: 'split from the pane menu' })
         .toBe(panesBeforeMenu + 1);
     await page.screenshot({ path: test.info().outputPath('desktop-menu-split.png') });
+    await splitFromControlBar(page, 'desktop-control-bar.png');
+
+    // The command palette offers the same actions while a Herdr session is active.
+    const beforePalette = lab('snapshot').panes;
+    await page.evaluate(() => window.openCommandPalette());
+    await page.locator('#commandPaletteInput').fill('Split right');
+    await page.locator('.palette-item[data-palette-id="herdr-splitRight"]').click();
+    await expect.poll(() => lab('snapshot').panes, { message: 'split from the command palette' }).toBe(beforePalette + 1);
 
     // Resizing the window redraws Herdr at the new size and back.
     const before = { cols: state.cols, rows: state.rows };
@@ -290,9 +315,12 @@ test.describe('mobile', () => {
         test.info().annotations.push({ type: 'rotation', description:
             `${portrait.cols}x${portrait.rows} -> ${landscape.cols}x${landscape.rows} -> ${state.cols}x${state.rows}` });
 
+        // The control bar gives touch users the prefix actions.
+        await splitFromControlBar(page, 'mobile-control-bar.png', { toolbarToggle: false });
+
         // A manual reconnect of the tab attaches to the same Herdr session.
         const marked = lab('workspace', 'reattach-mark');
-        expect(marked).toMatchObject({ created: true, panes: 3, workspaces: [expect.anything(), 'reattach-mark'] });
+        expect(marked).toMatchObject({ created: true, panes: 4, workspaces: [expect.anything(), 'reattach-mark'] });
         const reconnected = await reconnectTab(page, id);
         expect(await page.evaluate(key => SessionManager.sessions[key].useHerdr, reconnected)).toBe(true);
         await waitScreen(page, reconnected, current => current.alt && shows('switch')(current), 'reattached Herdr');
@@ -327,6 +355,12 @@ test('a host without Herdr gets a normal shell and one notice', async ({ page })
     expect(state.alt).toBe(false);
     await expect(page.locator('.notification', { hasText: 'Herdr was not found on 127.0.0.1' })).toHaveCount(1);
     await expect(page.locator(`#tab-${id} .tab-herdr-badge`)).toHaveCount(0);
+    await expect(page.locator('#herdrControlBar')).toBeHidden();
+    await expect(page.locator('#herdrBarToggleBtn')).toBeHidden();
+    await page.evaluate(() => window.openCommandPalette());
+    await page.locator('#commandPaletteInput').fill('Split right');
+    await expect(page.locator('.palette-item[data-palette-id^="herdr-"]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
 
     // Reconnecting the same host does not repeat the notice.
     const reconnected = await reconnectTab(page, id);
