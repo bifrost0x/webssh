@@ -13,7 +13,7 @@
   <Network>bridge</Network>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/bifrost0x/webssh/issues</Support>
+  <Support>https://forums.unraid.net/topic/201292-support-bifrost0x-webssh/</Support>
   <Project>https://github.com/bifrost0x/webssh</Project>
   <ReadMe>https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Install-on-Unraid.md</ReadMe>
   <Overview>WebSSH is a self-hosted, multi-user SSH and SFTP client in the browser: terminals with optional persistent tmux sessions, a file workspace, saved hosts, jump hosts and SOCKS5 routes, encrypted keys, host-key verification, commands, backup and restore.
