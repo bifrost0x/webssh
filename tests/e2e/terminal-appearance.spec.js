@@ -91,3 +91,14 @@ test('appearance fonts survive preview rebuilds, resizing and reopening without 
     expect(fonts.length).toBe(new Set(fonts).size);
     await assertNoExternalRequests(page);
 });
+
+test('an expired page asks for a reload instead of a generic save failure', async ({page}) => {
+    await login(page);
+    await page.route('**/api/account/preferences', route => route.fulfill({
+        status: 400, json: {error: 'This page expired. Reload it and try again.', code: 'csrf_expired'},
+    }));
+    await page.locator('#terminalAppearanceBtn').click();
+    await page.locator('#terminalAppearanceSave').click();
+    await expect(page.locator('#terminalAppearanceStatus')).toHaveText(await page.evaluate(() => i18n.t('common.pageExpired')));
+    await assertNoExternalRequests(page);
+});

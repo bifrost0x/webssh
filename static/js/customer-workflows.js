@@ -37,7 +37,12 @@
                 headers:{'Content-Type':'application/json', 'X-CSRFToken':document.querySelector('meta[name="csrf-token"]')?.content || ''},
                 ...(body ? {body:JSON.stringify(body)} : {})
             });
-            if (!response.ok) { const error=Error(t('requestFailed')); error.status=response.status; throw error; }
+            if (!response.ok) {
+                const code = (await response.json().catch(() => ({}))).code;
+                const error = Error(code === 'csrf_expired' ? root.i18n?.t('common.pageExpired') || 'common.pageExpired' : t('requestFailed'));
+                error.status = response.status;
+                throw error;
+            }
             return response.json();
         };
         function dialog(title) {

@@ -93,3 +93,15 @@ test('backup guidance is translated and recovery works in the settings center', 
         await coverage.locator('summary').click();
     }
 });
+
+test('removing a preset on an expired page asks for a reload', async ({page}) => {
+    await login(page);
+    await page.route('**/api/account/workspace-presets', route => route.request().method() === 'GET'
+        ? route.fulfill({json: {presets: [{id: 'docker', name: 'Docker', layout: 2, profile_ids: []}]}})
+        : route.fulfill({status: 400, json: {error: 'This page expired. Reload it and try again.', code: 'csrf_expired'}}));
+    await page.locator('#workspaceLayoutPicker > summary').click();
+    await page.locator('#workspacePresetsBtn').click();
+    const dialog = page.getByRole('dialog', {name: 'Workspace presets', exact: true});
+    await dialog.getByRole('button', {name: 'Remove preset', exact: true}).click();
+    await expect(dialog.getByRole('alert')).toHaveText(await page.evaluate(() => i18n.t('common.pageExpired')));
+});
