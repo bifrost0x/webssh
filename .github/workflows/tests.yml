@@ -443,16 +443,15 @@ jobs:
       - name: Install locked font-test browsers
         shell: bash
         run: |
-          set -eu
-          # Preserve exact locked-browser invocation with argv-safe bounded retries.
-          install_bounded_browser() {
-            browser="$1"
-            shift
+          set -euo pipefail
+          for browser in firefox webkit; do
+            installed=false
             for attempt in 1 2; do
               echo "::group::Install ${browser} (attempt ${attempt}/2)"
-              if timeout --signal=TERM --kill-after=15s 360s "$@"; then
+              if timeout --signal=TERM --kill-after=15s 360s node scripts/install-ci-chromium.js "$browser"; then
+                installed=true
                 echo "::endgroup::"
-                return 0
+                break
               else
                 status=$?
                 echo "::endgroup::"
@@ -462,11 +461,11 @@ jobs:
                 sleep 10
               fi
             done
-            echo "::error::${browser} could not be installed after two bounded attempts"
-            return 1
-          }
-          install_bounded_browser firefox node scripts/install-ci-chromium.js firefox
-          install_bounded_browser webkit node scripts/install-ci-chromium.js webkit
+            if [ "$installed" != "true" ]; then
+              echo "::error::${browser} could not be installed after two bounded attempts"
+              exit 1
+            fi
+          done
       - name: Verify live terminal font changes
         run: |
           WEBSSH_E2E_PORT=4173 \
