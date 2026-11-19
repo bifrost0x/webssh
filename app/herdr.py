@@ -302,7 +302,9 @@ def collect_snapshot(session_id, user_id, timeout=SNAPSHOT_TIMEOUT):
         # A host that does not answer is asked again much less often.
         session['herdr_snapshot_not_before'] = time.monotonic() + TIMEOUT_SNAPSHOT_INTERVAL
         return None, 'timeout'
-    except Exception:
+    except Exception as error:
+        from .audit_logger import log_warning
+        log_warning("Herdr snapshot failed", error_type=type(error).__name__)
         return None, 'unavailable'
     finally:
         try:

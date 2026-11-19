@@ -226,6 +226,25 @@ def test_herdr_options_roundtrip_through_export_and_import(app, client):
     assert 'herdr' not in stored['Plain'] and 'use_herdr' not in stored['Plain']
 
 
+def test_import_cannot_combine_herdr_session_with_tmux(app, client):
+    user_id = _login(app, client)
+    document = {'format': 'webssh-hosts', 'version': 1, 'hosts': [
+        {'name': 'Both', 'host': 'both.example', 'username': 'deploy', 'auth_type': 'password',
+         'use_tmux': True, 'herdr': True, 'use_herdr': True},
+        {'name': 'Mode only', 'host': 'mode.example', 'username': 'deploy', 'auth_type': 'password',
+         'use_herdr': True},
+    ]}
+    result = client.post('/api/profiles/exchange', json={
+        'format': 'json', 'source': json.dumps(document),
+        'selections': [{'index': 0}, {'index': 1}],
+    })
+    assert result.status_code == 200
+    assert [item['status'] for item in result.json['results']] == ['error', 'error']
+    from app.profile_manager import load_profiles
+    with app.app_context():
+        assert load_profiles(user_id) == []
+
+
 # The fields a release without Herdr exports, and accepts as the whole set.
 RELEASED_EXPORT_FIELDS = {'name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux',
                           'auth_type', 'platform_icon', 'requires_key'}
