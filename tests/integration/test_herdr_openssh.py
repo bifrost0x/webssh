@@ -5,10 +5,10 @@ import socket
 import time
 from threading import BoundedSemaphore
 
-import paramiko
 import pytest
 
 from app import herdr, ssh_manager
+from tests.integration.herdr_lab_probe import connect
 
 pytestmark = pytest.mark.skipif(
     os.environ.get('PARAMIKO5_INTEGRATION') != '1'
@@ -27,14 +27,6 @@ COUNT_HERDR = 'cat /proc/[0-9]*/comm 2>/dev/null | grep -c -x herdr'
 def query(username):
     """Query the lab session as its owner, like the socket event does."""
     return herdr.collect_snapshot(username, ssh_manager.sessions[username]['user_id'])
-
-
-def connect(username):
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(HOST, port=PORT, username=username, password=PASSWORD,
-                   allow_agent=False, look_for_keys=False, timeout=10)
-    return client
 
 
 def run(client, command, timeout=15):

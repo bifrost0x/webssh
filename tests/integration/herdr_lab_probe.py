@@ -6,7 +6,9 @@ label is passed through.
 import json
 import os
 import re
+import subprocess
 import sys
+from pathlib import Path
 
 import paramiko
 
@@ -15,6 +17,28 @@ PORT = 2225
 USERNAME = 'agentuser'
 PASSWORD = 'Paramiko5-Test-Only!'
 HERDR = '$HOME/.local/bin/herdr'
+LAB_COMPOSE = (
+    'docker', 'compose',
+    '-f', str(Path(__file__).resolve().parent / 'paramiko5' / 'docker-compose.yml'),
+    '--project-name', 'webssh-paramiko5-integration',
+)
+
+
+def connect(username=USERNAME):
+    """Connect to the lab host, trusting only the host key read from its container."""
+    public_key = subprocess.run(
+        [*LAB_COMPOSE, 'exec', '-T', 'herdr', 'cat', '/etc/ssh/ssh_host_ed25519_key.pub'],
+        check=True, capture_output=True, text=True, timeout=30,
+    ).stdout.strip()
+    entry = paramiko.hostkeys.HostKeyEntry.from_line(f'[{HOST}]:{PORT} {public_key}')
+    if entry is None or entry.key is None:
+        raise RuntimeError('The lab host key could not be read')
+    client = paramiko.SSHClient()
+    client.get_host_keys().add(f'[{HOST}]:{PORT}', entry.key.get_name(), entry.key)
+    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+    client.connect(HOST, port=PORT, username=username, password=PASSWORD,
+                   allow_agent=False, look_for_keys=False, timeout=10)
+    return client
 
 
 def run(client, command):
@@ -41,10 +65,7 @@ def snapshot(client):
 def main(action, *args):
     if os.environ.get('PARAMIKO5_DISPOSABLE_LAB') != '1':
         raise SystemExit('This probe requires the disposable OpenSSH lab')
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(HOST, port=PORT, username=USERNAME, password=PASSWORD,
-                   allow_agent=False, look_for_keys=False, timeout=10)
+    client = connect()
     try:
         if action == 'reset':
             run(client, f'{HERDR} server stop >/dev/null 2>&1; rm -rf "$HOME/.config/herdr"')
