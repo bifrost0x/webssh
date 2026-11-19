@@ -15,7 +15,8 @@ APPROVED_UV_INSTALL_COMMAND = (
     'uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt'
 )
 APPROVED_INSTALL_COMMANDS = {APPROVED_PIP_INSTALL_COMMAND, APPROVED_UV_INSTALL_COMMAND}
-ALLOWED_PIP_LINES = {"cache: pip", *APPROVED_INSTALL_COMMANDS}
+# "pipefail" contains "pip"; the exact strict-mode line installs nothing.
+ALLOWED_PIP_LINES = {"cache: pip", "set -euo pipefail", *APPROVED_INSTALL_COMMANDS}
 MINIMUM_PYTHON = "3.11"
 
 
@@ -338,6 +339,11 @@ def test_pip_policy_allows_only_explicit_workflow_lines(lines, allowed):
     (['uv pip sync --python "$(command -v python)" --require-hashes -r requirements-test.txt'], False),
     ([APPROVED_PIP_INSTALL_COMMAND, 'uv add requests'], False),
     ([APPROVED_PIP_INSTALL_COMMAND, 'uv sync'], False),
+    # Strict shell mode is not an install; anything appended to it still is.
+    ([APPROVED_PIP_INSTALL_COMMAND, 'set -euo pipefail'], True),
+    (['set -euo pipefail'], False),
+    ([APPROVED_PIP_INSTALL_COMMAND, 'set -euo pipefail; pip install requests'], False),
+    ([APPROVED_PIP_INSTALL_COMMAND, 'set -euo pipefail && python -m pip install requests'], False),
 ])
 def test_uv_installer_policy_is_exact_and_keeps_all_hash_requirements(lines, allowed):
     assert pip_policy_allows('\n'.join(lines)) is allowed

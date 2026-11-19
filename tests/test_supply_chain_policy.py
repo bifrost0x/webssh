@@ -596,14 +596,30 @@ def test_real_browser_lab_is_required_in_ssh_integration():
     assert 'if: always()' in job and 'test-results/' in job
 
 
+def assert_bounded_font_browser_install(fonts):
+    """Both font browsers install through the locked helper, bounded and retried once."""
+    assert 'timeout-minutes: 35' in fonts
+    step = fonts.split('- name: Install locked font-test browsers', 1)[1].split('\n      - name:', 1)[0]
+    assert 'shell: bash' in step
+    assert 'set -euo pipefail' in step
+    assert 'for browser in firefox webkit; do' in step
+    assert 'for attempt in 1 2; do' in step
+    assert ('timeout --signal=TERM --kill-after=15s 360s '
+            'node scripts/install-ci-chromium.js "$browser"') in step
+    assert step.count('node scripts/install-ci-chromium.js') == 1
+    # A browser that fails both attempts stops the job instead of being skipped.
+    failure = step.split('if [ "$installed" != "true" ]; then', 1)[1]
+    assert failure.index('::error::') < failure.index('exit 1') < failure.index('done')
+
+
 def test_font_browsers_and_python_shards_are_required_parallel_gates():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
     fonts = workflow.split('\n  browser-fonts:', 1)[1].split('\n  browser-e2e:', 1)[0]
     assert 'matrix:' not in fonts
     assert "WEBSSH_E2E_FAST_HASHING: '1'" in fonts
     assert "python-version: '3.15'" in fonts
+    assert_bounded_font_browser_install(fonts)
     for browser, port in (('firefox', '4173'), ('webkit', '4174')):
-        assert 'node scripts/install-ci-chromium.js ' + browser in fonts
         assert 'WEBSSH_E2E_PORT=' + port in fonts
         assert '--browser=' + browser in fonts
         assert '--output="test-results/font-' + browser + '"' in fonts
@@ -630,8 +646,7 @@ def test_font_job_uses_hosted_runtime_and_locked_browser_launch_checks():
     assert "python-version: '3.15'" in fonts
     assert "node-version: '24'" in fonts
     assert 'run: npm ci' in fonts
-    for browser in ('firefox', 'webkit'):
-        assert 'node scripts/install-ci-chromium.js ' + browser in fonts
+    assert_bounded_font_browser_install(fonts)
     ldap = fonts.split('- name: Install LDAP build dependencies', 1)[1].split('- name:', 1)[0]
     assert 'run: bash scripts/install_ci_test_system_deps.sh' in ldap
 
