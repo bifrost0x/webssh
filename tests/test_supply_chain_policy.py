@@ -596,27 +596,27 @@ def test_real_browser_lab_is_required_in_ssh_integration():
     assert 'if: always()' in job and 'test-results/' in job
 
 
-def assert_bounded_font_browser_install(fonts):
-    """Both font browsers install through the locked helper, bounded and retried once."""
+def assert_pinned_remote_font_browsers(fonts):
+    """Firefox/WebKit run in the exact prebuilt Playwright version, without apt."""
     assert 'timeout-minutes: 35' in fonts
-    assert fonts.index('- name: Install Playwright host libraries') < fonts.index(
-        '- name: Install locked font-test browsers'
-    )
-    host_deps = fonts.split('- name: Install Playwright host libraries', 1)[1].split('\n      - name:', 1)[0]
-    assert 'node ./node_modules/playwright/cli.js install-deps firefox webkit' in host_deps
-    step = fonts.split('- name: Install locked font-test browsers', 1)[1].split('\n      - name:', 1)[0]
-    assert "WEBSSH_CI_BROWSER_DEPS_PREINSTALLED: 'true'" in step
-    assert 'shell: bash' in step
-    assert 'set -euo pipefail' in step
-    assert 'for browser in firefox webkit; do' in step
-    assert 'for attempt in 1 2; do' in step
-    assert ('timeout --signal=TERM --kill-after=15s 360s '
-            'node scripts/install-ci-chromium.js "$browser"') in step
-    assert step.count('node scripts/install-ci-chromium.js') == 1
-    # A browser that fails both attempts stops the job instead of being skipped.
-    failure = step.split('if [ "$installed" != "true" ]; then', 1)[1]
-    assert failure.index('::error::') < failure.index('exit 1') < failure.index('done')
-
+    assert 'runs-on: ubuntu-24.04' in fonts
+    assert 'container:' not in fonts
+    assert 'PW_TEST_CONNECT_WS_ENDPOINT: \'ws://127.0.0.1:4355/\'' in fonts
+    assert '--network host --user pwuser' in fonts
+    assert '--mount "type=bind,source=$PWD/node_modules,target=/work/node_modules,readonly"' in fonts
+    assert 'node /work/node_modules/playwright/cli.js run-server --host 127.0.0.1 --port 4355' in fonts
+    assert 'node -e \'if (require("playwright/package.json").version !== "1.65.0") process.exit(1)\'' in fonts
+    # Image version is locked to package-lock.json; the digest prevents tag drift.
+    lock = json.loads((ROOT / 'package-lock.json').read_text(encoding='utf-8'))
+    assert lock['packages']['node_modules/playwright']['version'] == '1.65.0'
+    assert ('mcr.microsoft.com/playwright:v1.65.0-noble@sha256:'
+            '9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe') in fonts
+    assert 'install-deps' not in fonts and 'apt-get' not in fonts
+    assert 'Stop pinned browser server' in fonts
+    assert 'if: always()' in fonts
+    assert 'webssh.ci-run=$GITHUB_RUN_ID' in fonts
+    assert 'docker rm --force --volumes "$WEBSSH_FONT_BROWSER_CONTAINER"' in fonts
+    assert 'Refusing to remove container without matching CI ownership label' in fonts
 
 def test_font_browsers_and_python_shards_are_required_parallel_gates():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
@@ -624,7 +624,7 @@ def test_font_browsers_and_python_shards_are_required_parallel_gates():
     assert 'matrix:' not in fonts
     assert "WEBSSH_E2E_FAST_HASHING: '1'" in fonts
     assert "python-version: '3.15'" in fonts
-    assert_bounded_font_browser_install(fonts)
+    assert_pinned_remote_font_browsers(fonts)
     for browser, port in (('firefox', '4173'), ('webkit', '4174')):
         assert 'WEBSSH_E2E_PORT=' + port in fonts
         assert '--browser=' + browser in fonts
@@ -652,7 +652,7 @@ def test_font_job_uses_hosted_runtime_and_locked_browser_launch_checks():
     assert "python-version: '3.15'" in fonts
     assert "node-version: '24'" in fonts
     assert 'run: npm ci' in fonts
-    assert_bounded_font_browser_install(fonts)
+    assert_pinned_remote_font_browsers(fonts)
     ldap = fonts.split('- name: Install LDAP build dependencies', 1)[1].split('- name:', 1)[0]
     assert 'run: bash scripts/install_ci_test_system_deps.sh' in ldap
 
