@@ -188,6 +188,19 @@ test('desktop: Herdr session mode is usable in the WebSSH terminal', async ({ pa
         };
     });
     await page.evaluate(key => window.TerminalManager.terminals[key].focus(), id);
+    // On slow runners the first key can vanish after the browser sent it, while
+    // Herdr is still settling after the attach. Type until the pane echoes a key,
+    // then clear the line.
+    const prompt = /agentuser@\S+:~\$ ?(x*)\s*$/;
+    await expect.poll(async () => {
+        await page.keyboard.type('x');
+        const echoed = await waitScreen(page, id, current => current.lines.some(line => prompt.exec(line)?.[1]), 'echo', 1500)
+            .then(() => true, () => false);
+        return echoed;
+    }, { message: 'pane echoes a key', timeout: 20_000 }).toBe(true);
+    await page.keyboard.press('Control+U');
+    await waitScreen(page, id, current => current.lines.some(line => prompt.exec(line)?.[1] === ''), 'cleared prompt');
+    await page.evaluate(() => { window.__sentInput = []; });
     await page.keyboard.type('echo MARK-$((6*7))');
     await page.keyboard.press('Enter');
     state = await waitScreen(page, id, shows('MARK-42'), 'pane output').catch(async error => {
