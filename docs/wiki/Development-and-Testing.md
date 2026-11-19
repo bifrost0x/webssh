@@ -1,6 +1,6 @@
 # Development and Testing
 
-WebSSH supports Python 3.11 and newer. The production container currently uses Python 3.14. The frontend is vanilla JavaScript and CSS with locally vendored dependencies.
+WebSSH supports Python 3.11 and newer. The production container currently uses Python 3.15. The frontend is vanilla JavaScript and CSS with locally vendored dependencies.
 
 ## Development setup
 
@@ -46,7 +46,7 @@ Run the suite with:
 The pytest harness uses a reduced bcrypt work factor to keep authentication-heavy
 tests fast. An isolated subprocess contract verifies that normal application
 processes retain bcrypt's production work factor. The maintained gates execute
-the full unit suite in three complete file partitions on Python 3.14 and a representative compatibility suite on
+the full unit suite in three complete file partitions on Python 3.15 and a representative compatibility suite on
 Python 3.11. The dependency-lock job also runs that unchanged minimum-version
 suite and checks Redis 7 and 8 against separate digest-pinned services, reducing
 concurrent setup jobs. Separate jobs exercise disposable
@@ -127,7 +127,7 @@ cases start. Their partitions are calculated from the current discovery and
 weights. Only those cases run exclusively; all four lanes then run their remaining
 cases in parallel, with separate output and timing files for each phase. All
 remaining cases still run even when one fails.
-Font tests use Ubuntu hosted runners with Python 3.14 and the locked Playwright
+Font tests use Ubuntu hosted runners with Python 3.15 and the locked Playwright
 browsers. Both browser runtimes must pass their installation and launch checks.
 
 The Python partitions are computed from the current collection and keep whole
@@ -146,7 +146,7 @@ queueing, cold dependency installation and runner capacity still require measure
 GitHub validation at the published revision. No test is dropped to meet that target.
 CI installs the unchanged hash-locked Python test requirements with pinned uv
 0.12.3 into the interpreter selected by `setup-python`. This retains the Python
-3.11 and 3.14 checks and does not change production installation commands.
+3.11 and 3.15 checks and does not change production installation commands.
 On Ubuntu CI, installed LDAP headers are reused and package indexes are refreshed
 only if installation from the existing indexes fails. Chromium installs the
 headless shell used by these tests and must pass a real launch probe; missing
@@ -294,7 +294,7 @@ runs cannot satisfy a newer revision.
 
 | Change or trigger | Tests | Container scans and publication |
 |---|---|---|
-| Code, tests, dependencies, workflow or mixed PR | Full Python 3.14 partitions; Python 3.11 compatibility; Redis 7/8; OpenSSH with real browser lifecycle; SMB; JavaScript, vendor and lint checks; all 32 browser partitions; Firefox/WebKit fonts; runtime and release contracts | Native AMD64 and ARM64 scans; no publication |
+| Code, tests, dependencies, workflow or mixed PR | Full Python 3.15 partitions; Python 3.11 compatibility; Redis 7/8; OpenSSH with real browser lifecycle; SMB; JavaScript, vendor and lint checks; all 32 browser partitions; Firefox/WebKit fonts; runtime and release contracts | Native AMD64 and ARM64 scans; no publication |
 | Documentation-only PR | Exact-revision classification, documentation contracts and both required aggregates | Both image scans deliberately skipped; no publication |
 | Main push or version tag | Complete reusable Tests workflow once | Native candidates build alongside tests; publish only after all gates pass |
 | Manual exact-SHA test run | Full tests, regardless of changed paths | No publication from the Tests workflow |
