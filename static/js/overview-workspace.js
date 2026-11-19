@@ -1046,7 +1046,7 @@
                 kpis: tw('kpisLabel', 'Key figures'), topology: tw('topologyTitle', 'Infrastructure'), hosts: tw('hostsTitle', 'Hosts'),
                 attention: tw('attentionTitle', 'Needs attention'), automation: tw('automationTitle', 'Automation'),
                 platforms: tw('platformsTitle', 'Platforms'), activity: tw('activityTitle', 'Activity'),
-                continue: wf('title', 'Continue working'),
+                continue: wf('title', 'Continue working'), agents: t('herdr.agentsTitle', 'Agents'),
             }[id] || id;
         }
         function announce(message) {
@@ -1189,9 +1189,37 @@
                     if (narrow !== state.topologyNarrow) schedule();
                 }).observe($('odTopology'));
             }
+            state.agents = createAgents();
             render();
             queueReadiness();
             restoreReachability().finally(syncAutomatic);
+        }
+
+        /** The Agents panel reads Herdr through the user's own sessions; see herdr-overview.js. */
+        function createAgents() {
+            const section = $('odAgents');
+            if (!section || !win.HerdrOverview || !win.socket) return null;
+            const controller = win.HerdrOverview.createController({
+                doc, win, socket: win.socket, section, view,
+                enabled: doc.querySelector('meta[name="herdr-enabled"]')?.content === 'true',
+                profiles,
+                profilesLoaded: () => win.ProfileManager?.profilesLoaded === true,
+                sessions,
+                translate: key => win.i18n?.t(key),
+                language: () => win.i18n?.getLanguage?.(),
+                onOpenSession(sessionId) {
+                    if (!sessionManager?.getSession?.(sessionId)) return;
+                    showWorkspaces();
+                    sessionManager.switchSession(sessionId);
+                },
+                onConnect(profileId) {
+                    const host = hostModel().find(item => item.id === profileId);
+                    if (host) connect(host);
+                },
+                onOpenHosts: () => $('manageProfilesBtn')?.click(),
+            });
+            controller.start();
+            return controller;
         }
         return {init, render};
     }

@@ -38,6 +38,10 @@ def _valid_settings(value):
             or type(value['ssh_gateway_enabled']) is bool
         )
         and (
+            'herdr_enabled' not in value
+            or type(value['herdr_enabled']) is bool
+        )
+        and (
             'registration_enabled' not in value
             or type(value['registration_enabled']) is bool
         )
@@ -119,6 +123,23 @@ def set_ssh_gateway_enabled(value):
     with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
         data = _load_with_lock_held()
         data['ssh_gateway_enabled'] = value
+        if not _valid_settings(data):
+            return False
+        _save(data)
+    return value
+
+
+def is_herdr_enabled():
+    """The Herdr integration requires an explicit, persisted admin opt-in."""
+    return _load().get('herdr_enabled') is True
+
+
+def set_herdr_enabled(value):
+    if type(value) is not bool:
+        return False
+    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
+        data = _load_with_lock_held()
+        data['herdr_enabled'] = value
         if not _valid_settings(data):
             return False
         _save(data)

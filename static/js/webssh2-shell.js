@@ -36,6 +36,8 @@
             user: session.username || '—',
             persistence: session.useTmux
                 ? `tmux${session.tmuxSessionName ? ` · ${session.tmuxSessionName}` : ''}`
+                : session.useHerdr
+                ? t('herdr.sessionMode', 'Herdr')
                 : t('workspace.standardSession', 'Standard session'),
             transport: session.viaSocks || session.socksProxyId
                 ? `SSH ${SessionManager.socksLabel(session)}`

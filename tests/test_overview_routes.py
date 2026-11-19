@@ -236,6 +236,29 @@ def test_continue_working_layout_persists_with_existing_panel_preferences(app, c
     assert '"id": "continue"' in client.get('/').data.decode()
 
 
+def test_agents_panel_can_be_arranged_with_every_other_panel(app, client, context):
+    from app.user_settings import OVERVIEW_PANELS, get_user_settings
+    panels = [{'id': panel, 'w': 4, 'h': None, 'hidden': panel == 'agents'} for panel in OVERVIEW_PANELS]
+    assert 'agents' in OVERVIEW_PANELS
+    response = client.put('/api/overview/preferences', json={'panels': panels})
+    assert response.status_code == 200
+    assert get_user_settings(context[0])['overview_panels'] == panels
+    assert client.put('/api/overview/preferences', json={'panels': [*panels, {'id': 'agents', 'w': 4}]}).status_code == 400
+    assert client.put('/api/overview/preferences', json={'panels': [{'id': 'agent', 'w': 4}]}).status_code == 400
+
+
+def test_agents_panel_renders_only_while_the_integration_is_on(app, client, context):
+    from app.app_settings import set_herdr_enabled
+    assert 'id="odAgents"' not in client.get('/').data.decode()
+    set_herdr_enabled(True)
+    try:
+        page = client.get('/').data.decode()
+        assert 'id="odAgents"' in page and 'js/herdr-overview.js' in page
+    finally:
+        set_herdr_enabled(False)
+    assert 'id="odAgents"' not in client.get('/').data.decode()
+
+
 @pytest.mark.parametrize('kind', ['reboot', 'security-updates', 'socks-missing'])
 def test_attention_dismissal_persists_with_existing_items_and_can_be_restored(app, client, context, kind):
     from app.user_settings import get_user_settings

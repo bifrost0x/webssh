@@ -11,7 +11,7 @@ MAX_INPUT_BYTES = 64 * 1024
 MAX_RECORDS = 100
 _FIELDS = {
     'name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux',
-    'requires_key', 'jump_alias', 'auth_type', 'platform_icon',
+    'herdr', 'use_herdr', 'requires_key', 'jump_alias', 'auth_type', 'platform_icon',
     'socks_route_omitted', 'warnings',
 }
 SOCKS_ROUTE_WARNING = 'SOCKS5 route not exported'
@@ -76,7 +76,7 @@ def _record(values):
         or row.get('auth_type', 'password') not in ('password', 'key', 'tailscale')
         or ('platform_icon' in row and (not isinstance(row['platform_icon'], str) or row['platform_icon'] not in PLATFORMS | {'auto'}))
         or ('group' in row and not _text(row['group'], 64))
-        or any(type(row[field]) is not bool for field in ('favorite', 'use_tmux') if field in row)
+        or any(type(row[field]) is not bool for field in ('favorite', 'use_tmux', 'herdr', 'use_herdr') if field in row)
     ):
         row['blocked'] = True
         row['warnings'].append('Invalid connection metadata.')
@@ -231,6 +231,11 @@ def export_profiles(profiles, jump_hosts):
             for field in ('name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux', 'auth_type', 'platform_icon')
             if field in profile
         }
+        # Releases without Herdr reject unknown fields, so a host without
+        # Herdr exports exactly as before; only enabled options are written.
+        for field in ('herdr', 'use_herdr'):
+            if profile.get(field) is True:
+                row[field] = True
         row['requires_key'] = profile.get('auth_type') == 'key'
         if profile.get('jump_host_id'):
             row['jump_alias'] = jumps.get(profile['jump_host_id'], 'Unresolved jump host')

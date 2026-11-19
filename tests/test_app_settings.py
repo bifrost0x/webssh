@@ -53,6 +53,48 @@ def test_gateway_setting_rejects_non_booleans(tmp_path, monkeypatch, value):
     assert not path.exists()
 
 
+def test_herdr_requires_persisted_admin_opt_in(tmp_path, monkeypatch):
+    from app import app_settings
+
+    path = tmp_path / 'app_settings.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    assert app_settings.is_herdr_enabled() is False
+    app_settings.set_ssh_gateway_enabled(True)
+    assert app_settings.set_herdr_enabled(True) is True
+    assert app_settings.is_herdr_enabled() is True
+    assert app_settings.is_ssh_gateway_enabled() is True
+    assert app_settings.set_herdr_enabled(False) is False
+    assert app_settings.is_herdr_enabled() is False
+    assert app_settings.is_ssh_gateway_enabled() is True
+
+
+@pytest.mark.parametrize('value', ['true', 1, None, {}])
+def test_herdr_setting_rejects_non_booleans(tmp_path, monkeypatch, value):
+    from app import app_settings
+
+    path = tmp_path / 'app_settings.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    assert app_settings.set_herdr_enabled(value) is False
+    assert not path.exists()
+
+
+def test_stored_non_boolean_herdr_setting_is_treated_as_corrupt(tmp_path, monkeypatch):
+    import json
+    from app import app_settings
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    path = tmp_path / 'app_settings.json'
+    document = json.dumps({
+        'schema_version': CURRENT_STORAGE_VERSIONS['app_settings'],
+        'herdr_enabled': 'true',
+    }).encode()
+    path.write_bytes(document)
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    with pytest.raises(StorageCorruptionError):
+        app_settings.is_herdr_enabled()
+    assert path.read_bytes() == document
+
+
 def test_disabled_gateway_rejects_selector_but_preserves_normal_validation(tmp_path, monkeypatch):
     from app import app_settings
     from app.socket_events import _validate_ssh_params

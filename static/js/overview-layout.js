@@ -18,6 +18,7 @@
         {id: 'kpis', w: 12, h: null, hidden: false},
         {id: 'topology', w: 8, h: null, hidden: false},
         {id: 'attention', w: 4, h: null, hidden: false},
+        {id: 'agents', w: 4, h: null, hidden: false},
         {id: 'automation', w: 4, h: null, hidden: false},
         {id: 'hosts', w: 8, h: null, hidden: false},
         {id: 'platforms', w: 4, h: null, hidden: false},
@@ -51,9 +52,10 @@
         return JSON.stringify(normalize(layout)) === JSON.stringify(defaults());
     }
 
-    function move(layout, id, offset) {
+    /** Move among the shown panels; `present` leaves out panels this page does not render. */
+    function move(layout, id, offset, present = () => true) {
         const list = normalize(layout);
-        const visible = list.filter(item => !item.hidden);
+        const visible = list.filter(item => !item.hidden && present(item.id));
         const from = visible.findIndex(item => item.id === id);
         if (from < 0) return list;
         const to = clamp(from + offset, 0, visible.length - 1);
@@ -108,6 +110,9 @@
         let editing = false;
         let saveTimer = 0;
         const sections = new Map([...board.querySelectorAll(':scope > [data-panel]')].map(section => [section.dataset.panel, section]));
+        // A panel can be absent from the page, such as one of a disabled integration.
+        const present = id => sections.has(id);
+        const shown = list => list.filter(item => !item.hidden && present(item.id));
         const gap = () => parseFloat(win.getComputedStyle(board).columnGap) || 20;
         const reduced = () => win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
         let pending = false;
@@ -204,8 +209,8 @@
                     const offset = {ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1}[event.key];
                     if (!offset) return;
                     event.preventDefault();
-                    const next = move(layout, id, offset);
-                    const position = next.filter(entry => !entry.hidden).findIndex(entry => entry.id === id) + 1;
+                    const next = move(layout, id, offset, present);
+                    const position = shown(next).findIndex(entry => entry.id === id) + 1;
                     change(next, t('overviewWorkspace.panelMoved', '{name} moved to position {position}', {name, position}));
                     sections.get(id).querySelector('[data-panel-handle]')?.focus();
                 });
@@ -245,7 +250,7 @@
             });
             const tray = doc.getElementById('odHiddenPanels');
             if (tray) {
-                tray.replaceChildren(...layout.filter(item => item.hidden).map(item => {
+                tray.replaceChildren(...layout.filter(item => item.hidden && present(item.id)).map(item => {
                     const name = label(item.id);
                     const add = doc.createElement('button');
                     add.type = 'button';
@@ -307,7 +312,7 @@
                 const after = target.dataset.width === '12'
                     ? y > box.top + box.height / 2
                     : x > box.left + box.width / 2;
-                const visible = layout.filter(item => !item.hidden).map(item => item.id);
+                const visible = shown(layout).map(item => item.id);
                 const beforeId = after ? visible[visible.indexOf(target.dataset.panel) + 1] || null : target.dataset.panel;
                 const key = `${beforeId}`;
                 if (key === last || beforeId === id) return;
@@ -322,7 +327,7 @@
                 delete section.dataset.dragging;
                 delete board.dataset.dragging;
                 persist();
-                const position = layout.filter(item => !item.hidden).findIndex(item => item.id === id) + 1;
+                const position = shown(layout).findIndex(item => item.id === id) + 1;
                 announce(t('overviewWorkspace.panelMoved', '{name} moved to position {position}', {name: label(id), position}));
             };
             doc.addEventListener('pointermove', onMove);

@@ -22,6 +22,7 @@ const TerminalManager = {
     clipboardDisposers: {},
     terminalWriteCallbacks: {},
     osc52ClipboardAllowed: {},
+    herdrMouseMenus: {},
     directorySyncReplayDepths: {},
     directorySyncDisposers: {},
 
@@ -374,6 +375,18 @@ const TerminalManager = {
         }
     },
 
+    /**
+     * Herdr opens its own pane menu on a right click. While the application
+     * tracks the mouse, the browser menu would cover it, so it is suppressed;
+     * Shift+right click keeps the browser menu, like Shift selection.
+     */
+    handleHerdrContextMenu(event, terminal, herdrMouseMenu) {
+        if (herdrMouseMenu !== true || event.shiftKey) return false;
+        if (!terminal?.modes || terminal.modes.mouseTrackingMode === 'none') return false;
+        event.preventDefault();
+        return true;
+    },
+
     handleClipboardKeyEvent(event, terminal, isMac) {
         const shouldProcess = this.shouldProcessClipboardKeyEvent(
             event,
@@ -482,6 +495,7 @@ const TerminalManager = {
         ));
 
         this.osc52ClipboardAllowed[key] = options.allowOsc52Clipboard === true;
+        this.herdrMouseMenus[key] = options.herdrMouseMenu === true;
 
         const fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);
@@ -554,6 +568,12 @@ const TerminalManager = {
 
         terminal.open(container);
         window.TerminalPasteGuard?.attach(sessionId, terminal);
+        if (terminal.element && !terminal.element.dataset.herdrContextMenu) {
+            terminal.element.dataset.herdrContextMenu = 'bound';
+            terminal.element.addEventListener('contextmenu', event => {
+                this.handleHerdrContextMenu(event, terminal, this.herdrMouseMenus[key]);
+            });
+        }
 
         this.compositionDisposers[key]?.();
         this.compositionDisposers[key] = this.setupAndroidCompositionGuard(terminal);
@@ -1421,6 +1441,7 @@ const TerminalManager = {
         delete this.clipboardDisposers[terminalKey];
         delete this.terminalWriteCallbacks[terminalKey];
         delete this.osc52ClipboardAllowed[terminalKey];
+        delete this.herdrMouseMenus[terminalKey];
         delete this.directorySyncReplayDepths[terminalKey];
         delete this.directorySyncDisposers[terminalKey];
 

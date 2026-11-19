@@ -96,6 +96,9 @@ See the [automation guide](docs/automation.md) and
 - Per-host [SOCKS5 proxy routes](docs/wiki/Profiles-Jump-Hosts-and-Commands.md#socks5-proxies)
   for terminal sessions and their SFTP files, with optional proxy login and remote DNS.
 - Optional persistent remote shells through tmux.
+- Optional [Herdr integration](docs/herdr.md), off by default: a read-only
+  overview of the agents Herdr reports on connected hosts and Herdr as a terminal
+  session mode.
 - Broadcast input, terminal search, transcripts, reconnect controls, and
   configurable scrollback.
 - Session-aware Files, Commands, Diagnostics, and Notes contexts.

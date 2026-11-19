@@ -251,6 +251,20 @@ Disconnecting the WebSSH transport is different from killing the remote tmux
 session. Use the deliberate kill action only when the remote workload should
 end.
 
+## Herdr sessions
+
+With the optional Herdr integration enabled, a saved host can open the
+[Herdr](https://github.com/herdrdev/herdr) client as its terminal session
+instead of a standard shell or a persistent tmux session. A host uses either
+tmux or Herdr, never both, and tmux behavior is unchanged. Herdr sessions are
+not persistent WebSSH sessions: WebSSH keeps no session name, never stops Herdr
+on the remote host and does not reconnect by itself; a manual reconnect attaches
+to Herdr again. If Herdr is not installed, WebSSH falls back to a regular
+shell. Folder synchronization and remote OSC 52 clipboard requests are
+unavailable in a Herdr session. See the
+[Herdr integration guide](https://github.com/bifrost0x/webssh/blob/main/docs/herdr.md)
+for activation, the read-only Agents panel and the security boundaries.
+
 ## Idle timeout
 
 `SESSION_TIMEOUT` defaults to 1800 seconds and closes idle WebSSH SSH sessions.

@@ -66,30 +66,48 @@ def test_browser_runner_reuses_lab_and_isolates_temporary_state(monkeypatch, bro
     assert len([args for args, _ in calls if 'up' in args]) == 1
     assert 'pytest' in calls[2][0]
     assert any(arg.startswith('--basetemp=') for arg in calls[2][0])
-    browser_args, options = calls[3]
-    assert browser_args[0] == 'node'
-    assert browser_args[2:] == ['test', '--config', 'tests/integration/playwright.file-mutations.config.js', '--forbid-only']
-    assert options['env']['WEBSSH_E2E_PORT'] == '4184'
-    assert options['env']['PYTHON'] == sys.executable
-    assert not Path(options['env']['BACKUP_TEMP_DIR']).exists()
+    browser_runs = [(args, options) for args, options in calls if args[0] == 'node']
+    assert [args[2:] for args, _ in browser_runs] == [
+        ['test', '--config', 'tests/integration/playwright.file-mutations.config.js', '--forbid-only'],
+        ['test', '--config', 'tests/integration/playwright.herdr.config.js', '--forbid-only'],
+    ]
+    assert calls[3:5] == browser_runs
+    for _args, options in browser_runs:
+        assert options['env']['WEBSSH_E2E_PORT'] == '4184'
+        assert options['env']['PYTHON'] == sys.executable
+        assert options['env']['PARAMIKO5_DISPOSABLE_LAB'] == '1'
+        assert not Path(options['env']['BACKUP_TEMP_DIR']).exists()
     assert calls[-1][0][-2:] == ['down', '-v']
 
 
-@pytest.mark.parametrize('failed_phase,code', [('pytest', 23), ('browser', 17)])
+@pytest.mark.parametrize('failed_phase,code', [('pytest', 23), ('browser', 17), ('herdr-browser', 19)])
 def test_browser_runner_preserves_failures_and_cleans_lab(monkeypatch, browser_prerequisites, failed_phase, code):
     calls, cleanup = [], []
 
+    def failed(args):
+        if failed_phase == 'pytest':
+            return 'pytest' in args
+        if failed_phase == 'browser':
+            return args[0] == 'node'
+        return args[0] == 'node' and 'tests/integration/playwright.herdr.config.js' in args
+
     def run(args, **kwargs):
         calls.append(args)
-        return code if ('pytest' in args if failed_phase == 'pytest' else args[0] == 'node') else 0
+        return code if failed(args) else 0
 
     monkeypatch.setattr(run_integration_tests, 'run', run)
     monkeypatch.setattr(run_integration_tests, 'cleanup_runtime', lambda: cleanup.append(True))
     assert run_integration_tests.main(browser=True) == code
     assert calls[-1][-2:] == ['down', '-v']
     assert cleanup == [True]
+    browser_configs = [args[args.index('--config') + 1] for args in calls if args[0] == 'node']
     if failed_phase == 'pytest':
-        assert not any(args[0] == 'node' for args in calls)
+        assert browser_configs == []
+    elif failed_phase == 'browser':
+        # A failed browser suite stops the remaining ones.
+        assert browser_configs == ['tests/integration/playwright.file-mutations.config.js']
+    else:
+        assert browser_configs[-1] == 'tests/integration/playwright.herdr.config.js'
 
 
 @pytest.mark.parametrize('missing', ['node', 'playwright'])
@@ -157,11 +175,12 @@ def test_runner_starts_compose_and_runs_all_integration_modules(monkeypatch):
     startup_args, _startup_kwargs = calls[1]
     assert startup_args[-4:] == ["up", "-d", "--build", "--wait"]
     pytest_args, pytest_kwargs = calls[2]
-    assert pytest_args[-4:] == [
+    assert pytest_args[-5:] == [
         "tests/integration/test_paramiko5_openssh.py",
         "tests/integration/test_paramiko5_socketio.py",
         "tests/integration/test_automation_openssh.py",
         "tests/integration/test_socks_openssh.py",
+        "tests/integration/test_herdr_openssh.py",
     ]
     assert pytest_kwargs["env"]["PARAMIKO5_INTEGRATION"] == "1"
 

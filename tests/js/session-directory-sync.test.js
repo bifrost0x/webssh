@@ -49,6 +49,38 @@ test('personal setting off leaves folder navigation independent', () => {
     assert.equal(h.panel.dataset.directorySyncEnabled, 'false');
 });
 
+test('a Herdr session never probes or writes and shows the switch as unavailable', () => {
+    const states = [];
+    const h = harness({unsupported: id => id === 'a', onAvailability: value => states.push(value)});
+    assert.equal(h.requests.length, 0);
+    assert.equal(h.indicator.hidden, false);
+    assert.equal(h.checkbox.checked, false);
+    assert.equal(h.checkbox.disabled, true);
+    assert.equal(h.panel.dataset.directorySyncEnabled, 'false');
+    assert.equal(h.controller.isUnsupported(), true);
+    assert.equal(states.at(-1), true);
+    // Folder clicks browse Files on their own; nothing reaches the terminal.
+    assert.equal(h.controller.navigate('a', '/tmp'), false);
+    assert.equal(h.controller.setEnabled(true), false);
+    h.controller.observe('a', '/srv');
+    assert.deepEqual([h.requests, h.sent, h.moves], [[], [], []]);
+    // Another session in the same workspace keeps folder sync.
+    h.source('b'); h.controller.setContext('b', true);
+    assert.equal(h.checkbox.disabled, false);
+    assert.equal(h.checkbox.checked, true);
+    assert.equal(states.at(-1), false);
+    assert.equal(h.requests.length, 1);
+});
+
+test('a server answer of unsupported writes nothing into the terminal', () => {
+    const h = harness();
+    h.requests[0].callback({success: false, directory: null, reason: 'unsupported'});
+    h.controller.navigate('a', '/tmp');
+    h.requests[1].callback({success: false, directory: null, reason: 'unsupported'});
+    assert.deepEqual(h.sent, []);
+    assert.deepEqual(h.moves, []);
+});
+
 test('personal setting on checks the per-session switch and follows automatically', () => {
     const h = harness({});
     assert.equal(h.requests.length, 1);

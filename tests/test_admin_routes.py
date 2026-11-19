@@ -11,6 +11,7 @@ ADMIN_REQUESTS = (
     pytest.param('post', '/admin/api/operations/transfers/unknown/cancel', None, id='operations-cancel'),
     pytest.param('get', '/admin/api/operations', None, id='operations'),
     pytest.param('post', '/admin/api/settings', {'ssh_gateway_enabled': True}, id='set-gateway'),
+    pytest.param('post', '/admin/api/settings', {'herdr_enabled': True}, id='set-herdr'),
     pytest.param('get', '/admin', None, id='admin-page'),
     pytest.param('get', '/admin/api/users', None, id='list-users'),
     pytest.param(
@@ -418,6 +419,60 @@ def test_invalid_gateway_setting_does_not_change_registration(app, client):
     assert response.status_code == 400
     assert app_settings.is_registration_enabled() is original
     assert app_settings.is_ssh_gateway_enabled() is False
+
+
+def test_herdr_setting_requires_step_up_and_persists(app, client, monkeypatch):
+    import app as app_module
+    from app import app_settings
+    _prepare_role(app, client, 'admin')
+    records = []
+    original_log = app_module.log_info
+    monkeypatch.setattr(app_module, 'log_info', lambda message, **fields: (
+        records.append((message, fields)), original_log(message, **fields)))
+    assert client.get('/admin/api/settings').get_json()['herdr_enabled'] is False
+    assert b'name="herdr-enabled" content="false"' in client.get('/').data
+    response = client.post('/admin/api/settings', json={'herdr_enabled': True})
+    assert response.status_code == 403
+    assert app_settings.is_herdr_enabled() is False
+    assert not records
+    for enabled in (True, False):
+        response = client.post('/admin/api/settings', json={'herdr_enabled': enabled},
+            headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+        assert response.status_code == 200
+        assert response.get_json()['herdr_enabled'] is enabled
+        assert app_settings.is_herdr_enabled() is enabled
+        assert client.get('/admin/api/settings').get_json()['herdr_enabled'] is enabled
+        assert f'name="herdr-enabled" content="{str(enabled).lower()}"'.encode() in client.get('/').data
+    changes = [fields for message, fields in records if message == 'Admin changed Herdr setting']
+    assert [fields['herdr_enabled'] for fields in changes] == [True, False]
+    assert all(fields['admin'] for fields in changes)
+
+
+@pytest.mark.parametrize('value', ['true', 1, None, []])
+def test_invalid_herdr_setting_is_rejected(app, client, value):
+    from app import app_settings
+    _prepare_role(app, client, 'admin')
+    response = client.post('/admin/api/settings', json={'herdr_enabled': value},
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+    assert response.status_code == 400
+    assert response.get_json() == {'error': 'herdr_enabled must be a boolean'}
+    assert app_settings.is_herdr_enabled() is False
+
+
+def test_invalid_field_keeps_herdr_setting_unchanged(app, client):
+    from app import app_settings
+    _prepare_role(app, client, 'admin')
+    original = app_settings.is_registration_enabled()
+    for payload in (
+        {'herdr_enabled': True, 'ssh_gateway_enabled': 'true'},
+        {'herdr_enabled': 'true', 'ssh_gateway_enabled': True, 'registration_enabled': not original},
+    ):
+        response = client.post('/admin/api/settings', json=payload,
+            headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+        assert response.status_code == 400
+        assert app_settings.is_herdr_enabled() is False
+        assert app_settings.is_ssh_gateway_enabled() is False
+        assert app_settings.is_registration_enabled() is original
 
 
 def test_support_links_setting_requires_step_up_and_hides_the_links(app, client):

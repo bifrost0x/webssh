@@ -367,6 +367,7 @@
 
     let selectedConnectionProfileState = null;
     const pendingReconnectSessionMap = new Map();
+    const herdrFallbackNotified = new Set();
 
     function hasUsableConnectionKey(keyId) {
         return Boolean(keyId) && ProfileManager.keys.some(
@@ -401,6 +402,7 @@
         SessionManager.pendingReconnectProfileId = null;
         SessionManager.pendingReconnectSessionId = null;
         SessionManager.pendingReconnectTmux = null;
+        SessionManager.pendingReconnectHerdr = false;
         const jumpSelect = document.getElementById('jumpHostSelect');
         if (jumpSelect) jumpSelect.value = '';
         const jumpPassword = document.getElementById('jumpHostPasswordInput');
@@ -1801,6 +1803,7 @@
             stopConnectTimer();
             setConnectLoading(false);
             SessionManager.pendingReconnectTmux = null;
+            SessionManager.pendingReconnectHerdr = false;
             SessionManager.pendingReconnectProfileId = null;
             SessionManager.pendingDisplayName = null;
             currentConnectRequestId = null;
@@ -1811,6 +1814,16 @@
         }
 
         const sessionId = SessionManager.createSession(data);
+        // Tell once per host and page load; reconnects of the same host stay quiet.
+        if (!herdrFallbackNotified.has(data.profile_id)
+                && window.ProfileLauncherUtils?.herdrFellBack(window.ProfileManager?.getProfile?.(data.profile_id), data)) {
+            herdrFallbackNotified.add(data.profile_id);
+            showNotification(
+                (window.i18n?.t('herdr.sessionFallback') || 'Herdr was not found on {host}. A standard shell was started instead.')
+                    .replace('{host}', data.host || ''),
+                'info',
+            );
+        }
         const replacedSessionId = pendingReconnectSessionMap.get(requestId);
         pendingReconnectSessionMap.delete(requestId);
         if (SessionManager.pendingReconnectSessionId === replacedSessionId) {
@@ -2378,6 +2391,7 @@
     function dismissConnectionModal() {
         SessionManager.pendingReconnectSessionId = null;
         SessionManager.pendingReconnectTmux = null;
+        SessionManager.pendingReconnectHerdr = false;
         SessionManager.pendingDisplayName = null;
         const modalRequestId = connectionModalRequestId;
         const targetPane = pendingPaneIndex;
@@ -2851,7 +2865,26 @@
             { id: 'save-transcript', labelKey: 'terminal.saveTranscript', hint: '', action: () => document.getElementById('saveTranscriptBtn').click() },
             { id: 'copy-selection', labelKey: 'terminal.copySelection', hint: '', action: copyActiveTerminalSelection },
             { id: 'paste-clipboard', labelKey: 'terminal.pasteClipboard', hint: '', action: pasteClipboardIntoActiveTerminal },
-            { id: 'keyboard-shortcuts', labelKey: 'shortcuts.title', hint: 'Ctrl+?', action: () => openShortcuts() }
+            { id: 'keyboard-shortcuts', labelKey: 'shortcuts.title', hint: 'Ctrl+?', action: () => openShortcuts() },
+            // Herdr actions appear only while the active session runs Herdr.
+            {
+                id: 'herdr-toggle-bar',
+                labelKey: 'herdr.barToggle',
+                fallback: 'Show or hide the Herdr controls',
+                descriptionKey: 'herdr.barLabel',
+                hint: '',
+                available: () => window.herdrControlBar?.available() === true,
+                action: () => window.herdrControlBar?.toggle(),
+            },
+            ...(window.HerdrControlBar?.ACTIONS || []).map(herdrAction => ({
+                id: `herdr-${herdrAction.id}`,
+                labelKey: herdrAction.labelKey,
+                fallback: herdrAction.title,
+                descriptionKey: 'herdr.barLabel',
+                hint: herdrAction.id === 'prefix' ? herdrAction.hint : `Ctrl+B ${herdrAction.hint}`,
+                available: () => window.herdrControlBar?.available() === true,
+                action: () => window.herdrControlBar?.run(herdrAction.id),
+            }))
         ];
         const actionMap = new Map(actions.map(action => [action.id, action.action]));
 
@@ -2865,8 +2898,8 @@
         function buildItems() {
             const translatedActions = actions.filter(action => !action.available || action.available()).map(action => ({
                 id: action.id,
-                label: translate(action.labelKey, action.labelKey),
-                description: '',
+                label: translate(action.labelKey, action.fallback || action.labelKey),
+                description: action.descriptionKey ? translate(action.descriptionKey, 'Herdr') : '',
                 hint: action.hint,
             }));
             return CommandPaletteUtils.buildItems({
@@ -3346,6 +3379,11 @@
                     connectionData.display_name = SessionManager.pendingDisplayName;
                 }
             }
+            if (window.ProfileLauncherUtils?.requestsHerdrSession({
+                profile: window.ProfileManager?.getProfile?.(contextProfileId),
+                reconnect: SessionManager.pendingReconnectHerdr === true,
+                connectionData,
+            })) connectionData.use_herdr = true;
 
             const started = startConnection(connectionData, targetPane, SessionManager.pendingReconnectSessionId);
             if (!started) return;

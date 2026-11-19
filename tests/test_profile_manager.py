@@ -207,6 +207,199 @@ def test_profile_rejects_non_boolean_tmux_preference(app):
         assert profile_manager.load_profiles(user_id) == []
 
 
+def _herdr_payload(**extra):
+    return {
+        'name': 'Agent host', 'host': 'agents.example.com', 'port': 22,
+        'username': 'deploy', 'auth_type': 'password', **extra,
+    }
+
+
+def test_profile_herdr_options_are_validated_and_persisted(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-herdr-options')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(
+            user_id, _herdr_payload(herdr=True, use_herdr=True))
+        assert error is None
+        assert profile['herdr'] is True and profile['use_herdr'] is True
+        stored = profile_manager.load_profiles(user_id)[0]
+        assert stored['herdr'] is True and stored['use_herdr'] is True
+
+        profile, error = profile_manager.upsert_profile(
+            user_id, _herdr_payload(id=profile['id'], herdr=False, use_herdr=False))
+        assert error is None
+        stored = profile_manager.load_profiles(user_id)[0]
+        assert stored['herdr'] is False and stored['use_herdr'] is False
+
+
+def test_profile_without_herdr_options_stores_neither_field(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-herdr-absent')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, _herdr_payload())
+        assert error is None
+        assert 'herdr' not in profile and 'use_herdr' not in profile
+        stored = profile_manager.load_profiles(user_id)[0]
+        assert 'herdr' not in stored and 'use_herdr' not in stored
+
+
+def test_herdr_options_can_be_saved_while_the_integration_is_disabled(app):
+    from app import app_settings, profile_manager
+
+    user_id = create_user(app, 'profile-herdr-disabled')
+    with app.app_context():
+        assert app_settings.is_herdr_enabled() is False
+        profile, error = profile_manager.upsert_profile(
+            user_id, _herdr_payload(herdr=True, use_herdr=True))
+        assert error is None
+        assert profile['use_herdr'] is True
+
+
+@pytest.mark.parametrize('field', ['herdr', 'use_herdr'])
+@pytest.mark.parametrize('value', ['true', 1, None, []])
+def test_profile_rejects_non_boolean_herdr_options(app, field, value):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-herdr-invalid')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(
+            user_id, _herdr_payload(**{'herdr': True, field: value}))
+        assert profile is None
+        assert error == f'{field} must be a boolean'
+        assert profile_manager.load_profiles(user_id) == []
+
+
+@pytest.mark.parametrize('extra,expected', [
+    ({'use_herdr': True}, 'Herdr session mode requires the Herdr option'),
+    ({'herdr': False, 'use_herdr': True}, 'Herdr session mode requires the Herdr option'),
+    ({'herdr': True, 'use_herdr': True, 'use_tmux': True},
+     'A host can use either tmux or Herdr, not both'),
+    ({'herdr': True, 'use_herdr': True, 'startup_mode': 'free_text', 'startup_commands': 'uptime'},
+     'Herdr session mode cannot be combined with startup commands'),
+    ({'herdr': True, 'use_herdr': True, 'startup_commands': 'uptime'},
+     'Herdr session mode cannot be combined with startup commands'),
+])
+def test_profile_rejects_conflicting_herdr_session_mode(app, extra, expected):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-herdr-conflict')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, _herdr_payload(**extra))
+        assert profile is None
+        assert error == expected
+        assert profile_manager.load_profiles(user_id) == []
+
+
+@pytest.mark.parametrize('stored,update,expected', [
+    ({'use_tmux': True}, {'herdr': True, 'use_herdr': True},
+     'A host can use either tmux or Herdr, not both'),
+    ({'herdr': True, 'use_herdr': True}, {'use_tmux': True},
+     'A host can use either tmux or Herdr, not both'),
+    ({'herdr': True, 'use_herdr': True}, {'herdr': False},
+     'Herdr session mode requires the Herdr option'),
+    ({'herdr': True, 'use_herdr': True},
+     {'startup_mode': 'free_text', 'startup_commands': 'uptime'},
+     'Herdr session mode cannot be combined with startup commands'),
+    ({'startup_mode': 'free_text', 'startup_commands': 'uptime'},
+     {'startup_mode': 'free_text', 'startup_commands': 'uptime', 'herdr': True, 'use_herdr': True},
+     'Herdr session mode cannot be combined with startup commands'),
+])
+def test_profile_update_checks_herdr_rules_against_stored_values(app, stored, update, expected):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-herdr-merge')
+    with app.app_context():
+        existing, error = profile_manager.upsert_profile(user_id, _herdr_payload(**stored))
+        assert error is None
+        path = profile_manager.get_user_profiles_file(user_id)
+        original = path.read_bytes()
+        profile, error = profile_manager.upsert_profile(
+            user_id, _herdr_payload(id=existing['id'], **update))
+        assert profile is None
+        assert error == expected
+        assert path.read_bytes() == original
+
+
+def test_profile_edit_without_herdr_fields_preserves_stored_options(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-herdr-preserve')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(
+            user_id, _herdr_payload(herdr=True, use_herdr=True))
+        assert error is None
+        profile, error = profile_manager.upsert_profile(
+            user_id, _herdr_payload(id=profile['id'], name='Renamed agent host'))
+        assert error is None
+        assert profile['herdr'] is True and profile['use_herdr'] is True
+        stored = profile_manager.load_profiles(user_id)[0]
+        assert stored['name'] == 'Renamed agent host'
+        assert stored['herdr'] is True and stored['use_herdr'] is True
+
+
+def test_command_set_cannot_be_assigned_to_a_herdr_session_profile(app):
+    from app import command_set_manager, profile_manager
+
+    user_id = create_user(app, 'profile-herdr-command-set')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(
+            user_id, _herdr_payload(herdr=True, use_herdr=True))
+        assert error is None
+        command_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Deploy', 'steps': [{'type': 'inline', 'command': 'uptime'}],
+        })
+        assert error is None
+        path = profile_manager.get_user_profiles_file(user_id)
+        original = path.read_bytes()
+        updated, error = profile_manager.assign_command_set(
+            user_id, profile['id'], command_set['id'])
+        assert updated is None
+        assert error == 'Herdr session mode cannot be combined with startup commands'
+        assert path.read_bytes() == original
+
+
+def test_herdr_options_survive_other_profile_writers_and_a_file_copy(app):
+    from app import profile_manager
+
+    source = create_user(app, 'profile-herdr-source')
+    restored = create_user(app, 'profile-herdr-restored')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(
+            source, _herdr_payload(herdr=True, use_herdr=True))
+        assert error is None
+        _, error = profile_manager.update_profile_organization(
+            source, profile['id'], {'group': 'Agents', 'favorite': True})
+        assert error is None
+        assert profile_manager.cache_detected_platform(
+            source, profile['id'], (profile['host'], profile['port'], profile['username']), 'debian',
+        ) in (True, False)
+        stored = profile_manager.load_profiles(source)[0]
+        assert stored['herdr'] is True and stored['use_herdr'] is True
+        assert stored['group'] == 'Agents' and stored['favorite'] is True
+
+        # Backups and restores copy the per-user document byte for byte.
+        target = profile_manager.get_user_profiles_file(restored)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(profile_manager.get_user_profiles_file(source).read_bytes())
+        assert profile_manager.load_profiles(restored) == profile_manager.load_profiles(source)
+        assert profile_manager.save_profiles(restored, profile_manager.load_profiles(restored))
+        assert profile_manager.load_profiles(restored)[0]['use_herdr'] is True
+
+
+@pytest.mark.parametrize('field', ['herdr', 'use_herdr'])
+def test_stored_non_boolean_herdr_option_is_not_a_valid_profile(app, field):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-herdr-corrupt')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, _herdr_payload())
+        assert error is None
+        assert profile_manager._valid_profile({**profile, 'herdr': True, 'use_herdr': True})
+        assert not profile_manager._valid_profile({**profile, field: 'true'})
+
+
 def test_profile_rejects_tailscale_with_jump_host(app):
     from app import profile_manager
 

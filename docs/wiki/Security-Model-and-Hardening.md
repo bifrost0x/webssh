@@ -33,6 +33,10 @@ WebSSH includes:
 - explicit SSH target policy and per-user host-key verification;
 - encrypted private-key storage derived per user;
 - security audit logging and administrator reauthentication;
+- an optional Herdr integration that is off by default, runs only fixed
+  commands in the user's own connected session and treats everything the
+  remote host reports as untrusted text (see the
+  [Herdr integration guide](https://github.com/bifrost0x/webssh/blob/main/docs/herdr.md));
 - bounded maintenance, shutdown, backup, and restore workflows;
 - a container image that runs as a non-root user and keeps its application
   code root-owned and read-only for that user, so a compromised process cannot
