@@ -417,6 +417,7 @@ jobs:
       contents: read
     env:
       WEBSSH_E2E_FAST_HASHING: '1'
+      WEBSSH_FONT_BROWSER_CONTAINER: 'webssh-fonts-${{ github.run_id }}-${{ github.run_attempt }}'
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -440,39 +441,39 @@ jobs:
           cache: npm
       - name: Install locked Node dependencies
         run: npm ci
-      - name: Install Playwright host libraries
-        # Let apt finish before bounded browser setup; interrupting it can
-        # leave the dpkg lock held by an orphaned subprocess on retry.
-        run: node ./node_modules/playwright/cli.js install-deps firefox webkit
-      - name: Install locked font-test browsers
-        env:
-          WEBSSH_CI_BROWSER_DEPS_PREINSTALLED: 'true'
+      - name: Start pinned Firefox/WebKit browser server
         shell: bash
         run: |
           set -euo pipefail
-          for browser in firefox webkit; do
-            installed=false
-            for attempt in 1 2; do
-              echo "::group::Install ${browser} (attempt ${attempt}/2)"
-              if timeout --signal=TERM --kill-after=15s 360s node scripts/install-ci-chromium.js "$browser"; then
-                installed=true
-                echo "::endgroup::"
-                break
-              else
-                status=$?
-                echo "::endgroup::"
-                echo "::warning::${browser} installation failed (exit ${status}, attempt ${attempt}/2)"
-              fi
-              if [ "$attempt" -lt 2 ]; then
-                sleep 10
-              fi
-            done
-            if [ "$installed" != "true" ]; then
-              echo "::error::${browser} could not be installed after two bounded attempts"
-              exit 1
+          # The Microsoft Playwright image includes browser binaries and OS libraries.
+          # This avoids invoking apt on ephemeral hosted runners during font E2E.
+          node -e 'if (require("playwright/package.json").version !== "1.65.0") process.exit(1)'
+          docker run --detach --rm --init --network host --user pwuser \
+            --name "$WEBSSH_FONT_BROWSER_CONTAINER" \
+            --label "webssh.ci-run=$GITHUB_RUN_ID" \
+            --mount "type=bind,source=$PWD/node_modules,target=/work/node_modules,readonly" \
+            --workdir /work \
+            mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe \
+            node /work/node_modules/playwright/cli.js run-server --host 127.0.0.1 --port 4355
+          ready=false
+          for attempt in $(seq 1 60); do
+            if timeout 2 bash -c 'echo >/dev/tcp/127.0.0.1/4355' 2>/dev/null; then
+              ready=true
+              break
             fi
+            if ! docker inspect --format '{{.State.Running}}' "$WEBSSH_FONT_BROWSER_CONTAINER" | grep -qx true; then
+              break
+            fi
+            sleep 1
           done
+          if [ "$ready" != true ]; then
+            docker logs "$WEBSSH_FONT_BROWSER_CONTAINER" || true
+            echo '::error::Pinned Playwright browser server failed to start'
+            exit 1
+          fi
       - name: Verify live terminal font changes
+        env:
+          PW_TEST_CONNECT_WS_ENDPOINT: 'ws://127.0.0.1:4355/'
         run: |
           WEBSSH_E2E_PORT=4173 \
             WEBSSH_E2E_TIMING_FILE="test-results/e2e-fonts-firefox.json" \
@@ -500,6 +501,19 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+      - name: Stop pinned browser server
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker container inspect "$WEBSSH_FONT_BROWSER_CONTAINER" >/dev/null 2>&1; then
+            owner="$(docker inspect --format '{{ index .Config.Labels "webssh.ci-run" }}' "$WEBSSH_FONT_BROWSER_CONTAINER")"
+            if [ "$owner" != "$GITHUB_RUN_ID" ]; then
+              echo '::error::Refusing to remove container without matching CI ownership label'
+              exit 1
+            fi
+            docker rm --force --volumes "$WEBSSH_FONT_BROWSER_CONTAINER"
+          fi
 
   browser-e2e:
     needs: [dispatch-integrity, browser-e2e-shards, browser-fonts]
