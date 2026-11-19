@@ -25,7 +25,7 @@
   <a href="https://getwebssh.com/code-graph/"><img src="https://img.shields.io/badge/Interactive%20Code--Map-open-6f42c1" alt="Interactive code map"></a>
   <a href="https://github.com/bifrost0x/webssh/releases"><img src="https://img.shields.io/github/v/release/bifrost0x/webssh?display_name=tag&sort=semver" alt="Latest release"></a>
   <a href="https://github.com/bifrost0x/webssh/stargazers"><img src="https://img.shields.io/github/stars/bifrost0x/webssh?style=flat&logo=github" alt="GitHub stars"></a>
-  <a href="https://selfhost.directory/project/webssh"><img src="https://selfhost.directory/badge/webssh.svg" alt="Listed on selfhost.directory"></a>
+  <a href="https://ca.unraid.net/apps/webssh-127za9h0wpj15t"><img src="https://img.shields.io/badge/Unraid-Community%20Apps-F15A2A?logo=unraid&logoColor=white" alt="WebSSH on Unraid Community Apps"></a>
   <img src="https://img.shields.io/badge/telemetry-none-2ea44f" alt="No telemetry">
 </p>
 
