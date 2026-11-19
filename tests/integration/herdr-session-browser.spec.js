@@ -178,10 +178,22 @@ test('desktop: Herdr session mode is usable in the WebSSH terminal', async ({ pa
     // Keyboard input reaches the pane. Herdr draws its frame before the pane's
     // shell reads input, so typing starts at the prompt.
     await waitScreen(page, id, state => state.lines.some(line => /agentuser@\S+:~\$/.test(line)), 'pane prompt');
+    await page.evaluate(() => {
+        // Recorded so a failure shows whether the browser sent every key.
+        window.__sentInput = [];
+        const emit = window.socket.emit.bind(window.socket);
+        window.socket.emit = (event, payload, ...rest) => {
+            if (event === 'ssh_input') window.__sentInput.push(payload?.data);
+            return emit(event, payload, ...rest);
+        };
+    });
     await page.evaluate(key => window.TerminalManager.terminals[key].focus(), id);
     await page.keyboard.type('echo MARK-$((6*7))');
     await page.keyboard.press('Enter');
-    state = await waitScreen(page, id, shows('MARK-42'), 'pane output');
+    state = await waitScreen(page, id, shows('MARK-42'), 'pane output').catch(async error => {
+        error.message += `\nSent input: ${JSON.stringify(await page.evaluate(() => window.__sentInput))}`;
+        throw error;
+    });
     const first = lab('snapshot');
     expect(first).toMatchObject({ running: true, panes: 1, tabs: 1 });
 
