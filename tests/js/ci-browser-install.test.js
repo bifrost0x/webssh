@@ -86,6 +86,15 @@ for (const browser of ['firefox', 'webkit']) {
         await installCiBrowser(browser, setup);
         assert.deepEqual(setup.events, [['install', browser], 'probe']);
     });
+    test(`fails closed instead of invoking apt after ${browser} preinstallation`, async () => {
+        const { installCiBrowser } = require('../../scripts/install-ci-chromium');
+        const setup = fixture({ failures: [new Error('Host system is missing dependencies')] });
+        await assert.rejects(
+            installCiBrowser(browser, { ...setup, dependenciesPreinstalled: true }),
+            /missing native libraries after Playwright install-deps/,
+        );
+        assert.deepEqual(setup.events, [['install', browser], 'probe']);
+    });
     test(`repairs proven missing ${browser} runtime dependencies once`, async () => {
         const { installCiBrowser } = require('../../scripts/install-ci-chromium');
         const setup = fixture({ failures: [new Error('Host system is missing dependencies')] });
