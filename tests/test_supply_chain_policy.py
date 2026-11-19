@@ -599,7 +599,13 @@ def test_real_browser_lab_is_required_in_ssh_integration():
 def assert_bounded_font_browser_install(fonts):
     """Both font browsers install through the locked helper, bounded and retried once."""
     assert 'timeout-minutes: 35' in fonts
+    assert fonts.index('- name: Install Playwright host libraries') < fonts.index(
+        '- name: Install locked font-test browsers'
+    )
+    host_deps = fonts.split('- name: Install Playwright host libraries', 1)[1].split('\n      - name:', 1)[0]
+    assert 'node ./node_modules/playwright/cli.js install-deps firefox webkit' in host_deps
     step = fonts.split('- name: Install locked font-test browsers', 1)[1].split('\n      - name:', 1)[0]
+    assert "WEBSSH_CI_BROWSER_DEPS_PREINSTALLED: 'true'" in step
     assert 'shell: bash' in step
     assert 'set -euo pipefail' in step
     assert 'for browser in firefox webkit; do' in step
