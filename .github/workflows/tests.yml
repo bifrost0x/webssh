@@ -440,7 +440,13 @@ jobs:
           cache: npm
       - name: Install locked Node dependencies
         run: npm ci
+      - name: Install Playwright host libraries
+        # Let apt finish before bounded browser setup; interrupting it can
+        # leave the dpkg lock held by an orphaned subprocess on retry.
+        run: node ./node_modules/playwright/cli.js install-deps firefox webkit
       - name: Install locked font-test browsers
+        env:
+          WEBSSH_CI_BROWSER_DEPS_PREINSTALLED: 'true'
         shell: bash
         run: |
           set -euo pipefail
