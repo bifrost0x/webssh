@@ -126,7 +126,7 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | `RATELIMIT_STORAGE_URL` | `memory://` |
 | `RATELIMIT_DEFAULT` | `200 per hour` |
 | `RATELIMIT_LOGIN_LIMIT` | `5 per minute` |
-| `RATELIMIT_REAUTH` | `5 per minute` |
+| `RATELIMIT_REAUTH` | `10 per minute` |
 | `SSH_CONNECT_RATELIMIT` | `10 per minute` |
 | `SSH_KEY_WRITE_RATELIMIT` | `30 per minute` |
 | `SSH_KEY_LIST_RATELIMIT` | `30 per minute` |

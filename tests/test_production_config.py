@@ -136,6 +136,18 @@ def test_cookie_names_can_isolate_instances_without_changing_defaults():
     assert json.loads(custom.stdout.strip().splitlines()[-1]) == ['webssh_review_session', 'webssh_review_remember']
 
 
+def test_reauthentication_limit_defaults_to_ten_per_minute_and_stays_configurable():
+    code = 'import config; print(config.RATELIMIT_REAUTH)'
+    env = _production_env()
+    env.pop('RATELIMIT_REAUTH', None)
+    defaults = _load_config(env, code)
+    assert defaults.returncode == 0, defaults.stderr
+    assert defaults.stdout.strip().splitlines()[-1] == '10 per minute'
+    custom = _load_config(_production_env(RATELIMIT_REAUTH='5 per minute'), code)
+    assert custom.returncode == 0, custom.stderr
+    assert custom.stdout.strip().splitlines()[-1] == '5 per minute'
+
+
 @pytest.mark.parametrize('name', ['SESSION_COOKIE_NAME', 'REMEMBER_COOKIE_NAME'])
 @pytest.mark.parametrize('value', ['', 'invalid name', 'invalid;name'])
 def test_cookie_names_reject_invalid_tokens(name, value):
