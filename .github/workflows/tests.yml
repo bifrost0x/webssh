@@ -411,6 +411,8 @@ jobs:
     if: needs.dispatch-integrity.outputs.mode == 'full'
     name: browser-fonts (Firefox and WebKit)
     runs-on: ubuntu-24.04
+    # Browser downloads can stall; do not leave the PR gate running indefinitely.
+    timeout-minutes: 35
     permissions:
       contents: read
     env:
@@ -439,9 +441,31 @@ jobs:
       - name: Install locked Node dependencies
         run: npm ci
       - name: Install locked font-test browsers
+        shell: bash
         run: |
-          node scripts/install-ci-chromium.js firefox
-          node scripts/install-ci-chromium.js webkit
+          set -euo pipefail
+          for browser in firefox webkit; do
+            installed=false
+            for attempt in 1 2; do
+              echo "::group::Install ${browser} (attempt ${attempt}/2)"
+              if timeout --signal=TERM --kill-after=15s 360s node scripts/install-ci-chromium.js "$browser"; then
+                installed=true
+                echo "::endgroup::"
+                break
+              else
+                status=$?
+                echo "::endgroup::"
+                echo "::warning::${browser} installation failed (exit ${status}, attempt ${attempt}/2)"
+              fi
+              if [ "$attempt" -lt 2 ]; then
+                sleep 10
+              fi
+            done
+            if [ "$installed" != "true" ]; then
+              echo "::error::${browser} could not be installed after two bounded attempts"
+              exit 1
+            fi
+          done
       - name: Verify live terminal font changes
         run: |
           WEBSSH_E2E_PORT=4173 \
