@@ -17,7 +17,11 @@ async function probeChromium(chromium = require('playwright').chromium) {
     await browser.close();
 }
 
-async function installCiBrowser(browserName, { runCli = runPlaywrightCli, probe } = {}) {
+async function installCiBrowser(browserName, {
+    runCli = runPlaywrightCli,
+    probe,
+    dependenciesPreinstalled = process.env.WEBSSH_CI_BROWSER_DEPS_PREINSTALLED === 'true',
+} = {}) {
     if (!['chromium', 'firefox', 'webkit'].includes(browserName)) {
         throw new Error(`Unsupported CI browser: ${browserName}`);
     }
@@ -30,6 +34,15 @@ async function installCiBrowser(browserName, { runCli = runPlaywrightCli, probe 
     } catch (error) {
         const missingRuntime = /Host system is missing dependencies|error while loading shared libraries|cannot open shared object file/i;
         if (!missingRuntime.test(String(error.message))) throw error;
+        // This mode runs after OS libraries were installed in a separate step.
+        // Never start apt inside a timed-out browser download process: the apt
+        // child can outlive the parent and hold the dpkg lock during retries.
+        if (dependenciesPreinstalled) {
+            throw new Error(
+                browserName + ' is missing native libraries after Playwright install-deps; refusing apt inside bounded browser setup.',
+                { cause: error },
+            );
+        }
         runCli(['install-deps', browserName]);
         await launchProbe();
     }
