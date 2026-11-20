@@ -253,6 +253,18 @@
 .webssh-ui #jumpHostForm .radio-label { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; margin: 0; font-size: 14px; }
 .webssh-ui #commandForm .checkbox-group > label { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; margin: 0; }
 
+/* Session mode: one choice between the plain shell, tmux and Herdr. */
+.webssh-ui .session-mode-fields { display: grid; gap: 2px; }
+.webssh-ui .session-mode-option { align-items: flex-start; }
+.webssh-ui .session-mode-option input { margin-top: 3px; }
+.webssh-ui .session-mode-option > span { display: grid; gap: 2px; min-width: 0; }
+.webssh-ui .session-mode-option small { color: var(--ws2-text-muted); font-size: 12px; font-weight: 400; line-height: 1.45; }
+.webssh-ui .session-mode-option:has(input:disabled) { cursor: not-allowed; }
+.webssh-ui .session-mode-option:has(input:disabled) > span { opacity: .6; }
+.webssh-ui .session-mode-fields .field-hint { margin: 0 12px 4px 36px; }
+.webssh-ui .profile-herdr-notice { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--ws2-border); border-radius: 6px; color: var(--ws2-text-secondary); font-size: 13px; line-height: 1.5; }
+.webssh-ui .profile-herdr-notice .material-icons { flex: 0 0 18px; font-size: 18px; color: var(--ws2-warning); }
+
 @media (max-width: 600px) {
     .webssh-ui #connectionForm :is(.form-control, .btn),
     .webssh-ui #jumpHostForm .radio-label,

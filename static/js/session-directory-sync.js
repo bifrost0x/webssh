@@ -233,6 +233,8 @@
         const confirmInput = options.confirmNavigation || confirmNavigation;
         const blocked = reason => options.onNavigationBlocked?.(reason);
         const enabledByDefault = options.enabledByDefault !== false;
+        // Sessions whose terminal belongs to another program (Herdr) never sync.
+        const unsupported = id => Boolean(id && options.unsupported?.(id));
         const sessionOverrides = new Map();
         let sessionId = null;
         let visible = false;
@@ -250,6 +252,7 @@
         const oscFollowInterval = Math.max(100, options.oscFollowInterval || 300);
 
         function isEnabled(id) {
+            if (unsupported(id)) return false;
             return Boolean(id && (sessionOverrides.has(id)
                 ? sessionOverrides.get(id)
                 : enabledByDefault));
@@ -277,14 +280,15 @@
             if (indicator) indicator.hidden = !sessionId;
             if (input) {
                 input.checked = enabled;
-                input.disabled = !sessionId;
+                input.disabled = !sessionId || unsupported(sessionId);
             }
             if (panel?.dataset) panel.dataset.directorySyncEnabled = String(enabled);
+            options.onAvailability?.(unsupported(sessionId));
             options.onDirectory?.(directory);
         }
 
         function setEnabled(value) {
-            if (!sessionId) return false;
+            if (!sessionId || unsupported(sessionId)) return false;
             sessionOverrides.set(sessionId, Boolean(value));
             const state = inputs.get(sessionId);
             if (value && state?.integration) {
@@ -484,6 +488,7 @@
             },
             setEnabled,
             isEnabled,
+            isUnsupported() { return unsupported(sessionId); },
             getDirectory() { return directory; },
             observe(id, path, host = '') {
                 directoryListener({ sessionId: id, path, host });

@@ -28,6 +28,7 @@ from .user_settings import (
 )
 from .app_settings import (is_registration_enabled, set_registration_enabled,
                            is_ssh_gateway_enabled, set_ssh_gateway_enabled,
+                           is_herdr_enabled, set_herdr_enabled,
                            is_support_links_enabled, set_support_links_enabled)
 from .storage_errors import StorageCorruptionError
 from .tailscale_ssh import user_can_use_tailscale_ssh
@@ -616,6 +617,7 @@ def create_app(
             ),
             'registration_enabled': registration_available,
             'ssh_gateway_enabled': is_ssh_gateway_enabled(),
+            'herdr_enabled': is_herdr_enabled(),
             'tmux_enabled': runtime_feature_enabled('tmux_enabled'),
             'tmux_default': runtime_feature_enabled('tmux_default'),
             'admin_panel_enabled': config.ADMIN_PANEL_ENABLED,
@@ -1745,6 +1747,7 @@ def create_app(
         policies = {name: runtime_feature_status(name) for name in RUNTIME_FEATURES}
         return jsonify({'setting_sources': native_setting_sources(), 'runtime_features': policies, **{name: status['enabled'] for name, status in policies.items()}, 'registration_enabled': is_registration_enabled(),
                         'ssh_gateway_enabled': is_ssh_gateway_enabled(),
+                        'herdr_enabled': is_herdr_enabled(),
                         'support_links_enabled': is_support_links_enabled(),
                         'credentials_enabled': is_credentials_enabled(),
                         'automation_enabled': is_automation_enabled()})
@@ -1775,6 +1778,8 @@ def create_app(
         if ('ssh_gateway_enabled' in data
                 and type(data['ssh_gateway_enabled']) is not bool):
             return jsonify({'error': 'ssh_gateway_enabled must be a boolean'}), 400
+        if 'herdr_enabled' in data and type(data['herdr_enabled']) is not bool:
+            return jsonify({'error': 'herdr_enabled must be a boolean'}), 400
         if ('support_links_enabled' in data
                 and type(data['support_links_enabled']) is not bool):
             return jsonify({'error': 'support_links_enabled must be a boolean'}), 400
@@ -1800,6 +1805,10 @@ def create_app(
             val = set_ssh_gateway_enabled(data['ssh_gateway_enabled'])
             log_info("Admin changed SSH gateway setting",
                      admin=current_user.username, ssh_gateway_enabled=val)
+        if 'herdr_enabled' in data:
+            val = set_herdr_enabled(data['herdr_enabled'])
+            log_info("Admin changed Herdr setting",
+                     admin=current_user.username, herdr_enabled=val)
         if 'support_links_enabled' in data:
             val = set_support_links_enabled(data['support_links_enabled'])
             log_info("Admin changed support links setting",

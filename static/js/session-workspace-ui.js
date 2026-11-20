@@ -65,7 +65,18 @@
             panel: elements.filesPanel,
             sendInput: (id, value) => root.SSHInput.send(id, value),
             hasPendingInput: id => root.SSHInput?.hasPending(id),
+            unsupported: id => sessionManager.getSession?.(id)?.useHerdr === true,
+            onAvailability: unavailable => {
+                if (!unavailable) return;
+                if (syncHelp) syncHelp.hidden = false;
+                if (syncSetup) syncSetup.hidden = true;
+                if (syncStatus) {
+                    syncStatus.textContent = root.i18n?.t('workspace.directorySync.herdr')
+                        || 'Not available in Herdr sessions: Herdr manages its own terminal panes.';
+                }
+            },
             onDirectory: directory => {
+                if (directorySync?.isUnsupported()) return;
                 const id = sessionManager.getWorkspaceSession?.() || sessionManager.getActiveSession();
                 const enabled = documentRef.getElementById('sessionDirectorySyncInput')?.checked;
                 if (syncHelp) syncHelp.hidden = !enabled || directory?.tmux !== true;

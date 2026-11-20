@@ -372,6 +372,46 @@ def test_reader_preserves_only_a_confirmed_remote_tmux_session(
     assert any(event == 'ssh_disconnected' for event, _payload, _room in emitted)
 
 
+def test_reader_end_of_a_herdr_session_runs_nothing_on_the_host(app, monkeypatch):
+    from app.auth import register_user
+    from app.models import SSHSession, db
+
+    with app.app_context():
+        user, error = register_user('reader_herdr', 'password-123')
+        assert error is None
+        db.session.add(SSHSession(
+            session_id='reader-herdr', user_id=user.id, host='target.example',
+            port=22, username='alice', connected=True, is_persistent=False,
+        ))
+        db.session.commit()
+
+    opened = []
+    transport = FakeTransport()
+    monkeypatch.setattr(transport, 'open_session', lambda timeout=None: opened.append(timeout))
+    client = FakeSSHClient(transport=transport)
+    with ssh_manager.sessions_lock:
+        # Detaching from Herdr ends the PTY channel like any shell exit.
+        ssh_manager.sessions['reader-herdr'] = _session(
+            client, channel=FakeChannel(), herdr=True, use_herdr=True,
+        )
+    emitted = []
+
+    class SocketIO:
+        @staticmethod
+        def emit(event, payload, room=None):
+            emitted.append(event)
+
+    monkeypatch.setattr('app.sftp_handler.close_sftp_cache', lambda _session_id: None)
+    ssh_manager.read_ssh_output('reader-herdr', SocketIO(), app)
+
+    assert opened == []
+    assert 'reader-herdr' not in ssh_manager.sessions
+    assert emitted == ['ssh_disconnected']
+    with app.app_context():
+        stored = SSHSession.query.filter_by(session_id='reader-herdr').first()
+        assert stored is not None and stored.connected is False
+
+
 def test_close_session_releases_quota_exactly_once(monkeypatch):
     reservation = ssh_manager.quota_manager.reserve(
         QuotaKind.SSH_SESSION, user_id=7

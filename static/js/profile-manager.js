@@ -70,6 +70,11 @@ const ProfileManager = {
         });
         document.getElementById('profileEditorPostConnectMode')?.addEventListener('change', () => {
             this.updateEditorVisibility();
+            this.syncHerdrEditor();
+        });
+        this.herdrEnabled = document.querySelector('meta[name="herdr-enabled"]')?.content === 'true';
+        ['profileEditorHerdr', 'profileEditorModeShell', 'profileEditorModeTmux', 'profileEditorModeHerdr'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', () => this.syncHerdrEditor());
         });
         document.getElementById('profileEditorUseDefaultParameters')?.addEventListener('change', () => {
             this.updateEditorVisibility();
@@ -1466,6 +1471,7 @@ const ProfileManager = {
                 ? profile.use_tmux === true
                 : useTmux.dataset.default === 'true';
         }
+        this.loadHerdrEditor(profile, useTmux?.dataset.default === 'true');
 
         const hasOverride = Object.prototype.hasOwnProperty.call(
             profile || {}, 'parameters_override'
@@ -1502,6 +1508,67 @@ const ProfileManager = {
             return;
         }
         document.getElementById('profileEditorName')?.focus();
+    },
+
+    herdrEditorInput() {
+        const mode = ['shell', 'tmux', 'herdr'].find(name => (
+            document.getElementById(`profileEditorMode${name[0].toUpperCase()}${name.slice(1)}`)?.checked
+        ));
+        return {
+            enabled: this.herdrEnabled === true,
+            tmuxAvailable: Boolean(document.getElementById('profileEditorModeTmux')),
+            saved: this.editorHerdrSaved,
+            herdr: document.getElementById('profileEditorHerdr')?.checked === true,
+            mode,
+            startupMode: document.getElementById('profileEditorPostConnectMode')?.value || 'none',
+        };
+    },
+
+    loadHerdrEditor(profile, tmuxDefault) {
+        const option = document.getElementById('profileEditorHerdr');
+        if (!option) return;
+        this.editorHerdrSaved = profile || null;
+        option.checked = profile?.herdr === true;
+        this.setHerdrEditorMode(window.ProfileLauncherUtils.sessionModeOf(profile, tmuxDefault));
+        this.syncHerdrEditor();
+    },
+
+    setHerdrEditorMode(mode) {
+        for (const name of ['Shell', 'Tmux', 'Herdr']) {
+            const choice = document.getElementById(`profileEditorMode${name}`);
+            if (choice) choice.checked = name.toLowerCase() === mode;
+        }
+    },
+
+    /** Apply the Herdr rules to the editor: what is shown, what is locked and why. */
+    syncHerdrEditor() {
+        const option = document.getElementById('profileEditorHerdr');
+        if (!option) return;
+        const state = window.ProfileLauncherUtils.herdrEditorState(this.herdrEditorInput());
+        const setHidden = (id, hidden) => {
+            document.getElementById(id)?.classList[hidden ? 'add' : 'remove']('hidden');
+        };
+        setHidden('profileEditorHerdrBlock', !state.visible);
+        setHidden('profileEditorTmuxGroup', state.visible);
+        setHidden('profileEditorHerdrDisabled', !state.optionLocked);
+        option.disabled = state.optionLocked;
+        const herdrMode = document.getElementById('profileEditorModeHerdr');
+        if (herdrMode) herdrMode.disabled = state.herdrLocked;
+        this.setHerdrEditorMode(state.mode);
+        const reason = document.getElementById('profileEditorHerdrModeReason');
+        if (reason) {
+            reason.textContent = state.reason === 'needsOption'
+                ? this.t('herdr.sessionModeNeedsOption', 'Turn on “Herdr on this host” to use the Herdr session mode.')
+                : state.reason === 'noStartup'
+                    ? this.t('herdr.sessionModeNoStartup', 'The Herdr session mode cannot be combined with “Run after connecting”. Set it to “Nothing” to use Herdr.')
+                    : '';
+        }
+        setHidden('profileEditorHerdrModeReason', !state.reason);
+    },
+
+    herdrEditorPayload() {
+        if (!document.getElementById('profileEditorHerdr')) return null;
+        return window.ProfileLauncherUtils.herdrEditorPayload(this.herdrEditorInput());
     },
 
     editorSnapshot() {
@@ -1607,8 +1674,10 @@ const ProfileManager = {
         if ((payload.socks_proxy_id && payload.jump_host_id) || (payload.auth_type === 'tailscale' && (payload.socks_proxy_id || payload.jump_host_id))) {
             window.showNotification?.(this.t('connection.routeConflict', 'Choose one compatible route.'), 'error'); return;
         }
+        const sessionOptions = this.herdrEditorPayload();
         const useTmux = document.getElementById('profileEditorUseTmux');
-        if (useTmux) payload.use_tmux = useTmux.checked;
+        if (sessionOptions) Object.assign(payload, sessionOptions);
+        else if (useTmux) payload.use_tmux = useTmux.checked;
         if (this.editingProfileId) payload.id = this.editingProfileId;
         const greeting = this.greetingPlatform;
         if (!this.editingProfileId && greeting && greeting.host === payload.host && greeting.port === payload.port) {

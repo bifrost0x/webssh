@@ -121,6 +121,9 @@ def collect_directory(session_id, timeout=2.0):
         session = ssh_manager.sessions.get(session_id)
         if not session or not session.get('connected'):
             return None, 'disconnected'
+        # Herdr owns the PTY; its panes are not the connection's shell.
+        if session.get('use_herdr') is True:
+            return None, 'unsupported'
         lock = session.setdefault('directory_probe_lock', Lock())
         if not lock.acquire(blocking=False):
             return None, 'busy'

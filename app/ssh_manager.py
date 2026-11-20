@@ -25,6 +25,10 @@ from .ssh_errors import SSHConnectionError
 from .startup_commands import to_terminal_input
 from .tailscale_ssh import TailscaleSSHAuthorization
 from . import paramiko_channels
+from .herdr import AVAILABLE_COMMAND as HERDR_AVAILABLE_COMMAND
+from .herdr import SESSION_COMMAND as HERDR_SESSION_COMMAND
+from .herdr import overview_allowed as herdr_overview_allowed
+from .herdr import session_mode_allowed as herdr_session_mode_allowed
 from .quota_manager import (
     QuotaExceeded,
     QuotaKind,
@@ -37,6 +41,7 @@ sessions = {}
 sessions_lock = Lock()
 TMUX_KILL_TIMEOUT = 2.0
 TMUX_PROBE_TIMEOUT = 2.0
+HERDR_PROBE_TIMEOUT = 3.0
 SSH_AUTH_BANNER_MAX_CHARS = 16 * 1024
 
 
@@ -172,6 +177,37 @@ def _probe_tmux_session(session):
             except Exception:
                 pass
 
+
+def _herdr_still_allowed(check, user_id, profile_id):
+    """Re-check a Herdr grant; host-key, banner and MFA prompts may have taken long."""
+    try:
+        return check(user_id, profile_id) is True
+    except Exception as error:
+        log_warning("Herdr grant could not be confirmed", error_type=type(error).__name__)
+        return False
+
+
+def _herdr_available(transport):
+    """True only when the fixed lookup confirms Herdr; any failure is False."""
+    probe_channel = None
+    try:
+        probe_channel = _open_exec_channel(
+            transport, HERDR_AVAILABLE_COMMAND, timeout=HERDR_PROBE_TIMEOUT,
+        )
+        return paramiko_channels.wait_for_exit_status(
+            probe_channel, timeout=HERDR_PROBE_TIMEOUT,
+        ) == 0
+    except Exception as error:
+        log_debug("Unable to confirm Herdr on target host", error_type=type(error).__name__)
+        return False
+    finally:
+        if probe_channel is not None:
+            try:
+                probe_channel.close()
+            except Exception:
+                pass
+
+
 def create_ssh_connection(host, port, username, password=None, key_path=None, key_content=None,
                           socketio_instance=None, app=None, user_id=None,
                           proxy_jump_host=None, proxy_jump_port=None, proxy_jump_username=None,
@@ -183,7 +219,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           cancel_event=None, client_request_id=None,
                           jump_host_id=None, gateway_attempt=None, profile_id=None,
                           credential_guard=None, saved_password_hops=('target', 'jump', 'socks'),
-                          socks_proxy=None):
+                          socks_proxy=None, herdr=False, use_herdr=False):
     """
     Create a new SSH connection and return session ID.
 
@@ -213,6 +249,13 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
     if connection_cancelled():
         return None, "Connection cancelled"
+
+    # The session mode exists only where the server granted the overview.
+    use_herdr = use_herdr is True and herdr is True
+    if use_herdr and use_tmux:
+        return None, 'tmux and Herdr cannot be combined'
+    if use_herdr and startup_commands:
+        return None, 'Herdr session mode cannot be combined with startup commands'
 
     try:
         host_key_store = HostKeyStore(
@@ -649,6 +692,34 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     pty=('xterm-256color', 80, 24),
                 )
                 channel.settimeout(0.1)
+        elif use_herdr:
+            # Not persistent and unnamed: Herdr keeps its own default session,
+            # and nothing is ever stopped on the host when this channel closes.
+            herdr_available = (
+                _herdr_still_allowed(herdr_session_mode_allowed, user_id, profile_id)
+                and _herdr_available(transport)
+            )
+            if connection_cancelled():
+                return None, "Connection cancelled"
+            if herdr_available:
+                channel = _open_exec_channel(
+                    transport,
+                    HERDR_SESSION_COMMAND,
+                    timeout=config.SSH_CONNECT_TIMEOUT,
+                    pty=('xterm-256color', 80, 24),
+                )
+            else:
+                log_warning("Herdr not found on target host, falling back to regular shell",
+                            host=f"{host}:{port}")
+                use_herdr = False
+                channel = paramiko_channels.open_shell_channel(
+                    transport,
+                    timeout=config.SSH_CONNECT_TIMEOUT,
+                    term='xterm-256color',
+                    width=80,
+                    height=24
+                )
+            channel.settimeout(0.1)
         else:
             if connection_cancelled():
                 return None, "Connection cancelled"
@@ -663,6 +734,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         session_id = str(uuid.uuid4())
         disconnect_notice = {}
+        # The overview is granted to the session only if it still holds now.
+        herdr = herdr is True and _herdr_still_allowed(herdr_overview_allowed, user_id, profile_id)
 
         time.sleep(0.1)
 
@@ -688,6 +761,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'profile_id': profile_id,
                 'auth_type': auth_type,
                 'use_tmux': use_tmux,
+                'herdr': herdr is True,
+                'use_herdr': use_herdr,
                 'tmux_session_name': tmux_session_name,
                 'tmux_reconnect': bool(
                     use_tmux
@@ -1248,6 +1323,8 @@ def get_session(session_id):
                 'detected_platform': session.get('detected_platform'),
                 'auth_type': session.get('auth_type', 'password'),
                 'use_tmux': session.get('use_tmux', False),
+                'herdr': session.get('herdr') is True,
+                'use_herdr': session.get('use_herdr') is True,
                 'tmux_session_name': session.get('tmux_session_name'),
                 'tmux_reconnect': session.get('tmux_reconnect', False),
                 'client_request_id': session.get('client_request_id'),

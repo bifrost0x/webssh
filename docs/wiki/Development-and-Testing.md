@@ -57,6 +57,8 @@ they do not replace the relevant full gate before release.
 
 The tracked integration runner can also create an SFTP file through the browser,
 set its permissions, edit it and verify both content and mode after reopening.
+It also drives the Herdr session mode through the real terminal on desktop and
+mobile viewports against the lab's pinned Herdr host.
 Install the hash-locked Python test requirements, Node dependencies and Chromium,
 then run the complete Python and browser integration against the same Docker lab:
 
@@ -68,7 +70,7 @@ python scripts/run_integration_tests.py --browser
 
 On Linux, use `npx playwright install --with-deps chromium` when browser system
 libraries are not installed. Docker Compose must be available; loopback ports
-2222-2224 and 4184 must be free. Set `WEBSSH_E2E_PORT` to choose another browser
+2222-2225 and 4184 must be free. Set `WEBSSH_E2E_PORT` to choose another browser
 port. The runner uses temporary application, backup and transfer data, creates
 disposable SSH keys, and tears down its lab after success or failure. It refuses
 missing Node/Playwright prerequisites before touching the lab. Do not run two

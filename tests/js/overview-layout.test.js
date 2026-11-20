@@ -13,6 +13,23 @@ test('continue working defaults to the bottom and extends old layouts without ch
     assert.deepEqual(Layout.normalize(legacy), [...legacy, panel]);
 });
 
+test('agents sit directly below needs attention and join stored layouts at the end', () => {
+    const defaults = Layout.defaults();
+    const attention = defaults.findIndex(item => item.id === 'attention');
+    assert.deepEqual(defaults[attention + 1], {id: 'agents', w: 4, h: null, hidden: false});
+    const stored = Layout.defaults().filter(item => item.id !== 'agents');
+    stored[0] = {...stored[0], w: 6};
+    assert.deepEqual(Layout.normalize(stored), [...stored, {id: 'agents', w: 4, h: null, hidden: false}]);
+});
+
+test('moving ignores panels the page does not render', () => {
+    const present = id => id !== 'agents';
+    const layout = Layout.move(Layout.defaults(), 'hosts', -2, present);
+    assert.deepEqual(ids(layout).filter(present).slice(0, 3), ['kpis', 'topology', 'hosts']);
+    assert.deepEqual(ids(Layout.move(Layout.defaults(), 'automation', -1, present)).filter(present).slice(0, 4),
+        ['kpis', 'topology', 'automation', 'attention']);
+});
+
 test('continue working uses the shared move, resize, hide and restore operations', () => {
     let layout = Layout.moveBefore(Layout.defaults(), 'continue', 'kpis');
     layout = Layout.resize(layout, 'continue', {w: 6, h: 40});
@@ -33,8 +50,8 @@ test('a missing or foreign layout falls back to the default and keeps known valu
 
 test('moving skips hidden panels and stops at the ends', () => {
     let layout = Layout.setHidden(Layout.defaults(), 'attention', true);
-    layout = Layout.move(layout, 'automation', -1);
-    assert.deepEqual(ids(layout).slice(0, 3), ['kpis', 'automation', 'topology']);
+    layout = Layout.move(layout, 'agents', -1);
+    assert.deepEqual(ids(layout).slice(0, 3), ['kpis', 'agents', 'topology']);
     assert.deepEqual(ids(Layout.move(layout, 'kpis', -1)), ids(layout));
     const last = Layout.move(Layout.defaults(), 'platforms', 5);
     assert.equal(ids(last).at(-1), 'platforms');

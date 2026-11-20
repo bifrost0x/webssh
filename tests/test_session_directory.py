@@ -274,6 +274,19 @@ def test_disconnected_session_does_not_open_channel(monkeypatch):
     assert directory.collect_directory('missing') == (None, 'disconnected')
 
 
+def test_herdr_session_is_unsupported_without_opening_a_channel(monkeypatch):
+    session = setup_session(monkeypatch, Channel())
+    session['use_herdr'] = True
+    opened = []
+    monkeypatch.setattr(ssh_manager, '_open_exec_channel', lambda *args, **kw: opened.append(args))
+    assert directory.collect_directory('a') == (None, 'unsupported')
+    assert opened == [] and 'directory_probe_lock' not in session
+    # Only an actual Herdr session is excluded.
+    session['use_herdr'] = 'yes'
+    monkeypatch.setattr(ssh_manager, '_open_exec_channel', lambda *args, **kw: Channel())
+    assert directory.collect_directory('a')[1] is None
+
+
 @pytest.mark.parametrize('phase', ['p', 'c', 'b'])
 def test_parse_prompt_integration(phase):
     result = directory.parse_directory(f'webssh-directory\0{42}\0{1}\0bash\0/tmp\0\0{42}:7:{phase}\0'.encode())

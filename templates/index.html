@@ -14,6 +14,7 @@
     <meta name="start-page" content="{{ start_page|default('overview') }}">
     <meta name="app-root" content="{{ url_prefix }}">
     <meta name="ssh-gateway-enabled" content="{{ 'true' if ssh_gateway_enabled else 'false' }}">
+    <meta name="herdr-enabled" content="{{ 'true' if herdr_enabled else 'false' }}">
     <meta name="max-editor-file-size" content="{{ max_editor_file_size|default(5242880) }}">
     <title>Web SSH Terminal</title>
 
@@ -185,6 +186,9 @@
                         </div>
                     </div>
                 </details>
+                <button class="tab-row-icon-btn" id="herdrBarToggleBtn" type="button" aria-pressed="true" aria-controls="herdrControlBar" title="Herdr controls" aria-label="Herdr controls" hidden>
+                    <span class="material-icons" aria-hidden="true">keyboard</span>
+                </button>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
                     <span class="material-icons" aria-hidden="true">cell_tower</span>
                 </button>
@@ -254,6 +258,7 @@
             <button class="btn btn-secondary broadcast-close material-icons" id="broadcastCloseBtn" type="button" aria-label="Close broadcast" data-i18n-aria-label="workspace.closeBroadcast">close</button>
             <div class="broadcast-selection"><span id="broadcastTargets"></span><span id="broadcastSelectionStatus" role="status"></span></div>
         </div>
+        <div class="herdr-control-bar" id="herdrControlBar" role="toolbar" aria-label="Herdr controls" hidden></div>
         <div class="workspace" id="workspace">
             <div class="terminal-area">
                 <div class="session-main-split" id="sessionMainSplit">
@@ -1050,7 +1055,7 @@
                             <pre id="profileEditorCommandPreview" class="command-set-preview empty" aria-live="polite"></pre>
                         </div>
                         {% if tmux_enabled %}
-                        <div class="form-group">
+                        <div class="form-group" id="profileEditorTmuxGroup">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="profileEditorUseTmux" data-default="{{ 'true' if tmux_default else 'false' }}" {% if tmux_default %}checked{% endif %}>
                                 <span data-i18n="session.persistentTmux">Persistent session (tmux)</span>
@@ -1058,6 +1063,33 @@
                             <div class="field-hint" data-i18n="session.persistentTmuxHint">Keeps terminal alive on the remote host even when you close the browser or server restarts. Reattaches to existing tmux session automatically.</div>
                         </div>
                         {% endif %}
+                        <div id="profileEditorHerdrBlock" class="hidden">
+                            <p id="profileEditorHerdrDisabled" class="profile-herdr-notice hidden" role="note"><span class="material-icons" aria-hidden="true">block</span><span data-i18n="herdr.profileDisabled">Herdr is turned off for this WebSSH instance. The Herdr settings of this host are kept and apply again once an administrator turns the integration on. Until then no agents are read and the host connects with a standard shell.</span></p>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="profileEditorHerdr" aria-describedby="profileEditorHerdrHint">
+                                    <span data-i18n="herdr.profileOption">Herdr on this host</span>
+                                </label>
+                                <div id="profileEditorHerdrHint" class="field-hint" data-i18n="herdr.profileOptionHint">While a session of yours is connected, WebSSH asks Herdr on this host which agents are running and lists them under Agents on the Overview. Nothing is installed, started or changed on the host.</div>
+                            </div>
+                            <fieldset class="connection-route-fields session-mode-fields"><legend data-i18n="session.mode">Terminal session</legend>
+                                <label class="radio-label session-mode-option">
+                                    <input type="radio" name="profileEditorSessionMode" id="profileEditorModeShell" value="shell">
+                                    <span><span data-i18n="session.modeShell">Standard shell</span><small data-i18n="session.modeShellHint">Ends when the connection closes.</small></span>
+                                </label>
+                                {% if tmux_enabled %}
+                                <label class="radio-label session-mode-option">
+                                    <input type="radio" name="profileEditorSessionMode" id="profileEditorModeTmux" value="tmux">
+                                    <span><span data-i18n="session.persistentTmux">Persistent session (tmux)</span><small data-i18n="session.persistentTmuxHint">Keeps terminal alive on the remote host even when you close the browser or server restarts. Reattaches to existing tmux session automatically.</small></span>
+                                </label>
+                                {% endif %}
+                                <label class="radio-label session-mode-option">
+                                    <input type="radio" name="profileEditorSessionMode" id="profileEditorModeHerdr" value="herdr" aria-describedby="profileEditorHerdrModeReason">
+                                    <span><span data-i18n="herdr.sessionMode">Herdr</span><small data-i18n="herdr.sessionModeHint">Opens Herdr's default session and reattaches to it when you reconnect. If Herdr is not installed, a standard shell starts instead.</small></span>
+                                </label>
+                                <p id="profileEditorHerdrModeReason" class="field-hint hidden" role="status" aria-live="polite"></p>
+                            </fieldset>
+                        </div>
                                 </details>
                             </div>
                         </div>
@@ -1873,8 +1905,10 @@
     <script src="{{ static_asset_url(filename='js/overview-route-map.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/overview-model.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/overview-layout.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/herdr-overview.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/overview-workspace.js') }}"></script>
     {% endif %}
+    <script src="{{ static_asset_url(filename='js/herdr-control-bar.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/host-resource-layout.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-file-bridge.js') }}"></script>

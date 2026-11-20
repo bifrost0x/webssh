@@ -453,6 +453,8 @@ def test_overview_layout_selects_classic_without_changing_theme(app, client):
     assert b'connection-overview-classic.js' in classic
     assert b'overview-workspace.js' not in classic
     assert b'overviewQuickConnect' in classic
+    # The Herdr session mode does not depend on the overview layout.
+    assert b'js/herdr-control-bar.js' in classic
     assert client.post('/api/account/preferences', json={'overview_layout': 'dashboard'}).status_code == 200
     assert b'overview-workspace.js' in client.get('/').data
 

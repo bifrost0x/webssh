@@ -126,7 +126,7 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | `RATELIMIT_STORAGE_URL` | `memory://` |
 | `RATELIMIT_DEFAULT` | `200 per hour` |
 | `RATELIMIT_LOGIN_LIMIT` | `5 per minute` |
-| `RATELIMIT_REAUTH` | `5 per minute` |
+| `RATELIMIT_REAUTH` | `10 per minute` |
 | `SSH_CONNECT_RATELIMIT` | `10 per minute` |
 | `SSH_KEY_WRITE_RATELIMIT` | `30 per minute` |
 | `SSH_KEY_LIST_RATELIMIT` | `30 per minute` |
@@ -337,6 +337,13 @@ readiness and Admin-activation checks: allowing a capability does not enroll use
 or bypass provider, HTTPS, origin, RP-ID or recovery checks. Networking, identity
 provider trust, secrets, resource ceilings, mounts and backup recovery paths remain
 deployment configuration. Audit retention is already managed in Administration.
+
+**Herdr** in Administration → Integrations enables the optional
+[Herdr integration](https://github.com/bifrost0x/webssh/blob/main/docs/herdr.md)
+for all users. It is off by default, has no environment variable and requires
+administrator reauthentication. Each saved host opts in separately. Disabling
+it stops further Herdr status requests and Herdr session starts without
+disconnecting established sessions; saved host options are retained.
 
 Signed-in users see links to support WebSSH development in the account menu
 and the Settings side panel. **Project support links** in Administration →
