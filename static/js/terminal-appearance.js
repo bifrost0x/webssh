@@ -290,14 +290,14 @@
                     method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''},
                     body: JSON.stringify({terminal_appearance: submitted}),
                 });
-                const result = await response.json();
-                if (!response.ok || !result.settings?.terminal_appearance) throw new Error('Save failed');
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.settings?.terminal_appearance) throw Object.assign(new Error('Save failed'), {code: result.code});
                 setPreferences(result.settings.terminal_appearance);
                 manager.applyThemeToAll();
                 refreshSavedFont();
                 status.textContent = t('terminalAppearance.saved');
-            } catch {
-                status.textContent = t('terminalAppearance.failed');
+            } catch (error) {
+                status.textContent = t(error.code === 'csrf_expired' ? 'common.pageExpired' : 'terminalAppearance.failed');
             } finally {
                 saving = false;
                 submit.disabled = false;
