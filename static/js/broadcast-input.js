@@ -103,7 +103,8 @@
                     )));
                     return results.filter(item => item.status === 'fulfilled' && item.value === true).length;
                 }, {isCurrent, titleKey: 'broadcastReviewTitle', warningKey: 'broadcastReviewWarning',
-                    confirmKey: 'sendSelected', changedMessage: t('broadcastChanged')});
+                    confirmKey: 'sendSelected', focusCancel: true,
+                    changedMessage: t('broadcastChanged')});
                 return Number(result) || 0;
             } finally {
                 sending = false;

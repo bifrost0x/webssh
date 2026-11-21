@@ -17,6 +17,10 @@ const TerminalManager = {
     fitSyncTimer: null,
     pendingFitSyncOptions: null,
     syncedSizes: {},
+    layoutSyncTimer: null,
+    layoutSyncForce: false,
+    layoutSyncDelay: 120,
+    resizeObserverDisposers: {},
     scrollbarDisposers: {},
     compositionDisposers: {},
     clipboardDisposers: {},
@@ -580,6 +584,7 @@ const TerminalManager = {
 
         // Add custom scrollbar on the right side of the terminal
         this.setupScrollbar(container, terminal, key);
+        this.observeContainerResize(container, key);
 
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
@@ -968,10 +973,33 @@ const TerminalManager = {
         return Boolean(terminal && !wrapper?.classList.contains('unassigned'));
     },
 
+    canFitTerminalKey(terminalKey) {
+        if (!this.isTerminalKeyVisible(terminalKey)) {
+            return false;
+        }
+        // Hidden pages and collapsed containers report transient layouts.
+        // Fitting to them shrinks xterm until the next window resize event,
+        // so keep the last measured size until a real layout is available.
+        if (typeof document !== 'undefined' && document.hidden === true) {
+            return false;
+        }
+        const container = this.terminals[terminalKey].element?.parentElement;
+        if (container && typeof container.getBoundingClientRect === 'function') {
+            if (container.isConnected === false) {
+                return false;
+            }
+            const rect = container.getBoundingClientRect();
+            if (!(rect.width > 0 && rect.height > 0)) {
+                return false;
+            }
+        }
+        return true;
+    },
+
     fitTerminal(sessionId) {
         const terminalKeys = this.sessionTerminals[sessionId] || [];
         terminalKeys.forEach(key => {
-            if (!this.isTerminalKeyVisible(key)) {
+            if (!this.canFitTerminalKey(key)) {
                 return;
             }
             const fitAddon = this.fitAddons[key];
@@ -1146,6 +1174,45 @@ const TerminalManager = {
         } else {
             setTimeout(repaint, 0);
         }
+    },
+
+    connectedSyncOptions() {
+        return {
+            socket: window.socket,
+            isConnected: sessionId => typeof SessionManager !== 'undefined'
+                && Boolean(SessionManager.getSession(sessionId)?.connected),
+        };
+    },
+
+    scheduleLayoutSync({force = false} = {}) {
+        // Layout changes arrive in bursts (container observers, window and
+        // viewport resizes). Refit and send the PTY size once they settle so
+        // the local xterm grid and the remote PTY never drift apart.
+        this.layoutSyncForce = this.layoutSyncForce || force;
+        clearTimeout(this.layoutSyncTimer);
+        this.layoutSyncTimer = setTimeout(() => {
+            const forceSync = this.layoutSyncForce;
+            this.layoutSyncTimer = null;
+            this.layoutSyncForce = false;
+            this.fitAndSyncVisibleTerminals({
+                ...this.connectedSyncOptions(),
+                force: forceSync,
+            });
+        }, this.layoutSyncDelay);
+    },
+
+    observeContainerResize(container, terminalKey) {
+        this.resizeObserverDisposers[terminalKey]?.();
+        delete this.resizeObserverDisposers[terminalKey];
+        const ResizeObserverCtor = window.ResizeObserver;
+        if (typeof ResizeObserverCtor !== 'function' || !container) {
+            return;
+        }
+        // A container can recover from a collapsed layout without any window
+        // resize event, e.g. after a tab switch or a restored window.
+        const observer = new ResizeObserverCtor(() => this.scheduleLayoutSync());
+        observer.observe(container);
+        this.resizeObserverDisposers[terminalKey] = () => observer.disconnect();
     },
 
     scheduleFitAndSyncVisibleTerminals(options = {}) {
@@ -1422,6 +1489,7 @@ const TerminalManager = {
             callback => callback()
         );
         this.scrollbarDisposers[terminalKey]?.();
+        this.resizeObserverDisposers[terminalKey]?.();
         this.compositionDisposers[terminalKey]?.();
         this.clipboardDisposers[terminalKey]?.dispose?.();
         this.directorySyncDisposers[terminalKey]?.dispose?.();
@@ -1438,6 +1506,7 @@ const TerminalManager = {
         delete this.pendingOutput[terminalKey];
         delete this.pendingOutputSizes[terminalKey];
         delete this.compositionDisposers[terminalKey];
+        delete this.resizeObserverDisposers[terminalKey];
         delete this.clipboardDisposers[terminalKey];
         delete this.terminalWriteCallbacks[terminalKey];
         delete this.osc52ClipboardAllowed[terminalKey];
@@ -1502,9 +1571,7 @@ const TerminalManager = {
             // and leaves full-screen applications with the old server PTY size.
             requestAnimationFrame(() => {
                 this.fitAndSyncVisibleTerminals({
-                    socket: window.socket,
-                    isConnected: sessionId => typeof SessionManager !== 'undefined'
-                        && Boolean(SessionManager.getSession(sessionId)?.connected),
+                    ...this.connectedSyncOptions(),
                     force: true,
                 });
             });
@@ -1566,20 +1633,20 @@ const TerminalManager = {
     handleOrientationChange() {
         const newFontSize = this.getAppearance().options.fontSize;
         this.updateFontSize(newFontSize);
-        setTimeout(() => {
-            this.fitAllTerminals();
-        }, 100);
+        this.scheduleLayoutSync();
     }
 };
 
 window.TerminalManager = TerminalManager;
 
-let resizeTimeout;
 window.addEventListener('resize', () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-        TerminalManager.fitAllTerminals();
-    }, 250);
+    TerminalManager.scheduleLayoutSync();
+});
+
+window.document?.addEventListener?.('visibilitychange', () => {
+    if (!window.document.hidden) {
+        TerminalManager.scheduleLayoutSync();
+    }
 });
 
 window.addEventListener('orientationchange', () => {
@@ -1602,10 +1669,7 @@ if (window.visualViewport) {
             document.body.classList.toggle('keyboard-open', keyboardVisible);
             document.body.classList.toggle('notepad-focused', keyboardVisible && notepadFocused);
 
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                TerminalManager.fitAllTerminals();
-            }, 100);
+            TerminalManager.scheduleLayoutSync();
         }
     });
 }

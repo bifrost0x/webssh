@@ -743,6 +743,158 @@ test('fitAndSyncVisibleTerminals reports changed connected PTY dimensions once',
     }]]);
 });
 
+function terminalWithContainer(rect, {connected = true} = {}) {
+    const terminal = terminalInWrapper(false);
+    terminal.element.parentElement = {
+        isConnected: connected,
+        getBoundingClientRect: () => rect,
+    };
+    return terminal;
+}
+
+function withDocumentHidden(hidden, callback) {
+    const previous = global.document;
+    global.document = {hidden};
+    try {
+        return callback();
+    } finally {
+        global.document = previous;
+    }
+}
+
+function installSingleTerminal(terminal, onFit) {
+    let fits = 0;
+    TerminalManager.sessionTerminals = {session: ['terminal']};
+    TerminalManager.terminals = {terminal};
+    TerminalManager.fitAddons = {
+        terminal: {
+            fit() {
+                fits += 1;
+                onFit?.(terminal);
+            },
+        },
+    };
+    TerminalManager.syncedSizes = {};
+    return () => fits;
+}
+
+test('fitTerminal keeps the last size while the page is hidden', () => {
+    const terminal = terminalWithContainer({width: 900, height: 600});
+    const fits = installSingleTerminal(terminal, term => { term.cols = 8; });
+
+    withDocumentHidden(true, () => TerminalManager.fitTerminal('session'));
+
+    assert.equal(fits(), 0);
+    assert.equal(terminal.cols, 120);
+});
+
+test('fitTerminal skips collapsed or detached terminal containers', () => {
+    for (const [rect, connected] of [
+        [{width: 0, height: 600}, true],
+        [{width: 900, height: 0}, true],
+        [{width: 900, height: 600}, false],
+    ]) {
+        const terminal = terminalWithContainer(rect, {connected});
+        const fits = installSingleTerminal(terminal);
+        TerminalManager.fitTerminal('session');
+        assert.equal(fits(), 0);
+    }
+
+    const terminal = terminalWithContainer({width: 900, height: 600});
+    const fits = installSingleTerminal(terminal);
+    TerminalManager.fitTerminal('session');
+    assert.equal(fits(), 1);
+});
+
+test('hidden page layout sync neither shrinks xterm nor reports a PTY size', () => {
+    const terminal = terminalWithContainer({width: 95, height: 600});
+    installSingleTerminal(terminal, term => { term.cols = 8; });
+    TerminalManager.syncedSizes = {session: {rows: 40, cols: 120}};
+    const emitted = [];
+
+    withDocumentHidden(true, () => TerminalManager.fitAndSyncVisibleTerminals({
+        socket: {emit: (...args) => emitted.push(args)},
+    }));
+
+    assert.equal(terminal.cols, 120);
+    assert.deepEqual(emitted, []);
+});
+
+test('terminal containers are observed and the observer is released on destroy', () => {
+    const previous = global.window.ResizeObserver;
+    const observers = [];
+    global.window.ResizeObserver = class {
+        constructor(callback) {
+            this.callback = callback;
+            this.targets = [];
+            this.disconnected = false;
+            observers.push(this);
+        }
+        observe(target) { this.targets.push(target); }
+        disconnect() { this.disconnected = true; }
+    };
+    const scheduled = [];
+    const originalSchedule = TerminalManager.scheduleLayoutSync;
+    TerminalManager.scheduleLayoutSync = options => scheduled.push(options);
+    try {
+        const container = {};
+        TerminalManager.observeContainerResize(container, 'observed');
+        TerminalManager.observeContainerResize(container, 'observed');
+        assert.equal(observers.length, 2);
+        assert.equal(observers[0].disconnected, true);
+        assert.deepEqual(observers[1].targets, [container]);
+
+        observers[1].callback([]);
+        assert.equal(scheduled.length, 1);
+
+        TerminalManager.resizeObserverDisposers.observed();
+        assert.equal(observers[1].disconnected, true);
+    } finally {
+        TerminalManager.scheduleLayoutSync = originalSchedule;
+        delete TerminalManager.resizeObserverDisposers.observed;
+        if (previous === undefined) delete global.window.ResizeObserver;
+        else global.window.ResizeObserver = previous;
+    }
+});
+
+test('scheduled layout sync coalesces bursts and keeps a requested force', async () => {
+    const terminal = terminalWithContainer({width: 900, height: 600});
+    installSingleTerminal(terminal, term => { term.cols = 100; term.rows = 30; });
+    TerminalManager.syncedSizes = {session: {rows: 30, cols: 100}};
+    const emitted = [];
+    const previousSocket = global.window.socket;
+    global.window.socket = {emit: (name, payload) => emitted.push([name, payload])};
+    global.SessionManager = {getSession: () => ({connected: true})};
+    const previousDelay = TerminalManager.layoutSyncDelay;
+    TerminalManager.layoutSyncDelay = 0;
+    try {
+        TerminalManager.scheduleLayoutSync({force: true});
+        TerminalManager.scheduleLayoutSync();
+        TerminalManager.scheduleLayoutSync();
+        await new Promise(resolve => setTimeout(resolve, 10));
+    } finally {
+        TerminalManager.layoutSyncDelay = previousDelay;
+        global.window.socket = previousSocket;
+        delete global.SessionManager;
+    }
+
+    assert.deepEqual(emitted, [['ssh_resize', {session_id: 'session', rows: 30, cols: 100}]]);
+    assert.equal(TerminalManager.layoutSyncTimer, null);
+    assert.equal(TerminalManager.layoutSyncForce, false);
+});
+
+test('window and viewport resizes synchronize the PTY instead of fitting only locally', () => {
+    const source = fs.readFileSync(
+        path.join(__dirname, '../../static/js/terminal-manager.js'),
+        'utf8',
+    );
+    const listeners = source.slice(source.indexOf('window.TerminalManager = TerminalManager;'));
+
+    assert.doesNotMatch(listeners, /fitAllTerminals\(\)/);
+    assert.match(listeners, /addEventListener\('resize', \(\) => \{\s+TerminalManager\.scheduleLayoutSync\(\);/);
+    assert.match(listeners, /'visibilitychange'[\s\S]*scheduleLayoutSync\(\)/);
+});
+
 test('session pane activation delegates forced PTY synchronization to TerminalManager', () => {
     const source = fs.readFileSync(
         path.join(__dirname, '../../static/js/session-manager.js'),

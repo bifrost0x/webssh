@@ -100,7 +100,9 @@
         return new Promise(resolve => {
             pending = {isCurrent, changedMessage: options.changedMessage, text, send, resolve};
             dialog.showModal();
-            byId('terminalPasteCancel').focus();
+            // Enter confirms a reviewed paste. Broadcasts reach several hosts
+            // at once and keep the safer Cancel default.
+            byId(options.focusCancel ? 'terminalPasteCancel' : 'terminalPasteConfirm').focus();
         });
     }
     function paste(binding, text) {
