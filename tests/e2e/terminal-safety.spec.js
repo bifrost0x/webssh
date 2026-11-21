@@ -56,6 +56,16 @@ test('safe single-line paste stays fast and confirmed paste preserves bracketed 
     expect((await inputs(page)).map(item => item.data)).toEqual(['pwd', '\u001b[200~one\rtwo\u001b[201~']);
 });
 
+test('Enter confirms a reviewed terminal paste', async ({page}) => {
+    await setup(page);
+    await nativePaste(page, 'echo one\necho two');
+    await expect(page.locator('#terminalPasteDialog')).toBeVisible();
+    await expect(page.locator('#terminalPasteConfirm')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#terminalPasteDialog')).not.toBeVisible();
+    await expect.poll(async () => (await inputs(page)).map(item => item.data)).toEqual(['echo one\recho two']);
+});
+
 test('switching away and back cancels pending paste instead of retargeting', async ({page}) => {
     await setup(page);
     await connect(page, 'safe-two', 'beta.example');
@@ -192,6 +202,7 @@ test('native multiline broadcast paste preserves its draft and reviews all recip
     await expect(page.locator('#terminalPasteTarget')).toContainText('ops@alpha.example:22');
     await expect(page.locator('#terminalPasteTarget')).toContainText('ops@beta.example:22');
     await expect(page.locator('#terminalPasteConfirm')).toHaveText('Send to selected');
+    await expect(page.locator('#terminalPasteCancel')).toBeFocused();
     await page.locator('#terminalPasteCancel').click();
     await expect(page.locator('#broadcastInput')).toHaveValue('printf first\nprintf second\n');
     expect(await inputs(page)).toEqual([]);
