@@ -3713,3 +3713,97 @@ test('expanded diagnostics opens one usable management dialog and returns on clo
     await expect(dialog).toHaveCount(0);
     await expect(page.locator('#sessionDiagnosticsExpand')).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('terminal refits and resynchronizes the PTY after a transient narrow layout', async ({ page }) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await seedLinuxSession(page, {useTmux: true, initialLiveOutput: '\r\n'});
+    await expect.poll(() => page.evaluate(() => TerminalManager.terminalReady['workspace-linux'])).toBe(true);
+    await expect.poll(() => page.evaluate(() => {
+        const term = TerminalManager.terminals['workspace-linux'];
+        const size = TerminalManager.syncedSizes['workspace-linux'];
+        return TerminalManager.fitSyncTimer === null
+            && term.cols > 40 && size?.cols === term.cols && size?.rows === term.rows;
+    })).toBe(true);
+    const fullSize = await page.evaluate(() => {
+        const term = TerminalManager.terminals['workspace-linux'];
+        return {cols: term.cols, rows: term.rows};
+    });
+
+    // Background tabs and minimized windows can report a transient tiny layout.
+    // The layout then recovers without a further window resize event.
+    await page.evaluate(() => {
+        const wrapper = TerminalManager.terminals['workspace-linux'].element.closest('.terminal-wrapper');
+        wrapper.style.setProperty('width', '95px', 'important');
+        wrapper.style.setProperty('max-width', '95px', 'important');
+        window.dispatchEvent(new Event('resize'));
+    });
+    await expect.poll(() => page.evaluate(() => {
+        const resize = window.__workspaceEvents.filter(e => e.event === 'ssh_resize').at(-1)?.payload;
+        return TerminalManager.terminals['workspace-linux'].cols < 20 && resize?.cols < 20;
+    })).toBe(true);
+    // Let every delayed resize handler finish before the layout recovers.
+    await page.waitForTimeout(400);
+    await page.evaluate(() => {
+        const wrapper = TerminalManager.terminals['workspace-linux'].element.closest('.terminal-wrapper');
+        wrapper.style.removeProperty('width');
+        wrapper.style.removeProperty('max-width');
+    });
+
+    await expect.poll(() => page.evaluate(() => {
+        const term = TerminalManager.terminals['workspace-linux'];
+        const resize = window.__workspaceEvents.filter(e => e.event === 'ssh_resize').at(-1)?.payload;
+        return {
+            local: {cols: term.cols, rows: term.rows},
+            remote: resize ? {cols: resize.cols, rows: resize.rows} : null,
+        };
+    })).toEqual({local: fullSize, remote: fullSize});
+});
+
+test('hidden page layouts keep the terminal size and never report a shrunk PTY size', async ({ page }) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await seedLinuxSession(page, {useTmux: true, initialLiveOutput: '\r\n'});
+    await expect.poll(() => page.evaluate(() => TerminalManager.terminalReady['workspace-linux'])).toBe(true);
+    await expect.poll(() => page.evaluate(() => {
+        const term = TerminalManager.terminals['workspace-linux'];
+        const size = TerminalManager.syncedSizes['workspace-linux'];
+        return TerminalManager.fitSyncTimer === null
+            && term.cols > 40 && size?.cols === term.cols && size?.rows === term.rows;
+    })).toBe(true);
+    const fullSize = await page.evaluate(() => {
+        const term = TerminalManager.terminals['workspace-linux'];
+        window.__workspaceEvents = [];
+        Object.defineProperty(document, 'hidden', {configurable: true, get: () => true});
+        const wrapper = term.element.closest('.terminal-wrapper');
+        wrapper.style.setProperty('width', '95px', 'important');
+        wrapper.style.setProperty('max-width', '95px', 'important');
+        window.dispatchEvent(new Event('resize'));
+        return {cols: term.cols, rows: term.rows};
+    });
+    // Let every resize path (layout controller, observer, window handler) run.
+    await page.waitForTimeout(600);
+    expect(await page.evaluate(() => {
+        const term = TerminalManager.terminals['workspace-linux'];
+        return {cols: term.cols, rows: term.rows};
+    })).toEqual(fullSize);
+    const reportedSizes = () => page.evaluate(() => window.__workspaceEvents
+        .filter(e => e.event === 'ssh_resize')
+        .map(e => ({cols: e.payload.cols, rows: e.payload.rows})));
+    // Forced pane syncs may repeat the current size; a shrunk size must never reach the PTY.
+    for (const size of await reportedSizes()) expect(size).toEqual(fullSize);
+
+    await page.evaluate(() => {
+        const wrapper = TerminalManager.terminals['workspace-linux'].element.closest('.terminal-wrapper');
+        wrapper.style.removeProperty('width');
+        wrapper.style.removeProperty('max-width');
+        delete document.hidden;
+        document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => {
+        const term = TerminalManager.terminals['workspace-linux'];
+        return {cols: term.cols, rows: term.rows};
+    })).toEqual(fullSize);
+    for (const size of await reportedSizes()) expect(size).toEqual(fullSize);
+});
