@@ -16,11 +16,12 @@ def csrf_app(app):
     return app
 
 
-def _post_without_session(app, base_url):
+def _post_without_session(app, base_url, headers=None):
     return app.test_client().post(
         '/login',
         data={'csrf_token': 'x', 'username': 'someone', 'password': 'password123'},
         base_url=base_url,
+        headers=headers,
     )
 
 
@@ -36,6 +37,20 @@ def test_missing_secure_cookie_over_http_names_the_cause(csrf_app):
 
 def test_missing_cookie_over_https_keeps_the_generic_message(csrf_app):
     response = _post_without_session(csrf_app, 'https://ssh.example.com')
+
+    page = response.get_data(as_text=True)
+    assert response.status_code == 400
+    assert 'auth.formExpired' in page
+    assert GUIDANCE not in page
+
+
+def test_missing_cookie_behind_untrusted_tls_proxy_keeps_the_generic_message(csrf_app):
+    """A TLS proxy without TRUSTED_PROXIES forwards plain HTTP; the page was HTTPS."""
+    response = _post_without_session(
+        csrf_app,
+        'http://ssh.example.com',
+        headers={'Origin': 'https://ssh.example.com'},
+    )
 
     page = response.get_data(as_text=True)
     assert response.status_code == 400

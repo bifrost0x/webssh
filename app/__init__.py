@@ -630,9 +630,11 @@ def create_app(
                 target = url_for(request.endpoint, **(request.view_args or {}))
             except Exception:
                 target = None
+        from .transport_security import request_reached_over_https
+
         if (
             app.config.get('SESSION_COOKIE_SECURE')
-            and not request.is_secure
+            and not request_reached_over_https()
             and app.config['SESSION_COOKIE_NAME'] not in request.cookies
         ):
             # Browsers drop Secure cookies on http:// origins other than
