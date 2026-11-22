@@ -1076,8 +1076,13 @@
                 character,
                 codepoint: `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`,
             };
-            return i18n.t('editor.encodingUnsupportedCharacter')
-                .replace(/\{(line|character|codepoint)\}/g, (_match, key) => values[key]);
+            // Invisible and bidi control characters would hide or reorder the
+            // message, so only their code point is shown.
+            const key = /^[\p{Cf}\p{Zs}\p{Zl}\p{Zp}]$/u.test(character)
+                ? 'editor.encodingUnsupportedCodepoint'
+                : 'editor.encodingUnsupportedCharacter';
+            return i18n.t(key)
+                .replace(/\{(line|character|codepoint)\}/g, (_match, name) => values[name]);
         },
 
         renderPreviewPanels() {

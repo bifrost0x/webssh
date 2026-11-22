@@ -102,6 +102,24 @@ test('a character the Latin-1 file cannot store keeps the draft and explains the
     await expect(page.locator('#editorContent')).toHaveValue('café\nPreis 5 €\n');
 });
 
+test('an invisible or bidi character in an encoding refusal is named only by its code point', async ({ page }) => {
+    await page.locator('#editorContent').fill('a\u202eb\n');
+    await page.locator('#editorSaveBtn').click();
+    await page.locator('#editorCommitBtn').click();
+    await page.evaluate(() => window.FilePreview.handleSocketError({
+        ...window.__reviewSaves[0], operation: 'save_file', code: 'EDIT_ENCODING_UNSUPPORTED',
+        error: 'refused', character: '\u202e', line: 1,
+    }));
+    await expect(page.locator('#editorStatus')).toHaveText(
+        'Line 1 contains U+202E, which this Latin-1 file cannot store. Remove or replace it, then save again.',
+    );
+    expect(await page.evaluate(() => ['\u200b', '\u2028', '\u3000'].map(character => (
+        window.FilePreview.encodingRefusalMessage({ character, line: 4 })
+    )))).toEqual(['U+200B', 'U+2028', 'U+3000'].map(codepoint => (
+        `Line 4 contains ${codepoint}, which this Latin-1 file cannot store. Remove or replace it, then save again.`
+    )));
+});
+
 test('an encoding refusal without character details falls back to the general message', async ({ page }) => {
     await page.locator('#editorContent').fill('Preis 5 €\n');
     await page.locator('#editorSaveBtn').click();
