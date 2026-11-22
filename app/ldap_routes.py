@@ -7,8 +7,8 @@ import unicodedata
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-from flask import (Blueprint, current_app, jsonify, redirect, render_template,
-                   request, session, url_for)
+from flask import (Blueprint, current_app, jsonify, make_response, redirect,
+                   render_template, request, session, url_for)
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -16,7 +16,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 import config
 
 from . import socketio, user_lifecycle
-from .audit_logger import log_rate_limit_exceeded, log_security_event
+from .audit_logger import log_security_event
 from .auth import (
     check_rate_limit,
     password_exceeds_bcrypt_limit,
@@ -32,6 +32,7 @@ from .auth_assurance import (
 )
 from .decorators import admin_required, step_up_required
 from .ldap_service import LDAPDirectory, LDAPLookupRejected, LDAPUnavailable
+from .login_throttle import remember_sign_in_device, sign_in_throttled
 from .models import (
     LDAPIdentity,
     OIDCIdentity,
@@ -70,18 +71,6 @@ def _request_body_too_large():
 
 def get_directory():
     return LDAPDirectory()
-
-
-def _rate_limited(endpoint):
-    client_ip = request.remote_addr or 'unknown'
-    if config.RATELIMIT_ENABLED and check_rate_limit(
-        client_ip,
-        endpoint,
-        config.LDAP_LOGIN_RATE_LIMIT,
-    ):
-        log_rate_limit_exceeded(endpoint, client_ip)
-        return True
-    return False
 
 
 def _auto_provision_ldap_identity(username, resolved, *, presented_username=None):
@@ -176,11 +165,12 @@ def _auto_provision_ldap_identity(username, resolved, *, presented_username=None
 def ldap_login():
     if request.content_length and request.content_length > _MAX_LDAP_FORM_BYTES:
         return render_template('login.html', auth_source='ldap'), 413
-    if _rate_limited('ldap_login'):
-        return render_template('login.html', auth_source='ldap'), 429
-
     presented_username = str(request.form.get('username') or '')
     username = presented_username.strip()
+    if sign_in_throttled(
+        'ldap_login', 'ldap', username, config.LDAP_LOGIN_RATE_LIMIT,
+    ):
+        return render_template('login.html', auth_source='ldap'), 429
     password = request.form.get('password') or ''
     client_ip = request.remote_addr or 'unknown'
     try:
@@ -263,21 +253,23 @@ def ldap_login():
         methods = available_mfa_methods(user)
         session['_pending_authentication'] = token
         if request.accept_mimetypes.best == 'application/json':
-            return jsonify({
+            response = jsonify({
                 'ok': True,
                 'mfa_required': True,
                 'methods': list(methods),
             })
-        return render_template(
-            'login.html',
-            auth_source='ldap',
-            mfa_required=True,
-            pending_token=token,
-            mfa_methods=methods,
-        )
+        else:
+            response = make_response(render_template(
+                'login.html',
+                auth_source='ldap',
+                mfa_required=True,
+                pending_token=token,
+                mfa_methods=methods,
+            ))
+        return remember_sign_in_device(response, 'ldap', username)
     pending = consume_pending(token, binding)
     finalize_login(pending, methods=['ldap'])
-    return redirect(url_for('index'))
+    return remember_sign_in_device(redirect(url_for('index')), 'ldap', username)
 
 
 @ldap_blueprint.post('/admin/api/users/<int:user_id>/ldap-link')

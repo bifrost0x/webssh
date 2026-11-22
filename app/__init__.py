@@ -1,7 +1,7 @@
 from .app_settings import runtime_feature_enabled
 from .auth_redirects import public_continuation
-from flask import (Flask, abort, current_app, flash, jsonify, redirect,
-                   render_template, request, session, url_for)
+from flask import (Flask, abort, current_app, flash, jsonify, make_response,
+                   redirect, render_template, request, session, url_for)
 from flask_socketio import SocketIO
 from flask_login import login_required, current_user
 from flask_wtf.csrf import CSRFProtect
@@ -1135,18 +1135,17 @@ def create_app(
         ):
             return redirect(url_for('register'))
         if request.method == 'POST':
+            from .login_throttle import remember_sign_in_device, sign_in_throttled
+
             client_ip = get_client_ip()
-            if config.RATELIMIT_ENABLED and check_rate_limit(
-                client_ip,
-                'login',
-                config.RATELIMIT_LOGIN_LIMIT
+            username = request.form.get('username')
+            password = request.form.get('password')
+            if sign_in_throttled(
+                'login', 'local', username, config.RATELIMIT_LOGIN_LIMIT,
             ):
-                log_rate_limit_exceeded('login', client_ip)
                 flash('Too many login attempts. Please try again later.', 'error')
                 return render_template('login.html', auth_source='local')
 
-            username = request.form.get('username')
-            password = request.form.get('password')
             user, error = authenticate_user(username, password)
             if user:
                 from .auth_assurance import (
@@ -1172,16 +1171,20 @@ def create_app(
                 if user.mfa_enabled:
                     methods = available_mfa_methods(user)
                     session['_pending_authentication'] = token
-                    return render_template(
+                    return remember_sign_in_device(make_response(render_template(
                         'login.html',
                         auth_source='local',
                         mfa_required=True,
                         pending_token=token,
                         mfa_methods=methods,
-                    )
+                    )), 'local', username)
                 pending = consume_pending(token, binding)
                 finalize_login(pending, methods=['password'])
-                return redirect(public_continuation(pending.continuation))
+                return remember_sign_in_device(
+                    redirect(public_continuation(pending.continuation)),
+                    'local',
+                    username,
+                )
             else:
                 log_login_attempt(username, False, client_ip, request.user_agent.string)
                 flash(error, 'error')

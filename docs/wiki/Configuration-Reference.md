@@ -126,11 +126,21 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | `RATELIMIT_STORAGE_URL` | `memory://` |
 | `RATELIMIT_DEFAULT` | `200 per hour` |
 | `RATELIMIT_LOGIN_LIMIT` | `5 per minute` |
+| `RATELIMIT_LOGIN_ACCOUNT_LIMIT` | `10 per hour` |
 | `RATELIMIT_REAUTH` | `10 per minute` |
 | `SSH_CONNECT_RATELIMIT` | `10 per minute` |
 | `SSH_KEY_WRITE_RATELIMIT` | `30 per minute` |
 | `SSH_KEY_LIST_RATELIMIT` | `30 per minute` |
 | `CONNECTION_MUTATION_RATELIMIT` | `60 per minute` |
+
+Address-based limits count one IPv6 /64 network as one client, because a single
+host usually controls its whole /64. Password sign-in (local and LDAP) is also
+limited per account name: `RATELIMIT_LOGIN_ACCOUNT_LIMIT` applies to browsers
+that have not signed in to that account before, for existing and unknown names
+alike. After a correct password, WebSSH sets the signed, HttpOnly cookie
+`<SESSION_COOKIE_NAME>_device` for 90 days; attempts from that browser skip the
+account budget, so guessing from elsewhere cannot lock the owner out of devices
+already in use. The address limit still applies to every attempt.
 
 Key listings and the refresh after renaming, replacing, or deleting a key share
 `SSH_KEY_LIST_RATELIMIT` per user across browser connections. Admission is checked

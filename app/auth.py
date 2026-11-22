@@ -1,3 +1,4 @@
+import ipaddress
 import re
 
 import bcrypt
@@ -73,10 +74,27 @@ def parse_rate_limit(limit_str, default_limit=5, default_window=60):
     except (ValueError, IndexError):
         return default_limit, default_window
 
+def rate_limit_source(ip_address):
+    """Return the bucket identity of a client address.
+
+    One IPv6 subscriber usually controls a whole /64, so per-address buckets
+    would let it rotate addresses freely. Other values pass through unchanged.
+    """
+    try:
+        address = ipaddress.ip_address(str(ip_address))
+    except ValueError:
+        return ip_address
+    if address.version == 6:
+        if address.ipv4_mapped is not None:
+            return str(address.ipv4_mapped)
+        return str(ipaddress.ip_network(f'{address}/64', strict=False))
+    return str(address)
+
+
 def check_rate_limit(ip_address, endpoint, limit_str):
     """Return True if request should be blocked."""
     limit, window = parse_rate_limit(limit_str)
-    key = f'{endpoint}:{ip_address}'
+    key = f'{endpoint}:{rate_limit_source(ip_address)}'
     return not _get_rate_limiter().allow(key, limit, window)
 
 def check_socket_rate_limit(user_id, endpoint, limit_str):
@@ -113,7 +131,7 @@ def check_reauth_rate_limit(user_id, ip_address, endpoint, limit_str):
         window,
     )
     ip_allowed = limiter.allow(
-        f'{endpoint}:ip:{ip_address or "unknown"}',
+        f'{endpoint}:ip:{rate_limit_source(ip_address or "unknown")}',
         limit,
         window,
     )
