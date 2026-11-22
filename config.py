@@ -1379,6 +1379,14 @@ def validate_security_config():
         warnings.append(
             'SESSION_COOKIE_SECURE is disabled for the homelab profile'
         )
+    elif not DEBUG and _session_secure not in {'true', 'false'}:
+        warnings.append(
+            'SESSION_COOKIE_SECURE defaults to true: browsers drop the session '
+            'cookie on plain HTTP addresses other than localhost, and every '
+            'sign-in then fails with "The form expired". Serve WebSSH over '
+            'HTTPS, or set SESSION_COOKIE_SECURE=false on a trusted network; '
+            'set it to true to silence this warning'
+        )
     if REGISTRATION_ENABLED:
         warnings.append(
             'REGISTRATION_ENABLED is enabled for the homelab profile'

@@ -8,7 +8,7 @@ def warnings_seen(monkeypatch):
     import app as app_module
 
     events = []
-    monkeypatch.setattr(app_module, '_proxy_warnings_logged', set(), raising=False)
+    monkeypatch.setattr(app_module, '_config_warnings_logged', set(), raising=False)
     monkeypatch.setattr(
         app_module,
         'log_warning',

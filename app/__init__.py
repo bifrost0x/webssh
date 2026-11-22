@@ -123,7 +123,7 @@ def get_client_ip():
     return request.remote_addr or 'unknown'
 
 
-_proxy_warnings_logged = set()
+_config_warnings_logged = set()
 
 
 def _is_loopback(address):
@@ -143,11 +143,11 @@ def _note_proxy_configuration(environ):
     ignored. A client can trigger these lines itself, so they only advise.
     """
     if config.TRUSTED_PROXIES == 0:
-        if 'untrusted' in _proxy_warnings_logged or not (
+        if 'untrusted' in _config_warnings_logged or not (
             environ.get('HTTP_X_FORWARDED_FOR') or environ.get('HTTP_FORWARDED')
         ):
             return
-        _proxy_warnings_logged.add('untrusted')
+        _config_warnings_logged.add('untrusted')
         log_warning(
             'Requests carry X-Forwarded-For or Forwarded headers but TRUSTED_PROXIES=0. '
             'Behind a reverse proxy all clients then share the proxy address for '
@@ -156,12 +156,12 @@ def _note_proxy_configuration(environ):
             proxy=environ.get('REMOTE_ADDR', ''),
         )
         return
-    if 'bypassed' in _proxy_warnings_logged or environ.get('HTTP_X_FORWARDED_FOR'):
+    if 'bypassed' in _config_warnings_logged or environ.get('HTTP_X_FORWARDED_FOR'):
         return
     client = environ.get('REMOTE_ADDR', '')
     if _is_loopback(client):
         return
-    _proxy_warnings_logged.add('bypassed')
+    _config_warnings_logged.add('bypassed')
     log_warning(
         'A request reached WebSSH without X-Forwarded-For although '
         'TRUSTED_PROXIES is set. Clients that bypass the proxy can choose the '
@@ -629,6 +629,22 @@ def create_app(
                 target = url_for(request.endpoint, **(request.view_args or {}))
             except Exception:
                 target = None
+        if (
+            app.config.get('SESSION_COOKIE_SECURE')
+            and not request.is_secure
+            and app.config['SESSION_COOKIE_NAME'] not in request.cookies
+        ):
+            # Browsers drop Secure cookies on http:// origins other than
+            # localhost, so every form fails. Retrying cannot help.
+            if 'secure_cookie_over_http' not in _config_warnings_logged:
+                _config_warnings_logged.add('secure_cookie_over_http')
+                log_warning(
+                    'A form arrived over plain HTTP without the session cookie while '
+                    'SESSION_COOKIE_SECURE is on; serve WebSSH over HTTPS or set '
+                    'SESSION_COOKIE_SECURE=false on a trusted network',
+                    host=str(request.host)[:200],
+                )
+            return _error_page(400, 'cookie_rejected', target or url_for('login'))
         return _error_page(400, 'form_expired', target or url_for('login'), detail=error.description)
 
     @app.errorhandler(Forbidden)

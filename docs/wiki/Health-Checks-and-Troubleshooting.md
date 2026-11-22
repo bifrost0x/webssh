@@ -58,6 +58,11 @@ Check in this order:
 
 An HTTP page with a `Secure` session cookie will not maintain an authenticated session. Do not disable secure cookies to mask a broken production TLS path.
 
+If every sign-in or registration over `http://<host>` ends on "Your browser did
+not keep the WebSSH session cookie", the browser discarded the `Secure` cookie.
+Use HTTPS, or set `SESSION_COOKIE_SECURE=false` when WebSSH is only reachable on
+a trusted network.
+
 ## SSH connection is rejected
 
 Distinguish these failures:
