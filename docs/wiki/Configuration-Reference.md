@@ -13,7 +13,7 @@ Start from the repository's `.env.example`. The tables below describe the operat
 | `DEPLOYMENT_PROFILE` | Selects deployment safeguards | `homelab`; use `production` for Internet-facing deployments |
 | `DEBUG` | Flask debug mode | `False`; never enable in production |
 | `HOST` | Application bind address | `127.0.0.1` outside the container |
-| `PORT` | Application listen port of source installations. The container always listens on `5000`, and its health checks probe that port; publish a different host port instead, for example `-p 8080:5000` | `5000` |
+| `PORT` | Application listen port of source installations. The default container command always listens on `5000`; publish a different host port instead, for example `-p 8080:5000`. The container health checks accept a server on `PORT` or on `5000`, so a custom command that binds `PORT` stays healthy | `5000` |
 | `APPLICATION_ROOT` | URL prefix for subfolder deployments | Empty/root |
 
 Treat `SECRET_KEY` as long-lived installation state. Replacing it without the supported rotation workflow invalidates encrypted SSH keys and signed state. See [Backup, Restore, and Secret Rotation](Backup-Restore-and-Secret-Rotation).
