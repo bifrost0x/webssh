@@ -51,7 +51,7 @@ def tmux_lab(tmp_path):
         try:
             process = subprocess.Popen(
                 ['script', '-q', '-e', '-c', shell_command, '/dev/null'],
-                stdin=slave, stdout=slave, stderr=slave, start_new_session=True,
+                stdin=slave, stdout=slave, stderr=slave, start_new_session=True, cwd=tmp_path,
                 env={**os.environ, 'TERM': 'xterm-256color'},
             )
         except Exception:
@@ -129,12 +129,28 @@ def test_tmux_mouse_is_local_and_existing_process_history_and_policy_survive(tmu
 
 def test_tmux_session_name_cannot_execute_shell_substitution(tmux_lab, tmp_path):
     run, start, _, until = tmux_lab
-    marker = tmp_path / 'not-created'
-    name = f'webssh_$(touch {marker})'
+    # Relative to the client's working directory: tmux rewrites '.' and ':' in
+    # session names, so an absolute temporary path would change the name.
+    name = 'webssh_$(touch not-created)'
     start(name)
     until(lambda: run('show-options', '-v', '-t', '=' + name + ':', 'mouse') == 'on')
-    assert not marker.exists()
+    assert not (tmp_path / 'not-created').exists()
     assert run('show-options', '-gv', 'mouse') == 'off'
+
+
+def test_configured_prefix_with_dots_and_colons_yields_an_addressable_session(tmux_lab):
+    run, start, _, until = tmux_lab
+    prefix = subprocess.run(
+        [sys.executable, '-c', 'import config; print(config.TMUX_SESSION_PREFIX)'],
+        env={**os.environ, 'DEBUG': 'True', 'TMUX_SESSION_PREFIX': 'team.webssh:lab'},
+        capture_output=True, text=True, check=True, timeout=30,
+    ).stdout.strip().splitlines()[-1]
+    assert prefix == 'team_webssh_lab'
+    name = f'{prefix}_root_host_22_0123abcd'
+    start(name)
+    until(lambda: run('show-options', '-v', '-t', '=' + name + ':', 'mouse') == 'on')
+    run('kill-session', '-t', '=' + name)
+    assert name not in run('list-sessions', '-F', '#{session_name}').splitlines()
 
 
 def test_tmux_forwards_wheel_to_a_mouse_aware_full_screen_application(tmux_lab, tmp_path):

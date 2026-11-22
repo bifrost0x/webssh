@@ -237,7 +237,7 @@ blocked while profiles reference the record.
 |---|---|
 | `TMUX_ENABLED` | Optional override of Admin → Integrations; product default `true` (tmux available) |
 | `TMUX_DEFAULT` | Optional override of Admin → Integrations; product default `false` (not preselected) |
-| `TMUX_SESSION_PREFIX` | `webssh` |
+| `TMUX_SESSION_PREFIX` | `webssh`; characters other than letters, digits and `_` become `_` |
 | `HOST_KEY_MANAGEMENT_ENABLED` | `true` |
 | `RECOVERY_CODES_ENABLED` | `true` |
 | `AUDIT_EXPORT_ENABLED` | `true` |

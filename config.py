@@ -1010,7 +1010,12 @@ MAX_RECOVERY_JSON_SIZE = min(
 # connection. Every Compose file shipped before 3.0 set TMUX_ENABLED=true, so
 # this default keeps image-only upgrades and replaced Compose files identical.
 TMUX_ENABLED = _admin_switch_env('TMUX_ENABLED', True)
-TMUX_SESSION_PREFIX = os.environ.get('TMUX_SESSION_PREFIX', 'webssh')
+# tmux silently turns '.' and ':' in session names into '_', so a name built
+# from such a prefix would never match the session tmux created. Keep the same
+# character set as Gateway session names.
+TMUX_SESSION_PREFIX = re.sub(
+    r'[^A-Za-z0-9_]', '_', os.environ.get('TMUX_SESSION_PREFIX', '').strip(),
+)[:80] or 'webssh'
 TMUX_DEFAULT = _admin_switch_env('TMUX_DEFAULT', False)
 
 
