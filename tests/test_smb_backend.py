@@ -911,6 +911,23 @@ def test_editor_save_rejects_missing_or_changed_revision_before_staging():
     assert all(mode != 'xb' for _path, mode in session.open_modes)
 
 
+def test_editor_save_names_the_character_a_latin1_file_cannot_store():
+    backend, source, session = _stateful_fixture()
+
+    outcome = backend.write_file_text(
+        source,
+        '/report.txt',
+        'old\nPreis 5 €',
+        encoding='latin-1',
+        newline='lf',
+        expected_revision=hashlib.sha256(b'old').hexdigest(),
+    )
+
+    assert outcome.code == 'EDIT_ENCODING_UNSUPPORTED'
+    assert (outcome.unsupported_character, outcome.unsupported_line) == ('€', 2)
+    assert session.files[session.destination] == b'old'
+
+
 def test_recoverable_editor_swap_never_opens_destination_for_write():
     backend, source, session = _stateful_fixture()
     original_revision = hashlib.sha256(b'old').hexdigest()

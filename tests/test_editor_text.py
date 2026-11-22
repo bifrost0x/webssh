@@ -115,7 +115,16 @@ def test_latin1_is_never_silently_rewritten_as_utf8():
     with pytest.raises(EditorEncodingError) as raised:
         encode_editor_text('Preis 5 €\n', encoding='latin-1', newline='lf')
     assert raised.value.character == '€'
+    assert raised.value.line == 1
     assert raised.value.code == 'EDIT_ENCODING_UNSUPPORTED'
+
+
+def test_encoding_refusal_reports_the_line_of_the_first_bad_character():
+    with pytest.raises(EditorEncodingError) as raised:
+        encode_editor_text(
+            'Grüße\r\nPreis\r\n5 € – 6 €\n', encoding='latin-1', newline='crlf',
+        )
+    assert (raised.value.character, raised.value.line) == ('€', 3)
 
 
 def test_unknown_encoding_keeps_the_utf8_default():

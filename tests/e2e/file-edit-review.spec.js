@@ -91,12 +91,26 @@ test('a character the Latin-1 file cannot store keeps the draft and explains the
     await page.locator('#editorCommitBtn').click();
     await page.evaluate(() => window.FilePreview.handleSocketError({
         ...window.__reviewSaves[0], operation: 'save_file', code: 'EDIT_ENCODING_UNSUPPORTED',
-        error: "The character '€' cannot be saved in this latin-1 file.",
+        error: "The character '€' in line 2 cannot be saved in this latin-1 file.",
+        character: '€', line: 2,
     }));
-    await expect(page.locator('#editorStatus')).toContainText('stored as Latin-1');
+    await expect(page.locator('#editorStatus')).toHaveText(
+        'Line 2 contains “€” (U+20AC), which this Latin-1 file cannot store. Remove or replace it, then save again.',
+    );
     await expect(page.locator('#editorReviewEdited')).toHaveValue('café\nPreis 5 €\n');
     await page.locator('#editorBackBtn').click();
     await expect(page.locator('#editorContent')).toHaveValue('café\nPreis 5 €\n');
+});
+
+test('an encoding refusal without character details falls back to the general message', async ({ page }) => {
+    await page.locator('#editorContent').fill('Preis 5 €\n');
+    await page.locator('#editorSaveBtn').click();
+    await page.locator('#editorCommitBtn').click();
+    await page.evaluate(() => window.FilePreview.handleSocketError({
+        ...window.__reviewSaves[0], operation: 'save_file', code: 'EDIT_ENCODING_UNSUPPORTED',
+        error: 'refused', character: 'ab', line: 0,
+    }));
+    await expect(page.locator('#editorStatus')).toContainText('stored as Latin-1');
 });
 
 test('mixed line endings reported by the server are sent back unchanged on save', async ({ page }) => {

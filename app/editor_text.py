@@ -22,12 +22,13 @@ class EditorEncodingError(ValueError):
 
     code = 'EDIT_ENCODING_UNSUPPORTED'
 
-    def __init__(self, character, encoding):
+    def __init__(self, character, encoding, line):
         self.character = character
         self.encoding = encoding
+        self.line = line
         super().__init__(
-            f'The character {character!r} cannot be saved in this '
-            f'{encoding} file. Remove or replace it before saving.'
+            f'The character {character!r} in line {line} cannot be saved in '
+            f'this {encoding} file. Remove or replace it before saving.'
         )
 
 
@@ -136,5 +137,7 @@ def encode_editor_text(content, *, encoding, newline, original=None):
         return text.encode(encoding)
     except UnicodeEncodeError as error:
         raise EditorEncodingError(
-            error.object[error.start], encoding,
+            error.object[error.start],
+            encoding,
+            error.object.count('\n', 0, error.start) + 1,
         ) from error

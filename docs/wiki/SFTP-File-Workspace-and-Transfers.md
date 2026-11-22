@@ -346,7 +346,8 @@ keeps its own ending; new or changed lines take the ending of the line they
 replace or follow. Files that are not valid UTF-8 open as Latin-1 and are saved
 as Latin-1. If the edited text contains a character Latin-1 cannot store, such
 as `€` or an emoji, the save is refused and the draft stays open instead of
-converting the whole file to UTF-8.
+converting the whole file to UTF-8. The message names the first such character,
+its code point and its line.
 
 Treat remote content as untrusted. Previewing or editing a file does not make
 its commands safe to execute.

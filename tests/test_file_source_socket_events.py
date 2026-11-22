@@ -1013,6 +1013,72 @@ def test_smb_editor_surfaces_recovery_artifacts_without_raw_paths(app, monkeypat
     })]
 
 
+def test_editor_encoding_refusal_names_the_character_and_line(app, monkeypatch):
+    emitted, user = capture(monkeypatch)
+    monkeypatch.setattr(
+        socket_events,
+        'log_file_source_operation',
+        lambda **_details: None,
+    )
+
+    class Latin1Backend(OperationBackend):
+        def write_file_text(self, *_args, **_kwargs):
+            return FileWriteOutcome(
+                success=False,
+                error='The character cannot be saved in this latin-1 file.',
+                code='EDIT_ENCODING_UNSUPPORTED',
+                unsupported_character='€',
+                unsupported_line=2,
+            )
+
+    source = make_source(
+        'sftp-quick:owned', tuple(FileCapability), Latin1Backend(),
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'file_service',
+        FileService(SimpleNamespace(resolve=lambda *_args: source)),
+    )
+
+    with app.test_request_context('/socket.io'):
+        socket_events.handle_save_file.__wrapped__({
+            'source_id': 'sftp-quick:owned',
+            'request_id': 'save:latin1',
+            'path': '/legacy.txt',
+            'content': 'Grüße\nPreis 5 €\n',
+            'encoding': 'latin-1',
+            'newline': 'lf',
+            'expected_revision': 'a' * 64,
+        }, current_user=user)
+
+    assert emitted == [('error', {
+        'error': 'The character cannot be saved in this latin-1 file.',
+        'code': 'EDIT_ENCODING_UNSUPPORTED',
+        'character': '€',
+        'line': 2,
+        'operation': 'save_file',
+        'source_id': 'sftp-quick:owned',
+        'request_id': 'save:latin1',
+        'path': '/legacy.txt',
+    })]
+
+
+@pytest.mark.parametrize('details', [
+    {'unsupported_character': ''},
+    {'unsupported_character': 'ab'},
+    {'unsupported_character': 3},
+    {'unsupported_line': 0},
+    {'unsupported_line': True},
+    {'unsupported_line': '2'},
+])
+def test_write_outcome_rejects_invalid_encoding_details(details):
+    with pytest.raises(ValueError):
+        FileWriteOutcome(
+            success=False, error='refused', code='EDIT_ENCODING_UNSUPPORTED',
+            **details,
+        )
+
+
 @pytest.mark.parametrize(
     ('old_path', 'new_path'),
     (

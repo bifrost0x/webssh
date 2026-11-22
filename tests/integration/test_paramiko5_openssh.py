@@ -625,6 +625,7 @@ def test_editor_refuses_to_reencode_a_latin1_file(remote_workspace):
     assert opened['encoding'] == 'latin-1'
     assert not outcome.success
     assert outcome.code == 'EDIT_ENCODING_UNSUPPORTED'
+    assert (outcome.unsupported_character, outcome.unsupported_line) == ('€', 2)
     assert remote_workspace.read('latin1.txt') == b'Gr\xfc\xdfe\n'
     _opened, outcome = edit_and_save(
         remote_workspace, 'latin1.txt', lambda text: text + '\xc4ra\n',

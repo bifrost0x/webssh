@@ -218,6 +218,7 @@ def test_save_refuses_characters_the_latin1_file_cannot_store(monkeypatch):
     assert not outcome.success
     assert outcome.code == 'EDIT_ENCODING_UNSUPPORTED'
     assert '€' in outcome.error
+    assert (outcome.unsupported_character, outcome.unsupported_line) == ('€', 2)
     assert state['data'] == original
     assert not state['renamed']
 

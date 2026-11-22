@@ -1597,6 +1597,8 @@ class SMBBackend:
             except EditorEncodingError as error:
                 return FileWriteOutcome(
                     success=False, error=str(error), code=error.code,
+                    unsupported_character=error.character,
+                    unsupported_line=error.line,
                 )
             if len(data) > config.MAX_EDITOR_FILE_SIZE:
                 raise SMBBackendError('File too large to edit')

@@ -1047,7 +1047,7 @@
                         ? i18n.t('editor.editConflict')
                         : 'The file changed on the server. Reopen it before saving.';
                 } else if (data.code === 'EDIT_ENCODING_UNSUPPORTED' && window.i18n) {
-                    message = i18n.t('editor.encodingUnsupported');
+                    message = this.encodingRefusalMessage(data);
                 } else if (data.code === 'SMB_RECOVERY_REQUIRED') {
                     const leaves = Array.isArray(data.recovery_leaves)
                         ? data.recovery_leaves.join(', ')
@@ -1062,6 +1062,22 @@
                 return true;
             }
             return false;
+        },
+
+        encodingRefusalMessage(data) {
+            const character = typeof data.character === 'string' ? data.character : '';
+            const codePoint = character.codePointAt(0);
+            const valid = codePoint !== undefined
+                && String.fromCodePoint(codePoint) === character
+                && Number.isSafeInteger(data.line) && data.line > 0;
+            if (!valid) return i18n.t('editor.encodingUnsupported');
+            const values = {
+                line: String(data.line),
+                character,
+                codepoint: `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`,
+            };
+            return i18n.t('editor.encodingUnsupportedCharacter')
+                .replace(/\{(line|character|codepoint)\}/g, (_match, key) => values[key]);
         },
 
         renderPreviewPanels() {

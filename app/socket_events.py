@@ -5363,6 +5363,10 @@ def handle_save_file(data, current_user=None):
                 failure['revision'] = outcome.revision
             if outcome.recovery_leaves:
                 failure['recovery_leaves'] = list(outcome.recovery_leaves)
+            if outcome.unsupported_character is not None:
+                failure['character'] = outcome.unsupported_character
+            if outcome.unsupported_line is not None:
+                failure['line'] = outcome.unsupported_line
             if (
                 outcome.code == 'SMB_RECOVERABLE_REPLACE_REQUIRED'
                 and replace_strategy == 'atomic'

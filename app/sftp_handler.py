@@ -1967,7 +1967,10 @@ def write_file_text(
             code='EDIT_CONFLICT' if e.code == 'METADATA_CHANGED' else 'EDIT_METADATA_UNSUPPORTED',
         )
     except EditorEncodingError as e:
-        return FileWriteOutcome(success=False, error=str(e), code=e.code)
+        return FileWriteOutcome(
+            success=False, error=str(e), code=e.code,
+            unsupported_character=e.character, unsupported_line=e.line,
+        )
     except SFTPOperationError as e:
         return FileWriteOutcome(success=False, error=public_sftp_error(e))
     except Exception as e:
