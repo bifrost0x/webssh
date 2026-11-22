@@ -1137,7 +1137,8 @@ def close_sftp_cache(session_id):
 def sanitize_path(remote_path):
     """Sanitize and validate remote path to prevent path traversal attacks.
 
-    SECURITY: Blocks path traversal attempts (../) and null bytes.
+    SECURITY: Blocks '..' path components that survive normalization and null
+    bytes. Names that merely contain two dots, such as 'notes..txt', are valid.
     Absolute paths are ALLOWED for SFTP operations on remote servers.
     Returns None if path is invalid/malicious.
     """
@@ -1153,7 +1154,7 @@ def sanitize_path(remote_path):
     # the server itself is hosted on Windows (os.path would emit backslashes).
     normalized = posixpath.normpath(remote_path)
 
-    if '..' in normalized:
+    if '..' in normalized.split('/'):
         log_warning("SECURITY: Path traversal attempt blocked", path=remote_path)
         return None
 

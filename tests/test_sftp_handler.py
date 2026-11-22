@@ -783,11 +783,23 @@ class TestSanitizePath:
         from app.sftp_handler import sanitize_path
         assert sanitize_path('foo/../../etc') is None
 
-    def test_embedded_dotdot_filename_blocked(self):
-        # Current contract is deliberately strict: any surviving '..' substring
-        # is rejected, even inside a filename. Pinned so the behavior is explicit.
+    def test_dotdot_inside_a_name_is_not_traversal(self):
         from app.sftp_handler import sanitize_path
-        assert sanitize_path('file..txt') is None
+        assert sanitize_path('file..txt') == 'file..txt'
+        assert sanitize_path('/home/u/notes..txt') == '/home/u/notes..txt'
+        assert sanitize_path('/srv/backup..old/file') == '/srv/backup..old/file'
+        assert sanitize_path('/home/u/v1..2.tar.gz') == '/home/u/v1..2.tar.gz'
+        assert sanitize_path('/home/u/...') == '/home/u/...'
+        assert sanitize_path('..hidden') == '..hidden'
+        assert sanitize_path('name..') == 'name..'
+
+    def test_dotdot_component_still_blocked(self):
+        from app.sftp_handler import sanitize_path
+        assert sanitize_path('..') is None
+        assert sanitize_path('../x') is None
+        assert sanitize_path('a/../../x') is None
+        assert sanitize_path('notes..txt/../../x') is None
+        assert sanitize_path('../a..b') is None
 
     def test_current_dir_segment_collapsed(self):
         from app.sftp_handler import sanitize_path
