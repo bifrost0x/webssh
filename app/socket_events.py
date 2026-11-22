@@ -1040,14 +1040,24 @@ def _cleanup_admitted_socket_session(socket_sid):
                     user_id=user_id,
                     exception_type=type(error).__name__,
                 )
-            # Quick Connect and SMB sources stay open like SSH sessions so a
-            # reconnecting browser can keep using them. Their pools close
-            # them after the idle timeout; logout and account revocation
-            # close them immediately.
-            log_debug(
-                f"Last socket for {username} disconnected, "
-                "SSH sessions and file sources preserved"
+            # A reloaded page cannot reach its old Quick Connect and SMB
+            # sources, so they are closed to free their quota. Sources held
+            # by a running upload or download close when it ends.
+            closed = connection_pool.temp_connection_pool.close_all_user_connections(
+                str(user_id), defer_held=True,
             )
+            if closed > 0:
+                log_info(f"Cleaned up {closed} Quick Connect connection(s) for {username}")
+            from . import smb_pool
+
+            smb_closed = smb_pool.smb_connection_pool.close_all_user_sources(
+                str(user_id), defer_held=True,
+            )
+            if smb_closed > 0:
+                log_info(
+                    f"Cleaned up {smb_closed} SMB source(s) for {username}"
+                )
+            log_debug(f"Last socket for {username} disconnected, SSH sessions preserved")
 
 def restore_user_sessions(user_id, socket_sid):
     """Restore active SSH sessions when user reconnects."""

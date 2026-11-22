@@ -654,7 +654,7 @@ def test_revocation_closes_real_paramiko_transport(app, monkeypatch):
     assert socket_client.is_connected() is False
 
 
-def test_socket_reconnect_keeps_quick_sftp_source_and_running_upload(app, monkeypatch):
+def test_socket_reconnect_keeps_a_running_upload_and_closes_its_source_after(app, monkeypatch):
     import io
     import threading
 
@@ -732,6 +732,21 @@ def test_socket_reconnect_keeps_quick_sftp_source_and_running_upload(app, monkey
         sender.join(30)
         assert result == {'status': 200, 'body': {'success': True}}
 
+        # The last socket had dropped, so the source closes once the upload
+        # that held it has finished.
+        replacement.emit('list_directory', {
+            'source_id': source_id, 'request_id': f'list-{uuid.uuid4().hex}',
+            'remote_path': remote_dir,
+        })
+        assert wait_for_event(replacement, 'error')['code'] == 'SOURCE_UNAVAILABLE'
+
+        replacement.emit('quick_connect', {
+            'host': TARGET_HOST, 'port': TARGET_PORT, 'username': USERNAME,
+            'password': PASSWORD,
+        })
+        source_id = wait_for_event(
+            replacement, 'quick_connect_success',
+        )['file_source']['source_id']
         replacement.emit('list_directory', {
             'source_id': source_id, 'request_id': f'list-{uuid.uuid4().hex}',
             'remote_path': remote_dir,
