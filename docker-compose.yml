@@ -71,6 +71,7 @@ services:
       # - APPLICATION_ROOT=/webssh
 
       # Registration: the first browser-created account becomes administrator.
+      # It needs the setup token printed in the log: docker compose logs webssh
       # Optionally require CLI bootstrap or keep registration open afterwards.
       # - BOOTSTRAP_REGISTRATION_ENABLED=false
       # - REGISTRATION_ENABLED=true

@@ -85,6 +85,18 @@
             <div class="auth-credentials-zone">
             <form method="POST" action="{{ url_for('register') }}" id="registerForm">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                {% if setup_token_required %}
+                <div class="form-group">
+                    <label for="setup_token" data-i18n="auth.setupToken">Setup token</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon material-icons" aria-hidden="true">key</span>
+                        <input type="text" id="setup_token" aria-describedby="registerSetupTokenHint" name="setup_token" class="form-control"
+                               data-i18n-placeholder="auth.setupToken" placeholder="Setup token" required
+                               autocomplete="off" autocapitalize="off" spellcheck="false">
+                    </div>
+                    <div class="field-hint" id="registerSetupTokenHint" data-i18n="auth.setupTokenHint">WebSSH prints this one-time token in its log at start, for example in: docker logs webssh</div>
+                </div>
+                {% endif %}
                 <div class="form-group">
                     <label for="username" data-i18n="auth.username">Username</label>
                     <div class="input-wrapper">

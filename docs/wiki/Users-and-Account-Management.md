@@ -59,6 +59,12 @@ On a fresh homelab database, `BOOTSTRAP_REGISTRATION_ENABLED` defaults to true.
 Exactly the first browser-created account becomes administrator, and the
 bootstrap registration path closes immediately afterward.
 
+While no account exists, every browser registration (bootstrap or open
+registration) asks for a setup token. WebSSH generates it at start, keeps it
+only in memory and prints it to its output, for example
+`docker logs webssh 2>&1 | grep "setup token"`. A restart prints a new token.
+Installations that already have an account never see the field.
+
 Do not expose an empty instance to an untrusted network. If another person
 claims the first account, they control the deployment.
 

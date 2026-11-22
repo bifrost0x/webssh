@@ -226,10 +226,13 @@ class TestUserRegistration:
         registration = client.get('/register')
         assert registration.status_code == 200
 
+        from app.setup_token import current_setup_token
+
         created = client.post('/register', data={
             'username': 'firstadmin',
             'password': 'password123',
             'confirm_password': 'password123',
+            'setup_token': current_setup_token(),
         })
         assert created.status_code == 302
         assert created.headers['Location'].endswith('/')
@@ -436,11 +439,13 @@ class TestAuthentication:
         client,
     ):
         from app.models import AuthenticationSession
+        from app.setup_token import current_setup_token
 
         response = client.post('/register', data={
             'username': 'registereduser',
             'password': 'password123',
             'confirm_password': 'password123',
+            'setup_token': current_setup_token(),
         })
 
         assert response.status_code == 302

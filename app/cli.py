@@ -185,7 +185,8 @@ def warn_if_no_admin():
         if config.BOOTSTRAP_REGISTRATION_ENABLED:
             log_warning(
                 'No administrator account exists. One-time browser '
-                'registration is available until the first account is created. '
+                'registration is available until the first account is created; '
+                'it asks for the setup token that WebSSH prints in its log. '
                 'Do not expose an unclaimed instance to untrusted networks.'
             )
             return
