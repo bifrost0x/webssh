@@ -503,7 +503,7 @@ def _remote_metadata_text_size(value):
             'Remote filename exceeds configured byte limit'
         )
     try:
-        size = len(value.encode('utf-8'))
+        size = len(value.encode('utf-8', 'surrogateescape'))
     except UnicodeEncodeError as exc:
         raise RemoteMetadataLimitExceeded(
             'Remote filename is not valid UTF-8'
@@ -524,7 +524,7 @@ def _message_uint32(message, label):
     return value
 
 
-def _bounded_message_text(message, label):
+def _bounded_message_text(message, label, *, errors='strict'):
     remainder = message.get_remainder()
     if len(remainder) < 4:
         raise RemoteMetadataLimitExceeded(f'Malformed remote {label}')
@@ -538,7 +538,7 @@ def _bounded_message_text(message, label):
         )
     raw = remainder[4:4 + length]
     try:
-        value = raw.decode('utf-8')
+        value = raw.decode('utf-8', errors)
     except UnicodeDecodeError as exc:
         raise RemoteMetadataLimitExceeded(
             f'Remote {label} is not valid UTF-8'
@@ -638,8 +638,17 @@ def _bounded_sftp_attributes(message, filename, longname):
     return attributes
 
 
-def _iter_paramiko_directory_entries(sftp, remote_path, *, member_budget=None):
-    """Stream one directory and always close its remote SFTP handle."""
+def _iter_paramiko_directory_entries(
+    sftp, remote_path, *, member_budget=None, undecodable_names=False,
+):
+    """Stream one directory and always close its remote SFTP handle.
+
+    With ``undecodable_names`` a name that is not valid UTF-8 is returned
+    with surrogate escapes instead of failing the whole directory. Such a
+    name can be shown but never matches a real path, so operations on it
+    fail closed. Recursive operations keep the strict default.
+    """
+    name_errors = 'surrogateescape' if undecodable_names else 'strict'
     if member_budget is None:
         member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
     adjusted_path = sftp._adjust_cwd(remote_path)
@@ -678,8 +687,12 @@ def _iter_paramiko_directory_entries(sftp, remote_path, *, member_budget=None):
                     'Malformed empty directory response'
                 )
             for _index in range(entry_count):
-                filename = _bounded_message_text(message, 'filename')
-                longname = _bounded_message_text(message, 'longname')
+                filename = _bounded_message_text(
+                    message, 'filename', errors=name_errors,
+                )
+                longname = _bounded_message_text(
+                    message, 'longname', errors=name_errors,
+                )
                 attributes = _bounded_sftp_attributes(
                     message, filename, longname
                 )
@@ -708,13 +721,16 @@ def _iter_paramiko_directory_entries(sftp, remote_path, *, member_budget=None):
 
 
 @contextmanager
-def _directory_entries(sftp, remote_path, *, member_budget=None):
+def _directory_entries(
+    sftp, remote_path, *, member_budget=None, undecodable_names=False,
+):
     source_iterator = None
     if isinstance(sftp, SFTPClient):
         iterator = _iter_paramiko_directory_entries(
             sftp,
             remote_path,
             member_budget=member_budget,
+            undecodable_names=undecodable_names,
         )
     else:
         factory = getattr(sftp, 'listdir_iter', None)
@@ -785,6 +801,7 @@ class _SFTPDirectoryListing:
                 member_budget=_TransferMemberBudget(
                     config.MAX_TRANSFER_MEMBERS
                 ),
+                undecodable_names=True,
             )
             self._entries = self._entries_context.__enter__()
         except Exception:
@@ -1204,7 +1221,8 @@ def _read_directory_listing(session_id, remote_path='.'):
             files = []
             member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
             with _directory_entries(
-                sftp, safe_path, member_budget=member_budget
+                sftp, safe_path, member_budget=member_budget,
+                undecodable_names=True,
             ) as entries:
                 for entry in entries:
                     is_symlink = stat.S_ISLNK(entry.st_mode)
@@ -1287,7 +1305,7 @@ def probe_sftp_capability(session_id):
         deadline_guard = Timer(remaining, expire_probe)
         deadline_guard.daemon = True
         deadline_guard.start()
-        with _directory_entries(sftp, '.') as entries:
+        with _directory_entries(sftp, '.', undecodable_names=True) as entries:
             next(entries, None)
         if time.monotonic() > deadline:
             return None

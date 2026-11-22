@@ -398,6 +398,14 @@ active transfer references terminalize.
 Use a direct bounded download or tail mode. Preview and inline editing have
 lower memory-oriented limits than raw transfer.
 
+### A file name shows a replacement character
+
+The name is not valid UTF-8, for example Latin-1 names from old archives or NAS
+shares. The directory still lists, but WebSSH cannot open, rename, download or
+copy that entry, and folder downloads, recursive deletes and copies that include
+it stop with "Remote filename is not valid UTF-8". Rename it in the terminal,
+for example with `convmv -f latin1 -t utf8 --notest <name>`.
+
 ### Server-to-server copy fails
 
 Verify both sides are connected, writable, and owned by the same WebSSH user.

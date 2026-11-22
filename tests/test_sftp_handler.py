@@ -1131,3 +1131,88 @@ def test_posix_backslash_listing_does_not_relax_transfer_destinations(name):
             conflict_policy='error', budget=TransferBudget(max_bytes=1024, max_members=10),
             cancel_event=Event(), progress=lambda *_args: None,
         )
+
+
+def _wire_directory(names):
+    import paramiko
+    from paramiko.message import Message
+    from paramiko.sftp import CMD_CLOSE, CMD_HANDLE, CMD_NAME, CMD_OPENDIR, CMD_READDIR
+    from paramiko.sftp_attr import SFTPAttributes
+
+    class WireSFTP(paramiko.SFTPClient):
+        def __init__(self):
+            self.served = False
+            self.closed = False
+
+        def _adjust_cwd(self, path):
+            return path
+
+        def _log(self, *_args):
+            pass
+
+        def _request(self, command, *_args):
+            message = Message()
+            if command == CMD_OPENDIR:
+                message.add_string('handle')
+                response = CMD_HANDLE
+            elif command == CMD_READDIR:
+                if self.served:
+                    raise EOFError()
+                self.served = True
+                message.add_int(len(names))
+                for name in names:
+                    message.add_string(name)
+                    message.add_string(b'-rw-r--r-- 1 u u 1 Jan 1 00:00 ' + name)
+                    attributes = SFTPAttributes()
+                    attributes.st_mode = 0o100644
+                    attributes.st_size = 1
+                    attributes.st_mtime = 0
+                    attributes.st_atime = 0
+                    attributes._pack(message)
+                response = CMD_NAME
+            else:
+                assert command == CMD_CLOSE
+                self.closed = True
+                response = 0
+            message.rewind()
+            return response, message
+
+    return WireSFTP()
+
+
+def test_listing_survives_a_name_that_is_not_utf8(monkeypatch):
+    import app.sftp_handler as handler
+
+    clients = []
+
+    @contextmanager
+    def session(*_args, **_kwargs):
+        clients.append(_wire_directory([b'normal.txt', b'caf\xe9.txt']))
+        yield clients[-1], 'session'
+
+    monkeypatch.setattr(handler, 'sftp_session', session)
+    files, error = handler.list_directory('session', '/data')
+    assert error is None
+    names = [entry['name'] for entry in files]
+    assert names == ['normal.txt', 'caf\udce9.txt']
+    # The escaped name can never match a real path, so it cannot be opened
+    # or renamed by accident and serializes safely as JSON.
+    import json
+    assert json.loads(json.dumps(names)) == names
+    assert clients[0].closed
+
+    listing, error = handler.open_directory_listing('session', '/data')
+    assert error is None
+    page, error, has_more = listing.read_page(10)
+    assert error is None and has_more is False
+    assert [entry['name'] for entry in page] == ['normal.txt', 'caf\udce9.txt']
+
+
+def test_recursive_operations_still_refuse_names_that_are_not_utf8():
+    import app.sftp_handler as handler
+
+    sftp = _wire_directory([b'normal.txt', b'caf\xe9.txt'])
+    with pytest.raises(handler.RemoteMetadataLimitExceeded, match='not valid UTF-8'):
+        with handler._directory_entries(sftp, '/data') as entries:
+            list(entries)
+    assert sftp.closed
