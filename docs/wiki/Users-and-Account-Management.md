@@ -143,7 +143,10 @@ confirm a guessed password. WebSSH also revokes the account's tracked resources:
 
 - active transfers;
 - Socket.IO sessions;
-- live SSH sessions, including their remote tmux sessions;
+- live SSH sessions, including the remote tmux sessions of connected
+  terminals; detached tmux sessions are listed in the security audit log as
+  `TMUX_SESSION_NOT_ENDED` and must be ended on the host with
+  `tmux kill-session -t <name>`;
 - pooled temporary SSH/SFTP connections;
 - persisted socket and SSH session metadata.
 
@@ -200,9 +203,10 @@ identity.
 
 Local users can change their password through `/change-password`. Explicit
 logout is a POST action and revokes tracked Socket.IO, SSH, and temporary SFTP
-connections instead of only deleting the browser cookie. Logout and password
-changes only disconnect: remote tmux sessions keep running and are offered for
-reconnect after the next sign-in, on every device.
+connections instead of only deleting the browser cookie. Logout only
+disconnects: remote tmux sessions keep running and are offered for reconnect
+after the next sign-in, on every device. A password change ends them like a
+lock.
 
 LDAP-managed users authenticate their primary credential exclusively against
 the directory and cannot use local password-change or OIDC. After recent LDAP

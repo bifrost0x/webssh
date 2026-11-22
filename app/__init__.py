@@ -1431,9 +1431,7 @@ def create_app(
                         error=type(exc).__name__,
                     )
                     abort(500)
-                user_lifecycle.revoke_user_access(
-                    password_owner.id, socketio, kill_tmux=False,
-                )
+                user_lifecycle.revoke_user_access(password_owner.id, socketio)
                 log_password_change(
                     password_owner.username,
                     True,

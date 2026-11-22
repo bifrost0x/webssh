@@ -1,3 +1,4 @@
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -462,7 +463,7 @@ class TestSafeUserDeletion:
 
 
 class TestPersistentSessionsSurviveSignOut:
-    """Logout and password changes disconnect; only lock or deletion ends tmux work."""
+    """Logout only disconnects; password change, lock and deletion end tmux work."""
 
     def _seed_sessions(self, app, monkeypatch, username):
         from app import ssh_manager
@@ -512,9 +513,7 @@ class TestPersistentSessionsSurviveSignOut:
         assert sorted(close_calls) == [('plain-ssh', False), ('tmux-ssh', False)]
         assert self._remaining_rows(app, user_id) == [('tmux-ssh', False)]
 
-    def test_password_change_detaches_without_killing_persistent_tmux(
-        self, app, client, monkeypatch,
-    ):
+    def test_password_change_still_kills_persistent_tmux(self, app, client, monkeypatch):
         user_id, close_calls = self._seed_sessions(app, monkeypatch, 'tmuxpassword')
         _login(client, 'tmuxpassword')
 
@@ -525,8 +524,8 @@ class TestPersistentSessionsSurviveSignOut:
         })
 
         assert response.status_code == 302
-        assert sorted(close_calls) == [('plain-ssh', False), ('tmux-ssh', False)]
-        assert self._remaining_rows(app, user_id) == [('tmux-ssh', False)]
+        assert sorted(close_calls) == [('plain-ssh', True), ('tmux-ssh', True)]
+        assert self._remaining_rows(app, user_id) == []
 
     def test_admin_lock_still_kills_persistent_tmux(self, app, client, monkeypatch):
         user_id, close_calls = self._seed_sessions(app, monkeypatch, 'tmuxlocked')
@@ -547,3 +546,45 @@ class TestPersistentSessionsSurviveSignOut:
         assert response.status_code == 200
         assert sorted(close_calls) == [('plain-ssh', True), ('tmux-ssh', True)]
         assert self._remaining_rows(app, user_id) == []
+
+    def test_admin_lock_audits_detached_tmux_it_cannot_end(
+        self, app, client, monkeypatch, caplog,
+    ):
+        user_id, close_calls = self._seed_sessions(app, monkeypatch, 'tmuxdetached')
+        with app.app_context():
+            from app.models import SSHSession, db
+
+            _create_user('tmuxdetachadmin', is_admin=True)
+            db.session.add(SSHSession(
+                session_id='detached-ssh', user_id=user_id, host='old.example',
+                port=2222, username='deploy', connected=False, is_persistent=True,
+                tmux_session_name='webssh_deploy_old_2222_beef', key_id='key-1',
+            ))
+            db.session.commit()
+        _login(client, 'tmuxdetachadmin')
+        caplog.set_level(logging.INFO, logger='security_audit')
+
+        response = client.post(
+            f'/admin/api/users/{user_id}/lock',
+            headers=password_step_up_headers(
+                client, 'user.manage', f'{user_id}:lock'
+            )[0],
+        )
+
+        assert response.status_code == 200
+        assert sorted(close_calls) == [('plain-ssh', True), ('tmux-ssh', True)]
+        assert self._remaining_rows(app, user_id) == []
+        warnings = [
+            record.getMessage() for record in caplog.records
+            if record.name == 'security_audit'
+            and record.levelno == logging.WARNING
+            and record.getMessage().startswith('TMUX_SESSION_NOT_ENDED')
+        ]
+        assert len(warnings) == 1
+        for detail in (
+            'host=old.example', 'port=2222', 'ssh_user=deploy',
+            'tmux_session=webssh_deploy_old_2222_beef', 'reason=detached',
+            f'user_id={user_id}',
+        ):
+            assert detail in warnings[0]
+        assert 'key-1' not in warnings[0]

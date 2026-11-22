@@ -1,10 +1,11 @@
 """Central cleanup helpers for revoking a user's live access."""
 
+import logging
 from uuid import uuid4
 
 import config
 
-from .audit_logger import log_error, log_info, log_warning
+from .audit_logger import log_error, log_info, log_security_event, log_warning
 from .models import db, SocketSession, SSHSession
 from . import connection_pool, ssh_manager
 from .backup_coordination import persistent_write
@@ -17,9 +18,11 @@ def revoke_user_access(user_id, socketio_instance=None, *, kill_tmux=True):
     connection must not prevent the user's sockets, pooled connections, or
     database session metadata from being revoked.
 
-    ``kill_tmux=False`` is for the user's own sign-out and password change:
-    transports close, but remote tmux sessions keep running and stay listed
-    as reconnect candidates. Locking or deleting an account ends them.
+    ``kill_tmux=False`` is for the user's own sign-out: transports close, but
+    remote tmux sessions keep running and stay listed as reconnect candidates.
+    Otherwise tmux ends with each live connection; a detached session has no
+    connection to end it through and its record holds no credentials to open
+    one, so it is reported in the security audit log instead.
     """
     user_id = int(user_id)
     from flask import current_app
@@ -174,6 +177,18 @@ def revoke_user_access(user_id, socketio_instance=None, *, kill_tmux=True):
         SocketSession.query.filter_by(user_id=user_id).delete(synchronize_session=False)
         ssh_rows = SSHSession.query.filter_by(user_id=user_id)
         if kill_tmux:
+            for row in ssh_rows.filter_by(is_persistent=True):
+                if row.tmux_session_name and row.session_id not in ssh_session_ids:
+                    log_security_event(
+                        'TMUX_SESSION_NOT_ENDED',
+                        level=logging.WARNING,
+                        user_id=user_id,
+                        host=row.host,
+                        port=row.port,
+                        ssh_user=row.username,
+                        tmux_session=row.tmux_session_name,
+                        reason='detached',
+                    )
             ssh_rows.delete(synchronize_session=False)
         else:
             ssh_rows.filter_by(is_persistent=False).delete(synchronize_session=False)
