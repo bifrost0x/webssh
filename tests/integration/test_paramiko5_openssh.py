@@ -5,6 +5,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import paramiko
 import pytest
@@ -496,3 +497,154 @@ def test_permission_jobs_real_tree_preview_modes_and_symlink_exclusion(monkeypat
         sftp.remove(canary)
         sftp.close()
         ssh_manager.close_session(session_id)
+
+
+@pytest.fixture
+def remote_workspace():
+    from app.paramiko_channels import open_sftp_client
+
+    session_id = connect_terminal(password=PASSWORD)
+    client = ssh_manager.sessions[session_id]['client']
+    sftp = open_sftp_client(client.get_transport(), timeout=5, operation_timeout=5)
+    directory = f'/tmp/webssh-g1-{uuid.uuid4().hex}'
+    sftp.mkdir(directory, 0o755)
+
+    def write(name, data, mode=0o644):
+        path = f'{directory}/{name}'.encode('utf-8', 'surrogateescape')
+        with sftp.file(path, 'wb') as remote:
+            remote.write(data)
+        sftp.chmod(path, mode)
+
+    def read(name):
+        with sftp.file(f'{directory}/{name}'.encode('utf-8', 'surrogateescape'), 'rb') as remote:
+            return remote.read()
+
+    try:
+        yield SimpleNamespace(session_id=session_id, sftp=sftp, path=directory,
+                              write=write, read=read)
+    finally:
+        try:
+            # Paramiko cannot list the non-UTF-8 fixture name; remove the tree
+            # with the remote shell instead.
+            channel = client.exec_command(f"rm -rf -- '{directory}'")[1].channel
+            assert channel.recv_exit_status() == 0
+        finally:
+            sftp.close()
+            ssh_manager.close_session(session_id)
+
+
+def edit_and_save(workspace, name, change):
+    from app import sftp_handler
+
+    path = f'{workspace.path}/{name}'
+    opened, error = sftp_handler.read_file_for_edit(workspace.session_id, path)
+    assert error is None, error
+    return opened, sftp_handler.write_file_text(
+        workspace.session_id, path, change(opened['content']),
+        encoding=opened['encoding'], newline=opened['newline'],
+        expected_revision=opened['revision'],
+    )
+
+
+def test_names_with_two_dots_can_be_listed_opened_and_uploaded(remote_workspace):
+    import io
+    from app import sftp_handler
+
+    remote_workspace.sftp.mkdir(f'{remote_workspace.path}/backup..old')
+    remote_workspace.write('notes..txt', b'two dots\n')
+    files, error = sftp_handler.list_directory(
+        remote_workspace.session_id, f'{remote_workspace.path}/backup..old',
+    )
+    assert (files, error) == ([], None)
+    opened, error = sftp_handler.read_file_for_edit(
+        remote_workspace.session_id, f'{remote_workspace.path}/notes..txt',
+    )
+    assert error is None and opened['content'] == 'two dots\n'
+    sftp_handler.upload_request_stream(
+        remote_workspace.session_id, f'{remote_workspace.path}/backup..old/v1..2.tar.gz',
+        io.BytesIO(b'archive'), chunk_size=4, max_bytes=100,
+    )
+    assert remote_workspace.read('backup..old/v1..2.tar.gz') == b'archive'
+    assert sftp_handler.read_file_for_edit(
+        remote_workspace.session_id, '../../etc/passwd',
+    ) == (None, 'Invalid path')
+    assert sftp_handler.read_file_for_edit(
+        remote_workspace.session_id, 'notes..txt/../../etc/passwd',
+    ) == (None, 'Invalid path')
+
+
+def test_editor_keeps_mixed_line_endings_and_the_script_still_runs(remote_workspace):
+    remote_workspace.write('mixed.sh', b'#!/bin/sh\necho a\r\necho b\necho c\n', 0o755)
+    opened, outcome = edit_and_save(
+        remote_workspace, 'mixed.sh', lambda text: text + 'echo d\n',
+    )
+    assert opened['newline'] == 'mixed'
+    assert outcome.success, outcome.error
+    assert remote_workspace.read('mixed.sh') == b'#!/bin/sh\necho a\r\necho b\necho c\necho d\n'
+    channel = ssh_manager.sessions[remote_workspace.session_id]['client'].exec_command(
+        f'{remote_workspace.path}/mixed.sh',
+    )[1].channel
+    assert channel.recv_exit_status() == 0
+
+
+def test_editor_saves_a_file_opened_through_a_symlink(remote_workspace):
+    remote_workspace.write('real.conf', b'listen 80;\n')
+    remote_workspace.sftp.symlink('real.conf', f'{remote_workspace.path}/link.conf')
+    _opened, outcome = edit_and_save(
+        remote_workspace, 'link.conf', lambda text: text.replace('80', '8080'),
+    )
+    assert outcome.success, outcome.error
+    assert remote_workspace.read('real.conf') == b'listen 8080;\n'
+    assert stat.S_ISLNK(remote_workspace.sftp.lstat(f'{remote_workspace.path}/link.conf').st_mode)
+    assert remote_workspace.sftp.readlink(f'{remote_workspace.path}/link.conf') == 'real.conf'
+
+
+def test_directory_with_a_non_utf8_name_stays_browsable(remote_workspace):
+    from app import sftp_handler
+
+    remote_workspace.write('normal.txt', b'ok')
+    remote_workspace.write('caf\udce9.txt', b'latin-1 name')
+    files, error = sftp_handler.list_directory(
+        remote_workspace.session_id, remote_workspace.path,
+    )
+    assert error is None
+    assert sorted(entry['name'] for entry in files) == ['caf\udce9.txt', 'normal.txt']
+    listing, error = sftp_handler.open_directory_listing(
+        remote_workspace.session_id, remote_workspace.path,
+    )
+    assert error is None
+    page, error, _more = listing.read_page(10)
+    assert error is None and len(page) == 2
+
+
+def test_editor_refuses_to_reencode_a_latin1_file(remote_workspace):
+    remote_workspace.write('latin1.txt', b'Gr\xfc\xdfe\n')
+    opened, outcome = edit_and_save(
+        remote_workspace, 'latin1.txt', lambda text: text + 'Preis 5 €\n',
+    )
+    assert opened['encoding'] == 'latin-1'
+    assert not outcome.success
+    assert outcome.code == 'EDIT_ENCODING_UNSUPPORTED'
+    assert remote_workspace.read('latin1.txt') == b'Gr\xfc\xdfe\n'
+    _opened, outcome = edit_and_save(
+        remote_workspace, 'latin1.txt', lambda text: text + '\xc4ra\n',
+    )
+    assert outcome.success, outcome.error
+    assert remote_workspace.read('latin1.txt') == b'Gr\xfc\xdfe\n\xc4ra\n'
+
+
+def test_long_file_names_can_be_uploaded_and_saved(remote_workspace):
+    import io
+    from app import sftp_handler
+
+    name = '日' * 80 + '.txt'
+    assert len(name.encode('utf-8')) <= 255
+    sftp_handler.upload_request_stream(
+        remote_workspace.session_id, f'{remote_workspace.path}/{name}',
+        io.BytesIO(b'first\n'), chunk_size=4, max_bytes=100,
+    )
+    assert remote_workspace.read(name) == b'first\n'
+    _opened, outcome = edit_and_save(remote_workspace, name, lambda text: text + 'second\n')
+    assert outcome.success, outcome.error
+    assert remote_workspace.read(name) == b'first\nsecond\n'
+    assert sorted(remote_workspace.sftp.listdir(remote_workspace.path)) == [name]
