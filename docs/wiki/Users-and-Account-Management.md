@@ -92,6 +92,23 @@ not promoted, and a listed name without an account is reported as a warning:
 remove it or create the account, because whoever registers that name later
 would otherwise become an administrator on the next start.
 
+### Forgotten password
+
+Neither an administrator nor the user can reset a local password in the
+browser. On the host, run:
+
+```bash
+docker compose exec webssh \
+  /app/entrypoint.sh flask --app start:app reset-password --username admin
+```
+
+The command prompts for the new password twice; `--password-file` reads it
+from a private regular file instead. It works for every local account,
+including the only administrator, and leaves roles, lock state and second
+factors unchanged. All browser sign-ins of the account end; open terminals
+disconnect at their next action. LDAP- and GitHub-managed accounts are
+refused, because their password lives with that provider.
+
 ## Registration modes
 
 Two settings serve different purposes:

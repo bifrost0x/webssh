@@ -49,6 +49,7 @@ _MAINTENANCE_COMMANDS = frozenset({
     'connection-store',
     'create-admin',
     'issue-factor-bootstrap',
+    'reset-password',
     'rotate-secret-key',
 })
 _FLASK_OPTIONS_WITH_VALUES = frozenset({
