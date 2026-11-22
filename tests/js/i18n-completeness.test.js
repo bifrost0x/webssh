@@ -105,3 +105,14 @@ test('chmod help explains separate modes, optional recursion and preview in ever
     assert.match(fallback, /apply/i);
     assert.doesNotMatch(fallback, /20|Select one /);
 });
+
+test('logout confirmation says that only tmux sessions keep running', () => {
+    // Logout ends every SSH connection; only remote tmux sessions survive it.
+    for (const [language, entries] of Object.entries(locales)) {
+        const message = Object.fromEntries(entries)['auth.logoutConfirm'];
+        assert.match(message, /tmux/, `${language}: auth.logoutConfirm`);
+    }
+    const english = Object.fromEntries(locales.en)['auth.logoutConfirm'];
+    const app = fs.readFileSync(path.join(__dirname, '../../static/js/app.js'), 'utf8');
+    assert.ok(app.includes(`: '${english}';`), 'app.js fallback matches the English text');
+});
