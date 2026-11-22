@@ -42,14 +42,29 @@ Open `http://localhost:5000` or replace `localhost` with the host address.
 docker run -d \
   --name webssh \
   -p 5000:5000 \
-  -e CORS_ORIGINS=http://localhost:5000 \
+  -e DEPLOYMENT_PROFILE=homelab \
+  -e CORS_ORIGINS='*' \
+  -e ALLOW_CORS_WILDCARD=true \
+  -e TRUSTED_PROXIES=0 \
+  -e SESSION_COOKIE_SECURE=false \
+  -e TMUX_SESSION_PREFIX=webssh \
+  -e BACKUP_TEMP_DIR=/app/recovery \
+  -e BACKUP_RECOVERY_DURABLE=true \
   -v webssh_data:/app/data \
+  -v webssh_recovery:/app/recovery \
   --restart unless-stopped \
   ghcr.io/bifrost0x/webssh:latest
 ```
 
-The named volume is essential. It preserves users, settings, keys, host trust,
-and the generated application secret across container updates.
+These are the settings of the homelab Compose file. Open
+`http://localhost:5000` or replace `localhost` with the host address.
+`SESSION_COOKIE_SECURE=false` lets browsers keep the session cookie over plain
+HTTP; use it only on a trusted network, and switch to HTTPS before anyone else
+can reach the port.
+
+The named volumes are essential. `webssh_data` preserves users, settings, keys,
+host trust, and the generated application secret across container updates;
+`webssh_recovery` keeps the staging area for online backup restore.
 
 ## Create the first administrator
 

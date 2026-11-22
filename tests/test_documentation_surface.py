@@ -665,6 +665,42 @@ def test_wiki_describes_current_transfer_and_log_rotation_contracts():
     assert 'does not rotate them itself' not in audit
 
 
+def _homelab_compose_settings():
+    compose = (ROOT / 'docker-compose.yml').read_text(encoding='utf-8')
+    environment = {}
+    volumes = set()
+    section = None
+    for line in compose.splitlines():
+        stripped = line.strip()
+        if stripped in ('environment:', 'volumes:') and line.startswith('    ') and not line.startswith('      '):
+            section = stripped[:-1]
+            continue
+        if not line.startswith('      '):
+            if stripped and not stripped.startswith('#'):
+                section = None
+            continue
+        match = re.fullmatch(r'- ([A-Z0-9_]+)=(.*)', stripped)
+        if section == 'environment' and match and '${' not in match.group(2):
+            environment[match.group(1)] = match.group(2)
+        elif section == 'volumes' and stripped.startswith('- '):
+            volumes.add(stripped[2:])
+    return environment, volumes
+
+
+def test_quick_start_docker_run_matches_the_homelab_compose_file():
+    """Option 2 must work from another device on the LAN, like the Compose file."""
+    quick_start = (WIKI / 'Quick-Start.md').read_text(encoding='utf-8')
+    command = re.search(r'```bash\n(docker run -d .*?)```', quick_start, re.DOTALL).group(1)
+    environment = dict(re.findall(r"-e ([A-Z0-9_]+)='?([^'\s]*)'?", command))
+    volumes = set(re.findall(r'-v (\S+)', command))
+    compose_environment, compose_volumes = _homelab_compose_settings()
+
+    assert compose_environment['SESSION_COOKIE_SECURE'] == 'false'
+    assert compose_environment['CORS_ORIGINS'] == '*'
+    assert environment == compose_environment
+    assert volumes == compose_volumes
+
+
 def load_tests(loader, tests, pattern):
     """Run the same documentation contracts without application dependencies."""
     import unittest
