@@ -7,6 +7,7 @@ from flask_login import login_required, current_user
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 import config
+import ipaddress
 import os
 import sys
 import time
@@ -120,6 +121,55 @@ def get_client_ip():
     Returns the IP address that should be used for rate limiting.
     """
     return request.remote_addr or 'unknown'
+
+
+_proxy_warnings_logged = set()
+
+
+def _is_loopback(address):
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:
+        return False
+
+
+def _note_proxy_configuration(environ):
+    """Log once per process when traffic contradicts TRUSTED_PROXIES.
+
+    Both mistakes are silent otherwise: without trusted proxies every client
+    behind a proxy shares one rate-limit bucket and audit address; with
+    trusted proxies, a client that reaches the port directly chooses its own
+    address through X-Forwarded-For. Loopback requests (health checks) are
+    ignored. A client can trigger these lines itself, so they only advise.
+    """
+    if config.TRUSTED_PROXIES == 0:
+        if 'untrusted' in _proxy_warnings_logged or not (
+            environ.get('HTTP_X_FORWARDED_FOR') or environ.get('HTTP_FORWARDED')
+        ):
+            return
+        _proxy_warnings_logged.add('untrusted')
+        log_warning(
+            'Requests carry X-Forwarded-For or Forwarded headers but TRUSTED_PROXIES=0. '
+            'Behind a reverse proxy all clients then share the proxy address for '
+            'sign-in limits and audit logs; set TRUSTED_PROXIES to the number of '
+            'proxies in front of WebSSH',
+            proxy=environ.get('REMOTE_ADDR', ''),
+        )
+        return
+    if 'bypassed' in _proxy_warnings_logged or environ.get('HTTP_X_FORWARDED_FOR'):
+        return
+    client = environ.get('REMOTE_ADDR', '')
+    if _is_loopback(client):
+        return
+    _proxy_warnings_logged.add('bypassed')
+    log_warning(
+        'A request reached WebSSH without X-Forwarded-For although '
+        'TRUSTED_PROXIES is set. Clients that bypass the proxy can choose the '
+        'address used for sign-in limits and audit logs; publish the port only '
+        'to the proxy, for example 127.0.0.1:5000:5000',
+        client=client,
+        trusted_proxies=config.TRUSTED_PROXIES,
+    )
 
 
 def _engineio_admission_user(app, environ):
@@ -648,6 +698,10 @@ def create_app(
                 current_user.is_authenticated and is_support_links_enabled()
             ),
         }
+
+    @app.before_request
+    def note_proxy_configuration():
+        _note_proxy_configuration(request.environ)
 
     @app.before_request
     def hide_disabled_admin_panel():

@@ -50,7 +50,9 @@ Check in this order:
 2. Reverse-proxy upstream address and port.
 3. WebSocket/Socket.IO upgrade forwarding.
 4. Exact public scheme and host in `CORS_ORIGINS`.
-5. Whether `TRUSTED_PROXIES` matches the real number of forwarding layers.
+5. Whether `TRUSTED_PROXIES` matches the real number of forwarding layers. The
+   log warns once when requests carry forwarding headers at `0`, or arrive
+   without them although proxies are trusted.
 6. Secure-cookie behavior over HTTPS.
 7. Subfolder prefix consistency if `APPLICATION_ROOT` is set.
 
