@@ -652,3 +652,117 @@ def test_revocation_closes_real_paramiko_transport(app, monkeypatch):
     assert result['errors'] == []
     assert session_id not in ssh_manager.sessions
     assert socket_client.is_connected() is False
+
+
+def test_socket_reconnect_keeps_a_running_upload_and_closes_its_source_after(app, monkeypatch):
+    import io
+    import threading
+
+    import config
+    from app import socketio
+    from app.socket_protocol import SOCKET_WIRE_REVISION
+
+    monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
+    socket_client, http_client, _user_id = create_authenticated_socket(
+        app, 'socket_reconnect_transfer_user',
+    )
+    trust_target_for_sftp(socket_client, password=PASSWORD)
+    socket_client.emit('quick_connect', {
+        'host': TARGET_HOST, 'port': TARGET_PORT, 'username': USERNAME,
+        'password': PASSWORD,
+    })
+    source_id = wait_for_event(
+        socket_client, 'quick_connect_success',
+    )['file_source']['source_id']
+    remote_dir = f'/tmp/paramiko5-reconnect-{uuid.uuid4().hex}'
+    socket_client.emit('create_directory', {
+        'source_id': source_id, 'request_id': f'mkdir-{uuid.uuid4().hex}',
+        'remote_path': remote_dir,
+    })
+    wait_for_event(socket_client, 'directory_created')
+    upload = socket_client.emit('prepare_transfer', {
+        'direction': 'upload', 'source_id': source_id,
+        'request_id': f'upload-{uuid.uuid4().hex}',
+        'remote_path': f'{remote_dir}/payload.bin',
+    }, callback=True)
+    assert upload['success'] is True
+
+    payload = os.urandom(512 * 1024)
+    started = threading.Event()
+    resume = threading.Event()
+
+    class SlowBody(io.BytesIO):
+        def read(self, size=-1):
+            if self.tell():
+                started.set()
+                assert resume.wait(20)
+            return super().read(64 * 1024 if size < 0 else min(size, 64 * 1024))
+
+        read1 = read
+
+        def readinto(self, buffer):
+            chunk = self.read(len(buffer))
+            buffer[:len(chunk)] = chunk
+            return len(chunk)
+
+    result = {}
+
+    def send():
+        response = http_client.post(
+            upload['url'], input_stream=SlowBody(payload),
+            content_length=len(payload),
+            content_type='application/octet-stream',
+        )
+        result['status'] = response.status_code
+        result['body'] = response.get_json()
+
+    sender = threading.Thread(target=send)
+    sender.start()
+    replacement = None
+    try:
+        assert started.wait(20)
+        # The browser's only socket drops and reconnects with a new SID.
+        socket_client.disconnect()
+        replacement = socketio.test_client(
+            app, flask_test_client=http_client,
+            auth={'wire_revision': SOCKET_WIRE_REVISION},
+        )
+        wait_for_event(replacement, 'connected')
+        resume.set()
+        sender.join(30)
+        assert result == {'status': 200, 'body': {'success': True}}
+
+        # The last socket had dropped, so the source closes once the upload
+        # that held it has finished.
+        replacement.emit('list_directory', {
+            'source_id': source_id, 'request_id': f'list-{uuid.uuid4().hex}',
+            'remote_path': remote_dir,
+        })
+        assert wait_for_event(replacement, 'error')['code'] == 'SOURCE_UNAVAILABLE'
+
+        replacement.emit('quick_connect', {
+            'host': TARGET_HOST, 'port': TARGET_PORT, 'username': USERNAME,
+            'password': PASSWORD,
+        })
+        source_id = wait_for_event(
+            replacement, 'quick_connect_success',
+        )['file_source']['source_id']
+        replacement.emit('list_directory', {
+            'source_id': source_id, 'request_id': f'list-{uuid.uuid4().hex}',
+            'remote_path': remote_dir,
+        })
+        listing = wait_for_event(replacement, 'directory_listing')
+        assert [(item['name'], item['size']) for item in listing['files']] == [
+            ('payload.bin', len(payload)),
+        ]
+        replacement.emit('delete_item', {
+            'source_id': source_id, 'request_id': f'delete-{uuid.uuid4().hex}',
+            'path': remote_dir,
+        })
+        wait_for_event(replacement, 'item_deleted')
+    finally:
+        resume.set()
+        sender.join(30)
+        for client in (socket_client, replacement):
+            if client is not None and client.is_connected():
+                client.disconnect()

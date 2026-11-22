@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 _WRITE_ERROR_CODES = frozenset({
     'EDIT_CONFLICT',
+    'EDIT_ENCODING_UNSUPPORTED',
     'EDIT_METADATA_UNSUPPORTED',
     'SAVE_OUTCOME_UNKNOWN',
     'SMB_RECOVERABLE_REPLACE_REQUIRED',
@@ -78,6 +79,8 @@ class FileWriteOutcome:
     warning_code: str | None = None
     recovery_leaves: tuple[str, ...] = ()
     revision: str | None = None
+    unsupported_character: str | None = None
+    unsupported_line: int | None = None
 
     def __post_init__(self):
         if not isinstance(self.success, bool):
@@ -120,6 +123,16 @@ class FileWriteOutcome:
                    for character in self.revision)
         ):
             raise ValueError('invalid write revision')
+        if self.unsupported_character is not None and (
+            not isinstance(self.unsupported_character, str)
+            or len(self.unsupported_character) != 1
+        ):
+            raise ValueError('invalid unsupported character')
+        if self.unsupported_line is not None and (
+            type(self.unsupported_line) is not int
+            or self.unsupported_line < 1
+        ):
+            raise ValueError('invalid unsupported line')
 
 
 @runtime_checkable

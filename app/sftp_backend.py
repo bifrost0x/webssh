@@ -3,7 +3,6 @@
 from contextlib import contextmanager
 import errno
 import posixpath
-import secrets
 import stat as stat_module
 
 import config
@@ -220,7 +219,7 @@ class SFTPBackend:
         safe_path = self.normalize_path(path)
         if safe_path is None:
             raise sftp_handler.SFTPOperationError('invalid remote path')
-        temporary_path = f'{safe_path}.webssh-write-{secrets.token_hex(12)}.tmp'
+        temporary_path = sftp_handler.staging_path(safe_path, 'write')
         with sftp_handler.sftp_session(
             source.handle_id, io_lane=io_lane
         ) as (sftp, _source_type):

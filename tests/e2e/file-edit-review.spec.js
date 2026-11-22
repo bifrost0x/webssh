@@ -85,6 +85,67 @@ test('failed save keeps draft and review, then SMB consent retries only the revi
     expect(await page.evaluate(() => window.__reviewSaves.length)).toBe(3);
 });
 
+test('a character the Latin-1 file cannot store keeps the draft and explains the refusal', async ({ page }) => {
+    await page.locator('#editorContent').fill('café\nPreis 5 €\n');
+    await page.locator('#editorSaveBtn').click();
+    await page.locator('#editorCommitBtn').click();
+    await page.evaluate(() => window.FilePreview.handleSocketError({
+        ...window.__reviewSaves[0], operation: 'save_file', code: 'EDIT_ENCODING_UNSUPPORTED',
+        error: "The character '€' in line 2 cannot be saved in this latin-1 file.",
+        character: '€', line: 2,
+    }));
+    await expect(page.locator('#editorStatus')).toHaveText(
+        'Line 2 contains “€” (U+20AC), which this Latin-1 file cannot store. Remove or replace it, then save again.',
+    );
+    await expect(page.locator('#editorReviewEdited')).toHaveValue('café\nPreis 5 €\n');
+    await page.locator('#editorBackBtn').click();
+    await expect(page.locator('#editorContent')).toHaveValue('café\nPreis 5 €\n');
+});
+
+test('an invisible or bidi character in an encoding refusal is named only by its code point', async ({ page }) => {
+    await page.locator('#editorContent').fill('a\u202eb\n');
+    await page.locator('#editorSaveBtn').click();
+    await page.locator('#editorCommitBtn').click();
+    await page.evaluate(() => window.FilePreview.handleSocketError({
+        ...window.__reviewSaves[0], operation: 'save_file', code: 'EDIT_ENCODING_UNSUPPORTED',
+        error: 'refused', character: '\u202e', line: 1,
+    }));
+    await expect(page.locator('#editorStatus')).toHaveText(
+        'Line 1 contains U+202E, which this Latin-1 file cannot store. Remove or replace it, then save again.',
+    );
+    expect(await page.evaluate(() => ['\u200b', '\u2028', '\u3000'].map(character => (
+        window.FilePreview.encodingRefusalMessage({ character, line: 4 })
+    )))).toEqual(['U+200B', 'U+2028', 'U+3000'].map(codepoint => (
+        `Line 4 contains ${codepoint}, which this Latin-1 file cannot store. Remove or replace it, then save again.`
+    )));
+});
+
+test('an encoding refusal without character details falls back to the general message', async ({ page }) => {
+    await page.locator('#editorContent').fill('Preis 5 €\n');
+    await page.locator('#editorSaveBtn').click();
+    await page.locator('#editorCommitBtn').click();
+    await page.evaluate(() => window.FilePreview.handleSocketError({
+        ...window.__reviewSaves[0], operation: 'save_file', code: 'EDIT_ENCODING_UNSUPPORTED',
+        error: 'refused', character: 'ab', line: 0,
+    }));
+    await expect(page.locator('#editorStatus')).toContainText('stored as Latin-1');
+});
+
+test('mixed line endings reported by the server are sent back unchanged on save', async ({ page }) => {
+    await page.evaluate(() => window.FilePreview.handleEditData({
+        source_id: 'sftp-session:review-fixture', path: '/etc/review.txt',
+        request_id: window.FilePreview.currentEditRequestId = 'mixed-edit',
+        content: '#!/bin/sh\necho a\n', revision: 'mixed-revision',
+        encoding: 'utf-8', newline: 'mixed', original_bytes: 'IyEvYmluL3NoCmVjaG8gYQ0K',
+    }));
+    await page.locator('#editorContent').fill('#!/bin/sh\necho a\necho b\n');
+    await page.locator('#editorSaveBtn').click();
+    await page.locator('#editorCommitBtn').click();
+    expect(await page.evaluate(() => window.__reviewSaves.at(-1))).toMatchObject({
+        newline: 'mixed', expected_revision: 'mixed-revision', content: '#!/bin/sh\necho a\necho b\n',
+    });
+});
+
 test('switching file source requires draft confirmation and invalidates a prior review', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('#editorContent').fill('keep this draft');

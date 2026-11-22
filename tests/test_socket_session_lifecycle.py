@@ -555,25 +555,25 @@ def test_last_socket_disconnect_cleans_pools_when_metadata_commit_fails(
     monkeypatch.setattr(
         socket_events.transfer_manager,
         'cancel_all_for_user',
-        lambda owner_id: calls.append(('transfers', owner_id)),
+        lambda owner_id, **options: calls.append(('transfers', owner_id, options)),
     )
     monkeypatch.setattr(
         connection_pool.temp_connection_pool,
         'close_all_user_connections',
-        lambda owner_id: calls.append(('ssh', owner_id)) or 0,
+        lambda owner_id, **options: calls.append(('ssh', owner_id, options)) or 0,
     )
     monkeypatch.setattr(
         smb_pool.smb_connection_pool,
         'close_all_user_sources',
-        lambda owner_id: calls.append(('smb', owner_id)) or 0,
+        lambda owner_id, **options: calls.append(('smb', owner_id, options)) or 0,
     )
 
     socket_client.disconnect()
 
     assert ('rollback',) in calls
-    assert ('transfers', user_id) in calls
-    assert ('ssh', str(user_id)) in calls
-    assert ('smb', str(user_id)) in calls
+    assert ('transfers', user_id, {'keep_running_http': True}) in calls
+    assert ('ssh', str(user_id), {'defer_held': True}) in calls
+    assert ('smb', str(user_id), {'defer_held': True}) in calls
     assert socket_capacity.count_for_user(user_id) == 0
 
 
@@ -618,7 +618,7 @@ def test_metadata_failure_rechecks_replacement_socket_before_pool_cleanup(
     monkeypatch.setattr(
         socket_events.transfer_manager,
         'cancel_all_for_user',
-        lambda owner_id: cleanup_calls.append(('transfers', owner_id)),
+        lambda owner_id, **_options: cleanup_calls.append(('transfers', owner_id)),
     )
     monkeypatch.setattr(
         connection_pool.temp_connection_pool,
@@ -803,3 +803,135 @@ def test_host_key_prompt_fails_closed_without_acceptance(app, monkeypatch, outco
     finally:
         if socket_client.is_connected():
             socket_client.disconnect()
+
+
+def test_socket_reconnect_keeps_running_http_transfers_and_their_sources(app, monkeypatch):
+    from app import connection_pool, smb_pool, socket_events, transfer_routes
+    from app.file_sources import SourceHoldSet
+    from app.transfer_manager import TransferManager
+
+    from app.quota_manager import QuotaKind, QuotaManager
+
+    socket_client, user_id = _authenticated_socket(app, 'transfer_reconnect_user')
+    manager = TransferManager(QuotaManager({
+        kind: {'global': 100, 'per_user': 50} for kind in QuotaKind
+    }))
+    monkeypatch.setattr(socket_events, 'transfer_manager', manager)
+    monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: SimpleNamespace(handle_id='quick-source'),
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda _user_id, source_ids: SourceHoldSet(tuple(source_ids)),
+    )
+    closed = []
+    monkeypatch.setattr(
+        connection_pool.temp_connection_pool,
+        'close_all_user_connections',
+        lambda owner_id, **kwargs: closed.append(('quick', owner_id, kwargs)) or 0,
+    )
+    monkeypatch.setattr(
+        smb_pool.smb_connection_pool,
+        'close_all_user_sources',
+        lambda owner_id, **kwargs: closed.append(('smb', owner_id, kwargs)) or 0,
+    )
+
+    def prepare(direction, request_id):
+        result = socket_client.emit('prepare_transfer', {
+            'direction': direction,
+            'source_id': 'sftp-quick:quick-source',
+            'request_id': request_id,
+            'remote_path': f'/remote/{request_id}.bin',
+        }, callback=True)
+        return manager._records[result['transfer_id']]
+
+    uploading = prepare('upload', 'running-upload')
+    manager.consume_token(uploading.token, user_id)
+    downloading = prepare('download', 'running-download')
+    manager.consume_token(downloading.token, user_id)
+    pending = prepare('upload', 'pending-upload')
+    copying = manager.create(
+        user_id, 'sftp-quick:quick-source', 'server_to_server', {},
+        owner_sid=uploading._owner_sid,
+        source_holds=SourceHoldSet(('sftp-quick:quick-source',)),
+    )
+    manager.consume_token(copying.token, user_id)
+
+    # The only socket of this user drops, as on a network change.
+    socket_client.disconnect()
+
+    assert not uploading.cancel_event.is_set()
+    assert not downloading.cancel_event.is_set()
+    assert pending.cancel_event.is_set()
+    assert copying.cancel_event.is_set()
+    # Sources still used by a running transfer close once it ends.
+    assert closed == [
+        ('quick', str(user_id), {'defer_held': True}),
+        ('smb', str(user_id), {'defer_held': True}),
+    ]
+
+
+def test_page_reload_frees_quick_connect_quota_of_idle_sources(app, monkeypatch):
+    """A reloaded page cannot reach old Quick Connect sources any more."""
+    import threading
+
+    from app import connection_pool, smb_pool
+    from app.quota_manager import QuotaKind, QuotaManager
+
+    class Resource:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    socket_client, user_id = _authenticated_socket(app, 'quick_reload_user')
+    pool = connection_pool.TemporaryConnectionPool.__new__(
+        connection_pool.TemporaryConnectionPool
+    )
+    pool.connections = {}
+    pool.cleanup_interval = 300
+    pool.lock = threading.Lock()
+    pool.quota_manager = QuotaManager({
+        kind: {'global': 100, 'per_user': 2} for kind in QuotaKind
+    })
+    clients = {}
+    for connection_id in ('idle', 'uploading'):
+        clients[connection_id] = Resource()
+        pool.connections[connection_id] = {
+            'user_id': str(user_id),
+            'client': clients[connection_id],
+            'sftp': Resource(),
+            'quota_reservation': pool.quota_manager.reserve(
+                QuotaKind.QUICK_CONNECTION, user_id=user_id,
+            ),
+            'hold_count': 0,
+            'close_requested': False,
+            'last_used': 0,
+        }
+    monkeypatch.setattr(connection_pool, 'temp_connection_pool', pool)
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _connection_id: None
+    )
+    monkeypatch.setattr(
+        smb_pool.smb_connection_pool,
+        'close_all_user_sources',
+        lambda _owner_id, **_kwargs: 0,
+    )
+    assert pool.acquire_hold('uploading', user_id) is True
+
+    socket_client.disconnect()
+
+    assert clients['idle'].closed is True
+    assert 'idle' not in pool.connections
+    assert clients['uploading'].closed is False
+    pool.quota_manager.reserve(
+        QuotaKind.QUICK_CONNECTION, user_id=user_id,
+    ).release()
+
+    assert pool.release_hold('uploading', user_id) is True
+    assert clients['uploading'].closed is True
+    assert pool.connections == {}

@@ -182,7 +182,9 @@ SFTP editor saves stage content in a privately and exclusively created file,
 retain ordinary rwx permissions, and require atomic replacement. Known special
 bits or an owner/group mismatch prevent replacement. SFTP v3 does not provide
 general ACL preservation: inode replacement can lose extended ACLs. Use another
-method when exact ACL preservation is required. If staging fails, a private
+method when exact ACL preservation is required. A file opened through a
+symlink, such as `/etc/nginx/sites-enabled/site`, is saved by replacing the
+link target; the link itself stays unchanged. If staging fails, a private
 `.webssh-tmp-*` file may remain on the remote server; WebSSH avoids unsafe
 path-based rollback when an object could have changed concurrently.
 
@@ -285,6 +287,7 @@ dependent transfer reaches a terminal state.
 
 | Variable | Default | Meaning |
 |---|---:|---|
+| `MAX_UPLOAD_SIZE` | 100 MiB | Maximum single file upload |
 | `MAX_DOWNLOAD_SIZE` | 100 MiB | Maximum single file download |
 | `MAX_ZIP_DOWNLOAD_SIZE` | 500 MiB | Maximum generated folder archive |
 | `MAX_TRANSFER_MEMBERS` | 10,000 | Maximum traversed entries |
@@ -294,6 +297,11 @@ dependent transfer reaches a terminal state.
 | `MAX_EDITOR_FILE_SIZE` | 5 MiB | Maximum inline-edited file size |
 | `SFTP_OPERATION_TIMEOUT` | 30 seconds | Timeout per SFTP channel operation |
 | `TRANSFER_TEMP_DIR` | `DATA_DIR/tmp` | Private fallback archive directory |
+
+Uploads stream to the remote host, so raising `MAX_UPLOAD_SIZE` does not
+increase WebSSH memory use. Each file is one HTTP request; a reverse proxy in
+front of WebSSH must allow the same request body size (for nginx,
+`client_max_body_size`).
 
 Default transfer quotas are 8 records globally and 2 per user. Background jobs
 default to 4 globally and 1 per user. Temporary-byte reservations default to
@@ -332,6 +340,18 @@ backup until the new file is in place. A failed rollback leaves named temporary
 and backup artifacts in the error so an operator can recover the content; the
 dirty editor buffer remains open.
 
+Saving keeps the file's line endings and encoding. A file that uses only CRLF
+is written back as CRLF. In a file that mixes LF and CRLF, every unchanged line
+keeps its own ending; new or changed lines take the ending of the line they
+replace or follow. When the region between the first and the last change is
+very large (over two million line pairs, for example 1,500 lines against
+1,500), its lines are matched by position, which may move endings in that
+region. Files that are not valid UTF-8 open as Latin-1 and are saved as
+Latin-1. If the edited text contains a character Latin-1 cannot store, such
+as `€` or an emoji, the save is refused and the draft stays open instead of
+converting the whole file to UTF-8. The message names the first such character,
+its code point and its line.
+
 Treat remote content as untrusted. Previewing or editing a file does not make
 its commands safe to execute.
 
@@ -363,6 +383,14 @@ the correlated rename requests.
 - Quick sources use the bounded temporary connection pool.
 - Closing a tab releases a quick connection only when no remaining tab or
   queued/active transfer references it.
+- A browser reconnect (network change, VPN reconnect, a mobile tab in the
+  background) keeps started uploads and downloads running. Transfers that have
+  not started yet and server-to-server copies of the lost connection are
+  cancelled.
+- When the last tab of a user disconnects, quick SFTP and SMB sources are
+  closed and their quota is freed, as a reloaded page cannot reach them again.
+  A source that a running upload or download still uses closes when that
+  transfer ends. Signing out closes all sources immediately.
 - Disconnect events remove all matching stale workspace tabs while preserving
   unrelated tabs.
 
@@ -387,6 +415,14 @@ active transfer references terminalize.
 
 Use a direct bounded download or tail mode. Preview and inline editing have
 lower memory-oriented limits than raw transfer.
+
+### A file name shows a replacement character
+
+The name is not valid UTF-8, for example Latin-1 names from old archives or NAS
+shares. The directory still lists, but WebSSH cannot open, rename, download or
+copy that entry, and folder downloads, recursive deletes and copies that include
+it stop with "Remote filename is not valid UTF-8". Rename it in the terminal,
+for example with `convmv -f latin1 -t utf8 --notest <name>`.
 
 ### Server-to-server copy fails
 

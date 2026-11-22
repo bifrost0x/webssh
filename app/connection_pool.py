@@ -503,22 +503,26 @@ class TemporaryConnectionPool:
             conn['last_used'] = time.time()
             return client
 
-    def close_all_user_connections(self, user_id):
+    def close_all_user_connections(self, user_id, *, defer_held=False):
         """
-        Immediately close all connections for a revoked user.
+        Close all connections of one user.
 
         Account revocation is a stronger boundary than an ordinary tab close
         or idle cleanup.  It must interrupt held remote I/O instead of waiting
-        for a cooperative transfer finalizer.
+        for a cooperative transfer finalizer.  When the last tab of a user
+        closes, ``defer_held`` keeps connections that a running transfer
+        holds until that transfer ends.
 
         Args:
             user_id (str): User ID
+            defer_held (bool): Defer the close of held connections
 
         Returns:
-            int: Number of connections closed
+            int: Number of connections closed now
         """
         detached = self._detach_connections(
             lambda _connection_id, conn: conn['user_id'] == user_id,
+            defer_held=defer_held,
         )
         self._close_detached_connections(detached)
         return len(detached)

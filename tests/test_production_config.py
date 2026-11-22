@@ -1077,3 +1077,20 @@ def test_saved_registration_override_cannot_open_production(
     assert app_settings.is_registration_enabled() is False
     assert app_settings.set_registration_enabled(True) is False
     assert json.loads(path.read_text(encoding='utf-8')) == stored
+
+
+def test_upload_limit_is_configurable_and_independent_of_download_limit():
+    code = 'import config, json; print(json.dumps([config.MAX_UPLOAD_SIZE, config.MAX_DOWNLOAD_SIZE]))'
+    defaults = _load_config(_production_env(), code)
+    assert defaults.returncode == 0, defaults.stderr
+    assert json.loads(defaults.stdout.strip().splitlines()[-1]) == [104857600, 104857600]
+    raised = _load_config(_production_env(MAX_UPLOAD_SIZE='2147483648'), code)
+    assert raised.returncode == 0, raised.stderr
+    assert json.loads(raised.stdout.strip().splitlines()[-1]) == [2147483648, 104857600]
+
+
+@pytest.mark.parametrize('value', ['0', '-1', 'invalid'])
+def test_upload_limit_rejects_invalid_configuration(value):
+    result = _load_config(_production_env(MAX_UPLOAD_SIZE=value))
+    assert result.returncode != 0
+    assert 'MAX_UPLOAD_SIZE' in result.stderr
