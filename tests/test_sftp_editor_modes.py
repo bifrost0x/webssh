@@ -251,3 +251,16 @@ def test_save_through_a_symlink_still_checks_the_revision(monkeypatch):
     outcome = write_file_text('a', '/link', 'new', expected_revision=hashlib.sha256(b'other').hexdigest())
     assert outcome.code == 'EDIT_CONFLICT'
     assert not state['renamed']
+
+
+def test_save_staging_name_fits_name_max_for_a_long_file_name(monkeypatch):
+    import posixpath
+    from app.sftp_handler import write_file_text
+    state = fixture(monkeypatch)
+    target = '/srv/' + 'x' * 240 + '.conf'
+    outcome = write_file_text('a', target, 'new', expected_revision=hashlib.sha256(b'old').hexdigest())
+    assert outcome.success, outcome.error
+    staged, final = state['rename']
+    assert final == target
+    assert posixpath.dirname(staged) == '/srv'
+    assert len(posixpath.basename(staged).encode('utf-8')) <= 255

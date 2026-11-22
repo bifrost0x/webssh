@@ -240,6 +240,18 @@ def mutation_lstat(sftp, path):
     return _mutation_attributes(command, message)
 
 
+def staging_path(path, purpose):
+    """Hidden sibling of ``path`` whose length does not depend on its name.
+
+    Appending a suffix to the target name exceeds NAME_MAX (255 bytes) for
+    long but valid names, so the staging name only reuses the directory.
+    """
+    return posixpath.join(
+        posixpath.dirname(path),
+        f'.webssh-{purpose}-{secrets.token_hex(12)}.tmp',
+    )
+
+
 def resolve_symlinked_file(sftp, path):
     """Return the path a symlink points to, or ``path`` when it is no link.
 
@@ -1442,7 +1454,7 @@ def upload_request_stream(
     safe_path = sanitize_path(remote_path)
     if safe_path is None:
         raise SFTPOperationError('invalid remote path')
-    temporary_path = f'{safe_path}.webssh-upload-{secrets.token_hex(12)}.tmp'
+    temporary_path = staging_path(safe_path, 'upload')
     transferred = 0
 
     with sftp_session(session_id) as (sftp, _source_type):
@@ -1844,7 +1856,7 @@ def write_file_text(
             # A symlinked file (for example sites-enabled/*) is edited through
             # its target, the object the editor opened. The link stays as is.
             safe_path = resolve_symlinked_file(sftp, safe_path)
-            tmp_path = safe_path + '.webssh-tmp-' + secrets.token_hex(12)
+            tmp_path = staging_path(safe_path, 'tmp')
             maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
             with _open_bound_reader_from_client(sftp, safe_path, bounded_metadata=True) as lease:
                 metadata = permission_snapshot(mutation_fstat(sftp, lease.reader))
@@ -2121,9 +2133,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
             filename = os.path.basename(src_path)
             if total_transferred + file_size > max_bytes:
                 return False, 'Transfer exceeds configured size limit'
-            temporary_path = (
-                f'{dst_path}.webssh-transfer-{secrets.token_hex(12)}.tmp'
-            )
+            temporary_path = staging_path(dst_path, 'transfer')
             transferred = 0
 
             def report(count):
@@ -2279,9 +2289,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
 
         if is_dir:
             directory_total = calculate_directory_total(source_path)
-            temporary_root = (
-                f'{dest_path}.webssh-transfer-{secrets.token_hex(12)}.tmp'
-            )
+            temporary_root = staging_path(dest_path, 'transfer')
             try:
                 success, error = transfer_directory_recursive(
                     source_path, temporary_root
