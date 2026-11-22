@@ -809,6 +809,10 @@ def test_host_key_prompt_fails_closed_without_acceptance(app, monkeypatch, outco
     ({'active': True}, True),
     ({'active': False}, False),
     ({'active': 'yes'}, False),
+    ({}, False),
+    ('active', False),
+    ([True], False),
+    (1, False),
     (None, True),
 ])
 def test_keep_alive_refreshes_idle_timers_only_for_user_activity(app, payload, refreshed, request):

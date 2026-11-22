@@ -2131,9 +2131,10 @@ def handle_keep_alive(data=None, current_user=None):
     Current clients send ``active`` and set it only for a visible tab with
     keyboard or pointer input since the previous ping, so abandoned tabs
     still time out. Pages loaded before that field existed send no payload
-    and keep the previous behaviour until they are reloaded.
+    and keep the previous behaviour until they are reloaded; any other
+    payload does not count.
     """
-    if isinstance(data, dict) and data.get('active') is not True:
+    if data is not None and not (isinstance(data, dict) and data.get('active') is True):
         return
     now = time.time()
     with ssh_manager.sessions_lock:
