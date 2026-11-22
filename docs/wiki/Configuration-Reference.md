@@ -12,8 +12,8 @@ Start from the repository's `.env.example`. The tables below describe the operat
 | `DATA_DIR` | Canonical SQLite, key, log, and generated-secret root | `/app/data` in the container; container overrides must be absolute and on a mounted volume, because the rest of `/app` is read-only |
 | `DEPLOYMENT_PROFILE` | Selects deployment safeguards | `homelab`; use `production` for Internet-facing deployments |
 | `DEBUG` | Flask debug mode | `False`; never enable in production |
-| `HOST` | Application bind address | `127.0.0.1` outside the container |
-| `PORT` | Application listen port | `5000` |
+| `HOST` | Application bind address for source installations; the container always listens on all interfaces | `127.0.0.1` outside the container |
+| `PORT` | Application listen port, also inside the container, where the health check follows it. Change the published port mapping as well | `5000` |
 | `APPLICATION_ROOT` | URL prefix for subfolder deployments | Empty/root |
 
 Treat `SECRET_KEY` as long-lived installation state. Replacing it without the supported rotation workflow invalidates encrypted SSH keys and signed state. See [Backup, Restore, and Secret Rotation](Backup-Restore-and-Secret-Rotation).

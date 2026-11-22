@@ -22,8 +22,11 @@ def test_native_runtime_keeps_the_reviewed_gunicorn_and_worker_contract():
     assert command == [
         "sh",
         "-c",
-        "exec gunicorn --worker-class gthread --workers 1 --threads \"${GUNICORN_THREADS}\" --bind 0.0.0.0:5000 start:app",
+        "exec gunicorn --worker-class gthread --workers 1 --threads \"${GUNICORN_THREADS}\" --bind \"0.0.0.0:${PORT}\" start:app",
     ]
+    # The health checks of the image and the Compose file probe PORT.
+    assert "\n    PORT=5000 \\\n" in Path("Dockerfile").read_text(encoding="utf-8")
+    assert "os.getenv('PORT', '5000')" in Path("docker-compose.yml").read_text(encoding="utf-8")
 
 
 def test_image_prepares_private_recovery_mountpoint_before_dropping_root():
