@@ -38,6 +38,7 @@ from .paramiko_channels import (
 )
 from .audit_logger import log_info, log_warning, log_error
 from .file_backend import FileReaderLease, FileWriteOutcome
+from .editor_text import EditorEncodingError, detect_newline, encode_editor_text
 from .file_mutations import FileMutationError, permission_snapshot
 
 _sftp_cache = {}
@@ -1768,7 +1769,7 @@ def read_file_for_edit(session_id, path, max_bytes=None):
 
         # Remember the original newline style, then normalize to LF for the
         # browser textarea; the original style is restored on save.
-        newline = 'crlf' if b'\r\n' in raw else 'lf'
+        newline = detect_newline(raw)
         content_str = content_str.replace('\r\n', '\n')
 
         return {
@@ -1811,21 +1812,13 @@ def write_file_text(
         if safe_path is None:
             return False, "Invalid path"
 
-        # The browser textarea always uses LF; restore the original style.
-        text = content_str.replace('\r\n', '\n')
-        if newline == 'crlf':
-            text = text.replace('\n', '\r\n')
-
-        if encoding not in ('utf-8', 'latin-1'):
-            encoding = 'utf-8'
-        try:
-            data = text.encode(encoding)
-        except UnicodeEncodeError:
-            data = text.encode('utf-8')
-
-        maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
-        if len(data) > maximum:
-            return FileWriteOutcome(success=False, error='File too large to edit')
+        if newline != 'mixed':
+            data = encode_editor_text(
+                content_str, encoding=encoding, newline=newline,
+            )
+            maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
+            if len(data) > maximum:
+                return FileWriteOutcome(success=False, error='File too large to edit')
 
         tmp_path = safe_path + '.webssh-tmp-' + secrets.token_hex(12)
 
@@ -1860,6 +1853,13 @@ def write_file_text(
                     ),
                     code='EDIT_CONFLICT',
                 )
+            if newline == 'mixed':
+                data = encode_editor_text(
+                    content_str, encoding=encoding, newline=newline,
+                    original=original,
+                )
+                if len(data) > maximum:
+                    return FileWriteOutcome(success=False, error='File too large to edit')
             rename_started = False
             try:
                 if permission_snapshot(mutation_lstat(sftp, safe_path)) != metadata:
@@ -1914,6 +1914,8 @@ def write_file_text(
             error=str(e),
             code='EDIT_CONFLICT' if e.code == 'METADATA_CHANGED' else 'EDIT_METADATA_UNSUPPORTED',
         )
+    except EditorEncodingError as e:
+        return FileWriteOutcome(success=False, error=str(e), code=e.code)
     except SFTPOperationError as e:
         return FileWriteOutcome(success=False, error=public_sftp_error(e))
     except Exception as e:

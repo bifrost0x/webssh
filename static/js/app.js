@@ -1046,6 +1046,8 @@
                     message = window.i18n
                         ? i18n.t('editor.editConflict')
                         : 'The file changed on the server. Reopen it before saving.';
+                } else if (data.code === 'EDIT_ENCODING_UNSUPPORTED' && window.i18n) {
+                    message = i18n.t('editor.encodingUnsupported');
                 } else if (data.code === 'SMB_RECOVERY_REQUIRED') {
                     const leaves = Array.isArray(data.recovery_leaves)
                         ? data.recovery_leaves.join(', ')

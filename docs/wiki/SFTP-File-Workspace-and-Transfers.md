@@ -332,6 +332,14 @@ backup until the new file is in place. A failed rollback leaves named temporary
 and backup artifacts in the error so an operator can recover the content; the
 dirty editor buffer remains open.
 
+Saving keeps the file's line endings and encoding. A file that uses only CRLF
+is written back as CRLF. In a file that mixes LF and CRLF, every unchanged line
+keeps its own ending; new or changed lines take the ending of the line they
+replace or follow. Files that are not valid UTF-8 open as Latin-1 and are saved
+as Latin-1. If the edited text contains a character Latin-1 cannot store, such
+as `€` or an emoji, the save is refused and the draft stays open instead of
+converting the whole file to UTF-8.
+
 Treat remote content as untrusted. Previewing or editing a file does not make
 its commands safe to execute.
 
