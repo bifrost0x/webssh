@@ -287,6 +287,7 @@ dependent transfer reaches a terminal state.
 
 | Variable | Default | Meaning |
 |---|---:|---|
+| `MAX_UPLOAD_SIZE` | 100 MiB | Maximum single file upload |
 | `MAX_DOWNLOAD_SIZE` | 100 MiB | Maximum single file download |
 | `MAX_ZIP_DOWNLOAD_SIZE` | 500 MiB | Maximum generated folder archive |
 | `MAX_TRANSFER_MEMBERS` | 10,000 | Maximum traversed entries |
@@ -296,6 +297,11 @@ dependent transfer reaches a terminal state.
 | `MAX_EDITOR_FILE_SIZE` | 5 MiB | Maximum inline-edited file size |
 | `SFTP_OPERATION_TIMEOUT` | 30 seconds | Timeout per SFTP channel operation |
 | `TRANSFER_TEMP_DIR` | `DATA_DIR/tmp` | Private fallback archive directory |
+
+Uploads stream to the remote host, so raising `MAX_UPLOAD_SIZE` does not
+increase WebSSH memory use. Each file is one HTTP request; a reverse proxy in
+front of WebSSH must allow the same request body size (for nginx,
+`client_max_body_size`).
 
 Default transfer quotas are 8 records globally and 2 per user. Background jobs
 default to 4 globally and 1 per user. Temporary-byte reservations default to

@@ -533,7 +533,7 @@ SSH_CONNECT_TIMEOUT = 10
 SFTP_OPERATION_TIMEOUT = _positive_int_env('SFTP_OPERATION_TIMEOUT', 30)
 
 CHUNK_SIZE = 65536
-MAX_UPLOAD_SIZE = 1024 * 1024 * 100
+MAX_UPLOAD_SIZE = _positive_int_env('MAX_UPLOAD_SIZE', 100 * 1024 * 1024)
 MAX_EDITOR_FILE_SIZE = _positive_int_env(
     'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024
 )
@@ -985,7 +985,8 @@ SMB_MAX_SAVED_SHARES = _bounded_int_env(
     'SMB_MAX_SAVED_SHARES', 100, 1, 1000
 )
 
-MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', str(MAX_UPLOAD_SIZE)))
+# Independent of MAX_UPLOAD_SIZE so raising one limit never raises the other.
+MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', str(100 * 1024 * 1024)))
 MAX_ZIP_DOWNLOAD_SIZE = int(os.environ.get('MAX_ZIP_DOWNLOAD_SIZE', str(500 * 1024 * 1024)))
 MAX_TRANSFER_MEMBERS = _positive_int_env('MAX_TRANSFER_MEMBERS', 10000)
 MAX_PREVIEW_SIZE = _positive_int_env('MAX_PREVIEW_SIZE', 512000)
