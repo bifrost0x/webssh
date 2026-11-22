@@ -14,7 +14,7 @@ EDITOR_ENCODINGS = ('utf-8', 'latin-1')
 # instead of being diffed. SequenceMatcher degrades far beyond quadratic time
 # on many repeated lines, so this bound and autojunk keep a save of a crafted
 # file well below a second.
-_MAX_DIFF_COMPARISONS = 100_000
+_MAX_DIFF_COMPARISONS = 2_000_000
 
 
 class EditorEncodingError(ValueError):
@@ -86,27 +86,33 @@ def _merge_line_endings(text, original_text):
         endings[-1 - suffix] = old_endings[-1 - suffix] or default
         suffix += 1
 
-    old_middle = range(prefix, len(old_bodies) - suffix)
-    new_middle = range(prefix, len(new_bodies) - suffix)
-    if len(old_middle) * len(new_middle) <= _MAX_DIFF_COMPARISONS:
-        matcher = SequenceMatcher(
-            None,
-            old_bodies[old_middle.start:old_middle.stop],
-            new_bodies[new_middle.start:new_middle.stop],
-            autojunk=True,
-        )
-        opcodes = matcher.get_opcodes()
+    old_middle = old_bodies[prefix:len(old_bodies) - suffix]
+    new_middle = new_bodies[prefix:len(new_bodies) - suffix]
+    if len(old_middle) * len(new_middle) > _MAX_DIFF_COMPARISONS:
+        blocks = [(0, len(old_middle), 0, len(new_middle))]
+    elif len(new_middle) >= len(old_middle):
+        blocks = [
+            (i1, i2, j1, j2) for _tag, i1, i2, j1, j2
+            in SequenceMatcher(
+                None, old_middle, new_middle, autojunk=True,
+            ).get_opcodes()
+        ]
     else:
-        opcodes = [(
-            'replace', 0, len(old_middle), 0, len(new_middle),
-        )]
-    for tag, i1, i2, j1, j2 in opcodes:
+        # autojunk only applies to the second sequence, so the longer side
+        # goes there.
+        blocks = [
+            (i1, i2, j1, j2) for _tag, j1, j2, i1, i2
+            in SequenceMatcher(
+                None, new_middle, old_middle, autojunk=True,
+            ).get_opcodes()
+        ]
+    for i1, i2, j1, j2 in blocks:
         i1 += prefix
         i2 += prefix
         j1 += prefix
         j2 += prefix
         for offset, new_index in enumerate(range(j1, j2)):
-            if tag == 'insert' or i1 == i2:
+            if i1 == i2:
                 endings[new_index] = ending_near(i1 - 1)
             else:
                 old_index = min(i1 + offset, i2 - 1)

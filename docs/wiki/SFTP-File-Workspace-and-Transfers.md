@@ -343,8 +343,11 @@ dirty editor buffer remains open.
 Saving keeps the file's line endings and encoding. A file that uses only CRLF
 is written back as CRLF. In a file that mixes LF and CRLF, every unchanged line
 keeps its own ending; new or changed lines take the ending of the line they
-replace or follow. Files that are not valid UTF-8 open as Latin-1 and are saved
-as Latin-1. If the edited text contains a character Latin-1 cannot store, such
+replace or follow. When the region between the first and the last change is
+very large (over two million line pairs, for example 1,500 lines against
+1,500), its lines are matched by position, which may move endings in that
+region. Files that are not valid UTF-8 open as Latin-1 and are saved as
+Latin-1. If the edited text contains a character Latin-1 cannot store, such
 as `€` or an emoji, the save is refused and the draft stays open instead of
 converting the whole file to UTF-8. The message names the first such character,
 its code point and its line.

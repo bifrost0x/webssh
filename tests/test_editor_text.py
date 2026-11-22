@@ -1,6 +1,7 @@
 """Line endings and encodings survive an editor round trip."""
 
 import time
+from difflib import SequenceMatcher
 
 import pytest
 
@@ -75,16 +76,41 @@ def test_large_rewrite_falls_back_to_positional_endings(monkeypatch):
 @pytest.mark.parametrize('old_lines,new_lines', [
     (2000, 1000),
     (1000, 2000),
+    (1000, 1000),
     (1400, 1400),
     (10000, 199),
+    (199, 10000),
 ])
-def test_repetitive_lines_do_not_make_the_merge_expensive(old_lines, new_lines):
+def test_repetitive_lines_do_not_make_the_merge_expensive(monkeypatch, old_lines, new_lines):
+    import app.editor_text as editor_text
+    diffs = []
+    monkeypatch.setattr(
+        editor_text, 'SequenceMatcher',
+        lambda *args, **kwargs: diffs.append(args) or SequenceMatcher(*args, **kwargs),
+    )
     original = ('a\r\n' + 'x\n' * (old_lines - 1)).encode()
     edited = ''.join(('x' if index % 2 else 'y') + '\n' for index in range(new_lines))
     started = time.process_time()
     saved = roundtrip(original, edited)
     assert time.process_time() - started < 2
+    assert len(diffs) == 1
     assert saved.replace(b'\r\n', b'\n') == edited.encode()
+
+
+def test_distant_edits_in_a_long_mixed_file_keep_every_other_ending():
+    lines = [
+        (f'line {index}', '\r\n' if index % 3 == 0 else '\n')
+        for index in range(2000)
+    ]
+    original = ''.join(body + ending for body, ending in lines).encode()
+    expected = list(lines)
+    expected[10] = ('changed near the top', lines[10][1])
+    expected[1010] = ('changed far below', lines[1010][1])
+    expected.insert(50, ('inserted', lines[49][1]))
+    edited = '\n'.join(body for body, _ending in expected) + '\n'
+    assert roundtrip(original, edited) == ''.join(
+        body + ending for body, ending in expected
+    ).encode()
 
 
 def test_insert_between_repeated_blank_lines_keeps_the_endings_around_it():
