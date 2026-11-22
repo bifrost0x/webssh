@@ -11,8 +11,10 @@ from difflib import SequenceMatcher
 EDITOR_ENCODINGS = ('utf-8', 'latin-1')
 
 # Above this many line comparisons the changed region is mapped by position
-# instead of being diffed, which bounds CPU time for very large edits.
-_MAX_DIFF_COMPARISONS = 2_000_000
+# instead of being diffed. SequenceMatcher degrades far beyond quadratic time
+# on many repeated lines, so this bound and autojunk keep a save of a crafted
+# file well below a second.
+_MAX_DIFF_COMPARISONS = 100_000
 
 
 class EditorEncodingError(ValueError):
@@ -90,7 +92,7 @@ def _merge_line_endings(text, original_text):
             None,
             old_bodies[old_middle.start:old_middle.stop],
             new_bodies[new_middle.start:new_middle.stop],
-            autojunk=False,
+            autojunk=True,
         )
         opcodes = matcher.get_opcodes()
     else:

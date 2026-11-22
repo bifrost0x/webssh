@@ -1,5 +1,7 @@
 """Line endings and encodings survive an editor round trip."""
 
+import time
+
 import pytest
 
 from app.editor_text import (
@@ -68,6 +70,34 @@ def test_large_rewrite_falls_back_to_positional_endings(monkeypatch):
     import app.editor_text as editor_text
     monkeypatch.setattr(editor_text, '_MAX_DIFF_COMPARISONS', 1)
     assert _merge_line_endings('x\ny\nz\n', 'a\r\nb\nc\r\n') == 'x\r\ny\nz\r\n'
+
+
+@pytest.mark.parametrize('old_lines,new_lines', [
+    (2000, 1000),
+    (1000, 2000),
+    (1400, 1400),
+    (10000, 199),
+])
+def test_repetitive_lines_do_not_make_the_merge_expensive(old_lines, new_lines):
+    original = ('a\r\n' + 'x\n' * (old_lines - 1)).encode()
+    edited = ''.join(('x' if index % 2 else 'y') + '\n' for index in range(new_lines))
+    started = time.process_time()
+    saved = roundtrip(original, edited)
+    assert time.process_time() - started < 2
+    assert saved.replace(b'\r\n', b'\n') == edited.encode()
+
+
+def test_insert_between_repeated_blank_lines_keeps_the_endings_around_it():
+    lines = []
+    for index in range(150):
+        lines.append((f'key{index} = {index}', '\r\n' if index % 3 == 0 else '\n'))
+        lines.append(('', '\n'))
+    original = ''.join(body + ending for body, ending in lines).encode()
+    bodies = [body for body, _ending in lines]
+    bodies.insert(150, 'inserted = 1')
+    saved = roundtrip(original, '\n'.join(bodies) + '\n')
+    expected = lines[:150] + [('inserted = 1', '\n')] + lines[150:]
+    assert saved == ''.join(body + ending for body, ending in expected).encode()
 
 
 def test_uniform_styles_are_converted_as_a_whole():
