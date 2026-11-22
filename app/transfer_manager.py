@@ -174,6 +174,13 @@ class TransferRecord:
         )
 
 
+def _running_http(record):
+    return (
+        record._state is TransferState.RUNNING
+        and record._direction in {'upload', 'download'}
+    )
+
+
 class TransferManager:
     """Own transfer records, one-use tokens, and transfer quota slots."""
 
@@ -372,8 +379,12 @@ class TransferManager:
                 return TransferCancelResult(False, terminal[1])
             return TransferCancelResult(False, 'unavailable')
 
-    def cancel_all_for_user(self, user_id):
-        """Atomically cancel every pending or running transfer for one user."""
+    def cancel_all_for_user(self, user_id, *, keep_running_http=False):
+        """Atomically cancel every pending or running transfer for one user.
+
+        ``keep_running_http`` leaves started HTTP uploads and downloads alone;
+        their lifetime is bound to their own request, not to a Socket.
+        """
         try:
             user_id = _normalize_id(user_id, 'user_id')
         except ValueError:
@@ -389,6 +400,7 @@ class TransferManager:
                         TransferState.PENDING,
                         TransferState.RUNNING,
                     }
+                    and not (keep_running_http and _running_http(record))
                 )
             ]
             return self._cancel_records_locked(records)
@@ -426,8 +438,11 @@ class TransferManager:
             self._cancel_records_locked(records)
             return waiters
 
-    def cancel_all_for_socket(self, user_id, owner_sid):
-        """Atomically cancel pending or running transfers owned by one Socket."""
+    def cancel_all_for_socket(self, user_id, owner_sid, *, keep_running_http=False):
+        """Atomically cancel pending or running transfers owned by one Socket.
+
+        See ``cancel_all_for_user`` for ``keep_running_http``.
+        """
         try:
             user_id = _normalize_id(user_id, 'user_id')
             owner_sid = _normalize_id(owner_sid, 'owner_sid')
@@ -445,6 +460,7 @@ class TransferManager:
                         TransferState.PENDING,
                         TransferState.RUNNING,
                     }
+                    and not (keep_running_http and _running_http(record))
                 )
             ]
             return self._cancel_records_locked(records)

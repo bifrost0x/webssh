@@ -1032,7 +1032,7 @@ def test_server_copy_cancellation_removes_partial_destination(monkeypatch):
     assert isinstance(error, sftp_handler.TransferCancelled)
     assert '/to.txt' not in destination.files
     assert len(destination.removed) == 1
-    assert destination.removed[0].startswith('/to.txt.webssh-transfer-')
+    assert destination.removed[0].startswith('/.webssh-transfer-')
 
 
 def test_server_directory_cancellation_leaves_temporary_tree_untouched(monkeypatch):
@@ -1064,7 +1064,7 @@ def test_server_directory_cancellation_leaves_temporary_tree_untouched(monkeypat
     assert isinstance(error, sftp_handler.TransferCancelled)
     assert destination.files == {}
     assert len(destination.dirs) == 1
-    assert next(iter(destination.dirs)).startswith('/copy.webssh-transfer-')
+    assert next(iter(destination.dirs)).startswith('/.webssh-transfer-')
     assert destination.renamed == []
 
 

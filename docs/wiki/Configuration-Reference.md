@@ -173,6 +173,7 @@ additional Socket.IO connections.
 
 | Variable | Default |
 |---|---:|
+| `MAX_UPLOAD_SIZE` | `104857600` (100 MiB) |
 | `MAX_DOWNLOAD_SIZE` | `104857600` (100 MiB) |
 | `MAX_ZIP_DOWNLOAD_SIZE` | `524288000` (500 MiB) |
 | `MAX_TRANSFER_MEMBERS` | `10000` |

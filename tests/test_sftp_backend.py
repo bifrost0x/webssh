@@ -350,10 +350,28 @@ def test_transfer_reader_uses_a_separate_io_lane(monkeypatch):
     assert calls == [('session-a', 'transfer')]
 
 
+@pytest.mark.parametrize('name', ['a' * 255, '\u65e5' * 85])
+def test_atomic_writer_staging_name_fits_name_max_for_long_targets(monkeypatch, name):
+    import posixpath
+    sftp = AtomicSFTP()
+    install_sftp_session(monkeypatch, sftp)
+    target = f'/srv/exports/{name}'
+
+    with SFTPBackend().open_atomic_writer(
+        source(), target, replace=True, cancel_event=threading.Event(),
+    ) as writer:
+        writer.write(b'data')
+
+    staged = sftp.opened[0][0]
+    assert posixpath.dirname(staged) == '/srv/exports'
+    assert len(posixpath.basename(staged).encode('utf-8')) <= 255
+    assert sftp.replaced == [(staged, target)]
+
+
 def test_atomic_writer_commits_replace_only_through_posix_rename(monkeypatch):
     sftp = AtomicSFTP()
     install_sftp_session(monkeypatch, sftp)
-    monkeypatch.setattr(sftp_backend.secrets, 'token_hex', lambda _size: 'token')
+    monkeypatch.setattr(sftp_handler.secrets, 'token_hex', lambda _size: 'token')
 
     with SFTPBackend().open_atomic_writer(
         source(),
@@ -363,9 +381,9 @@ def test_atomic_writer_commits_replace_only_through_posix_rename(monkeypatch):
     ) as writer:
         writer.write(b'replacement')
 
-    assert sftp.opened == [('/target.txt.webssh-write-token.tmp', 'wx')]
+    assert sftp.opened == [('/.webssh-write-token.tmp', 'wx')]
     assert sftp.replaced == [
-        ('/target.txt.webssh-write-token.tmp', '/target.txt')
+        ('/.webssh-write-token.tmp', '/target.txt')
     ]
     assert sftp.renamed == []
     assert sftp.removed == []
@@ -374,7 +392,7 @@ def test_atomic_writer_commits_replace_only_through_posix_rename(monkeypatch):
 def test_atomic_writer_cancellation_removes_only_its_temporary_file(monkeypatch):
     sftp = AtomicSFTP()
     install_sftp_session(monkeypatch, sftp)
-    monkeypatch.setattr(sftp_backend.secrets, 'token_hex', lambda _size: 'token')
+    monkeypatch.setattr(sftp_handler.secrets, 'token_hex', lambda _size: 'token')
     cancelled = threading.Event()
 
     with pytest.raises(sftp_handler.TransferCancelled):
@@ -389,13 +407,13 @@ def test_atomic_writer_cancellation_removes_only_its_temporary_file(monkeypatch)
 
     assert sftp.replaced == []
     assert sftp.renamed == []
-    assert sftp.removed == ['/target.txt.webssh-write-token.tmp']
+    assert sftp.removed == ['/.webssh-write-token.tmp']
 
 
 def test_atomic_writer_does_not_treat_permission_error_as_missing(monkeypatch):
     sftp = AtomicSFTP(destination_error=PermissionError('denied'))
     install_sftp_session(monkeypatch, sftp)
-    monkeypatch.setattr(sftp_backend.secrets, 'token_hex', lambda _size: 'token')
+    monkeypatch.setattr(sftp_handler.secrets, 'token_hex', lambda _size: 'token')
 
     with pytest.raises(PermissionError):
         with SFTPBackend().open_atomic_writer(
@@ -407,7 +425,7 @@ def test_atomic_writer_does_not_treat_permission_error_as_missing(monkeypatch):
             writer.write(b'new')
 
     assert sftp.renamed == []
-    assert sftp.removed == ['/target.txt.webssh-write-token.tmp']
+    assert sftp.removed == ['/.webssh-write-token.tmp']
 
 
 class TreeSFTP:

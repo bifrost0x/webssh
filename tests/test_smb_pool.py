@@ -370,6 +370,28 @@ def test_revocation_closes_held_sources_immediately():
     assert pool.get_source(descriptor.source_id, '1') is None
 
 
+def test_closing_user_sources_can_wait_for_running_transfers():
+    pool, protocol, quota, _events = _pool()
+    idle = pool.create_source(user_id='1', **VALID_CONNECT)
+    held = pool.create_source(user_id='1', **VALID_CONNECT)
+    assert pool.acquire_hold(held.source_id, '1') is True
+
+    idle_sessions = protocol.sessions[:2]
+    held_sessions = protocol.sessions[2:]
+
+    assert pool.close_all_user_sources('1', defer_held=True) == 1
+    assert [session.closed for session in idle_sessions] == [1, 1]
+    assert quota.reservations[0].released is True
+    assert [session.closed for session in held_sessions] == [0, 0]
+    assert pool.get_source(idle.source_id, '1') is None
+    assert pool.get_source(held.source_id, '1') is not None
+
+    assert pool.release_hold(held.source_id, '1') is True
+    assert [session.closed for session in held_sessions] == [1, 1]
+    assert quota.reservations[1].released is True
+    assert pool.get_source(held.source_id, '1') is None
+
+
 def test_cancel_before_pool_work_does_not_reserve_or_resolve():
     pool, _protocol, quota, events = _pool()
     cancelled = Event()

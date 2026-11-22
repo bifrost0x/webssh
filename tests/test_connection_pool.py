@@ -677,6 +677,36 @@ def test_user_revocation_forces_held_connections_closed(monkeypatch):
     assert pool.release_hold(connection_id, '7') is False
 
 
+def test_closing_user_connections_can_wait_for_running_transfers(monkeypatch):
+    """The last tab closing frees idle sources but not one a transfer uses."""
+    pool = make_pool(global_limit=3, per_user_limit=2)
+    clients = install_ssh_client(monkeypatch)
+    idle_id, error = create_connection(pool, password='secret')
+    assert error is None
+    held_id, error = create_connection(pool, password='secret')
+    assert error is None
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _connection_id: None
+    )
+    assert pool.acquire_hold(held_id, '7') is True
+
+    assert pool.close_all_user_connections('7', defer_held=True) == 1
+    assert idle_id not in pool.connections
+    assert clients[0].closed is True
+    assert held_id in pool.connections
+    assert clients[1].closed is False
+    assert pool.acquire_hold(held_id, '7') is False
+
+    replacement = pool.quota_manager.reserve(
+        QuotaKind.QUICK_CONNECTION, user_id=7
+    )
+    replacement.release()
+
+    assert pool.release_hold(held_id, '7') is True
+    assert held_id not in pool.connections
+    assert clients[1].closed is True
+
+
 def test_pool_hold_and_close_hide_foreign_or_missing_connections(monkeypatch):
     pool = make_pool()
     install_ssh_client(monkeypatch)

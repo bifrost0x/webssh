@@ -502,13 +502,15 @@ class SMBConnectionPool:
         self._close_detached(detached)
         return 'closed'
 
-    def close_all_user_sources(self, user_id):
+    def close_all_user_sources(self, user_id, *, defer_held=False):
+        """Close a user's sources; ``defer_held`` waits for running transfers."""
         try:
             canonical_user_id = _canonical_user_id(user_id)
         except SMBSourceError:
             return 0
         detached = self._detach(
-            lambda _handle_id, source: source.user_id == canonical_user_id
+            lambda _handle_id, source: source.user_id == canonical_user_id,
+            defer_held=defer_held,
         )
         self._close_detached(detached)
         return len(detached)

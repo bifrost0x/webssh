@@ -24,6 +24,7 @@ from paramiko.sftp import (
     CMD_FSTAT,
     CMD_ATTRS,
     CMD_READDIR,
+    CMD_REALPATH,
     SFTPError,
     SFTP_FLAG_CREATE,
     SFTP_FLAG_EXCL,
@@ -38,6 +39,7 @@ from .paramiko_channels import (
 )
 from .audit_logger import log_info, log_warning, log_error
 from .file_backend import FileReaderLease, FileWriteOutcome
+from .editor_text import EditorEncodingError, detect_newline, encode_editor_text
 from .file_mutations import FileMutationError, permission_snapshot
 
 _sftp_cache = {}
@@ -236,6 +238,37 @@ def mutation_lstat(sftp, path):
     """Read non-following metadata through the existing bounded v3 parser."""
     command, message = sftp._request(CMD_LSTAT, sftp._adjust_cwd(path))
     return _mutation_attributes(command, message)
+
+
+def staging_path(path, purpose):
+    """Hidden sibling of ``path`` whose length does not depend on its name.
+
+    Appending a suffix to the target name exceeds NAME_MAX (255 bytes) for
+    long but valid names, so the staging name only reuses the directory.
+    """
+    return posixpath.join(
+        posixpath.dirname(path),
+        f'.webssh-{purpose}-{secrets.token_hex(12)}.tmp',
+    )
+
+
+def resolve_symlinked_file(sftp, path):
+    """Return the path a symlink points to, or ``path`` when it is no link.
+
+    Saving replaces the link target, never the link. The server's REALPATH
+    resolves the full chain; the caller still checks that the result is a
+    regular file.
+    """
+    if not stat.S_ISLNK(getattr(mutation_lstat(sftp, path), 'st_mode', 0) or 0):
+        return path
+    command, message = sftp._request(CMD_REALPATH, sftp._adjust_cwd(path))
+    if command != CMD_NAME or _message_uint32(message, 'path count') != 1:
+        raise SFTPOperationError('Symlink target could not be resolved')
+    resolved = _bounded_message_text(message, 'symlink target')
+    resolved = sanitize_path(resolved)
+    if resolved is None or not resolved.startswith('/') or resolved == path:
+        raise SFTPOperationError('Symlink target could not be resolved')
+    return resolved
 
 
 def mutation_fstat(sftp, remote_file):
@@ -470,7 +503,7 @@ def _remote_metadata_text_size(value):
             'Remote filename exceeds configured byte limit'
         )
     try:
-        size = len(value.encode('utf-8'))
+        size = len(value.encode('utf-8', 'surrogateescape'))
     except UnicodeEncodeError as exc:
         raise RemoteMetadataLimitExceeded(
             'Remote filename is not valid UTF-8'
@@ -491,7 +524,7 @@ def _message_uint32(message, label):
     return value
 
 
-def _bounded_message_text(message, label):
+def _bounded_message_text(message, label, *, errors='strict'):
     remainder = message.get_remainder()
     if len(remainder) < 4:
         raise RemoteMetadataLimitExceeded(f'Malformed remote {label}')
@@ -505,7 +538,7 @@ def _bounded_message_text(message, label):
         )
     raw = remainder[4:4 + length]
     try:
-        value = raw.decode('utf-8')
+        value = raw.decode('utf-8', errors)
     except UnicodeDecodeError as exc:
         raise RemoteMetadataLimitExceeded(
             f'Remote {label} is not valid UTF-8'
@@ -605,8 +638,17 @@ def _bounded_sftp_attributes(message, filename, longname):
     return attributes
 
 
-def _iter_paramiko_directory_entries(sftp, remote_path, *, member_budget=None):
-    """Stream one directory and always close its remote SFTP handle."""
+def _iter_paramiko_directory_entries(
+    sftp, remote_path, *, member_budget=None, undecodable_names=False,
+):
+    """Stream one directory and always close its remote SFTP handle.
+
+    With ``undecodable_names`` a name that is not valid UTF-8 is returned
+    with surrogate escapes instead of failing the whole directory. Such a
+    name can be shown but never matches a real path, so operations on it
+    fail closed. Recursive operations keep the strict default.
+    """
+    name_errors = 'surrogateescape' if undecodable_names else 'strict'
     if member_budget is None:
         member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
     adjusted_path = sftp._adjust_cwd(remote_path)
@@ -645,8 +687,12 @@ def _iter_paramiko_directory_entries(sftp, remote_path, *, member_budget=None):
                     'Malformed empty directory response'
                 )
             for _index in range(entry_count):
-                filename = _bounded_message_text(message, 'filename')
-                longname = _bounded_message_text(message, 'longname')
+                filename = _bounded_message_text(
+                    message, 'filename', errors=name_errors,
+                )
+                longname = _bounded_message_text(
+                    message, 'longname', errors=name_errors,
+                )
                 attributes = _bounded_sftp_attributes(
                     message, filename, longname
                 )
@@ -675,13 +721,16 @@ def _iter_paramiko_directory_entries(sftp, remote_path, *, member_budget=None):
 
 
 @contextmanager
-def _directory_entries(sftp, remote_path, *, member_budget=None):
+def _directory_entries(
+    sftp, remote_path, *, member_budget=None, undecodable_names=False,
+):
     source_iterator = None
     if isinstance(sftp, SFTPClient):
         iterator = _iter_paramiko_directory_entries(
             sftp,
             remote_path,
             member_budget=member_budget,
+            undecodable_names=undecodable_names,
         )
     else:
         factory = getattr(sftp, 'listdir_iter', None)
@@ -752,6 +801,7 @@ class _SFTPDirectoryListing:
                 member_budget=_TransferMemberBudget(
                     config.MAX_TRANSFER_MEMBERS
                 ),
+                undecodable_names=True,
             )
             self._entries = self._entries_context.__enter__()
         except Exception:
@@ -1137,7 +1187,8 @@ def close_sftp_cache(session_id):
 def sanitize_path(remote_path):
     """Sanitize and validate remote path to prevent path traversal attacks.
 
-    SECURITY: Blocks path traversal attempts (../) and null bytes.
+    SECURITY: Blocks '..' path components that survive normalization and null
+    bytes. Names that merely contain two dots, such as 'notes..txt', are valid.
     Absolute paths are ALLOWED for SFTP operations on remote servers.
     Returns None if path is invalid/malicious.
     """
@@ -1153,7 +1204,7 @@ def sanitize_path(remote_path):
     # the server itself is hosted on Windows (os.path would emit backslashes).
     normalized = posixpath.normpath(remote_path)
 
-    if '..' in normalized:
+    if '..' in normalized.split('/'):
         log_warning("SECURITY: Path traversal attempt blocked", path=remote_path)
         return None
 
@@ -1170,7 +1221,8 @@ def _read_directory_listing(session_id, remote_path='.'):
             files = []
             member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
             with _directory_entries(
-                sftp, safe_path, member_budget=member_budget
+                sftp, safe_path, member_budget=member_budget,
+                undecodable_names=True,
             ) as entries:
                 for entry in entries:
                     is_symlink = stat.S_ISLNK(entry.st_mode)
@@ -1253,7 +1305,7 @@ def probe_sftp_capability(session_id):
         deadline_guard = Timer(remaining, expire_probe)
         deadline_guard.daemon = True
         deadline_guard.start()
-        with _directory_entries(sftp, '.') as entries:
+        with _directory_entries(sftp, '.', undecodable_names=True) as entries:
             next(entries, None)
         if time.monotonic() > deadline:
             return None
@@ -1420,7 +1472,7 @@ def upload_request_stream(
     safe_path = sanitize_path(remote_path)
     if safe_path is None:
         raise SFTPOperationError('invalid remote path')
-    temporary_path = f'{safe_path}.webssh-upload-{secrets.token_hex(12)}.tmp'
+    temporary_path = staging_path(safe_path, 'upload')
     transferred = 0
 
     with sftp_session(session_id) as (sftp, _source_type):
@@ -1767,7 +1819,7 @@ def read_file_for_edit(session_id, path, max_bytes=None):
 
         # Remember the original newline style, then normalize to LF for the
         # browser textarea; the original style is restored on save.
-        newline = 'crlf' if b'\r\n' in raw else 'lf'
+        newline = detect_newline(raw)
         content_str = content_str.replace('\r\n', '\n')
 
         return {
@@ -1810,25 +1862,19 @@ def write_file_text(
         if safe_path is None:
             return False, "Invalid path"
 
-        # The browser textarea always uses LF; restore the original style.
-        text = content_str.replace('\r\n', '\n')
-        if newline == 'crlf':
-            text = text.replace('\n', '\r\n')
-
-        if encoding not in ('utf-8', 'latin-1'):
-            encoding = 'utf-8'
-        try:
-            data = text.encode(encoding)
-        except UnicodeEncodeError:
-            data = text.encode('utf-8')
-
-        maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
-        if len(data) > maximum:
-            return FileWriteOutcome(success=False, error='File too large to edit')
-
-        tmp_path = safe_path + '.webssh-tmp-' + secrets.token_hex(12)
+        if newline != 'mixed':
+            data = encode_editor_text(
+                content_str, encoding=encoding, newline=newline,
+            )
+            maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
+            if len(data) > maximum:
+                return FileWriteOutcome(success=False, error='File too large to edit')
 
         with mutation_session(session_id) as sftp:
+            # A symlinked file (for example sites-enabled/*) is edited through
+            # its target, the object the editor opened. The link stays as is.
+            safe_path = resolve_symlinked_file(sftp, safe_path)
+            tmp_path = staging_path(safe_path, 'tmp')
             maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
             with _open_bound_reader_from_client(sftp, safe_path, bounded_metadata=True) as lease:
                 metadata = permission_snapshot(mutation_fstat(sftp, lease.reader))
@@ -1859,6 +1905,13 @@ def write_file_text(
                     ),
                     code='EDIT_CONFLICT',
                 )
+            if newline == 'mixed':
+                data = encode_editor_text(
+                    content_str, encoding=encoding, newline=newline,
+                    original=original,
+                )
+                if len(data) > maximum:
+                    return FileWriteOutcome(success=False, error='File too large to edit')
             rename_started = False
             try:
                 if permission_snapshot(mutation_lstat(sftp, safe_path)) != metadata:
@@ -1912,6 +1965,11 @@ def write_file_text(
             success=False,
             error=str(e),
             code='EDIT_CONFLICT' if e.code == 'METADATA_CHANGED' else 'EDIT_METADATA_UNSUPPORTED',
+        )
+    except EditorEncodingError as e:
+        return FileWriteOutcome(
+            success=False, error=str(e), code=e.code,
+            unsupported_character=e.character, unsupported_line=e.line,
         )
     except SFTPOperationError as e:
         return FileWriteOutcome(success=False, error=public_sftp_error(e))
@@ -2096,9 +2154,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
             filename = os.path.basename(src_path)
             if total_transferred + file_size > max_bytes:
                 return False, 'Transfer exceeds configured size limit'
-            temporary_path = (
-                f'{dst_path}.webssh-transfer-{secrets.token_hex(12)}.tmp'
-            )
+            temporary_path = staging_path(dst_path, 'transfer')
             transferred = 0
 
             def report(count):
@@ -2254,9 +2310,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
 
         if is_dir:
             directory_total = calculate_directory_total(source_path)
-            temporary_root = (
-                f'{dest_path}.webssh-transfer-{secrets.token_hex(12)}.tmp'
-            )
+            temporary_root = staging_path(dest_path, 'transfer')
             try:
                 success, error = transfer_directory_recursive(
                     source_path, temporary_root

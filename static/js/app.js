@@ -1046,6 +1046,8 @@
                     message = window.i18n
                         ? i18n.t('editor.editConflict')
                         : 'The file changed on the server. Reopen it before saving.';
+                } else if (data.code === 'EDIT_ENCODING_UNSUPPORTED' && window.i18n) {
+                    message = this.encodingRefusalMessage(data);
                 } else if (data.code === 'SMB_RECOVERY_REQUIRED') {
                     const leaves = Array.isArray(data.recovery_leaves)
                         ? data.recovery_leaves.join(', ')
@@ -1060,6 +1062,27 @@
                 return true;
             }
             return false;
+        },
+
+        encodingRefusalMessage(data) {
+            const character = typeof data.character === 'string' ? data.character : '';
+            const codePoint = character.codePointAt(0);
+            const valid = codePoint !== undefined
+                && String.fromCodePoint(codePoint) === character
+                && Number.isSafeInteger(data.line) && data.line > 0;
+            if (!valid) return i18n.t('editor.encodingUnsupported');
+            const values = {
+                line: String(data.line),
+                character,
+                codepoint: `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`,
+            };
+            // Invisible and bidi control characters would hide or reorder the
+            // message, so only their code point is shown.
+            const key = /^[\p{Cf}\p{Zs}\p{Zl}\p{Zp}]$/u.test(character)
+                ? 'editor.encodingUnsupportedCodepoint'
+                : 'editor.encodingUnsupportedCharacter';
+            return i18n.t(key)
+                .replace(/\{(line|character|codepoint)\}/g, (_match, name) => values[name]);
         },
 
         renderPreviewPanels() {

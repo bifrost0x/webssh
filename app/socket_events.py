@@ -980,8 +980,13 @@ def _cleanup_admitted_socket_session(socket_sid):
 
         _cancel_smb_attempts_for_socket(user_id, socket_sid)
 
+        # A started HTTP upload or download is bound to its own request and
+        # must survive a Socket.IO reconnect (network change, mobile tab in
+        # the background). Closing the tab ends that request by itself.
         try:
-            transfer_manager.cancel_all_for_socket(user_id, socket_sid)
+            transfer_manager.cancel_all_for_socket(
+                user_id, socket_sid, keep_running_http=True,
+            )
         except Exception as error:
             log_error(
                 'Transfer cleanup failed on disconnect',
@@ -1026,20 +1031,27 @@ def _cleanup_admitted_socket_session(socket_sid):
 
         if other_sessions == 0:
             try:
-                transfer_manager.cancel_all_for_user(user_id)
+                transfer_manager.cancel_all_for_user(
+                    user_id, keep_running_http=True,
+                )
             except Exception as error:
                 log_error(
                     'Transfer cleanup failed on disconnect',
                     user_id=user_id,
                     exception_type=type(error).__name__,
                 )
-            closed = connection_pool.temp_connection_pool.close_all_user_connections(str(user_id))
+            # A reloaded page cannot reach its old Quick Connect and SMB
+            # sources, so they are closed to free their quota. Sources held
+            # by a running upload or download close when it ends.
+            closed = connection_pool.temp_connection_pool.close_all_user_connections(
+                str(user_id), defer_held=True,
+            )
             if closed > 0:
                 log_info(f"Cleaned up {closed} Quick Connect connection(s) for {username}")
             from . import smb_pool
 
             smb_closed = smb_pool.smb_connection_pool.close_all_user_sources(
-                str(user_id)
+                str(user_id), defer_held=True,
             )
             if smb_closed > 0:
                 log_info(
@@ -5351,6 +5363,10 @@ def handle_save_file(data, current_user=None):
                 failure['revision'] = outcome.revision
             if outcome.recovery_leaves:
                 failure['recovery_leaves'] = list(outcome.recovery_leaves)
+            if outcome.unsupported_character is not None:
+                failure['character'] = outcome.unsupported_character
+            if outcome.unsupported_line is not None:
+                failure['line'] = outcome.unsupported_line
             if (
                 outcome.code == 'SMB_RECOVERABLE_REPLACE_REQUIRED'
                 and replace_strategy == 'atomic'

@@ -18,6 +18,7 @@ from .file_backend import (
     FileSourceChanged,
     FileWriteOutcome,
 )
+from .editor_text import EditorEncodingError, detect_newline, encode_editor_text
 from .smb_paths import SMBPath, SMBPathRejected
 from .smb_protocol import SMBProtocolError
 
@@ -1535,7 +1536,7 @@ class SMBBackend:
             content, binary, encoding = self._decode(data)
             if binary or content is None:
                 raise SMBBackendError('Binary file cannot be edited')
-            newline = 'crlf' if b'\r\n' in data else 'lf'
+            newline = detect_newline(data)
             return {
                 'content': content.replace('\r\n', '\n'),
                 'size': file_size,
@@ -1571,15 +1572,34 @@ class SMBBackend:
         try:
             if not isinstance(content, str):
                 raise SMBBackendError('Invalid file content')
-            if encoding not in {'utf-8', 'latin-1'}:
-                encoding = 'utf-8'
-            text = content.replace('\r\n', '\n')
-            if newline == 'crlf':
-                text = text.replace('\n', '\r\n')
+            original = None
+            if newline == 'mixed':
+                # Unchanged lines keep their own ending, so the merge needs
+                # the exact bytes the editor opened.
+                size, original = self._read_bounded(
+                    source, path, config.MAX_EDITOR_FILE_SIZE,
+                )
+                if (
+                    size > config.MAX_EDITOR_FILE_SIZE
+                    or len(original) > config.MAX_EDITOR_FILE_SIZE
+                ):
+                    raise SMBBackendError('File too large to edit')
+                if (
+                    not expected_revision
+                    or hashlib.sha256(original).hexdigest() != expected_revision
+                ):
+                    return self._edit_conflict()
             try:
-                data = text.encode(encoding)
-            except UnicodeEncodeError:
-                data = text.encode('utf-8')
+                data = encode_editor_text(
+                    content, encoding=encoding, newline=newline,
+                    original=original,
+                )
+            except EditorEncodingError as error:
+                return FileWriteOutcome(
+                    success=False, error=str(error), code=error.code,
+                    unsupported_character=error.character,
+                    unsupported_line=error.line,
+                )
             if len(data) > config.MAX_EDITOR_FILE_SIZE:
                 raise SMBBackendError('File too large to edit')
             # Retained for wire compatibility only. A boolean must never enable
