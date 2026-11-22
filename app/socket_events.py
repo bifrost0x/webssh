@@ -2126,15 +2126,10 @@ def handle_ssh_input(data, current_user=None):
 @socketio.on('keep_alive')
 @socket_login_required
 def handle_keep_alive(data=None, current_user=None):
-    """Keep sessions alive by updating last_activity timestamp."""
-    try:
-        import time
-        with ssh_manager.sessions_lock:
-            for sid, session in ssh_manager.sessions.items():
-                if session.get('user_id') == current_user.id:
-                    session['last_activity'] = time.time()
-    except Exception as e:
-        log_debug(f"Keep-alive error: {e}")
+    """Socket liveness only; the decorator refreshes the socket registration.
+
+    An open tab is not terminal activity, so SSH idle timers keep running.
+    """
 
 @socketio.on('ssh_resize')
 @socket_login_required

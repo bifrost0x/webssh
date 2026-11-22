@@ -803,3 +803,24 @@ def test_host_key_prompt_fails_closed_without_acceptance(app, monkeypatch, outco
     finally:
         if socket_client.is_connected():
             socket_client.disconnect()
+
+
+def test_keep_alive_does_not_reset_the_idle_timer_of_ssh_sessions(app):
+    socket_client, user_id = _authenticated_socket(app, 'keep_alive_idle_user')
+    session_id = 'keep-alive-idle-session'
+    idle_since = time.time() - 600
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions[session_id] = {
+            'user_id': user_id,
+            'connected': True,
+            'last_activity': idle_since,
+        }
+    try:
+        socket_client.emit('keep_alive')
+        socket_client.get_received()
+        with ssh_manager.sessions_lock:
+            assert ssh_manager.sessions[session_id]['last_activity'] == idle_since
+    finally:
+        with ssh_manager.sessions_lock:
+            ssh_manager.sessions.pop(session_id, None)
+        socket_client.disconnect()

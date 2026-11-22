@@ -288,9 +288,11 @@ verification.
 
 ### Connection closes while idle
 
-`SESSION_TIMEOUT` defaults to 1800 seconds and closes idle SSH sessions. A tmux
-session may keep the remote shell alive for later reattachment even though the
-WebSSH transport closed.
+`SESSION_TIMEOUT` defaults to 1800 seconds and closes SSH sessions without
+terminal input or output for that long. An open browser tab alone does not keep
+a session alive; WebSSH warns two minutes before closing it. A tmux session may
+keep the remote shell alive for later reattachment even though the WebSSH
+transport closed.
 
 ## Related pages
 
