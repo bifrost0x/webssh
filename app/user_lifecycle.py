@@ -10,12 +10,16 @@ from . import connection_pool, ssh_manager
 from .backup_coordination import persistent_write
 
 
-def revoke_user_access(user_id, socketio_instance=None):
+def revoke_user_access(user_id, socketio_instance=None, *, kill_tmux=True):
     """Disconnect and remove all live resources owned by ``user_id``.
 
     Cleanup is deliberately best-effort across resource types: one broken SSH
     connection must not prevent the user's sockets, pooled connections, or
     database session metadata from being revoked.
+
+    ``kill_tmux=False`` is for the user's own sign-out and password change:
+    transports close, but remote tmux sessions keep running and stay listed
+    as reconnect candidates. Locking or deleting an account ends them.
     """
     user_id = int(user_id)
     from flask import current_app
@@ -127,7 +131,7 @@ def revoke_user_access(user_id, socketio_instance=None):
 
     for session_id in ssh_session_ids:
         try:
-            if ssh_manager.close_session(session_id, kill_tmux=True):
+            if ssh_manager.close_session(session_id, kill_tmux=kill_tmux):
                 result['ssh_sessions'] += 1
             else:
                 result['errors'].append(f'ssh:{session_id}:close failed')
@@ -168,7 +172,14 @@ def revoke_user_access(user_id, socketio_instance=None):
 
     try:
         SocketSession.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-        SSHSession.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        ssh_rows = SSHSession.query.filter_by(user_id=user_id)
+        if kill_tmux:
+            ssh_rows.delete(synchronize_session=False)
+        else:
+            ssh_rows.filter_by(is_persistent=False).delete(synchronize_session=False)
+            SSHSession.query.filter_by(user_id=user_id, is_persistent=True).update(
+                {'connected': False}, synchronize_session=False,
+            )
         db.session.commit()
     except Exception as exc:
         db.session.rollback()

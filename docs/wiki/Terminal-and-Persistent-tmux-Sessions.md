@@ -217,7 +217,9 @@ Passwords are not retained in the session object for reconnect.
 ## Persistent tmux sessions
 
 tmux runs on the remote SSH host. It keeps the remote shell and commands alive
-when the browser closes, the WebSSH transport disconnects, or WebSSH restarts.
+when the browser closes, the WebSSH transport disconnects, WebSSH restarts, or
+the user signs out or changes the password. Locking or deleting the account ends
+them.
 
 Configuration:
 

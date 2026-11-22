@@ -121,9 +121,11 @@ account's tracked resources:
 
 - active transfers;
 - Socket.IO sessions;
-- live SSH sessions;
+- live SSH sessions, including their remote tmux sessions;
 - pooled temporary SSH/SFTP connections;
 - persisted socket and SSH session metadata.
+
+Deleting an account revokes the same resources.
 
 Unlocking permits future authentication but does not restore terminated live
 connections.
@@ -176,7 +178,9 @@ identity.
 
 Local users can change their password through `/change-password`. Explicit
 logout is a POST action and revokes tracked Socket.IO, SSH, and temporary SFTP
-connections instead of only deleting the browser cookie.
+connections instead of only deleting the browser cookie. Logout and password
+changes only disconnect: remote tmux sessions keep running and are offered for
+reconnect after the next sign-in, on every device.
 
 LDAP-managed users authenticate their primary credential exclusively against
 the directory and cannot use local password-change or OIDC. After recent LDAP

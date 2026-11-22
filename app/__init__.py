@@ -1287,7 +1287,7 @@ def create_app(
                 user_id=user_id,
                 error=type(exc).__name__,
             )
-        user_lifecycle.revoke_user_access(user_id, socketio)
+        user_lifecycle.revoke_user_access(user_id, socketio, kill_tmux=False)
         clear_browser_authentication()
         return redirect(url_for('login'))
 
@@ -1358,7 +1358,9 @@ def create_app(
                         error=type(exc).__name__,
                     )
                     abort(500)
-                user_lifecycle.revoke_user_access(password_owner.id, socketio)
+                user_lifecycle.revoke_user_access(
+                    password_owner.id, socketio, kill_tmux=False,
+                )
                 log_password_change(
                     password_owner.username,
                     True,
