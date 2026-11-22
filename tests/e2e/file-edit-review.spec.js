@@ -85,6 +85,35 @@ test('failed save keeps draft and review, then SMB consent retries only the revi
     expect(await page.evaluate(() => window.__reviewSaves.length)).toBe(3);
 });
 
+test('a character the Latin-1 file cannot store keeps the draft and explains the refusal', async ({ page }) => {
+    await page.locator('#editorContent').fill('café\nPreis 5 €\n');
+    await page.locator('#editorSaveBtn').click();
+    await page.locator('#editorCommitBtn').click();
+    await page.evaluate(() => window.FilePreview.handleSocketError({
+        ...window.__reviewSaves[0], operation: 'save_file', code: 'EDIT_ENCODING_UNSUPPORTED',
+        error: "The character '€' cannot be saved in this latin-1 file.",
+    }));
+    await expect(page.locator('#editorStatus')).toContainText('stored as Latin-1');
+    await expect(page.locator('#editorReviewEdited')).toHaveValue('café\nPreis 5 €\n');
+    await page.locator('#editorBackBtn').click();
+    await expect(page.locator('#editorContent')).toHaveValue('café\nPreis 5 €\n');
+});
+
+test('mixed line endings reported by the server are sent back unchanged on save', async ({ page }) => {
+    await page.evaluate(() => window.FilePreview.handleEditData({
+        source_id: 'sftp-session:review-fixture', path: '/etc/review.txt',
+        request_id: window.FilePreview.currentEditRequestId = 'mixed-edit',
+        content: '#!/bin/sh\necho a\n', revision: 'mixed-revision',
+        encoding: 'utf-8', newline: 'mixed', original_bytes: 'IyEvYmluL3NoCmVjaG8gYQ0K',
+    }));
+    await page.locator('#editorContent').fill('#!/bin/sh\necho a\necho b\n');
+    await page.locator('#editorSaveBtn').click();
+    await page.locator('#editorCommitBtn').click();
+    expect(await page.evaluate(() => window.__reviewSaves.at(-1))).toMatchObject({
+        newline: 'mixed', expected_revision: 'mixed-revision', content: '#!/bin/sh\necho a\necho b\n',
+    });
+});
+
 test('switching file source requires draft confirmation and invalidates a prior review', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('#editorContent').fill('keep this draft');
