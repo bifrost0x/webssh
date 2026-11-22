@@ -270,8 +270,9 @@ for activation, the read-only Agents panel and the security boundaries.
 ## Idle timeout
 
 `SESSION_TIMEOUT` defaults to 1800 seconds and closes WebSSH SSH sessions
-without terminal input or output for that long. An open browser tab alone does
-not count as activity. This does not imply a 30-minute browser HTTP-session timeout. A remote tmux
+without terminal input or output for that long. Keyboard or pointer use of a
+visible WebSSH tab also counts; a tab left open in the background does not.
+This does not imply a 30-minute browser HTTP-session timeout. A remote tmux
 session can survive and be reattached later.
 
 ## Capacity

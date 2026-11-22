@@ -805,22 +805,42 @@ def test_host_key_prompt_fails_closed_without_acceptance(app, monkeypatch, outco
             socket_client.disconnect()
 
 
-def test_keep_alive_does_not_reset_the_idle_timer_of_ssh_sessions(app):
-    socket_client, user_id = _authenticated_socket(app, 'keep_alive_idle_user')
-    session_id = 'keep-alive-idle-session'
+@pytest.mark.parametrize(('payload', 'refreshed'), [
+    ({'active': True}, True),
+    ({'active': False}, False),
+    ({'active': 'yes'}, False),
+    (None, True),
+])
+def test_keep_alive_refreshes_idle_timers_only_for_user_activity(app, payload, refreshed, request):
+    """Current clients report activity; older ones without the field keep tabs alive."""
+    username = f'keep_alive_user_{request.node.callspec.id.replace("-", "_")}'
+    socket_client, user_id = _authenticated_socket(app, username)
+    own_session = 'keep-alive-own-session'
+    other_session = 'keep-alive-other-session'
     idle_since = time.time() - 600
     with ssh_manager.sessions_lock:
-        ssh_manager.sessions[session_id] = {
+        ssh_manager.sessions[own_session] = {
             'user_id': user_id,
             'connected': True,
             'last_activity': idle_since,
         }
+        ssh_manager.sessions[other_session] = {
+            'user_id': user_id + 1000,
+            'connected': True,
+            'last_activity': idle_since,
+        }
     try:
-        socket_client.emit('keep_alive')
+        if payload is None:
+            socket_client.emit('keep_alive')
+        else:
+            socket_client.emit('keep_alive', payload)
         socket_client.get_received()
         with ssh_manager.sessions_lock:
-            assert ssh_manager.sessions[session_id]['last_activity'] == idle_since
+            own_activity = ssh_manager.sessions[own_session]['last_activity']
+            assert ssh_manager.sessions[other_session]['last_activity'] == idle_since
+        assert (own_activity > idle_since) is refreshed
     finally:
         with ssh_manager.sessions_lock:
-            ssh_manager.sessions.pop(session_id, None)
+            ssh_manager.sessions.pop(own_session, None)
+            ssh_manager.sessions.pop(other_session, None)
         socket_client.disconnect()

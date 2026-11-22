@@ -2126,10 +2126,20 @@ def handle_ssh_input(data, current_user=None):
 @socketio.on('keep_alive')
 @socket_login_required
 def handle_keep_alive(data=None, current_user=None):
-    """Socket liveness only; the decorator refreshes the socket registration.
+    """Refresh the SSH idle timers of this user while someone uses the page.
 
-    An open tab is not terminal activity, so SSH idle timers keep running.
+    Current clients send ``active`` and set it only for a visible tab with
+    keyboard or pointer input since the previous ping, so abandoned tabs
+    still time out. Pages loaded before that field existed send no payload
+    and keep the previous behaviour until they are reloaded.
     """
+    if isinstance(data, dict) and data.get('active') is not True:
+        return
+    now = time.time()
+    with ssh_manager.sessions_lock:
+        for session in ssh_manager.sessions.values():
+            if session.get('user_id') == current_user.id:
+                session['last_activity'] = now
 
 @socketio.on('ssh_resize')
 @socket_login_required

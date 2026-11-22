@@ -148,7 +148,7 @@ def _positive_int_env(name, default):
 
 
 # Idle SSH sessions close after this many seconds without terminal input or
-# output. Browser keep-alives only keep the socket registered.
+# output, or keyboard and pointer use of a visible tab reported by keep-alive.
 SESSION_TIMEOUT = _positive_int_env('SESSION_TIMEOUT', 1800)
 
 

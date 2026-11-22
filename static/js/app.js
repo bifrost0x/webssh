@@ -1581,19 +1581,32 @@
             );
         }
         if (!keepAliveInterval) {
-            keepAliveInterval = setInterval(() => {
-                if (socket.connected) {
-                    socket.emit('keep_alive');
-                }
-            }, 60000);
+            keepAliveInterval = setInterval(sendKeepAlive, 60000);
         }
     });
 
-    let keepAliveInterval = setInterval(() => {
+    // SSH idle timers only restart while someone uses a visible tab, so an
+    // abandoned tab still lets SESSION_TIMEOUT close its sessions.
+    let userActiveSinceKeepAlive = false;
+    ['keydown', 'pointerdown', 'pointermove', 'wheel', 'touchstart'].forEach(type => {
+        document.addEventListener(type, () => {
+            userActiveSinceKeepAlive = true;
+        }, {capture: true, passive: true});
+    });
+
+    function keepAlivePayload() {
+        const active = userActiveSinceKeepAlive && document.visibilityState === 'visible';
+        userActiveSinceKeepAlive = false;
+        return {active};
+    }
+
+    function sendKeepAlive() {
         if (socket.connected) {
-            socket.emit('keep_alive');
+            socket.emit('keep_alive', keepAlivePayload());
         }
-    }, 60000);
+    }
+
+    let keepAliveInterval = setInterval(sendKeepAlive, 60000);
 
     window.SSHHostTrust?.init(socket, requestId => Boolean(requestId)
         && !cancelledConnectRequestIds.has(requestId)
