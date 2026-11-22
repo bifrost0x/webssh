@@ -51,6 +51,8 @@ TRANSFER_TEMP_DIR = Path(os.environ.get(
     'TRANSFER_TEMP_DIR', DATA_DIR / 'tmp'
 ))
 
+SESSION_TIMEOUT = int(os.environ.get('SESSION_TIMEOUT', '1800'))
+
 WEBAUTHN_ENABLED = (
     os.environ.get('WEBAUTHN_ENABLED', 'false').lower() == 'true'
 )
@@ -145,11 +147,6 @@ def _positive_int_env(name, default):
             f'CONFIGURATION ERROR: {name} must be a positive integer'
         )
     return value
-
-
-# Idle SSH sessions close after this many seconds without terminal input or
-# output, or keyboard and pointer use of a visible tab reported by keep-alive.
-SESSION_TIMEOUT = _positive_int_env('SESSION_TIMEOUT', 1800)
 
 
 def _bounded_int_env(name, default, minimum, maximum):

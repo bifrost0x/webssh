@@ -2126,21 +2126,15 @@ def handle_ssh_input(data, current_user=None):
 @socketio.on('keep_alive')
 @socket_login_required
 def handle_keep_alive(data=None, current_user=None):
-    """Refresh the SSH idle timers of this user while someone uses the page.
-
-    Current clients send ``active`` and set it only for a visible tab with
-    keyboard or pointer input since the previous ping, so abandoned tabs
-    still time out. Pages loaded before that field existed send no payload
-    and keep the previous behaviour until they are reloaded; any other
-    payload does not count.
-    """
-    if data is not None and not (isinstance(data, dict) and data.get('active') is True):
-        return
-    now = time.time()
-    with ssh_manager.sessions_lock:
-        for session in ssh_manager.sessions.values():
-            if session.get('user_id') == current_user.id:
-                session['last_activity'] = now
+    """Keep sessions alive by updating last_activity timestamp."""
+    try:
+        import time
+        with ssh_manager.sessions_lock:
+            for sid, session in ssh_manager.sessions.items():
+                if session.get('user_id') == current_user.id:
+                    session['last_activity'] = time.time()
+    except Exception as e:
+        log_debug(f"Keep-alive error: {e}")
 
 @socketio.on('ssh_resize')
 @socket_login_required
