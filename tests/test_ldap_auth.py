@@ -1489,33 +1489,3 @@ def test_admin_can_run_redacted_ldap_readiness_probe(
     }
     assert directory.probes == 1
     assert b"cn=webssh" not in response.data
-
-
-def test_ldap_login_limits_one_account_across_many_addresses(app, monkeypatch):
-    import config
-
-    monkeypatch.setattr(config, "RATELIMIT_ENABLED", True)
-    monkeypatch.setattr(config, "LDAP_LOGIN_RATE_LIMIT", "5 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_ACCOUNT_LIMIT", "10 per hour", raising=False)
-    directory = _FakeDirectory(
-        _DirectoryIdentity(
-            provider="default",
-            subject="stable-carol-id",
-            distinguished_name="uid=carol,ou=people,dc=example,dc=com",
-        ),
-        password_valid=False,
-    )
-    _enable_ldap_blueprint(app, monkeypatch, directory)
-
-    statuses = [
-        app.test_client().post(
-            "/login/ldap",
-            data={"username": "carol", "password": "guess"},
-            environ_base={"REMOTE_ADDR": f"2001:db8:{index:x}::1"},
-        ).status_code
-        for index in range(1, 12)
-    ]
-
-    assert statuses[:10] == [401] * 10
-    assert statuses[10] == 429
-    assert len(directory.lookups) == 10

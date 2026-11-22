@@ -876,10 +876,6 @@ RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True') == 'True'
 # in-memory fallback and retries Redis periodically.
 RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
 RATELIMIT_LOGIN_LIMIT = os.environ.get('RATELIMIT_LOGIN_LIMIT', '5 per minute')
-# Password attempts per account name from browsers that never signed in to it.
-RATELIMIT_LOGIN_ACCOUNT_LIMIT = os.environ.get(
-    'RATELIMIT_LOGIN_ACCOUNT_LIMIT', '10 per hour'
-)
 RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')
 RATELIMIT_REAUTH = os.environ.get('RATELIMIT_REAUTH', '10 per minute')
 RATELIMIT_BACKUP_CREATE = os.environ.get(
