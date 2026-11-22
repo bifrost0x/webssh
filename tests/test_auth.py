@@ -309,6 +309,34 @@ class TestUserRegistration:
             assert user is None
             assert 'letters' in error
 
+    @pytest.mark.parametrize('username', [
+        '\u0430dmin',            # Cyrillic a
+        'adm\u0456n',            # Ukrainian i
+        '\uff21\uff24\uff2d\uff29\uff2e',  # fullwidth ADMIN
+        'user\u00b2',           # superscript two
+        'm\u00fcller',           # non-ASCII letter
+    ])
+    def test_register_rejects_non_ascii_usernames(self, app, username):
+        with app.app_context():
+            from app.auth import register_user
+            user, error = register_user(username, 'password123')
+            assert user is None
+            assert error == 'Username can only contain letters, numbers, and underscores'
+
+    def test_existing_non_ascii_usernames_keep_signing_in(self, app):
+        with app.app_context():
+            from app.auth import authenticate_user
+            from app.models import User, db
+
+            legacy = User(username='m\u00fcller', is_admin=False)
+            legacy.set_password('password123')
+            db.session.add(legacy)
+            db.session.commit()
+
+            user, error = authenticate_user('m\u00fcller', 'password123')
+            assert error is None
+            assert user.username == 'm\u00fcller'
+
     def test_register_username_too_long(self, app):
         with app.app_context():
             from app.auth import register_user

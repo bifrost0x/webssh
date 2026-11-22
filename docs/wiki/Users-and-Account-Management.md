@@ -31,6 +31,10 @@ An administrator can:
 Administrators remain subject to authentication, CSRF, rate limits, target
 confirmation, and action-bound Step-up requirements.
 
+New local usernames have 3 to 32 characters from `A-Z`, `a-z`, `0-9` and `_`.
+Other letters are rejected so that look-alike names such as a Cyrillic "admin"
+cannot be created. Accounts created before this rule keep their names.
+
 ## Administrator Step-up
 
 Sensitive mutations require a one-use grant for the exact action and target.

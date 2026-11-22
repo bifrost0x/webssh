@@ -1,3 +1,5 @@
+import re
+
 import bcrypt
 import config
 from contextlib import contextmanager
@@ -19,6 +21,7 @@ _DUMMY_PASSWORD_HASH = bcrypt.hashpw(b'account-enumeration-mitigation', bcrypt.g
 # Falls back to in-memory automatically if Redis is unavailable.
 _rate_limiter = None
 user_creation_lock = Lock()
+_NEW_USERNAME_PATTERN = re.compile(r'[A-Za-z0-9_]+')
 
 
 @contextmanager
@@ -175,7 +178,9 @@ def validate_new_user(username, password):
     if not username or len(username) < 3 or len(username) > 32:
         return "Username must be between 3 and 32 characters"
 
-    if not username.replace('_', '').isalnum():
+    # ASCII only: Unicode letters allow look-alike names such as a Cyrillic
+    # "admin". Existing accounts keep their names; only new ones are checked.
+    if not _NEW_USERNAME_PATTERN.fullmatch(username):
         return "Username can only contain letters, numbers, and underscores"
 
     normalized_username = username.casefold()
