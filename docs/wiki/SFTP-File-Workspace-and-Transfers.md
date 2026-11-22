@@ -182,7 +182,9 @@ SFTP editor saves stage content in a privately and exclusively created file,
 retain ordinary rwx permissions, and require atomic replacement. Known special
 bits or an owner/group mismatch prevent replacement. SFTP v3 does not provide
 general ACL preservation: inode replacement can lose extended ACLs. Use another
-method when exact ACL preservation is required. If staging fails, a private
+method when exact ACL preservation is required. A file opened through a
+symlink, such as `/etc/nginx/sites-enabled/site`, is saved by replacing the
+link target; the link itself stays unchanged. If staging fails, a private
 `.webssh-tmp-*` file may remain on the remote server; WebSSH avoids unsafe
 path-based rollback when an object could have changed concurrently.
 

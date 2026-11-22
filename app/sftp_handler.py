@@ -24,6 +24,7 @@ from paramiko.sftp import (
     CMD_FSTAT,
     CMD_ATTRS,
     CMD_READDIR,
+    CMD_REALPATH,
     SFTPError,
     SFTP_FLAG_CREATE,
     SFTP_FLAG_EXCL,
@@ -237,6 +238,25 @@ def mutation_lstat(sftp, path):
     """Read non-following metadata through the existing bounded v3 parser."""
     command, message = sftp._request(CMD_LSTAT, sftp._adjust_cwd(path))
     return _mutation_attributes(command, message)
+
+
+def resolve_symlinked_file(sftp, path):
+    """Return the path a symlink points to, or ``path`` when it is no link.
+
+    Saving replaces the link target, never the link. The server's REALPATH
+    resolves the full chain; the caller still checks that the result is a
+    regular file.
+    """
+    if not stat.S_ISLNK(getattr(mutation_lstat(sftp, path), 'st_mode', 0) or 0):
+        return path
+    command, message = sftp._request(CMD_REALPATH, sftp._adjust_cwd(path))
+    if command != CMD_NAME or _message_uint32(message, 'path count') != 1:
+        raise SFTPOperationError('Symlink target could not be resolved')
+    resolved = _bounded_message_text(message, 'symlink target')
+    resolved = sanitize_path(resolved)
+    if resolved is None or not resolved.startswith('/') or resolved == path:
+        raise SFTPOperationError('Symlink target could not be resolved')
+    return resolved
 
 
 def mutation_fstat(sftp, remote_file):
@@ -1820,9 +1840,11 @@ def write_file_text(
             if len(data) > maximum:
                 return FileWriteOutcome(success=False, error='File too large to edit')
 
-        tmp_path = safe_path + '.webssh-tmp-' + secrets.token_hex(12)
-
         with mutation_session(session_id) as sftp:
+            # A symlinked file (for example sites-enabled/*) is edited through
+            # its target, the object the editor opened. The link stays as is.
+            safe_path = resolve_symlinked_file(sftp, safe_path)
+            tmp_path = safe_path + '.webssh-tmp-' + secrets.token_hex(12)
             maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
             with _open_bound_reader_from_client(sftp, safe_path, bounded_metadata=True) as lease:
                 metadata = permission_snapshot(mutation_fstat(sftp, lease.reader))

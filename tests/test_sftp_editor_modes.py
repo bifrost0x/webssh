@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 
-def fixture(monkeypatch, mode=0o600, *, fail_chmod=False, fail_rename=False, rename_error=None, changed=False, malformed_at=None, original=b'old'):
+def fixture(monkeypatch, mode=0o600, *, fail_chmod=False, fail_rename=False, rename_error=None, changed=False, malformed_at=None, original=b'old', link_target=None):
     from app import sftp_handler
     state = {'data': original, 'mode': mode, 'renamed': False, 'removed': []}
 
@@ -50,9 +50,20 @@ def fixture(monkeypatch, mode=0o600, *, fail_chmod=False, fail_rename=False, ren
             from paramiko.message import Message
             from paramiko.sftp import CMD_ATTRS, CMD_FSTAT, CMD_LSTAT
             from paramiko.sftp_attr import SFTPAttributes
+            from paramiko.sftp import CMD_NAME, CMD_REALPATH
+            if command == CMD_REALPATH:
+                assert link_target and _args[0] == '/link'
+                message = Message()
+                message.add_int(1)
+                message.add_string(link_target)
+                message.add_string(link_target)
+                SFTPAttributes()._pack(message)
+                return CMD_NAME, Message(message.asbytes())
             assert command in {CMD_FSTAT, CMD_LSTAT}
             self.calls[command] = self.calls.get(command, 0) + 1
             value = info(0o644 if changed and command == CMD_LSTAT else mode)
+            if command == CMD_LSTAT and _args[0] == '/link':
+                value.st_mode = stat.S_IFLNK | 0o777
             attributes = SFTPAttributes()
             attributes.__dict__.update(value.__dict__)
             attributes.st_atime = 10
@@ -74,6 +85,7 @@ def fixture(monkeypatch, mode=0o600, *, fail_chmod=False, fail_rename=False, ren
             return SFTPAttributes._from_msg(self._request(CMD_LSTAT, _path)[1])
 
         def posix_rename(self, _old, _new):
+            state['rename'] = (_old, _new)
             if rename_error is not None:
                 raise rename_error
             if fail_rename:
@@ -220,3 +232,22 @@ def test_save_keeps_latin1_encoding_for_representable_text(monkeypatch):
     )
     assert outcome.success, outcome.error
     assert state['data'] == b'Gr\xfc\xdfe\n\xc4ra\n'
+
+
+def test_save_through_a_symlink_replaces_its_target(monkeypatch):
+    from app.sftp_handler import write_file_text
+    state = fixture(monkeypatch, 0o644, link_target='/etc/nginx/sites-available/site')
+    outcome = write_file_text('a', '/link', 'new', expected_revision=hashlib.sha256(b'old').hexdigest())
+    assert outcome.success, outcome.error
+    assert state['data'] == b'new'
+    staged, final = state['rename']
+    assert final == '/etc/nginx/sites-available/site'
+    assert staged.startswith('/etc/nginx/sites-available/')
+
+
+def test_save_through_a_symlink_still_checks_the_revision(monkeypatch):
+    from app.sftp_handler import write_file_text
+    state = fixture(monkeypatch, 0o644, link_target='/srv/real')
+    outcome = write_file_text('a', '/link', 'new', expected_revision=hashlib.sha256(b'other').hexdigest())
+    assert outcome.code == 'EDIT_CONFLICT'
+    assert not state['renamed']
