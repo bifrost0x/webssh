@@ -523,7 +523,7 @@ def test_last_socket_disconnect_cancels_user_transfers(app, monkeypatch):
     assert manager._records == {}
 
 
-def test_last_socket_disconnect_cleans_pools_when_metadata_commit_fails(
+def test_last_socket_disconnect_cancels_transfers_when_metadata_commit_fails(
     app, monkeypatch
 ):
     from app import connection_pool, smb_pool, socket_events
@@ -555,7 +555,7 @@ def test_last_socket_disconnect_cleans_pools_when_metadata_commit_fails(
     monkeypatch.setattr(
         socket_events.transfer_manager,
         'cancel_all_for_user',
-        lambda owner_id: calls.append(('transfers', owner_id)),
+        lambda owner_id, **options: calls.append(('transfers', owner_id, options)),
     )
     monkeypatch.setattr(
         connection_pool.temp_connection_pool,
@@ -571,9 +571,10 @@ def test_last_socket_disconnect_cleans_pools_when_metadata_commit_fails(
     socket_client.disconnect()
 
     assert ('rollback',) in calls
-    assert ('transfers', user_id) in calls
-    assert ('ssh', str(user_id)) in calls
-    assert ('smb', str(user_id)) in calls
+    assert ('transfers', user_id, {'keep_running_http': True}) in calls
+    # File sources survive a reconnect; their pools close them when idle.
+    assert ('ssh', str(user_id)) not in calls
+    assert ('smb', str(user_id)) not in calls
     assert socket_capacity.count_for_user(user_id) == 0
 
 
@@ -618,7 +619,7 @@ def test_metadata_failure_rechecks_replacement_socket_before_pool_cleanup(
     monkeypatch.setattr(
         socket_events.transfer_manager,
         'cancel_all_for_user',
-        lambda owner_id: cleanup_calls.append(('transfers', owner_id)),
+        lambda owner_id, **_options: cleanup_calls.append(('transfers', owner_id)),
     )
     monkeypatch.setattr(
         connection_pool.temp_connection_pool,
@@ -803,3 +804,69 @@ def test_host_key_prompt_fails_closed_without_acceptance(app, monkeypatch, outco
     finally:
         if socket_client.is_connected():
             socket_client.disconnect()
+
+
+def test_socket_reconnect_keeps_running_http_transfers_and_file_sources(app, monkeypatch):
+    from app import connection_pool, smb_pool, socket_events, transfer_routes
+    from app.file_sources import SourceHoldSet
+    from app.transfer_manager import TransferManager
+
+    from app.quota_manager import QuotaKind, QuotaManager
+
+    socket_client, user_id = _authenticated_socket(app, 'transfer_reconnect_user')
+    manager = TransferManager(QuotaManager({
+        kind: {'global': 100, 'per_user': 50} for kind in QuotaKind
+    }))
+    monkeypatch.setattr(socket_events, 'transfer_manager', manager)
+    monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: SimpleNamespace(handle_id='quick-source'),
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda _user_id, source_ids: SourceHoldSet(tuple(source_ids)),
+    )
+    closed = []
+    monkeypatch.setattr(
+        connection_pool.temp_connection_pool,
+        'close_all_user_connections',
+        lambda owner_id: closed.append(('quick', owner_id)) or 0,
+    )
+    monkeypatch.setattr(
+        smb_pool.smb_connection_pool,
+        'close_all_user_sources',
+        lambda owner_id: closed.append(('smb', owner_id)) or 0,
+    )
+
+    def prepare(direction, request_id):
+        result = socket_client.emit('prepare_transfer', {
+            'direction': direction,
+            'source_id': 'sftp-quick:quick-source',
+            'request_id': request_id,
+            'remote_path': f'/remote/{request_id}.bin',
+        }, callback=True)
+        return manager._records[result['transfer_id']]
+
+    uploading = prepare('upload', 'running-upload')
+    manager.consume_token(uploading.token, user_id)
+    downloading = prepare('download', 'running-download')
+    manager.consume_token(downloading.token, user_id)
+    pending = prepare('upload', 'pending-upload')
+    copying = manager.create(
+        user_id, 'sftp-quick:quick-source', 'server_to_server', {},
+        owner_sid=uploading._owner_sid,
+        source_holds=SourceHoldSet(('sftp-quick:quick-source',)),
+    )
+    manager.consume_token(copying.token, user_id)
+
+    # The only socket of this user drops, as on a network change.
+    socket_client.disconnect()
+
+    assert not uploading.cancel_event.is_set()
+    assert not downloading.cancel_event.is_set()
+    assert pending.cancel_event.is_set()
+    assert copying.cancel_event.is_set()
+    assert closed == []

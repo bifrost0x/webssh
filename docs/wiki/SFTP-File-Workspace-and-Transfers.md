@@ -379,6 +379,12 @@ the correlated rename requests.
 - Quick sources use the bounded temporary connection pool.
 - Closing a tab releases a quick connection only when no remaining tab or
   queued/active transfer references it.
+- A browser reconnect (network change, VPN reconnect, a mobile tab in the
+  background) keeps started uploads and downloads running and keeps quick SFTP
+  and SMB sources open. Transfers that have not started yet and
+  server-to-server copies of the lost connection are cancelled. Sources nobody
+  reconnects to close after the pool's idle timeout; signing out closes them
+  immediately.
 - Disconnect events remove all matching stale workspace tabs while preserving
   unrelated tabs.
 

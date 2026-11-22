@@ -42,9 +42,9 @@ def test_server_disconnect_cleans_exact_namespace_when_client_environment_disapp
         original_cancel = socket_events.transfer_manager.cancel_all_for_socket
         cancelled = []
 
-        def cancel_socket(user_id, socket_sid):
+        def cancel_socket(user_id, socket_sid, **options):
             cancelled.append((user_id, socket_sid))
-            return original_cancel(user_id, socket_sid)
+            return original_cancel(user_id, socket_sid, **options)
 
         monkeypatch.setattr(socket_events.transfer_manager, 'cancel_all_for_socket', cancel_socket)
         observed = []

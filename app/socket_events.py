@@ -980,8 +980,13 @@ def _cleanup_admitted_socket_session(socket_sid):
 
         _cancel_smb_attempts_for_socket(user_id, socket_sid)
 
+        # A started HTTP upload or download is bound to its own request and
+        # must survive a Socket.IO reconnect (network change, mobile tab in
+        # the background). Closing the tab ends that request by itself.
         try:
-            transfer_manager.cancel_all_for_socket(user_id, socket_sid)
+            transfer_manager.cancel_all_for_socket(
+                user_id, socket_sid, keep_running_http=True,
+            )
         except Exception as error:
             log_error(
                 'Transfer cleanup failed on disconnect',
@@ -1026,26 +1031,23 @@ def _cleanup_admitted_socket_session(socket_sid):
 
         if other_sessions == 0:
             try:
-                transfer_manager.cancel_all_for_user(user_id)
+                transfer_manager.cancel_all_for_user(
+                    user_id, keep_running_http=True,
+                )
             except Exception as error:
                 log_error(
                     'Transfer cleanup failed on disconnect',
                     user_id=user_id,
                     exception_type=type(error).__name__,
                 )
-            closed = connection_pool.temp_connection_pool.close_all_user_connections(str(user_id))
-            if closed > 0:
-                log_info(f"Cleaned up {closed} Quick Connect connection(s) for {username}")
-            from . import smb_pool
-
-            smb_closed = smb_pool.smb_connection_pool.close_all_user_sources(
-                str(user_id)
+            # Quick Connect and SMB sources stay open like SSH sessions so a
+            # reconnecting browser can keep using them. Their pools close
+            # them after the idle timeout; logout and account revocation
+            # close them immediately.
+            log_debug(
+                f"Last socket for {username} disconnected, "
+                "SSH sessions and file sources preserved"
             )
-            if smb_closed > 0:
-                log_info(
-                    f"Cleaned up {smb_closed} SMB source(s) for {username}"
-                )
-            log_debug(f"Last socket for {username} disconnected, SSH sessions preserved")
 
 def restore_user_sessions(user_id, socket_sid):
     """Restore active SSH sessions when user reconnects."""
