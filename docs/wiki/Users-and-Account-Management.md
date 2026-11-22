@@ -116,8 +116,9 @@ authentication method.
 
 ## Locking an account
 
-Locking prevents new HTTP and Socket.IO authorization. WebSSH also revokes the
-account's tracked resources:
+Locking prevents new HTTP and Socket.IO authorization. Sign-in to a locked
+account fails with the same message as a wrong password, so the lock does not
+confirm a guessed password. WebSSH also revokes the account's tracked resources:
 
 - active transfers;
 - Socket.IO sessions;

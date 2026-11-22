@@ -291,9 +291,9 @@ def authenticate_user(username, password):
     # also protects reauthentication and future password-based entry points.
     if user.ldap_identity is not None or user.is_github_managed:
         return None, "Invalid username or password"
-    if password_matches:
-        if getattr(user, 'is_locked', False):
-            return None, "This account is locked. Please contact an administrator."
+    # A locked account answers like a wrong password. A distinct message after
+    # a correct password would let anyone keep guessing it while it is locked.
+    if password_matches and not getattr(user, 'is_locked', False):
         return user, None
     return None, "Invalid username or password"
 

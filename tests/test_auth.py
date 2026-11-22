@@ -421,6 +421,29 @@ class TestAuthentication:
             assert row.assurance == 'BASIC'
             assert row.methods_json == '["password"]'
 
+    def test_locked_account_does_not_reveal_whether_the_password_matches(
+        self, app, client,
+    ):
+        with app.app_context():
+            from app.auth import authenticate_user, register_user
+            from app.models import db
+
+            user, error = register_user('lockedoracle', 'password123')
+            assert error is None
+            user.is_locked = True
+            db.session.commit()
+
+            right = authenticate_user('lockedoracle', 'password123')
+            wrong = authenticate_user('lockedoracle', 'wrongpassword')
+            assert right == wrong == (None, 'Invalid username or password')
+
+        pages = [
+            client.post('/login', data={'username': 'lockedoracle', 'password': password}).data
+            for password in ('password123', 'wrongpassword')
+        ]
+        assert all(b'Invalid username or password' in page for page in pages)
+        assert not any(b'locked' in page.lower() for page in pages)
+
     def test_authenticate_wrong_password(self, app):
         with app.app_context():
             from app.auth import register_user, authenticate_user
