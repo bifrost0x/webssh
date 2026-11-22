@@ -10,10 +10,37 @@ On Windows PowerShell:
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements-test.txt
 $env:SECRET_KEY = '<strong local development secret>'
+$env:DEBUG = 'True'
+$env:DATA_DIR = "$PWD\dev-data"
 .\.venv\Scripts\python.exe start.py
 ```
 
-On Unix-like systems, use the corresponding `.venv/bin/python` interpreter and environment-variable syntax.
+On Unix-like systems:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install --require-hashes -r requirements-test.txt
+export SECRET_KEY=$(openssl rand -hex 32)
+export DEBUG=True
+export DATA_DIR="$PWD/dev-data"
+.venv/bin/python start.py
+```
+
+`DEBUG=True` selects development defaults, as in
+[Installation from Source](Installation-from-Source): an auto-generated secret,
+cookies without the `Secure` flag for `http://127.0.0.1:5000`, and open
+registration. Never use it for a reachable instance.
+
+`start.py` runs the Werkzeug development server, which only starts from an
+interactive terminal. Without one, for example in an IDE run configuration
+without a terminal, a service unit or a CI job, it stops with "The Werkzeug web
+server is not designed to run in production"; `DEBUG=True` does not change
+that. Use Gunicorn there, as the container does:
+
+```bash
+.venv/bin/gunicorn --worker-class gthread --workers 1 --threads 64 \
+  --bind 127.0.0.1:5000 start:app
+```
 
 Do not reuse production `DATA_DIR`, credentials, or secrets for development and tests.
 

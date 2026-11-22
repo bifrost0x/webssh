@@ -701,6 +701,20 @@ def test_quick_start_docker_run_matches_the_homelab_compose_file():
     assert volumes == compose_volumes
 
 
+def test_development_start_instructions_are_consistent_and_name_the_terminal_limit():
+    """Both start guides use development defaults; start.py needs a terminal."""
+    for name in ('Development-and-Testing.md', 'Installation-from-Source.md'):
+        page = (WIKI / name).read_text(encoding='utf-8')
+        blocks = re.findall(r'```(?:bash|powershell)\n(.*?)```', page, re.DOTALL)
+        starts = [block for block in blocks if 'start.py' in block]
+        assert starts, name
+        for block in starts:
+            assert re.search(r"DEBUG ?= ?'?True", block), (name, block)
+    development = (WIKI / 'Development-and-Testing.md').read_text(encoding='utf-8')
+    assert 'interactive terminal' in development
+    assert '--workers 1' in development
+
+
 def load_tests(loader, tests, pattern):
     """Run the same documentation contracts without application dependencies."""
     import unittest
