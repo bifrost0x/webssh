@@ -18,9 +18,7 @@ registration for the first account.
   or follow [Production Deployment](Production-Deployment) for HTTPS through a
   reverse proxy with the production profile.
 - The first account created in the browser becomes the administrator. Open the
-  WebUI and create it right after installation. The form asks for the setup
-  token from the container log (Docker tab → WebSSH icon → **Logs**, line
-  `WebSSH setup token: ...`). To close that window entirely,
+  WebUI and create it right after installation. To close that window entirely,
   add the variable `BOOTSTRAP_REGISTRATION_ENABLED` with the value `false`
   before you apply the template, then create the administrator from the Unraid
   terminal:

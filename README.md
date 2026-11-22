@@ -261,9 +261,8 @@ docker compose up -d
 ```
 
 Open <http://localhost:5000>. On a new instance, create the first administrator
-immediately from a trusted network. The registration form asks for the setup
-token that WebSSH prints in its log (`docker compose logs webssh | grep "setup token"`).
-The one-time browser bootstrap closes after that account exists. Readiness: `curl -fsS http://localhost:5000/ready`.
+immediately from a trusted network. The one-time browser bootstrap closes after
+that account exists. Readiness: `curl -fsS http://localhost:5000/ready`.
 
 The supplied Compose file is intended for evaluation and trusted homelab
 networks. It stores the database, generated application secret, user data, and

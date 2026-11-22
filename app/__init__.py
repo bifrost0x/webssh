@@ -1145,10 +1145,6 @@ def create_app(
 
     if start_runtime and not maintenance_active:
         setup_background_tasks()
-        if initialize_storage:
-            from .setup_token import announce_setup_token_if_unclaimed
-            with app.app_context():
-                announce_setup_token_if_unclaimed()
 
     @app.route('/')
     @login_required
@@ -1293,9 +1289,6 @@ def create_app(
             return redirect(url_for('login'))
         if current_user.is_authenticated:
             return redirect(url_for('index'))
-        from .setup_token import setup_token_matches, setup_token_required
-
-        needs_setup_token = setup_token_required()
 
         if request.method == 'POST':
             client_ip = get_client_ip()
@@ -1306,19 +1299,12 @@ def create_app(
             ):
                 log_rate_limit_exceeded('register', client_ip)
                 flash('Too many registration attempts. Please try again later.', 'error')
-                return render_template('register.html', setup_token_required=needs_setup_token)
+                return render_template('register.html')
 
             username = request.form.get('username')
             password = request.form.get('password')
             confirm_password = request.form.get('confirm_password')
-            if needs_setup_token and not setup_token_matches(request.form.get('setup_token')):
-                log_registration(username, False, client_ip)
-                flash(
-                    'The setup token is missing or wrong. WebSSH prints it in its '
-                    'log at start, for example in: docker logs webssh',
-                    'error',
-                )
-            elif password != confirm_password:
+            if password != confirm_password:
                 flash('Passwords do not match', 'error')
             else:
                 user, error = register_user(
@@ -1353,7 +1339,7 @@ def create_app(
                 else:
                     log_registration(username, False, client_ip)
                     flash(error, 'error')
-        return render_template('register.html', setup_token_required=needs_setup_token)
+        return render_template('register.html')
 
     @app.route('/logout', methods=['POST'])
     @login_required

@@ -69,19 +69,8 @@ host trust, and the generated application secret across container updates;
 ## Create the first administrator
 
 A fresh homelab instance with an empty database redirects to `/register`.
-Exactly the first browser-created account becomes administrator. The form asks
-for a setup token that WebSSH prints in its log at start:
-
-```bash
-docker compose logs webssh | grep "setup token"
-# Option 2: docker logs webssh 2>&1 | grep "setup token"
-```
-
-The token proves access to the host, so neither a scanner that finds the open
-port nor a web page using DNS rebinding can claim the instance first. It is
-asked for only while no account exists and changes when the container
-restarts. The one-time bootstrap path closes atomically once that account
-exists.
+Exactly the first browser-created account becomes administrator. The one-time
+bootstrap path closes atomically once that account exists.
 
 Create the account immediately on a trusted network. Never expose an unclaimed
 fresh instance to untrusted clients.

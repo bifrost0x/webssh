@@ -20,7 +20,7 @@
 
 Security: WebSSH is an SSH gateway. Anyone who can sign in can reach the SSH targets its network allows. This template uses the homelab profile for a trusted LAN. Do not publish it to the internet; for remote access use a VPN, or a reverse proxy with HTTPS and the production profile described in the production deployment guide: https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Production-Deployment.md
 
-First start: the first account created in the browser becomes the administrator. Open the WebUI and create it right after installation, before anyone else can reach the instance. The form asks for the setup token that WebSSH prints in the container log.
+First start: the first account created in the browser becomes the administrator. Open the WebUI and create it right after installation, before anyone else can reach the instance.
 
 The container runs as nobody:users (99:100) without Linux capabilities, never as root. Unraid creates the appdata folders for that user on installation. Other containers running as 99:100 with access to the appdata share can read WebSSH's data; the install guide explains how to isolate it. The template sets no secret; WebSSH generates its application secret on first start and keeps it in the data folder.</Overview>
   <Category>Network:Management Tools:Utilities</Category>
