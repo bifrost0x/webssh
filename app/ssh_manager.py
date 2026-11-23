@@ -1246,7 +1246,9 @@ def close_session(session_id, kill_tmux=False, on_disconnect=None, tmux_result=N
             try:
                 transport = session['client'].get_transport()
                 if transport and transport.is_active():
-                    command = 'tmux kill-session -t ' + shlex.quote(session['tmux_session_name'])
+                    # '=' asks for an exact name; without it tmux falls back to
+                    # a prefix match and could end a different session.
+                    command = 'tmux kill-session -t ' + shlex.quote('=' + session['tmux_session_name'])
                     kill_channel = _open_exec_channel(
                         transport,
                         command,

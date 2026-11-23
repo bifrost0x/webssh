@@ -122,7 +122,7 @@ def test_reset_password_schedules_revocation_of_live_access(app, signed_in_admin
 
     assert result.exit_code == 0, result.output
     assert 'have ended' not in result.output
-    assert 'end within 5 seconds' in result.output
+    assert 'end within a few seconds' in result.output
     assert _pending() == [user_id]
 
 
@@ -257,13 +257,87 @@ def test_an_undeletable_request_is_not_carried_out_again(app, signed_in_admin, m
         lambda revoked_id, *args, **kwargs: calls.append(revoked_id) or {},
     )
     monkeypatch.setattr(access_revocation_queue, '_completed', set())
-
-    def undeletable(_path):
-        raise PermissionError('read-only')
-
-    monkeypatch.setattr(access_revocation_queue, '_discard', undeletable)
+    monkeypatch.setattr(access_revocation_queue, '_discard', lambda _path: False)
     access_revocation_queue.request_revocation(user_id)
 
     assert access_revocation_queue.process_pending(app) == 1
     assert access_revocation_queue.process_pending(app) == 0
     assert calls == [user_id]
+
+    # A later reset writes a new request, which is carried out again.
+    access_revocation_queue.request_revocation(user_id)
+
+    assert access_revocation_queue.process_pending(app) == 1
+    assert calls == [user_id, user_id]
+
+
+def test_a_request_rewritten_during_revocation_is_kept(app, signed_in_admin, monkeypatch):
+    from app import access_revocation_queue, user_lifecycle
+
+    user_id = _user(app, 'soleadmin').id
+    calls = []
+
+    def revoke_while_reset_runs_again(revoked_id, *args, **kwargs):
+        calls.append(revoked_id)
+        if len(calls) == 1:
+            access_revocation_queue.request_revocation(revoked_id)
+        return {}
+
+    monkeypatch.setattr(user_lifecycle, 'revoke_user_access', revoke_while_reset_runs_again)
+    access_revocation_queue.request_revocation(user_id)
+
+    assert access_revocation_queue.process_pending(app) == 1
+    assert _pending() == [user_id]
+    assert access_revocation_queue.process_pending(app) == 1
+    assert calls == [user_id, user_id]
+    assert _pending() == []
+
+
+def test_one_failing_request_does_not_hold_up_the_others(app, signed_in_admin, monkeypatch):
+    from app import access_revocation_queue, user_lifecycle
+    from app.auth import register_user
+
+    with app.app_context():
+        other, error = register_user('secondaccount', 'second-password')
+        assert error is None
+        other_id = other.id
+    admin_id = _user(app, 'soleadmin').id
+    calls = []
+
+    def revoke(revoked_id, *args, **kwargs):
+        if revoked_id == admin_id:
+            raise RuntimeError('socket server unavailable')
+        calls.append(revoked_id)
+        return {}
+
+    monkeypatch.setattr(user_lifecycle, 'revoke_user_access', revoke)
+    access_revocation_queue.request_revocation(admin_id)
+    access_revocation_queue.request_revocation(other_id)
+
+    assert access_revocation_queue.process_pending(app) == 1
+    assert calls == [other_id]
+    assert _pending() == [admin_id]
+
+
+def test_reset_password_refuses_root_when_the_data_belongs_to_another_user(
+    app, signed_in_admin, monkeypatch,
+):
+    from types import SimpleNamespace
+
+    from app import access_revocation_queue
+
+    fake_os = SimpleNamespace(
+        name='posix', geteuid=lambda: 0,
+        stat=lambda _path: SimpleNamespace(st_uid=1000),
+    )
+    monkeypatch.setattr(access_revocation_queue, 'os', fake_os)
+
+    result = app.test_cli_runner().invoke(
+        args=['reset-password', '--username', 'soleadmin'],
+        input='replacement-password\nreplacement-password\n',
+    )
+
+    assert result.exit_code != 0
+    assert 'uid 1000' in result.output and 'not as root' in result.output
+    assert _user(app, 'soleadmin').check_password('forgotten-password')
+    assert _pending() == []

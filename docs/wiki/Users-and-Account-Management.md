@@ -102,8 +102,11 @@ including the only administrator, and leaves roles, lock state and second
 factors unchanged. All browser sign-ins of the account become invalid. If
 WebSSH is running, it ends the account's open connections, SSH sessions,
 persistent tmux sessions and transfers within a few seconds, as a password
-change in the browser does. If the command cannot hand that over to the
-server, it says so and exits with an error; restart WebSSH in that case.
+change in the browser does, and records `LIVE_ACCESS_REVOKED` in the security
+audit log. If the command cannot hand that over to the server, it says so and
+exits with an error; restart WebSSH in that case. Run it as the container's
+own user, as `docker compose exec` does by default: as root it refuses to run
+while the data directory belongs to another user.
 LDAP- and GitHub-managed accounts are refused, because their password lives
 with that provider.
 

@@ -195,10 +195,19 @@ def reset_password(username, password_file):
     shell access to the host, which already grants control over the data.
     """
     from . import _initialize_persistent_storage
-    from .access_revocation_queue import POLL_SECONDS as REVOCATION_POLL_SECONDS
-    from .access_revocation_queue import request_revocation
+    from .access_revocation_queue import (
+        RequestNotWritable,
+        ensure_server_can_read_requests,
+        request_revocation,
+    )
     from .auth_assurance import invalidate_user_authentication
 
+    # Checked before anything changes: the server could not act on a request
+    # written by root into a data directory owned by another user.
+    try:
+        ensure_server_can_read_requests()
+    except RequestNotWritable as error:
+        raise click.ClickException(str(error)) from error
     _initialize_persistent_storage(current_app._get_current_object())
     user = User.query.filter_by(username=username).first()
     if user is None:
@@ -253,7 +262,8 @@ def reset_password(username, password_file):
     click.echo(
         f'Password reset for {user.username}. Its sign-ins are invalid. If '
         'WebSSH is running, its open connections, SSH sessions and persistent '
-        f'tmux sessions end within {REVOCATION_POLL_SECONDS} seconds.'
+        'tmux sessions end within a few seconds; the security audit log '
+        'records LIVE_ACCESS_REVOKED.'
     )
     if user.is_locked:
         click.echo('The account is still locked; an administrator can unlock it.')
