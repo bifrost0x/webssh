@@ -8,8 +8,10 @@ live access and then removes the request.
 """
 
 import logging
+import os
 import re
 from pathlib import Path
+from threading import Lock
 
 import config
 
@@ -22,9 +24,24 @@ POLL_SECONDS = 5
 
 _REQUEST_NAME = re.compile(r'[1-9][0-9]{0,18}')
 
+# Requests already carried out whose file could not be removed. They are not
+# repeated in this process, so a stuck file cannot end every new sign-in.
+_completed_lock = Lock()
+_completed = set()
+
 
 def _directory():
     return Path(config.DATA_DIR) / DIRECTORY_NAME
+
+
+def _hand_over_to_data_owner(*paths):
+    # A command run as root (docker exec -u root) would leave a request the
+    # unprivileged server can neither read nor remove.
+    if os.name != 'posix' or os.geteuid() != 0:
+        return
+    owner = Path(config.DATA_DIR).stat()
+    for path in paths:
+        os.chown(path, owner.st_uid, owner.st_gid, follow_symlinks=False)
 
 
 def request_revocation(user_id):
@@ -34,7 +51,9 @@ def request_revocation(user_id):
         raise ValueError('user_id must be positive')
     directory = _directory()
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    atomic_write_bytes(directory / str(user_id), b'pending\n', mode=0o600)
+    request = directory / str(user_id)
+    atomic_write_bytes(request, b'pending\n', mode=0o600)
+    _hand_over_to_data_owner(directory, request)
 
 
 def _discard(path):
@@ -83,6 +102,9 @@ def process_pending(app, socketio_instance=None):
     processed = 0
     with app.app_context():
         for user_id in pending_user_ids():
+            with _completed_lock:
+                if user_id in _completed:
+                    continue
             user = db.session.get(User, user_id)
             if user is not None:
                 try:
@@ -104,6 +126,15 @@ def process_pending(app, socketio_instance=None):
                     ssh_sessions=result.get('ssh_sessions', 0),
                     incomplete=bool(result.get('errors')),
                 )
-            _discard(_directory() / str(user_id))
+            try:
+                _discard(_directory() / str(user_id))
+            except OSError as error:
+                with _completed_lock:
+                    _completed.add(user_id)
+                log_error(
+                    'Failed to remove a completed access revocation request',
+                    user_id=user_id,
+                    error_type=type(error).__name__,
+                )
             processed += 1
     return processed

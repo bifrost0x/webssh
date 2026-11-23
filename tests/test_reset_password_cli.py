@@ -209,3 +209,61 @@ def test_ordinary_sign_out_does_not_request_account_revocation(app, signed_in_ad
     assert signed_in_admin.post('/logout').status_code in {200, 302}
 
     assert _pending() == []
+
+
+class _SocketServer:
+    def __init__(self):
+        self.disconnected = []
+
+    def disconnect(self, sid, namespace='/'):
+        self.disconnected.append((sid, namespace))
+
+
+def test_reset_then_server_run_disconnects_the_live_socket(app, signed_in_admin):
+    """End to end without fakes in the revocation path: a socket that keeps
+    receiving output must be disconnected after a reset from the CLI."""
+    from types import SimpleNamespace
+
+    from app import access_revocation_queue
+    from app.auth import register_socket_session
+    from app.models import SocketSession, db
+
+    user_id = _user(app, 'soleadmin').id
+    with app.app_context():
+        register_socket_session(user_id, 'silent-socket')
+    result = app.test_cli_runner().invoke(
+        args=['reset-password', '--username', 'soleadmin'],
+        input='replacement-password\nreplacement-password\n',
+    )
+    assert result.exit_code == 0, result.output
+    socketio = SimpleNamespace(server=_SocketServer())
+
+    assert access_revocation_queue.process_pending(app, socketio) == 1
+
+    assert socketio.server.disconnected == [('silent-socket', '/')]
+    with app.app_context():
+        db.session.expire_all()
+        assert SocketSession.query.filter_by(user_id=user_id).count() == 0
+    assert _pending() == []
+
+
+def test_an_undeletable_request_is_not_carried_out_again(app, signed_in_admin, monkeypatch):
+    from app import access_revocation_queue, user_lifecycle
+
+    user_id = _user(app, 'soleadmin').id
+    calls = []
+    monkeypatch.setattr(
+        user_lifecycle, 'revoke_user_access',
+        lambda revoked_id, *args, **kwargs: calls.append(revoked_id) or {},
+    )
+    monkeypatch.setattr(access_revocation_queue, '_completed', set())
+
+    def undeletable(_path):
+        raise PermissionError('read-only')
+
+    monkeypatch.setattr(access_revocation_queue, '_discard', undeletable)
+    access_revocation_queue.request_revocation(user_id)
+
+    assert access_revocation_queue.process_pending(app) == 1
+    assert access_revocation_queue.process_pending(app) == 0
+    assert calls == [user_id]
