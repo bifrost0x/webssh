@@ -104,3 +104,108 @@ def test_reset_password_is_a_maintenance_command():
     import app as app_module
 
     assert 'reset-password' in app_module._MAINTENANCE_COMMANDS
+
+
+def _pending():
+    from app.access_revocation_queue import pending_user_ids
+
+    return pending_user_ids()
+
+
+def test_reset_password_schedules_revocation_of_live_access(app, signed_in_admin):
+    user_id = _user(app, 'soleadmin').id
+
+    result = app.test_cli_runner().invoke(
+        args=['reset-password', '--username', 'soleadmin'],
+        input='replacement-password\nreplacement-password\n',
+    )
+
+    assert result.exit_code == 0, result.output
+    assert 'have ended' not in result.output
+    assert 'end within 5 seconds' in result.output
+    assert _pending() == [user_id]
+
+
+def test_reset_password_fails_loudly_when_revocation_cannot_be_scheduled(
+    app, signed_in_admin, monkeypatch,
+):
+    from app import access_revocation_queue
+
+    def unwritable(user_id):
+        raise OSError('read-only data directory')
+
+    monkeypatch.setattr(access_revocation_queue, 'request_revocation', unwritable)
+
+    result = app.test_cli_runner().invoke(
+        args=['reset-password', '--username', 'soleadmin'],
+        input='replacement-password\nreplacement-password\n',
+    )
+
+    assert result.exit_code != 0
+    assert 'Restart WebSSH' in result.output
+    # The password change itself is committed; only the live cleanup is missing.
+    assert _user(app, 'soleadmin').check_password('replacement-password')
+
+
+def test_server_revokes_requested_access_and_removes_the_request(app, signed_in_admin, monkeypatch):
+    from app import access_revocation_queue, user_lifecycle
+
+    user_id = _user(app, 'soleadmin').id
+    calls = []
+
+    def fake_revoke(revoked_id, socketio_instance=None, **kwargs):
+        calls.append((revoked_id, socketio_instance, kwargs))
+        return {'sockets': 1, 'ssh_sessions': 1, 'errors': []}
+
+    monkeypatch.setattr(user_lifecycle, 'revoke_user_access', fake_revoke)
+    access_revocation_queue.request_revocation(user_id)
+    marker = object()
+
+    assert access_revocation_queue.process_pending(app, marker) == 1
+
+    # Default arguments: tmux ends as it does for a password change in the UI.
+    assert calls == [(user_id, marker, {})]
+    assert _pending() == []
+
+
+def test_failed_revocation_keeps_the_request_for_the_next_run(app, signed_in_admin, monkeypatch):
+    from app import access_revocation_queue, user_lifecycle
+
+    user_id = _user(app, 'soleadmin').id
+
+    def failing_revoke(revoked_id, socketio_instance=None, **kwargs):
+        raise RuntimeError('socket server unavailable')
+
+    monkeypatch.setattr(user_lifecycle, 'revoke_user_access', failing_revoke)
+    access_revocation_queue.request_revocation(user_id)
+
+    assert access_revocation_queue.process_pending(app) == 0
+    assert _pending() == [user_id]
+
+
+def test_malformed_and_unknown_revocation_requests_are_discarded(app, monkeypatch):
+    import config
+    from app import access_revocation_queue, user_lifecycle
+
+    calls = []
+    monkeypatch.setattr(
+        user_lifecycle, 'revoke_user_access',
+        lambda *args, **kwargs: calls.append(args) or {},
+    )
+    directory = config.DATA_DIR / access_revocation_queue.DIRECTORY_NAME
+    directory.mkdir(parents=True, exist_ok=True)
+    for name in ('0', '-1', 'abc', '12a', '01'):
+        (directory / name).write_bytes(b'pending\n')
+    access_revocation_queue.request_revocation(987654)
+
+    assert _pending() == [987654]
+    assert sorted(path.name for path in directory.iterdir()) == ['987654']
+    assert access_revocation_queue.process_pending(app) == 1
+    assert calls == []
+    assert list(directory.iterdir()) == []
+
+
+def test_ordinary_sign_out_does_not_request_account_revocation(app, signed_in_admin):
+    assert signed_in_admin.post('/logout').status_code in {200, 302}
+
+    assert _pending() == []

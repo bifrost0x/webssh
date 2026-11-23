@@ -1109,6 +1109,20 @@ def create_app(
                 except Exception as e:
                     log_error("SSH cleanup error", error=str(e))
 
+        def access_revocation_task(cancel_event):
+            from . import access_revocation_queue
+            from .maintenance_mode import is_active
+
+            while not cancel_event.wait(access_revocation_queue.POLL_SECONDS):
+                try:
+                    if not is_active():
+                        access_revocation_queue.process_pending(app, socketio)
+                except Exception as e:
+                    log_error(
+                        "Access revocation error",
+                        error=type(e).__name__,
+                    )
+
         def ldap_revalidation_task(cancel_event):
             from .ldap_session import revalidate_all_linked_users
 
@@ -1130,6 +1144,7 @@ def create_app(
                 'inactive_socket_session_cleanup', db_cleanup_task
             )
             lifecycle.start_job('idle_ssh_session_cleanup', ssh_cleanup_task)
+            lifecycle.start_job('access_revocation', access_revocation_task)
             if config.LDAP_ENABLED:
                 lifecycle.start_job(
                     'ldap_session_revalidation',

@@ -476,11 +476,11 @@ _validate_quota_pair(
     False,
 )
 
-# Seven permanent cleanup jobs occupy executor slots for the app lifetime.
+# Eight permanent cleanup jobs occupy executor slots for the app lifetime.
 # Reader and transfer capacity must stay available beyond those loops, otherwise
 # an idle cleanup job can starve an accepted SSH session or background transfer.
 BACKGROUND_CLEANUP_JOBS = (
-    7
+    8
     + (1 if LDAP_ENABLED else 0)
     + (
         1

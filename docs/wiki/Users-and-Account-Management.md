@@ -99,9 +99,13 @@ docker compose exec webssh \
 The command prompts for the new password twice; `--password-file` reads it
 from a private regular file instead. It works for every local account,
 including the only administrator, and leaves roles, lock state and second
-factors unchanged. All browser sign-ins of the account end; open terminals
-disconnect at their next action. LDAP- and GitHub-managed accounts are
-refused, because their password lives with that provider.
+factors unchanged. All browser sign-ins of the account become invalid. If
+WebSSH is running, it ends the account's open connections, SSH sessions,
+persistent tmux sessions and transfers within a few seconds, as a password
+change in the browser does. If the command cannot hand that over to the
+server, it says so and exits with an error; restart WebSSH in that case.
+LDAP- and GitHub-managed accounts are refused, because their password lives
+with that provider.
 
 ## Registration modes
 

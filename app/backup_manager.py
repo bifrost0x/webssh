@@ -29,6 +29,7 @@ _DATA_PREFIX = 'data/'
 _DATABASE_PATH = 'app.db'
 _RESTORE_PRESERVED_TOP_LEVEL_DIRECTORIES = {'logs', 'tmp'}
 _RESTORE_DISCARDED_TOP_LEVEL_DIRECTORIES = {
+    '.access-revocations',
     '.ldap-revocation-fences',
 }
 _BACKUP_EXCLUDED_TOP_LEVEL_DIRECTORIES = (

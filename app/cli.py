@@ -195,6 +195,8 @@ def reset_password(username, password_file):
     shell access to the host, which already grants control over the data.
     """
     from . import _initialize_persistent_storage
+    from .access_revocation_queue import POLL_SECONDS as REVOCATION_POLL_SECONDS
+    from .access_revocation_queue import request_revocation
     from .auth_assurance import invalidate_user_authentication
 
     _initialize_persistent_storage(current_app._get_current_object())
@@ -233,9 +235,25 @@ def reset_password(username, password_file):
     invalidate_user_authentication(user)
     db.session.commit()
     _audit_operation('PASSWORD_RESET_CLI', user=user.username)
+    # Sockets, SSH sessions and transfers belong to the server process. The
+    # request is written after the commit, so the server cannot act on it
+    # while the old sign-ins are still valid.
+    try:
+        request_revocation(user.id)
+    except Exception as error:
+        _audit_operation(
+            'PASSWORD_RESET_CLI_REVOCATION_UNSCHEDULED',
+            user=user.username,
+            error=type(error).__name__,
+        )
+        raise click.ClickException(
+            f'Password reset for {user.username}, but its open connections '
+            'could not be scheduled to end. Restart WebSSH to end them.'
+        ) from error
     click.echo(
-        f'Password reset for {user.username}. Existing sign-ins of this '
-        'account have ended.'
+        f'Password reset for {user.username}. Its sign-ins are invalid. If '
+        'WebSSH is running, its open connections, SSH sessions and persistent '
+        f'tmux sessions end within {REVOCATION_POLL_SECONDS} seconds.'
     )
     if user.is_locked:
         click.echo('The account is still locked; an administrator can unlock it.')
