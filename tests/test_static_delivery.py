@@ -320,3 +320,16 @@ def test_changed_asset_is_compressed_again(app, client, monkeypatch, tmp_path):
 
     assert str(asset_path) == identity[0]
     assert second.data == first.data
+
+
+def test_a_file_replaced_during_the_request_is_not_cached(client, monkeypatch):
+    from app import static_delivery
+
+    static_delivery._gzip_cache.clear()
+    identities = iter([('changing', 1, 1, 10), ('changing', 2, 2, 10)])
+    monkeypatch.setattr(static_delivery, '_asset_identity', lambda: next(identities))
+
+    response = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+
+    assert response.status_code == 200
+    assert static_delivery._gzip_cache == {}

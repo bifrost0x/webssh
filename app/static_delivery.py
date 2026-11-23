@@ -113,6 +113,10 @@ def _compressed_asset(identity, response) -> tuple[bytes, int]:
             return cached
     plain = response.get_data()
     entry = (gzip.compress(plain, compresslevel=6, mtime=0), len(plain))
+    # A file replaced while this request read it must not be cached under
+    # the identity of its successor; such a response is served uncached.
+    if len(plain) != identity[3] or _asset_identity() != identity:
+        return entry
     with _gzip_cache_lock:
         _gzip_cache[identity] = entry
         _gzip_cache.move_to_end(identity)
@@ -151,6 +155,11 @@ def _compress_static_response(response):
     ):
         return response
 
+    # set_data replaces the file iterator without closing it, which reading
+    # it through get_data used to arrange.
+    file_close = getattr(response.response, "close", None)
+    if callable(file_close):
+        response.call_on_close(file_close)
     response.direct_passthrough = False
     identity = _asset_identity()
     if identity is None:

@@ -25,6 +25,7 @@
     const button = (text, handler, primary = false) => { const el = node('button', text, `btn ${primary ? 'btn-primary' : 'btn-secondary'}`); el.type = 'button'; el.addEventListener('click', handler); return el; };
     async function load() { const r = await fetch(api, {credentials: 'same-origin'}); if (!r.ok) throw Error('tour'); return r.json(); }
     function close() {
+        if (!dialog) return;
         target?.classList.remove('intro-target'); dialog.close(); dialog.remove(); dialog = null;
         const next = [document.getElementById('overviewNavBtn'), document.getElementById('overviewTitle')].find(element => element?.offsetParent);
         next?.focus();
