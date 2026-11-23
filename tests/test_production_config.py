@@ -1109,3 +1109,25 @@ def test_session_timeout_keeps_default_and_explicit_positive_values():
     explicit = _load_config(_production_env(SESSION_TIMEOUT='45'), code)
     assert default.stdout.strip().splitlines()[-1] == '1800'
     assert explicit.stdout.strip().splitlines()[-1] == '45'
+
+
+@pytest.mark.parametrize(('value', 'enabled'), [
+    (None, True),
+    ('True', True),
+    ('true', True),
+    ('TRUE', True),
+    ('False', False),
+    ('false', False),
+    ('', False),
+])
+@pytest.mark.parametrize('name', ['RATELIMIT_ENABLED', 'ADMIN_PANEL_ENABLED'])
+def test_feature_switches_accept_true_in_any_case(name, value, enabled):
+    # The documented default is lowercase `true`; it used to disable both.
+    # Every other value keeps its previous meaning.
+    env = _production_env()
+    env.pop(name, None)
+    if value is not None:
+        env[name] = value
+    result = _load_config(env, f'import config; print(config.{name})')
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == str(enabled)

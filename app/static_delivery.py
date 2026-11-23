@@ -3,9 +3,12 @@
 import gzip
 import hashlib
 import mimetypes
+import os
 import re
+from collections import OrderedDict
 from functools import lru_cache, wraps
 from pathlib import Path
+from threading import Lock
 
 from flask import request, url_for
 from flask.sessions import SecureCookieSessionInterface
@@ -95,6 +98,51 @@ def static_asset_version(app, filename: str) -> str | None:
         return None
 
 
+# Compressed bytes per opened file version (device, inode, mtime, ctime and
+# size). Static files are public and the same for every request, so
+# compressing them once avoids repeating the work on each hit, including
+# conditional requests that end as 304.
+_GZIP_CACHE_SIZE = 64
+_gzip_cache: "OrderedDict[tuple, tuple[bytes, int]]" = OrderedDict()
+_gzip_cache_lock = Lock()
+
+
+def _compressed_asset(identity, response) -> tuple[bytes, int]:
+    with _gzip_cache_lock:
+        cached = _gzip_cache.get(identity)
+        if cached is not None:
+            _gzip_cache.move_to_end(identity)
+            return cached
+    plain = response.get_data()
+    entry = (gzip.compress(plain, compresslevel=6, mtime=0), len(plain))
+    if len(plain) != identity[4]:
+        # The handle did not deliver the whole file; do not keep the result.
+        return entry
+    with _gzip_cache_lock:
+        _gzip_cache[identity] = entry
+        _gzip_cache.move_to_end(identity)
+        while len(_gzip_cache) > _GZIP_CACHE_SIZE:
+            _gzip_cache.popitem(last=False)
+    return entry
+
+
+def _opened_file_identity(response):
+    """Identity of the file the response body will be read from, or None.
+
+    Taken with fstat from the already opened handle, so it always describes
+    the bytes that are served, even if the path was replaced meanwhile.
+    Werkzeug's wrapper exposes the handle as ``file``, Gunicorn's as
+    ``filelike``.
+    """
+    wrapper = response.response
+    handle = getattr(wrapper, "file", None) or getattr(wrapper, "filelike", None)
+    try:
+        stat = os.fstat(handle.fileno())
+    except (AttributeError, OSError, ValueError):
+        return None
+    return stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size
+
+
 def _compress_static_response(response):
     """Apply deterministic gzip with an encoding-specific validator."""
     _add_accept_encoding_variance(response)
@@ -111,10 +159,19 @@ def _compress_static_response(response):
     ):
         return response
 
+    # set_data replaces the file iterator without closing it, which reading
+    # it through get_data used to arrange.
+    identity = _opened_file_identity(response)
+    file_close = getattr(response.response, "close", None)
+    if callable(file_close):
+        response.call_on_close(file_close)
     response.direct_passthrough = False
-    plain = response.get_data()
-    compressed = gzip.compress(plain, compresslevel=6, mtime=0)
-    if len(compressed) >= len(plain):
+    if identity is None:
+        plain = response.get_data()
+        compressed, plain_length = gzip.compress(plain, compresslevel=6, mtime=0), len(plain)
+    else:
+        compressed, plain_length = _compressed_asset(identity, response)
+    if len(compressed) >= plain_length:
         return response
 
     etag, weak = response.get_etag()

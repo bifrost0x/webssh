@@ -740,3 +740,34 @@ def test_enabled_panel_shows_admin_navigation_to_administrators(app, client):
     assert response.status_code == 200
     assert b'Administration' in response.data
     assert b'data-tab="users"' in response.data
+
+
+def test_admin_user_and_setting_changes_reach_the_security_audit_log(app, client, caplog):
+    import logging
+
+    target_id = _prepare_role(app, client, 'admin')
+    caplog.set_level(logging.INFO, logger='security_audit')
+
+    def call(method, path, action, target, payload=None):
+        headers = password_step_up_headers(client, action, target)[0]
+        response = getattr(client, method)(path, json=payload, headers=headers)
+        assert response.status_code in (200, 201), response.get_data(as_text=True)
+
+    call('post', '/admin/api/users', 'user.create', 'auditeduser',
+         {'username': 'auditeduser', 'password': 'password123456', 'is_admin': False})
+    call('post', f'/admin/api/users/{target_id}/lock', 'user.manage', f'{target_id}:lock')
+    call('delete', f'/admin/api/users/{target_id}/mfa', 'user.mfa_reset', target_id,
+         {'confirm_username': 'targetuser'})
+    call('post', '/admin/api/settings', 'settings.update', 'global', {'herdr_enabled': True})
+
+    events = [
+        record.getMessage() for record in caplog.records
+        if record.name == 'security_audit'
+    ]
+    for expected in (
+        ('ADMIN_USER_CREATED', 'user=auditeduser', 'admin=adminuser'),
+        ('ADMIN_USER_CHANGED', 'user=targetuser', 'action=lock'),
+        ('ADMIN_USER_MFA_RESET', 'user=targetuser'),
+        ('APPLICATION_FEATURE_CHANGED', 'feature=herdr_enabled', 'enabled=True'),
+    ):
+        assert any(all(part in event for part in expected) for event in events), (expected, events)

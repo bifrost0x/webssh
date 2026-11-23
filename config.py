@@ -694,7 +694,7 @@ CONNECTION_STORE_RECOVERY_MAX_RECORDS = _bounded_int_env(
 
 # Admin panel: comma-separated usernames granted admin on startup.
 ADMIN_USERS = [u.strip() for u in os.environ.get('ADMIN_USERS', '').split(',') if u.strip()]
-ADMIN_PANEL_ENABLED = os.environ.get('ADMIN_PANEL_ENABLED', 'True') == 'True'
+ADMIN_PANEL_ENABLED = os.environ.get('ADMIN_PANEL_ENABLED', 'true').lower() == 'true'
 
 
 # Tailscale SSH uses the WebSSH node's shared tailnet identity. Keep it disabled
@@ -864,7 +864,7 @@ HOST_DISCOVERY_ENABLED = (
     or ('false' if DEPLOYMENT_PROFILE == 'production' else 'true')
 ).lower() == 'true'
 
-RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True') == 'True'
+RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'true').lower() == 'true'
 # Backend for rate-limit counters.
 #   memory://  (default) — per-process, no external dependency.
 #   redis://host:port/db — survives app restarts while Redis keeps running.

@@ -24,15 +24,23 @@
     const node = (tag, text, className) => { const el = document.createElement(tag); if (text) el.textContent = text; if (className) el.className = className; return el; };
     const button = (text, handler, primary = false) => { const el = node('button', text, `btn ${primary ? 'btn-primary' : 'btn-secondary'}`); el.type = 'button'; el.addEventListener('click', handler); return el; };
     async function load() { const r = await fetch(api, {credentials: 'same-origin'}); if (!r.ok) throw Error('tour'); return r.json(); }
+    function close() {
+        if (!dialog) return;
+        target?.classList.remove('intro-target'); dialog.close(); dialog.remove(); dialog = null;
+        const next = [document.getElementById('overviewNavBtn'), document.getElementById('overviewTitle')].find(element => element?.offsetParent);
+        next?.focus();
+    }
     async function finish(value) {
         const buttons = [...dialog.querySelectorAll('button')]; buttons.forEach(b => { b.disabled = true; });
         try {
             const r = await fetch(api, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content}, body: JSON.stringify({state: value, acknowledged: value === 'completed' && dialog.querySelector('#introAcknowledge')?.checked === true})});
             if (!r.ok) throw Error('save');
-            target?.classList.remove('intro-target'); dialog.close(); dialog.remove(); dialog = null;
-            const next = [document.getElementById('overviewNavBtn'), document.getElementById('overviewTitle')].find(element => element?.offsetParent);
-            next?.focus();
+            close();
         } catch {
+            // Skipping must always be possible: an expired page or a lost
+            // connection would otherwise keep the modal tour open. The state
+            // stays "new", so the tour simply returns on the next load.
+            if (value === 'dismissed') { close(); return; }
             buttons.forEach(b => { b.disabled = false; });
             if (!dialog.querySelector('.intro-error')) { const error = node('p', t('tour.saveError', 'Could not save progress. Please try again.'), 'intro-error'); error.role = 'alert'; dialog.append(error); }
         }

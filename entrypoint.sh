@@ -49,6 +49,14 @@ case "$(printf '%s' "$_sk" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
         ;;
 esac
 
+# Commands such as rotate-secret-key need to know whether the secret they
+# would replace is the persisted file or an external value.
+if [ -n "$_sk" ]; then
+    export WEBSSH_SECRET_KEY_SOURCE=environment
+else
+    export WEBSSH_SECRET_KEY_SOURCE=file
+fi
+
 if [ -z "$_sk" ]; then
     if [ "$SECRET_KEY_FILE" != "$LEGACY_SECRET_KEY_FILE" ] && [ -f "$LEGACY_SECRET_KEY_FILE" ]; then
         if [ ! -f "$SECRET_KEY_FILE" ]; then

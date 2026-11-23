@@ -272,3 +272,81 @@ def test_webp_mime_registration_overrides_an_incorrect_host_mapping(monkeypatch,
     response = app.test_client().get('/static/background.webp')
     assert response.status_code == 200
     assert response.mimetype == 'image/webp'
+
+
+def test_static_compression_is_computed_once_per_asset_version(client, monkeypatch):
+    from app import static_delivery
+
+    calls = []
+    real_compress = gzip.compress
+
+    def counting_compress(data, *args, **kwargs):
+        calls.append(len(data))
+        return real_compress(data, *args, **kwargs)
+
+    monkeypatch.setattr(static_delivery.gzip, 'compress', counting_compress)
+    static_delivery._gzip_cache.clear()
+    plain = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'identity'})
+    head = client.head('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+    first = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+    second = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+    revalidated = client.get('/static/js/i18n.js', headers={
+        'Accept-Encoding': 'gzip',
+        'If-None-Match': first.headers['ETag'],
+    })
+
+    assert len(calls) == 1
+    assert head.headers['Content-Encoding'] == 'gzip'
+    assert head.headers['Content-Length'] == first.headers['Content-Length']
+    assert first.data == second.data
+    assert gzip.decompress(first.data) == plain.data
+    assert first.headers['ETag'] == second.headers['ETag']
+    assert revalidated.status_code == 304
+
+
+def test_cache_key_is_the_identity_of_the_opened_file(app, client):
+    import os
+    from app import static_delivery
+
+    static_delivery._gzip_cache.clear()
+    asset_path = app.extensions[static_delivery._ASSET_INDEX_EXTENSION]['js/i18n.js']
+
+    client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+
+    with open(asset_path, 'rb') as handle:
+        stat = os.fstat(handle.fileno())
+    assert list(static_delivery._gzip_cache) == [
+        (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size),
+    ]
+
+
+def test_another_file_version_is_compressed_again(client, monkeypatch):
+    # A file replaced on disk is a new inode or timestamp; the bytes cached for
+    # the old version must not be served for it.
+    from app import static_delivery
+
+    static_delivery._gzip_cache.clear()
+    real_identity = static_delivery._opened_file_identity
+    first = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+    old_identity = next(iter(static_delivery._gzip_cache))
+    static_delivery._gzip_cache[old_identity] = (b'stale', 1)
+    monkeypatch.setattr(
+        static_delivery, '_opened_file_identity',
+        lambda response: real_identity(response)[:2] + (old_identity[2] + 1,) + old_identity[3:],
+    )
+
+    second = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+
+    assert second.data == first.data
+
+
+def test_a_response_without_an_open_file_is_not_cached(client, monkeypatch):
+    from app import static_delivery
+
+    static_delivery._gzip_cache.clear()
+    monkeypatch.setattr(static_delivery, '_opened_file_identity', lambda response: None)
+
+    response = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+
+    assert response.headers['Content-Encoding'] == 'gzip'
+    assert static_delivery._gzip_cache == {}

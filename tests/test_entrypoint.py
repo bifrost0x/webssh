@@ -142,3 +142,19 @@ def test_existing_runtime_settings_are_left_unchanged(tmp_path, extra, expected)
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines()[-1] == expected
+
+
+@pytest.mark.parametrize(('secret', 'source'), [
+    (None, 'file'),
+    ('external-secret-value', 'environment'),
+    ('changeme', 'file'),
+])
+def test_entrypoint_records_where_the_secret_key_came_from(tmp_path, secret, source):
+    result = _run_entrypoint(
+        tmp_path / 'source-data',
+        secret=secret,
+        code='import os; print(os.environ["WEBSSH_SECRET_KEY_SOURCE"])',
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines()[-1] == source
