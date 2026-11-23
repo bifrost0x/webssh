@@ -230,7 +230,11 @@ class SFTPBackend:
                 ) as remote_file:
                     yield remote_file
             except sftp_handler.UploadConflict as error:
-                raise FileExistsError('destination already exists or changed') from error
+                # The errno lets transfer classification report CONFLICT,
+                # which is what offers Overwrite in the browser.
+                raise FileExistsError(
+                    errno.EEXIST, 'destination already exists or changed'
+                ) from error
 
     def iter_tree(
         self,

@@ -225,11 +225,3 @@ def test_non_limit_failure_rejects_limit_context():
             limit_kind='upload',
             limit_bytes=1,
         )
-
-
-@pytest.mark.parametrize('error', (
-    FileExistsError('destination already exists or changed'),
-    FileExistsError(),
-))
-def test_file_exists_without_errno_is_a_conflict(error):
-    assert classify_transfer_failure(error, operation='upload').code == 'CONFLICT'

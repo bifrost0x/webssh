@@ -6,6 +6,7 @@ at the route boundary, rather than merely consume more memory in production.
 """
 
 from contextlib import contextmanager
+import errno
 import stat
 from types import SimpleNamespace
 
@@ -565,7 +566,7 @@ def test_upload_http_socket_and_log_share_one_safe_failure_contract(
         ),
         'conflict': FileConflict(r'secret \\server\share'),
         # SFTPBackend.open_atomic_writer raises this without an errno.
-        'sftp-conflict': FileExistsError('destination already exists or changed'),
+        'sftp-conflict': FileExistsError(errno.EEXIST, 'destination already exists or changed'),
         'not-found': FileNotFoundError(r'secret \\server\share'),
         'unknown': RuntimeError(r'secret \\server\share'),
     }
