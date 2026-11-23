@@ -1131,3 +1131,18 @@ def test_feature_switches_accept_true_in_any_case(name, value, enabled):
     result = _load_config(env, f'import config; print(config.{name})')
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == str(enabled)
+
+
+@pytest.mark.parametrize('name', ['MAX_DOWNLOAD_SIZE', 'MAX_ZIP_DOWNLOAD_SIZE'])
+def test_download_limits_report_a_typo_as_a_configuration_error(name):
+    result = _load_config(_production_env(**{name: '100MB'}))
+    assert result.returncode != 0
+    assert f'CONFIGURATION ERROR: {name}' in result.stderr
+
+
+@pytest.mark.parametrize('value', ['0', '1048576', '-1'])
+@pytest.mark.parametrize('name', ['MAX_DOWNLOAD_SIZE', 'MAX_ZIP_DOWNLOAD_SIZE'])
+def test_download_limits_keep_every_integer(name, value):
+    result = _load_config(_production_env(**{name: value}), f'import config; print(config.{name})')
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == value

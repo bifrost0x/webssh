@@ -147,6 +147,17 @@ def _positive_int_env(name, default):
     return value
 
 
+def _int_env(name, default):
+    """Parse an integer setting; any integer keeps its previous meaning."""
+    raw_value = os.environ.get(name, str(default))
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f'CONFIGURATION ERROR: {name} must be an integer number of bytes'
+        ) from exc
+
+
 SESSION_TIMEOUT = _positive_int_env('SESSION_TIMEOUT', 1800)
 
 
@@ -987,8 +998,8 @@ SMB_MAX_SAVED_SHARES = _bounded_int_env(
 )
 
 # Independent of MAX_UPLOAD_SIZE so raising one limit never raises the other.
-MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', str(100 * 1024 * 1024)))
-MAX_ZIP_DOWNLOAD_SIZE = int(os.environ.get('MAX_ZIP_DOWNLOAD_SIZE', str(500 * 1024 * 1024)))
+MAX_DOWNLOAD_SIZE = _int_env('MAX_DOWNLOAD_SIZE', 100 * 1024 * 1024)
+MAX_ZIP_DOWNLOAD_SIZE = _int_env('MAX_ZIP_DOWNLOAD_SIZE', 500 * 1024 * 1024)
 MAX_TRANSFER_MEMBERS = _positive_int_env('MAX_TRANSFER_MEMBERS', 10000)
 MAX_PREVIEW_SIZE = _positive_int_env('MAX_PREVIEW_SIZE', 512000)
 MAX_PREVIEW_TAIL_LINES = _positive_int_env('MAX_PREVIEW_TAIL_LINES', 10000)
