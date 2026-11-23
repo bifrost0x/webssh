@@ -55,6 +55,26 @@ the production file removes those previously implicit limits on recreation.
 Existing image-only upgrades do not change container settings. Review the merged
 configuration before recreating containers; keep data and recovery volumes intact.
 
+## v3.3.0 compatibility
+
+The [3.3 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v3.3.0.md)
+list the changes. Existing Compose files keep working and there is no database
+schema change; 3.2.0 can run on the same volumes again and opens hosts set to the
+Herdr session mode with a plain shell. Check these before upgrading:
+
+- Signing out keeps persistent tmux sessions running; a password change still
+  ends them.
+- New accounts need ASCII usernames (`[A-Za-z0-9_]`); existing names stay valid.
+- `SESSION_TIMEOUT` must be a positive integer, otherwise the container stops
+  with a configuration error.
+- `RATELIMIT_REAUTH` defaults to `10 per minute`; an explicit value is kept.
+- The `BACKGROUND_WORKERS` minimum rises by one. Quotas that already add up to
+  the 128-worker ceiling stop the container with a configuration error.
+
+A forgotten local password can now be reset from the host with
+`flask reset-password`; see
+[Users and Account Management](Users-and-Account-Management#forgotten-password).
+
 ## v3.2.0 compatibility
 
 The [3.2 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v3.2.0.md)

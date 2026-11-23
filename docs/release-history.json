@@ -810,8 +810,35 @@
       "verification": "v2.7.0 and v3.0.0 had no native milestone after publication. Both were created from the first-tagged-inclusion mapping above, assigned their PRs and implementation-linked issues, and closed. v3.1.0 holds the 17 PRs first included after v3.0.0, issues #327 and #334 and release record #338. Superseded Dependabot PRs #322 and #323 are not assigned. No due dates were added; milestone creation dates are the actual 2026-11-14 dates."
     }
   ],
-  "candidate": null,
-  "updated_on": "2026-11-15",
+  "candidate": {
+    "title": "v3.3.0",
+    "state": "prepared",
+    "previous_release": "v3.2.0",
+    "base_commit": "6622ccd0faf8adfde79b96c2ea48930ec00319bc",
+    "goal": "Optional Herdr integration, password reset from the host, sign-in and session hardening, SFTP and editor fixes and the Python 3.15 runtime",
+    "compare_url": "https://github.com/bifrost0x/webssh/compare/v3.2.0...main",
+    "release_notes": "docs/releases/v3.3.0.md",
+    "milestone_number": 17,
+    "release_gate": 367,
+    "pull_requests": [
+      349,
+      350,
+      353,
+      354,
+      355,
+      356,
+      357,
+      359,
+      360,
+      361
+    ],
+    "issues": [
+      358,
+      364
+    ],
+    "publication_status": "Pending final candidate review, CI, tag and native image verification"
+  },
+  "updated_on": "2026-11-23",
   "release_updates": [
     {
       "version": "v2.5.0",
