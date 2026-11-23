@@ -8,6 +8,7 @@ from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 import config
 import ipaddress
+import logging
 import os
 import sys
 import time
@@ -1687,6 +1688,9 @@ def create_app(
             db.session.commit()
         log_info("Admin created user", admin=current_user.username,
                  user=user.username, is_admin=make_admin)
+        from .audit_logger import log_security_event
+        log_security_event('ADMIN_USER_CREATED', admin=current_user.username,
+                           user=user.username, is_admin=bool(make_admin))
         return jsonify({'user': _user_to_dict(user)}), 201
 
     @app.route('/admin/api/users/<int:user_id>/<action>', methods=['POST'])
@@ -1761,6 +1765,9 @@ def create_app(
                     'error': 'User deletion failed; the account remains locked'
                 }), 500
             log_warning("Admin deleted user", admin=current_user.username, user=username)
+            from .audit_logger import log_security_event
+            log_security_event('ADMIN_USER_DELETED', level=logging.WARNING,
+                               admin=current_user.username, user=username)
             return jsonify({'ok': True})
         else:
             return jsonify({'error': 'Unknown action'}), 400
@@ -1770,6 +1777,10 @@ def create_app(
             user_lifecycle.revoke_user_access(target.id, socketio)
         log_info("Admin user action", admin=current_user.username,
                  user=target.username, action=action)
+        from .audit_logger import log_security_event
+        log_security_event('ADMIN_USER_CHANGED', level=logging.WARNING,
+                           admin=current_user.username, user=target.username,
+                           action=action)
         return jsonify({'user': _user_to_dict(target)})
 
     @app.route('/admin/api/users/<int:user_id>/mfa', methods=['DELETE'])
@@ -1808,6 +1819,9 @@ def create_app(
             admin=current_user.username,
             user=target.username,
         )
+        from .audit_logger import log_security_event
+        log_security_event('ADMIN_USER_MFA_RESET', level=logging.WARNING,
+                           admin=current_user.username, user=target.username)
         return jsonify({'ok': True})
 
     @app.route('/admin/api/audit', methods=['GET'])
@@ -1889,18 +1903,30 @@ def create_app(
             val = set_registration_enabled(data['registration_enabled'])
             log_info("Admin changed registration setting",
                      admin=current_user.username, registration_enabled=val)
+            from .audit_logger import log_security_event
+            log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
+                               feature='registration_enabled', enabled=val)
         if 'ssh_gateway_enabled' in data:
             val = set_ssh_gateway_enabled(data['ssh_gateway_enabled'])
             log_info("Admin changed SSH gateway setting",
                      admin=current_user.username, ssh_gateway_enabled=val)
+            from .audit_logger import log_security_event
+            log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
+                               feature='ssh_gateway_enabled', enabled=val)
         if 'herdr_enabled' in data:
             val = set_herdr_enabled(data['herdr_enabled'])
             log_info("Admin changed Herdr setting",
                      admin=current_user.username, herdr_enabled=val)
+            from .audit_logger import log_security_event
+            log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
+                               feature='herdr_enabled', enabled=val)
         if 'support_links_enabled' in data:
             val = set_support_links_enabled(data['support_links_enabled'])
             log_info("Admin changed support links setting",
                      admin=current_user.username, support_links_enabled=val)
+            from .audit_logger import log_security_event
+            log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
+                               feature='support_links_enabled', enabled=val)
         from .app_settings import set_credentials_enabled, set_automation_enabled
         for feature, setter in (('credentials_enabled', set_credentials_enabled),
                                 ('automation_enabled', set_automation_enabled)):
