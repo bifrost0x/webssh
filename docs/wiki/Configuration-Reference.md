@@ -29,6 +29,7 @@ Treat `SECRET_KEY` as long-lived installation state. Replacing it without the su
 | `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none. Saved passwords and automation still work behind a TLS proxy at `0`: a page the browser loaded over `https://` from the same host counts as HTTPS. Set it to trust forwarded client addresses |
 | `SESSION_COOKIE_SECURE` | Sends the session cookie only over HTTPS. Default `true` (`false` only with `DEBUG=true`); the homelab Compose file sets `false`. With `true`, browsers drop the cookie on plain `http://` addresses other than localhost and sign-in fails; the homelab profile warns at start while the value is not set explicitly |
 | `SESSION_TIMEOUT` | Idle SSH session timeout in seconds; positive integer, default `1800` |
+| `SESSION_COOKIE_NAME` / `REMEMBER_COOKIE_NAME` | Cookie names, default `session` and `remember_token`. Give each instance its own names when several run on one host name, so they do not overwrite each other's sign-ins; the two names must differ |
 
 The production profile requires explicit HTTPS origins, secure cookies, and explicit trusted proxies. Wildcard origins are not a production configuration. See [Reverse Proxy and Subfolder Deployment](Reverse-Proxy-and-Subfolder-Deployment).
 
@@ -131,6 +132,13 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | `SSH_KEY_WRITE_RATELIMIT` | `30 per minute` |
 | `SSH_KEY_LIST_RATELIMIT` | `30 per minute` |
 | `CONNECTION_MUTATION_RATELIMIT` | `60 per minute` |
+| `COMMAND_MUTATION_RATELIMIT` | `60 per minute` |
+| `SMB_SHARE_MUTATION_RATELIMIT` | `30 per minute` |
+| `SMB_SHARE_LIST_RATELIMIT` | `60 per minute` |
+| `RATELIMIT_BACKUP_CREATE` | `3 per hour` |
+| `RATELIMIT_BACKUP_UPLOAD` | `5 per hour` |
+| `RATELIMIT_BACKUP_DOWNLOAD` | `10 per hour` |
+| `RATELIMIT_BACKUP_RESTORE` | `3 per hour` |
 
 Key listings and the refresh after renaming, replacing, or deleting a key share
 `SSH_KEY_LIST_RATELIMIT` per user across browser connections. Admission is checked
@@ -218,6 +226,11 @@ reflected.
 | `SOCKS_PROXY_MAX_RECORDS` | `100` (supported range `10`–`1000`) |
 | `CONNECTION_STORE_MAX_BYTES` | `2097152` (2 MiB per store) |
 | `CONNECTION_CONFIG_MAX_BYTES` | `4194304` (4 MiB combined) |
+| `COMMAND_MAX_RECORDS` | `500` (supported range `10`–`2000`) |
+| `COMMAND_SET_MAX_RECORDS` | `500` (supported range `10`–`2000`) |
+| `COMMAND_SET_MAX_STEPS` | `64` (supported range `1`–`256`) |
+| `COMMAND_STORE_MAX_BYTES` | `2097152` (2 MiB; supported range 64 KiB–8 MiB) |
+| `SMB_MAX_SAVED_SHARES` | `100` (supported range `1`–`1000`) |
 
 The per-store byte limit applies separately to `profiles.json`, `jump_hosts.json`
 and `socks_proxies.json`. The combined limit counts all three files for one user;

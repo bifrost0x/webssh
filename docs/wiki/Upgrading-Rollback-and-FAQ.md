@@ -281,8 +281,14 @@ directory instead of `/app`; the command prints the archive path.
 
 ### I forgot my password, and I am the only administrator
 
-Run `flask --app start:app reset-password --username <name>` on the host, in the
-container through `docker compose exec webssh /app/entrypoint.sh ...`. See
+Reset it from the host:
+
+```bash
+docker compose exec webssh \
+  /app/entrypoint.sh flask --app start:app reset-password --username <name>
+```
+
+See
 [Users and Account Management](Users-and-Account-Management#forgotten-password).
 
 ### How do I report a vulnerability?

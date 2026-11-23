@@ -119,7 +119,16 @@ docker compose logs --tail=200 webssh
 
 ## Updating the image
 
-Before updating, create and download a verified backup. Then:
+Before updating, create and download a verified backup, and record the image
+digest that is running now so you can roll back to it:
+
+```bash
+docker image inspect \
+  "$(docker inspect webssh --format '{{.Image}}')" \
+  --format '{{index .RepoDigests 0}}'
+```
+
+Then update:
 
 ```bash
 docker compose pull webssh
@@ -134,14 +143,6 @@ service before repairing it. An empty recovery volume may be removed and
 recreated by Compose. Never remove a non-empty recovery volume during or after
 an interrupted restore; preserve its contents and have an administrator change
 the volume root to the image's `appuser` UID/GID with mode `0700` instead.
-
-Record the currently deployed immutable image digest before replacing it:
-
-```bash
-docker image inspect \
-  ghcr.io/bifrost0x/webssh:latest \
-  --format '{{index .RepoDigests 0}}'
-```
 
 Use an immutable version tag or digest for controlled production rollouts.
 

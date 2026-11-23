@@ -53,6 +53,7 @@ docker run -d \
   -v webssh_data:/app/data \
   -v webssh_recovery:/app/recovery \
   --restart unless-stopped \
+  --stop-timeout 40 \
   ghcr.io/bifrost0x/webssh:latest
 ```
 
@@ -75,7 +76,8 @@ bootstrap path closes atomically once that account exists.
 Create the account immediately on a trusted network. Never expose an unclaimed
 fresh instance to untrusted clients.
 
-If you prefer an explicit CLI bootstrap, disable browser bootstrap and run:
+If you prefer an explicit CLI bootstrap, set `BOOTSTRAP_REGISTRATION_ENABLED=false`,
+recreate the container with `docker compose up -d`, and run:
 
 ```bash
 docker compose exec webssh \
