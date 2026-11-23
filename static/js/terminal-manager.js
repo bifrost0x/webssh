@@ -151,6 +151,18 @@ const TerminalManager = {
 
     // Keep the encoded form below xterm's deterministic 200,000-character
     // OSC/DCS parser ceiling (128 KiB becomes at most 174,764 base64 chars).
+    osc52ClipboardPreview(text, limit = 80) {
+        // Line breaks and other control characters are shown, never hidden.
+        const visible = Array.from(String(text), character => {
+            if (character === '\n') return '⏎';
+            const code = character.codePointAt(0);
+            return code < 0x20 || (code >= 0x7f && code < 0xa0) ? ' ' : character;
+        });
+        return visible.length > limit
+            ? `${visible.slice(0, limit).join('')}…`
+            : visible.join('');
+    },
+
     decodeOsc52Clipboard(data, maxBytes = 128 * 1024) {
         if (typeof data !== 'string') return null;
         const separator = data.indexOf(';');
@@ -211,18 +223,17 @@ const TerminalManager = {
             const text = this.decodeOsc52Clipboard(data);
             if (text === null) return true;
 
-            if (pendingRequest) {
-                pendingRequest.text = text;
-                return true;
-            }
+            // The open prompt shows a preview of its text. A later request
+            // must not swap that text behind the preview the user approves.
+            if (pendingRequest) return true;
 
             const request = {text};
             pendingRequest = request;
             window.showNotification?.({
-                message: translation(
+                message: `${translation(
                     'terminal.remoteClipboardPrompt',
                     'The remote tmux session wants to copy text to your clipboard.',
-                ),
+                )} “${this.osc52ClipboardPreview(text)}”`,
                 type: 'info',
                 duration: 15000,
                 action: {
