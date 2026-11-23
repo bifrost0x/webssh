@@ -1,6 +1,8 @@
 const {test,expect}=require('playwright/test');
 const {login,assertNoExternalRequests}=require('./helpers');
 test('workflow examples explain scope and load independent editable drafts without execution',async({page},info)=>{
+ // Opens all 23 templates and captures three widths in four themes.
+ test.slow();
  await login(page,'e2e_admin',{workspace:false});
  await page.route('**/api/automation/state',r=>r.fulfill({json:{enabled:true,runbooks:[],profiles:[]}}));
  await page.route('**/api/automation/runs',r=>r.fulfill({json:{runs:[]}}));await page.route('**/api/automation/schedules',r=>r.fulfill({json:{schedules:[]}}));

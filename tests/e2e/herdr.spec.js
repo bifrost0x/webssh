@@ -283,6 +283,11 @@ for (const width of [1440, 390]) {
         });
 
         test('every reason has its own state and busy passes silently', async ({page}) => {
+            // Two protected setting changes, eight hosts and snapshots half a
+            // second apart exceed the default budget on a loaded runner. A
+            // timeout here also skipped the cleanup and left hosts behind for
+            // the next test of the same account.
+            test.slow();
             const reasons = ['not_installed', 'no_server', 'incompatible', 'timeout', 'invalid', 'unavailable', 'busy'];
             const names = [...reasons.map(reason => `Agents ${reason} ${width}`), `Agents offline ${width}`];
             await login(page);
