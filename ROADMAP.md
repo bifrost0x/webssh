@@ -4,9 +4,10 @@ WebSSH is a self-hosted SSH and file workspace. This roadmap explains the direct
 the current release focus, and the evidence behind completed work. It is not a release-date
 promise or a replacement for issues, pull requests, and release notes.
 
-Release status updated: **2026-11-15**, [v3.2.0](https://github.com/bifrost0x/webssh/releases/tag/v3.2.0) at
-[`5c5c8ed`](https://github.com/bifrost0x/webssh/commit/5c5c8edd53ca547d32add20edef5bc3292b526cf).
-Check linked GitHub items for newer status.
+Release preparation updated: **2026-11-23**. Version **3.3.0** is selected from
+`origin/main`; the latest published release remains
+[v3.2.0](https://github.com/bifrost0x/webssh/releases/tag/v3.2.0) until tag and image
+publication are verified. Check linked GitHub items for newer status.
 
 ## Product direction
 
@@ -18,7 +19,21 @@ Check linked GitHub items for newer status.
 These themes summarize the existing product and published release history; they do not
 add new feature commitments.
 
-## Now: WebSSH 3.2 published
+## Now: prepare v3.3.0
+
+The [3.3.0 candidate notes](docs/releases/v3.3.0.md) cover an optional Herdr
+integration for agent overviews and a Herdr session mode, a password reset from
+the host for local accounts, sign-in and session hardening, SFTP and editor
+fixes and the Python 3.15 runtime. The scope comes from changes merged since
+v3.2.0 and is tracked in the
+[v3.3.0 milestone](https://github.com/bifrost0x/webssh/milestone/17); it adds no
+further feature commitment.
+
+Publication requires the exact final candidate's CI, native image scans and
+versioned AMD64/ARM64 image, SBOM and provenance verification, recorded in
+[#367](https://github.com/bifrost0x/webssh/issues/367).
+
+## Published: WebSSH 3.2
 
 The [3.2.0 release notes](docs/releases/v3.2.0.md) cover an Unraid Community
 Apps template, read-only application code in the image, custom-UID recovery
