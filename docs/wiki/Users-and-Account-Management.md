@@ -148,9 +148,9 @@ confirm a guessed password. WebSSH also revokes the account's tracked resources:
 - active transfers;
 - Socket.IO sessions;
 - live SSH sessions, including the remote tmux sessions of connected
-  terminals; detached tmux sessions are listed in the security audit log as
-  `TMUX_SESSION_NOT_ENDED` and must be ended on the host with
-  `tmux kill-session -t <name>`;
+  terminals; detached tmux sessions, and those whose end the host did not
+  confirm, are listed in the security audit log as `TMUX_SESSION_NOT_ENDED`
+  and must be ended on the host with `tmux kill-session -t <name>`;
 - pooled temporary SSH/SFTP connections;
 - persisted socket and SSH session metadata.
 

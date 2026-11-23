@@ -221,8 +221,11 @@ when the browser closes, the WebSSH transport disconnects, WebSSH restarts, or
 the user signs out. A password change, locking or deleting the account ends the
 tmux sessions of connected terminals. A detached tmux session has no WebSSH
 connection to end it through; WebSSH lists it in the security audit log as
-`TMUX_SESSION_NOT_ENDED` with host, port, SSH user and session name. End it on
-that host with `tmux kill-session -t <name>`.
+`TMUX_SESSION_NOT_ENDED` with host, port, SSH user and session name
+(`reason=detached`). The same entry with `reason=kill_unconfirmed` means the
+connection was open, but the host did not confirm that the session ended, for
+example because the connection had already dropped. End it on that host with
+`tmux kill-session -t <name>`.
 
 Configuration:
 
