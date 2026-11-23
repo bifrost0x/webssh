@@ -58,7 +58,8 @@ configuration before recreating containers; keep data and recovery volumes intac
 ## v3.3.0 compatibility
 
 The [3.3 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v3.3.0.md)
-list the changes. Existing Compose files keep working and there is no database
+cover the published changes. Use `ghcr.io/bifrost0x/webssh:3.3.0` or the verified
+immutable digest in those notes. Existing Compose files keep working and there is no database
 schema change; 3.2.0 can run on the same volumes again and opens hosts set to the
 Herdr session mode with a plain shell. Check these before upgrading:
 

@@ -4,10 +4,9 @@ WebSSH is a self-hosted SSH and file workspace. This roadmap explains the direct
 the current release focus, and the evidence behind completed work. It is not a release-date
 promise or a replacement for issues, pull requests, and release notes.
 
-Release preparation updated: **2026-11-23**. Version **3.3.0** is selected from
-`origin/main`; the latest published release remains
-[v3.2.0](https://github.com/bifrost0x/webssh/releases/tag/v3.2.0) until tag and image
-publication are verified. Check linked GitHub items for newer status.
+Release status updated: **2026-11-23**, [v3.3.0](https://github.com/bifrost0x/webssh/releases/tag/v3.3.0) at
+[`8b7601e`](https://github.com/bifrost0x/webssh/commit/8b7601ea9bddc4fde2c80b1e1ba65b319cf93a2f).
+Check linked GitHub items for newer status.
 
 ## Product direction
 
@@ -19,19 +18,20 @@ publication are verified. Check linked GitHub items for newer status.
 These themes summarize the existing product and published release history; they do not
 add new feature commitments.
 
-## Now: prepare v3.3.0
+## Now: WebSSH 3.3 published
 
-The [3.3.0 candidate notes](docs/releases/v3.3.0.md) cover an optional Herdr
+The [3.3.0 release notes](docs/releases/v3.3.0.md) cover an optional Herdr
 integration for agent overviews and a Herdr session mode, a password reset from
 the host for local accounts, sign-in and session hardening, SFTP and editor
 fixes and the Python 3.15 runtime. The scope comes from changes merged since
-v3.2.0 and is tracked in the
-[v3.3.0 milestone](https://github.com/bifrost0x/webssh/milestone/17); it adds no
-further feature commitment.
+v3.2.0 and is recorded in the closed
+[v3.3.0 milestone](https://github.com/bifrost0x/webssh/milestone/17).
 
-Publication requires the exact final candidate's CI, native image scans and
-versioned AMD64/ARM64 image, SBOM and provenance verification, recorded in
-[#367](https://github.com/bifrost0x/webssh/issues/367).
+[Tag CI and native image publication](https://github.com/bifrost0x/webssh/actions/runs/45263874128) passed on `8b7601ea9bddc4fde2c80b1e1ba65b319cf93a2f`.
+Linux AMD64 and ARM64 images retain SPDX SBOM and SLSA provenance; the immutable
+digest is in the release notes and [#367](https://github.com/bifrost0x/webssh/issues/367).
+There is no database schema change, so 3.2.0 can run on the same volumes.
+Automated gates do not certify every deployment.
 
 ## Published: WebSSH 3.2
 
@@ -116,6 +116,7 @@ deployment supported. Do not promote an idea into a promised release by listing 
 | [v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) | Terminal-centered workspaces, status-first overview, discovery, automation, saved credentials and a per-account tour |
 | [v3.1.0](https://github.com/bifrost0x/webssh/releases/tag/v3.1.0) | SOCKS5 proxy routes, automation through jump hosts, browser login management, workspace presets and script-policy/restore hardening |
 | [v3.2.0](https://github.com/bifrost0x/webssh/releases/tag/v3.2.0) | Unraid template, read-only application code, custom-UID recovery volumes and jump host management from route settings |
+| [v3.3.0](https://github.com/bifrost0x/webssh/releases/tag/v3.3.0) | Optional Herdr integration, password reset from the host, sign-in and session hardening, SFTP and editor fixes and Python 3.15 |
 
 ## How this is maintained
 
@@ -134,7 +135,9 @@ On 2026-11-14 the missing v2.7.0 and v3.0.0 milestones were created from the
 manifest, assigned their first-included PRs and issues, and closed; the open
 v3.1.0 milestone held the work merged since v3.0.0 and closed with the release.
 On 2026-11-15 milestone 16 was created for v3.2.0, assigned the PRs first
-included after v3.1.0 and closed with the release.
+included after v3.1.0 and closed with the release. On 2026-11-23 milestone 17
+was created for v3.3.0, assigned the PRs and issues first included after v3.2.0
+and closed with the release.
 
 The historical mapping was reconstructed on 2026-10-03. It does not imply that these
 milestones or this roadmap existed at the time. Actual GitHub milestone creation and

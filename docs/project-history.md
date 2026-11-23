@@ -50,12 +50,30 @@ These belong to the first official release baseline, not invented pre-1.0 releas
 | [v3.0.0](https://github.com/bifrost0x/webssh/releases/tag/v3.0.0) / 2026-11-08 | Version 3 workspaces, status-first overview, automation, saved credentials and tour | #311: version 3; #313: listed private networks; #315: HTTPS behind TLS proxies; #316: README captures; #310: 2.7 record | 5 |
 | [v3.1.0](https://github.com/bifrost0x/webssh/releases/tag/v3.1.0) / 2026-11-14 | SOCKS5 proxy routes, automation through jump hosts, browser login management, workspace presets and hardening | #336/#337: SOCKS5 routes (#334); #319/#320/#321: automation; #332/#333/#335: overview, presets and access transparency; #328: version display (#327); #324-#326: dependencies | 18 |
 | [v3.2.0](https://github.com/bifrost0x/webssh/releases/tag/v3.2.0) / 2026-11-15 | Unraid template, read-only application code, custom-UID recovery volumes and jump host management | #346: Unraid template and read-only `/app`; #345: recovery volume placeholder; #343: jump host button; #341/#342/#344: image retention, attribution checks, lightweight tags | 8 |
+| [v3.3.0](https://github.com/bifrost0x/webssh/releases/tag/v3.3.0) / 2026-11-23 | Optional Herdr integration, password reset from the host, sign-in and session hardening, SFTP and editor fixes and Python 3.15 | #354: Herdr integration; #361: password reset, sign-in hardening and upload conflicts; #360: SFTP paths, editor encoding and transfers; #353: Python 3.15 |
 
-The 236 PRs in these release stages are assigned by their **first tagged inclusion**,
+The 247 PRs in these release stages are assigned by their **first tagged inclusion**,
 not by the week in which they merged. The machine-readable
 [release history](release-history.json) lists every PR number, tag SHA, release URL,
 comparison and verified issue-to-implementation link. Direct commits are covered by the
 Git comparisons even though they have no PR to attach to a native milestone.
+
+## v3.3.0 delivery
+
+Published on **2026-11-23** at `8b7601ea9bddc4fde2c80b1e1ba65b319cf93a2f`. The tag first includes
+11 merged PRs after v3.2.0: the optional Herdr integration (#354), sign-in and
+deployment hardening with the password reset from the host, the SFTP upload
+conflict fix and dependency updates (#361), SFTP path, editor encoding and
+transfer fixes (#360), terminal refit and paste confirmation (#359), CSRF
+tokens for the whole session (#357), the Python 3.15 runtime (#353), the
+digest-pinned Playwright image (#355), the Unraid support links (#350, #356),
+the v3.2.0 record (#349) and the release preparation (#368). It resolves issues
+#358 and #364.
+[Tag CI](https://github.com/bifrost0x/webssh/actions/runs/45263874128) and native image publication passed.
+The immutable AMD64/ARM64 index is `ghcr.io/bifrost0x/webssh@sha256:4979ba1bdd1f6856c9363cc54fbf63218d6a258e418db9dcb4a35655eacee20f`.
+Both platforms retain SPDX SBOM and SLSA provenance, verified directly in GHCR.
+See [release notes](releases/v3.3.0.md) for changes, upgrade precautions and the
+explicit limits of automated acceptance.
 
 ## v3.2.0 delivery
 
