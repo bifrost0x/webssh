@@ -272,3 +272,51 @@ def test_webp_mime_registration_overrides_an_incorrect_host_mapping(monkeypatch,
     response = app.test_client().get('/static/background.webp')
     assert response.status_code == 200
     assert response.mimetype == 'image/webp'
+
+
+def test_static_compression_is_computed_once_per_asset_version(client, monkeypatch):
+    from app import static_delivery
+
+    calls = []
+    real_compress = gzip.compress
+
+    def counting_compress(data, *args, **kwargs):
+        calls.append(len(data))
+        return real_compress(data, *args, **kwargs)
+
+    monkeypatch.setattr(static_delivery.gzip, 'compress', counting_compress)
+    static_delivery._gzip_cache.clear()
+    plain = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'identity'})
+    head = client.head('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+    first = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+    second = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+    revalidated = client.get('/static/js/i18n.js', headers={
+        'Accept-Encoding': 'gzip',
+        'If-None-Match': first.headers['ETag'],
+    })
+
+    assert len(calls) == 1
+    assert head.headers['Content-Encoding'] == 'gzip'
+    assert head.headers['Content-Length'] == first.headers['Content-Length']
+    assert first.data == second.data
+    assert gzip.decompress(first.data) == plain.data
+    assert first.headers['ETag'] == second.headers['ETag']
+    assert revalidated.status_code == 304
+
+
+def test_changed_asset_is_compressed_again(app, client, monkeypatch, tmp_path):
+    from app import static_delivery
+
+    static_delivery._gzip_cache.clear()
+    asset_path = app.extensions[static_delivery._ASSET_INDEX_EXTENSION]['js/i18n.js']
+    first = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+    identity = next(iter(static_delivery._gzip_cache))
+    # A different file identity (as after an image update) must not reuse the
+    # cached bytes.
+    stale = (identity[0], identity[1] - 1, identity[2], identity[3])
+    static_delivery._gzip_cache[stale] = (b'stale', 1)
+    static_delivery._gzip_cache.pop(identity)
+    second = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+
+    assert str(asset_path) == identity[0]
+    assert second.data == first.data

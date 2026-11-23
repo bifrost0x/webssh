@@ -4,10 +4,12 @@ import gzip
 import hashlib
 import mimetypes
 import re
+from collections import OrderedDict
 from functools import lru_cache, wraps
 from pathlib import Path
+from threading import Lock
 
-from flask import request, url_for
+from flask import current_app, request, url_for
 from flask.sessions import SecureCookieSessionInterface
 
 
@@ -95,6 +97,44 @@ def static_asset_version(app, filename: str) -> str | None:
         return None
 
 
+# Compressed bytes per asset version. Static files are public and the same for
+# every request, so compressing them once avoids repeating the work on each
+# hit, including conditional requests that end as 304.
+_GZIP_CACHE_SIZE = 64
+_gzip_cache: "OrderedDict[tuple, tuple[bytes, int]]" = OrderedDict()
+_gzip_cache_lock = Lock()
+
+
+def _compressed_asset(identity, response) -> tuple[bytes, int]:
+    with _gzip_cache_lock:
+        cached = _gzip_cache.get(identity)
+        if cached is not None:
+            _gzip_cache.move_to_end(identity)
+            return cached
+    plain = response.get_data()
+    entry = (gzip.compress(plain, compresslevel=6, mtime=0), len(plain))
+    with _gzip_cache_lock:
+        _gzip_cache[identity] = entry
+        _gzip_cache.move_to_end(identity)
+        while len(_gzip_cache) > _GZIP_CACHE_SIZE:
+            _gzip_cache.popitem(last=False)
+    return entry
+
+
+def _asset_identity():
+    filename = (request.view_args or {}).get("filename")
+    if not isinstance(filename, str):
+        return None
+    asset_path = current_app.extensions.get(_ASSET_INDEX_EXTENSION, {}).get(filename)
+    if asset_path is None:
+        return None
+    try:
+        stat = asset_path.stat()
+    except OSError:
+        return None
+    return str(asset_path), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size
+
+
 def _compress_static_response(response):
     """Apply deterministic gzip with an encoding-specific validator."""
     _add_accept_encoding_variance(response)
@@ -112,9 +152,13 @@ def _compress_static_response(response):
         return response
 
     response.direct_passthrough = False
-    plain = response.get_data()
-    compressed = gzip.compress(plain, compresslevel=6, mtime=0)
-    if len(compressed) >= len(plain):
+    identity = _asset_identity()
+    if identity is None:
+        plain = response.get_data()
+        compressed, plain_length = gzip.compress(plain, compresslevel=6, mtime=0), len(plain)
+    else:
+        compressed, plain_length = _compressed_asset(identity, response)
+    if len(compressed) >= plain_length:
         return response
 
     etag, weak = response.get_etag()
