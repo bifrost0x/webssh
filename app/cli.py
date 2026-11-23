@@ -572,6 +572,16 @@ def rotate_secret_key(confirm_offline):
     from .secret_rotation import rotate_secret
 
     _require_offline_confirmation(confirm_offline)
+    if os.environ.get('WEBSSH_SECRET_KEY_SOURCE') == 'environment':
+        # The container entrypoint prefers SECRET_KEY from the environment.
+        # Rotating the persisted file would leave the next start on the old
+        # key while the stored credentials already use the new one.
+        raise click.ClickException(
+            'SECRET_KEY is set in the environment, so the persisted secret '
+            'is not the one WebSSH uses. Remove SECRET_KEY from the '
+            'environment or plan the migration described in the backup and '
+            'secret rotation guide; nothing was changed.'
+        )
     new_secret = secrets.token_hex(32)
     try:
         report = rotate_secret(

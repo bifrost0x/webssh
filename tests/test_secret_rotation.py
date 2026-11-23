@@ -532,6 +532,41 @@ def test_rotate_secret_cli_generates_and_persists_new_secret(app, monkeypatch):
     ))) == 1
 
 
+@pytest.mark.parametrize(('source', 'refused'), [
+    ('environment', True),
+    ('file', False),
+    (None, False),
+])
+def test_rotate_secret_cli_refuses_a_secret_taken_from_the_environment(
+    app, monkeypatch, source, refused,
+):
+    # The container entrypoint prefers SECRET_KEY from the environment, so a
+    # rotated file would be ignored on the next start while the credentials
+    # already use the new key.
+    import config
+
+    data_dir = Path(config.DATA_DIR)
+    secret_path = data_dir / 'secret_key'
+    secret_path.write_text('unit-test-cli-rotation-key-material\n', encoding='utf-8')
+    monkeypatch.setattr(config, 'SECRET_KEY', 'unit-test-cli-rotation-key-material')
+    if source is None:
+        monkeypatch.delenv('WEBSSH_SECRET_KEY_SOURCE', raising=False)
+    else:
+        monkeypatch.setenv('WEBSSH_SECRET_KEY_SOURCE', source)
+
+    result = app.test_cli_runner().invoke(args=['rotate-secret-key', '--confirm-offline'])
+
+    persisted = secret_path.read_text(encoding='utf-8').rstrip('\n')
+    if refused:
+        assert result.exit_code != 0
+        assert 'SECRET_KEY is set in the environment' in result.output
+        assert persisted == 'unit-test-cli-rotation-key-material'
+        assert not list(data_dir.parent.glob(f'{data_dir.name}-pre-rotation-*.zip'))
+    else:
+        assert result.exit_code == 0, result.output
+        assert persisted != 'unit-test-cli-rotation-key-material'
+
+
 def _named_rotation_data(tmp_path, monkeypatch):
     from app import credential_crypto
     import config
