@@ -1092,6 +1092,26 @@
         };
         document.getElementById('adminAddUserBtn')?.addEventListener('click', open);
         document.getElementById('closeAddUser')?.addEventListener('click', close);
+        // Escape closes the open administrator dialog like its Cancel button.
+        // The step-up prompt handles its own Escape first and marks the event.
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) { return; }
+            const isOpen = id => document.getElementById(id)?.classList.contains('show');
+            const enabled = id => !document.getElementById(id)?.disabled;
+            if (isOpen('restoreSecondConfirmModal') || isOpen('restoreFirstConfirmModal')) {
+                const cancel = isOpen('restoreSecondConfirmModal')
+                    ? 'restoreSecondCancelButton' : 'restoreFirstCancelButton';
+                if (!enabled(cancel)) { return; }
+                event.preventDefault();
+                closeRestoreModals();
+            } else if (isOpen('securityActionModal')) {
+                event.preventDefault();
+                closeSecurityAction();
+            } else if (isOpen('addUserModal')) {
+                event.preventDefault();
+                close();
+            }
+        });
         modal?.addEventListener('click', (e) => { if (e.target === modal) { close(); } });
         document.getElementById('submitNewUser')?.addEventListener('click', async () => {
             const username = document.getElementById('newUsername').value.trim();
