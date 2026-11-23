@@ -31,6 +31,10 @@ An administrator can:
 Administrators remain subject to authentication, CSRF, rate limits, target
 confirmation, and action-bound Step-up requirements.
 
+New local usernames have 3 to 32 characters from `A-Z`, `a-z`, `0-9` and `_`.
+Other letters are rejected so that look-alike names such as a Cyrillic "admin"
+cannot be created. Accounts created before this rule keep their names.
+
 ## Administrator Step-up
 
 Sensitive mutations require a one-use grant for the exact action and target.
@@ -82,6 +86,30 @@ not promoted, and a listed name without an account is reported as a warning:
 remove it or create the account, because whoever registers that name later
 would otherwise become an administrator on the next start.
 
+### Forgotten password
+
+Neither an administrator nor the user can reset a local password in the
+browser. On the host, run:
+
+```bash
+docker compose exec webssh \
+  /app/entrypoint.sh flask --app start:app reset-password --username admin
+```
+
+The command prompts for the new password twice; `--password-file` reads it
+from a private regular file instead. It works for every local account,
+including the only administrator, and leaves roles, lock state and second
+factors unchanged. All browser sign-ins of the account become invalid. If
+WebSSH is running, it ends the account's open connections, SSH sessions,
+persistent tmux sessions and transfers within a few seconds, as a password
+change in the browser does, and records `LIVE_ACCESS_REVOKED` in the security
+audit log. If the command cannot hand that over to the server, it says so and
+exits with an error; restart WebSSH in that case. Run it as the container's
+own user, as `docker compose exec` does by default: as root it refuses to run
+while the data directory belongs to another user.
+LDAP- and GitHub-managed accounts are refused, because their password lives
+with that provider.
+
 ## Registration modes
 
 Two settings serve different purposes:
@@ -116,14 +144,20 @@ authentication method.
 
 ## Locking an account
 
-Locking prevents new HTTP and Socket.IO authorization. WebSSH also revokes the
-account's tracked resources:
+Locking prevents new HTTP and Socket.IO authorization. Sign-in to a locked
+account fails with the same message as a wrong password, so the lock does not
+confirm a guessed password. WebSSH also revokes the account's tracked resources:
 
 - active transfers;
 - Socket.IO sessions;
-- live SSH sessions;
+- live SSH sessions, including the remote tmux sessions of connected
+  terminals; detached tmux sessions, and those whose end the host did not
+  confirm, are listed in the security audit log as `TMUX_SESSION_NOT_ENDED`
+  and must be ended on the host with `tmux kill-session -t <name>`;
 - pooled temporary SSH/SFTP connections;
 - persisted socket and SSH session metadata.
+
+Deleting an account revokes the same resources.
 
 Unlocking permits future authentication but does not restore terminated live
 connections.
@@ -176,7 +210,10 @@ identity.
 
 Local users can change their password through `/change-password`. Explicit
 logout is a POST action and revokes tracked Socket.IO, SSH, and temporary SFTP
-connections instead of only deleting the browser cookie.
+connections instead of only deleting the browser cookie. Logout only
+disconnects: remote tmux sessions keep running and are offered for reconnect
+after the next sign-in, on every device. A password change ends them like a
+lock.
 
 LDAP-managed users authenticate their primary credential exclusively against
 the directory and cannot use local password-change or OIDC. After recent LDAP

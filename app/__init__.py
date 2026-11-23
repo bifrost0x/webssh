@@ -7,6 +7,7 @@ from flask_login import login_required, current_user
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 import config
+import ipaddress
 import os
 import sys
 import time
@@ -48,6 +49,7 @@ _MAINTENANCE_COMMANDS = frozenset({
     'connection-store',
     'create-admin',
     'issue-factor-bootstrap',
+    'reset-password',
     'rotate-secret-key',
 })
 _FLASK_OPTIONS_WITH_VALUES = frozenset({
@@ -120,6 +122,55 @@ def get_client_ip():
     Returns the IP address that should be used for rate limiting.
     """
     return request.remote_addr or 'unknown'
+
+
+_config_warnings_logged = set()
+
+
+def _is_loopback(address):
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:
+        return False
+
+
+def _note_proxy_configuration(environ):
+    """Log once per process when traffic contradicts TRUSTED_PROXIES.
+
+    Both mistakes are silent otherwise: without trusted proxies every client
+    behind a proxy shares one rate-limit bucket and audit address; with
+    trusted proxies, a client that reaches the port directly chooses its own
+    address through X-Forwarded-For. Loopback requests (health checks) are
+    ignored. A client can trigger these lines itself, so they only advise.
+    """
+    if config.TRUSTED_PROXIES == 0:
+        if 'untrusted' in _config_warnings_logged or not (
+            environ.get('HTTP_X_FORWARDED_FOR') or environ.get('HTTP_FORWARDED')
+        ):
+            return
+        _config_warnings_logged.add('untrusted')
+        log_warning(
+            'Requests carry X-Forwarded-For or Forwarded headers but TRUSTED_PROXIES=0. '
+            'Behind a reverse proxy all clients then share the proxy address for '
+            'sign-in limits and audit logs; set TRUSTED_PROXIES to the number of '
+            'proxies in front of WebSSH',
+            proxy=environ.get('REMOTE_ADDR', ''),
+        )
+        return
+    if 'bypassed' in _config_warnings_logged or environ.get('HTTP_X_FORWARDED_FOR'):
+        return
+    client = environ.get('REMOTE_ADDR', '')
+    if _is_loopback(client):
+        return
+    _config_warnings_logged.add('bypassed')
+    log_warning(
+        'A request reached WebSSH without X-Forwarded-For although '
+        'TRUSTED_PROXIES is set. Clients that bypass the proxy can choose the '
+        'address used for sign-in limits and audit logs; publish the port only '
+        'to the proxy, for example 127.0.0.1:5000:5000',
+        client=client,
+        trusted_proxies=config.TRUSTED_PROXIES,
+    )
 
 
 def _engineio_admission_user(app, environ):
@@ -579,6 +630,24 @@ def create_app(
                 target = url_for(request.endpoint, **(request.view_args or {}))
             except Exception:
                 target = None
+        from .transport_security import request_reached_over_https
+
+        if (
+            app.config.get('SESSION_COOKIE_SECURE')
+            and not request_reached_over_https()
+            and app.config['SESSION_COOKIE_NAME'] not in request.cookies
+        ):
+            # Browsers drop Secure cookies on http:// origins other than
+            # localhost, so every form fails. Retrying cannot help.
+            if 'secure_cookie_over_http' not in _config_warnings_logged:
+                _config_warnings_logged.add('secure_cookie_over_http')
+                log_warning(
+                    'A form arrived over plain HTTP without the session cookie while '
+                    'SESSION_COOKIE_SECURE is on; serve WebSSH over HTTPS or set '
+                    'SESSION_COOKIE_SECURE=false on a trusted network',
+                    host=str(request.host)[:200],
+                )
+            return _error_page(400, 'cookie_rejected', target or url_for('login'))
         return _error_page(400, 'form_expired', target or url_for('login'), detail=error.description)
 
     @app.errorhandler(Forbidden)
@@ -648,6 +717,10 @@ def create_app(
                 current_user.is_authenticated and is_support_links_enabled()
             ),
         }
+
+    @app.before_request
+    def note_proxy_configuration():
+        _note_proxy_configuration(request.environ)
 
     @app.before_request
     def hide_disabled_admin_panel():
@@ -1036,6 +1109,20 @@ def create_app(
                 except Exception as e:
                     log_error("SSH cleanup error", error=str(e))
 
+        def access_revocation_task(cancel_event):
+            from . import access_revocation_queue
+            from .maintenance_mode import is_active
+
+            while not cancel_event.wait(access_revocation_queue.POLL_SECONDS):
+                try:
+                    if not is_active():
+                        access_revocation_queue.process_pending(app, socketio)
+                except Exception as e:
+                    log_error(
+                        "Access revocation error",
+                        error=type(e).__name__,
+                    )
+
         def ldap_revalidation_task(cancel_event):
             from .ldap_session import revalidate_all_linked_users
 
@@ -1057,6 +1144,7 @@ def create_app(
                 'inactive_socket_session_cleanup', db_cleanup_task
             )
             lifecycle.start_job('idle_ssh_session_cleanup', ssh_cleanup_task)
+            lifecycle.start_job('access_revocation', access_revocation_task)
             if config.LDAP_ENABLED:
                 lifecycle.start_job(
                     'ldap_session_revalidation',
@@ -1287,7 +1375,7 @@ def create_app(
                 user_id=user_id,
                 error=type(exc).__name__,
             )
-        user_lifecycle.revoke_user_access(user_id, socketio)
+        user_lifecycle.revoke_user_access(user_id, socketio, kill_tmux=False)
         clear_browser_authentication()
         return redirect(url_for('login'))
 

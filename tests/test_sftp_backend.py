@@ -515,3 +515,24 @@ def test_iter_tree_checks_cancellation_before_remote_listing(monkeypatch):
             cancel_event=cancelled,
         ))
     assert sftp.listed == []
+
+
+def test_atomic_writer_conflict_is_classified_as_conflict(monkeypatch):
+    """An existing destination must reach the client as CONFLICT (issue #364)."""
+    from app.transfer_errors import classify_transfer_failure
+
+    sftp = AtomicSFTP(destination_exists=True)
+    install_sftp_session(monkeypatch, sftp)
+    monkeypatch.setattr(sftp_handler.secrets, 'token_hex', lambda _size: 'token')
+
+    with pytest.raises(FileExistsError) as raised:
+        with SFTPBackend().open_atomic_writer(
+            source(),
+            '/target.txt',
+            replace=False,
+            cancel_event=threading.Event(),
+        ) as writer:
+            writer.write(b'new')
+
+    assert classify_transfer_failure(raised.value, operation='upload').code == 'CONFLICT'
+    assert sftp.replaced == []

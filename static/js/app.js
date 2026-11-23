@@ -3612,7 +3612,7 @@
         }
 
         document.getElementById('logoutBtn').addEventListener('click', () => {
-            const message = window.i18n ? i18n.t('auth.logoutConfirm') : 'Are you sure you want to logout? Active SSH sessions will be preserved.';
+            const message = window.i18n ? i18n.t('auth.logoutConfirm') : 'Are you sure you want to logout? Remote tmux sessions keep running; other SSH sessions end.';
             if (confirm(message)) {
                 SessionManager.clearScopedBrowserStorage();
                 const form = document.createElement('form');

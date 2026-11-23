@@ -13,7 +13,7 @@ Start from the repository's `.env.example`. The tables below describe the operat
 | `DEPLOYMENT_PROFILE` | Selects deployment safeguards | `homelab`; use `production` for Internet-facing deployments |
 | `DEBUG` | Flask debug mode | `False`; never enable in production |
 | `HOST` | Application bind address | `127.0.0.1` outside the container |
-| `PORT` | Application listen port | `5000` |
+| `PORT` | Application listen port of source installations. The default container command always listens on `5000`; publish a different host port instead, for example `-p 8080:5000`. The container health checks accept a server on `PORT` or on `5000`, so a custom command that binds `PORT` stays healthy | `5000` |
 | `APPLICATION_ROOT` | URL prefix for subfolder deployments | Empty/root |
 
 Treat `SECRET_KEY` as long-lived installation state. Replacing it without the supported rotation workflow invalidates encrypted SSH keys and signed state. See [Backup, Restore, and Secret Rotation](Backup-Restore-and-Secret-Rotation).
@@ -27,8 +27,8 @@ Treat `SECRET_KEY` as long-lived installation state. Replacing it without the su
 | `HOST_DISCOVERY_ENABLED` | Offers manual SSH host discovery in a network range under Hosts → Find hosts | `true`; `false` in production |
 | `SOCKETIO_ALLOW_ANY_ORIGIN` | With `CORS_ORIGINS=*`, realtime connections accept only pages served from the address used for WebSSH. `true` accepts any origin again; rejected in production | `false` |
 | `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none. Saved passwords and automation still work behind a TLS proxy at `0`: a page the browser loaded over `https://` from the same host counts as HTTPS. Set it to trust forwarded client addresses |
-| `SESSION_COOKIE_SECURE` | Sends the session cookie only over HTTPS |
-| `SESSION_TIMEOUT` | Idle SSH session timeout in seconds; default `1800` |
+| `SESSION_COOKIE_SECURE` | Sends the session cookie only over HTTPS. Default `true` (`false` only with `DEBUG=true`); the homelab Compose file sets `false`. With `true`, browsers drop the cookie on plain `http://` addresses other than localhost and sign-in fails; the homelab profile warns at start while the value is not set explicitly |
+| `SESSION_TIMEOUT` | Idle SSH session timeout in seconds; positive integer, default `1800` |
 
 The production profile requires explicit HTTPS origins, secure cookies, and explicit trusted proxies. Wildcard origins are not a production configuration. See [Reverse Proxy and Subfolder Deployment](Reverse-Proxy-and-Subfolder-Deployment).
 
@@ -238,7 +238,7 @@ blocked while profiles reference the record.
 |---|---|
 | `TMUX_ENABLED` | Optional override of Admin → Integrations; product default `true` (tmux available) |
 | `TMUX_DEFAULT` | Optional override of Admin → Integrations; product default `false` (not preselected) |
-| `TMUX_SESSION_PREFIX` | `webssh` |
+| `TMUX_SESSION_PREFIX` | `webssh`; characters other than letters, digits and `_` become `_` |
 | `HOST_KEY_MANAGEMENT_ENABLED` | `true` |
 | `RECOVERY_CODES_ENABLED` | `true` |
 | `AUDIT_EXPORT_ENABLED` | `true` |

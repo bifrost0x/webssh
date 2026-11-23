@@ -258,6 +258,12 @@ every image update, so mount a volume at that path or keep the defaults.
 Offline CLI backups without `--destination` therefore go to the recovery
 directory instead of `/app`; the command prints the archive path.
 
+### I forgot my password, and I am the only administrator
+
+Run `flask --app start:app reset-password --username <name>` on the host, in the
+container through `docker compose exec webssh /app/entrypoint.sh ...`. See
+[Users and Account Management](Users-and-Account-Management#forgotten-password).
+
 ### How do I report a vulnerability?
 
 Do not open a public issue. Use the repository's private

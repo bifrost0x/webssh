@@ -51,8 +51,6 @@ TRANSFER_TEMP_DIR = Path(os.environ.get(
     'TRANSFER_TEMP_DIR', DATA_DIR / 'tmp'
 ))
 
-SESSION_TIMEOUT = int(os.environ.get('SESSION_TIMEOUT', '1800'))
-
 WEBAUTHN_ENABLED = (
     os.environ.get('WEBAUTHN_ENABLED', 'false').lower() == 'true'
 )
@@ -147,6 +145,9 @@ def _positive_int_env(name, default):
             f'CONFIGURATION ERROR: {name} must be a positive integer'
         )
     return value
+
+
+SESSION_TIMEOUT = _positive_int_env('SESSION_TIMEOUT', 1800)
 
 
 def _bounded_int_env(name, default, minimum, maximum):
@@ -475,11 +476,11 @@ _validate_quota_pair(
     False,
 )
 
-# Seven permanent cleanup jobs occupy executor slots for the app lifetime.
+# Eight permanent cleanup jobs occupy executor slots for the app lifetime.
 # Reader and transfer capacity must stay available beyond those loops, otherwise
 # an idle cleanup job can starve an accepted SSH session or background transfer.
 BACKGROUND_CLEANUP_JOBS = (
-    7
+    8
     + (1 if LDAP_ENABLED else 0)
     + (
         1
@@ -1011,7 +1012,12 @@ MAX_RECOVERY_JSON_SIZE = min(
 # connection. Every Compose file shipped before 3.0 set TMUX_ENABLED=true, so
 # this default keeps image-only upgrades and replaced Compose files identical.
 TMUX_ENABLED = _admin_switch_env('TMUX_ENABLED', True)
-TMUX_SESSION_PREFIX = os.environ.get('TMUX_SESSION_PREFIX', 'webssh')
+# tmux silently turns '.' and ':' in session names into '_', so a name built
+# from such a prefix would never match the session tmux created. Keep the same
+# character set as Gateway session names.
+TMUX_SESSION_PREFIX = re.sub(
+    r'[^A-Za-z0-9_]', '_', os.environ.get('TMUX_SESSION_PREFIX', '').strip(),
+)[:80] or 'webssh'
 TMUX_DEFAULT = _admin_switch_env('TMUX_DEFAULT', False)
 
 
@@ -1367,6 +1373,14 @@ def validate_security_config():
     if not SESSION_COOKIE_SECURE:
         warnings.append(
             'SESSION_COOKIE_SECURE is disabled for the homelab profile'
+        )
+    elif not DEBUG and _session_secure not in {'true', 'false'}:
+        warnings.append(
+            'SESSION_COOKIE_SECURE defaults to true: browsers drop the session '
+            'cookie on plain HTTP addresses other than localhost, and every '
+            'sign-in then fails with "The form expired". Serve WebSSH over '
+            'HTTPS, or set SESSION_COOKIE_SECURE=false on a trusted network; '
+            'set it to true to silence this warning'
         )
     if REGISTRATION_ENABLED:
         warnings.append(

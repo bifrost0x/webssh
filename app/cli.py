@@ -11,6 +11,7 @@ from flask import current_app
 import config
 from .audit_logger import audit_logger, log_warning, sanitize_audit_details
 from .auth import (
+    password_exceeds_bcrypt_limit,
     user_creation_transaction,
     validate_new_user,
 )
@@ -178,6 +179,94 @@ def create_admin(username, password_file):
 
     _audit_admin_bootstrap(username, 'created')
     click.echo(f'Administrator created: {username}')
+
+
+@click.command('reset-password')
+@click.option('--username', required=True, metavar='NAME')
+@click.option(
+    '--password-file',
+    type=click.Path(path_type=Path),
+    metavar='PATH',
+)
+def reset_password(username, password_file):
+    """Set a new password for a local account and end its sign-ins.
+
+    For a forgotten password, including the only administrator's. Needs
+    shell access to the host, which already grants control over the data.
+    """
+    from . import _initialize_persistent_storage
+    from .access_revocation_queue import (
+        RequestNotWritable,
+        ensure_server_can_read_requests,
+        request_revocation,
+    )
+    from .auth_assurance import invalidate_user_authentication
+
+    # Checked before anything changes: the server could not act on a request
+    # written by root into a data directory owned by another user.
+    try:
+        ensure_server_can_read_requests()
+    except RequestNotWritable as error:
+        raise click.ClickException(str(error)) from error
+    _initialize_persistent_storage(current_app._get_current_object())
+    user = User.query.filter_by(username=username).first()
+    if user is None:
+        raise click.ClickException('Account not found.')
+    if user.is_ldap_managed:
+        raise click.ClickException(
+            'The password of an LDAP-managed account is set in the directory.'
+        )
+    if user.is_github_managed:
+        raise click.ClickException(
+            'GitHub-managed accounts sign in through GitHub and have no '
+            'local password.'
+        )
+
+    if password_file is None:
+        password = click.prompt(
+            'New password',
+            hide_input=True,
+            confirmation_prompt=True,
+        )
+    else:
+        password = _read_password_file(password_file)
+    if len(password) < config.MIN_PASSWORD_LENGTH:
+        raise click.ClickException(
+            f'Password must be at least {config.MIN_PASSWORD_LENGTH} characters'
+        )
+    if password_exceeds_bcrypt_limit(password):
+        raise click.ClickException(
+            f'Password must not exceed {config.MAX_PASSWORD_LENGTH} bytes '
+            'when encoded as UTF-8'
+        )
+
+    user.set_password(password)
+    invalidate_user_authentication(user)
+    db.session.commit()
+    _audit_operation('PASSWORD_RESET_CLI', user=user.username)
+    # Sockets, SSH sessions and transfers belong to the server process. The
+    # request is written after the commit, so the server cannot act on it
+    # while the old sign-ins are still valid.
+    try:
+        request_revocation(user.id)
+    except Exception as error:
+        _audit_operation(
+            'PASSWORD_RESET_CLI_REVOCATION_UNSCHEDULED',
+            user=user.username,
+            error=type(error).__name__,
+        )
+        raise click.ClickException(
+            f'Password reset for {user.username}, but its open connections '
+            'could not be scheduled to end. Restart WebSSH to end them.'
+        ) from error
+    click.echo(
+        f'Password reset for {user.username}. Its sign-ins are invalid. If '
+        'WebSSH is running, its open connections, SSH sessions and persistent '
+        'tmux sessions end within a few seconds; the security audit log '
+        'records LIVE_ACCESS_REVOKED.'
+    )
+    if user.is_locked:
+        click.echo('The account is still locked; an administrator can unlock it.')
 
 
 def warn_if_no_admin():
@@ -511,6 +600,7 @@ def rotate_secret_key(confirm_offline):
 
 def register_cli(app):
     app.cli.add_command(create_admin)
+    app.cli.add_command(reset_password)
     app.cli.add_command(issue_factor_bootstrap)
     app.cli.add_command(connection_store_cli)
     app.cli.add_command(backup_cli)

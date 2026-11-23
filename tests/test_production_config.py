@@ -1094,3 +1094,18 @@ def test_upload_limit_rejects_invalid_configuration(value):
     result = _load_config(_production_env(MAX_UPLOAD_SIZE=value))
     assert result.returncode != 0
     assert 'MAX_UPLOAD_SIZE' in result.stderr
+
+
+@pytest.mark.parametrize('value', ['0', '-5', '30m', ''])
+def test_session_timeout_rejects_non_positive_or_malformed_values(value):
+    result = _load_config(_production_env(SESSION_TIMEOUT=value))
+    assert result.returncode != 0
+    assert 'CONFIGURATION ERROR: SESSION_TIMEOUT must be a positive integer' in result.stderr
+
+
+def test_session_timeout_keeps_default_and_explicit_positive_values():
+    code = 'import config; print(config.SESSION_TIMEOUT)'
+    default = _load_config(_production_env(SESSION_TIMEOUT=None), code)
+    explicit = _load_config(_production_env(SESSION_TIMEOUT='45'), code)
+    assert default.stdout.strip().splitlines()[-1] == '1800'
+    assert explicit.stdout.strip().splitlines()[-1] == '45'

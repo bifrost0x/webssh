@@ -1188,7 +1188,22 @@ def resize_terminal(session_id, rows, cols):
     except Exception as e:
         return False, str(e)
 
-def close_session(session_id, kill_tmux=False, on_disconnect=None):
+_TMUX_SESSION_ABSENT = (b"can't find session", b'no server running', b'session not found')
+
+
+def _tmux_kill_succeeded(channel):
+    """True when kill-session ended the session or it no longer existed."""
+    status = paramiko_channels.wait_for_exit_status(channel, timeout=TMUX_KILL_TIMEOUT)
+    if status == 0:
+        return True
+    try:
+        stderr = channel.recv_stderr(512)
+    except Exception:
+        return False
+    return any(marker in stderr for marker in _TMUX_SESSION_ABSENT)
+
+
+def close_session(session_id, kill_tmux=False, on_disconnect=None, tmux_result=None):
     """Close SSH session and clean up resources.
 
     kill_tmux: If True and the session uses tmux, kill the remote tmux session.
@@ -1197,6 +1212,8 @@ def close_session(session_id, kill_tmux=False, on_disconnect=None):
                candidate. Pass True only from explicit user disconnect.
     on_disconnect: Optional notification callback. Claims the shared reader notice
                    before cancellation so exactly one path notifies the owner.
+    tmux_result: Optional dict. ``tmux_result['ended']`` is set to True only
+                 when the kill command confirmed that the tmux session is gone.
     """
     reservation = None
     reader_handle = None
@@ -1229,7 +1246,9 @@ def close_session(session_id, kill_tmux=False, on_disconnect=None):
             try:
                 transport = session['client'].get_transport()
                 if transport and transport.is_active():
-                    command = 'tmux kill-session -t ' + shlex.quote(session['tmux_session_name'])
+                    # '=' asks for an exact name; without it tmux falls back to
+                    # a prefix match and could end a different session.
+                    command = 'tmux kill-session -t ' + shlex.quote('=' + session['tmux_session_name'])
                     kill_channel = _open_exec_channel(
                         transport,
                         command,
@@ -1237,6 +1256,8 @@ def close_session(session_id, kill_tmux=False, on_disconnect=None):
                     )
                     try:
                         kill_channel.recv(1)
+                        if tmux_result is not None and _tmux_kill_succeeded(kill_channel):
+                            tmux_result['ended'] = True
                     except Exception:
                         pass
             except Exception as e:

@@ -11,10 +11,19 @@ for (const [consumer, load] of [['eslint', eslintRequire], ['config-array', conf
     test(`${consumer} limits globstar-parent pattern amplification`, () => {
         for (const prefix of ['root', '{root,other}']) {
             const pattern = `${prefix}/${'**/../a/b/'.repeat(8)}*.js`;
-            const matcher = new Minimatch(pattern, {
-                optimizationLevel: 2,
-                braceExpandMax: 16,
-            });
+            let matcher;
+            try {
+                matcher = new Minimatch(pattern, {
+                    optimizationLevel: 2,
+                    braceExpandMax: 16,
+                });
+            } catch (error) {
+                // minimatch 11.0.5 and later refuse the pattern instead of
+                // truncating it; both keep the expansion bounded.
+                assert.ok(error instanceof RangeError, `${prefix}: ${error}`);
+                assert.match(error.message, /too many patterns/);
+                continue;
+            }
             assert.ok(matcher.set.length <= 16, `${prefix}: expanded to ${matcher.set.length} patterns`);
         }
     });

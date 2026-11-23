@@ -548,7 +548,7 @@ def test_close_session_quotes_tmux_target_and_sets_timeout_first(monkeypatch):
     assert ssh_manager.close_session('session-1', kill_tmux=True) is True
     assert transport.open_timeout == 2.0
     assert kill_channel.command == (
-        "tmux kill-session -t 'name; touch /tmp/marker'")
+        "tmux kill-session -t '=name; touch /tmp/marker'")
     assert kill_channel.events[0][0] == 'settimeout'
     assert 0 < kill_channel.events[0][1] <= 2.0
     assert kill_channel.events[1][0] == 'exec_command'
@@ -686,3 +686,55 @@ def test_reader_preserves_split_utf8_and_drains_after_exit(app, monkeypatch, end
     assert ''.join(event['data'] for event in emitted) == expected + '\ufffd'
     assert histories[-1] == expected + '\ufffd'
     assert [event['sequence'] for event in emitted] == list(range(1, len(emitted) + 1))
+
+
+def _tmux_session_with(kill_channel):
+    client = FakeSSHClient(transport=FakeTransport(kill_channel))
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions['session-1'] = _session(
+            client, use_tmux=True, tmux_session_name='tmux-session',
+        )
+
+
+def test_close_session_reports_a_completed_tmux_kill(monkeypatch):
+    monkeypatch.setattr('app.sftp_handler.close_sftp_cache', lambda _session_id: None)
+    _tmux_session_with(FakeChannel())
+    tmux_result = {}
+
+    assert ssh_manager.close_session('session-1', kill_tmux=True, tmux_result=tmux_result) is True
+    assert tmux_result == {'ended': True}
+
+
+class _StderrChannel(FakeChannel):
+    def __init__(self, stderr, exit_status):
+        super().__init__(exit_status=exit_status)
+        self.stderr = stderr
+
+    def recv_stderr(self, _size):
+        return self.stderr
+
+
+def test_close_session_treats_an_already_missing_tmux_session_as_ended(monkeypatch):
+    monkeypatch.setattr('app.sftp_handler.close_sftp_cache', lambda _session_id: None)
+    _tmux_session_with(_StderrChannel(b"can't find session: tmux-session\n", 1))
+    tmux_result = {}
+
+    assert ssh_manager.close_session('session-1', kill_tmux=True, tmux_result=tmux_result) is True
+    assert tmux_result == {'ended': True}
+
+
+@pytest.mark.parametrize('kill_channel', [
+    FakeChannel(exec_error=RuntimeError('boom')),
+    type('TimedOutChannel', (FakeChannel,), {
+        'recv': lambda self, _size: (_ for _ in ()).throw(TimeoutError()),
+    })(),
+    _StderrChannel(b'error connecting to /tmp/tmux-1000/default (Permission denied)\n', 1),
+    _StderrChannel(b'bash: tmux: command not found\n', 127),
+])
+def test_close_session_does_not_report_an_unfinished_tmux_kill(monkeypatch, kill_channel):
+    monkeypatch.setattr('app.sftp_handler.close_sftp_cache', lambda _session_id: None)
+    _tmux_session_with(kill_channel)
+    tmux_result = {}
+
+    assert ssh_manager.close_session('session-1', kill_tmux=True, tmux_result=tmux_result) is True
+    assert tmux_result == {}

@@ -1,6 +1,14 @@
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
+import os
 from pathlib import Path
 import re
+import socket
+import subprocess
+import sys
+import threading
+
+import pytest
 
 
 def container_smoke_workflow():
@@ -24,6 +32,64 @@ def test_native_runtime_keeps_the_reviewed_gunicorn_and_worker_contract():
         "-c",
         "exec gunicorn --worker-class gthread --workers 1 --threads \"${GUNICORN_THREADS}\" --bind 0.0.0.0:5000 start:app",
     ]
+
+
+def _health_probes():
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+    image_probe = dockerfile.split("HEALTHCHECK", 1)[1].split("\n  CMD ", 1)[1].split("\n", 1)[0]
+    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
+    compose_test = json.loads(compose.split("    healthcheck:\n      test: ", 1)[1].split("\n", 1)[0])
+    assert compose_test[0] == "CMD-SHELL"
+    return image_probe, compose_test[1].replace("$$", "$")
+
+
+def _run_probe(probe, port):
+    return subprocess.run(
+        ["sh", "-c", probe],
+        env={
+            **os.environ,
+            "PATH": os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", ""),
+            "PORT": str(port),
+        },
+        capture_output=True,
+        timeout=15,
+    ).returncode
+
+
+def test_container_health_checks_accept_gunicorn_on_port_or_on_5000():
+    """The default CMD binds 5000 whatever PORT says; a custom CMD may bind PORT."""
+    image_probe, compose_probe = _health_probes()
+    assert image_probe == compose_probe
+    assert '"${PORT:-5000}" 5000' in image_probe
+
+    class Ready(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200 if self.path == "/ready" else 404)
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Ready)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert _run_probe(image_probe, server.server_port) == 0
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_container_health_check_fails_when_nothing_answers():
+    with socket.socket() as probe_socket:
+        if probe_socket.connect_ex(("127.0.0.1", 5000)) == 0:
+            pytest.skip("port 5000 is in use on this machine")
+    with socket.socket() as unused:
+        unused.bind(("127.0.0.1", 0))
+        port = unused.getsockname()[1]
+
+    assert _run_probe(_health_probes()[0], port) != 0
 
 
 def test_image_prepares_private_recovery_mountpoint_before_dropping_root():

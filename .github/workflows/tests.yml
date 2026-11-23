@@ -447,13 +447,13 @@ jobs:
           set -euo pipefail
           # The Microsoft Playwright image includes browser binaries and OS libraries.
           # This avoids invoking apt on ephemeral hosted runners during font E2E.
-          node -e 'if (require("playwright/package.json").version !== "1.65.0") process.exit(1)'
+          node -e 'if (require("playwright/package.json").version !== "1.65.1") process.exit(1)'
           docker run --detach --rm --init --network host --user pwuser \
             --name "$WEBSSH_FONT_BROWSER_CONTAINER" \
             --label "webssh.ci-run=$GITHUB_RUN_ID" \
             --mount "type=bind,source=$PWD/node_modules,target=/work/node_modules,readonly" \
             --workdir /work \
-            mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe \
+            mcr.microsoft.com/playwright:v1.65.1-noble@sha256:1507cbfc550a63a6b7396791ca4f00df17beb56342d2447b3f106c306f525579 \
             node /work/node_modules/playwright/cli.js run-server --host 127.0.0.1 --port 4355
           ready=false
           for attempt in $(seq 1 60); do

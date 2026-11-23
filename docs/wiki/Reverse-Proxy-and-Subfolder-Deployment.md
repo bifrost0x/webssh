@@ -14,7 +14,21 @@ TRUSTED_PROXIES=1
 ```
 
 `TRUSTED_PROXIES` is the number of trusted forwarding layers, not a Boolean.
-Keep the WebSSH backend reachable only through those layers.
+Keep the WebSSH backend reachable only through those layers. With the homelab
+Compose file, publish the port as `127.0.0.1:5000:5000` (proxy on the same host)
+or remove `ports:` and attach the proxy to the WebSSH network; otherwise clients
+can bypass the proxy and set `X-Forwarded-For` themselves.
+
+WebSSH logs one warning per process when traffic contradicts the setting:
+
+- requests carry `X-Forwarded-For` or `Forwarded` while `TRUSTED_PROXIES=0`:
+  all clients share the proxy address, so one client can use up the sign-in
+  limit of everybody and audit logs show only the proxy;
+- a request from a non-loopback address arrives without `X-Forwarded-For`
+  while `TRUSTED_PROXIES` is set: something reached the port directly.
+
+A client can trigger either warning itself, so treat it as a hint to check the
+deployment, not as proof of a misconfiguration.
 
 ## Nginx at the domain root
 

@@ -1,3 +1,5 @@
+import re
+
 import bcrypt
 import config
 from contextlib import contextmanager
@@ -19,6 +21,7 @@ _DUMMY_PASSWORD_HASH = bcrypt.hashpw(b'account-enumeration-mitigation', bcrypt.g
 # Falls back to in-memory automatically if Redis is unavailable.
 _rate_limiter = None
 user_creation_lock = Lock()
+_NEW_USERNAME_PATTERN = re.compile(r'[A-Za-z0-9_]+')
 
 
 @contextmanager
@@ -175,7 +178,9 @@ def validate_new_user(username, password):
     if not username or len(username) < 3 or len(username) > 32:
         return "Username must be between 3 and 32 characters"
 
-    if not username.replace('_', '').isalnum():
+    # ASCII only: Unicode letters allow look-alike names such as a Cyrillic
+    # "admin". Existing accounts keep their names; only new ones are checked.
+    if not _NEW_USERNAME_PATTERN.fullmatch(username):
         return "Username can only contain letters, numbers, and underscores"
 
     normalized_username = username.casefold()
@@ -291,9 +296,9 @@ def authenticate_user(username, password):
     # also protects reauthentication and future password-based entry points.
     if user.ldap_identity is not None or user.is_github_managed:
         return None, "Invalid username or password"
-    if password_matches:
-        if getattr(user, 'is_locked', False):
-            return None, "This account is locked. Please contact an administrator."
+    # A locked account answers like a wrong password. A distinct message after
+    # a correct password would let anyone keep guessing it while it is locked.
+    if password_matches and not getattr(user, 'is_locked', False):
         return user, None
     return None, "Invalid username or password"
 

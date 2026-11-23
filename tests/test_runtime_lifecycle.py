@@ -745,6 +745,7 @@ def test_app_owns_and_stops_all_permanent_cleanup_jobs(runtime_app):
         ('automation-cleanup', None),
         ('inactive_socket_session_cleanup', None),
         ('idle_ssh_session_cleanup', None),
+        ('access_revocation', None),
         ('temporary_connection_cleanup', None),
     )
 
@@ -754,7 +755,7 @@ def test_background_worker_default_reserves_cleanup_reader_and_transfer_slots():
     import config
 
     assert config.BACKGROUND_CLEANUP_JOBS == (
-        7 + int(config.LDAP_ENABLED) + int(config.SMB_ENABLED)
+        8 + int(config.LDAP_ENABLED) + int(config.SMB_ENABLED)
     )
     assert config.BACKGROUND_WORKERS_MIN == (
         config.BACKGROUND_CLEANUP_JOBS
@@ -779,6 +780,7 @@ def test_enabled_automation_cleanup_is_owned_and_stopped_after_admission(runtime
         ('automation-cleanup', None),
         ('inactive_socket_session_cleanup', None),
         ('idle_ssh_session_cleanup', None),
+        ('access_revocation', None),
         ('temporary_connection_cleanup', None),
     )
 

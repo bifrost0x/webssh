@@ -309,6 +309,34 @@ class TestUserRegistration:
             assert user is None
             assert 'letters' in error
 
+    @pytest.mark.parametrize('username', [
+        '\u0430dmin',            # Cyrillic a
+        'adm\u0456n',            # Ukrainian i
+        '\uff21\uff24\uff2d\uff29\uff2e',  # fullwidth ADMIN
+        'user\u00b2',           # superscript two
+        'm\u00fcller',           # non-ASCII letter
+    ])
+    def test_register_rejects_non_ascii_usernames(self, app, username):
+        with app.app_context():
+            from app.auth import register_user
+            user, error = register_user(username, 'password123')
+            assert user is None
+            assert error == 'Username can only contain letters, numbers, and underscores'
+
+    def test_existing_non_ascii_usernames_keep_signing_in(self, app):
+        with app.app_context():
+            from app.auth import authenticate_user
+            from app.models import User, db
+
+            legacy = User(username='m\u00fcller', is_admin=False)
+            legacy.set_password('password123')
+            db.session.add(legacy)
+            db.session.commit()
+
+            user, error = authenticate_user('m\u00fcller', 'password123')
+            assert error is None
+            assert user.username == 'm\u00fcller'
+
     def test_register_username_too_long(self, app):
         with app.app_context():
             from app.auth import register_user
@@ -420,6 +448,29 @@ class TestAuthentication:
             row = AuthenticationSession.query.one()
             assert row.assurance == 'BASIC'
             assert row.methods_json == '["password"]'
+
+    def test_locked_account_does_not_reveal_whether_the_password_matches(
+        self, app, client,
+    ):
+        with app.app_context():
+            from app.auth import authenticate_user, register_user
+            from app.models import db
+
+            user, error = register_user('lockedoracle', 'password123')
+            assert error is None
+            user.is_locked = True
+            db.session.commit()
+
+            right = authenticate_user('lockedoracle', 'password123')
+            wrong = authenticate_user('lockedoracle', 'wrongpassword')
+            assert right == wrong == (None, 'Invalid username or password')
+
+        pages = [
+            client.post('/login', data={'username': 'lockedoracle', 'password': password}).data
+            for password in ('password123', 'wrongpassword')
+        ]
+        assert all(b'Invalid username or password' in page for page in pages)
+        assert not any(b'locked' in page.lower() for page in pages)
 
     def test_authenticate_wrong_password(self, app):
         with app.app_context():

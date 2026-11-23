@@ -699,6 +699,9 @@ def test_backup_excludes_runtime_only_files(tmp_path):
     fences = data_dir / '.ldap-revocation-fences'
     fences.mkdir()
     (fences / '42.pending').write_bytes(b'pending\n')
+    revocations = data_dir / '.access-revocations'
+    revocations.mkdir()
+    (revocations / '42').write_bytes(b'pending\n')
     archive = tmp_path / 'backup.zip'
 
     manifest = create_backup(data_dir, archive)
@@ -720,6 +723,7 @@ def test_restore_discards_current_and_archived_ldap_revocation_fences(
         {
             'app.db': _webssh_database_bytes(tmp_path),
             '.ldap-revocation-fences/42.pending': b'pending\n',
+            '.access-revocations/42': b'pending\n',
         },
         format_version=2,
         data_schema_version=2,
@@ -733,6 +737,7 @@ def test_restore_discards_current_and_archived_ldap_revocation_fences(
 
     assert not existing_fence.exists()
     assert not (restore_dir / '.ldap-revocation-fences/42.pending').exists()
+    assert not (restore_dir / '.access-revocations/42').exists()
 
 
 def test_corrupt_member_fails_before_restore_writes_anything(tmp_path):

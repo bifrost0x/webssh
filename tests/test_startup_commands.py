@@ -584,7 +584,7 @@ def test_create_ssh_connection_kills_new_tmux_when_startup_delivery_fails(monkey
         f'tmux new-session -s {tmux_session_name}'
         f' \\; set-option -t ={tmux_session_name}: mouse on'
     )
-    assert kill_channel.command == f'tmux kill-session -t {tmux_session_name}'
+    assert kill_channel.command == f'tmux kill-session -t ={tmux_session_name}'
     assert probe_channel.close_calls == 1
     assert tmux_channel.close_calls == 1
     assert kill_channel.close_calls == 1

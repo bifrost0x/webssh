@@ -1,21 +1,28 @@
 """Central cleanup helpers for revoking a user's live access."""
 
+import logging
 from uuid import uuid4
 
 import config
 
-from .audit_logger import log_error, log_info, log_warning
+from .audit_logger import log_error, log_info, log_security_event, log_warning
 from .models import db, SocketSession, SSHSession
 from . import connection_pool, ssh_manager
 from .backup_coordination import persistent_write
 
 
-def revoke_user_access(user_id, socketio_instance=None):
+def revoke_user_access(user_id, socketio_instance=None, *, kill_tmux=True):
     """Disconnect and remove all live resources owned by ``user_id``.
 
     Cleanup is deliberately best-effort across resource types: one broken SSH
     connection must not prevent the user's sockets, pooled connections, or
     database session metadata from being revoked.
+
+    ``kill_tmux=False`` is for the user's own sign-out: transports close, but
+    remote tmux sessions keep running and stay listed as reconnect candidates.
+    Otherwise tmux ends with each live connection; a detached session has no
+    connection to end it through and its record holds no credentials to open
+    one, so it is reported in the security audit log instead.
     """
     user_id = int(user_id)
     from flask import current_app
@@ -119,18 +126,39 @@ def revoke_user_access(user_id, socketio_instance=None):
                 )
 
     with ssh_manager.sessions_lock:
-        ssh_session_ids = [
-            session_id
+        ssh_sessions = {
+            session_id: {
+                'host': session.get('host'),
+                'port': session.get('port'),
+                'ssh_user': session.get('username'),
+                'tmux_session': session.get('tmux_session_name'),
+            } if session.get('use_tmux') and session.get('tmux_session_name') else None
             for session_id, session in ssh_manager.sessions.items()
             if str(session.get('user_id')) == str(user_id)
-        ]
+        }
+    ssh_session_ids = list(ssh_sessions)
 
     for session_id in ssh_session_ids:
+        tmux_result = {}
         try:
-            if ssh_manager.close_session(session_id, kill_tmux=True):
+            closed = ssh_manager.close_session(
+                session_id, kill_tmux=kill_tmux, tmux_result=tmux_result,
+            )
+            if closed:
                 result['ssh_sessions'] += 1
             else:
                 result['errors'].append(f'ssh:{session_id}:close failed')
+            tmux = ssh_sessions[session_id]
+            if kill_tmux and closed and tmux is not None and not tmux_result.get('ended'):
+                # The transport was already gone or the kill did not finish,
+                # so the remote tmux session may still be running.
+                log_security_event(
+                    'TMUX_SESSION_NOT_ENDED',
+                    level=logging.WARNING,
+                    user_id=user_id,
+                    reason='kill_unconfirmed',
+                    **tmux,
+                )
         except Exception as exc:
             result['errors'].append(f'ssh:{session_id}:{exc}')
             log_warning(
@@ -168,7 +196,26 @@ def revoke_user_access(user_id, socketio_instance=None):
 
     try:
         SocketSession.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-        SSHSession.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        ssh_rows = SSHSession.query.filter_by(user_id=user_id)
+        if kill_tmux:
+            for row in ssh_rows.filter_by(is_persistent=True):
+                if row.tmux_session_name and row.session_id not in ssh_session_ids:
+                    log_security_event(
+                        'TMUX_SESSION_NOT_ENDED',
+                        level=logging.WARNING,
+                        user_id=user_id,
+                        host=row.host,
+                        port=row.port,
+                        ssh_user=row.username,
+                        tmux_session=row.tmux_session_name,
+                        reason='detached',
+                    )
+            ssh_rows.delete(synchronize_session=False)
+        else:
+            ssh_rows.filter_by(is_persistent=False).delete(synchronize_session=False)
+            SSHSession.query.filter_by(user_id=user_id, is_persistent=True).update(
+                {'connected': False}, synchronize_session=False,
+            )
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
