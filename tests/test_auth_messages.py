@@ -32,3 +32,22 @@ def test_unknown_provider_message_is_preserved_and_escaped():
     assert '&lt;img src=x onerror=alert(1)&gt;' in rendered
     assert '<img' not in rendered
     assert '__proto__' in rendered
+
+
+def test_registration_and_password_validation_messages_are_translated(app):
+    # The texts must match what the server flashes, or the page stays English.
+    import config
+    from app.auth import validate_new_user, register_user
+
+    mapping = render_messages([]).flash_message_keys
+    with app.app_context():
+        assert register_user('existing_user', 'password123')[1] is None
+        flashed = [
+            validate_new_user('ab', 'password123'),
+            validate_new_user('bad name!', 'password123'),
+            validate_new_user('EXISTING_user', 'password123'),
+            validate_new_user('fresh_user', 'short'),
+        ]
+    assert all(message in mapping for message in flashed), flashed
+    if config.MIN_PASSWORD_LENGTH == 8:
+        assert 'New password must be at least 8 characters' in mapping
