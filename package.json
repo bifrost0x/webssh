@@ -25,15 +25,7 @@
     "@xterm/xterm": "6.0.0"
   },
   "devDependencies": {
-    "eslint": "10.14.0",
-    "playwright": "^1.65.0"
-  },
-  "overrides": {
-    "eslint": {
-      "minimatch": "11.0.1",
-      "@eslint/config-array": {
-        "minimatch": "11.0.1"
-      }
-    }
+    "eslint": "10.15.0",
+    "playwright": "^1.65.1"
   }
 }
