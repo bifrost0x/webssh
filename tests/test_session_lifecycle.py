@@ -686,3 +686,35 @@ def test_reader_preserves_split_utf8_and_drains_after_exit(app, monkeypatch, end
     assert ''.join(event['data'] for event in emitted) == expected + '\ufffd'
     assert histories[-1] == expected + '\ufffd'
     assert [event['sequence'] for event in emitted] == list(range(1, len(emitted) + 1))
+
+
+def _tmux_session_with(kill_channel):
+    client = FakeSSHClient(transport=FakeTransport(kill_channel))
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions['session-1'] = _session(
+            client, use_tmux=True, tmux_session_name='tmux-session',
+        )
+
+
+def test_close_session_reports_a_completed_tmux_kill(monkeypatch):
+    monkeypatch.setattr('app.sftp_handler.close_sftp_cache', lambda _session_id: None)
+    _tmux_session_with(FakeChannel())
+    tmux_result = {}
+
+    assert ssh_manager.close_session('session-1', kill_tmux=True, tmux_result=tmux_result) is True
+    assert tmux_result == {'ended': True}
+
+
+@pytest.mark.parametrize('kill_channel', [
+    FakeChannel(exec_error=RuntimeError('boom')),
+    type('TimedOutChannel', (FakeChannel,), {
+        'recv': lambda self, _size: (_ for _ in ()).throw(TimeoutError()),
+    })(),
+])
+def test_close_session_does_not_report_an_unfinished_tmux_kill(monkeypatch, kill_channel):
+    monkeypatch.setattr('app.sftp_handler.close_sftp_cache', lambda _session_id: None)
+    _tmux_session_with(kill_channel)
+    tmux_result = {}
+
+    assert ssh_manager.close_session('session-1', kill_tmux=True, tmux_result=tmux_result) is True
+    assert tmux_result == {}

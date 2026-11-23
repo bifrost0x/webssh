@@ -137,7 +137,7 @@ class TestUserAccessRevocation:
             })
             close_calls = []
 
-            def fake_close_session(session_id, kill_tmux=False):
+            def fake_close_session(session_id, kill_tmux=False, tmux_result=None):
                 # No asserts in here: revoke_user_access wraps close_session in
                 # try/except, so a failing assert would be swallowed and surface
                 # as a confusing "close failed" error instead. Record the call
@@ -465,7 +465,7 @@ class TestSafeUserDeletion:
 class TestPersistentSessionsSurviveSignOut:
     """Logout only disconnects; password change, lock and deletion end tmux work."""
 
-    def _seed_sessions(self, app, monkeypatch, username):
+    def _seed_sessions(self, app, monkeypatch, username, *, tmux_kill_confirmed=True):
         from app import ssh_manager
         from app.models import SSHSession, db
 
@@ -482,14 +482,21 @@ class TestPersistentSessionsSurviveSignOut:
             db.session.commit()
 
         monkeypatch.setattr(ssh_manager, 'sessions', {
-            'tmux-ssh': {'user_id': user_id, 'use_tmux': True},
+            'tmux-ssh': {
+                'user_id': user_id, 'use_tmux': True, 'host': 'target.example',
+                'port': 22, 'username': 'root',
+                'tmux_session_name': 'webssh_root_target_22_abcd',
+            },
             'plain-ssh': {'user_id': user_id},
         })
         close_calls = []
 
-        def fake_close_session(session_id, kill_tmux=False):
+        def fake_close_session(session_id, kill_tmux=False, tmux_result=None):
             close_calls.append((session_id, kill_tmux))
-            ssh_manager.sessions.pop(session_id, None)
+            session = ssh_manager.sessions.pop(session_id, None) or {}
+            if (kill_tmux and tmux_kill_confirmed and session.get('use_tmux')
+                    and tmux_result is not None):
+                tmux_result['ended'] = True
             return True
 
         monkeypatch.setattr(ssh_manager, 'close_session', fake_close_session)
@@ -588,3 +595,55 @@ class TestPersistentSessionsSurviveSignOut:
         ):
             assert detail in warnings[0]
         assert 'key-1' not in warnings[0]
+
+
+    def test_admin_lock_audits_live_tmux_whose_kill_was_not_confirmed(
+        self, app, client, monkeypatch, caplog,
+    ):
+        user_id, close_calls = self._seed_sessions(
+            app, monkeypatch, 'tmuxunconfirmed', tmux_kill_confirmed=False,
+        )
+        with app.app_context():
+            from app.models import db
+
+            _create_user('tmuxunconfirmedadmin', is_admin=True)
+            db.session.commit()
+        _login(client, 'tmuxunconfirmedadmin')
+        caplog.set_level(logging.INFO, logger='security_audit')
+
+        response = client.post(
+            f'/admin/api/users/{user_id}/lock',
+            headers=password_step_up_headers(
+                client, 'user.manage', f'{user_id}:lock'
+            )[0],
+        )
+
+        assert response.status_code == 200
+        assert sorted(close_calls) == [('plain-ssh', True), ('tmux-ssh', True)]
+        warnings = [
+            record.getMessage() for record in caplog.records
+            if record.name == 'security_audit'
+            and record.levelno == logging.WARNING
+            and record.getMessage().startswith('TMUX_SESSION_NOT_ENDED')
+        ]
+        assert len(warnings) == 1
+        for detail in (
+            'host=target.example', 'port=22', 'ssh_user=root',
+            'tmux_session=webssh_root_target_22_abcd', 'reason=kill_unconfirmed',
+            f'user_id={user_id}',
+        ):
+            assert detail in warnings[0]
+
+    def test_logout_does_not_audit_tmux_it_keeps_on_purpose(
+        self, app, client, monkeypatch, caplog,
+    ):
+        self._seed_sessions(app, monkeypatch, 'tmuxkeep', tmux_kill_confirmed=False)
+        _login(client, 'tmuxkeep')
+        caplog.set_level(logging.INFO, logger='security_audit')
+
+        assert client.post('/logout').status_code == 302
+
+        assert not [
+            record for record in caplog.records
+            if record.getMessage().startswith('TMUX_SESSION_NOT_ENDED')
+        ]

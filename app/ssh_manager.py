@@ -1188,7 +1188,7 @@ def resize_terminal(session_id, rows, cols):
     except Exception as e:
         return False, str(e)
 
-def close_session(session_id, kill_tmux=False, on_disconnect=None):
+def close_session(session_id, kill_tmux=False, on_disconnect=None, tmux_result=None):
     """Close SSH session and clean up resources.
 
     kill_tmux: If True and the session uses tmux, kill the remote tmux session.
@@ -1197,6 +1197,8 @@ def close_session(session_id, kill_tmux=False, on_disconnect=None):
                candidate. Pass True only from explicit user disconnect.
     on_disconnect: Optional notification callback. Claims the shared reader notice
                    before cancellation so exactly one path notifies the owner.
+    tmux_result: Optional dict. ``tmux_result['ended']`` is set to True only
+                 when the kill command ran to completion on the remote host.
     """
     reservation = None
     reader_handle = None
@@ -1236,7 +1238,10 @@ def close_session(session_id, kill_tmux=False, on_disconnect=None):
                         timeout=TMUX_KILL_TIMEOUT,
                     )
                     try:
-                        kill_channel.recv(1)
+                        # End of output means the command finished. A missing
+                        # session also ends here, which leaves nothing running.
+                        if kill_channel.recv(1) == b'' and tmux_result is not None:
+                            tmux_result['ended'] = True
                     except Exception:
                         pass
             except Exception as e:

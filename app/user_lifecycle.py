@@ -126,18 +126,39 @@ def revoke_user_access(user_id, socketio_instance=None, *, kill_tmux=True):
                 )
 
     with ssh_manager.sessions_lock:
-        ssh_session_ids = [
-            session_id
+        ssh_sessions = {
+            session_id: {
+                'host': session.get('host'),
+                'port': session.get('port'),
+                'ssh_user': session.get('username'),
+                'tmux_session': session.get('tmux_session_name'),
+            } if session.get('use_tmux') and session.get('tmux_session_name') else None
             for session_id, session in ssh_manager.sessions.items()
             if str(session.get('user_id')) == str(user_id)
-        ]
+        }
+    ssh_session_ids = list(ssh_sessions)
 
     for session_id in ssh_session_ids:
+        tmux_result = {}
         try:
-            if ssh_manager.close_session(session_id, kill_tmux=kill_tmux):
+            closed = ssh_manager.close_session(
+                session_id, kill_tmux=kill_tmux, tmux_result=tmux_result,
+            )
+            if closed:
                 result['ssh_sessions'] += 1
             else:
                 result['errors'].append(f'ssh:{session_id}:close failed')
+            tmux = ssh_sessions[session_id]
+            if kill_tmux and closed and tmux is not None and not tmux_result.get('ended'):
+                # The transport was already gone or the kill did not finish,
+                # so the remote tmux session may still be running.
+                log_security_event(
+                    'TMUX_SESSION_NOT_ENDED',
+                    level=logging.WARNING,
+                    user_id=user_id,
+                    reason='kill_unconfirmed',
+                    **tmux,
+                )
         except Exception as exc:
             result['errors'].append(f'ssh:{session_id}:{exc}')
             log_warning(
