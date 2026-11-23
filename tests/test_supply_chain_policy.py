@@ -605,12 +605,12 @@ def assert_pinned_remote_font_browsers(fonts):
     assert '--network host --user pwuser' in fonts
     assert '--mount "type=bind,source=$PWD/node_modules,target=/work/node_modules,readonly"' in fonts
     assert 'node /work/node_modules/playwright/cli.js run-server --host 127.0.0.1 --port 4355' in fonts
-    assert 'node -e \'if (require("playwright/package.json").version !== "1.65.0") process.exit(1)\'' in fonts
+    assert 'node -e \'if (require("playwright/package.json").version !== "1.65.1") process.exit(1)\'' in fonts
     # Image version is locked to package-lock.json; the digest prevents tag drift.
     lock = json.loads((ROOT / 'package-lock.json').read_text(encoding='utf-8'))
-    assert lock['packages']['node_modules/playwright']['version'] == '1.65.0'
-    assert ('mcr.microsoft.com/playwright:v1.65.0-noble@sha256:'
-            '9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe') in fonts
+    assert lock['packages']['node_modules/playwright']['version'] == '1.65.1'
+    assert ('mcr.microsoft.com/playwright:v1.65.1-noble@sha256:'
+            '1507cbfc550a63a6b7396791ca4f00df17beb56342d2447b3f106c306f525579') in fonts
     assert 'install-deps' not in fonts and 'apt-get' not in fonts
     assert 'Stop pinned browser server' in fonts
     assert 'if: always()' in fonts
