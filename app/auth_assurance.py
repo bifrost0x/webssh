@@ -73,6 +73,10 @@ def _safe_continuation(value):
         ord(character) < 0x20 for character in candidate
     ):
         return '/'
+    # urlsplit('///host') yields the path '/host', but a browser resolves the
+    # value as a protocol-relative URL to another host.
+    if candidate.startswith('//'):
+        return '/'
     parsed = urlsplit(candidate)
     if (
         parsed.scheme
