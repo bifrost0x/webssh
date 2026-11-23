@@ -1211,6 +1211,7 @@ const translations = {
         'auth.newUsernameCharacters': 'Username can only contain letters, numbers, and underscores',
         'auth.newUsernameTaken': 'Username already exists',
         'auth.newPasswordTooShort': 'Password must be at least 8 characters',
+        'auth.newPasswordChangeTooShort': 'New password must be at least 8 characters',
         'auth.rememberMe': 'Remember me',
         'auth.togglePasswordVisibility': 'Toggle password visibility',
 
@@ -3775,6 +3776,7 @@ const translations = {
         'auth.newUsernameCharacters': 'Tên người dùng chỉ được chứa chữ cái, chữ số và dấu gạch dưới',
         'auth.newUsernameTaken': 'Tên người dùng đã tồn tại',
         'auth.newPasswordTooShort': 'Mật khẩu phải có ít nhất 8 ký tự',
+        'auth.newPasswordChangeTooShort': 'Mật khẩu mới phải có ít nhất 8 ký tự',
         'auth.rememberMe': 'Ghi nhớ đăng nhập',
         'auth.togglePasswordVisibility': 'Ẩn hoặc hiện mật khẩu',
 
@@ -6343,6 +6345,7 @@ const translations = {
         'auth.newUsernameCharacters': 'Der Benutzername darf nur Buchstaben, Ziffern und Unterstriche enthalten',
         'auth.newUsernameTaken': 'Dieser Benutzername ist bereits vergeben',
         'auth.newPasswordTooShort': 'Das Passwort muss mindestens 8 Zeichen lang sein',
+        'auth.newPasswordChangeTooShort': 'Das neue Passwort muss mindestens 8 Zeichen lang sein',
         'auth.rememberMe': 'Angemeldet bleiben',
         'auth.togglePasswordVisibility': 'Passwortsichtbarkeit umschalten',
 
@@ -8906,6 +8909,7 @@ const translations = {
         'auth.newUsernameCharacters': 'Le nom d\'utilisateur ne peut contenir que des lettres, des chiffres et des tirets bas',
         'auth.newUsernameTaken': 'Ce nom d\'utilisateur existe déjà',
         'auth.newPasswordTooShort': 'Le mot de passe doit contenir au moins 8 caractères',
+        'auth.newPasswordChangeTooShort': 'Le nouveau mot de passe doit contenir au moins 8 caractères',
         'auth.rememberMe': 'Se souvenir de moi',
         'auth.togglePasswordVisibility': 'Afficher ou masquer le mot de passe',
 
@@ -11469,6 +11473,7 @@ const translations = {
         'auth.newUsernameCharacters': 'El nombre de usuario solo puede contener letras, números y guiones bajos',
         'auth.newUsernameTaken': 'El nombre de usuario ya existe',
         'auth.newPasswordTooShort': 'La contraseña debe tener al menos 8 caracteres',
+        'auth.newPasswordChangeTooShort': 'La nueva contraseña debe tener al menos 8 caracteres',
         'auth.rememberMe': 'Recuérdame',
         'auth.togglePasswordVisibility': 'Mostrar u ocultar la contraseña',
 
@@ -14031,6 +14036,7 @@ const translations = {
         'auth.newUsernameCharacters': '用户名只能包含字母、数字和下划线',
         'auth.newUsernameTaken': '用户名已存在',
         'auth.newPasswordTooShort': '密码至少需要 8 个字符',
+        'auth.newPasswordChangeTooShort': '新密码至少需要 8 个字符',
         'auth.rememberMe': '记住我',
         'auth.togglePasswordVisibility': '切换密码可见性',
 

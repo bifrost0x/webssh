@@ -17,7 +17,7 @@
     'Username can only contain letters, numbers, and underscores': 'auth.newUsernameCharacters',
     'Username already exists': 'auth.newUsernameTaken',
     'Password must be at least 8 characters': 'auth.newPasswordTooShort',
-    'New password must be at least 8 characters': 'auth.newPasswordTooShort'
+    'New password must be at least 8 characters': 'auth.newPasswordChangeTooShort'
 } %}
 {% macro render_auth_messages() %}
     {% for category, message in get_flashed_messages(with_categories=true) %}

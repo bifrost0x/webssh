@@ -77,7 +77,8 @@ Create the account immediately on a trusted network. Never expose an unclaimed
 fresh instance to untrusted clients.
 
 If you prefer an explicit CLI bootstrap, set `BOOTSTRAP_REGISTRATION_ENABLED=false`,
-recreate the container with `docker compose up -d`, and run:
+recreate the container (with Compose: `docker compose up -d`; with `docker run`:
+remove it and run it again with the added `-e`), and run:
 
 ```bash
 docker compose exec webssh \

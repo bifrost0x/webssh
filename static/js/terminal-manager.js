@@ -156,7 +156,14 @@ const TerminalManager = {
         const visible = Array.from(String(text), character => {
             if (character === '\n') return '⏎';
             const code = character.codePointAt(0);
-            return code < 0x20 || (code >= 0x7f && code < 0xa0) ? ' ' : character;
+            if (code < 0x20 || (code >= 0x7f && code < 0xa0)) return ' ';
+            // Zero-width and bidirectional controls would let the preview
+            // look like different text; show a replacement mark instead.
+            if ((code >= 0x200b && code <= 0x200f) || (code >= 0x202a && code <= 0x202e)
+                || (code >= 0x2066 && code <= 0x2069) || code === 0xfeff) {
+                return '\ufffd';
+            }
+            return character;
         });
         return visible.length > limit
             ? `${visible.slice(0, limit).join('')}…`
@@ -223,13 +230,17 @@ const TerminalManager = {
             const text = this.decodeOsc52Clipboard(data);
             if (text === null) return true;
 
-            // The open prompt shows a preview of its text. A later request
-            // must not swap that text behind the preview the user approves.
-            if (pendingRequest) return true;
+            // A newer request replaces the open prompt instead of changing its
+            // text behind the preview, so Copy writes exactly what was shown.
+            if (pendingRequest) {
+                const previous = pendingRequest;
+                pendingRequest = null;
+                previous.dismiss?.();
+            }
 
             const request = {text};
             pendingRequest = request;
-            window.showNotification?.({
+            request.dismiss = window.showNotification?.({
                 message: `${translation(
                     'terminal.remoteClipboardPrompt',
                     'The remote tmux session wants to copy text to your clipboard.',
