@@ -42,3 +42,23 @@ test('tour crosses workspaces, handles small screens and saves completion', asyn
     await expect.poll(async () => (await (await page.request.get('/api/account/tour')).json()).state).toBe('completed');
     await expect(tour).toHaveCount(0);
 });
+
+test('a failed save does not keep the tour open when it is skipped', async ({page}) => {
+    await login(page, 'e2e_admin', {workspace: false, tour: 'new'});
+    await page.request.post('/api/account/tour', {data:{state:'new'},headers:{'X-CSRFToken':await page.locator('meta[name="csrf-token"]').getAttribute('content')}});
+    await page.reload();
+    const tour = page.locator('.intro-tour');
+    await expect(tour).toBeVisible();
+    // An expired page or a lost connection makes the save fail.
+    await page.route('**/api/account/tour', route => route.request().method() === 'POST'
+        ? route.fulfill({status: 400, json: {error: 'csrf_expired'}})
+        : route.continue());
+    await page.keyboard.press('Escape');
+    await expect(tour).toHaveCount(0);
+    // Nothing was saved, so the tour comes back on the next load.
+    await page.unroute('**/api/account/tour');
+    await page.reload();
+    await expect(tour).toBeVisible();
+    await tour.getByRole('button', {name:'Skip tour',exact:true}).click();
+    await expect(tour).toHaveCount(0);
+});
