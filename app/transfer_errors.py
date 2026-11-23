@@ -229,6 +229,10 @@ def classify_transfer_failure(
             code = 'LIMIT_EXCEEDED'
         elif isinstance(error, sftp_handler.TransferCancelled):
             code = 'CANCELLED'
+        elif isinstance(error, FileExistsError):
+            # Backends raise it without an errno for an existing or changed
+            # destination; the client only offers Overwrite for CONFLICT.
+            code = 'CONFLICT'
         elif isinstance(error, PermissionError):
             code = 'PERMISSION_DENIED'
         elif isinstance(error, FileNotFoundError):
