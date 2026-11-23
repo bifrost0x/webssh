@@ -15,6 +15,7 @@ import uuid
 from cryptography.fernet import Fernet, InvalidToken
 
 from .backup_manager import _create_recovery_snapshot as create_backup
+from .backup_manager import default_backup_directory
 from .key_encryption import _derive_key, is_encrypted, key_operation_lock
 from .mfa_crypto import decrypt_totp_secret, encrypt_totp_secret
 from .github_auth_crypto import decrypt_client_secret, encrypt_client_secret
@@ -192,9 +193,9 @@ def _stored_key_files(data_dir):
     return tuple(sorted(key_files, key=lambda item: str(item[1])))
 
 
-def _rotation_backup_path(data_dir):
+def _rotation_backup_path(data_dir, workspace):
     timestamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    return data_dir.parent / (
+    return Path(workspace) / (
         f'{data_dir.name}-pre-rotation-{timestamp}-{uuid.uuid4().hex}.zip'
     )
 
@@ -425,7 +426,10 @@ def _rotate_secret_locked(old_secret, new_secret, data_dir):
             path: path.read_bytes()
             for _, path in key_files
         }
-        backup_path = _rotation_backup_path(data_dir)
+        # Next to DATA_DIR as before; the container's read-only /app falls
+        # back to the private recovery directory, like CLI backups do.
+        workspace = default_backup_directory(data_dir)
+        backup_path = _rotation_backup_path(data_dir, workspace)
         create_backup(data_dir, backup_path)
 
         database_path = data_dir / 'app.db'
@@ -446,7 +450,7 @@ def _rotate_secret_locked(old_secret, new_secret, data_dir):
             )
             originals.update({path: values[0] for path, values in staged_credentials.items()})
             with tempfile.TemporaryDirectory(
-                dir=data_dir.parent,
+                dir=workspace,
                 prefix='.webssh-secret-rotation-',
             ) as temporary_directory:
                 stage = Path(temporary_directory)
