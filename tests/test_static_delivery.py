@@ -304,32 +304,49 @@ def test_static_compression_is_computed_once_per_asset_version(client, monkeypat
     assert revalidated.status_code == 304
 
 
-def test_changed_asset_is_compressed_again(app, client, monkeypatch, tmp_path):
+def test_cache_key_is_the_identity_of_the_opened_file(app, client):
+    import os
     from app import static_delivery
 
     static_delivery._gzip_cache.clear()
     asset_path = app.extensions[static_delivery._ASSET_INDEX_EXTENSION]['js/i18n.js']
-    first = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
-    identity = next(iter(static_delivery._gzip_cache))
-    # A different file identity (as after an image update) must not reuse the
-    # cached bytes.
-    stale = (identity[0], identity[1] - 1, identity[2], identity[3])
-    static_delivery._gzip_cache[stale] = (b'stale', 1)
-    static_delivery._gzip_cache.pop(identity)
-    second = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
 
-    assert str(asset_path) == identity[0]
-    assert second.data == first.data
+    client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+
+    with open(asset_path, 'rb') as handle:
+        stat = os.fstat(handle.fileno())
+    assert list(static_delivery._gzip_cache) == [
+        (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size),
+    ]
 
 
-def test_a_file_replaced_during_the_request_is_not_cached(client, monkeypatch):
+def test_another_file_version_is_compressed_again(client, monkeypatch):
+    # A file replaced on disk is a new inode or timestamp; the bytes cached for
+    # the old version must not be served for it.
     from app import static_delivery
 
     static_delivery._gzip_cache.clear()
-    identities = iter([('changing', 1, 1, 10), ('changing', 2, 2, 10)])
-    monkeypatch.setattr(static_delivery, '_asset_identity', lambda: next(identities))
+    real_identity = static_delivery._opened_file_identity
+    first = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+    old_identity = next(iter(static_delivery._gzip_cache))
+    static_delivery._gzip_cache[old_identity] = (b'stale', 1)
+    monkeypatch.setattr(
+        static_delivery, '_opened_file_identity',
+        lambda response: real_identity(response)[:2] + (old_identity[2] + 1,) + old_identity[3:],
+    )
+
+    second = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
+
+    assert second.data == first.data
+
+
+def test_a_response_without_an_open_file_is_not_cached(client, monkeypatch):
+    from app import static_delivery
+
+    static_delivery._gzip_cache.clear()
+    monkeypatch.setattr(static_delivery, '_opened_file_identity', lambda response: None)
 
     response = client.get('/static/js/i18n.js', headers={'Accept-Encoding': 'gzip'})
 
-    assert response.status_code == 200
+    assert response.headers['Content-Encoding'] == 'gzip'
     assert static_delivery._gzip_cache == {}

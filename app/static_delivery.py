@@ -3,13 +3,14 @@
 import gzip
 import hashlib
 import mimetypes
+import os
 import re
 from collections import OrderedDict
 from functools import lru_cache, wraps
 from pathlib import Path
 from threading import Lock
 
-from flask import current_app, request, url_for
+from flask import request, url_for
 from flask.sessions import SecureCookieSessionInterface
 
 
@@ -97,9 +98,10 @@ def static_asset_version(app, filename: str) -> str | None:
         return None
 
 
-# Compressed bytes per asset version. Static files are public and the same for
-# every request, so compressing them once avoids repeating the work on each
-# hit, including conditional requests that end as 304.
+# Compressed bytes per opened file version (device, inode, mtime, ctime and
+# size). Static files are public and the same for every request, so
+# compressing them once avoids repeating the work on each hit, including
+# conditional requests that end as 304.
 _GZIP_CACHE_SIZE = 64
 _gzip_cache: "OrderedDict[tuple, tuple[bytes, int]]" = OrderedDict()
 _gzip_cache_lock = Lock()
@@ -113,9 +115,8 @@ def _compressed_asset(identity, response) -> tuple[bytes, int]:
             return cached
     plain = response.get_data()
     entry = (gzip.compress(plain, compresslevel=6, mtime=0), len(plain))
-    # A file replaced while this request read it must not be cached under
-    # the identity of its successor; such a response is served uncached.
-    if len(plain) != identity[3] or _asset_identity() != identity:
+    if len(plain) != identity[4]:
+        # The handle did not deliver the whole file; do not keep the result.
         return entry
     with _gzip_cache_lock:
         _gzip_cache[identity] = entry
@@ -125,18 +126,21 @@ def _compressed_asset(identity, response) -> tuple[bytes, int]:
     return entry
 
 
-def _asset_identity():
-    filename = (request.view_args or {}).get("filename")
-    if not isinstance(filename, str):
-        return None
-    asset_path = current_app.extensions.get(_ASSET_INDEX_EXTENSION, {}).get(filename)
-    if asset_path is None:
-        return None
+def _opened_file_identity(response):
+    """Identity of the file the response body will be read from, or None.
+
+    Taken with fstat from the already opened handle, so it always describes
+    the bytes that are served, even if the path was replaced meanwhile.
+    Werkzeug's wrapper exposes the handle as ``file``, Gunicorn's as
+    ``filelike``.
+    """
+    wrapper = response.response
+    handle = getattr(wrapper, "file", None) or getattr(wrapper, "filelike", None)
     try:
-        stat = asset_path.stat()
-    except OSError:
+        stat = os.fstat(handle.fileno())
+    except (AttributeError, OSError, ValueError):
         return None
-    return str(asset_path), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size
+    return stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size
 
 
 def _compress_static_response(response):
@@ -157,11 +161,11 @@ def _compress_static_response(response):
 
     # set_data replaces the file iterator without closing it, which reading
     # it through get_data used to arrange.
+    identity = _opened_file_identity(response)
     file_close = getattr(response.response, "close", None)
     if callable(file_close):
         response.call_on_close(file_close)
     response.direct_passthrough = False
-    identity = _asset_identity()
     if identity is None:
         plain = response.get_data()
         compressed, plain_length = gzip.compress(plain, compresslevel=6, mtime=0), len(plain)
