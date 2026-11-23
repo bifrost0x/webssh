@@ -1,4 +1,5 @@
 from functools import wraps
+import inspect
 from flask_socketio import emit
 from flask import abort, current_app, request
 from flask_login import current_user
@@ -47,6 +48,32 @@ def step_up_required(action, target):
 
     return implementation(action, target)
 
+def _positional_arguments(handler):
+    """Return (required, limit) positional event arguments of ``handler``.
+
+    ``limit`` is None when the handler takes ``*args``.
+    """
+    required = 0
+    limit = 0
+    for parameter in inspect.signature(handler).parameters.values():
+        if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+            return required, None
+        if parameter.name == 'current_user':
+            continue
+        if parameter.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            limit += 1
+            if parameter.default is inspect.Parameter.empty:
+                required = limit
+    return required, limit
+
+
+def _positional_argument_limit(handler):
+    return _positional_arguments(handler)[1]
+
+
 def socket_login_required(f):
     """
     Decorator to require authentication for socket events.
@@ -65,8 +92,18 @@ def socket_login_required(f):
             # current_user is automatically injected
             print(f"User {current_user.username} triggered event")
     """
+    positional_required, positional_limit = _positional_arguments(f)
+
     def authenticated_function(*args, **kwargs):
         from .maintenance_mode import is_active
+        # Socket.IO passes client arguments positionally and as sent. A count
+        # that does not fit the handler would raise TypeError and log a
+        # traceback, so surplus arguments are dropped and a missing payload
+        # arrives as None, which every handler already treats as invalid.
+        if positional_limit is not None and len(args) > positional_limit:
+            args = args[:positional_limit]
+        if len(args) < positional_required:
+            args = args + (None,) * (positional_required - len(args))
         if is_active():
             payload = {
                 'success': False,
