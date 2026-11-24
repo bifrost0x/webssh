@@ -32,7 +32,6 @@ TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=operator
 TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10:2222
 TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
 TAILSCALE_SSH_INTERFACE=tailscale0
-TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES=true
 ```
 
 Administrators are authorized by role when the feature is enabled. The user
@@ -55,8 +54,13 @@ interface proof applies only to a direct connection from the WebSSH host.
 
 ## Ordinary SSH over the tailnet
 
-`TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES` defaults to `true` and takes effect only
-while `TAILSCALE_SSH_ENABLED=true` and `TAILSCALE_SSH_INTERFACE` is set. It
+The admin setting **Restrict ordinary SSH to tailnet nodes** (Admin →
+Integrations) is enabled by default and takes effect only while
+`TAILSCALE_SSH_ENABLED=true` and `TAILSCALE_SSH_INTERFACE` is set. A change
+applies to the next connection without a restart, requires admin
+reauthentication, and is recorded in the security audit log as
+`APPLICATION_FEATURE_CHANGED` with
+`feature=tailscale_ssh_restrict_tailnet_routes`. It
 covers Tailscale node addresses only: an address in `100.64.0.0/10` or
 `fd7a:115c:a1e0::/48` (including the IPv4-mapped IPv6 form) whose kernel route
 uses that interface. WebSSH refuses such an address for everything except
@@ -84,12 +88,11 @@ the address is refused. An IPv4-mapped IPv6 address is checked against the
 IPv4 route, because the connection leaves over IPv4. When Tailscale SSH is
 disabled, connections behave exactly as before.
 
-Set `TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES=false` only when users must reach
-ordinary OpenSSH servers over the tailnet with their own credentials, and only
-when the tailnet SSH policy does not grant the WebSSH node access to any host
-those users can reach. With the restriction lifted, the WebSSH allowlists no
-longer bound what the node identity can be used for. Every value other than
-`false` keeps the restriction on.
+Disable the setting only when users must reach ordinary OpenSSH servers over
+the tailnet with their own credentials, and only when the tailnet SSH policy
+does not grant the WebSSH node access to any host those users can reach. With
+the restriction lifted, the WebSSH allowlists no longer bound what the node
+identity can be used for.
 
 When upgrading an installation that already has Tailscale SSH enabled, check
 whether users reach tailnet node addresses with passwords, keys, Jump Hosts or

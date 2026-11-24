@@ -33,13 +33,17 @@ sensitive action and target.
 - Forms use Flask-WTF CSRF protection.
 - Unknown-user password checks perform dummy bcrypt work.
 - Login and reauthentication paths are rate-limited. Source-address limits
-  count IPv6 clients per /64 (`RATELIMIT_IPV6_PREFIX`) and IPv4 (including
-  IPv4-mapped IPv6) per address. Failed password sign-ins are also limited
-  per submitted username and source, with a much higher ceiling per username
-  across all sources that only slows distributed guessing; successful
-  sign-ins do not count. These are time windows, not lockouts, and apply
-  whether or not the account exists; a sender using many sources can still
-  slow sign-in for one username while it keeps sending.
+  count IPv6 clients per /64 and IPv4 (including IPv4-mapped IPv6) per
+  address. Failed password sign-ins are also limited per submitted username
+  and source, with a much higher ceiling per username across all sources that
+  only slows distributed guessing; successful sign-ins do not count. These
+  are time windows, not lockouts, and apply whether or not the account
+  exists; a sender using many sources can still slow sign-in for one username
+  while it keeps sending. Both username limits and the IPv6 grouping prefix
+  are Admin settings under **Settings → Administration → Authentication →
+  Sign-in protection**; changes apply immediately, require reauthentication
+  and are audited. See
+  [Configuration Reference](Configuration-Reference#sign-in-protection-admin-setting).
 - Rejected TOTP codes are counted per account in the database, separately for
   sign-in and for step-up, so failures in one never delay the other. After
   three consecutive rejections each further code waits 30 seconds, doubling up

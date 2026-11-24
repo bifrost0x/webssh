@@ -311,9 +311,6 @@ def main():
             'PORT': os.environ.get('WEBSSH_E2E_PORT', '4173'),
             'RATELIMIT_STORAGE_URL': 'memory://',
             'RATELIMIT_LOGIN_LIMIT': '100 per minute',
-            # Browser cases sign in to the same seeded accounts repeatedly.
-            'RATELIMIT_LOGIN_USERNAME_LIMIT': '100 per minute',
-            'RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT': '1000 per minute',
             # Independent browser cases reauthenticate the same seeded admin.
             'RATELIMIT_REAUTH': '100 per minute',
             # Browser cases share seeded accounts and open them in bursts.
@@ -358,9 +355,19 @@ def main():
 
         app = create_app()
         with app.app_context():
-            from app.app_settings import set_automation_enabled, set_registration_enabled
+            from app.app_settings import (
+                set_automation_enabled,
+                set_registration_enabled,
+                set_sign_in_protection,
+            )
             set_automation_enabled(True)
             set_registration_enabled(True)
+            # Browser cases sign in to the same seeded accounts repeatedly.
+            if not set_sign_in_protection({
+                'login_username_limit': 100,
+                'login_username_global_limit': 1000,
+            }):
+                raise RuntimeError('E2E sign-in limits were not seeded')
             from app.models import (
                 GitHubIdentity,
                 OIDCIdentity,

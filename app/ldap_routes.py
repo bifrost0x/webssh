@@ -16,6 +16,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 import config
 
 from . import socketio, user_lifecycle
+from .app_settings import login_username_rate_limits
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
     check_rate_limit,
@@ -190,8 +191,7 @@ def ldap_login():
             username,
             client_ip,
             'ldap_login',
-            config.RATELIMIT_LOGIN_USERNAME_LIMIT,
-            config.RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT,
+            *login_username_rate_limits(),
         )
         if config.RATELIMIT_ENABLED else (False, ())
     )

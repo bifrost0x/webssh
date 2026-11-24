@@ -41,12 +41,24 @@ def tailnet(monkeypatch):
         return 'tailscale0' if parsed in network else 'eth0'
 
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', True)
-    monkeypatch.setattr(config, 'TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES', True)
     monkeypatch.setattr(config, 'TAILSCALE_SSH_INTERFACE', 'tailscale0')
     monkeypatch.setattr(config, 'BLOCK_INTERNAL_SSH', False)
     monkeypatch.setattr(config, 'SSH_ALLOWED_INTERNAL_NETWORKS', ())
     monkeypatch.setattr(tailscale_ssh, '_route_interface_for_ip', route_interface)
     return lookups
+
+
+def _use_settings_file(monkeypatch, tmp_path):
+    from app import app_settings
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', tmp_path / 'app_settings.json')
+    return app_settings
+
+
+def _lift_restriction(monkeypatch, tmp_path):
+    """Store the Admin opt-out in a settings file private to the test."""
+    app_settings = _use_settings_file(monkeypatch, tmp_path)
+    assert app_settings.set_tailnet_route_restricted(False) is False
+    assert app_settings.is_tailnet_route_restricted() is False
 
 
 def _addresses(*ips):
@@ -137,10 +149,39 @@ def test_policy_block_keeps_its_own_error(tailnet, monkeypatch):
     assert not isinstance(raised.value, TailnetRouteRestricted)
 
 
-def test_operator_opt_out_allows_tailnet_route(tailnet, monkeypatch):
-    monkeypatch.setattr(config, 'TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES', False)
+def test_operator_opt_out_allows_tailnet_route(tailnet, monkeypatch, tmp_path):
+    _lift_restriction(monkeypatch, tmp_path)
     assert resolve_allowed_target('100.64.0.10', 22, allow_internal=True).ip == '100.64.0.10'
     assert tailnet == []
+
+
+def test_restriction_is_on_without_a_stored_choice(tailnet, monkeypatch, tmp_path):
+    app_settings = _use_settings_file(monkeypatch, tmp_path)
+    assert app_settings.is_tailnet_route_restricted() is True
+    with pytest.raises(TailnetRouteRestricted):
+        resolve_allowed_target('100.64.0.10', 22, allow_internal=True)
+
+
+def test_admin_toggle_applies_to_the_next_resolution(tailnet, monkeypatch, tmp_path):
+    app_settings = _use_settings_file(monkeypatch, tmp_path)
+    with pytest.raises(TailnetRouteRestricted):
+        resolve_allowed_target('100.64.0.10', 22, allow_internal=True)
+    assert app_settings.set_tailnet_route_restricted(False) is False
+    assert resolve_allowed_target('100.64.0.10', 22, allow_internal=True).ip == '100.64.0.10'
+    assert app_settings.set_tailnet_route_restricted(True) is True
+    with pytest.raises(TailnetRouteRestricted):
+        resolve_allowed_target('100.64.0.10', 22, allow_internal=True)
+
+
+def test_setting_is_not_read_while_tailscale_is_disabled(tailnet, monkeypatch):
+    from app import app_settings
+
+    def fail():
+        raise AssertionError('setting read on the disabled path')
+
+    monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', False)
+    monkeypatch.setattr(app_settings, 'is_tailnet_route_restricted', fail)
+    assert resolve_allowed_target('100.64.0.10', 22, allow_internal=True).ip == '100.64.0.10'
 
 
 @pytest.mark.parametrize('change', [
@@ -212,9 +253,9 @@ def test_password_connection_to_tailnet_target_opens_no_socket(tailnet, monkeypa
     assert clients.opened_sockets == [] and clients == []
 
 
-def test_password_connection_allowed_with_opt_out(tailnet, monkeypatch):
+def test_password_connection_allowed_with_opt_out(tailnet, monkeypatch, tmp_path):
     from tests.test_ssh_manager import connect_target
-    monkeypatch.setattr(config, 'TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES', False)
+    _lift_restriction(monkeypatch, tmp_path)
     clients = _ssh_clients(monkeypatch)
     session_id, error = connect_target(host='100.64.0.10', password='dummy')
     assert error is None and session_id

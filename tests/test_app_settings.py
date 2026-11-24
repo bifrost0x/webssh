@@ -133,3 +133,158 @@ def test_disabled_gateway_preserves_stored_profile(app):
         assert profile_manager.load_profiles(user_id)[0]['id'] == profile['id']
         _, error = profile_manager.add_profile(user_id, 'Blocked', 'host', 22, 'u:t', 'password')
         assert 'disabled by the administrator' in error
+
+
+def test_sign_in_protection_and_tailnet_restriction_defaults(tmp_path, monkeypatch):
+    from app import app_settings
+
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', tmp_path / 'app_settings.json')
+    assert app_settings.sign_in_protection() == {
+        'login_username_limit': 10,
+        'login_username_global_limit': 100,
+        'ratelimit_ipv6_prefix': 64,
+    }
+    assert app_settings.login_username_rate_limits() == ('10 per minute', '100 per minute')
+    assert app_settings.ratelimit_ipv6_prefix() == 64
+    assert app_settings.is_tailnet_route_restricted() is True
+    assert not (tmp_path / 'app_settings.json').exists()
+
+
+def test_legacy_settings_file_without_new_fields_loads_with_defaults(tmp_path, monkeypatch):
+    import json
+    from app import app_settings
+
+    path = tmp_path / 'app_settings.json'
+    path.write_text(json.dumps({
+        'schema_version': 1,
+        'registration_enabled': False,
+        'ssh_gateway_enabled': True,
+    }), encoding='utf-8')
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+
+    assert app_settings.sign_in_protection() == app_settings.SIGN_IN_PROTECTION_DEFAULTS
+    assert app_settings.is_tailnet_route_restricted() is True
+    assert app_settings.is_ssh_gateway_enabled() is True
+    assert app_settings.set_sign_in_protection({'login_username_limit': 5})
+    stored = json.loads(path.read_text(encoding='utf-8'))
+    assert stored['login_username_limit'] == 5
+    assert stored['ssh_gateway_enabled'] is True
+    assert stored['registration_enabled'] is False
+    assert 'login_username_global_limit' not in stored
+
+
+@pytest.mark.parametrize(('values', 'expected'), [
+    ({'login_username_limit': 0}, 'login_username_limit'),
+    ({'login_username_limit': 1001}, 'login_username_limit'),
+    ({'login_username_limit': True}, 'login_username_limit'),
+    ({'login_username_limit': 5.0}, 'login_username_limit'),
+    ({'login_username_global_limit': '100'}, 'login_username_global_limit'),
+    ({'ratelimit_ipv6_prefix': 47}, 'ratelimit_ipv6_prefix'),
+    ({'ratelimit_ipv6_prefix': 129}, 'ratelimit_ipv6_prefix'),
+    ({'unknown_limit': 5}, 'unknown_limit'),
+    ({'login_username_limit': 1, 'ratelimit_ipv6_prefix': 128}, None),
+    ({'login_username_limit': 1000, 'ratelimit_ipv6_prefix': 48}, None),
+])
+def test_sign_in_protection_validation(tmp_path, monkeypatch, values, expected):
+    from app import app_settings
+
+    path = tmp_path / 'app_settings.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    assert app_settings.invalid_sign_in_protection_field(values) == expected
+    result = app_settings.set_sign_in_protection(values)
+    if expected is None:
+        assert result == {**app_settings.SIGN_IN_PROTECTION_DEFAULTS, **values}
+    else:
+        assert result is False
+        assert not path.exists()
+
+
+@pytest.mark.parametrize('value', ['false', 0, None, {}])
+def test_tailnet_restriction_rejects_non_booleans(tmp_path, monkeypatch, value):
+    from app import app_settings
+
+    path = tmp_path / 'app_settings.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    assert app_settings.set_tailnet_route_restricted(value) is None
+    assert not path.exists()
+
+
+@pytest.mark.parametrize('document', [
+    {'login_username_limit': 0},
+    {'login_username_global_limit': '100'},
+    {'ratelimit_ipv6_prefix': 200},
+    {'tailscale_ssh_restrict_tailnet_routes': 'false'},
+])
+def test_stored_invalid_sign_in_values_are_treated_as_corrupt(tmp_path, monkeypatch, document):
+    import json
+    from app import app_settings
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    path = tmp_path / 'app_settings.json'
+    raw = json.dumps({
+        'schema_version': CURRENT_STORAGE_VERSIONS['app_settings'], **document,
+    }).encode()
+    path.write_bytes(raw)
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    # Corrupt storage fails closed instead of silently falling back to defaults.
+    with pytest.raises(StorageCorruptionError):
+        app_settings.sign_in_protection()
+    with pytest.raises(StorageCorruptionError):
+        app_settings.is_tailnet_route_restricted()
+    assert path.read_bytes() == raw
+
+
+def test_cached_settings_follow_saves_and_external_writes(tmp_path, monkeypatch):
+    import json
+    from app import app_settings
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    path = tmp_path / 'app_settings.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    assert app_settings.is_tailnet_route_restricted() is True
+    assert app_settings.set_tailnet_route_restricted(False) is False
+    assert app_settings.is_tailnet_route_restricted() is False
+    assert app_settings.set_sign_in_protection({'ratelimit_ipv6_prefix': 128})
+    assert app_settings.ratelimit_ipv6_prefix() == 128
+
+    # Another process, such as the admin CLI or a restore, replaces the file.
+    replacement = tmp_path / 'replacement.json'
+    replacement.write_text(json.dumps({
+        'schema_version': CURRENT_STORAGE_VERSIONS['app_settings'],
+        'ratelimit_ipv6_prefix': 56,
+        'filler': 'x' * 64,
+    }), encoding='utf-8')
+    replacement.replace(path)
+    assert app_settings.ratelimit_ipv6_prefix() == 56
+    assert app_settings.is_tailnet_route_restricted() is True
+
+    path.unlink()
+    assert app_settings.ratelimit_ipv6_prefix() == 64
+
+
+def test_cached_settings_skip_the_file_read_while_unchanged(tmp_path, monkeypatch):
+    from app import app_settings
+
+    path = tmp_path / 'app_settings.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    assert app_settings.set_sign_in_protection({'login_username_limit': 4})
+    app_settings._cached_document = None
+    loads = []
+    original = app_settings._load
+    monkeypatch.setattr(app_settings, '_load', lambda: loads.append(1) or original())
+    for _ in range(5):
+        assert app_settings.login_username_rate_limits()[0] == '4 per minute'
+        assert app_settings.is_tailnet_route_restricted() is True
+    assert len(loads) == 1
+
+
+def test_cache_is_keyed_by_settings_path(tmp_path, monkeypatch):
+    from app import app_settings
+
+    first = tmp_path / 'first.json'
+    second = tmp_path / 'second.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', first)
+    assert app_settings.set_sign_in_protection({'ratelimit_ipv6_prefix': 96})
+    assert app_settings.ratelimit_ipv6_prefix() == 96
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', second)
+    assert app_settings.ratelimit_ipv6_prefix() == 64

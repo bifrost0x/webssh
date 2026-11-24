@@ -34,7 +34,8 @@ from .user_settings import (
 from .app_settings import (is_registration_enabled, set_registration_enabled,
                            is_ssh_gateway_enabled, set_ssh_gateway_enabled,
                            is_herdr_enabled, set_herdr_enabled,
-                           is_support_links_enabled, set_support_links_enabled)
+                           is_support_links_enabled, set_support_links_enabled,
+                           login_username_rate_limits)
 from .storage_errors import StorageCorruptionError
 from .tailscale_ssh import user_can_use_tailscale_ssh
 from .version import display_version
@@ -1281,8 +1282,7 @@ def create_app(
                     username,
                     client_ip,
                     'login',
-                    config.RATELIMIT_LOGIN_USERNAME_LIMIT,
-                    config.RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT,
+                    *login_username_rate_limits(),
                 )
                 if config.RATELIMIT_ENABLED else (False, ())
             )
@@ -1903,8 +1903,11 @@ def create_app(
     def admin_get_settings():
         from .app_settings import is_credentials_enabled, is_automation_enabled
         from .app_settings import RUNTIME_FEATURES, runtime_feature_status, native_setting_sources
+        from .app_settings import is_tailnet_route_restricted, sign_in_protection
         policies = {name: runtime_feature_status(name) for name in RUNTIME_FEATURES}
         return jsonify({'setting_sources': native_setting_sources(), 'runtime_features': policies, **{name: status['enabled'] for name, status in policies.items()}, 'registration_enabled': is_registration_enabled(),
+                        **sign_in_protection(),
+                        'tailscale_ssh_restrict_tailnet_routes': is_tailnet_route_restricted(),
                         'ssh_gateway_enabled': is_ssh_gateway_enabled(),
                         'herdr_enabled': is_herdr_enabled(),
                         'support_links_enabled': is_support_links_enabled(),
@@ -1942,6 +1945,26 @@ def create_app(
         if ('support_links_enabled' in data
                 and type(data['support_links_enabled']) is not bool):
             return jsonify({'error': 'support_links_enabled must be a boolean'}), 400
+        if ('tailscale_ssh_restrict_tailnet_routes' in data
+                and type(data['tailscale_ssh_restrict_tailnet_routes']) is not bool):
+            return jsonify({
+                'error': 'tailscale_ssh_restrict_tailnet_routes must be a boolean'
+            }), 400
+        from .app_settings import (SIGN_IN_PROTECTION_BOUNDS,
+                                   invalid_sign_in_protection_field,
+                                   set_sign_in_protection)
+        sign_in_values = {
+            name: data[name] for name in SIGN_IN_PROTECTION_BOUNDS if name in data
+        }
+        invalid_field = invalid_sign_in_protection_field(sign_in_values)
+        if invalid_field is not None:
+            low, high = SIGN_IN_PROTECTION_BOUNDS[invalid_field]
+            return jsonify({
+                'error': f'{invalid_field} must be a whole number from {low} to {high}',
+                'setting': invalid_field,
+                'min': low,
+                'max': high,
+            }), 400
         if 'registration_enabled' in data:
             if type(data['registration_enabled']) is not bool:
                 return jsonify({
@@ -1984,6 +2007,38 @@ def create_app(
             from .audit_logger import log_security_event
             log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
                                feature='support_links_enabled', enabled=val)
+        if 'tailscale_ssh_restrict_tailnet_routes' in data:
+            from .app_settings import set_tailnet_route_restricted
+            val = set_tailnet_route_restricted(
+                data['tailscale_ssh_restrict_tailnet_routes']
+            )
+            log_info("Admin changed tailnet route restriction",
+                     admin=current_user.username,
+                     tailscale_ssh_restrict_tailnet_routes=val)
+            from .audit_logger import log_security_event
+            log_security_event(
+                'APPLICATION_FEATURE_CHANGED',
+                level=logging.INFO if val else logging.WARNING,
+                admin=current_user.username,
+                feature='tailscale_ssh_restrict_tailnet_routes', enabled=val,
+            )
+        if sign_in_values:
+            from .app_settings import sign_in_protection
+            previous = sign_in_protection()
+            stored = set_sign_in_protection(sign_in_values)
+            if stored is False:
+                return jsonify({'error': 'Sign-in protection was not saved'}), 500
+            from .audit_logger import log_security_event
+            for name in sign_in_values:
+                if previous[name] == stored[name]:
+                    continue
+                log_info("Admin changed sign-in protection setting",
+                         admin=current_user.username, setting=name,
+                         previous_value=previous[name], value=stored[name])
+                log_security_event('APPLICATION_FEATURE_CHANGED',
+                                   admin=current_user.username,
+                                   feature=name, previous_value=previous[name],
+                                   value=stored[name])
         from .app_settings import set_credentials_enabled, set_automation_enabled
         for feature, setter in (('credentials_enabled', set_credentials_enabled),
                                 ('automation_enabled', set_automation_enabled)):

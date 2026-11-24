@@ -227,6 +227,34 @@
                     </details>
                     {% endif %}
                 </div>
+                <form class="admin-settings-surface" id="signInProtection" novalidate>
+                    <div class="admin-settings-intro">
+                        <h3 data-i18n="admin.signInProtection">Sign-in protection</h3>
+                        <p class="admin-muted" data-i18n="admin.signInProtectionHint">Limits failed password attempts per username for local and LDAP sign-in. Changes apply immediately.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="signInUsernameLimit" data-i18n="admin.signInUsernameLimit">Attempts per username and source (per minute)</label>
+                        <input class="form-control" id="signInUsernameLimit" name="login_username_limit" type="number" inputmode="numeric" min="1" max="1000" step="1" required aria-describedby="signInUsernameLimitHint signInUsernameLimitError" disabled>
+                        <p class="admin-muted" id="signInUsernameLimitHint" data-i18n="admin.signInUsernameLimitHint">Lower values slow guessing from one address, but users who mistype their password reach the limit sooner.</p>
+                        <p class="admin-field-error hidden" id="signInUsernameLimitError" role="alert"></p>
+                    </div>
+                    <div class="form-group">
+                        <label for="signInUsernameGlobalLimit" data-i18n="admin.signInUsernameGlobalLimit">Attempts per username from all sources (per minute)</label>
+                        <input class="form-control" id="signInUsernameGlobalLimit" name="login_username_global_limit" type="number" inputmode="numeric" min="1" max="1000" step="1" required aria-describedby="signInUsernameGlobalLimitHint signInUsernameGlobalLimitError" disabled>
+                        <p class="admin-muted" id="signInUsernameGlobalLimitHint" data-i18n="admin.signInUsernameGlobalLimitHint">Slows guessing spread over many addresses; a sender at this ceiling also delays the real user's sign-in.</p>
+                        <p class="admin-field-error hidden" id="signInUsernameGlobalLimitError" role="alert"></p>
+                    </div>
+                    <div class="form-group">
+                        <label for="signInIpv6Prefix" data-i18n="admin.signInIpv6Prefix">IPv6 grouping prefix length</label>
+                        <input class="form-control" id="signInIpv6Prefix" name="ratelimit_ipv6_prefix" type="number" inputmode="numeric" min="48" max="128" step="1" required aria-describedby="signInIpv6PrefixHint signInIpv6PrefixError" disabled>
+                        <p class="admin-muted" id="signInIpv6PrefixHint" data-i18n="admin.signInIpv6PrefixHint">Clients in one IPv6 network of this size share all source rate limits. 128 limits each address on its own but lets one client rotate addresses.</p>
+                        <p class="admin-field-error hidden" id="signInIpv6PrefixError" role="alert"></p>
+                    </div>
+                    <div class="admin-toolbar">
+                        <button class="btn btn-primary" id="signInProtectionSave" type="submit" data-i18n="common.save" disabled>Save</button>
+                        <span class="admin-muted" id="signInProtectionStatus" role="status" aria-live="polite"></span>
+                    </div>
+                </form>
                 <div class="admin-settings-surface" id="githubAuthConfiguration">
                     <div class="admin-settings-intro">
                         <h3 data-i18n="admin.githubAuthentication">GitHub authentication</h3>
@@ -304,6 +332,10 @@
                     <div class="admin-settings-row">
                         <div><label for="settingSshGateway"><strong data-i18n="admin.sshGateway">Warpgate / SSH gateway</strong></label><p id="sshGatewaySettingHint" class="admin-muted" data-i18n="admin.sshGatewayHint">Allow interactive gateway connections using user:target for all users. Disabled by default. Disabling blocks new connections and unfinished gateway authentication; established sessions remain connected. Reload open workspaces after changing this setting.</p></div>
                         <label class="admin-switch"><input type="checkbox" id="settingSshGateway" aria-describedby="sshGatewaySettingHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
+                    </div>
+                    <div class="admin-settings-row">
+                        <div><label for="settingTailnetRestriction"><strong data-i18n="admin.tailnetRestriction">Restrict ordinary SSH to tailnet nodes</strong></label><p id="tailnetRestrictionSettingHint" class="admin-muted" data-i18n="admin.tailnetRestrictionHint">While Tailscale SSH is enabled, password and key connections to Tailscale node addresses are refused, so the shared node identity is reachable only through the Tailscale SSH allowlists. Disable only if users must reach plain OpenSSH servers over the tailnet and none of those hosts runs Tailscale SSH.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingTailnetRestriction" aria-describedby="tailnetRestrictionSettingHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
                     </div>
                     <div class="admin-settings-row">
                         <div><label for="settingHerdr"><strong data-i18n="admin.herdr">Herdr</strong></label><p id="herdrSettingHint" class="admin-muted" data-i18n="admin.herdrHint">Show the agents that Herdr reports on hosts whose saved connection has Herdr turned on, and offer Herdr as a terminal session mode. Applies to all users. Disabled by default. Disabling stops all Herdr queries, including from browser tabs that are already open; established sessions remain connected.</p></div>

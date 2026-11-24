@@ -79,8 +79,9 @@ def rate_limit_address(address):
     """Return the source bucket used to rate limit ``address``.
 
     An IPv6 client usually controls at least a whole /64 and can rotate
-    through it freely, so IPv6 addresses share one bucket per
-    ``RATELIMIT_IPV6_PREFIX`` (default /64). IPv4 and IPv4-mapped IPv6
+    through it freely, so IPv6 addresses share one bucket per network of
+    the prefix length set in the admin sign-in protection settings (default
+    /64). IPv4 and IPv4-mapped IPv6
     addresses keep one bucket per address. Values that are not an IP
     address are returned unchanged.
     """
@@ -92,7 +93,8 @@ def rate_limit_address(address):
     if parsed.version == 6:
         if parsed.ipv4_mapped is not None:
             return str(parsed.ipv4_mapped)
-        prefix = int(getattr(config, 'RATELIMIT_IPV6_PREFIX', 64))
+        from .app_settings import ratelimit_ipv6_prefix
+        prefix = ratelimit_ipv6_prefix()
         host_bits = 128 - prefix
         network = (int(parsed) >> host_bits) << host_bits
         return str(ipaddress.IPv6Network((network, prefix)))

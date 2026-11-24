@@ -76,11 +76,10 @@ def _tailnet_route_restricted(address):
     if node_address is None:
         return False
     interface = str(config.TAILSCALE_SSH_INTERFACE or '').strip()
-    if not (
-        config.TAILSCALE_SSH_ENABLED
-        and config.TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES
-        and interface
-    ):
+    if not (config.TAILSCALE_SSH_ENABLED and interface):
+        return False
+    from .app_settings import is_tailnet_route_restricted
+    if not is_tailnet_route_restricted():
         return False
     from . import tailscale_ssh
     route_interface = tailscale_ssh._route_interface_for_ip(node_address.compressed)

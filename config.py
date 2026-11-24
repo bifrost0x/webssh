@@ -717,15 +717,6 @@ TAILSCALE_SSH_ALLOWED_REMOTE_USERS = _csv_env('TAILSCALE_SSH_ALLOWED_REMOTE_USER
 TAILSCALE_SSH_INTERFACE = os.environ.get(
     'TAILSCALE_SSH_INTERFACE', 'tailscale0'
 ).strip()
-# While Tailscale SSH is enabled, ordinary password and key connections must
-# not reach tailnet node addresses: tailssh authorizes by node identity
-# and would accept any credential under the shared identity. Only the literal
-# value "false" lifts the restriction, for operators who reach plain OpenSSH
-# servers over the tailnet with their own credentials.
-TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES = (
-    os.environ.get('TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES', 'true').strip().lower()
-    != 'false'
-)
 
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
@@ -894,40 +885,8 @@ RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'true').lower() == 'true
 # in-memory fallback and retries Redis periodically.
 RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
 RATELIMIT_LOGIN_LIMIT = os.environ.get('RATELIMIT_LOGIN_LIMIT', '5 per minute')
-# Password attempts per submitted username from one source bucket (an IPv4
-# address or an IPv6 /64), and a much higher ceiling per username across all
-# sources that only slows distributed guessing. Sliding windows, not lockouts;
-# both apply whether or not the account exists.
-RATELIMIT_LOGIN_USERNAME_LIMIT = os.environ.get(
-    'RATELIMIT_LOGIN_USERNAME_LIMIT', '10 per minute'
-)
-RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT = os.environ.get(
-    'RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT', '100 per minute'
-)
-
-
-def _ipv6_rate_limit_prefix():
-    """Return the IPv6 prefix length that shares one source rate limit."""
-    raw_value = os.environ.get('RATELIMIT_IPV6_PREFIX', '').strip()
-    if not raw_value:
-        return 64
-    try:
-        value = int(raw_value)
-    except ValueError:
-        value = None
-    if value is None or not 48 <= value <= 128:
-        print(
-            f'WARNING: RATELIMIT_IPV6_PREFIX={raw_value!r} must be an integer '
-            'from 48 to 128; using 64.'
-        )
-        return 64
-    return value
-
-
-# A client usually controls a whole IPv6 /64 and can rotate through it, so
-# one /64 shares a source rate limit. 128 restores per-address limits, for
-# example when many users of one office share a SLAAC /64.
-RATELIMIT_IPV6_PREFIX = _ipv6_rate_limit_prefix()
+# The per-username login limits and the IPv6 grouping prefix are admin
+# settings (app/app_settings.py), not environment variables.
 RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')
 RATELIMIT_REAUTH = os.environ.get('RATELIMIT_REAUTH', '10 per minute')
 RATELIMIT_BACKUP_CREATE = os.environ.get(

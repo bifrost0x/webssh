@@ -35,16 +35,25 @@ def _password_login(client, username, *, ip=None):
     )
 
 
+def _set_username_limits(*, per_source=None, global_limit=None):
+    """Store the Admin sign-in protection limits in the test's settings file."""
+    from app import app_settings
+
+    values = {}
+    if per_source is not None:
+        values["login_username_limit"] = per_source
+    if global_limit is not None:
+        values["login_username_global_limit"] = global_limit
+    assert app_settings.set_sign_in_protection(values)
+
+
 @pytest.fixture
-def generous_request_limits(monkeypatch):
+def generous_request_limits(app, monkeypatch):
     """Keep the in-memory request limits out of the way of the backoff tests."""
     import config
 
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "1000 per minute")
-    monkeypatch.setattr(
-        config, "RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT", "1000 per minute",
-    )
+    _set_username_limits(per_source=1000, global_limit=1000)
     monkeypatch.setattr(config, "RATELIMIT_REAUTH", "1000 per minute")
 
 
@@ -576,7 +585,7 @@ def test_rotating_ipv6_addresses_in_one_64_share_the_login_limit(
     import config
 
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "5 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "1000 per minute")
+    _set_username_limits(per_source=1000)
 
     statuses = []
     for index in range(1, 8):
@@ -604,7 +613,7 @@ def test_distinct_ipv4_addresses_keep_separate_login_limits(
     import config
 
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "2 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "1000 per minute")
+    _set_username_limits(per_source=1000)
 
     def limited(address, username):
         response = client.post(
@@ -642,10 +651,8 @@ def test_username_limit_is_per_source_without_revealing_accounts(
 
     _create_user(app, "existing_target")
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "3 per minute")
-    monkeypatch.setattr(
-        config, "RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT", "1000 per minute",
-    )
+    _set_username_limits(per_source=3)
+    _set_username_limits(global_limit=1000)
 
     with caplog.at_level(logging.WARNING, logger="security_audit"):
         existing = _login_attempts(client, "existing_target", ["203.0.113.1"] * 4)
@@ -665,10 +672,8 @@ def test_one_source_cannot_lock_a_username_out_for_another_source(
 
     _create_user(app, "targeted_admin")
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "3 per minute")
-    monkeypatch.setattr(
-        config, "RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT", "1000 per minute",
-    )
+    _set_username_limits(per_source=3)
+    _set_username_limits(global_limit=1000)
     # Two attacking sources, one IPv4 and one IPv6 /64, exhaust their budgets.
     _login_attempts(client, "targeted_admin", ["198.51.100.7"] * 5)
     _login_attempts(
@@ -688,10 +693,8 @@ def test_global_username_ceiling_slows_distributed_guessing(
 
     _create_user(app, "spread_target")
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "10 per minute")
-    monkeypatch.setattr(
-        config, "RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT", "4 per minute",
-    )
+    _set_username_limits(per_source=10)
+    _set_username_limits(global_limit=4)
     sources = [f"192.0.2.{index}" for index in range(1, 7)]
 
     existing = _login_attempts(client, "spread_target", sources)
@@ -704,7 +707,7 @@ def test_username_limit_normalizes_case_and_whitespace(app, client, monkeypatch)
     import config
 
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "2 per minute")
+    _set_username_limits(per_source=2)
 
     results = []
     for name in ("Casey", "casey", " CASEY "):
@@ -723,7 +726,7 @@ def test_username_limit_does_not_block_other_usernames(app, client, monkeypatch)
 
     _create_user(app, "unaffected_user")
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "1 per minute")
+    _set_username_limits(per_source=1)
     client.post(
         "/login",
         data={"username": "noisy_name", "password": "wrong-password"},
@@ -749,7 +752,7 @@ def test_ldap_login_is_limited_per_username(app, client, monkeypatch):
 
     _enable_ldap_blueprint(app, monkeypatch, _Directory())
     monkeypatch.setattr(config, "LDAP_LOGIN_RATE_LIMIT", "1000 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "2 per minute")
+    _set_username_limits(per_source=2)
 
     statuses = [
         client.post(
@@ -1061,10 +1064,8 @@ def test_successful_logins_do_not_consume_the_username_budget(
 
     _create_user(app, "frequent_user")
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "2 per minute")
-    monkeypatch.setattr(
-        config, "RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT", "3 per minute",
-    )
+    _set_username_limits(per_source=2)
+    _set_username_limits(global_limit=3)
 
     for _attempt in range(5):
         assert _password_login(
@@ -1107,7 +1108,7 @@ def test_ldap_success_does_not_consume_the_username_budget(
     _enable_ldap_blueprint(app, monkeypatch, _FakeDirectory(identity))
     monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: None)
     monkeypatch.setattr(config, "LDAP_LOGIN_RATE_LIMIT", "1000 per minute")
-    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "1 per minute")
+    _set_username_limits(per_source=1)
 
     statuses = []
     for _attempt in range(3):
@@ -1160,33 +1161,43 @@ def test_release_returns_one_reservation(limiter_kind):
     (56, "2001:db8:1::/56"),
     (48, "2001:db8:1::/48"),
 ])
-def test_ipv6_prefix_is_configurable(monkeypatch, prefix, bucket):
-    import config
+def test_ipv6_prefix_is_configurable(tmp_path, monkeypatch, prefix, bucket):
+    from app import app_settings
     from app.auth import rate_limit_address
 
-    monkeypatch.setattr(config, "RATELIMIT_IPV6_PREFIX", prefix)
+    monkeypatch.setattr(app_settings, "_SETTINGS_FILE", tmp_path / "app_settings.json")
+    assert rate_limit_address("2001:db8:1:2:aaaa:bbbb:cccc:dddd") == "2001:db8:1:2::/64"
+
+    assert app_settings.set_sign_in_protection({"ratelimit_ipv6_prefix": prefix})
 
     assert rate_limit_address("2001:db8:1:2:aaaa:bbbb:cccc:dddd") == bucket
+    assert rate_limit_address("::ffff:192.0.2.9") == "192.0.2.9"
     assert rate_limit_address("192.0.2.9") == "192.0.2.9"
 
 
-@pytest.mark.parametrize(("raw", "expected", "warns"), [
-    ("", 64, False),
-    ("128", 128, False),
-    ("48", 48, False),
-    ("47", 64, True),
-    ("129", 64, True),
-    ("sixty-four", 64, True),
-])
-def test_ipv6_prefix_setting_falls_back_with_a_warning(
-    monkeypatch, capsys, raw, expected, warns,
+def test_ipv6_prefix_change_moves_the_login_limit_to_the_new_bucket(
+    app, client, monkeypatch,
 ):
     import config
+    from app import app_settings
 
-    monkeypatch.setenv("RATELIMIT_IPV6_PREFIX", raw)
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1 per minute")
+    _set_username_limits(per_source=1000)
 
-    assert config._ipv6_rate_limit_prefix() == expected
-    assert ("RATELIMIT_IPV6_PREFIX" in capsys.readouterr().out) is warns
+    def limited(address):
+        response = client.post(
+            "/login",
+            data={"username": "prefix-ghost", "password": "wrong-password"},
+            environ_base={"REMOTE_ADDR": address},
+        )
+        return "Too many login attempts" in response.get_data(as_text=True)
+
+    assert limited("2001:db8:77:1::1") is False
+    assert limited("2001:db8:77:1::2") is True
+    assert app_settings.set_sign_in_protection({"ratelimit_ipv6_prefix": 128})
+    # Per-address buckets apply to the next request without a restart.
+    assert limited("2001:db8:77:1::3") is False
+    assert limited("2001:db8:77:1::3") is True
 
 
 def test_discarded_pending_login_returns_to_the_password_form(

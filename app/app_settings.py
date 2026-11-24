@@ -5,6 +5,7 @@ at runtime without restarting (e.g. whether self-registration is open). Each
 value falls back to its config/env default when no override has been saved.
 """
 import secrets
+import threading
 
 import config
 
@@ -23,7 +24,29 @@ _BOOLEAN_SETTINGS = (
     'tmux_enabled',
     'tmux_default',
     'support_links_enabled',
+    'tailscale_ssh_restrict_tailnet_routes',
 )
+
+# Both username limits count failed password attempts per minute; the prefix
+# is the IPv6 network length that shares one source rate limit bucket.
+SIGN_IN_PROTECTION_DEFAULTS = {
+    'login_username_limit': 10,
+    'login_username_global_limit': 100,
+    'ratelimit_ipv6_prefix': 64,
+}
+SIGN_IN_PROTECTION_BOUNDS = {
+    'login_username_limit': (1, 1000),
+    'login_username_global_limit': (1, 1000),
+    'ratelimit_ipv6_prefix': (48, 128),
+}
+
+_cache_lock = threading.Lock()
+_cached_document = None
+
+
+def _valid_bounded_int(value, bounds):
+    low, high = bounds
+    return type(value) is int and low <= value <= high
 
 
 def _valid_settings(value):
@@ -44,6 +67,10 @@ def _valid_settings(value):
         and (
             'registration_enabled' not in value
             or type(value['registration_enabled']) is bool
+        )
+        and all(
+            name not in value or _valid_bounded_int(value[name], bounds)
+            for name, bounds in SIGN_IN_PROTECTION_BOUNDS.items()
         )
         and (
             'audit_backup_count' not in value
@@ -70,9 +97,109 @@ def _load():
 
 
 def _save(data):
+    global _cached_document
     _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     data['schema_version'] = CURRENT_STORAGE_VERSIONS['app_settings']
-    atomic_write_json(_SETTINGS_FILE, data)
+    try:
+        atomic_write_json(_SETTINGS_FILE, data)
+    finally:
+        with _cache_lock:
+            _cached_document = None
+
+
+def _file_signature(path):
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+
+
+def _load_cached():
+    """Return the stored settings for hot read paths.
+
+    Login requests, rate limit checks and SSH connects consult these values,
+    so the parsed document is reused while the file is unchanged. The stat
+    signature catches writes outside this process, such as the admin CLI or
+    a restore; writes in this process also drop the cache in ``_save``.
+    Callers must treat the returned mapping as read-only.
+    """
+    global _cached_document
+    path = _SETTINGS_FILE
+    signature = _file_signature(path)
+    cached = _cached_document
+    if cached is not None and cached[0] == path and cached[1] == signature:
+        return cached[2]
+    # A write between the stat and the load pairs an old signature with new
+    # data, which only costs one extra reload on the next call.
+    data = _load()
+    with _cache_lock:
+        _cached_document = (path, signature, data)
+    return data
+
+
+def sign_in_protection():
+    """Effective username limits (per minute) and IPv6 grouping prefix."""
+    data = _load_cached()
+    return {
+        name: data.get(name, default)
+        for name, default in SIGN_IN_PROTECTION_DEFAULTS.items()
+    }
+
+
+def login_username_rate_limits():
+    """Return the per-source and global username limits as limit strings."""
+    settings = sign_in_protection()
+    return (
+        f"{settings['login_username_limit']} per minute",
+        f"{settings['login_username_global_limit']} per minute",
+    )
+
+
+def ratelimit_ipv6_prefix():
+    return sign_in_protection()['ratelimit_ipv6_prefix']
+
+
+def invalid_sign_in_protection_field(values):
+    """Return the first field of ``values`` that is unknown or out of range."""
+    for name, value in values.items():
+        bounds = SIGN_IN_PROTECTION_BOUNDS.get(name)
+        if bounds is None or not _valid_bounded_int(value, bounds):
+            return name
+    return None
+
+
+def set_sign_in_protection(values):
+    """Persist any subset of the sign-in protection values in one write."""
+    if not isinstance(values, dict) or not values:
+        return False
+    if invalid_sign_in_protection_field(values) is not None:
+        return False
+    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
+        data = _load_with_lock_held()
+        data.update(values)
+        if not _valid_settings(data):
+            return False
+        _save(data)
+    return sign_in_protection()
+
+
+def is_tailnet_route_restricted():
+    """Ordinary SSH to tailnet node addresses stays blocked unless lifted."""
+    return _load_cached().get('tailscale_ssh_restrict_tailnet_routes') is not False
+
+
+def set_tailnet_route_restricted(value):
+    """Return the stored value, or None for a non-boolean."""
+    if type(value) is not bool:
+        return None
+    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
+        data = _load_with_lock_held()
+        data['tailscale_ssh_restrict_tailnet_routes'] = value
+        if not _valid_settings(data):
+            return None
+        _save(data)
+    return value
 
 
 def is_registration_enabled():

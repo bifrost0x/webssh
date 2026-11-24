@@ -65,6 +65,7 @@
             const error = new Error(msg);
             error.status = res.status;
             error.code = data && data.code;
+            error.setting = data && data.setting;
             throw error;
         }
         return data;
@@ -1331,6 +1332,99 @@
 
     let settingsReadGeneration = 0;
     const settingsWrites = new Set();
+    const SETTING_TOGGLES = [
+        ['settingCredentials', 'credentials_enabled'],
+        ['settingAutomation', 'automation_enabled'],
+        ['settingHerdr', 'herdr_enabled'],
+        ['settingSupportLinks', 'support_links_enabled'],
+        ['settingTailnetRestriction', 'tailscale_ssh_restrict_tailnet_routes'],
+    ];
+    const SIGN_IN_PROTECTION_FIELDS = [
+        ['signInUsernameLimit', 'login_username_limit'],
+        ['signInUsernameGlobalLimit', 'login_username_global_limit'],
+        ['signInIpv6Prefix', 'ratelimit_ipv6_prefix'],
+    ];
+
+    function setSignInFieldError(input, message) {
+        const error = document.getElementById(input.id + 'Error');
+        if (message) {
+            input.setAttribute('aria-invalid', 'true');
+        } else {
+            input.removeAttribute('aria-invalid');
+        }
+        if (error) {
+            error.textContent = message || '';
+            error.classList.toggle('hidden', !message);
+        }
+    }
+
+    function renderSignInProtection(data) {
+        const form = document.getElementById('signInProtection');
+        if (!form) { return; }
+        for (const [id, key] of SIGN_IN_PROTECTION_FIELDS) {
+            const input = document.getElementById(id);
+            if (!input) { continue; }
+            if (Number.isInteger(data[key])) { input.value = String(data[key]); }
+            input.disabled = false;
+            setSignInFieldError(input, '');
+        }
+        document.getElementById('signInProtectionSave').disabled = false;
+    }
+
+    function readSignInProtection() {
+        const values = {};
+        let firstInvalid = null;
+        for (const [id, key] of SIGN_IN_PROTECTION_FIELDS) {
+            const input = document.getElementById(id);
+            const min = Number(input.min);
+            const max = Number(input.max);
+            const raw = input.value.trim();
+            const value = Number(raw);
+            if (!/^\d+$/.test(raw) || value < min || value > max) {
+                setSignInFieldError(input, t('admin.signInValueRange', 'Enter a whole number from {min} to {max}.')
+                    .replace('{min}', String(min)).replace('{max}', String(max)));
+                firstInvalid = firstInvalid || input;
+                continue;
+            }
+            setSignInFieldError(input, '');
+            values[key] = value;
+        }
+        if (firstInvalid) {
+            firstInvalid.focus();
+            return null;
+        }
+        return values;
+    }
+
+    async function saveSignInProtection(event) {
+        event.preventDefault();
+        const status = document.getElementById('signInProtectionStatus');
+        const save = document.getElementById('signInProtectionSave');
+        status.textContent = '';
+        const values = readSignInProtection();
+        if (!values) { return; }
+        save.disabled = true;
+        settingsWrites.add('sign_in_protection');
+        settingsReadGeneration += 1;
+        try {
+            const data = await stepUpApi('settings.update', 'global', '/admin/api/settings', {
+                method: 'POST', body: values
+            });
+            renderSignInProtection(data);
+            status.textContent = t('admin.settingsSaved', 'Settings saved');
+            notify(t('admin.settingsSaved', 'Settings saved'), 'success');
+        } catch (error) {
+            const field = SIGN_IN_PROTECTION_FIELDS.find(([, key]) => key === error.setting);
+            if (field) {
+                setSignInFieldError(document.getElementById(field[0]), error.message);
+            }
+            status.textContent = error.message;
+            notify(error.message, 'error');
+        } finally {
+            settingsWrites.delete('sign_in_protection');
+            save.disabled = false;
+        }
+    }
 
     function renderRuntimeFeatures(policies) {
         const root = document.getElementById('runtimeFeatureSettings');
@@ -1401,12 +1495,15 @@
                 gateway.checked = data.ssh_gateway_enabled === true;
                 gateway.disabled = false;
             }
-            for (const [id, key] of [['settingCredentials', 'credentials_enabled'], ['settingAutomation', 'automation_enabled'], ['settingHerdr', 'herdr_enabled'], ['settingSupportLinks', 'support_links_enabled']]) {
+            for (const [id, key] of SETTING_TOGGLES) {
                 const input = document.getElementById(id);
                 if (input && !settingsWrites.has(key)) {
                     input.checked = data[key] === true;
                     input.disabled = input.dataset.deploymentLocked === 'true';
                 }
+            }
+            if (!settingsWrites.has('sign_in_protection')) {
+                renderSignInProtection(data);
             }
         } catch (e) {
             if (generation !== settingsReadGeneration) { return; }
@@ -1573,7 +1670,8 @@
                 target.disabled = false;
             }
         });
-        for (const [id, key] of [['settingCredentials', 'credentials_enabled'], ['settingAutomation', 'automation_enabled'], ['settingHerdr', 'herdr_enabled'], ['settingSupportLinks', 'support_links_enabled']]) {
+        document.getElementById('signInProtection')?.addEventListener('submit', saveSignInProtection);
+        for (const [id, key] of SETTING_TOGGLES) {
             document.getElementById(id)?.addEventListener('change', async (event) => {
                 const input = event.target;
                 const enabled = input.checked;
