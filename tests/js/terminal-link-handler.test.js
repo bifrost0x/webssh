@@ -82,8 +82,10 @@ test('the confirmation is translated and shows the normalized address verbatim',
 
 test('the address stands on its own line in the fallback and every locale', () => {
     withBrowser({}, ({ prompts }) => {
-        TerminalManager.activateTerminalLink(new Event('click'), 'https://host.example/path');
-        assert.ok(prompts[0].split('\n').includes('https://host.example/path'), prompts[0]);
+        const address = 'https://host.example/path';
+        TerminalManager.activateTerminalLink(new Event('click'), address);
+        // One whole line equals the address; nothing else shares that line.
+        assert.deepEqual(prompts[0].split('\n').filter(line => line === address), [address], prompts[0]);
     });
     const { LOCALES, localeTable } = require('./i18n-locales.js');
     const table = localeTable();

@@ -105,17 +105,3 @@ def test_image_recovery_directory_is_never_empty():
     assert "docker('volume', 'create'" in checker
     # The custom-identity profile recreates its container after provisioning.
     assert checker.count("docker('create', *create_args)") == 2
-
-
-@pytest.mark.parametrize('files', [
-    ['docker-compose.yml'],
-    ['docker-compose.yml', 'docker-compose.production.yml'],
-    ['docker-compose.yml', 'docker-compose.ldap.yml',
-     'docker-compose.production.yml'],
-])
-def test_default_compose_blocks_privilege_gain_without_further_restrictions(files):
-    service = compose(files)
-    assert service['security_opt'] == ['no-new-privileges:true']
-    # Capability and filesystem restrictions stay an explicit opt-in.
-    assert 'cap_drop' not in service
-    assert not service.get('read_only', False)

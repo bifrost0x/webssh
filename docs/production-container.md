@@ -18,10 +18,6 @@ does not change Compose settings. Use files from the same release or commit.
 
 ## Optional container restrictions
 
-The default `docker-compose.yml` already sets `no-new-privileges`; the image
-runs as an unprivileged user and needs no setuid binaries or file
-capabilities.
-
 Append `docker-compose.hardened.yml` after the production overlay to enable a
 read-only root filesystem, dropped Linux capabilities, `no-new-privileges`,
 bounded tmpfs mounts and explicit memory/task ceilings:
