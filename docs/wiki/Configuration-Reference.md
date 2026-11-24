@@ -29,7 +29,7 @@ Treat `SECRET_KEY` as long-lived installation state. Replacing it without the su
 | `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none. Saved passwords and automation still work behind a TLS proxy at `0`: a page the browser loaded over `https://` from the same host counts as HTTPS. Set it to trust forwarded client addresses |
 | `SESSION_COOKIE_SECURE` | Sends the session cookie only over HTTPS. Default `true` (`false` only with `DEBUG=true`); the homelab Compose file sets `false`. With `true`, browsers drop the cookie on plain `http://` addresses other than localhost and sign-in fails; the homelab profile warns at start while the value is not set explicitly |
 | `SESSION_TIMEOUT` | Idle SSH session timeout in seconds; positive integer, default `1800` |
-| `SESSION_COOKIE_NAME` / `REMEMBER_COOKIE_NAME` | Cookie names, default `session` and `remember_token`. Give each instance its own names when several run on one host name, so they do not overwrite each other's sign-ins; the two names must differ |
+| `SESSION_COOKIE_NAME` / `REMEMBER_COOKIE_NAME` | Cookie names, default `session` and `remember_token`. Give each instance its own names when several run on one host name, so they do not overwrite each other's sign-ins; the two names must differ. The known-device cookie follows the session name as `<SESSION_COOKIE_NAME>_device` |
 
 The production profile requires explicit HTTPS origins, secure cookies, and explicit trusted proxies. Wildcard origins are not a production configuration. See [Reverse Proxy and Subfolder Deployment](Reverse-Proxy-and-Subfolder-Deployment).
 
@@ -172,8 +172,11 @@ successful sign-in returns its reservation, so accounts that sign in often are
 not slowed. Both are time windows, not lockouts, and apply whether or not the
 account exists. A sender spread over enough sources to exceed the ceiling
 (twenty sources at the default `RATELIMIT_LOGIN_LIMIT`) can still keep one
-username throttled while it keeps sending; raise the ceiling if that matters
-more than slowing distributed guessing.
+username throttled while it keeps sending. Browsers that signed in to that
+username before carry a known-device cookie (`<SESSION_COOKIE_NAME>_device`,
+signed, HttpOnly, 90 days) and skip the all-sources ceiling, so the owner
+keeps access from known devices; new devices wait until the attack stops. See
+[Authentication Overview](Authentication-Overview).
 
 Key listings and the refresh after renaming, replacing, or deleting a key share
 `SSH_KEY_LIST_RATELIMIT` per user across browser connections. Admission is checked

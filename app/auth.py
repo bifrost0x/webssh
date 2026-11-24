@@ -9,6 +9,11 @@ from threading import Lock
 from flask_login import LoginManager
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
+from .login_devices import (
+    FAILURE_BUDGET,
+    FAILURE_WINDOW_SECONDS,
+    failure_budget_key,
+)
 from .models import db, User, SocketSession
 from .rate_limiter import create_rate_limiter
 
@@ -110,6 +115,7 @@ def check_rate_limit(ip_address, endpoint, limit_str):
 
 def reserve_login_username_attempt(
     username, source, endpoint, limit_str, global_limit_str,
+    *, device_nonce=None,
 ):
     """Reserve one password attempt for ``username``.
 
@@ -124,6 +130,11 @@ def reserve_login_username_attempt(
     guesses cannot overrun the limit, and only failed attempts keep their
     reservation: pass the reservation to
     :func:`release_login_username_attempt` after a successful login.
+
+    ``device_nonce`` comes from a valid known-device cookie for this name
+    (see :mod:`app.login_devices`). Such a request skips only the global
+    ceiling, while its failures spend the cookie's own small budget; once
+    that is used up the cookie is treated like no cookie.
 
     Buckets are keyed by the normalized name whether or not an account
     exists, so the answer does not reveal which accounts exist. The name is
@@ -141,6 +152,10 @@ def reserve_login_username_attempt(
     limit, window = parse_rate_limit(limit_str, default_limit=10)
     if not limiter.allow(source_key, limit, window):
         return True, ()
+    if device_nonce:
+        device_key = failure_budget_key(endpoint, device_nonce)
+        if limiter.allow(device_key, FAILURE_BUDGET, FAILURE_WINDOW_SECONDS):
+            return False, (source_key, device_key)
     global_limit, global_window = parse_rate_limit(
         global_limit_str, default_limit=100,
     )
