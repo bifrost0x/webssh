@@ -2001,8 +2001,19 @@ def create_app(
         try:
             results = update_admin_settings(changes)
         except SettingsUpdateError as exc:
+            # Fixed texts per code: the response never carries exception text.
+            messages = {
+                'global_limit_below_source_limit': (
+                    'login_username_global_limit must not be lower than '
+                    'login_username_limit'
+                ),
+                'unknown_setting': 'The request names an unknown setting',
+            }
+            setting = exc.setting if exc.setting in setting_names else None
             return jsonify({
-                'error': str(exc), 'code': exc.code, 'setting': exc.setting,
+                'error': messages.get(exc.code, 'Invalid settings'),
+                'code': exc.code if exc.code in messages else 'invalid_settings',
+                'setting': setting,
             }), 400
         except OSError as exc:
             log_error('Admin settings could not be saved', error=str(exc),
