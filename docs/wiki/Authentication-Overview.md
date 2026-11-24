@@ -33,16 +33,25 @@ sensitive action and target.
 - Forms use Flask-WTF CSRF protection.
 - Unknown-user password checks perform dummy bcrypt work.
 - Login and reauthentication paths are rate-limited. Source-address limits
-  count IPv6 clients per /64 and IPv4 (including IPv4-mapped IPv6) per
-  address. Password sign-in is also limited per submitted username across all
-  addresses; the limit is a time window, not a lockout, and applies whether or
-  not the account exists.
-- Rejected TOTP codes at sign-in and step-up are counted per account in the
-  database. After three consecutive rejections each further code waits
-  30 seconds, doubling up to 15 minutes; an accepted code resets the count.
-  From five consecutive rejections on, a rejected sign-in code discards the
-  pending login, so the password step has to be repeated. The account is
-  never locked, and Recovery Codes stay available.
+  count IPv6 clients per /64 (`RATELIMIT_IPV6_PREFIX`) and IPv4 (including
+  IPv4-mapped IPv6) per address. Failed password sign-ins are also limited
+  per submitted username and source, with a much higher ceiling per username
+  across all sources that only slows distributed guessing; successful
+  sign-ins do not count. These are time windows, not lockouts, and apply
+  whether or not the account exists; a sender using many sources can still
+  slow sign-in for one username while it keeps sending.
+- Rejected TOTP codes are counted per account in the database, separately for
+  sign-in and for step-up, so failures in one never delay the other. After
+  three consecutive rejections each further code waits 30 seconds, doubling up
+  to 15 minutes; an accepted code resets the count, and a count whose last
+  failure is older than 30 minutes starts again from zero. A Recovery Code or
+  passkey sign-in, a passkey step-up, enrolling or disabling TOTP, and an
+  administrator MFA reset clear both counts. From five
+  consecutive rejections on, a rejected sign-in code discards the pending
+  login, so the password step has to be repeated. The account is never
+  locked. Someone who holds the password can keep delaying new TOTP sign-ins;
+  Recovery Codes and passkeys stay available, and changing the password from
+  an existing session is not affected.
 - Unlinking an OIDC or GitHub identity signs out every session of the
   account and ends its live connections, like LDAP link and unlink. When the
   account owner unlinks their own identity, the acting browser stays signed in

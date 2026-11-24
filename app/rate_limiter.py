@@ -68,6 +68,14 @@ class BaseRateLimiter(ABC):
             True if the request is allowed, False if rate limited.
         """
 
+    def release(self, key: str) -> None:
+        """Return one previously allowed request to the bucket.
+
+        For limits that should count only failed attempts: the caller
+        reserves with :meth:`allow` before the check and releases the
+        reservation when the attempt succeeded. Best effort.
+        """
+
 
 class InMemoryRateLimiter(BaseRateLimiter):
     """In-memory sliding window rate limiter.
@@ -160,6 +168,14 @@ class InMemoryRateLimiter(BaseRateLimiter):
 
             return True
 
+    def release(self, key: str) -> None:
+        with self._lock:
+            queue = self.events.get(key)
+            if queue:
+                queue.pop()
+                if not queue:
+                    self._remove_bucket(key)
+
 
 class RedisRateLimiter(BaseRateLimiter):
     """Redis-backed sliding window rate limiter using sorted sets.
@@ -238,6 +254,26 @@ class RedisRateLimiter(BaseRateLimiter):
             with self._fallback_lock:
                 fallback = self._fallback
             return fallback.allow(key, limit, window_seconds)
+
+    def release(self, key: str) -> None:
+        with self._fallback_lock:
+            fallback = (
+                self._fallback
+                if (
+                    self._fallback is not None
+                    and time.monotonic() < self._fallback_until
+                )
+                else None
+            )
+        if fallback is not None:
+            fallback.release(key)
+            return
+        try:
+            # Members carry their timestamp as score; removing the newest one
+            # takes back the reservation made by the same request.
+            self.redis.zpopmax(f"ratelimit:{key}")
+        except Exception as e:
+            self._activate_fallback(e)
 
 
 def create_rate_limiter(storage_url: str = "memory://") -> BaseRateLimiter:

@@ -17,7 +17,8 @@ from .models import db
 # Imported for its side effect: registers the model before db.create_all().
 from .automation_schedule import AutomationSchedule  # noqa: F401
 from .auth import (init_auth, authenticate_user, register_user,
-                   check_login_username_rate_limit, check_rate_limit, check_reauth_rate_limit,
+                   check_rate_limit, check_reauth_rate_limit,
+                   release_login_username_attempt, reserve_login_username_attempt,
                    is_bootstrap_registration_available,
                    password_exceeds_bcrypt_limit)
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
@@ -1275,16 +1276,23 @@ def create_app(
 
             username = request.form.get('username')
             password = request.form.get('password')
-            if config.RATELIMIT_ENABLED and check_login_username_rate_limit(
-                username,
-                'login',
-                config.RATELIMIT_LOGIN_USERNAME_LIMIT,
-            ):
+            username_limited, username_reservation = (
+                reserve_login_username_attempt(
+                    username,
+                    client_ip,
+                    'login',
+                    config.RATELIMIT_LOGIN_USERNAME_LIMIT,
+                    config.RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT,
+                )
+                if config.RATELIMIT_ENABLED else (False, ())
+            )
+            if username_limited:
                 log_rate_limit_exceeded('login_username', client_ip, user=username)
                 flash('Too many login attempts. Please try again later.', 'error')
                 return render_template('login.html', auth_source='local')
             user, error = authenticate_user(username, password)
             if user:
+                release_login_username_attempt(username_reservation)
                 from .auth_assurance import (
                     AssuranceLevel,
                     available_mfa_methods,
@@ -1859,6 +1867,8 @@ def create_app(
         RecoveryCode.query.filter_by(user_id=target.id).delete()
         target.mfa_enabled = False
         target.auth_generation = int(target.auth_generation or 0) + 1
+        from .mfa_throttle import clear_all_uncommitted
+        clear_all_uncommitted(target)
         db.session.commit()
         user_lifecycle.revoke_user_access(target.id, socketio)
         log_warning(

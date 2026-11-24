@@ -42,6 +42,9 @@ def generous_request_limits(monkeypatch):
 
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "1000 per minute")
+    monkeypatch.setattr(
+        config, "RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT", "1000 per minute",
+    )
     monkeypatch.setattr(config, "RATELIMIT_REAUTH", "1000 per minute")
 
 
@@ -82,25 +85,33 @@ def _wrong_code(secret):
     )
 
 
-def _failure_state(app, user_id):
+_SCOPE_COLUMNS = {
+    "login": ("mfa_failed_attempts", "mfa_last_failed_at"),
+    "step_up": ("mfa_step_up_failed_attempts", "mfa_step_up_last_failed_at"),
+}
+
+
+def _failure_state(app, user_id, scope="login"):
     from app.models import User, db
 
+    count, failed_at = _SCOPE_COLUMNS[scope]
     with app.app_context():
         db.session.expire_all()
         user = db.session.get(User, user_id)
-        return int(user.mfa_failed_attempts), user.mfa_last_failed_at
+        return int(getattr(user, count)), getattr(user, failed_at)
 
 
-def _set_failure_state(app, user_id, failures, *, seconds_ago):
+def _set_failure_state(app, user_id, failures, *, seconds_ago, scope="login"):
     from app.models import User, db
 
+    count, failed_at = _SCOPE_COLUMNS[scope]
     with app.app_context():
         user = db.session.get(User, user_id)
-        user.mfa_failed_attempts = failures
-        user.mfa_last_failed_at = (
+        setattr(user, count, failures)
+        setattr(user, failed_at, (
             datetime.now(timezone.utc).replace(tzinfo=None)
             - timedelta(seconds=seconds_ago)
-        )
+        ))
         db.session.commit()
 
 
@@ -249,7 +260,7 @@ def test_pending_login_is_discarded_after_repeated_failures(
 
     user_id, secret = _enroll_totp(app, client, monkeypatch, "backoff_discard")
     wrong = _wrong_code(secret)
-    _set_failure_state(app, user_id, 4, seconds_ago=3600)
+    _set_failure_state(app, user_id, 4, seconds_ago=120)
     assert _password_login(client, "backoff_discard").status_code == 200
 
     with caplog.at_level(logging.WARNING, logger="security_audit"):
@@ -266,7 +277,7 @@ def test_pending_login_is_discarded_after_repeated_failures(
         for record in caplog.records
     )
 
-    _set_failure_state(app, user_id, 5, seconds_ago=3600)
+    _set_failure_state(app, user_id, 5, seconds_ago=300)
     retried = client.post(
         "/api/totp/auth/verify",
         json={"code": pyotp.TOTP(secret).at(time.time() + 30)},
@@ -279,7 +290,7 @@ def test_failures_below_the_discard_threshold_keep_the_pending_login(
     app, client, monkeypatch, generous_request_limits,
 ):
     user_id, secret = _enroll_totp(app, client, monkeypatch, "backoff_keep")
-    _set_failure_state(app, user_id, 3, seconds_ago=3600)
+    _set_failure_state(app, user_id, 3, seconds_ago=60)
     assert _password_login(client, "backoff_keep").status_code == 200
 
     rejected = client.post(
@@ -346,11 +357,11 @@ def test_admin_totp_step_up_backs_off_and_resets(
     assert throttled.get_json()["code"] == "rate_limited"
     assert throttled.get_json()["retry_after"] >= 1
 
-    _set_failure_state(app, user_id, 3, seconds_ago=31)
+    _set_failure_state(app, user_id, 3, seconds_ago=31, scope="step_up")
     accepted = attempt("123456")
     assert accepted.status_code == 200
     assert accepted.get_json()["grant"]
-    assert _failure_state(app, user_id)[0] == 0
+    assert _failure_state(app, user_id, "step_up")[0] == 0
 
 
 def test_account_totp_step_up_backs_off_and_resets(
@@ -397,30 +408,147 @@ def test_account_totp_step_up_backs_off_and_resets(
         throttled.get_json()["retry_after"]
     )
 
-    _set_failure_state(app, user_id, 3, seconds_ago=31)
+    _set_failure_state(app, user_id, 3, seconds_ago=31, scope="step_up")
     accepted = attempt("123456")
     assert accepted.status_code == 200
     assert accepted.get_json()["method"] == "totp"
-    assert _failure_state(app, user_id)[0] == 0
+    assert _failure_state(app, user_id, "step_up")[0] == 0
 
 
-def test_step_up_failures_count_toward_login_backoff(
+def test_step_up_failures_do_not_delay_a_fresh_login(
     app, client, monkeypatch, generous_request_limits,
 ):
-    """One counter per account: switching flows does not buy more guesses."""
+    """A stolen session guessing at step-up must not block the owner's sign-in."""
     import app.step_up_routes as step_up_routes
+    from app.models import TOTPAuthenticator, User, db
 
-    user_id = _create_user(app, "backoff_shared", is_admin=True)
-    assert _password_login(client, "backoff_shared").status_code == 302
+    user_id, secret = _enroll_totp(app, client, monkeypatch, "split_step_up")
+    with app.app_context():
+        db.session.get(User, user_id).is_admin = True
+        db.session.commit()
     monkeypatch.setattr(
         step_up_routes, "_factor_available", lambda name: name == "totp",
     )
     monkeypatch.setattr(step_up_routes, "verify_totp", lambda *_args: False)
-    for _attempt in range(3):
-        client.post("/api/step-up/totp", json={
+    stolen = client
+    assert _password_login(stolen, "split_step_up").status_code == 200
+    assert stolen.post("/api/totp/auth/verify", json={
+        "code": pyotp.TOTP(secret).at(time.time() + 30),
+    }).status_code == 200
+    statuses = [
+        stolen.post("/api/step-up/totp", json={
             "action": "settings.update", "target": "global", "code": "000000",
-        })
-    assert _failure_state(app, user_id)[0] == 3
+        }).status_code
+        for _attempt in range(5)
+    ]
+    assert statuses == [403, 403, 403, 429, 429]
+
+    stolen.post("/logout")
+    with app.app_context():
+        # Let the owner reuse the next time step in this test.
+        for row in TOTPAuthenticator.query.filter_by(user_id=user_id):
+            row.last_accepted_step = None
+        db.session.commit()
+    assert _password_login(client, "split_step_up").status_code == 200
+    accepted = client.post(
+        "/api/totp/auth/verify",
+        json={"code": pyotp.TOTP(secret).at(time.time() + 30)},
+    )
+
+    assert accepted.status_code == 200
+    assert _failure_state(app, user_id, "step_up")[0] == 3
+    assert _failure_state(app, user_id) == (0, None)
+
+
+def test_login_failures_do_not_delay_step_up_of_existing_sessions(
+    app, client, monkeypatch, generous_request_limits,
+):
+    """A password holder guessing at sign-in must not block the owner's step-up."""
+    import app.step_up_routes as step_up_routes
+
+    user_id = _create_user(app, "split_login", is_admin=True)
+    assert _password_login(client, "split_login").status_code == 302
+    _set_failure_state(app, user_id, 50, seconds_ago=0)
+    monkeypatch.setattr(
+        step_up_routes, "_factor_available", lambda name: name == "totp",
+    )
+    monkeypatch.setattr(
+        step_up_routes, "verify_totp", lambda _user_id, code: code == "123456",
+    )
+
+    rejected = client.post("/api/step-up/totp", json={
+        "action": "settings.update", "target": "global", "code": "000000",
+    })
+    accepted = client.post("/api/step-up/totp", json={
+        "action": "settings.update", "target": "global", "code": "123456",
+    })
+
+    assert rejected.status_code == 403
+    assert accepted.status_code == 200
+    assert _failure_state(app, user_id)[0] == 50
+    assert _failure_state(app, user_id, "step_up")[0] == 0
+
+
+def test_failure_count_decays_after_the_quiet_period(app):
+    """One wrong code every cap interval must not keep the account throttled."""
+    from app import mfa_throttle
+
+    user_id = _create_user(app, "decay_user")
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    with app.app_context():
+        for scope in (mfa_throttle.LOGIN, mfa_throttle.STEP_UP):
+            # An attacker who submits one wrong code just as each wait ends.
+            moment = start
+            for _attempt in range(12):
+                failures = mfa_throttle.claim_attempt(
+                    user_id, scope=scope, now=moment,
+                )
+                moment += timedelta(seconds=mfa_throttle.backoff_seconds(failures))
+            assert failures == 12
+            with pytest.raises(mfa_throttle.MFAAttemptThrottled):
+                mfa_throttle.claim_attempt(
+                    user_id, scope=scope,
+                    now=moment - timedelta(seconds=1),
+                )
+            quiet = moment - timedelta(
+                seconds=mfa_throttle.backoff_seconds(failures)
+            ) + timedelta(seconds=mfa_throttle.QUIET_PERIOD_SECONDS)
+            assert mfa_throttle.claim_attempt(
+                user_id, scope=scope, now=quiet,
+            ) == 1
+
+
+def test_decayed_claim_still_loses_a_concurrent_update(app, monkeypatch):
+    """The compare-and-set uses the stored count even after decay."""
+    from sqlalchemy import update
+    from app import mfa_throttle
+    from app.models import User, db
+
+    user_id = _create_user(app, "decay_race_user")
+    old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)
+    _set_failure_state(app, user_id, 9, seconds_ago=7200)
+    original_execute = db.session.execute
+    raced = []
+
+    def execute(statement, *args, **kwargs):
+        if getattr(statement, "is_update", False) and not raced:
+            raced.append(True)
+            with db.engine.begin() as connection:
+                connection.execute(
+                    update(User).where(User.id == user_id).values(
+                        mfa_failed_attempts=1,
+                        mfa_last_failed_at=old + timedelta(hours=2),
+                    )
+                )
+        return original_execute(statement, *args, **kwargs)
+
+    with app.app_context():
+        monkeypatch.setattr(db.session, "execute", execute)
+        failures = mfa_throttle.claim_attempt(user_id)
+        monkeypatch.undo()
+    # The concurrent claim's failure is kept instead of being overwritten.
+    assert failures == 2
+    assert _failure_state(app, user_id)[0] == 2
 
 
 # --- source address and username limits --------------------------------------
@@ -492,7 +620,22 @@ def test_distinct_ipv4_addresses_keep_separate_login_limits(
     assert limited("::ffff:198.51.100.1", "a3") is True
 
 
-def test_username_limit_applies_across_addresses_without_revealing_accounts(
+def _login_attempts(client, username, addresses, password="wrong-password"):
+    results = []
+    for address in addresses:
+        response = client.post(
+            "/login",
+            data={"username": username, "password": password},
+            environ_base={"REMOTE_ADDR": address},
+        )
+        results.append((
+            response.status_code,
+            "Too many login attempts" in response.get_data(as_text=True),
+        ))
+    return results
+
+
+def test_username_limit_is_per_source_without_revealing_accounts(
     app, client, monkeypatch, caplog,
 ):
     import config
@@ -500,30 +643,61 @@ def test_username_limit_applies_across_addresses_without_revealing_accounts(
     _create_user(app, "existing_target")
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "3 per minute")
-
-    def attempts(username):
-        bodies = []
-        for index in range(4):
-            response = client.post(
-                "/login",
-                data={"username": username, "password": "wrong-password"},
-                environ_base={"REMOTE_ADDR": f"203.0.113.{index + 1}"},
-            )
-            bodies.append((
-                response.status_code,
-                "Too many login attempts" in response.get_data(as_text=True),
-            ))
-        return bodies
+    monkeypatch.setattr(
+        config, "RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT", "1000 per minute",
+    )
 
     with caplog.at_level(logging.WARNING, logger="security_audit"):
-        existing = attempts("existing_target")
-    missing = attempts("missing_target")
+        existing = _login_attempts(client, "existing_target", ["203.0.113.1"] * 4)
+    missing = _login_attempts(client, "missing_target", ["203.0.113.1"] * 4)
 
     assert existing == missing == [(200, False)] * 3 + [(200, True)]
     assert any(
         "endpoint=login_username" in record.getMessage()
         for record in caplog.records
     )
+
+
+def test_one_source_cannot_lock_a_username_out_for_another_source(
+    app, client, monkeypatch,
+):
+    import config
+
+    _create_user(app, "targeted_admin")
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "3 per minute")
+    monkeypatch.setattr(
+        config, "RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT", "1000 per minute",
+    )
+    # Two attacking sources, one IPv4 and one IPv6 /64, exhaust their budgets.
+    _login_attempts(client, "targeted_admin", ["198.51.100.7"] * 5)
+    _login_attempts(
+        client, "targeted_admin",
+        [f"2001:db8:66:1::{index}" for index in range(1, 6)],
+    )
+
+    owner = _password_login(client, "targeted_admin", ip="203.0.113.44")
+
+    assert owner.status_code == 302
+
+
+def test_global_username_ceiling_slows_distributed_guessing(
+    app, client, monkeypatch,
+):
+    import config
+
+    _create_user(app, "spread_target")
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "10 per minute")
+    monkeypatch.setattr(
+        config, "RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT", "4 per minute",
+    )
+    sources = [f"192.0.2.{index}" for index in range(1, 7)]
+
+    existing = _login_attempts(client, "spread_target", sources)
+    missing = _login_attempts(client, "spread_missing", sources)
+
+    assert existing == missing == [(200, False)] * 4 + [(200, True)] * 2
 
 
 def test_username_limit_normalizes_case_and_whitespace(app, client, monkeypatch):
@@ -533,11 +707,11 @@ def test_username_limit_normalizes_case_and_whitespace(app, client, monkeypatch)
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "2 per minute")
 
     results = []
-    for index, name in enumerate(("Casey", "casey", " CASEY ")):
+    for name in ("Casey", "casey", " CASEY "):
         response = client.post(
             "/login",
             data={"username": name, "password": "wrong-password"},
-            environ_base={"REMOTE_ADDR": f"203.0.113.{index + 50}"},
+            environ_base={"REMOTE_ADDR": "203.0.113.50"},
         )
         results.append("Too many login attempts" in response.get_data(as_text=True))
 
@@ -581,9 +755,9 @@ def test_ldap_login_is_limited_per_username(app, client, monkeypatch):
         client.post(
             "/login/ldap",
             data={"username": "Directory_User", "password": "secret-value"},
-            environ_base={"REMOTE_ADDR": f"203.0.113.{index + 100}"},
+            environ_base={"REMOTE_ADDR": "203.0.113.100"},
         ).status_code
-        for index in range(3)
+        for _attempt in range(3)
     ]
 
     assert statuses[2] == 429
@@ -756,3 +930,277 @@ def test_github_unlink_revokes_other_sessions_and_keeps_this_browser(
         )
     assert _is_signed_out(other_browser)
     assert client.get("/api/account/github").status_code == 200
+
+
+# --- counter resets by other proofs of possession -----------------------------
+
+
+def _set_both_counters(app, user_id, failures=7):
+    _set_failure_state(app, user_id, failures, seconds_ago=0)
+    _set_failure_state(app, user_id, failures, seconds_ago=0, scope="step_up")
+
+
+def _both_counters(app, user_id):
+    return (
+        _failure_state(app, user_id)[0],
+        _failure_state(app, user_id, "step_up")[0],
+    )
+
+
+def test_recovery_code_login_clears_the_counters(
+    app, client, monkeypatch, generous_request_limits,
+):
+    from tests.test_recovery_service import _enable_recovery_mfa
+
+    user_id = _create_user(app, "reset_recovery")
+    code = _enable_recovery_mfa(app, user_id, count=1)[0]
+    _set_both_counters(app, user_id)
+    assert _password_login(client, "reset_recovery").status_code == 200
+
+    assert client.post(
+        "/api/auth/recovery", json={"code": code},
+    ).status_code == 200
+    assert _both_counters(app, user_id) == (0, 0)
+
+
+def test_passkey_step_up_clears_the_counters(
+    app, client, monkeypatch, generous_request_limits,
+):
+    import base64
+    from types import SimpleNamespace
+
+    import app.step_up_routes as step_up_routes
+    from app.models import User, WebAuthnCredential, db
+
+    user_id = _create_user(app, "reset_passkey", is_admin=True)
+    assert _password_login(client, "reset_passkey").status_code == 302
+    credential_id = b"reset-passkey-credential"
+    with app.app_context():
+        db.session.get(User, user_id).mfa_enabled = True
+        db.session.add(WebAuthnCredential(
+            user_id=user_id,
+            credential_id=credential_id,
+            public_key=b"public-key",
+            sign_count=0,
+            transports="[]",
+        ))
+        db.session.commit()
+    _set_both_counters(app, user_id)
+    monkeypatch.setattr(
+        step_up_routes, "_factor_available", lambda name: name == "passkey",
+    )
+    monkeypatch.setattr(
+        step_up_routes,
+        "verify_authentication_response",
+        lambda **_kwargs: SimpleNamespace(new_sign_count=1),
+    )
+
+    assert client.post("/api/step-up/passkey/options", json={
+        "action": "settings.update", "target": "global",
+    }).status_code == 200
+    verified = client.post("/api/step-up/passkey/verify", json={
+        "credential": {
+            "id": base64.urlsafe_b64encode(credential_id).decode().rstrip("="),
+        },
+    })
+
+    assert verified.status_code == 200
+    assert _both_counters(app, user_id) == (0, 0)
+
+
+def test_totp_enrollment_and_disable_clear_the_counters(app):
+    from app.models import User, db
+    from app.totp_service import (
+        activate_totp_enrollment,
+        begin_totp_enrollment,
+        disable_totp_mfa,
+    )
+
+    user_id = _create_user(app, "reset_enrollment")
+    _set_both_counters(app, user_id)
+    with app.app_context():
+        view = begin_totp_enrollment(user_id, "reset-binding")
+        activate_totp_enrollment(
+            view.token, pyotp.TOTP(view.secret).now(), "reset-binding",
+        )
+    assert _both_counters(app, user_id) == (0, 0)
+
+    _set_both_counters(app, user_id)
+    with app.app_context():
+        disable_totp_mfa(db.session.get(User, user_id))
+        db.session.commit()
+    assert _both_counters(app, user_id) == (0, 0)
+
+
+def test_admin_mfa_reset_clears_the_counters(app, client, monkeypatch):
+    import app.user_lifecycle as user_lifecycle
+
+    _create_user(app, "reset_admin", is_admin=True)
+    target_id = _create_user(app, "reset_target")
+    assert _password_login(client, "reset_admin").status_code == 302
+    monkeypatch.setattr(user_lifecycle, "revoke_user_access", lambda *_a, **_k: None)
+    _set_both_counters(app, target_id)
+
+    response = client.delete(
+        f"/admin/api/users/{target_id}/mfa",
+        json={"confirm_username": "reset_target"},
+        headers=password_step_up_headers(client, "user.mfa_reset", target_id)[0],
+    )
+
+    assert response.status_code == 200
+    assert _both_counters(app, target_id) == (0, 0)
+
+
+# --- username limit counts failures only --------------------------------------
+
+
+def test_successful_logins_do_not_consume_the_username_budget(
+    app, client, monkeypatch,
+):
+    import config
+
+    _create_user(app, "frequent_user")
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "2 per minute")
+    monkeypatch.setattr(
+        config, "RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT", "3 per minute",
+    )
+
+    for _attempt in range(5):
+        assert _password_login(
+            client, "frequent_user", ip="203.0.113.70",
+        ).status_code == 302
+        client.post("/logout")
+
+    failures = _login_attempts(client, "frequent_user", ["203.0.113.70"] * 3)
+    assert failures == [(200, False)] * 2 + [(200, True)]
+
+
+def test_ldap_success_does_not_consume_the_username_budget(
+    app, client, monkeypatch,
+):
+    import config
+    import app.ldap_session as ldap_session
+    from app.models import LDAPIdentity, db
+    from tests.test_ldap_auth import (
+        _DirectoryIdentity,
+        _FakeDirectory,
+        _enable_ldap_blueprint,
+    )
+
+    _create_user(app, "local_break_glass", is_admin=True)
+    user_id = _create_user(app, "ldap_frequent")
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="ldap-frequent-id",
+        distinguished_name="uid=ldap_frequent,dc=example,dc=com",
+    )
+    with app.app_context():
+        db.session.add(LDAPIdentity(
+            user_id=user_id,
+            provider=identity.provider,
+            subject=identity.subject,
+            directory_username="ldap_frequent",
+            distinguished_name=identity.distinguished_name,
+        ))
+        db.session.commit()
+    _enable_ldap_blueprint(app, monkeypatch, _FakeDirectory(identity))
+    monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: None)
+    monkeypatch.setattr(config, "LDAP_LOGIN_RATE_LIMIT", "1000 per minute")
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_USERNAME_LIMIT", "1 per minute")
+
+    statuses = []
+    for _attempt in range(3):
+        statuses.append(client.post(
+            "/login/ldap",
+            data={"username": "ldap_frequent", "password": "directory-secret"},
+            environ_base={"REMOTE_ADDR": "203.0.113.80"},
+        ).status_code)
+        client.post("/logout")
+
+    assert statuses == [302, 302, 302]
+
+
+@pytest.mark.parametrize("limiter_kind", ["memory", "redis"])
+def test_release_returns_one_reservation(limiter_kind):
+    from app.rate_limiter import InMemoryRateLimiter, RedisRateLimiter
+
+    if limiter_kind == "memory":
+        limiter = InMemoryRateLimiter()
+    else:
+        class _SortedSetRedis:
+            def __init__(self):
+                self.members = {}
+
+            def eval(self, _script, _numkeys, key, _start, now, limit, _ttl, member):
+                entries = self.members.setdefault(key, [])
+                if len(entries) >= int(limit):
+                    return 0
+                entries.append((float(now), member))
+                return 1
+
+            def zpopmax(self, key):
+                entries = self.members.get(key, [])
+                return [entries.pop()] if entries else []
+
+        limiter = RedisRateLimiter(_SortedSetRedis())
+
+    assert limiter.allow("bucket", 1, 60) is True
+    assert limiter.allow("bucket", 1, 60) is False
+    limiter.release("bucket")
+    assert limiter.allow("bucket", 1, 60) is True
+    limiter.release("missing")
+
+
+# --- configurable IPv6 prefix and restart UI ------------------------------------
+
+
+@pytest.mark.parametrize(("prefix", "bucket"), [
+    (128, "2001:db8:1:2:aaaa:bbbb:cccc:dddd/128"),
+    (56, "2001:db8:1::/56"),
+    (48, "2001:db8:1::/48"),
+])
+def test_ipv6_prefix_is_configurable(monkeypatch, prefix, bucket):
+    import config
+    from app.auth import rate_limit_address
+
+    monkeypatch.setattr(config, "RATELIMIT_IPV6_PREFIX", prefix)
+
+    assert rate_limit_address("2001:db8:1:2:aaaa:bbbb:cccc:dddd") == bucket
+    assert rate_limit_address("192.0.2.9") == "192.0.2.9"
+
+
+@pytest.mark.parametrize(("raw", "expected", "warns"), [
+    ("", 64, False),
+    ("128", 128, False),
+    ("48", 48, False),
+    ("47", 64, True),
+    ("129", 64, True),
+    ("sixty-four", 64, True),
+])
+def test_ipv6_prefix_setting_falls_back_with_a_warning(
+    monkeypatch, capsys, raw, expected, warns,
+):
+    import config
+
+    monkeypatch.setenv("RATELIMIT_IPV6_PREFIX", raw)
+
+    assert config._ipv6_rate_limit_prefix() == expected
+    assert ("RATELIMIT_IPV6_PREFIX" in capsys.readouterr().out) is warns
+
+
+def test_discarded_pending_login_returns_to_the_password_form(
+    app, client, monkeypatch, generous_request_limits,
+):
+    user_id, secret = _enroll_totp(app, client, monkeypatch, "restart_form")
+    _set_failure_state(app, user_id, 4, seconds_ago=120)
+    assert _password_login(client, "restart_form").status_code == 200
+
+    discarded = client.post(
+        "/api/totp/auth/verify", json={"code": _wrong_code(secret)},
+    )
+    page = client.get("/login").get_data(as_text=True)
+
+    assert discarded.get_json()["code"] == "mfa_restart"
+    assert 'data-i18n="auth.mfaRestart"' in page
+    assert 'id="totpMfaPanel"' not in page

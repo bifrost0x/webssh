@@ -8,6 +8,7 @@ from flask import Blueprint, abort, jsonify, request, session
 from flask_login import current_user, login_required
 from werkzeug.exceptions import RequestEntityTooLarge
 
+from . import mfa_throttle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_rate_limit, check_reauth_rate_limit
 from .auth_assurance import (
@@ -135,7 +136,8 @@ def complete_pending_with_recovery():
     ):
         log_rate_limit_exceeded("recovery_mfa_account", client_ip)
         return jsonify({"error": "Too many authentication attempts"}), 429
-    user = db.session.get(User, pending.user_id)
+    pending_user_id = pending.user_id
+    user = db.session.get(User, pending_user_id)
     if user is None or user.is_locked or not user.mfa_enabled:
         return jsonify({"error": "Recovery authentication failed"}), 401
     if not consume_code(user.id, data.get("code", "")):
@@ -157,6 +159,7 @@ def complete_pending_with_recovery():
     except (PendingAuthenticationError, AuthenticationFinalizationError):
         db.session.rollback()
         return jsonify({"error": "Recovery authentication failed"}), 401
+    mfa_throttle.reset_all(pending_user_id)
     log_security_event(
         "RECOVERY_RESTRICTED_SESSION_STARTED",
         user=user.username,

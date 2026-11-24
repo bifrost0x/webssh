@@ -313,6 +313,7 @@ def main():
             'RATELIMIT_LOGIN_LIMIT': '100 per minute',
             # Browser cases sign in to the same seeded accounts repeatedly.
             'RATELIMIT_LOGIN_USERNAME_LIMIT': '100 per minute',
+            'RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT': '1000 per minute',
             # Independent browser cases reauthenticate the same seeded admin.
             'RATELIMIT_REAUTH': '100 per minute',
             # Browser cases share seeded accounts and open them in bursts.

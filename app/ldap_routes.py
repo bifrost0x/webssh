@@ -18,9 +18,10 @@ import config
 from . import socketio, user_lifecycle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
-    check_login_username_rate_limit,
     check_rate_limit,
     password_exceeds_bcrypt_limit,
+    release_login_username_attempt,
+    reserve_login_username_attempt,
     user_creation_transaction,
 )
 from .auth_assurance import (
@@ -184,11 +185,17 @@ def ldap_login():
     username = presented_username.strip()
     password = request.form.get('password') or ''
     client_ip = request.remote_addr or 'unknown'
-    if config.RATELIMIT_ENABLED and check_login_username_rate_limit(
-        username,
-        'ldap_login',
-        config.RATELIMIT_LOGIN_USERNAME_LIMIT,
-    ):
+    username_limited, username_reservation = (
+        reserve_login_username_attempt(
+            username,
+            client_ip,
+            'ldap_login',
+            config.RATELIMIT_LOGIN_USERNAME_LIMIT,
+            config.RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT,
+        )
+        if config.RATELIMIT_ENABLED else (False, ())
+    )
+    if username_limited:
         log_rate_limit_exceeded('ldap_login_username', client_ip, user=username)
         return render_template('login.html', auth_source='ldap'), 429
     try:
@@ -235,6 +242,8 @@ def ldap_login():
             auth_source='ldap',
         ), 401
     except LDAPUnavailable as exc:
+        # No verdict on the credentials, so the attempt does not count.
+        release_login_username_attempt(username_reservation)
         log_security_event(
             'LDAP_LOGIN_UNAVAILABLE',
             level=logging.ERROR,
@@ -248,6 +257,7 @@ def ldap_login():
             auth_source='ldap',
         ), 503
 
+    release_login_username_attempt(username_reservation)
     user = mapping.user
     verified_at = int(time.time())
     mapping.directory_username = username

@@ -183,7 +183,9 @@ def totp_step_up():
         log_rate_limit_exceeded("admin_step_up_totp", client_ip)
         return _failure(429)
     try:
-        failures = mfa_throttle.claim_attempt(current_user.id)
+        failures = mfa_throttle.claim_attempt(
+            current_user.id, scope=mfa_throttle.STEP_UP,
+        )
     except mfa_throttle.MFAAttemptThrottled as exc:
         log_security_event(
             "MFA_ATTEMPT_THROTTLED",
@@ -205,7 +207,7 @@ def totp_step_up():
             ip=client_ip,
         )
         return _failure()
-    mfa_throttle.record_success(current_user.id)
+    mfa_throttle.record_success(current_user.id, scope=mfa_throttle.STEP_UP)
     try:
         grant = create_step_up_grant(
             current_authentication_session(),
@@ -309,6 +311,7 @@ def passkey_step_up_verify():
                 raise ChallengeError("authenticator counter did not advance")
             row.sign_count = max(row.sign_count, new_sign_count)
             row.last_used_at = datetime.now(timezone.utc)
+            mfa_throttle.clear_all_uncommitted(db.session.get(User, row.user_id))
             db.session.commit()
         grant = create_step_up_grant_for_hash(
             current_authentication_session(),

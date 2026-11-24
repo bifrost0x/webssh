@@ -413,6 +413,12 @@
                     body: JSON.stringify({ code })
                 });
                 const data = await response.json().catch(() => ({}));
+                if (!response.ok && data.code === 'mfa_restart') {
+                    // The pending login is gone; the server queued the
+                    // translated notice for the password form.
+                    window.location.assign(root + '/login');
+                    return;
+                }
                 if (!response.ok) {
                     const described = window.WebSSHSecurityUI
                         ?.describeAuthenticationError?.(data, t);

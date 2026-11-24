@@ -32,8 +32,9 @@ class User(db.Model, UserMixin):
         default=1,
         server_default='1',
     )
-    # Consecutive rejected one-time codes across login and step-up. Kept in
-    # the database so the backoff survives restarts and multiple workers.
+    # Consecutive rejected one-time codes, kept in the database so the backoff
+    # survives restarts. Sign-in and step-up are counted separately so that
+    # failures in one flow never delay the other.
     mfa_failed_attempts = db.Column(
         db.Integer,
         nullable=False,
@@ -41,6 +42,13 @@ class User(db.Model, UserMixin):
         server_default='0',
     )
     mfa_last_failed_at = db.Column(db.DateTime)
+    mfa_step_up_failed_attempts = db.Column(
+        db.Integer,
+        nullable=False,
+        default=0,
+        server_default='0',
+    )
+    mfa_step_up_last_failed_at = db.Column(db.DateTime)
 
     socket_sessions = db.relationship('SocketSession', backref='user', cascade='all, delete-orphan', lazy='dynamic')
     ssh_sessions = db.relationship('SSHSession', backref='user', cascade='all, delete-orphan', lazy='dynamic')
@@ -183,6 +191,15 @@ def ensure_user_columns():
     if 'mfa_last_failed_at' not in existing:
         additions.append(
             "ALTER TABLE users ADD COLUMN mfa_last_failed_at DATETIME"
+        )
+    if 'mfa_step_up_failed_attempts' not in existing:
+        additions.append(
+            "ALTER TABLE users ADD COLUMN mfa_step_up_failed_attempts "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
+    if 'mfa_step_up_last_failed_at' not in existing:
+        additions.append(
+            "ALTER TABLE users ADD COLUMN mfa_step_up_last_failed_at DATETIME"
         )
     for stmt in additions:
         db.session.execute(text(stmt))

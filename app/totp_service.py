@@ -12,6 +12,7 @@ import qrcode
 from qrcode.image.svg import SvgPathImage
 
 from .mfa_crypto import decrypt_totp_secret, encrypt_totp_secret
+from .mfa_throttle import clear_all_uncommitted
 from .models import (
     TOTPAuthenticator,
     TOTPEnrollment,
@@ -37,6 +38,7 @@ def disable_totp_mfa(user):
         user_id=user.id,
     ).delete(synchronize_session=False)
     user.mfa_enabled = False
+    clear_all_uncommitted(user)
 
 
 @dataclass(frozen=True)
@@ -181,6 +183,7 @@ def activate_totp_enrollment(token, code, session_binding, *, now=None, label=No
             else []
         )
         user.mfa_enabled = True
+        clear_all_uncommitted(user)
         try:
             db.session.commit()
         except Exception:

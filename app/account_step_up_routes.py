@@ -459,7 +459,7 @@ def totp_step_up():
     user_id = user.id
     action = intent.action
     try:
-        failures = mfa_throttle.claim_attempt(user_id)
+        failures = mfa_throttle.claim_attempt(user_id, scope=mfa_throttle.STEP_UP)
     except mfa_throttle.MFAAttemptThrottled as exc:
         log_security_event(
             "MFA_ATTEMPT_THROTTLED",
@@ -481,7 +481,7 @@ def totp_step_up():
             failures=failures,
         )
         return _error("step_up_failed", 403)
-    mfa_throttle.record_success(user_id)
+    mfa_throttle.record_success(user_id, scope=mfa_throttle.STEP_UP)
     try:
         return _complete_intent(
             token, auth_session, AssuranceLevel.MFA.value, "totp"
@@ -571,6 +571,7 @@ def passkey_step_up_verify():
                 raise ChallengeError("authenticator counter did not advance")
             row.sign_count = max(row.sign_count, new_sign_count)
             row.last_used_at = datetime.now(timezone.utc)
+            mfa_throttle.clear_all_uncommitted(db.session.get(User, row.user_id))
             db.session.commit()
         return _complete_intent(
             token,

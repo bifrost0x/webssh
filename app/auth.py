@@ -79,9 +79,10 @@ def rate_limit_address(address):
     """Return the source bucket used to rate limit ``address``.
 
     An IPv6 client usually controls at least a whole /64 and can rotate
-    through it freely, so IPv6 addresses share one bucket per /64. IPv4 and
-    IPv4-mapped IPv6 addresses keep one bucket per address. Values that are
-    not an IP address are returned unchanged.
+    through it freely, so IPv6 addresses share one bucket per
+    ``RATELIMIT_IPV6_PREFIX`` (default /64). IPv4 and IPv4-mapped IPv6
+    addresses keep one bucket per address. Values that are not an IP
+    address are returned unchanged.
     """
     value = str(address if address is not None else 'unknown')
     try:
@@ -91,7 +92,10 @@ def rate_limit_address(address):
     if parsed.version == 6:
         if parsed.ipv4_mapped is not None:
             return str(parsed.ipv4_mapped)
-        return str(ipaddress.IPv6Network(((int(parsed) >> 64) << 64, 64)))
+        prefix = int(getattr(config, 'RATELIMIT_IPV6_PREFIX', 64))
+        host_bits = 128 - prefix
+        network = (int(parsed) >> host_bits) << host_bits
+        return str(ipaddress.IPv6Network((network, prefix)))
     return str(parsed)
 
 
@@ -102,23 +106,53 @@ def check_rate_limit(ip_address, endpoint, limit_str):
     return not _get_rate_limiter().allow(key, limit, window)
 
 
-def check_login_username_rate_limit(username, endpoint, limit_str):
-    """Return True when password attempts for ``username`` are throttled.
+def reserve_login_username_attempt(
+    username, source, endpoint, limit_str, global_limit_str,
+):
+    """Reserve one password attempt for ``username``.
 
-    The bucket is keyed by the normalized submitted name whether or not an
-    account exists, so the answer does not reveal which accounts exist. It is
-    a sliding window, not a lockout. The name is hashed to bound the key size.
+    Returns ``(limited, reservation)``. ``limit_str`` applies per submitted
+    name and source bucket, so one source cannot spend another source's
+    attempts on the same name. ``global_limit_str`` is a much higher ceiling
+    per name across all sources that only slows distributed guessing; it is
+    not a lockout, but a sender spread over enough sources can still hold a
+    name at it while it keeps sending.
+
+    The attempt is reserved before the password is checked, so concurrent
+    guesses cannot overrun the limit, and only failed attempts keep their
+    reservation: pass the reservation to
+    :func:`release_login_username_attempt` after a successful login.
+
+    Buckets are keyed by the normalized name whether or not an account
+    exists, so the answer does not reveal which accounts exist. The name is
+    hashed to bound the key size.
     """
     normalized = str(username or '').strip().casefold()
     if not normalized:
-        return False
-    limit, window = parse_rate_limit(limit_str, default_limit=10)
+        return False, ()
     digest = hashlib.sha256(
         normalized.encode('utf-8', 'surrogatepass')
     ).hexdigest()
-    return not _get_rate_limiter().allow(
-        f'{endpoint}:username:{digest}', limit, window,
+    limiter = _get_rate_limiter()
+    source_key = f'{endpoint}:username:{digest}:{rate_limit_address(source)}'
+    global_key = f'{endpoint}:username:{digest}'
+    limit, window = parse_rate_limit(limit_str, default_limit=10)
+    if not limiter.allow(source_key, limit, window):
+        return True, ()
+    global_limit, global_window = parse_rate_limit(
+        global_limit_str, default_limit=100,
     )
+    if not limiter.allow(global_key, global_limit, global_window):
+        limiter.release(source_key)
+        return True, ()
+    return False, (source_key, global_key)
+
+
+def release_login_username_attempt(reservation):
+    """Return a reservation after the password was accepted."""
+    limiter = _get_rate_limiter()
+    for key in reservation or ():
+        limiter.release(key)
 
 def check_socket_rate_limit(user_id, endpoint, limit_str):
     """Return True if a per-user socket action should be blocked.
