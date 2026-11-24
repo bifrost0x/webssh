@@ -2095,7 +2095,6 @@ window.i18n.registerLocales({
         'fm.transferComplete': '传输完成',
         'fm.transferFailed': '传输失败',
         'fm.confirmDelete': '确定要删除',
-        'fm.enterNewName': '请输入新名称：',
         'fm.fileExists': '文件已存在',
         'fm.conflictMessage': '选择如何处理现有目标。',
         'fm.overwrite': '覆盖',
@@ -2770,6 +2769,11 @@ window.i18n.registerLocales({
         "auth.retryAfterSeconds": "尝试次数过多。请在 {seconds} 秒后重试。",
         "auth.retryAfterMinutes": "尝试次数过多。请在 {minutes} 分钟后重试。",
         "auth.mfaRestart": "无效验证码过多。请重新登录。",
-        "automation.result.tailscale_route_restricted": "此主机是 Tailscale 节点，只能通过 Tailscale SSH 访问。自动化运行使用普通 SSH，无法访问此主机。"
+        "automation.result.tailscale_route_restricted": "此主机是 Tailscale 节点，只能通过 Tailscale SSH 访问。自动化运行使用普通 SSH，无法访问此主机。",
+        "fm.newName": "新名称",
+        "fm.renameHint": "在此目录中重命名该项目。请输入名称，而不是路径。",
+        "fm.cancelTransfer": "取消传输",
+        "terminal.openLinkConfirm": "要打开 {url} 吗？\n\n警告：此链接可能存在危险",
+        "common.dismissNotification": "关闭通知"
     }
 });

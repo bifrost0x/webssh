@@ -2107,7 +2107,6 @@ window.i18n.registerLocales({
         'fm.transferComplete': 'Transfert terminé',
         'fm.transferFailed': 'Échec du transfert',
         'fm.confirmDelete': 'Voulez-vous vraiment supprimer',
-        'fm.enterNewName': 'Entrez le nouveau nom:',
         'fm.fileExists': 'Le fichier existe déjà',
         'fm.conflictMessage': 'Choisissez l’action à effectuer pour la destination existante.',
         'fm.overwrite': 'Écraser',
@@ -2771,6 +2770,11 @@ window.i18n.registerLocales({
         "auth.retryAfterSeconds": "Trop de tentatives. Réessayez dans {seconds} s.",
         "auth.retryAfterMinutes": "Trop de tentatives. Réessayez dans {minutes} min.",
         "auth.mfaRestart": "Trop de codes invalides. Reconnectez-vous.",
-        "automation.result.tailscale_route_restricted": "Cet hôte est un nœud Tailscale et n’est joignable qu’avec Tailscale SSH. Les exécutions d’automatisation utilisent le SSH ordinaire et ne peuvent pas l’atteindre."
+        "automation.result.tailscale_route_restricted": "Cet hôte est un nœud Tailscale et n’est joignable qu’avec Tailscale SSH. Les exécutions d’automatisation utilisent le SSH ordinaire et ne peuvent pas l’atteindre.",
+        "fm.newName": "Nouveau nom",
+        "fm.renameHint": "Renomme l’élément dans ce dossier. Saisissez un nom, pas un chemin.",
+        "fm.cancelTransfer": "Annuler le transfert",
+        "terminal.openLinkConfirm": "Voulez-vous ouvrir {url} ?\n\nAVERTISSEMENT : ce lien pourrait être dangereux",
+        "common.dismissNotification": "Fermer la notification"
     }
 });

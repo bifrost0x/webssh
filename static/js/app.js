@@ -84,12 +84,15 @@
         }
     });
 
+    // The one HTML escaper of the workspace. Quotes are escaped too, so the
+    // result is also safe inside quoted attribute values.
     window.escapeHtml = function(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        // Quotes too, so the result is also safe inside attribute values.
-        return div.innerHTML.replaceAll('"', '&quot;').replaceAll('\'', '&#39;');
+        return String(text ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll('\'', '&#39;');
     };
 
     window.showNotification = function(message, type = 'info', duration) {
@@ -153,12 +156,65 @@
             action.textContent = presentation.action.label;
             notification.appendChild(action);
         }
+        const urgent = notificationType === 'error' || notificationType === 'warning';
+        if (urgent || presentation.persistent === true) {
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'notification-close';
+            close.setAttribute(
+                'aria-label',
+                (() => {
+                    const label = window.i18n?.t('common.dismissNotification');
+                    return label && label !== 'common.dismissNotification' ? label : 'Dismiss notification';
+                })(),
+            );
+            const icon = document.createElement('span');
+            icon.className = 'material-icons';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = 'close';
+            close.appendChild(icon);
+            close.addEventListener('click', dismiss);
+            notification.classList.add('notification-dismissible');
+            notification.appendChild(close);
+        }
         container.appendChild(notification);
 
         if (presentation.persistent !== true) {
-            const timeout = presentation.duration
-                || (notificationType === 'success' || notificationType === 'info' ? 2000 : 3000);
-            fadeTimer = setTimeout(dismiss, timeout);
+            // Errors and warnings stay long enough to be read. Every timed
+            // toast waits while the pointer or keyboard focus is on it.
+            let remaining = presentation.duration || (urgent ? 8000 : 2000);
+            let startedAt = 0;
+            let hovered = false;
+            let focused = false;
+            const start = () => {
+                if (dismissed || hovered || focused || fadeTimer !== null) return;
+                startedAt = Date.now();
+                fadeTimer = setTimeout(dismiss, remaining);
+            };
+            const pause = () => {
+                if (dismissed || fadeTimer === null) return;
+                clearTimeout(fadeTimer);
+                fadeTimer = null;
+                remaining = Math.max(1000, remaining - (Date.now() - startedAt));
+            };
+            notification.addEventListener('mouseenter', () => {
+                hovered = true;
+                pause();
+            });
+            notification.addEventListener('mouseleave', () => {
+                hovered = false;
+                start();
+            });
+            notification.addEventListener('focusin', () => {
+                focused = true;
+                pause();
+            });
+            notification.addEventListener('focusout', event => {
+                if (notification.contains(event.relatedTarget)) return;
+                focused = false;
+                start();
+            });
+            start();
         }
         return dismiss;
     };
@@ -226,8 +282,35 @@
 
     window.ModalManager = {
         activeModal: null,
+        // Modals opened on top of another one; closing the top one hands the
+        // focus trap back to the dialog underneath.
+        openStack: [],
         previouslyFocused: new WeakMap(),
         focusableSelector: 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+
+        focusableElements(modal) {
+            // Only hiding inside the dialog counts: some dialogs are shown again
+            // without open(), so the root can keep a stale aria-hidden.
+            const hiddenWithin = element => {
+                const hidden = element.closest('[hidden], [inert], [aria-hidden="true"]');
+                return Boolean(hidden && hidden !== modal && modal.contains(hidden));
+            };
+            return Array.from(modal.querySelectorAll(this.focusableSelector)).filter(element => (
+                !element.matches(':disabled')
+                && element.getAttribute('tabindex') !== '-1'
+                && !hiddenWithin(element)
+                && element.getClientRects().length > 0
+                && getComputedStyle(element).visibility !== 'hidden'
+            ));
+        },
+
+        isTrappable(modal) {
+            return Boolean(
+                modal?.isConnected
+                && modal.classList.contains('show')
+                && !modal.classList.contains('primary-workspace-view')
+            );
+        },
 
         open(modal) {
             if (!modal) return;
@@ -236,9 +319,14 @@
             }
             modal.classList.add('show');
             modal.setAttribute('aria-hidden', 'false');
+            if (this.activeModal && this.activeModal !== modal && !this.openStack.includes(this.activeModal)) {
+                this.openStack.push(this.activeModal);
+            }
+            this.openStack = this.openStack.filter(entry => entry !== modal);
+            this.openStack.push(modal);
             this.activeModal = modal;
 
-            const focusable = modal.querySelectorAll(this.focusableSelector);
+            const focusable = this.focusableElements(modal);
             if (focusable.length > 0) {
                 focusable[0].focus();
             }
@@ -248,8 +336,9 @@
             if (!modal) return;
             modal.classList.remove('show');
             modal.setAttribute('aria-hidden', 'true');
+            this.openStack = this.openStack.filter(entry => entry !== modal && this.isTrappable(entry));
             if (this.activeModal === modal) {
-                this.activeModal = null;
+                this.activeModal = this.openStack[this.openStack.length - 1] || null;
             }
             const previouslyFocused = this.previouslyFocused.get(modal);
             if (previouslyFocused?.isConnected) {
@@ -259,19 +348,33 @@
         },
 
         trapFocus(event) {
-            if (!this.activeModal || event.key !== 'Tab') {
+            if (
+                !this.activeModal
+                || event.key !== 'Tab'
+                || event.defaultPrevented
+                || event.ctrlKey
+                || event.altKey
+                || event.metaKey
+                || !this.isTrappable(this.activeModal)
+            ) {
                 return;
             }
-            const focusable = Array.from(this.activeModal.querySelectorAll(this.focusableSelector));
+            const modal = this.activeModal;
+            const focusable = this.focusableElements(modal);
             if (focusable.length === 0) {
+                event.preventDefault();
                 return;
             }
             const first = focusable[0];
             const last = focusable[focusable.length - 1];
-            if (event.shiftKey && document.activeElement === first) {
+            const active = document.activeElement;
+            // Focus left on the page body re-enters the dialog. Terminals and
+            // native dialogs outside it handle their own keyboard focus.
+            const outside = !modal.contains(active) && !active?.closest?.('dialog[open], .xterm');
+            if (event.shiftKey && (active === first || outside)) {
                 event.preventDefault();
                 last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
+            } else if (!event.shiftKey && (active === last || outside)) {
                 event.preventDefault();
                 first.focus();
             }
@@ -2844,7 +2947,8 @@
                 const row = document.createElement('div');
                 row.className = 'shortcut-row';
                 const label = window.i18n ? i18n.t(shortcut.labelKey) : shortcut.labelKey;
-                row.innerHTML = `<strong>${shortcut.keys}</strong><span>${label}</span>`;
+                row.innerHTML = `<strong>${window.escapeHtml(shortcut.keys)}</strong>`
+                    + `<span>${window.escapeHtml(label)}</span>`;
                 list.appendChild(row);
             });
         };
@@ -3646,6 +3750,9 @@
         });
 
         document.addEventListener('keydown', (e) => {
+            // Before the text-field early return: Tab from the last enabled
+            // field of a dialog must stay inside it as well.
+            window.ModalManager.trapFocus(e);
             const tag = document.activeElement?.tagName;
             if ((tag === 'INPUT' || tag === 'TEXTAREA') && e.key !== 'F1' && e.key !== 'Escape') {
                 return;
@@ -3737,8 +3844,6 @@
                     }
                 }
             }
-
-            window.ModalManager.trapFocus(e);
         });
 
         document.getElementById('mobileMenuBtn').addEventListener('click', () => {

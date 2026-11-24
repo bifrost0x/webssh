@@ -13,7 +13,7 @@ async function workspace(page, kind = 'sftp', chmod = true, enabled = false) {
         window.__mutationEvents = [];
         const original = window.socket.emit.bind(window.socket);
         window.socket.emit = (event, payload, ...rest) => {
-            if (['create_file', 'create_directory', 'get_file_permissions', 'set_file_permissions'].includes(event)) {
+            if (['create_file', 'create_directory', 'rename_file', 'get_file_permissions', 'set_file_permissions'].includes(event)) {
                 window.__mutationEvents.push({event, payload});
                 if (event === 'get_file_permissions') queueMicrotask(() => {
                     window.socket.listeners('file_permissions').forEach(listener => listener({ ...payload, operation: event, mode: '600', special_bits: 0, object_type: 'file', metadata_token: 'test-token' }));
@@ -23,7 +23,7 @@ async function workspace(page, kind = 'sftp', chmod = true, enabled = false) {
             return original(event, payload, ...rest);
         };
         Object.assign(manager.panes.left, manager.createEmptyPaneState(), {
-            source: { sourceId: `${kind === 'sftp' ? 'sftp-session' : 'smb-quick'}:mutation-test`, kind, label: 'Test source', capabilities: ['list', 'mkdir', 'create-file', ...(kind === 'sftp' && chmod ? ['chmod'] : [])], access: {} },
+            source: { sourceId: `${kind === 'sftp' ? 'sftp-session' : 'smb-quick'}:mutation-test`, kind, label: 'Test source', capabilities: ['list', 'mkdir', 'create-file', 'rename', ...(kind === 'sftp' && chmod ? ['chmod'] : [])], access: {} },
             path: '/', files: [{ name: 'existing.txt', is_dir: false, mode: 33152, size: 3 }],
         });
         manager.setActivePane('left');
@@ -82,6 +82,56 @@ test('new file validates the name, prevents duplicate requests and closes with E
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await assertNoExternalRequests(page);
+});
+
+test('rename uses the in-app dialog with the same name validation and one request', async ({ page }) => {
+    await workspace(page);
+    const nativeDialogs = [];
+    page.on('dialog', async native => { nativeDialogs.push(native.type()); await native.dismiss(); });
+    await page.locator('#fmLeftList .fm-file-item').first().click();
+    await page.keyboard.press('F2');
+    const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Rename', exact: true }) });
+    await expect(dialog).toBeVisible();
+    const name = dialog.getByRole('textbox', { name: 'New name' });
+    await expect(name).toHaveValue('existing.txt');
+    await expect(name).toBeFocused();
+    expect(await name.evaluate(input => [input.selectionStart, input.selectionEnd])).toEqual([0, 'existing'.length]);
+    const rename = dialog.getByRole('button', { name: 'Rename', exact: true });
+    await expect(rename).toBeDisabled();
+    for (const invalid of ['../bad', 'a\\b', '..', '']) {
+        await name.fill(invalid);
+        await expect(rename).toBeDisabled();
+    }
+    await name.fill('renamed.txt');
+    await rename.click();
+    await expect(rename).toBeDisabled();
+    const sent = await page.evaluate(() => window.__mutationEvents.filter(value => value.event === 'rename_file'));
+    expect(sent).toHaveLength(1);
+    expect(sent[0].payload).toMatchObject({ source_id: 'sftp-session:mutation-test', old_path: '/existing.txt', new_path: '/renamed.txt' });
+    await page.evaluate(payload => window.socket.listeners('file_renamed').forEach(listener => listener({
+        source_id: payload.source_id, request_id: payload.request_id, old_path: payload.old_path, new_path: payload.new_path,
+    })), sent[0].payload);
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('.notification-success').filter({ hasText: 'Renamed successfully' })).toBeVisible();
+    expect(nativeDialogs).toEqual([]);
+    await assertNoExternalRequests(page);
+});
+
+test('a failed rename keeps the dialog open with the server reason', async ({ page }) => {
+    await workspace(page);
+    await page.locator('#fmLeftList .fm-file-item').first().click();
+    await page.evaluate(() => window.sftpFileManager.renameSelected());
+    const dialog = page.locator('dialog.fm-mutation-dialog');
+    await dialog.locator('[name="filename"]').fill('taken.txt');
+    await dialog.getByRole('button', { name: 'Rename', exact: true }).click();
+    await page.evaluate(() => {
+        const sent = window.__mutationEvents.find(value => value.event === 'rename_file').payload;
+        window.socket.listeners('error').forEach(listener => listener({
+            source_id: sent.source_id, request_id: sent.request_id, operation: 'rename_file', error: 'Target already exists',
+        }));
+    });
+    await expect(dialog.getByRole('status')).toHaveText('Target already exists');
+    await expect(dialog.getByRole('button', { name: 'Rename', exact: true })).toBeEnabled();
 });
 
 test('legacy single-object permission dialog binds the inspected metadata and sends only a deliberate change', async ({ page }) => {

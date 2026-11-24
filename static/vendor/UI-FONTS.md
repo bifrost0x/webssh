@@ -9,3 +9,5 @@ These assets are served locally. Font loading does not contact an external servi
 | `material-icons/material-icons-outlined.woff2` | `material-icons` 1.13.14, `iconfont/material-icons-outlined.woff2` | Apache 2.0, existing Material Icons license | `35dca8a7145a17c8d1306f25a3ca091578e15396f0b22d61eb8e73262ac75577` |
 
 Roboto sources: https://github.com/google/fonts/tree/main/ofl/roboto and https://github.com/google/fonts/tree/main/ofl/robotocondensed.
+
+The Outlined icon font is the only icon face the application loads. `npm run vendor` copies it and generates `material-icons/material-icons.css`, which maps every Material Icons class to it with the same content-versioned URL as `css/design-system.css`; `npm run vendor:check` verifies both. `material-icons/material-icons.woff2` (filled) is kept only for the public project site built by `scripts/prepare_pages.py`.

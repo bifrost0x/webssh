@@ -749,6 +749,10 @@
     font-size: 14px;
 }
 
+.fm-transfer-btn .material-icons {
+    font-size: inherit;
+}
+
 .fm-transfer-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);

@@ -23,6 +23,9 @@
         constructor(manager, pane, file = null, options = {}) {
             this.manager = manager;
             const state = manager.panes[pane];
+            // Rename targets one existing item; without the option a file means permissions.
+            this.renameTarget = options.rename === true && file && !Array.isArray(file) ? file : null;
+            if (this.renameTarget) file = null;
             const files = Array.isArray(file) ? file : (file ? [file] : []);
             this.batch = files.length > 1;
             this.targets = files.map(item => ({ path: manager.joinPath(state.path, item.name), name: item.name, outcome: 'pending' }));
@@ -30,9 +33,11 @@
             this.batchPhase = this.batch ? 'inspecting' : null;
             this.batchIndex = 0;
             this.target = Object.freeze({ pane, state, sourceId: manager.getPaneSourceId(state), parent: state.path,
-                version: state.mutationViewVersion || 0, path: file ? manager.joinPath(state.path, file.name) : null });
+                version: state.mutationViewVersion || 0,
+                path: (file || this.renameTarget) ? manager.joinPath(state.path, (file || this.renameTarget).name) : null });
             this.permissions = Boolean(file);
-            this.createDirectory = !this.permissions && options.createDirectory === true;
+            this.rename = Boolean(this.renameTarget);
+            this.createDirectory = !this.permissions && !this.rename && options.createDirectory === true;
             this.trigger = document.activeElement;
             this.closed = false;
             this.pending = false;
@@ -64,6 +69,12 @@
                 ? 'Directory execute means traverse. Removing owner access can lock you out. Unix mode is not a full ACL view.'
                 : this.createDirectory ? 'Creates one folder in this directory without replacing existing items. Enter a name, not a path.'
                     : 'Creates an empty file without replacing existing items. SFTP files start with private permissions.');
+            if (this.rename) {
+                text('h3', 'fm.rename', 'Rename');
+                text('.fm-mutation-name span', 'fm.newName', 'New name');
+                text('[type="submit"]', 'fm.rename', 'Rename');
+                text('.fm-mutation-hint', 'fm.renameHint', 'Renames the item in this directory. Enter a name, not a path.');
+            }
             this.name = this.dialog.querySelector('[name="filename"]');
             this.mode = this.dialog.querySelector('[name="mode"]');
             this.button = this.dialog.querySelector('[type="submit"]');
@@ -83,7 +94,8 @@
             manager.socket.on?.('disconnect', this.onDisconnect);
             this.dialog.querySelector('.fm-permissions').hidden = !this.permissions;
             this.dialog.querySelector('.fm-mutation-name').hidden = this.permissions;
-            this.dialog.querySelector('.fm-mutation-edit').hidden = this.permissions || this.createDirectory;
+            this.dialog.querySelector('.fm-mutation-edit').hidden = this.permissions || this.createDirectory || this.rename;
+            if (this.rename) this.name.value = this.renameTarget.name;
             this.buildPermissionGrid();
             this.dialog.addEventListener('keydown', event => event.stopPropagation());
             this.dialog.addEventListener('close', () => this.close());
@@ -94,6 +106,11 @@
             document.body.appendChild(this.dialog);
             this.dialog.showModal();
             (this.permissions ? this.dialog.querySelector('[data-close]') : this.name).focus();
+            if (this.rename) {
+                // Preselect the base name so typing keeps the extension.
+                const dot = this.renameTarget.is_dir ? -1 : this.name.value.lastIndexOf('.');
+                this.name.setSelectionRange(0, dot > 0 ? dot : this.name.value.length);
+            }
             this.update();
             if (this.batch) this.advanceBatch();
             else if (this.permissions) this.send('get_file_permissions', { path: this.target.path });
@@ -159,7 +176,8 @@
             }
             this.button.disabled = this.pending || this.uncertain || !this.isCurrent()
                 || (this.createDirectory && !this.manager.sourceCan(this.target.state, 'mkdir'))
-                || (this.permissions ? !this.metadataToken || this.specialBits !== 0 || !validMode(this.mode.value) || this.mode.value === this.originalMode : !validLeaf(this.name.value));
+                || (this.rename && (!this.manager.sourceCan(this.target.state, 'rename') || this.name.value === this.renameTarget.name))
+                || (this.permissions ?!this.metadataToken || this.specialBits !== 0 || !validMode(this.mode.value) || this.mode.value === this.originalMode : !validLeaf(this.name.value));
             const locked = this.pending || this.uncertain || (this.permissions && (!this.metadataToken || this.specialBits !== 0));
             this.name.disabled = locked;
             this.mode.disabled = locked;
@@ -220,6 +238,12 @@
                 const required = this.objectType === 'directory' ? 0o700 : 0o600;
                 if ((mode & required) !== required && !window.confirm(this.manager.t('fm.permissionLockout', 'This removes owner access. Apply these permissions?'))) return;
                 this.send('set_file_permissions', { path: this.target.path, mode: this.mode.value, expected_metadata: this.metadataToken });
+            } else if (this.rename) {
+                this.createdName = this.name.value;
+                this.send('rename_file', {
+                    old_path: this.target.path,
+                    new_path: this.manager.joinPath(this.target.parent, this.createdName),
+                });
             } else {
                 this.editAfterCreate = this.dialog.querySelector('[name="edit"]').checked;
                 this.createdName = this.name.value;
@@ -268,8 +292,13 @@
             }
             const mayEdit = operation === 'create_file' && this.editAfterCreate && !this.closed && this.isCurrent();
             if (!this.closed) this.close();
-            this.manager.showNotification(this.manager.t(operation === 'create_file' ? 'fm.fileCreated' : operation === 'create_directory' ? 'fm.folderCreated' : 'fm.permissionsChanged', operation === 'create_file' ? 'File created' : operation === 'create_directory' ? 'Folder created' : 'Permissions changed'), 'success');
-            this.target.state.restoreFocusName = ['create_file', 'create_directory'].includes(operation) ? this.createdName : null;
+            const [successKey, successFallback] = {
+                create_file: ['fm.fileCreated', 'File created'],
+                create_directory: ['fm.folderCreated', 'Folder created'],
+                rename_file: ['fm.renamedSuccess', 'Renamed successfully'],
+            }[operation] || ['fm.permissionsChanged', 'Permissions changed'];
+            this.manager.showNotification(this.manager.t(successKey, successFallback), 'success');
+            this.target.state.restoreFocusName = ['create_file', 'create_directory', 'rename_file'].includes(operation) ? this.createdName : null;
             this.manager.refreshSource(this.target.sourceId);
             if (mayEdit) window.FilePreview?.openForEditing?.(this.target.sourceId, data.path, this.createdName);
         }

@@ -2078,7 +2078,6 @@ window.i18n.registerLocales({
         'fm.transferComplete': 'Truyền hoàn tất',
         'fm.transferFailed': 'Truyền thất bại',
         'fm.confirmDelete': 'Bạn có chắc chắn muốn xóa',
-        'fm.enterNewName': 'Nhập tên mới:',
         'fm.fileExists': 'Tệp đã tồn tại',
         'fm.conflictMessage': 'Chọn cách xử lý đích đã tồn tại.',
         'fm.overwrite': 'Ghi đè',
@@ -2771,6 +2770,11 @@ window.i18n.registerLocales({
         "auth.retryAfterSeconds": "Quá nhiều lần thử. Thử lại sau {seconds} giây.",
         "auth.retryAfterMinutes": "Quá nhiều lần thử. Thử lại sau {minutes} phút.",
         "auth.mfaRestart": "Quá nhiều mã không hợp lệ. Vui lòng đăng nhập lại.",
-        "automation.result.tailscale_route_restricted": "Máy chủ này là một nút Tailscale và chỉ có thể truy cập bằng Tailscale SSH. Các lần chạy tự động hóa dùng SSH thông thường nên không thể truy cập máy chủ này."
+        "automation.result.tailscale_route_restricted": "Máy chủ này là một nút Tailscale và chỉ có thể truy cập bằng Tailscale SSH. Các lần chạy tự động hóa dùng SSH thông thường nên không thể truy cập máy chủ này.",
+        "fm.newName": "Tên mới",
+        "fm.renameHint": "Đổi tên mục trong thư mục này. Nhập tên, không phải đường dẫn.",
+        "fm.cancelTransfer": "Hủy truyền",
+        "terminal.openLinkConfirm": "Bạn có muốn mở {url} không?\n\nCẢNH BÁO: Liên kết này có thể nguy hiểm",
+        "common.dismissNotification": "Đóng thông báo"
     }
 });

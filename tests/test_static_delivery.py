@@ -439,3 +439,29 @@ def test_bundled_ttf_fonts_are_served_compressed(client):
     assert len(compressed.data) < len(plain.data)
     assert gzip.decompress(compressed.data) == plain.data
     assert compressed.headers['ETag'] != plain.headers['ETag']
+
+def test_every_page_loads_one_immutable_outlined_icon_font(client):
+    import re
+    from pathlib import Path
+    from urllib.parse import urljoin
+
+    font = 'vendor/material-icons/material-icons-outlined.woff2'
+    expected = f'/static/{font}?v={static_asset_version(client.application, font)}'
+    stylesheets = {
+        'vendor/material-icons/material-icons.css': '/static/vendor/material-icons/',
+        'css/design-system.css': '/static/css/',
+    }
+    for stylesheet, base in stylesheets.items():
+        css = Path('static', stylesheet).read_text(encoding='utf-8')
+        urls = [
+            url for url in re.findall(r'@font-face\s*\{[^}]*?url\([\'"]?([^\'")]+)', css)
+            if 'material-icons' in url
+        ]
+        assert urls, stylesheet
+        assert {urljoin(base, url) for url in urls} == {expected}, stylesheet
+
+    response = client.get(expected)
+    assert response.status_code == 200
+    assert response.headers['Cache-Control'] == 'public, max-age=31536000, immutable'
+    assert response.data.startswith(b'wOF2')
+    assert not Path('static', 'vendor/material-icons/material-icons.woff').exists()
