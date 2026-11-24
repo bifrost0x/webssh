@@ -163,7 +163,10 @@
             close.className = 'notification-close';
             close.setAttribute(
                 'aria-label',
-                window.i18n?.t('common.dismissNotification') || 'Dismiss notification',
+                (() => {
+                    const label = window.i18n?.t('common.dismissNotification');
+                    return label && label !== 'common.dismissNotification' ? label : 'Dismiss notification';
+                })(),
             );
             const icon = document.createElement('span');
             icon.className = 'material-icons';
@@ -286,10 +289,16 @@
         focusableSelector: 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
 
         focusableElements(modal) {
+            // Only hiding inside the dialog counts: some dialogs are shown again
+            // without open(), so the root can keep a stale aria-hidden.
+            const hiddenWithin = element => {
+                const hidden = element.closest('[hidden], [inert], [aria-hidden="true"]');
+                return Boolean(hidden && hidden !== modal && modal.contains(hidden));
+            };
             return Array.from(modal.querySelectorAll(this.focusableSelector)).filter(element => (
                 !element.matches(':disabled')
                 && element.getAttribute('tabindex') !== '-1'
-                && !element.closest('[hidden], [inert], [aria-hidden="true"]')
+                && !hiddenWithin(element)
                 && element.getClientRects().length > 0
                 && getComputedStyle(element).visibility !== 'hidden'
             ));

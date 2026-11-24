@@ -108,16 +108,19 @@ test('concurrent password state loads share one request and later loads fetch ag
 });
 
 test('a load after a mutation does not join a request that started before it',async()=>{
- const pending=[];const paths=[];
- const client=nativeClient((path,options)=>{paths.push(path);if(path.endsWith('/intents'))return Promise.resolve({ok:true,json:async()=>({intent:'one'})});if(options.method==='POST')return Promise.resolve({ok:true,json:async()=>({enabled:true,credentials:[{id:'created'}]})});return new Promise(resolve=>pending.push(resolve));});
+ const pending=[];const paths=[];const intentBodies=[];
+ const client=nativeClient((path,options)=>{paths.push(path);if(path.endsWith('/intents'))intentBodies.push(JSON.parse(options.body));if(path.endsWith('/intents'))return Promise.resolve({ok:true,json:async()=>({intent:'one'})});if(options.method==='POST')return Promise.resolve({ok:true,json:async()=>({enabled:true,credentials:[{id:'created'}]})});return new Promise(resolve=>pending.push(resolve));});
  const stale=client.load();
  await client.mutate('create',{name:'Named',password:'secret'});
  const fresh=client.load();
  assert.equal(paths.filter(path=>path==='/api/credentials/state').length,2);
- pending[1]({ok:true,json:async()=>({enabled:true,credentials:[{id:'fresh'}]})});
- pending[0]({ok:true,json:async()=>({enabled:true,credentials:[{id:'stale'}]})});
+ pending[1]({ok:true,json:async()=>({enabled:true,credentials:[{id:'fresh'}],profiles:[{id:'p1',credential_assignment:'fresh-assignment'}]})});
  assert.equal((await fresh).credentials[0].id,'fresh');
+ pending[0]({ok:true,json:async()=>({enabled:true,credentials:[{id:'stale'}],profiles:[{id:'p1',credential_assignment:'stale-assignment'}]})});
  assert.equal((await stale).credentials[0].id,'stale');
+ // The late stale response must not replace the stored state used by later mutations.
+ await client.mutate('assign',{resource_id:'p1',credential_id:'c1'});
+ assert.equal(intentBodies.at(-1).mutation.expected_assignment,'fresh-assignment');
 });
 
 test('a failed shared load rejects every waiting caller and the next load retries',async()=>{

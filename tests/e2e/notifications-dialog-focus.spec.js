@@ -122,6 +122,17 @@ test('dialog focus trap skips disabled and hidden controls and survives stacked 
 
     await page.evaluate(() => window.ModalManager.close(document.getElementById('trapLower')));
     expect(await page.evaluate(() => window.ModalManager.activeModal)).toBeNull();
+
+    // Some dialogs are shown again without open() and keep a stale root aria-hidden.
+    await page.evaluate(() => {
+        const modal = document.getElementById('trapLower');
+        modal.classList.add('show');
+        window.ModalManager.activeModal = modal;
+    });
+    await expect(page.locator('#trapLower')).toHaveAttribute('aria-hidden', 'true');
+    await page.locator('#trapLower-last').focus();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#trapLower-first')).toBeFocused();
     await assertNoExternalRequests(page);
 });
 
