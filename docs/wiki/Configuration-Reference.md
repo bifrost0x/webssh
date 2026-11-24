@@ -52,6 +52,7 @@ Prefer `flask create-admin` for controlled deployments. Public registration is i
 | `SSH_ALLOWED_INTERNAL_NETWORKS` | Comma-separated private networks (CIDR or single addresses) that stay reachable while `BLOCK_INTERNAL_SSH=true`; see below |
 | `PROXY_JUMP_REMOTE_DNS_ALLOWLIST` | Exact hostnames a trusted bastion may resolve remotely |
 | `SOCKS_REMOTE_DNS_ALLOWLIST` | Comma-separated exact target hostnames a trusted SOCKS5 proxy may resolve when `remote_dns=true` and internal targets are blocked; empty by default |
+| `TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES` | Default `true`. While `TAILSCALE_SSH_ENABLED=true`, refuses every non-Tailscale-SSH connection and probe whose address routes through `TAILSCALE_SSH_INTERFACE`; only `false` lifts it. See [Tailscale SSH](Tailscale-SSH#ordinary-ssh-over-the-tailnet) |
 | `SERVER_OPERATIONS_ENABLED` | Optional authoritative environment override; otherwise Admin → Integrations controls reviewed, step-up protected service/container actions, process TERM and reboot. Product default: `false` |
 
 `BLOCK_INTERNAL_SSH=true` is appropriate for an Internet-facing gateway but can conflict with homelab use. Resolve and validate the exact target policy before enabling it. Host-key verification remains a separate control.

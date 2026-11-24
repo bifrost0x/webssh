@@ -60,6 +60,7 @@ const translations = {
         "sshErrors.socksAuthRequired": "The SOCKS5 proxy requires a username and password.",
         "sshErrors.socksAuthRejected": "The SOCKS5 proxy does not accept username and password login.",
         "sshErrors.socksAuthFailed": "SOCKS5 proxy login failed. Check the username and password.",
+        "sshErrors.tailscaleRouteRestricted": "This host is reached through the tailnet. Connect with Tailscale SSH, or ask your administrator to allow ordinary SSH over the tailnet.",
 
         'overview.ui.inventory': "Inventory",
 
@@ -2630,6 +2631,7 @@ const translations = {
         "sshErrors.socksAuthRequired": "Proxy SOCKS5 yêu cầu tên người dùng và mật khẩu.",
         "sshErrors.socksAuthRejected": "Proxy SOCKS5 không chấp nhận đăng nhập bằng tên người dùng và mật khẩu.",
         "sshErrors.socksAuthFailed": "Đăng nhập proxy SOCKS5 thất bại. Kiểm tra tên người dùng và mật khẩu.",
+        "sshErrors.tailscaleRouteRestricted": "Máy chủ này được truy cập qua tailnet. Hãy kết nối bằng Tailscale SSH hoặc yêu cầu quản trị viên cho phép SSH thông thường qua tailnet.",
 
         'overview.ui.inventory': "Kho tài nguyên",
 
@@ -5194,6 +5196,7 @@ const translations = {
         "sshErrors.socksAuthRequired": "Der SOCKS5-Proxy benötigt Benutzername und Passwort.",
         "sshErrors.socksAuthRejected": "Der SOCKS5-Proxy akzeptiert keine Anmeldung mit Benutzername und Passwort.",
         "sshErrors.socksAuthFailed": "SOCKS5-Proxy-Anmeldung fehlgeschlagen. Prüfe Benutzername und Passwort.",
+        "sshErrors.tailscaleRouteRestricted": "Dieser Host wird über das Tailnet erreicht. Verbinde dich mit Tailscale SSH oder bitte deinen Administrator, normales SSH über das Tailnet zu erlauben.",
 
         'overview.ui.inventory': "Inventar",
 
@@ -7762,6 +7765,7 @@ const translations = {
         "sshErrors.socksAuthRequired": "Le proxy SOCKS5 exige un nom d’utilisateur et un mot de passe.",
         "sshErrors.socksAuthRejected": "Le proxy SOCKS5 n’accepte pas la connexion par nom d’utilisateur et mot de passe.",
         "sshErrors.socksAuthFailed": "Échec de la connexion au proxy SOCKS5. Vérifiez le nom d’utilisateur et le mot de passe.",
+        "sshErrors.tailscaleRouteRestricted": "Cet hôte est joignable via le tailnet. Connectez-vous avec Tailscale SSH ou demandez à votre administrateur d’autoriser le SSH ordinaire via le tailnet.",
 
         'overview.ui.inventory': "Inventaire",
 
@@ -10326,6 +10330,7 @@ const translations = {
         "sshErrors.socksAuthRequired": "El proxy SOCKS5 requiere usuario y contraseña.",
         "sshErrors.socksAuthRejected": "El proxy SOCKS5 no acepta el inicio de sesión con usuario y contraseña.",
         "sshErrors.socksAuthFailed": "Falló el inicio de sesión en el proxy SOCKS5. Revisa el usuario y la contraseña.",
+        "sshErrors.tailscaleRouteRestricted": "Este host se alcanza a través del tailnet. Conéctate con Tailscale SSH o pide a tu administrador que permita SSH normal a través del tailnet.",
 
         'overview.ui.inventory': "Inventario",
 
@@ -12890,6 +12895,7 @@ const translations = {
         "sshErrors.socksAuthRequired": "SOCKS5 代理需要用户名和密码。",
         "sshErrors.socksAuthRejected": "SOCKS5 代理不接受用户名和密码登录。",
         "sshErrors.socksAuthFailed": "SOCKS5 代理登录失败。请检查用户名和密码。",
+        "sshErrors.tailscaleRouteRestricted": "此主机通过 tailnet 访问。请使用 Tailscale SSH 连接，或请管理员允许通过 tailnet 使用普通 SSH。",
 
         'overview.ui.inventory': "资源清单",
 

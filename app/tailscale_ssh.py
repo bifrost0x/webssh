@@ -225,6 +225,7 @@ def authorize_tailscale_ssh_access(user, host, remote_username, port=22):
             target_validator=lambda target: target_uses_tailscale_route(
                 target.ip
             ),
+            tailscale_ssh=True,
         )
     except (TypeError, ValueError):
         return None, 'Tailscale SSH target is not allowed'

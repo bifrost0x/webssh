@@ -35,7 +35,9 @@ def _set_policy(
         lambda _address: True,
     )
 
-    def resolve(host, port, allow_internal=False, *, target_validator=None):
+    def resolve(host, port, allow_internal=False, *, target_validator=None,
+                tailscale_ssh=False):
+        assert tailscale_ssh is True
         target = ResolvedTarget(host, port, '100.64.0.10', 2)
         if target_validator is not None and not target_validator(target):
             raise ValueError('target rejected')

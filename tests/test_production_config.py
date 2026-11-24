@@ -50,6 +50,7 @@ SECURITY_ENV_NAMES = {
     'TAILSCALE_SSH_ALLOWED_WEBSSH_USERS',
     'TAILSCALE_SSH_ENABLED',
     'TAILSCALE_SSH_INTERFACE',
+    'TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES',
     'TOTP_ENABLED',
     'TRUSTED_PROXIES',
     'WEBAUTHN_ENABLED',
@@ -294,6 +295,25 @@ def test_homelab_tailscale_misconfiguration_warns_without_blocking_startup(
     for fragment in warning_fragments:
         assert fragment in warnings
 
+
+
+@pytest.mark.parametrize(('value', 'expected'), (
+    (None, 'True'),
+    ('true', 'True'),
+    ('false', 'False'),
+    (' FALSE ', 'False'),
+    ('no', 'True'),
+    ('0', 'True'),
+))
+def test_tailnet_route_restriction_is_lifted_only_by_explicit_false(value, expected):
+    overrides = {} if value is None else {'TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES': value}
+    result = _load_config(
+        _production_env(**overrides),
+        'import config; print(config.TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().splitlines()[-1] == expected
 
 
 def test_internal_network_allowlist_is_empty_by_default():

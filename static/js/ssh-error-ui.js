@@ -46,6 +46,17 @@
             return {message: translated(translate, `sshErrors.${key}`, fallback), type: 'error', duration: 12000,
                 action: {label: translated(translate, 'sshErrors.socksReview', 'Review SOCKS5 proxy'), asset: 'socks-proxies'}};
         }
+        if (data?.code === 'tailscale_route_restricted') {
+            return {
+                message: translated(
+                    translate,
+                    'sshErrors.tailscaleRouteRestricted',
+                    'This host is reached through the tailnet. Connect with Tailscale SSH, or ask your administrator to allow ordinary SSH over the tailnet.',
+                ),
+                type: 'error',
+                duration: 12000,
+            };
+        }
         if (data?.code === 'host_key_changed') {
             return {
                 message: translated(

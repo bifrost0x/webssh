@@ -19,6 +19,7 @@ from datetime import datetime
 import config
 from .host_key_store import HostKeyStore, HostKeyNotAccepted
 from .network_policy import (
+    TailnetRouteRestricted,
     audit_internal_allowlist_use,
     open_validated_socket,
     resolve_allowed_target,
@@ -236,6 +237,10 @@ class TemporaryConnectionPool:
             )
         except paramiko.AuthenticationException:
             return None, "Authentication failed: Invalid username or password"
+        except TailnetRouteRestricted as error:
+            return None, SSHConnectionError(
+                str(error), code=error.code, context='target'
+            )
         except ValueError as e:
             return None, str(e)
         except paramiko.SSHException as e:
