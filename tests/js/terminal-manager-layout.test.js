@@ -667,6 +667,36 @@ test('touch dragging a mouse-tracked terminal is bridged into cancelable wheel i
     global.window.WheelEvent = originalWheelEvent;
 });
 
+test('touch gesture state resets even when the pointer capture is already gone', () => {
+    const listeners = new Map();
+    const scrolled = [];
+    const surface = {
+        addEventListener(name, listener) { listeners.set(name, listener); },
+        removeEventListener(name) { listeners.delete(name); },
+        dispatchEvent() { return true; },
+        setPointerCapture() {},
+        releasePointerCapture() {
+            throw new Error('No active pointer with the given id is found.');
+        },
+    };
+    const dispose = TerminalManager.setupTouchScroll(surface, {
+        element: surface,
+        buffer: { active: { type: 'normal' } },
+        modes: { mouseTrackingMode: 'none' },
+        options: { fontSize: 10 },
+        scrollLines(lines) { scrolled.push(lines); },
+    });
+    listeners.get('pointerdown')({
+        pointerType: 'touch', pointerId: 9, clientX: 40, clientY: 100,
+    });
+    assert.doesNotThrow(() => listeners.get('pointerup')({ pointerId: 9 }));
+    listeners.get('pointermove')({
+        pointerId: 9, clientX: 42, clientY: 140, preventDefault() {},
+    });
+    assert.deepEqual(scrolled, []);
+    dispose();
+});
+
 test('horizontal touch movement does not synthesize terminal scrolling', () => {
     const listeners = new Map();
     const dispatched = [];

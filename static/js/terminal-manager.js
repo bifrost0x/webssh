@@ -1287,7 +1287,11 @@ const TerminalManager = {
             if (pointerId === null || (
                 event?.pointerId !== undefined && event.pointerId !== pointerId
             )) return;
-            surface.releasePointerCapture?.(pointerId);
+            try {
+                surface.releasePointerCapture?.(pointerId);
+            } catch {
+                // The pointer may already be gone; the gesture state still resets.
+            }
             pointerId = null;
             verticalGesture = false;
             scrollRemainder = 0;
@@ -1401,9 +1405,23 @@ const TerminalManager = {
             thumb.style.top = `${thumbTop}px`;
         };
 
-        // Update scrollbar on terminal output and scroll
-        const scrollDisposable = terminal.onScroll(() => updateScrollbar());
-        const resizeDisposable = terminal.onResize(() => updateScrollbar());
+        // xterm emits onScroll for every line output moves the viewport, and
+        // each update reads layout. Coalesce bursts into one update per frame;
+        // the thumb is only painted at the next frame anyway.
+        let scheduledFrame = null;
+        const scheduleScrollbarUpdate = () => {
+            if (typeof requestAnimationFrame !== 'function') {
+                updateScrollbar();
+                return;
+            }
+            if (scheduledFrame !== null) return;
+            scheduledFrame = requestAnimationFrame(() => {
+                scheduledFrame = null;
+                updateScrollbar();
+            });
+        };
+        const scrollDisposable = terminal.onScroll(scheduleScrollbarUpdate);
+        const resizeDisposable = terminal.onResize(scheduleScrollbarUpdate);
 
         // Also update periodically for output-driven changes. Hidden panes
         // skip DOM reads/writes here; scroll/resize events still refresh the
@@ -1453,7 +1471,11 @@ const TerminalManager = {
             if (!isDragging || (
                 event?.pointerId !== undefined && event.pointerId !== dragPointerId
             )) return;
-            thumb.releasePointerCapture?.(event?.pointerId);
+            try {
+                thumb.releasePointerCapture?.(event?.pointerId);
+            } catch {
+                // The pointer may already be gone; the drag still ends.
+            }
             isDragging = false;
             dragPointerId = null;
         };
@@ -1482,6 +1504,10 @@ const TerminalManager = {
         const disposeTouchScroll = this.setupTouchScroll(container, terminal);
         const dispose = () => {
             clearInterval(intervalId);
+            if (scheduledFrame !== null && typeof cancelAnimationFrame === 'function') {
+                cancelAnimationFrame(scheduledFrame);
+            }
+            scheduledFrame = null;
             scrollDisposable?.dispose?.();
             resizeDisposable?.dispose?.();
             disposeTouchScroll?.();

@@ -427,6 +427,51 @@ test('mounts with the real top-level const manager pattern', async () => {
     assert.equal(libraryTab.attributes.role, 'tab');
     libraryTab.listeners.click();
     assert.ok(context.SessionCommandLauncher.popup.findByText('Status'));
+
+    const findParameterInput = () => {
+        const visit = element => {
+            if (element.dataset?.commandParameter) return element;
+            for (const child of element.children) {
+                const match = visit(child);
+                if (match) return match;
+            }
+            return null;
+        };
+        return visit(context.SessionCommandLauncher.popup);
+    };
+    const editor = context.SessionCommandLauncher.popup.querySelector('.session-command-parameters');
+    assert.ok(editor);
+    assert.equal(findParameterInput(), null);
+    editor.open = true;
+    editor.listeners.toggle();
+    const parameterInput = findParameterInput();
+    assert.ok(parameterInput);
+    assert.equal(parameterInput.autocomplete, 'off');
+    editor.listeners.toggle();
+    assert.equal(editor.children.filter(child => child.dataset?.commandParameter).length, 1);
+    parameterInput.value = '--no-pager';
+    parameterInput.listeners.input();
+    assert.equal(context.SessionCommandLauncher.parameterDrafts.get('status'), '--no-pager');
+    context.SessionCommandLauncher.parameterDrafts.delete('status');
+    editor.open = false;
+    editor.listeners.toggle();
+    context.SessionCommandLauncher.render();
+    assert.equal(findParameterInput(), null);
+
+    const shownChildren = context.SessionCommandLauncher.popup.children;
+    document.dispatchEvent(new context.CustomEvent('workspace-context-change', {
+        detail: { activeContext: 'files' },
+    }));
+    assert.equal(panel.hidden, true);
+    context.SessionCommandLauncher.sync();
+    context.SessionCommandLauncher.render();
+    assert.equal(context.SessionCommandLauncher.popup.children, shownChildren);
+    document.dispatchEvent(new context.CustomEvent('workspace-context-change', {
+        detail: { activeContext: 'commands' },
+    }));
+    assert.equal(panel.hidden, false);
+    assert.notEqual(context.SessionCommandLauncher.popup.children, shownChildren);
+    assert.ok(context.SessionCommandLauncher.popup.findByText('Status'));
     const sudoInput = context.SessionCommandLauncher.popup.querySelector(
         '.session-command-sudo-input'
     );
