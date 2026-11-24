@@ -415,6 +415,10 @@
         render() {
             this.ensurePreferences();
             if (!this.popup) return;
+            // The popup survives while another context is shown. Rebuilding the
+            // full list there costs a long task per session or socket event;
+            // open() renders again before the panel becomes visible.
+            if (this.panel?.hidden) return;
             const document = root.document;
             const popup = this.popup;
             const session = getSessionManager()?.getSession(this.sessionId);
@@ -700,37 +704,52 @@
                     editor.open = this.expandedParameters.has(entry.id);
                     const summary = document.createElement('summary');
                     summary.textContent = this.t('sessionCommands.editParameters', 'Parameters for this insertion');
-                    editor.addEventListener('toggle', () => {
-                        if (editor.open) this.expandedParameters.add(entry.id);
-                        else this.expandedParameters.delete(entry.id);
-                    });
-                    const input = document.createElement('input');
-                    input.type = 'text';
-                    input.maxLength = 4096;
-                    input.dataset.commandParameter = entry.id;
-                    input.setAttribute('aria-label', summary.textContent);
-                    input.value = entry.parameters;
-                    const updatePreview = () => {
-                        const updated = commandEntry({ ...savedEntry, parameters: input.value });
-                        preview.textContent = insertTextFor(updated, this.useSudo);
-                        updateImpact(updated);
-                        currentAvailable = canInsert && updated.available;
-                        insert.disabled = inserting || !currentAvailable;
+                    // A collapsed editor shows nothing, so its field is only
+                    // created on first expansion. The system library alone has
+                    // hundreds of rows, each rebuilt on every render.
+                    let editorBuilt = false;
+                    const buildEditor = () => {
+                        if (editorBuilt) return;
+                        editorBuilt = true;
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.maxLength = 4096;
+                        input.autocomplete = 'off';
+                        input.dataset.commandParameter = entry.id;
+                        input.setAttribute('aria-label', summary.textContent);
+                        input.value = entry.parameters;
+                        const updatePreview = () => {
+                            const updated = commandEntry({ ...savedEntry, parameters: input.value });
+                            preview.textContent = insertTextFor(updated, this.useSudo);
+                            updateImpact(updated);
+                            currentAvailable = canInsert && updated.available;
+                            insert.disabled = inserting || !currentAvailable;
+                        };
+                        input.addEventListener('input', () => {
+                            this.parameterDrafts.set(entry.id, input.value);
+                            updatePreview();
+                        });
+                        const reset = document.createElement('button');
+                        reset.type = 'button';
+                        reset.className = 'btn btn-secondary btn-small';
+                        reset.textContent = this.t('sessionCommands.resetParameters', 'Restore saved parameters');
+                        reset.addEventListener('click', () => {
+                            this.parameterDrafts.delete(entry.id);
+                            input.value = savedEntry.parameters;
+                            updatePreview();
+                        });
+                        editor.append(input, reset);
                     };
-                    input.addEventListener('input', () => {
-                        this.parameterDrafts.set(entry.id, input.value);
-                        updatePreview();
+                    editor.addEventListener('toggle', () => {
+                        if (editor.open) {
+                            this.expandedParameters.add(entry.id);
+                            buildEditor();
+                        } else {
+                            this.expandedParameters.delete(entry.id);
+                        }
                     });
-                    const reset = document.createElement('button');
-                    reset.type = 'button';
-                    reset.className = 'btn btn-secondary btn-small';
-                    reset.textContent = this.t('sessionCommands.resetParameters', 'Restore saved parameters');
-                    reset.addEventListener('click', () => {
-                        this.parameterDrafts.delete(entry.id);
-                        input.value = savedEntry.parameters;
-                        updatePreview();
-                    });
-                    editor.append(summary, input, reset);
+                    editor.append(summary);
+                    if (editor.open) buildEditor();
                     details.appendChild(editor);
                 }
                 insert.addEventListener('click', async () => {

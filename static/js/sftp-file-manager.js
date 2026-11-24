@@ -3305,16 +3305,22 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             return a.name.localeCompare(b.name);
         });
 
+        // First position of each entry, as indexOf would report it, without
+        // rescanning the whole listing for every row.
+        const firstIndexes = new Map();
+        state.files.forEach((file, index) => {
+            if (!firstIndexes.has(file)) firstIndexes.set(file, index);
+        });
         const indexMap = new Map();
         sortedFiles.forEach((file, sortedIndex) => {
-            const originalIndex = state.files.indexOf(file);
-            indexMap.set(sortedIndex, originalIndex);
+            indexMap.set(sortedIndex, firstIndexes.get(file));
         });
 
-        const renderedIndexes = sortedFiles.map((file) => state.files.indexOf(file));
+        const renderedIndexes = sortedFiles.map((file) => firstIndexes.get(file));
+        const renderedIndexSet = new Set(renderedIndexes);
         const defaultFocusIndex = state.path !== '/' ? -1 : (renderedIndexes[0] ?? null);
         if (state.focusedIndex === null
-                || (state.focusedIndex !== -1 && !renderedIndexes.includes(state.focusedIndex))) {
+                || (state.focusedIndex !== -1 && !renderedIndexSet.has(state.focusedIndex))) {
             state.focusedIndex = defaultFocusIndex;
         }
 
@@ -6454,10 +6460,16 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         const date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
         if (Number.isNaN(date.getTime())) return '-';
         const locale = typeof navigator !== 'undefined' ? navigator.language : undefined;
-        return new Intl.DateTimeFormat(locale, {
-            year: 'numeric', month: 'short', day: '2-digit',
-            hour: '2-digit', minute: '2-digit',
-        }).format(date);
+        // Creating a formatter is far more expensive than using one, and a
+        // listing formats every row.
+        if (!this.modifiedFormatter || this.modifiedFormatterLocale !== locale) {
+            this.modifiedFormatter = new Intl.DateTimeFormat(locale, {
+                year: 'numeric', month: 'short', day: '2-digit',
+                hour: '2-digit', minute: '2-digit',
+            });
+            this.modifiedFormatterLocale = locale;
+        }
+        return this.modifiedFormatter.format(date);
     }
 
     formatPermissions(file = {}) {

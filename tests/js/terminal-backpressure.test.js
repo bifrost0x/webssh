@@ -207,6 +207,100 @@ test('scrollbar interval skips DOM work for hidden panes and disposes cleanly', 
     }
 });
 
+test('scrollbar coalesces scroll bursts into one layout read per frame', () => {
+    resetManager();
+    const originals = {
+        setInterval: global.setInterval,
+        clearInterval: global.clearInterval,
+        createElement: global.document.createElement,
+        requestAnimationFrame: global.requestAnimationFrame,
+        cancelAnimationFrame: global.cancelAnimationFrame,
+    };
+    const frames = new Map();
+    let nextFrame = 1;
+    const cancelled = [];
+    let layoutReads = 0;
+    let scrollListener = null;
+    const thumb = {
+        style: {},
+        setPointerCapture() {},
+        addEventListener() {},
+        removeEventListener() {},
+    };
+    const scrollbar = {
+        className: '',
+        innerHTML: '',
+        style: {},
+        get clientHeight() { layoutReads += 1; return 200; },
+        querySelector: () => thumb,
+        addEventListener() {},
+        removeEventListener() {},
+        remove() {},
+    };
+    global.setInterval = () => 7;
+    global.clearInterval = () => {};
+    global.document.createElement = () => scrollbar;
+    global.requestAnimationFrame = callback => {
+        const id = nextFrame++;
+        frames.set(id, callback);
+        return id;
+    };
+    global.cancelAnimationFrame = id => {
+        cancelled.push(id);
+        frames.delete(id);
+    };
+    const runFrames = () => {
+        const pending = [...frames.values()];
+        frames.clear();
+        pending.forEach(callback => callback());
+    };
+    try {
+        const peer = xtermMock(false);
+        peer.terminal.buffer.active.length = 500;
+        peer.terminal.onScroll = listener => {
+            scrollListener = listener;
+            return {dispose() {}};
+        };
+        peer.terminal.onResize = () => ({dispose() {}});
+        TerminalManager.terminals = {scrollKey: peer.terminal};
+
+        TerminalManager.setupScrollbar({style: {}, appendChild() {}}, peer.terminal, 'scrollKey');
+        const initialReads = layoutReads;
+        const initialTop = thumb.style.top;
+
+        for (let line = 1; line <= 50; line += 1) {
+            peer.terminal.buffer.active.viewportY = line;
+            scrollListener();
+        }
+        assert.equal(layoutReads, initialReads);
+        assert.equal(frames.size, 1);
+
+        runFrames();
+        assert.equal(layoutReads, initialReads + 1);
+        assert.notEqual(thumb.style.top, initialTop);
+        assert.equal(thumb.style.top, `${(50 / 476) * (200 - 30)}px`);
+
+        scrollListener();
+        assert.equal(frames.size, 1);
+        const pendingId = [...frames.keys()][0];
+        TerminalManager.scrollbarDisposers.scrollKey();
+        assert.deepEqual(cancelled, [pendingId]);
+        assert.equal(frames.size, 0);
+    } finally {
+        global.setInterval = originals.setInterval;
+        global.clearInterval = originals.clearInterval;
+        global.requestAnimationFrame = originals.requestAnimationFrame;
+        global.cancelAnimationFrame = originals.cancelAnimationFrame;
+        if (originals.requestAnimationFrame === undefined) delete global.requestAnimationFrame;
+        if (originals.cancelAnimationFrame === undefined) delete global.cancelAnimationFrame;
+        if (originals.createElement === undefined) {
+            delete global.document.createElement;
+        } else {
+            global.document.createElement = originals.createElement;
+        }
+    }
+});
+
 function loadSessionManager(termStub) {
     const source = fs.readFileSync(
         path.join(__dirname, '..', '..', 'static', 'js', 'session-manager.js'),
