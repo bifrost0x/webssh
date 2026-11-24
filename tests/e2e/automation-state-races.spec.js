@@ -25,14 +25,16 @@ test('schedule editing cannot replace a workflow while its save is pending',asyn
  await expect(page.locator('#scheduleCron')).toHaveValue('0 9 * * *');
 });
 
-test('Automation preserves the application language when its labels fall back to English',async({page})=>{
+test('Automation follows every application language',async({page})=>{
  await login(page,'e2e_admin',{workspace:false});
  await page.goto('/automation');
- for(const language of ['fr','es','zh']){
+ for(const [language,runs] of [['fr','Exécutions'],['es','Ejecuciones'],['vi','Lần chạy'],['zh',null],['de','Läufe'],['en','Runs']]){
   await page.evaluate(lang=>window.i18n.setLanguage(lang),language);
   await expect(page.locator('html')).toHaveAttribute('lang',language);
-  await expect(page.locator('main[data-native-automation]')).toHaveAttribute('lang','en');
-  await expect(page.locator('#automationNavBtn')).not.toHaveAttribute('lang','en');
-  await expect(page.locator('[data-auto-tab=runs] [data-auto-i18n]')).toHaveText('Runs');
+  await expect(page.locator('main[data-native-automation]')).toHaveAttribute('lang',language);
+  const expected=runs||await page.evaluate(()=>window.i18n.t('automation.runs'));
+  await expect(page.locator('[data-auto-tab=runs] [data-auto-i18n]')).toHaveText(expected);
+  if(language!=='en')await expect(page.locator('[data-auto-tab=runs] [data-auto-i18n]')).not.toHaveText('Runs');
+  await expect(page.locator('#automationApp')).not.toContainText(/automation\.[a-zA-Z]/);
  }
 });
