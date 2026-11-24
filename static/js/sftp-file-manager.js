@@ -1,5 +1,11 @@
 
 class SFTPFileManager extends window.FileDirectoryRequests {
+    static TRANSFER_STATUS_CLASSES = new Set([
+        'pending', 'active', 'cancelling', 'complete', 'error', 'cancelled', 'skipped',
+    ]);
+
+    static TRANSFER_TYPE_CLASSES = new Set(['upload', 'download', 's2s', 's2s-queued']);
+
     constructor() {
         super();
         this.socket = window.socket;
@@ -1995,6 +2001,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         });
 
         this.socket.on('file_renamed', (data) => {
+            if (window.FileMutationDialog?.handle(this, data, 'rename_file')) return;
             if (!this.consumeOperationResponse(data, 'rename_file')) return;
             this.showNotification(this.t('fm.renamedSuccess', 'Renamed successfully'), 'success');
             this.refreshSource(data.source_id);
@@ -4000,25 +4007,9 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         const file = state.files[index];
         if (!file) return;
 
-        const newName = prompt(this.t('fm.enterNewName', 'Enter new name:'), file.name);
-        if (!newName || newName === file.name) return;
-
-        if (newName.includes('/') || newName.includes('\\')) {
-            this.showNotification(this.t('fm.invalidName', 'Invalid name'), 'error');
-            return;
-        }
-
-        if (this.sourceCan(state, 'rename')) {
-            const oldPath = state.path === '/' ? '/' + file.name : state.path + '/' + file.name;
-            const newPath = state.path === '/' ? '/' + newName : state.path + '/' + newName;
-            const sourceId = this.getPaneSourceId(state);
-            this.socket.emit('rename_file', {
-                source_id: sourceId,
-                old_path: oldPath,
-                new_path: newPath,
-                request_id: this.registerOperationRequest(sourceId, 'rename_file'),
-            });
-        }
+        if (!this.sourceCan(state, 'rename') || !window.FileMutationDialog) return;
+        this.mutationDialog?.close();
+        this.mutationDialog = new window.FileMutationDialog(this, this.activePane, file, { rename: true });
     }
 
     canOpenMovePickerForState(state) {
@@ -6080,7 +6071,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         badge.style.display = summary.total > 0 ? 'inline' : 'none';
 
         if (page.entries.length === 0) {
-            container.innerHTML = `<div class="fm-empty" style="padding: 20px;">${this.t('fm.noTransfers', 'No transfers')}</div>`;
+            container.innerHTML = `<div class="fm-empty" style="padding: 20px;">${this.escapeHtml(this.t('fm.noTransfers', 'No transfers'))}</div>`;
             return;
         }
 
@@ -6099,9 +6090,14 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             const retryHint = t.status === 'error' && t.retryable === true && t.type !== 'download'
                 ? this.t('transfer.reviewDestination', 'Check the destination before starting the transfer again.')
                 : '';
+            // Class names come from fixed sets; anything else renders without one.
+            const statusClass = SFTPFileManager.TRANSFER_STATUS_CLASSES.has(t.status) ? t.status : '';
+            const typeClass = SFTPFileManager.TRANSFER_TYPE_CLASSES.has(t.type) ? t.type : '';
+            const progress = Math.max(0, Math.min(100, Number(t.progress) || 0));
+            const cancelLabel = this.escapeHtml(this.t('fm.cancelTransfer', 'Cancel transfer'));
             return `
-            <div class="fm-transfer-item ${t.status}" data-transfer-id="${this.escapeHtml(String(t.id))}"${reason ? ` title="${reason}"` : ''}>
-                <div class="fm-transfer-icon ${t.type}">
+            <div class="fm-transfer-item ${statusClass}" data-transfer-id="${this.escapeHtml(String(t.id))}"${reason ? ` title="${reason}"` : ''}>
+                <div class="fm-transfer-icon ${typeClass}">
                     ${t.type === 'upload' ? '⬆️' : t.type === 'download' ? '⬇️' : '↔️'}
                 </div>
                 <div class="fm-transfer-info">
@@ -6111,18 +6107,18 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                     ${t.status === 'error' && window.CustomerWorkflows ? `<details class="fm-recovery-guidance"><summary>${this.escapeHtml(this.t('customer.nextSteps', 'What can I do?'))}</summary><p>${this.escapeHtml(this.t('customer.' + window.CustomerWorkflows.adviceKey(t.errorCode), 'Inspect the destination before repeating this operation.'))}</p><p>${this.escapeHtml([t.sourcePath, t.targetPath].filter(Boolean).join(' → '))}</p></details>` : ''}
                     ${retryHint ? `<div class="fm-transfer-error">${this.escapeHtml(retryHint)}</div>` : ''}
                     ${t.status === 'active' ? `
-                        <div class="fm-transfer-progress-bar" role="progressbar" aria-label="${this.escapeHtml(t.filename)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.max(0, Math.min(100, Number(t.progress) || 0))}">
-                            <div class="fm-transfer-progress-fill" style="width: ${t.progress}%"></div>
+                        <div class="fm-transfer-progress-bar" role="progressbar" aria-label="${this.escapeHtml(t.filename)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}">
+                            <div class="fm-transfer-progress-fill" style="width: ${progress}%"></div>
                         </div>
                     ` : ''}
                 </div>
-                <div class="fm-transfer-status ${t.status}">${this.getStatusText(t)}</div>
+                <div class="fm-transfer-status ${statusClass}">${this.escapeHtml(this.getStatusText(t))}</div>
                 ${recovery ? `<button type="button" class="btn btn-secondary" data-transfer-recover="${this.escapeHtml(String(t.id))}">${this.escapeHtml(recoveryLabel)}</button>` : ''}
                 ${t.status === 'pending' || t.status === 'active' ? `
                     <div class="fm-transfer-actions">
-                        <button type="button" class="fm-transfer-btn cancel material-icons"
+                        <button type="button" class="fm-transfer-btn cancel"
                                 data-transfer-cancel="${this.escapeHtml(String(t.id))}"
-                                title="${this.t('common.cancel', 'Cancel')}">close</button>
+                                title="${cancelLabel}" aria-label="${cancelLabel}"><span class="material-icons" aria-hidden="true">close</span></button>
                     </div>
                 ` : ''}
             </div>
@@ -6197,8 +6193,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                 return '<div class="fm-context-divider"></div>';
             }
             return `
-                <div class="fm-context-item ${item.danger ? 'danger' : ''}" data-action="${item.action}">
-                    <span class="fm-context-icon material-icons" aria-hidden="true">${item.icon}</span> ${item.text}
+                <div class="fm-context-item ${item.danger ? 'danger' : ''}" data-action="${this.escapeHtml(item.action)}">
+                    <span class="fm-context-icon material-icons" aria-hidden="true">${this.escapeHtml(item.icon)}</span> ${this.escapeHtml(item.text)}
                 </div>
             `;
         }).join('');
@@ -6526,12 +6522,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
 
     escapeHtml(text) {
         // Used in both text and quoted attributes in the file workspace.
-        return String(text ?? '')
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#39;');
+        return window.escapeHtml(text);
     }
 
     showUploadProgress(batch = this.currentUploadBatch) {

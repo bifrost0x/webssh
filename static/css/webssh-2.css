@@ -3124,6 +3124,45 @@ body[data-theme="paper"]:has(.auth-access-dock) {
     min-width: 0;
 }
 
+.notification.notification-dismissible {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.notification-dismissible .notification-copy {
+    flex: 1 1 auto;
+}
+
+.notification-close {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin: -2px -8px -2px 0;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.notification-close .material-icons {
+    font-size: 18px;
+}
+
+.notification-close:hover {
+    background: rgb(0 0 0 / 14%);
+}
+
+.notification-close:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 1px;
+}
+
 @keyframes auth-dock-enter {
     from {
         opacity: 0;
