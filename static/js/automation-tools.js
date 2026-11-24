@@ -36,7 +36,7 @@
         return {hostCount: targets.length, steps};
     }
 
-    const POLL = Object.freeze({tick: 3000, activeRuns: 3000, idleRuns: 30000, state: 15000, unavailableState: 60000});
+    const POLL = Object.freeze({tick: 3000, activeRuns: 3000, idleRuns: 30000, state: 15000, unavailableState: 60000, startedRunGrace: 30000});
 
     /**
      * Decide which refreshes are due on one polling tick. Runs are polled fast
@@ -45,9 +45,10 @@
      * elsewhere. Workflows and targets refresh only while automation is open.
      */
     function pollPlan({now, lastRuns = 0, lastState = 0, automationVisible = false, overviewVisible = false,
-        runsTabOpen = false, runActive = false}) {
+        runsTabOpen = false, runActive = false, runExpected = false}) {
         let runsInterval = null;
-        if (runActive && (automationVisible || overviewVisible)) runsInterval = POLL.activeRuns;
+        // A run just started may not be listed yet; follow it as if active.
+        if ((runActive || runExpected) && (automationVisible || overviewVisible)) runsInterval = POLL.activeRuns;
         else if (overviewVisible || (automationVisible && runsTabOpen)) runsInterval = POLL.idleRuns;
         // Timers drift by a few milliseconds; do not let that skip a whole tick.
         const due = (last, interval) => now - last + POLL.tick / 4 >= interval;

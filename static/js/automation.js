@@ -53,6 +53,7 @@
     let editRevision = 0;
     let lastStateRefresh = 0;
     let lastRunsRefresh = 0;
+    let runStartedAt = 0;
     let preview = null;
     let busy = false;
     let polling = false;
@@ -1183,6 +1184,7 @@
             const headers = await authorize('automation.run', payload.intent, generation);
             assertAuthorizationCurrent(generation);
             await api('/api/automation/start', {method:'POST',headers,body:payload});
+            runStartedAt = Date.now();
             assertAuthorizationCurrent(generation);
             preview = null; $('runPreview').close(); tab('runs'); await loadRuns();
             assertAuthorizationCurrent(generation); notify(tr('runStarted'));
@@ -1238,7 +1240,8 @@
             const overviewVisible = available && view === 'overview';
             const plan = schedule.pollPlan({now: Date.now(), lastRuns: lastRunsRefresh, lastState: lastStateRefresh,
                 automationVisible: view === 'automation', overviewVisible, runsTabOpen: available && selectedTab === 'runs',
-                runActive: available && knownRuns.some(schedule.isRunActive)});
+                runActive: available && knownRuns.some(schedule.isRunActive),
+                runExpected: available && Date.now() - runStartedAt < schedule.POLL.startedRunGrace});
             const refreshRuns = plan.runs || (overviewOpened && overviewVisible);
             // While automation is unavailable nothing else asks the server, so an
             // administrator enabling it would only show up after opening its view.

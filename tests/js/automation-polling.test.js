@@ -80,3 +80,13 @@ test('the automation controller drives its interval through the shared plan', ()
     assert.match(source, /'primary-workspace-change'/);
     assert.doesNotMatch(source, /lastStateRefresh >= 15000/);
 });
+
+test('a just started run is followed quickly before it appears in the history', () => {
+    // The start response can arrive before the run is listed; the history tab
+    // alone would only refresh every 30 seconds.
+    const waiting = {now: 3_000, lastRuns: 0, automationVisible: true, runsTabOpen: true};
+    assert.equal(pollPlan(waiting).runs, false);
+    assert.equal(pollPlan({...waiting, runExpected: true}).runs, true);
+    assert.equal(pollPlan({...waiting, runExpected: true, automationVisible: false}).runs, false);
+    assert.ok(POLL.startedRunGrace >= POLL.activeRuns * 5);
+});
