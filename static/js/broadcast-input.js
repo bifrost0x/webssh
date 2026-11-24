@@ -10,7 +10,7 @@
     let sending = false;
     const BroadcastInput = {
         open: false,
-        toggle() { this.open ? this.close() : this.show(); },
+        toggle() { if (this.open) this.close(); else this.show(); },
         show() {
             this.open = true;
             document.body.classList.add('broadcast-active');

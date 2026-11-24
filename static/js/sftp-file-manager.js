@@ -2942,7 +2942,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             return;
         }
 
-        const profile = (this.qcProfiles || []).find(p => p.id == profileId);
+        const profile = (this.qcProfiles || []).find(p => String(p.id) === String(profileId));
         if (!profile) return;
         if (profile.socks_proxy_id) {
             document.getElementById('fmQcHost').value = '';

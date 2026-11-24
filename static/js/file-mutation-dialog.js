@@ -440,7 +440,7 @@
             this.manager.socket.off?.('disconnect', this.onDisconnect);
             this.dialog.close();
             this.dialog.remove();
-            this.trigger?.isConnected && this.trigger.focus();
+            if (this.trigger?.isConnected) this.trigger.focus();
             if (this.manager.mutationDialog === this) this.manager.mutationDialog = null;
         }
 

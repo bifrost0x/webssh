@@ -1762,7 +1762,7 @@ const SessionManager = {
             setTimeout(() => {
                 const keySelect = document.getElementById('keySelect');
                 if (keySelect) {
-                    for (let opt of keySelect.options) {
+                    for (const opt of keySelect.options) {
                         if (opt.value === session.keyId) {
                             opt.selected = true;
                             break;
