@@ -80,9 +80,14 @@ test('SSH credential metadata ignores stale editor responses and preserves missi
  await login(page,'e2e_admin',{workspace:false});let pending=[];
  await page.route('**/api/credentials/state',route=>{pending.push(route);});
  await page.locator('#manageProfilesBtn').click();const buttons=page.locator('.profile-inspect-button');await buttons.first().click();await expect.poll(()=>pending.length).toBe(1);
- await page.evaluate(()=>{window.ProfileManager.showManagementList();window.ProfileManager.openEditor('ops-first');});await expect.poll(()=>pending.length).toBe(2);
- const currentId=await page.locator('#profileEditorId').inputValue();await pending[1].fulfill({json:{enabled:true,credentials:[{id:'new',name:'Current password',uses:[]}],profiles:[{id:currentId,credential_id:'missing',credential_status:'missing'}]}});
- await expect(page.locator('#profileEditorCredential option:checked')).toHaveText('Assigned password unavailable');await pending[0].fulfill({json:{enabled:true,credentials:[{id:'old',name:'Stale password',uses:[]}],profiles:[]}});await expect(page.locator('#profileEditorCredential option[value=old]')).toHaveCount(0);await expect(page.locator('#profileEditorCredential')).toHaveValue('missing');
+ // The second editor joins the request that is still in flight; each editor applies the shared
+ // response only to its own resource.
+ await page.evaluate(()=>{window.ProfileManager.showManagementList();window.ProfileManager.openEditor('ops-first');});
+ const currentId=await page.locator('#profileEditorId').inputValue();await page.waitForTimeout(300);expect(pending.length).toBe(1);
+ await pending[0].fulfill({json:{enabled:true,credentials:[{id:'new',name:'Current password',uses:[]}],profiles:[{id:currentId,credential_id:'missing',credential_status:'missing'},{id:'previous-editor',credential_id:'new',credential_status:'ready'}]}});
+ await expect(page.locator('#profileEditorCredential option:checked')).toHaveText('Assigned password unavailable');await expect(page.locator('#profileEditorCredential')).toHaveValue('missing');
+ await page.unroute('**/api/credentials/state');let fresh=0;await page.route('**/api/credentials/state',route=>{fresh++;return route.fulfill({json:{enabled:true,credentials:[],profiles:[]}});});
+ await page.evaluate(()=>window.NativeCredentials.load());expect(fresh).toBe(1);
 });
 test('assignment controls preserve dirty password details even after the target panel opens',async({page})=>{
  await login(page,'e2e_admin',{workspace:false});const item={id:'named',name:'Draft safety',username:'operator',uses:[{resource_id:'existing',name:'Existing host',valid:true}]};let intents=0;
