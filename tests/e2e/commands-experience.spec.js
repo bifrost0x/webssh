@@ -220,7 +220,7 @@ for (const width of [360, 390]) for (const language of ['en', 'de']) {
         await page.setViewportSize({width, height: 740});
         await login(page);
         await page.evaluate(async language => {
-            window.i18n.setLanguage(language);
+            await window.i18n.setLanguage(language);
             window.CommandLibrary.openLibrary();
             await window.CommandLibrary.applyLanguage();
         }, language);

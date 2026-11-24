@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const launcher = require('../../static/js/session-command-launcher.js');
 const catalog = require('../../app/resources/commands/system_commands.json');
+const {runI18n} = require('./i18n-locales.js');
 
 test('only the exact known template receives an impact label; custom and edited text stays unclassified', () => {
     const original = catalog.find(item => item.id === 'sys-016');
@@ -11,22 +12,20 @@ test('only the exact known template receives an impact label; custom and edited 
     assert.equal(entries[2].safety, null);
 });
 
-test('focused translation bundles merge supported languages and retain fallback and language switching', () => {
-    const fs = require('node:fs');
-    const vm = require('node:vm');
+test('focused translation bundles merge supported languages and retain fallback and language switching', async () => {
     const window = {dispatchEvent() {}};
     const document = {addEventListener() {}, documentElement:{}, querySelectorAll:()=>[], querySelector:()=>null, title:''};
-    vm.runInNewContext(fs.readFileSync('static/js/i18n.js', 'utf8'), {window, document, CustomEvent:function() {}});
+    runI18n({window, document, CustomEvent:function() {}}, ['en', 'de']);
     assert.equal(typeof window.i18n.addTranslations, 'function');
     assert.equal(window.i18n.addTranslations('en', {'test.bundle':'English', 'test.fallback':'Fallback'}), true);
     assert.equal(window.i18n.addTranslations('de', {'test.bundle':'Deutsch'}), true);
     assert.equal(window.i18n.addTranslations('__proto__', {'test.bundle':'Invalid'}), false);
     assert.equal(window.i18n.addTranslations('xx', {'test.bundle':'Invalid'}), false);
-    assert.equal(window.i18n.setLanguage('de'), true);
+    assert.equal(await window.i18n.setLanguage('de'), true);
     assert.equal(window.i18n.t('test.bundle'), 'Deutsch');
     assert.equal(window.i18n.t('test.fallback'), 'Fallback');
     assert.equal(window.i18n.t('commands.noCommands'), 'Keine Befehle gefunden');
-    assert.equal(window.i18n.setLanguage('en'), true);
+    assert.equal(await window.i18n.setLanguage('en'), true);
     assert.equal(window.i18n.t('test.bundle'), 'English');
 });
 
@@ -34,7 +33,7 @@ test('impact guidance and template mutability remain distinct in all six languag
     const fs = require('node:fs');
     const vm = require('node:vm');
     const window = {};
-    vm.runInNewContext(fs.readFileSync('static/js/i18n.js', 'utf8'), {window, document:{addEventListener() {}}});
+    runI18n({window, document:{addEventListener() {}}});
     vm.runInNewContext(fs.readFileSync('static/js/command-safety-i18n.js', 'utf8'), {window});
     for (const language of ['en','de','fr','es','vi','zh']) {
         window.i18n.currentLang = language;

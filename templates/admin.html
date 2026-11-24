@@ -554,7 +554,8 @@
 {% if not embedded %}
     <div id="notificationContainer" class="notification-container"></div>
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
-    <script src="{{ static_asset_url(filename='js/i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/i18n.js') }}" data-locales='{{ translation_asset_urls()|tojson }}'></script>
+    <script src="{{ static_asset_url(filename='js/i18n/en.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/security-ui.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/account-controls-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/account-controls.js') }}"></script>

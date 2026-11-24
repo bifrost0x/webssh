@@ -4,6 +4,8 @@ import re
 
 import pytest
 
+from tests.i18n_sources import LOCALES, locale_block
+
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = [
     *sorted((ROOT / 'app').glob('automation_*.py')),
@@ -29,11 +31,11 @@ def mapped_codes():
 
 
 def translations():
-    """Each message key with its English and German text, in file order."""
-    source = (ROOT / 'static/js/automation-i18n.js').read_text(encoding='utf-8')
+    """Each message key with its text in every locale, in locale order."""
     found = {}
-    for key, text in re.findall(r'"(error\.[a-z_]+)":\s*"([^"]+)"', source):
-        found.setdefault(key, []).append(text)
+    for locale in LOCALES:
+        for key, text in re.findall(r'^        "automation\.(error\.[a-z_]+)": "([^"]+)",?$', locale_block(locale), re.M):
+            found.setdefault(key, []).append(text)
     return found
 
 
@@ -41,9 +43,9 @@ def test_every_backend_code_is_explained_in_the_automation_interface():
     assert backend_codes() - mapped_codes() == CREDENTIAL_INTERFACE_ONLY
 
 
-def test_every_mapped_code_has_an_english_and_a_german_message():
+def test_every_mapped_code_has_a_message_in_every_language():
     available = translations()
-    incomplete = sorted(code for code in mapped_codes() if len(available.get(f'error.{code}', [])) != 2)
+    incomplete = sorted(code for code in mapped_codes() if len(available.get(f'error.{code}', [])) != len(LOCALES))
     assert incomplete == []
 
 

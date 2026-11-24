@@ -281,6 +281,19 @@ def init_static_delivery(app) -> None:
 
     app.jinja_env.globals["static_asset_url"] = static_asset_url
 
+    def translation_asset_urls() -> dict[str, str]:
+        """Versioned URLs of the per-language files in static/js/i18n/."""
+        prefix = "js/i18n/"
+        return {
+            path[len(prefix):-len(".js")]: static_asset_url(path)
+            for path in sorted(app.extensions[_ASSET_INDEX_EXTENSION])
+            if path.startswith(prefix)
+            and path.endswith(".js")
+            and "/" not in path[len(prefix):]
+        }
+
+    app.jinja_env.globals["translation_asset_urls"] = translation_asset_urls
+
     @app.after_request
     def optimize_static_delivery(response):
         if request.endpoint != "static":

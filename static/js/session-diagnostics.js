@@ -520,7 +520,12 @@
         const automationMount = elements.overlay.querySelector?.('.session-diagnostics-content');
         const automationSection = automationMount ? documentRef.createElement('section') : null;
         let automationView = {status: 'hidden', rows: []};
-        const at = (key, fallback, values = {}) => windowRef?.AutomationText?.t?.(key, values) || fallback;
+        const at = (key, fallback, values = {}) => {
+            const name = `automation.${key}`;
+            const text = windowRef?.i18n?.t?.(name);
+            return Object.entries(values).reduce((result, [placeholder, value]) => result.replaceAll(`{${placeholder}}`, String(value)),
+                typeof text === 'string' && text !== name ? text : fallback);
+        };
         function renderAutomation(view) {
             automationView = view;
             if (!automationSection) return;

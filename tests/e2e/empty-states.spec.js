@@ -114,10 +114,10 @@ test('empty hints translate and wrap in the light theme without exposing hidden 
     await login(page);
     await openProfileManagement(page);
     await page.evaluate(() => new Promise(resolve => window.socket.emit('list_profiles', resolve)));
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
         window.ProfileManager.setProfiles([]);
         document.body.dataset.theme = 'paper';
-        window.i18n.setLanguage('de');
+        await window.i18n.setLanguage('de');
     });
     const empty = await expectEmptyRegion(page, '#profileManagementList .no-items');
     await expect(empty).toContainText('Erstelle');

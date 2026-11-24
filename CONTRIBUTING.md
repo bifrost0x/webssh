@@ -100,6 +100,10 @@ See the [planning and release workflow](docs/project-planning.md) for the lightw
 - Use consistent indentation (4 spaces)
 - Prefer `const` over `let`, avoid `var`
 
+**Translations:**
+- Each language has its own dictionary in `static/js/i18n/<lang>.js`. Add every new key to all of them; the tests reject missing, empty or unused keys.
+- The sign-in pages use `static/js/i18n-auth.js`, generated from those dictionaries. Run `npm run i18n:auth` after changing a key they show.
+
 **General:**
 - No trailing whitespace
 - Files end with a newline

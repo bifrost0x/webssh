@@ -27,7 +27,8 @@ test('workflow command-set copies, overview log links and reachable stage action
  await page.locator('#overviewNavBtn').click();await expect(page.locator('#odAutomation')).toBeVisible();await expect(page.locator('#odActivity')).toContainText('Latest check');await expect(page.locator('#odKpiAutomation')).toContainText('0 failed');await page.locator('#odAutomation').screenshot({path:info.outputPath('overview-runs.png')});
  run.status='failed';run.targets[0].steps[0]={name:'Identity',status:'failed',exit_code:1,duration:1,stdout:'diagnostic text',stderr:'failure detail'};
  const failed=page.locator('#odAttention button[data-key="attention:run-failed:recent-run"]');await expect(failed).toHaveText(/Run failed: Latest check/,{timeout:10000});await expect(page.locator('#odKpiAutomation')).toContainText('1 failed');
- unavailable=true;await page.waitForResponse(r=>r.url().includes('/api/automation/runs')&&r.status()===503,{timeout:10000});await expect(failed).toBeVisible();await expect(page.locator('#odNextRun')).toHaveText('Showing the last known runs. Automation could not be refreshed.');unavailable=false;
+ // Without an active run the overview refreshes every 30 seconds; reopening it refreshes at once.
+ unavailable=true;const refused=page.waitForResponse(r=>r.url().includes('/api/automation/runs')&&r.status()===503,{timeout:10000});await page.locator('#overviewNavBtn').click();await refused;await expect(failed).toBeVisible();await expect(page.locator('#odNextRun')).toHaveText('Showing the last known runs. Automation could not be refreshed.');unavailable=false;
  await failed.click();await expect(page.locator('#auto-runs')).toBeVisible();await expect(page.locator('#runHistory pre').filter({hasText:'failure detail'})).toBeVisible();
  expect(writes).toEqual([]);
 });

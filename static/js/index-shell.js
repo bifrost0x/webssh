@@ -52,8 +52,11 @@ function initLanguageSelectorHeader() {
         select.appendChild(option);
     });
     select.value = currentLang;
-    select.addEventListener('change', () => {
-        i18n.setLanguage(select.value);
+    select.addEventListener('change', async () => {
+        const requested = select.value;
+        if (!await i18n.setLanguage(requested) && select.value === requested) {
+            select.value = i18n.getLanguage();
+        }
     });
 }
 

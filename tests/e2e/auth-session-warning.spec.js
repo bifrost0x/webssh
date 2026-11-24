@@ -7,8 +7,8 @@ for (const [language, closeLabel] of Object.entries({
     test(`authentication expiry warnings can be dismissed without delaying expiry in ${language}`, async ({ page }) => {
         await page.setViewportSize({ width: language === 'de' ? 390 : 1440, height: 900 });
         await login(page);
-        const message = await page.evaluate(lang => {
-            window.i18n.setLanguage(lang);
+        const message = await page.evaluate(async lang => {
+            await window.i18n.setLanguage(lang);
             let now = 1000;
             const timers = [];
             const guard = window.AuthSessionGuard.create({

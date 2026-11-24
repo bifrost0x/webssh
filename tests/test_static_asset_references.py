@@ -61,7 +61,7 @@ def test_auth_pages_use_the_generated_authentication_translation_bundle():
 
 def test_authentication_translation_bundle_stays_within_its_page_load_budget():
     auth_size = Path('static/js/i18n-auth.js').stat().st_size
-    full_size = Path('static/js/i18n.js').stat().st_size
+    full_size = sum(path.stat().st_size for path in Path('static/js/i18n').glob('*.js'))
 
     assert auth_size < 100_000
     assert auth_size < full_size * 0.2

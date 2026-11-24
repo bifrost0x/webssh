@@ -32,7 +32,7 @@ function loadAuthI18n(localStorage) {
     return { events, window };
 }
 
-test('the auth bundle preserves all locales and representative page translations', () => {
+test('the auth bundle preserves all locales and representative page translations', async () => {
     const { events, window } = loadAuthI18n({
         getItem() { return 'en'; },
         setItem() {},
@@ -45,21 +45,23 @@ test('the auth bundle preserves all locales and representative page translations
     assert.equal(window.i18n.t('auth.login'), 'Sign In');
     assert.equal(window.i18n.t('security.methodPasskey'), 'Passkey');
     assert.equal(window.i18n.t('navigation.sshWorkspaces'), 'SSH Workspaces');
-    assert.equal(window.i18n.setLanguage('de'), true);
+    const switched = window.i18n.setLanguage('de');
+    // Every locale is inline, so the switch applies without loading anything.
     assert.equal(window.i18n.getLanguage(), 'de');
+    assert.equal(await switched, true);
     assert.equal(window.i18n.t('auth.login'), 'Anmelden');
     assert.equal(events.at(-1).name, 'languageChanged');
     assert.equal(events.at(-1).detail.lang, 'de');
 });
 
-test('the auth bundle still works when browser storage is blocked', () => {
+test('the auth bundle still works when browser storage is blocked', async () => {
     const { window } = loadAuthI18n({
         getItem() { throw new Error('storage denied'); },
         setItem() { throw new Error('storage denied'); },
     });
 
     assert.equal(window.i18n.getLanguage(), 'en');
-    assert.equal(window.i18n.setLanguage('fr'), true);
+    assert.equal(await window.i18n.setLanguage('fr'), true);
     assert.equal(window.i18n.getLanguage(), 'fr');
     assert.equal(window.BrowserPreferences.set('example', 'value'), false);
 });

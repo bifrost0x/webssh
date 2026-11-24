@@ -268,8 +268,8 @@ test('overview resource navigation preserves filters and separates inspection fr
     await dialog.screenshot({animations: 'disabled', path: testInfo.outputPath('mobile.png')});
     await dialog.locator('.close').click();
     await page.setViewportSize({width: 320, height: 844});
-    await page.evaluate(() => {
-        window.i18n.setLanguage('de');
+    await page.evaluate(async () => {
+        await window.i18n.setLanguage('de');
         window.ServerOperations.open('ops', 'system');
     });
     const german = page.locator('.server-management');

@@ -22,22 +22,40 @@ function read(relativePath) {
     return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
 }
 
-function parseTranslations(source) {
+function parseRuntime(source) {
     const declaration = 'const translations = ';
     const runtimeMarker = 'const BrowserPreferences = ';
     const objectStart = source.indexOf(declaration);
     const runtimeStart = source.indexOf(runtimeMarker);
     if (objectStart < 0 || runtimeStart < 0 || runtimeStart <= objectStart) {
-        throw new Error('Unable to locate the translation table and runtime.');
+        throw new Error('Unable to locate the locale list and runtime.');
     }
     const objectLiteral = source
         .slice(objectStart + declaration.length, runtimeStart)
         .trim()
         .replace(/;$/, '');
-    const translations = vm.runInNewContext(`(${objectLiteral})`, Object.create(null));
+    const locales = Object.keys(vm.runInNewContext(`(${objectLiteral})`, Object.create(null)));
     return {
-        translations,
+        locales,
         runtime: source.slice(runtimeStart).trimStart(),
+    };
+}
+
+function readLocale(locale) {
+    const registered = {};
+    const window = {i18n: {registerLocales(bundle) { Object.assign(registered, bundle); }}};
+    vm.runInNewContext(read(`static/js/i18n/${locale}.js`), {window});
+    if (!registered[locale] || typeof registered[locale] !== 'object') {
+        throw new Error(`static/js/i18n/${locale}.js does not register ${locale}.`);
+    }
+    return registered[locale];
+}
+
+function parseTranslations(source) {
+    const {locales, runtime} = parseRuntime(source);
+    return {
+        translations: Object.fromEntries(locales.map(locale => [locale, readLocale(locale)])),
+        runtime,
     };
 }
 

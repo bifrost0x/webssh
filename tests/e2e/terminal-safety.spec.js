@@ -152,7 +152,7 @@ for (const viewport of [{width:1440, height:960}, {width:390, height:844}]) {
         await page.setViewportSize(viewport);
         await setup(page);
         await connect(page, 'safe-two', 'alpha.example');
-        await page.evaluate(() => {SessionManager.switchSession('safe-one'); window.i18n.setLanguage('de');});
+        await page.evaluate(async () => {SessionManager.switchSession('safe-one'); await window.i18n.setLanguage('de');});
         await page.evaluate(() => BroadcastInput.show());
         const dialog = page.locator('#broadcastRecipientDialog');
         await expect(dialog).toBeVisible();
