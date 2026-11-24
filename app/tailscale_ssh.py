@@ -165,6 +165,35 @@ def _route_interface_for_ip(address, *, socket_factory=socket.socket):
         return None
 
 
+def log_tailnet_route_restriction(event):
+    """Record the effective restriction while Tailscale SSH is enabled.
+
+    With the restriction lifted, any WebSSH user can reach tailssh nodes
+    under the shared node identity, so that state is logged as a warning.
+    Returns the effective value, or None while Tailscale SSH is disabled.
+    """
+    if not config.TAILSCALE_SSH_ENABLED:
+        return None
+    from .app_settings import is_tailnet_route_restricted
+    from .audit_logger import log_info, log_warning
+    try:
+        restricted = is_tailnet_route_restricted()
+    except Exception as error:
+        log_warning('Tailnet route restriction could not be read',
+                    event=event, error_type=type(error).__name__)
+        return None
+    if restricted:
+        log_info('Ordinary SSH to Tailscale node addresses is blocked',
+                 event=event, tailscale_ssh_restrict_tailnet_routes=True)
+    else:
+        log_warning(
+            'Ordinary SSH to Tailscale node addresses is allowed; any WebSSH '
+            'user can reach Tailscale SSH nodes under the shared node identity',
+            event=event, tailscale_ssh_restrict_tailnet_routes=False,
+        )
+    return restricted
+
+
 def target_uses_tailscale_route(address):
     """Require the pinned target to leave through the configured tailnet."""
     return _route_interface_for_ip(address) == config.TAILSCALE_SSH_INTERFACE

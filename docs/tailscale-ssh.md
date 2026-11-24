@@ -93,6 +93,29 @@ example because the route query fails or times out, is refused. An IPv4-mapped
 IPv6 address is checked against the IPv4 route it actually uses. With
 Tailscale SSH disabled, connection behavior is unchanged.
 
+Proxies and jump hosts that resolve names themselves are covered too:
+
+- A SOCKS5 proxy or jump host whose address is loopback, unspecified or one of
+  the WebSSH host's own addresses is refused. Such a relay shares the WebSSH
+  network namespace, for example tailscaled's own SOCKS5 server
+  (`TS_SOCKS5_SERVER`) in the sidecar, so its connections leave with the node
+  identity.
+- A target name handed to a SOCKS5 proxy with remote DNS, or to a jump host
+  because only the bastion can resolve it, is refused when it ends in
+  `.ts.net` (MagicDNS) or when it resolves locally to a restricted node
+  address. A name that does not resolve on the WebSSH host is still passed on.
+
+**Disabling Tailscale SSH does not remove the node from the tailnet.** The
+restriction is only active while `TAILSCALE_SSH_ENABLED=true`. If the feature is
+switched off while the sidecar stays logged in to the tailnet and the tailnet
+policy still contains an `ssh` rule with `"action": "accept"` for the WebSSH
+node or its tag, any WebSSH user can open a password connection with an
+arbitrary password to those Tailscale SSH nodes and get a shell under the node
+identity. Remove the node or its tag from such rules, or log the sidecar out of
+the tailnet, before disabling the feature; otherwise keep the feature enabled
+with the block on. While the feature is enabled and the block is off, WebSSH
+logs a warning at startup and after a restore.
+
 Disable the setting only when users must reach ordinary OpenSSH servers over
 the tailnet with their own credentials and the tailnet SSH policy grants the
 WebSSH node no access to hosts they can reach. Changing it requires admin

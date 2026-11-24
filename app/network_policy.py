@@ -33,8 +33,8 @@ class TailnetRouteRestricted(ValueError):
 
     code = 'tailscale_route_restricted'
 
-    def __init__(self):
-        super().__init__('This target is on the tailnet and requires Tailscale SSH')
+    def __init__(self, message='This target is on the tailnet and requires Tailscale SSH'):
+        super().__init__(message)
 
 
 _TAILSCALE_NODE_NETWORKS = (
@@ -71,19 +71,84 @@ def _tailnet_route_restricted(address):
     determined is restricted; one routed through another interface, such as
     carrier-grade NAT on the local network, is not.
     """
-    import config
     node_address = _tailscale_node_address(address)
     if node_address is None:
         return False
-    interface = str(config.TAILSCALE_SSH_INTERFACE or '').strip()
-    if not (config.TAILSCALE_SSH_ENABLED and interface):
-        return False
-    from .app_settings import is_tailnet_route_restricted
-    if not is_tailnet_route_restricted():
+    interface = _active_tailnet_restriction()
+    if interface is None:
         return False
     from . import tailscale_ssh
     route_interface = tailscale_ssh._route_interface_for_ip(node_address.compressed)
     return route_interface is None or route_interface == interface
+
+
+def _active_tailnet_restriction():
+    """Return the Tailscale interface while the restriction applies, else None."""
+    import config
+    interface = str(config.TAILSCALE_SSH_INTERFACE or '').strip()
+    if not (config.TAILSCALE_SSH_ENABLED and interface):
+        return None
+    from .app_settings import is_tailnet_route_restricted
+    if not is_tailnet_route_restricted():
+        return None
+    return interface
+
+
+_RELAY_MESSAGE = (
+    'A proxy or jump host on the WebSSH host itself would use the Tailscale '
+    'node identity'
+)
+_REMOTE_NAME_MESSAGE = (
+    'This name resolves to the tailnet and requires Tailscale SSH'
+)
+
+
+def check_relay_endpoint(target):
+    """Refuse a SOCKS5 proxy or jump host that would egress as this node.
+
+    A relay on loopback or on one of this host's own addresses shares the
+    WebSSH network namespace, for example tailscaled's SOCKS5 server, so its
+    onward connections leave with the shared node identity. Tailnet node
+    addresses are already refused when the relay address is resolved.
+    """
+    if _active_tailnet_restriction() is None:
+        return
+    address = ipaddress.ip_address(target.ip)
+    if address.version == 6 and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    if address.is_loopback or address.is_unspecified:
+        raise TailnetRouteRestricted(_RELAY_MESSAGE)
+    from . import tailscale_ssh
+    # The kernel routes this host's own addresses through the local table,
+    # whose output interface is the loopback device.
+    if tailscale_ssh._route_interface_for_ip(address.compressed) == 'lo':
+        raise TailnetRouteRestricted(_RELAY_MESSAGE)
+
+
+def check_remote_name(hostname):
+    """Refuse a name a proxy or bastion would resolve onto the tailnet.
+
+    MagicDNS names are refused outright. Any other name is resolved locally
+    once; if a candidate is a restricted tailnet node address, a resolver in
+    this network namespace would return the same address. A name that does
+    not resolve here stays allowed for the remote side.
+    """
+    if _active_tailnet_restriction() is None:
+        return
+    canonical = canonicalize_hostname(hostname)
+    if canonical == 'ts.net' or canonical.endswith('.ts.net'):
+        raise TailnetRouteRestricted(_REMOTE_NAME_MESSAGE)
+    try:
+        candidates = socket.getaddrinfo(canonical, None, type=socket.SOCK_STREAM)
+    except (socket.gaierror, OSError, UnicodeError):
+        return
+    for _family, _type, _proto, _canonname, sockaddr in candidates:
+        try:
+            restricted = _tailnet_route_restricted(sockaddr[0])
+        except (ValueError, TypeError, IndexError):
+            continue
+        if restricted:
+            raise TailnetRouteRestricted(_REMOTE_NAME_MESSAGE)
 
 
 def canonicalize_hostname(hostname):
@@ -384,6 +449,7 @@ def socks_destination(
     if not literal and remote_dns and (
         allow_internal or remote_dns_allowed(canonical, remote_dns_allowlist)
     ):
+        check_remote_name(canonical)
         if not allow_internal:
             from .audit_logger import log_info
             log_info(

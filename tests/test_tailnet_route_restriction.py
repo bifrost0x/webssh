@@ -445,3 +445,194 @@ def test_overview_marks_only_authorized_tailscale_profiles(app, client, context,
     overview_routes._CACHE.clear()
     assert response.status_code == 200
     assert calls == [('100.64.0.10', 22, True) if authorized else ('100.64.0.10', 22)]
+
+
+# Relays in the WebSSH network namespace and remotely resolved names -----------
+
+def _unresolvable(*_args, **_kwargs):
+    raise socket.gaierror('not found')
+
+
+def _relay(ip):
+    from app.network_policy import ResolvedTarget
+    return ResolvedTarget('relay.example', 1080, ip, socket.AF_INET6 if ':' in ip else socket.AF_INET)
+
+
+@pytest.mark.parametrize('ip', ['127.0.0.1', '127.0.0.53', '::1', '::ffff:127.0.0.1', '0.0.0.0'])
+def test_loopback_relay_is_refused(tailnet, ip):
+    with pytest.raises(TailnetRouteRestricted):
+        network_policy.check_relay_endpoint(_relay(ip))
+
+
+def test_relay_on_an_own_address_is_refused(tailnet):
+    tailnet.routes['172.17.0.2'] = 'lo'
+    with pytest.raises(TailnetRouteRestricted):
+        network_policy.check_relay_endpoint(_relay('172.17.0.2'))
+
+
+@pytest.mark.parametrize('ip', ['192.168.1.9', '203.0.113.7'])
+def test_remote_relay_is_allowed(tailnet, ip):
+    network_policy.check_relay_endpoint(_relay(ip))
+
+
+def test_relay_and_name_checks_are_off_without_the_restriction(tailnet, monkeypatch, tmp_path):
+    monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', False)
+    network_policy.check_relay_endpoint(_relay('127.0.0.1'))
+    network_policy.check_remote_name('node.tail1234.ts.net')
+    monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', True)
+    _lift_restriction(monkeypatch, tmp_path)
+    network_policy.check_relay_endpoint(_relay('127.0.0.1'))
+    network_policy.check_remote_name('node.tail1234.ts.net')
+    assert tailnet == []
+
+
+@pytest.mark.parametrize('name', ['node.tail1234.ts.net', 'TS.NET', 'node.ts.net.'])
+def test_magicdns_names_are_refused_for_remote_resolution(tailnet, monkeypatch, name):
+    monkeypatch.setattr(socket, 'getaddrinfo', _unresolvable)
+    with pytest.raises(TailnetRouteRestricted):
+        network_policy.check_remote_name(name)
+
+
+def test_remote_name_resolving_locally_to_a_node_is_refused(tailnet, monkeypatch):
+    monkeypatch.setattr(socket, 'getaddrinfo', _addresses('192.168.1.5', '100.64.0.10'))
+    with pytest.raises(TailnetRouteRestricted):
+        network_policy.check_remote_name('tiny-server')
+
+
+def test_remote_name_off_the_tailnet_or_unresolvable_is_passed_on(tailnet, monkeypatch):
+    monkeypatch.setattr(socket, 'getaddrinfo', _addresses('192.168.1.5'))
+    network_policy.check_remote_name('nas.example')
+    tailnet.routes['100.64.0.10'] = 'eth0'
+    monkeypatch.setattr(socket, 'getaddrinfo', _addresses('100.64.0.10'))
+    network_policy.check_remote_name('cgnat.example')
+    monkeypatch.setattr(socket, 'getaddrinfo', _unresolvable)
+    network_policy.check_remote_name('only-the-bastion-knows.example')
+
+
+def test_socks_remote_dns_name_on_the_tailnet_is_refused(tailnet, monkeypatch):
+    from app.socks5_client import RemoteName
+    monkeypatch.setattr(socket, 'getaddrinfo', _addresses('100.64.0.10'))
+    with pytest.raises(TailnetRouteRestricted):
+        network_policy.socks_destination('tiny-server', 22, True, allow_internal=True)
+    monkeypatch.setattr(socket, 'getaddrinfo', _unresolvable)
+    with pytest.raises(TailnetRouteRestricted):
+        network_policy.socks_destination('tiny-server.tail1234.ts.net', 22, True, allow_internal=True)
+    assert isinstance(
+        network_policy.socks_destination('remote-only.example', 22, True, allow_internal=True),
+        RemoteName,
+    )
+
+
+def test_socks_proxy_in_the_webssh_namespace_is_refused(tailnet, monkeypatch):
+    from tests.test_ssh_manager import connect_target, socks_route
+    clients = _ssh_clients(monkeypatch)
+    session_id, error = connect_target(
+        host='192.168.1.5', password='dummy', socks_proxy=socks_route(host='127.0.0.1', port=1055),
+    )
+    assert session_id is None
+    _assert_restricted(error, 'socks_proxy')
+    assert clients.opened_sockets == []
+
+
+def test_socks_remote_dns_tailnet_name_opens_no_socket(tailnet, monkeypatch):
+    from tests.test_ssh_manager import connect_target, socks_route
+    clients = _ssh_clients(monkeypatch)
+    monkeypatch.setattr(socket, 'getaddrinfo', _unresolvable)
+    session_id, error = connect_target(
+        host='tiny-server.tail1234.ts.net', password='dummy',
+        socks_proxy=socks_route(host='192.168.1.9', remote_dns=True),
+    )
+    assert session_id is None
+    _assert_restricted(error, 'target')
+    assert clients.opened_sockets == []
+
+
+def test_loopback_jump_host_is_refused(tailnet, monkeypatch):
+    from tests.test_ssh_manager import connect_target
+    clients = _ssh_clients(monkeypatch)
+    session_id, error = connect_target(
+        host='192.168.1.5', password='dummy',
+        proxy_jump_host='127.0.0.1', proxy_jump_username='ops', proxy_jump_password='dummy',
+    )
+    assert session_id is None
+    _assert_restricted(error, 'jump_host')
+    assert clients.opened_sockets == []
+
+
+@pytest.mark.parametrize('case', ['magicdns', 'blocked_locally'])
+def test_bastion_dns_fallback_cannot_reach_a_tailnet_name(tailnet, monkeypatch, case):
+    from tests.test_ssh_manager import connect_target
+    clients = _ssh_clients(monkeypatch)
+    if case == 'magicdns':
+        host = 'tiny-server.tail1234.ts.net'
+        monkeypatch.setattr(socket, 'getaddrinfo', _unresolvable)
+    else:
+        # Internal targets blocked and the name on the remote DNS allowlist:
+        # the local policy refuses 100.64.0.10, so the bastion would resolve it.
+        host = 'tailnode.example'
+        monkeypatch.setattr(config, 'BLOCK_INTERNAL_SSH', True)
+        monkeypatch.setattr(config, 'PROXY_JUMP_REMOTE_DNS_ALLOWLIST', (host,))
+        monkeypatch.setattr(socket, 'getaddrinfo', _addresses('100.64.0.10'))
+    session_id, error = connect_target(
+        host=host, password='dummy',
+        proxy_jump_host='203.0.113.7', proxy_jump_username='ops', proxy_jump_password='dummy',
+    )
+    assert session_id is None
+    _assert_restricted(error, 'target')
+    assert clients.opened_sockets == []
+
+
+def test_bastion_dns_fallback_unchanged_without_restriction(tailnet, monkeypatch, tmp_path):
+    from tests.test_ssh_manager import connect_target
+    _lift_restriction(monkeypatch, tmp_path)
+    clients = _ssh_clients(monkeypatch)
+    monkeypatch.setattr(socket, 'getaddrinfo', _unresolvable)
+    session_id, error = connect_target(
+        host='tiny-server.tail1234.ts.net', password='dummy',
+        proxy_jump_host='203.0.113.7', proxy_jump_username='ops', proxy_jump_password='dummy',
+    )
+    assert error is None and session_id
+    assert clients[0].transport.opened_channel[1] == ('tiny-server.tail1234.ts.net', 22)
+
+
+def test_automation_loopback_jump_host_is_refused(tailnet, monkeypatch):
+    from app.automation_transport import connect_profile
+    _forbid_sockets(monkeypatch)
+    profile = dict(host='192.168.1.5', port=22, username='u', auth_type='password')
+    route = dict(host='127.0.0.1', port=22, username='ops', auth_type='password')
+    with pytest.raises(TailnetRouteRestricted):
+        with connect_profile(1, profile, 'dummy', lambda: False, route=route, route_password='dummy'):
+            pytest.fail('loopback jump host connected')
+
+
+def test_automation_bastion_dns_fallback_refuses_magicdns(tailnet, monkeypatch):
+    from app.automation_transport import connect_profile
+    monkeypatch.setattr(socket, 'getaddrinfo', _unresolvable)
+    _forbid_sockets(monkeypatch)
+    profile = dict(host='tiny-server.tail1234.ts.net', port=22, username='u', auth_type='password')
+    route = dict(host='203.0.113.7', port=22, username='ops', auth_type='password')
+    with pytest.raises(TailnetRouteRestricted):
+        with connect_profile(1, profile, 'dummy', lambda: False, route=route, route_password='dummy'):
+            pytest.fail('MagicDNS name passed to the bastion')
+
+
+# Startup and restore logging ---------------------------------------------------
+
+def test_restriction_state_is_logged(tailnet, monkeypatch, tmp_path):
+    from app import audit_logger
+    infos, warnings = [], []
+    monkeypatch.setattr(audit_logger, 'log_info', lambda message, **kw: infos.append((message, kw)))
+    monkeypatch.setattr(audit_logger, 'log_warning', lambda message, **kw: warnings.append((message, kw)))
+    _use_settings_file(monkeypatch, tmp_path)
+
+    assert tailscale_ssh.log_tailnet_route_restriction('startup') is True
+    assert infos and not warnings
+
+    _lift_restriction(monkeypatch, tmp_path)
+    assert tailscale_ssh.log_tailnet_route_restriction('restore') is False
+    assert warnings[-1][1] == {'event': 'restore', 'tailscale_ssh_restrict_tailnet_routes': False}
+
+    monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', False)
+    count = len(infos) + len(warnings)
+    assert tailscale_ssh.log_tailnet_route_restriction('startup') is None
+    assert len(infos) + len(warnings) == count
