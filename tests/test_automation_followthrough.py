@@ -1,6 +1,6 @@
-from tests.test_automation_service import context
-from tests.test_automation_routes import enabled
-from tests.test_automation_schedules import scheduling
+from tests.test_automation_service import context  # noqa: F401
+from tests.test_automation_routes import enabled  # noqa: F401
+from tests.test_automation_schedules import scheduling  # noqa: F401
 
 
 def test_external_notification_route_and_settings_are_absent(app, client, context, enabled):

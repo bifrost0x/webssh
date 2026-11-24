@@ -340,7 +340,6 @@ def test_malformed_remote_names_and_special_types_fail_closed(setup):
     job = prepare()['job_id']; runtime.run()
     assert manager.get(7, 'sid', 'sftp-session:a', job)['state'] == 'failed'
     remote.objects.pop('/tree/device')
-    original = remote.entries
     @contextmanager
     def malformed(path):
         yield iter([SimpleNamespace(filename='../outside')])

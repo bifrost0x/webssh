@@ -5,7 +5,7 @@ import pytest
 
 from app.automation_store import AutomationError, profile_fingerprint
 from app.credential_service import CredentialService
-from tests.test_automation_service import context
+from tests.test_automation_service import context  # noqa: F401
 
 
 LEGACY_PROFILE = dict(id='legacy-host', host='server.example', port=22,

@@ -3,7 +3,6 @@
 import struct
 import stat
 import threading
-from contextlib import contextmanager
 from types import SimpleNamespace
 
 import paramiko

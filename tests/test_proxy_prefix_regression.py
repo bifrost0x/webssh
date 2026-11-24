@@ -152,7 +152,7 @@ def test_second_factor_returns_a_public_continuation(proxy_app, proxy_browser, m
     import pyotp
     from types import SimpleNamespace
     from app.auth import register_user
-    from app.models import User, TOTPAuthenticator, WebAuthnCredential, SecurityFeatureState, db
+    from app.models import TOTPAuthenticator, WebAuthnCredential, SecurityFeatureState, db
     from app.mfa_crypto import encrypt_totp_secret
     from app.recovery_service import generate_codes
     import app.webauthn_routes as webauthn_routes
@@ -191,7 +191,7 @@ def test_second_factor_returns_a_public_continuation(proxy_app, proxy_browser, m
 
 
 def test_github_callback_preserves_public_prefix(proxy_app, proxy_browser, monkeypatch):
-    from tests.test_github_auth_routes import _create_user, _configure, _provider, _begin_login
+    from tests.test_github_auth_routes import _create_user, _provider, _begin_login
     from app.models import GitHubIdentity, db
     app, prefix = proxy_app
     admin_id = _create_user(app, 'github_admin', is_admin=True)

@@ -866,7 +866,7 @@ def test_engineio_rejects_stale_or_restricted_browser_session(
 
 
 def test_engineio_transport_and_socketio_namespace_keep_separate_lifecycles(app):
-    from app import socket_events, socketio
+    from app import socket_events
     from app.models import SocketSession
     from app.socket_capacity import socket_capacity
     from app.socket_protocol import SOCKET_WIRE_REVISION

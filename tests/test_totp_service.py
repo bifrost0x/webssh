@@ -68,7 +68,7 @@ def test_activation_requires_bound_valid_code_and_enables_mfa_atomically(app):
 
 
 def test_totp_accepts_adjacent_steps_once_and_tracks_exact_timecode(app):
-    from app.models import TOTPAuthenticator, db
+    from app.models import db
     from app.totp_service import (
         activate_totp_enrollment,
         begin_totp_enrollment,

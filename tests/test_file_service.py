@@ -7,7 +7,6 @@ from app.file_service import FileService
 from app.file_sources import (
     FileCapability,
     FileSourceDescriptor,
-    FileSourceKind,
     FileSourceUnavailable,
     ResolvedFileSource,
 )

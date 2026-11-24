@@ -4,7 +4,7 @@ from copy import deepcopy
 import pytest
 
 from app.automation_store import AutomationError
-from tests.test_automation_service import context
+from tests.test_automation_service import context  # noqa: F401
 
 
 @pytest.fixture

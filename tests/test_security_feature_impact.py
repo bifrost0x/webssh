@@ -1,5 +1,5 @@
 """A disable approval describes and is bound to the current account inventory."""
-from tests.test_account_sessions import _login, separate_browser_contexts
+from tests.test_account_sessions import _login, separate_browser_contexts  # noqa: F401
 
 
 def _enable_passkeys(app, monkeypatch):

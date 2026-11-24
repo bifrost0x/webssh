@@ -7,12 +7,10 @@ from types import SimpleNamespace
 import pytest
 
 from app import sftp_handler
-from app import sftp_backend
 from app.file_backend import FileBackend, FileReaderLease, FileWriteOutcome
 from app.file_sources import (
     FileCapability,
     FileSourceDescriptor,
-    FileSourceKind,
     ResolvedFileSource,
 )
 from app.sftp_backend import SFTPBackend

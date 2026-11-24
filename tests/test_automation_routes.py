@@ -1,7 +1,7 @@
 import pytest
-from tests.test_automation_service import context
+from tests.test_automation_service import context  # noqa: F401
 from tests.step_up_helpers import account_password_step_up_headers
-from tests.test_proxy_prefix_regression import proxy_app, headers as proxy_headers, login as proxy_login
+from tests.test_proxy_prefix_regression import proxy_app, headers as proxy_headers, login as proxy_login  # noqa: F401
 
 @pytest.fixture
 def enabled(monkeypatch, client):

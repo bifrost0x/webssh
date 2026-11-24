@@ -2,7 +2,6 @@
 from pathlib import Path
 import re
 
-import pytest
 
 from tests.i18n_sources import LOCALES, locale_block
 

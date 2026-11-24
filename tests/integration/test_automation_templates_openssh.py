@@ -11,7 +11,7 @@ import subprocess
 import pytest
 
 from app.automation_transport import connect_profile, execute_step
-from tests.integration.test_automation_openssh import peer, trust, PASSWORD
+from tests.integration.test_automation_openssh import peer, trust, PASSWORD  # noqa: F401
 
 pytestmark = pytest.mark.skipif(os.environ.get('PARAMIKO5_INTEGRATION') != '1', reason='requires disposable OpenSSH lab')
 

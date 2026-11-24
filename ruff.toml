@@ -1,0 +1,8 @@
+target-version = "py311"
+
+[lint]
+select = ["F401", "F811", "F841"]
+
+[lint.per-file-ignores]
+# Shared pytest fixtures are imported by name; test parameters then shadow the import.
+"tests/**" = ["F811"]

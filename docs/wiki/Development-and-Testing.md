@@ -70,6 +70,12 @@ Run the suite with:
 .\.venv\Scripts\python.exe -m pytest tests --ignore=tests/integration -q -n 2 --dist=loadscope
 ```
 
+Lint Python sources with the pinned ruff from the test requirements; `ruff.toml` holds the selected rules:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check .
+```
+
 The pytest harness uses a reduced bcrypt work factor to keep authentication-heavy
 tests fast. An isolated subprocess contract verifies that normal application
 processes retain bcrypt's production work factor. The maintained gates execute

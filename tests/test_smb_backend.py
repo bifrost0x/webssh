@@ -20,7 +20,6 @@ from app.file_backend import (
 )
 from app.smb_backend import (
     FileConflict,
-    NonAtomicOverwriteRequired,
     SMBBackend,
     SMBBackendError,
 )

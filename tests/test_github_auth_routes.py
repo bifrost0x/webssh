@@ -201,7 +201,7 @@ def test_authenticated_user_can_link_only_after_step_up(app, client, monkeypatch
 def test_admin_configuration_api_is_step_up_protected_and_secret_is_write_only(
     app, client,
 ):
-    admin_id = _create_user(app, 'github_settings_admin', is_admin=True)
+    _create_user(app, 'github_settings_admin', is_admin=True)
     _login(client, 'github_settings_admin')
     payload = {
         'enabled': True,
@@ -243,7 +243,7 @@ def test_admin_configuration_api_is_step_up_protected_and_secret_is_write_only(
 def test_admin_configuration_validation_does_not_expose_exception_details(
     app, client,
 ):
-    admin_id = _create_user(app, 'github_validation_admin', is_admin=True)
+    _create_user(app, 'github_validation_admin', is_admin=True)
     _login(client, 'github_validation_admin')
     headers = password_step_up_headers(
         client, 'github.config', 'global'
@@ -376,7 +376,6 @@ def test_operator_code_bootstraps_first_passkey_then_allows_github_unlink(
         FactorBootstrapToken,
         GitHubIdentity,
         WebAuthnCredential,
-        db,
     )
 
     admin_id = _create_user(app, 'bootstrap_break_glass', is_admin=True)

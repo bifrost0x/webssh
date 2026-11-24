@@ -1,5 +1,5 @@
 import pytest
-from tests.test_automation_service import context
+from tests.test_automation_service import context  # noqa: F401
 
 
 def test_customer_endpoints_require_authentication(client):
@@ -34,7 +34,6 @@ def test_recovery_check_only_owned_metadata(app, client, context, monkeypatch):
     uid, _, _, profile = context
     from app.auth import register_user
     from app.profile_manager import add_profile
-    from app.key_manager import load_keys
     with app.app_context():
         other, _ = register_user('other_recovery_owner', 'password123')
         add_profile(other.id, 'PRIVATE-HOST-NAME', 'private.example', 22, 'private-user', 'password')

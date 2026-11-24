@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
-from tests.test_automation_service import context
+from tests.test_automation_service import context  # noqa: F401
 
 STAMP = '2026-11-14T06:00:00+00:00'
 NEW_STAMP = '2026-11-14T06:01:00+00:00'
