@@ -183,7 +183,8 @@ def test_legacy_settings_file_without_new_fields_loads_with_defaults(tmp_path, m
     ({'ratelimit_ipv6_prefix': 129}, 'ratelimit_ipv6_prefix'),
     ({'unknown_limit': 5}, 'unknown_limit'),
     ({'login_username_limit': 1, 'ratelimit_ipv6_prefix': 128}, None),
-    ({'login_username_limit': 1000, 'ratelimit_ipv6_prefix': 48}, None),
+    ({'login_username_limit': 1000, 'login_username_global_limit': 1000,
+      'ratelimit_ipv6_prefix': 48}, None),
 ])
 def test_sign_in_protection_validation(tmp_path, monkeypatch, values, expected):
     from app import app_settings
@@ -288,3 +289,93 @@ def test_cache_is_keyed_by_settings_path(tmp_path, monkeypatch):
     assert app_settings.ratelimit_ipv6_prefix() == 96
     monkeypatch.setattr(app_settings, '_SETTINGS_FILE', second)
     assert app_settings.ratelimit_ipv6_prefix() == 64
+
+
+def test_global_limit_below_stored_source_limit_is_rejected(tmp_path, monkeypatch):
+    from app import app_settings
+
+    path = tmp_path / 'app_settings.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    assert app_settings.set_sign_in_protection({'login_username_limit': 50})
+    assert app_settings.set_sign_in_protection({'login_username_global_limit': 49}) is False
+    assert app_settings.set_sign_in_protection({'login_username_limit': 101}) is False
+    assert app_settings.sign_in_protection()['login_username_global_limit'] == 100
+    assert app_settings.set_sign_in_protection({'login_username_global_limit': 50})
+
+
+def test_admin_update_writes_all_changes_once_and_reports_previous_values(tmp_path, monkeypatch):
+    import json
+    from app import app_settings
+
+    path = tmp_path / 'app_settings.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    writes = []
+    original_write = app_settings.atomic_write_json
+    monkeypatch.setattr(app_settings, 'atomic_write_json',
+                        lambda target, data: (writes.append(target), original_write(target, data)))
+
+    results = app_settings.update_admin_settings({
+        'herdr_enabled': True,
+        'tailscale_ssh_restrict_tailnet_routes': False,
+        'login_username_limit': 20,
+        'ratelimit_ipv6_prefix': 56,
+    })
+
+    assert writes == [path]
+    assert results == {
+        'herdr_enabled': (None, True),
+        'tailscale_ssh_restrict_tailnet_routes': (True, False),
+        'login_username_limit': (10, 20),
+        'ratelimit_ipv6_prefix': (64, 56),
+    }
+    stored = json.loads(path.read_text(encoding='utf-8'))
+    assert stored['herdr_enabled'] is True
+    assert stored['login_username_limit'] == 20
+    assert app_settings.is_tailnet_route_restricted() is False
+
+
+def test_failed_admin_update_write_changes_nothing(tmp_path, monkeypatch):
+    from app import app_settings
+
+    path = tmp_path / 'app_settings.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    assert app_settings.set_ssh_gateway_enabled(True) is True
+    before = path.read_bytes()
+    assert app_settings.is_tailnet_route_restricted() is True
+
+    def fail(_target, _data):
+        raise OSError('disk full')
+
+    monkeypatch.setattr(app_settings, 'atomic_write_json', fail)
+    with pytest.raises(OSError):
+        app_settings.update_admin_settings({
+            'herdr_enabled': True,
+            'ssh_gateway_enabled': False,
+            'tailscale_ssh_restrict_tailnet_routes': False,
+            'login_username_limit': 3,
+        })
+
+    assert path.read_bytes() == before
+    assert app_settings.is_herdr_enabled() is False
+    assert app_settings.is_ssh_gateway_enabled() is True
+    assert app_settings.is_tailnet_route_restricted() is True
+    assert app_settings.sign_in_protection()['login_username_limit'] == 10
+
+
+def test_rejected_admin_update_combination_changes_nothing(tmp_path, monkeypatch):
+    from app import app_settings
+
+    path = tmp_path / 'app_settings.json'
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+    with pytest.raises(app_settings.SettingsUpdateError) as raised:
+        app_settings.update_admin_settings({
+            'herdr_enabled': True,
+            'login_username_limit': 30,
+            'login_username_global_limit': 20,
+        })
+    assert raised.value.setting == 'login_username_global_limit'
+    assert raised.value.code == 'global_limit_below_source_limit'
+    with pytest.raises(app_settings.SettingsUpdateError):
+        app_settings.update_admin_settings({'unknown_switch': True})
+    assert not path.exists()
+    assert app_settings.is_herdr_enabled() is False

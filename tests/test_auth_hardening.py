@@ -42,6 +42,11 @@ def _set_username_limits(*, per_source=None, global_limit=None):
     values = {}
     if per_source is not None:
         values["login_username_limit"] = per_source
+        if global_limit is None:
+            # The ceiling across sources may not be lower than the per-source
+            # limit; keep the stored ceiling unless the new limit exceeds it.
+            current = app_settings.sign_in_protection()["login_username_global_limit"]
+            values["login_username_global_limit"] = max(current, per_source)
     if global_limit is not None:
         values["login_username_global_limit"] = global_limit
     assert app_settings.set_sign_in_protection(values)
@@ -693,8 +698,8 @@ def test_global_username_ceiling_slows_distributed_guessing(
 
     _create_user(app, "spread_target")
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
-    _set_username_limits(per_source=10)
-    _set_username_limits(global_limit=4)
+    # Each source sends one attempt per name, so only the ceiling can trip.
+    _set_username_limits(per_source=4, global_limit=4)
     sources = [f"192.0.2.{index}" for index in range(1, 7)]
 
     existing = _login_attempts(client, "spread_target", sources)

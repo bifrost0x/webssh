@@ -968,6 +968,7 @@ window.i18n.registerLocales({
         'admin.signInIpv6Prefix': "Longueur du préfixe de regroupement IPv6",
         'admin.signInIpv6PrefixHint': "Les clients d'un même réseau IPv6 de cette taille partagent toutes les limites par source. 128 limite chaque adresse séparément, mais permet à un client de changer d'adresse.",
         'admin.signInValueRange': "Saisissez un nombre entier entre {min} et {max}.",
+        'admin.signInGlobalBelowSource': "Les tentatives toutes sources confondues doivent être au moins égales aux tentatives par source.",
         'admin.tailnetRestriction': "Restreindre le SSH ordinaire vers les nœuds du tailnet",
         'admin.tailnetRestrictionHint': "Tant que Tailscale SSH est activé, les connexions par mot de passe ou par clé vers des adresses de nœuds Tailscale sont refusées, de sorte que l'identité partagée du nœud n'est accessible que via les listes d'autorisation Tailscale SSH. Ne désactivez cette option que si les utilisateurs doivent joindre des serveurs OpenSSH ordinaires via le tailnet et qu'aucun de ces hôtes n'exécute Tailscale SSH.",
         'admin.sshGatewayHint': "Autoriser les connexions interactives via user:target pour tous les utilisateurs. Désactivé par défaut. La désactivation bloque les nouvelles connexions et les authentifications en cours ; les sessions établies restent connectées. Rechargez les espaces de travail après modification.",

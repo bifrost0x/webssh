@@ -169,6 +169,15 @@ def invalid_sign_in_protection_field(values):
     return None
 
 
+def _global_limit_below_source_limit(data):
+    """A ceiling across all sources below the per-source limit is a mistake."""
+    defaults = SIGN_IN_PROTECTION_DEFAULTS
+    return (
+        data.get('login_username_global_limit', defaults['login_username_global_limit'])
+        < data.get('login_username_limit', defaults['login_username_limit'])
+    )
+
+
 def set_sign_in_protection(values):
     """Persist any subset of the sign-in protection values in one write."""
     if not isinstance(values, dict) or not values:
@@ -178,7 +187,7 @@ def set_sign_in_protection(values):
     with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
         data = _load_with_lock_held()
         data.update(values)
-        if not _valid_settings(data):
+        if not _valid_settings(data) or _global_limit_below_source_limit(data):
             return False
         _save(data)
     return sign_in_protection()
@@ -312,22 +321,28 @@ def is_automation_enabled():
     return _load().get('automation_enabled') is True
 
 
+def _apply_feature(data, name, value):
+    """Return whether ``data`` changed."""
+    if data.get(name) is value:
+        return False
+    data[name] = value
+    # Changing away and back must revoke old background grants too.
+    data[name + '_revision'] = secrets.token_hex(32)
+    if name == 'automation_enabled':
+        # The new revision already reflects this change; a restart must
+        # not rotate it a second time and revoke grants approved since.
+        data['automation_effective_observed'] = _effective_automation_enabled(data)
+        data['automation_enabled_from_environment'] = False
+    return True
+
+
 def _set_feature(name, value):
     if type(value) is not bool:
         return False
     with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
         data = _load_with_lock_held()
-        if data.get(name) is value:
-            return value
-        data[name] = value
-        # Changing away and back must revoke old background grants too.
-        data[name + '_revision'] = secrets.token_hex(32)
-        if name == 'automation_enabled':
-            # The new revision already reflects this change; a restart must
-            # not rotate it a second time and revoke grants approved since.
-            data['automation_effective_observed'] = _effective_automation_enabled(data)
-            data['automation_enabled_from_environment'] = False
-        _save(data)
+        if _apply_feature(data, name, value):
+            _save(data)
     return value
 
 
@@ -425,9 +440,82 @@ def set_runtime_feature(name, enabled):
         raise ValueError(status['environment_key'])
     with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
         data = _load_with_lock_held()
-        data[name] = enabled
-        data['runtime_feature_migration'] = [key for key in data.get('runtime_feature_migration', []) if key != name]
+        _apply_runtime_feature(data, name, enabled)
         _save(data)
+
+
+def _apply_runtime_feature(data, name, enabled):
+    data[name] = enabled
+    data['runtime_feature_migration'] = [key for key in data.get('runtime_feature_migration', []) if key != name]
+
+
+# Admin switches that are stored as plain booleans.
+_ADMIN_FLAGS = (
+    'registration_enabled',
+    'ssh_gateway_enabled',
+    'herdr_enabled',
+    'support_links_enabled',
+    'tailscale_ssh_restrict_tailnet_routes',
+)
+
+
+class SettingsUpdateError(ValueError):
+    """An admin settings change was rejected; nothing was written."""
+
+    def __init__(self, message, *, setting=None, code='invalid_settings'):
+        super().__init__(message)
+        self.setting = setting
+        self.code = code
+
+
+def _stored_value(data, name):
+    if name in SIGN_IN_PROTECTION_DEFAULTS:
+        return data.get(name, SIGN_IN_PROTECTION_DEFAULTS[name])
+    if name == 'tailscale_ssh_restrict_tailnet_routes':
+        return data.get(name) is not False
+    return data.get(name)
+
+
+def update_admin_settings(changes):
+    """Apply type-checked admin changes as one locked load-modify-save.
+
+    Returns ``{name: (previous, current)}`` read under the same lock, so the
+    audit record describes exactly this write. Raises SettingsUpdateError for
+    a combination that is invalid as a whole; then nothing is written, and an
+    I/O error during the single save also leaves the stored file unchanged.
+    """
+    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
+        data = _load_with_lock_held()
+        previous = {name: _stored_value(data, name) for name in changes}
+        changed = False
+        for name, value in changes.items():
+            if name in ('credentials_enabled', 'automation_enabled'):
+                changed = _apply_feature(data, name, value) or changed
+            elif name in RUNTIME_FEATURES:
+                _apply_runtime_feature(data, name, value)
+                changed = True
+            elif name in _ADMIN_FLAGS or name in SIGN_IN_PROTECTION_BOUNDS:
+                data[name] = value
+                changed = True
+            else:
+                raise SettingsUpdateError(
+                    f'{name} is not an admin setting', setting=name,
+                    code='unknown_setting',
+                )
+        if _global_limit_below_source_limit(data):
+            raise SettingsUpdateError(
+                'login_username_global_limit must not be lower than '
+                'login_username_limit',
+                setting='login_username_global_limit',
+                code='global_limit_below_source_limit',
+            )
+        if not _valid_settings(data):
+            raise SettingsUpdateError('Invalid settings')
+        if changed:
+            _save(data)
+    return {
+        name: (previous[name], _stored_value(data, name)) for name in changes
+    }
 
 
 def migrate_runtime_features():

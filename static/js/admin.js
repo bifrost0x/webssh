@@ -1358,17 +1358,31 @@
         }
     }
 
-    function renderSignInProtection(data) {
+    // A settings reload (tab switch, another switch saved) refreshes only
+    // fields the administrator has not edited since the last save, so an
+    // unsaved draft and its error state survive.
+    function renderSignInProtection(data, { replaceDraft = false } = {}) {
         const form = document.getElementById('signInProtection');
         if (!form) { return; }
         for (const [id, key] of SIGN_IN_PROTECTION_FIELDS) {
             const input = document.getElementById(id);
             if (!input) { continue; }
-            if (Number.isInteger(data[key])) { input.value = String(data[key]); }
             input.disabled = false;
+            if (input.dataset.draft === 'true' && !replaceDraft) { continue; }
+            delete input.dataset.draft;
+            if (Number.isInteger(data[key])) { input.value = String(data[key]); }
             setSignInFieldError(input, '');
         }
         document.getElementById('signInProtectionSave').disabled = false;
+    }
+
+    function signInRangeMessage(input) {
+        return t('admin.signInValueRange', 'Enter a whole number from {min} to {max}.')
+            .replace('{min}', String(input.min)).replace('{max}', String(input.max));
+    }
+
+    function signInGlobalBelowSourceMessage() {
+        return t('admin.signInGlobalBelowSource', 'Attempts from all sources must be at least the attempts per source.');
     }
 
     function readSignInProtection() {
@@ -1376,24 +1390,32 @@
         let firstInvalid = null;
         for (const [id, key] of SIGN_IN_PROTECTION_FIELDS) {
             const input = document.getElementById(id);
-            const min = Number(input.min);
-            const max = Number(input.max);
             const raw = input.value.trim();
             const value = Number(raw);
-            if (!/^\d+$/.test(raw) || value < min || value > max) {
-                setSignInFieldError(input, t('admin.signInValueRange', 'Enter a whole number from {min} to {max}.')
-                    .replace('{min}', String(min)).replace('{max}', String(max)));
+            if (!/^\d+$/.test(raw) || value < Number(input.min) || value > Number(input.max)) {
+                setSignInFieldError(input, signInRangeMessage(input));
                 firstInvalid = firstInvalid || input;
                 continue;
             }
             setSignInFieldError(input, '');
             values[key] = value;
         }
+        const ceiling = document.getElementById('signInUsernameGlobalLimit');
+        if (!firstInvalid && values.login_username_global_limit < values.login_username_limit) {
+            setSignInFieldError(ceiling, signInGlobalBelowSourceMessage());
+            firstInvalid = ceiling;
+        }
         if (firstInvalid) {
             firstInvalid.focus();
             return null;
         }
         return values;
+    }
+
+    function signInServerErrorMessage(error, input) {
+        if (error.code === 'global_limit_below_source_limit') { return signInGlobalBelowSourceMessage(); }
+        if (error.code === 'out_of_range' && input) { return signInRangeMessage(input); }
+        return error.message;
     }
 
     async function saveSignInProtection(event) {
@@ -1410,16 +1432,16 @@
             const data = await stepUpApi('settings.update', 'global', '/admin/api/settings', {
                 method: 'POST', body: values
             });
-            renderSignInProtection(data);
+            renderSignInProtection(data, { replaceDraft: true });
             status.textContent = t('admin.settingsSaved', 'Settings saved');
             notify(t('admin.settingsSaved', 'Settings saved'), 'success');
         } catch (error) {
             const field = SIGN_IN_PROTECTION_FIELDS.find(([, key]) => key === error.setting);
-            if (field) {
-                setSignInFieldError(document.getElementById(field[0]), error.message);
-            }
-            status.textContent = error.message;
-            notify(error.message, 'error');
+            const input = field ? document.getElementById(field[0]) : null;
+            const message = signInServerErrorMessage(error, input);
+            if (input) { setSignInFieldError(input, message); }
+            status.textContent = message;
+            notify(message, 'error');
         } finally {
             settingsWrites.delete('sign_in_protection');
             save.disabled = false;
@@ -1671,6 +1693,9 @@
             }
         });
         document.getElementById('signInProtection')?.addEventListener('submit', saveSignInProtection);
+        document.getElementById('signInProtection')?.addEventListener('input', event => {
+            if (event.target.matches('input')) { event.target.dataset.draft = 'true'; }
+        });
         for (const [id, key] of SETTING_TOGGLES) {
             document.getElementById(id)?.addEventListener('change', async (event) => {
                 const input = event.target;

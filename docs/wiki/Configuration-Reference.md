@@ -148,13 +148,15 @@ Connection, transfer, background-work, and thread limits form one capacity model
 values that have no environment variable. They are stored in
 `DATA_DIR/app_settings.json`, apply immediately without a restart, require
 administrator reauthentication, and each change is recorded in the security
-audit log as `APPLICATION_FEATURE_CHANGED` with the old and new value. They
-only take effect while `RATELIMIT_ENABLED=true`.
+audit log as `APPLICATION_FEATURE_CHANGED` with the old and new value: at
+`WARNING` when it loosens protection (a higher value), otherwise at `INFO`.
+They only take effect while `RATELIMIT_ENABLED=true`. All values sent in one
+save are applied together or not at all.
 
 | Setting | Default | Allowed |
 |---|---|---|
 | Attempts per username and source (per minute) | `10` | `1` to `1000` |
-| Attempts per username from all sources (per minute) | `100` | `1` to `1000` |
+| Attempts per username from all sources (per minute) | `100` | `1` to `1000`, not lower than the per-source value |
 | IPv6 grouping prefix length | `64` | `48` to `128` |
 
 Source-address limits count an IPv6 client per network of the configured

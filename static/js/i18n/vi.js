@@ -967,6 +967,7 @@ window.i18n.registerLocales({
         'admin.signInIpv6Prefix': "Độ dài tiền tố nhóm IPv6",
         'admin.signInIpv6PrefixHint': "Các máy khách trong cùng một mạng IPv6 cỡ này dùng chung mọi giới hạn theo nguồn. 128 giới hạn riêng từng địa chỉ nhưng cho phép một máy khách xoay vòng địa chỉ.",
         'admin.signInValueRange': "Nhập số nguyên từ {min} đến {max}.",
+        'admin.signInGlobalBelowSource': "Số lần thử từ mọi nguồn phải ít nhất bằng số lần thử mỗi nguồn.",
         'admin.tailnetRestriction': "Chặn SSH thông thường tới các nút tailnet",
         'admin.tailnetRestrictionHint': "Khi Tailscale SSH đang bật, các kết nối bằng mật khẩu hoặc khóa tới địa chỉ nút Tailscale bị từ chối, nên danh tính nút dùng chung chỉ truy cập được qua danh sách cho phép của Tailscale SSH. Chỉ tắt nếu người dùng cần truy cập máy chủ OpenSSH thông thường qua tailnet và không máy nào trong số đó chạy Tailscale SSH.",
         'admin.sshGatewayHint': "Cho phép mọi người dùng kết nối cổng tương tác bằng user:target. Mặc định tắt. Khi tắt, kết nối mới và xác thực chưa hoàn tất bị chặn; phiên đã kết nối được giữ lại. Tải lại không gian làm việc sau khi thay đổi.",

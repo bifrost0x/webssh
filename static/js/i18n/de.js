@@ -972,6 +972,7 @@ window.i18n.registerLocales({
         'admin.signInIpv6Prefix': "IPv6-Präfixlänge für die Gruppierung",
         'admin.signInIpv6PrefixHint': "Clients in einem IPv6-Netz dieser Größe teilen sich alle quellbezogenen Ratenlimits. 128 begrenzt jede Adresse einzeln, erlaubt einem Client aber, Adressen zu wechseln.",
         'admin.signInValueRange': "Geben Sie eine ganze Zahl von {min} bis {max} ein.",
+        'admin.signInGlobalBelowSource': "Versuche aus allen Quellen müssen mindestens so hoch sein wie die Versuche pro Quelle.",
         'admin.tailnetRestriction': "Normales SSH zu Tailnet-Knoten sperren",
         'admin.tailnetRestrictionHint': "Solange Tailscale SSH aktiviert ist, werden Passwort- und Schlüsselverbindungen zu Tailscale-Knotenadressen abgelehnt, sodass die gemeinsame Knotenidentität nur über die Tailscale-SSH-Freigabelisten erreichbar ist. Nur deaktivieren, wenn Benutzer normale OpenSSH-Server über das Tailnet erreichen müssen und keiner dieser Hosts Tailscale SSH ausführt.",
         'admin.sshGatewayHint': "Interaktive Gateway-Verbindungen mit user:target für alle Benutzer erlauben. Standardmäßig deaktiviert. Abschalten sperrt neue Verbindungen und laufende Gateway-Anmeldungen; aufgebaute Sitzungen bleiben verbunden. Offene Arbeitsbereiche nach einer Änderung neu laden.",

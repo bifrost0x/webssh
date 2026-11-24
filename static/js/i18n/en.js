@@ -972,6 +972,7 @@ window.i18n.registerLocales({
         'admin.signInIpv6Prefix': "IPv6 grouping prefix length",
         'admin.signInIpv6PrefixHint': "Clients in one IPv6 network of this size share all source rate limits. 128 limits each address on its own but lets one client rotate addresses.",
         'admin.signInValueRange': "Enter a whole number from {min} to {max}.",
+        'admin.signInGlobalBelowSource': "Attempts from all sources must be at least the attempts per source.",
         'admin.tailnetRestriction': "Block ordinary SSH to tailnet nodes",
         'admin.tailnetRestrictionHint': "While Tailscale SSH is enabled, password and key connections to Tailscale node addresses are refused, so the shared node identity is reachable only through the Tailscale SSH allowlists. Disable only if users must reach plain OpenSSH servers over the tailnet and none of those hosts runs Tailscale SSH.",
         'admin.sshGatewayHint': "Allow interactive gateway connections using user:target for all users. Disabled by default. Disabling blocks new connections and unfinished gateway authentication; established sessions remain connected. Reload open workspaces after changing this setting.",

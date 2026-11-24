@@ -967,6 +967,7 @@ window.i18n.registerLocales({
         'admin.signInIpv6Prefix': "IPv6 分组前缀长度",
         'admin.signInIpv6PrefixHint': "同一个此大小的 IPv6 网络中的客户端共享所有按来源的速率限制。128 会单独限制每个地址，但允许单个客户端轮换地址。",
         'admin.signInValueRange': "请输入 {min} 到 {max} 之间的整数。",
+        'admin.signInGlobalBelowSource': "来自所有来源的尝试次数不得低于每个来源的尝试次数。",
         'admin.tailnetRestriction': "限制普通 SSH 访问 tailnet 节点",
         'admin.tailnetRestrictionHint': "启用 Tailscale SSH 时，将拒绝到 Tailscale 节点地址的密码和密钥连接，使共享节点身份只能通过 Tailscale SSH 允许列表访问。仅当用户必须通过 tailnet 访问普通 OpenSSH 服务器且这些主机都不运行 Tailscale SSH 时才禁用。",
         'admin.sshGatewayHint': "允许所有用户使用 user:target 建立交互式网关连接。默认禁用。禁用后会阻止新连接和未完成的网关认证；已建立的会话保持连接。更改后请重新加载工作区。",

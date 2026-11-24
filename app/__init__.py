@@ -31,10 +31,8 @@ from .user_settings import (
     get_user_settings,
     save_user_settings,
 )
-from .app_settings import (is_registration_enabled, set_registration_enabled,
-                           is_ssh_gateway_enabled, set_ssh_gateway_enabled,
-                           is_herdr_enabled, set_herdr_enabled,
-                           is_support_links_enabled, set_support_links_enabled,
+from .app_settings import (is_registration_enabled, is_ssh_gateway_enabled,
+                           is_herdr_enabled, is_support_links_enabled,
                            login_username_rate_limits)
 from .storage_errors import StorageCorruptionError
 from .tailscale_ssh import user_can_use_tailscale_ssh
@@ -1922,7 +1920,7 @@ def create_app(
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({'error': 'Invalid settings payload'}), 400
-        from .app_settings import RUNTIME_FEATURES, runtime_feature_status, set_runtime_feature
+        from .app_settings import RUNTIME_FEATURES, runtime_feature_status
         from .app_settings import native_setting_sources
         for name, policy in native_setting_sources().items():
             if name in data and policy['locked'] and policy['source'] != 'production':
@@ -1951,8 +1949,9 @@ def create_app(
                 'error': 'tailscale_ssh_restrict_tailnet_routes must be a boolean'
             }), 400
         from .app_settings import (SIGN_IN_PROTECTION_BOUNDS,
+                                   SettingsUpdateError,
                                    invalid_sign_in_protection_field,
-                                   set_sign_in_protection)
+                                   update_admin_settings)
         sign_in_values = {
             name: data[name] for name in SIGN_IN_PROTECTION_BOUNDS if name in data
         }
@@ -1961,6 +1960,7 @@ def create_app(
             low, high = SIGN_IN_PROTECTION_BOUNDS[invalid_field]
             return jsonify({
                 'error': f'{invalid_field} must be a whole number from {low} to {high}',
+                'code': 'out_of_range',
                 'setting': invalid_field,
                 'min': low,
                 'max': high,
@@ -1980,77 +1980,71 @@ def create_app(
                         'profile'
                     )
                 }), 400
-            val = set_registration_enabled(data['registration_enabled'])
-            log_info("Admin changed registration setting",
-                     admin=current_user.username, registration_enabled=val)
-            from .audit_logger import log_security_event
-            log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
-                               feature='registration_enabled', enabled=val)
-        if 'ssh_gateway_enabled' in data:
-            val = set_ssh_gateway_enabled(data['ssh_gateway_enabled'])
-            log_info("Admin changed SSH gateway setting",
-                     admin=current_user.username, ssh_gateway_enabled=val)
-            from .audit_logger import log_security_event
-            log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
-                               feature='ssh_gateway_enabled', enabled=val)
-        if 'herdr_enabled' in data:
-            val = set_herdr_enabled(data['herdr_enabled'])
-            log_info("Admin changed Herdr setting",
-                     admin=current_user.username, herdr_enabled=val)
-            from .audit_logger import log_security_event
-            log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
-                               feature='herdr_enabled', enabled=val)
-        if 'support_links_enabled' in data:
-            val = set_support_links_enabled(data['support_links_enabled'])
-            log_info("Admin changed support links setting",
-                     admin=current_user.username, support_links_enabled=val)
-            from .audit_logger import log_security_event
-            log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
-                               feature='support_links_enabled', enabled=val)
-        if 'tailscale_ssh_restrict_tailnet_routes' in data:
-            from .app_settings import set_tailnet_route_restricted
-            val = set_tailnet_route_restricted(
-                data['tailscale_ssh_restrict_tailnet_routes']
-            )
-            log_info("Admin changed tailnet route restriction",
-                     admin=current_user.username,
-                     tailscale_ssh_restrict_tailnet_routes=val)
-            from .audit_logger import log_security_event
+
+        # Every accepted key is written in one locked load-modify-save, so a
+        # rejected combination or a failed write leaves all settings as they
+        # were, and the audit compares values read under the same lock.
+        setting_names = (
+            'registration_enabled', 'ssh_gateway_enabled', 'herdr_enabled',
+            'support_links_enabled', 'tailscale_ssh_restrict_tailnet_routes',
+            *SIGN_IN_PROTECTION_BOUNDS, 'credentials_enabled',
+            'automation_enabled', *RUNTIME_FEATURES,
+        )
+        changes = {name: data[name] for name in setting_names if name in data}
+        try:
+            results = update_admin_settings(changes)
+        except SettingsUpdateError as exc:
+            return jsonify({
+                'error': str(exc), 'code': exc.code, 'setting': exc.setting,
+            }), 400
+        except OSError as exc:
+            log_error('Admin settings could not be saved', error=str(exc),
+                      admin=current_user.username)
+            return jsonify({'error': 'Settings could not be saved'}), 500
+
+        from .audit_logger import log_security_event
+        for name, message in (
+            ('registration_enabled', 'Admin changed registration setting'),
+            ('ssh_gateway_enabled', 'Admin changed SSH gateway setting'),
+            ('herdr_enabled', 'Admin changed Herdr setting'),
+            ('support_links_enabled', 'Admin changed support links setting'),
+            ('tailscale_ssh_restrict_tailnet_routes',
+             'Admin changed tailnet route restriction'),
+        ):
+            if name not in results:
+                continue
+            val = results[name][1]
+            log_info(message, admin=current_user.username, **{name: val})
+            weakened = name == 'tailscale_ssh_restrict_tailnet_routes' and not val
             log_security_event(
                 'APPLICATION_FEATURE_CHANGED',
-                level=logging.INFO if val else logging.WARNING,
-                admin=current_user.username,
-                feature='tailscale_ssh_restrict_tailnet_routes', enabled=val,
+                level=logging.WARNING if weakened else logging.INFO,
+                admin=current_user.username, feature=name, enabled=val,
             )
-        if sign_in_values:
-            from .app_settings import sign_in_protection
-            previous = sign_in_protection()
-            stored = set_sign_in_protection(sign_in_values)
-            if stored is False:
-                return jsonify({'error': 'Sign-in protection was not saved'}), 500
-            from .audit_logger import log_security_event
-            for name in sign_in_values:
-                if previous[name] == stored[name]:
-                    continue
-                log_info("Admin changed sign-in protection setting",
-                         admin=current_user.username, setting=name,
-                         previous_value=previous[name], value=stored[name])
-                log_security_event('APPLICATION_FEATURE_CHANGED',
-                                   admin=current_user.username,
-                                   feature=name, previous_value=previous[name],
-                                   value=stored[name])
-        from .app_settings import set_credentials_enabled, set_automation_enabled
-        for feature, setter in (('credentials_enabled', set_credentials_enabled),
-                                ('automation_enabled', set_automation_enabled)):
-            if feature in data:
-                setter(data[feature])
-                from .audit_logger import log_security_event
+        for name in SIGN_IN_PROTECTION_BOUNDS:
+            if name not in results:
+                continue
+            previous, stored = results[name]
+            if previous == stored:
+                continue
+            log_info("Admin changed sign-in protection setting",
+                     admin=current_user.username, setting=name,
+                     previous_value=previous, value=stored)
+            # Every value here loosens protection as it grows: higher limits
+            # allow more guesses, a longer IPv6 prefix gives a client more
+            # buckets to rotate through.
+            log_security_event(
+                'APPLICATION_FEATURE_CHANGED',
+                level=logging.WARNING if stored > previous else logging.INFO,
+                admin=current_user.username, feature=name,
+                previous_value=previous, value=stored,
+            )
+        for feature in ('credentials_enabled', 'automation_enabled'):
+            if feature in results:
                 log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
                                    feature=feature, enabled=data[feature])
         for name in RUNTIME_FEATURES:
-            if name in data:
-                set_runtime_feature(name, data[name])
-                from .audit_logger import log_security_event
+            if name in results:
                 log_security_event('RUNTIME_FEATURE_CHANGED', admin=current_user.username, feature=name, enabled=data[name])
         return admin_get_settings()
 
