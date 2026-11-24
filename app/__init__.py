@@ -444,6 +444,41 @@ def _install_engineio_admission(app):
     engineio_server.on('disconnect', handle_engineio_disconnect)
 
 
+def _warn_about_folder_archive_limits():
+    """Name archive limits that make folder downloads fail or shrink."""
+    archive_limit = config.MAX_ZIP_DOWNLOAD_SIZE
+    temp_quota = config.QUOTA_TEMP_BYTES_PER_USER
+    if archive_limit <= 0:
+        log_warning(
+            'MAX_ZIP_DOWNLOAD_SIZE is not positive; every folder download '
+            'will be rejected',
+            max_zip_download_size=archive_limit,
+        )
+    elif archive_limit > temp_quota:
+        log_warning(
+            'MAX_ZIP_DOWNLOAD_SIZE exceeds QUOTA_TEMP_BYTES_PER_USER; folder '
+            'archives built on this server are limited to the temporary '
+            'storage quota',
+            max_zip_download_size=archive_limit,
+            quota_temp_bytes_per_user=temp_quota,
+        )
+
+
+def _sweep_orphaned_folder_archives():
+    """Remove folder archives a previous process left in TRANSFER_TEMP_DIR."""
+    from .sftp_handler import sweep_orphaned_folder_archives
+    try:
+        removed = sweep_orphaned_folder_archives(config.TRANSFER_TEMP_DIR)
+    except OSError as error:
+        log_warning(
+            'Orphaned folder archive cleanup failed',
+            exception_type=type(error).__name__,
+        )
+        return
+    if removed:
+        log_info('Removed orphaned folder archives', count=removed)
+
+
 def _prepare_data_dir(path):
     """Create DATA_DIR private to the service account; warn when an existing one is not.
 
@@ -567,6 +602,7 @@ def create_app(
 
     for warning in config.SECURITY_CONFIG_WARNINGS:
         log_warning('Deployment security warning', warning=warning)
+    _warn_about_folder_archive_limits()
 
     @app.errorhandler(StorageCorruptionError)
     def handle_storage_corruption(error):
@@ -976,6 +1012,7 @@ def create_app(
             'backup-operation-cleanup',
             backup_operations.cleanup_loop,
         )
+        _sweep_orphaned_folder_archives()
         transfer_runtime_binding = transfer_manager.bind_runtime()
         app.extensions['runtime_lifecycle'].start_job(
             'transfer-token-cleanup',

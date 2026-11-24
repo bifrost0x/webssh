@@ -39,6 +39,7 @@ from .remote_transfer import (
     TransferBudget,
 )
 from .transfer_errors import classify_transfer_failure
+from .transfer_progress import ProgressThrottle
 
 
 TRANSFER_CHUNK_SIZE = config.CHUNK_SIZE
@@ -255,6 +256,7 @@ def _upload_to_backend(
 
 def _stream_download_chunks(remote_file, record, user_id, size):
     transferred = 0
+    throttle = ProgressThrottle()
     for chunk in read_bounded_remote(
         remote_file,
         chunk_size=TRANSFER_CHUNK_SIZE,
@@ -262,15 +264,25 @@ def _stream_download_chunks(remote_file, record, user_id, size):
         cancelled=record.cancel_event.is_set,
     ):
         transferred += len(chunk)
-        from . import socketio
-        socketio.emit('transfer_progress', {
-            'transfer_id': record.transfer_id,
-            'direction': 'download',
-            'transferred': transferred,
-            'total': size,
-        }, room=f'user_{user_id}')
+        if throttle.ready():
+            _emit_download_progress(record, user_id, transferred, size)
         yield chunk
+    if throttle.flush():
+        _emit_download_progress(record, user_id, transferred, size)
     return transferred
+
+
+def _release_database_connection():
+    """Return the pooled database connection before long transfer I/O.
+
+    Transfers stream remote data for as long as they take, while the request
+    keeps its session until teardown. Authentication and source checks are
+    done at this point and the views capture what they need as plain values,
+    so ending the read-only transaction here only does what teardown would do
+    later. Anything that queries again checks a connection out on demand.
+    """
+    from .models import db
+    db.session.rollback()
 
 
 def _unavailable(record=None, user_id=None):
@@ -413,6 +425,7 @@ def download_transfer(token):
     size = 0
     try:
         active_source = _resolve_transfer_source(record, user_id)
+        _release_database_connection()
         backend = _transfer_backend(active_source)
         if backend is None:
             reader_context = sftp_handler.open_bound_reader(
@@ -474,6 +487,7 @@ def download_transfer(token):
         failure = None
         transferred = 0
         try:
+            _release_database_connection()
             transferred = yield from _stream_download_chunks(
                 lease.reader,
                 record,
@@ -612,7 +626,8 @@ def _remote_zip_path(sftp, ssh_client, remote_path, cancel_event=None):
 
 def _create_private_temporary_archive(temp_directory):
     temporary = tempfile.NamedTemporaryFile(
-        suffix='.zip',
+        prefix=sftp_handler.FOLDER_ARCHIVE_PREFIX,
+        suffix=sftp_handler.FOLDER_ARCHIVE_SUFFIX,
         delete=False,
         dir=temp_directory,
     )
@@ -631,6 +646,19 @@ def _create_private_temporary_archive(temp_directory):
             pass
         raise
     return archive_path
+
+
+def _local_archive_limit():
+    """Byte limit for a folder archive built in TRANSFER_TEMP_DIR.
+
+    The archive is backed by a temporary storage reservation, so it can never
+    be larger than the per-user temporary quota. A limit that is not positive
+    rejects the download as a limit failure instead of an invalid reservation.
+    """
+    limit = min(config.MAX_ZIP_DOWNLOAD_SIZE, config.QUOTA_TEMP_BYTES_PER_USER)
+    if limit < 1:
+        raise RemoteTransferLimitExceeded('Folder exceeds transfer size limit')
+    return limit
 
 
 def _build_backend_zip_to_disk(
@@ -792,6 +820,7 @@ def download_folder_transfer(token):
                           exception_type=type(error).__name__)
 
     finish = _request_finalizer(record, user_id, cleanup_resources)
+    _release_database_connection()
     if not metadata.get('archive') or not remote_path:
         failure = classify_transfer_failure(
             FolderUnavailable(), operation='folder_download'
@@ -818,10 +847,11 @@ def download_folder_transfer(token):
                 or remote_stat.get('is_symlink')
             ):
                 raise FolderUnavailable()
+            local_limit = _local_archive_limit()
             temp_reservation = quota_manager.reserve(
                 QuotaKind.TEMP_BYTES,
                 user_id,
-                config.MAX_ZIP_DOWNLOAD_SIZE,
+                local_limit,
             )
             try:
                 local_archive = _build_backend_zip_to_disk(
@@ -829,7 +859,7 @@ def download_folder_transfer(token):
                     remote_path,
                     folder_name,
                     cancel_event=record.cancel_event,
-                    max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                    max_bytes=local_limit,
                     chunk_size=TRANSFER_CHUNK_SIZE,
                     temp_dir=config.TRANSFER_TEMP_DIR,
                     expected_root_identities=remote_stat.get(
@@ -876,10 +906,11 @@ def download_folder_transfer(token):
                 if remote_result is not None:
                     remote_archive, archive_size = remote_result
                 else:
+                    local_limit = _local_archive_limit()
                     temp_reservation = quota_manager.reserve(
                         QuotaKind.TEMP_BYTES,
                         user_id,
-                        config.MAX_ZIP_DOWNLOAD_SIZE,
+                        local_limit,
                     )
                     try:
                         local_archive = sftp_handler.build_fallback_zip_to_disk(
@@ -887,7 +918,7 @@ def download_folder_transfer(token):
                             remote_path,
                             folder_name,
                             cancel_event=record.cancel_event,
-                            max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                            max_bytes=local_limit,
                             chunk_size=TRANSFER_CHUNK_SIZE,
                             temp_dir=config.TRANSFER_TEMP_DIR,
                         )
@@ -958,7 +989,9 @@ def download_folder_transfer(token):
         outcome = 'failed'
         failure = None
         transferred = 0
+        throttle = ProgressThrottle()
         try:
+            _release_database_connection()
             if remote_archive is not None:
                 for chunk in sftp_handler.stream_remote_zip(
                     remote_lease.reader,
@@ -967,13 +1000,18 @@ def download_folder_transfer(token):
                     chunk_size=TRANSFER_CHUNK_SIZE,
                 ):
                     transferred += len(chunk)
-                    _emit_download_progress(
-                        record,
-                        user_id,
-                        transferred,
-                        remote_lease.size,
-                    )
+                    if throttle.ready():
+                        _emit_download_progress(
+                            record,
+                            user_id,
+                            transferred,
+                            remote_lease.size,
+                        )
                     yield chunk
+                if throttle.flush():
+                    _emit_download_progress(
+                        record, user_id, transferred, remote_lease.size
+                    )
             else:
                 with open(local_archive, 'rb') as archive:
                     while True:
@@ -983,10 +1021,15 @@ def download_folder_transfer(token):
                         if not chunk:
                             break
                         transferred += len(chunk)
-                        _emit_download_progress(
-                            record, user_id, transferred, archive_size
-                        )
+                        if throttle.ready():
+                            _emit_download_progress(
+                                record, user_id, transferred, archive_size
+                            )
                         yield chunk
+                if throttle.flush():
+                    _emit_download_progress(
+                        record, user_id, transferred, archive_size
+                    )
             remote_reader_stack.close()
             outcome = 'completed'
         except GeneratorExit:
@@ -1086,8 +1129,16 @@ def upload_transfer(token):
             return _json_failure(failure)
 
         transferred = 0
+        upload_total = request.content_length
+        throttle = ProgressThrottle()
+
+        def report_upload_progress(count):
+            if throttle.ready():
+                _emit_upload_progress(record, user_id, count, upload_total)
+
         try:
             active_source = _resolve_transfer_source(record, user_id)
+            _release_database_connection()
             if _transfer_backend(active_source) is None:
                 transferred = sftp_handler.upload_request_stream(
                     active_source.handle_id,
@@ -1096,9 +1147,7 @@ def upload_transfer(token):
                     chunk_size=TRANSFER_CHUNK_SIZE,
                     max_bytes=config.MAX_UPLOAD_SIZE,
                     cancelled=record.cancel_event.is_set,
-                    progress=lambda count: _emit_upload_progress(
-                        record, user_id, count
-                    ),
+                    progress=report_upload_progress,
                     replace=record.metadata.get('conflict_policy') == 'replace',
                 )
             else:
@@ -1110,9 +1159,7 @@ def upload_transfer(token):
                     max_bytes=config.MAX_UPLOAD_SIZE,
                     cancel_event=record.cancel_event,
                     cancelled=record.cancel_event.is_set,
-                    progress=lambda count: _emit_upload_progress(
-                        record, user_id, count
-                    ),
+                    progress=report_upload_progress,
                     replace=record.metadata.get('conflict_policy') == 'replace',
                 )
         except sftp_handler.TransferCancelled:
@@ -1158,6 +1205,8 @@ def upload_transfer(token):
             _terminalize(record, user_id, 'failed', failure=failure)
             return _json_failure(failure)
 
+        if throttle.flush():
+            _emit_upload_progress(record, user_id, transferred, upload_total)
         if not _terminalize(record, user_id, 'completed'):
             failure = classify_transfer_failure(
                 RuntimeError('terminalization failed'),
@@ -1181,13 +1230,13 @@ def upload_transfer(token):
             record.request_done_event.set()
 
 
-def _emit_upload_progress(record, user_id, transferred):
+def _emit_upload_progress(record, user_id, transferred, total):
     from . import socketio
     socketio.emit('transfer_progress', {
         'transfer_id': record.transfer_id,
         'direction': 'upload',
         'transferred': transferred,
-        'total': request.content_length,
+        'total': total,
     }, room=f'user_{user_id}')
 
 

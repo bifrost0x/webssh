@@ -2196,3 +2196,512 @@ def test_remote_zip_prefixes_leading_dash_folder_member():
     assert result[1] == 10
     assert ' ./-reports && ' in commands[0]
     assert ' -reports && ' not in commands[0]
+
+
+class PoolRecordingRemoteFile(TrackingRemoteFile):
+    """Record how many pooled database connections are out during remote I/O."""
+
+    def __init__(self, payload=b'', *, pool):
+        super().__init__(payload)
+        self.pool = pool
+        self.checked_out = []
+
+    def read(self, size=-1):
+        self.checked_out.append(self.pool.checkedout())
+        return super().read(size)
+
+    def write(self, chunk):
+        self.checked_out.append(self.pool.checkedout())
+        return super().write(chunk)
+
+
+def _capture_transfer_events(monkeypatch):
+    from app import socketio
+
+    events = []
+    original_emit = socketio.emit
+
+    def emit(event, payload=None, *args, **kwargs):
+        if event in {'transfer_progress', 'transfer_finished'}:
+            events.append((event, dict(payload or {})))
+            return None
+        return original_emit(event, payload, *args, **kwargs)
+
+    monkeypatch.setattr(socketio, 'emit', emit)
+    return events
+
+
+def _freeze_progress_clock(monkeypatch):
+    from app import transfer_progress
+
+    monkeypatch.setattr(
+        transfer_progress.ProgressThrottle.__init__,
+        '__defaults__',
+        (transfer_progress.PROGRESS_INTERVAL_SECONDS, lambda: 100.0),
+    )
+
+
+def _progress_counts(events):
+    return [
+        payload['transferred']
+        for name, payload in events
+        if name == 'transfer_progress'
+    ]
+
+
+class _SingleFileFolderBackend:
+    def __init__(self, payload, remote=None):
+        self.payload = payload
+        self.remote = remote
+
+    def stat(self, _source, _path, *, follow_links=False):
+        return {'size': 0, 'is_dir': True, 'is_symlink': False}, None
+
+    def iter_tree(self, _source, _path, *, budget, cancel_event,
+                  follow_links=False, io_lane='control'):
+        budget.consume()
+        yield {
+            'name': 'a.txt', 'path': '/reports/a.txt',
+            'size': len(self.payload), 'is_dir': False, 'is_symlink': False,
+        }
+
+    @contextmanager
+    def open_reader(self, _source, _path, *, io_lane='control'):
+        remote = self.remote or TrackingRemoteFile(self.payload)
+        yield FileReaderLease(reader=remote, size=len(self.payload))
+
+
+def _folder_record(manager, user_id):
+    return manager.create(
+        user_id=user_id,
+        source_id='smb-quick:owned',
+        direction='download',
+        metadata={
+            'remote_path': '/reports', 'filename': 'reports', 'archive': True,
+        },
+    )
+
+
+def _use_backend(monkeypatch, transfer_routes, backend):
+    resolved = SimpleNamespace(
+        handle_id='smb-handle', backend=backend, source_id='smb-quick:owned',
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_service, 'resolve',
+        lambda *_args, **_kwargs: resolved,
+    )
+
+
+def test_download_streams_without_holding_a_database_connection(
+        app, client, monkeypatch, transfer_components):
+    from app.models import db
+
+    transfer_routes, manager = transfer_components
+    payload = b'p' * (app.config['CHUNK_SIZE'] * 3 + 5)
+    sftp = FakeSFTP()
+    sftp.download_file = PoolRecordingRemoteFile(payload, pool=db.engine.pool)
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
+    user_id = _login(client, app, 'pool_download_user')
+    token = _token(manager, user_id, 'download')
+
+    response = client.get(f'/api/transfers/{token}/download')
+
+    assert response.status_code == 200
+    assert response.data == payload
+    assert sftp.download_file.checked_out
+    assert set(sftp.download_file.checked_out) == {0}
+
+
+def test_upload_writes_without_holding_a_database_connection(
+        app, client, monkeypatch, transfer_components):
+    from app.models import db
+
+    transfer_routes, manager = transfer_components
+    payload = b'u' * (app.config['CHUNK_SIZE'] * 2 + 3)
+    sftp = FakeSFTP()
+    sftp.destination_exists = False
+    sftp.upload_file = PoolRecordingRemoteFile(pool=db.engine.pool)
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
+    user_id = _login(client, app, 'pool_upload_user')
+    token = _token(manager, user_id, 'upload')
+
+    response = client.open(
+        f'/api/transfers/{token}/upload',
+        method='POST',
+        input_stream=BoundedRequestStream(payload),
+        content_type='application/octet-stream',
+        content_length=len(payload),
+    )
+
+    assert response.status_code == 200
+    assert bytes(sftp.upload_file.written) == payload
+    assert sftp.upload_file.checked_out
+    assert set(sftp.upload_file.checked_out) == {0}
+
+
+def test_folder_archive_build_runs_without_holding_a_database_connection(
+        app, client, monkeypatch, transfer_components):
+    import io
+    import zipfile
+    from app.models import db
+
+    transfer_routes, manager = transfer_components
+    payload = b'folder-body' * 50
+    remote = PoolRecordingRemoteFile(payload, pool=db.engine.pool)
+    _use_backend(
+        monkeypatch, transfer_routes, _SingleFileFolderBackend(payload, remote),
+    )
+    user_id = _login(client, app, 'pool_folder_user')
+    record = _folder_record(manager, user_id)
+
+    response = client.get(f'/api/transfers/{record.token}/folder-download')
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.data)) as archive:
+        assert archive.read('reports/a.txt') == payload
+    assert remote.checked_out
+    assert set(remote.checked_out) == {0}
+
+
+def test_download_progress_is_throttled_but_final_count_is_sent(
+        app, client, monkeypatch, transfer_components):
+    transfer_routes, manager = transfer_components
+    _freeze_progress_clock(monkeypatch)
+    events = _capture_transfer_events(monkeypatch)
+    payload = b'd' * (app.config['CHUNK_SIZE'] * 6 + 9)
+    sftp = FakeSFTP(payload)
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
+    user_id = _login(client, app, 'throttled_download_user')
+    token = _token(manager, user_id, 'download')
+
+    response = client.get(f'/api/transfers/{token}/download')
+
+    assert response.status_code == 200
+    assert response.data == payload
+    assert _progress_counts(events) == [app.config['CHUNK_SIZE'], len(payload)]
+    assert events[-1][0] == 'transfer_finished'
+    assert events[-1][1]['status'] == 'completed'
+
+
+def test_folder_download_progress_is_throttled_but_final_count_is_sent(
+        app, client, monkeypatch, transfer_components):
+    import os
+
+    transfer_routes, manager = transfer_components
+    _freeze_progress_clock(monkeypatch)
+    events = _capture_transfer_events(monkeypatch)
+    payload = os.urandom(app.config['CHUNK_SIZE'] * 3)
+    _use_backend(monkeypatch, transfer_routes, _SingleFileFolderBackend(payload))
+    user_id = _login(client, app, 'throttled_folder_user')
+    record = _folder_record(manager, user_id)
+
+    response = client.get(f'/api/transfers/{record.token}/folder-download')
+
+    assert response.status_code == 200
+    assert len(response.data) > app.config['CHUNK_SIZE'] * 2
+    counts = _progress_counts(events)
+    assert counts == [app.config['CHUNK_SIZE'], len(response.data)]
+    assert events[-1][0] == 'transfer_finished'
+    assert events[-1][1]['status'] == 'completed'
+
+
+def test_upload_progress_is_throttled_but_final_count_is_sent(
+        app, client, monkeypatch, transfer_components):
+    transfer_routes, manager = transfer_components
+    _freeze_progress_clock(monkeypatch)
+    events = _capture_transfer_events(monkeypatch)
+    payload = b'v' * (app.config['CHUNK_SIZE'] * 5 + 1)
+    sftp = FakeSFTP()
+    sftp.destination_exists = False
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
+    user_id = _login(client, app, 'throttled_upload_user')
+    token = _token(manager, user_id, 'upload')
+
+    response = client.open(
+        f'/api/transfers/{token}/upload',
+        method='POST',
+        input_stream=BoundedRequestStream(payload),
+        content_type='application/octet-stream',
+        content_length=len(payload),
+    )
+
+    assert response.status_code == 200
+    assert _progress_counts(events) == [app.config['CHUNK_SIZE'], len(payload)]
+    assert all(
+        payload_['total'] == len(payload)
+        for name, payload_ in events
+        if name == 'transfer_progress'
+    )
+    assert events[-1][0] == 'transfer_finished'
+    assert events[-1][1]['status'] == 'completed'
+
+
+def test_failed_download_reports_the_error_after_throttled_progress(
+        app, client, monkeypatch, transfer_components):
+    transfer_routes, manager = transfer_components
+    _freeze_progress_clock(monkeypatch)
+    events = _capture_transfer_events(monkeypatch)
+    chunk = app.config['CHUNK_SIZE']
+
+    class FailingFile(TrackingRemoteFile):
+        def read(self, size=-1):
+            if self.offset >= chunk * 3:
+                raise OSError(errno.EIO, 'remote read failed')
+            return super().read(size)
+
+    sftp = FakeSFTP(b'f' * (chunk * 6))
+    sftp.download_file = FailingFile(b'f' * (chunk * 6))
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
+    user_id = _login(client, app, 'throttled_failure_user')
+    token = _token(manager, user_id, 'download')
+
+    with pytest.raises(OSError):
+        client.get(f'/api/transfers/{token}/download').get_data()
+
+    assert _progress_counts(events) == [chunk]
+    assert events[-1][0] == 'transfer_finished'
+    assert events[-1][1]['status'] == 'failed'
+
+
+def test_progress_throttle_sends_first_update_and_reports_skipped_ones():
+    from app.transfer_progress import ProgressThrottle
+
+    now = [10.0]
+    throttle = ProgressThrottle(interval=0.25, clock=lambda: now[0])
+
+    assert throttle.flush() is False
+    assert throttle.ready() is True
+    assert throttle.ready() is False
+    now[0] += 0.1
+    assert throttle.ready() is False
+    assert throttle.flush() is True
+    assert throttle.flush() is False
+    now[0] += 0.15
+    assert throttle.ready() is True
+    assert throttle.flush() is False
+
+
+def test_folder_archive_uses_temp_quota_when_zip_limit_is_larger(
+        app, client, monkeypatch, transfer_components):
+    import io
+    import zipfile
+
+    transfer_routes, manager = transfer_components
+    payload = b'quota-bounded'
+    reserved = []
+    limits = []
+    real_reserve = transfer_routes.quota_manager.reserve
+    real_build = transfer_routes._build_backend_zip_to_disk
+
+    def recording_reserve(kind, user_id, amount=1):
+        reserved.append((kind, amount))
+        return real_reserve(kind, user_id, amount)
+
+    def recording_build(*args, **kwargs):
+        limits.append(kwargs['max_bytes'])
+        return real_build(*args, **kwargs)
+
+    _use_backend(monkeypatch, transfer_routes, _SingleFileFolderBackend(payload))
+    monkeypatch.setattr(transfer_routes.quota_manager, 'reserve', recording_reserve)
+    monkeypatch.setattr(transfer_routes, '_build_backend_zip_to_disk', recording_build)
+    quota = transfer_routes.config.QUOTA_TEMP_BYTES_PER_USER
+    monkeypatch.setattr(
+        transfer_routes.config, 'MAX_ZIP_DOWNLOAD_SIZE', quota * 2,
+    )
+    user_id = _login(client, app, 'zip_quota_user')
+    record = _folder_record(manager, user_id)
+
+    response = client.get(f'/api/transfers/{record.token}/folder-download')
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.data)) as archive:
+        assert archive.read('reports/a.txt') == payload
+    assert [
+        amount for kind, amount in reserved
+        if kind == transfer_routes.QuotaKind.TEMP_BYTES
+    ] == [quota]
+    assert limits == [quota]
+
+
+@pytest.mark.parametrize('limit', [0, -1])
+def test_non_positive_zip_limit_is_a_limit_failure(
+        app, client, monkeypatch, transfer_components, limit):
+    transfer_routes, manager = transfer_components
+
+    class Backend(_SingleFileFolderBackend):
+        def iter_tree(self, *_args, **_kwargs):
+            raise AssertionError('no enumeration without a usable limit')
+
+    _use_backend(monkeypatch, transfer_routes, Backend(b''))
+    monkeypatch.setattr(transfer_routes.config, 'MAX_ZIP_DOWNLOAD_SIZE', limit)
+    user_id = _login(client, app, f'zip_limit_user_{abs(limit)}')
+    record = _folder_record(manager, user_id)
+
+    response = client.get(f'/api/transfers/{record.token}/folder-download')
+
+    assert response.status_code != 200
+    assert response.get_json()['error_code'] == 'LIMIT_EXCEEDED'
+    assert manager._records == {}
+
+
+@pytest.mark.parametrize(('archive_limit', 'expected'), [
+    (0, 'not positive'),
+    (-5, 'not positive'),
+    (None, 'exceeds QUOTA_TEMP_BYTES_PER_USER'),
+])
+def test_startup_warns_about_unusable_folder_archive_limits(
+        monkeypatch, archive_limit, expected):
+    import app as app_module
+
+    quota = app_module.config.QUOTA_TEMP_BYTES_PER_USER
+    if archive_limit is None:
+        archive_limit = quota + 1
+    warnings = []
+    monkeypatch.setattr(app_module.config, 'MAX_ZIP_DOWNLOAD_SIZE', archive_limit)
+    monkeypatch.setattr(
+        app_module, 'log_warning',
+        lambda message, **details: warnings.append((message, details)),
+    )
+
+    app_module._warn_about_folder_archive_limits()
+
+    assert len(warnings) == 1
+    assert expected in warnings[0][0]
+
+
+def test_startup_is_silent_for_folder_archive_limits_within_quota(monkeypatch):
+    import app as app_module
+
+    warnings = []
+    monkeypatch.setattr(
+        app_module.config,
+        'MAX_ZIP_DOWNLOAD_SIZE',
+        app_module.config.QUOTA_TEMP_BYTES_PER_USER,
+    )
+    monkeypatch.setattr(
+        app_module, 'log_warning',
+        lambda message, **details: warnings.append((message, details)),
+    )
+
+    app_module._warn_about_folder_archive_limits()
+
+    assert warnings == []
+
+
+def test_folder_archives_use_a_prefix_the_startup_sweep_recognizes(tmp_path):
+    from app import sftp_handler, transfer_routes
+
+    for create in (
+        transfer_routes._create_private_temporary_archive,
+        sftp_handler._create_private_temporary_archive,
+    ):
+        archive = create(tmp_path)
+        assert archive.parent == tmp_path
+        assert sftp_handler._is_folder_archive_name(archive.name)
+
+    assert sftp_handler.sweep_orphaned_folder_archives(tmp_path) == 2
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_startup_sweep_removes_only_regular_folder_archives(tmp_path):
+    import os
+    from app import sftp_handler
+
+    archive = tmp_path / 'webssh-folder-abc_1234.zip'
+    archive.write_bytes(b'orphan')
+    kept = {
+        # The default tempfile pattern of earlier releases is not swept:
+        # TRANSFER_TEMP_DIR may be a directory other programs use too.
+        'tmpabc_1234.zip': b'other',
+        'webssh-folder-abc_1234.zip.part': b'other',
+        'webssh-folder-ABCDEFGH.zip': b'other',
+        'webssh-folder-short.zip': b'other',
+        'notes.txt': b'other',
+    }
+    for name, content in kept.items():
+        (tmp_path / name).write_bytes(content)
+    directory = tmp_path / 'webssh-folder-dir12345.zip'
+    directory.mkdir()
+    outside = tmp_path.parent / f'{tmp_path.name}-outside.zip'
+    outside.write_bytes(b'outside')
+    link = tmp_path / 'webssh-folder-link1234.zip'
+    try:
+        os.symlink(outside, link)
+    except (OSError, NotImplementedError):
+        link = None
+
+    removed = sftp_handler.sweep_orphaned_folder_archives(tmp_path)
+
+    assert removed == 1
+    assert not archive.exists()
+    for name, content in kept.items():
+        assert (tmp_path / name).read_bytes() == content
+    assert directory.is_dir()
+    assert outside.read_bytes() == b'outside'
+    if link is not None:
+        assert os.path.islink(link)
+
+
+def test_startup_sweep_ignores_missing_or_symlinked_directory(tmp_path):
+    import os
+    from app import sftp_handler
+
+    assert sftp_handler.sweep_orphaned_folder_archives(tmp_path / 'missing') == 0
+    target = tmp_path / 'target'
+    target.mkdir()
+    archive = target / 'webssh-folder-abc_1234.zip'
+    archive.write_bytes(b'kept')
+    link = tmp_path / 'linked'
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip('symbolic links are unavailable')
+
+    assert sftp_handler.sweep_orphaned_folder_archives(link) == 0
+    assert archive.exists()
+
+
+def test_only_runtime_start_sweeps_orphaned_folder_archives(
+        monkeypatch, database_template):
+    import config
+    from app import sftp_handler
+    from tests.conftest import _isolated_test_app
+
+    swept = []
+    monkeypatch.setattr(
+        sftp_handler, 'sweep_orphaned_folder_archives',
+        lambda directory: swept.append(directory) or 0,
+    )
+    for _app in _isolated_test_app(
+        monkeypatch, database_template, start_runtime=False,
+    ):
+        assert swept == []
+    for _app in _isolated_test_app(
+        monkeypatch, database_template, start_runtime=True,
+    ):
+        assert swept == [config.TRANSFER_TEMP_DIR]
