@@ -328,7 +328,7 @@ def test_failures_below_the_discard_threshold_keep_the_pending_login(
     )
 
     assert rejected.status_code == 401
-    assert rejected.get_json() == {"error": "TOTP code is invalid"}
+    assert rejected.get_json() == {"error": "TOTP code is invalid", "code": "invalid_code"}
     with client.session_transaction() as browser_session:
         assert "_pending_authentication" in browser_session
 
