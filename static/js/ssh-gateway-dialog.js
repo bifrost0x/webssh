@@ -142,7 +142,9 @@
             convertEol: true, allowProposedApi: false,
             // Gateway output is remote content: links get the same scheme and
             // userinfo filter as session terminals.
-            linkHandler: window.TerminalManager?.createLinkHandler?.(),
+            // Without the shared handler, links stay inert instead of falling
+            // back to xterm's unfiltered default.
+            linkHandler: window.TerminalManager?.createLinkHandler?.() || {activate() {}},
         });
         attempt.terminal = terminal;
         terminal.open(terminalNode);
