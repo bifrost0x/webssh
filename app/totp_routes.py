@@ -5,7 +5,7 @@ import secrets
 
 import config
 from .auth_redirects import public_continuation
-from flask import Blueprint, abort, jsonify, request, session
+from flask import Blueprint, abort, flash, jsonify, request, session
 from flask_login import current_user, login_required
 
 from . import mfa_throttle
@@ -254,7 +254,7 @@ def verify_totp_login():
     data = _bounded_json()
     user_id = pending.user_id
     try:
-        failures = mfa_throttle.claim_attempt(user_id)
+        failures = mfa_throttle.claim_attempt(user_id, scope=mfa_throttle.LOGIN)
     except mfa_throttle.MFAAttemptThrottled as exc:
         log_security_event(
             "MFA_ATTEMPT_THROTTLED",
@@ -278,6 +278,7 @@ def verify_totp_login():
         if mfa_throttle.pending_should_be_discarded(failures):
             cancel_pending_authentication(token, binding)
             session.pop("_pending_authentication", None)
+            flash("Too many invalid codes. Sign in again.", "error")
             log_security_event(
                 "MFA_PENDING_LOGIN_DISCARDED",
                 level=logging.WARNING,
@@ -291,7 +292,7 @@ def verify_totp_login():
                 "code": "mfa_restart",
             }), 401
         return jsonify({"error": "TOTP code is invalid"}), 401
-    mfa_throttle.record_success(user_id)
+    mfa_throttle.record_success(user_id, scope=mfa_throttle.LOGIN)
     try:
         _row, continuation = finalize_pending_with_factor(
             token,

@@ -129,6 +129,8 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | `RATELIMIT_DEFAULT` | `200 per hour` |
 | `RATELIMIT_LOGIN_LIMIT` | `5 per minute` |
 | `RATELIMIT_LOGIN_USERNAME_LIMIT` | `10 per minute` |
+| `RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT` | `100 per minute` |
+| `RATELIMIT_IPV6_PREFIX` | `64` |
 | `RATELIMIT_REAUTH` | `10 per minute` |
 | `SSH_CONNECT_RATELIMIT` | `10 per minute` |
 | `SSH_KEY_WRITE_RATELIMIT` | `30 per minute` |
@@ -142,11 +144,25 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | `RATELIMIT_BACKUP_DOWNLOAD` | `10 per hour` |
 | `RATELIMIT_BACKUP_RESTORE` | `3 per hour` |
 
-Source-address limits count an IPv6 client per /64 and an IPv4 or
-IPv4-mapped IPv6 client per address. `RATELIMIT_LOGIN_USERNAME_LIMIT` bounds
-local and LDAP password attempts for one submitted username across all source
-addresses. It is a time window, not a lockout, and applies whether or not the
-account exists.
+Source-address limits count an IPv6 client per `RATELIMIT_IPV6_PREFIX`
+(default `64`, allowed `48` to `128`; an invalid value logs a warning at
+startup and uses `64`) and an IPv4 or IPv4-mapped IPv6 client per address. A
+client normally controls a whole /64 and can rotate addresses inside it, so
+the default stops that rotation from multiplying the budget. The trade-off:
+every device in one /64, for example an office or home network using SLAAC,
+shares one `RATELIMIT_LOGIN_LIMIT`. Set `128` for per-address limits.
+
+`RATELIMIT_LOGIN_USERNAME_LIMIT` bounds failed local and LDAP password
+attempts for one submitted username from one such source, so one source cannot
+use up the attempts of another. `RATELIMIT_LOGIN_USERNAME_GLOBAL_LIMIT` is a
+much higher ceiling per username across all sources that only slows
+distributed guessing. Only failed attempts count; a successful sign-in returns
+its reservation, so accounts that sign in often are not slowed. Both are time
+windows, not lockouts, and apply whether or not the account exists. A sender
+spread over enough sources to exceed the global ceiling (twenty sources at the
+default `RATELIMIT_LOGIN_LIMIT`) can still keep one username throttled while
+it keeps sending; raise the ceiling if that matters more than slowing
+distributed guessing.
 
 Key listings and the refresh after renaming, replacing, or deleting a key share
 `SSH_KEY_LIST_RATELIMIT` per user across browser connections. Admission is checked

@@ -3,9 +3,22 @@
 A TOTP code accepts three of a million values per attempt, so the request
 rate limits alone allow a slow online search. Failed codes are counted per
 account in the database, which keeps the count across restarts, workers and
-new pending logins. Waiting is exponential but capped and never becomes a
-lockout: only someone who already holds the password or a signed-in session
-can submit a code, and the account owner can always continue later.
+new pending logins.
+
+Two counters are kept apart on purpose. Sign-in codes come from whoever holds
+the password; step-up codes come from an already signed-in session. Failures
+in one never delay the other, so a password holder cannot block step-up in
+the owner's existing sessions and a stolen session cannot block the owner's
+fresh sign-in.
+
+The wait grows exponentially up to a cap and the count decays: once the last
+failure is older than ``QUIET_PERIOD_SECONDS`` the next attempt starts from
+zero, so the backoff never turns into a lockout. Proving possession another
+way (Recovery Code, passkey) or replacing the factors clears both counters.
+The remaining trade-off is
+that someone who holds the password can keep delaying new TOTP sign-ins by
+submitting wrong codes; Recovery Codes and passkeys stay available, and a
+password change from an existing session is not affected.
 """
 
 import math
@@ -20,10 +33,22 @@ from .models import User, as_naive_utc, db
 FREE_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 30
 BACKOFF_MAX_SECONDS = 15 * 60
+# A failure older than this no longer counts toward the backoff.
+QUIET_PERIOD_SECONDS = 2 * BACKOFF_MAX_SECONDS
 # From this many consecutive failures on, every further failure discards the
 # pending login, so the next code requires the password step again.
 PENDING_DISCARD_FAILURES = 5
 _CLAIM_RETRIES = 5
+
+LOGIN = "login"
+STEP_UP = "step_up"
+_COLUMNS = {
+    LOGIN: (User.mfa_failed_attempts, User.mfa_last_failed_at),
+    STEP_UP: (
+        User.mfa_step_up_failed_attempts,
+        User.mfa_step_up_last_failed_at,
+    ),
+}
 
 
 class MFAAttemptThrottled(Exception):
@@ -49,7 +74,14 @@ def _now(now=None):
     return as_naive_utc(value)
 
 
-def claim_attempt(user_id, *, now=None):
+def _columns(scope):
+    try:
+        return _COLUMNS[scope]
+    except KeyError:
+        raise ValueError(f"unknown one-time code scope: {scope!r}") from None
+
+
+def claim_attempt(user_id, *, scope=LOGIN, now=None):
     """Reserve one code check for ``user_id`` and return the failure count.
 
     The attempt is counted as a failure before the code is checked and
@@ -57,33 +89,41 @@ def claim_attempt(user_id, *, now=None):
     past the backoff together. Raises :class:`MFAAttemptThrottled` while the
     account has to wait.
     """
+    count_column, failed_at_column = _columns(scope)
     user_id = int(user_id)
     current_time = _now(now)
+    failures = 0
     for _attempt in range(_CLAIM_RETRIES):
         row = db.session.execute(
-            select(User.mfa_failed_attempts, User.mfa_last_failed_at)
-            .where(User.id == user_id)
+            select(count_column, failed_at_column).where(User.id == user_id)
         ).first()
         if row is None:
             raise MFAAttemptThrottled(BACKOFF_BASE_SECONDS, 0)
-        failures = int(row.mfa_failed_attempts or 0)
-        last_failed_at = row.mfa_last_failed_at
-        wait = backoff_seconds(failures)
-        if wait and last_failed_at is not None:
-            if last_failed_at.tzinfo is not None:
-                last_failed_at = as_naive_utc(last_failed_at)
-            ready_at = last_failed_at + timedelta(seconds=wait)
-            if ready_at > current_time:
-                remaining = (ready_at - current_time).total_seconds()
-                raise MFAAttemptThrottled(max(1, math.ceil(remaining)), failures)
+        stored_failures, last_failed_at = row[0], row[1]
+        failures = int(stored_failures or 0)
+        if last_failed_at is not None:
+            last_failed_at = as_naive_utc(last_failed_at)
+            quiet = (current_time - last_failed_at).total_seconds()
+            if quiet >= QUIET_PERIOD_SECONDS:
+                failures = 0
+            else:
+                wait = backoff_seconds(failures)
+                ready_at = last_failed_at + timedelta(seconds=wait)
+                if wait and ready_at > current_time:
+                    remaining = (ready_at - current_time).total_seconds()
+                    raise MFAAttemptThrottled(
+                        max(1, math.ceil(remaining)), failures,
+                    )
+        # Compare against the stored value, not the decayed one, so a
+        # concurrent claim still makes this update miss and re-read.
         result = db.session.execute(
             update(User)
             .where(User.id == user_id)
-            .where(User.mfa_failed_attempts == row.mfa_failed_attempts)
-            .values(
-                mfa_failed_attempts=failures + 1,
-                mfa_last_failed_at=current_time,
-            )
+            .where(count_column == stored_failures)
+            .values({
+                count_column: failures + 1,
+                failed_at_column: current_time,
+            })
             .execution_options(synchronize_session=False)
         )
         if result.rowcount == 1:
@@ -93,13 +133,46 @@ def claim_attempt(user_id, *, now=None):
     raise MFAAttemptThrottled(1, failures)
 
 
-def record_success(user_id):
+def record_success(user_id, *, scope=LOGIN):
     """Clear the consecutive failure count after an accepted code."""
+    count_column, failed_at_column = _columns(scope)
     db.session.execute(
         update(User)
         .where(User.id == int(user_id))
-        .where(User.mfa_failed_attempts != 0)
-        .values(mfa_failed_attempts=0, mfa_last_failed_at=None)
+        .where(count_column != 0)
+        .values({count_column: 0, failed_at_column: None})
+        .execution_options(synchronize_session=False)
+    )
+    db.session.commit()
+
+
+def clear_all_uncommitted(user):
+    """Clear both counters on ``user`` as part of the caller's transaction.
+
+    Used when the owner proved possession another way or the factor set was
+    replaced, so earlier rejections no longer describe the current factors.
+    """
+    user.mfa_failed_attempts = 0
+    user.mfa_last_failed_at = None
+    user.mfa_step_up_failed_attempts = 0
+    user.mfa_step_up_last_failed_at = None
+
+
+def reset_all(user_id):
+    """Clear both counters after the owner authenticated with another factor."""
+    db.session.execute(
+        update(User)
+        .where(User.id == int(user_id))
+        .where(
+            (User.mfa_failed_attempts != 0)
+            | (User.mfa_step_up_failed_attempts != 0)
+        )
+        .values(
+            mfa_failed_attempts=0,
+            mfa_last_failed_at=None,
+            mfa_step_up_failed_attempts=0,
+            mfa_step_up_last_failed_at=None,
+        )
         .execution_options(synchronize_session=False)
     )
     db.session.commit()
