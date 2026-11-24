@@ -350,3 +350,92 @@ def test_a_response_without_an_open_file_is_not_cached(client, monkeypatch):
 
     assert response.headers['Content-Encoding'] == 'gzip'
     assert static_delivery._gzip_cache == {}
+
+
+def test_index_assets_stay_compressed_across_a_cold_page_load(app, client, monkeypatch):
+    # The index page loads its compressible assets in one fixed order. With
+    # an LRU smaller than that set, every load evicted what the next one
+    # needed and nothing was ever served from the cache.
+    from app import static_delivery
+
+    asset_paths = app.extensions[static_delivery._ASSET_INDEX_EXTENSION]
+    compressible = sorted(
+        name for name, path in asset_paths.items()
+        if path.suffix in {'.js', '.css', '.svg', '.ttf'}
+        and path.stat().st_size >= 1024
+    )
+    assert len(compressible) > 64
+
+    calls = []
+    real_compress = gzip.compress
+
+    def counting_compress(data, *args, **kwargs):
+        calls.append(len(data))
+        return real_compress(data, *args, **kwargs)
+
+    monkeypatch.setattr(static_delivery.gzip, 'compress', counting_compress)
+    static_delivery._gzip_cache.clear()
+    for _load in range(2):
+        for name in compressible:
+            response = client.get(
+                f'/static/{name}', headers={'Accept-Encoding': 'gzip'},
+            )
+            assert response.status_code == 200
+    static_delivery._gzip_cache.clear()
+
+    assert len(calls) == len(compressible)
+
+
+def test_compressed_asset_cache_is_bounded_by_bytes(monkeypatch):
+    from types import SimpleNamespace
+    from app import static_delivery
+
+    monkeypatch.setattr(static_delivery, '_GZIP_CACHE_MAX_BYTES', 1000)
+    monkeypatch.setattr(static_delivery, '_GZIP_CACHE_SIZE', 100)
+    monkeypatch.setattr(
+        static_delivery.gzip, 'compress',
+        lambda data, **_kwargs: b'z' * (len(data) // 2),
+    )
+    static_delivery._gzip_cache.clear()
+
+    def compress(index, size):
+        response = SimpleNamespace(get_data=lambda: b'p' * size)
+        return static_delivery._compressed_asset(
+            (1, index, 0, 0, size), response,
+        )
+
+    try:
+        for index in range(5):
+            compress(index, 400)
+        assert sum(len(data) for data, _length in static_delivery._gzip_cache.values()) <= 1000
+        assert [key[1] for key in static_delivery._gzip_cache] == [0, 1, 2, 3, 4]
+
+        compress(5, 1000)
+        assert [key[1] for key in static_delivery._gzip_cache] == [3, 4, 5]
+        assert sum(len(data) for data, _length in static_delivery._gzip_cache.values()) <= 1000
+
+        # An entry larger than the whole budget is served but never cached.
+        result = compress(6, 4000)
+        assert len(result[0]) == 2000
+        assert 6 not in [key[1] for key in static_delivery._gzip_cache]
+    finally:
+        static_delivery._gzip_cache.clear()
+
+
+def test_bundled_ttf_fonts_are_served_compressed(client):
+    plain = client.get(
+        '/static/vendor/roboto/Roboto-Variable.ttf',
+        headers={'Accept-Encoding': 'identity'},
+    )
+    compressed = client.get(
+        '/static/vendor/roboto/Roboto-Variable.ttf',
+        headers={'Accept-Encoding': 'gzip'},
+    )
+
+    assert compressed.status_code == 200
+    assert compressed.mimetype == 'font/ttf'
+    assert compressed.headers['Content-Encoding'] == 'gzip'
+    assert 'Accept-Encoding' in compressed.headers['Vary']
+    assert len(compressed.data) < len(plain.data)
+    assert gzip.decompress(compressed.data) == plain.data
+    assert compressed.headers['ETag'] != plain.headers['ETag']

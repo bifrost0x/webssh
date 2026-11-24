@@ -326,3 +326,97 @@ def test_failed_restore_runs_emergency_rollback_and_restarts(
     assert ('failed', {'rollback_failed': False}) in events
     assert 'RESTORE_FAILED' in events
     assert events[-2:] == ['cleanup', 'restart']
+
+
+def test_repeated_maintenance_checks_do_not_touch_the_namespace(
+    monkeypatch, tmp_path
+):
+    import os
+    import app.backup_coordination as coordination
+
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    validations = []
+    real_ensure = coordination.ensure_backup_temp_dir
+
+    def counting_ensure():
+        validations.append(1)
+        return real_ensure()
+
+    monkeypatch.setattr(maintenance, 'ensure_backup_temp_dir', counting_ensure)
+    assert maintenance.is_active() is False
+    assert validations == [1]
+
+    filesystem_changes = []
+    real_mkdir = Path.mkdir
+    real_chmod = os.chmod
+
+    def recording_mkdir(self, *args, **kwargs):
+        filesystem_changes.append(('mkdir', self))
+        return real_mkdir(self, *args, **kwargs)
+
+    def recording_chmod(path, *args, **kwargs):
+        filesystem_changes.append(('chmod', path))
+        return real_chmod(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'mkdir', recording_mkdir)
+    monkeypatch.setattr(os, 'chmod', recording_chmod)
+    for _ in range(25):
+        assert maintenance.is_active() is False
+        assert maintenance.public_status() == {'state': 'idle', 'message': None}
+
+    assert validations == [1]
+    assert filesystem_changes == []
+
+
+def test_status_written_by_another_process_is_still_detected(
+    monkeypatch, tmp_path
+):
+    import json
+    import time
+
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    assert maintenance.is_active() is False
+    status_path = maintenance._status_path()
+    assert not status_path.exists()
+
+    # Another process writes the shared status file; this process holds no
+    # cached status document for it.
+    status_path.write_text(json.dumps({
+        'state': 'rollback_failed',
+        'operation_id': 'external-restore',
+        'message': 'Restore and rollback failed',
+        'updated_at': time.time(),
+    }), 'utf-8')
+
+    assert maintenance.is_active() is True
+    status_path.unlink()
+    maintenance._state = None
+    maintenance._state_path = None
+    assert maintenance.is_active() is False
+
+
+def test_maintenance_location_is_validated_again_after_configuration_change(
+    monkeypatch, tmp_path
+):
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    assert maintenance.is_active() is False
+    first = maintenance._read_status_path()
+
+    monkeypatch.setattr(config, 'BACKUP_TEMP_DIR', tmp_path / 'other-operations')
+    assert maintenance.is_active() is False
+    second = maintenance._read_status_path()
+
+    assert second != first
+    assert second.parent.is_dir()
+    assert second.parent.is_relative_to(
+        (tmp_path / 'other-operations').resolve()
+    )
+
+
+def test_unsafe_maintenance_location_is_never_cached(monkeypatch, tmp_path):
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(config, 'BACKUP_TEMP_DIR', config.DATA_DIR / 'operations')
+
+    for _ in range(2):
+        with pytest.raises(RuntimeError, match='outside DATA_DIR'):
+            maintenance.is_active()

@@ -1,5 +1,7 @@
 import os
 import tempfile
+import threading
+import time
 
 from flask import Blueprint, current_app, jsonify
 from sqlalchemy import text
@@ -9,6 +11,13 @@ from .models import db
 
 
 health_blueprint = Blueprint('health', __name__)
+
+# /ready is unauthenticated and polled by orchestrators. A successful write
+# probe is reused for a few seconds so request floods do not turn into a
+# create, fsync and unlink each. Failures are never reused.
+_DATA_DIRECTORY_PROBE_TTL = 5.0
+_DATA_DIRECTORY_PROBE_EXTENSION = 'health.data_directory_probe'
+_data_directory_probe_lock = threading.Lock()
 
 
 def _probe_data_directory():
@@ -28,6 +37,22 @@ def _probe_data_directory():
         finally:
             if probe_path is not None:
                 os.unlink(probe_path)
+
+
+def _probe_data_directory_cached():
+    extensions = current_app.extensions
+    key = str(config.DATA_DIR)
+    with _data_directory_probe_lock:
+        cached = extensions.get(_DATA_DIRECTORY_PROBE_EXTENSION)
+        if (
+            cached is not None
+            and cached[0] == key
+            and time.monotonic() - cached[1] < _DATA_DIRECTORY_PROBE_TTL
+        ):
+            return
+        extensions.pop(_DATA_DIRECTORY_PROBE_EXTENSION, None)
+        _probe_data_directory()
+        extensions[_DATA_DIRECTORY_PROBE_EXTENSION] = (key, time.monotonic())
 
 
 def _probe_database():
@@ -55,7 +80,7 @@ def ready():
         failed.append('runtime')
     probes = () if maintenance else (
         ('database', _probe_database),
-        ('data_directory', _probe_data_directory),
+        ('data_directory', _probe_data_directory_cached),
     )
     for category, probe in probes:
         try:

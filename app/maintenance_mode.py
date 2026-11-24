@@ -16,6 +16,11 @@ from .backup_coordination import ensure_backup_temp_dir, operation_lock
 _lock = threading.RLock()
 _state = None
 _state_path = None
+# Resolved status file per configured location. Only the read path uses it:
+# is_active() runs on every request and socket event, and the full namespace
+# validation creates, chmods and resolves directories each time. Writers and
+# the operation lock keep validating on every call.
+_read_location = None
 _STATUS_NAME = 'restore-status.json'
 _KNOWN_STATES = {
     'preparing', 'in_progress', 'succeeded', 'failed', 'rollback_failed',
@@ -72,6 +77,27 @@ def _status_path() -> Path:
     return ensure_backup_temp_dir() / _STATUS_NAME
 
 
+def _status_location_key():
+    return (
+        str(config.BACKUP_TEMP_DIR),
+        str(config.DATA_DIR),
+        str(config.BASE_DIR),
+    )
+
+
+def _read_status_path() -> Path:
+    global _read_location
+    key = _status_location_key()
+    cached = _read_location
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    # The first lookup per location runs the full validation, so a
+    # misconfigured or unsafe directory still raises here.
+    path = _status_path().resolve(strict=False)
+    _read_location = (key, path)
+    return path
+
+
 def _data_fingerprint() -> str:
     value = str(Path(config.DATA_DIR).resolve(strict=False)).encode('utf-8')
     return sha256(value).hexdigest()
@@ -107,7 +133,7 @@ def _write(document) -> None:
 
 def _read():
     global _state, _state_path
-    path = _status_path().resolve(strict=False)
+    path = _read_status_path()
     if _state is not None and _state_path == path:
         return dict(_state)
     try:
