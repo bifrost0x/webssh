@@ -13,6 +13,7 @@ from .auth_redirects import public_continuation
 from flask import (
     Blueprint,
     abort,
+    current_app,
     jsonify,
     redirect,
     render_template,
@@ -808,9 +809,20 @@ def unlink_oidc_identity(user_id, identity_id):
     identity = db.session.get(OIDCIdentity, identity_id)
     if identity is None or identity.user_id != target.id:
         return jsonify({"error": "OIDC identity not found"}), 404
+    from . import socketio, user_lifecycle
+    from .auth_assurance import invalidate_user_authentication
+
     issuer = identity.issuer
     db.session.delete(identity)
+    # Sessions that signed in through this identity must not outlive the link.
     try:
+        invalidate_user_authentication(
+            target,
+            preserve_current_browser=target.id == current_user.id,
+            remember=bool(request.cookies.get(
+                current_app.config.get("REMEMBER_COOKIE_NAME", "remember_token")
+            )),
+        )
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
@@ -824,6 +836,7 @@ def unlink_oidc_identity(user_id, identity_id):
         return jsonify({
             "error": "OIDC identity storage is temporarily unavailable"
         }), 503
+    user_lifecycle.revoke_user_access(target.id, socketio)
     log_security_event(
         "OIDC_IDENTITY_UNLINKED",
         level=logging.WARNING,

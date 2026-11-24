@@ -32,7 +32,19 @@ sensitive action and target.
 - Flask-Login manages browser authentication.
 - Forms use Flask-WTF CSRF protection.
 - Unknown-user password checks perform dummy bcrypt work.
-- Login and reauthentication paths are rate-limited.
+- Login and reauthentication paths are rate-limited. Source-address limits
+  count IPv6 clients per /64 and IPv4 (including IPv4-mapped IPv6) per
+  address. Password sign-in is also limited per submitted username across all
+  addresses; the limit is a time window, not a lockout, and applies whether or
+  not the account exists.
+- Rejected TOTP codes at sign-in and step-up are counted per account in the
+  database. After three consecutive rejections each further code waits
+  30 seconds, doubling up to 15 minutes; an accepted code resets the count.
+  From five consecutive rejections on, a rejected sign-in code discards the
+  pending login, so the password step has to be repeated. The account is
+  never locked, and Recovery Codes stay available.
+- Unlinking an OIDC or GitHub identity signs out every session derived from
+  it and ends the account's live connections, like LDAP link and unlink.
 - Session cookies are `HttpOnly` and `SameSite=Lax`; production requires the
   `Secure` flag.
 - Lock, deletion, logout, and failed LDAP revalidation revoke tracked live

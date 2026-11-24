@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 import json
+import logging
 import secrets
 import time
 from threading import Lock
@@ -21,6 +22,7 @@ from webauthn.helpers.structs import (
 
 import config
 
+from . import mfa_throttle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_reauth_rate_limit, password_exceeds_bcrypt_limit
 from .auth_assurance import (
@@ -180,14 +182,30 @@ def totp_step_up():
     ):
         log_rate_limit_exceeded("admin_step_up_totp", client_ip)
         return _failure(429)
+    try:
+        failures = mfa_throttle.claim_attempt(current_user.id)
+    except mfa_throttle.MFAAttemptThrottled as exc:
+        log_security_event(
+            "MFA_ATTEMPT_THROTTLED",
+            level=logging.WARNING,
+            user=current_user.username,
+            method="totp",
+            flow="admin_step_up",
+            failures=exc.failures,
+            retry_after=exc.retry_after,
+            ip=client_ip,
+        )
+        return mfa_throttle.throttled_response(exc)
     if not verify_totp(current_user.id, data.get("code", "")):
         log_security_event(
             "ADMIN_STEP_UP_REJECTED",
             user=current_user.username,
             method="totp",
+            failures=failures,
             ip=client_ip,
         )
         return _failure()
+    mfa_throttle.record_success(current_user.id)
     try:
         grant = create_step_up_grant(
             current_authentication_session(),

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
     createAccountStepUpClient,
     createRequestCoordinator,
+    describeAuthenticationError,
     describeHostKey,
     downloadAuditExport,
     featureToggleState,
@@ -383,4 +384,36 @@ test('audit export checks metadata before starting a native download', async () 
         scanned: 50000,
         scanLimit: 50000
     });
+});
+
+test('code-check backoff answers are translated with their wait time', () => {
+    const translate = (key, fallback) => ({
+        'auth.retryAfterSeconds': 'Erneut versuchen in {seconds} s.',
+        'auth.retryAfterMinutes': 'Erneut versuchen in {minutes} Min.',
+        'auth.mfaRestart': 'Bitte erneut anmelden.'
+    }[key] || fallback);
+
+    assert.equal(
+        describeAuthenticationError({ code: 'rate_limited', retry_after: 30 }, translate),
+        'Erneut versuchen in 30 s.'
+    );
+    assert.equal(
+        describeAuthenticationError({ code: 'rate_limited', retry_after: 61 }, translate),
+        'Erneut versuchen in 2 Min.'
+    );
+    assert.equal(
+        describeAuthenticationError({ code: 'mfa_restart' }, translate),
+        'Bitte erneut anmelden.'
+    );
+    assert.equal(
+        describeAuthenticationError({ code: 'rate_limited', retry_after: 30 }),
+        'Too many attempts. Try again in 30 s.'
+    );
+});
+
+test('other error answers keep their existing message', () => {
+    assert.equal(describeAuthenticationError({ code: 'rate_limited' }), null);
+    assert.equal(describeAuthenticationError({ code: 'step_up_failed', retry_after: 5 }), null);
+    assert.equal(describeAuthenticationError({ error: 'TOTP code is invalid' }), null);
+    assert.equal(describeAuthenticationError(null), null);
 });

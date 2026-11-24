@@ -324,9 +324,39 @@
         return metadata;
     }
 
+    // Translate the code-check answers that carry structured details. Returns
+    // null for anything else so callers keep their existing message.
+    function describeAuthenticationError(data, translate) {
+        const t = typeof translate === 'function'
+            ? translate
+            : (_key, fallback) => fallback;
+        if (!data || typeof data !== 'object') { return null; }
+        if (data.code === 'mfa_restart') {
+            return t(
+                'auth.mfaRestart',
+                'Too many invalid codes. Sign in again.'
+            );
+        }
+        const seconds = Number(data.retry_after);
+        if (data.code !== 'rate_limited' || !Number.isFinite(seconds) || seconds <= 0) {
+            return null;
+        }
+        if (seconds >= 60) {
+            return t(
+                'auth.retryAfterMinutes',
+                'Too many attempts. Try again in {minutes} min.'
+            ).replace('{minutes}', String(Math.ceil(seconds / 60)));
+        }
+        return t(
+            'auth.retryAfterSeconds',
+            'Too many attempts. Try again in {seconds} s.'
+        ).replace('{seconds}', String(Math.ceil(seconds)));
+    }
+
     return {
         createAccountStepUpClient,
         createRequestCoordinator,
+        describeAuthenticationError,
         describeHostKey,
         downloadAuditExport,
         featureDisableWarning,

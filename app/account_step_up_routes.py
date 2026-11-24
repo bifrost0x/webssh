@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import secrets
 from threading import Lock
 
@@ -22,6 +23,7 @@ from webauthn.helpers.structs import (
 import config
 from .app_settings import runtime_feature_enabled
 
+from . import mfa_throttle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_reauth_rate_limit, password_exceeds_bcrypt_limit
 from .auth_assurance import (
@@ -454,14 +456,32 @@ def totp_step_up():
         return _error("step_up_failed", 403)
     if _reauth_limited("totp"):
         return _rate_limit_error()
-    if not verify_totp(user.id, data.get("code", "")):
+    user_id = user.id
+    action = intent.action
+    try:
+        failures = mfa_throttle.claim_attempt(user_id)
+    except mfa_throttle.MFAAttemptThrottled as exc:
+        log_security_event(
+            "MFA_ATTEMPT_THROTTLED",
+            level=logging.WARNING,
+            user=current_user.username,
+            method="totp",
+            flow="account_step_up",
+            action=action,
+            failures=exc.failures,
+            retry_after=exc.retry_after,
+        )
+        return mfa_throttle.throttled_response(exc)
+    if not verify_totp(user_id, data.get("code", "")):
         log_security_event(
             "ACCOUNT_STEP_UP_REJECTED",
             user=current_user.username,
-            action=intent.action,
+            action=action,
             method="totp",
+            failures=failures,
         )
         return _error("step_up_failed", 403)
+    mfa_throttle.record_success(user_id)
     try:
         return _complete_intent(
             token, auth_session, AssuranceLevel.MFA.value, "totp"

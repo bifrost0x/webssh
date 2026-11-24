@@ -8,7 +8,10 @@ import re
 import secrets
 
 from .auth_redirects import public_continuation
-from flask import Blueprint, abort, jsonify, redirect, render_template, request, session
+from flask import (
+    Blueprint, abort, current_app, jsonify, redirect, render_template, request,
+    session,
+)
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import insert, literal, select
@@ -420,9 +423,39 @@ def github_unlink():
         return jsonify({
             'error': 'Add and test a passkey before disconnecting GitHub'
         }), 409
+    from . import socketio, user_lifecycle
+    from .auth_assurance import (
+        AuthenticationFinalizationError,
+        invalidate_user_authentication,
+    )
+
     github_user_id = row.github_user_id
+    account = current_user._get_current_object()
     db.session.delete(row)
-    db.session.commit()
+    # Other browsers that signed in through GitHub must not keep the access
+    # the unlinked identity gave them; this browser moves to a new session.
+    try:
+        invalidate_user_authentication(
+            account,
+            preserve_current_browser=True,
+            remember=bool(request.cookies.get(
+                current_app.config.get('REMEMBER_COOKIE_NAME', 'remember_token')
+            )),
+        )
+        db.session.commit()
+    except AuthenticationFinalizationError:
+        db.session.rollback()
+        return jsonify({'error': 'Sign in again before disconnecting GitHub'}), 409
+    except Exception as exc:
+        db.session.rollback()
+        log_security_event(
+            'GITHUB_IDENTITY_STORAGE_FAILED', level=logging.ERROR,
+            user=account.username, error=type(exc).__name__,
+        )
+        return jsonify({
+            'error': 'GitHub identity storage is temporarily unavailable'
+        }), 503
+    user_lifecycle.revoke_user_access(account.id, socketio)
     log_security_event(
         'GITHUB_IDENTITY_UNLINKED', level=logging.WARNING,
         user=current_user.username, github_user_id=github_user_id,
