@@ -2792,7 +2792,22 @@ window.i18n.registerLocales({
         "fm.newName": "Tên mới",
         "fm.renameHint": "Đổi tên mục trong thư mục này. Nhập tên, không phải đường dẫn.",
         "fm.cancelTransfer": "Hủy truyền",
-        "terminal.openLinkConfirm": "Bạn có muốn mở {url} không?\n\nCẢNH BÁO: Liên kết này có thể nguy hiểm",
-        "common.dismissNotification": "Đóng thông báo"
+        "terminal.openLinkConfirm": "Bạn có muốn mở liên kết này không?\n\n{url}\n\nCẢNH BÁO: Liên kết này có thể nguy hiểm",
+        "common.dismissNotification": "Đóng thông báo",
+        "fm.nameBlank": "Nhập tên không chỉ gồm khoảng trắng.",
+        "fm.nameDots": "Không thể dùng \".\" và \"..\" làm tên.",
+        "fm.nameSeparator": "Nhập tên không chứa / hoặc \\, không phải đường dẫn.",
+        "fm.nameCharacters": "Tên chứa ký tự không thể sử dụng.",
+        "fm.nameTooLong": "Tên dài hơn 255 byte.",
+        "fm.renameConflict": "Đã có mục với tên này.",
+        "fm.renameDenied": "Không có quyền. Bạn không thể đổi tên mục trong thư mục này.",
+        "fm.renameNotFound": "Mục không còn tồn tại. Hãy làm mới thư mục.",
+        "fm.renameInvalid": "Không thể dùng tên này ở đây.",
+        "fm.renameUnavailable": "Nguồn tệp không khả dụng. Hãy kết nối lại và thử lại.",
+        "fm.renameFailed": "Không thể đổi tên mục. Hãy kiểm tra kết nối nguồn và thử lại.",
+        "settings.languageLoading": "Đang tải ngôn ngữ…",
+        "settings.languageFailed": "Không thể tải ngôn ngữ. Hãy kiểm tra kết nối và thử lại.",
+        "auth.verifyCodeIn": "Xác minh mã sau {seconds} giây",
+        "auth.totpCodeInvalid": "Mã không hợp lệ. Hãy kiểm tra giờ trên thiết bị và nhập mã hiện tại."
     }
 });

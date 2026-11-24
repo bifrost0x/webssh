@@ -54,8 +54,22 @@ function initLanguageSelectorHeader() {
     select.value = currentLang;
     select.addEventListener('change', async () => {
         const requested = select.value;
-        if (!await i18n.setLanguage(requested) && select.value === requested) {
-            select.value = i18n.getLanguage();
+        const loading = !i18n.isLocaleLoaded(requested);
+        if (loading) {
+            select.disabled = true;
+            select.setAttribute('aria-busy', 'true');
+        }
+        let applied = false;
+        try {
+            applied = await i18n.setLanguage(requested);
+        } finally {
+            select.disabled = false;
+            select.removeAttribute('aria-busy');
+        }
+        if (applied) return;
+        select.value = i18n.getLanguage();
+        if (!i18n.isLocaleLoaded(requested)) {
+            window.showNotification?.(i18n.t('settings.languageFailed'), 'error');
         }
     });
 }

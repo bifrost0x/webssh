@@ -136,3 +136,13 @@ def test_chmod_policy_is_checked_even_with_forged_backend_capability(monkeypatch
     with pytest.raises(FileMutationError) as failure:
         service.get_file_permissions('sftp-session:a', user_id=7, path='/x')
     assert failure.value.code == 'UNSUPPORTED_OPERATION'
+
+
+@pytest.mark.parametrize('name', [' ', '   ', ' \u3000'])
+def test_new_files_cannot_be_named_with_whitespace_only(name):
+    from app.file_mutations import FileMutationError, creation_path, validate_leaf
+    # Existing entries with such names stay addressable for recursive jobs.
+    assert validate_leaf(name) == name
+    with pytest.raises(FileMutationError) as failure:
+        creation_path('/data', name)
+    assert failure.value.code == 'INVALID_REQUEST'

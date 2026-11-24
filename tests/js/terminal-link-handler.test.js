@@ -80,6 +80,19 @@ test('the confirmation is translated and shows the normalized address verbatim',
     });
 });
 
+test('the address stands on its own line in the fallback and every locale', () => {
+    withBrowser({}, ({ prompts }) => {
+        TerminalManager.activateTerminalLink(new Event('click'), 'https://host.example/path');
+        assert.ok(prompts[0].split('\n').includes('https://host.example/path'), prompts[0]);
+    });
+    const { LOCALES, localeTable } = require('./i18n-locales.js');
+    const table = localeTable();
+    for (const language of LOCALES) {
+        const template = table[language]['terminal.openLinkConfirm'];
+        assert.ok(template.split('\n').includes('{url}'), `${language}: ${template}`);
+    }
+});
+
 test('every terminal is created with the restricted link handler', () => {
     const source = fs.readFileSync(path.join(__dirname, '../../static/js/terminal-manager.js'), 'utf8');
     assert.match(source, /\.\.\.this\.getAppearance\(\)\.options,\s*linkHandler: this\.createLinkHandler\(\),/);

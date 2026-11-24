@@ -2791,7 +2791,22 @@ window.i18n.registerLocales({
         "fm.newName": "新名称",
         "fm.renameHint": "在此目录中重命名该项目。请输入名称，而不是路径。",
         "fm.cancelTransfer": "取消传输",
-        "terminal.openLinkConfirm": "要打开 {url} 吗？\n\n警告：此链接可能存在危险",
-        "common.dismissNotification": "关闭通知"
+        "terminal.openLinkConfirm": "要打开此链接吗？\n\n{url}\n\n警告：此链接可能存在危险",
+        "common.dismissNotification": "关闭通知",
+        "fm.nameBlank": "名称不能只包含空格。",
+        "fm.nameDots": "不能使用“.”和“..”作为名称。",
+        "fm.nameSeparator": "请输入不含 / 或 \\ 的名称，而不是路径。",
+        "fm.nameCharacters": "名称包含无法使用的字符。",
+        "fm.nameTooLong": "名称超过 255 字节。",
+        "fm.renameConflict": "已存在同名项目。",
+        "fm.renameDenied": "权限不足。无法在此目录中重命名项目。",
+        "fm.renameNotFound": "该项目已不存在。请刷新目录。",
+        "fm.renameInvalid": "此处不能使用该名称。",
+        "fm.renameUnavailable": "文件源不可用。请重新连接后重试。",
+        "fm.renameFailed": "无法重命名该项目。请检查源连接后重试。",
+        "settings.languageLoading": "正在加载语言…",
+        "settings.languageFailed": "无法加载语言。请检查连接后重试。",
+        "auth.verifyCodeIn": "{seconds} 秒后可验证代码",
+        "auth.totpCodeInvalid": "代码无效。请检查设备时间并输入当前代码。"
     }
 });

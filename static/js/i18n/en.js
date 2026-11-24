@@ -2797,7 +2797,22 @@ window.i18n.registerLocales({
         "fm.newName": "New name",
         "fm.renameHint": "Renames the item in this directory. Enter a name, not a path.",
         "fm.cancelTransfer": "Cancel transfer",
-        "terminal.openLinkConfirm": "Do you want to navigate to {url}?\n\nWARNING: This link could potentially be dangerous",
-        "common.dismissNotification": "Dismiss notification"
+        "terminal.openLinkConfirm": "Do you want to open this link?\n\n{url}\n\nWARNING: This link could potentially be dangerous",
+        "common.dismissNotification": "Dismiss notification",
+        "fm.nameBlank": "Enter a name that is not only spaces.",
+        "fm.nameDots": "\".\" and \"..\" cannot be used as names.",
+        "fm.nameSeparator": "Enter a name without / or \\, not a path.",
+        "fm.nameCharacters": "The name contains characters that cannot be used.",
+        "fm.nameTooLong": "The name is longer than 255 bytes.",
+        "fm.renameConflict": "An item with this name already exists.",
+        "fm.renameDenied": "Permission denied. You cannot rename items in this directory.",
+        "fm.renameNotFound": "The item no longer exists. Refresh the directory.",
+        "fm.renameInvalid": "This name cannot be used here.",
+        "fm.renameUnavailable": "The file source is unavailable. Reconnect and try again.",
+        "fm.renameFailed": "The item could not be renamed. Check the source connection and try again.",
+        "settings.languageLoading": "Loading language…",
+        "settings.languageFailed": "The language could not be loaded. Check the connection and try again.",
+        "auth.verifyCodeIn": "Verify code in {seconds} s",
+        "auth.totpCodeInvalid": "The code is not valid. Check the time on your device and enter the current code."
     }
 });

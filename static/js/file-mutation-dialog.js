@@ -2,12 +2,22 @@
 (() => {
     'use strict';
 
-    function validLeaf(name) {
-        return typeof name === 'string' && name.length > 0
-            && !['.', '..'].includes(name) && !/[\/\\\u0000-\u001f\u007f-\u009f]/u.test(name)
-            && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(name)
-            && new TextEncoder().encode(name).length <= 255;
+    // Returns why a single file name cannot be used, or null when it can.
+    // An empty name has no message: the field is simply required.
+    function leafProblem(name) {
+        if (typeof name !== 'string' || name.length === 0) return ['', ''];
+        if (/^\s+$/u.test(name)) return ['fm.nameBlank', 'Enter a name that is not only spaces.'];
+        if (['.', '..'].includes(name)) return ['fm.nameDots', '"." and ".." cannot be used as names.'];
+        if (/[\/\\]/u.test(name)) return ['fm.nameSeparator', 'Enter a name without / or \\, not a path.'];
+        if (/[\u0000-\u001f\u007f-\u009f]/u.test(name)
+            || /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(name)) {
+            return ['fm.nameCharacters', 'The name contains characters that cannot be used.'];
+        }
+        if (new TextEncoder().encode(name).length > 255) return ['fm.nameTooLong', 'The name is longer than 255 bytes.'];
+        return null;
     }
+
+    function validLeaf(name) { return leafProblem(name) === null; }
 
     function validMode(value) { return typeof value === 'string' && /^[0-7]{3}$/u.test(value); }
 
@@ -48,7 +58,8 @@
             this.dialog.innerHTML = `<form novalidate>
                 <h3 id="fmMutationTitle"></h3><p class="fm-mutation-target"></p>
                 <p class="fm-mutation-scope" hidden></p>
-                <label class="fm-mutation-name"><span></span><input name="filename" autocomplete="off" required></label>
+                <label class="fm-mutation-name"><span></span><input name="filename" autocomplete="off" required aria-describedby="fmMutationNameError"></label>
+                <p class="fm-mutation-name-error" id="fmMutationNameError" hidden></p>
                 <label class="fm-mutation-edit"><input name="edit" type="checkbox"><span></span></label>
                 <fieldset class="fm-permissions"><legend></legend><div class="fm-permission-grid"></div>
                     <label class="fm-mutation-mode"><span></span><input name="mode" inputmode="numeric" maxlength="3" pattern="[0-7]{3}" autocomplete="off"></label>
@@ -101,7 +112,12 @@
             this.dialog.addEventListener('close', () => this.close());
             this.dialog.querySelector('[data-close]').addEventListener('click', () => this.close());
             this.dialog.querySelector('form').addEventListener('submit', event => { event.preventDefault(); this.submit(); });
-            this.name.addEventListener('input', () => this.update());
+            this.nameError = this.dialog.querySelector('.fm-mutation-name-error');
+            this.name.addEventListener('input', () => {
+                // A server error refers to the submitted name, not to the edited one.
+                if (this.serverError) this.setServerError(null);
+                this.update();
+            });
             this.mode.addEventListener('input', () => { this.syncChecks(); this.update(); });
             document.body.appendChild(this.dialog);
             this.dialog.showModal();
@@ -179,6 +195,13 @@
                 || (this.rename && (!this.manager.sourceCan(this.target.state, 'rename') || this.name.value === this.renameTarget.name))
                 || (this.permissions ?!this.metadataToken || this.specialBits !== 0 || !validMode(this.mode.value) || this.mode.value === this.originalMode : !validLeaf(this.name.value));
             const locked = this.pending || this.uncertain || (this.permissions && (!this.metadataToken || this.specialBits !== 0));
+            if (!this.permissions && this.nameError) {
+                const problem = leafProblem(this.name.value);
+                const reason = problem && problem[0] ? this.manager.t(problem[0], problem[1]) : '';
+                this.nameError.textContent = reason;
+                this.nameError.hidden = !reason;
+                this.name.setAttribute('aria-invalid', String(Boolean(reason || this.serverError)));
+            }
             this.name.disabled = locked;
             this.mode.disabled = locked;
             this.grid.querySelectorAll('input').forEach(input => { input.disabled = locked; });
@@ -239,6 +262,7 @@
                 if ((mode & required) !== required && !window.confirm(this.manager.t('fm.permissionLockout', 'This removes owner access. Apply these permissions?'))) return;
                 this.send('set_file_permissions', { path: this.target.path, mode: this.mode.value, expected_metadata: this.metadataToken });
             } else if (this.rename) {
+                this.setServerError(null);
                 this.createdName = this.name.value;
                 this.send('rename_file', {
                     old_path: this.target.path,
@@ -265,6 +289,12 @@
             }
             if (failed) {
                 this.uncertain = ['OUTCOME_UNKNOWN', 'MODE_MISMATCH', 'METADATA_CHANGED'].includes(data.code);
+                if (!this.closed && operation === 'rename_file') {
+                    this.setServerError(this.renameError(data));
+                    this.update();
+                    if (!this.name.disabled) this.name.focus();
+                    return;
+                }
                 if (!this.closed) {
                     this.status.textContent = operation === 'create_directory'
                         ? this.folderError(data) : data.error;
@@ -301,6 +331,34 @@
             this.target.state.restoreFocusName = ['create_file', 'create_directory', 'rename_file'].includes(operation) ? this.createdName : null;
             this.manager.refreshSource(this.target.sourceId);
             if (mayEdit) window.FilePreview?.openForEditing?.(this.target.sourceId, data.path, this.createdName);
+        }
+
+        // Server messages are English; show the translated reason for each code.
+        renameError(data) {
+            const reasons = {
+                CONFLICT: ['fm.renameConflict', 'An item with this name already exists.'],
+                PERMISSION_DENIED: ['fm.renameDenied', 'Permission denied. You cannot rename items in this directory.'],
+                NOT_FOUND: ['fm.renameNotFound', 'The item no longer exists. Refresh the directory.'],
+                INVALID_REQUEST: ['fm.renameInvalid', 'This name cannot be used here.'],
+                SOURCE_UNAVAILABLE: ['fm.renameUnavailable', 'The file source is unavailable. Reconnect and try again.'],
+                OUTCOME_UNKNOWN: ['fm.mutationUnknown', 'Result unknown. Close this dialog and refresh before taking further action.'],
+            };
+            const [key, fallback] = Object.hasOwn(reasons, data?.code) ? reasons[data.code]
+                : ['fm.renameFailed', 'The item could not be renamed. Check the source connection and try again.'];
+            return this.manager.t(key, fallback);
+        }
+
+        setServerError(message) {
+            this.serverError = Boolean(message);
+            this.status.textContent = message || '';
+            this.status.classList?.toggle('is-error', this.serverError);
+            if (this.serverError) {
+                this.status.id = 'fmMutationStatus';
+                this.name.setAttribute('aria-describedby', 'fmMutationNameError fmMutationStatus');
+            } else {
+                this.name.setAttribute('aria-describedby', 'fmMutationNameError');
+            }
+            this.name.setAttribute('aria-invalid', String(this.serverError));
         }
 
         folderError(data) {
@@ -454,5 +512,5 @@
     }
 
     window.FileMutationDialog = FileMutationDialog;
-    if (typeof module !== 'undefined') module.exports = { validLeaf, validMode, FileMutationDialog };
+    if (typeof module !== 'undefined') module.exports = { leafProblem, validLeaf, validMode, FileMutationDialog };
 })();

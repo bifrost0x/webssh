@@ -712,6 +712,11 @@ class FileService:
             for path in (old_path, new_path)
         ):
             return False, 'Invalid move request'
+        from .file_mutations import is_blank_name
+        new_leaf = new_path.rstrip('/').rsplit('/', 1)[-1]
+        # Moves keep their existing name; only a changed name must not be blank.
+        if is_blank_name(new_leaf) and new_leaf != old_path.rstrip('/').rsplit('/', 1)[-1]:
+            return False, 'Invalid move request'
         safe_old = source.backend.normalize_path(old_path)
         safe_new = source.backend.normalize_path(new_path)
         case_insensitive = source.descriptor.kind == 'smb'
