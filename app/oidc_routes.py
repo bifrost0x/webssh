@@ -836,7 +836,13 @@ def unlink_oidc_identity(user_id, identity_id):
         return jsonify({
             "error": "OIDC identity storage is temporarily unavailable"
         }), 503
-    user_lifecycle.revoke_user_access(target.id, socketio)
+    # An administrator unlinking their own identity keeps persistent tmux
+    # sessions as on sign-out; another account loses them, as with LDAP.
+    user_lifecycle.revoke_user_access(
+        target.id,
+        socketio,
+        kill_tmux=target.id != current_user.id,
+    )
     log_security_event(
         "OIDC_IDENTITY_UNLINKED",
         level=logging.WARNING,

@@ -455,7 +455,9 @@ def github_unlink():
         return jsonify({
             'error': 'GitHub identity storage is temporarily unavailable'
         }), 503
-    user_lifecycle.revoke_user_access(account.id, socketio)
+    # The owner acted here, so keep their persistent tmux sessions as on
+    # sign-out; transports of every browser still close.
+    user_lifecycle.revoke_user_access(account.id, socketio, kill_tmux=False)
     log_security_event(
         'GITHUB_IDENTITY_UNLINKED', level=logging.WARNING,
         user=current_user.username, github_user_id=github_user_id,

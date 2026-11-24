@@ -43,8 +43,10 @@ sensitive action and target.
   From five consecutive rejections on, a rejected sign-in code discards the
   pending login, so the password step has to be repeated. The account is
   never locked, and Recovery Codes stay available.
-- Unlinking an OIDC or GitHub identity signs out every session derived from
-  it and ends the account's live connections, like LDAP link and unlink.
+- Unlinking an OIDC or GitHub identity signs out every session of the
+  account and ends its live connections, like LDAP link and unlink. When the
+  account owner unlinks their own identity, the acting browser stays signed in
+  and persistent tmux sessions keep running, as after signing out.
 - Session cookies are `HttpOnly` and `SameSite=Lax`; production requires the
   `Secure` flag.
 - Lock, deletion, logout, and failed LDAP revalidation revoke tracked live

@@ -636,7 +636,9 @@ def test_oidc_unlink_revokes_the_target_sessions(app, browsers, monkeypatch):
     revoked = []
     monkeypatch.setattr(
         user_lifecycle, "revoke_user_access",
-        lambda user_id, *_args, **_kwargs: revoked.append(user_id),
+        lambda user_id, *_args, **kwargs: revoked.append(
+            (user_id, kwargs.get("kill_tmux", True))
+        ),
     )
     with app.app_context():
         identity = OIDCIdentity(
@@ -659,7 +661,7 @@ def test_oidc_unlink_revokes_the_target_sessions(app, browsers, monkeypatch):
     )
 
     assert removed.status_code == 200
-    assert revoked == [target_id]
+    assert revoked == [(target_id, True)]
     with app.app_context():
         assert db.session.get(OIDCIdentity, identity_id) is None
         assert db.session.get(User, target_id).auth_generation == (
@@ -684,7 +686,13 @@ def test_admin_unlinking_own_oidc_identity_keeps_the_current_browser(
     other_browser = _signed_in_client(app, "oidc_self_admin")
     assert _password_login(client, "oidc_self_admin").status_code == 302
     monkeypatch.setattr(config, "OIDC_ENABLED", True)
-    monkeypatch.setattr(user_lifecycle, "revoke_user_access", lambda *_a, **_k: None)
+    revoked = []
+    monkeypatch.setattr(
+        user_lifecycle, "revoke_user_access",
+        lambda user_id, *_args, **kwargs: revoked.append(
+            (user_id, kwargs.get("kill_tmux", True))
+        ),
+    )
     with app.app_context():
         identity = OIDCIdentity(
             user_id=admin_id,
@@ -704,6 +712,7 @@ def test_admin_unlinking_own_oidc_identity_keeps_the_current_browser(
     )
 
     assert removed.status_code == 200
+    assert revoked == [(admin_id, False)]
     assert _is_signed_out(other_browser)
     assert not _is_signed_out(client)
 
@@ -730,14 +739,16 @@ def test_github_unlink_revokes_other_sessions_and_keeps_this_browser(
     revoked = []
     monkeypatch.setattr(
         user_lifecycle, "revoke_user_access",
-        lambda revoked_id, *_args, **_kwargs: revoked.append(revoked_id),
+        lambda revoked_id, *_args, **kwargs: revoked.append(
+            (revoked_id, kwargs.get("kill_tmux", True))
+        ),
     )
 
     headers = mint_account_step_up_headers(app, client, "github.unlink", user_id)
     response = client.delete("/api/account/github", headers=headers)
 
     assert response.status_code == 200
-    assert revoked == [user_id]
+    assert revoked == [(user_id, False)]
     with app.app_context():
         assert GitHubIdentity.query.filter_by(user_id=user_id).count() == 0
         assert db.session.get(User, user_id).auth_generation == (
