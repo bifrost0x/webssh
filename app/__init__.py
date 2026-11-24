@@ -36,6 +36,7 @@ from .app_settings import (is_registration_enabled, set_registration_enabled,
                            is_herdr_enabled, set_herdr_enabled,
                            is_support_links_enabled, set_support_links_enabled,
                            login_username_rate_limits)
+from . import login_devices
 from .storage_errors import StorageCorruptionError
 from .tailscale_ssh import user_can_use_tailscale_ssh
 from .version import display_version
@@ -1286,6 +1287,7 @@ def create_app(
                     client_ip,
                     'login',
                     *login_username_rate_limits(),
+                    device_nonce=login_devices.trusted_device(username),
                 )
                 if config.RATELIMIT_ENABLED else (False, ())
             )
@@ -1296,6 +1298,7 @@ def create_app(
             user, error = authenticate_user(username, password)
             if user:
                 release_login_username_attempt(username_reservation)
+                login_devices.remember_device(user, username)
                 from .auth_assurance import (
                     AssuranceLevel,
                     available_mfa_methods,

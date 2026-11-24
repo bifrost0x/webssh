@@ -15,7 +15,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
 
-from . import socketio, user_lifecycle
+from . import login_devices, socketio, user_lifecycle
 from .app_settings import login_username_rate_limits
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
@@ -192,6 +192,7 @@ def ldap_login():
             client_ip,
             'ldap_login',
             *login_username_rate_limits(),
+            device_nonce=login_devices.trusted_device(username),
         )
         if config.RATELIMIT_ENABLED else (False, ())
     )
@@ -259,6 +260,7 @@ def ldap_login():
 
     release_login_username_attempt(username_reservation)
     user = mapping.user
+    login_devices.remember_device(user, username)
     verified_at = int(time.time())
     mapping.directory_username = username
     mapping.distinguished_name = resolved.distinguished_name

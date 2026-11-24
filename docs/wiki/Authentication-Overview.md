@@ -38,8 +38,20 @@ sensitive action and target.
   and source, with a much higher ceiling per username across all sources that
   only slows distributed guessing; successful sign-ins do not count. These
   are time windows, not lockouts, and apply whether or not the account
-  exists; a sender using many sources can still slow sign-in for one username
-  while it keeps sending. Both username limits and the IPv6 grouping prefix
+  exists. A sender using many sources can still fill the ceiling for one
+  username while it keeps sending, so a browser that completed a password
+  sign-in before is exempt from it: after each successful password or LDAP
+  password step WebSSH sets a signed, HttpOnly known-device cookie (90 days,
+  rotated on every success, bound to the account and the typed username).
+  With that cookie only the ceiling across sources is skipped; the limits per
+  source and per username and source still apply, and five failures with one
+  cookie within an hour end its exemption, so a stolen cookie gives no
+  unlimited guessing. Anything that ends all sessions of the account (password
+  change or reset, lock, MFA reset, identity link or unlink) invalidates its
+  device cookies. The remaining
+  risk: during such an attack, a browser without a valid device cookie (a new
+  device, cleared cookies, a private window) cannot sign in to that username
+  until the attack stops. Both username limits and the IPv6 grouping prefix
   are Admin settings under **Settings → Administration → Authentication →
   Sign-in protection**; changes apply immediately, require reauthentication
   and are audited. See

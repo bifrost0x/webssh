@@ -1215,3 +1215,210 @@ def test_discarded_pending_login_returns_to_the_password_form(
     assert discarded.get_json()["code"] == "mfa_restart"
     assert 'data-i18n="auth.mfaRestart"' in page
     assert 'id="totpMfaPanel"' not in page
+
+
+# --- known-device cookies ------------------------------------------------------
+
+
+_DEVICE_COOKIE = "session_device"
+
+
+def _distributed_lockout(client, username, *, path="/login", sources=20):
+    """Twenty sources at the default 5/min each fill the 100/min name ceiling."""
+    device = client.get_cookie(_DEVICE_COOKIE)
+    client.delete_cookie(_DEVICE_COOKIE)
+    for source in range(1, sources + 1):
+        for _attempt in range(5):
+            client.post(
+                path,
+                data={"username": username, "password": "wrong-password"},
+                environ_base={"REMOTE_ADDR": f"198.18.{source}.1"},
+            )
+    if device is not None:
+        client.set_cookie(_DEVICE_COOKIE, device.value)
+
+
+def _limited(response):
+    return (
+        response.status_code == 429
+        or "Too many login attempts" in response.get_data(as_text=True)
+    )
+
+
+def test_device_cookie_keeps_the_owner_in_during_a_distributed_lockout(
+    app, client,
+):
+    _create_user(app, "device_owner")
+    assert _password_login(client, "device_owner", ip="203.0.113.5").status_code == 302
+    client.post("/logout")
+    _distributed_lockout(client, "device_owner")
+
+    with_cookie = _password_login(client, "device_owner", ip="203.0.113.5")
+    client.post("/logout")
+    client.delete_cookie(_DEVICE_COOKIE)
+    without_cookie = _password_login(client, "device_owner", ip="203.0.113.6")
+
+    assert with_cookie.status_code == 302
+    assert _limited(without_cookie)
+
+
+def test_device_cookie_is_issued_with_restrictive_attributes(app, client):
+    _create_user(app, "device_attributes")
+
+    response = _password_login(client, "device_attributes")
+
+    header = next(
+        value for value in response.headers.getlist("Set-Cookie")
+        if value.startswith(f"{_DEVICE_COOKIE}=")
+    )
+    assert "HttpOnly" in header
+    assert "SameSite=Lax" in header
+    assert "Path=/" in header
+    assert f"Max-Age={90 * 24 * 3600}" in header
+
+
+def test_device_cookie_rotates_on_each_success(app, client):
+    _create_user(app, "device_rotation")
+    _password_login(client, "device_rotation")
+    first = client.get_cookie(_DEVICE_COOKIE).value
+    client.post("/logout")
+    _password_login(client, "device_rotation")
+
+    assert client.get_cookie(_DEVICE_COOKIE).value != first
+
+
+def test_device_cookie_for_another_username_is_ignored(app, client):
+    _create_user(app, "device_alice")
+    _create_user(app, "device_bob")
+    assert _password_login(client, "device_alice").status_code == 302
+    client.post("/logout")
+    _distributed_lockout(client, "device_bob")
+
+    response = _password_login(client, "device_bob", ip="203.0.113.7")
+
+    assert _limited(response)
+
+
+def test_tampered_and_expired_device_cookies_are_ignored(
+    app, client, monkeypatch,
+):
+    import app.login_devices as login_devices
+
+    _create_user(app, "device_tamper")
+    _password_login(client, "device_tamper")
+    client.post("/logout")
+    valid = client.get_cookie(_DEVICE_COOKIE).value
+    _distributed_lockout(client, "device_tamper")
+
+    client.set_cookie(_DEVICE_COOKIE, valid[:-2] + ("AA" if valid[-2:] != "AA" else "BB"))
+    tampered = _password_login(client, "device_tamper", ip="203.0.113.8")
+    client.set_cookie(_DEVICE_COOKIE, valid)
+    monkeypatch.setattr(login_devices, "MAX_AGE", timedelta(seconds=-1))
+    expired = _password_login(client, "device_tamper", ip="203.0.113.9")
+
+    assert _limited(tampered)
+    assert _limited(expired)
+
+
+def test_password_change_invalidates_device_cookies(app, client):
+    from app.auth_assurance import invalidate_user_authentication
+    from app.models import User, db
+
+    user_id = _create_user(app, "device_rotated")
+    _password_login(client, "device_rotated")
+    client.post("/logout")
+    with app.app_context():
+        invalidate_user_authentication(db.session.get(User, user_id))
+        db.session.commit()
+    _distributed_lockout(client, "device_rotated")
+
+    assert _limited(_password_login(client, "device_rotated", ip="203.0.113.10"))
+
+
+def test_stolen_device_cookie_has_its_own_failure_budget(app, client):
+    import app.login_devices as login_devices
+
+    _create_user(app, "device_stolen")
+    _password_login(client, "device_stolen")
+    client.post("/logout")
+    _distributed_lockout(client, "device_stolen")
+
+    guesses = []
+    for index in range(login_devices.FAILURE_BUDGET + 1):
+        response = client.post(
+            "/login",
+            data={"username": "device_stolen", "password": "wrong-password"},
+            environ_base={"REMOTE_ADDR": f"203.0.113.{index + 20}"},
+        )
+        guesses.append(_limited(response))
+    owner = _password_login(client, "device_stolen", ip="203.0.113.60")
+
+    assert guesses == [False] * login_devices.FAILURE_BUDGET + [True]
+    assert _limited(owner)
+
+
+def test_device_cookie_keeps_per_source_limits(app, client, monkeypatch):
+    import config
+
+    _create_user(app, "device_source")
+    _password_login(client, "device_source")
+    client.post("/logout")
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "1000 per minute")
+    _set_username_limits(per_source=2)
+
+    results = _login_attempts(client, "device_source", ["203.0.113.70"] * 3)
+
+    assert results == [(200, False)] * 2 + [(200, True)]
+
+
+def test_ldap_device_cookie_survives_a_distributed_lockout(
+    app, client, monkeypatch,
+):
+    import app.ldap_session as ldap_session
+    from app.models import LDAPIdentity, db
+    from tests.test_ldap_auth import (
+        _DirectoryIdentity,
+        _FakeDirectory,
+        _enable_ldap_blueprint,
+    )
+
+    _create_user(app, "ldap_device_admin", is_admin=True)
+    user_id = _create_user(app, "ldap_device")
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="ldap-device-id",
+        distinguished_name="uid=ldap_device,dc=example,dc=com",
+    )
+    with app.app_context():
+        db.session.add(LDAPIdentity(
+            user_id=user_id,
+            provider=identity.provider,
+            subject=identity.subject,
+            directory_username="ldap_device",
+            distinguished_name=identity.distinguished_name,
+        ))
+        db.session.commit()
+    directory = _FakeDirectory(identity)
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: None)
+
+    def ldap_login(address, password="directory-secret"):
+        return client.post(
+            "/login/ldap",
+            data={"username": "ldap_device", "password": password},
+            environ_base={"REMOTE_ADDR": address},
+        )
+
+    assert ldap_login("203.0.113.90").status_code == 302
+    client.post("/logout")
+    directory.password_valid = False
+    _distributed_lockout(client, "ldap_device", path="/login/ldap")
+    directory.password_valid = True
+
+    with_cookie = ldap_login("203.0.113.90")
+    client.post("/logout")
+    client.delete_cookie(_DEVICE_COOKIE)
+    without_cookie = ldap_login("203.0.113.91")
+
+    assert with_cookie.status_code == 302
+    assert without_cookie.status_code == 429
