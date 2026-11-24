@@ -153,3 +153,43 @@ test('shows mixed MFA methods one at a time', async ({ page }) => {
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.locator('#username')).toBeVisible();
 });
+
+test('MFA code errors are translated and a retry delay counts down on the verify button', async ({ page }) => {
+    await page.goto('/login');
+    await page.locator('#username').fill('e2e_mixed_mfa');
+    await page.locator('#password').fill('browser-password');
+    await page.locator('form button[type="submit"]').click();
+    await expect(page.locator('#totpMfaPanel')).toBeVisible();
+    await page.clock.install();
+    const replies = [
+        { status: 401, json: { error: 'TOTP code is invalid', code: 'invalid_code' } },
+        { status: 429, json: { error: 'Too many attempts. Try again in 3 seconds.', code: 'rate_limited', retry_after: 3 } },
+    ];
+    let requests = 0;
+    await page.route('**/api/totp/auth/verify', route => {
+        const reply = replies[Math.min(requests, replies.length - 1)];
+        requests += 1;
+        return route.fulfill({ status: reply.status, json: reply.json });
+    });
+    const button = page.locator('#submitTotpMfa');
+    const error = page.locator('#totpMfaError');
+    await page.locator('#totpMfaCode').fill('123456');
+    await button.click();
+    await expect(error).toHaveText('The code is not valid. Check the time on your device and enter the current code.');
+    await expect(button).toBeEnabled();
+
+    await page.locator('#totpMfaCode').fill('654321');
+    await button.click();
+    await expect(error).toHaveText('Too many attempts. Try again in 3 s.');
+    await expect(button).toBeDisabled();
+    await expect(button).toHaveText('Verify code in 3 s');
+    await page.clock.runFor(1000);
+    await expect(button).toHaveText('Verify code in 2 s');
+    await page.locator('#totpMfaCode').press('Enter');
+    expect(requests).toBe(2);
+    await page.clock.runFor(2100);
+    await expect(button).toHaveText('Verify code');
+    await expect(button).toBeEnabled();
+    await expect(error).toBeHidden();
+    await expect(page.locator('#totpMfaCode')).toBeFocused();
+});

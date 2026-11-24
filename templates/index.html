@@ -1913,7 +1913,7 @@
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-file-bridge.js') }}"></script>
     {% from '_auth_messages.html' import flash_message_keys %}
-    <script id="websshFlashedMessages" type="application/json">{{ {'keys': flash_message_keys, 'messages': get_flashed_messages(with_categories=true)} | tojson }}</script>
+    <script id="websshFlashedMessages" type="application/json">{{ {'keys': flash_message_keys, 'messages': get_flashed_messages(with_categories=true) | rejectattr(0, 'equalto', 'login_username') | list} | tojson }}</script>
     <script src="{{ static_asset_url(filename='js/flash-messages.js') }}"></script>
 
     <script src="{{ static_asset_url(filename='js/customer-workflows.js') }}"></script>

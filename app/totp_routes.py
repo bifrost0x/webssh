@@ -279,6 +279,11 @@ def verify_totp_login():
             cancel_pending_authentication(token, binding)
             session.pop("_pending_authentication", None)
             flash("Too many invalid codes. Sign in again.", "error")
+            # One-shot hint for the password form; the login page consumes it
+            # with the other flashes, so it never reaches a URL or lingers.
+            user = db.session.get(User, user_id)
+            if user is not None:
+                flash(user.username, "login_username")
             log_security_event(
                 "MFA_PENDING_LOGIN_DISCARDED",
                 level=logging.WARNING,
@@ -291,7 +296,7 @@ def verify_totp_login():
                 "error": "Too many invalid codes. Sign in again.",
                 "code": "mfa_restart",
             }), 401
-        return jsonify({"error": "TOTP code is invalid"}), 401
+        return jsonify({"error": "TOTP code is invalid", "code": "invalid_code"}), 401
     mfa_throttle.record_success(user_id, scope=mfa_throttle.LOGIN)
     try:
         _row, continuation = finalize_pending_with_factor(

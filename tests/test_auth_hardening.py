@@ -295,6 +295,27 @@ def test_pending_login_is_discarded_after_repeated_failures(
     assert retried.get_json()["error"] == "Pending authentication is invalid"
 
 
+def test_discarded_login_prefills_the_username_once_without_a_url(
+    app, client, monkeypatch, generous_request_limits,
+):
+    user_id, secret = _enroll_totp(app, client, monkeypatch, "prefill_restart")
+    _set_failure_state(app, user_id, 4, seconds_ago=120)
+    assert _password_login(client, "prefill_restart").status_code == 200
+
+    discarded = client.post("/api/totp/auth/verify", json={"code": _wrong_code(secret)})
+    assert discarded.get_json()["code"] == "mfa_restart"
+    assert "prefill_restart" not in str(discarded.get_json())
+
+    page = client.get("/login")
+    html = page.get_data(as_text=True)
+    assert page.status_code == 200
+    assert 'id="username" name="username"' in html
+    assert 'value="prefill_restart"' in html
+    assert 'alert-login_username' not in html
+    assert 'data-i18n="auth.mfaRestart"' in html
+    assert 'value="prefill_restart"' not in client.get("/login").get_data(as_text=True)
+
+
 def test_failures_below_the_discard_threshold_keep_the_pending_login(
     app, client, monkeypatch, generous_request_limits,
 ):

@@ -114,7 +114,8 @@
                 {% endif %}
             </div>
 
-            {% from '_auth_messages.html' import render_auth_messages %}
+            {% from '_auth_messages.html' import render_auth_messages, login_username_hint %}
+            {% set username_hint = login_username_hint()|trim %}
             {{ render_auth_messages() }}
             <div id="authNotificationContainer" class="auth-notification-container" aria-live="polite" aria-atomic="true"></div>
 
@@ -228,7 +229,7 @@
                     <div class="input-wrapper">
                         <span class="input-icon material-icons" aria-hidden="true">person</span>
                         <input type="text" id="username" name="username" class="form-control"
-                               data-i18n-placeholder="auth.username" placeholder="Username" required{% if selected_auth_source == 'local' %} data-initial-focus{% endif %}>
+                               data-i18n-placeholder="auth.username" placeholder="Username" value="{{ username_hint }}" required{% if selected_auth_source == 'local' and not username_hint %} data-initial-focus{% endif %}>
                     </div>
                 </div>
 
@@ -237,7 +238,7 @@
                     <div class="input-wrapper">
                         <span class="input-icon material-icons" aria-hidden="true">lock</span>
                         <input type="password" id="password" name="password" class="form-control"
-                               data-i18n-placeholder="auth.password" placeholder="Password" required>
+                               data-i18n-placeholder="auth.password" placeholder="Password" required{% if selected_auth_source == 'local' and username_hint %} data-initial-focus{% endif %}>
                         <button type="button" class="password-toggle material-icons" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
                 </div>
@@ -259,14 +260,14 @@
                     <label for="ldapUsername" data-i18n="auth.directoryUsername">Directory username</label>
                     <div class="input-wrapper">
                         <span class="input-icon material-icons" aria-hidden="true">person</span>
-                        <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" data-i18n-placeholder="auth.directoryUsername" placeholder="Directory username" required{% if selected_auth_source == 'ldap' %} data-initial-focus{% endif %}>
+                        <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" data-i18n-placeholder="auth.directoryUsername" placeholder="Directory username" value="{{ username_hint }}" required{% if selected_auth_source == 'ldap' and not username_hint %} data-initial-focus{% endif %}>
                     </div>
                 </div>
                 <div class="form-group">
                     <label for="ldapPassword" data-i18n="security.directoryPassword">Directory password</label>
                     <div class="input-wrapper">
                         <span class="input-icon material-icons" aria-hidden="true">lock</span>
-                        <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" data-i18n-placeholder="security.directoryPassword" placeholder="Directory password" required>
+                        <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" data-i18n-placeholder="security.directoryPassword" placeholder="Directory password" required{% if selected_auth_source == 'ldap' and username_hint %} data-initial-focus{% endif %}>
                         <button type="button" class="password-toggle material-icons" data-target="ldapPassword" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
                 </div>
