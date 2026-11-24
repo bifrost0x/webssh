@@ -31,7 +31,6 @@ SAVED_CONNECTION_COPY_KEYS = {
     'profiles.create',
     'profiles.none',
     'profiles.saveFailed',
-    'profiles.saved',
     'commandSets.manageHint',
     'commandModes.parametersTooltip',
     'commandSets.legacyNotice',
@@ -123,7 +122,6 @@ def test_saved_connection_and_quick_connect_terms_are_consistent():
     }
     saved_keys = {
         'connection.savedProfiles',
-        'profiles.manage',
         'fm.qc.savedProfiles',
     }
 
