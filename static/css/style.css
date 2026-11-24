@@ -601,17 +601,6 @@ body[data-theme="paper"] .terminal-pane {
     margin-left: 12px;
 }
 
-.app-title {
-    font-size: 18px;
-    font-weight: 700;
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    letter-spacing: -0.5px;
-    text-shadow: none;
-}
-
 .header-buttons {
     display: flex;
     gap: 12px;
@@ -1549,61 +1538,6 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
     width: 100%;
 }
 
-.resize-handle {
-    width: 0;
-    cursor: col-resize;
-    background: transparent;
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    right: var(--notepad-width, clamp(240px, 24vw, 320px));
-    user-select: none;
-    z-index: 10;
-    transition: background 0.2s ease;
-    overflow: visible;
-}
-
-.resize-handle:hover {
-    background: var(--accent-primary-glow);
-}
-
-.resize-handle:active {
-    background: var(--accent-primary-glow);
-}
-
-.resize-handle::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: -6px;
-    width: 12px;
-    cursor: col-resize;
-    background: transparent;
-}
-
-.resize-handle-line {
-    width: 2px;
-    height: 40px;
-    background: var(--border-color);
-    border-radius: 2px;
-    transition: all 0.2s ease;
-    position: absolute;
-    top: 50%;
-    left: -1px;
-    transform: translateY(-50%);
-}
-
-.resize-handle:hover .resize-handle-line {
-    background: var(--accent-primary);
-    height: 60px;
-}
-
-.resize-handle:active .resize-handle-line {
-    background: var(--accent-primary);
-    box-shadow: 0 0 8px var(--accent-primary-glow);
-}
-
 .notepad-panel {
     border-left: 1px solid var(--border-color);
     background: var(--bg-secondary);
@@ -1615,23 +1549,12 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
     max-width: 100%;
 }
 
-.notepad-header {
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--border-color);
-}
-
 .notepad-title-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-}
-
-.notepad-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
 }
 
 .notepad-save-status {
@@ -1649,11 +1572,6 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
 .notepad-save-status.saved {
     opacity: 1;
     color: var(--success-color, #4caf50);
-}
-
-.notepad-meta {
-    font-size: 11px;
-    color: var(--text-muted);
 }
 
 .notepad-input {
@@ -2902,8 +2820,7 @@ textarea.form-control {
 }
 
 .key-upload-section h3,
-.keys-list-section h3,
-.transfer-section h3 {
+.keys-list-section h3 {
     font-size: 16px;
     font-weight: 700;
     margin-bottom: 16px;
@@ -3090,48 +3007,6 @@ textarea.form-control {
     color: var(--text-secondary);
     padding: 40px 20px;
     font-size: 14px;
-}
-
-.transfer-section {
-    margin-bottom: 32px;
-    padding-bottom: 32px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.transfer-section:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
-}
-
-.progress-container {
-    margin-top: 16px;
-}
-
-.progress-bar {
-    width: 100%;
-    height: 28px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    overflow: hidden;
-    position: relative;
-}
-
-.progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    width: 0%;
-    box-shadow: 0 0 20px var(--accent-primary-glow);
-}
-
-.progress-text {
-    text-align: center;
-    margin-top: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-secondary);
 }
 
 .notification-container {
@@ -3349,18 +3224,11 @@ button:focus-visible,
         width: 100%;
     }
 
-    .header-group {
-        flex-direction: column;
-        width: 100%;
-        gap: 8px;
-    }
-
     .header-divider {
         display: none;
     }
 
     .theme-dropdown-header,
-    .lang-dropdown-header,
     .account-dropdown-header {
         position: fixed;
         left: 16px;
@@ -3370,9 +3238,8 @@ button:focus-visible,
         overflow-y: auto;
     }
 
-    /* Keep the Theme/Language sub-menus inline inside the (fixed) account menu */
-    .account-dropdown-header .theme-dropdown-header,
-    .account-dropdown-header .lang-dropdown-header {
+                                                                                  
+    .account-dropdown-header .theme-dropdown-header {
         position: static;
         left: auto;
         right: auto;
@@ -3448,10 +3315,6 @@ button:focus-visible,
         max-height: 300px;
     }
 
-    .resize-handle {
-        display: none;
-    }
-
     .terminal-area {
         flex: 1;
         min-height: 300px;
@@ -3519,10 +3382,6 @@ button:focus-visible,
         font-size: 16px; 
     }
 
-    .app-title {
-        font-size: 18px;
-    }
-
     .notification {
         left: 16px;
         right: 16px;
@@ -3535,10 +3394,6 @@ button:focus-visible,
     .header {
         padding: 8px 12px;
         padding-top: max(8px, env(safe-area-inset-top));
-    }
-
-    .app-title {
-        font-size: 16px;
     }
 
     .btn {
@@ -3621,10 +3476,6 @@ body.keyboard-open:not(.notepad-focused) .session-bar {
 }
 
 body.keyboard-open.notepad-focused .terminal-area {
-    display: none;
-}
-
-body.keyboard-open.notepad-focused .resize-handle {
     display: none;
 }
 
@@ -3733,10 +3584,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
         padding: 6px 8px;
     }
 
-    .app-title {
-        font-size: 14px;
-    }
-
     .btn {
         padding: 8px 10px;
         font-size: 12px;
@@ -3828,20 +3675,10 @@ body.keyboard-open.notepad-focused .notepad-panel {
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-.glow-text {
-    text-shadow: 0 0 10px var(--accent-primary-glow);
-}
-
 .glass {
     background: var(--bg-modal);
     backdrop-filter: blur(10px);
     border: 1px solid var(--border-color);
-}
-
-.lang-btn-header {
-    min-width: 50px;
-    padding: 8px 12px;
-    position: relative; 
 }
 
 .theme-btn-header {
@@ -3850,8 +3687,7 @@ body.keyboard-open.notepad-focused .notepad-panel {
     position: relative; 
 }
 
-.theme-btn-header::after,
-.lang-btn-header::after {
+.theme-btn-header::after {
     content: '▼';
     font-size: 10px;
     margin-left: 6px;
@@ -3859,8 +3695,7 @@ body.keyboard-open.notepad-focused .notepad-panel {
     transition: transform 0.2s ease;
 }
 
-.theme-selector:has(.theme-dropdown-header.show) .theme-btn-header::after,
-.language-selector:has(.lang-dropdown-header.show) .lang-btn-header::after {
+.theme-selector:has(.theme-dropdown-header.show) .theme-btn-header::after {
     transform: rotate(180deg);
 }
 
@@ -3872,12 +3707,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 /* Header tools grouping + account menu (pure GUI structure, no behavior change) */
-.header-group {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
 .header-divider {
     width: 1px;
     align-self: stretch;
@@ -4059,10 +3888,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
     text-align: center;
 }
 
-.account-expander-label {
-    white-space: nowrap;
-}
-
 .account-caret {
     margin-left: 4px;
     font-size: 10px;
@@ -4072,26 +3897,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
 .account-selector:has(.account-dropdown-header.show) > .account-btn-header .account-caret {
     transform: rotate(180deg);
-}
-
-.account-expander .account-current {
-    margin-left: auto;
-}
-
-.account-current {
-    font-size: 12px;
-    color: var(--text-muted);
-    max-width: 110px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.account-item > .account-current {
-    margin-left: auto;
 }
 
 .connection-asset-nav {
@@ -4188,23 +3993,10 @@ body.keyboard-open.notepad-focused .notepad-panel {
     }
 }
 
-.account-current-flag {
-    font-size: 16px;
-    overflow: visible;
-}
-
-.account-expander:has(+ .account-submenu.show) .account-caret {
-    transform: rotate(180deg);
-}
-
 .account-divider {
     height: 1px;
     background: var(--border-color);
     margin: 6px 4px;
-}
-
-.account-menu-group {
-    display: none;
 }
 
 .account-item .account-item-external {
@@ -4226,43 +4018,8 @@ body.keyboard-open.notepad-focused .notepad-panel {
     font-variant-numeric: tabular-nums;
 }
 
-.account-menu-group.show {
-    display: block;
-}
-
-.account-menu-group > .account-item {
-    padding-left: 36px;
-    font-size: 13px;
-}
-
-.account-scrollback {
-    cursor: default;
-}
-
-.account-scrollback:hover {
-    background: transparent;
-}
-
-.account-scrollback-input {
-    width: 58px;
-    margin-left: auto;
-    padding: 2px 6px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 12px;
-    text-align: right;
-}
-
-.account-unit {
-    font-size: 11px;
-    opacity: 0.6;
-}
-
-/* Theme/Language sub-menus rendered inline (accordion) inside the account menu */
-.account-dropdown-header .theme-dropdown-header,
-.account-dropdown-header .lang-dropdown-header {
+                                                                                  
+.account-dropdown-header .theme-dropdown-header {
     position: static;
     min-width: 0;
     width: 100%;
@@ -4283,22 +4040,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
     border-radius: 6px;
 }
 
-.lang-dropdown-header {
-    display: none;
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    background: var(--bg-modal);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.5); 
-    overflow: visible; 
-    min-width: 180px;
-    z-index: 10001; 
-    pointer-events: auto;
-}
-
 .theme-dropdown-header {
     display: none;
     position: absolute;
@@ -4313,11 +4054,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
     min-width: 200px;
     z-index: 10001; 
     pointer-events: auto;
-}
-
-.lang-dropdown-header.show {
-    display: block;
-    animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .theme-dropdown-header.show {
@@ -4336,17 +4072,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
     }
 }
 
-.lang-dropdown-header .lang-option {
-    padding: 12px 16px;
-    cursor: pointer;
-    transition: all 0.2s ease; 
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-    user-select: none; 
-    border-left: 3px solid transparent; 
-}
-
 .theme-dropdown-header .theme-option {
     padding: 12px 16px;
     cursor: pointer;
@@ -4358,20 +4083,9 @@ body.keyboard-open.notepad-focused .notepad-panel {
     border-left: 3px solid transparent; 
 }
 
-.lang-dropdown-header .lang-option:hover {
-    background: var(--bg-hover);
-    border-left-color: var(--accent-primary); 
-}
-
 .theme-dropdown-header .theme-option:hover {
     background: var(--bg-hover);
     border-left-color: var(--accent-primary); 
-}
-
-.lang-dropdown-header .lang-option.active {
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-    color: var(--accent-on-text);
-    border-left-color: var(--accent-on-text);
 }
 
 .theme-dropdown-header .theme-option.active {
@@ -4826,12 +4540,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
     display: flex;
     gap: 12px;
     align-items: center;
-}
-
-.search-input {
-    flex: 1;
-    padding: 12px 16px;
-    font-size: 15px;
 }
 
 .os-filter-toolbar {
@@ -5672,11 +5380,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
     box-shadow: 0 5px 18px color-mix(in srgb, black 12%, transparent);
 }
 
-.profile-management-item.is-derived-favorite {
-    grid-template-columns: minmax(0, 1fr) auto;
-    padding-left: 14px;
-}
-
 .profile-management-item.is-dragging {
     opacity: 0.36;
     transform: scale(0.995);
@@ -6242,17 +5945,9 @@ body.keyboard-open.notepad-focused .notepad-panel {
         grid-template-columns: 38px minmax(0, 1fr);
     }
 
-    .profile-management-item.is-derived-favorite {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .profile-management-actions {
         grid-column: 2;
         flex-wrap: wrap;
-    }
-
-    .profile-management-item.is-derived-favorite .profile-management-actions {
-        grid-column: 1;
     }
 }
 
@@ -6334,31 +6029,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
     }
 }
 
-.notepad-toggle-btn {
-    position: absolute;
-    top: 50%;
-    left: -12px;
-    transform: translateY(-50%);
-    width: 24px;
-    height: 48px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    border-radius: 6px 0 0 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    z-index: 10;
-    transition: all 0.2s;
-}
-
-.notepad-toggle-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
-
 .notepad-panel.collapsed {
     width: 0 !important;
     min-width: 0 !important;
@@ -6369,18 +6039,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
 .workspace:has(.notepad-panel.collapsed) {
     grid-template-columns: 1fr 0px !important;
-}
-
-.workspace:has(.notepad-panel.collapsed) .resize-handle {
-    right: 0;
-}
-
-.workspace:has(.notepad-panel.collapsed) .resize-handle-line {
-    display: none;
-}
-
-.workspace:has(.notepad-panel.collapsed) .notepad-toggle-btn {
-    left: -24px;
 }
 
 .reconnect-bar {
@@ -6411,7 +6069,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
 .modal-content,
 .account-dropdown-header,
-.lang-dropdown-header,
 .theme-dropdown-header {
     background-color: var(--bg-modal);
     background-image:

@@ -16,7 +16,6 @@
 #overviewRouteMap .ssh-route-branch { position:relative; display:flex; flex-direction:column; align-items:stretch; gap:36px; min-width:0; }
 #overviewRouteMap .ssh-route-source { position:relative; z-index:1; display:flex; align-items:center; justify-content:center; gap:10px; align-self:center; width:260px; min-height:56px; padding:12px; background:var(--ws2-surface); border:1px solid var(--ws2-accent); border-radius:8px; overflow-wrap:anywhere; font-size:14px; }
 #overviewRouteMap .ssh-route-source .material-icons { color:var(--ws2-accent); }
-#overviewRouteMap .ssh-route-group { position:relative; z-index:1; background:var(--ws2-surface); border:1px solid var(--ws2-border-strong); border-radius:8px; padding:12px; min-width:0; }
 #overviewRouteMap h3 { display:flex; align-items:center; gap:8px; margin:0 0 10px; font-size:13px; }
 #overviewRouteMap h3 span:not(.material-icons) { flex:1; overflow-wrap:anywhere; }
 #overviewRouteMap h3 small { color:var(--ws2-text-secondary); }
@@ -59,7 +58,6 @@
 .ssh-map-dialog #overviewRouteMap { height:100%; display:flex; flex-direction:column; }
 .ssh-map-dialog #overviewRouteMap .ssh-route-viewport { flex:1; min-height:0; }
 #connectionOverview .overview-module-handle { touch-action:none; }
-#connectionOverview .overview-dashboard-module.is-drop-target { outline:2px solid var(--ws2-accent); outline-offset:3px; }
 @media(max-width:600px) {
  #overviewRouteMap .ssh-map-toolbar input { flex-basis:100%; width:100%; }
  #overviewRouteMap .ssh-map-heading { flex-wrap:wrap; }

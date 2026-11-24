@@ -22,10 +22,6 @@
     min-height: 0;
 }
 
-.session-main-split.sftp-open {
-    grid-template-columns: minmax(0, 1fr) clamp(360px, 38%, 520px);
-}
-
 .session-files-panel {
     min-width: 0;
     min-height: 0;
@@ -797,10 +793,6 @@ body.session-diagnostics-open {
 }
 
 @media (max-width: 1100px) {
-    .session-main-split.sftp-open {
-        grid-template-columns: minmax(0, 1fr) 360px;
-    }
-
     .session-diagnostics-metrics {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
@@ -812,8 +804,7 @@ body.session-diagnostics-open {
         display: none !important;
     }
 
-    .session-main-split,
-    .session-main-split.sftp-open {
+    .session-main-split {
         grid-template-columns: minmax(0, 1fr);
     }
 

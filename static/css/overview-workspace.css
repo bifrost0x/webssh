@@ -236,7 +236,7 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-node-dot { fill: var(--od-state-color); stroke: var(--ws2-surface); stroke-width: 3; }
 .od-node-halo { fill: color-mix(in srgb, var(--od-state-color) 18%, transparent); }
 .od-node:hover .od-node-halo { fill: color-mix(in srgb, var(--od-state-color) 34%, transparent); }
-.od-node-label, .od-hub-label, .od-axis { fill: var(--ws2-text-secondary); font: 13px var(--font-sans, sans-serif); }
+.od-node-label, .od-hub-label { fill: var(--ws2-text-secondary); font: 13px var(--font-sans, sans-serif); }
 .od-hub-label { fill: var(--ws2-text); font-weight: 600; }
 .od-node-label { fill: var(--ws2-text); font-weight: 500; }
 .od-node-sub { fill: var(--od-muted); font: 11px var(--od-mono); }

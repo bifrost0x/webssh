@@ -159,11 +159,6 @@ textarea {
     background: var(--ws2-accent);
 }
 
-.quick-connect-btn {
-    min-height: 34px;
-    padding: 7px 13px;
-}
-
 .header-divider {
     height: 24px;
     background: var(--ws2-border);
@@ -313,15 +308,6 @@ textarea {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ws2-accent) 16%, transparent);
 }
 
-.resize-handle {
-    right: var(--notepad-width, clamp(360px, 32vw, 480px));
-}
-
-.resize-handle-line {
-    width: 1px;
-    background: var(--ws2-border-strong);
-}
-
 .notepad-panel {
     min-width: 280px;
     border-left: 1px solid var(--ws2-border);
@@ -464,16 +450,6 @@ textarea {
 .notepad-section {
     border-top: 0;
     background: var(--ws2-surface);
-}
-
-.notepad-header {
-    padding: 12px 14px 8px;
-    border: 0;
-}
-
-.notepad-meta {
-    color: var(--ws2-text-muted);
-    font-size: 10px;
 }
 
 .notepad-input {
@@ -631,21 +607,6 @@ body:has(.admin-main) .header-content {
     width: 100%;
     max-width: none;
     padding: 0 18px;
-}
-
-body:has(.admin-main) .app-title {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    background: none;
-    color: var(--ws2-text);
-    -webkit-text-fill-color: currentColor;
-    font-size: 16px;
-    letter-spacing: 0;
-}
-
-body:has(.admin-main) .app-title .material-icons {
-    color: var(--ws2-accent-strong);
 }
 
 .admin-main {
@@ -929,10 +890,6 @@ body:has(.auth-container) {
     background: var(--ws2-canvas);
 }
 
-.glow-orb {
-    display: none !important;
-}
-
 .auth-container {
     min-height: 100dvh;
     padding: 64px 20px 36px;
@@ -1007,10 +964,6 @@ body:has(.auth-container) {
 
     .workspace {
         grid-template-columns: minmax(0, 1fr) min(350px, 38vw);
-    }
-
-    .resize-handle {
-        right: min(350px, 38vw);
     }
 }
 
@@ -1089,10 +1042,6 @@ body:has(.auth-container) {
     .notepad-panel.collapsed {
         width: 0 !important;
         box-shadow: none;
-    }
-
-    .resize-handle {
-        right: 0 !important;
     }
 
     .terminal-area {
@@ -1291,10 +1240,6 @@ body:has(.auth-container) {
     grid-template-columns: minmax(0, 1fr) clamp(320px, 28vw, 420px);
 }
 
-.resize-handle {
-    display: none !important;
-}
-
 .tab-row-actions .session-sftp-toggle,
 .tab-row-actions .session-commands-toggle,
 .tab-row-actions .session-diagnostics-toggle,
@@ -1469,10 +1414,6 @@ body:has(.auth-container) {
     border: 0;
 }
 
-.notepad-header {
-    padding: 0;
-}
-
 .notepad-input {
     width: auto;
     min-height: 160px;
@@ -1515,9 +1456,7 @@ body:has(.auth-container) {
     }
 
     .workspace.layout-tablet .session-main-split,
-    .workspace.layout-tablet .session-main-split.sftp-open,
-    .workspace.layout-mobile .session-main-split,
-    .workspace.layout-mobile .session-main-split.sftp-open {
+    .workspace.layout-mobile .session-main-split {
         grid-template-columns: minmax(0, 1fr) !important;
     }
 
@@ -1793,8 +1732,7 @@ body:has(.auth-container) {
     gap: 0;
 }
 
-.primary-workspace-surface .profile-management-item,
-.primary-workspace-surface .profile-management-item.is-derived-favorite {
+.primary-workspace-surface .profile-management-item {
     grid-template-columns: 38px minmax(0, 1fr) auto;
     min-height: 68px;
     padding: 10px 12px 10px 7px;
@@ -1803,11 +1741,6 @@ body:has(.auth-container) {
     border-radius: 0;
     background: transparent;
     box-shadow: none;
-}
-
-.primary-workspace-surface .profile-management-item.is-derived-favorite::before {
-    content: '';
-    width: 38px;
 }
 
 .primary-workspace-surface .profile-management-item:hover {
@@ -2106,8 +2039,7 @@ body:has(.auth-container) {
         padding: 12px;
     }
 
-    .primary-workspace-surface .profile-management-item,
-    .primary-workspace-surface .profile-management-item.is-derived-favorite {
+    .primary-workspace-surface .profile-management-item {
         grid-template-columns: 34px minmax(0, 1fr);
     }
 
@@ -5203,15 +5135,6 @@ body[data-theme="paper"]:has(.auth-access-dock) {
     .primary-workspace-surface .profile-management-item {
         grid-template-columns: 34px minmax(0, 1fr) !important;
         padding-right: 9px;
-    }
-
-    .primary-workspace-surface .profile-management-item.is-derived-favorite {
-        grid-template-columns: minmax(0, 1fr) !important;
-        padding-left: 10px;
-    }
-
-    .primary-workspace-surface .profile-management-item.is-derived-favorite::before {
-        display: none;
     }
 
     .primary-workspace-surface .profile-management-info {

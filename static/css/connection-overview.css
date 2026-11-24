@@ -127,7 +127,6 @@ body.webssh-shell {
 .webssh-shell .context-workspace-tab.active { background: var(--overview-tint); color: var(--ws2-accent); }
 .webssh-shell :is(.fm-sidebar, .fm-pane, .fm-table-header, .fm-status-bar, .workspace-status-bar) { background-color: var(--ws2-surface); border-color: var(--ws2-border); }
 .webssh-shell :is(.fm-file-list, .fm-content, .fm-body) { background-color: var(--ws2-canvas); }
-.webssh-shell .fm-row:hover { background-color: var(--ws2-row-hover); }
 .webssh-shell .context-workspace-launcher { border-color: var(--overview-line); color: var(--ws2-accent); }
 
 @media (max-width: 1100px) and (min-width: 768px) and (not ((max-height: 520px) and (pointer: coarse))) {
@@ -201,7 +200,7 @@ body.webssh-ui[data-theme="glass"] .overview-inventory-origin { background: var(
 .overview-inventory-origin small { font-size: 13px; color: var(--ws2-text-secondary); }
 
 @media(max-width:1000px){
- .overview-inventory-sidebar > h2,.overview-inventory-sidebar > h3,#overviewInventoryGroups { display: none; }
+ .overview-inventory-sidebar > h2,.overview-inventory-sidebar > h3 { display: none; }
 }
 @media(max-width:767px){
  .overview-inventory-origin { display: none; }
