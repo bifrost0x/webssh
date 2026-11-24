@@ -1,6 +1,7 @@
 import re
 import json
 from pathlib import Path
+from tests.i18n_sources import translation_source
 
 
 TERMINOLOGY = {
@@ -38,7 +39,7 @@ SAVED_CONNECTION_COPY_KEYS = {
 
 
 def test_all_locales_have_matching_translation_keys():
-    source = Path('static/js/i18n.js').read_text(encoding='utf-8')
+    source = translation_source()
     locale_starts = list(re.finditer(r'^    (en|vi|de|fr|es|zh): \{$', source, re.MULTILINE))
     keys_by_locale = {}
 
@@ -111,7 +112,7 @@ def test_all_locales_have_matching_translation_keys():
 
 
 def test_saved_connection_and_quick_connect_terms_are_consistent():
-    source = Path('static/js/i18n.js').read_text(encoding='utf-8')
+    source = translation_source()
     locale_starts = list(
         re.finditer(r'^    (en|vi|de|fr|es|zh): \{$', source, re.MULTILINE)
     )
@@ -193,7 +194,7 @@ def test_english_visible_fallbacks_avoid_legacy_connection_terms():
 
 
 def test_all_locales_preserve_translation_placeholders():
-    source = Path('static/js/i18n.js').read_text(encoding='utf-8')
+    source = translation_source()
     locale_starts = list(
         re.finditer(r'^    (en|vi|de|fr|es|zh): \{$', source, re.MULTILINE)
     )
@@ -226,7 +227,7 @@ def test_all_locales_preserve_translation_placeholders():
 
 
 def test_english_command_set_copy_explains_execution_boundaries():
-    source = Path('static/js/i18n.js').read_text(encoding='utf-8')
+    source = translation_source()
     en_start = source.index('    en: {')
     en_end = source.index('\n    vi: {', en_start)
     english_block = source[en_start:en_end]
@@ -244,7 +245,7 @@ def test_english_command_set_copy_explains_execution_boundaries():
 
 
 def test_all_popup_translation_references_exist_in_every_locale():
-    i18n_source = Path('static/js/i18n.js').read_text(encoding='utf-8')
+    i18n_source = translation_source()
     source_paths = (
         sorted(Path('templates').glob('*.html'))
         + sorted(Path('static/js').glob('*.js'))

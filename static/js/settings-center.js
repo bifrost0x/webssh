@@ -179,9 +179,13 @@
             select.appendChild(option);
         });
         select.value = i18n.getLanguage();
-        select.addEventListener('change', () => {
-            i18n.setLanguage(select.value);
-            setPreferenceStatus(t('settings.languageUpdated', 'Language updated.'));
+        select.addEventListener('change', async () => {
+            const requested = select.value;
+            if (await i18n.setLanguage(requested)) {
+                setPreferenceStatus(t('settings.languageUpdated', 'Language updated.'));
+            } else if (select.value === requested) {
+                select.value = i18n.getLanguage();
+            }
         });
     }
 

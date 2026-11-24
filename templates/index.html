@@ -1825,7 +1825,8 @@
 
     <script id="websshRuntimeLimits" type="application/json">{{ {'transfer': transfer_limits, 'sshInput': ssh_input_limits} | tojson }}</script>
     <script src="{{ static_asset_url(filename='js/runtime-limits.js') }}"></script>
-    <script src="{{ static_asset_url(filename='js/i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/i18n.js') }}" data-locales='{{ translation_asset_urls()|tojson }}'></script>
+    <script src="{{ static_asset_url(filename='js/i18n/en.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/command-safety-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/work-first-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/customer-workflows-i18n.js') }}"></script>

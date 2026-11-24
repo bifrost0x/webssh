@@ -15,7 +15,8 @@ for (const endings of ['LF', 'CRLF']) {
             fs.mkdirSync(path.join(directory, 'scripts'));
             const script = path.join(directory, 'scripts/build-auth-i18n.js');
             fs.copyFileSync(path.resolve('scripts/build-auth-i18n.js'), script);
-            const inputs = ['static/js/i18n.js', 'static/js/i18n-auth.js'];
+            const inputs = ['static/js/i18n.js', 'static/js/i18n-auth.js',
+                ...['en', 'vi', 'de', 'fr', 'es', 'zh'].map(locale => `static/js/i18n/${locale}.js`)];
             const snapshots = inputs.map(name => {
                 const filename = path.join(directory, name);
                 let text = fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n');

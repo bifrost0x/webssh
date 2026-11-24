@@ -1145,9 +1145,75 @@ const BrowserPreferences = {
 };
 
 const storedLanguage = BrowserPreferences.get('language', 'en');
+// Only dictionaries shipped inside this file (the generated authentication
+// bundle) count as loaded here; everything else is registered later.
+const loadedLocales = new Set(Object.keys(translations).filter(lang => Object.keys(translations[lang]).length > 0));
+const pendingLocales = new Map();
+let requestedLanguage = null;
+let pendingSwitch = null;
+
+function readLocaleUrls() {
+    const urls = {};
+    let declared = {};
+    try {
+        declared = JSON.parse(document.currentScript?.dataset?.locales || '{}');
+    } catch {
+        declared = {};
+    }
+    for (const lang of Object.keys(translations)) {
+        const url = declared?.[lang];
+        // Same-origin, server-rendered asset paths only.
+        if (typeof url === 'string' && /^\/(?!\/)[\w\-./]*\?v=[0-9a-f]{16}$/.test(url)) urls[lang] = url;
+    }
+    return urls;
+}
+
+const localeUrls = readLocaleUrls();
+
+function loadLocale(lang) {
+    if (loadedLocales.has(lang)) return Promise.resolve();
+    if (pendingLocales.has(lang)) return pendingLocales.get(lang);
+    const url = localeUrls[lang];
+    if (!url || typeof document.createElement !== 'function') {
+        return Promise.reject(new Error(`No translation file for ${lang}`));
+    }
+    const pending = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = url;
+        script.async = true;
+        script.onload = () => {
+            if (loadedLocales.has(lang)) resolve();
+            else reject(new Error(`Translation file for ${lang} did not register`));
+        };
+        script.onerror = () => {
+            script.remove();
+            reject(new Error(`Translation file for ${lang} could not be loaded`));
+        };
+        (document.head || document.documentElement).appendChild(script);
+    }).finally(() => pendingLocales.delete(lang));
+    pendingLocales.set(lang, pending);
+    return pending;
+}
 
 const i18n = {
-    currentLang: translations[storedLanguage] ? storedLanguage : 'en',
+    currentLang: Object.hasOwn(translations, storedLanguage) ? storedLanguage : 'en',
+
+    registerLocales(bundle) {
+        if (!bundle || typeof bundle !== 'object') return false;
+        for (const [lang, values] of Object.entries(bundle)) {
+            if (!Object.hasOwn(translations, lang) || !values || typeof values !== 'object') continue;
+            for (const [key, value] of Object.entries(values)) {
+                // Feature bundles may have registered first; their entries win,
+                // matching the order in which pages load them.
+                if (typeof value === 'string' && !Object.hasOwn(translations[lang], key)
+                    && !['__proto__', 'constructor', 'prototype'].includes(key)) {
+                    translations[lang][key] = value;
+                }
+            }
+            loadedLocales.add(lang);
+        }
+        return true;
+    },
 
     addTranslations(lang, values) {
         if (!Object.hasOwn(translations, lang) || !values || typeof values !== 'object' || Array.isArray(values)) return false;
@@ -1162,16 +1228,37 @@ const i18n = {
         return activeTranslations[key] || translations.en[key] || key;
     },
 
+    isLocaleLoaded(lang) {
+        return loadedLocales.has(lang);
+    },
+
+    loadLocale(lang) {
+        return Object.hasOwn(translations, lang) ? loadLocale(lang) : Promise.reject(new Error(`Unsupported language ${lang}`));
+    },
+
+    // Resolves to true once the language is active. A loaded language is
+    // applied synchronously; otherwise its file is fetched first. When switches
+    // overlap, only the most recently requested language is applied.
     setLanguage(lang) {
-        if (translations[lang]) {
+        if (!Object.hasOwn(translations, lang)) return Promise.resolve(false);
+        requestedLanguage = lang;
+        const apply = () => {
+            if (requestedLanguage !== lang) return false;
             this.currentLang = lang;
             BrowserPreferences.set('language', lang);
             this.updatePageText();
 
             window.dispatchEvent(new CustomEvent('languageChanged', { detail: { lang } }));
             return true;
-        }
-        return false;
+        };
+        if (loadedLocales.has(lang)) return Promise.resolve(apply());
+        if (pendingSwitch?.lang === lang) return pendingSwitch.promise;
+        const promise = loadLocale(lang).then(apply, () => false);
+        pendingSwitch = { lang, promise };
+        promise.finally(() => {
+            if (pendingSwitch?.promise === promise) pendingSwitch = null;
+        });
+        return promise;
     },
 
     getLanguage() {
@@ -1236,6 +1323,14 @@ const i18n = {
 
 window.BrowserPreferences = BrowserPreferences;
 window.i18n = i18n;
+
+// Scripts after this one call i18n.t() while the page is parsed, so the active
+// dictionary is inserted as a parser-blocking same-origin script right here.
+// Pages always load English themselves; later switches load asynchronously.
+if (i18n.currentLang !== 'en' && !loadedLocales.has(i18n.currentLang) && localeUrls[i18n.currentLang]
+    && document.readyState === 'loading' && typeof document.write === 'function') {
+    document.write(`<script src="${localeUrls[i18n.currentLang]}"></script>`);
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     i18n.updatePageText();

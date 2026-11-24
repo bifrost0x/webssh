@@ -1,11 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
+const {runI18n} = require('./i18n-locales.js');
 
-const source = fs.readFileSync('static/js/i18n.js', 'utf8');
-
-function loadI18n(localStorage) {
+function loadI18n(localStorage, locales = ['en', 'de']) {
     const document = {
         documentElement: {},
         title: '',
@@ -17,33 +14,34 @@ function loadI18n(localStorage) {
         localStorage,
         dispatchEvent() {},
     };
-    const context = vm.createContext({
+    runI18n({
         CustomEvent: class CustomEvent {},
         document,
         window,
-    });
-    vm.runInContext(source, context);
+    }, locales);
     return window;
 }
 
 test('unsupported stored languages fall back to English', () => {
-    const window = loadI18n({
-        getItem() { return 'unsupported'; },
-        setItem() {},
-    });
+    for (const stored of ['unsupported', '__proto__', 'constructor']) {
+        const window = loadI18n({
+            getItem() { return stored; },
+            setItem() {},
+        });
 
-    assert.equal(window.i18n.getLanguage(), 'en');
-    assert.equal(window.i18n.t('common.actions'), 'Actions');
+        assert.equal(window.i18n.getLanguage(), 'en', stored);
+        assert.equal(window.i18n.t('common.actions'), 'Actions');
+    }
 });
 
-test('blocked browser storage does not prevent translations from loading', () => {
+test('blocked browser storage does not prevent translations from loading', async () => {
     const window = loadI18n({
         getItem() { throw new Error('storage denied'); },
         setItem() { throw new Error('storage denied'); },
     });
 
     assert.equal(window.i18n.getLanguage(), 'en');
-    assert.equal(window.i18n.setLanguage('de'), true);
+    assert.equal(await window.i18n.setLanguage('de'), true);
     assert.equal(window.i18n.getLanguage(), 'de');
     assert.equal(window.i18n.t('common.actions'), 'Aktionen');
     assert.equal(window.BrowserPreferences.set('example', 'value'), false);

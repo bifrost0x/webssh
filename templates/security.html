@@ -495,7 +495,8 @@
     </div>
     <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
-    <script src="{{ static_asset_url(filename='js/i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/i18n.js') }}" data-locales='{{ translation_asset_urls()|tojson }}'></script>
+    <script src="{{ static_asset_url(filename='js/i18n/en.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/account-controls-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/trust-files-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/account-controls.js') }}"></script>
