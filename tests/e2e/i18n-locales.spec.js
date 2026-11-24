@@ -77,6 +77,34 @@ test('the settings language selector switches languages that are not loaded yet'
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });
 
+test('a language that cannot be loaded reports the failure and keeps the current language', async ({page}) => {
+    await login(page, 'e2e_admin', {workspace: false});
+    await page.goto('/settings');
+    await page.locator('[data-account-section="preferences"]').click();
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    await page.route('**/static/js/i18n/de.js*', async route => {
+        await held;
+        await route.abort();
+    });
+    const select = page.locator('#settingsLanguageSelect');
+    const status = page.locator('#settingsPreferenceStatus');
+    await page.evaluate(() => {
+        document.getElementById('settingsPreferenceStatus').textContent = 'Setting saved.';
+    });
+    await select.selectOption('de');
+    await expect(select).toBeDisabled();
+    await expect(select).toHaveAttribute('aria-busy', 'true');
+    await expect(status).toHaveText('Loading language…');
+    release();
+    await expect(status).toHaveText('The language could not be loaded. Check the connection and try again.');
+    await expect(status).toHaveClass(/text-error/);
+    await expect(select).toBeEnabled();
+    await expect(select).not.toHaveAttribute('aria-busy', /.*/);
+    await expect(select).toHaveValue('en');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+});
+
 for (const language of ['es', 'vi']) {
     test(`sign-in and registration pages are translated in ${language}`, async ({page}) => {
         await page.addInitScript(value => localStorage.setItem('language', value), language);

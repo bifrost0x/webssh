@@ -2785,7 +2785,22 @@ window.i18n.registerLocales({
         "fm.newName": "Nouveau nom",
         "fm.renameHint": "Renomme l’élément dans ce dossier. Saisissez un nom, pas un chemin.",
         "fm.cancelTransfer": "Annuler le transfert",
-        "terminal.openLinkConfirm": "Voulez-vous ouvrir {url} ?\n\nAVERTISSEMENT : ce lien pourrait être dangereux",
-        "common.dismissNotification": "Fermer la notification"
+        "terminal.openLinkConfirm": "Voulez-vous ouvrir ce lien ?\n\n{url}\n\nAVERTISSEMENT : ce lien pourrait être dangereux",
+        "common.dismissNotification": "Fermer la notification",
+        "fm.nameBlank": "Saisissez un nom qui ne contient pas que des espaces.",
+        "fm.nameDots": "« . » et « .. » ne peuvent pas être utilisés comme noms.",
+        "fm.nameSeparator": "Saisissez un nom sans / ni \\, pas un chemin.",
+        "fm.nameCharacters": "Le nom contient des caractères non autorisés.",
+        "fm.nameTooLong": "Le nom dépasse 255 octets.",
+        "fm.renameConflict": "Un élément portant ce nom existe déjà.",
+        "fm.renameDenied": "Autorisation refusée. Vous ne pouvez pas renommer d’éléments dans ce dossier.",
+        "fm.renameNotFound": "L’élément n’existe plus. Actualisez le dossier.",
+        "fm.renameInvalid": "Ce nom ne peut pas être utilisé ici.",
+        "fm.renameUnavailable": "La source de fichiers est indisponible. Reconnectez-vous et réessayez.",
+        "fm.renameFailed": "L’élément n’a pas pu être renommé. Vérifiez la connexion à la source et réessayez.",
+        "settings.languageLoading": "Chargement de la langue…",
+        "settings.languageFailed": "La langue n’a pas pu être chargée. Vérifiez la connexion et réessayez.",
+        "auth.verifyCodeIn": "Vérifier le code dans {seconds} s",
+        "auth.totpCodeInvalid": "Le code n’est pas valide. Vérifiez l’heure de votre appareil et saisissez le code actuel."
     }
 });

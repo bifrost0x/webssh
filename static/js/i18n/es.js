@@ -2785,7 +2785,22 @@ window.i18n.registerLocales({
         "fm.newName": "Nuevo nombre",
         "fm.renameHint": "Cambia el nombre del elemento en este directorio. Introduce un nombre, no una ruta.",
         "fm.cancelTransfer": "Cancelar transferencia",
-        "terminal.openLinkConfirm": "¿Quieres abrir {url}?\n\nADVERTENCIA: este enlace podría ser peligroso",
-        "common.dismissNotification": "Cerrar notificación"
+        "terminal.openLinkConfirm": "¿Quieres abrir este enlace?\n\n{url}\n\nADVERTENCIA: este enlace podría ser peligroso",
+        "common.dismissNotification": "Cerrar notificación",
+        "fm.nameBlank": "Introduce un nombre que no conste solo de espacios.",
+        "fm.nameDots": "\".\" y \"..\" no se pueden usar como nombres.",
+        "fm.nameSeparator": "Introduce un nombre sin / ni \\, no una ruta.",
+        "fm.nameCharacters": "El nombre contiene caracteres que no se pueden usar.",
+        "fm.nameTooLong": "El nombre supera los 255 bytes.",
+        "fm.renameConflict": "Ya existe un elemento con este nombre.",
+        "fm.renameDenied": "Permiso denegado. No puedes cambiar el nombre de elementos en este directorio.",
+        "fm.renameNotFound": "El elemento ya no existe. Actualiza el directorio.",
+        "fm.renameInvalid": "Este nombre no se puede usar aquí.",
+        "fm.renameUnavailable": "La fuente de archivos no está disponible. Vuelve a conectar e inténtalo de nuevo.",
+        "fm.renameFailed": "No se pudo cambiar el nombre del elemento. Comprueba la conexión con la fuente e inténtalo de nuevo.",
+        "settings.languageLoading": "Cargando idioma…",
+        "settings.languageFailed": "No se pudo cargar el idioma. Comprueba la conexión e inténtalo de nuevo.",
+        "auth.verifyCodeIn": "Verificar código en {seconds} s",
+        "auth.totpCodeInvalid": "El código no es válido. Comprueba la hora de tu dispositivo e introduce el código actual."
     }
 });

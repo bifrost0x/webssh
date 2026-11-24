@@ -181,11 +181,32 @@
         select.value = i18n.getLanguage();
         select.addEventListener('change', async () => {
             const requested = select.value;
-            if (await i18n.setLanguage(requested)) {
-                setPreferenceStatus(t('settings.languageUpdated', 'Language updated.'));
-            } else if (select.value === requested) {
-                select.value = i18n.getLanguage();
+            setPreferenceStatus('');
+            // A language that is not loaded yet is fetched first; keep the
+            // control busy until that settles so the outcome is announced.
+            const loading = !i18n.isLocaleLoaded(requested);
+            const hadFocus = document.activeElement === select;
+            if (loading) {
+                select.disabled = true;
+                select.setAttribute('aria-busy', 'true');
+                setPreferenceStatus(t('settings.languageLoading', 'Loading language…'));
             }
+            let applied = false;
+            try {
+                applied = await i18n.setLanguage(requested);
+            } finally {
+                select.disabled = false;
+                select.removeAttribute('aria-busy');
+                if (hadFocus) select.focus();
+            }
+            if (applied) {
+                setPreferenceStatus(t('settings.languageUpdated', 'Language updated.'));
+                return;
+            }
+            select.value = i18n.getLanguage();
+            setPreferenceStatus(i18n.isLocaleLoaded(requested)
+                ? ''
+                : t('settings.languageFailed', 'The language could not be loaded. Check the connection and try again.'), true);
         });
     }
 

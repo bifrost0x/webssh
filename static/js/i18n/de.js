@@ -2789,7 +2789,22 @@ window.i18n.registerLocales({
         "fm.newName": "Neuer Name",
         "fm.renameHint": "Benennt das Element in diesem Verzeichnis um. Gib einen Namen ein, keinen Pfad.",
         "fm.cancelTransfer": "Übertragung abbrechen",
-        "terminal.openLinkConfirm": "Möchtest du {url} öffnen?\n\nWARNUNG: Dieser Link könnte gefährlich sein",
-        "common.dismissNotification": "Benachrichtigung schließen"
+        "terminal.openLinkConfirm": "Möchtest du diesen Link öffnen?\n\n{url}\n\nWARNUNG: Dieser Link könnte gefährlich sein",
+        "common.dismissNotification": "Benachrichtigung schließen",
+        "fm.nameBlank": "Gib einen Namen ein, der nicht nur aus Leerzeichen besteht.",
+        "fm.nameDots": "„.“ und „..“ können nicht als Namen verwendet werden.",
+        "fm.nameSeparator": "Gib einen Namen ohne / oder \\ ein, keinen Pfad.",
+        "fm.nameCharacters": "Der Name enthält Zeichen, die nicht verwendet werden können.",
+        "fm.nameTooLong": "Der Name ist länger als 255 Byte.",
+        "fm.renameConflict": "Ein Element mit diesem Namen existiert bereits.",
+        "fm.renameDenied": "Zugriff verweigert. Du kannst in diesem Verzeichnis keine Elemente umbenennen.",
+        "fm.renameNotFound": "Das Element existiert nicht mehr. Aktualisiere das Verzeichnis.",
+        "fm.renameInvalid": "Dieser Name kann hier nicht verwendet werden.",
+        "fm.renameUnavailable": "Die Dateiquelle ist nicht verfügbar. Verbinde dich neu und versuche es erneut.",
+        "fm.renameFailed": "Das Element konnte nicht umbenannt werden. Prüfe die Verbindung zur Quelle und versuche es erneut.",
+        "settings.languageLoading": "Sprache wird geladen…",
+        "settings.languageFailed": "Die Sprache konnte nicht geladen werden. Prüfe die Verbindung und versuche es erneut.",
+        "auth.verifyCodeIn": "Code prüfen in {seconds} s",
+        "auth.totpCodeInvalid": "Der Code ist ungültig. Prüfe die Uhrzeit deines Geräts und gib den aktuellen Code ein."
     }
 });

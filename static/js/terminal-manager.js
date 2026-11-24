@@ -63,7 +63,8 @@ const TerminalManager = {
         const template = window.i18n?.t('terminal.openLinkConfirm');
         const message = template && template !== 'terminal.openLinkConfirm'
             ? template.replace('{url}', () => target)
-            : `Do you want to navigate to ${target}?\n\nWARNING: This link could potentially be dangerous`;
+            // The address stays on its own line so no punctuation reads as part of it.
+            : `Do you want to open this link?\n\n${target}\n\nWARNING: This link could potentially be dangerous`;
         if (!window.confirm(message)) return false;
         window.open(target, '_blank', 'noopener,noreferrer');
         return true;
