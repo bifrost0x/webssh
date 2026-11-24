@@ -311,6 +311,8 @@ def main():
             'PORT': os.environ.get('WEBSSH_E2E_PORT', '4173'),
             'RATELIMIT_STORAGE_URL': 'memory://',
             'RATELIMIT_LOGIN_LIMIT': '100 per minute',
+            # Browser cases sign in to the same seeded accounts repeatedly.
+            'RATELIMIT_LOGIN_USERNAME_LIMIT': '100 per minute',
             # Independent browser cases reauthenticate the same seeded admin.
             'RATELIMIT_REAUTH': '100 per minute',
             # Browser cases share seeded accounts and open them in bursts.

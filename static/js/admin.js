@@ -58,7 +58,10 @@
         let data = null;
         try { data = await res.json(); } catch { /* ignore */ }
         if (!res.ok) {
-            const msg = (data && data.error) ? data.error : ('Request failed (' + res.status + ')');
+            const described = window.WebSSHSecurityUI
+                ?.describeAuthenticationError?.(data, t);
+            const msg = described
+                || ((data && data.error) ? data.error : ('Request failed (' + res.status + ')'));
             const error = new Error(msg);
             error.status = res.status;
             error.code = data && data.code;

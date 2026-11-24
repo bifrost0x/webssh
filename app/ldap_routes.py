@@ -18,6 +18,7 @@ import config
 from . import socketio, user_lifecycle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
+    check_login_username_rate_limit,
     check_rate_limit,
     password_exceeds_bcrypt_limit,
     user_creation_transaction,
@@ -183,6 +184,13 @@ def ldap_login():
     username = presented_username.strip()
     password = request.form.get('password') or ''
     client_ip = request.remote_addr or 'unknown'
+    if config.RATELIMIT_ENABLED and check_login_username_rate_limit(
+        username,
+        'ldap_login',
+        config.RATELIMIT_LOGIN_USERNAME_LIMIT,
+    ):
+        log_rate_limit_exceeded('ldap_login_username', client_ip, user=username)
+        return render_template('login.html', auth_source='ldap'), 429
     try:
         directory = get_directory()
         resolved = directory.lookup(username)

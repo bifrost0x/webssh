@@ -23,8 +23,10 @@
         const response = await fetch(root + path, opts);
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
+            const described = window.WebSSHSecurityUI
+                ?.describeAuthenticationError?.(data, t);
             throw new Error(
-                data.error || t('common.requestFailed', 'Request failed ({status})')
+                described || data.error || t('common.requestFailed', 'Request failed ({status})')
                     .replace('{status}', response.status)
             );
         }

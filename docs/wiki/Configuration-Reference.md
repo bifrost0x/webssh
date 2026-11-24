@@ -128,6 +128,7 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | `RATELIMIT_STORAGE_URL` | `memory://` |
 | `RATELIMIT_DEFAULT` | `200 per hour` |
 | `RATELIMIT_LOGIN_LIMIT` | `5 per minute` |
+| `RATELIMIT_LOGIN_USERNAME_LIMIT` | `10 per minute` |
 | `RATELIMIT_REAUTH` | `10 per minute` |
 | `SSH_CONNECT_RATELIMIT` | `10 per minute` |
 | `SSH_KEY_WRITE_RATELIMIT` | `30 per minute` |
@@ -140,6 +141,12 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | `RATELIMIT_BACKUP_UPLOAD` | `5 per hour` |
 | `RATELIMIT_BACKUP_DOWNLOAD` | `10 per hour` |
 | `RATELIMIT_BACKUP_RESTORE` | `3 per hour` |
+
+Source-address limits count an IPv6 client per /64 and an IPv4 or
+IPv4-mapped IPv6 client per address. `RATELIMIT_LOGIN_USERNAME_LIMIT` bounds
+local and LDAP password attempts for one submitted username across all source
+addresses. It is a time window, not a lockout, and applies whether or not the
+account exists.
 
 Key listings and the refresh after renaming, replacing, or deleting a key share
 `SSH_KEY_LIST_RATELIMIT` per user across browser connections. Admission is checked

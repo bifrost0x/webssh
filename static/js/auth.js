@@ -414,7 +414,9 @@
                 });
                 const data = await response.json().catch(() => ({}));
                 if (!response.ok) {
-                    throw new Error(data.error || t(
+                    const described = window.WebSSHSecurityUI
+                        ?.describeAuthenticationError?.(data, t);
+                    throw new Error(described || data.error || t(
                         'auth.codeVerificationFailed',
                         'The code could not be verified.'
                     ));

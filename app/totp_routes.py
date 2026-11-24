@@ -8,6 +8,7 @@ from .auth_redirects import public_continuation
 from flask import Blueprint, abort, jsonify, request, session
 from flask_login import current_user, login_required
 
+from . import mfa_throttle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_rate_limit, check_reauth_rate_limit
 from .auth_assurance import (
@@ -15,6 +16,7 @@ from .auth_assurance import (
     AuthenticationFinalizationError,
     PendingAuthenticationError,
     browser_session_binding,
+    cancel_pending_authentication,
     clear_recovery_restriction,
     finalize_pending_with_factor,
     pending_authentication,
@@ -250,19 +252,51 @@ def verify_totp_login():
         log_rate_limit_exceeded("totp_login_account", client_ip)
         return jsonify({"error": "Too many authentication attempts"}), 429
     data = _bounded_json()
-    if not verify_totp(pending.user_id, data.get("code")):
+    user_id = pending.user_id
+    try:
+        failures = mfa_throttle.claim_attempt(user_id)
+    except mfa_throttle.MFAAttemptThrottled as exc:
+        log_security_event(
+            "MFA_ATTEMPT_THROTTLED",
+            level=logging.WARNING,
+            user_id=user_id,
+            method="totp",
+            flow="login",
+            failures=exc.failures,
+            retry_after=exc.retry_after,
+            ip=client_ip,
+        )
+        return mfa_throttle.throttled_response(exc)
+    if not verify_totp(user_id, data.get("code")):
         log_security_event(
             "TOTP_AUTHENTICATION_REJECTED",
             level=logging.WARNING,
-            user_id=pending.user_id,
+            user_id=user_id,
+            failures=failures,
             ip=client_ip,
         )
+        if mfa_throttle.pending_should_be_discarded(failures):
+            cancel_pending_authentication(token, binding)
+            session.pop("_pending_authentication", None)
+            log_security_event(
+                "MFA_PENDING_LOGIN_DISCARDED",
+                level=logging.WARNING,
+                user_id=user_id,
+                method="totp",
+                failures=failures,
+                ip=client_ip,
+            )
+            return jsonify({
+                "error": "Too many invalid codes. Sign in again.",
+                "code": "mfa_restart",
+            }), 401
         return jsonify({"error": "TOTP code is invalid"}), 401
+    mfa_throttle.record_success(user_id)
     try:
         _row, continuation = finalize_pending_with_factor(
             token,
             binding,
-            user_id=pending.user_id,
+            user_id=user_id,
             factor="totp",
             assurance=AssuranceLevel.MFA,
         )

@@ -16,7 +16,8 @@ from datetime import timezone
 from .models import db
 from .automation_schedule import AutomationSchedule
 from .auth import (init_auth, authenticate_user, register_user,
-                   check_rate_limit, check_reauth_rate_limit, is_bootstrap_registration_available,
+                   check_login_username_rate_limit, check_rate_limit, check_reauth_rate_limit,
+                   is_bootstrap_registration_available,
                    password_exceeds_bcrypt_limit)
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
                               log_login_attempt, log_logout, log_registration, log_password_change)
@@ -1273,6 +1274,14 @@ def create_app(
 
             username = request.form.get('username')
             password = request.form.get('password')
+            if config.RATELIMIT_ENABLED and check_login_username_rate_limit(
+                username,
+                'login',
+                config.RATELIMIT_LOGIN_USERNAME_LIMIT,
+            ):
+                log_rate_limit_exceeded('login_username', client_ip, user=username)
+                flash('Too many login attempts. Please try again later.', 'error')
+                return render_template('login.html', auth_source='local')
             user, error = authenticate_user(username, password)
             if user:
                 from .auth_assurance import (

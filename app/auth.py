@@ -1,3 +1,5 @@
+import hashlib
+import ipaddress
 import re
 
 import bcrypt
@@ -73,11 +75,50 @@ def parse_rate_limit(limit_str, default_limit=5, default_window=60):
     except (ValueError, IndexError):
         return default_limit, default_window
 
+def rate_limit_address(address):
+    """Return the source bucket used to rate limit ``address``.
+
+    An IPv6 client usually controls at least a whole /64 and can rotate
+    through it freely, so IPv6 addresses share one bucket per /64. IPv4 and
+    IPv4-mapped IPv6 addresses keep one bucket per address. Values that are
+    not an IP address are returned unchanged.
+    """
+    value = str(address if address is not None else 'unknown')
+    try:
+        parsed = ipaddress.ip_address(value.strip())
+    except ValueError:
+        return value
+    if parsed.version == 6:
+        if parsed.ipv4_mapped is not None:
+            return str(parsed.ipv4_mapped)
+        return str(ipaddress.IPv6Network(((int(parsed) >> 64) << 64, 64)))
+    return str(parsed)
+
+
 def check_rate_limit(ip_address, endpoint, limit_str):
     """Return True if request should be blocked."""
     limit, window = parse_rate_limit(limit_str)
-    key = f'{endpoint}:{ip_address}'
+    key = f'{endpoint}:{rate_limit_address(ip_address)}'
     return not _get_rate_limiter().allow(key, limit, window)
+
+
+def check_login_username_rate_limit(username, endpoint, limit_str):
+    """Return True when password attempts for ``username`` are throttled.
+
+    The bucket is keyed by the normalized submitted name whether or not an
+    account exists, so the answer does not reveal which accounts exist. It is
+    a sliding window, not a lockout. The name is hashed to bound the key size.
+    """
+    normalized = str(username or '').strip().casefold()
+    if not normalized:
+        return False
+    limit, window = parse_rate_limit(limit_str, default_limit=10)
+    digest = hashlib.sha256(
+        normalized.encode('utf-8', 'surrogatepass')
+    ).hexdigest()
+    return not _get_rate_limiter().allow(
+        f'{endpoint}:username:{digest}', limit, window,
+    )
 
 def check_socket_rate_limit(user_id, endpoint, limit_str):
     """Return True if a per-user socket action should be blocked.
@@ -113,7 +154,7 @@ def check_reauth_rate_limit(user_id, ip_address, endpoint, limit_str):
         window,
     )
     ip_allowed = limiter.allow(
-        f'{endpoint}:ip:{ip_address or "unknown"}',
+        f'{endpoint}:ip:{rate_limit_address(ip_address or "unknown")}',
         limit,
         window,
     )
