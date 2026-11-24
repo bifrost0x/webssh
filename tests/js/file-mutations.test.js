@@ -2,7 +2,49 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 global.window = {};
-const { validLeaf, validMode, FileMutationDialog } = require('../../static/js/file-mutation-dialog.js');
+const { leafProblem, validLeaf, validMode, FileMutationDialog } = require('../../static/js/file-mutation-dialog.js');
+
+test('invalid names explain why and whitespace-only names are rejected', () => {
+    const reasons = {
+        '': '', ' ': 'fm.nameBlank', '   ': 'fm.nameBlank', '　': 'fm.nameBlank',
+        '.': 'fm.nameDots', '..': 'fm.nameDots', 'a/b.yaml': 'fm.nameSeparator', 'a\\b': 'fm.nameSeparator',
+        'a\nb': 'fm.nameCharacters', '\ud800': 'fm.nameCharacters', ['é'.repeat(128)]: 'fm.nameTooLong',
+    };
+    for (const [name, key] of Object.entries(reasons)) {
+        assert.equal(leafProblem(name)?.[0], key, JSON.stringify(name));
+        assert.equal(validLeaf(name), false, JSON.stringify(name));
+    }
+    for (const name of [' leading', 'trailing ', 'a b', '.env']) assert.equal(leafProblem(name), null, name);
+});
+
+test('rename failures show translated reasons instead of the server text', () => {
+    const attributes = {};
+    const classes = new Set();
+    let focused = false;
+    const dialog = Object.create(FileMutationDialog.prototype);
+    Object.assign(dialog, {
+        pendingId: 'r', closed: false,
+        status: { textContent: '', classList: { toggle: (name, on) => (on ? classes.add(name) : classes.delete(name)) } },
+        name: { disabled: false, setAttribute: (name, value) => { attributes[name] = value; }, focus: () => { focused = true; } },
+        manager: { t: (key, fallback) => `${key}|${fallback}` },
+        update() {},
+    });
+    dialog.receive({ request_id: 'r', code: 'CONFLICT', error: 'A file or folder already exists at the destination.' }, 'rename_file', true);
+    assert.equal(dialog.status.textContent, 'fm.renameConflict|An item with this name already exists.');
+    assert.ok(classes.has('is-error'));
+    assert.equal(attributes['aria-invalid'], 'true');
+    assert.equal(attributes['aria-describedby'], 'fmMutationNameError fmMutationStatus');
+    assert.equal(focused, true);
+    for (const [code, key] of [['PERMISSION_DENIED', 'fm.renameDenied'], ['NOT_FOUND', 'fm.renameNotFound'],
+        ['INVALID_REQUEST', 'fm.renameInvalid'], ['SOURCE_UNAVAILABLE', 'fm.renameUnavailable'], ['SOMETHING_ELSE', 'fm.renameFailed']]) {
+        dialog.pendingId = 'r';
+        dialog.receive({ request_id: 'r', code, error: 'raw English' }, 'rename_file', true);
+        assert.match(dialog.status.textContent, new RegExp(`^${key}\\|`));
+    }
+    dialog.setServerError(null);
+    assert.equal(classes.has('is-error'), false);
+    assert.equal(attributes['aria-invalid'], 'false');
+});
 
 test('mode mismatch displays confirmed actual permissions and blocks retry', () => {
     for (const actual of ['640', 'u+x']) {

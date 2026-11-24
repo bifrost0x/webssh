@@ -117,21 +117,66 @@ test('rename uses the in-app dialog with the same name validation and one reques
     await assertNoExternalRequests(page);
 });
 
-test('a failed rename keeps the dialog open with the server reason', async ({ page }) => {
+test('a failed rename keeps the dialog open with a translated reason and focus on the name', async ({ page }) => {
     await workspace(page);
     await page.locator('#fmLeftList .fm-file-item').first().click();
     await page.evaluate(() => window.sftpFileManager.renameSelected());
     const dialog = page.locator('dialog.fm-mutation-dialog');
-    await dialog.locator('[name="filename"]').fill('taken.txt');
+    const name = dialog.locator('[name="filename"]');
+    await name.fill('taken.txt');
     await dialog.getByRole('button', { name: 'Rename', exact: true }).click();
-    await page.evaluate(() => {
-        const sent = window.__mutationEvents.find(value => value.event === 'rename_file').payload;
+    const reply = async (code, error) => page.evaluate(({ code, error }) => {
+        const sent = window.__mutationEvents.filter(value => value.event === 'rename_file').at(-1).payload;
         window.socket.listeners('error').forEach(listener => listener({
-            source_id: sent.source_id, request_id: sent.request_id, operation: 'rename_file', error: 'Target already exists',
+            source_id: sent.source_id, request_id: sent.request_id, operation: 'rename_file', code, error,
         }));
-    });
-    await expect(dialog.getByRole('status')).toHaveText('Target already exists');
+    }, { code, error });
+    await reply('CONFLICT', 'A file or folder already exists at the destination.');
+    const status = dialog.getByRole('status');
+    await expect(status).toHaveText('An item with this name already exists.');
+    await expect(status).toHaveClass(/is-error/);
+    await expect(name).toHaveAttribute('aria-invalid', 'true');
+    await expect(name).toHaveAttribute('aria-describedby', /fmMutationStatus/);
+    await expect(name).toBeFocused();
     await expect(dialog.getByRole('button', { name: 'Rename', exact: true })).toBeEnabled();
+
+    await name.fill('other.txt');
+    await expect(status).toHaveText('');
+    await expect(name).toHaveAttribute('aria-invalid', 'false');
+    await dialog.getByRole('button', { name: 'Rename', exact: true }).click();
+    await page.evaluate(() => i18n.setLanguage('de'));
+    await reply('PERMISSION_DENIED', 'Permission denied for this file operation.');
+    await expect(status).toHaveText('Zugriff verweigert. Du kannst in diesem Verzeichnis keine Elemente umbenennen.');
+});
+
+test('rename explains why a name cannot be used', async ({ page }) => {
+    await workspace(page);
+    await page.locator('#fmLeftList .fm-file-item').first().click();
+    await page.evaluate(() => window.sftpFileManager.renameSelected());
+    const dialog = page.locator('dialog.fm-mutation-dialog');
+    const name = dialog.locator('[name="filename"]');
+    const reason = dialog.locator('#fmMutationNameError');
+    const rename = dialog.getByRole('button', { name: 'Rename', exact: true });
+    await expect(reason).toBeHidden();
+    for (const [value, text] of [
+        ['a/b.yaml', 'Enter a name without / or \\, not a path.'],
+        ['..', '"." and ".." cannot be used as names.'],
+        ['   ', 'Enter a name that is not only spaces.'],
+        ['é'.repeat(128), 'The name is longer than 255 bytes.'],
+    ]) {
+        await name.fill(value);
+        await expect(reason).toHaveText(text);
+        await expect(name).toHaveAttribute('aria-invalid', 'true');
+        await expect(name).toHaveAttribute('aria-describedby', 'fmMutationNameError');
+        await expect(rename).toBeDisabled();
+    }
+    await name.fill('');
+    await expect(reason).toBeHidden();
+    await name.fill(' spaced name.txt');
+    await expect(reason).toBeHidden();
+    await expect(name).toHaveAttribute('aria-invalid', 'false');
+    await expect(rename).toBeEnabled();
+    expect(await page.evaluate(() => window.__mutationEvents.filter(value => value.event === 'rename_file').length)).toBe(0);
 });
 
 test('legacy single-object permission dialog binds the inspected metadata and sends only a deliberate change', async ({ page }) => {

@@ -2919,6 +2919,9 @@
 .fm-mutation-target { white-space: pre-wrap; overflow-wrap: anywhere; }
 .fm-mutation-hint { font-size: .88rem; }
 .fm-mutation-status { overflow-wrap: anywhere; }
+.fm-mutation-name-error, .fm-mutation-status.is-error { color: var(--error-color, #d73043); font-size: .88rem; overflow-wrap: anywhere; }
+.fm-mutation-status.is-error { padding: .5rem .65rem; border-left: 3px solid var(--error-color, #d73043); border-radius: 4px; background: color-mix(in srgb, var(--error-color, #d73043) 10%, transparent); }
+.fm-mutation-dialog input[aria-invalid="true"] { border-color: var(--error-color, #d73043); }
 .fm-mutation-results { margin: 0; padding: 0; list-style: none; max-height: 24vh; overflow: auto; border: 1px solid var(--border-color); border-radius: 6px; }
 .fm-mutation-results li { padding: .5rem .65rem; overflow-wrap: anywhere; font-size: 12px; border-bottom: 1px solid var(--border-color); }
 .fm-mutation-results li:last-child { border-bottom: 0; }

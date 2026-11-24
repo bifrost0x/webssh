@@ -1329,3 +1329,30 @@ def test_directory_pagination_has_no_eager_full_listing_fallback():
 
     assert result == (None, 'Directory pagination unavailable', None)
     assert backend.calls == []
+
+
+def _rename_backend(calls):
+    return SimpleNamespace(
+        normalize_path=lambda path: path,
+        check_exists=lambda source, path: ({'exists': False}, None),
+        rename=lambda source, old, new, replace: calls.append((old, new, replace)) or (True, None),
+    )
+
+
+@pytest.mark.parametrize('new_name', [' ', '   ', '　'])
+def test_rename_rejects_a_new_name_made_of_whitespace(new_name):
+    calls = []
+    source = resolved_source(FileCapability.RENAME, backend=_rename_backend(calls))
+    service = FileService(SimpleNamespace(resolve=lambda source_id, user_id: source))
+    result = service.rename('sftp-session:owned', user_id=7, old_path='/data/report.txt', new_path=f'/data/{new_name}')
+    assert result == (False, 'Invalid move request')
+    assert calls == []
+
+
+def test_move_keeps_an_existing_whitespace_name_and_ordinary_renames_work():
+    calls = []
+    source = resolved_source(FileCapability.RENAME, backend=_rename_backend(calls))
+    service = FileService(SimpleNamespace(resolve=lambda source_id, user_id: source))
+    assert service.rename('sftp-session:owned', user_id=7, old_path='/data/ ', new_path='/archive/ ') == (True, None)
+    assert service.rename('sftp-session:owned', user_id=7, old_path='/data/a.txt', new_path='/data/ b.txt') == (True, None)
+    assert calls == [('/data/ ', '/archive/ ', False), ('/data/a.txt', '/data/ b.txt', False)]
