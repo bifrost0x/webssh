@@ -3,7 +3,6 @@
 from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
 
-import config
 from .app_settings import runtime_feature_enabled
 
 from . import server_operations as operations

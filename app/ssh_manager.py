@@ -1376,11 +1376,6 @@ def get_session(session_id):
             }
     return None
 
-def get_output_buffer(session_id):
-    """Get buffered output for a session (for replay on reconnect)."""
-    return get_output_snapshot(session_id)[0]
-
-
 def get_output_snapshot(session_id):
     """Return buffered output and its atomic monotone sequence watermark."""
     import re as _re

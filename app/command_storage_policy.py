@@ -203,16 +203,3 @@ def enforce_store_transition(
     ):
         _error('combined command data would exceed its byte limit')
     return prospective_size
-
-
-def command_storage_usage(user_data_dir):
-    root = Path(user_data_dir)
-    commands = _file_size(root / 'commands.json')
-    command_sets = _file_size(root / 'command_sets.json')
-    return {
-        'commands_bytes': commands,
-        'command_sets_bytes': command_sets,
-        'total_bytes': commands + command_sets,
-        'quota_bytes': config.COMMAND_CONFIG_MAX_BYTES,
-        'over_quota': commands + command_sets > config.COMMAND_CONFIG_MAX_BYTES,
-    }

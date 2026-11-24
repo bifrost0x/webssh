@@ -1,5 +1,4 @@
 """Bounded, socket-owned previews for explicit remote permission changes."""
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 import posixpath
 import secrets

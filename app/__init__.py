@@ -14,7 +14,8 @@ import sys
 import time
 from datetime import timezone
 from .models import db
-from .automation_schedule import AutomationSchedule
+# Imported for its side effect: registers the model before db.create_all().
+from .automation_schedule import AutomationSchedule  # noqa: F401
 from .auth import (init_auth, authenticate_user, register_user,
                    check_login_username_rate_limit, check_rate_limit, check_reauth_rate_limit,
                    is_bootstrap_registration_available,

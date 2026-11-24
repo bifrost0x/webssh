@@ -281,7 +281,6 @@ def _sftp_descriptor(
     safe_username = str(username or 'unknown')
     label = str(display_name) if display_name else f'{safe_username}@{safe_host}'
     capabilities = SFTP_CAPABILITIES
-    import config
     if runtime_feature_enabled('sftp_chmod_enabled'):
         from .sftp_handler import get_ssh_client
         client = get_ssh_client(handle_id)
@@ -408,24 +407,6 @@ class FileSourceResolver:
                 else {}
             )
         self._hold_acquirers = dict(hold_acquirers)
-
-    def register_source_kind(
-        self,
-        kind: FileSourceKind,
-        *,
-        lookup: SourceLookup,
-        backend: FileBackend,
-        hold_acquirer: SourceHoldAcquirer | None = None,
-    ) -> None:
-        if not isinstance(kind, FileSourceKind) or not callable(lookup) or backend is None:
-            raise ValueError('invalid file source registration')
-        with self._lock:
-            self._source_lookups[kind] = lookup
-            self._backends[kind] = backend
-            if hold_acquirer is None:
-                self._hold_acquirers.pop(kind, None)
-            else:
-                self._hold_acquirers[kind] = hold_acquirer
 
     def register_backend(self, kind: FileSourceKind, backend: FileBackend) -> None:
         if not isinstance(kind, FileSourceKind) or backend is None:

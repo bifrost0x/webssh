@@ -1,7 +1,7 @@
 """Resolve saved connection passwords only within the authenticated TLS session."""
 import time
 
-from flask import current_app, request
+from flask import current_app
 
 from .automation_store import AutomationError
 from .transport_security import request_reached_over_https

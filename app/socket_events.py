@@ -41,7 +41,7 @@ from .network_policy import canonicalize_hostname
 from .ssh_errors import connection_error_payload
 from .credential_connections import connection_password, credential_error, CredentialGuard
 from .automation_store import AutomationError
-from . import binary_transfer, connection_pool
+from . import connection_pool
 from .transfer_routes import prepare_transfer, transfer_manager, _terminalize
 from .quota_manager import QuotaExceeded, QuotaKind, quota_manager
 from .socket_capacity import socket_capacity

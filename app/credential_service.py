@@ -6,7 +6,7 @@ import secrets
 import threading
 import time
 
-from flask import has_request_context, request
+from flask import has_request_context
 from .automation_store import AutomationError, profile_fingerprint, remember_intent, text, MAX_STORE_BYTES
 from .transport_security import request_reached_over_https
 from .automation_vault import Vault
@@ -523,7 +523,6 @@ class CredentialService:
         target=data.get('target')
         if data.get('confirm_target') is not True or not isinstance(target,dict):
             raise AutomationError('confirmation_required')
-        from .automation_store import digest
         # Store only validated connection fields; bind explicit route and SMB scope.
         target=self._normalize_target(target)
         text(target.get('host'),253); text(target.get('username'),256)
