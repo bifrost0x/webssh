@@ -62,3 +62,41 @@ test('a refused tailnet route explains that Tailscale SSH is required', () => {
         /Tailscale SSH/,
     );
 });
+
+test('a refused tailnet route names the admin setting and links to it for administrators', () => {
+    const values = {
+        'sshErrors.tailscaleRouteRestrictedAdmin': 'Einstellung „Normales SSH zu Tailnet-Knoten sperren“ ausschalten.',
+        'sshErrors.openTailnetSetting': 'Einstellung öffnen',
+    };
+    const result = describeSSHError(
+        { code: 'tailscale_route_restricted' },
+        key => values[key] || key,
+        '/webssh',
+        { isAdmin: true },
+    );
+
+    assert.deepEqual(result, {
+        message: values['sshErrors.tailscaleRouteRestrictedAdmin'],
+        type: 'error',
+        duration: 12000,
+        action: { label: 'Einstellung öffnen', url: '/webssh/settings#integrations' },
+    });
+    const fallback = describeSSHError({ code: 'tailscale_route_restricted' }, () => null, '', { isAdmin: true });
+    assert.match(fallback.message, /Block ordinary SSH to tailnet nodes/);
+    assert.equal(fallback.action.url, '/settings#integrations');
+    const user = describeSSHError({ code: 'tailscale_route_restricted' }, () => null, '', { isAdmin: false });
+    assert.match(user.message, /ask your administrator/);
+    assert.equal(user.action, undefined);
+});
+
+test('the administrator hint comes from the page and defaults to a regular user', () => {
+    const previous = globalThis.document;
+    try {
+        globalThis.document = { querySelector: () => ({ content: 'true' }) };
+        assert.ok(describeSSHError({ code: 'tailscale_route_restricted' }, () => null, '').action);
+        globalThis.document = { querySelector: () => null };
+        assert.equal(describeSSHError({ code: 'tailscale_route_restricted' }, () => null, '').action, undefined);
+    } finally {
+        if (previous === undefined) { delete globalThis.document; } else { globalThis.document = previous; }
+    }
+});

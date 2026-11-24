@@ -75,6 +75,54 @@ test('an out-of-range value shows an inline error without asking for reauthentic
     await expect(prefix).not.toHaveAttribute('aria-invalid', 'true');
 });
 
+test('help lines name the defaults and the tailnet setting states whether it applies', async ({page}) => {
+    await login(page);
+    await openAuthenticationSettings(page);
+    await expect(page.locator('#signInUsernameLimitHint')).toContainText('Default 10.');
+    await expect(page.locator('#signInUsernameGlobalLimitHint')).toContainText('Default 100');
+    await expect(page.locator('#signInIpv6PrefixHint')).toContainText('Default 64.');
+    await expect(page.locator('#signInProtection [role="alert"]')).toHaveCount(0);
+    await page.goto('/settings#integrations');
+    // The E2E server runs with Tailscale SSH enabled.
+    await expect(page.locator('#tailnetRestrictionState'))
+        .toHaveText('Tailscale SSH is enabled on this server, so this setting is in effect.');
+});
+
+test('rejected and throttled reauthentication is answered inside the open dialog', async ({page}) => {
+    await login(page);
+    await openAuthenticationSettings(page);
+    const answers = [
+        {status: 429, json: {error: 'Too many attempts. Try again in 30 seconds.', code: 'rate_limited', retry_after: 30}},
+        {status: 403, json: {error: 'Step-up authentication failed'}},
+    ];
+    await page.route('**/api/step-up/password', route => {
+        const answer = answers.shift();
+        return answer ? route.fulfill(answer) : route.fallback();
+    });
+    await page.locator('#signInProtectionSave').click();
+    await expect(page.locator('#stepUpModal')).toBeVisible();
+    const password = page.locator('#stepUpPassword');
+    const error = page.locator('#stepUpError');
+
+    await password.fill('browser-password');
+    await page.locator('#stepUpSubmit').click();
+    await expect(error).toHaveText('Too many attempts. Try again in 30 s.');
+    await expect(page.locator('#stepUpModal')).toBeVisible();
+    await expect(password).toHaveValue('');
+    await expect(password).toBeFocused();
+
+    await password.fill('wrong-password');
+    await page.locator('#stepUpSubmit').click();
+    await expect(error).toHaveText('Authentication failed. Check the value and try again.');
+    await expect(page.locator('#stepUpModal')).toBeVisible();
+
+    await password.fill('browser-password');
+    await page.locator('#stepUpSubmit').click();
+    await expect(page.locator('#stepUpModal')).toBeHidden();
+    await expect(page.locator('#signInProtectionStatus')).toHaveText('Settings saved');
+    await expect(error).toBeHidden();
+});
+
 test('a ceiling below the per-source limit is rejected before reauthentication', async ({page}) => {
     await login(page);
     let writes = 0;

@@ -1906,6 +1906,7 @@ def create_app(
         return jsonify({'setting_sources': native_setting_sources(), 'runtime_features': policies, **{name: status['enabled'] for name, status in policies.items()}, 'registration_enabled': is_registration_enabled(),
                         **sign_in_protection(),
                         'tailscale_ssh_restrict_tailnet_routes': is_tailnet_route_restricted(),
+                        'tailscale_ssh_enabled': bool(config.TAILSCALE_SSH_ENABLED),
                         'ssh_gateway_enabled': is_ssh_gateway_enabled(),
                         'herdr_enabled': is_herdr_enabled(),
                         'support_links_enabled': is_support_links_enabled(),

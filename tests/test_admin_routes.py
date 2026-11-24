@@ -511,6 +511,31 @@ def test_invalid_support_links_setting_is_rejected(app, client):
     assert app_settings.set_support_links_enabled('false') is False
 
 
+@pytest.mark.parametrize(('role', 'panel', 'expected'), [
+    ('admin', True, 'true'),
+    ('admin', False, 'false'),
+    ('normal', True, 'false'),
+])
+def test_workspace_marks_administrators_for_admin_setting_links(
+    app, client, monkeypatch, role, panel, expected,
+):
+    import config
+
+    _prepare_role(app, client, role)
+    monkeypatch.setattr(config, 'ADMIN_PANEL_ENABLED', panel)
+    page = client.get('/').get_data(as_text=True)
+    assert f'<meta name="current-user-admin" content="{expected}">' in page
+
+
+@pytest.mark.parametrize('enabled', [True, False])
+def test_settings_report_whether_tailscale_ssh_is_enabled(app, client, monkeypatch, enabled):
+    import config
+
+    _prepare_role(app, client, 'admin')
+    monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', enabled)
+    assert client.get('/admin/api/settings').get_json()['tailscale_ssh_enabled'] is enabled
+
+
 def test_sign_in_protection_defaults_are_reported(app, client):
     _prepare_role(app, client, 'admin')
     data = client.get('/admin/api/settings').get_json()

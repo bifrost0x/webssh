@@ -83,7 +83,9 @@ SOCKS5 proxy endpoints and
 locally validated SOCKS5 destinations, file transfers, automation runs, host
 discovery and the reachability check. Saved Tailscale SSH hosts that the account
 may still use stay checkable in the reachability check. The browser reports that
-the host requires Tailscale SSH; automation records `tailscale_route_restricted`.
+the host requires Tailscale SSH and links administrators to the setting;
+automation records `tailscale_route_restricted`. The setting row shows whether
+Tailscale SSH is enabled on the server, since it has no effect otherwise.
 
 Hosts reached through subnet routes or an exit node are not affected; their own
 SSH server checks the offered credentials. A `100.64.0.0/10` address that does
