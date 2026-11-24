@@ -738,3 +738,41 @@ def test_close_session_does_not_report_an_unfinished_tmux_kill(monkeypatch, kill
 
     assert ssh_manager.close_session('session-1', kill_tmux=True, tmux_result=tmux_result) is True
     assert tmux_result == {}
+
+
+def test_idle_reader_waits_for_output_without_a_database_connection(
+        app, monkeypatch):
+    from app.auth import register_user
+    from app.models import SSHSession, db
+
+    with app.app_context():
+        user, error = register_user('reader_pool', 'password-123')
+        assert error is None
+        db.session.add(SSHSession(
+            session_id='reader-pool', user_id=user.id, host='target.example',
+            port=22, username='alice', connected=True, is_persistent=False,
+        ))
+        db.session.commit()
+
+    checked_out = []
+
+    class RecordingChannel(FakeChannel):
+        def recv(self, _size):
+            checked_out.append(db.engine.pool.checkedout())
+            return b''
+
+    client = FakeSSHClient(transport=FakeTransport())
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions['reader-pool'] = _session(
+            client, channel=RecordingChannel(),
+        )
+
+    class SocketIO:
+        @staticmethod
+        def emit(*_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr('app.sftp_handler.close_sftp_cache', lambda _session_id: None)
+    ssh_manager.read_ssh_output('reader-pool', SocketIO(), app)
+
+    assert checked_out == [0]

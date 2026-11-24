@@ -9,6 +9,10 @@ services:
     restart: unless-stopped
     # Allows the app's bounded shutdown (maximum 30s) to finish.
     stop_grace_period: 40s
+    # The image already runs as an unprivileged user; nothing in it needs to
+    # gain privileges through setuid binaries or file capabilities.
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "5000:5000"
     environment:

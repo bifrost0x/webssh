@@ -1044,6 +1044,10 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None, disco
             if db_session:
                 cached_user_id = db_session.user_id
                 cached_room = f'user_{db_session.user_id}'
+            # The reader can wait for output for hours. End the lookup
+            # transaction so an idle terminal does not keep a pooled
+            # connection checked out.
+            db.session.rollback()
 
             if not cached_room:
                 log_error("No DB session found for output reader", session_id=session_id)
@@ -1093,6 +1097,8 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None, disco
                                 if db_session:
                                     db_session.last_activity = datetime.now(timezone.utc)
                                     db.session.commit()
+                                else:
+                                    db.session.rollback()
                             except Exception:
                                 db.session.rollback()
                     if not data:

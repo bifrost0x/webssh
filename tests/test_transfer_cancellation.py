@@ -1796,3 +1796,121 @@ def test_server_copy_rejects_invalid_paths_before_allocating(app, monkeypatch):
 
     assert result['success'] is False
     assert emitted[0][1]['transfer_id'] is None
+
+
+def test_server_copy_progress_is_throttled_but_completion_is_always_sent(
+        monkeypatch):
+    import app.sftp_handler as sftp_handler
+    from app import transfer_progress
+
+    monkeypatch.setattr(
+        transfer_progress.ProgressThrottle.__init__,
+        '__defaults__',
+        (transfer_progress.PROGRESS_INTERVAL_SECONDS, lambda: 100.0),
+    )
+    source = S2SSFTP(b'a' * 40)
+    destination = S2SSFTP(destination=True)
+    progress = []
+
+    monkeypatch.setattr(
+        sftp_handler, 'get_sftp_client_fresh',
+        lambda session_id: (
+            (source, None) if session_id == 'source' else (destination, None)
+        ),
+    )
+
+    class Socket:
+        def emit(self, event, payload, room=None):
+            if event == 's2s_transfer_progress':
+                progress.append(payload)
+
+    success, error = sftp_handler.transfer_server_to_server(
+        'source', '/from.txt', 'destination', '/to.txt', 'transfer-throttle',
+        socketio_instance=Socket(), user_room='user_1',
+        cancel_event=threading.Event(), max_bytes=100, chunk_size=4,
+    )
+
+    assert success is True
+    assert error is None
+    assert [(item['status'], item['transferred']) for item in progress] == [
+        ('transferring', 4),
+        ('completed', 40),
+    ]
+
+
+def test_backend_server_copy_progress_is_throttled(app, monkeypatch):
+    import app.socket_events as socket_events
+    from app import transfer_progress
+    from app.file_sources import SourceHoldSet
+    from app.transfer_manager import TransferManager
+
+    monkeypatch.setattr(
+        transfer_progress.ProgressThrottle.__init__,
+        '__defaults__',
+        (transfer_progress.PROGRESS_INTERVAL_SECONDS, lambda: 100.0),
+    )
+
+    class Reservation:
+        def release(self):
+            pass
+
+    class ImmediateLifecycle:
+        def start_job(self, _name, target, *, owner_id=None):
+            del owner_id
+            target(threading.Event())
+            return SimpleNamespace()
+
+    class Backend:
+        @staticmethod
+        def normalize_path(path):
+            return path
+
+    def copy(_source, path, _destination, _dest_path, *, progress, **_kwargs):
+        for count in range(1, 11):
+            progress({'transferred': count * 4, 'file_size': 40, 'path': path})
+        return SimpleNamespace(bytes_transferred=40)
+
+    emitted = []
+    monkeypatch.setattr(
+        socket_events.file_service,
+        'resolve',
+        lambda source_id, _user_id, _capability: SimpleNamespace(
+            handle_id=source_id.split(':', 1)[1], backend=Backend(),
+        ),
+    )
+    monkeypatch.setattr(
+        socket_events.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda _user_id, source_ids: SourceHoldSet(tuple(source_ids)),
+    )
+    monkeypatch.setattr(socket_events, 'transfer_manager', TransferManager())
+    monkeypatch.setattr(
+        socket_events, 'quota_manager',
+        SimpleNamespace(reserve=lambda *_args, **_kwargs: Reservation()),
+    )
+    monkeypatch.setattr(socket_events, 'copy_remote_entry', copy)
+    monkeypatch.setattr(
+        socket_events.socketio, 'emit',
+        lambda event, payload, room=None: emitted.append((event, payload)),
+    )
+    monkeypatch.setitem(app.extensions, 'runtime_lifecycle', ImmediateLifecycle())
+
+    user = SimpleNamespace(id=7, username='copy-user')
+    with app.test_request_context('/socket.io'):
+        result = socket_events.handle_transfer_server_to_server.__wrapped__({
+            'source_id': 'smb-quick:source',
+            'request_id': 's2s:test',
+            'source_path': '/reports/report.txt',
+            'destination_source_id': 'smb-quick:destination',
+            'dest_path': '/archive/report.txt',
+            'is_dir': False,
+        }, current_user=user)
+
+    assert result['success'] is True
+    progress = [
+        payload['transferred']
+        for event, payload in emitted
+        if event == 's2s_transfer_progress'
+    ]
+    assert progress == [4]
+    assert [event for event, _payload in emitted][-1] == 's2s_transfer_complete'

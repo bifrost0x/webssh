@@ -1370,3 +1370,78 @@ def test_cli_restore_keeps_private_material_only_for_recovery_snapshots(
         assert key_file.read_bytes() == b'encrypted-private-key'
     else:
         assert not key_file.exists()
+
+
+def _record_database_copies(monkeypatch):
+    directories = []
+    real_mkstemp = backup_manager.tempfile.mkstemp
+
+    def recording_mkstemp(*args, **kwargs):
+        if kwargs.get('prefix') == '.webssh-backup-database-':
+            directory = kwargs.get('dir')
+            directories.append(None if directory is None else Path(directory))
+        return real_mkstemp(*args, **kwargs)
+
+    monkeypatch.setattr(backup_manager.tempfile, 'mkstemp', recording_mkstemp)
+    return directories
+
+
+def _private_backup_root(tmp_path, monkeypatch):
+    root = tmp_path / 'private-operations'
+    monkeypatch.setattr(backup_manager.config, 'BACKUP_TEMP_DIR', root)
+    monkeypatch.setattr(
+        backup_manager.config, 'DATA_DIR', tmp_path / 'configured-data',
+    )
+    return root.resolve()
+
+
+def test_backup_database_check_never_uses_the_shared_temp_directory(
+    tmp_path, monkeypatch,
+):
+    root = _private_backup_root(tmp_path, monkeypatch)
+    source = tmp_path / 'source'
+    source.mkdir()
+    _write_representative_data(source)
+    archive = tmp_path / 'exports' / 'archive.zip'
+    directories = _record_database_copies(monkeypatch)
+
+    create_backup(source, archive)
+    verify_backup(archive)
+    destination = tmp_path / 'destination'
+    destination.mkdir()
+    restore_backup(archive, destination)
+
+    assert len(directories) == 3
+    created, verified, restored = directories
+    # Export: the private staging directory beside the destination.
+    assert created is not None
+    assert created.parent == archive.parent
+    assert created.name.startswith('.webssh-backup-stage-')
+    # Plain verification and restore: the private per-instance namespace.
+    assert verified is not None and verified.is_relative_to(root)
+    assert restored is not None and restored.is_relative_to(root)
+    leftovers = [
+        path for path in root.rglob('.webssh-backup-database-*')
+    ]
+    assert leftovers == []
+
+
+def test_backup_verification_still_works_without_a_usable_private_root(
+    tmp_path, monkeypatch,
+):
+    source = tmp_path / 'source'
+    source.mkdir()
+    _write_representative_data(source)
+    archive = tmp_path / 'archive.zip'
+    create_backup(source, archive)
+    monkeypatch.setattr(backup_manager.config, 'DATA_DIR', tmp_path / 'data')
+    monkeypatch.setattr(
+        backup_manager.config, 'BACKUP_TEMP_DIR', tmp_path / 'data' / 'tmp',
+    )
+    directories = _record_database_copies(monkeypatch)
+
+    manifest = verify_backup(archive)
+
+    assert manifest.files
+    assert directories == [None]
+    assert not (tmp_path / 'data').exists()
