@@ -717,6 +717,15 @@ TAILSCALE_SSH_ALLOWED_REMOTE_USERS = _csv_env('TAILSCALE_SSH_ALLOWED_REMOTE_USER
 TAILSCALE_SSH_INTERFACE = os.environ.get(
     'TAILSCALE_SSH_INTERFACE', 'tailscale0'
 ).strip()
+# While Tailscale SSH is enabled, ordinary password and key connections must
+# not reach tailnet node addresses: tailssh authorizes by node identity
+# and would accept any credential under the shared identity. Only the literal
+# value "false" lifts the restriction, for operators who reach plain OpenSSH
+# servers over the tailnet with their own credentials.
+TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES = (
+    os.environ.get('TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES', 'true').strip().lower()
+    != 'false'
+)
 
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 

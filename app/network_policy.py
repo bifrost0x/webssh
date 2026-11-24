@@ -28,6 +28,54 @@ class ResolvedTarget:
         object.__setattr__(self, 'sockaddr', sockaddr)
 
 
+class TailnetRouteRestricted(ValueError):
+    """A pinned address leaves through the Tailscale SSH interface."""
+
+    code = 'tailscale_route_restricted'
+
+    def __init__(self):
+        super().__init__('This target is on the tailnet and requires Tailscale SSH')
+
+
+_TAILSCALE_NODE_NETWORKS = (
+    ipaddress.ip_network('100.64.0.0/10'),
+    ipaddress.ip_network('fd7a:115c:a1e0::/48'),
+)
+
+
+def _is_tailscale_node_address(address):
+    address = ipaddress.ip_address(address)
+    if address.version == 6 and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    return any(
+        address.version == network.version and address in network
+        for network in _TAILSCALE_NODE_NETWORKS
+    )
+
+
+def _tailnet_route_restricted(address):
+    """Return whether an ordinary connection must not use this address.
+
+    tailssh listens on tailnet node addresses and authorizes the WebSSH node,
+    not the credential it is offered, so a password or key connection to such
+    an address would run under the shared node identity outside every
+    Tailscale SSH allowlist. Subnet-route and exit-node destinations run their
+    own sshd and stay unaffected. A failed route lookup leaves the address
+    unrestricted, which keeps hosts without the interface unchanged.
+    """
+    import config
+    if not _is_tailscale_node_address(address):
+        return False
+    if not (
+        config.TAILSCALE_SSH_ENABLED
+        and config.TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES
+        and str(config.TAILSCALE_SSH_INTERFACE or '').strip()
+    ):
+        return False
+    from . import tailscale_ssh
+    return tailscale_ssh.target_uses_tailscale_route(address)
+
+
 def canonicalize_hostname(hostname):
     """Return the canonical hostname used for policy and host-key identity."""
     value = str(hostname or '').strip()
@@ -112,12 +160,18 @@ def resolve_allowed_target(
     *,
     target_validator=None,
     allowed_internal_networks=(),
+    tailscale_ssh=False,
 ):
     """Resolve once and select the first policy-allowed TCP address.
 
     ``allowed_internal_networks`` re-admits internal addresses inside the
     given networks while ``allow_internal`` is false. Loopback, link-local,
     multicast, unspecified, reserved and IPv4-mapped addresses stay blocked.
+
+    While Tailscale SSH is enabled, addresses routed through its interface
+    are reserved for the Tailscale SSH strategy, which alone passes
+    ``tailscale_ssh=True``. Raises ``TailnetRouteRestricted`` when such an
+    address was the only candidate left.
     """
     canonical = canonicalize_hostname(hostname)
     try:
@@ -138,6 +192,8 @@ def resolve_allowed_target(
         )
         if not allowed:
             raise ValueError('Connections to this address are not allowed')
+        if not tailscale_ssh and _tailnet_route_restricted(literal.compressed):
+            raise TailnetRouteRestricted()
         target = ResolvedTarget(
             canonical,
             clean_port,
@@ -160,6 +216,7 @@ def resolve_allowed_target(
         raise ValueError('Host could not be resolved') from error
 
     seen = set()
+    tailnet_restricted = False
     for family, socktype, _protocol, _canonname, sockaddr in candidates:
         if family not in (socket.AF_INET, socket.AF_INET6):
             continue
@@ -181,6 +238,11 @@ def resolve_allowed_target(
         allowed, via_allowlist = _address_decision(
             address, allow_internal, allowed_internal_networks
         )
+        if allowed and not tailscale_ssh and _tailnet_route_restricted(
+            address.compressed
+        ):
+            tailnet_restricted = True
+            continue
         if allowed:
             target = ResolvedTarget(
                 canonical,
@@ -193,6 +255,8 @@ def resolve_allowed_target(
             if target_validator is None or target_validator(target):
                 return target
 
+    if tailnet_restricted:
+        raise TailnetRouteRestricted()
     raise ValueError('Connections to this address are not allowed')
 
 
@@ -323,6 +387,8 @@ def socks_destination(
             canonical, port, allow_internal=allow_internal,
             allowed_internal_networks=allowed_internal_networks,
         )
+    except TailnetRouteRestricted:
+        raise
     except ValueError:
         if remote_dns and not allow_internal:
             raise ValueError('Connections to this address are not allowed') from None

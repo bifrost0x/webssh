@@ -14,6 +14,7 @@ for (const method of ['password','ldap','totp','passkey','oidc','github','bootst
 for (const frequency of ['hourly','daily','weekdays','weekly','monthly','custom']) keys.add(`summary.${frequency}`);
 for (const stage of ['editor','targets','schedule']) keys.add(`stageHint.${stage}`);
 for (const reason of ['confirmed','unconfirmed','nonzero_exit','timeout','cancelled','output_limit','channel_lost','acknowledgement_lost','dispatch_failed','run_interrupted','legacy','truncated','pending','empty']) keys.add(`diagnostic.${reason}`);
+for (const reason of ['host_key_required','host_key_changed','host_key_revoked','authentication_failed','connect_timeout','connection_failed','run_interrupted','tailscale_route_restricted']) keys.add(`result.${reason}`);
 for (const key of ['nextTargets','nextSchedule']) keys.add(key);
 for (const lang of ['en','de']) {
     test(`automation has complete ${lang} labels and status messages`, () => {

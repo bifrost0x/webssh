@@ -12,6 +12,7 @@ import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from .host_key_store import HostKeyStore, HostKeyNotAccepted
 from .network_policy import (
+    TailnetRouteRestricted,
     audit_internal_allowlist_use,
     canonicalize_hostname,
     open_validated_socket,
@@ -339,6 +340,11 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     channel_destination = (target.ip, target.port)
                     host = target.hostname
                     port = target.port
+                except TailnetRouteRestricted as error:
+                    # Bastion-side DNS must not reopen a refused tailnet route.
+                    return None, SSHConnectionError(
+                        str(error), code=error.code, context='target'
+                    )
                 except ValueError:
                     remote_dns_allowed = (
                         not tailscale_target_authorized
@@ -456,6 +462,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 )
             except paramiko.AuthenticationException:
                 return None, "Jump host authentication failed - invalid credentials"
+            except TailnetRouteRestricted as error:
+                return None, SSHConnectionError(
+                    str(error), code=error.code, context='jump_host'
+                )
             except Exception as e:
                 log_warning(
                     "Jump host connection failed",
@@ -476,6 +486,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     socks_proxy.host, socks_proxy.port,
                     allow_internal=not config.BLOCK_INTERNAL_SSH,
                     allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
+                )
+            except TailnetRouteRestricted as error:
+                return None, SSHConnectionError(
+                    str(error), code=error.code, context='socks_proxy'
                 )
             except ValueError as error:
                 raise ValueError(f'SOCKS5 proxy: {error}') from error
@@ -876,6 +890,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         )
     except paramiko.AuthenticationException:
         return None, "Authentication failed - invalid credentials"
+    except TailnetRouteRestricted as error:
+        return None, SSHConnectionError(
+            str(error), code=error.code, context='target'
+        )
     except ValueError as e:
         return None, str(e)
     except HostKeyNotAccepted:

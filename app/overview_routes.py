@@ -145,13 +145,18 @@ def _read_greeting(connection):
     return described.get('platform') if described else None
 
 
-def _probe(host, port):
-    """One TCP connect under the network policy; reads the greeting, never sends data."""
+def _probe(host, port, tailscale_ssh=False):
+    """One TCP connect under the network policy; reads the greeting, never sends data.
+
+    ``tailscale_ssh`` marks a host the account may reach with Tailscale SSH, so
+    its tailnet route stays checkable while the restriction is on.
+    """
     from .network_policy import open_validated_socket, resolve_allowed_target
     started = time.monotonic()
     try:
         target = resolve_allowed_target(host, port, allow_internal=not config.BLOCK_INTERNAL_SSH,
-                                        allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS)
+                                        allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
+                                        tailscale_ssh=tailscale_ssh)
     except ValueError as error:
         # Where internal targets are blocked, "does not resolve" and "resolves to a
         # blocked address" look the same, so names cannot be probed for existence.
@@ -176,6 +181,7 @@ def _probe(host, port):
 def _plans(user_id, wanted=None):
     from .data_access import user_data_access
     from .socks_proxy_manager import load_socks_proxies
+    from .tailscale_ssh import profile_is_authorized_for_launch
     with user_data_access(user_id):
         profiles, jumps, _keys = _owned_inventory(user_id)
         socks_by_id = {proxy['id']: proxy for proxy in load_socks_proxies(user_id)}
@@ -193,10 +199,16 @@ def _plans(user_id, wanted=None):
             if profile.get('jump_host_id') or profile.get('auth_type') == 'tailscale':
                 record = None
         endpoint = _endpoint(record) if record else None
+        tailnet = bool(
+            endpoint and record is profile and profile.get('auth_type') == 'tailscale'
+            and profile_is_authorized_for_launch(current_user, profile)
+        )
         plans[profile.get('id')] = dict(endpoint=endpoint, via_jump=bool(profile.get('jump_host_id')),
-                                       via_socks=bool(socks_proxy_id), socks_proxy_id=socks_proxy_id)
+                                       via_socks=bool(socks_proxy_id), socks_proxy_id=socks_proxy_id,
+                                       tailnet=tailnet)
     # A stored answer belongs to exactly this set of destinations.
-    signature = tuple(sorted((key, str(plan['endpoint']), plan['via_jump'], plan['socks_proxy_id'] or '')
+    signature = tuple(sorted((key, str(plan['endpoint']), plan['via_jump'], plan['socks_proxy_id'] or '',
+                              plan['tailnet'])
                              for key, plan in plans.items()))
     return plans, signature
 
@@ -230,7 +242,7 @@ def reachability():
         return jsonify(error='Invalid request.', code='invalid_request'), 400
     user_id = current_user.id
     plans, signature = _plans(user_id, set(requested) if requested is not None else None)
-    endpoints = {plan['endpoint'] for plan in plans.values() if plan['endpoint']}
+    endpoints = {(plan['endpoint'], plan['tailnet']) for plan in plans.values() if plan['endpoint']}
     with _CACHE_LOCK:
         cached = _CACHE.get(user_id)
         if cached and cached['signature'] == signature and time.monotonic() - cached['at'] < CACHE_SECONDS:
@@ -244,7 +256,8 @@ def reachability():
         if len(_IN_FLIGHT) >= MAX_CONCURRENT_CHECKS:
             return jsonify(error='Other checks are running. Try again shortly.', code='busy'), 429
         _IN_FLIGHT.add(user_id)
-    futures = {endpoint: _EXECUTOR.submit(_probe, *endpoint) for endpoint in endpoints}
+    futures = {probe: _EXECUTOR.submit(_probe, *probe[0], *((True,) if probe[1] else ()))
+               for probe in endpoints}
     try:
         deadline = time.monotonic() + CHECK_DEADLINE_SECONDS
         outcomes = {}
@@ -263,7 +276,7 @@ def reachability():
     results = {}
     greetings = {}
     for profile_id, plan in plans.items():
-        outcome = dict(outcomes.get(plan['endpoint']) or dict(state='unresolved'))
+        outcome = dict(outcomes.get((plan['endpoint'], plan['tailnet'])) or dict(state='unresolved'))
         platform = outcome.pop('platform', None)
         if plan['via_socks']:
             # The proxy endpoint's greeting never describes the SSH target.

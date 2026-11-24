@@ -76,7 +76,7 @@ Do not train users to accept changed keys as routine. Validate the remote host's
 - LDAP: use `ldaps://` or StartTLS, validate the server certificate, use a read-only least-privileged service account, and restrict user/group filters.
 - OIDC: use a trusted issuer, exact redirect URIs, a secret file, and explicit domain or subject policy where required.
 - Passkeys: keep recovery codes offline and revoke lost authenticators promptly.
-- Tailscale SSH: use tight WebSSH-user, target, and remote-user allowlists; the node identity is shared.
+- Tailscale SSH: use tight WebSSH-user, target, and remote-user allowlists; the node identity is shared. Keep `TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES=true` so ordinary password or key connections cannot reach tailnet hosts under that identity.
 
 LDAP/AD authentication does not copy directory passwords into WebSSH. With the
 secure default `LDAP_AUTO_PROVISION=false`, authentication requires an existing

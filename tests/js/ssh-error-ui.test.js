@@ -40,3 +40,25 @@ test('generic SSH errors retain their safe server message without an action', ()
         duration: undefined,
     });
 });
+
+
+test('a refused tailnet route explains that Tailscale SSH is required', () => {
+    const values = {
+        'sshErrors.tailscaleRouteRestricted': 'Dieser Host wird über das Tailnet erreicht.',
+    };
+    const result = describeSSHError(
+        { code: 'tailscale_route_restricted', error: 'This target is on the tailnet and requires Tailscale SSH' },
+        key => values[key] || key,
+        '',
+    );
+
+    assert.deepEqual(result, {
+        message: values['sshErrors.tailscaleRouteRestricted'],
+        type: 'error',
+        duration: 12000,
+    });
+    assert.match(
+        describeSSHError({ code: 'tailscale_route_restricted' }, () => null, '').message,
+        /Tailscale SSH/,
+    );
+});

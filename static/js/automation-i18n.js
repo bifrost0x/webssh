@@ -571,7 +571,8 @@
         'result.authentication_failed': 'SSH authentication failed. Check the saved password or SSH key and remote account.',
         'result.connect_timeout': 'SSH connection timed out. Check device availability and network access.',
         'result.connection_failed': 'SSH connection failed. Check the address, network policy and supported authentication.',
-        'result.run_interrupted': 'The run was interrupted after dispatch. Inspect the device before another run.'
+        'result.run_interrupted': 'The run was interrupted after dispatch. Inspect the device before another run.',
+        'result.tailscale_route_restricted': 'This host is a Tailscale node and can only be reached with Tailscale SSH. Automation runs use ordinary SSH and cannot reach it.'
     });
     Object.assign(strings.de, {
         'result.host_key_required': 'Diesen Host-Key vor einem weiteren Lauf über eine normale WebSSH-Verbindung prüfen.',
@@ -580,7 +581,8 @@
         'result.authentication_failed': 'SSH-Anmeldung fehlgeschlagen. Gespeichertes Kennwort bzw. SSH-Key und Remote-Konto prüfen.',
         'result.connect_timeout': 'Zeitlimit beim SSH-Verbindungsaufbau. Gerät und Netzwerkverbindung prüfen.',
         'result.connection_failed': 'SSH-Verbindung fehlgeschlagen. Adresse, Netzwerkregeln und unterstützte Anmeldung prüfen.',
-        'result.run_interrupted': 'Der Lauf wurde nach der Übergabe unterbrochen. Vor einem weiteren Lauf das Gerät prüfen.'
+        'result.run_interrupted': 'Der Lauf wurde nach der Übergabe unterbrochen. Vor einem weiteren Lauf das Gerät prüfen.',
+        'result.tailscale_route_restricted': 'Dieser Host ist ein Tailscale-Knoten und nur mit Tailscale SSH erreichbar. Automatisierungsläufe nutzen normales SSH und erreichen ihn nicht.'
     });
     Object.assign(strings.en, {
     "runTotals": "{hosts} hosts · {confirmed} of {total} steps with confirmed exit code 0",
