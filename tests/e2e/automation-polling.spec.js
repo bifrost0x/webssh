@@ -4,21 +4,29 @@ const {login, openWorkspace} = require('./helpers');
 // Polling follows what is visible: fast only while a run is active, slowly in
 // the overview, and workflow state only while automation is open.
 test('automation polls only what is visible and speeds up while a run is active', async ({page}) => {
+    // About two minutes of page time are simulated tick by tick.
+    test.slow();
     await page.clock.install();
     const calls = {state: 0, runs: 0};
+    let inFlight = 0;
     let status = 'succeeded';
-    await page.route('**/api/automation/state', route => { calls.state += 1; return route.fulfill({json: {enabled: true, runbooks: [], profiles: []}}); });
+    await page.route('**/api/automation/state', async route => { calls.state += 1; inFlight += 1; await route.fulfill({json: {enabled: true, runbooks: [], profiles: []}}); inFlight -= 1; });
     await page.route('**/api/automation/schedules', route => route.fulfill({json: {schedules: []}}));
-    await page.route('**/api/automation/runs', route => {
+    await page.route('**/api/automation/runs', async route => {
         calls.runs += 1;
-        return route.fulfill({json: {runs: [{id: 'r1', name: 'Nightly check', status, created_at: new Date().toISOString(), targets: []}]}});
+        inFlight += 1;
+        await route.fulfill({json: {runs: [{id: 'r1', name: 'Nightly check', status, created_at: new Date().toISOString(), targets: []}]}});
+        inFlight -= 1;
     });
     const reset = () => { calls.state = 0; calls.runs = 0; };
-    // Advance the page clock one polling tick at a time and let each request finish.
+    // Advance the page clock one polling tick at a time and let the page issue,
+    // receive and render each request before the next tick, which would
+    // otherwise be skipped as still polling.
     const advance = async milliseconds => {
         for (let elapsed = 0; elapsed < milliseconds; elapsed += 3_000) {
             await page.clock.runFor(Math.min(3_000, milliseconds - elapsed));
             await page.waitForTimeout(150);
+            await expect.poll(() => inFlight).toBe(0);
         }
     };
 
