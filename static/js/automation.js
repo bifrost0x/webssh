@@ -52,6 +52,7 @@
     let dirty = false;
     let editRevision = 0;
     let lastStateRefresh = 0;
+    let lastRunsRefresh = 0;
     let preview = null;
     let busy = false;
     let polling = false;
@@ -767,6 +768,7 @@
     let runsRequest = 0;
     async function loadRuns() {
         const request = ++runsRequest;
+        lastRunsRefresh = Date.now();
         let result;
         try { result = await api('/api/automation/runs'); }
         catch (error) {
@@ -1228,13 +1230,25 @@
             }
             finally { $('automationApp').inert = false; }
         });
-        setInterval(async () => {
+        const schedule = window.AutomationTools;
+        async function poll({overviewOpened = false} = {}) {
             if (polling || busy || document.hidden) return;
+            const view = window.primaryWorkspaceController?.getActiveView?.();
+            const available = !$('automationApp').hidden;
+            const overviewVisible = available && view === 'overview';
+            const plan = schedule.pollPlan({now: Date.now(), lastRuns: lastRunsRefresh, lastState: lastStateRefresh,
+                automationVisible: view === 'automation', overviewVisible, runsTabOpen: available && selectedTab === 'runs',
+                runActive: available && knownRuns.some(schedule.isRunActive)});
+            const refreshRuns = plan.runs || (overviewOpened && overviewVisible);
+            if (!refreshRuns && !plan.state) return;
             polling = true;
             try {
-                if (!$('automationApp').hidden && (selectedTab === 'runs' || window.primaryWorkspaceController?.getActiveView() === 'overview')) await loadRuns();
-                if (Date.now() - lastStateRefresh >= 15000) await loadState();
+                if (refreshRuns) await loadRuns();
+                if (plan.state) { lastStateRefresh = Date.now(); await loadState(); }
             } catch (error) { if (['disabled','authentication_required'].includes(error.code)) { knownRuns=[]; historySignature=''; runsEnabled=false; publishRunSnapshot(); } if(error.code !== 'disabled')notify(error.message,true); else if(nativeCredentials)$('automationDisabled').hidden=false; } finally { polling = false; }
-        }, 3000);
+        }
+        setInterval(poll, schedule.POLL.tick);
+        // Entering automation refreshes through activate(); the overview gets its own immediate refresh.
+        window.addEventListener('primary-workspace-change', event => { if (event.detail?.view === 'overview') poll({overviewOpened: true}); });
     }
 }());
