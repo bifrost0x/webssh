@@ -37,7 +37,10 @@
     if (!document.getElementById('automationApp')) return;
     const nativeCredentials = !!document.querySelector('main[data-native-automation]');
     const stepDetails = new WeakMap();
-    const tr = (key, values) => window.AutomationText.t(key, values);
+    const tr = (key, values = {}) => Object.entries(values).reduce(
+        (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), window.i18n.t(`automation.${key}`));
+    // Built-in templates are translated by id; command sets and library commands carry their own text.
+    const templateText = (template, field) => typeof template?.[field] === 'string' ? template[field] : tr(`template.${template.id}.${field}`);
     const node = (tag, text, className) => {
         const element = document.createElement(tag);
         if (text !== undefined) element.textContent = text;
@@ -165,7 +168,7 @@
         document.querySelectorAll('[data-auto-i18n]').forEach(element => { element.textContent = tr(element.dataset.autoI18n); });
         document.querySelectorAll('[data-auto-label]').forEach(element => { element.setAttribute('aria-label', tr(element.dataset.autoLabel)); });
         document.querySelectorAll('[data-auto-placeholder]').forEach(element => { element.placeholder = tr(element.dataset.autoPlaceholder); });
-        const language = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
+        const language = window.i18n.getLanguage();
         document.querySelectorAll('main[data-native-automation], .automation-dialog').forEach(element => {
             element.lang = language;
         });
@@ -176,14 +179,13 @@
         if (!value.startsWith('set:')) return window.AutomationTemplates?.create(value);
         const set = window.CommandSetManager?.commandSets.find(item => item.id === value.slice(4));
         if (!set) return null;
-        return {title:{en:set.name,de:set.name}, requires:{en:set.description || '',de:set.description || ''}, writes:true, commandSet:set,
+        return {title:set.name, requires:set.description || '', writes:true, commandSet:set,
             steps:[{name:set.name, command:set.resolved_command || '', timeout:30, sudo:false}]};
     }
     function renderTemplates() {
         const select = $('workflowTemplate');
         if (!select || !window.AutomationTemplates) return;
         const previous = select.value;
-        const language = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
         select.replaceChildren();
         const groups = {};
         window.AutomationTemplates.list().forEach(template => {
@@ -193,7 +195,7 @@
                 group.label = tr(labelKey);
                 groups[template.group] = group; select.append(group);
             }
-            const option = node('option', template.title[language]); option.value = template.id;
+            const option = node('option', templateText(template, 'title')); option.value = template.id;
             groups[template.group].append(option);
         });
         const sets = window.CommandSetManager?.commandSets || [];
@@ -212,10 +214,9 @@
     function previewTemplate() {
         const template = selectedTemplate();
         if (!template) { $('workflowTemplateEffect').textContent=tr('commandSetUnavailable'); $('workflowTemplateRequirements').textContent=''; $('workflowTemplateSteps').replaceChildren(); return; }
-        const language = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
         $('workflowTemplateEffect').textContent = tr(template.commandSet ? 'commandSetCopy' : template.writes ? 'templateChanges' : 'templateReadOnly');
         $('workflowTemplateEffect').dataset.writes = String(template.writes);
-        $('workflowTemplateRequirements').textContent = template.commandSet ? tr('commandSetCopyHint') + ' ' + template.requires[language] : template.requires[language];
+        $('workflowTemplateRequirements').textContent = template.commandSet ? tr('commandSetCopyHint') + ' ' + templateText(template, 'requires') : templateText(template, 'requires');
         $('workflowTemplateSteps').replaceChildren(...template.steps.map(step => node('li', step.name)));
     }
     async function resolveSource(template) {
@@ -247,7 +248,7 @@
         if (!value.startsWith('command:')) return selectedTemplate(value);
         const command = window.CommandLibrary?.commands.find(item => String(item.id) === value.slice(8));
         if (!command) return null;
-        return {steps:[{name:command.name, command:command.command + (command.parameters ? ' ' + command.parameters : ''), timeout:30, sudo:false}], libraryCommand:command, requires:{en:command.description || '',de:command.description || ''}};
+        return {steps:[{name:command.name, command:command.command + (command.parameters ? ' ' + command.parameters : ''), timeout:30, sudo:false}], libraryCommand:command, requires:command.description || ''};
     }
     function previewEditorSource() {
         const mount = $('editorSourcePreview');
@@ -256,8 +257,7 @@
         mount.replaceChildren();
         $('addEditorSource').disabled = !source;
         if (!source) return;
-        const language = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
-        mount.append(node('p',source.commandSet ? tr('commandSetCopyHint') : source.requires?.[language] || tr('commandCopyHint'),'automation-hint'));
+        mount.append(node('p',source.commandSet ? tr('commandSetCopyHint') : templateText(source, 'requires') || tr('commandCopyHint'),'automation-hint'));
         const list=node('ol');
         source.steps.forEach(step=>{const item=node('li');item.append(node('strong',step.name),node('code',step.command));list.append(item);});
         mount.append(list);motion(mount);
@@ -265,18 +265,18 @@
     function renderEditorSources() {
         const select=$('editorSource');if(!select)return;
         const selectedSource=editorSource();
-        const previous=select.value, language=window.i18n?.getLanguage()==='de'?'de':'en';
+        const previous=select.value;
         const placeholder=node('option',tr('editorSourceChoose'));placeholder.value='';select.replaceChildren(placeholder);
         const groups=[
             [tr('editorSourceCommands'),(window.CommandLibrary?.commands || []).map(c=>({id:'command:'+c.id,name:c.name}))],
             [tr('ownCommandSets'),(window.CommandSetManager?.commandSets || []).map(c=>({id:'set:'+c.id,name:c.name}))],
-            [tr('editorSourceTemplates'),(window.AutomationTemplates?.list() || []).map(c=>({id:c.id,name:c.title[language]}))]
+            [tr('editorSourceTemplates'),(window.AutomationTemplates?.list() || []).map(c=>({id:c.id,name:templateText(c, 'title')}))]
         ];
         const search = ($('editorSourceSearch')?.value || '').trim().toLocaleLowerCase();
         groups.forEach(([label,items])=>{items=items.filter(item=>!search || item.name.toLocaleLowerCase().includes(search));if(!items.length)return;const group=node('optgroup');group.label=label;items.forEach(item=>{const option=node('option',item.name);option.value=item.id;group.append(option);});select.append(group);});
         if (previous && ![...select.options].some(option=>option.value===previous)) {
             const source=selectedSource;
-            if(source) { const option=node('option', source.libraryCommand?.name || source.title?.[language] || source.steps[0].name); option.value=previous; select.append(option); }
+            if(source) { const option=node('option', (source.libraryCommand ? source.libraryCommand.name : templateText(source, 'title')) || source.steps[0].name); option.value=previous; select.append(option); }
         }
         if([...select.options].some(option=>option.value===previous))select.value=previous;
         previewEditorSource();
@@ -1128,8 +1128,7 @@
         if (!await resolveSource(template)) return;
         assertAuthorizationCurrent(importGeneration);
         if (editRevision !== importRevision || $('workflowTemplate').value !== importSelection || selectedTab !== 'library') throw new Error(tr('importChanged'));
-        const language = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
-        edit({name:template.title[language],steps:template.steps,stop_on_error:true});
+        edit({name:templateText(template, 'title'),steps:template.steps,stop_on_error:true});
         $('editorTitle').textContent = tr('newRunbook'); changed(); tab('runbooks'); $('runbookName').focus();
     }));
     $('inventoryTemplate').addEventListener('click', () => action(async () => {
@@ -1209,8 +1208,7 @@
             const template = window.AutomationTemplates?.create(templateId);
             if (!template || !await discardChanges()) return;
             if (!model.profiles.length) await loadState();
-            const language = window.i18n?.getLanguage() === 'de' ? 'de' : 'en';
-            edit({name: template.title[language], steps: template.steps, stop_on_error: true});
+            edit({name: templateText(template, 'title'), steps: template.steps, stop_on_error: true});
             changed(); tab('runbooks');
             const wanted = new Set(hostIds);
             document.querySelectorAll('#targetHosts input').forEach(input => { input.checked = !input.disabled && wanted.has(input.value); });
