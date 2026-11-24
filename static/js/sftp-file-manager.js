@@ -5409,17 +5409,6 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         )) || null;
     }
 
-    getPaneForSession(sourceId) {
-        if (!this.panes) return null;
-        if (this.getPaneSourceId('left') === sourceId) {
-            return 'left';
-        }
-        if (this.getPaneSourceId('right') === sourceId) {
-            return 'right';
-        }
-        return null;
-    }
-
     canDropDraggedItemsOnDirectory(pane, index) {
         const state = this.panes?.[pane];
         const directory = state?.files?.[index];

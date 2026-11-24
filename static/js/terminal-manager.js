@@ -1124,18 +1124,6 @@ const TerminalManager = {
         delete this.syncedSizes[sessionId];
     },
 
-    getTerminalSize(sessionId) {
-        const terminalKeys = this.sessionTerminals[sessionId] || [];
-        const terminal = terminalKeys.length > 0 ? this.terminals[terminalKeys[0]] : null;
-        if (terminal) {
-            return {
-                rows: terminal.rows,
-                cols: terminal.cols
-            };
-        }
-        return null;
-    },
-
     destroyTerminal(sessionId) {
         const terminalKeys = this.sessionTerminals[sessionId] || [];
         terminalKeys.forEach(key => {
