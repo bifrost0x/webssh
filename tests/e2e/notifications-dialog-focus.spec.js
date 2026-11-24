@@ -74,8 +74,8 @@ test('error and warning toasts stay readable, pause on hover or focus and can be
     await page.clock.runFor(400);
     await expect(toast('Stays put')).toHaveCount(0);
 
-    await page.evaluate(() => {
-        i18n.setLanguage('de');
+    await page.evaluate(async () => {
+        await i18n.setLanguage('de');
         window.showNotification('Fehler', 'error');
     });
     await expect(toast('Fehler').getByRole('button', { name: 'Benachrichtigung schließen', exact: true })).toBeVisible();

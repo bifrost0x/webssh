@@ -4,14 +4,14 @@ const {login, installSshConnectTrap, sshAttempts} = require('./helpers');
 test('network overview remains contained across sizes and themes with screenshots', async ({page}) => {
     await login(page, 'e2e_admin', {workspace: false});
     await installSshConnectTrap(page);
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
         const base = ProfileManager.profiles.find(p => p.id === 'password-review');
         const jump = JumpHostManager.jumpHosts[0];
         const names = ['Nextcloud','Docker','Proxmox','NAS','Backup','Monitoring'];
         ProfileManager.setProfiles(names.map((name,i) => ({...base,id:'preview-'+i,name,host:name.toLowerCase()+'.example',group:i<3?'Homelab':'Infrastruktur',jump_host_id:i>2?jump.id:null})));
         jump.name = 'bastion';
         window.dispatchEvent(new Event('jump-host-list-change'));
-        i18n.setLanguage('de');
+        await i18n.setLanguage('de');
         document.body.dataset.theme='glass';
     });
     await page.setViewportSize({width:1920,height:1080});
