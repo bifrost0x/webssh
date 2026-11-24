@@ -96,7 +96,35 @@
     };
 
     const MAX_TIMED_NOTIFICATIONS = 4;
+    const MAX_TIMED_NOTIFICATIONS_NARROW = 2;
     const timedNotificationDismissers = new WeakMap();
+    // Where keyboard focus was before it entered the toast stack.
+    const notificationReturnFocus = new WeakMap();
+
+    function timedNotificationLimit() {
+        try {
+            return window.matchMedia?.('(max-width: 599px)').matches
+                ? MAX_TIMED_NOTIFICATIONS_NARROW
+                : MAX_TIMED_NOTIFICATIONS;
+        } catch {
+            return MAX_TIMED_NOTIFICATIONS;
+        }
+    }
+
+    // Oldest success and info toasts give way first; errors and warnings are
+    // only evicted when nothing less important is left. The newest toast is a
+    // candidate as well, so a success never pushes out an unread error.
+    function selectTimedEvictions(entries, limit) {
+        const evicted = new Set();
+        const excess = Math.max(0, entries.length - limit);
+        const byPriority = [
+            ...entries.filter(entry => !entry.urgent),
+            ...entries.filter(entry => entry.urgent),
+        ];
+        byPriority.slice(0, excess).forEach(entry => evicted.add(entry));
+        return evicted;
+    }
+    window.WebSSHNotificationPolicy = { selectTimedEvictions };
 
     window.showNotification = function(message, type = 'info', duration) {
         const presentation = typeof message === 'object' && message !== null
@@ -114,12 +142,34 @@
         let dismissed = false;
         let fadeTimer = null;
         let removeTimer = null;
+        notification.addEventListener('focusin', event => {
+            const from = event.relatedTarget;
+            if (from && !container.contains(from)) notificationReturnFocus.set(container, from);
+        });
+        // Keyboard users keep their place: focus moves to the neighbouring
+        // toast's close button, otherwise back to where it came from.
+        const restoreFocus = () => {
+            const toasts = Array.from(container.querySelectorAll('.notification'))
+                .filter(item => item !== notification && !item.classList.contains('fade-out'));
+            const index = Array.from(container.children).indexOf(notification);
+            const next = toasts.find(item => Array.from(container.children).indexOf(item) > index)
+                || toasts[toasts.length - 1];
+            const target = next?.querySelector('.notification-close, .notification-action');
+            if (target) {
+                target.focus();
+            } else {
+                const returnFocus = notificationReturnFocus.get(container);
+                if (returnFocus?.isConnected && typeof returnFocus.focus === 'function') returnFocus.focus();
+            }
+        };
         const dismiss = () => {
             if (dismissed) return;
             dismissed = true;
             clearTimeout(fadeTimer);
             clearTimeout(removeTimer);
+            const hadFocus = notification.contains(document.activeElement);
             notification.classList.add('fade-out');
+            if (hadFocus) restoreFocus();
             try {
                 presentation.onDismiss?.();
             } finally {
@@ -182,13 +232,29 @@
         }
         // Errors now stay longer; repeated failures (reconnects, polling) must
         // not pile up without bound. The oldest timed toasts give way first.
+        notification.addEventListener('keydown', event => {
+            if (event.key !== 'Escape' || !notification.classList.contains('notification-dismissible')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            dismiss();
+        });
         if (presentation.persistent !== true) {
             notification.dataset.timedNotification = 'true';
-            const timed = Array.from(container.children).filter(item => (
-                item.dataset.timedNotification === 'true' && !item.classList.contains('fade-out')
-            ));
-            timed.slice(0, Math.max(0, timed.length - (MAX_TIMED_NOTIFICATIONS - 1)))
-                .forEach(item => timedNotificationDismissers.get(item)?.());
+            const entries = Array.from(container.children)
+                .filter(item => (
+                    item.dataset.timedNotification === 'true' && !item.classList.contains('fade-out')
+                ))
+                .map(item => ({ item, urgent: item.dataset.urgent === 'true' }));
+            const incoming = { item: notification, urgent };
+            entries.push(incoming);
+            const evicted = selectTimedEvictions(entries, timedNotificationLimit());
+            if (evicted.has(incoming)) {
+                // Less important than everything on screen; do not show it.
+                dismissed = true;
+                return () => {};
+            }
+            evicted.forEach(entry => timedNotificationDismissers.get(entry.item)?.());
+            notification.dataset.urgent = String(urgent);
             timedNotificationDismissers.set(notification, dismiss);
         }
         container.appendChild(notification);

@@ -20,6 +20,77 @@ test('repeated failures keep only a few timed toasts on screen', async ({ page }
     await expect(toasts.filter({ hasText: 'Keep me' })).toBeVisible();
 });
 
+test('success toasts never push unread errors off screen', async ({ page }) => {
+    await login(page);
+    await freezeClock(page);
+    const toasts = page.locator('#notificationContainer .notification:not(.fade-out)');
+    await page.evaluate(() => {
+        window.showNotification('Saved 1', 'success');
+        for (let index = 1; index <= 3; index += 1) window.showNotification(`Upload failed ${index}`, 'error');
+        window.showNotification('Saved 2', 'success');
+        window.showNotification('Saved 3', 'info');
+    });
+    await expect(toasts).toHaveCount(4);
+    for (let index = 1; index <= 3; index += 1) {
+        await expect(toasts.filter({ hasText: `Upload failed ${index}` })).toBeVisible();
+    }
+    await expect(toasts.filter({ hasText: 'Saved 1' })).toHaveCount(0);
+    await expect(toasts.filter({ hasText: 'Saved 2' })).toHaveCount(0);
+    await expect(toasts.filter({ hasText: 'Saved 3' })).toBeVisible();
+
+    // A fourth error still fits once the success toast gives way.
+    await page.evaluate(() => window.showNotification('Upload failed 4', 'warning'));
+    await expect(toasts).toHaveCount(4);
+    await expect(toasts.filter({ hasText: 'Saved 3' })).toHaveCount(0);
+    await expect(toasts.filter({ hasText: 'Upload failed 1' })).toBeVisible();
+    // With only errors left, a success is not shown at all.
+    await page.evaluate(() => window.showNotification('Saved 4', 'success'));
+    await expect(toasts.filter({ hasText: 'Saved 4' })).toHaveCount(0);
+    await expect(toasts).toHaveCount(4);
+});
+
+test('phones keep at most two timed toasts', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page);
+    await freezeClock(page);
+    const toasts = page.locator('#notificationContainer .notification:not(.fade-out)');
+    await page.evaluate(() => {
+        window.showNotification('First error', 'error');
+        window.showNotification('Copied', 'success');
+        window.showNotification('Second error', 'error');
+        window.showNotification('Third error', 'error');
+    });
+    await expect(toasts).toHaveCount(2);
+    await expect(toasts.filter({ hasText: 'Second error' })).toBeVisible();
+    await expect(toasts.filter({ hasText: 'Third error' })).toBeVisible();
+});
+
+test('closing a toast from the keyboard keeps focus in place and Escape closes it', async ({ page }) => {
+    await login(page);
+    await freezeClock(page);
+    const trigger = page.locator('#notificationTrigger');
+    await page.evaluate(() => {
+        const button = document.createElement('button');
+        button.id = 'notificationTrigger';
+        button.type = 'button';
+        button.textContent = 'Trigger';
+        document.body.appendChild(button);
+        button.focus();
+        window.showNotification('Error one', 'error');
+        window.showNotification('Error two', 'error');
+    });
+    const toast = text => page.locator('#notificationContainer .notification:not(.fade-out)').filter({ hasText: text });
+    const closeOne = toast('Error one').getByRole('button', { name: 'Dismiss notification' });
+    await trigger.focus();
+    await closeOne.focus();
+    await page.keyboard.press('Enter');
+    await expect(toast('Error two').getByRole('button', { name: 'Dismiss notification' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(toast('Error two')).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY');
+});
+
 test('error and warning toasts stay readable, pause on hover or focus and can be dismissed', async ({ page }) => {
     await login(page);
     await freezeClock(page);
