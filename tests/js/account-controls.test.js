@@ -21,6 +21,29 @@ test('deletion confirmation names the account and retained quarantine files', ()
     assert.doesNotMatch(text, /permanently/);
 });
 
+test('a throttled login update shows the wait time instead of the generic failure', () => {
+    const previous = globalThis.WebSSHSecurityUI;
+    globalThis.WebSSHSecurityUI = require('../../static/js/security-ui.js');
+    try {
+        assert.equal(
+            ui.requestErrorMessage(429, {code:'rate_limited', retry_after:30}),
+            'Too many attempts. Try again in 30 s.',
+        );
+        assert.equal(
+            ui.requestErrorMessage(429, {error:'Rate limit exceeded'}),
+            'Too many requests. Wait a moment and try again.',
+        );
+        assert.equal(
+            ui.requestErrorMessage(500, null),
+            'Could not update logins. Refresh and try again.',
+        );
+        const german = {'accountControls.throttled': 'Zu viele Anfragen.'};
+        assert.equal(ui.requestErrorMessage(429, null, (key, fallback) => german[key] || fallback), 'Zu viele Anfragen.');
+    } finally {
+        globalThis.WebSSHSecurityUI = previous;
+    }
+});
+
 test('account controls provide the same complete keys and placeholders in six locales', () => {
     const fs = require('node:fs');
     const vm = require('node:vm');

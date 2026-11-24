@@ -15,6 +15,7 @@
     <meta name="app-root" content="{{ url_prefix }}">
     <meta name="ssh-gateway-enabled" content="{{ 'true' if ssh_gateway_enabled else 'false' }}">
     <meta name="herdr-enabled" content="{{ 'true' if herdr_enabled else 'false' }}">
+    <meta name="current-user-admin" content="{{ 'true' if admin_panel_enabled and current_user.is_admin else 'false' }}">
     <meta name="max-editor-file-size" content="{{ max_editor_file_size|default(5242880) }}">
     <title>Web SSH Terminal</title>
 

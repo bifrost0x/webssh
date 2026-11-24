@@ -371,8 +371,11 @@ for (const width of [1440, 390]) {
             await toggle.check();
             await expect(page.locator('#stepUpModal')).toHaveClass(/show/);
             await page.locator('#stepUpPassword').fill('not-the-password');
-            // The dialog closes on submit; the server then refuses the password.
+            // The dialog stays open with the refusal so the password can be retried.
             await page.locator('#stepUpSubmit').click();
+            await expect(page.locator('#stepUpError')).toHaveText('Authentication failed. Check the value and try again.');
+            await expect(page.locator('#stepUpModal')).toHaveClass(/show/);
+            await page.locator('#stepUpCancelButton').click();
             await expect(page.locator('#stepUpModal')).not.toHaveClass(/show/);
             await expect(toggle).toBeEnabled();
             await expect(toggle).not.toBeChecked();

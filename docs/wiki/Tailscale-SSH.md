@@ -73,7 +73,8 @@ Tailscale SSH, before it opens a socket:
 - host discovery and the reachability check. Saved Tailscale SSH hosts that
   the account may still use stay checkable.
 
-The browser shows that the host requires Tailscale SSH, and automation records
+The browser shows that the host requires Tailscale SSH (administrators also get
+a link to the setting), and automation records
 the reason `tailscale_route_restricted`. Without this restriction, any signed-in
 user could open a password connection with an arbitrary password to a tailnet
 host running Tailscale SSH and obtain a shell under the shared node identity,

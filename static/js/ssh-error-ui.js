@@ -25,7 +25,13 @@
             : '';
     }
 
-    function describeSSHError(data, translate, appRoot = '') {
+    // A UI hint only; the server enforces every admin permission.
+    function currentUserIsAdmin() {
+        if (typeof document === 'undefined') { return false; }
+        return document.querySelector('meta[name="current-user-admin"]')?.content === 'true';
+    }
+
+    function describeSSHError(data, translate, appRoot = '', { isAdmin = currentUserIsAdmin() } = {}) {
         const socksErrors = {
             socks_proxy_failure: ['socksProxyFailure', 'The SOCKS5 proxy reported a general failure.'],
             socks_not_allowed: ['socksNotAllowed', 'The SOCKS5 proxy does not allow this connection.'],
@@ -45,6 +51,21 @@
             const [key, fallback] = socksErrors[data.code];
             return {message: translated(translate, `sshErrors.${key}`, fallback), type: 'error', duration: 12000,
                 action: {label: translated(translate, 'sshErrors.socksReview', 'Review SOCKS5 proxy'), asset: 'socks-proxies'}};
+        }
+        if (data?.code === 'tailscale_route_restricted' && isAdmin) {
+            return {
+                message: translated(
+                    translate,
+                    'sshErrors.tailscaleRouteRestrictedAdmin',
+                    'This host is a Tailscale device and can only be reached with Tailscale SSH. To allow ordinary SSH to it, turn off "Block ordinary SSH to tailnet nodes" in the admin settings under Integrations.',
+                ),
+                type: 'error',
+                duration: 12000,
+                action: {
+                    label: translated(translate, 'sshErrors.openTailnetSetting', 'Open admin setting'),
+                    url: `${safeAppRoot(appRoot)}/settings#integrations`,
+                },
+            };
         }
         if (data?.code === 'tailscale_route_restricted') {
             return {
