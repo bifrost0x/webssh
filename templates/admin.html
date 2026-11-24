@@ -174,7 +174,7 @@
             </div>
             <div class="admin-toolbar">
                 <label class="admin-search-field"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="admin.search">Search</span><input type="search" id="auditSearch" class="form-control" placeholder="Search events, users, or sources" data-i18n-placeholder="admin.search"></label>
-                <select id="auditLevel" class="form-control">
+                <select id="auditLevel" class="form-control" aria-label="Level" data-i18n-aria-label="audit.level">
                     <option value="" data-i18n="admin.allLevels">All levels</option>
                     <option value="INFO">INFO</option>
                     <option value="WARNING">WARNING</option>
@@ -386,10 +386,10 @@
                 </div>
 
                 <div class="admin-setting-row">
-                    <h2 data-i18n="backup.upload">Upload and verify</h2>
-                    <p class="admin-muted" data-i18n="backup.uploadHint">Select a WebSSH ZIP backup. The archive is retained temporarily and can only be used by this administrator session.</p>
+                    <h2 id="backupUploadTitle" data-i18n="backup.upload">Upload and verify</h2>
+                    <p class="admin-muted" id="backupUploadHint" data-i18n="backup.uploadHint">Select a WebSSH ZIP backup. The archive is retained temporarily and can only be used by this administrator session.</p>
                     <div class="form-group">
-                        <input type="file" id="backupUploadFile" class="form-control" accept=".zip,application/zip">
+                        <input type="file" id="backupUploadFile" class="form-control" accept=".zip,application/zip" aria-labelledby="backupUploadTitle" aria-describedby="backupUploadHint">
                     </div>
                     <button type="button" class="btn btn-primary" id="backupUploadBtn" data-i18n="backup.verify">Upload and verify</button>
                     <p id="backupUploadStatus" class="admin-backup-status" role="status" aria-live="polite" data-i18n="backup.statusIdle">No operation running.</p>
@@ -428,11 +428,11 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label data-i18n="admin.username">Username</label>
+                    <label for="newUsername" data-i18n="admin.username">Username</label>
                     <input type="text" id="newUsername" class="form-control" autocomplete="off">
                 </div>
                 <div class="form-group">
-                    <label data-i18n="admin.password">Password</label>
+                    <label for="newPassword" data-i18n="admin.password">Password</label>
                     <input type="password" id="newPassword" class="form-control" autocomplete="new-password">
                 </div>
                 <div class="form-group">

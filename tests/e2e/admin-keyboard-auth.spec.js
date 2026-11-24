@@ -27,3 +27,25 @@ for (const width of [390, 1536]) {
 
 // Successful Enter submission is covered in admin-functional-flows.spec.js,
 // including the real archive download, verification and restore cancellation.
+
+test('Escape closes the add-user dialog, and only the step-up prompt when it is on top', async ({page}) => {
+    await login(page);
+    await page.goto('/admin');
+    const dialog = page.locator('#addUserModal');
+    await page.locator('#adminAddUserBtn').click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(page.locator('#adminAddUserBtn')).toBeFocused();
+
+    await page.locator('#adminAddUserBtn').click();
+    await page.locator('#newUsername').fill('escape_check_user');
+    await page.locator('#newPassword').fill('Isolated-browser-test-42!');
+    await page.locator('#submitNewUser').click();
+    await expect(page.locator('#stepUpModal')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#stepUpModal')).not.toBeVisible();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+});

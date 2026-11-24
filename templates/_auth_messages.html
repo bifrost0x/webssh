@@ -12,7 +12,12 @@
     'New passwords do not match': 'auth.passwordsNoMatch',
     'Current password is incorrect': 'auth.currentPasswordIncorrect',
     'New password must be different from current password': 'auth.passwordMustDiffer',
-    'Password updated successfully': 'auth.passwordUpdated'
+    'Password updated successfully': 'auth.passwordUpdated',
+    'Username must be between 3 and 32 characters': 'auth.newUsernameLength',
+    'Username can only contain letters, numbers, and underscores': 'auth.newUsernameCharacters',
+    'Username already exists': 'auth.newUsernameTaken',
+    'Password must be at least 8 characters': 'auth.newPasswordTooShort',
+    'New password must be at least 8 characters': 'auth.newPasswordChangeTooShort'
 } %}
 {% macro render_auth_messages() %}
     {% for category, message in get_flashed_messages(with_categories=true) %}

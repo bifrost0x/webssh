@@ -55,7 +55,8 @@ def test_engineio_observes_same_public_context(proxy_app, monkeypatch):
 @pytest.mark.parametrize('target, expected', [
     ('/', '/'), ('/admin?tab=users', '/admin?tab=users'),
     ('/webssh-other?q=1', '/webssh-other?q=1'),
-    ('//evil.example', '/'), ('https://evil.example', '/'),
+    ('//evil.example', '/'), ('///evil.example/phish', '/'), ('////evil.example', '/'),
+    ('https://evil.example', '/'),
     ('/bad\\path', '/'), ('/bad#fragment', '/'), ('/bad\npath', '/'),
 ])
 def test_public_continuation(proxy_app, target, expected):

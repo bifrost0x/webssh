@@ -151,6 +151,25 @@ const TerminalManager = {
 
     // Keep the encoded form below xterm's deterministic 200,000-character
     // OSC/DCS parser ceiling (128 KiB becomes at most 174,764 base64 chars).
+    osc52ClipboardPreview(text, limit = 80) {
+        // Line breaks and other control characters are shown, never hidden.
+        const visible = Array.from(String(text), character => {
+            if (character === '\n') return '⏎';
+            const code = character.codePointAt(0);
+            if (code < 0x20 || (code >= 0x7f && code < 0xa0)) return ' ';
+            // Zero-width and bidirectional controls would let the preview
+            // look like different text; show a replacement mark instead.
+            if ((code >= 0x200b && code <= 0x200f) || (code >= 0x202a && code <= 0x202e)
+                || (code >= 0x2066 && code <= 0x2069) || code === 0xfeff) {
+                return '\ufffd';
+            }
+            return character;
+        });
+        return visible.length > limit
+            ? `${visible.slice(0, limit).join('')}…`
+            : visible.join('');
+    },
+
     decodeOsc52Clipboard(data, maxBytes = 128 * 1024) {
         if (typeof data !== 'string') return null;
         const separator = data.indexOf(';');
@@ -211,18 +230,21 @@ const TerminalManager = {
             const text = this.decodeOsc52Clipboard(data);
             if (text === null) return true;
 
+            // A newer request replaces the open prompt instead of changing its
+            // text behind the preview, so Copy writes exactly what was shown.
             if (pendingRequest) {
-                pendingRequest.text = text;
-                return true;
+                const previous = pendingRequest;
+                pendingRequest = null;
+                previous.dismiss?.();
             }
 
             const request = {text};
             pendingRequest = request;
-            window.showNotification?.({
-                message: translation(
+            request.dismiss = window.showNotification?.({
+                message: `${translation(
                     'terminal.remoteClipboardPrompt',
                     'The remote tmux session wants to copy text to your clipboard.',
-                ),
+                )} “${this.osc52ClipboardPreview(text)}”`,
                 type: 'info',
                 duration: 15000,
                 action: {

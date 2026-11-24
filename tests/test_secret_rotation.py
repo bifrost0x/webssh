@@ -136,6 +136,41 @@ def test_rotate_secret_reencrypts_every_key_and_publishes_secret_last(tmp_path):
         ) == plaintext
 
 
+def test_rotation_works_with_a_read_only_application_root(tmp_path, monkeypatch):
+    # In the container DATA_DIR is /app/data and /app is read-only for the
+    # service user; the snapshot and staging go to the recovery directory.
+    import errno
+    import tempfile
+    from app import backup_manager
+
+    data_dir, old_secret, new_secret, plaintexts = _rotation_data(tmp_path)
+    recovery = tmp_path / 'recovery'
+    monkeypatch.setattr(backup_manager.config, 'DATA_DIR', data_dir)
+    monkeypatch.setattr(backup_manager.config, 'BACKUP_TEMP_DIR', recovery)
+    original = tempfile.TemporaryDirectory
+    used = []
+
+    def read_only_parent(*args, **kwargs):
+        directory = Path(kwargs['dir'])
+        if directory == data_dir.parent:
+            raise PermissionError(errno.EACCES, 'read-only application root')
+        used.append(directory)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(tempfile, 'TemporaryDirectory', read_only_parent)
+
+    report = rotate_secret(old_secret, new_secret, data_dir)
+
+    assert report.backup_path.is_relative_to(recovery.resolve())
+    verify_backup(report.backup_path)
+    assert used and all(path.is_relative_to(recovery.resolve()) for path in used)
+    assert (data_dir / 'secret_key').read_text(encoding='utf-8') == new_secret + '\n'
+    for relative_path, plaintext in plaintexts.items():
+        path = data_dir / relative_path
+        user_id = path.parts[-3].removeprefix('user_')
+        assert Fernet(_derive_key(new_secret, user_id)).decrypt(path.read_bytes()) == plaintext
+
+
 def test_rotation_reencrypts_active_and_pending_totp_secrets(tmp_path):
     data_dir, old_secret, new_secret, _ = _rotation_data(tmp_path)
     active_secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
