@@ -299,6 +299,7 @@ def test_native_replacement_requires_specific_consent_and_freezes_assignment(app
         service.prepare_vault(uid, aid, dict(operation='native', mutation=mutation))
     mutation['replace_credential_id'] = first['id']
     token = service.prepare_vault(uid, aid, dict(operation='native', mutation=mutation))['intent']
+    assert profile['id'] in service.named.read(uid)['assignments']
     def race(doc):
         doc['assignments'][profile['id']]['generation'] = 'concurrent-generation'
     service.named.mutate(uid, race)
