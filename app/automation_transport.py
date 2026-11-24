@@ -17,7 +17,8 @@ from .automation_store import AutomationError
 from .host_key_store import HostKeyStore, HostKeyNotAccepted, RevokedHostKeyError
 from .key_manager import read_key_content
 from .network_policy import (TailnetRouteRestricted, audit_internal_allowlist_use, canonicalize_hostname,
-                             open_validated_socket, proxy_jump_remote_dns_allowed, resolve_allowed_target)
+                             check_relay_endpoint, check_remote_name, open_validated_socket,
+                             proxy_jump_remote_dns_allowed, resolve_allowed_target)
 from .quota_manager import quota_manager, QuotaKind
 from .ssh_key_loader import load_private_key
 
@@ -98,6 +99,7 @@ def _destination_behind_jump(profile):
         if config.BLOCK_INTERNAL_SSH and not proxy_jump_remote_dns_allowed(
                 host, config.PROXY_JUMP_REMOTE_DNS_ALLOWLIST):
             raise
+        check_remote_name(host)
         return host, port, (host, port)
     audit_internal_allowlist_use(target, 'automation_target')
     return target.hostname, target.port, (target.ip, target.port)
@@ -178,6 +180,7 @@ def connect_profile(user_id, profile, password, cancelled, own=lambda _resource:
             else:
                 hostname, port, destination = _destination_behind_jump(profile)
                 bastion = _allowed_target(route['host'], route.get('port', 22))
+                check_relay_endpoint(bastion)
                 audit_internal_allowlist_use(bastion, 'automation_jump_host')
                 bastion_socket = hold(open_validated_socket(bastion, timeout))
                 if cancelled():

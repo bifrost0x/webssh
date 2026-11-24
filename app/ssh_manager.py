@@ -15,6 +15,8 @@ from .network_policy import (
     TailnetRouteRestricted,
     audit_internal_allowlist_use,
     canonicalize_hostname,
+    check_relay_endpoint,
+    check_remote_name,
     open_validated_socket,
     proxy_jump_remote_dns_allowed,
     resolve_allowed_target,
@@ -363,6 +365,12 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                         )
                     host = canonicalize_hostname(host)
                     port = int(port)
+                    try:
+                        check_remote_name(host)
+                    except TailnetRouteRestricted as error:
+                        return None, SSHConnectionError(
+                            str(error), code=error.code, context='target'
+                        )
                     channel_destination = (host, port)
 
                 bastion_target = resolve_allowed_target(
@@ -371,6 +379,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     allow_internal=not config.BLOCK_INTERNAL_SSH,
                     allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
                 )
+                check_relay_endpoint(bastion_target)
                 audit_internal_allowlist_use(bastion_target, 'jump_host')
                 validated_socket = open_validated_socket(
                     bastion_target, config.SSH_CONNECT_TIMEOUT
@@ -487,6 +496,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     allow_internal=not config.BLOCK_INTERNAL_SSH,
                     allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
                 )
+                check_relay_endpoint(proxy_target)
             except TailnetRouteRestricted as error:
                 return None, SSHConnectionError(
                     str(error), code=error.code, context='socks_proxy'

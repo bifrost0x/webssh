@@ -606,6 +606,9 @@ def create_app(
 
     for warning in config.SECURITY_CONFIG_WARNINGS:
         log_warning('Deployment security warning', warning=warning)
+    if initialize_storage:
+        from .tailscale_ssh import log_tailnet_route_restriction
+        log_tailnet_route_restriction('startup')
     _warn_about_folder_archive_limits()
 
     @app.errorhandler(StorageCorruptionError)
