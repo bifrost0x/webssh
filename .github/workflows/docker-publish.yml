@@ -43,6 +43,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -172,6 +173,7 @@ jobs:
     needs: [release-tests, build-candidate]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     concurrency:
       group: image-publish-${{ github.repository }}
       cancel-in-progress: false

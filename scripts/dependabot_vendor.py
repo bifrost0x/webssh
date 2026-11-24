@@ -61,7 +61,9 @@ PROFILES = {
         allowed_file=_vendor_filename,
         allowed_statuses=frozenset({'added', 'modified', 'removed'}),
         required_files=frozenset({'package-lock.json'}),
-        failed_job=re.compile(r'browser-e2e(?: \([1-9][0-9]*/[1-9][0-9]*\))?'),
+        # The vendor check runs in the lint job; runs from older workflow
+        # revisions reported it in the first browser shard.
+        failed_job=re.compile(r'lint|browser-e2e(?: \([1-9][0-9]*/[1-9][0-9]*\))?'),
         failed_step='Check vendored frontend assets',
         stage_command=('git', 'add', '--all', '--', 'static/vendor'),
         staged_file=_vendor_staged,

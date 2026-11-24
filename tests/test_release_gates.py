@@ -1,7 +1,7 @@
 """A release cannot proceed when a required CI job is absent or not successful."""
 
 import pytest
-from scripts.check_release_gates import REQUIRED, validate_gates
+from scripts.check_release_gates import ALWAYS_RUN, REQUIRED, validate_gates
 
 
 def successful():
@@ -33,6 +33,8 @@ def test_omitted_gate_is_not_treated_as_success():
 def documentation_results():
     results = {name: {'result': 'skipped'} for name in REQUIRED}
     results['dispatch-integrity'] = {'result': 'success', 'outputs': {'mode': 'docs'}}
+    for name in ALWAYS_RUN:
+        results[name] = {'result': 'success'}
     return results
 
 
@@ -41,11 +43,25 @@ def test_documentation_only_permits_deliberate_skips():
 
 
 @pytest.mark.parametrize('result', ['failure', 'cancelled', 'success', '', None])
-@pytest.mark.parametrize('gate', sorted(REQUIRED - {'dispatch-integrity'}))
+@pytest.mark.parametrize('gate', sorted(REQUIRED - {'dispatch-integrity'} - ALWAYS_RUN))
 def test_documentation_cannot_hide_unexpected_job_results(gate, result):
     results = documentation_results()
     results[gate]['result'] = result
     with pytest.raises(ValueError):
+        validate_gates(results)
+
+
+def test_lint_is_required_for_every_change_scope():
+    assert ALWAYS_RUN == {'lint'}
+    assert ALWAYS_RUN <= REQUIRED
+
+
+@pytest.mark.parametrize('result', ['skipped', 'failure', 'cancelled', '', None])
+@pytest.mark.parametrize('gate', sorted(ALWAYS_RUN))
+def test_documentation_still_requires_always_run_gates(gate, result):
+    results = documentation_results()
+    results[gate]['result'] = result
+    with pytest.raises(ValueError, match='did not succeed'):
         validate_gates(results)
 
 

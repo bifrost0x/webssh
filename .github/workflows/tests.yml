@@ -27,6 +27,7 @@ jobs:
     outputs:
       mode: ${{ steps.scope.outputs.mode }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -83,10 +84,63 @@ jobs:
       - name: Validate documentation contracts
         run: python -m unittest discover -s tests -p test_documentation_surface.py -v
 
+  # Static checks are cheap, so they run for every change scope without
+  # waiting for the scope classification.
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.15'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: uv.toml
+
+      - name: Install LDAP build dependencies
+        run: bash scripts/install_ci_test_system_deps.sh
+
+      - name: Install Python dependencies
+        run: |
+          uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt
+
+      - name: Lint Python
+        run: python -m ruff check --output-format=github .
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install locked Node dependencies
+        run: npm ci
+
+      - name: Check vendored frontend assets
+        run: npm run vendor:check
+
+      - name: Lint JavaScript
+        run: npm run lint:js
+
+      # test:js also verifies the generated sign-in translations (i18n:auth:check).
+      - name: Run JavaScript unit tests
+        run: npm run test:js
+
   dependency-locks:
     needs: dispatch-integrity
     if: needs.dispatch-integrity.outputs.mode == 'full'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
     services:
@@ -179,6 +233,7 @@ jobs:
     if: needs.dispatch-integrity.outputs.mode == 'full'
     name: ${{ matrix.check_name }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
     strategy:
@@ -237,6 +292,7 @@ jobs:
     needs: [dispatch-integrity, pytest-shards, dependency-locks]
     if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
@@ -250,6 +306,7 @@ jobs:
     needs: [dispatch-integrity, dependency-locks]
     if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
@@ -262,6 +319,7 @@ jobs:
     needs: dispatch-integrity
     if: needs.dispatch-integrity.outputs.mode == 'full'
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     permissions:
       contents: read
 
@@ -305,6 +363,7 @@ jobs:
     needs: [dispatch-integrity, ssh-integration]
     if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: read
 
@@ -319,6 +378,7 @@ jobs:
     if: needs.dispatch-integrity.outputs.mode == 'full'
     name: browser-e2e (${{ matrix.group }}/8)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
     strategy:
@@ -358,18 +418,6 @@ jobs:
 
       - name: Install locked Node dependencies
         run: npm ci
-
-      - name: Check vendored frontend assets
-        if: matrix.group == 1
-        run: npm run vendor:check
-
-      - name: Lint JavaScript
-        if: matrix.group == 1
-        run: npm run lint:js
-
-      - name: Run JavaScript unit tests
-        if: matrix.group == 1
-        run: npm run test:js
 
       - name: Install locked Playwright Chromium
         run: node scripts/install-ci-chromium.js
@@ -519,6 +567,7 @@ jobs:
     needs: [dispatch-integrity, browser-e2e-shards, browser-fonts]
     if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: read
 
@@ -535,6 +584,7 @@ jobs:
     needs: dispatch-integrity
     if: needs.dispatch-integrity.outputs.mode == 'full'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
 
@@ -727,6 +777,7 @@ jobs:
     needs: [dispatch-integrity, ssh-integration]
     if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
@@ -736,9 +787,10 @@ jobs:
         run: test "$RELEASE_RESULT" = success
 
   all-tests:
-    needs: [dispatch-integrity, dependency-locks, pytest-shards, pytest, redis-rate-limiter, ssh-integration, smb-integration, browser-e2e-shards, browser-fonts, browser-e2e, container-threading-smoke, container-upgrade, release-contract]
+    needs: [dispatch-integrity, lint, dependency-locks, pytest-shards, pytest, redis-rate-limiter, ssh-integration, smb-integration, browser-e2e-shards, browser-fonts, browser-e2e, container-threading-smoke, container-upgrade, release-contract]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:

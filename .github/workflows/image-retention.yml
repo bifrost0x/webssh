@@ -21,6 +21,7 @@ jobs:
   prune:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     # Share the publisher lock so pruning never races a promotion.
     concurrency:
       group: image-publish-${{ github.repository }}
