@@ -179,6 +179,35 @@ test('concurrent gateway prompts restore the pending terminal and its input rout
     await expect(modal.locator('.xterm')).toHaveCount(0);
 });
 
+test('links in gateway output use the session terminal link filter', async ({page}) => {
+    await login(page);
+    const result = await page.evaluate(() => {
+        const opened = [];
+        window.open = (...args) => { opened.push(args); return null; };
+        window.confirm = () => true;
+        const OriginalTerminal = window.Terminal;
+        let handler = null;
+        window.Terminal = class extends OriginalTerminal {
+            constructor(options) { super(options); handler = options?.linkHandler || null; }
+        };
+        try {
+            const dispatch = (event, data) => window.socket.listeners(event).forEach(fn => fn(data));
+            window.SSHGatewayDialog.prepare({username: 'user:target', client_request_id: 'links'}, false);
+            dispatch('ssh_gateway_progress', {client_request_id: 'links', phase: 'setup'});
+        } finally {
+            window.Terminal = OriginalTerminal;
+        }
+        if (!handler) return {handler: false};
+        for (const uri of ['file:///etc/passwd', 'ms-settings:privacy', 'https://user:secret@example.test/', 'https://example.test/docs']) {
+            handler.activate(new MouseEvent('click'), uri);
+        }
+        window.SSHGatewayDialog.close('links');
+        return {handler: true, opened};
+    });
+    expect(result.handler).toBe(true);
+    expect(result.opened).toEqual([['https://example.test/docs', '_blank', 'noopener,noreferrer']]);
+});
+
 test('concurrent gateway challenges keep their answers scoped and clear on disconnect', async ({page}) => {
     await login(page);
     await page.evaluate(() => {

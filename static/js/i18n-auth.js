@@ -1179,11 +1179,28 @@ function readLocaleUrls() {
         declared = {};
     }
     for (const lang of Object.keys(translations)) {
-        const url = declared?.[lang];
-        // Same-origin, server-rendered asset paths only.
-        if (typeof url === 'string' && /^\/(?!\/)[\w\-./]*\?v=[0-9a-f]{16}$/.test(url)) urls[lang] = url;
+        const url = sameOriginLocaleUrl(declared?.[lang], lang);
+        if (url) urls[lang] = url;
     }
     return urls;
+}
+
+// Accepts only a server-rendered, versioned path to this language's file on
+// the same origin. The application root may contain any valid path
+// characters; the returned value is the parser's percent-encoded form, so it
+// cannot break out of the script tag it is written into.
+function sameOriginLocaleUrl(url, lang) {
+    if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//')) return null;
+    const base = 'http://webssh.invalid';
+    let parsed;
+    try {
+        parsed = new URL(url, base);
+    } catch {
+        return null;
+    }
+    if (parsed.origin !== base || parsed.username || parsed.password || parsed.hash) return null;
+    if (!parsed.pathname.endsWith(`/${lang}.js`) || !/^\?v=[0-9a-f]{16}$/.test(parsed.search)) return null;
+    return parsed.pathname + parsed.search;
 }
 
 const localeUrls = readLocaleUrls();

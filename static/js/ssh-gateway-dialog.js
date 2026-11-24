@@ -140,6 +140,9 @@
         const terminal = new window.Terminal({
             cols: 80, rows: 16, scrollback: 200, fontSize: 13,
             convertEol: true, allowProposedApi: false,
+            // Gateway output is remote content: links get the same scheme and
+            // userinfo filter as session terminals.
+            linkHandler: window.TerminalManager?.createLinkHandler?.(),
         });
         attempt.terminal = terminal;
         terminal.open(terminalNode);

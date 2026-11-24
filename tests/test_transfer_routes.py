@@ -2624,7 +2624,7 @@ def test_folder_archives_use_a_prefix_the_startup_sweep_recognizes(tmp_path):
         assert archive.parent == tmp_path
         assert sftp_handler._is_folder_archive_name(archive.name)
 
-    assert sftp_handler.sweep_orphaned_folder_archives(tmp_path) == 2
+    assert sftp_handler.sweep_orphaned_folder_archives(tmp_path, min_age_seconds=0) == 2
     assert list(tmp_path.iterdir()) == []
 
 
@@ -2655,7 +2655,7 @@ def test_startup_sweep_removes_only_regular_folder_archives(tmp_path):
     except (OSError, NotImplementedError):
         link = None
 
-    removed = sftp_handler.sweep_orphaned_folder_archives(tmp_path)
+    removed = sftp_handler.sweep_orphaned_folder_archives(tmp_path, min_age_seconds=0)
 
     assert removed == 1
     assert not archive.exists()
@@ -2665,6 +2665,23 @@ def test_startup_sweep_removes_only_regular_folder_archives(tmp_path):
     assert outside.read_bytes() == b'outside'
     if link is not None:
         assert os.path.islink(link)
+
+
+def test_startup_sweep_keeps_recent_archives_of_another_instance(tmp_path):
+    import os
+    import time
+    from app import sftp_handler
+
+    recent = tmp_path / 'webssh-folder-recent12.zip'
+    recent.write_bytes(b'in use')
+    stale = tmp_path / 'webssh-folder-stale123.zip'
+    stale.write_bytes(b'orphan')
+    old = time.time() - sftp_handler.ORPHANED_ARCHIVE_MIN_AGE_SECONDS - 60
+    os.utime(stale, (old, old))
+
+    assert sftp_handler.sweep_orphaned_folder_archives(tmp_path) == 1
+    assert recent.read_bytes() == b'in use'
+    assert not stale.exists()
 
 
 def test_startup_sweep_ignores_missing_or_symlinked_directory(tmp_path):

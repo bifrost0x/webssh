@@ -995,14 +995,21 @@ def _is_folder_archive_name(name):
     )
 
 
-def sweep_orphaned_folder_archives(temp_dir):
+# Another instance sharing TRANSFER_TEMP_DIR may still be writing or streaming
+# its archives; only files untouched for this long count as orphaned.
+ORPHANED_ARCHIVE_MIN_AGE_SECONDS = 6 * 60 * 60
+
+
+def sweep_orphaned_folder_archives(temp_dir, *, min_age_seconds=ORPHANED_ARCHIVE_MIN_AGE_SECONDS):
     """Remove folder archives left behind by a process that did not finish.
 
-    Only regular files named like the archives this module creates are
-    removed, and only directly inside ``temp_dir``. Symbolic links, other
-    names and subdirectories are left alone. Returns the number removed.
+    Only regular files named like the archives this module creates, not
+    modified for ``min_age_seconds``, are removed, and only directly inside
+    ``temp_dir``. Symbolic links, other names and subdirectories are left
+    alone. Returns the number removed.
     """
     directory = Path(temp_dir)
+    cutoff = time.time() - max(0, min_age_seconds)
     try:
         directory_metadata = os.lstat(directory)
     except FileNotFoundError:
@@ -1018,7 +1025,7 @@ def sweep_orphaned_folder_archives(temp_dir):
                 metadata = entry.stat(follow_symlinks=False)
             except OSError:
                 continue
-            if not stat.S_ISREG(metadata.st_mode):
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_mtime > cutoff:
                 continue
             try:
                 os.unlink(entry.path)

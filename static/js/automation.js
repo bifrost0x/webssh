@@ -1240,11 +1240,15 @@
                 automationVisible: view === 'automation', overviewVisible, runsTabOpen: available && selectedTab === 'runs',
                 runActive: available && knownRuns.some(schedule.isRunActive)});
             const refreshRuns = plan.runs || (overviewOpened && overviewVisible);
-            if (!refreshRuns && !plan.state) return;
+            // While automation is unavailable nothing else asks the server, so an
+            // administrator enabling it would only show up after opening its view.
+            const refreshState = plan.state || (!available
+                && (overviewOpened || Date.now() - lastStateRefresh >= schedule.POLL.unavailableState));
+            if (!refreshRuns && !refreshState) return;
             polling = true;
             try {
                 if (refreshRuns) await loadRuns();
-                if (plan.state) { lastStateRefresh = Date.now(); await loadState(); }
+                if (refreshState) { lastStateRefresh = Date.now(); await loadState(); }
             } catch (error) { if (['disabled','authentication_required'].includes(error.code)) { knownRuns=[]; historySignature=''; runsEnabled=false; publishRunSnapshot(); } if(error.code !== 'disabled')notify(error.message,true); else if(nativeCredentials)$('automationDisabled').hidden=false; } finally { polling = false; }
         }
         setInterval(poll, schedule.POLL.tick);

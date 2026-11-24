@@ -36,7 +36,7 @@
         return {hostCount: targets.length, steps};
     }
 
-    const POLL = Object.freeze({tick: 3000, activeRuns: 3000, idleRuns: 30000, state: 15000});
+    const POLL = Object.freeze({tick: 3000, activeRuns: 3000, idleRuns: 30000, state: 15000, unavailableState: 60000});
 
     /**
      * Decide which refreshes are due on one polling tick. Runs are polled fast

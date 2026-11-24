@@ -95,6 +95,9 @@
             .replaceAll('\'', '&#39;');
     };
 
+    const MAX_TIMED_NOTIFICATIONS = 4;
+    const timedNotificationDismissers = new WeakMap();
+
     window.showNotification = function(message, type = 'info', duration) {
         const presentation = typeof message === 'object' && message !== null
             ? message
@@ -176,6 +179,17 @@
             close.addEventListener('click', dismiss);
             notification.classList.add('notification-dismissible');
             notification.appendChild(close);
+        }
+        // Errors now stay longer; repeated failures (reconnects, polling) must
+        // not pile up without bound. The oldest timed toasts give way first.
+        if (presentation.persistent !== true) {
+            notification.dataset.timedNotification = 'true';
+            const timed = Array.from(container.children).filter(item => (
+                item.dataset.timedNotification === 'true' && !item.classList.contains('fade-out')
+            ));
+            timed.slice(0, Math.max(0, timed.length - (MAX_TIMED_NOTIFICATIONS - 1)))
+                .forEach(item => timedNotificationDismissers.get(item)?.());
+            timedNotificationDismissers.set(notification, dismiss);
         }
         container.appendChild(notification);
 

@@ -6,6 +6,20 @@ async function freezeClock(page) {
     await page.clock.pauseAt(new Date());
 }
 
+test('repeated failures keep only a few timed toasts on screen', async ({ page }) => {
+    await login(page);
+    await freezeClock(page);
+    const toasts = page.locator('#notificationContainer .notification:not(.fade-out)');
+    await page.evaluate(() => {
+        window.showNotification({ message: 'Keep me', type: 'info', persistent: true });
+        for (let index = 1; index <= 7; index += 1) window.showNotification(`Reconnect failed ${index}`, 'error');
+    });
+    await expect(toasts.filter({ hasText: 'Reconnect failed' })).toHaveCount(4);
+    await expect(toasts.filter({ hasText: 'Reconnect failed 7' })).toBeVisible();
+    await expect(toasts.filter({ hasText: 'Reconnect failed 1' })).toHaveCount(0);
+    await expect(toasts.filter({ hasText: 'Keep me' })).toBeVisible();
+});
+
 test('error and warning toasts stay readable, pause on hover or focus and can be dismissed', async ({ page }) => {
     await login(page);
     await freezeClock(page);

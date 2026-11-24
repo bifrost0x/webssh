@@ -81,3 +81,28 @@ test('entering automation shows that an administrator disabled it', async ({page
     await expect(page.locator('#automationDisabled')).toBeVisible();
     await expect(page.locator('#automationApp')).toBeHidden();
 });
+
+test('the overview notices when an administrator enables automation', async ({page}) => {
+    test.slow();
+    await page.clock.install();
+    let enabled = false;
+    let stateCalls = 0;
+    const denied = {status: 403, json: {code: 'disabled'}};
+    await page.route('**/api/automation/state', route => {
+        stateCalls += 1;
+        return route.fulfill(enabled ? {json: {enabled: true, runbooks: [], profiles: []}} : denied);
+    });
+    await page.route('**/api/automation/runs', route => route.fulfill(enabled ? {json: {runs: []}} : denied));
+    await page.route('**/api/automation/schedules', route => route.fulfill(enabled ? {json: {schedules: []}} : denied));
+    await login(page, 'e2e_admin', {workspace: false});
+    await expect(page.locator('#automationApp')).toHaveAttribute('hidden', '');
+
+    enabled = true;
+    const before = stateCalls;
+    for (let elapsed = 0; elapsed < 63_000; elapsed += 3_000) {
+        await page.clock.runFor(3_000);
+        await page.waitForTimeout(100);
+    }
+    await expect.poll(() => stateCalls).toBeGreaterThan(before);
+    await expect(page.locator('#automationApp')).not.toHaveAttribute('hidden', '');
+});

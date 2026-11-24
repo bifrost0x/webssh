@@ -32,6 +32,7 @@ function page({stored = null, urls = URLS, readyState = 'loading'} = {}) {
     const context = vm.createContext({
         window,
         document,
+        URL,
         CustomEvent: class CustomEvent {
             constructor(name, options) { this.name = name; this.detail = options.detail; }
         },
@@ -60,10 +61,23 @@ test('English pages and already parsed documents never write markup', () => {
 
 test('only well-formed same-origin asset paths are accepted as locale URLs', () => {
     for (const url of ['//evil.example/de.js?v=0123456789abcdef', 'https://evil.example/de.js?v=0123456789abcdef',
-        '/static/js/i18n/de.js', '/static/js/i18n/de.js?v=0123456789abcdef"><script>', 'javascript:alert(1)']) {
+        '/static/js/i18n/de.js', '/static/js/i18n/de.js?v=0123456789abcdef"><script>', 'javascript:alert(1)',
+        '/\\evil.example/de.js?v=0123456789abcdef', '/static/js/i18n/fr.js?v=0123456789abcdef',
+        '/static/js/i18n/de.js?v=0123456789abcdef#x']) {
         assert.deepEqual(page({stored: 'de', urls: {...URLS, de: url}}).written, [], url);
     }
     assert.deepEqual(page({stored: 'de', urls: 'not json'}).written, []);
+});
+
+test('an application root with other valid path characters still loads its locale', () => {
+    for (const [url, expected] of [
+        ['/~ops/webssh/static/js/i18n/de.js?v=0123456789abcdef', '/~ops/webssh/static/js/i18n/de.js?v=0123456789abcdef'],
+        ['/team@lab/static/js/i18n/de.js?v=0123456789abcdef', '/team@lab/static/js/i18n/de.js?v=0123456789abcdef'],
+        ['/web%20ssh/static/js/i18n/de.js?v=0123456789abcdef', '/web%20ssh/static/js/i18n/de.js?v=0123456789abcdef'],
+        ['/a"b/static/js/i18n/de.js?v=0123456789abcdef', '/a%22b/static/js/i18n/de.js?v=0123456789abcdef'],
+    ]) {
+        assert.deepEqual(page({stored: 'de', urls: {...URLS, de: url}}).written, [`<script src="${expected}"></script>`], url);
+    }
 });
 
 test('missing dictionaries fall back to English and then to the key', () => {
