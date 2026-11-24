@@ -54,7 +54,7 @@ interface proof applies only to a direct connection from the WebSSH host.
 
 ## Ordinary SSH over the tailnet
 
-The admin setting **Restrict ordinary SSH to tailnet nodes** (Admin →
+The admin setting **Block ordinary SSH to tailnet nodes** (Admin →
 Integrations) is enabled by default and takes effect only while
 `TAILSCALE_SSH_ENABLED=true` and `TAILSCALE_SSH_INTERFACE` is set. A change
 applies to the next connection without a restart, requires admin

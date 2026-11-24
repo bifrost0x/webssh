@@ -968,7 +968,7 @@ window.i18n.registerLocales({
         'admin.signInIpv6Prefix': "Longitud del prefijo de agrupación IPv6",
         'admin.signInIpv6PrefixHint': "Los clientes de una red IPv6 de este tamaño comparten todos los límites por origen. 128 limita cada dirección por separado, pero permite que un cliente rote direcciones.",
         'admin.signInValueRange': "Introduce un número entero entre {min} y {max}.",
-        'admin.tailnetRestriction': "Restringir el SSH normal a nodos del tailnet",
+        'admin.tailnetRestriction': "Bloquear el SSH normal a nodos del tailnet",
         'admin.tailnetRestrictionHint': "Mientras Tailscale SSH esté activado, se rechazan las conexiones con contraseña o clave a direcciones de nodos de Tailscale, de modo que la identidad compartida del nodo solo es accesible mediante las listas permitidas de Tailscale SSH. Desactívalo solo si los usuarios deben llegar a servidores OpenSSH normales a través del tailnet y ninguno de esos hosts ejecuta Tailscale SSH.",
         'admin.sshGatewayHint': "Permitir conexiones interactivas con user:target para todos los usuarios. Desactivado por defecto. Al desactivar se bloquean nuevas conexiones y autenticaciones pendientes; las sesiones establecidas siguen conectadas. Recarga los espacios de trabajo tras el cambio.",
         'admin.herdr': "Herdr",

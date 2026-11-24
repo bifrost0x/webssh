@@ -19,7 +19,7 @@ Use this mode only in a trusted homelab or similarly controlled environment:
 4. Keep WebSSH registration disabled or tightly controlled.
 5. Configure WebSSH's mandatory target and optional remote-username allowlists as a
    second boundary. Tailnet ACL and SSH policy remain authoritative.
-6. Keep **Restrict ordinary SSH to tailnet nodes** (Admin → Integrations)
+6. Keep **Block ordinary SSH to tailnet nodes** (Admin → Integrations)
    enabled, which is the default. The WebSSH
    allowlists apply to Tailscale SSH connections; they only bound the node
    identity while ordinary connections cannot reach tailnet hosts.
@@ -68,7 +68,7 @@ open a password connection with an arbitrary password to a tailnet host and get
 a shell under the shared node identity, bypassing the WebSSH user, target and
 remote-user allowlists.
 
-The admin setting **Restrict ordinary SSH to tailnet nodes** (Admin →
+The admin setting **Block ordinary SSH to tailnet nodes** (Admin →
 Integrations, enabled by default) closes that path. Changes take effect for the
 next connection without a restart; the change is recorded in the security audit
 log as `APPLICATION_FEATURE_CHANGED` with
