@@ -572,7 +572,7 @@
         'result.connect_timeout': 'SSH connection timed out. Check device availability and network access.',
         'result.connection_failed': 'SSH connection failed. Check the address, network policy and supported authentication.',
         'result.run_interrupted': 'The run was interrupted after dispatch. Inspect the device before another run.',
-        'result.tailscale_route_restricted': 'This host is reached through the tailnet, which is reserved for Tailscale SSH. Automation runs use ordinary SSH and cannot reach it.'
+        'result.tailscale_route_restricted': 'This host is a Tailscale node and can only be reached with Tailscale SSH. Automation runs use ordinary SSH and cannot reach it.'
     });
     Object.assign(strings.de, {
         'result.host_key_required': 'Diesen Host-Key vor einem weiteren Lauf über eine normale WebSSH-Verbindung prüfen.',
@@ -582,7 +582,7 @@
         'result.connect_timeout': 'Zeitlimit beim SSH-Verbindungsaufbau. Gerät und Netzwerkverbindung prüfen.',
         'result.connection_failed': 'SSH-Verbindung fehlgeschlagen. Adresse, Netzwerkregeln und unterstützte Anmeldung prüfen.',
         'result.run_interrupted': 'Der Lauf wurde nach der Übergabe unterbrochen. Vor einem weiteren Lauf das Gerät prüfen.',
-        'result.tailscale_route_restricted': 'Dieser Host wird über das Tailnet erreicht, das Tailscale SSH vorbehalten ist. Automatisierungsläufe nutzen normales SSH und erreichen ihn nicht.'
+        'result.tailscale_route_restricted': 'Dieser Host ist ein Tailscale-Knoten und nur mit Tailscale SSH erreichbar. Automatisierungsläufe nutzen normales SSH und erreichen ihn nicht.'
     });
     Object.assign(strings.en, {
     "runTotals": "{hosts} hosts · {confirmed} of {total} steps with confirmed exit code 0",

@@ -718,7 +718,7 @@ TAILSCALE_SSH_INTERFACE = os.environ.get(
     'TAILSCALE_SSH_INTERFACE', 'tailscale0'
 ).strip()
 # While Tailscale SSH is enabled, ordinary password and key connections must
-# not leave through the tailnet interface: tailssh authorizes by node identity
+# not reach tailnet node addresses: tailssh authorizes by node identity
 # and would accept any credential under the shared identity. Only the literal
 # value "false" lifts the restriction, for operators who reach plain OpenSSH
 # servers over the tailnet with their own credentials.

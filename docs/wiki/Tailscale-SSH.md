@@ -56,9 +56,11 @@ interface proof applies only to a direct connection from the WebSSH host.
 ## Ordinary SSH over the tailnet
 
 `TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES` defaults to `true` and takes effect only
-while `TAILSCALE_SSH_ENABLED=true` and `TAILSCALE_SSH_INTERFACE` is set. WebSSH
-then refuses every other connection whose selected address routes through that
-interface, before it opens a socket:
+while `TAILSCALE_SSH_ENABLED=true` and `TAILSCALE_SSH_INTERFACE` is set. It
+covers Tailscale node addresses only: an address in `100.64.0.0/10` or
+`fd7a:115c:a1e0::/48` (including the IPv4-mapped IPv6 form) whose kernel route
+uses that interface. WebSSH refuses such an address for everything except
+Tailscale SSH, before it opens a socket:
 
 - password and key terminal connections, including Gateway selectors;
 - Jump Hosts and targets behind them that WebSSH validates locally;
@@ -73,9 +75,12 @@ user could open a password connection with an arbitrary password to a tailnet
 host running Tailscale SSH and obtain a shell under the shared node identity,
 outside every WebSSH allowlist.
 
-With subnet routes or an exit node on the WebSSH node, addresses behind those
-routes also leave through `tailscale0` and are refused for ordinary SSH. When
-Tailscale SSH is disabled, or no route uses the interface, connections behave
+Hosts reached through subnet routes or an exit node are not affected: they run
+their own SSH server, which checks the offered password or key. A `100.64.0.0/10`
+address that does not route through the interface, such as carrier-grade NAT on
+the local network, also stays reachable. If the route lookup fails, the address
+is treated as not routed through the interface, which keeps systems without
+that interface unchanged. When Tailscale SSH is disabled, connections behave
 exactly as before.
 
 Set `TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES=false` only when users must reach
@@ -86,8 +91,8 @@ longer bound what the node identity can be used for. Every value other than
 `false` keeps the restriction on.
 
 When upgrading an installation that already has Tailscale SSH enabled, check
-whether users reach tailnet hosts with passwords, keys, Jump Hosts or SOCKS5
-proxies. Those connections now fail until the hosts are added to the Tailscale
+whether users reach tailnet node addresses with passwords, keys, Jump Hosts or
+SOCKS5 proxies. Those connections now fail until the hosts are added to the Tailscale
 SSH allowlists or the operator opts out.
 
 ## Tailnet policy concept
@@ -248,8 +253,8 @@ rules, and remote-user allowlist.
 
 ### Password or key connection to a tailnet host is refused
 
-The address routes through `TAILSCALE_SSH_INTERFACE` while Tailscale SSH is
-enabled. Connect with Tailscale SSH and add the host to the allowlists, or see
+The address is a Tailscale node address that routes through
+`TAILSCALE_SSH_INTERFACE` while Tailscale SSH is enabled. Connect with Tailscale SSH and add the host to the allowlists, or see
 [Ordinary SSH over the tailnet](#ordinary-ssh-over-the-tailnet) before opting
 out.
 

@@ -51,7 +51,7 @@
                 message: translated(
                     translate,
                     'sshErrors.tailscaleRouteRestricted',
-                    'This host is reached through the tailnet. Connect with Tailscale SSH, or ask your administrator to allow ordinary SSH over the tailnet.',
+                    'This host is a Tailscale node and can only be reached with Tailscale SSH. Connect with Tailscale SSH, or ask your administrator to allow ordinary SSH to tailnet nodes.',
                 ),
                 type: 'error',
                 duration: 12000,

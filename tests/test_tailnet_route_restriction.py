@@ -13,14 +13,24 @@ from tests.test_automation_service import context  # noqa: F401  (fixture)
 TAILNET = ipaddress.ip_network('100.64.0.0/10')
 
 
+class LookupLog(list):
+    def __init__(self):
+        super().__init__()
+        self.off_tailnet = set()
+
+
 @pytest.fixture
 def tailnet(monkeypatch):
-    """Enable Tailscale SSH and route 100.64.0.0/10 through tailscale0."""
-    lookups = []
+    """Enable Tailscale SSH on a node whose default route leaves through tailscale0.
+
+    That models an exit node plus subnet routes: every address uses the tailnet
+    interface unless a test lists it in ``lookups.off_tailnet``.
+    """
+    lookups = LookupLog()
 
     def uses_route(address):
         lookups.append(address)
-        return ipaddress.ip_address(address) in TAILNET
+        return address not in lookups.off_tailnet
 
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', True)
     monkeypatch.setattr(config, 'TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES', True)
@@ -56,9 +66,33 @@ def test_internal_allowlist_does_not_readmit_tailnet_route(tailnet, monkeypatch)
         )
 
 
-def test_other_addresses_are_unaffected(tailnet):
-    target = resolve_allowed_target('192.168.1.5', 22, allow_internal=True)
-    assert target.ip == '192.168.1.5'
+def test_tailnet_node_ipv6_address_is_restricted(tailnet):
+    with pytest.raises(TailnetRouteRestricted):
+        resolve_allowed_target('fd7a:115c:a1e0::10', 22, allow_internal=True)
+
+
+def test_ipv4_mapped_tailnet_node_address_is_restricted(tailnet):
+    with pytest.raises(TailnetRouteRestricted):
+        resolve_allowed_target('::ffff:100.64.0.10', 22, allow_internal=True)
+
+
+@pytest.mark.parametrize('address', [
+    '192.168.1.5',          # subnet route through tailscale0
+    '203.0.113.7',          # exit node route through tailscale0
+    '2001:db8::7',          # exit node route, IPv6
+    'fd7a:115c:a1e1::7',    # just outside the Tailscale ULA prefix
+    '100.128.0.1',          # just outside 100.64.0.0/10
+])
+def test_subnet_route_and_exit_node_destinations_are_unaffected(tailnet, address):
+    assert resolve_allowed_target(address, 22, allow_internal=True).ip == address
+    # Only tailnet node addresses trigger a route lookup.
+    assert tailnet == []
+
+
+def test_cgnat_address_off_the_tailnet_stays_allowed(tailnet):
+    tailnet.off_tailnet.add('100.64.0.10')
+    assert resolve_allowed_target('100.64.0.10', 22, allow_internal=True).ip == '100.64.0.10'
+    assert tailnet == ['100.64.0.10']
 
 
 def test_hostname_skips_tailnet_candidate_for_another_allowed_address(tailnet, monkeypatch):

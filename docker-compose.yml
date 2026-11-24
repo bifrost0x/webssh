@@ -82,7 +82,7 @@ services:
       # - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10:2222
       # - TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
       # - TAILSCALE_SSH_INTERFACE=tailscale0
-      # Password/key connections to tailnet-routed addresses stay refused
+      # Password/key connections to tailnet node addresses stay refused
       # unless this is false; read docs/tailscale-ssh.md before changing it.
       # - TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES=true
 

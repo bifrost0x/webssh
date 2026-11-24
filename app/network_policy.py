@@ -37,14 +37,35 @@ class TailnetRouteRestricted(ValueError):
         super().__init__('This target is on the tailnet and requires Tailscale SSH')
 
 
+_TAILSCALE_NODE_NETWORKS = (
+    ipaddress.ip_network('100.64.0.0/10'),
+    ipaddress.ip_network('fd7a:115c:a1e0::/48'),
+)
+
+
+def _is_tailscale_node_address(address):
+    address = ipaddress.ip_address(address)
+    if address.version == 6 and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    return any(
+        address.version == network.version and address in network
+        for network in _TAILSCALE_NODE_NETWORKS
+    )
+
+
 def _tailnet_route_restricted(address):
     """Return whether an ordinary connection must not use this address.
 
-    tailssh authorizes the WebSSH node, not the credential it is offered, so a
-    password or key connection through the tailnet interface would run under
-    the shared node identity outside every Tailscale SSH allowlist.
+    tailssh listens on tailnet node addresses and authorizes the WebSSH node,
+    not the credential it is offered, so a password or key connection to such
+    an address would run under the shared node identity outside every
+    Tailscale SSH allowlist. Subnet-route and exit-node destinations run their
+    own sshd and stay unaffected. A failed route lookup leaves the address
+    unrestricted, which keeps hosts without the interface unchanged.
     """
     import config
+    if not _is_tailscale_node_address(address):
+        return False
     if not (
         config.TAILSCALE_SSH_ENABLED
         and config.TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES
