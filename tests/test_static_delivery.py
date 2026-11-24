@@ -350,3 +350,30 @@ def test_a_response_without_an_open_file_is_not_cached(client, monkeypatch):
 
     assert response.headers['Content-Encoding'] == 'gzip'
     assert static_delivery._gzip_cache == {}
+
+
+def test_every_page_loads_one_immutable_outlined_icon_font(client):
+    import re
+    from pathlib import Path
+    from urllib.parse import urljoin
+
+    font = 'vendor/material-icons/material-icons-outlined.woff2'
+    expected = f'/static/{font}?v={static_asset_version(client.application, font)}'
+    stylesheets = {
+        'vendor/material-icons/material-icons.css': '/static/vendor/material-icons/',
+        'css/design-system.css': '/static/css/',
+    }
+    for stylesheet, base in stylesheets.items():
+        css = Path('static', stylesheet).read_text(encoding='utf-8')
+        urls = [
+            url for url in re.findall(r'@font-face\s*\{[^}]*?url\([\'"]?([^\'")]+)', css)
+            if 'material-icons' in url
+        ]
+        assert urls, stylesheet
+        assert {urljoin(base, url) for url in urls} == {expected}, stylesheet
+
+    response = client.get(expected)
+    assert response.status_code == 200
+    assert response.headers['Cache-Control'] == 'public, max-age=31536000, immutable'
+    assert response.data.startswith(b'wOF2')
+    assert not Path('static', 'vendor/material-icons/material-icons.woff').exists()
