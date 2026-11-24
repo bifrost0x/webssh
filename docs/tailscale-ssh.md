@@ -84,9 +84,10 @@ the host requires Tailscale SSH; automation records `tailscale_route_restricted`
 Hosts reached through subnet routes or an exit node are not affected; their own
 SSH server checks the offered credentials. A `100.64.0.0/10` address that does
 not route through the interface, such as carrier-grade NAT on the local network,
-stays reachable. A failed route lookup counts as not routed through the
-interface, so systems without it keep their behavior. With Tailscale SSH
-disabled, connection behavior is unchanged.
+stays reachable. A node address whose kernel route cannot be determined, for
+example because the route query fails or times out, is refused. An IPv4-mapped
+IPv6 address is checked against the IPv4 route it actually uses. With
+Tailscale SSH disabled, connection behavior is unchanged.
 
 Set `TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES=false` only when users must reach
 ordinary OpenSSH servers over the tailnet with their own credentials and the

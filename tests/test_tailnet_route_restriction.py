@@ -11,33 +11,41 @@ from app.network_policy import TailnetRouteRestricted, resolve_allowed_target
 from tests.test_automation_service import context  # noqa: F401  (fixture)
 
 TAILNET = ipaddress.ip_network('100.64.0.0/10')
+TAILNET6 = ipaddress.ip_network('fd7a:115c:a1e0::/48')
 
 
 class LookupLog(list):
     def __init__(self):
         super().__init__()
-        self.off_tailnet = set()
+        self.routes = {}
 
 
 @pytest.fixture
 def tailnet(monkeypatch):
-    """Enable Tailscale SSH on a node whose default route leaves through tailscale0.
+    """Enable Tailscale SSH with a kernel route table keyed by address family.
 
-    That models an exit node plus subnet routes: every address uses the tailnet
-    interface unless a test lists it in ``lookups.off_tailnet``.
+    Like the real lookup, the fake sees the exact string it is asked about:
+    IPv4 in 100.64.0.0/10 and IPv6 in fd7a:115c:a1e0::/48 route through
+    tailscale0, everything else (including an un-normalized IPv4-mapped
+    string, which the IPv6 table does not cover) through eth0. Tests override
+    single addresses in ``lookups.routes``; ``None`` means the lookup failed.
     """
     lookups = LookupLog()
 
-    def uses_route(address):
+    def route_interface(address):
         lookups.append(address)
-        return address not in lookups.off_tailnet
+        if address in lookups.routes:
+            return lookups.routes[address]
+        parsed = ipaddress.ip_address(address)
+        network = TAILNET if parsed.version == 4 else TAILNET6
+        return 'tailscale0' if parsed in network else 'eth0'
 
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', True)
     monkeypatch.setattr(config, 'TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES', True)
     monkeypatch.setattr(config, 'TAILSCALE_SSH_INTERFACE', 'tailscale0')
     monkeypatch.setattr(config, 'BLOCK_INTERNAL_SSH', False)
     monkeypatch.setattr(config, 'SSH_ALLOWED_INTERNAL_NETWORKS', ())
-    monkeypatch.setattr(tailscale_ssh, 'target_uses_tailscale_route', uses_route)
+    monkeypatch.setattr(tailscale_ssh, '_route_interface_for_ip', route_interface)
     return lookups
 
 
@@ -74,6 +82,24 @@ def test_tailnet_node_ipv6_address_is_restricted(tailnet):
 def test_ipv4_mapped_tailnet_node_address_is_restricted(tailnet):
     with pytest.raises(TailnetRouteRestricted):
         resolve_allowed_target('::ffff:100.64.0.10', 22, allow_internal=True)
+    # The dual-stack socket sends it over IPv4, so the IPv4 route decides.
+    assert tailnet == ['100.64.0.10']
+
+
+def test_hostname_with_ipv4_mapped_aaaa_record_is_restricted(tailnet, monkeypatch):
+    monkeypatch.setattr(socket, 'getaddrinfo', lambda *_args, **_kwargs: [
+        (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, '', ('::ffff:100.64.0.10', 22, 0, 0)),
+    ])
+    with pytest.raises(TailnetRouteRestricted):
+        resolve_allowed_target('mapped.example', 22, allow_internal=True)
+    assert tailnet == ['100.64.0.10']
+
+
+@pytest.mark.parametrize('address', ['100.64.0.10', 'fd7a:115c:a1e0::10', '::ffff:100.64.0.10'])
+def test_failed_route_lookup_restricts_node_address(tailnet, address):
+    tailnet.routes[str(network_policy._tailscale_node_address(address))] = None
+    with pytest.raises(TailnetRouteRestricted):
+        resolve_allowed_target(address, 22, allow_internal=True)
 
 
 @pytest.mark.parametrize('address', [
@@ -90,7 +116,7 @@ def test_subnet_route_and_exit_node_destinations_are_unaffected(tailnet, address
 
 
 def test_cgnat_address_off_the_tailnet_stays_allowed(tailnet):
-    tailnet.off_tailnet.add('100.64.0.10')
+    tailnet.routes['100.64.0.10'] = 'eth0'
     assert resolve_allowed_target('100.64.0.10', 22, allow_internal=True).ip == '100.64.0.10'
     assert tailnet == ['100.64.0.10']
 
@@ -128,13 +154,12 @@ def test_disabled_or_unconfigured_tailscale_skips_route_lookup(tailnet, monkeypa
     assert tailnet == []
 
 
-def test_missing_interface_route_is_unaffected(monkeypatch):
-    """Without a route through the interface, behavior matches the disabled state."""
-    monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', True)
-    monkeypatch.setattr(config, 'TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES', True)
-    monkeypatch.setattr(config, 'TAILSCALE_SSH_INTERFACE', 'tailscale0')
-    monkeypatch.setattr(tailscale_ssh, '_route_interface_for_ip', lambda _address: None)
+def test_missing_tailnet_interface_leaves_node_range_reachable(tailnet):
+    """A host without tailscale0 routes 100.64.0.0/10 elsewhere and stays unchanged."""
+    tailnet.routes['100.64.0.10'] = 'eth0'
+    tailnet.routes['fd7a:115c:a1e0::10'] = 'eth0'
     assert resolve_allowed_target('100.64.0.10', 22, allow_internal=True).ip == '100.64.0.10'
+    assert resolve_allowed_target('fd7a:115c:a1e0::10', 22, allow_internal=True).ip == 'fd7a:115c:a1e0::10'
 
 
 def test_tailscale_strategy_keeps_its_route(tailnet, monkeypatch):

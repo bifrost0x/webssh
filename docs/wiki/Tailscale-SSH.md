@@ -78,10 +78,11 @@ outside every WebSSH allowlist.
 Hosts reached through subnet routes or an exit node are not affected: they run
 their own SSH server, which checks the offered password or key. A `100.64.0.0/10`
 address that does not route through the interface, such as carrier-grade NAT on
-the local network, also stays reachable. If the route lookup fails, the address
-is treated as not routed through the interface, which keeps systems without
-that interface unchanged. When Tailscale SSH is disabled, connections behave
-exactly as before.
+the local network, also stays reachable. If the kernel route of a node address
+cannot be determined, for example because the route query fails or times out,
+the address is refused. An IPv4-mapped IPv6 address is checked against the
+IPv4 route, because the connection leaves over IPv4. When Tailscale SSH is
+disabled, connections behave exactly as before.
 
 Set `TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES=false` only when users must reach
 ordinary OpenSSH servers over the tailnet with their own credentials, and only

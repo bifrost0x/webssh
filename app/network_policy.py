@@ -43,14 +43,21 @@ _TAILSCALE_NODE_NETWORKS = (
 )
 
 
-def _is_tailscale_node_address(address):
+def _tailscale_node_address(address):
+    """Return the address in its routed form if it is a tailnet node address.
+
+    An IPv4-mapped IPv6 address is returned as IPv4: a dual-stack socket sends
+    it over IPv4, so only the IPv4 route table describes where it leaves.
+    """
     address = ipaddress.ip_address(address)
     if address.version == 6 and address.ipv4_mapped is not None:
         address = address.ipv4_mapped
-    return any(
+    if any(
         address.version == network.version and address in network
         for network in _TAILSCALE_NODE_NETWORKS
-    )
+    ):
+        return address
+    return None
 
 
 def _tailnet_route_restricted(address):
@@ -60,20 +67,24 @@ def _tailnet_route_restricted(address):
     not the credential it is offered, so a password or key connection to such
     an address would run under the shared node identity outside every
     Tailscale SSH allowlist. Subnet-route and exit-node destinations run their
-    own sshd and stay unaffected. A failed route lookup leaves the address
-    unrestricted, which keeps hosts without the interface unchanged.
+    own sshd and stay unaffected. A node address whose route cannot be
+    determined is restricted; one routed through another interface, such as
+    carrier-grade NAT on the local network, is not.
     """
     import config
-    if not _is_tailscale_node_address(address):
+    node_address = _tailscale_node_address(address)
+    if node_address is None:
         return False
+    interface = str(config.TAILSCALE_SSH_INTERFACE or '').strip()
     if not (
         config.TAILSCALE_SSH_ENABLED
         and config.TAILSCALE_SSH_RESTRICT_TAILNET_ROUTES
-        and str(config.TAILSCALE_SSH_INTERFACE or '').strip()
+        and interface
     ):
         return False
     from . import tailscale_ssh
-    return tailscale_ssh.target_uses_tailscale_route(address)
+    route_interface = tailscale_ssh._route_interface_for_ip(node_address.compressed)
+    return route_interface is None or route_interface == interface
 
 
 def canonicalize_hostname(hostname):
