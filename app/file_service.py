@@ -754,7 +754,8 @@ class FileService:
         source = self.resolve(source_id, user_id, FileCapability.RECURSIVE)
         # SMB already refuses the share root itself.
         if source.descriptor.kind != 'smb':
-            # Normalisation resolves '..' away, so the raw path is checked too.
+            # Normalisation can fold 'x/..' into the parent, so the raw path
+            # is checked as well.
             safe_path = (
                 source.backend.normalize_path(path)
                 if isinstance(path, str)
@@ -765,7 +766,7 @@ class FileService:
                 or any(segment == '..' for segment in path.split('/'))
                 or safe_path.strip('/') in {'', '.'}
             ):
-                return False, 'Invalid move request'
+                return False, 'Invalid path'
         return source.backend.delete(
             source,
             path,

@@ -213,8 +213,8 @@ def test_recursive_delete_requires_recursive_capability_before_backend_call():
 
 class DeleteRecordingBackend(RecordingBackend):
     def normalize_path(self, path):
-        import posixpath
-        return posixpath.normpath(path) if path else '.'
+        from app.sftp_handler import sanitize_path
+        return sanitize_path(path)
 
     def delete(self, source, path, **kwargs):
         self.calls.append(('delete', path))
@@ -228,7 +228,10 @@ def delete_service(backend):
     return FileService(SimpleNamespace(resolve=lambda source_id, user_id: source))
 
 
-@pytest.mark.parametrize('path', ['/', '.', '//', 'a/..', '/home/u/..', '..'])
+@pytest.mark.parametrize('path', [
+    '/', '.', '//', 'a/..', '/home/u/..', '..', '', ' ', '/./', '/a/./..',
+    '/x/../..', '\x00x', None,
+])
 def test_delete_rejects_root_and_dot_segments(path):
     backend = DeleteRecordingBackend()
 
@@ -236,11 +239,13 @@ def test_delete_rejects_root_and_dot_segments(path):
         'sftp-session:owned', user_id=7, path=path
     )
 
-    assert result == (False, 'Invalid move request')
+    assert result == (False, 'Invalid path')
     assert backend.calls == []
 
 
-@pytest.mark.parametrize('path', ['./name', 'name', '/srv/data/name'])
+@pytest.mark.parametrize('path', [
+    './name', 'name', '/srv/data/name', '/home/u/dir/', '..hidden', 'a..b', '...',
+])
 def test_delete_accepts_relative_child(path):
     backend = DeleteRecordingBackend()
 
