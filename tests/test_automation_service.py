@@ -1,3 +1,6 @@
+import json
+import os
+
 import pytest
 from app.automation_store import AutomationError, save_runbook
 from app.automation_service import AutomationService
@@ -270,8 +273,7 @@ def test_run_output_budget_retains_current_run_and_still_executes_every_step(app
 
 
 def test_full_history_stays_readable(app, context):
-    import os
-    from app.automation_store import MAX_STORE_BYTES, user_path
+    from app.automation_store import MAX_STORE_BYTES, document_bytes, user_path
     uid, _, _, _ = context
     service = AutomationService(app)
     def run(number):
@@ -282,9 +284,23 @@ def test_full_history_stays_readable(app, context):
         return dict(id=f'run-{number}', name='Run', created_at='now', finished_at='now', status='succeeded', targets=[target])
     for number in range(50):
         service._persist(uid, run(number))
-    assert os.path.getsize(user_path(uid, 'automation-runs.json')) <= MAX_STORE_BYTES
+    path = user_path(uid, 'automation-runs.json')
+    assert os.path.getsize(path) <= MAX_STORE_BYTES
+    raw = path.read_bytes()
+    assert raw == document_bytes(json.loads(raw))
     history = AutomationService(app).history(uid)
     assert history and history[0]['id'] == 'run-49'
+
+def test_write_document_measures_indented_size(tmp_path):
+    from app.automation_store import MAX_STORE_BYTES, document_bytes, write_document
+    path = tmp_path / 'doc.json'
+    write_document(path, dict(version=1, runs=[]))
+    before = path.read_bytes()
+    document = dict(version=1, runs=[dict(n=i) for i in range(MAX_STORE_BYTES // 16)])
+    assert len(json.dumps(document).encode()) <= MAX_STORE_BYTES < len(document_bytes(document))
+    with pytest.raises(AutomationError, match='storage_limit'):
+        write_document(path, document)
+    assert path.read_bytes() == before
 
 
 def test_edit_during_run_skips_remaining_hosts_with_reason(app, context, monkeypatch):

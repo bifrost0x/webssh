@@ -2,7 +2,6 @@
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
-import json
 import math
 import os
 import secrets
@@ -391,7 +390,7 @@ class AutomationService:
             record.update(schedule_id=intent['schedule_id'], claim_id=intent['claim_id'])
         # Reserve room for terminal reasons/durations and JSON's worst-case escaping.
         # Reject excessive metadata before dispatch, rather than lose the final result.
-        metadata_bytes = len(json.dumps(dict(version=1, runs=[record])).encode())
+        metadata_bytes = len(document_bytes(dict(version=1, runs=[record])))
         output_budget = min(RUN_OUTPUT_BYTES, max(0, (MAX_STORE_BYTES-metadata_bytes-65536)//6))
         if metadata_bytes + 65536 > MAX_STORE_BYTES:
             raise AutomationNotDispatched('storage_limit')
