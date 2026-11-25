@@ -241,7 +241,7 @@ def test_platform_collector_rejects_partial_output_and_honors_cancellation(monke
     assert channel.closed
 
 
-@pytest.mark.parametrize('payload, expected', [(b'1) Shell\n2) Exit\nChoice: ', 'unsupported'), (b'', 'unsupported')])
+@pytest.mark.parametrize('payload, expected', [(b'1) Shell\n2) Exit\nChoice: ', 'unsupported'), (b'', 'silent')])
 def test_identity_collector_reports_a_host_that_answers_and_then_waits(monkeypatch, payload, expected):
     """A forced command showing a menu, or one that prints nothing, never ends.
 
@@ -320,6 +320,30 @@ def test_a_stalled_probe_stores_nothing_and_asks_again_next_time(app, monkeypatc
     assert published == [] and 'detected_platform' not in session
     assert 'detection_state' not in saved and 'platform_checked_at' not in saved and 'detected_platform' not in saved
     assert host_platform.identity_needed(saved)
+
+
+def test_a_silent_channel_is_unavailable_but_asked_again_after_a_day(app, monkeypatch):
+    # A forced command that waits, or a login shell that starts slowly (nvm, conda,
+    # a loaded host, a long jump chain): only the latter answers on a later try.
+    from types import SimpleNamespace
+    stored = dict(detected_platform='debian', detected_services=['nginx'], detection_state='detected',
+                  platform_checked_at=1_000.0, services_checked_at=1_000.0)
+    monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: 10_000_000.0))
+    saved, published, _ = _stall_detection(app, monkeypatch, 'quiet', b'', **stored)
+    assert published == [] and saved['detection_state'] == 'unavailable'
+    assert saved['detected_platform'] == 'debian' and saved['detected_services'] == ['nginx']
+    assert saved['services_checked_at'] == 1_000.0
+    day, week = 24 * 3600, host_platform.IDENTITY_REFRESH_SECONDS
+    assert saved['platform_checked_at'] == 10_000_000.0 - week + day
+    assert not host_platform.identity_needed(saved, now=10_000_000.0 + day - 60)
+    assert host_platform.identity_needed(saved, now=10_000_000.0 + day + 1)
+
+
+def test_a_waiting_menu_is_not_asked_again_for_a_week(app, monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: 10_000_000.0))
+    saved, _, _ = _stall_detection(app, monkeypatch, 'menu', b'1) Shell\n2) Exit\nChoice: ')
+    assert saved['detection_state'] == 'unavailable' and saved['platform_checked_at'] == 10_000_000.0
 
 
 def test_a_stall_that_cuts_off_the_markers_keeps_stored_proxmox_facts(app, monkeypatch):

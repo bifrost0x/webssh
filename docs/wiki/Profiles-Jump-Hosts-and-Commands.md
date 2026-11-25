@@ -85,9 +85,11 @@ names one of them, WebSSH does not run the probe. When a later greeting from
 the same address and port names no platform, the hint is dropped and the
 probe runs on the next connection. A Dropbear greeting marks a
 host as embedded until a connection detects more. When a host answers
-with something other than the probe output, for example a forced command, a
-menu or no output at all, the profile records that detection is not possible
-and keeps any facts an earlier run found. When the probe starts answering but
+with something other than the probe output, for example a forced command or a
+menu, the profile records that detection is not possible, keeps any facts an
+earlier run found and does not run the probe again for a week. A host that
+prints nothing at all within four seconds may only have a slow login shell, so
+it is asked again after a day. When the probe starts answering but
 does not finish within four seconds, for example on a hung network mount,
 nothing is stored and it runs again on the next connection.
 

@@ -234,6 +234,8 @@ def valid_maintenance(value):
 
 # Identity facts change; a saved host is probed again at most once a week.
 IDENTITY_REFRESH_SECONDS = 7 * 24 * 3600
+# A channel that printed nothing before the deadline is asked again sooner.
+SILENT_RETRY_SECONDS = 24 * 3600
 
 
 def valid_services(value):
@@ -398,8 +400,12 @@ def _identity_at_deadline(output):
     a stale network mount, a container query), and the markers and services
     after that step are missing: nothing is stored and the next connection
     asks again. Anything else, silence included, is a forced command or menu
-    that waits and is not asked again this week.
+    that waits and is not asked again this week. A channel that stayed
+    silent may also be a login shell that starts slowly and is asked again
+    after a day.
     """
+    if not output:
+        return None, 'silent'
     complete = output[:output.rfind(b'\n') + 1]
     try:
         identity = parse_identity(complete.decode('utf-8'))
@@ -551,11 +557,16 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
         if not identity_needed(profile):
             return
         identity, error = collect_identity(session_id, cancel_event=cancel_event)
-        if error == 'unsupported':
+        checked_at = time.time()
+        if error in ('unsupported', 'silent'):
             # The host answered, but not with the probe's output: a forced
             # command, a menu or a shell without the tools. Asking again on
-            # every login would only run that command again.
+            # every login would only run that command again. Silence may also
+            # be a slow shell start, so that is asked again after a day by
+            # recording the check as if it were that much older.
             identity = {key: None for key in _IDENTITY_KEYS} | {'state': 'unavailable', 'services': []}
+            if error == 'silent':
+                checked_at -= IDENTITY_REFRESH_SECONDS - SILENT_RETRY_SECONDS
         elif error or not valid_identity(identity):
             return
         with ssh_manager.sessions_lock:
@@ -565,7 +576,7 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
                 return
             if identity['platform'] is not None:
                 current['detected_platform'] = identity['platform']
-        if not profile_manager.cache_detected_facts(user_id, profile_id, expected, identity=identity):
+        if not profile_manager.cache_detected_facts(user_id, profile_id, expected, identity=identity, now=checked_at):
             return
         if identity['state'] != 'detected':
             return
