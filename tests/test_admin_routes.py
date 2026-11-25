@@ -746,10 +746,13 @@ def test_tailnet_restriction_requires_step_up_and_is_audited(app, client, caplog
 
 @pytest.mark.parametrize('name', ['registration_enabled', 'ssh_gateway_enabled'])
 def test_opening_registration_or_the_gateway_is_audited_as_warning(
-    app, client, caplog, name
+    app, client, caplog, monkeypatch, name
 ):
     import logging
 
+    import config
+
+    monkeypatch.setattr(config, 'REGISTRATION_ENABLED', False)
     _prepare_role(app, client, 'admin')
     caplog.set_level(logging.INFO, logger='security_audit')
     for enabled in (True, True, False):
@@ -762,6 +765,24 @@ def test_opening_registration_or_the_gateway_is_audited_as_warning(
     assert [(record.levelno, f'enabled={value}' in record.getMessage())
             for record, value in zip(changes, (True, True, False))] == [
         (logging.WARNING, True), (logging.INFO, True), (logging.INFO, True)]
+
+
+def test_saving_the_registration_default_is_not_audited_as_warning(
+    app, client, caplog, monkeypatch
+):
+    import logging
+
+    import config
+
+    monkeypatch.setattr(config, 'REGISTRATION_ENABLED', True)
+    _prepare_role(app, client, 'admin')
+    caplog.set_level(logging.INFO, logger='security_audit')
+    response = client.post('/admin/api/settings', json={'registration_enabled': True},
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+    assert response.status_code == 200
+    levels = [record.levelno for record in caplog.records
+              if 'feature=registration_enabled' in record.getMessage()]
+    assert levels == [logging.INFO]
 
 
 @pytest.mark.parametrize('name', ['credentials_enabled', 'automation_enabled'])

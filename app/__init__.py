@@ -2040,6 +2040,13 @@ def create_app(
                 continue
             previous, val = results[name]
             log_info(message, admin=current_user.username, **{name: val})
+            if previous is None:
+                # Nothing stored yet: compare against the value in effect.
+                previous = {
+                    'registration_enabled': bool(config.REGISTRATION_ENABLED),
+                    'ssh_gateway_enabled': False,
+                    'tailscale_ssh_restrict_tailnet_routes': True,
+                }.get(name)
             weakened = (
                 name in weakening_values
                 and val is weakening_values[name]
