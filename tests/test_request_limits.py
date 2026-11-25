@@ -186,7 +186,3 @@ def test_no_store_sets_cache_headers():
     plain = no_store(Response())
     assert plain.headers["Cache-Control"] == "no-store"
     assert plain.headers["Pragma"] == "no-cache"
-
-    private = no_store(Response(), private=True)
-    assert private.headers["Cache-Control"] == "private, no-store"
-    assert private.headers["Pragma"] == "no-cache"

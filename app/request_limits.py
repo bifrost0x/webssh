@@ -56,8 +56,8 @@ def json_object():
     return data if isinstance(data, dict) else {}
 
 
-def no_store(response, *, private=False):
-    response.headers["Cache-Control"] = "private, no-store" if private else "no-store"
+def no_store(response):
+    response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
     return response
 
