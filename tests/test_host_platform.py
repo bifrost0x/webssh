@@ -936,6 +936,11 @@ def test_the_one_line_join_refuses_text_it_would_change(script):
     ('x | {\n  while read -r n; do\n    a\n  done\n} | sort', 'x | { while read -r n; do a; done; } | sort'),
     ('a &&\nb ||\nc', 'a && b || c'),
     ('if x; then a;\nelif y; then b;\nelse\nc\nfi', 'if x; then a; elif y; then b; else c; fi'),
+    # The same words as plain arguments end a command like any other.
+    ('echo in\nb', 'echo in; b'), ('printf do\nb', 'printf do; b'), ('echo then\nb', 'echo then; b'),
+    ('echo x else\nb', 'echo x else; b'), ('tr -d {\nb', 'tr -d {; b'), ('echo ; then\nb', 'echo ; then; b'),
+    ('if x\nthen\na\nfi', 'if x; then a; fi'), ('while x\ndo\na\ndone', 'while x; do a; done'),
+    ('for n in a b; do\nc\ndone', 'for n in a b; do c; done'), ('a | {\nb\n}', 'a | { b; }'),
 ])
 def test_the_one_line_join_separates_commands_only_where_sh_allows_it(script, expected):
     assert host_platform._one_line(script) == expected
@@ -1099,12 +1104,17 @@ def test_identity_probe_virt_fallbacks_also_cover_none():
     ({}, (), {}),
     ({}, (('/etc/x', 'redis'),), {'a': 'plex'}),
     ({'nginx': 'nginx'}, (), {}),
+    ({'do-x': 'nginx', 'then.d': 'nginx'}, (('/etc/in', 'redis'), ('/etc/do', 'plex')), {'esac-x': 'plex'}),
+    (dict(host_catalog.SERVICE_UNITS), host_catalog.SERVICE_PATHS, dict(host_catalog.SERVICE_SNAPS)),
 ])
 def test_identity_probe_generates_valid_shell_for_any_mapping(units, paths, snaps, tmp_path):
     script = tmp_path / 'probe.sh'
     script.write_text(host_platform._identity_command(units, paths, snaps))
+    joined = tmp_path / 'probe-line.sh'
+    joined.write_text(host_platform._one_line(host_platform._identity_command(units, paths, snaps)) + '\n')
     for shell in (['sh'], ['bash', '--posix']):
-        assert subprocess.run([*shell, '-n', str(script)], capture_output=True).returncode == 0
+        for path in (script, joined):
+            assert subprocess.run([*shell, '-n', str(path)], capture_output=True).returncode == 0, (shell, path.name)
 
 
 def test_identity_probe_worst_case_output_fits_the_budget():

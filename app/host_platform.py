@@ -152,8 +152,18 @@ _PODMAN_BLOCK = r"""if [ -n "$psock" ] || command -v podman >/dev/null 2>&1; the
 fi"""
 
 
-# A line ending in one of these continues on the next; any other line ends a command.
-_CONTINUED = re.compile(r'(?:^|\s)(?:then|do|else|in)$|[{|;&]$')
+# A line that ends where sh still expects more of the same command: a
+# keyword in keyword position, an opening brace group, a pipe or list
+# operator, or a separator already written. Any other line ends a command,
+# also one whose last argument happens to be a word such as "in" or "do".
+_CONTINUED = re.compile(r'''
+    ^(?:if|elif)\s.*;\s*then$ | ^then$
+  | ^(?:while|until|for)\s.*;\s*do$ | ^do$
+  | ^case\s.*\sin$
+  | ^else$
+  | (?:^|[|&;]\s*|\(\)\s*)\{$
+  | (?:\|\||&&|\||;;|(?<!\\);)$
+''', re.X)
 
 
 def _one_line(script):
