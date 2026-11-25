@@ -11,6 +11,7 @@ import time
 
 import config
 
+from .audit_logger import log_error
 from .backup_coordination import ensure_backup_temp_dir, operation_lock
 
 
@@ -27,6 +28,16 @@ _STATUS_NAME = 'restore-status.json'
 _KNOWN_STATES = {
     'preparing', 'in_progress', 'succeeded', 'failed', 'rollback_failed',
 }
+# States that keep the application in maintenance until resolved.
+_ACTIVE_STATES = frozenset({'preparing', 'in_progress', 'rollback_failed'})
+
+
+def _safe_rollback_relative(value):
+    """Return ``value`` as a two-part relative path, or None if unsafe."""
+    path = PurePath(value)
+    if path.is_absolute() or '..' in path.parts or len(path.parts) != 2:
+        return None
+    return path
 
 
 def _unreadable_status():
@@ -63,8 +74,7 @@ def _valid_status_document(document) -> bool:
     if rollback_relative is not None:
         if not isinstance(rollback_relative, str):
             return False
-        path = PurePath(rollback_relative)
-        if path.is_absolute() or '..' in path.parts or len(path.parts) != 2:
+        if _safe_rollback_relative(rollback_relative) is None:
             return False
     if state == 'in_progress' and (
         fingerprint is None or rollback_relative is None
@@ -193,9 +203,7 @@ def _read():
 
 def is_active() -> bool:
     document = _read()
-    return bool(document and document.get('state') in {
-        'preparing', 'in_progress', 'rollback_failed',
-    })
+    return bool(document and document.get('state') in _ACTIVE_STATES)
 
 
 def begin_preparing(operation_id: str) -> None:
@@ -209,8 +217,8 @@ def begin_preparing(operation_id: str) -> None:
 
 
 def mark_in_progress(operation_id: str, rollback_relative: str) -> None:
-    path = PurePath(rollback_relative)
-    if path.is_absolute() or '..' in path.parts or len(path.parts) != 2:
+    path = _safe_rollback_relative(rollback_relative)
+    if path is None:
         raise ValueError('unsafe rollback reference')
     _write({
         'state': 'in_progress',
@@ -286,7 +294,7 @@ def public_status():
     if document is None:
         return {'state': 'idle', 'message': None}
     if (
-        document.get('state') not in {'preparing', 'in_progress', 'rollback_failed'}
+        document.get('state') not in _ACTIVE_STATES
         and time.time() - float(document.get('updated_at', 0))
         > config.BACKUP_OPERATION_TIMEOUT
     ):
@@ -321,8 +329,10 @@ def recover_interrupted_restore() -> None:
         mark_failed(operation_id, 'Restore stopped before persistent state changed')
         return
 
-    relative = PurePath(str(document.get('rollback_relative') or ''))
-    if relative.is_absolute() or '..' in relative.parts or len(relative.parts) != 2:
+    relative = _safe_rollback_relative(
+        str(document.get('rollback_relative') or '')
+    )
+    if relative is None:
         mark_failed(
             operation_id,
             'Interrupted restore has no safe rollback reference',
@@ -343,9 +353,13 @@ def recover_interrupted_restore() -> None:
             reset_cache()
             rotate_epoch()
         mark_failed(operation_id, 'Interrupted restore rolled back automatically')
-    except Exception:
+    except Exception as exc:
         mark_failed(
             operation_id,
             'Interrupted restore rollback failed; use the CLI recovery path',
             rollback_failed=True,
+        )
+        log_error(
+            'Interrupted restore rollback failed',
+            error_type=type(exc).__name__,
         )

@@ -662,6 +662,180 @@ def test_logout_deletes_current_authentication_session(app, client):
     response = client.post('/logout')
 
     assert response.status_code == 302
+    assert response.headers['Location'].endswith('/login')
     assert client.get_cookie('remember_token') is None
     with app.app_context():
         assert AuthenticationSession.query.count() == 0
+    login_page = client.get('/login').get_data(as_text=True)
+    assert 'auth.partialLogout' not in login_page
+    assert 'could not end your session' not in login_page
+
+
+def _login_and_copy_session_cookie(app, client, username):
+    _create_user(app, username)
+    assert client.post('/login', data={
+        'username': username,
+        'password': 'password123',
+        'remember': 'on',
+    }).status_code == 302
+    cookie_name = app.config['SESSION_COOKIE_NAME']
+    copied = client.get_cookie(cookie_name).value
+    assert client.get('/').status_code == 200
+    return cookie_name, copied
+
+
+def _failing_session_delete():
+    raise RuntimeError('authentication session store unavailable')
+
+
+def test_logout_invalidates_generation_when_session_delete_fails(
+    app, client, monkeypatch,
+):
+    from app import auth_assurance
+    from app.models import AuthenticationSession, User
+
+    cookie_name, copied = _login_and_copy_session_cookie(
+        app, client, 'logoutdeletefails'
+    )
+    monkeypatch.setattr(
+        auth_assurance,
+        'delete_current_authentication_session',
+        _failing_session_delete,
+    )
+
+    response = client.post('/logout')
+
+    assert response.status_code == 302
+    assert response.headers['Location'].endswith('/login')
+    assert client.get_cookie('remember_token') is None
+    with app.app_context():
+        user = User.query.filter_by(username='logoutdeletefails').one()
+        assert user.auth_generation == 1
+        assert AuthenticationSession.query.filter_by(
+            user_id=user.id
+        ).count() == 0
+
+    client.set_cookie(cookie_name, copied)
+    replayed = client.get('/')
+
+    assert replayed.status_code == 302
+    assert '/login' in replayed.headers['Location']
+
+
+def test_logout_explains_when_other_sessions_cannot_be_ended(
+    app, client, monkeypatch, caplog,
+):
+    import logging
+
+    from app import auth_assurance
+    from app.models import AuthenticationSession, User
+
+    _login_and_copy_session_cookie(app, client, 'logoutinvalidatefails')
+
+    def failing_invalidation(*_args, **_kwargs):
+        raise RuntimeError('authentication state unavailable')
+
+    monkeypatch.setattr(
+        auth_assurance,
+        'delete_current_authentication_session',
+        _failing_session_delete,
+    )
+    monkeypatch.setattr(
+        auth_assurance,
+        'invalidate_user_authentication',
+        failing_invalidation,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        response = client.post('/logout')
+
+    assert response.status_code == 302
+    assert response.headers['Location'].endswith('/login')
+    assert client.get_cookie('remember_token') is None
+    failures = [
+        record for record in caplog.records
+        if record.getMessage() == 'Authentication invalidation failed during logout'
+    ]
+    assert len(failures) == 1
+    assert 'authentication state unavailable' not in caplog.text
+    with app.app_context():
+        user = User.query.filter_by(username='logoutinvalidatefails').one()
+        assert user.auth_generation == 0
+        assert AuthenticationSession.query.filter_by(
+            user_id=user.id
+        ).count() == 1
+
+    login_page = client.get('/login')
+    page = login_page.get_data(as_text=True)
+    assert login_page.status_code == 200
+    assert 'data-i18n="auth.partialLogout"' in page
+    assert (
+        'You were signed out in this browser, but the server could not end '
+        'your session. Change your password or ask an administrator to end '
+        'your sessions.'
+    ) in page
+    after = client.get('/')
+    assert after.status_code == 302
+    assert '/login' in after.headers['Location']
+
+
+# Expected values were captured from the strict sanitizer and the public
+# redirect pipeline before the OIDC and GitHub services shared them. Values
+# with leading whitespace must fall back to the root: browsers strip it and
+# would resolve ' ///host' as a protocol-relative URL.
+_CONTINUATION_CASES = (
+    # value, stored continuation, public redirect target (no proxy prefix)
+    ('/', '/', '/'),
+    ('/x?y=1', '/x?y=1', '/x?y=1'),
+    ('//evil', '/', '/'),
+    ('/\\evil', '/', '/'),
+    ('/\tx', '/', '/'),
+    ('\x00', '/', '/'),
+    ('/\x00', '/', '/'),
+    ('https://e', '/', '/'),
+    ('/%2e%2e/', '/%2e%2e/', '/'),
+    ('/x#f', '/', '/'),
+    ('//[', '/', '/'),
+    (' ///evil.example', '/', '/'),
+    (' /x', '/', '/'),
+    ('\t/x', '/', '/'),
+    (' //[', '/', '/'),
+    (' //]', '/', '/'),
+    ('/' + 'a' * 512, '/', '/'),
+    ('/' + 'a' * 511, '/' + 'a' * 511, '/' + 'a' * 511),
+    (None, '/', '/'),
+    ('', '/', '/'),
+)
+
+
+@pytest.mark.parametrize(('value', 'stored', 'public'), _CONTINUATION_CASES)
+def test_safe_continuation_matches_legacy_copies(value, stored, public):
+    from flask import Flask
+    from app.auth_assurance import safe_continuation
+    from app.auth_redirects import public_continuation
+
+    assert safe_continuation(value) == stored
+    with Flask(__name__).test_request_context('/'):
+        assert public_continuation(value) == public
+
+
+def test_token_digest_fixed_vector():
+    from app.models import token_digest
+
+    assert token_digest('abc') == (
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+    )
+    assert token_digest('ä-token') == (
+        '5a25a84e1a48164f62e8a55792faa66aeb0bc7a921b952d98403a32ddf4877b2'
+    )
+
+
+def test_assurance_rank_orders_every_level():
+    from app.auth_assurance import ASSURANCE_RANK, AssuranceLevel
+
+    assert set(ASSURANCE_RANK) == set(AssuranceLevel)
+    assert (
+        ASSURANCE_RANK[AssuranceLevel.BASIC]
+        < ASSURANCE_RANK[AssuranceLevel.MFA]
+        < ASSURANCE_RANK[AssuranceLevel.PHISHING_RESISTANT]
+    )

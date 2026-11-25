@@ -13,6 +13,11 @@
         return /[\r\n]/.test(value);
     }
 
+    // Same set the paste guard reviews; used to fail closed when it is not loaded.
+    function needsPasteReview(value) {
+        return /[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/.test(value);
+    }
+
     function prefixWithSudo(value) {
         const stripped = value.trimStart();
         const sudoBoundary = stripped.charAt(4);
@@ -191,7 +196,22 @@
                 }
 
                 try {
-                    if (!dependencies.emitInput || await dependencies.emitInput(sessionId, insertText) === false) {
+                    const guard = dependencies.pasteGuard || root.TerminalPasteGuard;
+                    if (!dependencies.emitInput) return { ok: false, reason: 'send-failed' };
+                    if (!guard && needsPasteReview(insertText)) return { ok: false, reason: 'send-failed' };
+                    if (guard?.needsReview(insertText)) {
+                        // Stored commands may carry control characters; the user confirms them first.
+                        let attempted = false;
+                        const sent = await guard.review(
+                            guard.capture(sessionId),
+                            insertText,
+                            value => {
+                                attempted = true;
+                                return dependencies.emitInput(sessionId, value);
+                            }
+                        );
+                        if (sent === false) return { ok: false, reason: attempted ? 'send-failed' : 'cancelled' };
+                    } else if (await dependencies.emitInput(sessionId, insertText) === false) {
                         return { ok: false, reason: 'send-failed' };
                     }
                 } catch {
@@ -275,6 +295,23 @@
             } catch {
                 // Storage can be unavailable in hardened or private browser contexts.
             }
+        },
+
+        finishInsert(result, entry) {
+            if (result.ok) {
+                this.rememberUse(entry);
+                return;
+            }
+            // A declined review is the user's own choice, not a failure.
+            if (result.reason === 'cancelled') return;
+            root.showNotification?.(
+                this.t(
+                    'sessionCommands.sessionUnavailable',
+                    'The selected session or entry is no longer available.'
+                ),
+                'error'
+            );
+            this.sync();
         },
 
         rememberUse(entry) {
@@ -768,18 +805,7 @@
                         currentAvailable = false;
                     }
                     insert.disabled = !currentAvailable;
-                    if (!result.ok) {
-                        root.showNotification?.(
-                            this.t(
-                                'sessionCommands.sessionUnavailable',
-                                'The selected session or entry is no longer available.'
-                            ),
-                            'error'
-                        );
-                        this.sync();
-                    } else {
-                        this.rememberUse(entry);
-                    }
+                    this.finishInsert(result, entry);
                 });
                 const actions = document.createElement('div');
                 actions.className = 'session-command-item-actions';

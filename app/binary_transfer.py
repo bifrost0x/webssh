@@ -7,19 +7,17 @@ for the browser. Full file transfers use the tokenized HTTP transfer routes.
 """
 
 import io
-import os
 from . import sftp_handler
 import config
 
-def handle_binary_download(session_id, remote_path, socketio_instance=None,
-                           max_size=None):
+def handle_binary_download(session_id, remote_path, max_size=None):
     """
     Download file as binary data without base64 encoding.
 
     Args:
         session_id (str): SSH session ID or connection ID (for Quick Connect)
         remote_path (str): Path to file on remote server
-        socketio_instance: SocketIO instance for progress updates
+        max_size (int or None): Size cap in bytes; defaults to MAX_DOWNLOAD_SIZE
 
     Returns:
         tuple: (binary_data: bytes or None, error: str or None)
@@ -37,7 +35,6 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None,
                 max_mb = limit // (1024 * 1024)
                 return None, f"File too large for download ({file_size // (1024*1024)}MB). Maximum: {max_mb}MB"
 
-            filename = os.path.basename(safe_path)
             chunk_size = 65536
             transferred = 0
 
@@ -60,21 +57,6 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None,
 
                 binary_data.write(chunk)
                 transferred = observed_size
-
-                if socketio_instance:
-                    progress_total = max(file_size, transferred, 1)
-                    percent = min(
-                        100,
-                        int((transferred / progress_total) * 100),
-                    )
-                    socketio_instance.emit('file_progress', {
-                        'session_id': session_id,
-                        'type': 'download',
-                        'filename': filename,
-                        'transferred': transferred,
-                        'total': file_size,
-                        'percent': percent
-                    })
 
             return binary_data.getvalue(), None
 

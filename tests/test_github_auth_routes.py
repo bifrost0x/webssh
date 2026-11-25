@@ -364,13 +364,106 @@ def test_unlink_refuses_to_remove_managed_accounts_only_primary(
     assert 'passkey' in response.get_json()['error'].lower()
 
 
+def test_unlink_refuses_to_convert_a_managed_account_listed_in_admin_users(
+    app, client, monkeypatch, caplog,
+):
+    import logging
+
+    import config
+    from app.models import GitHubIdentity, User, WebAuthnCredential, db
+
+    admin_id = _create_user(app, 'listed_break_glass', is_admin=True)
+    _configure(app, admin_id, auto_provision=True)
+    state = _begin_login(client)
+    _provider(monkeypatch, user_id='9292', login='listed-managed')
+    assert client.get(
+        f'/auth/github/callback?code=code&state={state}'
+    ).status_code == 302
+    with app.app_context():
+        identity = GitHubIdentity.query.filter_by(
+            github_user_id='9292'
+        ).one()
+        user_id = identity.user_id
+        username = identity.user.username
+        db.session.add(WebAuthnCredential(
+            user_id=user_id,
+            credential_id=b'listed-managed-passkey',
+            public_key=b'public-key',
+            transports='[]',
+        ))
+        db.session.commit()
+    # The operator lists the name after the account was provisioned.
+    monkeypatch.setattr(config, 'ADMIN_USERS', [username.upper()])
+
+    with caplog.at_level(logging.WARNING):
+        refused = client.delete('/api/account/github', headers=(
+            mint_account_step_up_headers(app, client, 'github.unlink', user_id)
+        ))
+
+    assert refused.status_code == 409
+    assert refused.get_json() == {'error': (
+        'This account is listed in ADMIN_USERS. Remove it from ADMIN_USERS '
+        'before converting it to a local account.'
+    )}
+    assert any(
+        record.getMessage().startswith('GITHUB_IDENTITY_UNLINK_REJECTED')
+        for record in caplog.records
+    )
+    assert client.get('/api/account/github').status_code == 200
+    with app.app_context():
+        assert GitHubIdentity.query.filter_by(user_id=user_id).count() == 1
+
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['someone_else'])
+    unlinked = client.delete('/api/account/github', headers=(
+        mint_account_step_up_headers(app, client, 'github.unlink', user_id)
+    ))
+
+    assert unlinked.status_code == 200
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        assert user.github_identity is None
+
+
+def test_unlink_allows_a_listed_local_account_with_a_linked_identity(
+    app, client, monkeypatch,
+):
+    import config
+    from datetime import datetime, timezone
+
+    from app.models import GitHubIdentity, User, db
+
+    admin_id = _create_user(app, 'listed_local_admin', is_admin=True)
+    _configure(app, admin_id)
+    with app.app_context():
+        db.session.add(GitHubIdentity(
+            user_id=admin_id,
+            github_user_id='9393',
+            login='listed-local',
+            provisioned_by_github=False,
+            last_verified_at=datetime.now(timezone.utc),
+        ))
+        db.session.commit()
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['listed_local_admin'])
+    _login(client, 'listed_local_admin')
+
+    response = client.delete('/api/account/github', headers=(
+        mint_account_step_up_headers(app, client, 'github.unlink', admin_id)
+    ))
+
+    assert response.status_code == 200, response.get_data(as_text=True)
+    with app.app_context():
+        user = db.session.get(User, admin_id)
+        assert user.github_identity is None
+        assert user.is_admin is True
+        assert GitHubIdentity.query.filter_by(github_user_id='9393').count() == 0
+
+
 def test_operator_code_bootstraps_first_passkey_then_allows_github_unlink(
     app,
     client,
     monkeypatch,
 ):
     import config
-    import app.account_step_up_routes as account_routes
     import app.webauthn_routes as webauthn_routes
     from app.models import (
         FactorBootstrapToken,
@@ -472,8 +565,7 @@ def test_operator_code_bootstraps_first_passkey_then_allows_github_unlink(
     )
     assert passkey_options.status_code == 200
     monkeypatch.setattr(
-        account_routes,
-        'verify_authentication_response',
+        'app.webauthn_service.verify_authentication_response',
         lambda **kwargs: SimpleNamespace(
             new_sign_count=kwargs['credential_current_sign_count'] + 1
         ),
@@ -493,3 +585,26 @@ def test_operator_code_bootstraps_first_passkey_then_allows_github_unlink(
     with app.app_context():
         assert GitHubIdentity.query.filter_by(user_id=user_id).first() is None
         assert WebAuthnCredential.query.filter_by(user_id=user_id).count() == 1
+
+
+def test_github_login_never_redirects_to_a_whitespace_prefixed_host(
+    app, client, monkeypatch,
+):
+    from app.models import GitHubIdentity, db
+
+    admin_id = _create_user(app, 'github_next_admin', is_admin=True)
+    user_id = _create_user(app, 'github_next_user')
+    _configure(app, admin_id)
+    with app.app_context():
+        db.session.add(GitHubIdentity(
+            user_id=user_id, github_user_id='12345', login='octocat'
+        ))
+        db.session.commit()
+    started = client.get('/auth/github/login?next=%20///evil.example')
+    state = parse_qs(urlsplit(started.headers['Location']).query)['state'][0]
+    _provider(monkeypatch)
+
+    callback = client.get(f'/auth/github/callback?code=code&state={state}')
+
+    assert callback.status_code == 302
+    assert callback.headers['Location'] == '/'

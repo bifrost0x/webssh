@@ -525,3 +525,56 @@ def test_cached_maintenance_location_accepts_a_foreign_owner_for_root(
     maintenance._read_location = None
     maintenance.is_active()
     assert maintenance._read_location is not None
+
+
+@pytest.mark.parametrize('rollback_relative', [
+    None,
+    '',
+    'rollback.zip',
+    'operation-x/nested/rollback.zip',
+    '../operation-x',
+    'operation-x/..',
+    '/operation-x/rollback.zip',
+])
+def test_recover_interrupted_restore_rejects_bad_rollback_relative(
+    monkeypatch, tmp_path, rollback_relative
+):
+    from app import backup_manager
+
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    document = {
+        'state': 'in_progress',
+        'operation_id': 'bad-reference',
+        'data_fingerprint': maintenance._data_fingerprint(),
+        'rollback_relative': rollback_relative,
+        'message': 'Restoring persistent state',
+        'updated_at': 0,
+    }
+    failures = []
+    monkeypatch.setattr(maintenance, '_read', lambda: dict(document))
+    monkeypatch.setattr(
+        maintenance,
+        'mark_failed',
+        lambda operation_id, message, **kwargs: failures.append(
+            (operation_id, message, kwargs)
+        ),
+    )
+
+    def unexpected_restore(source, destination):
+        raise AssertionError('rollback must not run')
+
+    monkeypatch.setattr(
+        backup_manager, '_restore_recovery_snapshot', unexpected_restore
+    )
+
+    maintenance.recover_interrupted_restore()
+
+    assert failures == [(
+        'bad-reference',
+        'Interrupted restore has no safe rollback reference',
+        {'rollback_failed': True},
+    )]
+    if rollback_relative is not None:
+        assert maintenance._valid_status_document(document) is False
+        with pytest.raises(ValueError, match='unsafe rollback reference'):
+            maintenance.mark_in_progress('bad-reference', rollback_relative)

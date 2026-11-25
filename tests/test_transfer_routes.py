@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.file_backend import FileReaderLease
+from app.sftp_backend import SFTPBackend
 
 
 class BoundedRequestStream:
@@ -150,7 +151,10 @@ def transfer_components(monkeypatch):
     monkeypatch.setattr(
         transfer_routes.file_service,
         'resolve',
-        lambda *_args, **_kwargs: SimpleNamespace(handle_id='owned-session'),
+        lambda *_args, **_kwargs: SimpleNamespace(
+            handle_id='owned-session',
+            backend=SFTPBackend(),
+        ),
     )
     monkeypatch.setattr(
         transfer_routes.file_source_resolver,
@@ -192,7 +196,7 @@ def test_download_reads_remote_file_in_bounded_chunks(app, client, monkeypatch,
     sftp = FakeSFTP(payload)
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -335,7 +339,7 @@ def test_download_explicitly_does_not_support_http_ranges(
     sftp = FakeSFTP(payload)
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -363,7 +367,7 @@ def test_range_request_keeps_the_original_open_object_after_path_swap(
     original_reader = sftp.download_file
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -420,7 +424,7 @@ def test_smb_upload_uses_atomic_backend_writer_and_bounded_request_reads(
         lambda *_args, **_kwargs: resolved,
     )
     monkeypatch.setattr(
-        transfer_routes.sftp_handler, 'upload_request_stream',
+        transfer_routes.sftp_handler, 'sftp_session',
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError('SMB upload must not enter SFTP')
         ),
@@ -545,6 +549,8 @@ def test_explicit_replace_token_is_the_only_path_to_backend_replacement(
         ),
     ),
 )
+
+
 def test_upload_http_socket_and_log_share_one_safe_failure_contract(
     app,
     client,
@@ -662,6 +668,8 @@ def test_upload_http_socket_and_log_share_one_safe_failure_contract(
         ),
     ),
 )
+
+
 def test_download_open_keeps_typed_failure_across_http_and_socket(
     app,
     client,
@@ -752,7 +760,7 @@ def test_download_propagates_io_failure_after_first_chunk(
     sftp.reported_size = len(first_chunk) * 2
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(
@@ -823,7 +831,7 @@ def test_unicode_download_header_terminalizes_record(
     sftp = FakeSFTP(b'body')
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -849,6 +857,8 @@ def test_unicode_download_header_terminalizes_record(
         ('/webssh/', '/webssh/api/transfers/token/download'),
     ],
 )
+
+
 def test_prepare_transfer_url_includes_application_root_once(
         app, monkeypatch, application_root, expected):
     from app import socket_events
@@ -904,7 +914,9 @@ def test_prepare_upload_conflict_policy_defaults_to_error_and_rejects_unknown(mo
     monkeypatch.setattr(
         transfer_routes.file_service,
         'resolve',
-        lambda *_args, **_kwargs: SimpleNamespace(handle_id='owned-session'),
+        lambda *_args, **_kwargs: SimpleNamespace(
+            handle_id='owned-session', backend=SFTPBackend(),
+        ),
     )
     monkeypatch.setattr(
         transfer_routes.file_source_resolver,
@@ -978,7 +990,9 @@ def test_prepare_transfer_acquires_owned_source_hold_before_issuing_token(
         'resolve',
         lambda source_id, user_id, capability: calls.append(
             ('resolve', source_id, str(user_id), capability.value)
-        ) or SimpleNamespace(handle_id='owned-session'),
+        ) or SimpleNamespace(
+            handle_id='owned-session', backend=SFTPBackend(),
+        ),
     )
 
     def acquire(user_id, source_ids):
@@ -1021,7 +1035,9 @@ def test_prepare_folder_download_requires_recursive_capability(monkeypatch):
         'resolve',
         lambda source_id, user_id, capability: calls.append(
             ('resolve', source_id, str(user_id), capability.value)
-        ) or SimpleNamespace(handle_id='owned-session'),
+        ) or SimpleNamespace(
+            handle_id='owned-session', backend=SFTPBackend(),
+        ),
     )
     monkeypatch.setattr(
         transfer_routes.file_source_resolver,
@@ -1171,7 +1187,7 @@ def test_upload_reads_request_stream_in_bounded_chunks_and_renames_only_on_succe
     sftp.destination_exists = False
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -1201,6 +1217,8 @@ def test_upload_reads_request_stream_in_bounded_chunks_and_renames_only_on_succe
     ('GET', 'upload', 'download'),
     ('POST', 'download', 'upload'),
 ])
+
+
 def test_direction_and_method_mismatches_never_start_remote_io(
         app, client, monkeypatch, transfer_components, method, direction, endpoint):
     transfer_routes, manager = transfer_components
@@ -1208,7 +1226,7 @@ def test_direction_and_method_mismatches_never_start_remote_io(
     calls = []
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         calls.append(_session_id)
         yield sftp, 'session'
 
@@ -1226,6 +1244,8 @@ def test_direction_and_method_mismatches_never_start_remote_io(
     (b'grow-by-two', 4),
     (b'short', 20),
 ])
+
+
 def test_download_omits_content_length_when_remote_size_can_change(
         app, client, monkeypatch, transfer_components, payload, reported_size):
     """A remote mutation must not create contradictory Content-Length headers."""
@@ -1234,7 +1254,7 @@ def test_download_omits_content_length_when_remote_size_can_change(
     sftp.reported_size = reported_size
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -1248,75 +1268,73 @@ def test_download_omits_content_length_when_remote_size_can_change(
     assert 'Content-Length' not in response.headers
 
 
-def test_upload_uses_posix_rename_for_an_existing_remote_destination():
-    """Replacing an existing target must not depend on non-portable rename."""
-    from app import sftp_handler
+def _sftp_backend_upload(
+        monkeypatch, sftp, payload, *, chunk_size, max_bytes, replace=False):
+    """Run the route's upload writer against a fake SFTP session."""
+    import threading
 
-    sftp = PosixRenameSFTP(supports_posix_rename=True)
+    from app import sftp_handler, transfer_routes
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
-    original_session = sftp_handler.sftp_session
-    sftp_handler.sftp_session = fake_session
-    try:
-        sftp_handler.upload_request_stream(
-            'owned-session', '/remote/report.bin', BoundedRequestStream(b'new'),
-            chunk_size=2, max_bytes=10, replace=True,
-        )
-    finally:
-        sftp_handler.sftp_session = original_session
+    monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+    source = SimpleNamespace(handle_id='owned-session', backend=SFTPBackend())
+    return transfer_routes._upload_to_backend(
+        source,
+        '/remote/report.bin',
+        BoundedRequestStream(payload),
+        chunk_size=chunk_size,
+        max_bytes=max_bytes,
+        cancel_event=threading.Event(),
+        cancelled=lambda: False,
+        progress=lambda _count: None,
+        replace=replace,
+    )
+
+
+def test_upload_uses_posix_rename_for_an_existing_remote_destination(
+        monkeypatch):
+    """Replacing an existing target must not depend on non-portable rename."""
+    sftp = PosixRenameSFTP(supports_posix_rename=True)
+
+    _sftp_backend_upload(
+        monkeypatch, sftp, b'new', chunk_size=2, max_bytes=10, replace=True,
+    )
 
     assert sftp.posix_renamed
     assert sftp.renamed == []
 
 
-def test_sftp_upload_preserves_existing_destination_until_replace_is_explicit():
+def test_sftp_upload_preserves_existing_destination_until_replace_is_explicit(
+        monkeypatch):
     from app import sftp_handler
 
     sftp = PosixRenameSFTP(supports_posix_rename=True)
 
-    @contextmanager
-    def fake_session(_session_id):
-        yield sftp, 'session'
+    with pytest.raises(FileExistsError) as conflict:
+        _sftp_backend_upload(
+            monkeypatch, sftp, b'new', chunk_size=2, max_bytes=10,
+        )
 
-    original_session = sftp_handler.sftp_session
-    sftp_handler.sftp_session = fake_session
-    try:
-        with pytest.raises(sftp_handler.UploadConflict):
-            sftp_handler.upload_request_stream(
-                'owned-session', '/remote/report.bin', BoundedRequestStream(b'new'),
-                chunk_size=2, max_bytes=10,
-            )
-    finally:
-        sftp_handler.sftp_session = original_session
-
+    assert conflict.value.errno == errno.EEXIST
+    assert isinstance(conflict.value.__cause__, sftp_handler.UploadConflict)
     assert sftp.posix_renamed == []
     assert sftp.renamed == []
     assert sftp.removed and sftp.removed[0] != '/remote/report.bin'
 
 
-def test_upload_preserves_existing_destination_if_posix_rename_is_unavailable():
+def test_upload_preserves_existing_destination_if_posix_rename_is_unavailable(
+        monkeypatch):
     """Do not pre-delete a user file merely to emulate atomic replacement."""
-    from app import sftp_handler
-
     sftp = PosixRenameSFTP(supports_posix_rename=False)
 
-    @contextmanager
-    def fake_session(_session_id):
-        yield sftp, 'session'
-
-    original_session = sftp_handler.sftp_session
-    sftp_handler.sftp_session = fake_session
-    try:
-        with pytest.raises(Exception):
-            sftp_handler.upload_request_stream(
-                'owned-session', '/remote/report.bin', BoundedRequestStream(b'new'),
-                chunk_size=2, max_bytes=10, replace=True,
-            )
-    finally:
-        sftp_handler.sftp_session = original_session
+    with pytest.raises(Exception):
+        _sftp_backend_upload(
+            monkeypatch, sftp, b'new', chunk_size=2, max_bytes=10,
+            replace=True,
+        )
 
     assert sftp.renamed == []
     assert sftp.removed and sftp.removed[0] != '/remote/report.bin'
@@ -1328,7 +1346,7 @@ def test_download_token_is_one_use_and_wrong_user_cannot_consume_it(
     sftp = FakeSFTP(b'ok')
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -1352,7 +1370,7 @@ def test_cancelled_download_never_opens_remote_file(app, client, monkeypatch,
     sftp = FakeSFTP(b'never-read')
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -1366,26 +1384,17 @@ def test_cancelled_download_never_opens_remote_file(app, client, monkeypatch,
     assert sftp.opened == []
 
 
-def test_midstream_upload_overflow_removes_only_temporary_remote_file():
+def test_midstream_upload_overflow_removes_only_temporary_remote_file(
+        monkeypatch):
     from app import sftp_handler
 
     sftp = FakeSFTP()
     sftp.destination_exists = False
 
-    @contextmanager
-    def fake_session(_session_id):
-        yield sftp, 'session'
-
-    original_session = sftp_handler.sftp_session
-    sftp_handler.sftp_session = fake_session
-    try:
-        with pytest.raises(sftp_handler.UploadSizeExceeded):
-            sftp_handler.upload_request_stream(
-                'owned-session', '/remote/report.bin', BoundedRequestStream(b'abcdef'),
-                chunk_size=4, max_bytes=5,
-            )
-    finally:
-        sftp_handler.sftp_session = original_session
+    with pytest.raises(sftp_handler.UploadSizeExceeded):
+        _sftp_backend_upload(
+            monkeypatch, sftp, b'abcdef', chunk_size=4, max_bytes=5,
+        )
 
     assert sftp.renamed == []
     assert len(sftp.removed) == 1
@@ -1436,7 +1445,7 @@ def test_closing_download_response_cancels_record_and_closes_remote_file(
     sftp = FakeSFTP(b'x' * (app.config['CHUNK_SIZE'] + 1))
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -1464,7 +1473,7 @@ def test_unstarted_download_response_releases_record(
     sftp = FakeSFTP(b'not-consumed')
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -1492,7 +1501,7 @@ def test_download_opened_handle_limit_marks_request_done(
     sftp.download_file.declared_size = app.config['MAX_DOWNLOAD_SIZE'] + 1
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -1519,10 +1528,9 @@ def test_download_opened_handle_limit_marks_request_done(
     assert manager._records == {}
 
 
-def test_upload_close_failure_removes_temporary_file_and_keeps_final_hidden():
+def test_upload_close_failure_removes_temporary_file_and_keeps_final_hidden(
+        monkeypatch):
     """A remote close error is terminal and never exposes the final pathname."""
-    from app import sftp_handler
-
     class CloseFailure(TrackingRemoteFile):
         def close(self):
             super().close()
@@ -1532,20 +1540,10 @@ def test_upload_close_failure_removes_temporary_file_and_keeps_final_hidden():
     sftp.destination_exists = False
     sftp.upload_file = CloseFailure()
 
-    @contextmanager
-    def fake_session(_session_id):
-        yield sftp, 'session'
-
-    original = sftp_handler.sftp_session
-    sftp_handler.sftp_session = fake_session
-    try:
-        with pytest.raises(OSError):
-            sftp_handler.upload_request_stream(
-                'owned', '/remote/report.bin', BoundedRequestStream(b'body'),
-                chunk_size=4, max_bytes=10,
-            )
-    finally:
-        sftp_handler.sftp_session = original
+    with pytest.raises(OSError):
+        _sftp_backend_upload(
+            monkeypatch, sftp, b'body', chunk_size=4, max_bytes=10,
+        )
 
     assert sftp.renamed == []
     assert sftp.removed and sftp.removed[0] != '/remote/report.bin'
@@ -1573,7 +1571,7 @@ def test_release_then_raise_still_removes_route_record(app, client, monkeypatch,
     sftp.destination_exists = False
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -1612,7 +1610,7 @@ def test_release_before_raise_is_retried_before_upload_reports_success(
     monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
     sftp = FakeSFTP(); sftp.destination_exists = False
     @contextmanager
-    def fake_session(_session_id): yield sftp, 'session'
+    def fake_session(_session_id, io_lane='control'): yield sftp, 'session'
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
     user_id = _login(client, app, 'before_release_user')
     token = _token(manager, user_id, 'upload')
@@ -1624,76 +1622,28 @@ def test_release_before_raise_is_retried_before_upload_reports_success(
     assert manager._records == {}
 
 
-def test_folder_download_streams_remote_zip_and_cleans_it(
-        app, client, monkeypatch, transfer_components):
+def test_folder_download_streams_local_archive_and_removes_it(
+        app, client, monkeypatch, tmp_path, transfer_components):
+    import io
+    import zipfile
+
     transfer_routes, manager = transfer_components
     payload = b'zip-data-' * (app.config['CHUNK_SIZE'] + 1)
-
-    class Channel:
-        def settimeout(self, _timeout): pass
-        def exec_command(self, _command): pass
-        def recv_exit_status(self): return 0
-        def close(self): pass
-
-    class Transport:
-        def open_session(self, timeout=None):
-            return Channel()
-
-    class SSHClient:
-        def get_transport(self):
-            return Transport()
-
-    class FolderSFTP:
-        def __init__(self):
-            self._client = SSHClient()
-            self.remote = TrackingRemoteFile(payload)
-            self.removed = []
-
-        def stat(self, path):
-            if path == '/reports':
-                return SimpleNamespace(st_mode=stat.S_IFDIR)
-            return SimpleNamespace(st_size=len(payload))
-
-        def file(self, _path, _mode):
-            return self.remote
-
-        def remove(self, path):
-            self.removed.append(path)
-
-    sftp = FolderSFTP()
-
-    @contextmanager
-    def fake_session(_session_id):
-        yield sftp, 'session'
-
-    monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
-    monkeypatch.setattr(
-        transfer_routes.sftp_handler, 'inspect_remote_tree',
-        lambda *_args, **_kwargs: (len(payload), False),
-    )
-    monkeypatch.setattr(
-        transfer_routes.sftp_handler, 'get_ssh_client',
-        lambda _session_id: sftp._client,
+    remote = TrackingRemoteFile(payload)
+    monkeypatch.setattr(transfer_routes.config, 'TRANSFER_TEMP_DIR', str(tmp_path))
+    _use_backend(
+        monkeypatch, transfer_routes, _SingleFileFolderBackend(payload, remote),
     )
     user_id = _login(client, app, 'folder_download_user')
-    token = manager.create(
-        user_id=user_id,
-        source_id='sftp-session:owned-session',
-        direction='download',
-        metadata={
-            'remote_path': '/reports',
-            'filename': 'reports',
-            'archive': True,
-        },
-    ).token
+    record = _folder_record(manager, user_id)
 
-    response = client.get(f'/api/transfers/{token}/folder-download')
+    response = client.get(f'/api/transfers/{record.token}/folder-download')
 
     assert response.status_code == 200
-    assert response.data == payload
-    assert max(sftp.remote.read_sizes) <= app.config['CHUNK_SIZE']
-    assert len(sftp.removed) == 1
-    assert sftp.removed[0].startswith('/tmp/webssh_')
+    with zipfile.ZipFile(io.BytesIO(response.data)) as archive:
+        assert archive.read('reports/a.txt') == payload
+    assert max(remote.read_sizes) <= transfer_routes.TRANSFER_CHUNK_SIZE
+    assert list(tmp_path.iterdir()) == []
     assert manager._records == {}
 
 
@@ -1708,7 +1658,7 @@ def test_smb_folder_download_builds_bounded_local_zip_via_backend(
     root_identity_chain = (17,)
 
     class Backend:
-        def stat(self, _source, path, *, follow_links=False):
+        def stat_or_raise(self, _source, path, *, follow_links=False):
             assert follow_links is False
             if path == '/reports':
                 return {
@@ -1716,10 +1666,10 @@ def test_smb_folder_download_builds_bounded_local_zip_via_backend(
                     'is_dir': True,
                     'is_symlink': False,
                     '_smb_identity_chain': root_identity_chain,
-                }, None
+                }
             return {
                 'size': len(payload), 'is_dir': False, 'is_symlink': False,
-            }, None
+            }
 
         def iter_tree(
                 self, _source, path, *, budget, cancel_event,
@@ -1903,9 +1853,9 @@ def test_smb_folder_enumeration_cancellation_is_reported_as_cancelled(
     transfer_routes, manager = transfer_components
 
     class Backend:
-        def stat(self, _source, _path, *, follow_links=False):
+        def stat_or_raise(self, _source, _path, *, follow_links=False):
             assert follow_links is False
-            return {'size': 0, 'is_dir': True, 'is_symlink': False}, None
+            return {'size': 0, 'is_dir': True, 'is_symlink': False}
 
         def iter_tree(
                 self, _source, _path, *, budget, cancel_event,
@@ -1963,116 +1913,46 @@ def test_smb_folder_enumeration_cancellation_is_reported_as_cancelled(
     assert record.request_done_event.is_set()
 
 
-def test_folder_download_rejects_oversized_opened_archive_before_first_chunk(
-        app, client, monkeypatch, transfer_components):
+def test_folder_download_rejects_oversized_archive_before_first_chunk(
+        app, client, monkeypatch, tmp_path, transfer_components):
     transfer_routes, manager = transfer_components
-    payload = b'abcdef'
-
-    class FolderSFTP(FakeSFTP):
-        def stat(self, path):
-            if path == '/reports':
-                return SimpleNamespace(st_mode=stat.S_IFDIR)
-            return SimpleNamespace(st_size=3)
-
-    sftp = FolderSFTP(payload)
-
-    @contextmanager
-    def fake_session(_session_id):
-        yield sftp, 'session'
-
-    monkeypatch.setattr(
-        transfer_routes.sftp_handler,
-        'sftp_session',
-        fake_session,
-    )
-    monkeypatch.setattr(
-        transfer_routes.sftp_handler,
-        'inspect_remote_tree',
-        lambda *_args, **_kwargs: (3, False),
-    )
-    monkeypatch.setattr(
-        transfer_routes,
-        '_remote_zip_path',
-        lambda *_args: ('/tmp/reports.zip', 3),
-    )
-    monkeypatch.setattr(
-        transfer_routes.config,
-        'MAX_ZIP_DOWNLOAD_SIZE',
-        4,
-    )
+    remote = TrackingRemoteFile(b'abcdef')
+    monkeypatch.setattr(transfer_routes.config, 'TRANSFER_TEMP_DIR', str(tmp_path))
+    monkeypatch.setattr(transfer_routes.config, 'MAX_ZIP_DOWNLOAD_SIZE', 4)
     monkeypatch.setattr(transfer_routes, 'TRANSFER_CHUNK_SIZE', 3)
-
-    user_id = _login(client, app, 'folder_limit_user')
-    record = manager.create(
-        user_id=user_id,
-        source_id='sftp-session:owned-session',
-        direction='download',
-        metadata={
-            'remote_path': '/reports',
-            'filename': 'reports',
-            'archive': True,
-        },
+    _use_backend(
+        monkeypatch, transfer_routes, _SingleFileFolderBackend(b'abcdef', remote),
     )
+    user_id = _login(client, app, 'folder_limit_user')
+    record = _folder_record(manager, user_id)
 
     response = client.get(f'/api/transfers/{record.token}/folder-download')
 
     assert response.status_code == 413
     assert response.get_json()['error_code'] == 'LIMIT_EXCEEDED'
-    assert sftp.download_file.read_sizes == []
-    assert sftp.download_file.closed is True
+    assert remote.read_sizes == []
+    assert list(tmp_path.iterdir()) == []
     assert record.request_done_event.is_set()
     assert manager._records == {}
 
 
-def test_closed_folder_response_releases_remote_archive_and_record(
-        app, client, monkeypatch, transfer_components):
+def test_closed_folder_response_releases_local_archive_and_record(
+        app, client, monkeypatch, tmp_path, transfer_components):
     transfer_routes, manager = transfer_components
-
-    class FolderSFTP:
-        def __init__(self):
-            self.removed = []
-            self.remote = TrackingRemoteFile(b'zip-data')
-
-        def stat(self, path):
-            return SimpleNamespace(st_mode=stat.S_IFDIR)
-
-        def remove(self, path):
-            self.removed.append(path)
-
-        def file(self, _path, _mode):
-            return self.remote
-
-    sftp = FolderSFTP()
-
-    @contextmanager
-    def fake_session(_session_id):
-        yield sftp, 'session'
-
-    monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
-    monkeypatch.setattr(
-        transfer_routes.sftp_handler, 'inspect_remote_tree',
-        lambda *_args, **_kwargs: (0, False),
-    )
-    monkeypatch.setattr(
-        transfer_routes, '_remote_zip_path',
-        lambda *_args: ('/tmp/reports.zip', 10),
+    monkeypatch.setattr(transfer_routes.config, 'TRANSFER_TEMP_DIR', str(tmp_path))
+    _use_backend(
+        monkeypatch, transfer_routes, _SingleFileFolderBackend(b'zip-data'),
     )
     user_id = _login(client, app, 'folder_close_user')
-    record = manager.create(
-        user_id=user_id,
-        source_id='sftp-session:owned-session',
-        direction='download',
-        metadata={
-            'remote_path': '/reports', 'filename': 'reports', 'archive': True,
-        },
-    )
+    record = _folder_record(manager, user_id)
 
     response = client.get(
         f'/api/transfers/{record.token}/folder-download', buffered=False,
     )
+    assert len(list(tmp_path.iterdir())) == 1
     response.close()
 
-    assert sftp.removed == ['/tmp/reports.zip']
+    assert list(tmp_path.iterdir()) == []
     assert record.request_done_event.is_set()
     assert manager._records == {}
 
@@ -2082,14 +1962,19 @@ def test_folder_preflight_failure_marks_request_done(
     transfer_routes, manager = transfer_components
 
     class FolderSFTP:
-        def stat(self, _path):
+        def lstat(self, _path):
             raise OSError('preflight failed')
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield FolderSFTP(), 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
+    logged = []
+    monkeypatch.setattr(
+        transfer_routes, 'log_error',
+        lambda message, **fields: logged.append((message, fields)),
+    )
     user_id = _login(client, app, 'folder_preflight_user')
     record = manager.create(
         user_id=user_id,
@@ -2103,99 +1988,12 @@ def test_folder_preflight_failure_marks_request_done(
     response = client.get(f'/api/transfers/{record.token}/folder-download')
 
     assert response.status_code == 500
+    assert [
+        fields['exception_type'] for message, fields in logged
+        if message == 'Folder download preparation failed'
+    ] == ['OSError']
     assert record.request_done_event.is_set()
     assert manager._records == {}
-
-
-def test_remote_zip_command_uses_private_permissions():
-    from app import transfer_routes
-
-    _remote_zip_path = transfer_routes._remote_zip_path
-
-    commands = []
-
-    class Channel:
-        def settimeout(self, _timeout):
-            pass
-
-        def exec_command(self, command):
-            commands.append(command)
-
-        def recv_exit_status(self):
-            return 0
-
-        def close(self):
-            pass
-
-    class Transport:
-        def __init__(self):
-            self.open_timeout = None
-
-        def open_session(self, timeout=None):
-            self.open_timeout = timeout
-            return Channel()
-
-    class SSHClient:
-        def __init__(self):
-            self.transport = Transport()
-
-        def get_transport(self):
-            return self.transport
-
-    class SFTP:
-        def stat(self, _path):
-            return SimpleNamespace(st_size=10)
-
-    client = SSHClient()
-    result = _remote_zip_path(SFTP(), client, '/reports')
-
-    assert result[1] == 10
-    assert commands[0].startswith('umask 077 && ')
-    assert 'chmod 600 ' in commands[0]
-    assert '/tmp/webssh_' in result[0]
-    assert 'reports_' not in result[0]
-    assert client.transport.open_timeout == transfer_routes.config.SSH_CONNECT_TIMEOUT
-
-
-def test_remote_zip_prefixes_leading_dash_folder_member():
-    from app import transfer_routes
-
-    commands = []
-
-    class Channel:
-        def settimeout(self, _timeout):
-            pass
-
-        def exec_command(self, command):
-            commands.append(command)
-
-        def recv_exit_status(self):
-            return 0
-
-        def close(self):
-            pass
-
-    class Transport:
-        def open_session(self, timeout=None):
-            return Channel()
-
-    class SSHClient:
-        def get_transport(self):
-            return Transport()
-
-    class SFTP:
-        def stat(self, _path):
-            return SimpleNamespace(st_size=10)
-
-    result = transfer_routes._remote_zip_path(
-        SFTP(),
-        SSHClient(),
-        '/srv/-reports',
-    )
-
-    assert result[1] == 10
-    assert ' ./-reports && ' in commands[0]
-    assert ' -reports && ' not in commands[0]
 
 
 class PoolRecordingRemoteFile(TrackingRemoteFile):
@@ -2254,8 +2052,8 @@ class _SingleFileFolderBackend:
         self.payload = payload
         self.remote = remote
 
-    def stat(self, _source, _path, *, follow_links=False):
-        return {'size': 0, 'is_dir': True, 'is_symlink': False}, None
+    def stat_or_raise(self, _source, _path, *, follow_links=False):
+        return {'size': 0, 'is_dir': True, 'is_symlink': False}
 
     def iter_tree(self, _source, _path, *, budget, cancel_event,
                   follow_links=False, io_lane='control'):
@@ -2302,7 +2100,7 @@ def test_download_streams_without_holding_a_database_connection(
     sftp.download_file = PoolRecordingRemoteFile(payload, pool=db.engine.pool)
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -2328,7 +2126,7 @@ def test_upload_writes_without_holding_a_database_connection(
     sftp.upload_file = PoolRecordingRemoteFile(pool=db.engine.pool)
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -2382,7 +2180,7 @@ def test_download_progress_is_throttled_but_final_count_is_sent(
     sftp = FakeSFTP(payload)
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -2430,7 +2228,7 @@ def test_upload_progress_is_throttled_but_final_count_is_sent(
     sftp.destination_exists = False
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -2473,7 +2271,7 @@ def test_failed_download_reports_the_error_after_throttled_progress(
     sftp.download_file = FailingFile(b'f' * (chunk * 6))
 
     @contextmanager
-    def fake_session(_session_id):
+    def fake_session(_session_id, io_lane='control'):
         yield sftp, 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
@@ -2574,6 +2372,8 @@ def test_non_positive_zip_limit_is_a_limit_failure(
     (-5, 'not positive'),
     (None, 'exceeds QUOTA_TEMP_BYTES_PER_USER'),
 ])
+
+
 def test_startup_warns_about_unusable_folder_archive_limits(
         monkeypatch, archive_limit, expected):
     import app as app_module
@@ -2616,15 +2416,11 @@ def test_startup_is_silent_for_folder_archive_limits_within_quota(monkeypatch):
 def test_folder_archives_use_a_prefix_the_startup_sweep_recognizes(tmp_path):
     from app import sftp_handler, transfer_routes
 
-    for create in (
-        transfer_routes._create_private_temporary_archive,
-        sftp_handler._create_private_temporary_archive,
-    ):
-        archive = create(tmp_path)
-        assert archive.parent == tmp_path
-        assert sftp_handler._is_folder_archive_name(archive.name)
+    archive = transfer_routes._create_private_temporary_archive(tmp_path)
 
-    assert sftp_handler.sweep_orphaned_folder_archives(tmp_path, min_age_seconds=0) == 2
+    assert archive.parent == tmp_path
+    assert sftp_handler._is_folder_archive_name(archive.name)
+    assert sftp_handler.sweep_orphaned_folder_archives(tmp_path, min_age_seconds=0) == 1
     assert list(tmp_path.iterdir()) == []
 
 

@@ -451,15 +451,8 @@ def _validate_payload(payload, existing_sets, commands):
 
 @user_operation
 def get_command_set(user_id, command_set_id):
-    if not isinstance(command_set_id, str) or not command_set_id:
-        return None, 'Command set not found'
-    command_sets, error = load_command_sets(user_id)
-    if error:
-        return None, error
-    for command_set in command_sets:
-        if isinstance(command_set, dict) and command_set.get('id') == command_set_id:
-            return copy.deepcopy(command_set), None
-    return None, 'Command set not found'
+    with storage_lock(f'command-sets:{user_id}'):
+        return _get_command_set_with_lock_held(user_id, command_set_id)
 
 
 def _get_command_set_with_lock_held(user_id, command_set_id):
@@ -626,14 +619,6 @@ def _resolve_command_set_with_coordinator_held(user_id, command_set_id):
 
 
 @user_operation
-def resolve_command_set(user_id, command_set_id):
-    with storage_lock(f'command-config:{user_id}'):
-        return _resolve_command_set_with_coordinator_held(
-            user_id, command_set_id
-        )
-
-
-@user_operation
 def resolve_command_set_parameters(user_id, command_set_id, values, use_sudo=False):
     """Resolve only an owned saved set; never store supplied parameter values."""
     with storage_lock(f'command-config:{user_id}'):
@@ -723,20 +708,6 @@ def _get_command_usage_summary_with_coordinator_held(user_id, command_id):
                     'type': 'profile',
                 })
     return usage_count, usage_types, usages, None
-
-
-def _get_command_usage_with_coordinator_held(user_id, command_id):
-    """Read bounded reference details while the coordinator is held."""
-    _count, _types, usages, error = (
-        _get_command_usage_summary_with_coordinator_held(user_id, command_id)
-    )
-    return (None, error) if error else (usages, None)
-
-
-@user_operation
-def get_command_usage(user_id, command_id):
-    with storage_lock(f'command-config:{user_id}'):
-        return _get_command_usage_with_coordinator_held(user_id, command_id)
 
 
 def _load_profile_references(user_id):

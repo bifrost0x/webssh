@@ -14,7 +14,7 @@ def payload():
 
 
 def test_parameterized_sets_cannot_break_existing_startup_profiles(app):
-    from app import profile_manager
+    from app import post_connect_manager, profile_manager
     from app.models import User, db
     with app.app_context():
         user = User(username='startup-compat', password_hash='unused')
@@ -36,7 +36,7 @@ def test_parameterized_sets_cannot_break_existing_startup_profiles(app):
         assert converted is None and error
         assert sets_path.read_bytes() == previous_sets
         assert profiles_path.read_bytes() == previous_profiles
-        assert manager.resolve_command_set(user.id, normal['id']) == ('pwd', None)
+        assert post_connect_manager.resolve_configuration(user.id, profile) == ('pwd', None)
         interactive, error = manager.upsert_command_set(user.id, payload())
         assert error is None
         rejected, error = profile_manager.upsert_profile(user.id, {

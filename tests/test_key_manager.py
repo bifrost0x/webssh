@@ -448,16 +448,20 @@ def test_replace_key_write_failure_preserves_active_key(
 )
 def test_detects_real_supported_key_types(
         request, fixture_name, expected):
-    from app.key_manager import detect_key_type
+    from app.ssh_key_loader import identify_private_key
 
     key_content = request.getfixturevalue(fixture_name)
-    assert detect_key_type(key_content) == expected
+    assert identify_private_key(key_content) == expected
 
 
 def test_dsa_is_not_reported_as_supported(dsa_private_key_pem):
-    from app.key_manager import detect_key_type
+    from app.ssh_key_loader import (
+        UnsupportedPrivateKeyError,
+        identify_private_key,
+    )
 
-    assert detect_key_type(dsa_private_key_pem) is None
+    with pytest.raises(UnsupportedPrivateKeyError):
+        identify_private_key(dsa_private_key_pem)
 
 
 @pytest.mark.parametrize(
@@ -479,9 +483,13 @@ def test_dsa_is_not_reported_as_supported(dsa_private_key_pem):
     ],
 )
 def test_malformed_or_empty_content_is_not_detected(content):
-    from app.key_manager import detect_key_type
+    from app.ssh_key_loader import (
+        UnsupportedPrivateKeyError,
+        identify_private_key,
+    )
 
-    assert detect_key_type(content) is None
+    with pytest.raises(UnsupportedPrivateKeyError):
+        identify_private_key(content)
 
 
 @pytest.mark.parametrize(
@@ -523,6 +531,7 @@ def test_save_key_validates_encrypts_and_records_supported_key(
 def test_legacy_migration_failure_is_not_returned_as_key_content(
         app, rsa_private_key_pem, monkeypatch):
     from app import key_encryption, key_manager
+    from app.storage_utils import atomic_write_bytes as real_atomic_write
 
     user_id = create_user(app, username='legacy-migration-failure')
     secret_error = 'sentinel-private-migration-error'
@@ -539,12 +548,17 @@ def test_legacy_migration_failure_is_not_returned_as_key_content(
         original = rsa_private_key_pem.encode('utf-8')
         key_path.write_bytes(original)
 
+        writes = []
+
+        def fail_migration_write(path, payload, mode=0o600):
+            # Fail the migration write; let the rollback write through.
+            writes.append(payload)
+            if len(writes) == 1:
+                raise OSError(secret_error)
+            real_atomic_write(path, payload, mode)
+
         monkeypatch.setattr(
-            key_encryption,
-            'atomic_write_bytes',
-            lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                OSError(secret_error)
-            ),
+            key_encryption, 'atomic_write_bytes', fail_migration_write
         )
         monkeypatch.setattr(
             key_manager,

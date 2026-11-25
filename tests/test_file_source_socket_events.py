@@ -28,10 +28,6 @@ class ListingBackend:
     def __init__(self):
         self.calls = []
 
-    def list_directory(self, source, path):
-        self.calls.append((source.source_id, path))
-        return [{'name': 'config.yml'}], None
-
     def open_directory_listing(self, source, path):
         self.calls.append((source.source_id, path))
 

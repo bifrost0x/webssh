@@ -91,10 +91,10 @@ def test_directory_and_editor_save_report_permission_failure(monkeypatch):
     monkeypatch.setattr(sftp_handler, 'sftp_session', denied_session)
     monkeypatch.setattr(sftp_handler, 'mutation_session', denied_session)
 
-    files, listing_error = sftp_handler.list_directory('session', '/private')
+    listing, listing_error = sftp_handler.open_directory_listing('session', '/private')
     save = sftp_handler.write_file_text('session', '/private/key', 'updated')
 
-    assert files is None
+    assert listing is None
     assert listing_error == 'Permission denied'
     assert save.success is False
     assert save.error == 'Permission denied'
@@ -287,6 +287,8 @@ def test_recursive_paramiko_listing_shares_raw_dot_metadata_budget(
     )
     from paramiko.sftp_attr import SFTPAttributes
     import app.sftp_handler as sftp_handler
+    from app.remote_transfer import TransferBudget
+    from app.sftp_backend import SFTPBackend
 
     # Each directory fits this limit independently, but their combined raw
     # dot-entry metadata does not. Recursive traversal must use one budget.
@@ -347,14 +349,20 @@ def test_recursive_paramiko_listing_shares_raw_dot_metadata_budget(
 
     sftp = ProtocolSFTP()
 
+    @contextmanager
+    def fake_session(_session_id, io_lane='control'):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+    monkeypatch.setattr(config, 'MAX_TRANSFER_MEMBERS', 20)
+
     with pytest.raises(sftp_handler.RemoteMetadataLimitExceeded):
-        sftp_handler.inspect_remote_tree(
-            sftp,
+        list(SFTPBackend().iter_tree(
+            SimpleNamespace(handle_id='session'),
             '/',
+            budget=TransferBudget(max_bytes=1024, max_members=20),
             cancel_event=None,
-            max_bytes=1024,
-            max_members=20,
-        )
+        ))
 
     assert sftp.requests.count(CMD_OPENDIR) == 2
     assert sftp.requests.count(CMD_CLOSE) == 2
@@ -1191,21 +1199,17 @@ def test_listing_survives_a_name_that_is_not_utf8(monkeypatch):
         yield clients[-1], 'session'
 
     monkeypatch.setattr(handler, 'sftp_session', session)
-    files, error = handler.list_directory('session', '/data')
+    listing, error = handler.open_directory_listing('session', '/data')
     assert error is None
-    names = [entry['name'] for entry in files]
+    page, error, has_more = listing.read_page(10)
+    assert error is None and has_more is False
+    names = [entry['name'] for entry in page]
     assert names == ['normal.txt', 'caf\udce9.txt']
     # The escaped name can never match a real path, so it cannot be opened
     # or renamed by accident and serializes safely as JSON.
     import json
     assert json.loads(json.dumps(names)) == names
     assert clients[0].closed
-
-    listing, error = handler.open_directory_listing('session', '/data')
-    assert error is None
-    page, error, has_more = listing.read_page(10)
-    assert error is None and has_more is False
-    assert [entry['name'] for entry in page] == ['normal.txt', 'caf\udce9.txt']
 
 
 def test_recursive_operations_still_refuse_names_that_are_not_utf8():

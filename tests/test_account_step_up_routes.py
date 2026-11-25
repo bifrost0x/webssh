@@ -481,7 +481,6 @@ def test_passkey_challenges_are_independent_per_account_intent(
     monkeypatch,
 ):
     import config
-    import app.account_step_up_routes as routes
     from app.models import User, WebAuthnCredential, db
 
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
@@ -500,8 +499,7 @@ def test_passkey_challenges_are_independent_per_account_intent(
         ))
         db.session.commit()
     monkeypatch.setattr(
-        routes,
-        "verify_authentication_response",
+        "app.webauthn_service.verify_authentication_response",
         lambda **kwargs: SimpleNamespace(
             new_sign_count=kwargs["credential_current_sign_count"] + 1
         ),

@@ -4,9 +4,7 @@ Mirrors profile_manager: a JSON file per user under their data dir. Stores only
 non-secret connection metadata (name/host/port/username/auth_type/key_id) — never
 a password, consistent with connection profiles.
 """
-import re
 import uuid
-import ipaddress
 from datetime import datetime, timezone
 
 import config
@@ -30,25 +28,10 @@ from .storage_utils import (
 )
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
 from .data_access import user_operation
+from .profile_manager import USERNAME_PATTERN, _is_valid_host
 
 
 _JUMP_HOST_USAGE_DETAIL_LIMIT = 20
-
-
-def _is_valid_host(host):
-    host = (host or '').strip()
-    if not host:
-        return False
-    try:
-        ipaddress.ip_address(host)
-        return True
-    except ValueError:
-        pass
-    pattern = re.compile(
-        r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
-        r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
-    )
-    return bool(pattern.match(host))
 
 
 def _get_file(user_id):
@@ -311,7 +294,7 @@ def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None, j
             return None, "Invalid port number"
 
         username = str(username).strip()
-        if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
+        if not USERNAME_PATTERN.match(username):
             return None, "Invalid username format"
 
         if auth_type not in ['password', 'key']:

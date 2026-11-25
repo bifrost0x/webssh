@@ -19,7 +19,7 @@ from .automation_schedule import AutomationSchedule  # noqa: F401
 from .auth import (init_auth, authenticate_user, register_user,
                    check_rate_limit, check_reauth_rate_limit,
                    release_login_username_attempt, reserve_login_username_attempt,
-                   is_bootstrap_registration_available,
+                   is_bootstrap_registration_available, is_config_managed_admin,
                    password_exceeds_bcrypt_limit)
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
                               log_login_attempt, log_logout, log_registration, log_password_change)
@@ -27,7 +27,11 @@ from .terminal_appearance import valid_terminal_appearance
 from .user_settings import (
     AUTHENTICATION_SESSION_DURATION_MINUTES,
     DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES,
+    DISCONNECT_SESSION_ACTIONS,
+    OVERVIEW_LAYOUTS,
     OVERVIEW_REACHABILITY_MODES,
+    START_PAGES,
+    THEMES,
     get_user_settings,
     save_user_settings,
 )
@@ -62,6 +66,11 @@ _FLASK_OPTIONS_WITH_VALUES = frozenset({
     '--env-file',
     '-e',
 })
+_PARTIAL_LOGOUT_MESSAGE = (
+    'You were signed out in this browser, but the server could not end your '
+    'session. Change your password or ask an administrator to end your '
+    'sessions.'
+)
 
 
 def _is_flask_cli_process(program_name=None, main_module_name=None):
@@ -900,17 +909,6 @@ def create_app(
                 abort(403)
 
 
-    if not config.DEBUG:
-        if not os.environ.get('SECRET_KEY'):
-            log_error("CRITICAL: SECRET_KEY not set in environment variables! "
-                      "Using auto-generated SECRET_KEY will break sessions after restart. "
-                      "Set SECRET_KEY environment variable for production deployment!")
-
-        if config.CORS_ORIGINS == '*' and not os.environ.get('ALLOW_CORS_WILDCARD', '').lower() == 'true':
-            log_warning("CORS_ORIGINS set to wildcard (*) in production mode! "
-                        "This allows any domain to access your API - significant security risk. "
-                        "Set CORS_ORIGINS to specific allowed origins.")
-
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{config.DATA_DIR / "app.db"}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)
@@ -1421,13 +1419,14 @@ def create_app(
     @app.route('/logout', methods=['POST'])
     @login_required
     def logout():
-        from . import user_lifecycle
-        from .auth_assurance import delete_current_authentication_session
+        from . import auth_assurance, user_lifecycle
+        from .models import User
 
         user_id = current_user.id
+        session_ended = True
         log_logout(current_user.username, get_client_ip())
         try:
-            delete_current_authentication_session()
+            auth_assurance.delete_current_authentication_session()
         except Exception as exc:
             db.session.rollback()
             log_warning(
@@ -1435,8 +1434,27 @@ def create_app(
                 user_id=user_id,
                 error=type(exc).__name__,
             )
+            # A copied session cookie must not outlive the logout, so fall
+            # back to ending every credential issued under this generation.
+            try:
+                auth_assurance.invalidate_user_authentication(
+                    db.session.get(User, user_id)
+                )
+                db.session.commit()
+            except Exception as invalidation_exc:
+                db.session.rollback()
+                session_ended = False
+                log_warning(
+                    'Authentication invalidation failed during logout',
+                    user_id=user_id,
+                    error=type(invalidation_exc).__name__,
+                )
         user_lifecycle.revoke_user_access(user_id, socketio, kill_tmux=False)
         clear_browser_authentication()
+        if not session_ended:
+            # This browser is signed out, but the server-side session row
+            # survives, so copies of this session cookie stay valid.
+            flash(_PARTIAL_LOGOUT_MESSAGE, 'error')
         return redirect(url_for('login'))
 
     @app.route('/change-password', methods=['GET', 'POST'])
@@ -1612,12 +1630,12 @@ def create_app(
         updates = {}
         if 'start_page' in data:
             start_page = data['start_page']
-            if not isinstance(start_page, str) or start_page not in {'overview', 'workspaces'}:
+            if not isinstance(start_page, str) or start_page not in START_PAGES:
                 return jsonify({'error': 'Invalid start page'}), 400
             updates['start_page'] = start_page
         if 'overview_layout' in data:
             layout = data['overview_layout']
-            if not isinstance(layout, str) or layout not in {'dashboard', 'classic'}:
+            if not isinstance(layout, str) or layout not in OVERVIEW_LAYOUTS:
                 return jsonify({'error': 'Invalid overview layout'}), 400
             updates['overview_layout'] = layout
         if 'overview_reachability' in data:
@@ -1634,14 +1652,9 @@ def create_app(
                 return jsonify({'error': 'Invalid directory sync setting'}), 400
             updates['sync_terminal_directory'] = data['sync_terminal_directory']
         if 'theme' in data:
-            valid_themes = {
-                'glass', 'werkbank', 'retro', 'solar', 'paper', 'noir',
-                'arctic-ice', 'rose-gold', 'cyberpunk-neon',
-                'emerald-matrix', 'obsidian',
-            }
             if (
                 not isinstance(data['theme'], str)
-                or data['theme'] not in valid_themes
+                or data['theme'] not in THEMES
             ):
                 return jsonify({'error': 'Invalid theme'}), 400
             updates['theme'] = data['theme']
@@ -1657,7 +1670,7 @@ def create_app(
             action = data['disconnect_session_action']
             if (
                 not isinstance(action, str)
-                or action not in {'retry', 'close'}
+                or action not in DISCONNECT_SESSION_ACTIONS
             ):
                 return jsonify({
                     'error': 'Invalid disconnect session action',
@@ -1691,6 +1704,7 @@ def create_app(
             'mfa_enabled': bool(u.mfa_enabled),
             'ldap_managed': bool(u.is_ldap_managed),
             'github_managed': bool(u.is_github_managed),
+            'admin_managed_by_config': is_config_managed_admin(u),
             'created_at': u.created_at.isoformat() if u.created_at else None,
             'last_login': u.last_login.isoformat() if u.last_login else None,
         }
@@ -1739,7 +1753,9 @@ def create_app(
         ):
             return jsonify({'error': 'Invalid user payload'}), 400
         username = username.strip()
-        user, error = register_user(username, password)
+        user, error = register_user(
+            username, password, allow_config_admin=True,
+        )
         if error:
             return jsonify({'error': error}), 400
         if make_admin:
@@ -1801,6 +1817,13 @@ def create_app(
                 return jsonify({'error': 'You cannot remove your own admin rights'}), 400
             if _is_last_admin():
                 return jsonify({'error': 'Cannot demote the last administrator'}), 400
+            if is_config_managed_admin(target):
+                # sync_admin_users would promote the account again on the next start.
+                return jsonify({'error': (
+                    'This account is an administrator through the ADMIN_USERS '
+                    'setting; remove it from ADMIN_USERS and restart before '
+                    'demoting it'
+                )}), 409
             target.is_admin = False
         elif action == 'delete':
             if is_self:
@@ -1939,22 +1962,13 @@ def create_app(
                 status = runtime_feature_status(name)
                 if status['locked']:
                     return jsonify(error='Setting is controlled by Compose/environment', code='deployment_locked', setting=name, policy=status), 409
-        for feature in ('credentials_enabled', 'automation_enabled'):
-            if feature in data and type(data[feature]) is not bool:
-                return jsonify({'error': f'{feature} must be a boolean'}), 400
-        if ('ssh_gateway_enabled' in data
-                and type(data['ssh_gateway_enabled']) is not bool):
-            return jsonify({'error': 'ssh_gateway_enabled must be a boolean'}), 400
-        if 'herdr_enabled' in data and type(data['herdr_enabled']) is not bool:
-            return jsonify({'error': 'herdr_enabled must be a boolean'}), 400
-        if ('support_links_enabled' in data
-                and type(data['support_links_enabled']) is not bool):
-            return jsonify({'error': 'support_links_enabled must be a boolean'}), 400
-        if ('tailscale_ssh_restrict_tailnet_routes' in data
-                and type(data['tailscale_ssh_restrict_tailnet_routes']) is not bool):
-            return jsonify({
-                'error': 'tailscale_ssh_restrict_tailnet_routes must be a boolean'
-            }), 400
+        for name in (
+            'credentials_enabled', 'automation_enabled', 'ssh_gateway_enabled',
+            'herdr_enabled', 'support_links_enabled',
+            'tailscale_ssh_restrict_tailnet_routes',
+        ):
+            if name in data and type(data[name]) is not bool:
+                return jsonify({'error': f'{name} must be a boolean'}), 400
         from .app_settings import (SIGN_IN_PROTECTION_BOUNDS,
                                    SettingsUpdateError,
                                    invalid_sign_in_protection_field,

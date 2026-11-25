@@ -149,15 +149,15 @@ def proxy_browser(proxy_app):
 def test_second_factor_returns_a_public_continuation(proxy_app, proxy_browser, monkeypatch, factor):
     import base64
     import config
-    import pyotp
     from types import SimpleNamespace
     from app.auth import register_user
     from app.models import TOTPAuthenticator, WebAuthnCredential, SecurityFeatureState, db
     from app.mfa_crypto import encrypt_totp_secret
     from app.recovery_service import generate_codes
-    import app.webauthn_routes as webauthn_routes
+    from app.totp_service import _random_base32
+    from tests.totp_helpers import totp_now
     app, prefix = proxy_app
-    secret = pyotp.random_base32()
+    secret = _random_base32()
     credential_id = b'prefix-passkey'
     monkeypatch.setattr(config, 'TOTP_ENABLED', True)
     monkeypatch.setattr(config, 'WEBAUTHN_ENABLED', True)
@@ -176,11 +176,11 @@ def test_second_factor_returns_a_public_continuation(proxy_app, proxy_browser, m
                            data={'username': 'factor_user', 'password': 'password123'})
     assert response.status_code == 200
     if factor == 'totp':
-        response = client.post('/api/totp/auth/verify', json={'code': pyotp.TOTP(secret).now()})
+        response = client.post('/api/totp/auth/verify', json={'code': totp_now(secret)})
     elif factor == 'recovery':
         response = client.post('/api/auth/recovery', json={'code': code})
     else:
-        monkeypatch.setattr(webauthn_routes, 'verify_authentication_response',
+        monkeypatch.setattr('app.webauthn_service.verify_authentication_response',
                             lambda **kwargs: SimpleNamespace(new_sign_count=1))
         assert client.post('/api/webauthn/auth/options', json={}).status_code == 200
         encoded = base64.urlsafe_b64encode(credential_id).decode().rstrip('=')
@@ -298,3 +298,19 @@ def test_terminal_fonts_stay_on_the_public_origin_and_prefix(proxy_app):
         assert font.data.startswith(b'wOF2')
         assert 'Content-Encoding' not in font.headers
         assert "font-src 'self' data:" in font.headers['Content-Security-Policy']
+
+
+@pytest.mark.parametrize('target', [' ///evil.example', '\t///evil.example', ' /admin'])
+def test_password_login_never_redirects_to_a_whitespace_prefixed_target(proxy_app, target):
+    from urllib.parse import quote
+    from app.auth import register_user
+    app, prefix = proxy_app
+    with app.app_context():
+        user, error = register_user('next_user', 'password123')
+        assert error is None
+    response = app.test_client().post(
+        '/login?next=' + quote(target, safe=''),
+        data={'username': 'next_user', 'password': 'password123'},
+        headers=headers(prefix), base_url='http://backend.local')
+    assert response.status_code == 302
+    assert response.location == prefix + '/'

@@ -222,3 +222,45 @@ def test_disconnect_session_action_socket_event_rejects_malformed_values(
         'success': False,
         'error': 'Invalid disconnect session action',
     }
+
+
+@pytest.mark.parametrize(
+    ('payload', 'events', 'saved'),
+    [
+        (
+            {'theme': 'obsidian'},
+            [('theme_updated', {'theme': 'obsidian'})],
+            [(17, {'theme': 'obsidian'})],
+        ),
+        ({'theme': 'unknown'}, [('error', {'error': 'Invalid theme'})], []),
+        ({'theme': 5}, [('error', {'error': 'Invalid theme'})], []),
+        ({'theme': ['glass']}, [('error', {'error': 'Invalid theme'})], []),
+        ({'theme': {'glass': 1}}, [('error', {'error': 'Invalid theme'})], []),
+    ],
+)
+def test_set_theme_socket_event_accepts_only_known_themes(
+    payload, events, saved, monkeypatch
+):
+    from types import SimpleNamespace
+    from app import socket_events
+
+    emitted = []
+    stored = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, body, *_args, **_kwargs: emitted.append((event, body)),
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'save_user_settings',
+        lambda user_id, update: stored.append((user_id, update)) or True,
+    )
+
+    socket_events.handle_set_theme.__wrapped__(
+        payload,
+        current_user=SimpleNamespace(id=17),
+    )
+
+    assert emitted == events
+    assert stored == saved

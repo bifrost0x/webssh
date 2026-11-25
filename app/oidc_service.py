@@ -1,15 +1,13 @@
 """Server-side OIDC login state and stable identity resolution."""
 
-import hashlib
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from threading import Lock
-from urllib.parse import urlsplit
 
-from .auth_assurance import AssuranceLevel
-from .models import OIDCIdentity, OIDCLoginState, as_naive_utc, db
+from .auth_assurance import ASSURANCE_RANK, AssuranceLevel, safe_continuation
+from .models import OIDCIdentity, OIDCLoginState, as_naive_utc, db, token_digest
 
 
 class OIDCStateError(ValueError):
@@ -55,26 +53,6 @@ class OIDCAssurance:
     reason: str
 
 
-def _hash(value):
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def _safe_continuation(value):
-    candidate = str(value or "/")
-    parsed = urlsplit(candidate)
-    if (
-        not candidate.startswith("/")
-        or candidate.startswith("//")
-        or "\\" in candidate
-        or parsed.scheme
-        or parsed.netloc
-        or parsed.fragment
-        or len(candidate) > 512
-    ):
-        return "/"
-    return candidate
-
-
 def _normalize_requested_acr(value):
     if value is None:
         return None
@@ -101,7 +79,7 @@ def _normalize_state_intent(
     purpose = str(purpose or "")
     if purpose not in _STATE_PURPOSES:
         raise OIDCStateError("OIDC state purpose is invalid")
-    continuation = _safe_continuation(continuation)
+    continuation = safe_continuation(continuation)
     requested_acr = _normalize_requested_acr(requested_acr)
     if purpose == "login":
         if (
@@ -246,7 +224,7 @@ def create_login_state(
         step_up_intent_id=step_up_intent_id,
     )
     now = as_naive_utc(now or datetime.now(timezone.utc))
-    binding_hash = _hash(session_binding)
+    binding_hash = token_digest(session_binding)
     with _oidc_state_lock:
         OIDCLoginState.query.filter(
             OIDCLoginState.expires_at < now
@@ -260,7 +238,7 @@ def create_login_state(
         for stale in live_rows[_MAX_STATES_PER_BINDING - 1:]:
             db.session.delete(stale)
         row = OIDCLoginState(
-            state_hash=_hash(state),
+            state_hash=token_digest(state),
             session_binding_hash=binding_hash,
             nonce=nonce,
             code_verifier=code_verifier,
@@ -284,8 +262,8 @@ def consume_login_state(*, state, session_binding, now=None):
     now = as_naive_utc(now or datetime.now(timezone.utc))
     with _oidc_state_lock:
         row = OIDCLoginState.query.filter_by(
-            state_hash=_hash(state),
-            session_binding_hash=_hash(session_binding),
+            state_hash=token_digest(state),
+            session_binding_hash=token_digest(session_binding),
         ).first()
         if row is None:
             raise OIDCStateError("OIDC login state is not available")
@@ -336,8 +314,8 @@ def consume_login_state(*, state, session_binding, now=None):
 def discard_login_state(*, state, session_binding):
     with _oidc_state_lock:
         deleted = OIDCLoginState.query.filter_by(
-            state_hash=_hash(state),
-            session_binding_hash=_hash(session_binding),
+            state_hash=token_digest(state),
+            session_binding_hash=token_digest(session_binding),
         ).delete(synchronize_session=False)
         db.session.commit()
         return bool(deleted)
@@ -458,14 +436,9 @@ def evaluate_oidc_assurance(claims, settings):
             auth_time,
             "conflicting_evidence",
         )
-    ranking = {
-        AssuranceLevel.BASIC: 0,
-        AssuranceLevel.MFA: 1,
-        AssuranceLevel.PHISHING_RESISTANT: 2,
-    }
     amr_level = max(
         amr_levels or [AssuranceLevel.BASIC],
-        key=ranking.get,
+        key=ASSURANCE_RANK.get,
     )
     if (
         acr_level is not AssuranceLevel.BASIC
@@ -479,7 +452,7 @@ def evaluate_oidc_assurance(claims, settings):
             auth_time,
             "conflicting_evidence",
         )
-    level = max((acr_level, amr_level), key=ranking.get)
+    level = max((acr_level, amr_level), key=ASSURANCE_RANK.get)
     if level is not AssuranceLevel.BASIC and auth_time is None:
         return OIDCAssurance(
             AssuranceLevel.BASIC,

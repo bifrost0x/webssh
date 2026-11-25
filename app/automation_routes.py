@@ -13,6 +13,7 @@ from .auth import check_reauth_rate_limit
 from .step_up import consume_account_step_up_grant, StepUpError
 from .storage_errors import StorageCorruptionError
 from .quota_manager import QuotaExceeded
+from .request_limits import no_store
 
 automation_blueprint = Blueprint('automation', __name__)
 
@@ -60,15 +61,9 @@ def _grant(action, token):
     except StepUpError as error:
         raise AutomationError('step_up_required') from error
 
-@automation_blueprint.before_request
-def bounds():
-    request.max_content_length = 256 * 1024
-
 @automation_blueprint.after_request
 def private(response):
-    response.headers['Cache-Control'] = 'no-store'
-    response.headers['Pragma'] = 'no-cache'
-    return response
+    return no_store(response)
 
 @automation_blueprint.errorhandler(AutomationError)
 def failure(error):

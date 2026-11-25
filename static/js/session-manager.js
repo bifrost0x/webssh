@@ -1478,14 +1478,6 @@ const SessionManager = {
         );
     },
 
-    getEmptyPaneIndices() {
-        return this.paneAssignments
-            .map((sessionId, index) => (
-                sessionId || !this.isPaneSlotOpen(index) ? null : index
-            ))
-            .filter(index => index !== null);
-    },
-
     isPaneSlotOpen(index) {
         return !this.windowMode || Boolean(this.windowDesktop?.isOpen(index));
     },

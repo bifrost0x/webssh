@@ -70,6 +70,30 @@ def test_existing_feature_without_state_preserves_deployment_behavior(
     assert status.reason is None
 
 
+def test_totp_readiness_depends_only_on_qr_rendering(app, monkeypatch):
+    from types import SimpleNamespace
+
+    from app import security_features
+
+    available = {'webauthn', 'qrcode'}
+    monkeypatch.setattr(
+        security_features,
+        'find_spec',
+        lambda name: object() if name in available else None,
+    )
+    target = SimpleNamespace(extensions={})
+
+    security_features.initialize_feature_readiness(target)
+    assert target.extensions['security_feature_readiness']['totp'] == (True, None)
+
+    available.discard('qrcode')
+    security_features.initialize_feature_readiness(target)
+    assert target.extensions['security_feature_readiness']['totp'] == (
+        False,
+        'TOTP dependencies are unavailable.',
+    )
+
+
 def test_new_totp_feature_requires_explicit_admin_activation(app, monkeypatch):
     import config
     from app.security_features import feature_status

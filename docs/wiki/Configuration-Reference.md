@@ -40,7 +40,7 @@ The production profile requires explicit HTTPS origins, secure cookies, and expl
 | `REGISTRATION_ENABLED` | Allows public creation of additional local accounts | `False`; production rejects `True` |
 | `BOOTSTRAP_REGISTRATION_ENABLED` | Allows exactly one first administrator to be created in a fresh homelab database | Homelab default; disabled and rejected by the production profile |
 | `ADMIN_PANEL_ENABLED` | Can disable the administrator panel | Enabled |
-| `ADMIN_USERS` | Comma-separated existing usernames promoted at startup | Empty |
+| `ADMIN_USERS` | Comma-separated existing usernames promoted at startup; listed names cannot be self-registered and these administrators cannot be demoted in the admin panel | Empty |
 
 Prefer `flask create-admin` for controlled deployments. Public registration is independent of LDAP and OIDC sign-in.
 

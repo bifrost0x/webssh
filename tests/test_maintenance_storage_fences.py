@@ -416,3 +416,41 @@ def test_disconnect_cleanup_is_drained_and_cannot_reenter_after_restore(app, mon
         draining.result(timeout=5)
     socket_events._cleanup_socket_session('late-sid')
     assert calls == ['synthetic-sid']
+
+
+def test_failed_interrupted_restore_rollback_is_logged(
+    monkeypatch, tmp_path, caplog
+):
+    import app.backup_manager as backup_manager
+    import app.maintenance_mode as maintenance
+    import config
+
+    monkeypatch.setattr(config, 'BACKUP_TEMP_DIR', tmp_path / 'operations')
+    monkeypatch.setattr(config, 'DATA_DIR', tmp_path / 'data')
+    config.DATA_DIR.mkdir()
+    maintenance._state = None
+    maintenance._state_path = None
+    operation = maintenance._status_path().parent / 'operation-broken'
+    operation.mkdir()
+    (operation / 'rollback.zip').write_bytes(b'rollback')
+    maintenance.begin_preparing('broken')
+    maintenance.mark_in_progress('broken', 'operation-broken/rollback.zip')
+
+    def broken_restore(_source, _destination):
+        raise OSError('/secret/path/rollback.zip is unreadable')
+
+    monkeypatch.setattr(
+        backup_manager, '_restore_recovery_snapshot', broken_restore
+    )
+
+    with caplog.at_level('ERROR'):
+        maintenance.recover_interrupted_restore()
+
+    assert maintenance.public_status()['state'] == 'rollback_failed'
+    records = [
+        record for record in caplog.records
+        if record.getMessage() == 'Interrupted restore rollback failed'
+    ]
+    assert len(records) == 1
+    assert records[0].extra_data == {'error_type': 'OSError'}
+    assert '/secret/path' not in caplog.text

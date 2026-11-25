@@ -5,6 +5,7 @@ import pytest
 
 from app.automation_store import AutomationError, profile_fingerprint
 from app.credential_service import CredentialService
+from tests.credential_fixtures import assign_credential, create_assigned_credential
 from tests.test_automation_service import context  # noqa: F401
 
 
@@ -86,7 +87,7 @@ def test_named_proxy_password_uses_typed_owned_resource_and_exact_destination(ap
     resource_id = 'socks:' + proxy['id']
     resource = service.resolve_resource(uid, resource_id)
     assert resource['kind'] == 'socks'
-    service.create_assigned(uid, resource_id, dict(name='Proxy login', password='proxy-secret'), True)
+    create_assigned_credential(service, uid, aid, resource_id, dict(name='Proxy login', password='proxy-secret'))
     assert service.connection_password(uid, aid, 'socks', resource_id, proxy) == 'proxy-secret'
     for change in ({'host': 'changed.example'}, {'remote_dns': False}, {'port': 1081},
                    {'username': 'changed'}, {'auth_type': 'none'}):
@@ -104,7 +105,7 @@ def test_host_password_and_context_bind_exact_socks_route(app, context):
     service = app.extensions['credentials']
     proxy = _proxy(uid)
     routed = _routed_profile(uid, profile, proxy)
-    service.create_assigned(uid, profile['id'], dict(name='Host login', password='host-secret'), True)
+    create_assigned_credential(service, uid, aid, profile['id'], dict(name='Host login', password='host-secret'))
     assert service.connection_password(uid, aid, 'ssh', profile['id'], routed) == 'host-secret'
     assert bind_profile(uid, profile['id'], profile['host'], 22, profile['username'], None,
                         socks_proxy_id=proxy['id']) == profile['id']
@@ -139,12 +140,12 @@ def test_socks_inline_creation_assigns_password_and_rolls_back_failure(app, cont
 
 
 def test_proxy_without_auth_cannot_receive_named_password(app, context):
-    uid, _, _, _ = context
+    uid, aid, _, _ = context
     service = app.extensions['credentials']
     proxy = _proxy(uid, auth_type='none', username='')
     credential = service.create_named(uid, dict(name='Unused', password='secret'))
     with pytest.raises(AutomationError, match='confirmation_required'):
-        service.assign_named(uid, 'socks:'+proxy['id'], credential['id'], True)
+        assign_credential(service, uid, aid, 'socks:'+proxy['id'], credential['id'])
 
 
 def test_pending_socks_guard_rechecks_route_and_credential_changes(app, context, monkeypatch):
@@ -153,7 +154,7 @@ def test_pending_socks_guard_rechecks_route_and_credential_changes(app, context,
     service = app.extensions['credentials']
     proxy = _proxy(uid, remote_dns=False)
     resource_id = 'socks:'+proxy['id']
-    credential = service.create_assigned(uid, resource_id, dict(name='Proxy', password='secret'), True)
+    credential = create_assigned_credential(service, uid, aid, resource_id, dict(name='Proxy', password='secret'))
     monkeypatch.setattr('app.auth_assurance.current_authentication_session',
                         lambda: SimpleNamespace(id=aid, user_id=uid))
     # The ID on a live proxy payload identifies the proxy itself, not a nested route.
@@ -190,7 +191,7 @@ def test_host_guard_keeps_only_route_identity_and_detects_dns_change(app, contex
     service = app.extensions['credentials']
     proxy = _proxy(uid)
     routed = _routed_profile(uid, profile, proxy)
-    service.create_assigned(uid, routed['id'], dict(name='Host', password='host-secret'), True)
+    create_assigned_credential(service, uid, aid, routed['id'], dict(name='Host', password='host-secret'))
     monkeypatch.setattr('app.auth_assurance.current_authentication_session',
                         lambda: SimpleNamespace(id=aid, user_id=uid))
     payload = dict(profile, credential_id=profile['id'], socks_proxy=dict(
@@ -260,7 +261,7 @@ def test_foreign_and_deleted_socks_routes_never_release_host_password(app, conte
         service.authorize_target(uid, aid, dict(credential_id=credential['id'],
             target=dict(profile, socks_proxy_id=foreign['id']), confirm_target=True))
     routed = _routed_profile(uid, profile, proxy)
-    service.assign_named(uid, profile['id'], credential['id'], True)
+    assign_credential(service, uid, aid, profile['id'], credential['id'])
     monkeypatch.setattr('app.credential_service.load_socks_proxies', lambda _uid: [])
     with pytest.raises(AutomationError):
         service.connection_password(uid, aid, 'ssh', profile['id'], routed)
@@ -315,7 +316,7 @@ def test_top_level_route_reference_cannot_authorize_a_direct_connection(app, con
         assert error is None
         routed, error = upsert_profile(uid, dict(profile, jump_host_id=jump['id']))
         assert error is None
-    service.create_assigned(uid, profile['id'], dict(name='Host', password='secret'), True)
+    create_assigned_credential(service, uid, aid, profile['id'], dict(name='Host', password='secret'))
     monkeypatch.setattr('app.auth_assurance.current_authentication_session',
                         lambda: SimpleNamespace(id=aid, user_id=uid))
     # Transport selects nested proxy_jump/socks_proxy; an ID alone creates no route.

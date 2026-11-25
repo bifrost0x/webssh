@@ -108,9 +108,6 @@ class SFTPBackend:
 
             yield Operations()
 
-    def list_directory(self, source, path):
-        return sftp_handler.list_directory(source.handle_id, path)
-
     def open_directory_listing(self, source, path):
         return sftp_handler.open_directory_listing(source.handle_id, path)
 
@@ -362,7 +359,6 @@ class SFTPBackend:
         return binary_transfer.handle_binary_download(
             session_id=source.handle_id,
             remote_path=path,
-            socketio_instance=None,
             max_size=max_size,
         )
 

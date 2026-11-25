@@ -3,7 +3,7 @@
 import pytest
 
 from app import socket_events  # noqa: F401  (registers the event handlers)
-from app.decorators import _positional_argument_limit
+from app.decorators import _positional_arguments
 
 
 @pytest.fixture
@@ -68,10 +68,10 @@ def test_positional_limit_counts_only_event_arguments():
     def variadic(*args, current_user=None):
         return None
 
-    assert _positional_argument_limit(without_payload) == 0
-    assert _positional_argument_limit(with_payload) == 1
-    assert _positional_argument_limit(with_optional) == 1
-    assert _positional_argument_limit(variadic) is None
+    assert _positional_arguments(without_payload)[1] == 0
+    assert _positional_arguments(with_payload)[1] == 1
+    assert _positional_arguments(with_optional)[1] == 1
+    assert _positional_arguments(variadic)[1] is None
 
 
 def _events_with_payload():

@@ -86,6 +86,12 @@ const REVIEWED = new Set([
     `this.smbEnabled ? '' : ' disabled aria-disabled="true"'`,
     "this.smbEnabled ? '' : 'hidden'",
     "this.smbEnabled ? 'hidden' : ''",
+    "this.paneMarkup('left', true)",
+    "this.paneMarkup('right', false)",
+    "active ? ' active' : ''",
+    'paneIdPrefix',
+    'paneSide',
+    'sourcesLabel',
 ]);
 
 function isEscaped(expression) {

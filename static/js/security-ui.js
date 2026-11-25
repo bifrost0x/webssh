@@ -100,13 +100,57 @@
             .replace('{feature}', name);
     }
 
+    function base64urlToBytes(value) {
+        const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+        const raw = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='));
+        return Uint8Array.from(raw, character => character.charCodeAt(0));
+    }
+
+    function bytesToBase64url(value) {
+        let raw = '';
+        for (const byte of new Uint8Array(value)) {
+            raw += String.fromCharCode(byte);
+        }
+        return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function decodeAssertionOptions(options) {
+        return {
+            ...options,
+            challenge: base64urlToBytes(options.challenge),
+            allowCredentials: (options.allowCredentials || []).map(item => ({
+                ...item,
+                id: base64urlToBytes(item.id)
+            }))
+        };
+    }
+
+    function serializeAssertion(credential) {
+        const response = credential.response;
+        return {
+            id: credential.id,
+            rawId: bytesToBase64url(credential.rawId),
+            type: credential.type,
+            authenticatorAttachment: credential.authenticatorAttachment,
+            clientExtensionResults: credential.getClientExtensionResults(),
+            response: {
+                clientDataJSON: bytesToBase64url(response.clientDataJSON),
+                authenticatorData: bytesToBase64url(response.authenticatorData),
+                signature: bytesToBase64url(response.signature),
+                userHandle: response.userHandle
+                    ? bytesToBase64url(response.userHandle)
+                    : null
+            }
+        };
+    }
+
     function createAccountStepUpClient(dependencies) {
         const options = dependencies || {};
         const api = options.api;
         const requestSecret = options.requestSecret;
         const chooseMethod = options.chooseMethod;
         const getPasskeyAssertion = options.getPasskeyAssertion;
-        const serializeCredential = options.serializeCredential || (value => value);
+        const serializeCredential = options.serializeCredential || serializeAssertion;
         const openAuthorization = options.openAuthorization || (url => {
             window.open(url, 'webssh-account-step-up', 'popup,width=720,height=760');
         });
@@ -354,14 +398,18 @@
     }
 
     return {
+        base64urlToBytes,
+        bytesToBase64url,
         createAccountStepUpClient,
         createRequestCoordinator,
+        decodeAssertionOptions,
         describeAuthenticationError,
         describeHostKey,
         downloadAuditExport,
         featureDisableWarning,
         featureStatusReason,
         featureToggleState,
-        hostKeyConfirmation
+        hostKeyConfirmation,
+        serializeAssertion
     };
 });

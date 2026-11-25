@@ -125,7 +125,7 @@ body.webssh-shell {
 .webssh-shell .context-workspace { background: var(--ws2-canvas); border-color: var(--ws2-border); }
 .webssh-shell .context-workspace-tab { font-size: 11px; }
 .webssh-shell .context-workspace-tab.active { background: var(--overview-tint); color: var(--ws2-accent); }
-.webssh-shell :is(.fm-sidebar, .fm-pane, .fm-table-header, .fm-status-bar, .workspace-status-bar) { background-color: var(--ws2-surface); border-color: var(--ws2-border); }
+.webssh-shell :is(.fm-pane, .fm-table-header, .fm-status-bar, .workspace-status-bar) { background-color: var(--ws2-surface); border-color: var(--ws2-border); }
 .webssh-shell :is(.fm-file-list, .fm-content, .fm-body) { background-color: var(--ws2-canvas); }
 .webssh-shell .context-workspace-launcher { border-color: var(--overview-line); color: var(--ws2-accent); }
 

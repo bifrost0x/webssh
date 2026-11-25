@@ -8,13 +8,17 @@ import secrets
 from threading import Lock
 
 from flask import jsonify, request
+from flask_login import current_user
 from sqlalchemy import delete
 
 import config
 
+from .audit_logger import log_security_event
 from .auth_assurance import (
+    ASSURANCE_RANK,
     AssuranceLevel,
     current_authentication_session,
+    recovery_session_required,
 )
 from .models import (
     AuthenticationSession,
@@ -23,6 +27,7 @@ from .models import (
     User,
     as_naive_utc,
     db,
+    token_digest,
 )
 
 
@@ -81,20 +86,12 @@ def hash_step_up_target(value):
     return hashlib.sha256(_TARGET_DOMAIN + encoded).hexdigest()
 
 
-def _token_hash(value):
-    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
-
-
 def _assurance_rank(value):
     try:
         assurance = AssuranceLevel(value)
     except ValueError as exc:
         raise StepUpError("step-up authorization is invalid") from exc
-    return {
-        AssuranceLevel.BASIC: 0,
-        AssuranceLevel.MFA: 1,
-        AssuranceLevel.PHISHING_RESISTANT: 2,
-    }[assurance]
+    return ASSURANCE_RANK[assurance]
 
 
 def required_assurance_for_user(user):
@@ -141,7 +138,7 @@ def create_account_step_up_intent(auth_session, action, target):
             db.session.rollback()
             raise StepUpError("step-up authorization is invalid")
         intent = StepUpIntent(
-            token_hash=_token_hash(token),
+            token_hash=token_digest(token),
             authentication_session_id=auth_session.id,
             user_id=user.id,
             scope="account",
@@ -157,6 +154,16 @@ def create_account_step_up_intent(auth_session, action, target):
     return token, intent
 
 
+def _intent_is_live(intent, user, now):
+    return (
+        intent is not None
+        and intent.expires_at > now
+        and intent.action in ACCOUNT_STEP_UP_ACTIONS
+        and intent.required_assurance
+        == required_assurance_for_user(user).value
+    )
+
+
 def _bound_account_intent(token, auth_session, *, status):
     if not isinstance(token, str) or not token or len(token) > 256:
         raise StepUpError("step-up authorization is invalid")
@@ -165,18 +172,13 @@ def _bound_account_intent(token, auth_session, *, status):
     if user is None:
         raise StepUpError("step-up authorization is invalid")
     intent = StepUpIntent.query.filter_by(
-        token_hash=_token_hash(token),
+        token_hash=token_digest(token),
         authentication_session_id=auth_session.id,
         user_id=user.id,
         scope="account",
         status=status,
     ).first()
-    if (
-        intent is None
-        or intent.expires_at <= now
-        or intent.action not in ACCOUNT_STEP_UP_ACTIONS
-        or intent.required_assurance != required_assurance_for_user(user).value
-    ):
+    if not _intent_is_live(intent, user, now):
         raise StepUpError("step-up authorization is invalid")
     return intent, user, now
 
@@ -200,17 +202,12 @@ def account_step_up_status(token, auth_session):
     if user is None:
         raise StepUpError("step-up authorization is invalid")
     intent = StepUpIntent.query.filter_by(
-        token_hash=_token_hash(token),
+        token_hash=token_digest(token),
         authentication_session_id=auth_session.id,
         user_id=user.id,
         scope="account",
     ).first()
-    if (
-        intent is None
-        or intent.expires_at <= now
-        or intent.action not in ACCOUNT_STEP_UP_ACTIONS
-        or intent.required_assurance != required_assurance_for_user(user).value
-    ):
+    if not _intent_is_live(intent, user, now):
         raise StepUpError("step-up authorization is invalid")
     return intent.status
 
@@ -281,13 +278,7 @@ def approve_account_step_up_intent_by_id(
             scope="account",
             status="pending",
         ).first()
-        if (
-            intent is None
-            or intent.expires_at <= now
-            or intent.action not in ACCOUNT_STEP_UP_ACTIONS
-            or intent.required_assurance
-            != required_assurance_for_user(user).value
-        ):
+        if not _intent_is_live(intent, user, now):
             raise StepUpError("step-up authorization is invalid")
         return _approve_bound_account_intent(
             intent, assurance, method, now
@@ -316,7 +307,7 @@ def claim_account_step_up_grant(token, auth_session):
             db.session.delete(stale)
         grant = secrets.token_urlsafe(32)
         db.session.add(StepUpGrant(
-            token_hash=_token_hash(grant),
+            token_hash=token_digest(grant),
             authentication_session_id=auth_session.id,
             action=intent.action,
             target_hash=intent.target_hash,
@@ -381,7 +372,7 @@ def create_step_up_grant_for_hash(
         for stale in live_rows[_MAX_GRANTS_PER_SESSION - 1:]:
             db.session.delete(stale)
         db.session.add(StepUpGrant(
-            token_hash=_token_hash(token),
+            token_hash=token_digest(token),
             authentication_session_id=auth_session.id,
             action=action,
             target_hash=str(target_hash),
@@ -407,7 +398,7 @@ def consume_step_up_grant(token, auth_session, action, target):
     with _grant_lock:
         statement = (
             delete(StepUpGrant)
-            .where(StepUpGrant.token_hash == _token_hash(token))
+            .where(StepUpGrant.token_hash == token_digest(token))
             .returning(*StepUpGrant.__table__.c)
             .execution_options(synchronize_session=False)
         )
@@ -450,6 +441,33 @@ def consume_account_step_up_grant(action, target):
         action,
         target,
     )
+
+
+def consume_account_grant_or_error(action, target, *, recovery_repair=False):
+    """Consume an account grant, or return the JSON error response.
+
+    A recovery-restricted session may repair its factors without a grant.
+    """
+    if recovery_repair and recovery_session_required():
+        return None
+    try:
+        consume_account_step_up_grant(action, target)
+    except SecurityUIUpgradeRequired:
+        return jsonify({
+            "error": "Reload the Security page before continuing",
+            "code": "security_ui_upgrade_required",
+        }), 409
+    except StepUpError:
+        return jsonify({
+            "error": "Additional authentication is required",
+            "code": "step_up_required",
+        }), 403
+    log_security_event(
+        "ACCOUNT_STEP_UP_CONSUMED",
+        user=current_user.username,
+        action=action,
+    )
+    return None
 
 
 def step_up_required(action, target):

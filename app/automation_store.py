@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .data_access import user_operation
 from .models import User, db
-from .storage_utils import atomic_write_json, load_json_strict, storage_lock
+from .storage_utils import atomic_write_bytes, load_json_strict, storage_lock
 
 MAX_STORE_BYTES = 1024 * 1024
 
@@ -121,15 +121,20 @@ def incarnation(user_id):
         raise AutomationError('unavailable')
     return value[0].isoformat()
 
-def read_document(path, default, validator):
-    if path.exists() and path.stat().st_size > MAX_STORE_BYTES:
+def read_document(path, default, validator, max_bytes=MAX_STORE_BYTES):
+    if path.exists() and path.stat().st_size > max_bytes:
         raise AutomationError('storage_limit')
     return load_json_strict(path, lambda: default, validator)
 
+def document_bytes(document):
+    """The exact bytes write_document stores, so size checks match the file."""
+    return json.dumps(document, indent=2).encode('utf-8')
+
 def write_document(path, document):
-    if len(json.dumps(document).encode()) > MAX_STORE_BYTES:
+    payload = document_bytes(document)
+    if len(payload) > MAX_STORE_BYTES:
         raise AutomationError('storage_limit')
-    atomic_write_json(path, document)
+    atomic_write_bytes(path, payload)
 
 def _valid_books(document):
     try:

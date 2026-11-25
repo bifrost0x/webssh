@@ -1225,19 +1225,6 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
     border-radius: 6px;
 }
 
-.broadcast-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-}
-
-.broadcast-toggle.active {
-    color: var(--accent-on-text);
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-}
-
 .broadcast-bar {
     display: flex;
     align-items: center;
@@ -3448,10 +3435,6 @@ button:focus-visible,
         padding: 12px;
         font-size: 16px;
     }
-
-    .commands-grid {
-        grid-template-columns: 1fr;
-    }
 }
 
 body.keyboard-open:not(.notepad-focused) .notepad-panel {
@@ -4584,16 +4567,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
     background: var(--accent-primary);
     border-color: var(--accent-primary);
     color: var(--accent-on-text);
-}
-
-.os-detected {
-    margin-left: auto;
-    color: var(--text-secondary);
-    font-size: 13px;
-}
-
-.os-detected strong {
-    color: var(--accent-primary);
 }
 
 .commands-table-wrapper {

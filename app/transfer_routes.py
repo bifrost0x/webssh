@@ -2,12 +2,8 @@
 
 import posixpath
 import re
-import secrets
-import shlex
-import stat
 import tempfile
 import threading
-import time
 import unicodedata
 from contextlib import ExitStack
 from urllib.parse import quote
@@ -28,7 +24,6 @@ from .file_sources import (
     file_source_resolver,
 )
 from .file_service import file_service
-from . import ssh_manager
 from .quota_manager import QuotaKind, quota_manager
 from .transfer_manager import InvalidTransferToken, TransferManager
 from .runtime_lifecycle import RuntimeShuttingDown
@@ -116,11 +111,7 @@ def prepare_transfer(
             archive=bool(archive),
         ):
             source = file_service.resolve(source_id, user_id, capability)
-        backend = _transfer_backend(source)
-        if backend is None:
-            safe_path = sftp_handler.sanitize_path(remote_path)
-        else:
-            safe_path = backend.normalize_path(remote_path)
+        safe_path = source.backend.normalize_path(remote_path)
         if safe_path is None or safe_path in {'', '.'}:
             return None
         source_holds = file_source_resolver.acquire_transfer_holds(
@@ -157,20 +148,6 @@ def read_bounded_remote(remote_file, *, chunk_size, max_bytes, cancelled=None):
         if total > max_bytes:
             raise DownloadLimitExceeded()
         yield chunk
-
-
-def _transfer_backend(source):
-    return getattr(source, 'backend', None)
-
-
-def _stat_transfer_source(backend, source, path):
-    stat_or_raise = getattr(backend, 'stat_or_raise', None)
-    if callable(stat_or_raise):
-        return stat_or_raise(source, path, follow_links=False)
-    file_stat, error = backend.stat(source, path, follow_links=False)
-    if error:
-        raise FolderUnavailable()
-    return file_stat
 
 
 def _audit_transfer_source(
@@ -228,10 +205,7 @@ def _upload_to_backend(
     replace=False,
 ):
     transferred = 0
-    backend = _transfer_backend(source)
-    if backend is None:
-        raise ValueError('resolved source has no backend')
-    with backend.open_atomic_writer(
+    with source.backend.open_atomic_writer(
         source,
         remote_path,
         replace=replace,
@@ -426,19 +400,13 @@ def download_transfer(token):
     try:
         active_source = _resolve_transfer_source(record, user_id)
         _release_database_connection()
-        backend = _transfer_backend(active_source)
-        if backend is None:
-            reader_context = sftp_handler.open_bound_reader(
-                active_source.handle_id,
-                remote_path,
-            )
-        else:
-            reader_context = backend.open_reader(
+        lease = reader_stack.enter_context(
+            active_source.backend.open_reader(
                 active_source,
                 remote_path,
                 io_lane='transfer',
             )
-        lease = reader_stack.enter_context(reader_context)
+        )
         if not isinstance(lease, FileReaderLease):
             raise FolderUnavailable()
         size = lease.size
@@ -555,73 +523,6 @@ def download_transfer(token):
     response.headers['Accept-Ranges'] = 'none'
     response.call_on_close(close_unstarted_response)
     return response
-
-
-def _remote_zip_path(sftp, ssh_client, remote_path, cancel_event=None):
-    """Create a ZIP beside no user data and return its remote path and size."""
-    if ssh_client is None:
-        return None
-    folder_name = posixpath.basename(remote_path.rstrip('/')) or 'download'
-    zip_member = f'./{folder_name}' if folder_name.startswith('-') else folder_name
-    # The remote target is random and created under umask 077, then mode 0600.
-    archive_path = (
-        f'/tmp/webssh_{secrets.token_hex(16)}.zip'  # nosec B108
-    )
-    parent = posixpath.dirname(remote_path.rstrip('/')) or '/'
-    command = (
-        f'umask 077 && cd {shlex.quote(parent)} && '
-        f'zip -r -q {shlex.quote(archive_path)} {shlex.quote(zip_member)} && '
-        f'chmod 600 {shlex.quote(archive_path)}'
-    )
-    transport = ssh_client.get_transport()
-    if transport is None:
-        return None
-    channel = ssh_manager._open_exec_channel(
-        transport,
-        command,
-        timeout=config.SSH_CONNECT_TIMEOUT,
-    )
-    channel.settimeout(300)
-    if hasattr(channel, 'exit_status_ready'):
-        deadline = time.monotonic() + 300
-        while not channel.exit_status_ready():
-            if cancel_event is not None and cancel_event.wait(0.1):
-                channel.close()
-                try:
-                    sftp.remove(archive_path)
-                except Exception:
-                    pass
-                raise sftp_handler.TransferCancelled()
-            if time.monotonic() >= deadline:
-                channel.close()
-                try:
-                    sftp.remove(archive_path)
-                except Exception:
-                    pass
-                raise sftp_handler.SFTPOperationError(
-                    'remote ZIP command timed out'
-                )
-    if channel.recv_exit_status() != 0:
-        try:
-            sftp.remove(archive_path)
-        except Exception:
-            pass
-        return None
-    try:
-        size = sftp.stat(archive_path).st_size
-    except Exception:
-        try:
-            sftp.remove(archive_path)
-        except Exception:
-            pass
-        raise
-    if size > config.MAX_ZIP_DOWNLOAD_SIZE:
-        try:
-            sftp.remove(archive_path)
-        except Exception:
-            pass
-        raise sftp_handler.TransferSizeExceeded()
-    return archive_path, size
 
 
 def _create_private_temporary_archive(temp_directory):
@@ -791,21 +692,11 @@ def download_folder_transfer(token):
     metadata = record.metadata
     remote_path = metadata.get('remote_path', '')
     folder_name = posixpath.basename(remote_path.rstrip('/')) or 'download'
-    remote_archive = None
     archive_size = None
     local_archive = None
     temp_reservation = None
-    remote_reader_stack = ExitStack()
-    remote_lease = None
 
     def cleanup_resources():
-        if remote_archive is not None:
-            try:
-                with sftp_handler.sftp_session(source.handle_id) as (sftp, _source):
-                    sftp.remove(remote_archive)
-            except Exception as error:
-                log_error('Remote ZIP cleanup failed', user_id=user_id,
-                          exception_type=type(error).__name__)
         if local_archive is not None:
             try:
                 local_archive.unlink(missing_ok=True)
@@ -838,130 +729,47 @@ def download_folder_transfer(token):
         return _json_failure(failure)
 
     try:
-        backend = _transfer_backend(source)
-        if backend is not None:
-            remote_stat = _stat_transfer_source(backend, source, remote_path)
-            if (
-                remote_stat is None
-                or not remote_stat.get('is_dir')
-                or remote_stat.get('is_symlink')
-            ):
-                raise FolderUnavailable()
-            local_limit = _local_archive_limit()
-            temp_reservation = quota_manager.reserve(
-                QuotaKind.TEMP_BYTES,
-                user_id,
-                local_limit,
-            )
-            try:
-                local_archive = _build_backend_zip_to_disk(
-                    source,
-                    remote_path,
-                    folder_name,
-                    cancel_event=record.cancel_event,
-                    max_bytes=local_limit,
-                    chunk_size=TRANSFER_CHUNK_SIZE,
-                    temp_dir=config.TRANSFER_TEMP_DIR,
-                    expected_root_identities=remote_stat.get(
-                        '_smb_identity_chain'
-                    ),
-                )
-                archive_size = local_archive.stat().st_size
-            except Exception:
-                try:
-                    if local_archive is not None:
-                        local_archive.unlink(missing_ok=True)
-                finally:
-                    temp_reservation.release()
-                    temp_reservation = None
-                raise
-        else:
-            with sftp_handler.sftp_session(source.handle_id) as (sftp, _source):
-                remote_stat = sftp.stat(remote_path)
-                if not stat.S_ISDIR(remote_stat.st_mode):
-                    raise FolderUnavailable()
-                _declared_size, has_symlink = sftp_handler.inspect_remote_tree(
-                    sftp,
-                    remote_path,
-                    cancel_event=record.cancel_event,
-                    max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
-                )
-                remote_result = None
-                if not has_symlink:
-                    try:
-                        remote_result = _remote_zip_path(
-                            sftp,
-                            sftp_handler.get_ssh_client(source.handle_id),
-                            remote_path,
-                            record.cancel_event,
-                        )
-                    except (
-                        sftp_handler.TransferSizeExceeded,
-                        sftp_handler.TransferMemberLimitExceeded,
-                        sftp_handler.TransferCancelled,
-                    ):
-                        raise
-                    except Exception:
-                        remote_result = None
-                if remote_result is not None:
-                    remote_archive, archive_size = remote_result
-                else:
-                    local_limit = _local_archive_limit()
-                    temp_reservation = quota_manager.reserve(
-                        QuotaKind.TEMP_BYTES,
-                        user_id,
-                        local_limit,
-                    )
-                    try:
-                        local_archive = sftp_handler.build_fallback_zip_to_disk(
-                            sftp,
-                            remote_path,
-                            folder_name,
-                            cancel_event=record.cancel_event,
-                            max_bytes=local_limit,
-                            chunk_size=TRANSFER_CHUNK_SIZE,
-                            temp_dir=config.TRANSFER_TEMP_DIR,
-                        )
-                        archive_size = local_archive.stat().st_size
-                    except Exception:
-                        try:
-                            if local_archive is not None:
-                                local_archive.unlink(missing_ok=True)
-                        finally:
-                            temp_reservation.release()
-                        temp_reservation = None
-                        raise
-        if remote_archive is not None:
-            active_source = _resolve_transfer_source(record, user_id)
-            remote_lease = remote_reader_stack.enter_context(
-                sftp_handler.open_bound_reader(
-                    active_source.handle_id,
-                    remote_archive,
-                )
-            )
-            if remote_lease.size > config.MAX_ZIP_DOWNLOAD_SIZE:
-                raise DownloadLimitExceeded()
-            archive_size = remote_lease.size
-    except Exception as error:
+        remote_stat = source.backend.stat_or_raise(
+            source, remote_path, follow_links=False
+        )
+        if (
+            remote_stat is None
+            or not remote_stat.get('is_dir')
+            or remote_stat.get('is_symlink')
+        ):
+            raise FolderUnavailable()
+        local_limit = _local_archive_limit()
+        temp_reservation = quota_manager.reserve(
+            QuotaKind.TEMP_BYTES,
+            user_id,
+            local_limit,
+        )
         try:
-            remote_reader_stack.close()
-        except Exception as close_error:
-            log_error(
-                'Folder download reader close failed',
-                user_id=user_id,
-                exception_type=type(close_error).__name__,
+            local_archive = _build_backend_zip_to_disk(
+                source,
+                remote_path,
+                folder_name,
+                cancel_event=record.cancel_event,
+                max_bytes=local_limit,
+                chunk_size=TRANSFER_CHUNK_SIZE,
+                temp_dir=config.TRANSFER_TEMP_DIR,
+                expected_root_identities=remote_stat.get(
+                    '_smb_identity_chain'
+                ),
             )
-        limit_arguments = ({
-            'limit_kind': 'archive',
-            'limit_bytes': config.MAX_ZIP_DOWNLOAD_SIZE,
-            'actual_bytes': (
-                remote_lease.size if remote_lease is not None else archive_size
-            ),
-        } if isinstance(error, DownloadLimitExceeded) else {})
+            archive_size = local_archive.stat().st_size
+        except Exception:
+            try:
+                if local_archive is not None:
+                    local_archive.unlink(missing_ok=True)
+            finally:
+                temp_reservation.release()
+                temp_reservation = None
+            raise
+    except Exception as error:
         failure = classify_transfer_failure(
             error,
             operation='folder_download',
-            **limit_arguments,
         )
         outcome = 'cancelled' if failure.code == 'CANCELLED' else 'failed'
         log_error(
@@ -975,12 +783,7 @@ def download_folder_transfer(token):
             source, username=audit_username, ip_address=audit_ip,
             operation='folder_download', result=failure.code,
             filename=f'{folder_name}.zip',
-            size=(
-                remote_lease.size
-                if isinstance(error, DownloadLimitExceeded)
-                and remote_lease is not None
-                else 0
-            ),
+            size=0,
         )
         finish(outcome, failure)
         return _json_failure(failure)
@@ -992,45 +795,23 @@ def download_folder_transfer(token):
         throttle = ProgressThrottle()
         try:
             _release_database_connection()
-            if remote_archive is not None:
-                for chunk in sftp_handler.stream_remote_zip(
-                    remote_lease.reader,
-                    cancel_event=record.cancel_event,
-                    max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
-                    chunk_size=TRANSFER_CHUNK_SIZE,
-                ):
+            with open(local_archive, 'rb') as archive:
+                while True:
+                    if record.cancel_event.is_set():
+                        raise sftp_handler.TransferCancelled()
+                    chunk = archive.read(TRANSFER_CHUNK_SIZE)
+                    if not chunk:
+                        break
                     transferred += len(chunk)
                     if throttle.ready():
                         _emit_download_progress(
-                            record,
-                            user_id,
-                            transferred,
-                            remote_lease.size,
+                            record, user_id, transferred, archive_size
                         )
                     yield chunk
-                if throttle.flush():
-                    _emit_download_progress(
-                        record, user_id, transferred, remote_lease.size
-                    )
-            else:
-                with open(local_archive, 'rb') as archive:
-                    while True:
-                        if record.cancel_event.is_set():
-                            raise sftp_handler.TransferCancelled()
-                        chunk = archive.read(TRANSFER_CHUNK_SIZE)
-                        if not chunk:
-                            break
-                        transferred += len(chunk)
-                        if throttle.ready():
-                            _emit_download_progress(
-                                record, user_id, transferred, archive_size
-                            )
-                        yield chunk
-                if throttle.flush():
-                    _emit_download_progress(
-                        record, user_id, transferred, archive_size
-                    )
-            remote_reader_stack.close()
+            if throttle.flush():
+                _emit_download_progress(
+                    record, user_id, transferred, archive_size
+                )
             outcome = 'completed'
         except GeneratorExit:
             outcome = 'cancelled'
@@ -1058,35 +839,18 @@ def download_folder_transfer(token):
             )
             raise
         finally:
-            try:
-                remote_reader_stack.close()
-            except Exception as close_error:
-                log_error(
-                    'Folder download reader close failed',
-                    user_id=user_id,
-                    exception_type=type(close_error).__name__,
-                )
-            finally:
-                _audit_transfer_source(
-                    source,
-                    username=audit_username,
-                    ip_address=audit_ip,
-                    operation='folder_download',
-                    result=failure.code if failure is not None else outcome,
-                    filename=f'{folder_name}.zip',
-                    size=transferred,
-                )
-                finish(outcome, failure)
+            _audit_transfer_source(
+                source,
+                username=audit_username,
+                ip_address=audit_ip,
+                operation='folder_download',
+                result=failure.code if failure is not None else outcome,
+                filename=f'{folder_name}.zip',
+                size=transferred,
+            )
+            finish(outcome, failure)
 
     def close_unstarted_response():
-        try:
-            remote_reader_stack.close()
-        except Exception as close_error:
-            log_error(
-                'Folder download reader close failed',
-                user_id=user_id,
-                exception_type=type(close_error).__name__,
-            )
         finish('cancelled')
 
     response = Response(
@@ -1139,29 +903,17 @@ def upload_transfer(token):
         try:
             active_source = _resolve_transfer_source(record, user_id)
             _release_database_connection()
-            if _transfer_backend(active_source) is None:
-                transferred = sftp_handler.upload_request_stream(
-                    active_source.handle_id,
-                    record.metadata['remote_path'],
-                    request.stream,
-                    chunk_size=TRANSFER_CHUNK_SIZE,
-                    max_bytes=config.MAX_UPLOAD_SIZE,
-                    cancelled=record.cancel_event.is_set,
-                    progress=report_upload_progress,
-                    replace=record.metadata.get('conflict_policy') == 'replace',
-                )
-            else:
-                transferred = _upload_to_backend(
-                    active_source,
-                    record.metadata['remote_path'],
-                    request.stream,
-                    chunk_size=TRANSFER_CHUNK_SIZE,
-                    max_bytes=config.MAX_UPLOAD_SIZE,
-                    cancel_event=record.cancel_event,
-                    cancelled=record.cancel_event.is_set,
-                    progress=report_upload_progress,
-                    replace=record.metadata.get('conflict_policy') == 'replace',
-                )
+            transferred = _upload_to_backend(
+                active_source,
+                record.metadata['remote_path'],
+                request.stream,
+                chunk_size=TRANSFER_CHUNK_SIZE,
+                max_bytes=config.MAX_UPLOAD_SIZE,
+                cancel_event=record.cancel_event,
+                cancelled=record.cancel_event.is_set,
+                progress=report_upload_progress,
+                replace=record.metadata.get('conflict_policy') == 'replace',
+            )
         except sftp_handler.TransferCancelled:
             failure = classify_transfer_failure(
                 sftp_handler.TransferCancelled(),

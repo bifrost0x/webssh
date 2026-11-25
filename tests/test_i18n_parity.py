@@ -169,6 +169,8 @@ def test_english_visible_fallbacks_avoid_legacy_connection_terms():
         for path in (
             'templates/index.html',
             'static/js/app.js',
+            'static/js/file-preview.js',
+            'static/js/terminal-search.js',
             'static/js/profile-manager.js',
             'static/js/sftp-file-manager.js',
         )

@@ -357,7 +357,7 @@ def test_file_events_reject_the_removed_session_id_contract(monkeypatch):
     emitted, user = _capture(monkeypatch)
     monkeypatch.setattr(
         socket_events.file_service,
-        'list_directory',
+        'list_directory_page',
         lambda *_args, **_kwargs: pytest.fail('legacy identity reached backend'),
     )
 

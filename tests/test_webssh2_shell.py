@@ -425,6 +425,8 @@ def test_primary_ui_uses_the_vendored_icon_system_instead_of_emoji():
         project_root / "static/js/sftp-file-manager.js",
         project_root / "static/js/auth.js",
         project_root / "static/js/app.js",
+        project_root / "static/js/file-preview.js",
+        project_root / "static/js/terminal-search.js",
         project_root / "static/css/sftp-file-manager.css",
     ]
     forbidden = ("👤", "🔒", "🔑", "👁️", "✨", "🚀", "📡", "➕", "💡", "▶️", "✅", "📋", "✏️", "🗑️", "💻", "🛰️", "📌", "📂", "📁", "🖥️", "✓", "✗", "✎", "⟳")

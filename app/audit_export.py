@@ -9,6 +9,7 @@ from flask import Blueprint, Response, abort, jsonify, request, stream_with_cont
 from flask_login import current_user, login_required
 
 from . import audit_logger as audit_logging
+from .app_settings import AUDIT_BACKUP_COUNT_MAX
 from .app_settings import set_audit_backup_count as persist_backup_count
 from .audit_logger import apply_audit_backup_count, log_security_event
 from .decorators import admin_required, step_up_required
@@ -199,7 +200,7 @@ def update_audit_retention():
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid request"}), 400
     value = data.get("backup_count")
-    if type(value) is not int or not 1 <= value <= 90:
+    if type(value) is not int or not 1 <= value <= AUDIT_BACKUP_COUNT_MAX:
         return jsonify({
             "error": "backup_count must be an integer between 1 and 90"
         }), 400

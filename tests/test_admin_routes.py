@@ -360,6 +360,85 @@ def test_admin_settings_rejects_non_boolean_without_overwriting(
     assert path.read_bytes() == original
 
 
+def test_admin_settings_reports_first_invalid_boolean(
+    app, client, tmp_path, monkeypatch
+):
+    from app import app_settings
+
+    _prepare_role(app, client, 'admin')
+    path = tmp_path / 'app_settings.json'
+    original = b'{"registration_enabled": false}'
+    path.write_bytes(original)
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+
+    response = client.post(
+        '/admin/api/settings',
+        json={
+            'tailscale_ssh_restrict_tailnet_routes': 'no',
+            'support_links_enabled': 0,
+            'herdr_enabled': 'yes',
+            'ssh_gateway_enabled': None,
+            'automation_enabled': [],
+            'credentials_enabled': 'true',
+            'registration_enabled': 'true',
+        },
+        headers=password_step_up_headers(
+            client, 'settings.update', 'global'
+        )[0],
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {
+        'error': 'credentials_enabled must be a boolean'
+    }
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(('payload', 'error'), [
+    (
+        {'automation_enabled': 1, 'ssh_gateway_enabled': 'x'},
+        'automation_enabled must be a boolean',
+    ),
+    (
+        {'ssh_gateway_enabled': 'x', 'herdr_enabled': 'x'},
+        'ssh_gateway_enabled must be a boolean',
+    ),
+    (
+        {'herdr_enabled': 'x', 'support_links_enabled': 'x'},
+        'herdr_enabled must be a boolean',
+    ),
+    (
+        {
+            'support_links_enabled': 'x',
+            'tailscale_ssh_restrict_tailnet_routes': 'x',
+        },
+        'support_links_enabled must be a boolean',
+    ),
+    (
+        {
+            'tailscale_ssh_restrict_tailnet_routes': 'x',
+            'login_username_limit': 0,
+        },
+        'tailscale_ssh_restrict_tailnet_routes must be a boolean',
+    ),
+])
+def test_admin_settings_boolean_errors_keep_their_order(
+    app, client, payload, error
+):
+    _prepare_role(app, client, 'admin')
+
+    response = client.post(
+        '/admin/api/settings',
+        json=payload,
+        headers=password_step_up_headers(
+            client, 'settings.update', 'global'
+        )[0],
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {'error': error}
+
+
 def test_production_profile_rejects_enabling_registration(
     app,
     client,
@@ -1088,3 +1167,89 @@ def test_admin_user_and_setting_changes_reach_the_security_audit_log(app, client
         ('APPLICATION_FEATURE_CHANGED', 'feature=herdr_enabled', 'enabled=True'),
     ):
         assert any(all(part in event for part in expected) for event in events), (expected, events)
+
+
+def test_admin_list_marks_config_managed_admins(app, client, monkeypatch):
+    import config
+
+    _prepare_role(app, client, 'admin')
+    # Exact names of administrators only, as sync_admin_users matches them.
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['adminuser', 'TargetUser', 'normaluser'])
+
+    response = client.get('/admin/api/users')
+
+    assert response.status_code == 200
+    flags = {
+        user['username']: user['admin_managed_by_config']
+        for user in response.get_json()['users']
+    }
+    assert flags == {
+        'adminuser': True,
+        'targetuser': False,
+        'normaluser': False,
+        'lockeduser': False,
+    }
+
+
+def test_demote_config_managed_admin_is_refused(app, client, monkeypatch):
+    import config
+    from app.models import User, db
+
+    _prepare_role(app, client, 'admin')
+    with app.app_context():
+        listed = _create_user('listedadmin', is_admin=True)
+        db.session.commit()
+        listed_id = listed.id
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['listedadmin'])
+
+    path = f'/admin/api/users/{listed_id}/demote'
+    headers = password_step_up_headers(client, 'user.manage', f'{listed_id}:demote')[0]
+    response = client.post(path, headers=headers)
+
+    assert response.status_code == 409
+    assert response.get_json() == {'error': (
+        'This account is an administrator through the ADMIN_USERS setting; '
+        'remove it from ADMIN_USERS and restart before demoting it'
+    )}
+    with app.app_context():
+        assert db.session.get(User, listed_id).is_admin is True
+
+    monkeypatch.setattr(config, 'ADMIN_USERS', [])
+    headers = password_step_up_headers(client, 'user.manage', f'{listed_id}:demote')[0]
+    assert client.post(path, headers=headers).status_code == 200
+    with app.app_context():
+        assert db.session.get(User, listed_id).is_admin is False
+
+
+def test_locked_listed_admin_stays_marked_and_cannot_be_demoted(
+    app, client, monkeypatch,
+):
+    import config
+    from app.models import User, db
+
+    _prepare_role(app, client, 'admin')
+    with app.app_context():
+        locked = _create_user('lockedlistedadmin', is_admin=True)
+        locked.is_locked = True
+        db.session.commit()
+        locked_id = locked.id
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['adminuser', 'lockedlistedadmin'])
+
+    listing = client.get('/admin/api/users')
+
+    assert listing.status_code == 200
+    flags = {
+        user['username']: user['admin_managed_by_config']
+        for user in listing.get_json()['users']
+    }
+    assert flags['lockedlistedadmin'] is True
+
+    # Demoting while locked would let the next start re-promote the account
+    # silently once it is unlocked.
+    path = f'/admin/api/users/{locked_id}/demote'
+    headers = password_step_up_headers(client, 'user.manage', f'{locked_id}:demote')[0]
+    response = client.post(path, headers=headers)
+
+    assert response.status_code == 409
+    with app.app_context():
+        assert db.session.get(User, locked_id).is_admin is True

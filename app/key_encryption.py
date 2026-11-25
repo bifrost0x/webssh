@@ -15,16 +15,15 @@ from functools import wraps
 import hmac
 import os
 from pathlib import Path
-import tempfile
 import threading
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import config
-from .audit_logger import log_info, log_warning, log_error
+from .audit_logger import log_warning, log_error
 from .ssh_key_loader import identify_private_key
-from .storage_utils import atomic_write_bytes, fsync_parent_directory
+from .storage_utils import atomic_write_bytes
 
 _DERIVATION_SALT = b'webssh_key_encryption_v1'
 _key_file_locks = {}
@@ -142,11 +141,6 @@ def is_encrypted(data: bytes) -> bool:
     except Exception:
         return False
 
-def _canonical_key_path(path: Path) -> str:
-    """Return one identity for path aliases, including existing symlinks."""
-    return os.path.normcase(str(path.resolve(strict=False)))
-
-
 @contextmanager
 def _key_file_lock(
         path: Path, *, must_exist: bool = True,
@@ -204,33 +198,6 @@ def _decrypt_stored_key(
     return plaintext
 
 
-def _restore_plaintext(path: Path, plaintext: bytes) -> None:
-    """Atomically restore plaintext after a failed migration attempt."""
-    temporary_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode='wb',
-            dir=path.parent,
-            prefix=f'.{path.name}.',
-            suffix='.rollback.tmp',
-            delete=False,
-        ) as handle:
-            temporary_path = Path(handle.name)
-            handle.write(plaintext)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary_path, 0o600)
-        os.replace(temporary_path, path)
-        temporary_path = None
-        fsync_parent_directory(path)
-    finally:
-        if temporary_path is not None:
-            try:
-                temporary_path.unlink()
-            except FileNotFoundError:
-                pass
-
-
 def _decode_validated_legacy_key(plaintext: bytes) -> str:
     plaintext_text = plaintext.decode('utf-8')
     identify_private_key(plaintext_text)
@@ -253,53 +220,12 @@ def _migrate_key_to_encrypted_locked(
             raise ValueError('Legacy key migration verification failed')
     except Exception:
         try:
-            _restore_plaintext(path, plaintext)
+            atomic_write_bytes(path, plaintext, mode=0o600)
         except Exception as rollback_error:
             raise RuntimeError(
                 'Legacy key migration rollback failed'
             ) from rollback_error
         raise
-
-
-@_serialized_key_operation
-def migrate_key_to_encrypted(
-        user_id: str, key_path: str, *,
-        allowed_root: Path = None) -> None:
-    """
-    Migrate an unencrypted key file to encrypted format.
-
-    Reads the plaintext key, encrypts it, atomically writes it, and verifies
-    the stored ciphertext before returning. Any failed migration restores the
-    original plaintext bytes before raising.
-
-    Args:
-        user_id: User identifier
-        key_path: Path to the key file
-
-    Raises:
-        FileNotFoundError: If the key file does not exist.
-        Exception: If encryption, writing, or verification fails.
-    """
-    path = Path(key_path)
-    with _key_file_lock(
-            path, allowed_root=allowed_root) as operation_path:
-        content = operation_path.read_bytes()
-        if is_encrypted(content):
-            _decrypt_stored_key(str(user_id), operation_path, content)
-            return
-
-        try:
-            _migrate_key_to_encrypted_locked(
-                str(user_id), operation_path, content
-            )
-        except Exception as exc:
-            log_error(
-                "Failed to migrate legacy key",
-                user_id=user_id,
-                error_type=type(exc).__name__,
-            )
-            raise
-        log_info("Legacy key encrypted successfully", user_id=user_id)
 
 
 @_serialized_key_operation
@@ -387,17 +313,6 @@ def write_prepared_key_content(
     )
 
 
-@_serialized_key_operation
-def write_key_content(
-        user_id: str, key_path: str, key_content: str, *,
-        allowed_root: Path = None) -> bool:
-    """Encrypt and write SSH key content to file."""
-    encrypted = encrypt_key_content(user_id, key_content)
-    return _write_prepared_key_content(
-        user_id, key_path, encrypted, allowed_root=allowed_root
-    )
-
-
 def _replace_prepared_key_content(
         user_id: str, key_path: str, key_content: str, encrypted: bytes, *,
         allowed_root: Path = None) -> bool:
@@ -420,7 +335,7 @@ def _replace_prepared_key_content(
                     raise ValueError('SSH key replacement verification failed')
             except Exception as exc:
                 try:
-                    _restore_plaintext(operation_path, original)
+                    atomic_write_bytes(operation_path, original, mode=0o600)
                 except Exception as rollback_error:
                     raise RuntimeError(
                         'SSH key replacement rollback failed'
@@ -448,18 +363,6 @@ def replace_prepared_key_content(
         user_id: str, key_path: str, key_content: str, encrypted: bytes, *,
         allowed_root: Path = None) -> bool:
     """Atomically replace a key with server-prepared ciphertext."""
-    return _replace_prepared_key_content(
-        user_id, key_path, key_content, encrypted,
-        allowed_root=allowed_root,
-    )
-
-
-@_serialized_key_operation
-def replace_key_content(
-        user_id: str, key_path: str, key_content: str, *,
-        allowed_root: Path = None) -> bool:
-    """Replace an existing encrypted key and restore its bytes on failure."""
-    encrypted = encrypt_key_content(str(user_id), key_content)
     return _replace_prepared_key_content(
         user_id, key_path, key_content, encrypted,
         allowed_root=allowed_root,

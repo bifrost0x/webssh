@@ -2,12 +2,11 @@
 
 import time
 
-import pyotp
-
 from tests.step_up_helpers import (
     account_password_step_up_headers,
     mint_account_step_up_headers,
 )
+from tests.totp_helpers import totp_at, totp_now
 
 
 def _create_user(app, username="totp_route_user"):
@@ -83,6 +82,7 @@ def test_user_explicitly_enrolls_totp_and_receives_one_time_recovery_codes(
     )
     assert started.status_code == 200
     assert started.headers["Cache-Control"] == "no-store"
+    assert started.headers["Pragma"] == "no-cache"
     enrollment = started.get_json()
     assert enrollment["qr_svg"].startswith("<?xml")
     assert enrollment["secret"] not in caplog.text
@@ -91,7 +91,7 @@ def test_user_explicitly_enrolls_totp_and_receives_one_time_recovery_codes(
         "/api/totp/enroll/verify",
         json={
             "token": enrollment["token"],
-            "code": pyotp.TOTP(enrollment["secret"]).now(),
+            "code": totp_now(enrollment["secret"]),
             "confirm_enable_mfa": False,
         },
     )
@@ -111,7 +111,7 @@ def test_user_explicitly_enrolls_totp_and_receives_one_time_recovery_codes(
         "/api/totp/enroll/verify",
         json={
             "token": enrollment["token"],
-            "code": pyotp.TOTP(enrollment["secret"]).now(),
+            "code": totp_now(enrollment["secret"]),
             "confirm_enable_mfa": True,
         },
     )
@@ -121,6 +121,7 @@ def test_user_explicitly_enrolls_totp_and_receives_one_time_recovery_codes(
     assert payload["ok"] is True
     assert len(payload["recovery_codes"]) == 10
     assert activated.headers["Cache-Control"] == "no-store"
+    assert activated.headers["Pragma"] == "no-cache"
     with app.app_context():
         assert db.session.get(User, user_id).mfa_enabled is True
         assert TOTPAuthenticator.query.filter_by(
@@ -151,7 +152,7 @@ def test_totp_completes_pending_password_login(app, client, monkeypatch):
         "/api/totp/enroll/verify",
         json={
             "token": started["token"],
-            "code": pyotp.TOTP(secret).now(),
+            "code": totp_now(secret),
             "confirm_enable_mfa": True,
         },
     ).status_code == 200
@@ -164,7 +165,7 @@ def test_totp_completes_pending_password_login(app, client, monkeypatch):
     assert primary.status_code == 200
     assert 'id="totpMfaPanel"' in primary.get_data(as_text=True)
 
-    next_code = pyotp.TOTP(secret).at(time.time() + 30)
+    next_code = totp_at(secret, time.time() + 30)
     verified = client.post(
         "/api/totp/auth/verify",
         json={"code": next_code},
@@ -409,7 +410,7 @@ def test_mfa_disable_is_explicit_and_recently_reauthenticated(
         "/api/totp/enroll/verify",
         json={
             "token": started["token"],
-            "code": pyotp.TOTP(started["secret"]).now(),
+            "code": totp_now(started["secret"]),
             "confirm_enable_mfa": True,
         },
     ).status_code == 200
@@ -486,3 +487,20 @@ def test_totp_enrollment_verification_is_rate_limited_before_code_check(
     )
 
     assert response.status_code == 429
+
+
+def test_totp_enroll_oversized_body_returns_json_413(app, client, monkeypatch):
+    import config
+
+    _create_user(app)
+    _activate_totp_feature(app, monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/api/totp/enroll",
+        data=b'{"label":"' + b"x" * config.MAX_RECOVERY_JSON_SIZE + b'"}',
+        content_type="application/json",
+    )
+
+    assert response.status_code == 413
+    assert response.get_json() == {"error": "Request body too large"}

@@ -52,7 +52,6 @@ def _public_error(error):
 
 
 def _data():
-    request.max_content_length = 512 * 1024
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         raise ExchangeError('Invalid import request.')
