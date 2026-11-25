@@ -101,8 +101,8 @@ def _active_tailnet_restriction():
 
 
 _RELAY_MESSAGE = (
-    'A proxy or jump host on the WebSSH host itself would use the Tailscale '
-    'node identity'
+    'A proxy or jump host on the WebSSH host itself, or one whose route '
+    'cannot be determined, would use the Tailscale node identity'
 )
 _REMOTE_NAME_MESSAGE = (
     'This name resolves to the tailnet and requires Tailscale SSH'
