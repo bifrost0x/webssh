@@ -161,7 +161,9 @@ def test_profile_selection_supports_set_references_and_legacy_conversion():
     assert 'ConnectionCommandManager?.applyProfile(profile)' in source
     assert 'profile.startup_commands' in source
     assert 'CommandSetManager.openLegacyConversion(profile)' in source
-    assert 'getLegacyStartupCommands()' in source
+    assert 'selectedLegacyStartupCommands' not in source
+    assert "legacyNotice?.classList.toggle('hidden', !hasLegacyCommands)" in source
+    assert 'convertButton.onclick = hasLegacyCommands' in source
 
 
 def test_builder_has_search_reorder_parameter_override_and_explicit_promotion():

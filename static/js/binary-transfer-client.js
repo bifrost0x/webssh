@@ -184,7 +184,7 @@ class BinaryTransferClient {
         return new PublicTransferError(this.normalizeFailure(payload));
     }
 
-    createTransfer(properties, withDone = false) {
+    createTransfer(properties) {
         const transfer = {
             id: this.generateId(),
             transferred: 0,
@@ -196,12 +196,6 @@ class BinaryTransferClient {
             cancelSent: false,
             ...properties,
         };
-        if (withDone) {
-            transfer.done = new Promise((resolve, reject) => {
-                transfer.resolveDone = resolve;
-                transfer.rejectDone = reject;
-            });
-        }
         this.activeTransfers.set(transfer.id, transfer);
         return transfer;
     }
@@ -377,20 +371,6 @@ class BinaryTransferClient {
         return transfer.id;
     }
 
-    downloadFileToWritable(remotePath, sourceId, sinkFactory) {
-        const filename = remotePath.split('/').pop() || 'download';
-        const transfer = this.createTransfer({
-            type: 'download',
-            filename,
-            sourceId: this.normalizeSourceId(sourceId),
-            remotePath,
-            controller: new AbortController(),
-            writableDestination: true,
-        }, true);
-        this.enqueue(transfer, () => this.downloadToWritable(transfer, sinkFactory));
-        return { id: transfer.id, done: transfer.done };
-    }
-
     async download(transfer) {
         if (transfer.terminalized) {
             this.releaseSlot(transfer);
@@ -440,60 +420,6 @@ class BinaryTransferClient {
         }
     }
 
-    async downloadToWritable(transfer, sinkFactory) {
-        let writable;
-        if (transfer.terminalized) {
-            this.releaseSlot(transfer);
-            return;
-        }
-        try {
-            transfer.status = 'preparing';
-            transfer.prepareStarted = true;
-            const prepared = await this.prepare(
-                'download', transfer.sourceId, transfer.remotePath,
-            );
-            transfer.transferId = prepared.transfer_id;
-            if (transfer.terminalized || transfer.cancelRequested) {
-                this.cancelPreparedTransfer(transfer);
-                return;
-            }
-            transfer.status = 'downloading';
-            this.emit('start', {
-                transferId: transfer.id,
-                type: 'download',
-                filename: transfer.filename,
-            });
-            const response = await fetch(prepared.url, {
-                credentials: 'same-origin',
-                signal: transfer.controller.signal,
-            });
-            if (!response.ok || !response.body) {
-                throw await this.responseFailure(response);
-            }
-            writable = await sinkFactory();
-            await response.body.pipeTo(writable, {
-                signal: transfer.controller.signal,
-            });
-            if (!transfer.terminalized) this.complete(transfer);
-        } catch (error) {
-            try {
-                await writable?.abort?.();
-            } catch {
-                // pipeTo() may already have aborted the destination.
-            }
-            if (transfer.terminalized) {
-                if (!transfer.transferId) this.releaseSlot(transfer);
-                return;
-            }
-            if (transfer.cancelRequested) {
-                if (!transfer.transferId) this.finalize(transfer, 'cancelled');
-                return;
-            }
-            transfer.controller.abort();
-            this.failOperation(transfer, error);
-        }
-    }
-
     cancelTransfer(localId) {
         const transfer = this.activeTransfers.get(localId);
         if (!transfer || transfer.terminalized || transfer.cancelRequested) return false;
@@ -538,7 +464,6 @@ class BinaryTransferClient {
                     });
                     this.finalize(transfer, 'error', {
                         ...failure,
-                        rejection: new PublicTransferError(failure),
                     });
                 },
             );
@@ -553,7 +478,6 @@ class BinaryTransferClient {
             });
             this.finalize(transfer, 'error', {
                 ...failure,
-                rejection: new PublicTransferError(failure),
             });
         }
     }
@@ -576,7 +500,6 @@ class BinaryTransferClient {
         );
         this.finalize(transfer, 'error', {
             ...failure,
-            rejection: error,
             deferRelease,
         });
         if (deferRelease) this.cancelPreparedTransfer(transfer);
@@ -607,13 +530,6 @@ class BinaryTransferClient {
             for (const transfer of this.activeTransfers.values()) {
                 if (transfer.transferId !== data.transfer_id) continue;
                 if (transfer.terminalized) return;
-                if (
-                    transfer.writableDestination
-                    && data.status === 'completed'
-                ) {
-                    transfer.serverFinished = true;
-                    return;
-                }
                 if (data.status === 'completed') {
                     this.complete(transfer);
                 } else if (data.status === 'cancelled') {
@@ -633,7 +549,6 @@ class BinaryTransferClient {
                     transfer.controller?.abort();
                     this.finalize(transfer, 'error', {
                         ...failure,
-                        rejection: new PublicTransferError(failure),
                     });
                 }
                 return;
@@ -657,13 +572,10 @@ class BinaryTransferClient {
                 type: transfer.type,
                 filename: transfer.filename,
             });
-            transfer.resolveDone?.(true);
         } else if (status === 'cancelled') {
             this.emit('cancel', { transferId: transfer.id });
-            transfer.resolveDone?.(false);
         } else if (status === 'skipped') {
             this.emit('skip', { transferId: transfer.id });
-            transfer.resolveDone?.(false);
         } else {
             transfer.error = options.error;
             transfer.errorCode = options.errorCode;
@@ -683,11 +595,6 @@ class BinaryTransferClient {
                 }
             }
             this.emit('error', event);
-            transfer.rejectDone?.(
-                options.rejection instanceof Error
-                    ? options.rejection
-                    : new Error(options.error || 'Transfer unavailable'),
-            );
         }
 
         if (!options.deferRelease) this.releaseSlot(transfer);

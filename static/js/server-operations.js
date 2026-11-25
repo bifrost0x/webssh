@@ -35,7 +35,11 @@
             },
             ...(options.body ? {body: JSON.stringify(options.body)} : {})
         });
-        const data = await response.json();
+        // A gateway error page is not JSON; fall through to the generic text.
+        const data = await response.json().catch(error => {
+            if (response.ok) throw error;
+            return {};
+        });
         if (!response.ok) {
             const messages = {
                 unknown: 'The outcome is unknown. Inspect the server before trying another action; do not retry automatically.',

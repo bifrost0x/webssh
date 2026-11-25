@@ -411,3 +411,15 @@ test('oversized pasted draft is retained without generating a review or a save',
     assert.equal(events.length, 0);
     assert.equal(fields.editorContent.value.length, 5 * 1024 * 1024 + 1);
 });
+
+test('preview file sizes use the same units and rounding as the file manager', () => {
+    const { preview } = setup();
+    const cases = [
+        [0, '0 B'], [undefined, '0 B'], [null, '0 B'], [NaN, '0 B'],
+        [1, '1 B'], [1023, '1023 B'], [1024, '1 KB'], [1536, '1.5 KB'],
+        [1024 ** 2, '1 MB'], [5 * 1024 ** 3, '5 GB'], [2 ** 40, '1 TB'],
+    ];
+    for (const [input, expected] of cases) {
+        assert.equal(preview.formatFileSize(input), expected, String(input));
+    }
+});

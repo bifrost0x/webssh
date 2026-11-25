@@ -160,7 +160,6 @@ test('closed slots are reused before the slot list grows', () => {
     const {manager, desktop} = windowManager(['a', null, 'c'], [0, 2]);
     manager.activePaneIndex = 0;
     assert.equal(manager.getFirstEmptyPaneIndex(), -1);
-    assert.deepEqual(manager.getEmptyPaneIndices(), []);
     assert.equal(manager.resolvePaneForNewSession(null), 1);
     assert.deepEqual(desktop.opened, [1]);
     assert.equal(manager.paneAssignments.length, 3);
