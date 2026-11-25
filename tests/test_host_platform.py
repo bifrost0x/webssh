@@ -104,7 +104,7 @@ def test_identity_guest_count_is_bounded(facts, expected):
     ('VERSION_ID="1.2.3.4.5.6.7.8.9"', None), ('VERSION_ID="24.04', None), ('VERSION_ID=24.04"', None),
 ])
 def test_identity_os_version_pattern(facts, expected):
-    assert host_platform.parse_identity('kernel=Linux\n' + facts)['os_version'] == expected
+    assert host_platform.parse_identity('ID=ubuntu\nkernel=Linux\n' + facts)['os_version'] == expected
 
 
 def test_platform_cache_is_endpoint_scoped_and_override_persists(app):

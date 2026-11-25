@@ -11,15 +11,15 @@ CASES = [
     ('omarchy-bare-metal', 'ID=omarchy\nID_LIKE=arch\nVERSION_ID=4.5.0\nkernel=Linux\nvirt=none\ntarget=graphical.target',
      {'platform': 'archlinux', 'family': 'archlinux', 'os_id': 'omarchy', 'os_version': '4.5.0', 'virt': 'bare-metal', 'graphical': True}),
     ('proxmox-ve-host', 'ID=debian\nVERSION_ID="13"\nkernel=Linux\nmarker=proxmox\nvirt=none\nguests=7',
-     {'platform': 'proxmox', 'virt': 'bare-metal', 'guests': 7}),
-    ('pbs-vm', 'ID=debian\nkernel=Linux\nmarker=proxmoxbackup\nvirt=kvm', {'platform': 'proxmoxbackup', 'virt': 'vm'}),
+     {'platform': 'proxmox', 'os_version': None, 'virt': 'bare-metal', 'guests': 7}),
+    ('pbs-vm', 'ID=debian\nVERSION_ID="12"\nkernel=Linux\nmarker=proxmoxbackup\nvirt=kvm', {'platform': 'proxmoxbackup', 'os_version': None, 'virt': 'vm'}),
     ('debian-lxc', 'ID=debian\nVERSION_ID="13"\nkernel=Linux\nvirt=lxc\nservice=wireguard', {'platform': 'debian', 'virt': 'lxc', 'services': ['wireguard']}),
     ('docker-denied', 'ID=ubuntu\nkernel=Linux\nservice=docker\nengine=docker:denied', {'container_access': 'denied', 'services': ['docker']}),
     ('unknown-rhel-derivative', 'ID=foolinux\nID_LIKE="rhel centos fedora"\nkernel=Linux', {'platform': 'redhat', 'family': 'redhat', 'os_id': 'foolinux'}),
     ('forced-command', 'This account is currently not available.', {'state': 'unavailable', 'platform': None, 'services': []}),
     ('hostile-id', 'ID=ubuntu;$(touch /x)\nVERSION_ID="24.04 $(id)"\nkernel=Linux', {'platform': 'linux', 'os_id': None, 'os_version': None}),
     ('busybox', 'kernel=Linux', {'state': 'detected', 'platform': 'linux'}),
-    ('openwrt', 'ID="openwrt"\nkernel=Linux\nmarker=openwrt', {'platform': 'openwrt'}),
+    ('openwrt', 'ID="openwrt"\nVERSION_ID="23.05.5"\nkernel=Linux\nmarker=openwrt', {'platform': 'openwrt', 'os_version': '23.05.5'}),
     ('wsl', 'ID=ubuntu\nkernel=Linux\nvirt=wsl', {'virt': 'wsl'}),
     ('darwin', 'kernel=Darwin', {'platform': 'apple'}),
 
@@ -64,22 +64,22 @@ CASES = [
 
     # Appliances and boards by marker or board model.
     ('raspberry-pi-os-bookworm', 'ID=debian\nVERSION_ID="12"\nkernel=Linux\nmodel=Raspberry Pi 5 Model B Rev 1.0\nvirt=none',
-     {'platform': 'raspberrypi', 'os_version': '12', 'virt': 'bare-metal'}),
-    ('truenas-core', 'ID=freebsd\nVERSION_ID="13.1"\nkernel=FreeBSD\nmarker=truenas', {'platform': 'truenas'}),
-    ('truenas-scale', 'ID=debian\nVERSION_ID="12"\nkernel=Linux\nmarker=truenas\nvirt=none', {'platform': 'truenas'}),
-    ('opnsense', 'kernel=FreeBSD\nmarker=opnsense', {'platform': 'opnsense'}),
+     {'platform': 'raspberrypi', 'os_version': None, 'virt': 'bare-metal'}),
+    ('truenas-core', 'ID=freebsd\nVERSION_ID="13.1"\nkernel=FreeBSD\nmarker=truenas', {'platform': 'truenas', 'os_version': None}),
+    ('truenas-scale', 'ID=debian\nVERSION_ID="12"\nkernel=Linux\nmarker=truenas\nvirt=none', {'platform': 'truenas', 'os_version': None}),
+    ('opnsense', 'ID=freebsd\nVERSION_ID="14.1"\nkernel=FreeBSD\nmarker=opnsense', {'platform': 'opnsense', 'os_version': None}),
     ('pfsense', 'kernel=FreeBSD\nmarker=pfsense', {'platform': 'pfsense', 'virt': None}),
     ('unraid', 'kernel=Linux\nmarker=unraid\nservice=docker\nengine=docker:ok\nimage=lscr.io/linuxserver/plex:latest\nimage=binhex/arch-sonarr',
      {'platform': 'unraid', 'services': ['docker', 'plex'], 'container_access': 'ok'}),
     ('synology-dsm', 'kernel=Linux\nmarker=synology\nservice=docker\nengine=docker:denied', {'platform': 'synology', 'container_access': 'denied'}),
     ('qnap-qts', 'kernel=Linux\nmarker=qnap', {'platform': 'qnap'}),
-    ('unifi-os', 'ID=debian\nVERSION_ID="11"\nkernel=Linux\nmarker=ubiquiti\nvirt=none', {'platform': 'ubiquiti', 'family': None}),
+    ('unifi-os', 'ID=debian\nVERSION_ID="11"\nkernel=Linux\nmarker=ubiquiti\nvirt=none', {'platform': 'ubiquiti', 'family': None, 'os_version': None}),
     # VyOS also has /opt/vyatta; the probe prints no Ubiquiti marker there.
     ('vyos-1.4', 'ID=vyos\nID_LIKE=debian\nVERSION_ID="1.4.0"\nkernel=Linux\nvirt=kvm',
      {'platform': 'debian', 'family': 'debian', 'os_id': 'vyos', 'os_version': '1.4.0', 'virt': 'vm'}),
     ('proxmox-with-backup-server', 'ID=debian\nVERSION_ID="12"\nkernel=Linux\nmarker=proxmox\nmarker=proxmoxbackup\nguests=0',
-     {'platform': 'proxmox', 'guests': 0}),
-    ('proxmox-unreadable-pve', 'ID=debian\nVERSION_ID="12"\nkernel=Linux\nmarker=proxmox', {'platform': 'proxmox', 'guests': None}),
+     {'platform': 'proxmox', 'os_version': None, 'guests': 0}),
+    ('proxmox-unreadable-pve', 'ID=debian\nVERSION_ID="12"\nkernel=Linux\nmarker=proxmox', {'platform': 'proxmox', 'os_version': None, 'guests': None}),
 
     # Services.
     ('self-hosted-stack', '\n'.join([
@@ -117,5 +117,11 @@ CASES = [
     ('unknown-kernel', 'kernel=SunOS', {'state': 'detected', 'platform': None}),
     ('marker-before-model', 'ID=debian\nkernel=Linux\nmodel=Raspberry Pi 4 Model B Rev 1.4\nmarker=openwrt', {'platform': 'openwrt'}),
     ('model-not-a-pi', 'ID=debian\nkernel=Linux\nmodel=Raspberry Pie; $(id)', {'platform': 'debian'}),
+    # A version names the system its os-release ID or family names, never a marker platform.
+    ('armbian-on-pi', 'ID=armbian\nID_LIKE=debian\nVERSION_ID="24.11"\nkernel=Linux\nmodel=Raspberry Pi 4 Model B Rev 1.4',
+     {'platform': 'raspberrypi', 'os_id': 'armbian', 'os_version': '24.11'}),
+    ('pfsense-on-freebsd', 'ID=freebsd\nVERSION_ID="14.0"\nkernel=FreeBSD\nmarker=pfsense', {'platform': 'pfsense', 'os_version': None}),
+    ('unknown-id-only', 'ID=foo\nVERSION_ID=3\nkernel=Linux', {'platform': 'linux', 'os_id': 'foo', 'os_version': '3'}),
+    ('version-without-id', 'VERSION_ID=3\nkernel=Linux', {'platform': 'linux', 'os_version': None}),
     ('crlf-output', 'ID=ubuntu\r\nVERSION_ID="22.04"\r\nkernel=Linux\r\n', {'platform': 'ubuntu', 'os_version': '22.04'}),
 ]

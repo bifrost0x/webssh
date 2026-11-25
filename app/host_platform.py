@@ -297,20 +297,25 @@ def parse_identity(text, *, max_bytes=8192):
     os_id = os_id if _OS_ID.fullmatch(os_id) else ''
     family = next((FAMILIES[token] for token in facts.get('ID_LIKE', '').split() if token in FAMILIES), None)
     markers = set(repeated.get('marker', ()))
+    released = OS_ID_PLATFORMS.get(os_id) or family
     platform = next((MARKER_PLATFORMS[marker] for marker in MARKER_PLATFORMS if marker in markers), None)
     if platform is None and _PI_MODEL.fullmatch(facts.get('model', '')):
         platform = 'raspberrypi'
     if platform is None:
-        platform = OS_ID_PLATFORMS.get(os_id) or family or KERNEL_PLATFORMS.get(facts.get('kernel'))
+        platform = released or KERNEL_PLATFORMS.get(facts.get('kernel'))
+    stored_os_id = os_id if os_id and os_id not in OS_ID_PLATFORMS else None
 
-    version = facts.get('VERSION_ID', '')
+    # VERSION_ID numbers the system os-release names. On Proxmox, TrueNAS or a
+    # Raspberry Pi board that is the base distribution (Debian 12, FreeBSD 14),
+    # not the platform shown, so it is kept only next to its own system.
+    version = facts.get('VERSION_ID', '') if (released and released == platform) or stored_os_id else ''
     guests = facts.get('guests', '')
     target = facts.get('target')
     result.update({
         'state': 'detected',
         'platform': platform,
         'family': family,
-        'os_id': os_id if os_id and os_id not in OS_ID_PLATFORMS else None,
+        'os_id': stored_os_id,
         'os_version': version if _OS_VERSION.fullmatch(version) else None,
         'virt': VIRT_MAP.get(facts.get('virt')),
         'graphical': (target == 'graphical.target') if target else None,
