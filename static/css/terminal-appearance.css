@@ -43,7 +43,7 @@ body[data-theme] .terminal-grid > .terminal-pane { background-image: none; }
     #commandLibraryPanel .commands-table-wrapper, #commandLibraryPanel .commands-table-body { flex: 0 0 auto; overflow: visible; }
     #commandLibraryPanel .commands-table-header { display: none; }
     #commandLibraryPanel .os-filter-toolbar { display: block; padding: 8px; }
-    #commandLibraryPanel .os-filter-toolbar > span, #commandLibraryPanel .os-detected { display: none; }
+    #commandLibraryPanel .os-filter-toolbar > span { display: none; }
     #commandLibraryPanel .os-filter-buttons { overflow-x: auto; padding-bottom: 2px; }
     #commandLibraryPanel .os-filter-btn { flex: 0 0 auto; min-height: 36px; }
     #commandLibraryPanel .command-actions { flex-direction: row; gap: 8px; }
