@@ -777,7 +777,7 @@ def test_turning_the_block_on_closes_restricted_open_connections(app, tailnet, m
     lan_pool, error = create_connection(pool, host='192.168.1.5', password='dummy')
     assert error is None
 
-    assert app_settings.set_tailnet_route_restricted(True) is True
+    app_settings.update_admin_settings({'tailscale_ssh_restrict_tailnet_routes': True})
     socketio = FakeSocketIO()
     with app.app_context():
         result = tailscale_ssh.close_restricted_tailnet_connections(socketio)
