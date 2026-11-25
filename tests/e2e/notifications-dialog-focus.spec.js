@@ -43,9 +43,13 @@ test('success toasts never push unread errors off screen', async ({ page }) => {
     await expect(toasts).toHaveCount(4);
     await expect(toasts.filter({ hasText: 'Saved 3' })).toHaveCount(0);
     await expect(toasts.filter({ hasText: 'Upload failed 1' })).toBeVisible();
-    // With only errors left, a success is not shown at all.
+    // With only errors left, a success waits until one of them closes.
     await page.evaluate(() => window.showNotification('Saved 4', 'success'));
     await expect(toasts.filter({ hasText: 'Saved 4' })).toHaveCount(0);
+    await expect(toasts).toHaveCount(4);
+    await toasts.filter({ hasText: 'Upload failed 1' })
+        .getByRole('button', { name: 'Dismiss notification' }).click();
+    await expect(toasts.filter({ hasText: 'Saved 4' })).toBeVisible();
     await expect(toasts).toHaveCount(4);
 });
 
