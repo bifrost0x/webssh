@@ -23,7 +23,6 @@ from .auth import (
     CONFIG_ADMIN_CONVERSION_REFUSED,
     check_rate_limit,
     is_config_admin_name,
-    log_reserved_admin_name,
     user_creation_transaction,
     validate_new_user,
 )
@@ -159,10 +158,6 @@ def _provision_username(login, github_user_id):
         row.username.casefold()
         for row in User.query.with_entities(User.username).all()
     }
-    # Names reserved by ADMIN_USERS are left to an administrator.
-    if is_config_admin_name(base):
-        log_reserved_admin_name(base, 'github')
-    existing_names.update(name.casefold() for name in config.ADMIN_USERS)
     candidates = (
         base,
         f'{base[:20]}_gh{str(github_user_id)[-8:]}'[:32],
@@ -186,7 +181,11 @@ def _auto_provision(profile):
         ).first() is not None:
             raise IntegrityError('GitHub identity exists', None, None)
         username = _provision_username(profile.login, profile.user_id)
-        error = validate_new_user(username, local_secret)
+        # A listed name is fine here: sync_admin_users never promotes a
+        # GitHub-managed account, and converting it to local is refused.
+        error = validate_new_user(
+            username, local_secret, allow_config_admin=True,
+        )
         if error:
             raise GitHubProviderError('GitHub account could not be provisioned')
         # A GitHub flow must never create or retain administrator privileges.

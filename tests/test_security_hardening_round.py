@@ -88,7 +88,7 @@ def _reserved_name_refusals(caplog):
 
 
 def test_listed_missing_admin_name_cannot_register(app, client, monkeypatch, caplog):
-    from app.auth import register_user, validate_new_user
+    from app.auth import register_user, sync_admin_users, validate_new_user
     from app.models import GitHubIdentity, User
     from tests.step_up_helpers import password_step_up_headers
     from tests.test_github_auth_routes import _begin_login, _configure, _provider
@@ -114,17 +114,22 @@ def test_listed_missing_admin_name_cannot_register(app, client, monkeypatch, cap
     result = app.test_cli_runner().invoke(args=['create-admin', '--username', 'cli_admin'], input='password123\npassword123\n')
     assert result.exit_code == 0, result.output
 
-    # GitHub auto-provisioning falls back to another name instead of taking the listed one.
+    # GitHub auto-provisioning keeps the listed name: the account stays GitHub-managed
+    # and is never promoted.
     _configure(app, admin_id, auto_provision=True)
     state = _begin_login(client)
     _provider(monkeypatch, user_id='4242', login='Octo-Admin')
     assert client.get(f'/auth/github/callback?code=code&state={state}').status_code == 302
     with app.app_context():
         identity = GitHubIdentity.query.filter_by(github_user_id='4242').one()
-        assert User.query.filter_by(id=identity.user_id).one().username == 'octo_admin_gh4242'
+        provisioned = User.query.filter_by(id=identity.user_id).one()
+        assert provisioned.username == 'octo_admin'
+        assert provisioned.is_admin is False
+        sync_admin_users()
+        assert User.query.filter_by(username='octo_admin').one().is_admin is False
         assert User.query.filter_by(username='ui_admin').one() is not None
         assert User.query.filter_by(username='cli_admin').one().is_admin is True
-    assert {'user': 'octo_admin', 'source': 'github'} in _reserved_name_refusals(caplog)
+    assert not any(entry.get('source') == 'github' for entry in _reserved_name_refusals(caplog))
 
 
 def test_github_auto_provisioning_without_organizations_is_refused_in_production(app, monkeypatch):
