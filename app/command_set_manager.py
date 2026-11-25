@@ -451,15 +451,8 @@ def _validate_payload(payload, existing_sets, commands):
 
 @user_operation
 def get_command_set(user_id, command_set_id):
-    if not isinstance(command_set_id, str) or not command_set_id:
-        return None, 'Command set not found'
-    command_sets, error = load_command_sets(user_id)
-    if error:
-        return None, error
-    for command_set in command_sets:
-        if isinstance(command_set, dict) and command_set.get('id') == command_set_id:
-            return copy.deepcopy(command_set), None
-    return None, 'Command set not found'
+    with storage_lock(f'command-sets:{user_id}'):
+        return _get_command_set_with_lock_held(user_id, command_set_id)
 
 
 def _get_command_set_with_lock_held(user_id, command_set_id):

@@ -15,7 +15,6 @@ from functools import wraps
 import hmac
 import os
 from pathlib import Path
-import tempfile
 import threading
 
 from cryptography.fernet import Fernet
@@ -24,7 +23,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import config
 from .audit_logger import log_warning, log_error
 from .ssh_key_loader import identify_private_key
-from .storage_utils import atomic_write_bytes, fsync_parent_directory
+from .storage_utils import atomic_write_bytes
 
 _DERIVATION_SALT = b'webssh_key_encryption_v1'
 _key_file_locks = {}
@@ -199,33 +198,6 @@ def _decrypt_stored_key(
     return plaintext
 
 
-def _restore_plaintext(path: Path, plaintext: bytes) -> None:
-    """Atomically restore plaintext after a failed migration attempt."""
-    temporary_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode='wb',
-            dir=path.parent,
-            prefix=f'.{path.name}.',
-            suffix='.rollback.tmp',
-            delete=False,
-        ) as handle:
-            temporary_path = Path(handle.name)
-            handle.write(plaintext)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary_path, 0o600)
-        os.replace(temporary_path, path)
-        temporary_path = None
-        fsync_parent_directory(path)
-    finally:
-        if temporary_path is not None:
-            try:
-                temporary_path.unlink()
-            except FileNotFoundError:
-                pass
-
-
 def _decode_validated_legacy_key(plaintext: bytes) -> str:
     plaintext_text = plaintext.decode('utf-8')
     identify_private_key(plaintext_text)
@@ -248,7 +220,7 @@ def _migrate_key_to_encrypted_locked(
             raise ValueError('Legacy key migration verification failed')
     except Exception:
         try:
-            _restore_plaintext(path, plaintext)
+            atomic_write_bytes(path, plaintext, mode=0o600)
         except Exception as rollback_error:
             raise RuntimeError(
                 'Legacy key migration rollback failed'
@@ -363,7 +335,7 @@ def _replace_prepared_key_content(
                     raise ValueError('SSH key replacement verification failed')
             except Exception as exc:
                 try:
-                    _restore_plaintext(operation_path, original)
+                    atomic_write_bytes(operation_path, original, mode=0o600)
                 except Exception as rollback_error:
                     raise RuntimeError(
                         'SSH key replacement rollback failed'

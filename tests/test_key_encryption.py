@@ -253,6 +253,7 @@ class TestKeyFileOperations:
     def test_failed_legacy_migration_never_returns_plaintext_as_success(
             self, monkeypatch, rsa_private_key_pem):
         from app import key_encryption
+        from app.storage_utils import atomic_write_bytes as real_atomic_write
 
         user_id = '7'
         original = rsa_private_key_pem.encode('utf-8')
@@ -262,8 +263,14 @@ class TestKeyFileOperations:
             with open(key_path, 'wb') as handle:
                 handle.write(original)
 
-            def fail_write(*_args, **_kwargs):
-                raise OSError('simulated write failure')
+            writes = []
+
+            def fail_write(path, payload, mode=0o600):
+                # Fail the migration write; let the rollback write through.
+                writes.append(payload)
+                if len(writes) == 1:
+                    raise OSError('simulated write failure')
+                real_atomic_write(path, payload, mode)
 
             monkeypatch.setattr(
                 key_encryption, 'atomic_write_bytes', fail_write
@@ -288,9 +295,15 @@ class TestKeyFileOperations:
             with open(key_path, 'wb') as handle:
                 handle.write(original)
 
+            writes = []
+
             def replace_then_fail(path, payload, mode=0o600):
+                # Only the forward write fails; the rollback write that
+                # restores the previous bytes goes through.
                 real_atomic_write(path, payload, mode)
-                raise OSError('simulated post-replace failure')
+                writes.append(payload)
+                if len(writes) == 1:
+                    raise OSError('simulated post-replace failure')
 
             monkeypatch.setattr(
                 key_encryption, 'atomic_write_bytes', replace_then_fail
@@ -318,9 +331,15 @@ class TestKeyFileOperations:
             key_path = Path(tmpdir) / 'stored.pem'
             key_path.write_bytes(original)
 
+            writes = []
+
             def replace_then_fail(path, payload, mode=0o600):
+                # Only the forward write fails; the rollback write that
+                # restores the previous bytes goes through.
                 real_atomic_write(path, payload, mode)
-                raise OSError('private post-replace failure detail')
+                writes.append(payload)
+                if len(writes) == 1:
+                    raise OSError('private post-replace failure detail')
 
             monkeypatch.setattr(
                 key_encryption, 'atomic_write_bytes', replace_then_fail
@@ -444,7 +463,7 @@ class TestKeyFileOperations:
 
     def test_rollback_fsync_failure_is_reported_even_after_replace(
             self, monkeypatch, rsa_private_key_pem):
-        from app import key_encryption
+        from app import key_encryption, storage_utils
 
         user_id = 'rollback-fsync'
         original = rsa_private_key_pem.encode('utf-8')
@@ -458,12 +477,17 @@ class TestKeyFileOperations:
                 'decrypt_key_content',
                 lambda *_args: 'different plaintext',
             )
+            fsync_calls = []
+
+            def fail_rollback_fsync(path):
+                # The first fsync belongs to the migration write, the second
+                # to the rollback write that restores the plaintext.
+                fsync_calls.append(path)
+                if len(fsync_calls) > 1:
+                    raise OSError('sentinel rollback fsync detail')
+
             monkeypatch.setattr(
-                key_encryption,
-                'fsync_parent_directory',
-                lambda *_args: (_ for _ in ()).throw(
-                    OSError('sentinel rollback fsync detail')
-                ),
+                storage_utils, 'fsync_parent_directory', fail_rollback_fsync
             )
             monkeypatch.setattr(
                 key_encryption,
@@ -480,6 +504,7 @@ class TestKeyFileOperations:
 
             assert key_path.read_bytes() == original
             assert sorted(os.listdir(tmpdir)) == ['legacy.pem']
+            assert len(fsync_calls) == 2
             assert errors == [(
                 'Failed to migrate legacy key',
                 {'user_id': user_id, 'error_type': 'RuntimeError'},
@@ -781,9 +806,15 @@ class TestKeyFileOperations:
                     f'symlink creation unavailable: {type(exc).__name__}'
                 )
 
+            writes = []
+
             def replace_then_fail(path, payload, mode=0o600):
+                # Only the forward write fails; the rollback write that
+                # restores the previous bytes goes through.
                 real_atomic_write(path, payload, mode)
-                raise OSError('simulated post-replace failure')
+                writes.append(payload)
+                if len(writes) == 1:
+                    raise OSError('simulated post-replace failure')
 
             monkeypatch.setattr(
                 key_encryption, 'atomic_write_bytes', replace_then_fail

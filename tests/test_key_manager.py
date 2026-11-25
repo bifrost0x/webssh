@@ -531,6 +531,7 @@ def test_save_key_validates_encrypts_and_records_supported_key(
 def test_legacy_migration_failure_is_not_returned_as_key_content(
         app, rsa_private_key_pem, monkeypatch):
     from app import key_encryption, key_manager
+    from app.storage_utils import atomic_write_bytes as real_atomic_write
 
     user_id = create_user(app, username='legacy-migration-failure')
     secret_error = 'sentinel-private-migration-error'
@@ -547,12 +548,17 @@ def test_legacy_migration_failure_is_not_returned_as_key_content(
         original = rsa_private_key_pem.encode('utf-8')
         key_path.write_bytes(original)
 
+        writes = []
+
+        def fail_migration_write(path, payload, mode=0o600):
+            # Fail the migration write; let the rollback write through.
+            writes.append(payload)
+            if len(writes) == 1:
+                raise OSError(secret_error)
+            real_atomic_write(path, payload, mode)
+
         monkeypatch.setattr(
-            key_encryption,
-            'atomic_write_bytes',
-            lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                OSError(secret_error)
-            ),
+            key_encryption, 'atomic_write_bytes', fail_migration_write
         )
         monkeypatch.setattr(
             key_manager,

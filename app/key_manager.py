@@ -338,25 +338,40 @@ def rename_key(user_id, key_id, new_name):
     return None, "Key not found"
 
 
+def _key_content_error(key_content):
+    """Return the error for missing or oversized key content, else None."""
+    if not isinstance(key_content, str) or not key_content:
+        return "Invalid key content"
+    if len(key_content.encode('utf-8')) > SSH_KEY_CONTENT_MAX_BYTES:
+        return "Key content too large (max 64KB)"
+    return None
+
+
+def _validated_key_type(key_content):
+    """Return ``(key_type, error)`` for a private key upload."""
+    try:
+        return identify_private_key(key_content), None
+    except paramiko.PasswordRequiredException:
+        return None, "Passphrase-encrypted private keys are not supported"
+    except UnsupportedPrivateKeyError as exc:
+        return None, str(exc)
+    except paramiko.SSHException:
+        return None, "Invalid key format"
+
+
 @user_operation
 def replace_key(user_id, key_id, key_content):
     """Atomically replace one owned key while preserving its stable identity."""
     if not isinstance(key_id, str) or not key_id:
         return None, "Key not found"
-    if not isinstance(key_content, str) or not key_content:
-        return None, "Invalid key content"
-    if len(key_content.encode('utf-8')) > SSH_KEY_CONTENT_MAX_BYTES:
-        return None, "Key content too large (max 64KB)"
+    content_error = _key_content_error(key_content)
+    if content_error:
+        return None, content_error
 
     try:
-        try:
-            replacement_type = identify_private_key(key_content)
-        except paramiko.PasswordRequiredException:
-            return None, "Passphrase-encrypted private keys are not supported"
-        except UnsupportedPrivateKeyError as exc:
-            return None, str(exc)
-        except paramiko.SSHException:
-            return None, "Invalid key format"
+        replacement_type, type_error = _validated_key_type(key_content)
+        if type_error:
+            return None, type_error
         encrypted = key_encryption.encrypt_key_content(
             str(user_id), key_content
         )
@@ -437,24 +452,18 @@ def save_key(user_id, name, key_content):
             return None, "Invalid key name"
         if len(name) > 128:
             return None, "Key name too long (max 128 characters)"
-        if not isinstance(key_content, str) or not key_content:
-            return None, "Invalid key content"
-        if len(key_content.encode('utf-8')) > SSH_KEY_CONTENT_MAX_BYTES:
-            return None, "Key content too large (max 64KB)"
+        content_error = _key_content_error(key_content)
+        if content_error:
+            return None, content_error
         keys_dir = get_user_keys_dir(user_id)
         if not keys_dir:
             return None, "User not found"
         key_id = str(uuid.uuid4())
         filename = f"{key_id}.pem"
         key_path = keys_dir / filename
-        try:
-            key_type = identify_private_key(key_content)
-        except paramiko.PasswordRequiredException:
-            return None, "Passphrase-encrypted private keys are not supported"
-        except UnsupportedPrivateKeyError as exc:
-            return None, str(exc)
-        except paramiko.SSHException:
-            return None, "Invalid key format"
+        key_type, type_error = _validated_key_type(key_content)
+        if type_error:
+            return None, type_error
         encrypted = key_encryption.encrypt_key_content(
             str(user_id), key_content
         )
@@ -512,15 +521,8 @@ def save_key(user_id, name, key_content):
 @user_operation
 def get_key_path(user_id, key_id):
     """Get the file path for a key by ID for a specific user."""
-    keys = load_keys(user_id)
-    keys_dir = get_user_keys_dir(user_id)
-    if not keys_dir:
-        return None
-
-    for key in keys:
-        if key['id'] == key_id:
-            return str(_safe_key_path(keys_dir, key['filename']))
-    return None
+    with storage_lock(f'keys:{user_id}'):
+        return _get_key_path_with_lock_held(user_id, key_id)
 
 
 def _get_key_path_with_lock_held(user_id, key_id):

@@ -14,6 +14,8 @@ from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
 _SETTINGS_FILE = config.DATA_DIR / 'app_settings.json'
 
+AUDIT_BACKUP_COUNT_MAX = 90
+
 _BOOLEAN_SETTINGS = (
     'credentials_enabled',
     'automation_enabled',
@@ -76,7 +78,7 @@ def _valid_settings(value):
             'audit_backup_count' not in value
             or (
                 type(value['audit_backup_count']) is int
-                and 1 <= value['audit_backup_count'] <= 90
+                and 1 <= value['audit_backup_count'] <= AUDIT_BACKUP_COUNT_MAX
             )
         )
     )
@@ -198,18 +200,23 @@ def is_registration_enabled():
     return bool(config.REGISTRATION_ENABLED)
 
 
+def _set_value(name, value):
+    """Persist one validated setting; return ``value`` or False."""
+    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
+        data = _load_with_lock_held()
+        data[name] = value
+        if not _valid_settings(data):
+            return False
+        _save(data)
+    return value
+
+
 def set_registration_enabled(value):
     if type(value) is not bool:
         return False
     if config.DEPLOYMENT_PROFILE == 'production' and value:
         return False
-    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
-        data = _load_with_lock_held()
-        data['registration_enabled'] = value
-        if not _valid_settings(data):
-            return False
-        _save(data)
-    return value
+    return _set_value('registration_enabled', value)
 
 
 def get_audit_backup_count():
@@ -228,13 +235,7 @@ def is_ssh_gateway_enabled():
 def set_ssh_gateway_enabled(value):
     if type(value) is not bool:
         return False
-    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
-        data = _load_with_lock_held()
-        data['ssh_gateway_enabled'] = value
-        if not _valid_settings(data):
-            return False
-        _save(data)
-    return value
+    return _set_value('ssh_gateway_enabled', value)
 
 
 def is_herdr_enabled():
@@ -245,13 +246,7 @@ def is_herdr_enabled():
 def set_herdr_enabled(value):
     if type(value) is not bool:
         return False
-    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
-        data = _load_with_lock_held()
-        data['herdr_enabled'] = value
-        if not _valid_settings(data):
-            return False
-        _save(data)
-    return value
+    return _set_value('herdr_enabled', value)
 
 
 def is_support_links_enabled():
@@ -262,25 +257,13 @@ def is_support_links_enabled():
 def set_support_links_enabled(value):
     if type(value) is not bool:
         return False
-    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
-        data = _load_with_lock_held()
-        data['support_links_enabled'] = value
-        if not _valid_settings(data):
-            return False
-        _save(data)
-    return value
+    return _set_value('support_links_enabled', value)
 
 
 def set_audit_backup_count(value):
-    if type(value) is not int or not 1 <= value <= 90:
+    if type(value) is not int or not 1 <= value <= AUDIT_BACKUP_COUNT_MAX:
         return False
-    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
-        data = _load_with_lock_held()
-        data['audit_backup_count'] = value
-        if not _valid_settings(data):
-            return False
-        _save(data)
-    return value
+    return _set_value('audit_backup_count', value)
 
 # Feature policies intentionally require a persisted administrator opt-in.
 def is_credentials_enabled():

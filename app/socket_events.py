@@ -21,7 +21,12 @@ from .auth import (
     register_socket_session,
 )
 from .models import db, SSHSession, SocketSession
-from .user_settings import save_user_settings, get_user_settings
+from .user_settings import (
+    DISCONNECT_SESSION_ACTIONS,
+    THEMES,
+    get_user_settings,
+    save_user_settings,
+)
 from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_security_event,
                               log_ssh_connection, log_ssh_disconnect,
@@ -453,7 +458,7 @@ def _validate_ssh_params(host, port, username, *, allow_gateway=False):
     username = (username or '').strip()
     if not username:
         return None, None, None, 'Username is required'
-    if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
+    if not profile_manager.USERNAME_PATTERN.match(username):
         return None, None, None, 'Invalid username format'
 
     return canonicalize_hostname(host), port, username, None
@@ -2704,7 +2709,7 @@ def handle_upload_key(data, current_user=None):
             return _key_mutation_error(
                 'Key name too long (max 128 characters)'
             )
-        if len(key_content.encode('utf-8')) > 64 * 1024:
+        if len(key_content.encode('utf-8')) > key_manager.SSH_KEY_CONTENT_MAX_BYTES:
             return _key_mutation_error(
                 'Key content too large (max 64KB)'
             )
@@ -2784,7 +2789,7 @@ def handle_replace_key(data, current_user=None):
             or not key_content
         ):
             return _key_mutation_error('Key ID and key content required')
-        if len(key_content.encode('utf-8')) > 64 * 1024:
+        if len(key_content.encode('utf-8')) > key_manager.SSH_KEY_CONTENT_MAX_BYTES:
             return _key_mutation_error(
                 'Key content too large (max 64KB)'
             )
@@ -3057,11 +3062,7 @@ def handle_set_theme(data, current_user=None):
     """Persist theme selection for the current user."""
     try:
         theme = data.get('theme')
-        valid_themes = [
-            'glass', 'werkbank', 'retro', 'solar', 'paper', 'noir',
-            'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'
-        ]
-        if theme not in valid_themes:
+        if not isinstance(theme, str) or theme not in THEMES:
             emit('error', {'error': 'Invalid theme'})
             return
 
@@ -3127,7 +3128,7 @@ def handle_set_disconnect_session_action(data, current_user=None):
     """Persist how the workspace handles a completed SSH connection."""
     try:
         action = data.get('action') if isinstance(data, dict) else None
-        if action not in {'retry', 'close'}:
+        if action not in DISCONNECT_SESSION_ACTIONS:
             payload = {
                 'success': False,
                 'error': 'Invalid disconnect session action',

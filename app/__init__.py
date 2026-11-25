@@ -27,7 +27,11 @@ from .terminal_appearance import valid_terminal_appearance
 from .user_settings import (
     AUTHENTICATION_SESSION_DURATION_MINUTES,
     DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES,
+    DISCONNECT_SESSION_ACTIONS,
+    OVERVIEW_LAYOUTS,
     OVERVIEW_REACHABILITY_MODES,
+    START_PAGES,
+    THEMES,
     get_user_settings,
     save_user_settings,
 )
@@ -1601,12 +1605,12 @@ def create_app(
         updates = {}
         if 'start_page' in data:
             start_page = data['start_page']
-            if not isinstance(start_page, str) or start_page not in {'overview', 'workspaces'}:
+            if not isinstance(start_page, str) or start_page not in START_PAGES:
                 return jsonify({'error': 'Invalid start page'}), 400
             updates['start_page'] = start_page
         if 'overview_layout' in data:
             layout = data['overview_layout']
-            if not isinstance(layout, str) or layout not in {'dashboard', 'classic'}:
+            if not isinstance(layout, str) or layout not in OVERVIEW_LAYOUTS:
                 return jsonify({'error': 'Invalid overview layout'}), 400
             updates['overview_layout'] = layout
         if 'overview_reachability' in data:
@@ -1623,14 +1627,9 @@ def create_app(
                 return jsonify({'error': 'Invalid directory sync setting'}), 400
             updates['sync_terminal_directory'] = data['sync_terminal_directory']
         if 'theme' in data:
-            valid_themes = {
-                'glass', 'werkbank', 'retro', 'solar', 'paper', 'noir',
-                'arctic-ice', 'rose-gold', 'cyberpunk-neon',
-                'emerald-matrix', 'obsidian',
-            }
             if (
                 not isinstance(data['theme'], str)
-                or data['theme'] not in valid_themes
+                or data['theme'] not in THEMES
             ):
                 return jsonify({'error': 'Invalid theme'}), 400
             updates['theme'] = data['theme']
@@ -1646,7 +1645,7 @@ def create_app(
             action = data['disconnect_session_action']
             if (
                 not isinstance(action, str)
-                or action not in {'retry', 'close'}
+                or action not in DISCONNECT_SESSION_ACTIONS
             ):
                 return jsonify({
                     'error': 'Invalid disconnect session action',
@@ -1928,22 +1927,13 @@ def create_app(
                 status = runtime_feature_status(name)
                 if status['locked']:
                     return jsonify(error='Setting is controlled by Compose/environment', code='deployment_locked', setting=name, policy=status), 409
-        for feature in ('credentials_enabled', 'automation_enabled'):
-            if feature in data and type(data[feature]) is not bool:
-                return jsonify({'error': f'{feature} must be a boolean'}), 400
-        if ('ssh_gateway_enabled' in data
-                and type(data['ssh_gateway_enabled']) is not bool):
-            return jsonify({'error': 'ssh_gateway_enabled must be a boolean'}), 400
-        if 'herdr_enabled' in data and type(data['herdr_enabled']) is not bool:
-            return jsonify({'error': 'herdr_enabled must be a boolean'}), 400
-        if ('support_links_enabled' in data
-                and type(data['support_links_enabled']) is not bool):
-            return jsonify({'error': 'support_links_enabled must be a boolean'}), 400
-        if ('tailscale_ssh_restrict_tailnet_routes' in data
-                and type(data['tailscale_ssh_restrict_tailnet_routes']) is not bool):
-            return jsonify({
-                'error': 'tailscale_ssh_restrict_tailnet_routes must be a boolean'
-            }), 400
+        for name in (
+            'credentials_enabled', 'automation_enabled', 'ssh_gateway_enabled',
+            'herdr_enabled', 'support_links_enabled',
+            'tailscale_ssh_restrict_tailnet_routes',
+        ):
+            if name in data and type(data[name]) is not bool:
+                return jsonify({'error': f'{name} must be a boolean'}), 400
         from .app_settings import (SIGN_IN_PROTECTION_BOUNDS,
                                    SettingsUpdateError,
                                    invalid_sign_in_protection_field,

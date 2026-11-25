@@ -120,3 +120,57 @@ def test_audit_sanitization_bounds_nested_attacker_controlled_values():
     })
     assert nested['nested']['one']['two']['three']['four'] == '[TRUNCATED]'
     assert nested['provider']['access_token'] == '[REDACTED]'
+
+
+def test_log_helpers_keep_level_and_exception_handling(monkeypatch):
+    from app import audit_logger
+
+    records = []
+
+    class Collect(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = Collect()
+    logger = audit_logger.app_logger
+    logger.addHandler(handler)
+    monkeypatch.setattr(logger, "level", logging.WARNING)
+    try:
+        # Plain messages honour the logger level; structured ones bypass it.
+        audit_logger.log_debug("plain debug")
+        audit_logger.log_info("plain info")
+        audit_logger.log_debug("structured debug", detail="d\nx")
+        audit_logger.log_info("structured info", detail=1)
+        audit_logger.log_warning("plain\nwarning")
+        audit_logger.log_warning("structured warning", detail=2)
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            audit_logger.log_error("plain error", exc_info=True)
+            audit_logger.log_error("structured error", exc_info=True, detail=3)
+            audit_logger.log_error("structured error without trace", detail=4)
+    finally:
+        logger.removeHandler(handler)
+
+    assert [
+        (
+            record.levelno,
+            record.getMessage(),
+            getattr(record, "extra_data", None),
+            record.exc_info[0] if record.exc_info else None,
+        )
+        for record in records
+    ] == [
+        (logging.DEBUG, "structured debug", {"detail": "d\\nx"}, None),
+        (logging.INFO, "structured info", {"detail": 1}, None),
+        (logging.WARNING, "plain\\nwarning", None, None),
+        (logging.WARNING, "structured warning", {"detail": 2}, None),
+        (logging.ERROR, "plain error", None, ValueError),
+        (logging.ERROR, "structured error", {"detail": 3}, ValueError),
+        (
+            logging.ERROR,
+            "structured error without trace",
+            {"detail": 4},
+            None,
+        ),
+    ]
