@@ -50,6 +50,18 @@ def _policy_for_request():
     return limit, streaming, json_error
 
 
+def json_object():
+    """Return the JSON body of a request that already passed the size limit."""
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def no_store(response, *, private=False):
+    response.headers["Cache-Control"] = "private, no-store" if private else "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 def _request_body_too_large(json_error):
     if json_error:
         return jsonify({"error": "Request body too large"}), 413

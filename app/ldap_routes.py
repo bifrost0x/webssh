@@ -11,7 +11,6 @@ from flask import (Blueprint, current_app, jsonify, redirect, render_template,
                    request, session, url_for)
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
-from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
 
@@ -51,16 +50,12 @@ _JSON_BODY_TOO_LARGE = object()
 
 
 def _bounded_json():
-    request.max_content_length = _MAX_LDAP_JSON_BYTES
     if (
         request.content_length is not None
         and request.content_length > _MAX_LDAP_JSON_BYTES
     ):
         return _JSON_BODY_TOO_LARGE
-    try:
-        raw_data = request.get_data(cache=True)
-    except RequestEntityTooLarge:
-        return _JSON_BODY_TOO_LARGE
+    raw_data = request.get_data(cache=True)
     if len(raw_data) > _MAX_LDAP_JSON_BYTES:
         return _JSON_BODY_TOO_LARGE
     data = request.get_json(silent=True)

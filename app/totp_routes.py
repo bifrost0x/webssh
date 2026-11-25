@@ -9,6 +9,7 @@ from flask import Blueprint, abort, flash, jsonify, request, session
 from flask_login import current_user, login_required
 
 from . import mfa_throttle
+from .request_limits import json_object, no_store
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_rate_limit, check_reauth_rate_limit
 from .auth_assurance import (
@@ -45,17 +46,6 @@ def _require_enabled():
 
     if not feature_is_active("totp"):
         abort(404)
-
-
-def _bounded_json():
-    data = request.get_json(silent=True)
-    return data if isinstance(data, dict) else {}
-
-
-def _no_store(response):
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["Pragma"] = "no-cache"
-    return response
 
 
 def _enrollment_binding():
@@ -170,7 +160,7 @@ def delete_totp_authenticator(authenticator_id):
 @login_required
 def start_totp_enrollment():
     _require_enabled()
-    data = _bounded_json()
+    data = json_object()
     grant_error = _consume_factor_grant(
         "totp.enroll",
         recovery_repair=True,
@@ -193,7 +183,7 @@ def start_totp_enrollment():
         "expires_at": view.expires_at.isoformat(),
     })
     log_security_event("TOTP_ENROLLMENT_STARTED", user=current_user.username)
-    return _no_store(response)
+    return no_store(response)
 
 
 @totp_blueprint.post("/api/totp/enroll/verify")
@@ -202,7 +192,7 @@ def finish_totp_enrollment():
     _require_enabled()
     if _reauth_rate_limited("totp_enrollment_verify"):
         return jsonify({"error": "Too many authentication attempts"}), 429
-    data = _bounded_json()
+    data = json_object()
     if data.get("confirm_enable_mfa") is not True:
         return jsonify({"error": "MFA activation must be confirmed"}), 400
     try:
@@ -225,7 +215,7 @@ def finish_totp_enrollment():
         "recovery_codes": list(authenticator.recovery_codes),
     })
     log_security_event("MFA_ENABLED", user=current_user.username, factor="totp")
-    return _no_store(response)
+    return no_store(response)
 
 
 def _restart_username_hint(pending):
@@ -268,7 +258,7 @@ def verify_totp_login():
     ):
         log_rate_limit_exceeded("totp_login_account", client_ip)
         return jsonify({"error": "Too many authentication attempts"}), 429
-    data = _bounded_json()
+    data = json_object()
     user_id = pending.user_id
     try:
         failures = mfa_throttle.claim_attempt(user_id, scope=mfa_throttle.LOGIN)
@@ -333,7 +323,7 @@ def verify_totp_login():
 @login_required
 def disable_mfa():
     _require_enabled()
-    data = _bounded_json()
+    data = json_object()
     if data.get("confirm_disable_mfa") is not True:
         return jsonify({"error": "MFA deactivation must be confirmed"}), 400
     grant_error = _consume_factor_grant("mfa.disable")

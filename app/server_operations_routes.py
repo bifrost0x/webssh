@@ -15,7 +15,6 @@ server_operations_blueprint = Blueprint('server_operations', __name__)
 
 
 def _data():
-    request.max_content_length = 16 * 1024
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         raise operations.OperationError('invalid_request')

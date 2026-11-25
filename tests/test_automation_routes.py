@@ -167,3 +167,34 @@ def test_library_cannot_edit_or_delete_another_users_workflow(app, client, conte
     response = client.post('/api/automation/runbooks', json={**book, 'name': 'Changed'})
     assert response.status_code == 404
     assert runbooks(user.id) == [book]
+
+
+def _runbook_body(size):
+    prefix = '{"name":"x","steps":[],"pad":"'
+    suffix = '"}'
+    body = prefix + 'a' * (size - len(prefix) - len(suffix)) + suffix
+    assert len(body.encode()) == size
+    return body.encode()
+
+
+def test_automation_runbook_body_limit_is_64_kib(app, client, context, enabled):
+    limit = 64 * 1024
+    at_limit = client.post('/api/automation/runbooks', data=_runbook_body(limit),
+                           content_type='application/json')
+    assert at_limit.status_code != 413
+
+    over = client.post('/api/automation/runbooks', data=_runbook_body(limit + 1),
+                       content_type='application/json')
+    assert over.status_code == 413
+    assert over.get_json() == {'error': 'Request body too large'}
+
+
+def test_automation_responses_are_not_cacheable(app, client, context, enabled):
+    state = client.get('/api/automation/state')
+    assert state.headers['Cache-Control'] == 'no-store'
+    assert state.headers['Pragma'] == 'no-cache'
+
+    error = client.post('/api/automation/runbooks', json=[])
+    assert error.status_code == 400
+    assert error.headers['Cache-Control'] == 'no-store'
+    assert error.headers['Pragma'] == 'no-cache'

@@ -25,10 +25,10 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 from sqlalchemy.exc import IntegrityError
-from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
 
+from .request_limits import json_object, no_store
 from .audit_logger import (
     log_rate_limit_exceeded,
     log_security_event,
@@ -67,26 +67,8 @@ def _require_enabled():
         abort(404)
 
 
-def _bounded_json():
-    """Parse one WebAuthn payload with a one-byte overflow probe."""
-    request.max_content_length = config.MAX_WEBAUTHN_JSON_SIZE + 1
-    if (
-        request.content_length is not None
-        and request.content_length > config.MAX_WEBAUTHN_JSON_SIZE
-    ):
-        return None
-    try:
-        raw_data = request.get_data(cache=True)
-        if len(raw_data) > config.MAX_WEBAUTHN_JSON_SIZE:
-            return None
-        data = request.get_json(silent=True)
-    except RequestEntityTooLarge:
-        return None
-    return data if isinstance(data, dict) else {}
-
-
-def _request_body_too_large():
-    return jsonify({"error": "Request body too large"}), 413
+# Kept under this name so tests can intercept the body parse.
+_bounded_json = json_object
 
 
 def _binding():
@@ -161,8 +143,6 @@ def enable_passkey_mfa():
     """Require an enrolled Passkey after basic primary authentication."""
     _require_enabled()
     data = _bounded_json()
-    if data is None:
-        return _request_body_too_large()
     if data.get("confirm_enable_mfa") is not True:
         return jsonify({"error": "MFA activation must be confirmed"}), 400
     grant_error = _consume_factor_grant("mfa.enable", current_user.id)
@@ -195,9 +175,7 @@ def enable_passkey_mfa():
 
     log_security_event("MFA_ENABLED", user=current_user.username, factor="passkey")
     response = jsonify({"ok": True, "recovery_codes": recovery_codes})
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["Pragma"] = "no-cache"
-    return response
+    return no_store(response)
 
 
 @webauthn_blueprint.post("/api/webauthn/register/options")
@@ -205,8 +183,6 @@ def enable_passkey_mfa():
 def registration_options():
     _require_enabled()
     data = _bounded_json()
-    if data is None:
-        return _request_body_too_large()
     grant_error = _consume_factor_grant(
         "passkey.enroll",
         current_user.id,
@@ -253,8 +229,6 @@ def registration_options():
 def verify_registration():
     _require_enabled()
     data = _bounded_json()
-    if data is None:
-        return _request_body_too_large()
     credential = data.get("credential")
     name = str(data.get("name") or "Passkey").strip()[:80] or "Passkey"
     try:
@@ -328,9 +302,6 @@ def verify_registration():
 @login_required
 def delete_credential(credential_id):
     _require_enabled()
-    data = _bounded_json()
-    if data is None:
-        return _request_body_too_large()
     row = db.session.get(WebAuthnCredential, credential_id)
     if row is None or row.user_id != current_user.id:
         return jsonify({"error": "Passkey not found"}), 404
@@ -428,8 +399,6 @@ def verify_authentication():
     ):
         return jsonify({"error": "Too many login attempts"}), 429
     data = _bounded_json()
-    if data is None:
-        return _request_body_too_large()
     username = None
     user = None
     pending_token = session.get("_pending_authentication")

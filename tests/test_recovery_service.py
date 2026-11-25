@@ -419,6 +419,8 @@ def test_recovery_code_regeneration_does_not_repeat_password_verification(
     )
 
     assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
 
 
 def test_recovery_mfa_is_rate_limited_before_code_verification(
