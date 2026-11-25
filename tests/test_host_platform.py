@@ -542,7 +542,7 @@ def test_connecting_never_runs_the_maintenance_probe(app, monkeypatch):
         monkeypatch.setitem(ssh_manager.sessions, 'no-maintenance', dict(profile, connected=True, user_id=user_id,
                                                                          profile_id=profile['id']))
         host_platform.detect_connected_platform('no-maintenance', user_id, lambda payload: None)
-    assert commands == [host_platform.IDENTITY_COMMAND]
+    assert commands == [host_platform.IDENTITY_EXEC]
     assert not hasattr(host_platform, 'collect_maintenance') and not hasattr(host_platform, 'maintenance_needed')
 
 
@@ -836,6 +836,72 @@ def test_identity_probe_runs_under_a_minimal_posix_shell():
     assert len([line for line in result.stdout.splitlines() if line.startswith('image=')]) <= 100
     identity = host_platform.parse_identity(result.stdout)
     assert identity['state'] == 'detected' and identity['platform'] not in (None, 'server')
+
+
+def _fish_words(command):
+    """Split a command line the way fish does for the constructs the wrapper uses.
+
+    Inside single quotes fish knows only the escapes \\\\ and \\'; outside quotes a
+    backslash escapes the next character. fish itself is not installed here.
+    """
+    words, word, quoted, index, started = [], '', False, 0, False
+    while index < len(command):
+        char = command[index]
+        if quoted:
+            if char == '\\' and command[index + 1:index + 2] in ('\\', "'"):
+                word, index = word + command[index + 1], index + 2
+                continue
+            if char == "'":
+                quoted = False
+            else:
+                word += char
+        elif char == "'":
+            quoted = started = True
+        elif char == '\\':
+            word, index, started = word + command[index + 1], index + 2, True
+            continue
+        elif char in ' \n':
+            if started:
+                words.append(word)
+            word, started = '', False
+        else:
+            word, started = word + char, True
+        index += 1
+    assert not quoted
+    if started:
+        words.append(word)
+    return words
+
+
+def test_identity_probe_runs_under_posix_sh_whatever_the_login_shell():
+    import shlex
+    command = host_platform.IDENTITY_EXEC
+    expected = ['exec', '/bin/sh', '-c', host_platform.IDENTITY_COMMAND]
+    assert shlex.split(command) == expected      # sh, dash, ash, bash, ksh, zsh
+    assert _fish_words(command) == expected
+    direct = subprocess.run(['sh', '-c', host_platform.IDENTITY_COMMAND], capture_output=True, text=True, timeout=10)
+    for login_shell in ('sh', 'bash'):
+        wrapped = subprocess.run([shutil.which(login_shell), '-c', command], capture_output=True, text=True, timeout=10)
+        assert wrapped.returncode == 0 and wrapped.stdout == direct.stdout
+
+
+@pytest.mark.parametrize('script', ["printf '\\\\n'", "printf 'a\\'", "printf ''", "'x'", 'x\n\'', 'x\\'])
+def test_the_login_shell_wrapper_refuses_text_fish_would_read_differently(script):
+    with pytest.raises(ValueError):
+        host_platform._posix_sh(script)
+
+
+def test_identity_collector_sends_the_wrapped_probe(monkeypatch):
+    from app import session_insights
+    from tests.test_session_insights import install_session, FakeChannel
+    install_session(monkeypatch)
+    sent = []
+    def open_channel(transport, command, **kwargs):
+        sent.append(command)
+        return FakeChannel(b'kernel=Linux\n')
+    monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', open_channel)
+    host_platform.collect_identity('owned-session')
+    assert sent == [host_platform.IDENTITY_EXEC]
 
 
 def _module_text_without_comments(module):

@@ -55,7 +55,9 @@ they are never stored in profiles.
 When a saved host in **Automatic** icon mode connects, WebSSH runs one
 read-only probe over a separate SSH channel and stores what it recognised with
 the profile. It runs at connect time only, at most once a week per host, and
-never on a schedule of its own. Quick connections are not probed.
+never on a schedule of its own. Quick connections are not probed. The probe
+runs under `/bin/sh` whatever the login shell is; hosts whose login shell is
+csh, tcsh or nu are not supported.
 
 The probe collects:
 

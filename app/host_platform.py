@@ -152,6 +152,24 @@ def _identity_command(units, paths, snaps, templates=None):
 # or sourced; every file read is bounded.
 IDENTITY_COMMAND = _identity_command(SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS, SERVICE_UNIT_TEMPLATES)
 
+
+def _posix_sh(script):
+    """A command line that runs script under /bin/sh from any common login shell.
+
+    sshd hands an exec request to the user's login shell, which may be fish.
+    Single quotes keep their content literal in sh, bash, zsh and fish alike,
+    except that fish also reads \\\\ and \\' inside them, and zsh with RC_QUOTES
+    reads '' as a quote. A script without those sequences therefore reaches
+    /bin/sh unchanged in all of them. csh, tcsh and nu quote differently and
+    are not supported.
+    """
+    if '\\\\' in script or "\\'" in script or "''" in script or script.startswith("'") or script.endswith(("'", '\\')):
+        raise ValueError('The script cannot be quoted for every login shell')
+    return "exec /bin/sh -c '%s'" % script.replace("'", "'\\''")
+
+
+IDENTITY_EXEC = _posix_sh(IDENTITY_COMMAND)
+
 # Pending package updates and a required restart. WebSSH never runs this on its
 # own: only a workflow the user starts or explicitly schedules executes it, and
 # the overview takes its result from such a run. Reads only what the host
@@ -420,7 +438,7 @@ def collect_identity(session_id, *, cancel_event=None):
     from .session_insights import collect_linux_stats
     return collect_linux_stats(
         session_id, timeout=4.0, max_bytes=8192,
-        command=IDENTITY_COMMAND, parser=parse_identity,
+        command=IDENTITY_EXEC, parser=parse_identity,
         allow_partial=False, cancel_event=cancel_event,
         on_deadline=_identity_at_deadline,
     )
