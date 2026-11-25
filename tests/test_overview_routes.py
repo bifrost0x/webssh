@@ -111,6 +111,23 @@ def test_reachability_reuses_a_recent_result_and_is_rate_limited(app, client, co
     assert 429 in statuses
 
 
+def test_policy_change_drops_stored_and_running_answers(app, client, context, monkeypatch):
+    calls = []
+    monkeypatch.setattr(overview_routes, '_probe', _fake_probe({}, calls))
+    assert client.post('/api/overview/reachability', json={}).json['cached'] is False
+    overview_routes.clear_reachability_cache()
+    assert client.get('/api/overview/reachability').json['results'] is None
+
+    def probe_across_a_change(host, port, *flags):
+        overview_routes.clear_reachability_cache()
+        return {'state': 'reachable', 'latency_ms': 1}
+
+    monkeypatch.setattr(overview_routes, '_probe', probe_across_a_change)
+    assert client.post('/api/overview/reachability', json={}).json['cached'] is False
+    # The answer predates the change, so it is returned but not kept.
+    assert client.get('/api/overview/reachability').json['results'] is None
+
+
 def test_reachability_rejects_oversized_or_malformed_requests(app, client, context):
     assert client.post('/api/overview/reachability', json={'ids': 'all'}).status_code == 400
     assert client.post('/api/overview/reachability', json={'ids': ['x'] * 51}).status_code == 400

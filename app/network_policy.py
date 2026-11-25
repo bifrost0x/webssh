@@ -41,6 +41,9 @@ _TAILSCALE_NODE_NETWORKS = (
     ipaddress.ip_network('100.64.0.0/10'),
     ipaddress.ip_network('fd7a:115c:a1e0::/48'),
 )
+# Tailscale's 4via6 subnet routes embed a site ID and an IPv4 address in this
+# prefix; the destinations behind them are subnet hosts with their own sshd.
+_TAILSCALE_4VIA6_NETWORK = ipaddress.ip_network('fd7a:115c:a1e0:b1a::/64')
 
 
 def _tailscale_node_address(address):
@@ -52,6 +55,8 @@ def _tailscale_node_address(address):
     address = ipaddress.ip_address(address)
     if address.version == 6 and address.ipv4_mapped is not None:
         address = address.ipv4_mapped
+    if address.version == 6 and address in _TAILSCALE_4VIA6_NETWORK:
+        return None
     if any(
         address.version == network.version and address in network
         for network in _TAILSCALE_NODE_NETWORKS
@@ -68,8 +73,9 @@ def _tailnet_route_restricted(address):
     an address would run under the shared node identity outside every
     Tailscale SSH allowlist. Subnet-route and exit-node destinations run their
     own sshd and stay unaffected. A node address whose route cannot be
-    determined is restricted; one routed through another interface, such as
-    carrier-grade NAT on the local network, is not.
+    determined is restricted, and so is this node's own tailnet address,
+    which the kernel routes through the loopback device. One routed through
+    another interface, such as carrier-grade NAT on the local network, is not.
     """
     node_address = _tailscale_node_address(address)
     if node_address is None:
@@ -79,7 +85,7 @@ def _tailnet_route_restricted(address):
         return False
     from . import tailscale_ssh
     route_interface = tailscale_ssh._route_interface_for_ip(node_address.compressed)
-    return route_interface is None or route_interface == interface
+    return route_interface in (None, 'lo', interface)
 
 
 def _active_tailnet_restriction():
@@ -109,20 +115,26 @@ def check_relay_endpoint(target):
     A relay on loopback or on one of this host's own addresses shares the
     WebSSH network namespace, for example tailscaled's SOCKS5 server, so its
     onward connections leave with the shared node identity. Tailnet node
-    addresses are already refused when the relay address is resolved.
+    addresses are already refused when the relay address is resolved. A relay
+    whose route cannot be determined may be one of those addresses and is
+    refused as well.
     """
     if _active_tailnet_restriction() is None:
         return
-    address = ipaddress.ip_address(target.ip)
+    if _relay_address_restricted(target.ip):
+        raise TailnetRouteRestricted(_RELAY_MESSAGE)
+
+
+def _relay_address_restricted(ip):
+    address = ipaddress.ip_address(ip)
     if address.version == 6 and address.ipv4_mapped is not None:
         address = address.ipv4_mapped
     if address.is_loopback or address.is_unspecified:
-        raise TailnetRouteRestricted(_RELAY_MESSAGE)
+        return True
     from . import tailscale_ssh
     # The kernel routes this host's own addresses through the local table,
     # whose output interface is the loopback device.
-    if tailscale_ssh._route_interface_for_ip(address.compressed) == 'lo':
-        raise TailnetRouteRestricted(_RELAY_MESSAGE)
+    return tailscale_ssh._route_interface_for_ip(address.compressed) in (None, 'lo')
 
 
 def check_remote_name(hostname):
@@ -149,6 +161,29 @@ def check_remote_name(hostname):
             continue
         if restricted:
             raise TailnetRouteRestricted(_REMOTE_NAME_MESSAGE)
+
+
+def open_route_restricted(peer_ip, relay_destination=None):
+    """Return whether an open ordinary connection uses a now refused route.
+
+    ``peer_ip`` is the address the connection was pinned to: the target, or
+    the jump host or SOCKS5 proxy when ``relay_destination`` names what the
+    relay connects to. Applies the checks a new connection would pass; an
+    unknown or unparsable address is treated as restricted.
+    """
+    if _active_tailnet_restriction() is None:
+        return False
+    try:
+        if peer_ip is None or _tailnet_route_restricted(peer_ip):
+            return True
+        if relay_destination is None:
+            return False
+        if _relay_address_restricted(peer_ip):
+            return True
+        check_remote_name(relay_destination)
+    except ValueError:
+        return True
+    return False
 
 
 def canonicalize_hostname(hostname):

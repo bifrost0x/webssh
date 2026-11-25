@@ -70,14 +70,21 @@ remote-user allowlists.
 
 The admin setting **Block ordinary SSH to tailnet nodes** (Admin →
 Integrations, enabled by default) closes that path. Changes take effect for the
-next connection without a restart; the change is recorded in the security audit
+next connection without a restart. Turning the block on also closes open
+terminal sessions and file-transfer connections that it would now refuse,
+judged by the address each was pinned to when it opened; tmux sessions are
+detached, not ended, and the owner sees why the session closed. Tailscale SSH
+sessions stay open, and an automation run already in progress finishes; the
+sweep is recorded as `TAILNET_RESTRICTED_CONNECTIONS_CLOSED`. The
+change is recorded in the security audit
 log as `APPLICATION_FEATURE_CHANGED` with
 `feature=tailscale_ssh_restrict_tailnet_routes`. While
 `TAILSCALE_SSH_ENABLED=true` and `TAILSCALE_SSH_INTERFACE` is set, WebSSH
 refuses, before opening a socket, every Tailscale node address for everything
 except Tailscale SSH. A node address is one in `100.64.0.0/10` or
 `fd7a:115c:a1e0::/48` (including the IPv4-mapped IPv6 form) whose kernel route
-uses that interface. This applies to password and key terminal connections,
+uses that interface, and the WebSSH node's own tailnet address, which routes
+through the loopback device. This applies to password and key terminal connections,
 Gateway selectors, Jump Hosts and locally validated targets behind them,
 SOCKS5 proxy endpoints and
 locally validated SOCKS5 destinations, file transfers, automation runs, host
@@ -88,7 +95,8 @@ automation records `tailscale_route_restricted`. The setting row shows whether
 Tailscale SSH is enabled on the server, since it has no effect otherwise.
 
 Hosts reached through subnet routes or an exit node are not affected; their own
-SSH server checks the offered credentials. A `100.64.0.0/10` address that does
+SSH server checks the offered credentials. This includes 4via6 subnet routes in
+`fd7a:115c:a1e0:b1a::/64`, which lie inside the node range. A `100.64.0.0/10` address that does
 not route through the interface, such as carrier-grade NAT on the local network,
 stays reachable. A node address whose kernel route cannot be determined, for
 example because the route query fails or times out, is refused. An IPv4-mapped
@@ -101,7 +109,8 @@ Proxies and jump hosts that resolve names themselves are covered too:
   the WebSSH host's own addresses is refused. Such a relay shares the WebSSH
   network namespace, for example tailscaled's own SOCKS5 server
   (`TS_SOCKS5_SERVER`) in the sidecar, so its connections leave with the node
-  identity.
+  identity. A relay whose kernel route cannot be determined is refused as
+  well.
 - A target name handed to a SOCKS5 proxy with remote DNS, or to a jump host
   because only the bastion can resolve it, is refused when it ends in
   `.ts.net` (MagicDNS) or when it resolves locally to a restricted node
@@ -116,7 +125,9 @@ arbitrary password to those Tailscale SSH nodes and get a shell under the node
 identity. Remove the node or its tag from such rules, or log the sidecar out of
 the tailnet, before disabling the feature; otherwise keep the feature enabled
 with the block on. While the feature is enabled and the block is off, WebSSH
-logs a warning at startup and after a restore.
+logs a warning at startup and after a restore. While the feature is disabled
+and the `TAILSCALE_SSH_INTERFACE` interface (default `tailscale0`) exists on
+the host, WebSSH logs a warning at the same points.
 
 Disable the setting only when users must reach ordinary OpenSSH servers over
 the tailnet with their own credentials and the tailnet SSH policy grants the

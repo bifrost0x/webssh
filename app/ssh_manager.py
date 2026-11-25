@@ -318,6 +318,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
     client = None
     validated_socket = None
     connection_stored = False
+    # The address WebSSH connects to and, behind a relay, what the relay
+    # is asked to reach; kept to re-check the tailnet block on open sessions.
+    peer_ip = None
+    relay_destination = None
     try:
         if connection_cancelled():
             return None, "Connection cancelled"
@@ -381,6 +385,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 )
                 check_relay_endpoint(bastion_target)
                 audit_internal_allowlist_use(bastion_target, 'jump_host')
+                peer_ip = bastion_target.ip
+                relay_destination = channel_destination[0]
                 validated_socket = open_validated_socket(
                     bastion_target, config.SSH_CONNECT_TIMEOUT
                 )
@@ -504,6 +510,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             except ValueError as error:
                 raise ValueError(f'SOCKS5 proxy: {error}') from error
             audit_internal_allowlist_use(proxy_target, 'socks_proxy')
+            peer_ip = proxy_target.ip
+            relay_destination = getattr(destination, 'ip', None) or destination.hostname
             try:
                 validated_socket = open_validated_socket(proxy_target, config.SSH_CONNECT_TIMEOUT)
             except OSError:
@@ -547,6 +555,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             audit_internal_allowlist_use(target, 'target')
             host = target.hostname
             port = target.port
+            peer_ip = target.ip
             if tailscale_target_authorized:
                 validated_socket = open_validated_socket(
                     target,
@@ -782,6 +791,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'jump_host_id': jump_host_id,
                 'socks_proxy_id': socks_proxy.proxy_id if socks_proxy else None,
                 'via_socks': socks_proxy is not None,
+                'peer_ip': peer_ip,
+                'relay_destination': relay_destination,
                 'profile_id': profile_id,
                 'auth_type': auth_type,
                 'use_tmux': use_tmux,

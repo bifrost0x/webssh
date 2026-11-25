@@ -165,6 +165,14 @@ def _route_interface_for_ip(address, *, socket_factory=socket.socket):
         return None
 
 
+def _interface_present(name):
+    try:
+        socket.if_nametoindex(name)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def log_tailnet_route_restriction(event):
     """Record the effective restriction while Tailscale SSH is enabled.
 
@@ -173,6 +181,17 @@ def log_tailnet_route_restriction(event):
     Returns the effective value, or None while Tailscale SSH is disabled.
     """
     if not config.TAILSCALE_SSH_ENABLED:
+        # The block only applies while the feature is enabled. A Tailscale
+        # interface on the host suggests the node may still be logged in.
+        interface = str(config.TAILSCALE_SSH_INTERFACE or '').strip() or 'tailscale0'
+        if _interface_present(interface):
+            from .audit_logger import log_warning
+            log_warning(
+                'Tailscale SSH is disabled but the Tailscale interface exists; '
+                'ordinary SSH to tailnet nodes is not blocked, see '
+                'docs/tailscale-ssh.md',
+                event=event, interface=interface,
+            )
         return None
     from .app_settings import is_tailnet_route_restricted
     from .audit_logger import log_info, log_warning
@@ -192,6 +211,78 @@ def log_tailnet_route_restriction(event):
             event=event, tailscale_ssh_restrict_tailnet_routes=False,
         )
     return restricted
+
+
+def close_restricted_tailnet_connections(socketio_instance=None):
+    """Close open ordinary connections that the tailnet block now refuses.
+
+    Called when an administrator turns the block on. Terminal sessions are
+    detached the way an administrator disconnect detaches them: tmux keeps
+    running and the owner is told why. Tailscale SSH sessions stay open.
+    """
+    from .network_policy import _active_tailnet_restriction, open_route_restricted
+    result = {'ssh_sessions': 0, 'pool_connections': 0, 'errors': 0}
+    if _active_tailnet_restriction() is None:
+        return result
+    from . import connection_pool, ssh_manager
+    from .audit_logger import log_security_event, log_warning
+    from .models import SSHSession, db
+
+    if socketio_instance is None:
+        from . import socketio as socketio_instance
+
+    with ssh_manager.sessions_lock:
+        candidates = [
+            (session_id, session.get('user_id'), session.get('peer_ip'),
+             session.get('relay_destination'))
+            for session_id, session in ssh_manager.sessions.items()
+            if session.get('auth_type') != 'tailscale'
+        ]
+    closed = []
+    for session_id, user_id, peer_ip, relay_destination in candidates:
+        if not open_route_restricted(peer_ip, relay_destination):
+            continue
+
+        def notify_owner(session_id=session_id, user_id=user_id):
+            socketio_instance.emit('ssh_disconnected', {
+                'session_id': session_id,
+                'reason': 'This host is on the tailnet and requires Tailscale SSH',
+            }, room=f'user_{user_id}')
+
+        try:
+            if ssh_manager.close_session(session_id, kill_tmux=False,
+                                         on_disconnect=notify_owner):
+                closed.append(session_id)
+        except Exception as error:
+            result['errors'] += 1
+            log_warning('Tailnet-restricted SSH session could not be closed',
+                        session_id=session_id, error_type=type(error).__name__)
+    result['ssh_sessions'] = len(closed)
+    if closed:
+        try:
+            SSHSession.query.filter(SSHSession.session_id.in_(closed)).update(
+                {'connected': False}, synchronize_session=False,
+            )
+            db.session.commit()
+        except Exception as error:
+            db.session.rollback()
+            result['errors'] += 1
+            log_warning('Closed tailnet-restricted sessions could not be marked',
+                        error_type=type(error).__name__)
+
+    try:
+        result['pool_connections'] = (
+            connection_pool.temp_connection_pool.close_connections_where(
+                open_route_restricted
+            )
+        )
+    except Exception as error:
+        result['errors'] += 1
+        log_warning('Tailnet-restricted file connections could not be closed',
+                    error_type=type(error).__name__)
+
+    log_security_event('TAILNET_RESTRICTED_CONNECTIONS_CLOSED', **result)
+    return result
 
 
 def target_uses_tailscale_route(address):
