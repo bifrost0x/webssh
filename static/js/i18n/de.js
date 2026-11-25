@@ -1533,6 +1533,7 @@ window.i18n.registerLocales({
         'admin.stepUpCancelled': 'Zusätzliche Authentifizierung wurde abgebrochen',
         'admin.stepUpRejected': "Authentifizierung fehlgeschlagen. Prüfe die Eingabe und versuche es erneut.",
         'admin.stepUpThrottled': "Zu viele Versuche. Warte einen Moment und versuche es erneut.",
+        'admin.stepUpUnavailable': "Die zusätzliche Authentifizierung ist für dieses Konto gerade nicht verfügbar. Lade die Seite neu und versuche es erneut.",
         'admin.recoveryGenerated': 'Wiederherstellungscodes erstellt',
         'admin.oidcLink': 'OIDC verknüpfen',
         'admin.oidcLinked': 'OIDC-Identität verknüpft',

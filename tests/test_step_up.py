@@ -151,7 +151,53 @@ def test_password_step_up_is_disabled_when_account_uses_mfa(app, client):
     })
 
     assert response.status_code == 403
-    assert response.get_json()["error"] == "Step-up authentication failed"
+    assert response.get_json() == {
+        "error": "Step-up authentication failed",
+        "code": "step_up_failed",
+    }
+
+
+def test_wrong_password_is_the_only_retryable_password_failure(app, client):
+    _create_admin(app)
+    _login(client)
+
+    response = client.post("/api/step-up/password", json={
+        "action": "settings.update",
+        "target": "global",
+        "password": "not-the-password",
+    })
+
+    assert response.status_code == 403
+    assert response.get_json() == {
+        "error": "Step-up authentication failed",
+        "code": "invalid_value",
+    }
+
+
+def test_totp_step_up_marks_only_a_wrong_code_as_retryable(
+    app, client, monkeypatch
+):
+    import app.step_up_routes as step_up_routes
+    from app.models import User, db
+
+    user_id = _create_admin(app)
+    _login(client)
+    with app.app_context():
+        db.session.get(User, user_id).mfa_enabled = True
+        db.session.commit()
+        db.session.remove()
+    body = {"action": "settings.update", "target": "global", "code": "000000"}
+    monkeypatch.setattr(step_up_routes, "verify_totp", lambda user_id, code: False)
+
+    monkeypatch.setattr(step_up_routes, "_factor_available", lambda name: name == "totp")
+    wrong = client.post("/api/step-up/totp", json=body)
+    monkeypatch.setattr(step_up_routes, "_factor_available", lambda name: False)
+    unavailable = client.post("/api/step-up/totp", json=body)
+
+    assert wrong.status_code == 403
+    assert wrong.get_json()["code"] == "invalid_value"
+    assert unavailable.status_code == 403
+    assert unavailable.get_json()["code"] == "step_up_failed"
 
 
 def test_administrator_step_up_cannot_mint_account_factor_grants(app, client):

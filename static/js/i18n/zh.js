@@ -1493,6 +1493,7 @@ window.i18n.registerLocales({
         'admin.stepUpCancelled': '已取消额外身份验证',
         'admin.stepUpRejected': "身份验证失败。请检查输入后重试。",
         'admin.stepUpThrottled': "尝试次数过多。请稍候再试。",
+        'admin.stepUpUnavailable': "此账户当前无法进行额外身份验证。请重新加载页面后重试。",
         'admin.recoveryGenerated': '已生成恢复代码',
         'admin.oidcLink': '关联 OIDC',
         'admin.oidcLinked': 'OIDC 身份已关联',

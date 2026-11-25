@@ -1494,6 +1494,7 @@ window.i18n.registerLocales({
         'admin.stepUpCancelled': 'Se canceló la autenticación adicional',
         'admin.stepUpRejected': "La autenticación falló. Revisa el valor e inténtalo de nuevo.",
         'admin.stepUpThrottled': "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
+        'admin.stepUpUnavailable': "La autenticación adicional no está disponible para esta cuenta en este momento. Recarga la página e inténtalo de nuevo.",
         'admin.recoveryGenerated': 'Códigos de recuperación generados',
         'admin.oidcLink': 'Vincular OIDC',
         'admin.oidcLinked': 'Identidad OIDC vinculada',

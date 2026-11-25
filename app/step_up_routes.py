@@ -61,8 +61,10 @@ def _intent():
     return data, action, target
 
 
-def _failure(status=403):
-    return jsonify({"error": "Step-up authentication failed"}), status
+def _failure(status=403, code="step_up_failed"):
+    # Only ``invalid_value`` means the entered password or code was wrong and
+    # may be retried; every other failure ends the prompt.
+    return jsonify({"error": "Step-up authentication failed", "code": code}), status
 
 
 def _factor_available(name):
@@ -144,7 +146,7 @@ def password_step_up():
             method="password",
             ip=client_ip,
         )
-        return _failure()
+        return _failure(code="invalid_value")
     try:
         grant = create_step_up_grant(
             current_authentication_session(),
@@ -206,7 +208,7 @@ def totp_step_up():
             failures=failures,
             ip=client_ip,
         )
-        return _failure()
+        return _failure(code="invalid_value")
     mfa_throttle.record_success(current_user.id, scope=mfa_throttle.STEP_UP)
     try:
         grant = create_step_up_grant(

@@ -93,7 +93,7 @@ test('rejected and throttled reauthentication is answered inside the open dialog
     await openAuthenticationSettings(page);
     const answers = [
         {status: 429, json: {error: 'Too many attempts. Try again in 30 seconds.', code: 'rate_limited', retry_after: 30}},
-        {status: 403, json: {error: 'Step-up authentication failed'}},
+        {status: 403, json: {error: 'Step-up authentication failed', code: 'invalid_value'}},
     ];
     await page.route('**/api/step-up/password', route => {
         const answer = answers.shift();
@@ -121,6 +121,24 @@ test('rejected and throttled reauthentication is answered inside the open dialog
     await expect(page.locator('#stepUpModal')).toBeHidden();
     await expect(page.locator('#signInProtectionStatus')).toHaveText('Settings saved');
     await expect(error).toBeHidden();
+});
+
+test('a reauthentication refusal that a new value cannot fix ends the dialog', async ({page}) => {
+    await login(page);
+    await openAuthenticationSettings(page);
+    let attempts = 0;
+    await page.route('**/api/step-up/password', route => {
+        attempts += 1;
+        return route.fulfill({status: 403, json: {error: 'Step-up authentication failed', code: 'step_up_failed'}});
+    });
+    await page.locator('#signInProtectionSave').click();
+    await page.locator('#stepUpPassword').fill('browser-password');
+    await page.locator('#stepUpSubmit').click();
+    await expect(page.locator('#stepUpModal')).toBeHidden();
+    await expect(page.locator('#signInProtectionStatus')).toHaveText(
+        'Additional authentication is not available for this account right now. Reload the page and try again.'
+    );
+    expect(attempts).toBe(1);
 });
 
 test('a ceiling below the per-source limit is rejected before reauthentication', async ({page}) => {

@@ -1533,6 +1533,7 @@ window.i18n.registerLocales({
         'admin.stepUpCancelled': 'Additional authentication was cancelled',
         'admin.stepUpRejected': "Authentication failed. Check the value and try again.",
         'admin.stepUpThrottled': "Too many attempts. Wait a moment and try again.",
+        'admin.stepUpUnavailable': "Additional authentication is not available for this account right now. Reload the page and try again.",
         'admin.recoveryGenerated': 'Recovery codes generated',
         'admin.oidcLink': 'Link OIDC',
         'admin.oidcLinked': 'OIDC identity linked',

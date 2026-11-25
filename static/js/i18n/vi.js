@@ -1493,6 +1493,7 @@ window.i18n.registerLocales({
         'admin.stepUpCancelled': 'Đã hủy xác thực bổ sung',
         'admin.stepUpRejected': "Xác thực thất bại. Hãy kiểm tra giá trị và thử lại.",
         'admin.stepUpThrottled': "Quá nhiều lần thử. Hãy chờ một lát rồi thử lại.",
+        'admin.stepUpUnavailable': "Hiện không thể xác thực bổ sung cho tài khoản này. Hãy tải lại trang và thử lại.",
         'admin.recoveryGenerated': 'Đã tạo mã khôi phục',
         'admin.oidcLink': 'Liên kết OIDC',
         'admin.oidcLinked': 'Đã liên kết danh tính OIDC',

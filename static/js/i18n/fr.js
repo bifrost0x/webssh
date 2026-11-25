@@ -1494,6 +1494,7 @@ window.i18n.registerLocales({
         'admin.stepUpCancelled': 'Authentification supplémentaire annulée',
         'admin.stepUpRejected': "L'authentification a échoué. Vérifiez la valeur puis réessayez.",
         'admin.stepUpThrottled': "Trop de tentatives. Patientez un instant puis réessayez.",
+        'admin.stepUpUnavailable': "L'authentification supplémentaire n'est pas disponible pour ce compte pour le moment. Rechargez la page puis réessayez.",
         'admin.recoveryGenerated': 'Codes de récupération générés',
         'admin.oidcLink': 'Lier OIDC',
         'admin.oidcLinked': 'Identité OIDC liée',
