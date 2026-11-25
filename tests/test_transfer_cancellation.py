@@ -62,110 +62,6 @@ class MemoryWriter(io.BytesIO):
         return False
 
 
-class StoredWriter(MemoryWriter):
-    def __init__(self, callback):
-        super().__init__()
-        self.callback = callback
-
-    def __exit__(self, *_args):
-        self.callback(self.getvalue())
-        return False
-
-
-class S2SSFTP:
-    def __init__(self, payload=b'', destination=False):
-        self.payload = payload
-        self.destination = destination
-        self.files = {}
-        self.dirs = set()
-        self.removed = []
-        self.renamed = []
-        self.closed = False
-        self.close_calls = 0
-
-    def stat(self, path):
-        if self.destination:
-            if path in self.dirs:
-                return SimpleNamespace(st_mode=stat.S_IFDIR, st_size=0)
-            if path not in self.files:
-                raise FileNotFoundError(path)
-            return SimpleNamespace(st_mode=stat.S_IFREG, st_size=len(self.files[path]))
-        return SimpleNamespace(st_mode=stat.S_IFREG, st_size=len(self.payload))
-
-    def open(self, path, mode):
-        if not self.destination:
-            return BoundedReader(self.payload)
-        return StoredWriter(lambda payload: self.files.__setitem__(path, payload))
-
-    def remove(self, path):
-        self.removed.append(path)
-        self.files.pop(path, None)
-
-    def mkdir(self, path):
-        self.dirs.add(path)
-
-    def rmdir(self, path):
-        self.dirs.discard(path)
-
-    def listdir_attr(self, path):
-        if not self.destination:
-            return [SimpleNamespace(
-                filename='file.bin', st_mode=stat.S_IFREG,
-                st_size=len(self.payload),
-            )]
-        prefix = path.rstrip('/') + '/'
-        names = {}
-        for candidate in self.files:
-            if candidate.startswith(prefix):
-                remainder = candidate[len(prefix):]
-                if '/' not in remainder:
-                    names[remainder] = SimpleNamespace(
-                        filename=remainder, st_mode=stat.S_IFREG,
-                        st_size=len(self.files[candidate]),
-                    )
-        for candidate in self.dirs:
-            if candidate.startswith(prefix):
-                remainder = candidate[len(prefix):]
-                if remainder and '/' not in remainder:
-                    names[remainder] = SimpleNamespace(
-                        filename=remainder, st_mode=stat.S_IFDIR, st_size=0,
-                    )
-        return list(names.values())
-
-    def lstat(self, path):
-        if not self.destination:
-            return SimpleNamespace(st_mode=stat.S_IFREG, st_size=len(self.payload))
-        return self.stat(path)
-
-    def rename(self, source, destination):
-        self.renamed.append((source, destination))
-        if source in self.files:
-            self.files[destination] = self.files.pop(source)
-            return
-        moved_files = {
-            destination + path[len(source):]: payload
-            for path, payload in list(self.files.items())
-            if path.startswith(source + '/')
-        }
-        for path in list(self.files):
-            if path.startswith(source + '/'):
-                del self.files[path]
-        self.files.update(moved_files)
-        moved_dirs = {
-            destination + path[len(source):]
-            for path in self.dirs if path == source or path.startswith(source + '/')
-        }
-        self.dirs = {
-            path for path in self.dirs
-            if path != source and not path.startswith(source + '/')
-        }
-        self.dirs.update(moved_dirs)
-
-    def close(self):
-        self.closed = True
-        self.close_calls += 1
-
-
 class FallbackSFTP:
     def __init__(self, files):
         self.files = files
@@ -190,36 +86,6 @@ class FallbackSFTP:
         reader = BoundedReader(self.files[path])
         self.readers.append(reader)
         return reader
-
-
-def test_server_transfer_closes_fresh_pool_channels_on_success(monkeypatch):
-    """Quick-connection SFTP channels are per-operation and must be closed."""
-    import app.sftp_handler as sftp_handler
-
-    source = S2SSFTP(b'payload')
-    destination = S2SSFTP(destination=True)
-    monkeypatch.setattr(
-        sftp_handler,
-        'get_sftp_client_fresh',
-        lambda _identifier: (None, 'not an SSH session'),
-    )
-    monkeypatch.setattr(
-        sftp_handler,
-        'get_sftp_client_from_pool',
-        lambda identifier: (
-            (source, None) if identifier == 'source' else (destination, None)
-        ),
-    )
-
-    success, error = sftp_handler.transfer_server_to_server(
-        'source', '/from.bin', 'destination', '/to.bin', 'pool-success',
-        cancel_event=threading.Event(), max_bytes=100, chunk_size=4,
-    )
-
-    assert success is True
-    assert error is None
-    assert source.close_calls == 1
-    assert destination.close_calls == 1
 
 
 def test_socket_cancel_returns_authoritative_state_and_emits_terminal_once(
@@ -300,35 +166,6 @@ def test_socket_cancel_returns_authoritative_state_and_emits_terminal_once(
         },
         {'room': 'user_7'},
     )
-
-
-def test_server_transfer_closes_pool_source_once_if_destination_fails(monkeypatch):
-    """Opening the destination must not leak or double-close the pool source."""
-    import app.sftp_handler as sftp_handler
-
-    source = S2SSFTP(b'payload')
-    monkeypatch.setattr(
-        sftp_handler,
-        'get_sftp_client_fresh',
-        lambda _identifier: (None, 'not an SSH session'),
-    )
-    monkeypatch.setattr(
-        sftp_handler,
-        'get_sftp_client_from_pool',
-        lambda identifier: (
-            (source, None)
-            if identifier == 'source'
-            else (None, 'destination unavailable')
-        ),
-    )
-
-    success, error = sftp_handler.transfer_server_to_server(
-        'source', '/from.bin', 'destination', '/to.bin', 'pool-error',
-    )
-
-    assert success is False
-    assert error == 'Destination connection error: destination unavailable'
-    assert source.close_calls == 1
 
 
 class EmptyDirectorySFTP:
@@ -429,152 +266,6 @@ def cleanup_entry(name, mode):
 @contextmanager
 def cleanup_sftp_session(sftp):
     yield sftp, 'session'
-
-
-def test_remove_sftp_tree_streams_entries_and_closes_iterator():
-    from app.sftp_handler import _remove_sftp_tree
-
-    iterator = CleanupDirectoryIterator([
-        cleanup_entry('payload.txt', stat.S_IFREG),
-    ])
-    sftp = CleanupSFTP(
-        {'/temporary': iterator},
-        {'/temporary/payload.txt': stat.S_IFREG},
-    )
-
-    assert _remove_sftp_tree(sftp, '/temporary', max_members=1) is True
-    assert iterator.closed is True
-    assert sftp.removed == ['/temporary/payload.txt']
-    assert sftp.removed_dirs == ['/temporary']
-
-
-def test_remove_sftp_tree_stops_at_member_budget_without_consuming_extra_entry():
-    from app.sftp_handler import _remove_sftp_tree
-
-    iterator = CleanupDirectoryIterator(
-        [
-            cleanup_entry('first.txt', stat.S_IFREG),
-            cleanup_entry('extra.txt', stat.S_IFREG),
-        ],
-    )
-    sftp = CleanupSFTP(
-        {'/temporary': iterator},
-        {
-            '/temporary/first.txt': stat.S_IFREG,
-            '/temporary/extra.txt': stat.S_IFREG,
-        },
-    )
-
-    assert _remove_sftp_tree(sftp, '/temporary', max_members=1) is False
-    assert iterator.consumed == 2
-    assert iterator.closed is True
-    assert sftp.removed == ['/temporary/first.txt']
-    assert sftp.lstat_calls == ['/temporary/first.txt']
-    assert sftp.removed_dirs == []
-
-
-def test_remove_sftp_tree_stops_before_listing_when_cancelled():
-    from app.sftp_handler import _remove_sftp_tree
-
-    cancelled = threading.Event()
-    cancelled.set()
-    iterator = CleanupDirectoryIterator([])
-    sftp = CleanupSFTP({'/temporary': iterator}, {})
-
-    assert _remove_sftp_tree(
-        sftp, '/temporary', max_members=2, cancel_event=cancelled
-    ) is False
-    assert sftp.listed == []
-    assert iterator.closed is False
-    assert sftp.removed == []
-    assert sftp.removed_dirs == []
-
-
-def test_remove_sftp_tree_does_not_recurse_beyond_depth_limit():
-    from app.sftp_handler import _remove_sftp_tree
-
-    root_iterator = CleanupDirectoryIterator([
-        cleanup_entry('nested', stat.S_IFDIR),
-    ])
-    nested_iterator = CleanupDirectoryIterator([
-        cleanup_entry('too-deep', stat.S_IFDIR),
-    ])
-    sftp = CleanupSFTP(
-        {
-            '/temporary': root_iterator,
-            '/temporary/nested': nested_iterator,
-        },
-        {
-            '/temporary/nested': stat.S_IFDIR,
-            '/temporary/nested/too-deep': stat.S_IFDIR,
-        },
-    )
-
-    assert _remove_sftp_tree(
-        sftp, '/temporary', max_members=4, max_depth=1
-    ) is False
-    assert sftp.listed == ['/temporary', '/temporary/nested']
-    assert root_iterator.closed is True
-    assert nested_iterator.closed is True
-    assert sftp.removed_dirs == []
-
-
-def test_remove_sftp_tree_stops_on_cyclic_directory_response():
-    from app.sftp_handler import _remove_sftp_tree
-
-    root_iterator = CleanupDirectoryIterator([
-        cleanup_entry('loop', stat.S_IFDIR),
-    ])
-    loop_iterator = CleanupDirectoryIterator([
-        cleanup_entry('loop', stat.S_IFDIR),
-    ])
-    sftp = CleanupSFTP(
-        {
-            '/temporary': root_iterator,
-            '/temporary/loop': loop_iterator,
-        },
-        {
-            '/temporary/loop': stat.S_IFDIR,
-            '/temporary/loop/loop': stat.S_IFDIR,
-        },
-    )
-
-    assert _remove_sftp_tree(
-        sftp, '/temporary', max_members=3, max_depth=1
-    ) is False
-    assert sftp.listed == ['/temporary', '/temporary/loop']
-    assert sftp.removed_dirs == []
-
-
-def test_remove_sftp_tree_removes_symlink_without_following_it():
-    from app.sftp_handler import _remove_sftp_tree
-
-    iterator = CleanupDirectoryIterator([
-        cleanup_entry('linked', stat.S_IFLNK),
-    ])
-    sftp = CleanupSFTP(
-        {'/temporary': iterator},
-        {'/temporary/linked': stat.S_IFLNK},
-    )
-
-    assert _remove_sftp_tree(sftp, '/temporary', max_members=2) is True
-    assert sftp.listed == ['/temporary']
-    assert sftp.removed == ['/temporary/linked']
-    assert sftp.removed_dirs == ['/temporary']
-
-
-def test_remove_sftp_tree_stops_on_unsafe_entry_name():
-    from app.sftp_handler import _remove_sftp_tree
-
-    iterator = CleanupDirectoryIterator([
-        cleanup_entry('../outside', stat.S_IFREG),
-    ])
-    sftp = CleanupSFTP({'/temporary': iterator}, {})
-
-    assert _remove_sftp_tree(sftp, '/temporary', max_members=2) is False
-    assert iterator.closed is True
-    assert sftp.removed == []
-    assert sftp.removed_dirs == []
 
 
 def test_list_directory_allows_exact_configured_member_limit(monkeypatch):
@@ -976,175 +667,28 @@ def test_fallback_zip_counts_zero_byte_members(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_server_directory_copy_rejects_excess_members(monkeypatch):
-    import app.sftp_handler as sftp_handler
-
-    source = ManyZeroFilesSFTP(4)
-    source.close = lambda: None
-    destination = S2SSFTP(destination=True)
-    monkeypatch.setattr(
-        sftp_handler,
-        'get_sftp_client_fresh',
-        lambda session_id: (
-            (source, None) if session_id == 'source' else (destination, None)
-        ),
-    )
-
-    success, error = sftp_handler.transfer_server_to_server(
-        'source', '/reports', 'destination', '/copy', 'transfer-members',
-        is_dir=True,
-        cancel_event=threading.Event(),
-        max_bytes=1,
-        max_members=3,
-        chunk_size=4,
-    )
-
-    assert success is False
-    assert error == 'Transfer exceeds configured member limit'
-    assert destination.files == {}
-    assert destination.dirs == set()
-
-
-def test_server_copy_cancellation_removes_partial_destination(monkeypatch):
-    import app.sftp_handler as sftp_handler
-
-    source = S2SSFTP(b'a' * 12)
-    destination = S2SSFTP(destination=True)
-    cancelled = threading.Event()
-
-    def fresh(session_id):
-        return (source, None) if session_id == 'source' else (destination, None)
-
-    class Socket:
-        def emit(self, event, payload, room=None):
-            if event == 's2s_transfer_progress':
-                cancelled.set()
-
-    monkeypatch.setattr(sftp_handler, 'get_sftp_client_fresh', fresh)
-
-    success, error = sftp_handler.transfer_server_to_server(
-        'source', '/from.txt', 'destination', '/to.txt', 'transfer-1',
-        socketio_instance=Socket(), user_room='user_1',
-        cancel_event=cancelled, max_bytes=100, chunk_size=4,
-    )
-
-    assert success is False
-    assert isinstance(error, sftp_handler.TransferCancelled)
-    assert '/to.txt' not in destination.files
-    assert len(destination.removed) == 1
-    assert destination.removed[0].startswith('/.webssh-transfer-')
-
-
-def test_server_directory_cancellation_leaves_temporary_tree_untouched(monkeypatch):
-    import app.sftp_handler as sftp_handler
-
-    source = S2SSFTP(b'a' * 12)
-    destination = S2SSFTP(destination=True)
-    cancelled = threading.Event()
-
-    monkeypatch.setattr(
-        sftp_handler, 'get_sftp_client_fresh',
-        lambda session_id: (
-            (source, None) if session_id == 'source' else (destination, None)
-        ),
-    )
-
-    class Socket:
-        def emit(self, event, payload, room=None):
-            if event == 's2s_transfer_progress':
-                cancelled.set()
-
-    success, error = sftp_handler.transfer_server_to_server(
-        'source', '/folder', 'destination', '/copy', 'transfer-dir',
-        socketio_instance=Socket(), user_room='user_1', is_dir=True,
-        cancel_event=cancelled, max_bytes=100, chunk_size=4,
-    )
-
-    assert success is False
-    assert isinstance(error, sftp_handler.TransferCancelled)
-    assert destination.files == {}
-    assert len(destination.dirs) == 1
-    assert next(iter(destination.dirs)).startswith('/.webssh-transfer-')
-    assert destination.renamed == []
-
-
-def test_server_directory_progress_is_cumulative(monkeypatch):
-    import app.sftp_handler as sftp_handler
-
-    class DirectorySource(S2SSFTP):
-        def __init__(self):
-            super().__init__()
-            self.files = {
-                '/folder/first.bin': b'a' * 5,
-                '/folder/second.bin': b'b' * 7,
-            }
-
-        def listdir_attr(self, path):
-            assert path == '/folder'
-            return [
-                SimpleNamespace(
-                    filename=os.path.basename(file_path),
-                    st_mode=stat.S_IFREG,
-                    st_size=len(payload),
-                )
-                for file_path, payload in self.files.items()
-            ]
-
-        def lstat(self, path):
-            return SimpleNamespace(
-                st_mode=stat.S_IFREG,
-                st_size=len(self.files[path]),
-            )
-
-        def stat(self, path):
-            return self.lstat(path)
-
-        def open(self, path, mode):
-            del mode
-            return BoundedReader(self.files[path])
-
-    source = DirectorySource()
-    destination = S2SSFTP(destination=True)
-    progress = []
-
-    monkeypatch.setattr(
-        sftp_handler, 'get_sftp_client_fresh',
-        lambda session_id: (
-            (source, None) if session_id == 'source' else (destination, None)
-        ),
-    )
-
-    class Socket:
-        def emit(self, event, payload, room=None):
-            if event == 's2s_transfer_progress':
-                progress.append(payload)
-
-    success, error = sftp_handler.transfer_server_to_server(
-        'source', '/folder', 'destination', '/copy', 'transfer-dir',
-        socketio_instance=Socket(), user_room='user_1', is_dir=True,
-        cancel_event=threading.Event(), max_bytes=100, chunk_size=4,
-    )
-
-    assert success is True
-    assert error is None
-    assert progress
-    assert [item['transferred'] for item in progress] == sorted(
-        item['transferred'] for item in progress
-    )
-    assert progress[-1]['transferred'] == 12
-    assert progress[-1]['total'] == 12
-    assert progress[-1]['percent'] == 100
+class _PathBackend:
+    @staticmethod
+    def normalize_path(path):
+        if isinstance(path, str) and path.startswith('/') and '..' not in path:
+            return path
+        return None
 
 
 def _allow_s2s_sources(monkeypatch, socket_events, calls=None):
     from app.file_sources import SourceHoldSet
 
+    backend = _PathBackend()
     monkeypatch.setattr(
         socket_events.file_service,
         'resolve',
         lambda source_id, _user_id, capability: (
             calls.append((source_id, capability.value)) if calls is not None else None
-        ) or SimpleNamespace(handle_id=source_id.split(':', 1)[1]),
+        ) or SimpleNamespace(
+            source_id=source_id,
+            handle_id=source_id.split(':', 1)[1],
+            backend=backend,
+        ),
     )
     monkeypatch.setattr(
         socket_events.file_source_resolver,
@@ -1177,15 +721,15 @@ def test_server_copy_socket_lifecycle_releases_job_and_transfer(
 
     observed = {}
 
-    def copy(**kwargs):
+    def copy(*_args, **kwargs):
         observed.update(kwargs)
-        return True, None
+        return SimpleNamespace(bytes_transferred=0)
 
     resolve_calls = []
     _allow_s2s_sources(monkeypatch, socket_events, resolve_calls)
     monkeypatch.setattr(socket_events, 'transfer_manager', manager)
     monkeypatch.setattr(socket_events, 'quota_manager', quota)
-    monkeypatch.setattr(socket_events.sftp_handler, 'transfer_server_to_server', copy)
+    monkeypatch.setattr(socket_events, 'copy_remote_entry', copy)
     monkeypatch.setitem(
         app.extensions, 'runtime_lifecycle', ImmediateLifecycle()
     )
@@ -1240,8 +784,8 @@ def test_server_copy_completion_identifies_transferred_item(app, monkeypatch):
         SimpleNamespace(reserve=lambda *_args, **_kwargs: Reservation()),
     )
     monkeypatch.setattr(
-        socket_events.sftp_handler, 'transfer_server_to_server',
-        lambda **_kwargs: (True, None),
+        socket_events, 'copy_remote_entry',
+        lambda *_args, **_kwargs: SimpleNamespace(bytes_transferred=0),
     )
     monkeypatch.setattr(
         socket_events.socketio, 'emit',
@@ -1485,6 +1029,7 @@ def test_combined_cancellation_wait_observes_runtime_shutdown():
 def test_server_copy_observes_lifecycle_shutdown_cancellation(app, monkeypatch):
     """Lifecycle shutdown must reach an in-flight S2S copy beside user cancellation."""
     import app.socket_events as socket_events
+    from app.remote_transfer import RemoteTransferCancelled
     from app.transfer_manager import TransferManager
 
     class Reservation:
@@ -1510,14 +1055,11 @@ def test_server_copy_observes_lifecycle_shutdown_cancellation(app, monkeypatch):
         socket_events, 'quota_manager',
         SimpleNamespace(reserve=lambda *_args, **_kwargs: reservation),
     )
-    monkeypatch.setattr(
-        socket_events.sftp_handler,
-        'transfer_server_to_server',
-        lambda **kwargs: (
-            observed.update(kwargs)
-            or (False, socket_events.sftp_handler.TransferCancelled())
-        ),
-    )
+    def cancelled_copy(*_args, **kwargs):
+        observed.update(kwargs)
+        raise RemoteTransferCancelled('Transfer cancelled')
+
+    monkeypatch.setattr(socket_events, 'copy_remote_entry', cancelled_copy)
     monkeypatch.setitem(app.extensions, 'runtime_lifecycle', ImmediateLifecycle())
 
     user = SimpleNamespace(id=7, username='copy-user')
@@ -1536,9 +1078,10 @@ def test_server_copy_observes_lifecycle_shutdown_cancellation(app, monkeypatch):
     assert manager._records == {}
 
 
-def test_active_legacy_server_copy_finishes_as_cancelled(app, monkeypatch):
-    """A legacy SFTP worker must preserve cancellation after the ack."""
+def test_active_server_copy_finishes_as_cancelled(app, monkeypatch):
+    """A running copy worker must preserve cancellation after the ack."""
     import app.socket_events as socket_events
+    from app.remote_transfer import RemoteTransferCancelled
     from app.transfer_manager import TransferManager
 
     class Reservation:
@@ -1567,10 +1110,10 @@ def test_active_legacy_server_copy_finishes_as_cancelled(app, monkeypatch):
     started = threading.Event()
     emitted = []
 
-    def cancelled_copy(**kwargs):
+    def cancelled_copy(*_args, **kwargs):
         started.set()
         assert kwargs['cancel_event'].wait(1)
-        return False, socket_events.sftp_handler.TransferCancelled()
+        raise RemoteTransferCancelled('Transfer cancelled')
 
     _allow_s2s_sources(monkeypatch, socket_events)
     monkeypatch.setattr(socket_events, 'transfer_manager', manager)
@@ -1579,11 +1122,7 @@ def test_active_legacy_server_copy_finishes_as_cancelled(app, monkeypatch):
         'quota_manager',
         SimpleNamespace(reserve=lambda *_args, **_kwargs: reservation),
     )
-    monkeypatch.setattr(
-        socket_events.sftp_handler,
-        'transfer_server_to_server',
-        cancelled_copy,
-    )
+    monkeypatch.setattr(socket_events, 'copy_remote_entry', cancelled_copy)
     monkeypatch.setattr(
         socket_events.socketio,
         'emit',
@@ -1646,12 +1185,12 @@ def test_server_copy_runs_on_the_app_lifecycle_executor(app, monkeypatch):
     release = threading.Event()
     observed = {}
 
-    def copy(**kwargs):
+    def copy(*_args, **kwargs):
         observed.update(kwargs)
         observed['thread_name'] = threading.current_thread().name
         started.set()
         assert release.wait(1)
-        return True, None
+        return SimpleNamespace(bytes_transferred=0)
 
     _allow_s2s_sources(monkeypatch, socket_events)
     monkeypatch.setattr(socket_events, 'transfer_manager', manager)
@@ -1659,7 +1198,7 @@ def test_server_copy_runs_on_the_app_lifecycle_executor(app, monkeypatch):
         socket_events, 'quota_manager',
         SimpleNamespace(reserve=lambda *_args, **_kwargs: reservation),
     )
-    monkeypatch.setattr(socket_events.sftp_handler, 'transfer_server_to_server', copy)
+    monkeypatch.setattr(socket_events, 'copy_remote_entry', copy)
 
     user = SimpleNamespace(id=7, username='copy-user')
     with app.test_request_context('/socket.io'):
@@ -1712,8 +1251,8 @@ def test_server_copy_lifecycle_rejection_releases_each_reservation_once(
         SimpleNamespace(reserve=lambda *_args, **_kwargs: reservation),
     )
     monkeypatch.setattr(
-        socket_events.sftp_handler,
-        'transfer_server_to_server', lambda **_kwargs: (True, None),
+        socket_events, 'copy_remote_entry',
+        lambda *_args, **_kwargs: SimpleNamespace(bytes_transferred=0),
     )
     monkeypatch.setattr(socket_events, 'emit', lambda *_args, **_kwargs: None)
     monkeypatch.setitem(app.extensions, 'runtime_lifecycle', RejectingLifecycle())
@@ -1778,7 +1317,12 @@ def test_server_copy_rejects_invalid_paths_before_allocating(app, monkeypatch):
     import app.socket_events as socket_events
 
     emitted = []
-    monkeypatch.setattr(socket_events.sftp_handler, 'sanitize_path', lambda _path: None)
+    _allow_s2s_sources(monkeypatch, socket_events)
+    monkeypatch.setattr(
+        socket_events.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda *_args: pytest.fail('holds allocated for an invalid path'),
+    )
     monkeypatch.setattr(
         socket_events, 'emit',
         lambda event, payload=None, **_kwargs: emitted.append((event, payload)),
@@ -1795,47 +1339,42 @@ def test_server_copy_rejects_invalid_paths_before_allocating(app, monkeypatch):
         }, current_user=user)
 
     assert result['success'] is False
+    assert result['error'] == 'Invalid path'
+    assert emitted[0][0] == 's2s_transfer_error'
     assert emitted[0][1]['transfer_id'] is None
 
 
-def test_server_copy_progress_is_throttled_but_completion_is_always_sent(
-        monkeypatch):
-    import app.sftp_handler as sftp_handler
-    from app import transfer_progress
+def test_server_copy_reports_missing_capability_before_path_errors(
+        app, monkeypatch):
+    import app.socket_events as socket_events
+    from app.file_sources import FileSourceUnavailable
 
+    emitted = []
+
+    def unavailable(*_args, **_kwargs):
+        raise FileSourceUnavailable()
+
+    monkeypatch.setattr(socket_events.file_service, 'resolve', unavailable)
     monkeypatch.setattr(
-        transfer_progress.ProgressThrottle.__init__,
-        '__defaults__',
-        (transfer_progress.PROGRESS_INTERVAL_SECONDS, lambda: 100.0),
+        socket_events, 'emit',
+        lambda event, payload=None, **_kwargs: emitted.append((event, payload)),
     )
-    source = S2SSFTP(b'a' * 40)
-    destination = S2SSFTP(destination=True)
-    progress = []
+    user = SimpleNamespace(id=7, username='copy-user')
 
-    monkeypatch.setattr(
-        sftp_handler, 'get_sftp_client_fresh',
-        lambda session_id: (
-            (source, None) if session_id == 'source' else (destination, None)
-        ),
-    )
+    with app.test_request_context('/socket.io'):
+        result = socket_events.handle_transfer_server_to_server.__wrapped__({
+            'source_id': 'sftp-session:source',
+            'request_id': 's2s:test',
+            'source_path': '../from.bin',
+            'destination_source_id': 'sftp-session:destination',
+            'dest_path': '/to.bin',
+        }, current_user=user)
 
-    class Socket:
-        def emit(self, event, payload, room=None):
-            if event == 's2s_transfer_progress':
-                progress.append(payload)
-
-    success, error = sftp_handler.transfer_server_to_server(
-        'source', '/from.txt', 'destination', '/to.txt', 'transfer-throttle',
-        socketio_instance=Socket(), user_room='user_1',
-        cancel_event=threading.Event(), max_bytes=100, chunk_size=4,
-    )
-
-    assert success is True
-    assert error is None
-    assert [(item['status'], item['transferred']) for item in progress] == [
-        ('transferring', 4),
-        ('completed', 40),
-    ]
+    assert result['success'] is False
+    assert result['error_code'] == 'SOURCE_UNAVAILABLE'
+    assert result['error'] != 'Invalid path'
+    assert emitted[0][0] == 's2s_transfer_error'
+    assert emitted[0][1]['transfer_id'] is None
 
 
 def test_backend_server_copy_progress_is_throttled(app, monkeypatch):

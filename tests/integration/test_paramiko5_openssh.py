@@ -137,7 +137,7 @@ def test_direct_password_terminal_roundtrip():
 
 
 @pytest.mark.parametrize('mode', [0o600, 0o640, 0o750])
-@pytest.mark.parametrize('route', ['backend', 'legacy-upload', 'legacy-copy'])
+@pytest.mark.parametrize('route', ['backend', 'legacy-upload', 'backend-copy'])
 def test_atomic_transfer_keeps_staging_private_and_preserves_destination_mode(mode, route):
     import io
     from types import SimpleNamespace
@@ -172,15 +172,20 @@ def test_atomic_transfer_keeps_staging_private_and_preserves_destination_mode(mo
             source_path = directory + '/source'
             with sftp.file(source_path, 'wb') as source_file:
                 source_file.write(b'replacement')
-            class Progress:
-                def emit(self, event, payload, **_kwargs):
-                    if event == 's2s_transfer_progress' and payload.get('status') == 'transferring':
-                        inspect_staging()
-            success, error = sftp_handler.transfer_server_to_server(
-                session_id, source_path, session_id, target, 'permissions-check',
-                socketio_instance=Progress(), user_room='test', conflict_policy='replace',
-                max_bytes=100, chunk_size=4)
-            assert success, error
+            from app.remote_transfer import TransferBudget, copy_remote_entry
+            endpoint = SimpleNamespace(
+                source_id='sftp-session:permissions-check',
+                handle_id=session_id,
+                backend=SFTPBackend(),
+            )
+            copy_remote_entry(
+                endpoint, source_path, endpoint, target,
+                conflict_policy='replace',
+                budget=TransferBudget(max_bytes=100, max_members=2),
+                cancel_event=threading.Event(),
+                progress=inspect_staging,
+                chunk_size=4,
+            )
         assert stat.S_IMODE(sftp.stat(target).st_mode) == mode
         with sftp.file(target, 'rb') as result:
             assert result.read() == b'replacement'

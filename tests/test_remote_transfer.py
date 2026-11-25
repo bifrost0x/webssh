@@ -372,6 +372,123 @@ def test_directory_total_size_is_rejected_before_destination_mutation():
     assert destination_backend.commits == []
 
 
+def _file_entry(path, size):
+    return {
+        'name': path.rsplit('/', 1)[-1], 'path': path, 'size': size,
+        'is_dir': False, 'is_symlink': False,
+    }
+
+
+def test_directory_member_limit_is_rejected_before_destination_mutation():
+    from app.remote_transfer import (
+        RemoteTransferLimitExceeded,
+        TransferBudget,
+        copy_remote_entry,
+    )
+
+    source_backend = _Backend(
+        files={f'/folder/{index}.txt': b'' for index in range(4)},
+        tree=[_file_entry(f'/folder/{index}.txt', 0) for index in range(4)],
+    )
+    destination_backend = _Backend()
+
+    with pytest.raises(RemoteTransferLimitExceeded, match='member limit'):
+        copy_remote_entry(
+            _source('sftp', source_backend), '/folder',
+            _source('sftp', destination_backend), '/copy',
+            conflict_policy='error',
+            budget=TransferBudget(max_bytes=1, max_members=3),
+            cancel_event=Event(), progress=None, chunk_size=4,
+        )
+
+    assert destination_backend.created == []
+    assert destination_backend.commits == []
+
+
+def test_cancellation_while_streaming_a_file_commits_nothing():
+    from app.remote_transfer import (
+        RemoteTransferCancelled,
+        TransferBudget,
+        copy_remote_entry,
+    )
+
+    source_backend = _Backend({'/from.txt': b'a' * 12})
+    destination_backend = _Backend()
+    cancelled = Event()
+
+    with pytest.raises(RemoteTransferCancelled):
+        copy_remote_entry(
+            _source('sftp', source_backend), '/from.txt',
+            _source('sftp', destination_backend), '/to.txt',
+            conflict_policy='error',
+            budget=TransferBudget(max_bytes=100, max_members=1),
+            cancel_event=cancelled,
+            progress=lambda _progress: cancelled.set(),
+            chunk_size=4,
+        )
+
+    assert '/to.txt' not in destination_backend.files
+    assert destination_backend.commits == []
+
+
+def test_cancellation_while_streaming_a_directory_commits_nothing():
+    from app.remote_transfer import (
+        RemoteTransferCancelled,
+        TransferBudget,
+        copy_remote_entry,
+    )
+
+    source_backend = _Backend(
+        files={'/folder/first.bin': b'a' * 5, '/folder/second.bin': b'b' * 7},
+        tree=[
+            _file_entry('/folder/first.bin', 5),
+            _file_entry('/folder/second.bin', 7),
+        ],
+    )
+    destination_backend = _Backend()
+    cancelled = Event()
+
+    with pytest.raises(RemoteTransferCancelled):
+        copy_remote_entry(
+            _source('sftp', source_backend), '/folder',
+            _source('sftp', destination_backend), '/copy',
+            conflict_policy='error',
+            budget=TransferBudget(max_bytes=100, max_members=3),
+            cancel_event=cancelled,
+            progress=lambda _progress: cancelled.set(),
+            chunk_size=4,
+        )
+
+    assert destination_backend.commits == []
+
+
+def test_directory_copy_progress_is_cumulative_across_files():
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+
+    source_backend = _Backend(
+        files={'/folder/first.bin': b'a' * 5, '/folder/second.bin': b'b' * 7},
+        tree=[
+            _file_entry('/folder/first.bin', 5),
+            _file_entry('/folder/second.bin', 7),
+        ],
+    )
+    destination_backend = _Backend()
+    progress = []
+
+    result = copy_remote_entry(
+        _source('sftp', source_backend), '/folder',
+        _source('sftp', destination_backend), '/copy',
+        conflict_policy='error',
+        budget=TransferBudget(max_bytes=100, max_members=3),
+        cancel_event=Event(), progress=progress.append, chunk_size=4,
+    )
+
+    transferred = [item['transferred'] for item in progress]
+    assert transferred == sorted(transferred)
+    assert transferred[-1] == 12
+    assert result.bytes_transferred == 12
+
+
 def test_directory_copy_binds_reader_to_enumerated_smb_identity_chain():
     from app.remote_transfer import TransferBudget, copy_remote_entry
 

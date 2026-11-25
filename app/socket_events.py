@@ -53,7 +53,6 @@ from .socket_protocol import (
 )
 from .remote_transfer import (
     RemoteTransferCancelled,
-    RemoteTransferError,
     TransferBudget,
     copy_remote_entry,
 )
@@ -5434,6 +5433,33 @@ def handle_transfer_server_to_server(data, current_user=None):
             'destination_source_id': destination_source_id,
         }
 
+        def fail(**fields):
+            emit('s2s_transfer_error', {
+                **response_context,
+                'transfer_id': transfer_id,
+                **fields,
+            })
+            return {'success': False, **fields, **response_context}
+
+        def resolve(resolved_source_id, capability):
+            try:
+                resolved = file_service.resolve(
+                    resolved_source_id,
+                    current_user.id,
+                    capability,
+                )
+                file_service.resolve(
+                    resolved_source_id,
+                    current_user.id,
+                    FileCapability.REMOTE_TRANSFER,
+                )
+            except FileSourceUnavailable:
+                failure = classify_transfer_failure(
+                    FileSourceUnavailable(), operation='remote_transfer'
+                )
+                return None, fail(**failure.to_public_dict())
+            return resolved, None
+
         if (
             not _valid_file_request(identity)
             or conflict_policy not in {'error', 'replace'}
@@ -5443,82 +5469,16 @@ def handle_transfer_server_to_server(data, current_user=None):
                 requested_dest_path,
             ])
         ):
-            emit('s2s_transfer_error', {
-                **response_context,
-                'transfer_id': None,
-                'error': 'Missing required fields'
-            })
-            return {
-                'success': False,
-                'error': 'Missing required fields',
-                **response_context,
-            }
+            return fail(error='Missing required fields')
 
-        legacy_source_path = sftp_handler.sanitize_path(requested_source_path)
-        legacy_dest_path = sftp_handler.sanitize_path(requested_dest_path)
-        if legacy_source_path is None or legacy_dest_path is None:
-            emit('s2s_transfer_error', {
-                **response_context,
-                'transfer_id': transfer_id,
-                'error': 'Invalid path'
-            })
-            return {
-                'success': False,
-                'error': 'Invalid path',
-                **response_context,
-            }
-
-        try:
-            source = file_service.resolve(
-                source_id,
-                current_user.id,
-                FileCapability.READ,
-            )
-            file_service.resolve(
-                source_id,
-                current_user.id,
-                FileCapability.REMOTE_TRANSFER,
-            )
-        except FileSourceUnavailable:
-            failure = classify_transfer_failure(
-                FileSourceUnavailable(), operation='remote_transfer'
-            )
-            emit('s2s_transfer_error', {
-                **response_context,
-                'transfer_id': transfer_id,
-                **failure.to_public_dict(),
-            })
-            return {
-                'success': False,
-                **failure.to_public_dict(),
-                **response_context,
-            }
-
-        try:
-            destination = file_service.resolve(
-                destination_source_id,
-                current_user.id,
-                FileCapability.WRITE,
-            )
-            file_service.resolve(
-                destination_source_id,
-                current_user.id,
-                FileCapability.REMOTE_TRANSFER,
-            )
-        except FileSourceUnavailable:
-            failure = classify_transfer_failure(
-                FileSourceUnavailable(), operation='remote_transfer'
-            )
-            emit('s2s_transfer_error', {
-                **response_context,
-                'transfer_id': transfer_id,
-                **failure.to_public_dict(),
-            })
-            return {
-                'success': False,
-                **failure.to_public_dict(),
-                **response_context,
-            }
+        source, rejected = resolve(source_id, FileCapability.READ)
+        if rejected:
+            return rejected
+        destination, rejected = resolve(
+            destination_source_id, FileCapability.WRITE
+        )
+        if rejected:
+            return rejected
 
         try:
             source_audit_identity = file_source_audit_identity(source)
@@ -5566,23 +5526,10 @@ def handle_transfer_server_to_server(data, current_user=None):
                     exception_type=type(error).__name__,
                 )
 
-        if hasattr(source, 'backend') and hasattr(destination, 'backend'):
-            source_path = source.backend.normalize_path(requested_source_path)
-            dest_path = destination.backend.normalize_path(requested_dest_path)
-        else:
-            source_path = legacy_source_path
-            dest_path = legacy_dest_path
+        source_path = source.backend.normalize_path(requested_source_path)
+        dest_path = destination.backend.normalize_path(requested_dest_path)
         if source_path is None or dest_path is None:
-            emit('s2s_transfer_error', {
-                **response_context,
-                'transfer_id': transfer_id,
-                'error': 'Invalid path',
-            })
-            return {
-                'success': False,
-                'error': 'Invalid path',
-                **response_context,
-            }
+            return fail(error='Invalid path')
 
         user_id = current_user.id
         user_room = f'user_{user_id}'
@@ -5647,72 +5594,49 @@ def handle_transfer_server_to_server(data, current_user=None):
                     user_id,
                     FileCapability.REMOTE_TRANSFER,
                 )
-                if (
-                    hasattr(active_source, 'backend')
-                    and hasattr(active_destination, 'backend')
-                ):
-                    progress_throttle = ProgressThrottle()
+                progress_throttle = ProgressThrottle()
 
-                    def report_progress(progress):
-                        nonlocal transferred
-                        transferred = progress['transferred']
-                        if not progress_throttle.ready():
-                            return
-                        total = max(
-                            transferred,
-                            progress.get('file_size', 0),
-                        )
-                        socketio.emit('s2s_transfer_progress', {
-                            **response_context,
-                            'transfer_id': transfer_id,
-                            'filename': posixpath.basename(
-                                progress['path'].rstrip('/')
-                            ),
-                            'transferred': transferred,
-                            'total': total,
-                            'percent': (
-                                min(100, int(transferred * 100 / total))
-                                if total else 0
-                            ),
-                            'status': 'transferring',
-                        }, room=user_room)
-
-                    transfer_result = copy_remote_entry(
-                        active_source,
-                        source_path,
-                        active_destination,
-                        dest_path,
-                        conflict_policy=conflict_policy,
-                        budget=TransferBudget(
-                            max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
-                            max_members=config.MAX_TRANSFER_MEMBERS,
+                def report_progress(progress):
+                    nonlocal transferred
+                    transferred = progress['transferred']
+                    if not progress_throttle.ready():
+                        return
+                    total = max(
+                        transferred,
+                        progress.get('file_size', 0),
+                    )
+                    socketio.emit('s2s_transfer_progress', {
+                        **response_context,
+                        'transfer_id': transfer_id,
+                        'filename': posixpath.basename(
+                            progress['path'].rstrip('/')
                         ),
-                        cancel_event=cancel_event,
-                        progress=report_progress,
-                        chunk_size=config.CHUNK_SIZE,
-                    )
-                    transferred = transfer_result.bytes_transferred
-                    success, error = True, None
-                else:
-                    success, error = sftp_handler.transfer_server_to_server(
-                        source_session_id=active_source.handle_id,
-                        source_path=source_path,
-                        dest_session_id=active_destination.handle_id,
-                        dest_path=dest_path,
-                        transfer_id=transfer_id,
-                        socketio_instance=socketio,
-                        is_dir=is_dir,
-                        user_room=user_room,
-                        cancel_event=cancel_event,
-                        max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
-                        chunk_size=config.CHUNK_SIZE,
-                        event_context=response_context,
-                        conflict_policy=conflict_policy,
-                    )
-                    if isinstance(error, sftp_handler.TransferCancelled):
-                        raise RemoteTransferCancelled('Transfer cancelled')
+                        'transferred': transferred,
+                        'total': total,
+                        'percent': (
+                            min(100, int(transferred * 100 / total))
+                            if total else 0
+                        ),
+                        'status': 'transferring',
+                    }, room=user_room)
 
-                if success and _terminalize(
+                transfer_result = copy_remote_entry(
+                    active_source,
+                    source_path,
+                    active_destination,
+                    dest_path,
+                    conflict_policy=conflict_policy,
+                    budget=TransferBudget(
+                        max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                        max_members=config.MAX_TRANSFER_MEMBERS,
+                    ),
+                    cancel_event=cancel_event,
+                    progress=report_progress,
+                    chunk_size=config.CHUNK_SIZE,
+                )
+                transferred = transfer_result.bytes_transferred
+
+                if _terminalize(
                     record, user_id, 'completed', manager=transfer_manager
                 ):
                     audit_s2s('COMPLETED', transferred)
@@ -5724,37 +5648,6 @@ def handle_transfer_server_to_server(data, current_user=None):
                         ),
                         'source_path': source_path,
                         'dest_path': dest_path,
-                    }, room=user_room)
-                elif error:
-                    internal_error = (
-                        error
-                        if isinstance(error, BaseException)
-                        else RemoteTransferError('Transfer unavailable')
-                    )
-                    failure = classify_transfer_failure(
-                        internal_error, operation='remote_transfer'
-                    )
-                    if not _terminalize(
-                        record,
-                        user_id,
-                        'failed',
-                        manager=transfer_manager,
-                        failure=failure,
-                    ):
-                        return
-                    audit_s2s(failure.code, transferred)
-                    log_error(
-                        'S2S transfer failed',
-                        user_id=user_id,
-                        transfer_id=transfer_id,
-                        result_code=failure.code,
-                        operation='remote_transfer',
-                        exception_type=type(internal_error).__name__,
-                    )
-                    socketio.emit('s2s_transfer_error', {
-                        **response_context,
-                        'transfer_id': transfer_id,
-                        **failure.to_public_dict(),
                     }, room=user_room)
             except RemoteTransferCancelled as error:
                 failure = classify_transfer_failure(
