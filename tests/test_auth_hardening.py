@@ -1010,6 +1010,56 @@ def test_admin_unlinking_own_oidc_identity_keeps_the_current_browser(
     assert not _device_trusted(app, other_browser, "oidc_self_admin")
 
 
+def test_oidc_self_unlink_without_a_carried_session_asks_to_sign_in_again(
+    app, browsers, monkeypatch, caplog,
+):
+    import config
+    import app.auth_assurance as auth_assurance
+    from app.models import OIDCIdentity, db
+
+    client = browsers()
+    admin_id = _create_user(app, "oidc_stale_admin", is_admin=True)
+    assert _password_login(client, "oidc_stale_admin").status_code == 302
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    with app.app_context():
+        identity = OIDCIdentity(
+            user_id=admin_id,
+            issuer="https://issuer.example",
+            subject="stale-subject",
+        )
+        db.session.add(identity)
+        db.session.commit()
+        identity_id = identity.id
+    headers = password_step_up_headers(
+        client, "oidc.unlink", f"{admin_id}:{identity_id}",
+    )[0]
+
+    def unavailable(*_args, **_kwargs):
+        raise auth_assurance.AuthenticationFinalizationError(
+            "current authentication session is unavailable"
+        )
+
+    monkeypatch.setattr(
+        auth_assurance, "invalidate_user_authentication", unavailable,
+    )
+    with caplog.at_level(logging.INFO, logger="security_audit"):
+        removed = client.delete(
+            f"/admin/api/users/{admin_id}/oidc-identities/{identity_id}",
+            json={"confirm_username": "oidc_stale_admin"},
+            headers=headers,
+        )
+
+    assert removed.status_code == 409
+    assert removed.get_json() == {
+        "error": "Sign in again before unlinking this identity",
+    }
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(m.startswith("OIDC_IDENTITY_UNLINK_REJECTED") for m in messages)
+    assert not any(m.startswith("OIDC_IDENTITY_STORAGE_FAILED") for m in messages)
+    with app.app_context():
+        assert db.session.get(OIDCIdentity, identity_id) is not None
+
+
 def test_github_unlink_revokes_other_sessions_and_keeps_this_browser(
     app, browsers, monkeypatch,
 ):

@@ -810,7 +810,10 @@ def unlink_oidc_identity(user_id, identity_id):
     if identity is None or identity.user_id != target.id:
         return jsonify({"error": "OIDC identity not found"}), 404
     from . import login_devices, socketio, user_lifecycle
-    from .auth_assurance import invalidate_user_authentication
+    from .auth_assurance import (
+        AuthenticationFinalizationError,
+        invalidate_user_authentication,
+    )
 
     issuer = identity.issuer
     acting_on_self = target.id == current_user.id
@@ -828,6 +831,20 @@ def unlink_oidc_identity(user_id, identity_id):
             )),
         )
         db.session.commit()
+    except AuthenticationFinalizationError:
+        # Only reachable on self-unlink: this browser has no authentication
+        # session to carry over, so it has to sign in again first.
+        db.session.rollback()
+        log_security_event(
+            "OIDC_IDENTITY_UNLINK_REJECTED",
+            level=logging.WARNING,
+            admin=current_user.username,
+            user=target.username,
+            reason="authentication_session_unavailable",
+        )
+        return jsonify({
+            "error": "Sign in again before unlinking this identity"
+        }), 409
     except Exception as exc:
         db.session.rollback()
         log_security_event(
