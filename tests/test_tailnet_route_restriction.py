@@ -822,3 +822,20 @@ def test_admin_enabling_the_block_sweeps_open_connections(app, client, tailnet, 
         assert response.status_code == 200
     # Only the change from off to on sweeps; the block starts out on.
     assert len(calls) == 1
+
+
+def test_admin_tailnet_change_drops_reachability_answers(app, client, tailnet, monkeypatch):
+    from app import overview_routes
+    from tests.step_up_helpers import password_step_up_headers
+    from tests.test_admin_routes import _prepare_role
+    cleared = []
+    monkeypatch.setattr(overview_routes, 'clear_reachability_cache', lambda: cleared.append(True))
+    monkeypatch.setattr(tailscale_ssh, 'close_restricted_tailnet_connections',
+                        lambda socketio_instance=None: None)
+    _prepare_role(app, client, 'admin')
+    for enabled in (True, False, False, True):
+        response = client.post('/admin/api/settings',
+            json={'tailscale_ssh_restrict_tailnet_routes': enabled},
+            headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+        assert response.status_code == 200
+    assert len(cleared) == 2

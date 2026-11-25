@@ -37,6 +37,9 @@ PROBE_BUDGET = '150 per minute'
 _EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix='overview-reachability')
 _CACHE_LOCK = threading.Lock()
 _CACHE = {}
+# Bumped when cached answers stop describing the network policy; a check that
+# started before the bump does not store its answer.
+_CACHE_GENERATION = 0
 # Accounts whose probes are still running; one check per account at a time and
 # a few in the whole process, so checks never hold many HTTP threads.
 _IN_FLIGHT = set()
@@ -213,6 +216,14 @@ def _plans(user_id, wanted=None):
     return plans, signature
 
 
+def clear_reachability_cache():
+    """Drop every stored answer after a network policy change."""
+    global _CACHE_GENERATION
+    with _CACHE_LOCK:
+        _CACHE.clear()
+        _CACHE_GENERATION += 1
+
+
 @overview_blueprint.get('/api/overview/reachability')
 @login_required
 def last_reachability():
@@ -256,6 +267,7 @@ def reachability():
         if len(_IN_FLIGHT) >= MAX_CONCURRENT_CHECKS:
             return jsonify(error='Other checks are running. Try again shortly.', code='busy'), 429
         _IN_FLIGHT.add(user_id)
+        generation = _CACHE_GENERATION
     futures = {probe: _EXECUTOR.submit(_probe, *probe[0], *((True,) if probe[1] else ()))
                for probe in endpoints}
     try:
@@ -297,7 +309,8 @@ def reachability():
             log_warning('Platform hints from the reachability check were not stored', user_id=user_id, error=str(error))
     checked_at = time.time()
     with _CACHE_LOCK:
-        _CACHE[user_id] = dict(at=time.monotonic(), signature=signature, results=results, checked_at=checked_at)
+        if generation == _CACHE_GENERATION:
+            _CACHE[user_id] = dict(at=time.monotonic(), signature=signature, results=results, checked_at=checked_at)
     log_info('Overview reachability check', user_id=user_id, hosts=len(plans), endpoints=len(endpoints))
     response = jsonify(results=results, cached=False, checked_at=checked_at, platforms_updated=platforms_updated)
     response.headers['Cache-Control'] = 'no-store'
