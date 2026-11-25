@@ -292,6 +292,16 @@ def is_config_admin_name(username):
     return any(name.casefold() == normalized for name in config.ADMIN_USERS)
 
 
+def log_reserved_admin_name(username, source):
+    """Tell the operator why a new account could not take a listed name."""
+    from .audit_logger import log_info
+    log_info(
+        "Account name refused: reserved by ADMIN_USERS",
+        user=username,
+        source=source,
+    )
+
+
 def is_config_managed_admin(user):
     """Return whether sync_admin_users keeps this account an administrator."""
     return (
@@ -321,6 +331,7 @@ def validate_new_user(username, password, *, allow_config_admin=False):
     if any(row.username.casefold() == normalized_username for row in existing_names):
         return "Username already exists"
     if not allow_config_admin and is_config_admin_name(username):
+        log_reserved_admin_name(username, 'registration')
         return "Username already exists"
 
     if not password or len(password) < 8:

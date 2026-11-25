@@ -80,7 +80,14 @@ def test_admin_users_skips_missing_and_locked_accounts(app, caplog):
     assert 'ADMIN_USERS lists an account that does not exist' in caplog.text
 
 
-def test_listed_missing_admin_name_cannot_register(app, client, monkeypatch):
+def _reserved_name_refusals(caplog):
+    return [
+        record.extra_data for record in caplog.records
+        if record.getMessage() == 'Account name refused: reserved by ADMIN_USERS'
+    ]
+
+
+def test_listed_missing_admin_name_cannot_register(app, client, monkeypatch, caplog):
     from app.auth import register_user, validate_new_user
     from app.models import GitHubIdentity, User
     from tests.step_up_helpers import password_step_up_headers
@@ -90,6 +97,7 @@ def test_listed_missing_admin_name_cannot_register(app, client, monkeypatch):
     # The first account becomes administrator anyway; the reservation does not apply to it.
     admin_id = _create_user(app, 'reserved_admin')
     _login(client, 'reserved_admin')
+    caplog.set_level(logging.INFO)
     with app.app_context():
         user, error = register_user('RESERVED_ADMIN_', 'password123')
         assert error is None
@@ -97,6 +105,7 @@ def test_listed_missing_admin_name_cannot_register(app, client, monkeypatch):
             assert register_user(name, 'password123') == (None, 'Username already exists')
             assert validate_new_user(name, 'password123') == 'Username already exists'
         assert User.query.filter(User.username.ilike('ui_admin')).first() is None
+    assert {'user': 'Cli_Admin', 'source': 'registration'} in _reserved_name_refusals(caplog)
 
     # An administrator still creates the intended account in the admin UI or with the CLI.
     headers = password_step_up_headers(client, 'user.create', 'ui_admin')[0]
@@ -115,6 +124,7 @@ def test_listed_missing_admin_name_cannot_register(app, client, monkeypatch):
         assert User.query.filter_by(id=identity.user_id).one().username == 'octo_admin_gh4242'
         assert User.query.filter_by(username='ui_admin').one() is not None
         assert User.query.filter_by(username='cli_admin').one().is_admin is True
+    assert {'user': 'octo_admin', 'source': 'github'} in _reserved_name_refusals(caplog)
 
 
 def test_github_auto_provisioning_without_organizations_is_refused_in_production(app, monkeypatch):

@@ -21,6 +21,8 @@ import config
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
     check_rate_limit,
+    is_config_admin_name,
+    log_reserved_admin_name,
     user_creation_transaction,
     validate_new_user,
 )
@@ -157,6 +159,8 @@ def _provision_username(login, github_user_id):
         for row in User.query.with_entities(User.username).all()
     }
     # Names reserved by ADMIN_USERS are left to an administrator.
+    if is_config_admin_name(base):
+        log_reserved_admin_name(base, 'github')
     existing_names.update(name.casefold() for name in config.ADMIN_USERS)
     candidates = (
         base,

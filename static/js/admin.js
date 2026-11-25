@@ -696,7 +696,11 @@
         const isSelf = u.username === CURRENT_USER;
         const parts = [];
         if (u.is_admin) {
-            parts.push(`<button class="btn btn-secondary" data-act="demote" ${isSelf ? 'disabled' : ''}>${escapeHtml(t('admin.demote', 'Demote'))}</button>`);
+            // The server refuses it too: ADMIN_USERS would promote the account again.
+            const demoteState = u.admin_managed_by_config
+                ? `disabled title="${escapeHtml(t('admin.configManagedAdmin', 'set by ADMIN_USERS'))}"`
+                : (isSelf ? 'disabled' : '');
+            parts.push(`<button class="btn btn-secondary" data-act="demote" ${demoteState}>${escapeHtml(t('admin.demote', 'Demote'))}</button>`);
         } else if (!u.ldap_managed && !u.github_managed) {
             parts.push(`<button class="btn btn-secondary" data-act="promote">${escapeHtml(t('admin.promote', 'Promote'))}</button>`);
         }

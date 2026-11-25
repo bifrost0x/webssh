@@ -640,6 +640,37 @@ def test_ldap_auto_provisioning_uses_shared_user_creation_lock(app):
     assert result["username"] == "alice"
 
 
+def test_ldap_auto_provisioning_refuses_a_name_reserved_by_admin_users(
+    app, monkeypatch, caplog,
+):
+    import logging
+
+    import config
+    from app.ldap_routes import _auto_provision_ldap_identity
+    from app.ldap_service import LDAPLookupRejected
+    from app.models import User
+
+    _create_user(app, "local_admin", is_admin=True)
+    monkeypatch.setattr(config, "ADMIN_USERS", ["Alice"])
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-directory-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    )
+
+    with app.app_context(), caplog.at_level(logging.INFO):
+        with pytest.raises(
+            LDAPLookupRejected,
+            match="Directory username conflicts with a local account",
+        ):
+            _auto_provision_ldap_identity("alice", identity)
+        assert User.query.filter_by(username="alice").first() is None
+    assert [
+        record.extra_data for record in caplog.records
+        if record.getMessage() == "Account name refused: reserved by ADMIN_USERS"
+    ] == [{"user": "alice", "source": "ldap"}]
+
+
 def test_ldap_auto_provisioning_rolls_back_when_user_storage_fails(
     app,
     client,

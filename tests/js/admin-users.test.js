@@ -13,7 +13,7 @@ function slice(startMarker, endMarker) {
     return source.slice(start, end);
 }
 
-function renderUsernameCells(users) {
+function renderRows(users) {
     const rows = [];
     const body = {
         innerHTML: '',
@@ -40,14 +40,32 @@ function filterUsers() {}
 renderUsers(users);`,
         { ...context, users },
     );
-    return rows.map(row => row.innerHTML.split('</td>')[1]);
+    return rows.map(row => row.innerHTML);
+}
+
+function demoteButton(html) {
+    return html.match(/<button[^>]*data-act="demote"[^>]*>/)?.[0];
 }
 
 test('administrators set by ADMIN_USERS are marked in the user list', () => {
-    const [listed, regular] = renderUsernameCells([
+    const [listed, regular] = renderRows([
         { id: 1, username: 'adminuser', is_admin: true, admin_managed_by_config: true },
         { id: 2, username: 'other', is_admin: true, admin_managed_by_config: false },
     ]);
-    assert.match(listed, /adminuser <span class="admin-muted">\(set by ADMIN_USERS\)<\/span>/);
-    assert.doesNotMatch(regular, /ADMIN_USERS/);
+    assert.match(listed.split('</td>')[1], /adminuser <span class="admin-muted">\(set by ADMIN_USERS\)<\/span>/);
+    assert.doesNotMatch(regular.split('</td>')[1], /ADMIN_USERS/);
+});
+
+test('demoting an administrator set by ADMIN_USERS is disabled with an explanation', () => {
+    const [listed, regular, self] = renderRows([
+        { id: 2, username: 'listed', is_admin: true, admin_managed_by_config: true },
+        { id: 3, username: 'other', is_admin: true, admin_managed_by_config: false },
+        { id: 1, username: 'adminuser', is_admin: true, admin_managed_by_config: false },
+    ]);
+    assert.equal(
+        demoteButton(listed),
+        '<button class="btn btn-secondary" data-act="demote" disabled title="set by ADMIN_USERS">',
+    );
+    assert.equal(demoteButton(regular), '<button class="btn btn-secondary" data-act="demote" >');
+    assert.equal(demoteButton(self), '<button class="btn btn-secondary" data-act="demote" disabled>');
 });
