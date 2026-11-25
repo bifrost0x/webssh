@@ -356,6 +356,7 @@ window.i18n.registerLocales({
         'platform.family': 'détectée ; déduite de sa famille',
         'platform.pending': 'pas encore détectée',
         'platform.unavailable': 'détection impossible sur cet hôte',
+        'platform.unlisted': 'détection effectuée ; plateforme non reconnue',
         'platform.server': 'Serveur',
         'empty.favorites': "Aucun favori pour le moment. Marquez une commande ou un jeu de commandes avec l’étoile pour le retrouver ici.",
         'empty.keys': "Aucune clé SSH enregistrée. Utilisez le formulaire d’importation pour ajouter une clé à vos connexions.",

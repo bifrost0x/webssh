@@ -68,7 +68,7 @@
         const list = Array.isArray(profile?.detected_services) ? profile.detected_services : [];
         return [...new Set(list.filter(id => Object.hasOwn(serviceLabels, id)))];
     }
-    const sourceIds = ['manual', 'detected', 'family', 'greeting', 'hint', 'pending', 'unavailable'];
+    const sourceIds = ['manual', 'detected', 'family', 'greeting', 'hint', 'pending', 'unavailable', 'unlisted'];
     function resolve(profile = {}) {
         if (known(profile.platform_icon)) return {id: profile.platform_icon, source: 'manual'};
         // 'server' is what the old probe stored when it learned nothing; it is not a detection.
@@ -84,6 +84,8 @@
         const name = typeof profile.name === 'string' ? profile.name.slice(0, 128) : '';
         const matches = hints.filter(([, pattern]) => pattern.test(name));
         if (matches.length === 1) return {id: matches[0][0], source: 'hint'};
+        // A probe that ran but named no platform in the catalog (OpenBSD, an unknown kernel).
+        if (profile.detection_state === 'detected') return {id: 'server', source: 'unlisted'};
         return {id: 'server', source: profile.detection_state === 'unavailable' ? 'unavailable' : 'pending'};
     }
     function render(profile, doc = document) {
@@ -94,7 +96,8 @@
         element.setAttribute('data-platform', identity.id);
         const sources = {manual: 'manual choice', detected: 'detected after SSH connection',
             family: 'detected; derived from its family', greeting: 'SSH greeting; unverified', hint: 'name hint; unverified',
-            pending: 'not detected yet', unavailable: 'detection not possible on this host'};
+            pending: 'not detected yet', unavailable: 'detection not possible on this host',
+            unlisted: 'detected; platform not recognised'};
         const translate = (key, fallback) => globalThis.i18n?.t(key) || fallback;
         const label = identity.id === 'server' ? translate('platform.server', 'Server') : labels[identity.id];
         element.title = `${label} — ${translate(`platform.${identity.source}`, sources[identity.source])}`;

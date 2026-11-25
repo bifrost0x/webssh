@@ -355,6 +355,7 @@ window.i18n.registerLocales({
         'platform.family': 'đã phát hiện; suy ra từ họ hệ điều hành',
         'platform.pending': 'chưa phát hiện',
         'platform.unavailable': 'không thể phát hiện trên máy chủ này',
+        'platform.unlisted': 'đã phát hiện; không nhận ra nền tảng',
         'platform.server': 'Máy chủ',
         'empty.favorites': "Chưa có mục yêu thích. Đánh dấu sao một lệnh hoặc bộ lệnh để giữ tại đây.",
         'empty.keys': "Chưa lưu khóa SSH. Dùng biểu mẫu tải lên để thêm khóa cho kết nối.",

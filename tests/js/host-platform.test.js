@@ -88,7 +88,11 @@ test('resolution ladder never treats server as detected and names pending and un
     // Better sources than nothing still win over an unavailable probe.
     assert.deepEqual(icons.resolve({name: 'x', greeting_platform: 'debian', detection_state: 'unavailable'}), {id: 'debian', source: 'greeting'});
     assert.deepEqual(icons.resolve({name: 'Proxmox', detection_state: 'unavailable'}), {id: 'proxmox', source: 'hint'});
-    assert.deepEqual(icons.resolve({name: 'x', detected_platform: 'server', detection_state: 'detected'}), {id: 'server', source: 'pending'});
+    // The probe ran but the platform is not in the catalog (OpenBSD, an unknown kernel).
+    assert.deepEqual(icons.resolve({name: 'x', detected_platform: 'server', detection_state: 'detected'}), {id: 'server', source: 'unlisted'});
+    assert.deepEqual(icons.resolve({name: 'x', detection_state: 'detected'}), {id: 'server', source: 'unlisted'});
+    assert.deepEqual(icons.resolve({name: 'Proxmox', detection_state: 'detected'}), {id: 'proxmox', source: 'hint'});
+    assert.deepEqual(icons.resolve({name: 'x', greeting_platform: 'embedded', detection_state: 'detected'}), {id: 'embedded', source: 'greeting'});
     // A marker platform on a derivative is the platform itself, not its family.
     assert.deepEqual(icons.resolve({name: 'x', detected_platform: 'proxmoxbackup', detected_family: 'debian', detected_os_id: 'pbs'}), {id: 'proxmoxbackup', source: 'detected'});
     assert.deepEqual(icons.resolve({name: 'x', detected_platform: 'debian', detected_family: 'debian'}), {id: 'debian', source: 'detected'});
@@ -133,6 +137,8 @@ test('every platform renders a local icon, a family logo or a glyph', () => {
 test('source texts name pending, unavailable and family identities', () => {
     assert.match(icons.render({name: 'x'}, fakeDocument()).title, /^Server — not detected yet$/);
     assert.match(icons.render({name: 'x', detection_state: 'unavailable'}, fakeDocument()).title, /^Server — detection not possible/);
+    assert.match(icons.render({name: 'x', detection_state: 'detected'}, fakeDocument()).title, /^Server — detected; platform not recognised$/);
+    assert.match(icons.render({id: 'server', source: 'unlisted'}, fakeDocument()).title, /not recognised/);
     assert.match(icons.render({name: 'x', detected_platform: 'archlinux', detected_family: 'archlinux', detected_os_id: 'omarchy'}, fakeDocument()).title,
         /^Arch Linux — detected; derived from its family$/);
     const session = {host: 'h', username: 'u', port: 22};

@@ -360,6 +360,7 @@ window.i18n.registerLocales({
         'platform.family': 'erkannt; aus der Distributionsfamilie abgeleitet',
         'platform.pending': 'noch nicht erkannt',
         'platform.unavailable': 'Erkennung auf diesem Host nicht möglich',
+        'platform.unlisted': 'erkannt; Plattform nicht bekannt',
         'platform.server': 'Server',
         'empty.favorites': "Noch keine Favoriten. Markiere einen Befehl oder Befehlssatz mit dem Stern, um ihn hier abzulegen.",
         'empty.keys': "Noch keine SSH-Schlüssel gespeichert. Füge über das Upload-Formular einen Schlüssel für deine Verbindungen hinzu.",

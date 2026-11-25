@@ -360,6 +360,7 @@ window.i18n.registerLocales({
         'platform.family': 'detected; derived from its family',
         'platform.pending': 'not detected yet',
         'platform.unavailable': 'detection not possible on this host',
+        'platform.unlisted': 'detected; platform not recognised',
         'platform.server': 'Server',
         'empty.favorites': "No favorites yet. Use the star on a command or command set to keep it here.",
         'empty.keys': "No SSH keys stored. Use the upload form to add a key for your connections.",

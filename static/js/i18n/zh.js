@@ -355,6 +355,7 @@ window.i18n.registerLocales({
         'platform.family': '已检测；按所属发行版系列推断',
         'platform.pending': '尚未检测',
         'platform.unavailable': '无法在此主机上检测',
+        'platform.unlisted': '已检测；无法识别平台',
         'platform.server': '服务器',
         'empty.favorites': "暂无收藏。点击命令或命令集上的星标即可收藏到这里。",
         'empty.keys': "尚未保存 SSH 密钥。使用上传表单添加连接所需的密钥。",

@@ -98,7 +98,8 @@ does not finish within four seconds, for example on a hung network mount,
 nothing is stored and it runs again on the next connection.
 
 The host icon shows where its platform came from: a manual choice, a
-detection, the SSH greeting, the host name, or "not detected yet". Choosing a
+detection, the SSH greeting, the host name, a detection that found no known
+platform, or "not detected yet". Choosing a
 manual icon turns detection off for that host. A role assigned to the host
 (the `role_override` field of a host import) does not.
 
