@@ -224,6 +224,29 @@ def test_platform_collector_rejects_partial_output_and_honors_cancellation(monke
     assert host_platform.collect_identity('owned-session', cancel_event=cancelled) == (None, 'transient')
     assert channel.closed
 
+
+@pytest.mark.parametrize('payload, expected', [(b'1) Shell\n2) Exit\nChoice: ', 'unsupported'), (b'', 'transient')])
+def test_identity_collector_reports_a_host_that_answers_and_then_waits(monkeypatch, payload, expected):
+    """A forced command showing a menu never ends; output before the deadline means it was not the probe."""
+    from app import session_insights
+    from tests.test_session_insights import install_session, FakeChannel
+    install_session(monkeypatch)
+    channel = FakeChannel(payload)
+    monkeypatch.setattr(channel, 'exit_status_ready', lambda: False)
+    monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', lambda *args, **kwargs: channel)
+    clock = iter([0] * (3 + len(payload) // 4096) + [5] * 10)
+    monkeypatch.setattr(session_insights.time, 'monotonic', lambda: next(clock))
+    monkeypatch.setattr(session_insights.time, 'sleep', lambda _: None)
+    assert host_platform.collect_identity('owned-session') == (None, expected)
+    assert channel.closed
+    # Other collectors keep treating every deadline as transient.
+    channel = FakeChannel(payload)
+    monkeypatch.setattr(channel, 'exit_status_ready', lambda: False)
+    monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', lambda *args, **kwargs: channel)
+    clock = iter([0] * (3 + len(payload) // 4096) + [5] * 10)
+    assert session_insights.collect_linux_stats('owned-session', timeout=1.0, command='true',
+                                                parser=lambda text, **kwargs: text, allow_partial=False) == (None, 'transient')
+
 @pytest.mark.usefixtures('direct_socket_authentication')
 def test_optional_platform_failure_after_success_never_becomes_ssh_error(app, monkeypatch):
     from types import SimpleNamespace
@@ -264,6 +287,32 @@ def test_host_exchange_preserves_only_manual_icon():
     document['hosts'][0]['detected_platform'] = 'ubuntu'
     with pytest.raises(ExchangeError):
         preview_import(json.dumps(document), 'json')
+
+
+def test_host_exchange_carries_a_validated_role_override(app, client):
+    import json
+    from app import profile_manager
+    from app.profile_exchange import export_profiles, preview_import
+    from tests.test_profile_exchange import _login
+    base = dict(name='NAS', host='nas.example', username='root', auth_type='password')
+    document = export_profiles([dict(base, role_override='storage', detected_virt='vm'),
+                                dict(base, name='Plain', host='plain.example', role_override='auto')], [])
+    assert document['hosts'][0]['role_override'] == 'storage' and 'detected_virt' not in document['hosts'][0]
+    # 'auto' is the default; leaving it out keeps the document importable by releases without roles.
+    assert 'role_override' not in document['hosts'][1]
+    rows = preview_import(json.dumps(document), 'json')['records']
+    assert not rows[0]['blocked'] and rows[0]['role_override'] == 'storage'
+    for invalid in ('superhero', 3, None, '../x'):
+        forged = json.loads(json.dumps(document))
+        forged['hosts'][0]['role_override'] = invalid
+        assert preview_import(json.dumps(forged), 'json')['records'][0]['blocked']
+    user_id = _login(app, client)
+    result = client.post('/api/profiles/exchange', json={'format': 'json', 'source': json.dumps(document),
+                                                         'selections': [{'index': 0}, {'index': 1}]})
+    assert [item['status'] for item in result.json['results']] == ['imported', 'imported']
+    with app.app_context():
+        stored = {profile['name']: profile for profile in profile_manager.load_profiles(user_id)}
+    assert stored['NAS']['role_override'] == 'storage' and 'role_override' not in stored['Plain']
 
 
 @pytest.mark.parametrize('stored, probed', [
@@ -848,6 +897,18 @@ def test_unavailable_identity_is_remembered_and_not_retried_for_a_week(app, monk
         assert saved['detected_platform'] == 'debian' and saved['detected_services'] == ['docker', 'nextcloud']
         assert saved['services_checked_at'] == 1_000.0 and saved['platform_checked_at'] > 1_000.0
         assert events == []
+
+
+def test_an_unavailable_identity_drops_a_legacy_server_platform(app, monkeypatch):
+    from app import profile_manager
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'oldserver')
+    _store(app, user_id, profile['id'], detected_platform='server', detected_services=['nginx'], services_checked_at=5)
+    _fake_identity(monkeypatch, (dict(_UNAVAILABLE), None))
+    with app.app_context():
+        host_platform.detect_connected_platform('oldserver', user_id, pytest.fail)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+    assert 'detected_platform' not in saved
+    assert saved['detection_state'] == 'unavailable' and saved['detected_services'] == ['nginx']
 
 
 def test_unreadable_probe_output_counts_as_unavailable_and_failures_retry(app, monkeypatch):

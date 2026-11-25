@@ -373,6 +373,8 @@ def collect_identity(session_id, *, cancel_event=None):
         session_id, timeout=4.0, max_bytes=8192,
         command=IDENTITY_COMMAND, parser=parse_identity,
         allow_partial=False, cancel_event=cancel_event,
+        # A forced command that prints a menu and waits never ends; it is not the probe.
+        stalled_output_error='unsupported',
     )
 
 
@@ -388,7 +390,6 @@ def endpoint(profile):
         return None
     return (host, port, username, profile.get('jump_host_id') or None,
             profile.get('socks_proxy_id') or None)
-
 
 
 def identity_needed(profile, now=None):

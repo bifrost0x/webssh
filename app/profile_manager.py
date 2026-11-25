@@ -1104,6 +1104,9 @@ def cache_detected_facts(user_id, profile_id, expected_endpoint, *, identity=Non
                 if identity is not None:
                     profile['detection_state'] = identity['state']
                     profile['platform_checked_at'] = stamp
+                    # Only the old platform probe stored 'server'; it never names a platform.
+                    if profile.get('detected_platform') == 'server':
+                        del profile['detected_platform']
                 if identity is not None and identity['state'] == 'detected':
                     facts = {'detected_platform': identity['platform'], 'detected_services': list(identity['services'])}
                     facts.update({field: identity[key] for field, key in _IDENTITY_FACTS.items()})
