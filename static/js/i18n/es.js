@@ -2793,7 +2793,7 @@ window.i18n.registerLocales({
         "fm.newName": "Nuevo nombre",
         "fm.renameHint": "Cambia el nombre del elemento en este directorio. Introduce un nombre, no una ruta.",
         "fm.cancelTransfer": "Cancelar transferencia",
-        "terminal.openLinkConfirm": "¿Quieres abrir este enlace?\n\n{url}\n\nADVERTENCIA: este enlace podría ser peligroso",
+        "terminal.openLinkConfirm": "¿Quieres abrir este enlace?\n\nHost: {host}\n{url}\n\nADVERTENCIA: este enlace podría ser peligroso",
         "common.dismissNotification": "Cerrar notificación",
         "fm.nameBlank": "Introduce un nombre que no conste solo de espacios.",
         "fm.nameDots": "\".\" y \"..\" no se pueden usar como nombres.",

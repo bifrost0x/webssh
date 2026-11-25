@@ -2798,7 +2798,7 @@ window.i18n.registerLocales({
         "fm.newName": "New name",
         "fm.renameHint": "Renames the item in this directory. Enter a name, not a path.",
         "fm.cancelTransfer": "Cancel transfer",
-        "terminal.openLinkConfirm": "Do you want to open this link?\n\n{url}\n\nWARNING: This link could potentially be dangerous",
+        "terminal.openLinkConfirm": "Do you want to open this link?\n\nHost: {host}\n{url}\n\nWARNING: This link could potentially be dangerous",
         "common.dismissNotification": "Dismiss notification",
         "fm.nameBlank": "Enter a name that is not only spaces.",
         "fm.nameDots": "\".\" and \"..\" cannot be used as names.",

@@ -2793,7 +2793,7 @@ window.i18n.registerLocales({
         "fm.newName": "Tên mới",
         "fm.renameHint": "Đổi tên mục trong thư mục này. Nhập tên, không phải đường dẫn.",
         "fm.cancelTransfer": "Hủy truyền",
-        "terminal.openLinkConfirm": "Bạn có muốn mở liên kết này không?\n\n{url}\n\nCẢNH BÁO: Liên kết này có thể nguy hiểm",
+        "terminal.openLinkConfirm": "Bạn có muốn mở liên kết này không?\n\nMáy chủ: {host}\n{url}\n\nCẢNH BÁO: Liên kết này có thể nguy hiểm",
         "common.dismissNotification": "Đóng thông báo",
         "fm.nameBlank": "Nhập tên không chỉ gồm khoảng trắng.",
         "fm.nameDots": "Không thể dùng \".\" và \"..\" làm tên.",
