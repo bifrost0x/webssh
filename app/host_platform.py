@@ -544,12 +544,11 @@ def identity_needed(profile, now=None):
     Detection opens an extra exec channel. On keys with a forced command
     (authorized_keys command=, sshd ForceCommand) the server runs that command
     instead, so the probe must not repeat on every connection, also when its
-    answer was unusable. A manual icon turns probing off, and so does a login
-    greeting from a system without a POSIX shell.
+    answer was unusable. A manual icon turns probing off. A stored greeting
+    hint does not: it may come from an unauthenticated greeting, and only the
+    connection's own greeting stops the probe (see detect_connected_platform).
     """
     if not isinstance(profile, dict) or profile.get('platform_icon', 'auto') not in (None, 'auto'):
-        return False
-    if profile.get('greeting_platform') in NON_POSIX_PLATFORMS:
         return False
     # 'server' came from the old platform probe; the identity probe never reports it.
     if profile.get('detected_platform') == 'server' and 'detection_state' not in profile:
@@ -670,6 +669,28 @@ def _record_attempt(user_id, profile_id, expected, checked_at):
     _remember_attempt((user_id, profile_id, expected), checked_at + IDENTITY_REFRESH_SECONDS)
 
 
+_NO_VERSION = object()
+
+
+def _connection_greeting(client):
+    """The platform the connection's SSH version string names, None for none, or _NO_VERSION.
+
+    The version string came over the transport whose host key was verified and
+    on which the user authenticated, unlike the greeting the overview or Find
+    hosts read from a bare TCP connection.
+    """
+    try:
+        transport = client.get_transport() if client else None
+        version = getattr(transport, 'remote_version', None)
+    except Exception:
+        return _NO_VERSION
+    if not isinstance(version, str) or not version.startswith('SSH-'):
+        return _NO_VERSION
+    from .discovery_routes import describe_banner
+    described = describe_banner(version.encode('ascii', 'replace'))
+    return described['platform'] if described else _NO_VERSION
+
+
 _ANSWERS = ('stalled', 'silent', 'unsupported')
 
 
@@ -687,11 +708,25 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
             if expected is None:
                 return
             profile_id = session.get('profile_id')
+            client = session.get('client')
         if cancel_event is not None and cancel_event.is_set():
             return
         # Quick connections have nowhere to keep a result; saved hosts keep it
         # until their address, port, user or route changes.
         profile = profile_manager.get_profile(user_id, profile_id) if profile_id else None
+        if not isinstance(profile, dict):
+            return
+        greeting = _connection_greeting(client)
+        if greeting is not _NO_VERSION and (greeting in NON_POSIX_PLATFORMS
+                                            or greeting != profile.get('greeting_platform')):
+            updated, changed = profile_manager.record_connect_greeting(
+                user_id, profile_id, expected, greeting, now=time.time())
+            if greeting in NON_POSIX_PLATFORMS:
+                # No POSIX shell to run the probe in.
+                if changed:
+                    publish({'profile_id': profile_id})
+                return
+            profile = updated or profile
         if not identity_needed(profile):
             return
         attempt = (user_id, profile_id, expected)

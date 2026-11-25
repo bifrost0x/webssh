@@ -1248,19 +1248,37 @@ def test_unreadable_probe_output_counts_as_unavailable_and_failures_retry(app, m
         assert profile_manager.get_profile(user_id, profile['id'])['detection_state'] == 'unavailable'
 
 
+_VERSIONS = {'windows': 'SSH-2.0-OpenSSH_for_Windows_9.5', 'mikrotik': 'SSH-2.0-ROSSSH', 'cisco': 'SSH-2.0-Cisco-1.25',
+             'debian': 'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3', 'ubuntu': 'SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.5',
+             None: 'SSH-2.0-OpenSSH_9.9'}
+
+
+def _connect_as(session, platform):
+    """Give the session a transport whose authenticated version string names platform."""
+    from tests.test_session_insights import FakeClient, FakeTransport
+    transport = FakeTransport()
+    transport.remote_version = _VERSIONS[platform]
+    session['client'] = FakeClient(transport)
+
+
+class _Clock:
+    def __init__(self, now):
+        self.now = now
+
+    def time(self):
+        return self.now
+
+
 @pytest.mark.parametrize('greeting', sorted(host_catalog.NON_POSIX_PLATFORMS))
-def test_hosts_announcing_a_non_posix_shell_are_never_probed(app, monkeypatch, greeting):
-    from app import profile_manager
+def test_a_stored_greeting_alone_never_stops_the_probe(app, monkeypatch, greeting):
+    # The stored hint may come from an unauthenticated greeting (Find hosts, the overview).
     user_id, profile, _ = _identity_session(app, monkeypatch, 'router', greeting_platform=greeting)
     calls = _fake_identity(monkeypatch, (_identity(), None))
     with app.app_context():
-        host_platform.detect_connected_platform('router', user_id, pytest.fail)
-        assert calls == []
-        assert 'detection_state' not in profile_manager.get_profile(user_id, profile['id'])
-    assert not host_platform.identity_needed({'greeting_platform': greeting})
-    assert host_platform.identity_needed({'greeting_platform': 'ubuntu'})
+        host_platform.detect_connected_platform('router', user_id, lambda payload: None)
+    assert calls == ['router']
+    assert host_platform.identity_needed({'greeting_platform': greeting})
     assert host_platform.identity_needed({'greeting_platform': 'embedded'})
-    assert 'embedded' not in host_catalog.NON_POSIX_PLATFORMS
     assert not host_platform.identity_needed({'platform_icon': 'proxmox'})
 
 
@@ -1271,28 +1289,104 @@ _STORED_FACTS = dict(detected_platform='debian', detected_os_version='12', detec
                                            'checked_at': 1_000.0})
 
 
+@pytest.mark.parametrize('greeting', sorted(host_catalog.NON_POSIX_PLATFORMS))
+def test_a_forged_overview_greeting_keeps_facts_and_the_next_linux_login_probes(app, monkeypatch, greeting):
+    from app import profile_manager
+    user_id, profile, session = _identity_session(app, monkeypatch, 'forged')
+    _store(app, user_id, profile['id'], **_STORED_FACTS)
+    calls = _fake_identity(monkeypatch, (_identity(), None))
+    with app.app_context():
+        assert profile_manager.cache_greeting_platforms(user_id, {profile['id']: (('forged.example', 22), greeting)}) == 1
+        saved = profile_manager.get_profile(user_id, profile['id'])
+        assert saved['greeting_platform'] == greeting
+        assert {key: saved.get(key) for key in _STORED_FACTS} == _STORED_FACTS
+        _connect_as(session, 'debian')
+        host_platform.detect_connected_platform('forged', user_id, lambda payload: None)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+    assert calls == ['forged']
+    assert saved['greeting_platform'] == 'debian' and saved['detected_platform'] == 'debian'
+
+
+def test_a_linux_login_replaces_a_stored_non_posix_hint_and_probes_as_usual(app, monkeypatch):
+    from app import profile_manager
+    monkeypatch.setattr(host_platform, 'time', _Clock(2_000_000_000.0))
+    user_id, profile, session = _identity_session(app, monkeypatch, 'recent', greeting_platform='windows')
+    recent = dict(_STORED_FACTS, platform_checked_at=2_000_000_000.0 - 3600)
+    _store(app, user_id, profile['id'], **recent)
+    calls = _fake_identity(monkeypatch, (_identity(), None))
+    _connect_as(session, 'debian')
+    with app.app_context():
+        host_platform.detect_connected_platform('recent', user_id, pytest.fail)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+    # Checked an hour ago: the weekly schedule still holds.
+    assert calls == [] and saved['greeting_platform'] == 'debian'
+    assert {key: saved.get(key) for key in recent} == recent
+
+
 @pytest.mark.parametrize('before', [None, 'debian'])
 @pytest.mark.parametrize('greeting', sorted(host_catalog.NON_POSIX_PLATFORMS))
-def test_a_non_posix_greeting_replaces_facts_from_an_earlier_system(app, monkeypatch, before, greeting):
-    """The address now answers as Windows or a network device; what the probe found belonged to another system."""
+def test_an_authenticated_non_posix_greeting_skips_the_probe_and_drops_stale_facts(app, monkeypatch, before, greeting):
+    """The endpoint now answers as Windows or a network device; what the probe found belonged to another system."""
     import json
     from app import profile_manager
     fields = {'greeting_platform': before} if before else {}
-    user_id, profile, _ = _identity_session(app, monkeypatch, 'reused', **fields)
+    user_id, profile, session = _identity_session(app, monkeypatch, 'reused', **fields)
     _store(app, user_id, profile['id'], **_STORED_FACTS)
+    calls = _fake_identity(monkeypatch, (_identity(), None))
+    _connect_as(session, greeting)
+    published = []
     with app.app_context():
-        assert profile_manager.cache_greeting_platforms(user_id, {profile['id']: (('reused.example', 22), greeting)}) == 1
+        host_platform.detect_connected_platform('reused', user_id, published.append)
         saved = profile_manager.get_profile(user_id, profile['id'])
-    assert saved['greeting_platform'] == greeting
-    assert not set(_STORED_FACTS) & set(saved), json.dumps(saved)
+        assert calls == [] and published == [{'profile_id': profile['id']}]
+        assert saved['greeting_platform'] == greeting
+        assert not set(_STORED_FACTS) & set(saved), json.dumps(saved)
+        # The next login has nothing left to drop and still sends nothing.
+        host_platform.detect_connected_platform('reused', user_id, published.append)
+        assert calls == [] and len(published) == 1
 
 
-class _Clock:
-    def __init__(self, now):
-        self.now = now
+def test_a_changed_authenticated_greeting_asks_again_at_most_once_a_day(app, monkeypatch):
+    from app import profile_manager
+    day = 24 * 3600
+    start = 2_000_000_000.0
+    clock = _Clock(start)
+    monkeypatch.setattr(host_platform, 'time', clock)
+    user_id, profile, session = _identity_session(app, monkeypatch, 'flip', greeting_platform='ubuntu')
+    _store(app, user_id, profile['id'], **dict(_STORED_FACTS, platform_checked_at=start - 2 * day))
+    calls = _fake_identity(monkeypatch, (_identity(), None))
+    with app.app_context():
+        # Two days after the last run, a new greeting asks the probe again at once.
+        _connect_as(session, 'debian')
+        host_platform.detect_connected_platform('flip', user_id, lambda payload: None)
+        assert len(calls) == 1
+        # Greetings that alternate on every login do not ask again within a day.
+        for hour, platform in enumerate(['ubuntu', 'debian', None, 'ubuntu', 'debian'] * 4, start=1):
+            clock.now = start + hour * 3600
+            _connect_as(session, platform)
+            host_platform.detect_connected_platform('flip', user_id, lambda payload: None)
+        assert len(calls) == 1
+        clock.now = start + day + 60
+        _connect_as(session, 'ubuntu' if profile_manager.get_profile(user_id, profile['id']).get('greeting_platform') != 'ubuntu'
+                    else 'debian')
+        host_platform.detect_connected_platform('flip', user_id, lambda payload: None)
+        assert len(calls) == 2
 
-    def time(self):
-        return self.now
+
+def test_a_changed_greeting_does_not_repeat_a_probe_that_just_stalled(app, monkeypatch):
+    from app import profile_manager
+    start = 2_000_000_000.0
+    clock = _Clock(start)
+    monkeypatch.setattr(host_platform, 'time', clock)
+    user_id, profile, session = _identity_session(app, monkeypatch, 'hung', greeting_platform='ubuntu')
+    calls = _fake_identity(monkeypatch, (None, 'stalled'))
+    with app.app_context():
+        for hour, platform in enumerate(['debian', 'ubuntu', None, 'debian'] * 5):
+            clock.now = start + hour * 3600
+            _connect_as(session, platform)
+            host_platform.detect_connected_platform('hung', user_id, pytest.fail)
+        assert len(calls) == 1
+        assert 'detection_state' not in profile_manager.get_profile(user_id, profile['id'])
 
 
 @pytest.fixture(autouse=True)
@@ -1442,19 +1536,6 @@ def test_a_legacy_server_platform_goes_when_the_probe_stalls(app, monkeypatch):
     day = 24 * 3600
     assert not host_platform.identity_needed(saved, now=10_000_000.0 + 3600)
     assert host_platform.identity_needed(saved, now=10_000_000.0 + day + 1)
-
-
-def test_a_changed_posix_greeting_asks_the_probe_again(app, monkeypatch):
-    from app import profile_manager
-    user_id, profile, _ = _identity_session(app, monkeypatch, 'moved', greeting_platform='ubuntu')
-    now = 2_000_000_000.0
-    _store(app, user_id, profile['id'], **dict(_STORED_FACTS, platform_checked_at=now))
-    with app.app_context():
-        assert profile_manager.cache_greeting_platforms(user_id, {profile['id']: (('moved.example', 22), 'debian')}) == 1
-        saved = profile_manager.get_profile(user_id, profile['id'])
-    assert saved['greeting_platform'] == 'debian' and 'platform_checked_at' not in saved
-    assert saved['detected_platform'] == 'debian' and saved['detected_services'] == ['nginx']
-    assert host_platform.identity_needed(saved, now=now + 60)
 
 
 def test_a_first_posix_greeting_keeps_a_recent_detection(app, monkeypatch):

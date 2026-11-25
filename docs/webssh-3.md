@@ -39,7 +39,7 @@ and maps known ones (for example Nextcloud, Home Assistant, Jellyfin, Immich,
 Paperless, Grafana). Nothing is installed or changed, no command is run with
 elevated rights, and only values that map to a fixed catalog or strict pattern
 are stored with the host in WebSSH. Windows, MikroTik and Cisco hosts are
-recognised from their SSH greeting only and are never probed. See
+recognised from the SSH greeting of the connection only and are never probed. See
 [Platform and service detection](wiki/Profiles-Jump-Hosts-and-Commands.md#platform-and-service-detection)
 for the complete list of what is and is not collected.
 

@@ -88,13 +88,17 @@ WebSSH never stores raw command output, host names, IP addresses, user
 names, file contents, process lists or container names, installs nothing,
 changes nothing and runs nothing with elevated rights.
 
-Windows, MikroTik RouterOS and Cisco IOS hosts are recognised only from the SSH
-greeting that **Find hosts** or a reachability check reads; when the greeting
-names one of them, WebSSH does not run the probe and drops what an earlier
-probe found at that address. When a later greeting from the same address and
-port names another platform with a POSIX shell, or none, the stored hint is
-replaced or dropped and the probe runs again on the next connection in
-Automatic mode; a change to Windows, MikroTik or Cisco keeps it from running.
+Windows, MikroTik RouterOS and Cisco IOS hosts are recognised only from their
+SSH greeting. **Find hosts** and the reachability check read it without logging
+in, so what they read only labels the host: it never removes stored facts and
+never decides whether the probe runs. On connect, WebSSH takes the greeting
+from the logged-in connection, whose host key was verified. When it names one
+of these systems, the probe does not run and what an earlier probe found at
+that endpoint is dropped. When it names another platform, or none, a stored
+Windows, MikroTik or Cisco hint is replaced and the probe keeps its usual
+schedule; a greeting that differs from the stored one runs the probe on that
+connection when it last ran more than a day ago, so greetings that alternate
+ask it at most once a day.
 A Dropbear greeting marks a host as embedded until a connection detects more. When a host answers
 with something other than the probe output, for example a forced command or a
 menu, the profile records that detection is not possible, keeps any facts an

@@ -402,13 +402,13 @@ def test_reachability_stores_greeting_hints_only_for_direct_hosts(app, client, c
 
 @pytest.mark.parametrize('later', [None, 'debian'])
 def test_a_later_greeting_replaces_or_drops_an_old_hint(app, client, context, monkeypatch, later):
-    """An address that once greeted as Windows and now runs Linux is probed again."""
+    """The overview's greeting is only a hint: it is replaced or dropped and never stops the probe."""
     from app import host_platform
     from app.profile_manager import cache_greeting_platforms, get_profile
     uid, _aid, _book, profile = context
     with app.app_context():
         assert cache_greeting_platforms(uid, {profile['id']: (('server.example', 22), 'windows')}) == 1
-        assert not host_platform.identity_needed(get_profile(uid, profile['id']))
+        assert host_platform.identity_needed(get_profile(uid, profile['id']))
     monkeypatch.setattr(overview_routes, '_probe', lambda host, port: dict(state='reachable', latency_ms=3, platform=later))
     response = client.post('/api/overview/reachability', json={})
     assert response.status_code == 200 and response.json['platforms_updated'] is True

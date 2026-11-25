@@ -1047,12 +1047,10 @@ def cache_greeting_platforms(user_id, observed):
     """Record what saved direct hosts' SSH greetings named; return how many changed.
 
     ``observed`` maps profile ids to ((canonical host, port), platform) as probed.
-    A platform of None means the greeting named none: an address once used by
-    a Windows or network device and now by a Linux host loses the old hint, so
-    the identity probe runs again. A greeting from a system without a POSIX
-    shell drops what the probe found there before, which belonged to another
-    system; any other change of a stored hint lets the probe run again on the
-    next connection. A host edited meanwhile, routed through a jump host or
+    A platform of None means the greeting named none and drops an older hint.
+    The greeting is read without authentication, so it is a display hint
+    only: it never removes stored facts and never decides whether the
+    identity probe runs. A host edited meanwhile, routed through a jump host or
     already showing the same hint is left alone; detections and manual
     choices still take precedence.
     """
@@ -1078,11 +1076,6 @@ def cache_greeting_platforms(user_id, observed):
                     continue
                 if current != tuple(probed) or profile.get('greeting_platform') == platform:
                     continue
-                if platform in NON_POSIX_PLATFORMS:
-                    for field in ('detected_platform', *_ENDPOINT_FACTS):
-                        profile.pop(field, None)
-                elif profile.get('greeting_platform') is not None:
-                    profile.pop('platform_checked_at', None)
                 if platform is None:
                     profile.pop('greeting_platform')
                 else:
@@ -1091,6 +1084,58 @@ def cache_greeting_platforms(user_id, observed):
             if changed and save_profiles(user_id, profiles, previous_count=len(profiles)):
                 return changed
     return 0
+
+
+@user_operation
+def record_connect_greeting(user_id, profile_id, expected_endpoint, platform, *, now):
+    """Store what a connection's authenticated SSH version string named; return (profile, changed).
+
+    Unlike the overview's greeting this one came from the host-key-verified
+    transport, so it may change detection. A system without a POSIX shell
+    drops what the probe found at this endpoint before, which belonged to
+    another system. A change to another platform, or to none, makes the probe
+    due again, but only when it last ran at least a day ago: alternating
+    greetings ask it at most once a day. A check recorded as older than it
+    is (a stall, a silent login) is due within a day already and stays.
+    profile is the stored profile, or None when nothing could be saved.
+    """
+    from .host_platform import IDENTITY_REFRESH_SECONDS, SILENT_RETRY_SECONDS
+    if (expected_endpoint is None or (platform is not None and platform not in PLATFORMS)
+            or isinstance(now, bool) or not isinstance(now, (int, float))):
+        return None, False
+    try:
+        with storage_lock(f'command-config:{user_id}'):
+            with storage_lock(f'profiles:{user_id}'):
+                profiles, error = _load_profiles_for_write(user_id)
+                if error:
+                    return None, False
+                for profile in profiles:
+                    if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
+                        continue
+                    previous = profile.get('greeting_platform')
+                    changed = previous != platform
+                    if platform in NON_POSIX_PLATFORMS:
+                        for field in ('detected_platform', *_ENDPOINT_FACTS):
+                            if field in profile:
+                                del profile[field]
+                                changed = True
+                    elif changed and previous is not None:
+                        checked = profile.get('platform_checked_at')
+                        if (not isinstance(checked, bool) and isinstance(checked, (int, float))
+                                and SILENT_RETRY_SECONDS <= now - checked < IDENTITY_REFRESH_SECONDS - SILENT_RETRY_SECONDS):
+                            del profile['platform_checked_at']
+                    if not changed:
+                        return dict(profile), False
+                    if platform is None:
+                        profile.pop('greeting_platform', None)
+                    else:
+                        profile['greeting_platform'] = platform
+                    if save_profiles(user_id, profiles, previous_count=len(profiles)):
+                        return dict(profile), True
+                    return None, False
+    except ConnectionStorageLimitError:
+        return None, False
+    return None, False
 
 
 @user_operation
