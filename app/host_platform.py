@@ -279,6 +279,8 @@ _OS_RELEASE_KEYS = ('ID', 'ID_LIKE', 'VERSION_ID', 'VARIANT_ID')
 _SINGLE_KEYS = frozenset({*_OS_RELEASE_KEYS, 'kernel', 'model', 'virt', 'target', 'guests'})
 _MAX_FACT_LENGTH = 200
 _CONTROL = re.compile(r'[\x00-\x08\x0a-\x1f\x7f-\x9f]')
+# ANSI CSI (ESC [ ... final byte) and OSC (ESC ] ... BEL or ESC \) sequences.
+_TERMINAL_SEQUENCE = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\|$)')
 _OS_ID = re.compile(r'[a-z0-9._-]{1,32}')
 _OS_VERSION = re.compile(r'[0-9][0-9A-Za-z._-]{0,15}')
 _PI_MODEL = re.compile(r'Raspberry Pi [A-Za-z0-9 .+()-]{1,120}')
@@ -448,10 +450,9 @@ def _identity_at_deadline(output):
         return None, 'unsupported'
     if identity['state'] == 'detected':
         return None, 'stalled'
-    # Only blank lines or lines parse_identity drops (a startup file setting
-    # colours or the window title): no menu or message was shown yet.
-    lines = (line[:-1] if line.endswith('\r') else line for line in text.split('\n'))
-    if not any(line.strip() and not _CONTROL.search(line) for line in lines):
+    # Nothing printable besides colour, cursor or window title sequences (a
+    # startup file preparing the terminal): no menu or message was shown yet.
+    if not _CONTROL.sub('', _TERMINAL_SEQUENCE.sub('', text)).strip():
         return None, 'silent'
     return None, 'unsupported'
 

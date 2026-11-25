@@ -293,13 +293,16 @@ def test_a_stalled_answer_without_a_complete_kernel_line_is_not_the_probe(monkey
     assert _stalled_identity(monkeypatch, payload) == (None, 'unsupported')
 
 
-@pytest.mark.parametrize('payload', [b'\x1b[0m\n\n', b'\x1b]0;node-1\x07\r\n\x1b[1;32m', b'\n\n\n'])
+@pytest.mark.parametrize('payload', [b'\x1b[0m\n\n', b'\x1b]0;node-1\x07\r\n\x1b[1;32m', b'\n\n\n',
+                                     b'\x1b]2;user@node: ~\x1b\\\x1b[?2004h\x1b[0m \t\n', b'\x07\x1b[H\x1b[2J'])
 def test_output_that_holds_only_control_lines_counts_as_silent(monkeypatch, payload):
     # A startup file that only set the title or colours has not shown a menu yet.
     assert _stalled_identity(monkeypatch, payload) == (None, 'silent')
 
 
-@pytest.mark.parametrize('payload', [b'Choice: ', b'\x1b[1mMenu\x1b[0m\nChoice: ', b'\x1b[0m\nThis account is not available\n'])
+@pytest.mark.parametrize('payload', [b'Choice: ', b'\x1b[1mMenu\x1b[0m\nChoice: ', b'\x1b[0m\nThis account is not available\n',
+                                     b'\x1b[1mSelect host:\x1b[0m\n\x1b[32m1) foo\x1b[0m\n\x1b[1m> \x1b[0m', b'\x1b[1mMenu\x1b[0m\n',
+                                     b'\x1b]0;menu\x1b\\\x1b[7mPick\x1b[m'])
 def test_text_from_a_menu_or_forced_command_stays_unsupported(monkeypatch, payload):
     assert _stalled_identity(monkeypatch, payload) == (None, 'unsupported')
 
