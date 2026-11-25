@@ -394,9 +394,11 @@ def _identity_at_deadline(output):
     """Decide a probe answer that had not ended when the deadline passed.
 
     The probe prints os-release and its kernel line within milliseconds. With
-    a complete kernel line, only a slow later step (a container query) held it
-    up, so the complete lines so far are used. Anything else, silence included,
-    is a forced command or menu that waits and is not asked again this week.
+    a complete kernel line it is our probe that hung later on (pmxcfs, D-Bus,
+    a stale network mount, a container query), and the markers and services
+    after that step are missing: nothing is stored and the next connection
+    asks again. Anything else, silence included, is a forced command or menu
+    that waits and is not asked again this week.
     """
     complete = output[:output.rfind(b'\n') + 1]
     try:
@@ -405,7 +407,7 @@ def _identity_at_deadline(output):
         return None, 'unsupported'
     if identity['state'] != 'detected':
         return None, 'unsupported'
-    return identity, None
+    return None, 'transient'
 
 
 def collect_identity(session_id, *, cancel_event=None):

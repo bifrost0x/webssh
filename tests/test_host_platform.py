@@ -281,14 +281,11 @@ def _stalled_identity(monkeypatch, payload):
     return result
 
 
-def test_a_slow_probe_that_reached_its_kernel_line_keeps_what_it_printed(monkeypatch):
-    # A slow container query must not turn an honest probe into a week of "unavailable".
-    identity, error = _stalled_identity(monkeypatch, b'ID=debian\nVERSION_ID="12"\nkernel=Linux\nvirt=kvm\nunit=nginx\n'
-                                                     b'service=docker\nimage=redis')
-    assert error is None and host_platform.valid_identity(identity)
-    assert identity['state'] == 'detected' and identity['platform'] == 'debian' and identity['virt'] == 'vm'
-    # The cut last line is not trusted: "image=redis" may have been "image=redis-commander".
-    assert identity['services'] == ['docker', 'nginx'] and identity['container_access'] is None
+def test_a_probe_that_stalls_after_its_kernel_line_is_retried_later(monkeypatch):
+    # Our probe ran but hung on a read (pmxcfs, D-Bus, a stale NFS mount): what it
+    # printed so far lacks the markers and services after that step.
+    assert _stalled_identity(monkeypatch, b'ID=debian\nVERSION_ID="12"\nkernel=Linux\nvirt=kvm\nunit=nginx\n'
+                                          b'service=docker\nimage=redis') == (None, 'transient')
 
 
 @pytest.mark.parametrize('payload', [b'ID=debian\nVERSION_ID="12"\n', b'ID=debian\nkernel=Lin', b'Welcome\nkernel=Linux\x07\n'])
@@ -296,13 +293,15 @@ def test_a_stalled_answer_without_a_complete_kernel_line_is_not_the_probe(monkey
     assert _stalled_identity(monkeypatch, payload) == (None, 'unsupported')
 
 
-def test_a_stalled_probe_is_stored_as_detected_and_not_retried(app, monkeypatch):
+def _stall_detection(app, monkeypatch, name, payload, **stored):
     from app import profile_manager
     from app import session_insights
     from tests.test_session_insights import FakeChannel, FakeClient, FakeTransport
-    user_id, profile, session = _identity_session(app, monkeypatch, 'slowprobe')
+    user_id, profile, session = _identity_session(app, monkeypatch, name)
+    if stored:
+        _store(app, user_id, profile['id'], **stored)
     session['client'] = FakeClient(FakeTransport())
-    channel = FakeChannel(b'ID=ubuntu\nVERSION_ID="24.04"\nkernel=Linux\nservice=docker\n')
+    channel = FakeChannel(payload)
     monkeypatch.setattr(channel, 'exit_status_ready', lambda: False)
     monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', lambda *args, **kwargs: channel)
     clock = iter([0] * 4 + [5] * 50)
@@ -310,10 +309,25 @@ def test_a_stalled_probe_is_stored_as_detected_and_not_retried(app, monkeypatch)
     monkeypatch.setattr(session_insights.time, 'sleep', lambda _: None)
     published = []
     with app.app_context():
-        host_platform.detect_connected_platform('slowprobe', user_id, published.append)
+        host_platform.detect_connected_platform(name, user_id, published.append)
         saved = profile_manager.get_profile(user_id, profile['id'])
-    assert saved['detection_state'] == 'detected' and saved['detected_platform'] == 'ubuntu'
-    assert saved['detected_services'] == ['docker'] and published and published[0]['platform'] == 'ubuntu'
+    return saved, published, session
+
+
+def test_a_stalled_probe_stores_nothing_and_asks_again_next_time(app, monkeypatch):
+    saved, published, session = _stall_detection(app, monkeypatch, 'slowprobe',
+                                                  b'ID=ubuntu\nVERSION_ID="24.04"\nkernel=Linux\nservice=docker\n')
+    assert published == [] and 'detected_platform' not in session
+    assert 'detection_state' not in saved and 'platform_checked_at' not in saved and 'detected_platform' not in saved
+    assert host_platform.identity_needed(saved)
+
+
+def test_a_stall_that_cuts_off_the_markers_keeps_stored_proxmox_facts(app, monkeypatch):
+    stored = dict(detected_platform='proxmox', detected_services=['nginx', 'samba'], detected_guests=4,
+                  detection_state='detected', platform_checked_at=1_000.0, services_checked_at=1_000.0)
+    saved, published, _ = _stall_detection(app, monkeypatch, 'pve', b'ID=debian\nVERSION_ID="12"\nkernel=Linux\n', **stored)
+    assert published == []
+    assert {key: saved.get(key) for key in stored} == stored
 
 
 @pytest.mark.usefixtures('direct_socket_authentication')

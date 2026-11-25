@@ -87,8 +87,9 @@ probe runs on the next connection. A Dropbear greeting marks a
 host as embedded until a connection detects more. When a host answers
 with something other than the probe output, for example a forced command, a
 menu or no output at all, the profile records that detection is not possible
-and keeps any facts an earlier run found. A probe that is only slow keeps the
-facts it printed before its four-second limit.
+and keeps any facts an earlier run found. When the probe starts answering but
+does not finish within four seconds, for example on a hung network mount,
+nothing is stored and it runs again on the next connection.
 
 The host icon shows where its platform came from: a manual choice, a
 detection, the SSH greeting, the host name, or "not detected yet". Choosing a
