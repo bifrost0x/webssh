@@ -823,7 +823,7 @@ def test_identity_probe_covers_the_catalog():
     for path, _ in host_catalog.SERVICE_PATHS:
         assert '[ -e %s ]' % path in command
     for snap in host_catalog.SERVICE_SNAPS:
-        assert '[ -d /snap/%s ] && echo snap=%s\n' % (snap, snap) in command
+        assert '[ -d /snap/%s ] && echo snap=%s; ' % (snap, snap) in command
     for prefix, service in host_catalog.SERVICE_UNIT_TEMPLATES.items():
         assert '%s@*) found %s ;;' % (prefix, service) in command
 
@@ -834,6 +834,49 @@ def test_the_wrapped_probe_fits_dropbears_command_limit():
     # connection. Keep room below it as the catalog grows.
     size = len(host_platform.IDENTITY_EXEC.encode('utf-8'))
     assert size <= 8192, f'the wrapped identity probe is {size} bytes; Dropbear accepts at most 9000'
+
+
+def test_the_probe_is_one_line_for_csh_and_tcsh_login_shells(tmp_path):
+    # csh and tcsh reject a newline inside single quotes and then run the lines
+    # after it on their own; on one line the wrapper is one quoted word there too.
+    import shlex
+    for text in (host_platform.IDENTITY_COMMAND, host_platform.IDENTITY_EXEC):
+        assert '\n' not in text and '\r' not in text
+    assert shlex.split(host_platform.IDENTITY_EXEC) == ['exec', '/bin/sh', '-c', host_platform.IDENTITY_COMMAND]
+    for name, text in (('probe.sh', host_platform.IDENTITY_COMMAND), ('wrapper.sh', host_platform.IDENTITY_EXEC)):
+        script = tmp_path / name
+        script.write_text(text + '\n')
+        for shell in (['sh'], ['bash', '--posix']):
+            result = subprocess.run([*shell, '-n', str(script)], capture_output=True, text=True)
+            assert result.returncode == 0, (shell, name, result.stderr)
+
+
+def test_the_one_line_probe_keeps_every_command_of_the_readable_script():
+    script = host_platform.IDENTITY_SCRIPT
+    lines = [line.strip() for line in script.splitlines() if line.strip()]
+    assert host_platform.IDENTITY_COMMAND.startswith(lines[0] + '; ')
+    position = 0
+    for line in lines:
+        position = host_platform.IDENTITY_COMMAND.index(line, position) + len(line)
+    assert not any(line.startswith('#') for line in lines)
+
+
+@pytest.mark.parametrize('script', ['a="x\ny"', "printf 'a\nb'", 'a\n# note\nb'])
+def test_the_one_line_join_refuses_text_it_would_change(script):
+    with pytest.raises(ValueError):
+        host_platform._one_line(script)
+
+
+@pytest.mark.parametrize('script, expected', [
+    ('a\nb', 'a; b'),
+    ('if x; then\n  a\nfi\nb', 'if x; then a; fi; b'),
+    ('case $x in\n  y) a ;;\nesac', 'case $x in y) a ;; esac'),
+    ('x | {\n  while read -r n; do\n    a\n  done\n} | sort', 'x | { while read -r n; do a; done; } | sort'),
+    ('a &&\nb ||\nc', 'a && b || c'),
+    ('if x; then a;\nelif y; then b;\nelse\nc\nfi', 'if x; then a; elif y; then b; else c; fi'),
+])
+def test_the_one_line_join_separates_commands_only_where_sh_allows_it(script, expected):
+    assert host_platform._one_line(script) == expected
 
 
 @pytest.mark.parametrize('units, paths, snaps, templates', [
@@ -944,7 +987,8 @@ def test_identity_probe_runs_under_posix_sh_whatever_the_login_shell():
         assert wrapped.returncode == 0 and wrapped.stdout == direct.stdout
 
 
-@pytest.mark.parametrize('script', ["printf '\\\\n'", "printf 'a\\'", "printf ''", "'x'", 'x\n\'', 'x\\'])
+@pytest.mark.parametrize('script', ["printf '\\\\n'", "printf 'a\\'", "printf ''", "'x'", 'x\n\'', 'x\\',
+                                    'a\nb', 'a\rb'])
 def test_the_login_shell_wrapper_refuses_text_fish_would_read_differently(script):
     with pytest.raises(ValueError):
         host_platform._posix_sh(script)
@@ -1266,7 +1310,7 @@ _PROBE_TOOLS = ('timeout', 'head', 'sort', 'cut', 'sed', 'awk', 'ls', 'wc', 'tr'
 
 def _probe_part(start):
     """The probe block that starts with the line ``start`` and ends at its own ``fi``."""
-    command = host_platform.IDENTITY_COMMAND
+    command = host_platform.IDENTITY_SCRIPT
     begin = command.index(start)
     return command[begin:command.index('\nfi\n', begin) + 4]
 
@@ -1312,7 +1356,7 @@ def _unix_socket(path):
 
 
 def _docker_part():
-    command = host_platform.IDENTITY_COMMAND
+    command = host_platform.IDENTITY_SCRIPT
     begin = command.index('dsock=')
     return command[begin:command.index('\nfi\n', command.index('found docker', begin)) + 4]
 
@@ -1378,7 +1422,7 @@ def test_a_docker_socket_without_the_client_still_names_docker(short_root):
 
 
 def _engines_part():
-    command = host_platform.IDENTITY_COMMAND
+    command = host_platform.IDENTITY_SCRIPT
     begin = command.index('dsock=')
     return command[begin:command.index('\nfi\n', command.index('found podman', begin)) + 4]
 
@@ -1458,7 +1502,7 @@ def test_ubiquiti_marker_skips_vyos(short_root, vyatta, vyos, version, expected)
             (short_root / 'vyatta' / 'etc' / 'version').write_text(version + '\n')
     if vyos:
         (short_root / 'vyos').mkdir()
-    line = next(line for line in host_platform.IDENTITY_COMMAND.splitlines() if 'marker=ubiquiti' in line)
+    line = next(line for line in host_platform.IDENTITY_SCRIPT.splitlines() if 'marker=ubiquiti' in line)
     lines, _ = _run_probe_part(line, short_root, replace=(
         ('/opt/vyatta', str(short_root / 'vyatta')), ('/usr/libexec/vyos', str(short_root / 'vyos')),
         ('/usr/lib/version', str(short_root / 'version'))))
@@ -1467,7 +1511,7 @@ def test_ubiquiti_marker_skips_vyos(short_root, vyatta, vyos, version, expected)
 
 def test_ubiquiti_marker_still_covers_unifi_os(short_root):
     (short_root / 'version').write_text('UDMPRO.al324.v4.0.6\nUniFi OS\n')
-    line = next(line for line in host_platform.IDENTITY_COMMAND.splitlines() if 'marker=ubiquiti' in line)
+    line = next(line for line in host_platform.IDENTITY_SCRIPT.splitlines() if 'marker=ubiquiti' in line)
     lines, _ = _run_probe_part(line, short_root, replace=(
         ('/opt/vyatta', str(short_root / 'vyatta')), ('/usr/libexec/vyos', str(short_root / 'vyos')),
         ('/usr/lib/version', str(short_root / 'version'))))
@@ -1475,7 +1519,7 @@ def test_ubiquiti_marker_still_covers_unifi_os(short_root):
 
 
 def _guest_part():
-    command = host_platform.IDENTITY_COMMAND
+    command = host_platform.IDENTITY_SCRIPT
     begin = command.rindex('\nif ', 0, command.index("'guests=")) + 1
     return command[begin:command.index('\nfi\n', begin) + 4]
 

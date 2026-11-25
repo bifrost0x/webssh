@@ -110,8 +110,7 @@ if [ -n "$dsock" ]; then
   if command -v docker >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
     if out=$(timeout 1 docker -H "unix://$dsock" ps --format '{{.Image}}' 2>/dev/null); then
       printf 'engine=docker:ok\n'
-      images="$images
-$out"
+      images=$(printf '%s\n%s' "$images" "$out")
     else
       printf 'engine=docker:denied\n'
     fi
@@ -129,13 +128,49 @@ _PODMAN_BLOCK = r"""if [ -n "$psock" ] || command -v podman >/dev/null 2>&1; the
   if [ -n "$sock" ] && command -v podman >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
     if out=$(timeout 1 podman --remote --url "unix://$sock" ps --format '{{.Image}}' 2>/dev/null); then
       printf 'engine=podman:ok\n'
-      images="$images
-$out"
+      images=$(printf '%s\n%s' "$images" "$out")
     else
       printf 'engine=podman:denied\n'
     fi
   fi
 fi"""
+
+
+# A line ending in one of these continues on the next; any other line ends a command.
+_CONTINUED = re.compile(r'(?:^|\s)(?:then|do|else|in)$|[{|;&]$')
+
+
+def _one_line(script):
+    """Join a script into one line, with '; ' where a line ended a command.
+
+    Refuses a script whose meaning the join would change: a comment, or a line
+    that ends inside quotes, where the newline belongs to the quoted text.
+    """
+    parts = []
+    for raw in script.split('\n'):
+        line = raw.strip()
+        if not line:
+            continue
+        quote, escaped, previous = None, False, ' '
+        for char in line:
+            if escaped:
+                escaped = False
+            elif quote == "'":
+                quote = None if char == "'" else quote
+            elif char == '\\':
+                escaped = True
+            elif quote == '"':
+                quote = None if char == '"' else quote
+            elif char in '\'"':
+                quote = char
+            elif char == '#' and previous in ' \t;|&(':
+                raise ValueError('A comment cannot be joined into one line: %r' % line)
+            previous = char
+        if quote or escaped:
+            raise ValueError('A quoted newline cannot be joined into one line: %r' % line)
+        parts.append(line)
+        parts.append(' ' if _CONTINUED.search(line) else '; ')
+    return ''.join(parts[:-1])
 
 
 def _identity_command(units, paths, snaps, templates=None):
@@ -163,21 +198,25 @@ def _identity_command(units, paths, snaps, templates=None):
 # board model, platform markers, virtualization, systemd target, guest count,
 # known services and, where the SSH user may already talk to a Docker or Podman
 # daemon (no sudo), the names of running images. Nothing is installed, changed
-# or sourced; every file read is bounded.
-IDENTITY_COMMAND = _identity_command(SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS, SERVICE_UNIT_TEMPLATES)
+# or sourced; every file read is bounded. It is sent as one line, which csh
+# and tcsh login shells need; IDENTITY_SCRIPT holds the same commands by line.
+IDENTITY_SCRIPT = _identity_command(SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS, SERVICE_UNIT_TEMPLATES)
+IDENTITY_COMMAND = _one_line(IDENTITY_SCRIPT)
 
 
 def _posix_sh(script):
     """A command line that runs script under /bin/sh from any common login shell.
 
-    sshd hands an exec request to the user's login shell, which may be fish.
-    Single quotes keep their content literal in sh, bash, zsh and fish alike,
-    except that fish also reads \\\\ and \\' inside them, and zsh with RC_QUOTES
-    reads '' as a quote. A script without those sequences therefore reaches
-    /bin/sh unchanged in all of them. csh, tcsh and nu quote differently and
-    are not supported.
+    sshd hands an exec request to the user's login shell, which may be fish,
+    csh or tcsh. Single quotes keep their content literal in sh, bash, zsh,
+    fish, csh and tcsh alike, except that fish also reads \\\\ and \\' inside
+    them, zsh with RC_QUOTES reads '' as a quote, and csh and tcsh end the
+    command at a newline. A one-line script without those sequences therefore
+    reaches /bin/sh unchanged in all of them; csh history expansion does not
+    apply to a command given with -c. nu has not been tried.
     """
-    if '\\\\' in script or "\\'" in script or "''" in script or script.startswith("'") or script.endswith(("'", '\\')):
+    if ('\\\\' in script or "\\'" in script or "''" in script or '\n' in script or '\r' in script
+            or script.startswith("'") or script.endswith(("'", '\\'))):
         raise ValueError('The script cannot be quoted for every login shell')
     return "exec /bin/sh -c '%s'" % script.replace("'", "'\\''")
 
