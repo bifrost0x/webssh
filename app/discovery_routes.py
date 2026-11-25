@@ -37,8 +37,8 @@ MAX_RUNNING_SCANS = 2          # in the whole process
 RESULT_RETENTION_SECONDS = 15 * 60
 RATE_LIMIT = '10 per hour'
 _BANNER = re.compile(r'^SSH-(?P<protocol>[0-9.]+)-(?P<software>[!-~]{1,100})(?: (?P<comment>[ -~]{0,120}))?$')
-# Most specific first. A greeting naming windows/mikrotik/cisco/embedded suppresses
-# the shell probe, so those patterns are anchored to the software token; the
+# Most specific first. A greeting naming windows/mikrotik/cisco suppresses the
+# shell probe, so those patterns are anchored to the software token; the
 # software field has its first underscore turned into a space before matching.
 _PLATFORM_HINTS = (
     ('openwrt', re.compile(r'\bopenwrt\b', re.I)),

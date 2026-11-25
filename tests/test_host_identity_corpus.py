@@ -12,7 +12,7 @@ def test_corpus_maps_to_the_expected_identity(name, output, expected):
 
 def test_corpus_covers_every_detectable_platform():
     seen = {host_platform.parse_identity(out)['platform'] for _, out, _ in CASES}
-    detectable = host_catalog.PLATFORMS - host_catalog.NON_POSIX_PLATFORMS - {'server', 'docker'}
+    detectable = host_catalog.PLATFORMS - host_catalog.BANNER_ONLY_PLATFORMS - {'server', 'docker'}
     assert detectable <= seen
 
 

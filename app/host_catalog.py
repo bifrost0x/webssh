@@ -16,7 +16,11 @@ PLATFORMS = frozenset({
 })
 
 # Recognised from a login banner only; no POSIX probe runs on them.
-NON_POSIX_PLATFORMS = frozenset({'windows', 'mikrotik', 'cisco', 'embedded'})
+NON_POSIX_PLATFORMS = frozenset({'windows', 'mikrotik', 'cisco'})
+
+# Ids the POSIX probe never reports. 'embedded' (dropbear) is only a banner hint:
+# dropbear also serves ordinary POSIX hosts, so it must not suppress the probe.
+BANNER_ONLY_PLATFORMS = NON_POSIX_PLATFORMS | {'embedded'}
 
 # os-release ID
 OS_ID_PLATFORMS = {

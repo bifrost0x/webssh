@@ -5,7 +5,7 @@ def test_catalogs_are_consistent():
     assert set(c.FAMILIES.values()) <= c.PLATFORMS
     assert set(c.MARKER_PLATFORMS.values()) <= c.PLATFORMS
     assert set(c.KERNEL_PLATFORMS.values()) <= c.PLATFORMS
-    assert c.NON_POSIX_PLATFORMS <= c.PLATFORMS
+    assert c.NON_POSIX_PLATFORMS <= c.BANNER_ONLY_PLATFORMS <= c.PLATFORMS
     assert set(c.VIRT_MAP.values()) <= c.VIRT_KINDS
     mapped = set(c.SERVICE_UNITS.values()) | {i for _, i in c.SERVICE_PATHS} | set(c.SERVICE_SNAPS.values()) | {i for i, _ in c.SERVICE_IMAGES}
     assert mapped <= c.SERVICES and c.SERVICES <= mapped | {'docker', 'podman'}
@@ -58,8 +58,8 @@ def test_image_rules_negative():
 def test_every_posix_platform_is_detectable():
     reachable = (set(c.OS_ID_PLATFORMS.values()) | set(c.FAMILIES.values()) | set(c.MARKER_PLATFORMS.values())
                  | set(c.KERNEL_PLATFORMS.values()) | {'raspberrypi'})
-    assert c.PLATFORMS - c.NON_POSIX_PLATFORMS - {'server', 'docker'} <= reachable
-    assert not reachable & c.NON_POSIX_PLATFORMS
+    assert c.PLATFORMS - c.BANNER_ONLY_PLATFORMS - {'server', 'docker'} <= reachable
+    assert not reachable & c.BANNER_ONLY_PLATFORMS
 
 
 def test_ubiquiti_is_a_marker_platform():

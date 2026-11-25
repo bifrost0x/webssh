@@ -937,7 +937,17 @@ def test_hosts_announcing_a_non_posix_shell_are_never_probed(app, monkeypatch, g
         assert 'detection_state' not in profile_manager.get_profile(user_id, profile['id'])
     assert not host_platform.identity_needed({'greeting_platform': greeting})
     assert host_platform.identity_needed({'greeting_platform': 'ubuntu'})
+    assert host_platform.identity_needed({'greeting_platform': 'embedded'})
+    assert 'embedded' not in host_catalog.NON_POSIX_PLATFORMS
     assert not host_platform.identity_needed({'platform_icon': 'proxmox'})
+
+
+def test_a_dropbear_greeting_does_not_suppress_the_probe(app, monkeypatch):
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'alpine', greeting_platform='embedded')
+    calls = _fake_identity(monkeypatch, (_identity(platform='alpinelinux'), None))
+    with app.app_context():
+        host_platform.detect_connected_platform('alpine', user_id, pytest.fail)
+    assert len(calls) == 1
 
 
 def test_a_stored_server_platform_counts_as_not_detected(app, monkeypatch):
