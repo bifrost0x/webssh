@@ -502,11 +502,18 @@ def update_admin_settings(changes):
                     f'{name} is not an admin setting', setting=name,
                     code='unknown_setting',
                 )
-        if _global_limit_below_source_limit(data):
+        # Loading accepts any in-range pair, so only a change to one of the
+        # two limits is held to their relation; an older file with a lower
+        # ceiling must not block unrelated settings.
+        limits_changed = [
+            name for name in ('login_username_global_limit', 'login_username_limit')
+            if name in changes
+        ]
+        if limits_changed and _global_limit_below_source_limit(data):
             raise SettingsUpdateError(
                 'login_username_global_limit must not be lower than '
                 'login_username_limit',
-                setting='login_username_global_limit',
+                setting=limits_changed[0],
                 code='global_limit_below_source_limit',
             )
         if not _valid_settings(data):

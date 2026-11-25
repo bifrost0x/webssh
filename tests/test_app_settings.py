@@ -379,3 +379,41 @@ def test_rejected_admin_update_combination_changes_nothing(tmp_path, monkeypatch
         app_settings.update_admin_settings({'unknown_switch': True})
     assert not path.exists()
     assert app_settings.is_herdr_enabled() is False
+
+
+def test_stored_global_limit_below_source_limit_only_blocks_limit_changes(
+    tmp_path, monkeypatch
+):
+    import json
+    from app import app_settings
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    path = tmp_path / 'app_settings.json'
+    path.write_text(json.dumps({
+        'schema_version': CURRENT_STORAGE_VERSIONS['app_settings'],
+        'login_username_limit': 50,
+        'login_username_global_limit': 20,
+    }), encoding='utf-8')
+    monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
+
+    # Loading keeps working with the stored pair.
+    assert app_settings.login_username_rate_limits() == (
+        '50 per minute', '20 per minute',
+    )
+    assert app_settings.update_admin_settings({
+        'herdr_enabled': True, 'ratelimit_ipv6_prefix': 56,
+    }) == {'herdr_enabled': (None, True), 'ratelimit_ipv6_prefix': (64, 56)}
+
+    with pytest.raises(app_settings.SettingsUpdateError) as raised:
+        app_settings.update_admin_settings({'login_username_limit': 40})
+    assert raised.value.code == 'global_limit_below_source_limit'
+    assert raised.value.setting == 'login_username_limit'
+    with pytest.raises(app_settings.SettingsUpdateError) as raised:
+        app_settings.update_admin_settings({'login_username_global_limit': 30})
+    assert raised.value.setting == 'login_username_global_limit'
+
+    assert app_settings.update_admin_settings({'login_username_limit': 20})
+    assert app_settings.login_username_rate_limits() == (
+        '20 per minute', '20 per minute',
+    )
+    assert app_settings.is_herdr_enabled() is True
