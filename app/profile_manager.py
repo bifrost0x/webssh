@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 
 import config
 
-from .host_platform import PLATFORMS, endpoint
+from .host_catalog import ROLES
+from .host_platform import PLATFORMS, endpoint, valid_identity_value
 from .audit_logger import log_error
 from .connection_storage_policy import (
     ConnectionStorageLimitError,
@@ -163,10 +164,45 @@ def _valid_profile(item):
     if 'services_checked_at' in item and (isinstance(item['services_checked_at'], bool)
                                           or not isinstance(item['services_checked_at'], (int, float))):
         return False
-    # detected_maintenance is never validated here: a malformed or newer value
-    # must not make the whole profiles document unreadable. Its only reader,
-    # the overview, ignores what it does not understand.
+    # detected_maintenance and the identity facts are never validated here: a
+    # malformed or newer value must not make the whole profiles document
+    # unreadable. The overview ignores maintenance facts it does not
+    # understand; _drop_invalid_stored_facts removes identity facts on load.
     return True
+
+
+# Stored identity fact -> parse_identity key. Write paths validate strictly;
+# on load an identity fact or role that does not fit (newer release, hand
+# edit) is dropped and detected again.
+_IDENTITY_FACTS = {
+    'detected_family': 'family', 'detected_os_id': 'os_id', 'detected_os_version': 'os_version',
+    'detected_virt': 'virt', 'detected_container_access': 'container_access',
+    'detected_guests': 'guests', 'detected_graphical': 'graphical',
+}
+_ENDPOINT_FACTS = (
+    *_IDENTITY_FACTS, 'detected_services', 'services_checked_at', 'detected_maintenance',
+    'detection_state', 'platform_checked_at',
+)
+
+
+def _valid_stored_fact(field, value):
+    if field == 'detection_state':
+        return value in ('detected', 'unavailable')
+    if field == 'platform_checked_at':
+        return not isinstance(value, bool) and isinstance(value, (int, float))
+    if field == 'role_override':
+        return isinstance(value, str) and (value == 'auto' or value in ROLES)
+    return valid_identity_value(_IDENTITY_FACTS[field], value)
+
+
+def _drop_invalid_stored_facts(profiles):
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            continue
+        for field in (*_IDENTITY_FACTS, 'detection_state', 'platform_checked_at', 'role_override'):
+            if field in profile and not _valid_stored_fact(field, profile[field]):
+                del profile[field]
+    return profiles
 
 
 def _valid_profile_document(value):
@@ -185,6 +221,7 @@ _PROFILE_FIELDS = {
     'group', 'favorite', 'created_at', 'updated_at',
     'sort_order', 'platform_icon', 'detected_platform', 'greeting_platform',
     'detected_services', 'services_checked_at', 'detected_maintenance',
+    *_IDENTITY_FACTS, 'detection_state', 'platform_checked_at', 'role_override',
 }
 
 
@@ -217,7 +254,7 @@ def _load_profiles_with_lock_held(user_id):
             _profile_migration_payload(profiles_file, document)
         ),
     )
-    return data['profiles']
+    return _drop_invalid_stored_facts(data['profiles'])
 
 
 def _load_profiles_for_read_with_lock_held(user_id):
@@ -364,6 +401,8 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     # What a discovery scan read from the SSH greeting; shown until a connection detects the platform.
     if 'greeting_platform' in payload and (not isinstance(payload['greeting_platform'], str) or payload['greeting_platform'] not in PLATFORMS):
         return None, 'Invalid platform icon'
+    if 'role_override' in payload and not _valid_stored_fact('role_override', payload['role_override']):
+        return None, 'Invalid role'
 
     name = payload.get('name')
     host = payload.get('host')
@@ -463,6 +502,8 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
         result['platform_icon'] = payload['platform_icon']
     if 'greeting_platform' in payload:
         result['greeting_platform'] = payload['greeting_platform']
+    if 'role_override' in payload:
+        result['role_override'] = payload['role_override']
     if group is not _UNSET and group:
         result['group'] = group
     if favorite is True:
@@ -590,13 +631,11 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                                 result['platform_icon'] = existing['platform_icon']
                             if endpoint(existing) == endpoint(result) and existing.get('detected_platform') in PLATFORMS:
                                 result['detected_platform'] = existing['detected_platform']
-                            # Detected services describe the same login on the same host.
-                            if endpoint(existing) == endpoint(result) and 'detected_services' in existing:
-                                result['detected_services'] = existing['detected_services']
-                                if 'services_checked_at' in existing:
-                                    result['services_checked_at'] = existing['services_checked_at']
-                            if endpoint(existing) == endpoint(result) and 'detected_maintenance' in existing:
-                                result['detected_maintenance'] = existing['detected_maintenance']
+                            # Detected facts describe the same login on the same host.
+                            if endpoint(existing) == endpoint(result):
+                                result.update({field: existing[field] for field in _ENDPOINT_FACTS if field in existing})
+                            if 'role_override' not in payload and 'role_override' in existing:
+                                result['role_override'] = existing['role_override']
                             # The greeting belongs to an address and port; it goes when either changes.
                             if ('greeting_platform' not in payload and existing.get('greeting_platform') in PLATFORMS
                                     and (existing.get('host'), existing.get('port', 22)) == (result.get('host'), result.get('port', 22))):
@@ -1040,18 +1079,20 @@ def cache_greeting_platforms(user_id, observed):
 
 
 @user_operation
-def cache_detected_facts(user_id, profile_id, expected_endpoint, *, platform=None, services=None,
-                         maintenance=None, now=None):
-    """Merge detected platform, service and maintenance facts into the current owned profile under its lock."""
-    from .host_platform import valid_maintenance, valid_services
-    if expected_endpoint is None or (platform is None and services is None and maintenance is None):
+def cache_detected_facts(user_id, profile_id, expected_endpoint, *, identity=None, maintenance=None, now=None):
+    """Merge a probed identity and maintenance facts into the current owned profile under its lock.
+
+    A detected identity replaces every stored identity fact; one that could not
+    be read only records the attempt and keeps what an earlier probe found.
+    """
+    from .host_platform import valid_identity, valid_maintenance
+    if expected_endpoint is None or (identity is None and maintenance is None):
         return False
     if maintenance is not None and (not valid_maintenance(maintenance) or 'checked_at' in maintenance):
         return False
-    if platform is not None and platform not in PLATFORMS:
+    if identity is not None and not valid_identity(identity):
         return False
-    if services is not None and not valid_services(services):
-        return False
+    stamp = time.time() if now is None else now
     with storage_lock(f'command-config:{user_id}'):
         with storage_lock(f'profiles:{user_id}'):
             profiles, error = _load_profiles_for_write(user_id)
@@ -1060,13 +1101,20 @@ def cache_detected_facts(user_id, profile_id, expected_endpoint, *, platform=Non
             for profile in profiles:
                 if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
                     continue
-                if platform is not None:
-                    profile['detected_platform'] = platform
-                if services is not None:
-                    profile['detected_services'] = list(services)
-                    profile['services_checked_at'] = time.time() if now is None else now
+                if identity is not None:
+                    profile['detection_state'] = identity['state']
+                    profile['platform_checked_at'] = stamp
+                if identity is not None and identity['state'] == 'detected':
+                    facts = {'detected_platform': identity['platform'], 'detected_services': list(identity['services'])}
+                    facts.update({field: identity[key] for field, key in _IDENTITY_FACTS.items()})
+                    for field, value in facts.items():
+                        if value is None:
+                            profile.pop(field, None)
+                        else:
+                            profile[field] = value
+                    profile['services_checked_at'] = stamp
                 if maintenance is not None:
-                    profile['detected_maintenance'] = {**maintenance, 'checked_at': time.time() if now is None else now}
+                    profile['detected_maintenance'] = {**maintenance, 'checked_at': stamp}
                 return save_profiles(user_id, profiles, previous_count=len(profiles))
     return False
 

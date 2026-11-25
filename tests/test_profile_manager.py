@@ -1783,3 +1783,95 @@ def test_malformed_username_update_preserves_existing_profile(app, username):
         assert updated is None
         assert error == 'Invalid username format'
         assert profile_manager.get_profile(user_id, profile['id']) == profile
+
+
+_DETECTED_FIELDS = (
+    'detected_platform', 'detected_family', 'detected_os_id', 'detected_os_version', 'detected_virt',
+    'detected_services', 'detected_container_access', 'detected_guests', 'detected_graphical',
+    'detection_state', 'platform_checked_at', 'services_checked_at',
+)
+
+
+def _full_identity(**changes):
+    return {'state': 'detected', 'platform': 'proxmox', 'family': 'debian', 'os_id': 'pve', 'os_version': '8.2',
+            'virt': 'bare-metal', 'graphical': False, 'guests': 4, 'services': ['docker'],
+            'container_access': 'denied', **changes}
+
+
+def test_new_fields_are_validated_and_follow_the_endpoint(app):
+    from app import profile_manager
+    from app.host_platform import endpoint
+    user_id = create_user(app, 'identity-fields')
+    with app.app_context():
+        payload = dict(name='PVE', host='pve.example', port=22, username='root', auth_type='password')
+        for invalid in ('admin', 3, None, '<b>', ['server']):
+            profile, error = profile_manager.upsert_profile(user_id, dict(payload, role_override=invalid))
+            assert profile is None and error == 'Invalid role'
+        profile, error = profile_manager.upsert_profile(user_id, dict(payload, role_override='hypervisor'))
+        assert error is None and profile['role_override'] == 'hypervisor'
+        expected = endpoint(profile)
+
+        for invalid in ({'virt': 'hypervisor'}, {'virt': 'kvm'}, {'guests': -1}, {'guests': 10000},
+                        {'guests': True}, {'guests': '4'}, {'platform': 'plan9'}, {'services': ['evil']},
+                        {'container_access': 'root'}, {'graphical': 'yes'}, {'os_version': '$(id)'},
+                        {'family': 'beos'}, {'state': 'maybe'}, {'extra': 1}):
+            assert not profile_manager.cache_detected_facts(user_id, profile['id'], expected,
+                                                            identity=_full_identity(**invalid))
+        assert not any(field in profile_manager.get_profile(user_id, profile['id']) for field in _DETECTED_FIELDS)
+        assert not profile_manager.cache_detected_facts(user_id, profile['id'], expected)
+        assert profile_manager.cache_detected_facts(user_id, profile['id'], expected, identity=_full_identity())
+        stored = profile_manager.get_profile(user_id, profile['id'])
+        assert (stored['detected_virt'], stored['detected_guests'], stored['detected_os_id']) == ('bare-metal', 4, 'pve')
+
+        # The browser cannot write detection results.
+        forged, error = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], detected_virt='vm',
+                                                                     detected_guests=99, detection_state='detected'))
+        assert error is None
+        assert (forged['detected_virt'], forged['detected_guests']) == ('bare-metal', 4)
+
+        renamed, error = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], name='Cluster'))
+        assert error is None
+        assert all(renamed[field] == stored[field] for field in _DETECTED_FIELDS)
+        assert renamed['role_override'] == 'hypervisor'
+
+        changed, error = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], role_override='auto'))
+        assert error is None and changed['role_override'] == 'auto'
+        _, error = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], role_override='backup'))
+        assert error is None
+
+        for moved in (dict(payload, host='other.example'), dict(payload, username='admin')):
+            assert profile_manager.cache_detected_facts(user_id, profile['id'], endpoint(profile_manager.get_profile(
+                user_id, profile['id'])), identity=_full_identity())
+            result, error = profile_manager.upsert_profile(user_id, dict(moved, id=profile['id']))
+            assert error is None
+            assert not any(field in result for field in _DETECTED_FIELDS)
+            assert result['role_override'] == 'backup'
+
+
+def test_profiles_with_unknown_future_fields_stay_readable(app):
+    from app import profile_manager
+    user_id = create_user(app, 'identity-future')
+    with app.app_context():
+        valid = {'detected_platform': 'debian', 'detected_family': 'debian', 'detected_os_id': 'pve',
+                 'detected_os_version': '13', 'detected_virt': 'lxc', 'detected_services': ['docker'],
+                 'detected_container_access': 'ok', 'detected_guests': 0, 'detected_graphical': True,
+                 'detection_state': 'detected', 'platform_checked_at': 1_000.5, 'services_checked_at': 1_000.5,
+                 'role_override': 'storage'}
+        invalid = {'detected_family': 'beos', 'detected_os_id': '<script>', 'detected_os_version': 7,
+                   'detected_virt': 'microvm', 'detected_container_access': 'root', 'detected_guests': 'many',
+                   'detected_graphical': 'yes', 'detection_state': 'weird', 'platform_checked_at': 'yesterday',
+                   'role_override': 'superhero'}
+        profiles = [
+            {'id': 'current', 'name': 'Current', 'host': 'a.example', 'username': 'u', **valid,
+             'detected_future_fact': {'shape': 'unknown'}},
+            {'id': 'newer', 'name': 'Newer', 'host': 'b.example', 'username': 'u', **invalid},
+            {'id': 'older', 'name': 'Older', 'host': 'c.example', 'username': 'u',
+             'detected_platform': 'debian', 'detected_services': ['nginx'], 'services_checked_at': 5},
+        ]
+        assert profile_manager.save_profiles(user_id, profiles)
+        loaded = {item['id']: item for item in profile_manager.load_profiles(user_id)}
+        assert {key: loaded['current'][key] for key in valid} == valid
+        assert loaded['current']['detected_future_fact'] == {'shape': 'unknown'}
+        assert not set(invalid) & set(loaded['newer'])
+        assert loaded['older']['detected_services'] == ['nginx']
+        assert not {'detection_state', 'platform_checked_at', 'role_override'} & set(loaded['older'])

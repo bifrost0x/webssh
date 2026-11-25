@@ -7,24 +7,6 @@ from app import host_catalog, host_platform
 
 @pytest.mark.parametrize('facts, expected', [
     ('ID=ubuntu\nkernel=Linux', 'ubuntu'),
-    ('ID=debian\nmarker=proxmox', 'proxmox'),
-    ('ID=debian\nmodel=Raspberry Pi 5 Model B', 'raspberrypi'),
-    ('ID=haos', 'homeassistant'), ('ID=truenas', 'truenas'),
-    ('kernel=FreeBSD\nmarker=opnsense', 'opnsense'),
-    ('kernel=Darwin', 'apple'), ('kernel=FreeBSD', 'freebsd'),
-    ('ID=unknown\ndocker=yes', 'server'),
-    ('ID=ubuntu;$(touch /tmp/bad)', 'server'),
-])
-def test_platform_uses_fixed_facts(facts, expected):
-    assert host_platform.parse_platform(facts) == expected
-
-def test_rejects_duplicate_oversized_and_control_output():
-    for text in ['ID=ubuntu\nID=debian', 'x' * 4097, 'ID=ubuntu\x00']:
-        with pytest.raises(ValueError):
-            host_platform.parse_platform(text)
-
-@pytest.mark.parametrize('facts, expected', [
-    ('ID=ubuntu\nkernel=Linux', 'ubuntu'),
     ('ID=debian\nkernel=Linux\nmarker=proxmox', 'proxmox'),
     ('ID=debian\nkernel=Linux\nmodel=Raspberry Pi 5 Model B', 'raspberrypi'),
     ('ID=haos\nkernel=Linux', 'homeassistant'), ('ID=truenas\nkernel=Linux', 'truenas'),
@@ -125,12 +107,6 @@ def test_identity_os_version_pattern(facts, expected):
     assert host_platform.parse_identity('kernel=Linux\n' + facts)['os_version'] == expected
 
 
-def test_probe_never_sources_remote_files():
-    command = host_platform.PLATFORM_COMMAND
-    assert '. /etc/' not in command and 'source ' not in command
-    assert 'eval ' not in command and 'sudo' not in command
-    assert 'docker' not in command
-
 def test_platform_cache_is_endpoint_scoped_and_override_persists(app):
     from app import profile_manager
     from tests.test_profile_manager import create_user
@@ -173,19 +149,19 @@ def test_socks_route_change_discards_old_facts_and_rejects_late_probe(app):
         assert error is None
         old_endpoint = host_platform.endpoint(profile)
         assert profile_manager.cache_detected_facts(
-            user_id, profile['id'], old_endpoint, platform='ubuntu', services=['docker'],
+            user_id, profile['id'], old_endpoint, identity=_identity(platform='ubuntu', services=['docker']),
         )
         changed, error = profile_manager.upsert_profile(
             user_id, dict(payload, id=profile['id'], socks_proxy_id=proxy['id']),
         )
         assert error is None
         assert 'detected_platform' not in changed
-        assert 'detected_services' not in changed
+        assert 'detected_services' not in changed and 'platform_checked_at' not in changed
         assert not profile_manager.cache_detected_facts(
-            user_id, profile['id'], old_endpoint, platform='debian', services=['nginx'],
+            user_id, profile['id'], old_endpoint, identity=_identity(services=['nginx']),
         )
         assert profile_manager.cache_detected_facts(
-            user_id, profile['id'], host_platform.endpoint(changed), platform='debian',
+            user_id, profile['id'], host_platform.endpoint(changed), identity=_identity(),
         )
 
 
@@ -198,15 +174,19 @@ def test_detection_task_checks_session_ownership_and_uses_facts(app, monkeypatch
         profile, _ = profile_manager.upsert_profile(user_id, dict(name='Proxmox', host='example.test', port=22, username='deploy', auth_type='password'))
         session = dict(profile, connected=True, user_id=user_id, profile_id=profile['id'])
         monkeypatch.setitem(ssh_manager.sessions, 'platform-test', session)
-        monkeypatch.setattr(host_platform, 'collect_platform', lambda _, **kwargs: ('ubuntu', None))
+        monkeypatch.setattr(host_platform, 'collect_identity', lambda _, **kwargs: (_identity(platform='ubuntu'), None))
         host_platform.detect_connected_platform('platform-test', user_id + 1, events.append)
         assert events == []
         host_platform.detect_connected_platform('platform-test', user_id, events.append)
         assert events[0]['platform'] == 'ubuntu'
         assert profile_manager.get_profile(user_id, profile['id'])['detected_platform'] == 'ubuntu'
-        monkeypatch.setattr(host_platform, 'collect_platform', lambda _, **kwargs: (None, 'transient'))
-        host_platform.detect_connected_platform('platform-test', user_id, events.append)
+        # A result that is not a parsed identity is never stored or published.
+        profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile), identity=_identity(), now=0)
+        for answer in ((None, 'transient'), (_identity(platform='<b>'), None), ({'state': 'detected'}, None)):
+            monkeypatch.setattr(host_platform, 'collect_identity', lambda _, answer=answer, **kwargs: answer)
+            host_platform.detect_connected_platform('platform-test', user_id, events.append)
         assert len(events) == 1
+        assert profile_manager.get_profile(user_id, profile['id'])['platform_checked_at'] == 0
 
 @pytest.mark.parametrize('saved, live', [('NAS.Example.test', 'nas.example.test'), ('2001:0db8:0000:0000:0000:0000:0000:0001', '2001:db8::1')])
 def test_endpoint_compares_canonical_hosts_and_default_port(saved, live):
@@ -221,7 +201,7 @@ def test_platform_collector_channel_failure_is_optional(monkeypatch):
     def reject(*args, **kwargs):
         raise OSError('channel unavailable')
     monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', reject)
-    assert host_platform.collect_platform('owned-session') == (None, 'transient')
+    assert host_platform.collect_identity('owned-session') == (None, 'transient')
     assert session_insights.ssh_manager.sessions['owned-session']['connected']
 
 def test_platform_collector_rejects_partial_output_and_honors_cancellation(monkeypatch):
@@ -234,14 +214,14 @@ def test_platform_collector_rejects_partial_output_and_honors_cancellation(monke
     monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', lambda *args, **kwargs: channel)
     clock = iter([0, 0, 0, 2])
     monkeypatch.setattr(session_insights.time, 'monotonic', lambda: next(clock))
-    assert host_platform.collect_platform('owned-session') == (None, 'transient')
+    assert host_platform.collect_identity('owned-session') == (None, 'transient')
     assert channel.closed
     cancelled = Event()
     cancelled.set()
     channel = FakeChannel(b'ID=ubuntu\n')
     monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', lambda *args, **kwargs: channel)
     monkeypatch.setattr(session_insights.time, 'monotonic', lambda: 0)
-    assert host_platform.collect_platform('owned-session', cancel_event=cancelled) == (None, 'transient')
+    assert host_platform.collect_identity('owned-session', cancel_event=cancelled) == (None, 'transient')
     assert channel.closed
 
 @pytest.mark.usefixtures('direct_socket_authentication')
@@ -290,7 +270,8 @@ def test_host_exchange_preserves_only_manual_icon():
     ({}, True),
     ({'platform_icon': 'auto'}, True),
     ({'platform_icon': 'proxmox'}, False),
-    ({'detected_platform': 'debian'}, False),
+    ({'detected_platform': 'debian'}, True),
+    ({'identity': True}, False),
 ])
 def test_detection_runs_once_per_saved_host_in_automatic_mode(app, monkeypatch, stored, probed):
     from app import ssh_manager, profile_manager
@@ -300,10 +281,13 @@ def test_detection_runs_once_per_saved_host_in_automatic_mode(app, monkeypatch, 
     with app.app_context():
         profile, _ = profile_manager.upsert_profile(user_id, dict(name='Host', host='example.test', port=22, username='deploy', auth_type='password',
                                                                   **{k: v for k, v in stored.items() if k == 'platform_icon'}))
+        # A platform from before the identity probe has no check time and is probed once more.
         if 'detected_platform' in stored:
             assert profile_manager.cache_detected_platform(user_id, profile['id'], host_platform.endpoint(profile), stored['detected_platform'])
+        if 'identity' in stored:
+            assert profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile), identity=_identity())
         monkeypatch.setitem(ssh_manager.sessions, 'platform-once', dict(profile, connected=True, user_id=user_id, profile_id=profile['id']))
-        monkeypatch.setattr(host_platform, 'collect_platform', lambda _, **kwargs: (calls.append(1), ('ubuntu', None))[1])
+        monkeypatch.setattr(host_platform, 'collect_identity', lambda _, **kwargs: (calls.append(1), (_identity(platform='ubuntu'), None))[1])
         host_platform.detect_connected_platform('platform-once', user_id, lambda payload: None)
         assert bool(calls) is probed
         # A detected result is reused on the next connection.
@@ -318,7 +302,7 @@ def test_quick_connections_are_never_probed(app, monkeypatch):
     calls = []
     with app.app_context():
         monkeypatch.setitem(ssh_manager.sessions, 'platform-quick', dict(host='example.test', port=22, username='deploy', connected=True, user_id=user_id, profile_id=None))
-        monkeypatch.setattr(host_platform, 'collect_platform', lambda _, **kwargs: (calls.append(1), ('ubuntu', None))[1])
+        monkeypatch.setattr(host_platform, 'collect_identity', lambda _, **kwargs: (calls.append(1), (_identity(), None))[1])
         host_platform.detect_connected_platform('platform-quick', user_id, lambda payload: None)
     assert calls == []
 
@@ -344,67 +328,6 @@ def test_greeting_platform_is_validated_and_follows_the_address(app):
         for invalid in ('plan9', 3, None, '<b>'):
             _, error = profile_manager.upsert_profile(user_id, dict(payload, name=f'bad-{invalid}', greeting_platform=invalid))
             assert error == 'Invalid platform icon'
-
-
-def test_services_map_fixed_facts_and_known_images_only():
-    facts = '\n'.join([
-        'service=docker', 'service=unit:nginx', 'service=unit:mysql', 'service=wireguard',
-        'service=unit:sshd', 'service=evil',
-        'image=lscr.io/linuxserver/nextcloud:latest',
-        'image=ghcr.io/home-assistant/home-assistant:stable',
-        'image=jc21/nginx-proxy-manager:latest',
-        'image=postgres:16', 'image=redis:7', 'image=nginx:alpine',
-        'image=$(rm -rf /)', 'unrelated=nextcloud',
-    ])
-    assert host_platform.parse_services(facts) == [
-        'docker', 'homeassistant', 'mariadb', 'nextcloud', 'nginx', 'nginxproxymanager', 'postgresql', 'redis', 'wireguard',
-    ]
-    assert host_platform.parse_services('') == []
-    for text in ['service=docker\x00', 'x' * 7000]:
-        with pytest.raises(ValueError):
-            host_platform.parse_services(text)
-
-
-def test_service_probe_is_read_only_and_bounded():
-    command = host_platform.SERVICES_COMMAND
-    for forbidden in ('sudo', 'eval ', 'source ', '. /etc/', ' rm ', ' exec ', 'docker run', 'docker exec', 'inspect'):
-        assert forbidden not in command
-    # Containers are listed by image name only, with a time limit and a line limit.
-    assert "ps --format '{{.Image}}'" in command and 'timeout 2' in command and 'head -n 30' in command
-    assert 'docker' not in host_platform.PLATFORM_COMMAND
-
-
-def test_services_are_detected_weekly_kept_on_edit_and_off_with_a_manual_icon(app, monkeypatch):
-    from app import ssh_manager, profile_manager
-    from tests.test_profile_manager import create_user
-    user_id = create_user(app)
-    events, calls = [], []
-    with app.app_context():
-        payload = dict(name='NAS', host='nas.example', port=22, username='deploy', auth_type='password')
-        profile, _ = profile_manager.upsert_profile(user_id, payload)
-        session = dict(profile, connected=True, user_id=user_id, profile_id=profile['id'])
-        monkeypatch.setitem(ssh_manager.sessions, 'services-test', session)
-        monkeypatch.setattr(host_platform, 'collect_platform', lambda _, **kwargs: ('debian', None))
-        monkeypatch.setattr(host_platform, 'collect_services',
-                            lambda _, **kwargs: (calls.append(1), (['docker', 'nextcloud'], None))[1])
-        host_platform.detect_connected_platform('services-test', user_id, events.append)
-        assert events[-1] == {'session_id': 'services-test', 'profile_id': profile['id'],
-                              'platform': 'debian', 'services': ['docker', 'nextcloud']}
-        saved = profile_manager.get_profile(user_id, profile['id'])
-        assert saved['detected_services'] == ['docker', 'nextcloud']
-        # A second connection within the week does not probe again.
-        host_platform.detect_connected_platform('services-test', user_id, events.append)
-        assert len(calls) == 1
-        assert host_platform.services_needed(saved, now=saved['services_checked_at'] + host_platform.SERVICE_REFRESH_SECONDS + 1)
-        # Editing the name keeps them; moving the host drops them.
-        renamed, _ = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], name='Storage'))
-        assert renamed['detected_services'] == ['docker', 'nextcloud']
-        moved, _ = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], host='other.example'))
-        assert 'detected_services' not in moved
-        assert not host_platform.needs_detection(dict(moved, platform_icon='proxmox'))
-        # The browser cannot write detection results itself.
-        forged, _ = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], detected_services=['plex']))
-        assert forged.get('detected_services') != ['plex']
 
 
 @pytest.mark.parametrize('facts, expected', [
@@ -463,8 +386,7 @@ def test_connecting_never_runs_the_maintenance_probe(app, monkeypatch):
         monkeypatch.setitem(ssh_manager.sessions, 'no-maintenance', dict(profile, connected=True, user_id=user_id,
                                                                          profile_id=profile['id']))
         host_platform.detect_connected_platform('no-maintenance', user_id, lambda payload: None)
-    assert commands, 'the existing platform and service probes still run'
-    assert host_platform.MAINTENANCE_COMMAND not in commands
+    assert commands == [host_platform.IDENTITY_COMMAND]
     assert not hasattr(host_platform, 'collect_maintenance') and not hasattr(host_platform, 'maintenance_needed')
 
 
@@ -758,10 +680,22 @@ def test_identity_probe_runs_under_a_minimal_posix_shell():
     assert identity['state'] == 'detected' and identity['platform'] not in (None, 'server')
 
 
+def _module_text_without_comments(module):
+    import inspect
+    import io
+    import tokenize
+    source = inspect.getsource(module)
+    return ' '.join(token.string for token in tokenize.generate_tokens(io.StringIO(source).readline)
+                    if token.type != tokenize.COMMENT)
+
+
 def test_identity_probe_never_runs_a_plain_podman_query():
-    command = host_platform.IDENTITY_COMMAND
+    # Every probe in the module, not only the identity probe, may ask podman only through a socket.
+    command = _module_text_without_comments(host_platform)
     invocations = re.findall(r'timeout 2 podman\S*(?: \S+)?', command)
     assert invocations and all(item.startswith('timeout 2 podman --remote') for item in invocations)
+    # Container listings name their engine literally: docker, or podman behind --remote --url.
+    assert set(re.findall(r'(\S+) ps\b', command)) == {'docker', '"unix://$sock"'}
     assert not re.search(r'podman (ps|info|images|version)', command)
     assert 'unix:///run/podman/podman.sock' not in command or '--remote' in command
     assert '$XDG_RUNTIME_DIR/podman/podman.sock' in command and '[ -S ' in command
@@ -802,3 +736,166 @@ def test_identity_probe_worst_case_output_fits_the_budget():
     # Images: the probe stops at 3000 bytes whatever the daemon returns.
     assert '> 3000' in host_platform.IDENTITY_COMMAND and 'sort -u' in host_platform.IDENTITY_COMMAND
     assert size + 3000 < 8192
+
+
+def _identity(**changes):
+    return {'state': 'detected', 'platform': 'debian', 'family': None, 'os_id': None, 'os_version': '13',
+            'virt': 'vm', 'graphical': False, 'guests': None, 'services': ['docker', 'nextcloud'],
+            'container_access': 'ok', **changes}
+
+
+_UNAVAILABLE = {'state': 'unavailable', 'platform': None, 'family': None, 'os_id': None, 'os_version': None,
+                'virt': None, 'graphical': None, 'guests': None, 'services': [], 'container_access': None}
+
+
+def _identity_session(app, monkeypatch, name, **fields):
+    from app import ssh_manager, profile_manager
+    from tests.test_profile_manager import create_user
+    user_id = create_user(app, f'identity-{name}')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, dict(name=name, host=f'{name}.example', port=22,
+                                                                      username='deploy', auth_type='password', **fields))
+        assert error is None
+    session = dict(profile, connected=True, user_id=user_id, profile_id=profile['id'])
+    monkeypatch.setitem(ssh_manager.sessions, name, session)
+    return user_id, profile, session
+
+
+def _fake_identity(monkeypatch, *results):
+    """Answer collect_identity with the given (identity, error) pairs in turn."""
+    calls = []
+    answers = list(results)
+
+    def collect(session_id, **kwargs):
+        calls.append(session_id)
+        return answers.pop(0) if len(answers) > 1 else answers[0]
+
+    monkeypatch.setattr(host_platform, 'collect_identity', collect)
+    return calls
+
+
+def _store(app, user_id, profile_id, **fields):
+    from app import profile_manager
+    with app.app_context():
+        profiles = profile_manager.load_profiles(user_id)
+        for item in profiles:
+            if item['id'] == profile_id:
+                item.update(fields)
+        assert profile_manager.save_profiles(user_id, profiles, previous_count=len(profiles))
+
+
+def test_identity_is_stored_and_refreshed_weekly(app, monkeypatch):
+    from types import SimpleNamespace
+    from app import profile_manager
+    user_id, profile, session = _identity_session(app, monkeypatch, 'weekly')
+    calls = _fake_identity(monkeypatch, (_identity(), None),
+                           (_identity(os_version='14', container_access=None, guests=3), None))
+    events = []
+    with app.app_context():
+        host_platform.detect_connected_platform('weekly', user_id, events.append)
+        assert events == [{'session_id': 'weekly', 'profile_id': profile['id'], 'platform': 'debian',
+                           'services': ['docker', 'nextcloud'], 'identity': _identity()}]
+        saved = profile_manager.get_profile(user_id, profile['id'])
+        assert (saved['detected_platform'], saved['detected_os_version'], saved['detected_virt']) == ('debian', '13', 'vm')
+        assert saved['detected_services'] == ['docker', 'nextcloud']
+        assert saved['detected_container_access'] == 'ok' and saved['detected_graphical'] is False
+        assert saved['detection_state'] == 'detected'
+        assert isinstance(saved['platform_checked_at'], float)
+        assert saved['platform_checked_at'] == saved['services_checked_at']
+        for missing in ('detected_family', 'detected_os_id', 'detected_guests'):
+            assert missing not in saved
+        assert session['detected_platform'] == 'debian'
+        checked = saved['platform_checked_at']
+
+        # Within the week the stored facts are used as they are.
+        monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: checked + 6 * 24 * 3600))
+        host_platform.detect_connected_platform('weekly', user_id, events.append)
+        assert len(calls) == 1 and len(events) == 1
+
+        monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: checked + 7 * 24 * 3600 + 1))
+        host_platform.detect_connected_platform('weekly', user_id, events.append)
+        assert len(calls) == 2
+        refreshed = profile_manager.get_profile(user_id, profile['id'])
+        assert refreshed['detected_os_version'] == '14' and refreshed['detected_guests'] == 3
+        assert 'detected_container_access' not in refreshed
+        assert refreshed['platform_checked_at'] > checked
+
+
+def test_unavailable_identity_is_remembered_and_not_retried_for_a_week(app, monkeypatch):
+    from app import profile_manager
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'forced')
+    calls = _fake_identity(monkeypatch, (dict(_UNAVAILABLE), None))
+    events = []
+    with app.app_context():
+        host_platform.detect_connected_platform('forced', user_id, events.append)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+        assert saved['detection_state'] == 'unavailable'
+        assert isinstance(saved['platform_checked_at'], float)
+        assert 'detected_platform' not in saved and 'detected_services' not in saved
+        assert 'services_checked_at' not in saved
+        assert events == []
+        host_platform.detect_connected_platform('forced', user_id, events.append)
+        assert len(calls) == 1
+
+    # Facts from an earlier detection stay when a later probe cannot be read.
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'kept')
+    with app.app_context():
+        assert profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile),
+                                                    identity=_identity(), now=1_000.0)
+        host_platform.detect_connected_platform('kept', user_id, events.append)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+        assert saved['detection_state'] == 'unavailable'
+        assert saved['detected_platform'] == 'debian' and saved['detected_services'] == ['docker', 'nextcloud']
+        assert saved['services_checked_at'] == 1_000.0 and saved['platform_checked_at'] > 1_000.0
+        assert events == []
+
+
+def test_unreadable_probe_output_counts_as_unavailable_and_failures_retry(app, monkeypatch):
+    from app import profile_manager
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'garbled')
+    calls = _fake_identity(monkeypatch, (None, 'transient'), (None, 'busy'), (None, 'unsupported'))
+    with app.app_context():
+        for _ in range(2):
+            host_platform.detect_connected_platform('garbled', user_id, pytest.fail)
+            assert 'detection_state' not in profile_manager.get_profile(user_id, profile['id'])
+        # Output that is not the probe's answer (a forced command, a menu) is not asked for again this week.
+        host_platform.detect_connected_platform('garbled', user_id, pytest.fail)
+        host_platform.detect_connected_platform('garbled', user_id, pytest.fail)
+        assert len(calls) == 3
+        assert profile_manager.get_profile(user_id, profile['id'])['detection_state'] == 'unavailable'
+
+
+@pytest.mark.parametrize('greeting', sorted(host_catalog.NON_POSIX_PLATFORMS))
+def test_hosts_announcing_a_non_posix_shell_are_never_probed(app, monkeypatch, greeting):
+    from app import profile_manager
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'router', greeting_platform=greeting)
+    calls = _fake_identity(monkeypatch, (_identity(), None))
+    with app.app_context():
+        host_platform.detect_connected_platform('router', user_id, pytest.fail)
+        assert calls == []
+        assert 'detection_state' not in profile_manager.get_profile(user_id, profile['id'])
+    assert not host_platform.identity_needed({'greeting_platform': greeting})
+    assert host_platform.identity_needed({'greeting_platform': 'ubuntu'})
+    assert not host_platform.identity_needed({'platform_icon': 'proxmox'})
+
+
+def test_a_stored_server_platform_counts_as_not_detected(app, monkeypatch):
+    import time
+    from app import profile_manager
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'legacy')
+    now = time.time()
+    _store(app, user_id, profile['id'], detected_platform='server', detected_services=['nginx'],
+           services_checked_at=now, platform_checked_at=now)
+    calls = _fake_identity(monkeypatch, (_identity(platform='fedora'), None))
+    with app.app_context():
+        host_platform.detect_connected_platform('legacy', user_id, lambda payload: None)
+        assert len(calls) == 1
+        saved = profile_manager.get_profile(user_id, profile['id'])
+        assert saved['detected_platform'] == 'fedora' and saved['detected_services'] == ['docker', 'nextcloud']
+    # Once the new probe ran, a kept 'server' does not bring the probe back every login.
+    assert not host_platform.identity_needed({'detected_platform': 'server', 'detection_state': 'unavailable',
+                                              'platform_checked_at': now}, now=now + 60)
+    assert host_platform.identity_needed({'detected_platform': 'server', 'platform_checked_at': now}, now=now + 60)
+    assert host_platform.identity_needed({'detected_platform': 'debian', 'services_checked_at': now}, now=now + 60)
+    for checked in (None, True, 'yesterday', now + 3600):
+        assert host_platform.identity_needed({'detected_platform': 'debian', 'platform_checked_at': checked}, now=now)
