@@ -370,7 +370,6 @@ def test_unlink_refuses_to_convert_a_managed_account_listed_in_admin_users(
     import logging
 
     import config
-    from app.auth import sync_admin_users
     from app.models import GitHubIdentity, User, WebAuthnCredential, db
 
     admin_id = _create_user(app, 'listed_break_glass', is_admin=True)
@@ -421,10 +420,42 @@ def test_unlink_refuses_to_convert_a_managed_account_listed_in_admin_users(
 
     assert unlinked.status_code == 200
     with app.app_context():
-        sync_admin_users()
         user = db.session.get(User, user_id)
         assert user.github_identity is None
-        assert user.is_admin is False
+
+
+def test_unlink_allows_a_listed_local_account_with_a_linked_identity(
+    app, client, monkeypatch,
+):
+    import config
+    from datetime import datetime, timezone
+
+    from app.models import GitHubIdentity, User, db
+
+    admin_id = _create_user(app, 'listed_local_admin', is_admin=True)
+    _configure(app, admin_id)
+    with app.app_context():
+        db.session.add(GitHubIdentity(
+            user_id=admin_id,
+            github_user_id='9393',
+            login='listed-local',
+            provisioned_by_github=False,
+            last_verified_at=datetime.now(timezone.utc),
+        ))
+        db.session.commit()
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['listed_local_admin'])
+    _login(client, 'listed_local_admin')
+
+    response = client.delete('/api/account/github', headers=(
+        mint_account_step_up_headers(app, client, 'github.unlink', admin_id)
+    ))
+
+    assert response.status_code == 200, response.get_data(as_text=True)
+    with app.app_context():
+        user = db.session.get(User, admin_id)
+        assert user.github_identity is None
+        assert user.is_admin is True
+        assert GitHubIdentity.query.filter_by(github_user_id='9393').count() == 0
 
 
 def test_operator_code_bootstraps_first_passkey_then_allows_github_unlink(

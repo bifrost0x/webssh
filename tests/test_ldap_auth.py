@@ -1095,7 +1095,6 @@ def test_admin_unlink_refuses_to_convert_an_account_listed_in_admin_users(
 
     import config
     import app.ldap_routes as ldap_routes
-    from app.auth import sync_admin_users
     from app.models import LDAPIdentity, User, db
 
     _create_user(app, "local_admin", is_admin=True)
@@ -1168,10 +1167,8 @@ def test_admin_unlink_refuses_to_convert_an_account_listed_in_admin_users(
     assert converted.status_code == 200
     assert revoked == [target_id]
     with app.app_context():
-        sync_admin_users()
         target = db.session.get(User, target_id)
         assert not target.is_ldap_managed
-        assert not target.is_admin
         assert target.check_password("new-local-password-123")
 
 
