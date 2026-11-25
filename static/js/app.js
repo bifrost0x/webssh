@@ -984,11 +984,17 @@
 
     socket.on('host_platform', data => {
         const platform = data && Object.hasOwn(window.HostPlatform?.labels || {}, data.platform);
-        if (!platform && !Array.isArray(data?.services)) return;
+        const profileId = typeof data?.profile_id === 'string' && data.profile_id;
+        if (!platform && !Array.isArray(data?.services)) {
+            // A greeting without a POSIX shell, or a probe that found nothing,
+            // changed only the saved host.
+            if (profileId) ProfileManager.loadProfiles();
+            return;
+        }
         const session = SessionManager.sessions[data.session_id];
         if (session && platform) session.detectedPlatform = data.platform;
         window.HostPlatform?.refreshSessionIcons(SessionManager, ProfileManager.profiles);
-        if (data.profile_id) ProfileManager.loadProfiles();
+        if (profileId) ProfileManager.loadProfiles();
     });
 
     // The login recheck found the restart marker gone; reload the saved facts.
