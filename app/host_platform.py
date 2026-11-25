@@ -36,7 +36,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin:/snap/bin
 export LC_ALL PATH
 found() { printf 'service=%s\n' "$1"; }
 if [ -r /etc/os-release ]; then
-  head -c 2048 /etc/os-release 2>/dev/null | awk -F= '$1 ~ /^(ID|ID_LIKE|VERSION_ID|VARIANT_ID)$/ && !seen[$1]++ { print substr($0, 1, 200) }'
+  head -c 2048 /etc/os-release 2>/dev/null | awk -F= '$1 ~ /^(ID|ID_LIKE|VERSION_ID|VARIANT_ID)$/ && seen[$1]++ == 0 { print substr($0, 1, 200) }'
 fi
 printf 'kernel=%s\n' "$(uname -s 2>/dev/null)"
 if [ -r /proc/device-tree/model ]; then
@@ -211,18 +211,27 @@ IDENTITY_SCRIPT = _identity_command(SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS,
 IDENTITY_COMMAND = _one_line(IDENTITY_SCRIPT)
 
 
+# What csh and tcsh take as a history reference, even inside single quotes.
+_HISTORY = re.compile(r'![^ \t(=~]')
+
+
 def _posix_sh(script):
     """A command line that runs script under /bin/sh from any common login shell.
 
     sshd hands an exec request to the user's login shell, which may be fish,
-    csh or tcsh. Single quotes keep their content literal in sh, bash, zsh,
-    fish, csh and tcsh alike, except that fish also reads \\\\ and \\' inside
-    them, zsh with RC_QUOTES reads '' as a quote, and csh and tcsh end the
-    command at a newline. A one-line script without those sequences therefore
-    reaches /bin/sh unchanged in all of them; csh history expansion does not
-    apply to a command given with -c. nu has not been tried.
+    csh or tcsh. The script goes in single quotes, with each quote inside it
+    written as '\\''. That reaches /bin/sh unchanged in sh, bash, zsh, fish,
+    csh and tcsh as long as the script avoids what one of them still reads
+    inside single quotes: \\\\ and \\' (fish), '' (zsh with RC_QUOTES), a
+    newline (csh and tcsh end the command there) and a '!' followed by
+    anything but a blank, '(', '=' or '~' (csh and tcsh history expansion,
+    which tcsh applies also to a command given with -c). A BSD csh with the
+    classic limit of 1024 characters per word refuses the long quoted word;
+    then nothing runs and the host is shown as not determinable. nu has not
+    been tried.
     """
     if ('\\\\' in script or "\\'" in script or "''" in script or '\n' in script or '\r' in script
+            or _HISTORY.search(script) or script.endswith('!')
             or script.startswith("'") or script.endswith(("'", '\\'))):
         raise ValueError('The script cannot be quoted for every login shell')
     return "exec /bin/sh -c '%s'" % script.replace("'", "'\\''")

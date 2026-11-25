@@ -900,6 +900,19 @@ def test_the_probe_is_one_line_for_csh_and_tcsh_login_shells(tmp_path):
             assert result.returncode == 0, (shell, name, result.stderr)
 
 
+def test_the_probe_holds_no_history_expansion_for_csh_and_tcsh():
+    # tcsh expands '!' even inside single quotes and with -c, unless a blank,
+    # '(', '=' or '~' follows; "Event not found" then aborts the whole line.
+    for text in (host_platform.IDENTITY_COMMAND, host_platform.IDENTITY_EXEC):
+        assert not re.search(r'![^ \t(=~]', text), re.search(r'.{0,30}![^ \t(=~].{0,10}', text).group(0)
+        assert not text.endswith('!')
+    for word in ('a!b', '!x', 'x!'):
+        with pytest.raises(ValueError):
+            host_platform._identity_command({word: 'nginx'}, (), {}, {})
+        with pytest.raises(ValueError):
+            host_platform._identity_command({}, (('/opt/' + word, 'redis'),), {}, {})
+
+
 def test_the_one_line_probe_keeps_every_command_of_the_readable_script():
     script = host_platform.IDENTITY_SCRIPT
     lines = [line.strip() for line in script.splitlines() if line.strip()]
@@ -1037,7 +1050,7 @@ def test_identity_probe_runs_under_posix_sh_whatever_the_login_shell():
 
 
 @pytest.mark.parametrize('script', ["printf '\\\\n'", "printf 'a\\'", "printf ''", "'x'", 'x\n\'', 'x\\',
-                                    'a\nb', 'a\rb'])
+                                    'a\nb', 'a\rb', "awk '!seen[$1]++'", 'echo !!', 'x!'])
 def test_the_login_shell_wrapper_refuses_text_fish_would_read_differently(script):
     with pytest.raises(ValueError):
         host_platform._posix_sh(script)

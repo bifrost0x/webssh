@@ -56,8 +56,12 @@ When a saved host in **Automatic** icon mode connects, WebSSH runs one
 read-only probe over a separate SSH channel and stores what it recognised with
 the profile. It runs at connect time only, at most once a week per host, and
 never on a schedule of its own. Quick connections are not probed. The probe
-needs `/bin/sh` on the host and is sent as one line that runs under it from
-sh, bash, zsh, fish, csh or tcsh as the login shell; nu has not been tried.
+needs `/bin/sh` on the host and runs under it from sh, bash, zsh, fish, csh or
+tcsh as the login shell: it is sent as one single-quoted line without the
+characters csh and tcsh would still expand there (a newline, or `!` as a
+history reference). A BSD csh with the classic 1024-character word limit may
+refuse it; then nothing runs and the host is shown as not determinable. nu has
+not been tried.
 
 The probe collects:
 
