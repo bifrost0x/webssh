@@ -57,7 +57,7 @@ def _use_settings_file(monkeypatch, tmp_path):
 def _lift_restriction(monkeypatch, tmp_path):
     """Store the Admin opt-out in a settings file private to the test."""
     app_settings = _use_settings_file(monkeypatch, tmp_path)
-    assert app_settings.set_tailnet_route_restricted(False) is False
+    app_settings.update_admin_settings({'tailscale_ssh_restrict_tailnet_routes': False})
     assert app_settings.is_tailnet_route_restricted() is False
 
 
@@ -166,9 +166,9 @@ def test_admin_toggle_applies_to_the_next_resolution(tailnet, monkeypatch, tmp_p
     app_settings = _use_settings_file(monkeypatch, tmp_path)
     with pytest.raises(TailnetRouteRestricted):
         resolve_allowed_target('100.64.0.10', 22, allow_internal=True)
-    assert app_settings.set_tailnet_route_restricted(False) is False
+    app_settings.update_admin_settings({'tailscale_ssh_restrict_tailnet_routes': False})
     assert resolve_allowed_target('100.64.0.10', 22, allow_internal=True).ip == '100.64.0.10'
-    assert app_settings.set_tailnet_route_restricted(True) is True
+    app_settings.update_admin_settings({'tailscale_ssh_restrict_tailnet_routes': True})
     with pytest.raises(TailnetRouteRestricted):
         resolve_allowed_target('100.64.0.10', 22, allow_internal=True)
 
