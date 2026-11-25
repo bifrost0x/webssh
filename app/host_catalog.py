@@ -102,6 +102,17 @@ SERVICES = frozenset({
     'ollama', 'openwebui',
 })
 MAX_SERVICES = 24
+# When more than MAX_SERVICES are found, the stored list keeps these first:
+# VPN and overlay networks, which say how a host is reached, and one service
+# that names each host role (smart home, cloud, photos, media, passwords,
+# documents, development, monitoring, network filter). Then the other
+# applications and last INFRASTRUCTURE_SERVICES, each group alphabetically.
+# NetBird and Headscale are not in the catalog yet.
+PRIORITY_SERVICES = frozenset({
+    'wireguard', 'tailscale', 'zerotier', 'openvpn',
+    'homeassistant', 'nextcloud', 'immich', 'jellyfin', 'vaultwarden', 'paperless', 'gitea', 'grafana',
+    'pihole',
+})
 # Runtimes, web servers and databases that many hosts run under the
 # applications that tell them apart. When more than MAX_SERVICES are found,
 # these are the ones left out first.

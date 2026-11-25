@@ -74,8 +74,11 @@ The probe collects:
 - the virtualization kind (bare metal, VM, LXC, container or WSL), whether the
   system boots into a graphical target and, on Proxmox VE, the number of guests;
 - known services from active systemd units, fixed install paths and snaps, at
-  most 24 per host; on a host with more, container runtimes, web servers and
-  databases are left out before the applications;
+  most 24 per host; on a host with more, VPN and overlay networks (WireGuard,
+  Tailscale, ZeroTier, OpenVPN) and one service per host role (for example
+  Home Assistant, Nextcloud, Immich, Jellyfin, Vaultwarden) are kept first,
+  then the other applications, and container runtimes, web servers and
+  databases are left out first;
 - where the SSH user may already use Docker or Podman without sudo, the image
   names of running containers, mapped to known services, and whether that
   access worked. Both are asked only through an existing local daemon socket

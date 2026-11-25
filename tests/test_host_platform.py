@@ -112,6 +112,24 @@ def test_a_long_service_list_drops_generic_infrastructure_first():
     assert few == ['docker', 'immich']
 
 
+def test_a_long_application_list_keeps_network_and_role_services_first():
+    applications = sorted(host_catalog.SERVICES - host_catalog.INFRASTRUCTURE_SERVICES)
+    assert len(applications) > host_catalog.MAX_SERVICES
+    result = host_platform.parse_identity('kernel=Linux\n' + ''.join('service=%s\n' % name for name in applications))
+    kept = result['services']
+    top = host_catalog.PRIORITY_SERVICES
+    # Small enough to leave room for ten other applications.
+    assert top <= set(kept) and len(top) <= host_catalog.MAX_SERVICES - 10
+    assert {'wireguard', 'tailscale', 'zerotier', 'openvpn'} <= top
+    generic = sorted(set(applications) - top)
+    assert set(kept) - top == set(generic[:host_catalog.MAX_SERVICES - len(top)])
+    assert kept == sorted(kept)
+    # The same facts in another order give the same list.
+    shuffled = 'kernel=Linux\n' + ''.join('service=%s\n' % name for name in reversed(applications))
+    assert host_platform.parse_identity(shuffled)['services'] == kept
+    assert not top & host_catalog.INFRASTRUCTURE_SERVICES and top <= host_catalog.SERVICES
+
+
 @pytest.mark.parametrize('facts, expected', [
     ('', None),
     ('service=docker', None),

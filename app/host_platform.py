@@ -4,7 +4,7 @@ import threading
 import time
 
 from .host_catalog import (
-    PLATFORMS, SERVICES, MAX_SERVICES, INFRASTRUCTURE_SERVICES, NON_POSIX_PLATFORMS, CONTAINER_ACCESS, VIRT_KINDS,
+    PLATFORMS, SERVICES, MAX_SERVICES, PRIORITY_SERVICES, INFRASTRUCTURE_SERVICES, NON_POSIX_PLATFORMS, CONTAINER_ACCESS, VIRT_KINDS,
     SERVICE_UNITS, SERVICE_UNIT_TEMPLATES, SERVICE_PATHS, SERVICE_SNAPS, SERVICE_IMAGES,
     FAMILIES, KERNEL_PLATFORMS, MARKER_PLATFORMS, OS_ID_PLATFORMS, VIRT_MAP,
 )
@@ -456,7 +456,8 @@ def parse_identity(text, *, max_bytes=8192):
             engine, state = _ENGINES[value]
             services.add(engine)
             access.add(state)
-    kept = sorted(services, key=lambda name: (name in INFRASTRUCTURE_SERVICES, name))[:MAX_SERVICES]
+    rank = (lambda name: 0 if name in PRIORITY_SERVICES else 2 if name in INFRASTRUCTURE_SERVICES else 1)
+    kept = sorted(services, key=lambda name: (rank(name), name))[:MAX_SERVICES]
     result['services'] = sorted(kept)
     # 'denied' also covers a stopped daemon or a timeout; one readable engine is enough for 'ok'.
     if 'ok' in access:
