@@ -30,6 +30,8 @@ const DECODE_VECTORS = [
     ['AQIDBA', [1, 2, 3, 4]]
 ];
 
+const AUTHENTICATOR_DATA_BYTES = Array.from({ length: 37 }, (_, index) => (index * 7) & 0xff);
+
 const EXPECTED_ASSERTION = {
     id: '-_8AAT4_',
     rawId: '-_8AAT4_',
@@ -38,7 +40,7 @@ const EXPECTED_ASSERTION = {
     clientExtensionResults: { credProps: { rk: true } },
     response: {
         clientDataJSON: 'eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiYWJjIn0',
-        authenticatorData: 'AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK-2vcTL0tng5-71_A',
+        authenticatorData: Buffer.from(AUTHENTICATOR_DATA_BYTES).toString('base64url'),
         signature: '__79gH8APg',
         userHandle: 'AQIDBA'
     }
@@ -62,9 +64,7 @@ function fixedAssertion(userHandle) {
         response: {
             clientDataJSON: new TextEncoder()
                 .encode('{"type":"webauthn.get","challenge":"abc"}').buffer,
-            authenticatorData: buffer(
-                Array.from({ length: 37 }, (_, index) => (index * 7) & 0xff)
-            ),
+            authenticatorData: buffer(AUTHENTICATOR_DATA_BYTES),
             signature: buffer([0xff, 0xfe, 0xfd, 0x80, 0x7f, 0x00, 0x3e]),
             userHandle
         }

@@ -1,5 +1,6 @@
 """Encrypted TOTP enrollment, activation, and replay protection."""
 
+import base64
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -246,7 +247,7 @@ def test_totp_commit_failure_logs_without_touching_the_failed_session(
 # Reference values captured from PyOTP 2.12.1 before it was dropped.
 _REFERENCE_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
 _REFERENCE_CODES = ((0, "702218"), (1, "503347"), (59_259_259, "671954"))
-_RFC6238_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"  # b"12345678901234567890"
+_RFC6238_SECRET = base64.b32encode(b"12345678901234567890").decode("ascii")
 
 
 @pytest.mark.parametrize(("step", "expected"), _REFERENCE_CODES)
