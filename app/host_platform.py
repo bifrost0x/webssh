@@ -95,19 +95,25 @@ printf '%s\n' "$images" | sed '/^$/d' | sort -u | head -n 100 | cut -c1-120 | aw
 # to other hosts, and the podman-docker shim would start rootless podman.
 # podman-docker also links docker.sock to the Podman API socket; such a link
 # names Podman, which is then asked through that socket like its own.
+# Under systemd a socket unit (docker.socket, podman.socket) starts a stopped
+# daemon on the first connection, so an engine is asked only while its
+# service already runs; rootless sockets belong to the user's own manager.
 _DOCKER_BLOCK = r"""dsock=
+active() { [ ! -d /run/systemd/system ] || ! command -v systemctl >/dev/null 2>&1 || systemctl -q is-active "$@"; }
+du=
 if [ -S /var/run/docker.sock ]; then dsock=/var/run/docker.sock
-elif [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/docker.sock" ]; then dsock=$XDG_RUNTIME_DIR/docker.sock
+elif [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/docker.sock" ]; then dsock=$XDG_RUNTIME_DIR/docker.sock; du=--user
 fi
 psock=
+pu=
 if [ -n "$dsock" ] && [ -h "$dsock" ] && command -v readlink >/dev/null 2>&1; then
   case $(readlink "$dsock" 2>/dev/null | head -c 256) in
-    *podman*) psock=$dsock; dsock= ;;
+    *podman*) psock=$dsock; pu=$du; dsock= ;;
   esac
 fi
 if [ -n "$dsock" ]; then
   found docker
-  if command -v docker >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+  if command -v docker >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1 && active $du docker.service; then
     if out=$(timeout 1 docker -H "unix://$dsock" ps --format '{{.Image}}' 2>/dev/null); then
       printf 'engine=docker:ok\n'
       images=$(printf '%s\n%s' "$images" "$out")
@@ -122,10 +128,10 @@ fi"""
 _PODMAN_BLOCK = r"""if [ -n "$psock" ] || command -v podman >/dev/null 2>&1; then
   sock=$psock
   if [ -z "$sock" ] && [ -S /run/podman/podman.sock ]; then sock=/run/podman/podman.sock
-  elif [ -z "$sock" ] && [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]; then sock=$XDG_RUNTIME_DIR/podman/podman.sock
+  elif [ -z "$sock" ] && [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]; then sock=$XDG_RUNTIME_DIR/podman/podman.sock; pu=--user
   fi
   found podman
-  if [ -n "$sock" ] && command -v podman >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+  if [ -n "$sock" ] && command -v podman >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1 && active $pu podman.service; then
     if out=$(timeout 1 podman --remote --url "unix://$sock" ps --format '{{.Image}}' 2>/dev/null); then
       printf 'engine=podman:ok\n'
       images=$(printf '%s\n%s' "$images" "$out")

@@ -1516,6 +1516,37 @@ def test_every_docker_query_in_the_module_names_a_unix_socket():
                            for match in queries), [match.group(0) for match in queries]
 
 
+def _query_condition(engine):
+    """The if line that guards the container listing of engine in the readable probe."""
+    script = host_platform.IDENTITY_SCRIPT.splitlines()
+    query = next(index for index, line in enumerate(script) if 'timeout 1 %s ' % engine in line)
+    return next(line.strip() for line in reversed(script[:query]) if line.strip().startswith('if '))
+
+
+def test_container_engines_are_asked_only_while_their_service_runs():
+    # A socket unit (docker.socket, podman.socket) would start a stopped daemon
+    # for the query, so with systemd the service must already be active.
+    command = host_platform.IDENTITY_COMMAND
+    assert ('active() { [ ! -d /run/systemd/system ] || ! command -v systemctl >/dev/null 2>&1 '
+            '|| systemctl -q is-active "$@"; }') in command
+    assert _query_condition('docker').endswith('&& active $du docker.service; then')
+    assert _query_condition('podman').endswith('&& active $pu podman.service; then')
+    # Rootless sockets belong to the user's own service manager.
+    assert 'dsock=$XDG_RUNTIME_DIR/docker.sock; du=--user' in command
+    assert 'sock=$XDG_RUNTIME_DIR/podman/podman.sock; pu=--user' in command
+    assert '*podman*) psock=$dsock; pu=$du; dsock= ;;' in command
+    # systemctl is only ever asked, never told to start, stop or reload anything.
+    assert set(re.findall(r'systemctl (-q is-active|[a-z-]+)', command)) == {'-q is-active', 'get-default', 'list-units'}
+
+
+def test_presence_of_a_container_engine_needs_no_running_service():
+    script = host_platform.IDENTITY_SCRIPT
+    for engine in ('docker', 'podman'):
+        found = script.index('found %s' % engine)
+        assert 'is-active' not in script[script.rindex('\nif ', 0, found):found]
+        assert script.index('found %s' % engine) < script.index('active $%su %s.service' % (engine[0], engine))
+
+
 def test_container_queries_leave_room_within_the_deadline():
     limits = re.findall(r'timeout (\d+) (docker|podman)', host_platform.IDENTITY_COMMAND)
     assert sorted(engine for _, engine in limits) == ['docker', 'podman']
