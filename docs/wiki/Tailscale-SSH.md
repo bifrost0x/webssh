@@ -57,7 +57,11 @@ interface proof applies only to a direct connection from the WebSSH host.
 The admin setting **Block ordinary SSH to tailnet nodes** (Admin →
 Integrations) is enabled by default and takes effect only while
 `TAILSCALE_SSH_ENABLED=true` and `TAILSCALE_SSH_INTERFACE` is set. A change
-applies to the next connection without a restart, requires admin
+applies to the next connection without a restart. Turning the block on also
+closes open terminal sessions and file-transfer connections it would now
+refuse, judged by the address each was pinned to when it opened; tmux sessions
+are detached, not ended. Tailscale SSH sessions stay open, and an automation
+run already in progress finishes. A change requires admin
 reauthentication, and is recorded in the security audit log as
 `APPLICATION_FEATURE_CHANGED` with
 `feature=tailscale_ssh_restrict_tailnet_routes`. It

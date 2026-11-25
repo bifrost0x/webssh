@@ -210,6 +210,7 @@ class TemporaryConnectionPool:
                     'user_id': user_id,
                     'host': host,
                     'port': port,
+                    'peer_ip': target.ip,
                     'username': username,
                     'quota_reservation': reservation,
                     'hold_count': 0,
@@ -528,6 +529,27 @@ class TemporaryConnectionPool:
         detached = self._detach_connections(
             lambda _connection_id, conn: conn['user_id'] == user_id,
             defer_held=defer_held,
+        )
+        self._close_detached_connections(detached)
+        return len(detached)
+
+    def close_connections_where(self, restricted):
+        """Close connections whose pinned peer address ``restricted`` matches.
+
+        ``restricted`` runs outside the registry lock because it may query
+        the kernel route table. Held connections close too, as on revocation.
+        """
+        with self.lock:
+            peers = {
+                connection_id: conn.get('peer_ip')
+                for connection_id, conn in self.connections.items()
+            }
+        matched = {
+            connection_id for connection_id, peer_ip in peers.items()
+            if restricted(peer_ip)
+        }
+        detached = self._detach_connections(
+            lambda connection_id, _conn: connection_id in matched
         )
         self._close_detached_connections(detached)
         return len(detached)

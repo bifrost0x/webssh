@@ -121,16 +121,20 @@ def check_relay_endpoint(target):
     """
     if _active_tailnet_restriction() is None:
         return
-    address = ipaddress.ip_address(target.ip)
+    if _relay_address_restricted(target.ip):
+        raise TailnetRouteRestricted(_RELAY_MESSAGE)
+
+
+def _relay_address_restricted(ip):
+    address = ipaddress.ip_address(ip)
     if address.version == 6 and address.ipv4_mapped is not None:
         address = address.ipv4_mapped
     if address.is_loopback or address.is_unspecified:
-        raise TailnetRouteRestricted(_RELAY_MESSAGE)
+        return True
     from . import tailscale_ssh
     # The kernel routes this host's own addresses through the local table,
     # whose output interface is the loopback device.
-    if tailscale_ssh._route_interface_for_ip(address.compressed) in (None, 'lo'):
-        raise TailnetRouteRestricted(_RELAY_MESSAGE)
+    return tailscale_ssh._route_interface_for_ip(address.compressed) in (None, 'lo')
 
 
 def check_remote_name(hostname):
@@ -157,6 +161,29 @@ def check_remote_name(hostname):
             continue
         if restricted:
             raise TailnetRouteRestricted(_REMOTE_NAME_MESSAGE)
+
+
+def open_route_restricted(peer_ip, relay_destination=None):
+    """Return whether an open ordinary connection uses a now refused route.
+
+    ``peer_ip`` is the address the connection was pinned to: the target, or
+    the jump host or SOCKS5 proxy when ``relay_destination`` names what the
+    relay connects to. Applies the checks a new connection would pass; an
+    unknown or unparsable address is treated as restricted.
+    """
+    if _active_tailnet_restriction() is None:
+        return False
+    try:
+        if peer_ip is None or _tailnet_route_restricted(peer_ip):
+            return True
+        if relay_destination is None:
+            return False
+        if _relay_address_restricted(peer_ip):
+            return True
+        check_remote_name(relay_destination)
+    except ValueError:
+        return True
+    return False
 
 
 def canonicalize_hostname(hostname):

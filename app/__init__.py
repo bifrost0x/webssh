@@ -2039,6 +2039,9 @@ def create_app(
                 level=logging.WARNING if weakened else logging.INFO,
                 admin=current_user.username, feature=name, enabled=val,
             )
+        if results.get('tailscale_ssh_restrict_tailnet_routes') == (False, True):
+            from .tailscale_ssh import close_restricted_tailnet_connections
+            close_restricted_tailnet_connections(socketio)
         for name in SIGN_IN_PROTECTION_BOUNDS:
             if name not in results:
                 continue

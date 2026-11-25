@@ -684,3 +684,141 @@ def test_interface_presence_uses_the_kernel_interface_table(monkeypatch):
     monkeypatch.setattr(socket, 'if_nametoindex', nametoindex)
     assert tailscale_ssh._interface_present('tailscale0') is True
     assert tailscale_ssh._interface_present('missing0') is False
+
+
+# Open connections when the block is turned on ------------------------------
+
+class FakeSocketIO:
+    def __init__(self):
+        self.emitted = []
+
+    def emit(self, event, data, room=None):
+        self.emitted.append((event, data, room))
+
+
+class TrustingHostKeyStore:
+    """Host key trust is not under test; skip the per-user known_hosts store."""
+
+    def __init__(self, user_id, *_args, **_kwargs):
+        self.user_id = int(user_id)
+
+    def load_into(self, _client):
+        pass
+
+    def missing_key_policy(self, *_args, **_kwargs):
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _close_test_sessions():
+    yield
+    from app import ssh_manager
+    for session_id in list(ssh_manager.sessions):
+        ssh_manager.close_session(session_id)
+
+
+def _open_sessions(monkeypatch, tmp_path):
+    """Open one terminal session per route while the block is lifted."""
+    from app import connection_pool, ssh_manager
+    from app.quota_manager import QuotaKind, QuotaManager
+    from tests.test_ssh_manager import connect_target, socks_route
+    _lift_restriction(monkeypatch, tmp_path)
+    _ssh_clients(monkeypatch)
+    monkeypatch.setattr(ssh_manager, 'HostKeyStore', TrustingHostKeyStore)
+    monkeypatch.setattr(connection_pool, 'HostKeyStore', TrustingHostKeyStore)
+    monkeypatch.setattr(ssh_manager, 'quota_manager', QuotaManager(
+        {kind: {'global': 100, 'per_user': 50} for kind in QuotaKind}))
+    monkeypatch.setattr(ssh_manager, 'open_socks5_tunnel', lambda sock, _destination, **_kw: sock)
+    jump = dict(proxy_jump_host='203.0.113.7', proxy_jump_username='ops', proxy_jump_password='dummy')
+    routes = {
+        'direct_node': dict(host='100.64.0.10'),
+        'direct_lan': dict(host='192.168.1.5'),
+        'socks_to_node': dict(host='100.64.0.11', socks_proxy=socks_route(host='192.168.1.9')),
+        'socks_on_host': dict(host='192.168.1.5', socks_proxy=socks_route(host='127.0.0.1')),
+        'socks_to_lan': dict(host='192.168.1.6', socks_proxy=socks_route(host='192.168.1.9')),
+        'jump_to_node': dict(host='100.64.0.12', **jump),
+        'jump_to_lan': dict(host='192.168.1.7', **jump),
+    }
+    sessions = {}
+    for name, route in routes.items():
+        session_id, error = connect_target(password='dummy', **route)
+        assert error is None, name
+        sessions[name] = session_id
+    return sessions
+
+
+def test_open_sessions_record_their_pinned_route(tailnet, monkeypatch, tmp_path):
+    from app import ssh_manager
+    sessions = _open_sessions(monkeypatch, tmp_path)
+    recorded = {name: (ssh_manager.sessions[session_id]['peer_ip'],
+                       ssh_manager.sessions[session_id]['relay_destination'])
+                for name, session_id in sessions.items()}
+    assert recorded['direct_node'] == ('100.64.0.10', None)
+    assert recorded['socks_to_node'] == ('192.168.1.9', '100.64.0.11')
+    assert recorded['jump_to_node'] == ('203.0.113.7', '100.64.0.12')
+
+
+def test_turning_the_block_on_closes_restricted_open_connections(app, tailnet, monkeypatch, tmp_path):
+    from app import app_settings, connection_pool, ssh_manager
+    from tests.test_connection_pool import create_connection, install_ssh_client, make_pool
+    from tests.test_ssh_manager import connect_target
+    sessions = _open_sessions(monkeypatch, tmp_path)
+    tailscale_id, error = connect_target(host='192.168.1.8', password='dummy')
+    assert error is None
+    # A Tailscale SSH session to a node address is the permitted route.
+    ssh_manager.sessions[tailscale_id].update(auth_type='tailscale', peer_ip='100.64.0.13')
+
+    pool = make_pool()
+    monkeypatch.setattr(connection_pool, 'temp_connection_pool', pool)
+    install_ssh_client(monkeypatch)
+    monkeypatch.setattr(connection_pool, 'resolve_allowed_target', resolve_allowed_target)
+    _node_pool, error = create_connection(pool, host='100.64.0.10', password='dummy')
+    assert error is None
+    lan_pool, error = create_connection(pool, host='192.168.1.5', password='dummy')
+    assert error is None
+
+    assert app_settings.set_tailnet_route_restricted(True) is True
+    socketio = FakeSocketIO()
+    with app.app_context():
+        result = tailscale_ssh.close_restricted_tailnet_connections(socketio)
+
+    closed = {'direct_node', 'socks_to_node', 'socks_on_host', 'jump_to_node'}
+    assert result == {'ssh_sessions': len(closed), 'pool_connections': 1, 'errors': 0}
+    assert {name for name, sid in sessions.items() if sid not in ssh_manager.sessions} == closed
+    assert tailscale_id in ssh_manager.sessions
+    assert set(pool.connections) == {lan_pool}
+    notified = sorted(data['session_id'] for event, data, room in socketio.emitted
+                      if event == 'ssh_disconnected' and room == 'user_7')
+    assert notified == sorted(sessions[name] for name in closed)
+
+
+def test_unknown_pinned_route_is_treated_as_restricted(tailnet):
+    assert network_policy.open_route_restricted(None) is True
+    assert network_policy.open_route_restricted('192.168.1.5') is False
+    tailnet.routes['192.168.1.9'] = None
+    assert network_policy.open_route_restricted('192.168.1.9', '192.168.1.5') is True
+
+
+def test_open_connections_stay_without_an_active_block(app, tailnet, monkeypatch, tmp_path):
+    from app import ssh_manager
+    sessions = _open_sessions(monkeypatch, tmp_path)
+    with app.app_context():
+        result = tailscale_ssh.close_restricted_tailnet_connections(FakeSocketIO())
+    assert result == {'ssh_sessions': 0, 'pool_connections': 0, 'errors': 0}
+    assert all(session_id in ssh_manager.sessions for session_id in sessions.values())
+
+
+def test_admin_enabling_the_block_sweeps_open_connections(app, client, tailnet, monkeypatch):
+    from tests.step_up_helpers import password_step_up_headers
+    from tests.test_admin_routes import _prepare_role
+    calls = []
+    monkeypatch.setattr(tailscale_ssh, 'close_restricted_tailnet_connections',
+                        lambda socketio_instance=None: calls.append(socketio_instance))
+    _prepare_role(app, client, 'admin')
+    for enabled in (True, False, False, True):
+        response = client.post('/admin/api/settings',
+            json={'tailscale_ssh_restrict_tailnet_routes': enabled},
+            headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+        assert response.status_code == 200
+    # Only the change from off to on sweeps; the block starts out on.
+    assert len(calls) == 1
