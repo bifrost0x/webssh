@@ -116,15 +116,15 @@ def test_platform_cache_is_endpoint_scoped_and_override_persists(app):
         profile, error = profile_manager.upsert_profile(user_id, payload)
         assert error is None
         assert profile['platform_icon'] == 'proxmox'
-        assert profile_manager.cache_detected_platform(user_id, profile['id'], host_platform.endpoint(profile), 'ubuntu')
+        assert profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile), identity=_identity(platform='ubuntu'))
         saved = profile_manager.get_profile(user_id, profile['id'])
         assert saved['detected_platform'] == 'ubuntu'
-        assert not profile_manager.cache_detected_platform(user_id + 1, profile['id'], host_platform.endpoint(profile), 'debian')
+        assert not profile_manager.cache_detected_facts(user_id + 1, profile['id'], host_platform.endpoint(profile), identity=_identity())
         changed, error = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], host='other.test'))
         assert error is None
         assert 'detected_platform' not in changed
         assert changed['platform_icon'] == 'proxmox'
-        assert not profile_manager.cache_detected_platform(user_id, profile['id'], host_platform.endpoint(profile), 'debian')
+        assert not profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile), identity=_identity())
 
 
 def test_invalid_platform_override_rejected(app):
@@ -385,7 +385,7 @@ def test_detection_runs_once_per_saved_host_in_automatic_mode(app, monkeypatch, 
                                                                   **{k: v for k, v in stored.items() if k == 'platform_icon'}))
         # A platform from before the identity probe has no check time and is probed once more.
         if 'detected_platform' in stored:
-            assert profile_manager.cache_detected_platform(user_id, profile['id'], host_platform.endpoint(profile), stored['detected_platform'])
+            _store(app, user_id, profile['id'], detected_platform=stored['detected_platform'])
         if 'identity' in stored:
             assert profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile), identity=_identity())
         monkeypatch.setitem(ssh_manager.sessions, 'platform-once', dict(profile, connected=True, user_id=user_id, profile_id=profile['id']))

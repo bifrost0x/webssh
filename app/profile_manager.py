@@ -1155,23 +1155,3 @@ def settle_reboot_hint(user_id, profile_id, expected_endpoint, checked_at, *, cl
                 profile['detected_maintenance'] = {**facts, **change}
                 return save_profiles(user_id, profiles, previous_count=len(profiles))
     return False
-
-
-@user_operation
-def cache_detected_platform(user_id, profile_id, expected_endpoint, platform):
-    """Merge only platform facts into the current owned profile under its lock."""
-    if expected_endpoint is None or platform not in PLATFORMS:
-        return False
-    with storage_lock(f'command-config:{user_id}'):
-        with storage_lock(f'profiles:{user_id}'):
-            profiles, error = _load_profiles_for_write(user_id)
-            if error:
-                return False
-            for profile in profiles:
-                if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
-                    continue
-                if profile.get('detected_platform') == platform:
-                    return True
-                profile['detected_platform'] = platform
-                return save_profiles(user_id, profiles, previous_count=len(profiles))
-    return False

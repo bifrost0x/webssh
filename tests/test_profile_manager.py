@@ -372,9 +372,9 @@ def test_herdr_options_survive_other_profile_writers_and_a_file_copy(app):
         _, error = profile_manager.update_profile_organization(
             source, profile['id'], {'group': 'Agents', 'favorite': True})
         assert error is None
-        assert profile_manager.cache_detected_platform(
-            source, profile['id'], (profile['host'], profile['port'], profile['username']), 'debian',
-        ) in (True, False)
+        from app.host_platform import endpoint
+        from tests.test_host_platform import _identity
+        assert profile_manager.cache_detected_facts(source, profile['id'], endpoint(profile), identity=_identity())
         stored = profile_manager.load_profiles(source)[0]
         assert stored['herdr'] is True and stored['use_herdr'] is True
         assert stored['group'] == 'Agents' and stored['favorite'] is True
