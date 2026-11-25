@@ -7,7 +7,7 @@ import uuid
 import socket
 import codecs
 from dataclasses import dataclass, field, replace
-from threading import Lock, Timer
+from threading import Lock
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from .host_key_store import HostKeyStore, HostKeyNotAccepted
@@ -120,30 +120,8 @@ def _authentication_banner_accepted(transport, decision_callback, context):
         return False
 
 
-def _open_exec_channel(transport, command, *, timeout, pty=None, before_exec=None):
-    """Open a bounded exec channel for a reviewed, fully quoted command."""
-    deadline = time.monotonic() + timeout
-    channel = transport.open_session(timeout=timeout)
-    remaining = max(0, deadline - time.monotonic())
-    channel.settimeout(remaining)
-    timeout_guard = Timer(remaining, channel.close)
-    timeout_guard.daemon = True
-    timeout_guard.start()
-    try:
-        if pty is not None:
-            channel.get_pty(*pty)
-        if time.monotonic() >= deadline:
-            raise TimeoutError('SSH command deadline exceeded')
-        if before_exec is not None:
-            before_exec()
-        # Intentional SSH command boundary; callers provide reviewed quoting.
-        channel.exec_command(command)  # nosec B601
-    except Exception:
-        channel.close()
-        raise
-    finally:
-        timeout_guard.cancel()
-    return channel
+# Kept as a module attribute so callers and tests can replace it.
+_open_exec_channel = paramiko_channels.open_exec_channel
 
 
 def _probe_tmux_session(session):

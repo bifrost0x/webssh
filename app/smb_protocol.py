@@ -372,10 +372,7 @@ def _open_raw(
         return raw
     except BaseException:
         if raw is not None:
-            try:
-                raw.close()
-            except Exception:
-                pass
+            _close_quietly(raw)
         raise
 
 
@@ -405,11 +402,53 @@ def _open_untyped_raw(
         return raw
     except BaseException:
         if raw is not None:
-            try:
-                raw.close()
-            except Exception:
-                pass
+            _close_quietly(raw)
         raise
+
+
+def _close_quietly(handle):
+    """Close ``handle`` during cleanup without masking the original error."""
+    try:
+        handle.close()
+    except Exception:
+        pass
+
+
+_LIST_ACCESS = int(
+    DirectoryAccessMask.FILE_LIST_DIRECTORY
+    | DirectoryAccessMask.FILE_READ_ATTRIBUTES
+)
+_READ_ATTRIBUTES_ACCESS = int(FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES)
+# Access requested for the final path component per purpose. A directory pin
+# only reads metadata and retains the verified handle, so traversing through
+# the pinned leaf is neither required nor requested. Other purposes
+# (including 'stat') read attributes only.
+_LEAF_ACCESS = {
+    'directory': _LIST_ACCESS,
+    'directory_pin': _READ_ATTRIBUTES_ACCESS,
+    'file_read': int(
+        FilePipePrinterAccessMask.FILE_READ_DATA
+        | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
+    ),
+    'file_move': int(
+        FilePipePrinterAccessMask.DELETE
+        | FilePipePrinterAccessMask.FILE_READ_DATA
+        | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
+    ),
+    'rename': int(
+        FilePipePrinterAccessMask.DELETE
+        | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
+    ),
+    'delete': int(
+        FilePipePrinterAccessMask.DELETE
+        | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
+    ),
+    'delete_read_only': int(
+        FilePipePrinterAccessMask.DELETE
+        | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
+        | FilePipePrinterAccessMask.FILE_WRITE_ATTRIBUTES
+    ),
+}
 
 
 def _open_verified_path(
@@ -440,48 +479,9 @@ def _open_verified_path(
             raise SMBProtocolError('OPERATION_FAILED')
         expected = tuple(_stable_identity(value) for value in expected)
 
-    list_access = int(
-        DirectoryAccessMask.FILE_LIST_DIRECTORY
-        | DirectoryAccessMask.FILE_READ_ATTRIBUTES
-    )
-    read_attributes = int(FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES)
-
-    def leaf_access():
-        if purpose == 'directory':
-            return list_access
-        if purpose == 'directory_pin':
-            # A pin only reads metadata and retains the verified handle. Keep
-            # the baseline ACL contract: traversing through the pinned leaf is
-            # neither required nor requested.
-            return read_attributes
-        if purpose == 'file_read':
-            return int(
-                FilePipePrinterAccessMask.FILE_READ_DATA
-                | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
-            )
-        if purpose == 'file_move':
-            return int(
-                FilePipePrinterAccessMask.DELETE
-                | FilePipePrinterAccessMask.FILE_READ_DATA
-                | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
-            )
-        if purpose == 'rename':
-            return int(
-                FilePipePrinterAccessMask.DELETE
-                | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
-            )
-        if purpose == 'delete':
-            return int(
-                FilePipePrinterAccessMask.DELETE
-                | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
-            )
-        if purpose == 'delete_read_only':
-            return int(
-                FilePipePrinterAccessMask.DELETE
-                | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
-                | FilePipePrinterAccessMask.FILE_WRITE_ATTRIBUTES
-            )
-        return read_attributes
+    list_access = _LIST_ACCESS
+    read_attributes = _READ_ATTRIBUTES_ACCESS
+    leaf_access = _LEAF_ACCESS.get(purpose, read_attributes)
 
     root_access = (
         list_access
@@ -554,28 +554,19 @@ def _open_verified_path(
                         ):
                             raise SMBProtocolError('CONFLICT')
                     except BaseException:
-                        try:
-                            pin.close()
-                        except Exception:
-                            pass
+                        _close_quietly(pin)
                         raise
                     pinned.append((pin_path, pin, pin_info))
             except BaseException:
                 for _pin_path, pin, _pin_info in reversed(pinned):
-                    try:
-                        pin.close()
-                    except Exception:
-                        pass
+                    _close_quietly(pin)
                 raise
 
             try:
                 current.close()
             except BaseException:
                 for _pin_path, pin, _pin_info in reversed(pinned):
-                    try:
-                        pin.close()
-                    except Exception:
-                        pass
+                    _close_quietly(pin)
                 raise
 
             opaque_records.extend(pinned)
@@ -603,7 +594,7 @@ def _open_verified_path(
                     opaque = True
 
             if opaque:
-                desired_access = leaf_access() if is_leaf else read_attributes
+                desired_access = leaf_access if is_leaf else read_attributes
                 if not is_leaf:
                     child = _open_raw(
                         child_path,
@@ -662,10 +653,7 @@ def _open_verified_path(
                     ):
                         raise SMBProtocolError('CONFLICT')
                 except BaseException:
-                    try:
-                        child.close()
-                    except Exception:
-                        pass
+                    _close_quietly(child)
                     raise
                 identity_chain.append(info.file_id)
                 opaque_records.append((child_path, child, info))
@@ -700,7 +688,7 @@ def _open_verified_path(
             ):
                 raise SMBProtocolError('CONFLICT')
 
-            desired_access = leaf_access() if is_leaf else list_access
+            desired_access = leaf_access if is_leaf else list_access
             try:
                 child = _open_raw(
                     child_path,
@@ -742,10 +730,7 @@ def _open_verified_path(
                 if _verified_directory_flag(info) != is_directory:
                     raise SMBProtocolError('CONFLICT')
             except BaseException:
-                try:
-                    child.close()
-                except Exception:
-                    pass
+                _close_quietly(child)
                 raise
 
             if opaque:
@@ -754,10 +739,7 @@ def _open_verified_path(
                 try:
                     current.close()
                 except BaseException:
-                    try:
-                        child.close()
-                    except Exception:
-                        pass
+                    _close_quietly(child)
                     raise
             current = child
             current_info = info
@@ -801,15 +783,9 @@ def _open_verified_path(
             if id(held) in closed:
                 continue
             closed.add(id(held))
-            try:
-                held.close()
-            except Exception:
-                pass
+            _close_quietly(held)
         if id(current) not in closed:
-            try:
-                current.close()
-            except Exception:
-                pass
+            _close_quietly(current)
         raise
 
 
@@ -832,10 +808,7 @@ class _VerifiedDirectoryIterator:
         try:
             self._iterator = _directory_entries(raw, '*')
         except BaseException:
-            try:
-                raw.close()
-            except Exception:
-                pass
+            _close_quietly(raw)
             raise
         self.identity = info.file_id
         self.identity_chain = info.identity_chain
@@ -902,10 +875,7 @@ class _VerifiedDirectoryIterator:
             )
         except BaseException as exc:
             if child is not None:
-                try:
-                    child.close()
-                except Exception:
-                    pass
+                _close_quietly(child)
             if isinstance(exc, Exception):
                 mapped = _mapped_protocol_error(exc)
                 if mapped is not None:
@@ -916,14 +886,8 @@ class _VerifiedDirectoryIterator:
         if self.closed:
             return
         self.closed = True
-        try:
-            self._iterator.close()
-        except Exception:
-            pass
-        try:
-            self._raw.close()
-        except Exception:
-            pass
+        _close_quietly(self._iterator)
+        _close_quietly(self._raw)
 
 
 def _verified_scandir(path, *, expected_identities=None, **kwargs):
@@ -1002,10 +966,7 @@ def _create_file_handle(path, *, allow_move=False, **connection_kwargs):
         return raw
     except BaseException:
         if raw is not None:
-            try:
-                raw.close()
-            except Exception:
-                pass
+            _close_quietly(raw)
         raise
 
 
@@ -1588,10 +1549,7 @@ class SMBProtocolSession:
         finally:
             with self._lock:
                 for handle in reversed(handles):
-                    try:
-                        handle.close()
-                    except Exception:
-                        pass
+                    _close_quietly(handle)
 
     @contextmanager
     def pin_mutation_ancestors(self, paths, *, expected_identities=None):
@@ -1616,10 +1574,7 @@ class SMBProtocolSession:
         try:
             next(iter(iterator), None)
         finally:
-            try:
-                iterator.close()
-            except Exception:
-                pass
+            _close_quietly(iterator)
 
         access = {'list': 'granted'}
         probes = (
@@ -1649,10 +1604,7 @@ class SMBProtocolSession:
                 access[name] = 'unknown'
             finally:
                 if handle is not None:
-                    try:
-                        handle.close()
-                    except Exception:
-                        pass
+                    _close_quietly(handle)
         return access
 
     def close(self):

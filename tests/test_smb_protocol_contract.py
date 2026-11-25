@@ -2736,3 +2736,59 @@ def test_verified_delete_handles_disappearing_read_only_flag(monkeypatch):
         smb_protocol._verified_delete(r'\\server\Docs\file.txt')
 
     assert error.value.public_code == 'CONFLICT'
+
+
+@pytest.mark.parametrize(
+    ('purpose', 'leaf_is_directory', 'expected_access'),
+    [
+        ('directory', True, 0x1 | 0x80),
+        ('directory_pin', True, 0x80),
+        ('file_read', False, 0x1 | 0x80),
+        ('file_move', False, 0x10000 | 0x1 | 0x80),
+        ('rename', False, 0x10000 | 0x80),
+        ('delete', False, 0x10000 | 0x80),
+        ('delete_read_only', False, 0x10000 | 0x80 | 0x100),
+        ('stat', False, 0x80),
+    ],
+)
+def test_leaf_access_masks_per_purpose(
+    monkeypatch, purpose, leaf_is_directory, expected_access,
+):
+    from app import smb_protocol
+
+    root = r'\\server\Docs'
+    leaf = root + r'\leaf'
+    opened = []
+
+    class Handle:
+        def __init__(self, path):
+            self.path = path
+
+        def close(self):
+            return None
+
+    def open_raw(path, *, desired_access, **_kwargs):
+        opened.append((path, desired_access))
+        return Handle(path)
+
+    monkeypatch.setattr(smb_protocol, '_open_raw', open_raw)
+    monkeypatch.setattr(
+        smb_protocol,
+        '_query_exact_child',
+        lambda *_args, **_kwargs: _object_info(
+            'leaf', 10, directory=leaf_is_directory
+        ),
+    )
+    monkeypatch.setattr(
+        smb_protocol,
+        '_query_open_info',
+        lambda handle, **_kwargs: _object_info(
+            handle.path.rsplit('\\', 1)[-1],
+            1 if handle.path == root else 10,
+            directory=handle.path == root or leaf_is_directory,
+        ),
+    )
+
+    smb_protocol._open_verified_path(leaf, purpose=purpose)
+
+    assert opened[-1] == (leaf, expected_access)

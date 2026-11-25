@@ -37,7 +37,12 @@ from .paramiko_channels import (
 )
 from .audit_logger import log_info, log_warning
 from .file_backend import FileReaderLease, FileWriteOutcome
-from .editor_text import EditorEncodingError, detect_newline, encode_editor_text
+from .editor_text import (
+    EditorEncodingError,
+    decode_text,
+    detect_newline,
+    encode_editor_text,
+)
 from .file_mutations import FileMutationError, permission_snapshot
 
 _sftp_cache = {}
@@ -842,9 +847,6 @@ class _SFTPDirectoryListing:
         except RemoteMetadataLimitExceeded as error:
             self.close()
             return None, public_sftp_error(error), False
-        except SFTPOperationError as error:
-            self.close()
-            return None, public_sftp_error(error), False
         except Exception as error:
             self.close()
             return None, public_sftp_error(error), False
@@ -872,8 +874,6 @@ def open_directory_listing(session_id, remote_path='.'):
     """Open a dedicated, bounded SFTP enumeration for opaque pagination."""
     try:
         return _SFTPDirectoryListing(session_id, remote_path), None
-    except SFTPOperationError as error:
-        return None, public_sftp_error(error)
     except Exception as error:
         return None, public_sftp_error(error)
 
@@ -1165,8 +1165,6 @@ def create_directory(session_id, remote_path):
         with sftp_session(session_id) as (sftp, source_type):
             sftp.mkdir(safe_path)
         return True, None
-    except SFTPOperationError as e:
-        return False, public_sftp_error(e)
     except Exception as e:
         return False, public_sftp_error(e)
 
@@ -1288,8 +1286,6 @@ def rename_item(session_id, old_path, new_path):
         with sftp_session(session_id) as (sftp, source_type):
             sftp.rename(safe_old, safe_new)
         return True, None
-    except SFTPOperationError as e:
-        return False, public_sftp_error(e)
     except Exception as e:
         return False, public_sftp_error(e)
 
@@ -1375,8 +1371,6 @@ def delete_directory_recursive(
         return False, 'Directory exceeds configured member limit'
     except TransferCancelled:
         return False, 'Operation cancelled'
-    except SFTPOperationError as e:
-        return False, public_sftp_error(e)
     except FileNotFoundError:
         return False, "File or directory not found"
     except Exception as e:
@@ -1388,8 +1382,6 @@ def get_home_directory(session_id):
         with sftp_session(session_id) as (sftp, source_type):
             home_path = sftp.normalize('.')
         return home_path, None
-    except SFTPOperationError as e:
-        return None, public_sftp_error(e)
     except Exception as e:
         return None, public_sftp_error(e)
 
@@ -1412,8 +1404,6 @@ def get_file_stat(session_id, path):
             'modified': file_stat.st_mtime,
             'permissions': oct(file_stat.st_mode)[-3:]
         }, None
-    except SFTPOperationError as e:
-        return None, public_sftp_error(e)
     except FileNotFoundError:
         return None, "File not found"
     except Exception as e:
@@ -1515,8 +1505,6 @@ def read_file_preview(session_id, path, max_bytes=512000, offset=0, tail_lines=N
         }:
             return None, message
         return None, public_sftp_error(e)
-    except SFTPOperationError as e:
-        return None, public_sftp_error(e)
     except FileNotFoundError:
         return None, "File not found"
     except PermissionError:
@@ -1560,20 +1548,7 @@ def read_file_for_edit(session_id, path, max_bytes=None):
                     f"Maximum: {max_mb}MB"
                 )
 
-        # Binary detection mirrors read_file_preview.
-        is_binary = b'\x00' in raw[:1024]
-
-        encoding = 'utf-8'
-        content_str = None
-        if not is_binary:
-            try:
-                content_str = raw.decode('utf-8')
-            except UnicodeDecodeError:
-                try:
-                    content_str = raw.decode('latin-1')
-                    encoding = 'latin-1'
-                except Exception:
-                    is_binary = True
+        content_str, is_binary, encoding = decode_text(raw)
 
         if is_binary or content_str is None:
             return None, "Binary file cannot be edited"
@@ -1592,8 +1567,6 @@ def read_file_for_edit(session_id, path, max_bytes=None):
             'original_bytes': base64.b64encode(raw).decode('ascii'),
         }, None
 
-    except SFTPOperationError as e:
-        return None, public_sftp_error(e)
     except FileNotFoundError:
         return None, "File not found"
     except PermissionError:
@@ -1732,8 +1705,6 @@ def write_file_text(
             success=False, error=str(e), code=e.code,
             unsupported_character=e.character, unsupported_line=e.line,
         )
-    except SFTPOperationError as e:
-        return FileWriteOutcome(success=False, error=public_sftp_error(e))
     except Exception as e:
         return FileWriteOutcome(success=False, error=public_sftp_error(e))
 

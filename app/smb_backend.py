@@ -18,7 +18,12 @@ from .file_backend import (
     FileSourceChanged,
     FileWriteOutcome,
 )
-from .editor_text import EditorEncodingError, detect_newline, encode_editor_text
+from .editor_text import (
+    EditorEncodingError,
+    decode_text,
+    detect_newline,
+    encode_editor_text,
+)
 from .smb_paths import SMBPath, SMBPathRejected
 from .smb_protocol import SMBProtocolError
 
@@ -32,6 +37,31 @@ _SOURCE_CHANGED_PROTOCOL_CODES = frozenset({
     'NOT_FOUND',
     'REPARSE_POINT_REJECTED',
 })
+
+
+_TEMP_FILE_REMAINS = 'The save failed and a temporary recovery file remains.'
+_SAVE_OUTCOME_UNCERTAIN = (
+    'The save outcome is uncertain. Manual recovery may be required.'
+)
+_REPLACE_OUTCOME_UNCERTAIN = (
+    'The replacement outcome is uncertain. Manual recovery is required.'
+)
+_ROLLBACK_FAILED = (
+    'The replacement and automatic rollback failed. Manual recovery is '
+    'required.'
+)
+_RESTORED_TEMP_REMAINS = (
+    'The original file was restored, but a temporary recovery file remains.'
+)
+
+
+def _recovery_required(message, *leaves):
+    return FileWriteOutcome(
+        success=False,
+        error=message,
+        code='SMB_RECOVERY_REQUIRED',
+        recovery_leaves=tuple(leaves),
+    )
 
 
 class SMBBackendError(Exception):
@@ -1251,15 +1281,7 @@ class SMBBackend:
                             actual, temporary_handle
                         )
                     ):
-                        return FileWriteOutcome(
-                            success=False,
-                            error=(
-                                'The save failed and a temporary recovery '
-                                'file remains.'
-                            ),
-                            code='SMB_RECOVERY_REQUIRED',
-                            recovery_leaves=(temporary.name,),
-                        )
+                        return _recovery_required(_TEMP_FILE_REMAINS, temporary.name)
                     return FileWriteOutcome(
                         success=False,
                         error=self._public_error(exc),
@@ -1274,31 +1296,16 @@ class SMBBackend:
                 )
                 if committed is not True:
                     if committed is None:
-                        return FileWriteOutcome(
-                            success=False,
-                            error=(
-                                'The save outcome is uncertain. Manual '
-                                'recovery may be required.'
-                            ),
-                            code='SMB_RECOVERY_REQUIRED',
-                            recovery_leaves=(
-                                temporary.name,
-                                recovery.name,
-                            ),
+                        return _recovery_required(
+                            _SAVE_OUTCOME_UNCERTAIN,
+                            temporary.name,
+                            recovery.name,
                         )
                     removed = self._delete_generated_handle(
                         actual, temporary_handle
                     )
                     if not removed:
-                        return FileWriteOutcome(
-                            success=False,
-                            error=(
-                                'The save failed and a temporary recovery '
-                                'file remains.'
-                            ),
-                            code='SMB_RECOVERY_REQUIRED',
-                            recovery_leaves=(temporary.name,),
-                        )
+                        return _recovery_required(_TEMP_FILE_REMAINS, temporary.name)
                     return FileWriteOutcome(
                         success=False,
                         error=self._public_error(rename_error),
@@ -1313,17 +1320,10 @@ class SMBBackend:
                 )
                 if installed is not True:
                     if installed is None:
-                        return FileWriteOutcome(
-                            success=False,
-                            error=(
-                                'The replacement outcome is uncertain. '
-                                'Manual recovery is required.'
-                            ),
-                            code='SMB_RECOVERY_REQUIRED',
-                            recovery_leaves=(
-                                temporary.name,
-                                recovery.name,
-                            ),
+                        return _recovery_required(
+                            _REPLACE_OUTCOME_UNCERTAIN,
+                            temporary.name,
+                            recovery.name,
                         )
                     rolled_back, _rollback_error = (
                         self._rename_open_handle_reconciled(
@@ -1335,26 +1335,16 @@ class SMBBackend:
                         )
                     )
                     if rolled_back is not True:
-                        return FileWriteOutcome(
-                            success=False,
-                            error=(
-                                'The replacement and automatic rollback '
-                                'failed. Manual recovery is required.'
-                            ),
-                            code='SMB_RECOVERY_REQUIRED',
-                            recovery_leaves=(temporary.name, recovery.name),
+                        return _recovery_required(
+                            _ROLLBACK_FAILED,
+                            temporary.name,
+                            recovery.name,
                         )
                     if not self._delete_generated_handle(
                         actual, temporary_handle
                     ):
-                        return FileWriteOutcome(
-                            success=False,
-                            error=(
-                                'The original file was restored, but a '
-                                'temporary recovery file remains.'
-                            ),
-                            code='SMB_RECOVERY_REQUIRED',
-                            recovery_leaves=(temporary.name,),
+                        return _recovery_required(
+                            _RESTORED_TEMP_REMAINS, temporary.name
                         )
                     return FileWriteOutcome(
                         success=False,
@@ -1420,18 +1410,6 @@ class SMBBackend:
             if pending_close_error is not None:
                 raise pending_close_error
 
-    @staticmethod
-    def _decode(data):
-        if b'\x00' in data[:1024]:
-            return None, True, None
-        try:
-            return data.decode('utf-8'), False, 'utf-8'
-        except UnicodeDecodeError:
-            try:
-                return data.decode('latin-1'), False, 'latin-1'
-            except UnicodeDecodeError:
-                return None, True, None
-
     def read_file_preview(
         self,
         source,
@@ -1478,7 +1456,7 @@ class SMBBackend:
                 lines = data.split(b'\n')
                 if len(lines) > requested_lines:
                     data = b'\n'.join(lines[-requested_lines:])
-            content, binary, _encoding = self._decode(data)
+            content, binary, _encoding = decode_text(data)
             return {
                 'content': content,
                 'size': file_size,
@@ -1499,7 +1477,7 @@ class SMBBackend:
             )
             if file_size > config.MAX_EDITOR_FILE_SIZE or len(data) > config.MAX_EDITOR_FILE_SIZE:
                 raise SMBBackendError('File too large to edit')
-            content, binary, encoding = self._decode(data)
+            content, binary, encoding = decode_text(data)
             if binary or content is None:
                 raise SMBBackendError('Binary file cannot be edited')
             newline = detect_newline(data)

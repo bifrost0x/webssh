@@ -1519,3 +1519,28 @@ def _transport_with_banner(original):
         original(self)
         self.banner = 'Authorised use only'
     return init
+
+
+def test_open_exec_channel_closes_channel_on_control_flow_abort():
+    class Channel:
+        closed = False
+
+        def settimeout(self, _timeout):
+            pass
+
+        def close(self):
+            self.closed = True
+
+        def exec_command(self, _command):
+            raise KeyboardInterrupt
+
+    channel = Channel()
+
+    class Transport:
+        def open_session(self, timeout=None):
+            return channel
+
+    with pytest.raises(KeyboardInterrupt):
+        ssh_manager._open_exec_channel(Transport(), 'true', timeout=1)
+
+    assert channel.closed
