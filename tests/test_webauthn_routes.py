@@ -684,7 +684,6 @@ def test_authentication_resolves_account_from_discoverable_credential(
     app, client, monkeypatch
 ):
     import config
-    import app.webauthn_routes as webauthn_routes
     from app.models import WebAuthnCredential, db
 
     user_id = _create_user(app)
@@ -703,8 +702,7 @@ def test_authentication_resolves_account_from_discoverable_credential(
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
     monkeypatch.setattr(
-        webauthn_routes,
-        "verify_authentication_response",
+        "app.webauthn_service.verify_authentication_response",
         lambda **_kwargs: SimpleNamespace(new_sign_count=5),
     )
 
@@ -737,7 +735,6 @@ def test_ldap_user_can_sign_in_directly_with_owned_passkey(
     monkeypatch,
 ):
     import config
-    import app.webauthn_routes as webauthn_routes
     from app.models import (
         AuthenticationSession,
         LDAPIdentity,
@@ -774,8 +771,7 @@ def test_ldap_user_can_sign_in_directly_with_owned_passkey(
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
     monkeypatch.setattr(
-        webauthn_routes,
-        "verify_authentication_response",
+        "app.webauthn_service.verify_authentication_response",
         lambda **_kwargs: SimpleNamespace(new_sign_count=1),
     )
 
@@ -795,7 +791,6 @@ def test_ldap_user_can_sign_in_directly_with_owned_passkey(
 
 def test_passkey_completes_pending_password_mfa(app, client, monkeypatch):
     import config
-    import app.webauthn_routes as webauthn_routes
     from app.models import (
         AuthenticationSession,
         PendingAuthentication,
@@ -822,8 +817,7 @@ def test_passkey_completes_pending_password_mfa(app, client, monkeypatch):
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
     monkeypatch.setattr(
-        webauthn_routes,
-        "verify_authentication_response",
+        "app.webauthn_service.verify_authentication_response",
         lambda **_kwargs: SimpleNamespace(new_sign_count=1),
     )
     primary = client.post(
@@ -857,7 +851,6 @@ def test_passkey_mfa_rejects_a_different_accounts_credential(
     monkeypatch,
 ):
     import config
-    import app.webauthn_routes as webauthn_routes
     from app.models import (
         AuthenticationSession,
         PendingAuthentication,
@@ -896,8 +889,7 @@ def test_passkey_mfa_rejects_a_different_accounts_credential(
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
     monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
     monkeypatch.setattr(
-        webauthn_routes,
-        "verify_authentication_response",
+        "app.webauthn_service.verify_authentication_response",
         lambda **_kwargs: SimpleNamespace(new_sign_count=1),
     )
     assert client.post(
@@ -1210,3 +1202,60 @@ def test_webauthn_verify_rate_limit_bounds_rejection_audit_writes(
     assert rejected.status_code == 401
     assert throttled.status_code == 429
     assert len(rejection_events) == 1
+
+
+def test_verify_assertion_updates_counter_and_rejects_regression(
+    monkeypatch,
+):
+    import pytest
+
+    import config
+    import app.webauthn_service as webauthn_service
+    from app.webauthn_service import ChallengeError, verify_assertion
+
+    calls = []
+
+    def fake_verify(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(new_sign_count=next_count)
+
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(
+        webauthn_service, "verify_authentication_response", fake_verify
+    )
+    row = SimpleNamespace(
+        public_key=b"public-key",
+        sign_count=4,
+        last_used_at=None,
+    )
+
+    next_count = 4
+    with pytest.raises(ChallengeError):
+        verify_assertion(row, {"id": "credential"}, b"challenge")
+    assert row.sign_count == 4
+    assert row.last_used_at is None
+
+    next_count = 7
+    assert verify_assertion(row, {"id": "credential"}, b"challenge") is None
+    assert row.sign_count == 7
+    assert row.last_used_at is not None
+    assert calls[-1] == {
+        "credential": {"id": "credential"},
+        "expected_challenge": b"challenge",
+        "expected_rp_id": "localhost",
+        "expected_origin": "https://localhost",
+        "credential_public_key": b"public-key",
+        "credential_current_sign_count": 4,
+        "require_user_verification": True,
+    }
+
+    unsupported = SimpleNamespace(
+        public_key=b"public-key",
+        sign_count=0,
+        last_used_at=None,
+    )
+    next_count = 0
+    verify_assertion(unsupported, {"id": "credential"}, b"challenge")
+    assert unsupported.sign_count == 0
+    assert unsupported.last_used_at is not None

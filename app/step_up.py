@@ -8,14 +8,17 @@ import secrets
 from threading import Lock
 
 from flask import jsonify, request
+from flask_login import current_user
 from sqlalchemy import delete
 
 import config
 
+from .audit_logger import log_security_event
 from .auth_assurance import (
     ASSURANCE_RANK,
     AssuranceLevel,
     current_authentication_session,
+    recovery_session_required,
 )
 from .models import (
     AuthenticationSession,
@@ -438,6 +441,33 @@ def consume_account_step_up_grant(action, target):
         action,
         target,
     )
+
+
+def consume_account_grant_or_error(action, target, *, recovery_repair=False):
+    """Consume an account grant, or return the JSON error response.
+
+    A recovery-restricted session may repair its factors without a grant.
+    """
+    if recovery_repair and recovery_session_required():
+        return None
+    try:
+        consume_account_step_up_grant(action, target)
+    except SecurityUIUpgradeRequired:
+        return jsonify({
+            "error": "Reload the Security page before continuing",
+            "code": "security_ui_upgrade_required",
+        }), 409
+    except StepUpError:
+        return jsonify({
+            "error": "Additional authentication is required",
+            "code": "step_up_required",
+        }), 403
+    log_security_event(
+        "ACCOUNT_STEP_UP_CONSUMED",
+        user=current_user.username,
+        action=action,
+    )
+    return None
 
 
 def step_up_required(action, target):

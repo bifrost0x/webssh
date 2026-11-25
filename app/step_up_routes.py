@@ -1,6 +1,5 @@
 """Administrator step-up ceremonies and grant issuance."""
 
-from datetime import datetime, timezone
 import json
 import logging
 import secrets
@@ -13,7 +12,6 @@ from webauthn import (
     base64url_to_bytes,
     generate_authentication_options,
     options_to_json,
-    verify_authentication_response,
 )
 from webauthn.helpers.structs import (
     PublicKeyCredentialDescriptor,
@@ -42,7 +40,12 @@ from .step_up import (
     recent_strong_assurance,
 )
 from .totp_service import verify_totp
-from .webauthn_service import ChallengeError, consume_challenge, create_challenge
+from .webauthn_service import (
+    ChallengeError,
+    consume_challenge,
+    create_challenge,
+    verify_assertion,
+)
 
 
 step_up_blueprint = Blueprint("step_up", __name__)
@@ -290,20 +293,7 @@ def passkey_step_up_verify():
             ).first()
             if row is None:
                 raise ChallengeError("credential is unavailable")
-            verified = verify_authentication_response(
-                credential=credential,
-                expected_challenge=challenge,
-                expected_rp_id=config.WEBAUTHN_RP_ID,
-                expected_origin=config.WEBAUTHN_ORIGIN,
-                credential_public_key=bytes(row.public_key),
-                credential_current_sign_count=row.sign_count,
-                require_user_verification=True,
-            )
-            new_sign_count = int(verified.new_sign_count)
-            if row.sign_count and new_sign_count <= row.sign_count:
-                raise ChallengeError("authenticator counter did not advance")
-            row.sign_count = max(row.sign_count, new_sign_count)
-            row.last_used_at = datetime.now(timezone.utc)
+            verify_assertion(row, credential, challenge)
             mfa_throttle.clear_all_uncommitted(db.session.get(User, row.user_id))
             db.session.commit()
         grant = create_step_up_grant_for_hash(

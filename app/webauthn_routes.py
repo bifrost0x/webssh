@@ -4,7 +4,6 @@ import json
 import logging
 import secrets
 import hashlib
-from datetime import datetime, timezone
 from threading import Lock
 
 from .auth_redirects import public_continuation
@@ -15,7 +14,6 @@ from webauthn import (
     generate_authentication_options,
     generate_registration_options,
     options_to_json,
-    verify_authentication_response,
     verify_registration_response,
 )
 from webauthn.helpers.structs import (
@@ -44,16 +42,16 @@ from .auth_assurance import (
     finalize_login,
     finalize_pending_with_factor,
     pending_authentication,
-    recovery_session_required,
 )
 from . import mfa_throttle
 from .models import User, WebAuthnCredential, db
-from .step_up import (
-    SecurityUIUpgradeRequired,
-    StepUpError,
-    consume_account_step_up_grant,
+from .step_up import consume_account_grant_or_error
+from .webauthn_service import (
+    ChallengeError,
+    consume_challenge,
+    create_challenge,
+    verify_assertion,
 )
-from .webauthn_service import ChallengeError, consume_challenge, create_challenge
 
 
 webauthn_blueprint = Blueprint("webauthn", __name__)
@@ -80,28 +78,6 @@ def _binding():
 
 def _credential_descriptor(row):
     return PublicKeyCredentialDescriptor(id=bytes(row.credential_id))
-
-
-def _consume_factor_grant(action, target, *, recovery_repair=False):
-    if recovery_repair and recovery_session_required():
-        return None
-    try:
-        consume_account_step_up_grant(action, target)
-    except SecurityUIUpgradeRequired:
-        return jsonify({
-            "error": "Reload the Security page before continuing",
-            "code": "security_ui_upgrade_required",
-        }), 409
-    except StepUpError:
-        return jsonify({
-            "error": "Additional authentication is required",
-            "code": "step_up_required",
-        }), 403
-    log_security_event(
-        "ACCOUNT_STEP_UP_CONSUMED",
-        user=current_user.username,
-        action=action,
-    )
 
 
 def _registration_binding(ceremony):
@@ -145,7 +121,7 @@ def enable_passkey_mfa():
     data = _bounded_json()
     if data.get("confirm_enable_mfa") is not True:
         return jsonify({"error": "MFA activation must be confirmed"}), 400
-    grant_error = _consume_factor_grant("mfa.enable", current_user.id)
+    grant_error = consume_account_grant_or_error("mfa.enable", current_user.id)
     if grant_error is not None:
         return grant_error
 
@@ -183,7 +159,7 @@ def enable_passkey_mfa():
 def registration_options():
     _require_enabled()
     data = _bounded_json()
-    grant_error = _consume_factor_grant(
+    grant_error = consume_account_grant_or_error(
         "passkey.enroll",
         current_user.id,
         recovery_repair=True,
@@ -305,7 +281,7 @@ def delete_credential(credential_id):
     row = db.session.get(WebAuthnCredential, credential_id)
     if row is None or row.user_id != current_user.id:
         return jsonify({"error": "Passkey not found"}), 404
-    grant_error = _consume_factor_grant("passkey.delete", credential_id)
+    grant_error = consume_account_grant_or_error("passkey.delete", credential_id)
     if grant_error is not None:
         return grant_error
     from .mfa_factors import durable_factor_counts, factor_mutation
@@ -434,20 +410,7 @@ def verify_authentication():
             ):
                 raise ChallengeError("Credential is not available")
             username = user.username
-            verified = verify_authentication_response(
-                credential=data.get("credential"),
-                expected_challenge=challenge,
-                expected_rp_id=config.WEBAUTHN_RP_ID,
-                expected_origin=config.WEBAUTHN_ORIGIN,
-                credential_public_key=bytes(row.public_key),
-                credential_current_sign_count=row.sign_count,
-                require_user_verification=True,
-            )
-            new_sign_count = int(verified.new_sign_count)
-            if row.sign_count and new_sign_count <= row.sign_count:
-                raise ChallengeError("Authenticator counter did not advance")
-            row.sign_count = max(row.sign_count, new_sign_count)
-            row.last_used_at = datetime.now(timezone.utc)
+            verify_assertion(row, data.get("credential"), challenge)
             mfa_throttle.clear_all_uncommitted(db.session.get(User, row.user_id))
             db.session.commit()
         if pending is not None:

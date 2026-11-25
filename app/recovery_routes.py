@@ -23,11 +23,7 @@ from .auth_assurance import (
 from .decorators import admin_required, step_up_required
 from .models import User, db
 from .recovery_service import consume_code, generate_codes
-from .step_up import (
-    SecurityUIUpgradeRequired,
-    StepUpError,
-    consume_account_step_up_grant,
-)
+from .step_up import consume_account_grant_or_error
 
 
 recovery_blueprint = Blueprint("recovery", __name__)
@@ -44,26 +40,11 @@ def _require_enabled():
 @login_required
 def regenerate_own_recovery_codes():
     _require_enabled()
-    try:
-        consume_account_step_up_grant(
-            "recovery.rotate",
-            current_user.id,
-        )
-    except SecurityUIUpgradeRequired:
-        return jsonify({
-            "error": "Reload the Security page before continuing",
-            "code": "security_ui_upgrade_required",
-        }), 409
-    except StepUpError:
-        return jsonify({
-            "error": "Additional authentication is required",
-            "code": "step_up_required",
-        }), 403
-    log_security_event(
-        "ACCOUNT_STEP_UP_CONSUMED",
-        user=current_user.username,
-        action="recovery.rotate",
+    grant_error = consume_account_grant_or_error(
+        "recovery.rotate", current_user.id
     )
+    if grant_error is not None:
+        return grant_error
     codes = generate_codes(current_user.id)
     log_security_event(
         "RECOVERY_CODES_REGENERATED",

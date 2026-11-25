@@ -370,7 +370,6 @@ def test_operator_code_bootstraps_first_passkey_then_allows_github_unlink(
     monkeypatch,
 ):
     import config
-    import app.account_step_up_routes as account_routes
     import app.webauthn_routes as webauthn_routes
     from app.models import (
         FactorBootstrapToken,
@@ -472,8 +471,7 @@ def test_operator_code_bootstraps_first_passkey_then_allows_github_unlink(
     )
     assert passkey_options.status_code == 200
     monkeypatch.setattr(
-        account_routes,
-        'verify_authentication_response',
+        'app.webauthn_service.verify_authentication_response',
         lambda **kwargs: SimpleNamespace(
             new_sign_count=kwargs['credential_current_sign_count'] + 1
         ),

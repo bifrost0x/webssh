@@ -297,8 +297,7 @@ def test_passkey_step_up_requires_exact_owned_credential(
         step_up_routes, "_factor_available", lambda name: name == "passkey"
     )
     monkeypatch.setattr(
-        step_up_routes,
-        "verify_authentication_response",
+        "app.webauthn_service.verify_authentication_response",
         lambda **_kwargs: SimpleNamespace(new_sign_count=1),
     )
     encoded_id = base64.urlsafe_b64encode(credential_id).decode().rstrip("=")
@@ -340,3 +339,53 @@ def test_password_matches_rejects_invalid_input_without_hashing():
         user, "x" * (config.MAX_PASSWORD_LENGTH + 1)
     ) is False
     assert checked == ["password123", "wrong-password", "broken"]
+
+
+def test_account_grant_helper_maps_errors_to_existing_responses(app):
+    import app.step_up as step_up
+
+    with app.test_request_context("/", method="POST"):
+        response, status = step_up.consume_account_grant_or_error(
+            "totp.enroll", 1
+        )
+        assert status == 409
+        assert response.get_json() == {
+            "error": "Reload the Security page before continuing",
+            "code": "security_ui_upgrade_required",
+        }
+
+    with app.test_request_context(
+        "/",
+        method="POST",
+        headers={"X-WebSSH-Step-Up": "not-a-grant"},
+    ):
+        response, status = step_up.consume_account_grant_or_error(
+            "totp.enroll", 1
+        )
+        assert status == 403
+        assert response.get_json() == {
+            "error": "Additional authentication is required",
+            "code": "step_up_required",
+        }
+
+    with app.test_request_context("/", method="POST"):
+        response, status = step_up.consume_account_grant_or_error(
+            "not-an-account-action", 1
+        )
+        assert status == 403
+
+
+def test_account_grant_helper_skips_grant_only_for_recovery_repair(
+    app, monkeypatch
+):
+    import app.step_up as step_up
+
+    monkeypatch.setattr(step_up, "recovery_session_required", lambda: True)
+    with app.test_request_context("/", method="POST"):
+        assert step_up.consume_account_grant_or_error(
+            "totp.enroll", 1, recovery_repair=True
+        ) is None
+        _response, status = step_up.consume_account_grant_or_error(
+            "totp.enroll", 1
+        )
+        assert status == 409

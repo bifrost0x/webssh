@@ -155,7 +155,6 @@ def test_second_factor_returns_a_public_continuation(proxy_app, proxy_browser, m
     from app.models import TOTPAuthenticator, WebAuthnCredential, SecurityFeatureState, db
     from app.mfa_crypto import encrypt_totp_secret
     from app.recovery_service import generate_codes
-    import app.webauthn_routes as webauthn_routes
     app, prefix = proxy_app
     secret = pyotp.random_base32()
     credential_id = b'prefix-passkey'
@@ -180,7 +179,7 @@ def test_second_factor_returns_a_public_continuation(proxy_app, proxy_browser, m
     elif factor == 'recovery':
         response = client.post('/api/auth/recovery', json={'code': code})
     else:
-        monkeypatch.setattr(webauthn_routes, 'verify_authentication_response',
+        monkeypatch.setattr('app.webauthn_service.verify_authentication_response',
                             lambda **kwargs: SimpleNamespace(new_sign_count=1))
         assert client.post('/api/webauthn/auth/options', json={}).status_code == 200
         encoded = base64.urlsafe_b64encode(credential_id).decode().rstrip('=')

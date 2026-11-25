@@ -1300,8 +1300,7 @@ def test_passkey_step_up_clears_the_counters(
         step_up_routes, "_factor_available", lambda name: name == "passkey",
     )
     monkeypatch.setattr(
-        step_up_routes,
-        "verify_authentication_response",
+        "app.webauthn_service.verify_authentication_response",
         lambda **_kwargs: SimpleNamespace(new_sign_count=1),
     )
 

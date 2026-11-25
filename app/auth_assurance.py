@@ -312,6 +312,30 @@ def clear_browser_authentication():
         session['_remember'] = 'clear'
 
 
+def _issue_browser_session(user, remember, **row_fields):
+    """Replace the browser session with a fresh authenticated one.
+
+    The matching session row is staged on the database session; the caller
+    commits it.
+    """
+    opaque_session_id = secrets.token_urlsafe(32)
+    row = AuthenticationSession(
+        session_hash=token_digest(opaque_session_id),
+        user_id=user.id,
+        auth_generation=int(user.auth_generation or 0),
+        **row_fields,
+    )
+    session.clear()
+    login_user(user, remember=bool(remember))
+    session['_user_id'] = (
+        f'{user.id}:{int(user.auth_generation or 0)}:{opaque_session_id}'
+    )
+    session['_auth_session'] = opaque_session_id
+    session['_auth_epoch'] = current_epoch()
+    db.session.add(row)
+    return row
+
+
 def invalidate_user_authentication(
     user,
     *,
@@ -394,27 +418,7 @@ def invalidate_user_authentication(
     if replacement is None:
         return None
 
-    opaque_session_id = secrets.token_urlsafe(32)
-    row = AuthenticationSession(
-        session_hash=token_digest(opaque_session_id),
-        user_id=user.id,
-        assurance=replacement['assurance'],
-        methods_json=replacement['methods_json'],
-        authenticated_at=replacement['authenticated_at'],
-        strong_authenticated_at=replacement['strong_authenticated_at'],
-        auth_generation=int(user.auth_generation or 0),
-        expires_at=replacement['expires_at'],
-    )
-
-    session.clear()
-    login_user(user, remember=bool(remember))
-    session['_user_id'] = (
-        f'{user.id}:{int(user.auth_generation or 0)}:{opaque_session_id}'
-    )
-    session['_auth_session'] = opaque_session_id
-    session['_auth_epoch'] = current_epoch()
-    db.session.add(row)
-    return row
+    return _issue_browser_session(user, remember, **replacement)
 
 
 @serialize_login_access
@@ -466,34 +470,22 @@ def finalize_login(pending, *, methods, strong_authenticated_at=None):
     elif assurance is not AssuranceLevel.BASIC:
         strong_authenticated_at = now
 
-    opaque_session_id = secrets.token_urlsafe(32)
-    row = AuthenticationSession(
-        session_hash=token_digest(opaque_session_id),
-        user_id=user.id,
+    row = _issue_browser_session(
+        user,
+        pending.remember,
         assurance=assurance.value,
         methods_json=json.dumps(normalized_methods, separators=(',', ':')),
         authenticated_at=now,
         strong_authenticated_at=strong_authenticated_at,
-        auth_generation=int(user.auth_generation or 0),
         expires_at=now + _session_lifetime(
             bool(pending.remember),
             user.id,
         ),
     )
-
-    session.clear()
-    login_user(user, remember=bool(pending.remember))
-    session['_user_id'] = (
-        f'{user.id}:{int(user.auth_generation or 0)}:{opaque_session_id}'
-    )
-    session['_auth_session'] = opaque_session_id
-    session['_auth_epoch'] = current_epoch()
     if pending.primary_method == 'ldap':
         verified_at = evidence.get('verified_at')
         if type(verified_at) is int and verified_at > 0:
             session['_ldap_verified_at'] = verified_at
-
-    db.session.add(row)
     user.last_login = now
     try:
         db.session.commit()
