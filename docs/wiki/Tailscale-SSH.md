@@ -61,7 +61,9 @@ applies to the next connection without a restart. Turning the block on also
 closes open terminal sessions and file-transfer connections it would now
 refuse, judged by the address each was pinned to when it opened; tmux sessions
 are detached, not ended. Tailscale SSH sessions stay open, and an automation
-run already in progress finishes. A change requires admin
+run already in progress finishes. A connection still being opened at that
+moment, or a settings file changed by hand, is not swept; restart WebSSH after
+such a change to be sure. A change requires admin
 reauthentication, and is recorded in the security audit log as
 `APPLICATION_FEATURE_CHANGED` with
 `feature=tailscale_ssh_restrict_tailnet_routes`. It

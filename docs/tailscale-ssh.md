@@ -75,7 +75,10 @@ terminal sessions and file-transfer connections that it would now refuse,
 judged by the address each was pinned to when it opened; tmux sessions are
 detached, not ended, and the owner sees why the session closed. Tailscale SSH
 sessions stay open, and an automation run already in progress finishes; the
-sweep is recorded as `TAILNET_RESTRICTED_CONNECTIONS_CLOSED`. The
+sweep is recorded as `TAILNET_RESTRICTED_CONNECTIONS_CLOSED`. The sweep runs
+only when the setting is changed in the admin menu: a connection still being
+opened at that moment, or a settings file changed by hand, is not swept, so
+restart WebSSH after such a change to be sure. The
 change is recorded in the security audit
 log as `APPLICATION_FEATURE_CHANGED` with
 `feature=tailscale_ssh_restrict_tailnet_routes`. While
