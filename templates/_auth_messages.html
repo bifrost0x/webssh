@@ -22,11 +22,14 @@
 } %}
 {# Data-only flash categories that are never displayed as messages. #}
 {% set flash_data_categories = ['login_username', 'login_auth_source'] %}
+{% macro render_auth_alert(message, category='error') -%}
+    {% set key = flash_message_keys.get(message) %}
+    <div class="alert alert-{{ category }}"{% if key %} data-i18n="{{ key }}"{% endif %}>{{ message }}</div>
+{%- endmacro %}
 {% macro render_auth_messages() %}
     {% for category, message in get_flashed_messages(with_categories=true) %}
         {% if category not in flash_data_categories %}
-        {% set key = flash_message_keys.get(message) %}
-        <div class="alert alert-{{ category }}"{% if key %} data-i18n="{{ key }}"{% endif %}>{{ message }}</div>
+        {{ render_auth_alert(message, category) }}
         {% endif %}
     {% endfor %}
 {% endmacro %}
