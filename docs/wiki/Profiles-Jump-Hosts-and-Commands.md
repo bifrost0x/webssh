@@ -69,7 +69,9 @@ The probe collects:
   icon and marked as derived from its family);
 - the virtualization kind (bare metal, VM, LXC, container or WSL), whether the
   system boots into a graphical target and, on Proxmox VE, the number of guests;
-- known services from active systemd units, fixed install paths and snaps;
+- known services from active systemd units, fixed install paths and snaps, at
+  most 24 per host; on a host with more, container runtimes, web servers and
+  databases are left out before the applications;
 - where the SSH user may already use Docker or Podman without sudo, the image
   names of running containers, mapped to known services, and whether that
   access worked. Both are asked only through an existing local daemon socket

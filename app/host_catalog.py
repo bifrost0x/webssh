@@ -102,6 +102,14 @@ SERVICES = frozenset({
     'ollama', 'openwebui',
 })
 MAX_SERVICES = 24
+# Runtimes, web servers and databases that many hosts run under the
+# applications that tell them apart. When more than MAX_SERVICES are found,
+# these are the ones left out first.
+INFRASTRUCTURE_SERVICES = frozenset({
+    'docker', 'podman', 'k3s', 'portainer', 'watchtower', 'dozzle',
+    'nginx', 'apache', 'caddy', 'traefik', 'haproxy',
+    'mariadb', 'postgresql', 'redis', 'mongodb',
+})
 
 # systemd unit name (without .service) -> service. Only units that run the server
 # itself: Debian's openvpn package, for example, keeps a plain openvpn.service

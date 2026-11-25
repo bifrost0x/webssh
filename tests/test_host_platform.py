@@ -88,8 +88,28 @@ def test_identity_caps_services_and_ignores_overlong_values():
     units = sorted(host_catalog.SERVICE_UNITS)
     result = host_platform.parse_identity('kernel=Linux\n' + '\n'.join('unit=' + unit for unit in units))
     assert len(result['services']) == host_catalog.MAX_SERVICES
-    assert result['services'] == sorted(set(host_catalog.SERVICE_UNITS.values()))[:host_catalog.MAX_SERVICES]
+    assert result['services'] == sorted(result['services'])
+    assert not set(result['services']) & host_catalog.INFRASTRUCTURE_SERVICES
     assert host_platform.parse_identity('kernel=Linux\nimage=nginx:' + 'a' * 200)['services'] == []
+
+
+def test_a_long_service_list_drops_generic_infrastructure_first():
+    infrastructure = ['docker', 'podman', 'nginx', 'apache', 'caddy', 'mariadb', 'postgresql', 'redis']
+    applications = ['adguard', 'audiobookshelf', 'authelia', 'bazarr', 'bookstack', 'calibreweb', 'dashy',
+                    'deluge', 'emby', 'esphome', 'filebrowser', 'gitea', 'grafana', 'homarr', 'homeassistant',
+                    'homebridge', 'immich', 'jellyfin', 'kavita', 'mealie', 'wireguard']
+    services = infrastructure + applications
+    result = host_platform.parse_identity('kernel=Linux\n' + ''.join('service=%s\n' % name for name in services))
+    kept = result['services']
+    assert len(kept) == host_catalog.MAX_SERVICES and kept == sorted(kept)
+    assert set(applications) <= set(kept)
+    assert {'wireguard', 'immich'} <= set(kept)
+    # Of the infrastructure, what fits is kept in alphabetical order.
+    assert set(kept) - set(applications) == set(sorted(infrastructure)[:host_catalog.MAX_SERVICES - len(applications)])
+    assert set(infrastructure) <= host_catalog.INFRASTRUCTURE_SERVICES <= host_catalog.SERVICES
+    # Below the limit nothing is dropped.
+    few = host_platform.parse_identity('kernel=Linux\nservice=docker\nservice=immich\n')['services']
+    assert few == ['docker', 'immich']
 
 
 @pytest.mark.parametrize('facts, expected', [
