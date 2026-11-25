@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 
 function setup() {
-    const source = fs.readFileSync(path.join(__dirname, '../../static/js/app.js'), 'utf8');
+    const source = fs.readFileSync(path.join(__dirname, '../../static/js/file-preview.js'), 'utf8');
     const part = source.slice(source.indexOf('const FilePreview = {'), source.indexOf('window.FilePreview = FilePreview;'));
     const classes = () => {
         const values = new Set();

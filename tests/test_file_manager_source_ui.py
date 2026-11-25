@@ -1,13 +1,13 @@
 from pathlib import Path
 
 
-APP_JS = Path('static/js/app.js')
+FILE_PREVIEW_JS = Path('static/js/file-preview.js')
 FILE_MANAGER_JS = Path('static/js/sftp-file-manager.js')
 INDEX_TEMPLATE = Path('templates/index.html')
 
 
 def test_file_preview_uses_canonical_source_id_contract():
-    source = APP_JS.read_text(encoding='utf-8')
+    source = FILE_PREVIEW_JS.read_text(encoding='utf-8')
     preview = source[source.index('const FilePreview = {'):source.index(
         'window.FilePreview = FilePreview;'
     )]
@@ -68,7 +68,12 @@ def test_file_manager_exposes_move_picker_folder_drop_and_concise_smb_help():
     source = FILE_MANAGER_JS.read_text(encoding='utf-8')
     template = INDEX_TEMPLATE.read_text(encoding='utf-8')
 
-    assert source.count('data-pane-action="move"') == 2
+    pane_start = source.index('    paneMarkup(side, active) {')
+    pane_markup = source[pane_start:source.index('`;', pane_start)]
+    assert pane_markup.count('data-pane-action="move"') == 1
+    assert source.count('data-pane-action="move"') == 1
+    assert "${this.paneMarkup('left', true)}" in source
+    assert "${this.paneMarkup('right', false)}" in source
     assert 'id="fmMove"' in source
     assert 'openMovePicker(pane)' in source
     assert 'consumeMovePickerListing(data)' in source
@@ -87,7 +92,7 @@ def test_file_manager_exposes_move_picker_folder_drop_and_concise_smb_help():
 
 
 def test_image_preview_keeps_listener_until_the_correlated_response_arrives():
-    source = APP_JS.read_text(encoding='utf-8')
+    source = FILE_PREVIEW_JS.read_text(encoding='utf-8')
     handler = source[source.index('const handleBinaryDownload = (data) => {'):
                      source.index('this._pendingImageHandler = handleBinaryDownload;')]
 
