@@ -14,6 +14,7 @@ cannot be used for unlimited guessing.
 """
 
 import hashlib
+import hmac
 import secrets
 from datetime import timedelta
 
@@ -37,10 +38,21 @@ def _serializer():
     return URLSafeTimedSerializer(current_app.secret_key, salt=_SALT)
 
 
-def _username_digest(username):
+def username_digest(username):
+    """Return an instance-keyed digest of the normalized ``username``.
+
+    Used in the device cookie and in rate-limit keys. A keyed digest keeps a
+    readable cookie or limiter key from being reversed by trying names.
+    """
     normalized = str(username or "").strip().casefold()
-    return hashlib.sha256(
-        normalized.encode("utf-8", "surrogatepass")
+    key = current_app.secret_key
+    if isinstance(key, str):
+        key = key.encode("utf-8")
+    return hmac.new(
+        key,
+        b"webssh-login-username-v1\x00"
+        + normalized.encode("utf-8", "surrogatepass"),
+        hashlib.sha256,
     ).hexdigest()
 
 
@@ -69,7 +81,7 @@ def trusted_device(username):
         not isinstance(nonce, str)
         or type(user_id) is not int
         or type(generation) is not int
-        or payload.get("u") != _username_digest(username)
+        or payload.get("u") != username_digest(username)
     ):
         return None
     user = db.session.get(User, user_id)
@@ -89,7 +101,7 @@ def failure_budget_key(endpoint, nonce):
 def remember_device(user, username):
     """Issue a fresh cookie with the response of a successful password step."""
     value = _serializer().dumps({
-        "u": _username_digest(username),
+        "u": username_digest(username),
         "i": int(user.id),
         "g": int(user.auth_generation or 0),
         "n": secrets.token_urlsafe(16),

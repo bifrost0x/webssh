@@ -1,4 +1,3 @@
-import hashlib
 import ipaddress
 import re
 
@@ -13,6 +12,7 @@ from .login_devices import (
     FAILURE_BUDGET,
     FAILURE_WINDOW_SECONDS,
     failure_budget_key,
+    username_digest,
 )
 from .models import db, User, SocketSession
 from .rate_limiter import create_rate_limiter
@@ -138,14 +138,12 @@ def reserve_login_username_attempt(
 
     Buckets are keyed by the normalized name whether or not an account
     exists, so the answer does not reveal which accounts exist. The name is
-    hashed to bound the key size.
+    replaced by a keyed digest that bounds the key size and keeps it out of
+    the limiter store.
     """
-    normalized = str(username or '').strip().casefold()
-    if not normalized:
+    if not str(username or '').strip():
         return False, ()
-    digest = hashlib.sha256(
-        normalized.encode('utf-8', 'surrogatepass')
-    ).hexdigest()
+    digest = username_digest(username)
     limiter = _get_rate_limiter()
     source_key = f'{endpoint}:username:{digest}:{rate_limit_address(source)}'
     global_key = f'{endpoint}:username:{digest}'

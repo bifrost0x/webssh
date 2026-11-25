@@ -1370,6 +1370,51 @@ def test_device_cookie_is_issued_with_restrictive_attributes(app, client):
     assert f"Max-Age={90 * 24 * 3600}" in header
 
 
+def test_device_cookie_and_limiter_keys_use_a_keyed_username_digest(
+    app, client, monkeypatch,
+):
+    """A plain hash of the name could be reversed by trying usernames."""
+    import hashlib
+
+    import app.auth as auth
+    import app.login_devices as login_devices
+
+    _create_user(app, "device_digest")
+    _password_login(client, "device_digest")
+    raw = client.get_cookie(_DEVICE_COOKIE).value
+    with app.app_context():
+        payload = login_devices._serializer().loads(raw)
+    plain = hashlib.sha256(b"device_digest").hexdigest()
+    assert payload["u"] != plain
+    assert len(payload["u"]) == 64
+    assert type(payload["i"]) is int
+
+    original_secret = app.secret_key
+    with app.test_request_context():
+        keyed = login_devices.username_digest(" Device_Digest ")
+        app.secret_key = "another-instance-secret"
+        try:
+            assert login_devices.username_digest("device_digest") != keyed
+        finally:
+            app.secret_key = original_secret
+    assert payload["u"] == keyed
+
+    reserved = []
+
+    class _Limiter:
+        def allow(self, key, _limit, _window):
+            reserved.append(key)
+            return True
+
+    monkeypatch.setattr(auth, "_get_rate_limiter", lambda: _Limiter())
+    with app.test_request_context():
+        auth.reserve_login_username_attempt(
+            "device_digest", "203.0.113.90", "login", "5 per minute", "100 per minute",
+        )
+    assert reserved
+    assert all(plain not in key and keyed in key for key in reserved)
+
+
 def test_device_cookie_rotates_on_each_success(app, client):
     _create_user(app, "device_rotation")
     _password_login(client, "device_rotation")

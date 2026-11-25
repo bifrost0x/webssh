@@ -42,7 +42,8 @@ sensitive action and target.
   username while it keeps sending, so a browser that completed a password
   sign-in before is exempt from it: after each successful password or LDAP
   password step WebSSH sets a signed, HttpOnly known-device cookie (90 days,
-  rotated on every success, bound to the account and the typed username).
+  rotated on every success, bound to the account and to a digest of the typed
+  username keyed with the instance secret).
   With that cookie only the ceiling across sources is skipped; the limits per
   source and per username and source still apply, and five failures with one
   cookie within an hour end its exemption, so a stolen cookie gives no
