@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import config
 
-from .host_catalog import ROLES
+from .host_catalog import NON_POSIX_PLATFORMS, ROLES
 from .host_platform import PLATFORMS, endpoint, valid_identity_value
 from .audit_logger import log_error
 from .connection_storage_policy import (
@@ -1049,9 +1049,12 @@ def cache_greeting_platforms(user_id, observed):
     ``observed`` maps profile ids to ((canonical host, port), platform) as probed.
     A platform of None means the greeting named none: an address once used by
     a Windows or network device and now by a Linux host loses the old hint, so
-    the identity probe runs again. A host edited meanwhile, routed through a
-    jump host or already showing the same hint is left alone; detections and
-    manual choices still take precedence.
+    the identity probe runs again. A greeting from a system without a POSIX
+    shell drops what the probe found there before, which belonged to another
+    system; any other change of a stored hint lets the probe run again on the
+    next connection. A host edited meanwhile, routed through a jump host or
+    already showing the same hint is left alone; detections and manual
+    choices still take precedence.
     """
     from .network_policy import canonicalize_hostname
     wanted = {key: value for key, value in observed.items()
@@ -1075,6 +1078,11 @@ def cache_greeting_platforms(user_id, observed):
                     continue
                 if current != tuple(probed) or profile.get('greeting_platform') == platform:
                     continue
+                if platform in NON_POSIX_PLATFORMS:
+                    for field in ('detected_platform', *_ENDPOINT_FACTS):
+                        profile.pop(field, None)
+                elif profile.get('greeting_platform') is not None:
+                    profile.pop('platform_checked_at', None)
                 if platform is None:
                     profile.pop('greeting_platform')
                 else:

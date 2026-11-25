@@ -1112,6 +1112,54 @@ def test_hosts_announcing_a_non_posix_shell_are_never_probed(app, monkeypatch, g
     assert not host_platform.identity_needed({'platform_icon': 'proxmox'})
 
 
+_STORED_FACTS = dict(detected_platform='debian', detected_os_version='12', detected_services=['nginx'],
+                     detected_virt='vm', detection_state='detected', platform_checked_at=1_000.0,
+                     services_checked_at=1_000.0,
+                     detected_maintenance={'reboot_required': True, 'updates': 3, 'security_updates': 1,
+                                           'checked_at': 1_000.0})
+
+
+@pytest.mark.parametrize('before', [None, 'debian'])
+@pytest.mark.parametrize('greeting', sorted(host_catalog.NON_POSIX_PLATFORMS))
+def test_a_non_posix_greeting_replaces_facts_from_an_earlier_system(app, monkeypatch, before, greeting):
+    """The address now answers as Windows or a network device; what the probe found belonged to another system."""
+    import json
+    from app import profile_manager
+    fields = {'greeting_platform': before} if before else {}
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'reused', **fields)
+    _store(app, user_id, profile['id'], **_STORED_FACTS)
+    with app.app_context():
+        assert profile_manager.cache_greeting_platforms(user_id, {profile['id']: (('reused.example', 22), greeting)}) == 1
+        saved = profile_manager.get_profile(user_id, profile['id'])
+    assert saved['greeting_platform'] == greeting
+    assert not set(_STORED_FACTS) & set(saved), json.dumps(saved)
+
+
+def test_a_changed_posix_greeting_asks_the_probe_again(app, monkeypatch):
+    from app import profile_manager
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'moved', greeting_platform='ubuntu')
+    now = 2_000_000_000.0
+    _store(app, user_id, profile['id'], **dict(_STORED_FACTS, platform_checked_at=now))
+    with app.app_context():
+        assert profile_manager.cache_greeting_platforms(user_id, {profile['id']: (('moved.example', 22), 'debian')}) == 1
+        saved = profile_manager.get_profile(user_id, profile['id'])
+    assert saved['greeting_platform'] == 'debian' and 'platform_checked_at' not in saved
+    assert saved['detected_platform'] == 'debian' and saved['detected_services'] == ['nginx']
+    assert host_platform.identity_needed(saved, now=now + 60)
+
+
+def test_a_first_posix_greeting_keeps_a_recent_detection(app, monkeypatch):
+    from app import profile_manager
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'first')
+    now = 2_000_000_000.0
+    _store(app, user_id, profile['id'], **dict(_STORED_FACTS, platform_checked_at=now))
+    with app.app_context():
+        assert profile_manager.cache_greeting_platforms(user_id, {profile['id']: (('first.example', 22), 'ubuntu')}) == 1
+        saved = profile_manager.get_profile(user_id, profile['id'])
+    assert saved['platform_checked_at'] == now and saved['detected_platform'] == 'debian'
+    assert not host_platform.identity_needed(saved, now=now + 60)
+
+
 def test_a_dropbear_greeting_does_not_suppress_the_probe(app, monkeypatch):
     user_id, profile, _ = _identity_session(app, monkeypatch, 'alpine', greeting_platform='embedded')
     calls = _fake_identity(monkeypatch, (_identity(platform='alpinelinux'), None))

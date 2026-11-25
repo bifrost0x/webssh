@@ -84,10 +84,11 @@ changes nothing and runs nothing with elevated rights.
 
 Windows, MikroTik RouterOS and Cisco IOS hosts are recognised only from the SSH
 greeting that **Find hosts** or a reachability check reads; when the greeting
-names one of them, WebSSH does not run the probe. When a later greeting from
-the same address and port names no platform, the hint is dropped and the
-probe runs on the next connection. A Dropbear greeting marks a
-host as embedded until a connection detects more. When a host answers
+names one of them, WebSSH does not run the probe and drops what an earlier
+probe found at that address. When a later greeting from the same address and
+port names another platform or none, the stored hint is replaced or dropped
+and the probe runs again on the next connection in Automatic mode. A Dropbear
+greeting marks a host as embedded until a connection detects more. When a host answers
 with something other than the probe output, for example a forced command or a
 menu, the profile records that detection is not possible, keeps any facts an
 earlier run found and does not run the probe again for a week. A host that
