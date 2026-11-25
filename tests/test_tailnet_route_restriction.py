@@ -119,12 +119,20 @@ def test_failed_route_lookup_restricts_node_address(tailnet, address):
     '203.0.113.7',          # exit node route through tailscale0
     '2001:db8::7',          # exit node route, IPv6
     'fd7a:115c:a1e1::7',    # just outside the Tailscale ULA prefix
+    'fd7a:115c:a1e0:b1a:0:7:c0a8:105',  # 4via6 subnet route through tailscale0
     '100.128.0.1',          # just outside 100.64.0.0/10
 ])
 def test_subnet_route_and_exit_node_destinations_are_unaffected(tailnet, address):
     assert resolve_allowed_target(address, 22, allow_internal=True).ip == address
     # Only tailnet node addresses trigger a route lookup.
     assert tailnet == []
+
+
+def test_only_the_4via6_prefix_is_exempt_from_the_node_range(tailnet):
+    assert network_policy._tailscale_node_address('fd7a:115c:a1e0:b1a:0:7:c0a8:105') is None
+    for address in ('fd7a:115c:a1e0::10', 'fd7a:115c:a1e0:b1b::10', 'fd7a:115c:a1e0:ab12:4843:cd96:6258:b240'):
+        with pytest.raises(TailnetRouteRestricted):
+            resolve_allowed_target(address, 22, allow_internal=True)
 
 
 def test_cgnat_address_off_the_tailnet_stays_allowed(tailnet):

@@ -81,7 +81,8 @@ host running Tailscale SSH and obtain a shell under the shared node identity,
 outside every WebSSH allowlist.
 
 Hosts reached through subnet routes or an exit node are not affected: they run
-their own SSH server, which checks the offered password or key. A `100.64.0.0/10`
+their own SSH server, which checks the offered password or key. This includes
+4via6 subnet routes in `fd7a:115c:a1e0:b1a::/64`, inside the node range. A `100.64.0.0/10`
 address that does not route through the interface, such as carrier-grade NAT on
 the local network, also stays reachable. If the kernel route of a node address
 cannot be determined, for example because the route query fails or times out,

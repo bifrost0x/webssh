@@ -41,6 +41,9 @@ _TAILSCALE_NODE_NETWORKS = (
     ipaddress.ip_network('100.64.0.0/10'),
     ipaddress.ip_network('fd7a:115c:a1e0::/48'),
 )
+# Tailscale's 4via6 subnet routes embed a site ID and an IPv4 address in this
+# prefix; the destinations behind them are subnet hosts with their own sshd.
+_TAILSCALE_4VIA6_NETWORK = ipaddress.ip_network('fd7a:115c:a1e0:b1a::/64')
 
 
 def _tailscale_node_address(address):
@@ -52,6 +55,8 @@ def _tailscale_node_address(address):
     address = ipaddress.ip_address(address)
     if address.version == 6 and address.ipv4_mapped is not None:
         address = address.ipv4_mapped
+    if address.version == 6 and address in _TAILSCALE_4VIA6_NETWORK:
+        return None
     if any(
         address.version == network.version and address in network
         for network in _TAILSCALE_NODE_NETWORKS

@@ -88,7 +88,8 @@ automation records `tailscale_route_restricted`. The setting row shows whether
 Tailscale SSH is enabled on the server, since it has no effect otherwise.
 
 Hosts reached through subnet routes or an exit node are not affected; their own
-SSH server checks the offered credentials. A `100.64.0.0/10` address that does
+SSH server checks the offered credentials. This includes 4via6 subnet routes in
+`fd7a:115c:a1e0:b1a::/64`, which lie inside the node range. A `100.64.0.0/10` address that does
 not route through the interface, such as carrier-grade NAT on the local network,
 stays reachable. A node address whose kernel route cannot be determined, for
 example because the route query fails or times out, is refused. An IPv4-mapped
