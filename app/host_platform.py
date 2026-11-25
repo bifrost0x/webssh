@@ -2,11 +2,7 @@
 import re
 import time
 
-PLATFORMS = frozenset({
-    'server', 'proxmox', 'raspberrypi', 'homeassistant', 'truenas',
-    'opnsense', 'ubuntu', 'debian', 'fedora', 'archlinux', 'alpinelinux',
-    'linux', 'apple', 'freebsd', 'docker',
-})
+from .host_catalog import PLATFORMS, SERVICES, MAX_SERVICES, SERVICE_UNITS as _SERVICE_UNITS, SERVICE_IMAGES as _SERVICE_IMAGES  # noqa: F401
 
 PLATFORM_COMMAND = r'''LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -134,42 +130,9 @@ def valid_maintenance(value):
     return checked is None or (not isinstance(checked, bool) and isinstance(checked, (int, float)))
 
 
-SERVICES = frozenset({
-    'docker', 'podman', 'nginx', 'apache', 'caddy', 'mariadb', 'postgresql', 'samba', 'k3s',
-    'wireguard', 'nextcloud', 'pihole', 'homeassistant', 'jellyfin', 'plex', 'portainer',
-    'traefik', 'vaultwarden', 'immich', 'gitea', 'paperless', 'grafana', 'adguard',
-    'uptimekuma', 'nginxproxymanager',
-})
-MAX_SERVICES = 16
 # Services change; a saved host is checked again at most once a week.
 SERVICE_REFRESH_SECONDS = 7 * 24 * 3600
 _SERVICE_FLAGS = {'docker', 'podman', 'nextcloud', 'pihole', 'wireguard'}
-_SERVICE_UNITS = {
-    'nginx': 'nginx', 'apache2': 'apache', 'httpd': 'apache', 'caddy': 'caddy', 'mariadb': 'mariadb',
-    'mysql': 'mariadb', 'postgresql': 'postgresql', 'smbd': 'samba', 'k3s': 'k3s',
-}
-# First match wins; specific names come before generic ones.
-_SERVICE_IMAGES = (
-    ('nginxproxymanager', re.compile(r'nginx-proxy-manager')),
-    ('nextcloud', re.compile(r'nextcloud')),
-    ('homeassistant', re.compile(r'home-?assistant')),
-    ('jellyfin', re.compile(r'jellyfin')),
-    ('plex', re.compile(r'(^|/)(plex|pms-docker)')),
-    ('portainer', re.compile(r'portainer')),
-    ('traefik', re.compile(r'traefik')),
-    ('vaultwarden', re.compile(r'vaultwarden|bitwarden')),
-    ('immich', re.compile(r'immich')),
-    ('gitea', re.compile(r'gitea|forgejo')),
-    ('paperless', re.compile(r'paperless')),
-    ('grafana', re.compile(r'grafana')),
-    ('pihole', re.compile(r'pi-?hole')),
-    ('adguard', re.compile(r'adguard')),
-    ('uptimekuma', re.compile(r'uptime-kuma')),
-    ('mariadb', re.compile(r'(^|/)(mariadb|mysql)(:|@|$)')),
-    ('postgresql', re.compile(r'(^|/)postgres(ql)?(:|@|$)')),
-    ('nginx', re.compile(r'(^|/)nginx(:|@|$)')),
-    ('caddy', re.compile(r'(^|/)caddy(:|@|$)')),
-)
 
 
 def parse_services(text, *, max_bytes=6144):

@@ -1,0 +1,310 @@
+"""Fixed catalogs for host identity detection.
+
+Everything a remote host reports is mapped onto the ids defined here; nothing
+the host prints is stored or shown directly.
+"""
+import re
+
+PLATFORMS = frozenset({
+    'server', 'proxmox', 'raspberrypi', 'homeassistant', 'truenas',
+    'opnsense', 'ubuntu', 'debian', 'fedora', 'archlinux', 'alpinelinux',
+    'linux', 'apple', 'freebsd', 'docker',
+    'proxmoxbackup', 'rockylinux', 'almalinux', 'redhat', 'centos', 'opensuse',
+    'nixos', 'manjaro', 'endeavouros', 'linuxmint', 'popos', 'kalilinux',
+    'gentoo', 'voidlinux', 'unraid', 'synology', 'qnap', 'openwrt', 'pfsense',
+    'windows', 'mikrotik', 'cisco', 'ubiquiti', 'embedded',
+})
+
+# Recognised from a login banner only; no POSIX probe runs on them.
+NON_POSIX_PLATFORMS = frozenset({'windows', 'mikrotik', 'cisco', 'embedded'})
+
+# os-release ID
+OS_ID_PLATFORMS = {
+    'ubuntu': 'ubuntu', 'debian': 'debian', 'fedora': 'fedora',
+    'rocky': 'rockylinux', 'almalinux': 'almalinux', 'rhel': 'redhat', 'centos': 'centos',
+    'opensuse': 'opensuse', 'opensuse-leap': 'opensuse', 'opensuse-tumbleweed': 'opensuse',
+    'sles': 'opensuse', 'sled': 'opensuse',
+    'nixos': 'nixos', 'manjaro': 'manjaro', 'endeavouros': 'endeavouros',
+    'linuxmint': 'linuxmint', 'pop': 'popos', 'kali': 'kalilinux',
+    'gentoo': 'gentoo', 'void': 'voidlinux', 'arch': 'archlinux', 'alpine': 'alpinelinux',
+    'haos': 'homeassistant', 'truenas': 'truenas', 'openwrt': 'openwrt',
+    'raspbian': 'raspberrypi',
+}
+
+# os-release ID_LIKE token
+FAMILIES = {
+    'debian': 'debian', 'ubuntu': 'ubuntu', 'rhel': 'redhat', 'fedora': 'fedora',
+    'centos': 'redhat', 'suse': 'opensuse', 'opensuse': 'opensuse', 'arch': 'archlinux',
+    'alpine': 'alpinelinux', 'gentoo': 'gentoo',
+}
+
+# Read-only probe marker -> platform
+MARKER_PLATFORMS = {
+    'proxmox': 'proxmox', 'proxmoxbackup': 'proxmoxbackup', 'truenas': 'truenas',
+    'opnsense': 'opnsense', 'pfsense': 'pfsense', 'unraid': 'unraid',
+    'synology': 'synology', 'qnap': 'qnap', 'openwrt': 'openwrt', 'ubiquiti': 'ubiquiti',
+}
+
+# uname -s
+KERNEL_PLATFORMS = {'Linux': 'linux', 'Darwin': 'apple', 'FreeBSD': 'freebsd'}
+
+VIRT_KINDS = frozenset({'bare-metal', 'vm', 'lxc', 'container', 'wsl'})
+VIRT_MAP = {
+    'none': 'bare-metal',
+    'kvm': 'vm', 'qemu': 'vm', 'vmware': 'vm', 'microsoft': 'vm', 'oracle': 'vm',
+    'xen': 'vm', 'bochs': 'vm', 'parallels': 'vm', 'bhyve': 'vm',
+    'lxc': 'lxc', 'lxc-libvirt': 'lxc', 'openvz': 'lxc', 'systemd-nspawn': 'lxc',
+    'docker': 'container', 'podman': 'container', 'rkt': 'container',
+    'wsl': 'wsl',
+}
+CONTAINER_ACCESS = frozenset({'ok', 'denied', 'none'})
+
+ROLES = frozenset({
+    'hypervisor', 'backup', 'storage', 'container', 'docs', 'photos', 'media', 'cloud',
+    'smarthome', 'network', 'monitoring', 'dev', 'passwords', 'database', 'web',
+    'workstation', 'server',
+})
+
+SERVICES = frozenset({
+    # existing
+    'docker', 'podman', 'nginx', 'apache', 'caddy', 'mariadb', 'postgresql', 'samba', 'k3s',
+    'wireguard', 'nextcloud', 'pihole', 'homeassistant', 'jellyfin', 'plex', 'portainer',
+    'traefik', 'vaultwarden', 'immich', 'gitea', 'paperless', 'grafana', 'adguard',
+    'uptimekuma', 'nginxproxymanager',
+    # media and downloads
+    'emby', 'sonarr', 'radarr', 'lidarr', 'readarr', 'prowlarr', 'bazarr', 'overseerr',
+    'jellyseerr', 'qbittorrent', 'transmission', 'deluge', 'sabnzbd', 'navidrome',
+    'audiobookshelf', 'kavita', 'calibreweb',
+    # photos, documents, cloud and sync
+    'photoprism', 'owncloud', 'seafile', 'syncthing', 'filebrowser', 'stirlingpdf',
+    'bookstack', 'wikijs', 'joplin', 'mealie',
+    # authentication
+    'authentik', 'authelia', 'keycloak',
+    # git and CI
+    'gitlab', 'jenkins', 'woodpecker',
+    # smart home
+    'mosquitto', 'zigbee2mqtt', 'nodered', 'esphome', 'homebridge',
+    # monitoring
+    'prometheus', 'influxdb', 'loki', 'zabbix', 'netdata',
+    # databases
+    'redis', 'mongodb', 'opensearch',
+    # network, DNS, VPN and proxy
+    'tailscale', 'zerotier', 'openvpn', 'unbound', 'bind', 'haproxy',
+    # containers and dashboards
+    'dozzle', 'watchtower', 'homepage', 'homarr', 'dashy',
+    # ai
+    'ollama', 'openwebui',
+})
+MAX_SERVICES = 24
+
+# systemd unit name (without .service) -> service
+SERVICE_UNITS = {
+    'nginx': 'nginx', 'apache2': 'apache', 'httpd': 'apache', 'caddy': 'caddy', 'mariadb': 'mariadb',
+    'mysql': 'mariadb', 'postgresql': 'postgresql', 'smbd': 'samba', 'k3s': 'k3s',
+    'jellyfin': 'jellyfin', 'plexmediaserver': 'plex', 'emby-server': 'emby',
+    'sonarr': 'sonarr', 'radarr': 'radarr', 'lidarr': 'lidarr', 'readarr': 'readarr',
+    'prowlarr': 'prowlarr', 'bazarr': 'bazarr', 'overseerr': 'overseerr', 'jellyseerr': 'jellyseerr',
+    'qbittorrent-nox': 'qbittorrent', 'transmission-daemon': 'transmission', 'deluged': 'deluge',
+    'sabnzbdplus': 'sabnzbd', 'navidrome': 'navidrome', 'audiobookshelf': 'audiobookshelf',
+    'kavita': 'kavita', 'calibre-web': 'calibreweb', 'photoprism': 'photoprism',
+    'seafile': 'seafile', 'syncthing': 'syncthing', 'filebrowser': 'filebrowser',
+    'bookstack': 'bookstack', 'wikijs': 'wikijs', 'mealie': 'mealie',
+    'authentik': 'authentik', 'authelia': 'authelia', 'keycloak': 'keycloak',
+    'gitea': 'gitea', 'forgejo': 'gitea', 'gitlab-runsvdir': 'gitlab', 'jenkins': 'jenkins',
+    'woodpecker-server': 'woodpecker', 'mosquitto': 'mosquitto', 'zigbee2mqtt': 'zigbee2mqtt',
+    'nodered': 'nodered', 'esphome': 'esphome', 'homebridge': 'homebridge',
+    'vaultwarden': 'vaultwarden', 'grafana-server': 'grafana', 'prometheus': 'prometheus',
+    'influxdb': 'influxdb', 'loki': 'loki', 'zabbix-server': 'zabbix', 'netdata': 'netdata',
+    'redis-server': 'redis', 'redis': 'redis', 'mongod': 'mongodb', 'opensearch': 'opensearch',
+    'tailscaled': 'tailscale', 'zerotier-one': 'zerotier', 'openvpn': 'openvpn',
+    'unbound': 'unbound', 'named': 'bind', 'bind9': 'bind', 'haproxy': 'haproxy',
+    'traefik': 'traefik', 'pihole-FTL': 'pihole', 'AdGuardHome': 'adguard',
+    'uptime-kuma': 'uptimekuma', 'ollama': 'ollama', 'open-webui': 'openwebui',
+    'paperless-webserver': 'paperless', 'immich-server': 'immich',
+    'homeassistant': 'homeassistant', 'home-assistant': 'homeassistant',
+}
+
+# Absolute path -> service. Only fixed paths whose existence alone identifies the service.
+SERVICE_PATHS = (
+    ('/var/www/nextcloud/occ', 'nextcloud'),
+    ('/var/www/html/nextcloud/occ', 'nextcloud'),
+    ('/var/www/owncloud/occ', 'owncloud'),
+    ('/etc/pihole', 'pihole'),
+    ('/etc/wireguard', 'wireguard'),
+    ('/etc/sonarr', 'sonarr'),
+    ('/var/lib/sonarr', 'sonarr'),
+    ('/var/lib/radarr', 'radarr'),
+    ('/var/lib/lidarr', 'lidarr'),
+    ('/var/lib/readarr', 'readarr'),
+    ('/var/lib/prowlarr', 'prowlarr'),
+    ('/var/lib/bazarr', 'bazarr'),
+    ('/var/lib/jellyfin', 'jellyfin'),
+    ('/var/lib/plexmediaserver', 'plex'),
+    ('/var/lib/emby', 'emby'),
+    ('/var/lib/navidrome', 'navidrome'),
+    ('/var/lib/audiobookshelf', 'audiobookshelf'),
+    ('/var/lib/photoprism', 'photoprism'),
+    ('/var/lib/syncthing', 'syncthing'),
+    ('/etc/syncthing', 'syncthing'),
+    ('/opt/seafile', 'seafile'),
+    ('/opt/gitlab', 'gitlab'),
+    ('/etc/gitlab', 'gitlab'),
+    ('/var/lib/jenkins', 'jenkins'),
+    ('/etc/gitea', 'gitea'),
+    ('/var/lib/gitea', 'gitea'),
+    ('/etc/mosquitto', 'mosquitto'),
+    ('/opt/zigbee2mqtt', 'zigbee2mqtt'),
+    ('/etc/homebridge', 'homebridge'),
+    ('/var/lib/homebridge', 'homebridge'),
+    ('/etc/prometheus', 'prometheus'),
+    ('/var/lib/influxdb', 'influxdb'),
+    ('/etc/zabbix', 'zabbix'),
+    ('/etc/netdata', 'netdata'),
+    ('/etc/redis', 'redis'),
+    ('/var/lib/mongodb', 'mongodb'),
+    ('/etc/opensearch', 'opensearch'),
+    ('/var/lib/tailscale', 'tailscale'),
+    ('/var/lib/zerotier-one', 'zerotier'),
+    ('/etc/openvpn', 'openvpn'),
+    ('/etc/unbound', 'unbound'),
+    ('/etc/bind', 'bind'),
+    ('/etc/haproxy', 'haproxy'),
+    ('/etc/authelia', 'authelia'),
+    ('/etc/keycloak', 'keycloak'),
+    ('/var/lib/ollama', 'ollama'),
+    ('/etc/AdGuardHome', 'adguard'),
+    ('/opt/AdGuardHome', 'adguard'),
+    ('/opt/vaultwarden', 'vaultwarden'),
+    ('/opt/uptime-kuma', 'uptimekuma'),
+    ('/opt/stirling-pdf', 'stirlingpdf'),
+    ('/opt/mealie', 'mealie'),
+    ('/opt/wikijs', 'wikijs'),
+    ('/opt/bookstack', 'bookstack'),
+    ('/var/www/bookstack', 'bookstack'),
+    ('/opt/dozzle', 'dozzle'),
+    ('/opt/homepage', 'homepage'),
+    ('/opt/homarr', 'homarr'),
+    ('/opt/dashy', 'dashy'),
+    ('/opt/esphome', 'esphome'),
+    ('/opt/joplin-server', 'joplin'),
+    ('/opt/filebrowser', 'filebrowser'),
+    ('/opt/kavita', 'kavita'),
+    ('/opt/overseerr', 'overseerr'),
+    ('/opt/jellyseerr', 'jellyseerr'),
+    ('/opt/authentik', 'authentik'),
+    ('/opt/woodpecker', 'woodpecker'),
+    ('/opt/watchtower', 'watchtower'),
+    ('/opt/loki', 'loki'),
+    ('/opt/calibre-web', 'calibreweb'),
+    ('/opt/sabnzbd', 'sabnzbd'),
+    ('/opt/qbittorrent', 'qbittorrent'),
+    ('/var/lib/transmission-daemon', 'transmission'),
+    ('/var/lib/deluge', 'deluge'),
+    ('/opt/open-webui', 'openwebui'),
+    ('/opt/nodered', 'nodered'),
+    ('/home/node-red/.node-red', 'nodered'),
+)
+
+# snap name -> service
+SERVICE_SNAPS = {
+    'nextcloud': 'nextcloud', 'jellyfin': 'jellyfin', 'plexmediaserver': 'plex',
+    'docker': 'docker', 'homeassistant': 'homeassistant', 'adguard-home': 'adguard',
+    'syncthing': 'syncthing', 'mosquitto': 'mosquitto', 'node-red': 'nodered',
+    'prometheus': 'prometheus', 'grafana': 'grafana', 'influxdb': 'influxdb',
+    'redis': 'redis', 'mongodb': 'mongodb', 'ollama': 'ollama', 'tailscale': 'tailscale',
+    'zerotier': 'zerotier', 'bind9': 'bind', 'haproxy': 'haproxy', 'gitea': 'gitea',
+    'gitlab': 'gitlab', 'netdata': 'netdata',
+}
+
+
+def _image(service, *names, strict=False):
+    # Anchored at a path segment so e.g. "postgres-exporter" is not a database.
+    # The strict form needs the whole segment, the loose form allows a suffix
+    # such as "immich-server".
+    tail = '' if strict else '[a-z0-9._-]*'
+    return (service, re.compile(r'(^|/)(?:' + '|'.join(names) + ')' + tail + r'(:|@|$)'))
+
+
+# Matched against lower-cased image references; first match wins, so specific
+# names come before generic ones.
+SERVICE_IMAGES = (
+    ('nginxproxymanager', re.compile(r'nginx-proxy-manager')),
+    ('nextcloud', re.compile(r'nextcloud')),
+    ('homeassistant', re.compile(r'home-?assistant')),
+    ('jellyfin', re.compile(r'jellyfin')),
+    ('plex', re.compile(r'(^|/)(plex|pms-docker)')),
+    ('portainer', re.compile(r'portainer')),
+    ('traefik', re.compile(r'traefik')),
+    ('vaultwarden', re.compile(r'vaultwarden|bitwarden')),
+    ('immich', re.compile(r'immich')),
+    ('gitea', re.compile(r'gitea|forgejo')),
+    ('paperless', re.compile(r'paperless')),
+    ('grafana', re.compile(r'grafana')),
+    ('pihole', re.compile(r'pi-?hole')),
+    ('adguard', re.compile(r'adguard')),
+    ('uptimekuma', re.compile(r'uptime-kuma')),
+    _image('jellyseerr', 'jellyseerr'),
+    _image('overseerr', 'overseerr'),
+    _image('emby', 'embyserver', 'emby'),
+    _image('sonarr', 'sonarr'),
+    _image('radarr', 'radarr'),
+    _image('lidarr', 'lidarr'),
+    _image('readarr', 'readarr'),
+    _image('prowlarr', 'prowlarr'),
+    _image('bazarr', 'bazarr'),
+    _image('qbittorrent', 'qbittorrent'),
+    _image('transmission', 'transmission'),
+    _image('deluge', 'deluge'),
+    _image('sabnzbd', 'sabnzbd'),
+    _image('navidrome', 'navidrome'),
+    _image('audiobookshelf', 'audiobookshelf'),
+    _image('kavita', 'kavita'),
+    _image('calibreweb', 'calibre-web'),
+    _image('photoprism', 'photoprism'),
+    _image('owncloud', 'owncloud'),
+    _image('seafile', 'seafile'),
+    _image('syncthing', 'syncthing'),
+    _image('filebrowser', 'filebrowser'),
+    _image('stirlingpdf', 'stirling-pdf'),
+    _image('bookstack', 'bookstack'),
+    _image('wikijs', 'wikijs'),
+    _image('wikijs', 'wiki', strict=True),
+    _image('joplin', 'joplin-server', 'joplin'),
+    _image('mealie', 'mealie'),
+    _image('authentik', 'authentik'),
+    _image('authelia', 'authelia'),
+    _image('keycloak', 'keycloak'),
+    _image('gitlab', 'gitlab-ce', 'gitlab-ee', 'gitlab'),
+    _image('jenkins', 'jenkins'),
+    _image('woodpecker', 'woodpecker'),
+    _image('mosquitto', 'eclipse-mosquitto', 'mosquitto'),
+    _image('zigbee2mqtt', 'zigbee2mqtt'),
+    _image('nodered', 'node-red'),
+    _image('esphome', 'esphome'),
+    _image('homebridge', 'homebridge'),
+    _image('prometheus', 'prometheus'),
+    _image('influxdb', 'influxdb'),
+    _image('loki', 'loki'),
+    _image('zabbix', 'zabbix'),
+    _image('netdata', 'netdata'),
+    _image('opensearch', 'opensearch'),
+    _image('tailscale', 'tailscale'),
+    _image('zerotier', 'zerotier'),
+    _image('openvpn', 'openvpn'),
+    _image('unbound', 'unbound'),
+    _image('bind', 'bind9'),
+    _image('haproxy', 'haproxy', strict=True),
+    _image('dozzle', 'dozzle'),
+    _image('watchtower', 'watchtower'),
+    _image('homepage', 'homepage'),
+    _image('homarr', 'homarr'),
+    _image('dashy', 'dashy'),
+    _image('ollama', 'ollama'),
+    _image('openwebui', 'open-webui'),
+    ('mariadb', re.compile(r'(^|/)(mariadb|mysql)(:|@|$)')),
+    ('postgresql', re.compile(r'(^|/)postgres(ql)?(:|@|$)')),
+    _image('redis', 'valkey', strict=True),
+    _image('mongodb', 'mongo', strict=True),
+    ('nginx', re.compile(r'(^|/)nginx(:|@|$)')),
+    ('caddy', re.compile(r'(^|/)caddy(:|@|$)')),
+)

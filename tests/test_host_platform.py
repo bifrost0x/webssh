@@ -235,7 +235,7 @@ def test_greeting_platform_is_validated_and_follows_the_address(app):
         moved, error = profile_manager.upsert_profile(user_id, dict(edited, id=profile['id'], host='10.0.0.8'))
         assert error is None
         assert 'greeting_platform' not in moved
-        for invalid in ('windows', 3, None, '<b>'):
+        for invalid in ('plan9', 3, None, '<b>'):
             _, error = profile_manager.upsert_profile(user_id, dict(payload, name=f'bad-{invalid}', greeting_platform=invalid))
             assert error == 'Invalid platform icon'
 

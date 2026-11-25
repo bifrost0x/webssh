@@ -405,4 +405,4 @@ def test_greeting_hints_skip_hosts_edited_since_the_probe(app, context):
     with app.app_context():
         assert cache_greeting_platforms(uid, {profile['id']: (('other.example', 22), 'ubuntu')}) == 0
         assert 'greeting_platform' not in get_profile(uid, profile['id'])
-        assert cache_greeting_platforms(uid, {profile['id']: (('server.example', 22), 'windows')}) == 0
+        assert cache_greeting_platforms(uid, {profile['id']: (('server.example', 22), 'plan9')}) == 0
