@@ -316,6 +316,7 @@ def valid_services(value):
 
 _OS_RELEASE_KEYS = ('ID', 'ID_LIKE', 'VERSION_ID', 'VARIANT_ID')
 _SINGLE_KEYS = frozenset({*_OS_RELEASE_KEYS, 'kernel', 'model', 'virt', 'target', 'guests'})
+_REPEATED_KEYS = frozenset({'marker', 'service', 'unit', 'snap', 'image', 'engine'})
 _MAX_FACT_LENGTH = 200
 _CONTROL = re.compile(r'[\x00-\x08\x0a-\x1f\x7f-\x9f]')
 # ANSI CSI (ESC [ ... final byte) and OSC (ESC ] ... BEL or ESC \) sequences.
@@ -360,7 +361,7 @@ def parse_identity(text, *, max_bytes=8192):
             if key in single:
                 duplicates.add(key)
             single[key] = _unquote(value) if key in _OS_RELEASE_KEYS else value
-        elif key in {'marker', 'service', 'unit', 'snap', 'image', 'engine'}:
+        elif key in _REPEATED_KEYS:
             repeated.setdefault(key, []).append(value)
     result = {
         'state': 'unavailable', 'platform': None, 'family': None, 'os_id': None, 'os_version': None,
@@ -465,19 +466,28 @@ def valid_identity(value):
         value[key] is None or check(value[key]) for key, check in _IDENTITY_VALUES.items())
 
 
+def _has_probe_line(text):
+    for line in text.split('\n'):
+        line = line[:-1] if line.endswith('\r') else line
+        key, separator, _ = line.partition('=')
+        if separator and not _CONTROL.search(line) and (key in _SINGLE_KEYS or key in _REPEATED_KEYS):
+            return True
+    return False
+
+
 def _identity_at_deadline(output):
     """Decide a probe answer that had not ended when the deadline passed.
 
     The probe prints os-release and its kernel line within milliseconds. With
-    a complete kernel line it is our probe that hung later on (pmxcfs, D-Bus,
-    a stale network mount, a container query), and the markers and services
-    after that step are missing: no fact is stored, and the probe is asked
-    again after a day, not on every login, so a host that always hangs does
-    not collect a stuck shell per connection. Anything else, silence
-    included, is a forced command or menu that waits and is not asked again
-    this week. A channel that stayed silent, or printed only control
-    sequences, may also be a login shell that starts slowly and is asked
-    again after a day.
+    a complete kernel line, or any other complete line in the probe's own
+    key=value form, it is our probe that hung (pmxcfs, D-Bus, a stale network
+    mount, a container query), and what comes after that step is missing: no
+    fact is stored, and the probe is asked again after a day, not on every
+    login, so a host that always hangs does not collect a stuck shell per
+    connection. Other readable text is a forced command or menu that waits
+    and is not asked again this week. A channel that stayed silent, or
+    printed only control sequences, may also be a login shell that starts
+    slowly and is asked again after a day.
     """
     if not output:
         return None, 'silent'
@@ -487,7 +497,7 @@ def _identity_at_deadline(output):
         text = output.decode('utf-8', errors='replace')
     except (UnicodeDecodeError, ValueError):
         return None, 'unsupported'
-    if identity['state'] == 'detected':
+    if identity['state'] == 'detected' or _has_probe_line(complete.decode('utf-8')):
         return None, 'stalled'
     # Nothing printable besides colour, cursor or window title sequences (a
     # startup file preparing the terminal): no menu or message was shown yet.

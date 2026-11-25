@@ -288,9 +288,19 @@ def test_a_probe_that_stalls_after_its_kernel_line_is_retried_later(monkeypatch)
                                           b'service=docker\nimage=redis') == (None, 'stalled')
 
 
-@pytest.mark.parametrize('payload', [b'ID=debian\nVERSION_ID="12"\n', b'ID=debian\nkernel=Lin', b'Welcome\nkernel=Linux\x07\n'])
-def test_a_stalled_answer_without_a_complete_kernel_line_is_not_the_probe(monkeypatch, payload):
+@pytest.mark.parametrize('payload', [b'Welcome\nkernel=Linux\x07\n', b'Welcome to node-1\nkernel=Lin',
+                                     b'Last login: today\nIDENT=debian\n', b'ID debian\n'])
+def test_a_stalled_answer_without_a_probe_line_is_not_the_probe(monkeypatch, payload):
     assert _stalled_identity(monkeypatch, payload) == (None, 'unsupported')
+
+
+@pytest.mark.parametrize('payload', [b'ID=debian\nVERSION_ID=12\n', b'ID=debian\nVERSION_ID="12"\n', b'ID=debian\nkernel=Lin',
+                                     b'Welcome to node-1\r\nID="ubuntu"\r\n', b'\x1b[1mHi\x1b[0m\nmarker=proxmox\n',
+                                     b'Last login: today\nservice=docker\n'])
+def test_a_probe_that_stalls_before_its_kernel_line_is_retried_later(monkeypatch, payload):
+    # os-release was read, then the probe hung (or a startup file printed first):
+    # it is our probe, so stored facts stay and it is asked again after a day.
+    assert _stalled_identity(monkeypatch, payload) == (None, 'stalled')
 
 
 @pytest.mark.parametrize('payload', [b'\x1b[0m\n\n', b'\x1b]0;node-1\x07\r\n\x1b[1;32m', b'\n\n\n',
