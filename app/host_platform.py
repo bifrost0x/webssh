@@ -672,7 +672,9 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
             # Only the attempt is recorded; stored facts stay as they are.
             profile_manager.record_identity_attempt(user_id, profile_id, expected, now=checked_at)
             return
-        if not profile_manager.cache_detected_facts(user_id, profile_id, expected, identity=identity, now=checked_at):
+        # Silence may only be a slow shell: it does not undo an earlier detection.
+        if not profile_manager.cache_detected_facts(user_id, profile_id, expected, identity=identity, now=checked_at,
+                                                    keep_detected=error == 'silent'):
             return
         if identity['state'] != 'detected':
             return

@@ -1094,11 +1094,13 @@ def cache_greeting_platforms(user_id, observed):
 
 
 @user_operation
-def cache_detected_facts(user_id, profile_id, expected_endpoint, *, identity=None, maintenance=None, now=None):
+def cache_detected_facts(user_id, profile_id, expected_endpoint, *, identity=None, maintenance=None, now=None,
+                         keep_detected=False):
     """Merge a probed identity and maintenance facts into the current owned profile under its lock.
 
     A detected identity replaces every stored identity fact; one that could not
     be read only records the attempt and keeps what an earlier probe found.
+    With keep_detected, such an attempt also leaves a 'detected' state as it is.
     """
     from .host_platform import valid_identity, valid_maintenance
     if expected_endpoint is None or (identity is None and maintenance is None):
@@ -1117,7 +1119,9 @@ def cache_detected_facts(user_id, profile_id, expected_endpoint, *, identity=Non
                 if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
                     continue
                 if identity is not None:
-                    profile['detection_state'] = identity['state']
+                    if not (keep_detected and identity['state'] != 'detected'
+                            and profile.get('detection_state') == 'detected'):
+                        profile['detection_state'] = identity['state']
                     profile['platform_checked_at'] = stamp
                     # Only the old platform probe stored 'server'; it never names a platform.
                     if profile.get('detected_platform') == 'server':

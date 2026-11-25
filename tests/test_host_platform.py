@@ -356,12 +356,28 @@ def test_a_silent_channel_is_unavailable_but_asked_again_after_a_day(app, monkey
     # A forced command that waits, or a login shell that starts slowly (nvm, conda,
     # a loaded host, a long jump chain): only the latter answers on a later try.
     from types import SimpleNamespace
-    stored = dict(detected_platform='debian', detected_services=['nginx'], detection_state='detected',
-                  platform_checked_at=1_000.0, services_checked_at=1_000.0)
+    monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: 10_000_000.0))
+    saved, published, _ = _stall_detection(app, monkeypatch, 'quiet', b'')
+    assert published == [] and saved['detection_state'] == 'unavailable'
+    day, week = 24 * 3600, host_platform.IDENTITY_REFRESH_SECONDS
+    assert saved['platform_checked_at'] == 10_000_000.0 - week + day
+    assert host_platform.identity_needed(saved, now=10_000_000.0 + day + 1)
+
+
+@pytest.mark.parametrize('stored', [
+    dict(detected_platform='debian', detected_services=['nginx'], detection_state='detected',
+         platform_checked_at=1_000.0, services_checked_at=1_000.0),
+    # A system the catalog has no platform for, such as OpenBSD.
+    dict(detected_os_id='openbsd', detected_os_version='7.6', detection_state='detected',
+         platform_checked_at=1_000.0, services_checked_at=1_000.0),
+])
+def test_a_silent_login_keeps_an_earlier_detection(app, monkeypatch, stored):
+    from types import SimpleNamespace
     monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: 10_000_000.0))
     saved, published, _ = _stall_detection(app, monkeypatch, 'quiet', b'', **stored)
-    assert published == [] and saved['detection_state'] == 'unavailable'
-    assert saved['detected_platform'] == 'debian' and saved['detected_services'] == ['nginx']
+    assert published == [] and saved['detection_state'] == 'detected'
+    assert {key: saved.get(key) for key in stored if key != 'platform_checked_at'} == {
+        key: value for key, value in stored.items() if key != 'platform_checked_at'}
     assert saved['services_checked_at'] == 1_000.0
     day, week = 24 * 3600, host_platform.IDENTITY_REFRESH_SECONDS
     assert saved['platform_checked_at'] == 10_000_000.0 - week + day
