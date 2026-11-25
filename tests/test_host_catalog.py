@@ -184,3 +184,11 @@ def test_platform_icons_are_plain_simple_icons_with_provenance():
         title = provenance['icons'][name]['title'].replace('&', '&amp;')
         assert svg.startswith(f'<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>{title}</title><path d="'), name
         assert svg.endswith('"/></svg>') and svg.count('<') == 5, name
+
+
+def test_units_that_client_packages_keep_active_name_no_service():
+    # Debian and Ubuntu's openvpn package enables a plain openvpn.service that only
+    # runs /bin/true; a configured tunnel is always an openvpn@ instance.
+    assert 'openvpn' not in c.SERVICE_UNITS
+    assert host_platform.parse_identity('kernel=Linux\nunit=openvpn')['services'] == []
+    assert {'openvpn', 'openvpn-server', 'openvpn-client'} <= set(c.SERVICE_UNIT_TEMPLATES)

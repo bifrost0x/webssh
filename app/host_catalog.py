@@ -103,7 +103,9 @@ SERVICES = frozenset({
 })
 MAX_SERVICES = 24
 
-# systemd unit name (without .service) -> service
+# systemd unit name (without .service) -> service. Only units that run the server
+# itself: Debian's openvpn package, for example, keeps a plain openvpn.service
+# active that only runs /bin/true, so OpenVPN counts through its instances.
 SERVICE_UNITS = {
     'nginx': 'nginx', 'apache2': 'apache', 'httpd': 'apache', 'caddy': 'caddy', 'mariadb': 'mariadb',
     'mysql': 'mariadb', 'postgresql': 'postgresql', 'smbd': 'samba', 'k3s': 'k3s',
@@ -122,7 +124,7 @@ SERVICE_UNITS = {
     'vaultwarden': 'vaultwarden', 'grafana-server': 'grafana', 'prometheus': 'prometheus',
     'influxdb': 'influxdb', 'loki': 'loki', 'zabbix-server': 'zabbix', 'netdata': 'netdata',
     'redis-server': 'redis', 'redis': 'redis', 'mongod': 'mongodb', 'opensearch': 'opensearch',
-    'tailscaled': 'tailscale', 'zerotier-one': 'zerotier', 'openvpn': 'openvpn',
+    'tailscaled': 'tailscale', 'zerotier-one': 'zerotier',
     'unbound': 'unbound', 'named': 'bind', 'bind9': 'bind', 'haproxy': 'haproxy',
     'traefik': 'traefik', 'pihole-FTL': 'pihole', 'AdGuardHome': 'adguard',
     'uptime-kuma': 'uptimekuma', 'ollama': 'ollama', 'open-webui': 'openwebui',
