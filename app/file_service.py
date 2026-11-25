@@ -752,6 +752,20 @@ class FileService:
     def delete(self, source_id, *, user_id, path, cancel_event=None):
         self.resolve(source_id, user_id, FileCapability.DELETE)
         source = self.resolve(source_id, user_id, FileCapability.RECURSIVE)
+        # SMB already refuses the share root itself.
+        if source.descriptor.kind != 'smb':
+            # Normalisation resolves '..' away, so the raw path is checked too.
+            safe_path = (
+                source.backend.normalize_path(path)
+                if isinstance(path, str)
+                else None
+            )
+            if (
+                safe_path is None
+                or any(segment == '..' for segment in path.split('/'))
+                or safe_path.strip('/') in {'', '.'}
+            ):
+                return False, 'Invalid move request'
         return source.backend.delete(
             source,
             path,

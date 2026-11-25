@@ -211,6 +211,47 @@ def test_recursive_delete_requires_recursive_capability_before_backend_call():
     assert backend.calls == []
 
 
+class DeleteRecordingBackend(RecordingBackend):
+    def normalize_path(self, path):
+        import posixpath
+        return posixpath.normpath(path) if path else '.'
+
+    def delete(self, source, path, **kwargs):
+        self.calls.append(('delete', path))
+        return True, None
+
+
+def delete_service(backend):
+    source = resolved_source(
+        FileCapability.DELETE, FileCapability.RECURSIVE, backend=backend
+    )
+    return FileService(SimpleNamespace(resolve=lambda source_id, user_id: source))
+
+
+@pytest.mark.parametrize('path', ['/', '.', '//', 'a/..', '/home/u/..', '..'])
+def test_delete_rejects_root_and_dot_segments(path):
+    backend = DeleteRecordingBackend()
+
+    result = delete_service(backend).delete(
+        'sftp-session:owned', user_id=7, path=path
+    )
+
+    assert result == (False, 'Invalid move request')
+    assert backend.calls == []
+
+
+@pytest.mark.parametrize('path', ['./name', 'name', '/srv/data/name'])
+def test_delete_accepts_relative_child(path):
+    backend = DeleteRecordingBackend()
+
+    result = delete_service(backend).delete(
+        'sftp-session:owned', user_id=7, path=path
+    )
+
+    assert result == (True, None)
+    assert backend.calls == [('delete', path)]
+
+
 def test_directory_pages_resume_one_backend_enumeration_with_opaque_cursor(
     monkeypatch,
 ):
