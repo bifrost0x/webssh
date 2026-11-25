@@ -493,3 +493,26 @@ def test_operator_code_bootstraps_first_passkey_then_allows_github_unlink(
     with app.app_context():
         assert GitHubIdentity.query.filter_by(user_id=user_id).first() is None
         assert WebAuthnCredential.query.filter_by(user_id=user_id).count() == 1
+
+
+def test_github_login_never_redirects_to_a_whitespace_prefixed_host(
+    app, client, monkeypatch,
+):
+    from app.models import GitHubIdentity, db
+
+    admin_id = _create_user(app, 'github_next_admin', is_admin=True)
+    user_id = _create_user(app, 'github_next_user')
+    _configure(app, admin_id)
+    with app.app_context():
+        db.session.add(GitHubIdentity(
+            user_id=user_id, github_user_id='12345', login='octocat'
+        ))
+        db.session.commit()
+    started = client.get('/auth/github/login?next=%20///evil.example')
+    state = parse_qs(urlsplit(started.headers['Location']).query)['state'][0]
+    _provider(monkeypatch)
+
+    callback = client.get(f'/auth/github/callback?code=code&state={state}')
+
+    assert callback.status_code == 302
+    assert callback.headers['Location'] == '/'

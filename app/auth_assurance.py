@@ -75,11 +75,15 @@ def safe_continuation(value):
         ord(character) < 0x20 for character in candidate
     ):
         return '/'
-    # urlsplit('///host') yields the path '/host', but a browser resolves the
-    # value as a protocol-relative URL to another host.
-    if candidate.startswith('//'):
+    # Check the raw value: urlsplit strips leading whitespace and reads
+    # '///host' as the path '/host', while a browser strips the whitespace
+    # and resolves the rest as a protocol-relative URL to another host.
+    if not candidate.startswith('/') or candidate.startswith('//'):
         return '/'
-    parsed = urlsplit(candidate)
+    try:
+        parsed = urlsplit(candidate)
+    except ValueError:
+        return '/'
     if (
         parsed.scheme
         or parsed.netloc

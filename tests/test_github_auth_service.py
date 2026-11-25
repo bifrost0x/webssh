@@ -188,6 +188,9 @@ def test_organization_policy_accepts_active_membership_and_fails_closed():
         ('/\tadmin', '/'),
         ('/admin\x00', '/'),
         ('//[', '/'),
+        (' ///evil.example', '/'),
+        (' /admin', '/'),
+        (' //[', '/'),
     ),
 )
 def test_oauth_state_stores_only_strictly_safe_continuations(

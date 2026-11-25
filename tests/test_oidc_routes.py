@@ -1958,3 +1958,45 @@ def test_oidc_callback_rate_limit_bounds_rejection_audit_writes(
     assert rejected.status_code == 400
     assert throttled.status_code == 429
     assert len(rejection_events) == 1
+
+
+def test_oidc_login_never_redirects_to_a_whitespace_prefixed_host(
+    app, client, monkeypatch
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity, db
+
+    user_id = _create_user(app, "oidc_next_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example/")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", set())
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", set())
+    with app.app_context():
+        db.session.add(OIDCIdentity(
+            user_id=user_id,
+            issuer="https://issuer.example",
+            subject="next-subject",
+        ))
+        db.session.commit()
+    observed = {}
+
+    class Provider:
+        def authorize_redirect(self, _callback, **kwargs):
+            observed.update(kwargs)
+            return "redirected"
+
+        def authorize_access_token(self, *, code_verifier):
+            return {"userinfo": {
+                "iss": "https://issuer.example/",
+                "sub": "next-subject",
+            }}
+
+    monkeypatch.setattr(oidc_routes, "_client", lambda: Provider())
+
+    started = client.get("/oidc/login?next=%20///evil.example")
+    callback = client.get(f"/oidc/callback?state={observed['state']}")
+
+    assert started.status_code == 200
+    assert callback.status_code == 302
+    assert callback.headers["Location"] == "/"

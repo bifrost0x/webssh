@@ -368,6 +368,9 @@ def test_authentication_invalidation_removes_pending_oidc_link_state(app):
         ("/\tadmin", "/"),
         ("/admin\x00", "/"),
         ("//[", "/"),
+        (" ///evil.example", "/"),
+        (" /admin", "/"),
+        (" //[", "/"),
     ),
 )
 def test_oidc_state_stores_only_strictly_safe_continuations(

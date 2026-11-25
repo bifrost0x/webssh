@@ -668,7 +668,9 @@ def test_logout_deletes_current_authentication_session(app, client):
 
 
 # Expected values were captured from the strict sanitizer and the public
-# redirect pipeline before the OIDC and GitHub services shared them.
+# redirect pipeline before the OIDC and GitHub services shared them. Values
+# with leading whitespace must fall back to the root: browsers strip it and
+# would resolve ' ///host' as a protocol-relative URL.
 _CONTINUATION_CASES = (
     # value, stored continuation, public redirect target (no proxy prefix)
     ('/', '/', '/'),
@@ -682,6 +684,11 @@ _CONTINUATION_CASES = (
     ('/%2e%2e/', '/%2e%2e/', '/'),
     ('/x#f', '/', '/'),
     ('//[', '/', '/'),
+    (' ///evil.example', '/', '/'),
+    (' /x', '/', '/'),
+    ('\t/x', '/', '/'),
+    (' //[', '/', '/'),
+    (' //]', '/', '/'),
     ('/' + 'a' * 512, '/', '/'),
     ('/' + 'a' * 511, '/' + 'a' * 511, '/' + 'a' * 511),
     (None, '/', '/'),

@@ -403,7 +403,7 @@ def authenticate_user(username, password):
         # as a wrong password, preventing username enumeration by timing.
         bcrypt.checkpw(password.encode('utf-8'), _DUMMY_PASSWORD_HASH)
         return None, "Invalid username or password"
-    password_matches = user.check_password(password)
+    password_ok = user.check_password(password)
     # A directory-managed identity must never silently fall back to the local
     # password database. Keep this boundary in the shared authenticator so it
     # also protects reauthentication and future password-based entry points.
@@ -411,7 +411,7 @@ def authenticate_user(username, password):
         return None, "Invalid username or password"
     # A locked account answers like a wrong password. A distinct message after
     # a correct password would let anyone keep guessing it while it is locked.
-    if password_matches and not getattr(user, 'is_locked', False):
+    if password_ok and not getattr(user, 'is_locked', False):
         return user, None
     return None, "Invalid username or password"
 

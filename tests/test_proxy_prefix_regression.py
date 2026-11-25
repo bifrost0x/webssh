@@ -298,3 +298,19 @@ def test_terminal_fonts_stay_on_the_public_origin_and_prefix(proxy_app):
         assert font.data.startswith(b'wOF2')
         assert 'Content-Encoding' not in font.headers
         assert "font-src 'self' data:" in font.headers['Content-Security-Policy']
+
+
+@pytest.mark.parametrize('target', [' ///evil.example', '\t///evil.example', ' /admin'])
+def test_password_login_never_redirects_to_a_whitespace_prefixed_target(proxy_app, target):
+    from urllib.parse import quote
+    from app.auth import register_user
+    app, prefix = proxy_app
+    with app.app_context():
+        user, error = register_user('next_user', 'password123')
+        assert error is None
+    response = app.test_client().post(
+        '/login?next=' + quote(target, safe=''),
+        data={'username': 'next_user', 'password': 'password123'},
+        headers=headers(prefix), base_url='http://backend.local')
+    assert response.status_code == 302
+    assert response.location == prefix + '/'
