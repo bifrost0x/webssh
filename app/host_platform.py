@@ -665,7 +665,8 @@ def recheck_reboot_hint(session_id, user_id, publish, *, cancel_event=None):
 
 # Probe attempts that could not be written to the profile, for instance with
 # a full connection store: (user, profile, endpoint) -> time the probe is due.
-# They keep a host from being probed on every login until the process ends.
+# The map is per process: it is lost on a restart, and each server process
+# keeps its own, so a host may be probed once more by another process.
 _PENDING_ATTEMPTS = {}
 _PENDING_ATTEMPT_LIMIT = 4096
 _PENDING_ATTEMPTS_LOCK = threading.Lock()
