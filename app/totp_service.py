@@ -207,7 +207,7 @@ def verify_totp(user_id, code, *, now=None):
             except Exception as exc:
                 log_warning(
                     'TOTP secret could not be decrypted',
-                    user_id=row.user_id,
+                    user_id=int(user_id),
                     error_type=type(exc).__name__,
                 )
                 continue
@@ -230,7 +230,7 @@ def verify_totp(user_id, code, *, now=None):
             db.session.rollback()
             log_warning(
                 'TOTP replay state could not be saved',
-                user_id=matched.user_id,
+                user_id=int(user_id),
                 error_type=type(exc).__name__,
             )
             return False

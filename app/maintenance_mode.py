@@ -345,12 +345,12 @@ def recover_interrupted_restore() -> None:
             rotate_epoch()
         mark_failed(operation_id, 'Interrupted restore rolled back automatically')
     except Exception as exc:
-        log_error(
-            'Interrupted restore rollback failed',
-            error_type=type(exc).__name__,
-        )
         mark_failed(
             operation_id,
             'Interrupted restore rollback failed; use the CLI recovery path',
             rollback_failed=True,
+        )
+        log_error(
+            'Interrupted restore rollback failed',
+            error_type=type(exc).__name__,
         )

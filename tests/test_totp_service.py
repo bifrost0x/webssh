@@ -188,3 +188,54 @@ def test_totp_decrypt_failure_is_logged(app, caplog):
     assert records[0].extra_data["error_type"]
     assert view.secret not in caplog.text
     assert "not-a-valid-ciphertext" not in caplog.text
+
+
+def test_totp_commit_failure_logs_without_touching_the_failed_session(
+    app, monkeypatch, caplog
+):
+    from sqlalchemy import event
+
+    from app.models import TOTPAuthenticator, db
+    from app.totp_service import (
+        activate_totp_enrollment,
+        begin_totp_enrollment,
+        verify_totp,
+    )
+
+    user_id = _create_user(app, "totp_commit_logged")
+    activation_time = datetime.now(timezone.utc)
+    reference = activation_time + timedelta(minutes=5)
+    with app.app_context():
+        view = begin_totp_enrollment(user_id, "binding")
+        activate_totp_enrollment(
+            view.token,
+            pyotp.TOTP(view.secret).at(activation_time),
+            "binding",
+            now=activation_time,
+        )
+        code = pyotp.TOTP(view.secret).at(reference)
+
+        def failing_commit():
+            raise RuntimeError("database unavailable")
+
+        def failing_refresh(*_args, **_kwargs):
+            raise RuntimeError("refresh against failed database")
+
+        monkeypatch.setattr(db.session, "commit", failing_commit)
+        event.listen(TOTPAuthenticator, "refresh", failing_refresh)
+        try:
+            caplog.clear()
+            with caplog.at_level("WARNING"):
+                assert verify_totp(user_id, code, now=reference) is False
+        finally:
+            event.remove(TOTPAuthenticator, "refresh", failing_refresh)
+
+    records = [
+        record for record in caplog.records
+        if record.getMessage() == "TOTP replay state could not be saved"
+    ]
+    assert len(records) == 1
+    assert records[0].extra_data == {
+        "user_id": user_id,
+        "error_type": "RuntimeError",
+    }
