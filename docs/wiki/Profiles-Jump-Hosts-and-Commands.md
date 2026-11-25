@@ -92,8 +92,8 @@ greeting marks a host as embedded until a connection detects more. When a host a
 with something other than the probe output, for example a forced command or a
 menu, the profile records that detection is not possible, keeps any facts an
 earlier run found and does not run the probe again for a week. A host that
-prints nothing at all within four seconds may only have a slow login shell, so
-it is asked again after a day. When the probe starts answering but
+prints nothing within four seconds, or only colour or window title sequences,
+may only have a slow login shell, so it is asked again after a day. When the probe starts answering but
 does not finish within four seconds, for example on a hung network mount,
 stored facts stay as they are and it runs again after a day.
 

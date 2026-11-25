@@ -434,19 +434,26 @@ def _identity_at_deadline(output):
     again after a day, not on every login, so a host that always hangs does
     not collect a stuck shell per connection. Anything else, silence
     included, is a forced command or menu that waits and is not asked again
-    this week. A channel that stayed silent may also be a login shell that
-    starts slowly and is asked again after a day.
+    this week. A channel that stayed silent, or printed only control
+    sequences, may also be a login shell that starts slowly and is asked
+    again after a day.
     """
     if not output:
         return None, 'silent'
     complete = output[:output.rfind(b'\n') + 1]
     try:
         identity = parse_identity(complete.decode('utf-8'))
+        text = output.decode('utf-8', errors='replace')
     except (UnicodeDecodeError, ValueError):
         return None, 'unsupported'
-    if identity['state'] != 'detected':
-        return None, 'unsupported'
-    return None, 'stalled'
+    if identity['state'] == 'detected':
+        return None, 'stalled'
+    # Only blank lines or lines parse_identity drops (a startup file setting
+    # colours or the window title): no menu or message was shown yet.
+    lines = (line[:-1] if line.endswith('\r') else line for line in text.split('\n'))
+    if not any(line.strip() and not _CONTROL.search(line) for line in lines):
+        return None, 'silent'
+    return None, 'unsupported'
 
 
 def collect_identity(session_id, *, cancel_event=None):
