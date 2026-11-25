@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -420,3 +421,92 @@ def test_unsafe_maintenance_location_is_never_cached(monkeypatch, tmp_path):
     for _ in range(2):
         with pytest.raises(RuntimeError, match='outside DATA_DIR'):
             maintenance.is_active()
+
+
+def _plant_failed_status(directory):
+    import json
+    import time
+
+    directory.mkdir(parents=True)
+    (directory / 'restore-status.json').write_text(json.dumps({
+        'state': 'rollback_failed',
+        'operation_id': 'planted',
+        'message': 'Restore and rollback failed',
+        'updated_at': time.time(),
+    }), 'utf-8')
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX symlink semantics')
+def test_cached_maintenance_location_rejects_a_replaced_namespace(
+    monkeypatch, tmp_path
+):
+    import shutil
+
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    assert maintenance.is_active() is False
+    namespace = maintenance._read_status_path().parent
+
+    # A temp cleaner removed the namespace and another account put a link to
+    # its own status file in its place.
+    planted = tmp_path / 'planted'
+    _plant_failed_status(planted)
+    shutil.rmtree(namespace)
+    namespace.symlink_to(planted, target_is_directory=True)
+
+    for _ in range(2):
+        with pytest.raises(RuntimeError, match='symbolic link'):
+            maintenance.is_active()
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX ownership and modes')
+def test_cached_maintenance_location_rejects_a_foreign_namespace(
+    monkeypatch, tmp_path
+):
+    import app.backup_coordination as coordination
+
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    assert maintenance.is_active() is False
+    namespace = maintenance._read_status_path().parent
+    validations = []
+    real_ensure = coordination.ensure_backup_temp_dir
+
+    def counting_ensure():
+        validations.append(1)
+        return real_ensure()
+
+    monkeypatch.setattr(maintenance, 'ensure_backup_temp_dir', counting_ensure)
+
+    os.chmod(namespace, 0o777)
+    assert maintenance.is_active() is False
+    assert len(validations) == 1
+    assert namespace.stat().st_mode & 0o777 == 0o700
+
+    # Owned by another account: every read runs the full validation, whose
+    # chmod is refused for a directory this process does not own.
+    real_uid = os.geteuid()
+    monkeypatch.setattr(os, 'geteuid', lambda: real_uid + 1)
+
+    def refusing_chmod(path, mode):
+        raise PermissionError('not the owner')
+
+    monkeypatch.setattr(os, 'chmod', refusing_chmod)
+    for _ in range(2):
+        with pytest.raises(PermissionError):
+            maintenance.is_active()
+    assert len(validations) == 3
+
+
+def test_cached_maintenance_location_drops_the_document_of_a_removed_namespace(
+    monkeypatch, tmp_path
+):
+    import shutil
+
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    maintenance.begin_preparing('restore-test')
+    assert maintenance.is_active() is True
+    namespace = maintenance._read_status_path().parent
+
+    shutil.rmtree(namespace)
+
+    assert maintenance.is_active() is False
+    assert namespace.is_dir()

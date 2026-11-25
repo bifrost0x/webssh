@@ -4,6 +4,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path, PurePath
+import stat
 import tempfile
 import threading
 import time
@@ -18,8 +19,9 @@ _state = None
 _state_path = None
 # Resolved status file per configured location. Only the read path uses it:
 # is_active() runs on every request and socket event, and the full namespace
-# validation creates, chmods and resolves directories each time. Writers and
-# the operation lock keep validating on every call.
+# validation creates, chmods and resolves directories each time. Cached reads
+# still lstat the operation root and namespace. Writers and the operation
+# lock keep validating on every call.
 _read_location = None
 _STATUS_NAME = 'restore-status.json'
 _KNOWN_STATES = {
@@ -85,16 +87,51 @@ def _status_location_key():
     )
 
 
+def _directory_identity(directory: Path):
+    """Return the lstat identity of a private directory, or None if unsafe.
+
+    Mirrors what ensure_backup_temp_dir() establishes: a real directory, not
+    a symlink, owned by this process and without group or other access.
+    """
+    try:
+        metadata = os.lstat(directory)
+    except OSError:
+        return None
+    if not stat.S_ISDIR(metadata.st_mode):
+        return None
+    if os.name != 'nt' and (
+        metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077
+    ):
+        return None
+    return (metadata.st_dev, metadata.st_ino)
+
+
+def _status_directory_identities(path: Path):
+    identities = tuple(
+        _directory_identity(directory)
+        for directory in (path.parent.parent, path.parent)
+    )
+    return None if None in identities else identities
+
+
 def _read_status_path() -> Path:
-    global _read_location
+    global _read_location, _state, _state_path
     key = _status_location_key()
     cached = _read_location
     if cached is not None and cached[0] == key:
-        return cached[1]
-    # The first lookup per location runs the full validation, so a
-    # misconfigured or unsafe directory still raises here.
+        if _status_directory_identities(cached[1]) == cached[2]:
+            return cached[1]
+        # The namespace was removed, replaced or changed ownership or mode
+        # since it was validated; its cached document no longer applies.
+        _state = None
+        _state_path = None
+    # Unknown or changed locations run the full validation again, so an
+    # unsafe directory raises here.
+    _read_location = None
     path = _status_path().resolve(strict=False)
-    _read_location = (key, path)
+    identities = _status_directory_identities(path)
+    if identities is not None:
+        _read_location = (key, path, identities)
     return path
 
 

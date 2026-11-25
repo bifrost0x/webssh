@@ -178,37 +178,9 @@ def _global_limit_below_source_limit(data):
     )
 
 
-def set_sign_in_protection(values):
-    """Persist any subset of the sign-in protection values in one write."""
-    if not isinstance(values, dict) or not values:
-        return False
-    if invalid_sign_in_protection_field(values) is not None:
-        return False
-    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
-        data = _load_with_lock_held()
-        data.update(values)
-        if not _valid_settings(data) or _global_limit_below_source_limit(data):
-            return False
-        _save(data)
-    return sign_in_protection()
-
-
 def is_tailnet_route_restricted():
     """Ordinary SSH to tailnet node addresses stays blocked unless lifted."""
     return _load_cached().get('tailscale_ssh_restrict_tailnet_routes') is not False
-
-
-def set_tailnet_route_restricted(value):
-    """Return the stored value, or None for a non-boolean."""
-    if type(value) is not bool:
-        return None
-    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
-        data = _load_with_lock_held()
-        data['tailscale_ssh_restrict_tailnet_routes'] = value
-        if not _valid_settings(data):
-            return None
-        _save(data)
-    return value
 
 
 def is_registration_enabled():
@@ -502,15 +474,22 @@ def update_admin_settings(changes):
                     f'{name} is not an admin setting', setting=name,
                     code='unknown_setting',
                 )
-        if _global_limit_below_source_limit(data):
+        if not _valid_settings(data):
+            raise SettingsUpdateError('Invalid settings')
+        # Loading accepts any in-range pair, so only a change to one of the
+        # two limits is held to their relation; an older file with a lower
+        # ceiling must not block unrelated settings.
+        limits_changed = [
+            name for name in ('login_username_global_limit', 'login_username_limit')
+            if name in changes
+        ]
+        if limits_changed and _global_limit_below_source_limit(data):
             raise SettingsUpdateError(
                 'login_username_global_limit must not be lower than '
                 'login_username_limit',
-                setting='login_username_global_limit',
+                setting=limits_changed[0],
                 code='global_limit_below_source_limit',
             )
-        if not _valid_settings(data):
-            raise SettingsUpdateError('Invalid settings')
         if changed:
             _save(data)
     return {

@@ -49,7 +49,7 @@ def _set_username_limits(*, per_source=None, global_limit=None):
             values["login_username_global_limit"] = max(current, per_source)
     if global_limit is not None:
         values["login_username_global_limit"] = global_limit
-    assert app_settings.set_sign_in_protection(values)
+    app_settings.update_admin_settings(values)
 
 
 @pytest.fixture
@@ -1194,7 +1194,7 @@ def test_ipv6_prefix_is_configurable(tmp_path, monkeypatch, prefix, bucket):
     monkeypatch.setattr(app_settings, "_SETTINGS_FILE", tmp_path / "app_settings.json")
     assert rate_limit_address("2001:db8:1:2:aaaa:bbbb:cccc:dddd") == "2001:db8:1:2::/64"
 
-    assert app_settings.set_sign_in_protection({"ratelimit_ipv6_prefix": prefix})
+    app_settings.update_admin_settings({"ratelimit_ipv6_prefix": prefix})
 
     assert rate_limit_address("2001:db8:1:2:aaaa:bbbb:cccc:dddd") == bucket
     assert rate_limit_address("::ffff:192.0.2.9") == "192.0.2.9"
@@ -1220,7 +1220,7 @@ def test_ipv6_prefix_change_moves_the_login_limit_to_the_new_bucket(
 
     assert limited("2001:db8:77:1::1") is False
     assert limited("2001:db8:77:1::2") is True
-    assert app_settings.set_sign_in_protection({"ratelimit_ipv6_prefix": 128})
+    app_settings.update_admin_settings({"ratelimit_ipv6_prefix": 128})
     # Per-address buckets apply to the next request without a restart.
     assert limited("2001:db8:77:1::3") is False
     assert limited("2001:db8:77:1::3") is True

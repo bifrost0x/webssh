@@ -14,6 +14,7 @@ import zipfile
 import zlib
 
 import config
+from .audit_logger import log_warning
 from .backup_coordination import ensure_backup_temp_dir
 from .storage_utils import atomic_copy_file, fsync_parent_directory
 from .restore_database import SQLITE_SIDECARS, harden_imported_database
@@ -611,7 +612,19 @@ def _database_verification_directory(work_dir):
         return Path(work_dir)
     try:
         return ensure_backup_temp_dir()
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError) as exc:
+        # The CLI and container checks verify archives without a usable
+        # namespace; mkstemp still creates the copy readable only by us.
+        # RuntimeError texts are fixed; an OSError text would name the path.
+        if isinstance(exc, OSError):
+            reason = exc.strerror or type(exc).__name__
+        else:
+            reason = str(exc)
+        log_warning(
+            'Backup operation directory is unusable; verifying the database '
+            'copy in the system temporary directory',
+            error_type=type(exc).__name__, reason=reason,
+        )
         return None
 
 
