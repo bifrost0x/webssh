@@ -382,14 +382,31 @@ def valid_identity(value):
         value[key] is None or check(value[key]) for key, check in _IDENTITY_VALUES.items())
 
 
+def _identity_at_deadline(output):
+    """Decide a probe answer that had not ended when the deadline passed.
+
+    The probe prints os-release and its kernel line within milliseconds. With
+    a complete kernel line, only a slow later step (a container query) held it
+    up, so the complete lines so far are used. Anything else, silence included,
+    is a forced command or menu that waits and is not asked again this week.
+    """
+    complete = output[:output.rfind(b'\n') + 1]
+    try:
+        identity = parse_identity(complete.decode('utf-8'))
+    except (UnicodeDecodeError, ValueError):
+        return None, 'unsupported'
+    if identity['state'] != 'detected':
+        return None, 'unsupported'
+    return identity, None
+
+
 def collect_identity(session_id, *, cancel_event=None):
     from .session_insights import collect_linux_stats
     return collect_linux_stats(
         session_id, timeout=4.0, max_bytes=8192,
         command=IDENTITY_COMMAND, parser=parse_identity,
         allow_partial=False, cancel_event=cancel_event,
-        # A forced command that prints a menu and waits never ends; it is not the probe.
-        stalled_output_error='unsupported',
+        on_deadline=_identity_at_deadline,
     )
 
 

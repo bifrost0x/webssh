@@ -225,9 +225,12 @@ def test_platform_collector_rejects_partial_output_and_honors_cancellation(monke
     assert channel.closed
 
 
-@pytest.mark.parametrize('payload, expected', [(b'1) Shell\n2) Exit\nChoice: ', 'unsupported'), (b'', 'transient')])
+@pytest.mark.parametrize('payload, expected', [(b'1) Shell\n2) Exit\nChoice: ', 'unsupported'), (b'', 'unsupported')])
 def test_identity_collector_reports_a_host_that_answers_and_then_waits(monkeypatch, payload, expected):
-    """A forced command showing a menu never ends; output before the deadline means it was not the probe."""
+    """A forced command showing a menu, or one that prints nothing, never ends.
+
+    The probe prints its first lines within milliseconds, so neither is the probe.
+    """
     from app import session_insights
     from tests.test_session_insights import install_session, FakeChannel
     install_session(monkeypatch)
@@ -246,6 +249,56 @@ def test_identity_collector_reports_a_host_that_answers_and_then_waits(monkeypat
     clock = iter([0] * (3 + len(payload) // 4096) + [5] * 10)
     assert session_insights.collect_linux_stats('owned-session', timeout=1.0, command='true',
                                                 parser=lambda text, **kwargs: text, allow_partial=False) == (None, 'transient')
+
+def _stalled_identity(monkeypatch, payload):
+    from app import session_insights
+    from tests.test_session_insights import install_session, FakeChannel
+    install_session(monkeypatch)
+    channel = FakeChannel(payload)
+    monkeypatch.setattr(channel, 'exit_status_ready', lambda: False)
+    monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', lambda *args, **kwargs: channel)
+    clock = iter([0] * (3 + len(payload) // 4096) + [5] * 10)
+    monkeypatch.setattr(session_insights.time, 'monotonic', lambda: next(clock))
+    monkeypatch.setattr(session_insights.time, 'sleep', lambda _: None)
+    result = host_platform.collect_identity('owned-session')
+    assert channel.closed
+    return result
+
+
+def test_a_slow_probe_that_reached_its_kernel_line_keeps_what_it_printed(monkeypatch):
+    # A slow container query must not turn an honest probe into a week of "unavailable".
+    identity, error = _stalled_identity(monkeypatch, b'ID=debian\nVERSION_ID="12"\nkernel=Linux\nvirt=kvm\nunit=nginx\n'
+                                                     b'service=docker\nimage=redis')
+    assert error is None and host_platform.valid_identity(identity)
+    assert identity['state'] == 'detected' and identity['platform'] == 'debian' and identity['virt'] == 'vm'
+    # The cut last line is not trusted: "image=redis" may have been "image=redis-commander".
+    assert identity['services'] == ['docker', 'nginx'] and identity['container_access'] is None
+
+
+@pytest.mark.parametrize('payload', [b'ID=debian\nVERSION_ID="12"\n', b'ID=debian\nkernel=Lin', b'Welcome\nkernel=Linux\x07\n'])
+def test_a_stalled_answer_without_a_complete_kernel_line_is_not_the_probe(monkeypatch, payload):
+    assert _stalled_identity(monkeypatch, payload) == (None, 'unsupported')
+
+
+def test_a_stalled_probe_is_stored_as_detected_and_not_retried(app, monkeypatch):
+    from app import profile_manager
+    from app import session_insights
+    from tests.test_session_insights import FakeChannel, FakeClient, FakeTransport
+    user_id, profile, session = _identity_session(app, monkeypatch, 'slowprobe')
+    session['client'] = FakeClient(FakeTransport())
+    channel = FakeChannel(b'ID=ubuntu\nVERSION_ID="24.04"\nkernel=Linux\nservice=docker\n')
+    monkeypatch.setattr(channel, 'exit_status_ready', lambda: False)
+    monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', lambda *args, **kwargs: channel)
+    clock = iter([0] * 4 + [5] * 50)
+    monkeypatch.setattr(session_insights.time, 'monotonic', lambda: next(clock))
+    monkeypatch.setattr(session_insights.time, 'sleep', lambda _: None)
+    published = []
+    with app.app_context():
+        host_platform.detect_connected_platform('slowprobe', user_id, published.append)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+    assert saved['detection_state'] == 'detected' and saved['detected_platform'] == 'ubuntu'
+    assert saved['detected_services'] == ['docker'] and published and published[0]['platform'] == 'ubuntu'
+
 
 @pytest.mark.usefixtures('direct_socket_authentication')
 def test_optional_platform_failure_after_success_never_becomes_ssh_error(app, monkeypatch):
