@@ -314,7 +314,6 @@ def is_config_managed_admin(user):
     return (
         bool(user.is_admin)
         and user.username in config.ADMIN_USERS
-        and not user.is_locked
         and not user.is_ldap_managed
         and not user.is_github_managed
     )

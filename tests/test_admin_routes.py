@@ -1221,11 +1221,10 @@ def test_demote_config_managed_admin_is_refused(app, client, monkeypatch):
         assert db.session.get(User, listed_id).is_admin is False
 
 
-def test_locked_listed_admin_is_not_config_managed_and_can_be_demoted(
+def test_locked_listed_admin_stays_marked_and_cannot_be_demoted(
     app, client, monkeypatch,
 ):
     import config
-    from app.auth import sync_admin_users
     from app.models import User, db
 
     _prepare_role(app, client, 'admin')
@@ -1243,14 +1242,14 @@ def test_locked_listed_admin_is_not_config_managed_and_can_be_demoted(
         user['username']: user['admin_managed_by_config']
         for user in listing.get_json()['users']
     }
-    assert flags['adminuser'] is True
-    assert flags['lockedlistedadmin'] is False
+    assert flags['lockedlistedadmin'] is True
 
+    # Demoting while locked would let the next start re-promote the account
+    # silently once it is unlocked.
     path = f'/admin/api/users/{locked_id}/demote'
     headers = password_step_up_headers(client, 'user.manage', f'{locked_id}:demote')[0]
     response = client.post(path, headers=headers)
 
-    assert response.status_code == 200
+    assert response.status_code == 409
     with app.app_context():
-        sync_admin_users()
-        assert db.session.get(User, locked_id).is_admin is False
+        assert db.session.get(User, locked_id).is_admin is True

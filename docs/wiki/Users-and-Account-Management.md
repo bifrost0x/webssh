@@ -91,8 +91,9 @@ while the account is LDAP- or GitHub-managed. Converting a listed LDAP or
 GitHub-managed account to a local one (unlinking its LDAP identity, or
 disconnecting GitHub from an account GitHub created) is refused until the name is removed from `ADMIN_USERS`, because
 the local account would otherwise be promoted on the next start. The admin user
-list marks accounts promoted this way, and demoting one is refused until it is
-removed from `ADMIN_USERS` and the server is restarted.
+list marks accounts promoted this way, and demoting one, even while it is
+locked, is refused until it is removed from `ADMIN_USERS` and the server is
+restarted.
 
 ### Forgotten password
 
