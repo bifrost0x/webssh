@@ -33,49 +33,34 @@
         return data;
     }
 
-    function bytes(value) {
-        const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-        const raw = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='));
-        return Uint8Array.from(raw, character => character.charCodeAt(0));
-    }
-
-    function base64url(value) {
-        const raw = String.fromCharCode.apply(null, new Uint8Array(value));
-        return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    }
+    const {
+        base64urlToBytes,
+        bytesToBase64url,
+        decodeAssertionOptions,
+        serializeAssertion
+    } = window.WebSSHSecurityUI;
 
     function decodeCreationOptions(options) {
-        options.challenge = bytes(options.challenge);
-        options.user.id = bytes(options.user.id);
-        (options.excludeCredentials || []).forEach(item => { item.id = bytes(item.id); });
+        options.challenge = base64urlToBytes(options.challenge);
+        options.user.id = base64urlToBytes(options.user.id);
+        (options.excludeCredentials || []).forEach(item => { item.id = base64urlToBytes(item.id); });
         return options;
     }
 
-    function decodeRequestOptions(options) {
-        options.challenge = bytes(options.challenge);
-        (options.allowCredentials || []).forEach(item => { item.id = bytes(item.id); });
-        return options;
-    }
-
-    function serializeCredential(credential) {
+    function serializeRegistration(credential) {
         const response = credential.response;
-        const result = {
+        return {
             id: credential.id,
-            rawId: base64url(credential.rawId),
+            rawId: bytesToBase64url(credential.rawId),
             type: credential.type,
             authenticatorAttachment: credential.authenticatorAttachment,
             clientExtensionResults: credential.getClientExtensionResults(),
-            response: { clientDataJSON: base64url(response.clientDataJSON) }
+            response: {
+                clientDataJSON: bytesToBase64url(response.clientDataJSON),
+                attestationObject: bytesToBase64url(response.attestationObject),
+                transports: response.getTransports ? response.getTransports() : []
+            }
         };
-        if (response.attestationObject) {
-            result.response.attestationObject = base64url(response.attestationObject);
-            result.response.transports = response.getTransports ? response.getTransports() : [];
-        } else {
-            result.response.authenticatorData = base64url(response.authenticatorData);
-            result.response.signature = base64url(response.signature);
-            result.response.userHandle = response.userHandle ? base64url(response.userHandle) : null;
-        }
-        return result;
     }
 
     function notify(message, type, action) {
@@ -273,9 +258,8 @@
         chooseMethod: chooseStepUpMethod,
         requestSecret: requestStepUpSecret,
         getPasskeyAssertion: async publicKey => navigator.credentials.get({
-            publicKey: decodeRequestOptions(publicKey)
+            publicKey: decodeAssertionOptions(publicKey)
         }),
-        serializeCredential,
         openAuthorization: url => window.open(
             url,
             'webssh-account-step-up',
@@ -526,7 +510,7 @@
                 body: {
                     ceremony,
                     name,
-                    credential: serializeCredential(credential)
+                    credential: serializeRegistration(credential)
                 }
             });
             await refreshSecuritySurface();
@@ -876,14 +860,14 @@
         refreshSecuritySurface().catch(error => notify(error.message, 'error'));
         document.getElementById('passkeyLoginBtn')?.addEventListener('click', async () => {
             const operation = async () => {
-                const options = decodeRequestOptions(await api('/api/webauthn/auth/options', {
+                const options = decodeAssertionOptions(await api('/api/webauthn/auth/options', {
                     method: 'POST',
                     body: {}
                 }));
                 const credential = await navigator.credentials.get({ publicKey: options });
                 const result = await api('/api/webauthn/auth/verify', {
                     method: 'POST',
-                    body: { credential: serializeCredential(credential) }
+                    body: { credential: serializeAssertion(credential) }
                 });
                 window.location.assign(result.continuation || root + '/');
                 return true;

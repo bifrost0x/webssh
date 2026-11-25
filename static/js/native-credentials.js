@@ -59,8 +59,6 @@
   const result=await withStepUp(intent.intent,current,headers=>api('/api/credentials/authorize-target',{method:'POST',headers,body:{...body,intent:intent.intent}}));
   if(!current())throw new DOMException('Cancelled','AbortError');return result;
  }
- const base64UrlBytes=value=>Uint8Array.from(atob(value.replace(/-/g,'+').replace(/_/g,'/')),character=>character.charCodeAt(0));
- const base64Url=value=>btoa(String.fromCharCode(...new Uint8Array(value))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
  const methodLabels={password:['security.methodPassword','WebSSH password'],ldap:['security.methodLdap','LDAP password'],totp:['security.methodTotp','Authenticator app'],passkey:['security.methodPasskey','Passkey'],bootstrap:['security.methodBootstrap','Enrollment code'],oidc:['security.methodOidc','Identity provider'],github:['security.methodGithub','GitHub']};
  // Reauthenticate for exactly this intent. The server accepts the retry only
  // with a grant bound to the same intent and browser authentication session.
@@ -73,8 +71,7 @@
    api:async(path,options)=>{guard();const result=await api(path,options);guard();return result;},
    chooseMethod:methods=>{guard();return question(t('credentials.confirmIdentity','Confirm your identity'),{choices:methods.map(method=>({value:method,label:t(...(methodLabels[method]||[method,method]))}))});},
    requestSecret:method=>{guard();return question(method==='totp'||method==='bootstrap'?t('credentials.accountCode','Account verification code'):t('credentials.accountPassword','WebSSH account password'),{secret:true,heading:t('credentials.confirmIdentity','Confirm your identity')});},
-   getPasskeyAssertion:options=>{guard();return navigator.credentials.get({publicKey:{...options,challenge:base64UrlBytes(options.challenge),allowCredentials:(options.allowCredentials||[]).map(item=>({...item,id:base64UrlBytes(item.id)}))}});},
-   serializeCredential:credential=>({id:credential.id,rawId:base64Url(credential.rawId),type:credential.type,authenticatorAttachment:credential.authenticatorAttachment,clientExtensionResults:credential.getClientExtensionResults(),response:{clientDataJSON:base64Url(credential.response.clientDataJSON),authenticatorData:base64Url(credential.response.authenticatorData),signature:base64Url(credential.response.signature),userHandle:credential.response.userHandle?base64Url(credential.response.userHandle):null}}),
+   getPasskeyAssertion:options=>{guard();return navigator.credentials.get({publicKey:security.decodeAssertionOptions(options)});},
    openAuthorization:url=>{guard();popup=window.open(url,'webssh-credential-step-up','popup,width=720,height=760');if(!popup)throw new Error(t('credentials.popup','Allow the sign-in window and try again.'));}
   });
   try{const grant=await client.authorize('credentials.vault',token);guard();if(!grant)throw new DOMException('Cancelled','AbortError');return client.header(grant);}

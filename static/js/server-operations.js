@@ -58,25 +58,6 @@
         }
         return data;
     }
-    function bytes(value) {
-        return Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), character => character.charCodeAt(0));
-    }
-    function encoded(value) {
-        return btoa(String.fromCharCode(...new Uint8Array(value))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    }
-    function credentialJSON(credential) {
-        return {
-            id: credential.id, rawId: encoded(credential.rawId), type: credential.type,
-            authenticatorAttachment: credential.authenticatorAttachment,
-            clientExtensionResults: credential.getClientExtensionResults(),
-            response: {
-                clientDataJSON: encoded(credential.response.clientDataJSON),
-                authenticatorData: encoded(credential.response.authenticatorData),
-                signature: encoded(credential.response.signature),
-                userHandle: credential.response.userHandle ? encoded(credential.response.userHandle) : null
-            }
-        };
-    }
     function open(sessionId, kind, sourceTarget = {}) {
         const session = manager()?.sessions?.[sessionId];
         if (!session?.connected) return;
@@ -455,13 +436,9 @@
                     guard();
                     return navigator.credentials.get({
                         signal,
-                        publicKey: {
-                            ...options, challenge: bytes(options.challenge),
-                            allowCredentials: (options.allowCredentials || []).map(item => ({...item, id: bytes(item.id)}))
-                        }
+                        publicKey: window.WebSSHSecurityUI.decodeAssertionOptions(options)
                     });
                 },
-                serializeCredential: credentialJSON,
                 openAuthorization: url => {
                     guard();
                     const popup = window.open(url, 'webssh-server-step-up', 'popup,width=720,height=760');

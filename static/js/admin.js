@@ -71,43 +71,6 @@
         return data;
     }
 
-    function decodeBase64url(value) {
-        const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-        const raw = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='));
-        return Uint8Array.from(raw, character => character.charCodeAt(0));
-    }
-
-    function encodeBase64url(value) {
-        const raw = String.fromCharCode.apply(null, new Uint8Array(value));
-        return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    }
-
-    function decodePasskeyOptions(options) {
-        options.challenge = decodeBase64url(options.challenge);
-        (options.allowCredentials || []).forEach(item => {
-            item.id = decodeBase64url(item.id);
-        });
-        return options;
-    }
-
-    function serializePasskey(credential) {
-        return {
-            id: credential.id,
-            rawId: encodeBase64url(credential.rawId),
-            type: credential.type,
-            authenticatorAttachment: credential.authenticatorAttachment,
-            clientExtensionResults: credential.getClientExtensionResults(),
-            response: {
-                clientDataJSON: encodeBase64url(credential.response.clientDataJSON),
-                authenticatorData: encodeBase64url(credential.response.authenticatorData),
-                signature: encodeBase64url(credential.response.signature),
-                userHandle: credential.response.userHandle
-                    ? encodeBase64url(credential.response.userHandle)
-                    : null
-            }
-        };
-    }
-
     let stepUpGeneration = 0;
     let activeStepUpPrompt = null;
     let stepUpReturnFocus = null;
@@ -340,14 +303,14 @@
         if (intent.grant) { return intent.grant; }
         const methods = intent.methods || [intent.method];
         if (methods.includes('passkey') && window.PublicKeyCredential) {
-            const options = decodePasskeyOptions(await api('/api/step-up/passkey/options', {
+            const options = window.WebSSHSecurityUI.decodeAssertionOptions(await api('/api/step-up/passkey/options', {
                 method: 'POST', body: { action, target }
             }));
             assertCurrentStepUp(generation);
             const credential = await navigator.credentials.get({ publicKey: options });
             assertCurrentStepUp(generation);
             const result = await api('/api/step-up/passkey/verify', {
-                method: 'POST', body: { credential: serializePasskey(credential) }
+                method: 'POST', body: { credential: window.WebSSHSecurityUI.serializeAssertion(credential) }
             });
             if (generation !== stepUpGeneration) {
                 throw new Error(t('admin.stepUpCancelled', 'Additional authentication was cancelled'));
