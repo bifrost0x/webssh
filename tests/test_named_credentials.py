@@ -1,6 +1,7 @@
 import pytest
 from tests.test_automation_service import context  # noqa: F401
 from app.automation_store import AutomationError
+from tests.credential_fixtures import assign_credential, create_assigned_credential
 
 
 def test_profile_metadata_edit_preserves_assignment_and_changed_target_requires_reassignment(app, context):
@@ -8,7 +9,7 @@ def test_profile_metadata_edit_preserves_assignment_and_changed_target_requires_
     uid, aid, _, profile = context
     service = app.extensions['credentials']
     record = service.create_named(uid, dict(name='Login', password='assigned-secret'))
-    service.assign_named(uid, profile['id'], record['id'], True)
+    assign_credential(service, uid, aid, profile['id'], record['id'])
     before = service.named.path(uid).read_bytes()
     renamed, error = upsert_profile(uid, dict(profile, name='Renamed host'))
     assert error is None
@@ -27,7 +28,7 @@ def test_named_encrypted_reusable_and_rotation_scoped(app, context, monkeypatch)
     set_credentials_enabled(True)
     service = app.extensions['credentials']
     first = service.create_named(uid, dict(name='Login',username='operator',password='unique-secret'))
-    service.assign_named(uid, profile['id'], first['id'], True)
+    assign_credential(service, uid, aid, profile['id'], first['id'])
     assert service.connection_password(uid, aid, 'ssh', profile['id'], profile) == 'unique-secret'
     before = service.connection_generation(uid, aid, 'ssh', profile['id'], profile)
     service.create_named(uid, dict(name='Other',password='another-secret'))
@@ -54,7 +55,7 @@ def test_named_disabled_and_cross_owner(app, context):
     set_credentials_enabled(True)
     record = service.create_named(uid, dict(name='Login',password='secret'))
     with pytest.raises(AutomationError):
-        service.assign_named(uid, 'foreign-resource', record['id'], True)
+        assign_credential(service, uid, aid, 'foreign-resource', record['id'])
 
 def test_native_import_preserves_legacy_and_is_idempotent(app, context):
     from app.app_settings import set_credentials_enabled
@@ -80,7 +81,7 @@ def test_create_and_assign_is_atomic_on_storage_failure(app, context,monkeypatch
     def fail(*args): raise OSError('write failure')
     monkeypatch.setattr('app.credential_store.write_document',fail)
     with pytest.raises(OSError):
-        service.create_assigned(uid,profile['id'],dict(name='Inline',password='inline-secret'),True)
+        create_assigned_credential(service, uid, aid, profile['id'],dict(name='Inline',password='inline-secret'))
     assert service.named.read(uid)['credentials']=={}
 
 def test_quick_target_token_rejects_changes_rotation_and_other_session(app,context):
@@ -291,7 +292,7 @@ def test_concurrent_authenticated_requests_cannot_apply_one_native_intent_twice(
 def test_native_replacement_requires_specific_consent_and_freezes_assignment(app, context, method):
     uid, aid, _, profile = context
     service = app.extensions['credentials']
-    first = service.create_assigned(uid, profile['id'], dict(name='Old', password='old'), True)
+    first = create_assigned_credential(service, uid, aid, profile['id'], dict(name='Old', password='old'))
     other = service.create_named(uid, dict(name='New', password='new'))
     mutation = dict(method=method, resource_id=profile['id'], confirm_target=True)
     mutation.update(dict(credential_id=other['id']) if method == 'assign' else dict(name='Created', password='created'))
@@ -316,7 +317,7 @@ def test_native_replacement_requires_specific_consent_and_freezes_assignment(app
 def test_native_same_assignment_keeps_schedule_generation(app, context):
     uid, aid, _, profile = context
     service = app.extensions['credentials']
-    record = service.create_assigned(uid, profile['id'], dict(name='Same', password='secret'), True)
+    record = create_assigned_credential(service, uid, aid, profile['id'], dict(name='Same', password='secret'))
     before = service.schedule_generations(uid, [profile])
     mutation = dict(method='assign', resource_id=profile['id'], credential_id=record['id'], confirm_target=True)
     token = service.prepare_vault(uid, aid, dict(operation='native', mutation=mutation))['intent']
@@ -327,7 +328,7 @@ def test_native_same_assignment_keeps_schedule_generation(app, context):
 def test_native_assignment_compare_occurs_inside_named_mutation(app, context, monkeypatch, remove):
     uid, aid, _, profile = context
     service = app.extensions['credentials']
-    record = service.create_assigned(uid, profile['id'], dict(name='Current', password='secret'), True)
+    record = create_assigned_credential(service, uid, aid, profile['id'], dict(name='Current', password='secret'))
     previous = service.named.read(uid)['assignments'][profile['id']]
     mutation = dict(method='assign', resource_id=profile['id'], credential_id=None if remove else record['id'], confirm_target=True, expected_assignment=previous)
     token = service.prepare_vault(uid, aid, dict(operation='native', mutation=mutation))['intent']

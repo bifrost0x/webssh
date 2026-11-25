@@ -34,15 +34,15 @@ def test_platform_cache_is_endpoint_scoped_and_override_persists(app):
         profile, error = profile_manager.upsert_profile(user_id, payload)
         assert error is None
         assert profile['platform_icon'] == 'proxmox'
-        assert profile_manager.cache_detected_platform(user_id, profile['id'], host_platform.endpoint(profile), 'ubuntu')
+        assert profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile), platform='ubuntu')
         saved = profile_manager.get_profile(user_id, profile['id'])
         assert saved['detected_platform'] == 'ubuntu'
-        assert not profile_manager.cache_detected_platform(user_id + 1, profile['id'], host_platform.endpoint(profile), 'debian')
+        assert not profile_manager.cache_detected_facts(user_id + 1, profile['id'], host_platform.endpoint(profile), platform='debian')
         changed, error = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], host='other.test'))
         assert error is None
         assert 'detected_platform' not in changed
         assert changed['platform_icon'] == 'proxmox'
-        assert not profile_manager.cache_detected_platform(user_id, profile['id'], host_platform.endpoint(profile), 'debian')
+        assert not profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile), platform='debian')
 
 
 def test_invalid_platform_override_rejected(app):
@@ -195,7 +195,7 @@ def test_detection_runs_once_per_saved_host_in_automatic_mode(app, monkeypatch, 
         profile, _ = profile_manager.upsert_profile(user_id, dict(name='Host', host='example.test', port=22, username='deploy', auth_type='password',
                                                                   **{k: v for k, v in stored.items() if k == 'platform_icon'}))
         if 'detected_platform' in stored:
-            assert profile_manager.cache_detected_platform(user_id, profile['id'], host_platform.endpoint(profile), stored['detected_platform'])
+            assert profile_manager.cache_detected_facts(user_id, profile['id'], host_platform.endpoint(profile), platform=stored['detected_platform'])
         monkeypatch.setitem(ssh_manager.sessions, 'platform-once', dict(profile, connected=True, user_id=user_id, profile_id=profile['id']))
         monkeypatch.setattr(host_platform, 'collect_platform', lambda _, **kwargs: (calls.append(1), ('ubuntu', None))[1])
         host_platform.detect_connected_platform('platform-once', user_id, lambda payload: None)

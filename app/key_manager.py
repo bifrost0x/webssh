@@ -686,10 +686,3 @@ def delete_key(user_id, key_id):
     except Exception as e:
         log_error("Error deleting key", user_id=user_id, error=str(e))
         return False
-
-def detect_key_type(key_content):
-    """Return a supported key type, or None for invalid/unsupported content."""
-    try:
-        return identify_private_key(key_content)
-    except (paramiko.SSHException, TypeError, ValueError):
-        return None

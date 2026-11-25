@@ -448,16 +448,20 @@ def test_replace_key_write_failure_preserves_active_key(
 )
 def test_detects_real_supported_key_types(
         request, fixture_name, expected):
-    from app.key_manager import detect_key_type
+    from app.ssh_key_loader import identify_private_key
 
     key_content = request.getfixturevalue(fixture_name)
-    assert detect_key_type(key_content) == expected
+    assert identify_private_key(key_content) == expected
 
 
 def test_dsa_is_not_reported_as_supported(dsa_private_key_pem):
-    from app.key_manager import detect_key_type
+    from app.ssh_key_loader import (
+        UnsupportedPrivateKeyError,
+        identify_private_key,
+    )
 
-    assert detect_key_type(dsa_private_key_pem) is None
+    with pytest.raises(UnsupportedPrivateKeyError):
+        identify_private_key(dsa_private_key_pem)
 
 
 @pytest.mark.parametrize(
@@ -479,9 +483,13 @@ def test_dsa_is_not_reported_as_supported(dsa_private_key_pem):
     ],
 )
 def test_malformed_or_empty_content_is_not_detected(content):
-    from app.key_manager import detect_key_type
+    from app.ssh_key_loader import (
+        UnsupportedPrivateKeyError,
+        identify_private_key,
+    )
 
-    assert detect_key_type(content) is None
+    with pytest.raises(UnsupportedPrivateKeyError):
+        identify_private_key(content)
 
 
 @pytest.mark.parametrize(

@@ -407,25 +407,6 @@ class CredentialService:
                 del doc['credentials'][rid]
             self.named.mutate(uid,delete)
 
-    def assign_named(self, uid, resource_id, rid, confirmed):
-        self._named_enabled()
-        with user_data_access(uid):
-            resource=self.resolve_resource(uid,resource_id)
-            def assign(doc):
-                previous=doc['assignments'].get(resource_id)
-                if previous and rid is not None and previous['credential_id']!=rid:
-                    raise AutomationError('replacement_confirmation_required')
-                if rid is None:
-                    doc['assignments'].pop(resource_id,None)
-                    return
-                if confirmed is not True or resource.get('auth_type')!='password':
-                    raise AutomationError('confirmation_required')
-                self.named.record(doc,rid)
-                if previous and previous['fingerprint']==profile_fingerprint(resource):
-                    return
-                doc['assignments'][resource_id]=dict(credential_id=rid,fingerprint=profile_fingerprint(resource),generation=secrets.token_hex(32))
-            self.named.mutate(uid,assign)
-
     def credential_status(self, uid, profile):
         from .app_settings import is_credentials_enabled
         if not is_credentials_enabled(): return 'disabled'
@@ -503,20 +484,6 @@ class CredentialService:
                         doc['assignments'][resource_id]=dict(credential_id=created['id'],fingerprint=legacy['fingerprint'],generation=secrets.token_hex(32))
                 doc['imports'].append(revision)
             self.named.mutate(uid,migrate)
-
-    def create_assigned(self, uid, resource_id, data, confirmed):
-        self._named_enabled()
-        with user_data_access(uid):
-            resource=self.resolve_resource(uid,resource_id)
-            if confirmed is not True or resource.get('auth_type')!='password':
-                raise AutomationError('confirmation_required')
-            def create(doc):
-                if resource_id in doc['assignments']:
-                    raise AutomationError('replacement_confirmation_required')
-                record=self.named.create(uid,doc,data)
-                doc['assignments'][resource_id]=dict(credential_id=record['id'],fingerprint=profile_fingerprint(resource),generation=secrets.token_hex(32))
-                return self.named.public(doc,doc['credentials'][record['id']])
-            return self.named.mutate(uid,create)
 
     def authorize_target(self, uid, aid, data):
         self._named_enabled()
