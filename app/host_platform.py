@@ -803,6 +803,8 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
             _record_attempt(user_id, profile_id, expected, min(checked_at, retry_at))
             return
         if identity['state'] != 'detected':
+            # The saved host shows at once that detection is not possible.
+            publish({'profile_id': profile_id})
             return
         payload = {'session_id': session_id, 'profile_id': profile_id, 'services': list(identity['services']),
                    'identity': dict(identity, services=list(identity['services']))}

@@ -399,7 +399,7 @@ def test_a_silent_channel_is_unavailable_but_asked_again_after_a_day(app, monkey
     from types import SimpleNamespace
     monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: 10_000_000.0))
     saved, published, _ = _stall_detection(app, monkeypatch, 'quiet', b'')
-    assert published == [] and saved['detection_state'] == 'unavailable'
+    assert published == [{'profile_id': saved['id']}] and saved['detection_state'] == 'unavailable'
     day, week = 24 * 3600, host_platform.IDENTITY_REFRESH_SECONDS
     assert saved['platform_checked_at'] == 10_000_000.0 - week + day
     assert host_platform.identity_needed(saved, now=10_000_000.0 + day + 1)
@@ -416,7 +416,7 @@ def test_a_silent_login_keeps_an_earlier_detection(app, monkeypatch, stored):
     from types import SimpleNamespace
     monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: 10_000_000.0))
     saved, published, _ = _stall_detection(app, monkeypatch, 'quiet', b'', **stored)
-    assert published == [] and saved['detection_state'] == 'detected'
+    assert published == [{'profile_id': saved['id']}] and saved['detection_state'] == 'detected'
     assert {key: saved.get(key) for key in stored if key != 'platform_checked_at'} == {
         key: value for key, value in stored.items() if key != 'platform_checked_at'}
     assert saved['services_checked_at'] == 1_000.0
@@ -429,8 +429,9 @@ def test_a_silent_login_keeps_an_earlier_detection(app, monkeypatch, stored):
 def test_a_waiting_menu_is_not_asked_again_for_a_week(app, monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: 10_000_000.0))
-    saved, _, _ = _stall_detection(app, monkeypatch, 'menu', b'1) Shell\n2) Exit\nChoice: ')
+    saved, published, _ = _stall_detection(app, monkeypatch, 'menu', b'1) Shell\n2) Exit\nChoice: ')
     assert saved['detection_state'] == 'unavailable' and saved['platform_checked_at'] == 10_000_000.0
+    assert published == [{'profile_id': saved['id']}]
 
 
 def test_a_stall_that_cuts_off_the_markers_keeps_stored_proxmox_facts(app, monkeypatch):
@@ -1245,9 +1246,10 @@ def test_unavailable_identity_is_remembered_and_not_retried_for_a_week(app, monk
         assert isinstance(saved['platform_checked_at'], float)
         assert 'detected_platform' not in saved and 'detected_services' not in saved
         assert 'services_checked_at' not in saved
-        assert events == []
+        # The saved host shows at once that detection is not possible.
+        assert events == [{'profile_id': profile['id']}]
         host_platform.detect_connected_platform('forced', user_id, events.append)
-        assert len(calls) == 1
+        assert len(calls) == 1 and len(events) == 1
 
     # Facts from an earlier detection stay when a later probe cannot be read.
     user_id, profile, _ = _identity_session(app, monkeypatch, 'kept')
@@ -1259,7 +1261,7 @@ def test_unavailable_identity_is_remembered_and_not_retried_for_a_week(app, monk
         assert saved['detection_state'] == 'unavailable'
         assert saved['detected_platform'] == 'debian' and saved['detected_services'] == ['docker', 'nextcloud']
         assert saved['services_checked_at'] == 1_000.0 and saved['platform_checked_at'] > 1_000.0
-        assert events == []
+        assert events[1:] == [{'profile_id': profile['id']}]
 
 
 def test_an_unavailable_identity_drops_a_legacy_server_platform(app, monkeypatch):
@@ -1267,11 +1269,13 @@ def test_an_unavailable_identity_drops_a_legacy_server_platform(app, monkeypatch
     user_id, profile, _ = _identity_session(app, monkeypatch, 'oldserver')
     _store(app, user_id, profile['id'], detected_platform='server', detected_services=['nginx'], services_checked_at=5)
     _fake_identity(monkeypatch, (dict(_UNAVAILABLE), None))
+    published = []
     with app.app_context():
-        host_platform.detect_connected_platform('oldserver', user_id, pytest.fail)
+        host_platform.detect_connected_platform('oldserver', user_id, published.append)
         saved = profile_manager.get_profile(user_id, profile['id'])
     assert 'detected_platform' not in saved
     assert saved['detection_state'] == 'unavailable' and saved['detected_services'] == ['nginx']
+    assert published == [{'profile_id': profile['id']}]
 
 
 def test_unreadable_probe_output_counts_as_unavailable_and_failures_retry(app, monkeypatch):
@@ -1283,9 +1287,10 @@ def test_unreadable_probe_output_counts_as_unavailable_and_failures_retry(app, m
             host_platform.detect_connected_platform('garbled', user_id, pytest.fail)
             assert 'detection_state' not in profile_manager.get_profile(user_id, profile['id'])
         # Output that is not the probe's answer (a forced command, a menu) is not asked for again this week.
-        host_platform.detect_connected_platform('garbled', user_id, pytest.fail)
-        host_platform.detect_connected_platform('garbled', user_id, pytest.fail)
-        assert len(calls) == 3
+        published = []
+        host_platform.detect_connected_platform('garbled', user_id, published.append)
+        host_platform.detect_connected_platform('garbled', user_id, published.append)
+        assert len(calls) == 3 and published == [{'profile_id': profile['id']}]
         assert profile_manager.get_profile(user_id, profile['id'])['detection_state'] == 'unavailable'
 
 
