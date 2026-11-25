@@ -412,7 +412,7 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
             transport,
             command,
             timeout=timeout,
-            **({'before_exec': before_exec} if before_exec is not None else {}),
+            before_exec=before_exec,
         )
         deadline = time.monotonic() + timeout
         output = bytearray()
