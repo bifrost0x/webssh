@@ -83,10 +83,15 @@ The command does not print or audit the password.
 `ADMIN_USERS` is a compatibility option that promotes listed existing users on
 startup. Prefer the explicit CLI for normal administration. Locked, LDAP and
 GitHub-managed accounts are not promoted. A listed name without an account is
-reported as a warning; self-registration and GitHub or LDAP auto-provisioning
-cannot take such a name (compared case-insensitively, logged on the server), so
-create it with `flask create-admin` or in the admin panel. The admin user list
-marks accounts promoted this way, and demoting one is refused until it is
+reported as a warning; self-registration and GitHub auto-provisioning cannot
+take such a name (compared case-insensitively, logged on the server), so create
+it with `flask create-admin` or in the admin panel. An LDAP user whose name is
+listed signs in and is provisioned normally, but is never promoted while the
+account is LDAP-managed. Converting a listed LDAP or GitHub-managed account to a
+local one (unlinking its LDAP identity, or disconnecting GitHub from an account
+GitHub created) is refused until the name is removed from `ADMIN_USERS`, because
+the local account would otherwise be promoted on the next start. The admin user
+list marks accounts promoted this way, and demoting one is refused until it is
 removed from `ADMIN_USERS` and the server is restarted.
 
 ### Forgotten password

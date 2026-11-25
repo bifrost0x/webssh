@@ -364,6 +364,69 @@ def test_unlink_refuses_to_remove_managed_accounts_only_primary(
     assert 'passkey' in response.get_json()['error'].lower()
 
 
+def test_unlink_refuses_to_convert_a_managed_account_listed_in_admin_users(
+    app, client, monkeypatch, caplog,
+):
+    import logging
+
+    import config
+    from app.auth import sync_admin_users
+    from app.models import GitHubIdentity, User, WebAuthnCredential, db
+
+    admin_id = _create_user(app, 'listed_break_glass', is_admin=True)
+    _configure(app, admin_id, auto_provision=True)
+    state = _begin_login(client)
+    _provider(monkeypatch, user_id='9292', login='listed-managed')
+    assert client.get(
+        f'/auth/github/callback?code=code&state={state}'
+    ).status_code == 302
+    with app.app_context():
+        identity = GitHubIdentity.query.filter_by(
+            github_user_id='9292'
+        ).one()
+        user_id = identity.user_id
+        username = identity.user.username
+        db.session.add(WebAuthnCredential(
+            user_id=user_id,
+            credential_id=b'listed-managed-passkey',
+            public_key=b'public-key',
+            transports='[]',
+        ))
+        db.session.commit()
+    # The operator lists the name after the account was provisioned.
+    monkeypatch.setattr(config, 'ADMIN_USERS', [username.upper()])
+
+    with caplog.at_level(logging.WARNING):
+        refused = client.delete('/api/account/github', headers=(
+            mint_account_step_up_headers(app, client, 'github.unlink', user_id)
+        ))
+
+    assert refused.status_code == 409
+    assert refused.get_json() == {'error': (
+        'This account is listed in ADMIN_USERS. Remove it from ADMIN_USERS '
+        'before converting it to a local account.'
+    )}
+    assert any(
+        record.getMessage().startswith('GITHUB_IDENTITY_UNLINK_REJECTED')
+        for record in caplog.records
+    )
+    assert client.get('/api/account/github').status_code == 200
+    with app.app_context():
+        assert GitHubIdentity.query.filter_by(user_id=user_id).count() == 1
+
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['someone_else'])
+    unlinked = client.delete('/api/account/github', headers=(
+        mint_account_step_up_headers(app, client, 'github.unlink', user_id)
+    ))
+
+    assert unlinked.status_code == 200
+    with app.app_context():
+        sync_admin_users()
+        user = db.session.get(User, user_id)
+        assert user.github_identity is None
+        assert user.is_admin is False
+
+
 def test_operator_code_bootstraps_first_passkey_then_allows_github_unlink(
     app,
     client,

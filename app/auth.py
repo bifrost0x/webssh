@@ -292,6 +292,13 @@ def is_config_admin_name(username):
     return any(name.casefold() == normalized for name in config.ADMIN_USERS)
 
 
+# sync_admin_users skips provider-managed accounts; a local one would be promoted.
+CONFIG_ADMIN_CONVERSION_REFUSED = (
+    'This account is listed in ADMIN_USERS. Remove it from ADMIN_USERS '
+    'before converting it to a local account.'
+)
+
+
 def log_reserved_admin_name(username, source):
     """Tell the operator why a new account could not take a listed name."""
     from .audit_logger import log_info

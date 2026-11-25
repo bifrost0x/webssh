@@ -18,9 +18,9 @@ from . import login_devices, socketio, user_lifecycle
 from .app_settings import login_username_rate_limits
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
+    CONFIG_ADMIN_CONVERSION_REFUSED,
     check_rate_limit,
     is_config_admin_name,
-    log_reserved_admin_name,
     password_exceeds_bcrypt_limit,
     release_login_username_attempt,
     reserve_login_username_attempt,
@@ -127,12 +127,6 @@ def _auto_provision_ldap_identity(username, resolved, *, presented_username=None
             row.username.casefold() == normalized_username
             for row in existing_names
         ):
-            raise LDAPLookupRejected(
-                'Directory username conflicts with a local account'
-            )
-        # A converted account with a listed name would be promoted on restart.
-        if is_config_admin_name(username):
-            log_reserved_admin_name(username, 'ldap')
             raise LDAPLookupRejected(
                 'Directory username conflicts with a local account'
             )
@@ -488,6 +482,15 @@ def unlink_ldap_identity(user_id, identity_id):
     row = db.session.get(LDAPIdentity, identity_id)
     if row is None or row.user_id != target.id:
         return jsonify({'error': 'LDAP identity not found'}), 404
+    if is_config_admin_name(target.username):
+        log_security_event(
+            'LDAP_IDENTITY_UNLINK_REJECTED',
+            level=logging.WARNING,
+            admin=current_user.username,
+            user=target.username,
+            reason='listed_in_admin_users',
+        )
+        return jsonify({'error': CONFIG_ADMIN_CONVERSION_REFUSED}), 409
     new_password = data.get('new_password')
     if not isinstance(new_password, str):
         return jsonify({'error': 'New password is required'}), 400

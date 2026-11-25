@@ -20,6 +20,7 @@ import config
 
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
+    CONFIG_ADMIN_CONVERSION_REFUSED,
     check_rate_limit,
     is_config_admin_name,
     log_reserved_admin_name,
@@ -423,6 +424,13 @@ def github_unlink():
         'GITHUB_IDENTITY_UNLINK_ATTEMPTED', user=current_user.username,
         github_user_id=row.github_user_id,
     )
+    if row.provisioned_by_github and is_config_admin_name(current_user.username):
+        log_security_event(
+            'GITHUB_IDENTITY_UNLINK_REJECTED', level=logging.WARNING,
+            user=current_user.username, github_user_id=row.github_user_id,
+            reason='listed_in_admin_users',
+        )
+        return jsonify({'error': CONFIG_ADMIN_CONVERSION_REFUSED}), 409
     # Auto-provisioned accounts have no known local password. A passkey is the
     # only currently supported independent primary fallback for safe unlinking.
     if row.provisioned_by_github and current_user.webauthn_credentials.count() == 0:
