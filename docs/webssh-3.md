@@ -29,16 +29,19 @@ automation at a glance:
 ### Platform and service detection
 
 When a saved host connects, WebSSH reads a few fixed, read-only facts over a
-separate SSH channel: the platform once (from `/etc/os-release` and similar
-markers), and the services at most once a week. Service detection looks for
-Docker or Podman, active systemd services such as nginx, Apache, Caddy,
-MariaDB, PostgreSQL, Samba, WireGuard and k3s, and Nextcloud or Pi-hole at
-their usual places. If the SSH user may already use Docker or Podman without
-sudo, it also lists the image names of running containers and maps known ones
-(for example Nextcloud, Home Assistant, Jellyfin, Plex, Portainer, Traefik,
-Vaultwarden, Immich, Gitea, Paperless, Grafana). Nothing is installed or
-changed, no command is run with elevated rights, and only the recognised names
-are stored with the host in WebSSH.
+separate SSH channel, at most once a week per host and only at connect time:
+the platform and its family from `/etc/os-release` and similar markers (for
+example Proxmox VE and Backup Server, TrueNAS, Unraid, Synology, QNAP, OpenWrt,
+pfSense), the virtualization kind, and known services from active systemd
+units, fixed install paths and snaps. If the SSH user may already use Docker
+or Podman without sudo, it also lists the image names of running containers
+and maps known ones (for example Nextcloud, Home Assistant, Jellyfin, Immich,
+Paperless, Grafana). Nothing is installed or changed, no command is run with
+elevated rights, and only values that map to a fixed catalog or strict pattern
+are stored with the host in WebSSH. Windows, MikroTik and Cisco hosts are
+recognised from their SSH greeting only and are never probed. See
+[Platform and service detection](wiki/Profiles-Jump-Hosts-and-Commands.md#platform-and-service-detection)
+for the complete list of what is and is not collected.
 
 Whether a restart is required and how many package updates are pending is
 never checked automatically. Run the **Updates and restart status** workflow
@@ -48,7 +51,8 @@ cards, with the time of the run. Facts older than a week are no longer shown.
 See [Automation](automation.md#keep-restart-and-update-status-current).
 
 Choosing a manual icon for a host turns the platform and service probes off for
-it, which also suits keys restricted to a forced command.
+it, which also suits keys restricted to a forced command. A role assigned to a
+host does not.
 
 Select **Customize** to arrange the dashboard: drag a panel by its handle,
 resize it from its corner, change its width with the panel buttons, hide it or

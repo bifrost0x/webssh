@@ -2,6 +2,7 @@
   "upstream": "https://github.com/simple-icons/simple-icons/tree/16.0.0/icons",
   "version": "16.0.0",
   "license": "CC0-1.0; upstream metadata retains brand-specific license and trademark guidance",
+  "trademarks": "Logos and names are trademarks of their respective owners. They only identify the platform a host runs and imply no endorsement.",
   "icons": {
     "proxmox": {
       "title": "Proxmox",
@@ -86,6 +87,107 @@
       "title": "Docker",
       "hex": "2496ED",
       "source": "https://www.docker.com/company/newsroom/media-resources"
+    },
+    "redhat": {
+      "title": "Red Hat",
+      "hex": "EE0000",
+      "source": "https://www.redhat.com/en/about/brand/new-brand/details"
+    },
+    "centos": {
+      "title": "CentOS",
+      "hex": "262577",
+      "source": "https://wiki.centos.org/ArtWork/Brand/Logo"
+    },
+    "almalinux": {
+      "title": "AlmaLinux",
+      "hex": "000000",
+      "source": "https://almalinux.org",
+      "guidelines": "https://almalinux.org/p/the-almalinux-os-trademark-usage-policy/"
+    },
+    "opensuse": {
+      "title": "openSUSE",
+      "hex": "73BA25",
+      "source": "https://github.com/openSUSE/artwork/blob/33e94aa76837c09f03d1712705949b71a246a53b/logos/buttons/button-colour.svg",
+      "guidelines": "https://en.opensuse.org/Portal:Artwork"
+    },
+    "nixos": {
+      "title": "NixOS",
+      "hex": "5277C3",
+      "source": "https://github.com/NixOS/nixos-homepage/tree/58cfdb770aba28b73446a1b3ee65a5cec4f0d44f/logo"
+    },
+    "manjaro": {
+      "title": "Manjaro",
+      "hex": "35BFA4",
+      "source": "https://manjaro.org"
+    },
+    "endeavouros": {
+      "title": "EndeavourOS",
+      "hex": "7F7FFF",
+      "source": "https://github.com/endeavouros-team/endeavouros-theming/blob/135f642c980ed8d8fc212783eb478f96226f6c72/endeavouros-logo-text.svg"
+    },
+    "linuxmint": {
+      "title": "Linux Mint",
+      "hex": "86BE43",
+      "source": "https://github.com/linuxmint/brand-logo/blob/540ac3b08e987866d77a340f557f994c988ac2ae/ring-mono-green.svg"
+    },
+    "popos": {
+      "title": "Pop!_OS",
+      "hex": "48B9C7",
+      "source": "https://github.com/system76/brand/blob/7a31740b54f929b62a165baa61dfb0b5164261e8/Pop_OS%20branding/Pop_icon.svg"
+    },
+    "kalilinux": {
+      "title": "Kali Linux",
+      "hex": "557C94",
+      "source": "https://www.kali.org/docs/policy/trademark/",
+      "guidelines": "https://www.kali.org/docs/policy/trademark/"
+    },
+    "voidlinux": {
+      "title": "Void Linux",
+      "hex": "478061",
+      "source": "https://alpha.de.repo.voidlinux.org/logos/void-dark2.svg"
+    },
+    "unraid": {
+      "title": "Unraid",
+      "hex": "F15A2C",
+      "source": "https://unraid.net"
+    },
+    "synology": {
+      "title": "Synology",
+      "hex": "B5B5B6",
+      "source": "https://www.synology.com/en-global/company/branding",
+      "guidelines": "https://www.synology.com/en-global/company/branding"
+    },
+    "qnap": {
+      "title": "QNAP",
+      "hex": "0C2E82",
+      "source": "https://marketing.qnap.com/resource/qnap-logo-k100",
+      "guidelines": "https://marketing.qnap.com/resource/qnap-brand-logo-guideline"
+    },
+    "openwrt": {
+      "title": "OpenWrt",
+      "hex": "00B5E2",
+      "source": "https://openwrt.org/docs/guide-graphic-designer/openwrt-logo",
+      "guidelines": "https://openwrt.org/docs/guide-graphic-designer/openwrt-logo"
+    },
+    "pfsense": {
+      "title": "pfSense",
+      "hex": "212121",
+      "source": "https://www.pfsense.org"
+    },
+    "mikrotik": {
+      "title": "MikroTik",
+      "hex": "293239",
+      "source": "https://mikrotik.com/aboutus"
+    },
+    "cisco": {
+      "title": "Cisco",
+      "hex": "1BA0D7",
+      "source": "https://www.cisco.com"
+    },
+    "ubiquiti": {
+      "title": "Ubiquiti",
+      "hex": "0559C9",
+      "source": "https://www.ui.com"
     }
   }
 }

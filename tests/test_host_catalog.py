@@ -1,3 +1,8 @@
+import json
+import os
+import re
+from pathlib import Path
+
 from app import host_catalog as c, host_platform
 
 def test_catalogs_are_consistent():
@@ -123,3 +128,38 @@ def test_image_rules_skip_the_registry_host_only():
 def test_cloud_and_other_hypervisors_are_vms():
     for value in ('amazon', 'google', 'vm-other', 'apple', 'powervm', 'zvm', 'acrn', 'qnx', 'sre'):
         assert c.VIRT_MAP[value] == 'vm', value
+
+
+JS_CATALOG_FIXTURE = Path(__file__).parent / 'js' / 'fixtures' / 'host-catalog.json'
+
+
+def _js_catalog():
+    return json.dumps({'platforms': sorted(c.PLATFORMS), 'services': sorted(c.SERVICES)}, indent=2) + '\n'
+
+
+def test_js_catalog_fixture_is_current():
+    """The browser tests check labels against this copy of the catalog."""
+    if os.environ.get('WEBSSH_WRITE_JS_CATALOG') == '1':
+        JS_CATALOG_FIXTURE.write_text(_js_catalog(), encoding='utf-8')
+    current = JS_CATALOG_FIXTURE.read_text(encoding='utf-8') if JS_CATALOG_FIXTURE.exists() else None
+    assert current == _js_catalog(), (
+        'tests/js/fixtures/host-catalog.json is stale; regenerate with: '
+        'WEBSSH_WRITE_JS_CATALOG=1 python -m pytest tests/test_host_catalog.py -k js_catalog_fixture')
+
+
+def test_profile_editor_offers_every_platform():
+    template = (Path(__file__).parents[1] / 'templates' / 'index.html').read_text(encoding='utf-8')
+    select = re.search(r'<select id="profileEditorPlatformIcon".*?</select>', template, re.S).group(0)
+    assert set(re.findall(r'<option value="([^"]+)"', select)) == c.PLATFORMS | {'auto'}
+
+
+def test_platform_icons_are_plain_simple_icons_with_provenance():
+    directory = Path(__file__).parents[1] / 'static' / 'icons' / 'platforms'
+    provenance = json.loads((directory / 'provenance.json').read_text(encoding='utf-8'))
+    icons = {path.stem: path for path in directory.glob('*.svg')}
+    assert set(icons) == set(provenance['icons']) and set(icons) <= c.PLATFORMS
+    for name, path in icons.items():
+        svg = path.read_text(encoding='utf-8')
+        title = provenance['icons'][name]['title'].replace('&', '&amp;')
+        assert svg.startswith(f'<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>{title}</title><path d="'), name
+        assert svg.endswith('"/></svg>') and svg.count('<') == 5, name

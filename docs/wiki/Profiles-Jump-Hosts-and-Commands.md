@@ -50,6 +50,46 @@ bounded name, and has no source profile ID. Saving therefore creates a separate
 profile and never overwrites the original. Passwords remain excluded because
 they are never stored in profiles.
 
+## Platform and service detection
+
+When a saved host in **Automatic** icon mode connects, WebSSH runs one
+read-only probe over a separate SSH channel and stores what it recognised with
+the profile. It runs at connect time only, at most once a week per host, and
+never on a schedule of its own. Quick connections are not probed.
+
+The probe collects:
+
+- the platform, from `/etc/os-release` (`ID`, `ID_LIKE`, `VERSION_ID`), the
+  kernel name and fixed markers such as Proxmox VE, Proxmox Backup Server,
+  TrueNAS, OPNsense, pfSense, Unraid, Synology, QNAP, OpenWrt or UniFi;
+- the distribution family and version, and the distribution ID when it is not
+  in the catalog (for example Omarchy on Arch Linux, shown with the Arch Linux
+  icon and marked as derived from its family);
+- the virtualization kind (bare metal, VM, LXC, container or WSL), whether the
+  system boots into a graphical target and, on Proxmox VE, the number of guests;
+- known services from active systemd units, fixed install paths and snaps;
+- where the SSH user may already use Docker or Podman without sudo, the image
+  names of running containers, mapped to known services, and whether that
+  access worked.
+
+Only values that map to a fixed catalog entry or a strict pattern are stored.
+WebSSH never stores raw command output, host names, IP addresses, user
+names, file contents, process lists or container names, installs nothing,
+changes nothing and runs nothing with elevated rights.
+
+Windows, MikroTik RouterOS and Cisco IOS hosts are recognised only from the SSH
+greeting that **Find hosts** or a reachability check reads; when the greeting
+names one of them, WebSSH does not run the probe. A Dropbear greeting marks a
+host as embedded until a connection detects more. When a host answers
+with something other than the probe output, for example a forced command or a
+menu, the profile records that detection is not possible and keeps any facts an
+earlier run found.
+
+The host icon shows where its platform came from: a manual choice, a
+detection, the SSH greeting, the host name, or "not detected yet". Choosing a
+manual icon turns detection off for that host. A role assigned to the host
+(the `role_override` field of a host import) does not.
+
 ## Private host context
 
 Open **Host context** from a saved host's action menu, or from the active
