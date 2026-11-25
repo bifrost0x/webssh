@@ -20,6 +20,7 @@ METADATA_TTL = 60
 _MESSAGES = {
     'INVALID_REQUEST': 'Invalid file operation request.',
     'CONFLICT': 'A file or folder with this name already exists.',
+    'BUSY': 'Another permission change is still running. Try again in a moment.',
     'PERMISSION_DENIED': 'Permission denied for this file operation.',
     'NOT_FOUND': 'The file or folder no longer exists.',
     'UNSUPPORTED_OPERATION': 'This file operation is not supported.',

@@ -639,3 +639,59 @@ test('declined review sends nothing and reports a cancelled insert without notif
     assert.deepEqual(sent, []);
     assert.deepEqual(notices, []);
 });
+
+test('a confirmed review whose send fails reports send-failed, not cancelled', async () => {
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true }),
+        getCommands: () => [{ id: 'ctl', name: 'Control', command: 'ls\x0f', parameters: '' }],
+        emitInput: () => false,
+        pasteGuard: {
+            needsReview: () => true,
+            capture: id => ({ id }),
+            review: async (binding, text, send) => send(text),
+        },
+    });
+    assert.deepEqual(await controller.insert('s', 'command', 'ctl'), { ok: false, reason: 'send-failed' });
+});
+
+test('sudo insert reviews exactly the final text that would be sent', async () => {
+    const reviewed = [];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true }),
+        getCommands: () => [{ id: 'ctl', name: 'Control', command: 'ls\x0f', parameters: '' }],
+        emitInput: () => true,
+        pasteGuard: {
+            needsReview: text => /[\x00-\x1f]/.test(text),
+            capture: id => ({ id }),
+            review: async (binding, text, send) => { reviewed.push(text); return send(text); },
+        },
+    });
+    assert.equal((await controller.insert('s', 'command', 'ctl', { useSudo: true })).ok, true);
+    assert.deepEqual(reviewed, ['sudo ls\x0f']);
+});
+
+test('insert result handling stays quiet on cancel, reports failures and remembers only successes', () => {
+    const toasts = [];
+    const remembered = [];
+    let synced = 0;
+    globalThis.showNotification = (message, type) => toasts.push([message, type]);
+    try {
+        const view = {
+            t: (key, fallback) => fallback,
+            rememberUse: entry => remembered.push(entry.id),
+            sync: () => { synced += 1; },
+        };
+        launcher.finishInsert.call(view, { ok: false, reason: 'cancelled' }, { id: 'a' });
+        assert.deepEqual(toasts, []);
+        assert.deepEqual(remembered, []);
+        launcher.finishInsert.call(view, { ok: false, reason: 'send-failed' }, { id: 'b' });
+        assert.equal(toasts.length, 1);
+        assert.equal(toasts[0][1], 'error');
+        assert.equal(synced, 1);
+        assert.deepEqual(remembered, []);
+        launcher.finishInsert.call(view, { ok: true }, { id: 'c' });
+        assert.deepEqual(remembered, ['c']);
+    } finally {
+        delete globalThis.showNotification;
+    }
+});

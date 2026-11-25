@@ -195,12 +195,16 @@
                     if (!dependencies.emitInput) return { ok: false, reason: 'send-failed' };
                     if (guard?.needsReview(insertText)) {
                         // Stored commands may carry control characters; the user confirms them first.
+                        let attempted = false;
                         const sent = await guard.review(
                             guard.capture(sessionId),
                             insertText,
-                            value => dependencies.emitInput(sessionId, value)
+                            value => {
+                                attempted = true;
+                                return dependencies.emitInput(sessionId, value);
+                            }
                         );
-                        if (sent === false) return { ok: false, reason: 'cancelled' };
+                        if (sent === false) return { ok: false, reason: attempted ? 'send-failed' : 'cancelled' };
                     } else if (await dependencies.emitInput(sessionId, insertText) === false) {
                         return { ok: false, reason: 'send-failed' };
                     }
@@ -285,6 +289,23 @@
             } catch {
                 // Storage can be unavailable in hardened or private browser contexts.
             }
+        },
+
+        finishInsert(result, entry) {
+            if (result.ok) {
+                this.rememberUse(entry);
+                return;
+            }
+            // A declined review is the user's own choice, not a failure.
+            if (result.reason === 'cancelled') return;
+            root.showNotification?.(
+                this.t(
+                    'sessionCommands.sessionUnavailable',
+                    'The selected session or entry is no longer available.'
+                ),
+                'error'
+            );
+            this.sync();
         },
 
         rememberUse(entry) {
@@ -778,18 +799,7 @@
                         currentAvailable = false;
                     }
                     insert.disabled = !currentAvailable;
-                    if (!result.ok && result.reason !== 'cancelled') {
-                        root.showNotification?.(
-                            this.t(
-                                'sessionCommands.sessionUnavailable',
-                                'The selected session or entry is no longer available.'
-                            ),
-                            'error'
-                        );
-                        this.sync();
-                    } else {
-                        this.rememberUse(entry);
-                    }
+                    this.finishInsert(result, entry);
                 });
                 const actions = document.createElement('div');
                 actions.className = 'session-command-item-actions';
