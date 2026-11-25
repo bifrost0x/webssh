@@ -1765,28 +1765,44 @@ def _query_condition(engine):
     return next(line.strip() for line in reversed(script[:query]) if line.strip().startswith('if '))
 
 
-def test_container_engines_are_asked_only_while_their_service_runs():
-    # A socket unit (docker.socket, podman.socket) would start a stopped daemon
-    # for the query, so with systemd the service must already be active.
+_DOCKER_START_CHECK = (
+    'dstart() { { [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; } || return 1; '
+    'systemctl -q "$@" is-active docker.service && return 1; '
+    'systemctl -q "$@" is-active docker.socket; [ $? -le 1 ]; }')
+
+
+def test_docker_is_skipped_only_where_its_socket_unit_could_start_it():
+    # Under systemd an active docker.socket starts a stopped dockerd on the
+    # first connection. Exit status 0 is an active socket unit, 1 a manager
+    # that could not be asked (no user bus): both skip the listing. 3 and 4
+    # (inactive or unknown unit) and hosts without systemd keep it, and so
+    # does a running docker.service or a daemon that holds its own socket.
     command = host_platform.IDENTITY_COMMAND
-    assert ('active() { [ ! -d /run/systemd/system ] || ! command -v systemctl >/dev/null 2>&1 '
-            '|| systemctl -q is-active "$@"; }') in command
-    assert _query_condition('docker').endswith('&& active $du docker.service; then')
-    assert _query_condition('podman').endswith('&& active $pu podman.service; then')
-    # Rootless sockets belong to the user's own service manager.
+    assert _DOCKER_START_CHECK in command
+    assert _query_condition('docker').endswith('&& command -v timeout >/dev/null 2>&1 && ! dstart $du; then')
+    # A rootless socket belongs to the user's own service manager.
     assert 'dsock=$XDG_RUNTIME_DIR/docker.sock; du=--user' in command
-    assert 'sock=$XDG_RUNTIME_DIR/podman/podman.sock; pu=--user' in command
-    assert '*podman*) psock=$dsock; pu=$du; dsock= ;;' in command
     # systemctl is only ever asked, never told to start, stop or reload anything.
-    assert set(re.findall(r'systemctl (-q is-active|[a-z-]+)', command)) == {'-q is-active', 'get-default', 'list-units'}
+    assert set(re.findall(r'systemctl (-q "\$@" is-active|[a-z-]+)', command)) == {
+        '-q "$@" is-active', 'get-default', 'list-units'}
 
 
-def test_presence_of_a_container_engine_needs_no_running_service():
+def test_podman_is_asked_through_its_socket_without_a_service_check():
+    # Socket activation starts only the Podman API service, which exits when
+    # idle and starts no containers; that is accepted.
+    condition = _query_condition('podman')
+    assert condition == ('if [ -n "$sock" ] && command -v podman >/dev/null 2>&1 '
+                         '&& command -v timeout >/dev/null 2>&1; then')
+    assert 'podman.service' not in host_platform.IDENTITY_COMMAND
+    assert 'podman.socket' not in host_platform.IDENTITY_COMMAND
+
+
+def test_presence_of_a_container_engine_needs_no_service_check():
     script = host_platform.IDENTITY_SCRIPT
     for engine in ('docker', 'podman'):
         found = script.index('found %s' % engine)
-        assert 'is-active' not in script[script.rindex('\nif ', 0, found):found]
-        assert script.index('found %s' % engine) < script.index('active $%su %s.service' % (engine[0], engine))
+        assert 'dstart' not in script[script.rindex('\nif ', 0, found):found]
+    assert script.index('found docker') < script.index('! dstart $du')
 
 
 def test_container_queries_leave_room_within_the_deadline():
