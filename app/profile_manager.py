@@ -1047,11 +1047,15 @@ def cache_greeting_platforms(user_id, observed):
     """Record what saved direct hosts' SSH greetings named; return how many changed.
 
     ``observed`` maps profile ids to ((canonical host, port), platform) as probed.
-    A host edited meanwhile, routed through a jump host or already showing the
-    same hint is left alone; detections and manual choices still take precedence.
+    A platform of None means the greeting named none: an address once used by
+    a Windows or network device and now by a Linux host loses the old hint, so
+    the identity probe runs again. A host edited meanwhile, routed through a
+    jump host or already showing the same hint is left alone; detections and
+    manual choices still take precedence.
     """
     from .network_policy import canonicalize_hostname
-    wanted = {key: value for key, value in observed.items() if value and value[1] in PLATFORMS}
+    wanted = {key: value for key, value in observed.items()
+              if value and (value[1] is None or value[1] in PLATFORMS)}
     if not wanted:
         return 0
     with storage_lock(f'command-config:{user_id}'):
@@ -1071,7 +1075,10 @@ def cache_greeting_platforms(user_id, observed):
                     continue
                 if current != tuple(probed) or profile.get('greeting_platform') == platform:
                     continue
-                profile['greeting_platform'] = platform
+                if platform is None:
+                    profile.pop('greeting_platform')
+                else:
+                    profile['greeting_platform'] = platform
                 changed += 1
             if changed and save_profiles(user_id, profiles, previous_count=len(profiles)):
                 return changed

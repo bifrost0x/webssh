@@ -123,7 +123,11 @@ def status():
 
 
 def _read_greeting(connection):
-    """Platform named by the server's SSH identification line, read without sending anything."""
+    """(identified, platform) from the server's SSH identification line, read without sending anything.
+
+    identified is False when no identification line arrived; platform is None
+    when the line names none.
+    """
     from .discovery_routes import describe_banner
     data = b''
     deadline = time.monotonic() + GREETING_TIMEOUT_SECONDS
@@ -142,10 +146,10 @@ def _read_greeting(connection):
                 break
             data += chunk
     except OSError:
-        return None
+        return False, None
     line = identification()
     described = describe_banner(line) if line else None
-    return described.get('platform') if described else None
+    return (True, described.get('platform')) if described else (False, None)
 
 
 def _probe(host, port, tailscale_ssh=False):
@@ -172,11 +176,12 @@ def _probe(host, port, tailscale_ssh=False):
         return dict(state='unreachable')
     latency = round((time.monotonic() - started) * 1000)
     try:
-        platform = _read_greeting(connection)
+        identified, platform = _read_greeting(connection)
     finally:
         connection.close()
     outcome = dict(state='reachable', latency_ms=latency)
-    if platform:
+    if identified:
+        # None: the greeting names no platform, which drops an older hint.
         outcome['platform'] = platform
     return outcome
 
@@ -289,6 +294,7 @@ def reachability():
     greetings = {}
     for profile_id, plan in plans.items():
         outcome = dict(outcomes.get((plan['endpoint'], plan['tailnet'])) or dict(state='unresolved'))
+        greeted = 'platform' in outcome
         platform = outcome.pop('platform', None)
         if plan['via_socks']:
             # The proxy endpoint's greeting never describes the SSH target.
@@ -296,7 +302,7 @@ def reachability():
         elif plan['via_jump']:
             # The probe reached the jump host; its greeting says nothing about the target.
             outcome['via_jump'] = True
-        elif platform:
+        elif greeted:
             greetings[profile_id] = (plan['endpoint'], platform)
         results[profile_id] = outcome
     platforms_updated = False
