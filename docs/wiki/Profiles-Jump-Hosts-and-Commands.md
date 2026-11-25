@@ -74,7 +74,8 @@ The probe collects:
   names of running containers, mapped to known services, and whether that
   access worked. Both are asked only through an existing local daemon socket
   (`/var/run/docker.sock`, the rootless Docker or the Podman API socket);
-  Docker contexts and `DOCKER_HOST` are never followed.
+  Docker contexts and `DOCKER_HOST` are never followed. A Docker socket that
+  links to the Podman socket, as podman-docker sets it up, counts as Podman.
 
 Only values that map to a fixed catalog entry or a strict pattern are stored.
 WebSSH never stores raw command output, host names, IP addresses, user

@@ -82,11 +82,18 @@ printf '%s\n' "$images" | sed '/^$/d' | sort -u | head -n 100 | cut -c1-120 | aw
 
 # Docker is only asked through a local daemon socket, named explicitly with -H:
 # a plain "docker ps" follows docker contexts and DOCKER_HOST (ssh://, tcp://)
-# to other hosts, and the podman-docker shim would start rootless podman. That
-# shim rejects -H, so such a host ends as denied without running anything.
+# to other hosts, and the podman-docker shim would start rootless podman.
+# podman-docker also links docker.sock to the Podman API socket; such a link
+# names Podman, which is then asked through that socket like its own.
 _DOCKER_BLOCK = r"""dsock=
 if [ -S /var/run/docker.sock ]; then dsock=/var/run/docker.sock
 elif [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/docker.sock" ]; then dsock=$XDG_RUNTIME_DIR/docker.sock
+fi
+psock=
+if [ -n "$dsock" ] && [ -h "$dsock" ] && command -v readlink >/dev/null 2>&1; then
+  case $(readlink "$dsock" 2>/dev/null | head -c 256) in
+    *podman*) psock=$dsock; dsock= ;;
+  esac
 fi
 if [ -n "$dsock" ]; then
   found docker
@@ -103,13 +110,13 @@ fi"""
 
 # Podman is only asked through an existing API socket (--remote): a plain
 # "podman ps" would start a rootless runtime and create state in the user's home.
-_PODMAN_BLOCK = r"""if command -v podman >/dev/null 2>&1; then
-  sock=
-  if [ -S /run/podman/podman.sock ]; then sock=/run/podman/podman.sock
-  elif [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]; then sock=$XDG_RUNTIME_DIR/podman/podman.sock
+_PODMAN_BLOCK = r"""if [ -n "$psock" ] || command -v podman >/dev/null 2>&1; then
+  sock=$psock
+  if [ -z "$sock" ] && [ -S /run/podman/podman.sock ]; then sock=/run/podman/podman.sock
+  elif [ -z "$sock" ] && [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]; then sock=$XDG_RUNTIME_DIR/podman/podman.sock
   fi
   found podman
-  if [ -n "$sock" ] && command -v timeout >/dev/null 2>&1; then
+  if [ -n "$sock" ] && command -v podman >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
     if out=$(timeout 1 podman --remote --url "unix://$sock" ps --format '{{.Image}}' 2>/dev/null); then
       printf 'engine=podman:ok\n'
       images="$images

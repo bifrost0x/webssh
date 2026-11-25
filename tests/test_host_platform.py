@@ -1238,7 +1238,7 @@ def test_docker_without_a_local_socket_is_never_run(short_root):
     assert calls == [] and lines == ['images=']
 
 
-def test_a_docker_shim_that_rejects_the_socket_ends_as_denied(short_root):
+def test_a_docker_client_that_fails_ends_as_denied(short_root):
     sock = _unix_socket(short_root / 'docker.sock')
     try:
         lines, calls = _run_probe_part(_docker_part(), short_root, tools={'docker': 'exit 125'},
@@ -1256,6 +1256,46 @@ def test_a_docker_socket_without_the_client_still_names_docker(short_root):
     finally:
         sock.close()
     assert calls == [] and lines == ['service=docker', 'images=']
+
+
+def _engines_part():
+    command = host_platform.IDENTITY_COMMAND
+    begin = command.index('dsock=')
+    return command[begin:command.index('\nfi\n', command.index('found podman', begin)) + 4]
+
+
+_PODMAN_LISTS = {'podman': "printf 'quay.io/immich-app/immich-server:release\\n'"}
+
+
+def test_a_docker_socket_that_links_to_podman_is_reported_as_podman(short_root):
+    # podman-docker links /run/docker.sock to the Podman API socket.
+    (short_root / 'podman').mkdir()
+    sock = _unix_socket(short_root / 'podman' / 'podman.sock')
+    (short_root / 'docker.sock').symlink_to(short_root / 'podman' / 'podman.sock')
+    try:
+        lines, calls = _run_probe_part(_engines_part(), short_root, tools={**_DOCKER_LISTS, **_PODMAN_LISTS},
+                                       system_tools=(*_PROBE_TOOLS, 'readlink'),
+                                       replace=(('/var/run/docker.sock', str(short_root / 'docker.sock')),
+                                                ('/run/podman/podman.sock', str(short_root / 'missing.sock'))))
+    finally:
+        sock.close()
+    assert calls == ['--remote --url unix://%s ps --format {{.Image}}' % (short_root / 'docker.sock')]
+    assert 'service=docker' not in lines and 'service=podman' in lines and 'engine=podman:ok' in lines
+    assert 'quay.io/immich-app/immich-server:release' in lines
+
+
+def test_a_docker_socket_link_elsewhere_stays_docker(short_root):
+    (short_root / 'real').mkdir()
+    sock = _unix_socket(short_root / 'real' / 'docker.sock')
+    (short_root / 'docker.sock').symlink_to(short_root / 'real' / 'docker.sock')
+    try:
+        lines, calls = _run_probe_part(_engines_part(), short_root, tools=_DOCKER_LISTS,
+                                       system_tools=(*_PROBE_TOOLS, 'readlink'),
+                                       replace=(('/var/run/docker.sock', str(short_root / 'docker.sock')),))
+    finally:
+        sock.close()
+    assert calls == ['-H unix://%s ps --format {{.Image}}' % (short_root / 'docker.sock')]
+    assert 'service=docker' in lines and 'engine=docker:ok' in lines and 'service=podman' not in lines
 
 
 def test_every_docker_query_in_the_module_names_a_unix_socket():
@@ -1278,7 +1318,7 @@ def test_podman_with_a_socket_but_no_timeout_still_names_podman(short_root):
     (short_root / 'podman').mkdir()
     sock = _unix_socket(short_root / 'podman' / 'podman.sock')
     try:
-        lines, calls = _run_probe_part(_probe_part('if command -v podman'), short_root, tools={'podman': ''},
+        lines, calls = _run_probe_part(_probe_part('if [ -n "$psock" ]'), short_root, tools={'podman': ''},
                                        system_tools=(), env={'XDG_RUNTIME_DIR': str(short_root)})
     finally:
         sock.close()
