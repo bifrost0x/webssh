@@ -60,11 +60,14 @@ const TerminalManager = {
     activateTerminalLink(event, uri) {
         const target = this.terminalLinkTarget(uri);
         if (!target) return false;
+        // The host comes first: a dialog may cut a long address before the
+        // registrable domain. The address stays on its own line so no
+        // punctuation reads as part of it.
+        const host = new URL(target).host;
         const template = window.i18n?.t('terminal.openLinkConfirm');
         const message = template && template !== 'terminal.openLinkConfirm'
-            ? template.replace('{url}', () => target)
-            // The address stays on its own line so no punctuation reads as part of it.
-            : `Do you want to open this link?\n\n${target}\n\nWARNING: This link could potentially be dangerous`;
+            ? template.replace(/\{(host|url)\}/g, (_match, name) => (name === 'host' ? host : target))
+            : `Do you want to open this link?\n\nHost: ${host}\n${target}\n\nWARNING: This link could potentially be dangerous`;
         if (!window.confirm(message)) return false;
         window.open(target, '_blank', 'noopener,noreferrer');
         return true;

@@ -1192,7 +1192,10 @@ def test_oidc_link_step_up_rate_limits_before_bcrypt(
     })
 
     assert response.status_code == 429
-    assert response.get_json() == {"error": "Step-up authentication failed"}
+    assert response.get_json() == {
+        "error": "Step-up authentication failed",
+        "code": "step_up_failed",
+    }
 
 
 def test_oidc_link_commit_failure_is_not_a_duplicate(

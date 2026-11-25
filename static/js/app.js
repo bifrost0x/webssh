@@ -97,6 +97,11 @@
 
     const MAX_TIMED_NOTIFICATIONS = 4;
     const MAX_TIMED_NOTIFICATIONS_NARROW = 2;
+    // Success and info toasts that arrive while errors fill the stack wait
+    // here and appear once a slot frees, so a prompt is never lost unseen.
+    const MAX_QUEUED_NOTIFICATIONS = 8;
+    const queuedNotifications = [];
+    let placingTimedNotification = false;
     const timedNotificationDismissers = new WeakMap();
     // Where keyboard focus was before it entered the toast stack.
     const notificationReturnFocus = new WeakMap();
@@ -126,6 +131,20 @@
     }
     window.WebSSHNotificationPolicy = { selectTimedEvictions };
 
+    function visibleTimedNotificationCount(container) {
+        return Array.from(container.children).filter(item => (
+            item.dataset.timedNotification === 'true' && !item.classList.contains('fade-out')
+        )).length;
+    }
+
+    function showQueuedNotification(container) {
+        if (placingTimedNotification) return;
+        while (queuedNotifications.length > 0
+            && visibleTimedNotificationCount(container) < timedNotificationLimit()) {
+            queuedNotifications.shift().show();
+        }
+    }
+
     window.showNotification = function(message, type = 'info', duration) {
         const presentation = typeof message === 'object' && message !== null
             ? message
@@ -140,6 +159,7 @@
         copy.textContent = String(presentation.message || '');
         notification.appendChild(copy);
         let dismissed = false;
+        let queued = null;
         let fadeTimer = null;
         let removeTimer = null;
         notification.addEventListener('focusin', event => {
@@ -165,6 +185,13 @@
         const dismiss = () => {
             if (dismissed) return;
             dismissed = true;
+            if (queued) {
+                const index = queuedNotifications.indexOf(queued);
+                if (index !== -1) queuedNotifications.splice(index, 1);
+                queued = null;
+                presentation.onDismiss?.();
+                return;
+            }
             clearTimeout(fadeTimer);
             clearTimeout(removeTimer);
             const hadFocus = notification.contains(document.activeElement);
@@ -174,6 +201,7 @@
                 presentation.onDismiss?.();
             } finally {
                 removeTimer = setTimeout(() => notification.remove(), 300);
+                if (notification.dataset.timedNotification === 'true') showQueuedNotification(container);
             }
         };
         if (
@@ -238,28 +266,41 @@
             event.stopPropagation();
             dismiss();
         });
-        if (presentation.persistent !== true) {
-            notification.dataset.timedNotification = 'true';
-            const entries = Array.from(container.children)
-                .filter(item => (
-                    item.dataset.timedNotification === 'true' && !item.classList.contains('fade-out')
-                ))
-                .map(item => ({ item, urgent: item.dataset.urgent === 'true' }));
-            const incoming = { item: notification, urgent };
-            entries.push(incoming);
-            const evicted = selectTimedEvictions(entries, timedNotificationLimit());
-            if (evicted.has(incoming)) {
-                // Less important than everything on screen; do not show it.
-                dismissed = true;
-                return () => {};
+        const show = () => {
+            queued = null;
+            if (presentation.persistent !== true) {
+                notification.dataset.timedNotification = 'true';
+                const entries = Array.from(container.children)
+                    .filter(item => (
+                        item.dataset.timedNotification === 'true' && !item.classList.contains('fade-out')
+                    ))
+                    .map(item => ({ item, urgent: item.dataset.urgent === 'true' }));
+                const incoming = { item: notification, urgent };
+                entries.push(incoming);
+                const evicted = selectTimedEvictions(entries, timedNotificationLimit());
+                if (evicted.has(incoming)) {
+                    // Less important than everything on screen; wait for a free slot.
+                    queued = { show, dismiss };
+                    queuedNotifications.push(queued);
+                    if (queuedNotifications.length > MAX_QUEUED_NOTIFICATIONS) {
+                        queuedNotifications[0].dismiss();
+                    }
+                    return;
+                }
+                placingTimedNotification = true;
+                try {
+                    evicted.forEach(entry => timedNotificationDismissers.get(entry.item)?.());
+                } finally {
+                    placingTimedNotification = false;
+                }
+                notification.dataset.urgent = String(urgent);
+                timedNotificationDismissers.set(notification, dismiss);
             }
-            evicted.forEach(entry => timedNotificationDismissers.get(entry.item)?.());
-            notification.dataset.urgent = String(urgent);
-            timedNotificationDismissers.set(notification, dismiss);
-        }
-        container.appendChild(notification);
+            container.appendChild(notification);
+            if (presentation.persistent !== true) startTimer();
+        };
 
-        if (presentation.persistent !== true) {
+        const startTimer = () => {
             // Errors and warnings stay long enough to be read. Every timed
             // toast waits while the pointer or keyboard focus is on it.
             let remaining = presentation.duration || (urgent ? 8000 : 2000);
@@ -295,7 +336,9 @@
                 start();
             });
             start();
-        }
+        };
+
+        show();
         return dismiss;
     };
 

@@ -95,6 +95,39 @@ test('the address stands on its own line in the fallback and every locale', () =
     }
 });
 
+test('the host is named on its own line before a long address', () => {
+    const host = `${'a'.repeat(40)}.${'b'.repeat(40)}.${'c'.repeat(40)}.attacker.example:8443`;
+    const address = `https://${host}/login?next=${'x'.repeat(200)}`;
+    withBrowser({}, ({ prompts }) => {
+        TerminalManager.activateTerminalLink(new Event('click'), address);
+        const lines = prompts[0].split('\n');
+        const hostLine = lines.indexOf(`Host: ${host}`);
+        assert.ok(hostLine > 0, prompts[0]);
+        assert.ok(hostLine < lines.indexOf(address), prompts[0]);
+    });
+    const { LOCALES, localeTable } = require('./i18n-locales.js');
+    const table = localeTable();
+    for (const language of LOCALES) {
+        const template = table[language]['terminal.openLinkConfirm'];
+        const lines = template.split('\n');
+        const hostLine = lines.findIndex(line => line.endsWith('{host}') && line !== '{host}');
+        assert.ok(hostLine >= 0 && hostLine < lines.indexOf('{url}'), `${language}: ${template}`);
+        withBrowser({ language: { t: () => template } }, ({ prompts }) => {
+            TerminalManager.activateTerminalLink(new Event('click'), address);
+            const rendered = prompts[0].split('\n');
+            assert.ok(rendered[hostLine].endsWith(host), `${language}: ${prompts[0]}`);
+            assert.equal(rendered[hostLine + 1], address);
+        });
+    }
+});
+
+test('an internationalized host is shown in its ASCII form', () => {
+    withBrowser({}, ({ prompts }) => {
+        TerminalManager.activateTerminalLink(new Event('click'), 'https://pаypal.example/');
+        assert.match(prompts[0], /^Host: xn--/m);
+    });
+});
+
 test('every terminal is created with the restricted link handler', () => {
     const source = fs.readFileSync(path.join(__dirname, '../../static/js/terminal-manager.js'), 'utf8');
     assert.match(source, /\.\.\.this\.getAppearance\(\)\.options,\s*linkHandler: this\.createLinkHandler\(\),/);

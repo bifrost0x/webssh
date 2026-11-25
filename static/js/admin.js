@@ -155,18 +155,31 @@
     }
 
     // Answers that let the administrator try again in the open dialog: a
-    // rejected value (403) or throttling (429), whose wait time must be read
-    // before retrying. Anything else ends the prompt as before.
+    // wrong value (403 invalid_value) or throttling (429), whose wait time
+    // must be read before retrying. Anything else ends the prompt.
     function stepUpRetryMessage(error) {
         if (error?.status === 429) {
             return error.code === 'rate_limited'
                 ? error.message
                 : t('admin.stepUpThrottled', 'Too many attempts. Wait a moment and try again.');
         }
-        if (error?.status === 403 || error?.status === 401) {
+        if (error?.status === 403 && error.code === 'invalid_value') {
             return t('admin.stepUpRejected', 'Authentication failed. Check the value and try again.');
         }
         return null;
+    }
+
+    // Other refusals (factor removed, account now uses MFA or LDAP, session
+    // ended) cannot succeed with another value.
+    function stepUpFailure(error) {
+        if (error?.status !== 401 && error?.status !== 403) { return error; }
+        const failure = new Error(t(
+            'admin.stepUpUnavailable',
+            'Additional authentication is not available for this account right now. Reload the page and try again.'
+        ));
+        failure.status = error.status;
+        failure.code = error.code;
+        return failure;
     }
 
     // ``verify`` sends the entered value to the server; the dialog stays open
@@ -239,7 +252,7 @@
                 if (activeStepUpPrompt !== pending) { return; }
                 const message = stepUpRetryMessage(error);
                 if (!message) {
-                    closeStepUpPrompt(error);
+                    closeStepUpPrompt(stepUpFailure(error));
                     return;
                 }
                 pending.busy = false;

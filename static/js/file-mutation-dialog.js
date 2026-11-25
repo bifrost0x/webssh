@@ -17,6 +17,8 @@
         return null;
     }
 
+    const MAX_SERVER_DETAIL = 200;
+
     function validLeaf(name) { return leafProblem(name) === null; }
 
     function validMode(value) { return typeof value === 'string' && /^[0-7]{3}$/u.test(value); }
@@ -343,9 +345,12 @@
                 SOURCE_UNAVAILABLE: ['fm.renameUnavailable', 'The file source is unavailable. Reconnect and try again.'],
                 OUTCOME_UNKNOWN: ['fm.mutationUnknown', 'Result unknown. Close this dialog and refresh before taking further action.'],
             };
-            const [key, fallback] = Object.hasOwn(reasons, data?.code) ? reasons[data.code]
-                : ['fm.renameFailed', 'The item could not be renamed. Check the source connection and try again.'];
-            return this.manager.t(key, fallback);
+            if (Object.hasOwn(reasons, data?.code)) return this.manager.t(...reasons[data.code]);
+            const generic = this.manager.t('fm.renameFailed', 'The item could not be renamed. Check the source connection and try again.');
+            // Unknown codes keep the server's reason; it is shown as text only.
+            const detail = typeof data?.error === 'string' ? data.error.replace(/\s+/g, ' ').trim() : '';
+            if (!detail) return generic;
+            return `${generic} ${detail.length > MAX_SERVER_DETAIL ? `${detail.slice(0, MAX_SERVER_DETAIL - 1)}…` : detail}`;
         }
 
         setServerError(message) {

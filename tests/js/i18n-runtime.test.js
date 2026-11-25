@@ -29,10 +29,13 @@ function page({stored = null, urls = URLS, readyState = 'loading'} = {}) {
         localStorage: {getItem: () => stored, setItem(key, value) { this[key] = value; }},
         dispatchEvent(event) { events.push(event); },
     };
+    const timers = [];
     const context = vm.createContext({
         window,
         document,
         URL,
+        setTimeout(fn, delay) { timers.push({fn, delay}); return timers.length; },
+        clearTimeout(id) { if (timers[id - 1]) timers[id - 1].cleared = true; },
         CustomEvent: class CustomEvent {
             constructor(name, options) { this.name = name; this.detail = options.detail; }
         },
@@ -41,7 +44,7 @@ function page({stored = null, urls = URLS, readyState = 'loading'} = {}) {
     const register = locale => vm.runInContext(localeSource(locale), context);
     // Completes an asynchronous load the way the browser would: run the file, then fire onload.
     const finish = (element, locale) => { if (locale) register(locale); element.onload(); };
-    return {window, document, written, appended, events, register, finish};
+    return {window, document, written, appended, events, register, finish, timers};
 }
 
 test('startup inserts the stored non-English dictionary synchronously while the page parses', () => {
@@ -158,6 +161,25 @@ test('a failed load keeps the current language and can be retried', async () => 
     finish(appended[1], 'vi');
     assert.equal(await retried, true);
     assert.equal(window.i18n.getLanguage(), 'vi');
+});
+
+test('a stalled load times out, removes its script and can be retried', async () => {
+    const {window, events, appended, register, finish, timers} = page();
+    register('en');
+    const stalled = window.i18n.setLanguage('fr');
+    assert.equal(timers.length, 1);
+    assert.ok(timers[0].delay > 0 && timers[0].delay <= 30000);
+    timers[0].fn();
+    assert.equal(await stalled, false);
+    assert.equal(appended[0].removed, true);
+    assert.equal(appended[0].onload, null);
+    assert.equal(window.i18n.getLanguage(), 'en');
+    assert.equal(events.length, 0);
+    const retried = window.i18n.setLanguage('fr');
+    assert.equal(appended.length, 2);
+    finish(appended[1], 'fr');
+    assert.equal(await retried, true);
+    assert.equal(timers[1].cleared, true);
 });
 
 test('a file that does not register its language is treated as a failure', async () => {

@@ -46,6 +46,26 @@ test('rename failures show translated reasons instead of the server text', () =>
     assert.equal(attributes['aria-invalid'], 'false');
 });
 
+test('unknown rename failures keep the bounded server reason as plain text', () => {
+    const dialog = Object.create(FileMutationDialog.prototype);
+    dialog.manager = { t: (_key, fallback) => fallback };
+    const generic = 'The item could not be renamed. Check the source connection and try again.';
+    assert.equal(
+        dialog.renameError({ code: 'OPERATION_FAILED', error: 'The item could not be moved or renamed.' }),
+        `${generic} The item could not be moved or renamed.`,
+    );
+    assert.equal(dialog.renameError({ code: 'OPERATION_FAILED', error: '<img src=x>\n  quota\texceeded' }),
+        `${generic} <img src=x> quota exceeded`);
+    const long = dialog.renameError({ code: 'NEW_CODE', error: 'x'.repeat(5000) });
+    assert.equal(long.length, generic.length + 1 + 200);
+    assert.ok(long.endsWith('…'));
+    for (const error of [undefined, null, '', '   ', 42, { message: 'object' }]) {
+        assert.equal(dialog.renameError({ code: 'NEW_CODE', error }), generic);
+    }
+    assert.equal(dialog.renameError(null), generic);
+    assert.equal(dialog.renameError({ code: 'CONFLICT', error: 'raw English' }), 'An item with this name already exists.');
+});
+
 test('mode mismatch displays confirmed actual permissions and blocks retry', () => {
     for (const actual of ['640', 'u+x']) {
         const dialog = Object.create(FileMutationDialog.prototype);
