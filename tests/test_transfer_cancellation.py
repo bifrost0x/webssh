@@ -428,6 +428,8 @@ def test_folder_zip_uses_disk_and_bounded_remote_reads(tmp_path, monkeypatch):
         assert max(sftp.readers[0].read_sizes) == 4
     finally:
         os.unlink(archive)
+
+
 def test_folder_zip_cancellation_removes_temporary_archive(tmp_path, monkeypatch):
     from app.remote_transfer import RemoteTransferCancelled
     from app.transfer_routes import _build_backend_zip_to_disk
@@ -461,6 +463,8 @@ def test_folder_zip_cancellation_removes_temporary_archive(tmp_path, monkeypatch
 
     assert sftp.readers[0].read_sizes == [4]
     assert list(tmp_path.iterdir()) == []
+
+
 def test_empty_directory_entries_cannot_exceed_reserved_zip_bytes(
         tmp_path, monkeypatch):
     from app.remote_transfer import RemoteTransferLimitExceeded
@@ -478,6 +482,8 @@ def test_empty_directory_entries_cannot_exceed_reserved_zip_bytes(
         )
 
     assert list(tmp_path.iterdir()) == []
+
+
 def test_remote_tree_counts_zero_byte_members(monkeypatch):
     from app import sftp_handler
     from app.remote_transfer import TransferBudget
@@ -492,6 +498,8 @@ def test_remote_tree_counts_zero_byte_members(monkeypatch):
             budget=TransferBudget(max_bytes=1, max_members=3),
             cancel_event=threading.Event(),
         ))
+
+
 def test_remote_tree_closes_paramiko_directory_handle_on_member_rejection(
         monkeypatch):
     import paramiko
@@ -569,6 +577,8 @@ def test_folder_zip_counts_zero_byte_members(tmp_path, monkeypatch):
         )
 
     assert list(tmp_path.iterdir()) == []
+
+
 class _PathBackend:
     @staticmethod
     def normalize_path(path):

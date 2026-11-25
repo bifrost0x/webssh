@@ -549,6 +549,8 @@ def test_explicit_replace_token_is_the_only_path_to_backend_replacement(
         ),
     ),
 )
+
+
 def test_upload_http_socket_and_log_share_one_safe_failure_contract(
     app,
     client,
@@ -666,6 +668,8 @@ def test_upload_http_socket_and_log_share_one_safe_failure_contract(
         ),
     ),
 )
+
+
 def test_download_open_keeps_typed_failure_across_http_and_socket(
     app,
     client,
@@ -853,6 +857,8 @@ def test_unicode_download_header_terminalizes_record(
         ('/webssh/', '/webssh/api/transfers/token/download'),
     ],
 )
+
+
 def test_prepare_transfer_url_includes_application_root_once(
         app, monkeypatch, application_root, expected):
     from app import socket_events
@@ -1211,6 +1217,8 @@ def test_upload_reads_request_stream_in_bounded_chunks_and_renames_only_on_succe
     ('GET', 'upload', 'download'),
     ('POST', 'download', 'upload'),
 ])
+
+
 def test_direction_and_method_mismatches_never_start_remote_io(
         app, client, monkeypatch, transfer_components, method, direction, endpoint):
     transfer_routes, manager = transfer_components
@@ -1236,6 +1244,8 @@ def test_direction_and_method_mismatches_never_start_remote_io(
     (b'grow-by-two', 4),
     (b'short', 20),
 ])
+
+
 def test_download_omits_content_length_when_remote_size_can_change(
         app, client, monkeypatch, transfer_components, payload, reported_size):
     """A remote mutation must not create contradictory Content-Length headers."""
@@ -1295,6 +1305,8 @@ def test_upload_uses_posix_rename_for_an_existing_remote_destination(
 
     assert sftp.posix_renamed
     assert sftp.renamed == []
+
+
 def test_sftp_upload_preserves_existing_destination_until_replace_is_explicit(
         monkeypatch):
     from app import sftp_handler
@@ -1311,6 +1323,8 @@ def test_sftp_upload_preserves_existing_destination_until_replace_is_explicit(
     assert sftp.posix_renamed == []
     assert sftp.renamed == []
     assert sftp.removed and sftp.removed[0] != '/remote/report.bin'
+
+
 def test_upload_preserves_existing_destination_if_posix_rename_is_unavailable(
         monkeypatch):
     """Do not pre-delete a user file merely to emulate atomic replacement."""
@@ -1324,6 +1338,8 @@ def test_upload_preserves_existing_destination_if_posix_rename_is_unavailable(
 
     assert sftp.renamed == []
     assert sftp.removed and sftp.removed[0] != '/remote/report.bin'
+
+
 def test_download_token_is_one_use_and_wrong_user_cannot_consume_it(
         app, monkeypatch, transfer_components):
     transfer_routes, manager = transfer_components
@@ -1383,6 +1399,8 @@ def test_midstream_upload_overflow_removes_only_temporary_remote_file(
     assert sftp.renamed == []
     assert len(sftp.removed) == 1
     assert sftp.removed[0] != '/remote/report.bin'
+
+
 def test_expired_route_token_never_opens_sftp(app, client, monkeypatch,
                                               transfer_components):
     """Expiry is enforced before any HTTP route can touch remote state."""
@@ -1529,6 +1547,8 @@ def test_upload_close_failure_removes_temporary_file_and_keeps_final_hidden(
 
     assert sftp.renamed == []
     assert sftp.removed and sftp.removed[0] != '/remote/report.bin'
+
+
 def test_release_then_raise_still_removes_route_record(app, client, monkeypatch,
                                                        transfer_components):
     """A reservation that releases before raising cannot leave a hidden record."""
@@ -1625,6 +1645,8 @@ def test_folder_download_streams_local_archive_and_removes_it(
     assert max(remote.read_sizes) <= transfer_routes.TRANSFER_CHUNK_SIZE
     assert list(tmp_path.iterdir()) == []
     assert manager._records == {}
+
+
 def test_smb_folder_download_builds_bounded_local_zip_via_backend(
         app, client, monkeypatch, transfer_components):
     import io
@@ -1912,6 +1934,8 @@ def test_folder_download_rejects_oversized_archive_before_first_chunk(
     assert list(tmp_path.iterdir()) == []
     assert record.request_done_event.is_set()
     assert manager._records == {}
+
+
 def test_closed_folder_response_releases_local_archive_and_record(
         app, client, monkeypatch, tmp_path, transfer_components):
     transfer_routes, manager = transfer_components
@@ -1931,12 +1955,14 @@ def test_closed_folder_response_releases_local_archive_and_record(
     assert list(tmp_path.iterdir()) == []
     assert record.request_done_event.is_set()
     assert manager._records == {}
+
+
 def test_folder_preflight_failure_marks_request_done(
         app, client, monkeypatch, transfer_components):
     transfer_routes, manager = transfer_components
 
     class FolderSFTP:
-        def stat(self, _path):
+        def lstat(self, _path):
             raise OSError('preflight failed')
 
     @contextmanager
@@ -1944,6 +1970,11 @@ def test_folder_preflight_failure_marks_request_done(
         yield FolderSFTP(), 'session'
 
     monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
+    logged = []
+    monkeypatch.setattr(
+        transfer_routes, 'log_error',
+        lambda message, **fields: logged.append((message, fields)),
+    )
     user_id = _login(client, app, 'folder_preflight_user')
     record = manager.create(
         user_id=user_id,
@@ -1957,6 +1988,10 @@ def test_folder_preflight_failure_marks_request_done(
     response = client.get(f'/api/transfers/{record.token}/folder-download')
 
     assert response.status_code == 500
+    assert [
+        fields['exception_type'] for message, fields in logged
+        if message == 'Folder download preparation failed'
+    ] == ['OSError']
     assert record.request_done_event.is_set()
     assert manager._records == {}
 
@@ -2337,6 +2372,8 @@ def test_non_positive_zip_limit_is_a_limit_failure(
     (-5, 'not positive'),
     (None, 'exceeds QUOTA_TEMP_BYTES_PER_USER'),
 ])
+
+
 def test_startup_warns_about_unusable_folder_archive_limits(
         monkeypatch, archive_limit, expected):
     import app as app_module
@@ -2385,6 +2422,8 @@ def test_folder_archives_use_a_prefix_the_startup_sweep_recognizes(tmp_path):
     assert sftp_handler._is_folder_archive_name(archive.name)
     assert sftp_handler.sweep_orphaned_folder_archives(tmp_path, min_age_seconds=0) == 1
     assert list(tmp_path.iterdir()) == []
+
+
 def test_startup_sweep_removes_only_regular_folder_archives(tmp_path):
     import os
     from app import sftp_handler
