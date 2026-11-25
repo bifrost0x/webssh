@@ -121,8 +121,8 @@ def incarnation(user_id):
         raise AutomationError('unavailable')
     return value[0].isoformat()
 
-def read_document(path, default, validator):
-    if path.exists() and path.stat().st_size > MAX_STORE_BYTES:
+def read_document(path, default, validator, max_bytes=MAX_STORE_BYTES):
+    if path.exists() and path.stat().st_size > max_bytes:
         raise AutomationError('storage_limit')
     return load_json_strict(path, lambda: default, validator)
 

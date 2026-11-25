@@ -256,10 +256,14 @@ class AutomationService:
             document = self._read_history(path)
             document['runs'] = [deepcopy(record)] + [r for r in document['runs'] if r['id'] != record['id']]
             document['runs'] = document['runs'][:50]
-            while len(document['runs']) > 1 and len(document_bytes(document)) > MAX_STORE_BYTES:
-                document['runs'].pop()
+            self._trim_history(document)
             # Never silently evict the current run, even if metadata alone exceeds the limit.
             write_document(path, document)
+
+    @staticmethod
+    def _trim_history(document):
+        while len(document['runs']) > 1 and len(document_bytes(document)) > MAX_STORE_BYTES:
+            document['runs'].pop()
 
     @staticmethod
     def _read_history(path):
@@ -302,7 +306,9 @@ class AutomationService:
                     and isinstance(doc['runs'], list) and len(doc['runs']) <= 50 and all(run_valid(run) for run in doc['runs']))
             except (TypeError, ValueError, KeyError):
                 return False
-        return read_document(path, dict(version=1, runs=[]), valid)
+        # Earlier versions could leave the indented file above MAX_STORE_BYTES.
+        # Accept up to twice the limit so the next write can trim it back.
+        return read_document(path, dict(version=1, runs=[]), valid, max_bytes=2 * MAX_STORE_BYTES)
 
     def history(self, user_id):
         recovered = False
@@ -329,6 +335,7 @@ class AutomationService:
                                     step['reason'] = 'run_interrupted'
                 result.append(record)
             if recovered:
+                self._trim_history(document)
                 write_document(path, document)
         return result
 
@@ -358,6 +365,7 @@ class AutomationService:
                 raise AutomationError('not_found')
             if removed:
                 document['runs'] = kept
+                self._trim_history(document)
                 write_document(path, document)
         if removed:
             log_security_event('AUTOMATION_RUNS_DELETED', user_id=user_id, count=removed)

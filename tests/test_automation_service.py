@@ -291,6 +291,56 @@ def test_full_history_stays_readable(app, context):
     history = AutomationService(app).history(uid)
     assert history and history[0]['id'] == 'run-49'
 
+def _legacy_history_run(number, status='succeeded'):
+    steps = [dict(name=f'Step {n}', status=status, exit_code=0, duration=1, reason=None,
+                  stdout='x' * 850, stderr='', output_truncated=False) for n in range(20)]
+    target = dict(id='host', name='Host', host='example.test', port=22, username='user', group=None,
+                  status=status, reason=None, steps=steps)
+    return dict(id=f'run-{number}', name='Run', created_at='now', finished_at='now', status=status, targets=[target])
+
+
+def test_oversized_history_from_earlier_versions_shrinks_back(app, context):
+    # Earlier versions measured the compact size but wrote the file indented,
+    # so existing history files can exceed the limit on disk.
+    from app.automation_store import MAX_STORE_BYTES, document_bytes, user_path
+    uid, _, _, _ = context
+    document = dict(version=1, runs=[_legacy_history_run(n) for n in range(49)] + [_legacy_history_run(49, 'running')])
+    assert len(json.dumps(document).encode()) <= MAX_STORE_BYTES
+    path = user_path(uid, 'automation-runs.json')
+    path.write_text(json.dumps(document, indent=2))
+    assert path.stat().st_size > MAX_STORE_BYTES
+    service = AutomationService(app)
+    history = service.history(uid)
+    assert len(history) == 50 and history[-1]['status'] == 'unknown'
+    assert path.stat().st_size <= MAX_STORE_BYTES
+    service._persist(uid, _legacy_history_run(50))
+    assert path.stat().st_size <= MAX_STORE_BYTES
+    raw = path.read_bytes()
+    assert raw == document_bytes(json.loads(raw))
+    history = AutomationService(app).history(uid)
+    assert history[0]['id'] == 'run-50' and len(history) < 50
+
+
+def test_history_beyond_twice_the_limit_stays_rejected(app, context):
+    from app.automation_store import MAX_STORE_BYTES, user_path
+    uid, _, _, _ = context
+    path = user_path(uid, 'automation-runs.json')
+    path.write_bytes(b' ' * (2 * MAX_STORE_BYTES + 1))
+    service = AutomationService(app)
+    with pytest.raises(AutomationError, match='storage_limit'):
+        service.history(uid)
+    with pytest.raises(AutomationError, match='storage_limit'):
+        service._persist(uid, _legacy_history_run(1))
+
+
+def test_other_stores_keep_the_strict_read_limit(tmp_path):
+    from app.automation_store import MAX_STORE_BYTES, read_document
+    path = tmp_path / 'automation.json'
+    path.write_bytes(b' ' * (MAX_STORE_BYTES + 1))
+    with pytest.raises(AutomationError, match='storage_limit'):
+        read_document(path, {}, lambda value: True)
+
+
 def test_write_document_measures_indented_size(tmp_path):
     from app.automation_store import MAX_STORE_BYTES, document_bytes, write_document
     path = tmp_path / 'doc.json'
