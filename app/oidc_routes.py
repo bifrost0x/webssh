@@ -809,21 +809,42 @@ def unlink_oidc_identity(user_id, identity_id):
     identity = db.session.get(OIDCIdentity, identity_id)
     if identity is None or identity.user_id != target.id:
         return jsonify({"error": "OIDC identity not found"}), 404
-    from . import socketio, user_lifecycle
-    from .auth_assurance import invalidate_user_authentication
+    from . import login_devices, socketio, user_lifecycle
+    from .auth_assurance import (
+        AuthenticationFinalizationError,
+        invalidate_user_authentication,
+    )
 
     issuer = identity.issuer
+    acting_on_self = target.id == current_user.id
+    device_digest = (
+        login_devices.presented_device_digest(target) if acting_on_self else None
+    )
     db.session.delete(identity)
     # Sessions that signed in through this identity must not outlive the link.
     try:
         invalidate_user_authentication(
             target,
-            preserve_current_browser=target.id == current_user.id,
+            preserve_current_browser=acting_on_self,
             remember=bool(request.cookies.get(
                 current_app.config.get("REMEMBER_COOKIE_NAME", "remember_token")
             )),
         )
         db.session.commit()
+    except AuthenticationFinalizationError:
+        # Only reachable on self-unlink: this browser has no authentication
+        # session to carry over, so it has to sign in again first.
+        db.session.rollback()
+        log_security_event(
+            "OIDC_IDENTITY_UNLINK_REJECTED",
+            level=logging.WARNING,
+            admin=current_user.username,
+            user=target.username,
+            reason="authentication_session_unavailable",
+        )
+        return jsonify({
+            "error": "Sign in again before unlinking this identity"
+        }), 409
     except Exception as exc:
         db.session.rollback()
         log_security_event(
@@ -841,8 +862,11 @@ def unlink_oidc_identity(user_id, identity_id):
     user_lifecycle.revoke_user_access(
         target.id,
         socketio,
-        kill_tmux=target.id != current_user.id,
+        kill_tmux=not acting_on_self,
     )
+    # The new generation voids every device cookie, including the one of
+    # this browser when it stays signed in.
+    login_devices.reissue_device(target, device_digest)
     log_security_event(
         "OIDC_IDENTITY_UNLINKED",
         level=logging.WARNING,

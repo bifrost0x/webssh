@@ -14,6 +14,7 @@ cannot be used for unlimited guessing.
 """
 
 import hashlib
+import hmac
 import secrets
 from datetime import timedelta
 
@@ -37,11 +38,51 @@ def _serializer():
     return URLSafeTimedSerializer(current_app.secret_key, salt=_SALT)
 
 
-def _username_digest(username):
+def username_digest(username):
+    """Return an instance-keyed digest of the normalized ``username``.
+
+    Used in the device cookie and in rate-limit keys. A keyed digest keeps a
+    readable cookie or limiter key from being reversed by trying names.
+    """
     normalized = str(username or "").strip().casefold()
-    return hashlib.sha256(
-        normalized.encode("utf-8", "surrogatepass")
+    key = current_app.secret_key
+    if isinstance(key, str):
+        key = key.encode("utf-8")
+    return hmac.new(
+        key,
+        b"webssh-login-username-v1\x00"
+        + normalized.encode("utf-8", "surrogatepass"),
+        hashlib.sha256,
     ).hexdigest()
+
+
+def _presented_payload():
+    """Return the verified payload of this request's cookie, else ``None``."""
+    raw_value = request.cookies.get(cookie_name())
+    if not raw_value:
+        return None
+    try:
+        payload = _serializer().loads(
+            raw_value, max_age=int(MAX_AGE.total_seconds()),
+        )
+    except BadData:
+        return None
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("n"), str)
+        or not isinstance(payload.get("u"), str)
+        or type(payload.get("i")) is not int
+        or type(payload.get("g")) is not int
+    ):
+        return None
+    user = db.session.get(User, payload["i"])
+    if (
+        user is None
+        or user.is_locked
+        or int(user.auth_generation or 0) != payload["g"]
+    ):
+        return None
+    return payload
 
 
 def trusted_device(username):
@@ -51,35 +92,12 @@ def trusted_device(username):
     submitted username, and still match the account's authentication
     generation. Anything else is treated as no cookie at all.
     """
-    raw_value = request.cookies.get(cookie_name())
-    if not raw_value or not str(username or "").strip():
+    if not str(username or "").strip():
         return None
-    try:
-        payload = _serializer().loads(
-            raw_value, max_age=int(MAX_AGE.total_seconds()),
-        )
-    except BadData:
+    payload = _presented_payload()
+    if payload is None or payload["u"] != username_digest(username):
         return None
-    if not isinstance(payload, dict):
-        return None
-    nonce = payload.get("n")
-    user_id = payload.get("i")
-    generation = payload.get("g")
-    if (
-        not isinstance(nonce, str)
-        or type(user_id) is not int
-        or type(generation) is not int
-        or payload.get("u") != _username_digest(username)
-    ):
-        return None
-    user = db.session.get(User, user_id)
-    if (
-        user is None
-        or user.is_locked
-        or int(user.auth_generation or 0) != generation
-    ):
-        return None
-    return nonce
+    return payload["n"]
 
 
 def failure_budget_key(endpoint, nonce):
@@ -88,8 +106,31 @@ def failure_budget_key(endpoint, nonce):
 
 def remember_device(user, username):
     """Issue a fresh cookie with the response of a successful password step."""
+    _issue(user, username_digest(username))
+
+
+def presented_device_digest(user):
+    """Return the username digest of a valid cookie this request holds for ``user``.
+
+    Call it before ``auth_generation`` changes and pass the result to
+    :func:`reissue_device` afterwards, so a browser that stays signed in keeps
+    its exemption.
+    """
+    payload = _presented_payload()
+    if payload is None or payload["i"] != int(user.id):
+        return None
+    return payload["u"]
+
+
+def reissue_device(user, digest):
+    """Issue a cookie for ``digest`` under the account's current generation."""
+    if digest:
+        _issue(user, digest)
+
+
+def _issue(user, digest):
     value = _serializer().dumps({
-        "u": _username_digest(username),
+        "u": digest,
         "i": int(user.id),
         "g": int(user.auth_generation or 0),
         "n": secrets.token_urlsafe(16),

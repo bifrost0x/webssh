@@ -42,13 +42,15 @@ sensitive action and target.
   username while it keeps sending, so a browser that completed a password
   sign-in before is exempt from it: after each successful password or LDAP
   password step WebSSH sets a signed, HttpOnly known-device cookie (90 days,
-  rotated on every success, bound to the account and the typed username).
+  rotated on every success, bound to the account and to a digest of the typed
+  username keyed with the instance secret).
   With that cookie only the ceiling across sources is skipped; the limits per
   source and per username and source still apply, and five failures with one
   cookie within an hour end its exemption, so a stolen cookie gives no
   unlimited guessing. Anything that ends all sessions of the account (password
   change or reset, lock, MFA reset, identity link or unlink) invalidates its
-  device cookies. The remaining
+  device cookies; when the owner unlinks their own OIDC or GitHub identity,
+  the browser that stays signed in receives a fresh one. The remaining
   risk: during such an attack, a browser without a valid device cookie (a new
   device, cleared cookies, a private window) cannot sign in to that username
   until the attack stops. Both username limits and the IPv6 grouping prefix
@@ -59,8 +61,9 @@ sensitive action and target.
 - Rejected TOTP codes are counted per account in the database, separately for
   sign-in and for step-up, so failures in one never delay the other. After
   three consecutive rejections each further code waits 30 seconds, doubling up
-  to 15 minutes; an accepted code resets the count, and a count whose last
-  failure is older than 30 minutes starts again from zero. A Recovery Code or
+  to 15 minutes; an accepted code resets the count, and every full 30 minutes
+  without a rejection halve it, so a pause does not restore the three free
+  attempts at once. A Recovery Code or
   passkey sign-in, a passkey step-up, enrolling or disabling TOTP, and an
   administrator MFA reset clear both counts. From five
   consecutive rejections on, a rejected sign-in code discards the pending

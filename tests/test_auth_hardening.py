@@ -321,6 +321,86 @@ def test_discarded_login_prefills_the_username_once_without_a_url(
     assert 'value="prefill_restart"' not in client.get("/login").get_data(as_text=True)
 
 
+def test_discarded_ldap_login_prefills_only_the_directory_form(
+    app, client, monkeypatch, generous_request_limits,
+):
+    import app.ldap_session as ldap_session
+    from app.models import LDAPIdentity, db
+    from tests.test_ldap_auth import (
+        _DirectoryIdentity,
+        _FakeDirectory,
+        _enable_ldap_blueprint,
+    )
+
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="restart-ldap-id",
+        distinguished_name="uid=jdoe,dc=example,dc=com",
+    )
+    _enable_ldap_blueprint(app, monkeypatch, _FakeDirectory(identity))
+    user_id, secret = _enroll_totp(app, client, monkeypatch, "restart_ldap")
+    with app.app_context():
+        db.session.add(LDAPIdentity(
+            user_id=user_id,
+            provider=identity.provider,
+            subject=identity.subject,
+            directory_username="jdoe",
+            distinguished_name=identity.distinguished_name,
+        ))
+        db.session.commit()
+    monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: None)
+    _set_failure_state(app, user_id, 4, seconds_ago=120)
+    assert client.post(
+        "/login/ldap", data={"username": "J.Doe", "password": "directory-secret"},
+    ).status_code == 200
+
+    discarded = client.post("/api/totp/auth/verify", json={"code": _wrong_code(secret)})
+    assert discarded.get_json()["code"] == "mfa_restart"
+
+    html = client.get("/login").get_data(as_text=True)
+    assert 'id="ldapUsername" name="username"' in html
+    assert 'placeholder="Directory username" value="J.Doe"' in html
+    assert 'placeholder="Username" value=""' in html
+    assert "restart_ldap" not in html
+    assert '<option value="ldap" selected>' in html
+    assert 'alert-login_auth_source' not in html
+
+
+def test_discarded_local_login_keeps_the_local_form_when_ldap_is_offered(
+    app, client, monkeypatch, generous_request_limits,
+):
+    from tests.test_ldap_auth import _enable_ldap_blueprint
+
+    _enable_ldap_blueprint(app, monkeypatch, object())
+    user_id, secret = _enroll_totp(app, client, monkeypatch, "restart_local")
+    _set_failure_state(app, user_id, 4, seconds_ago=120)
+    assert _password_login(client, "restart_local").status_code == 200
+
+    discarded = client.post("/api/totp/auth/verify", json={"code": _wrong_code(secret)})
+    assert discarded.get_json()["code"] == "mfa_restart"
+
+    html = client.get("/login").get_data(as_text=True)
+    assert 'placeholder="Username" value="restart_local"' in html
+    assert 'placeholder="Directory username" value=""' in html
+    assert '<option value="local" selected' in html
+
+
+def test_logins_without_a_typed_name_get_no_restart_hint(app):
+    from types import SimpleNamespace
+
+    from app.totp_routes import _restart_username_hint
+
+    user_id = _create_user(app, "restart_oidc")
+    with app.app_context():
+        for method in ("oidc", "github", "ldap"):
+            assert _restart_username_hint(
+                SimpleNamespace(user_id=user_id, primary_method=method),
+            ) is None
+        assert _restart_username_hint(
+            SimpleNamespace(user_id=user_id, primary_method="password"),
+        ) == ("local", "restart_oidc")
+
+
 def test_failures_below_the_discard_threshold_keep_the_pending_login(
     app, client, monkeypatch, generous_request_limits,
 ):
@@ -545,12 +625,79 @@ def test_failure_count_decays_after_the_quiet_period(app):
                     user_id, scope=scope,
                     now=moment - timedelta(seconds=1),
                 )
-            quiet = moment - timedelta(
+            last_failure = moment - timedelta(
                 seconds=mfa_throttle.backoff_seconds(failures)
-            ) + timedelta(seconds=mfa_throttle.QUIET_PERIOD_SECONDS)
+            )
+            quiet = timedelta(seconds=mfa_throttle.QUIET_PERIOD_SECONDS)
+            # Four quiet periods halve twelve failures down to zero.
             assert mfa_throttle.claim_attempt(
-                user_id, scope=scope, now=quiet,
+                user_id, scope=scope, now=last_failure + 4 * quiet,
             ) == 1
+
+
+@pytest.mark.parametrize(("stored", "periods", "expected"), [
+    (12, 1, 7),
+    (12, 2, 4),
+    (12, 3, 2),
+    (12, 4, 1),
+    (5, 1, 3),
+    (1, 1, 1),
+    (12, 1000, 1),
+])
+def test_each_quiet_period_halves_the_failure_count(app, stored, periods, expected):
+    """A pause halves the count instead of restoring every free attempt."""
+    from app import mfa_throttle
+
+    user_id = _create_user(app, f"halve_{stored}_{periods}")
+    _set_failure_state(
+        app, user_id, stored,
+        seconds_ago=periods * mfa_throttle.QUIET_PERIOD_SECONDS + 5,
+    )
+    with app.app_context():
+        assert mfa_throttle.claim_attempt(user_id) == expected
+    assert _failure_state(app, user_id)[0] == expected
+
+
+def test_a_pause_at_the_cap_does_not_restore_the_free_attempts(app):
+    """Waiting one quiet period after many failures leaves the backoff on."""
+    from app import mfa_throttle
+
+    user_id = _create_user(app, "halve_pause_user")
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    _set_failure_state(app, user_id, 0, seconds_ago=0)
+    with app.app_context():
+        moment = start
+        for _attempt in range(10):
+            failures = mfa_throttle.claim_attempt(user_id, now=moment)
+            moment += timedelta(seconds=mfa_throttle.backoff_seconds(failures))
+        last_failure = moment - timedelta(
+            seconds=mfa_throttle.backoff_seconds(failures)
+        )
+        resumed = last_failure + timedelta(
+            seconds=mfa_throttle.QUIET_PERIOD_SECONDS,
+        )
+        assert mfa_throttle.claim_attempt(user_id, now=resumed) == 6
+        with pytest.raises(mfa_throttle.MFAAttemptThrottled) as throttled:
+            mfa_throttle.claim_attempt(
+                user_id, now=resumed + timedelta(seconds=1),
+            )
+        assert throttled.value.retry_after == mfa_throttle.backoff_seconds(6) - 1
+
+
+def test_claim_refuses_a_session_with_pending_changes(app):
+    """The claim commits on its own and must not take foreign changes along."""
+    from app import mfa_throttle
+    from app.models import User, db
+
+    user_id = _create_user(app, "claim_dirty_user")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.is_locked = True
+        with pytest.raises(RuntimeError):
+            mfa_throttle.claim_attempt(user_id)
+        db.session.rollback()
+        assert db.session.get(User, user_id).is_locked is False
+    assert _failure_state(app, user_id) == (0, None)
 
 
 def test_decayed_claim_still_loses_a_concurrent_update(app, monkeypatch):
@@ -780,18 +927,55 @@ def test_ldap_login_is_limited_per_username(app, client, monkeypatch):
     monkeypatch.setattr(config, "LDAP_LOGIN_RATE_LIMIT", "1000 per minute")
     _set_username_limits(per_source=2)
 
-    statuses = [
+    responses = [
         client.post(
             "/login/ldap",
             data={"username": "Directory_User", "password": "secret-value"},
             environ_base={"REMOTE_ADDR": "203.0.113.100"},
-        ).status_code
+        )
         for _attempt in range(3)
     ]
+    statuses = [response.status_code for response in responses]
 
     assert statuses[2] == 429
     assert statuses[:2] != [429, 429]
     assert len(calls) == 2
+    _assert_ldap_limit_message(responses[2])
+
+
+def _assert_ldap_limit_message(response):
+    html = response.get_data(as_text=True)
+    assert response.status_code == 429
+    assert (
+        '<div class="alert alert-error" data-i18n="auth.tooManyAttempts">'
+        "Too many login attempts. Please try again later.</div>"
+    ) in html
+
+
+def test_ldap_source_limit_names_the_limit(app, client, monkeypatch):
+    import config
+    from app.ldap_service import LDAPLookupRejected
+    from tests.test_ldap_auth import _enable_ldap_blueprint
+
+    class _Directory:
+        def lookup(self, username):
+            raise LDAPLookupRejected("not found")
+
+    _enable_ldap_blueprint(app, monkeypatch, _Directory())
+    monkeypatch.setattr(config, "LDAP_LOGIN_RATE_LIMIT", "1 per minute")
+
+    responses = [
+        client.post(
+            "/login/ldap",
+            data={"username": "someone", "password": "secret-value"},
+            environ_base={"REMOTE_ADDR": "203.0.113.101"},
+        )
+        for _attempt in range(2)
+    ]
+
+    assert responses[0].status_code == 401
+    assert 'data-i18n="auth.invalidCredentials"' in responses[0].get_data(as_text=True)
+    _assert_ldap_limit_message(responses[1])
 
 
 # --- identity unlink revocation ----------------------------------------------
@@ -822,6 +1006,25 @@ def _is_signed_out(test_client):
     return (
         response.status_code == 302
         and urlsplit(response.headers["Location"]).path == "/login"
+    )
+
+
+def _device_trusted(app, test_client, username):
+    from app import login_devices
+
+    cookie = test_client.get_cookie(_DEVICE_COOKIE)
+    if cookie is None:
+        return False
+    with app.test_request_context(
+        headers={"Cookie": f"{_DEVICE_COOKIE}={cookie.value}"},
+    ):
+        return login_devices.trusted_device(username) is not None
+
+
+def _sets_device_cookie(response):
+    return any(
+        value.startswith(f"{_DEVICE_COOKIE}=")
+        for value in response.headers.getlist("Set-Cookie")
     )
 
 
@@ -864,6 +1067,7 @@ def test_oidc_unlink_revokes_the_target_sessions(app, browsers, monkeypatch):
     )
 
     assert removed.status_code == 200
+    assert not _sets_device_cookie(removed)
     assert revoked == [(target_id, True)]
     with app.app_context():
         assert db.session.get(OIDCIdentity, identity_id) is None
@@ -918,6 +1122,59 @@ def test_admin_unlinking_own_oidc_identity_keeps_the_current_browser(
     assert revoked == [(admin_id, False)]
     assert _is_signed_out(other_browser)
     assert not _is_signed_out(client)
+    # Only the browser that stays signed in gets a cookie for the new state.
+    assert _device_trusted(app, client, "oidc_self_admin")
+    assert not _device_trusted(app, other_browser, "oidc_self_admin")
+
+
+def test_oidc_self_unlink_without_a_carried_session_asks_to_sign_in_again(
+    app, browsers, monkeypatch, caplog,
+):
+    import config
+    import app.auth_assurance as auth_assurance
+    from app.models import OIDCIdentity, db
+
+    client = browsers()
+    admin_id = _create_user(app, "oidc_stale_admin", is_admin=True)
+    assert _password_login(client, "oidc_stale_admin").status_code == 302
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    with app.app_context():
+        identity = OIDCIdentity(
+            user_id=admin_id,
+            issuer="https://issuer.example",
+            subject="stale-subject",
+        )
+        db.session.add(identity)
+        db.session.commit()
+        identity_id = identity.id
+    headers = password_step_up_headers(
+        client, "oidc.unlink", f"{admin_id}:{identity_id}",
+    )[0]
+
+    def unavailable(*_args, **_kwargs):
+        raise auth_assurance.AuthenticationFinalizationError(
+            "current authentication session is unavailable"
+        )
+
+    monkeypatch.setattr(
+        auth_assurance, "invalidate_user_authentication", unavailable,
+    )
+    with caplog.at_level(logging.INFO, logger="security_audit"):
+        removed = client.delete(
+            f"/admin/api/users/{admin_id}/oidc-identities/{identity_id}",
+            json={"confirm_username": "oidc_stale_admin"},
+            headers=headers,
+        )
+
+    assert removed.status_code == 409
+    assert removed.get_json() == {
+        "error": "Sign in again before unlinking this identity",
+    }
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(m.startswith("OIDC_IDENTITY_UNLINK_REJECTED") for m in messages)
+    assert not any(m.startswith("OIDC_IDENTITY_STORAGE_FAILED") for m in messages)
+    with app.app_context():
+        assert db.session.get(OIDCIdentity, identity_id) is not None
 
 
 def test_github_unlink_revokes_other_sessions_and_keeps_this_browser(
@@ -959,6 +1216,8 @@ def test_github_unlink_revokes_other_sessions_and_keeps_this_browser(
         )
     assert _is_signed_out(other_browser)
     assert client.get("/api/account/github").status_code == 200
+    assert _device_trusted(app, client, "github_unlink_user")
+    assert not _device_trusted(app, other_browser, "github_unlink_user")
 
 
 # --- counter resets by other proofs of possession -----------------------------
@@ -1148,35 +1407,65 @@ def test_ldap_success_does_not_consume_the_username_budget(
     assert statuses == [302, 302, 302]
 
 
-@pytest.mark.parametrize("limiter_kind", ["memory", "redis"])
-def test_release_returns_one_reservation(limiter_kind):
+def _limiter(limiter_kind):
     from app.rate_limiter import InMemoryRateLimiter, RedisRateLimiter
 
     if limiter_kind == "memory":
-        limiter = InMemoryRateLimiter()
-    else:
-        class _SortedSetRedis:
-            def __init__(self):
-                self.members = {}
+        return InMemoryRateLimiter()
 
-            def eval(self, _script, _numkeys, key, _start, now, limit, _ttl, member):
-                entries = self.members.setdefault(key, [])
-                if len(entries) >= int(limit):
-                    return 0
-                entries.append((float(now), member))
-                return 1
+    class _SortedSetRedis:
+        def __init__(self):
+            self.members = {}
 
-            def zpopmax(self, key):
-                entries = self.members.get(key, [])
-                return [entries.pop()] if entries else []
+        def eval(self, _script, _numkeys, key, _start, now, limit, _ttl, member):
+            entries = self.members.setdefault(key, {})
+            if len(entries) >= int(limit):
+                return 0
+            entries[member] = float(now)
+            return 1
 
-        limiter = RedisRateLimiter(_SortedSetRedis())
+        def zrem(self, key, member):
+            return int(self.members.get(key, {}).pop(member, None) is not None)
 
-    assert limiter.allow("bucket", 1, 60) is True
+    return RedisRateLimiter(_SortedSetRedis())
+
+
+@pytest.mark.parametrize("limiter_kind", ["memory", "redis"])
+def test_release_returns_one_reservation(limiter_kind):
+    limiter = _limiter(limiter_kind)
+
+    token = limiter.reserve("bucket", 1, 60)
+    assert token is not None
     assert limiter.allow("bucket", 1, 60) is False
-    limiter.release("bucket")
+    limiter.release("bucket", token)
     assert limiter.allow("bucket", 1, 60) is True
-    limiter.release("missing")
+    limiter.release("missing", token)
+
+
+@pytest.mark.parametrize("limiter_kind", ["memory", "redis"])
+def test_release_removes_only_the_callers_reservation(limiter_kind, monkeypatch):
+    """A later request in the same bucket keeps its own entry."""
+    import app.rate_limiter as rate_limiter
+
+    limiter = _limiter(limiter_kind)
+    clock = iter([1000.0, 1001.0, 1002.0, 1003.0])
+
+    class _Clock:
+        @staticmethod
+        def now(_tz=None):
+            return datetime.fromtimestamp(next(clock), timezone.utc)
+
+    monkeypatch.setattr(rate_limiter, "datetime", _Clock)
+    monkeypatch.setattr(rate_limiter.time, "time", lambda: next(clock))
+
+    first = limiter.reserve("bucket", 2, 60)
+    second = limiter.reserve("bucket", 2, 60)
+    assert None not in (first, second)
+    limiter.release("bucket", first)
+    # Releasing the first again must not take the second entry with it.
+    limiter.release("bucket", first)
+    assert limiter.reserve("bucket", 2, 60) is not None
+    assert limiter.reserve("bucket", 2, 60) is None
 
 
 # --- configurable IPv6 prefix and restart UI ------------------------------------
@@ -1301,6 +1590,51 @@ def test_device_cookie_is_issued_with_restrictive_attributes(app, client):
     assert "SameSite=Lax" in header
     assert "Path=/" in header
     assert f"Max-Age={90 * 24 * 3600}" in header
+
+
+def test_device_cookie_and_limiter_keys_use_a_keyed_username_digest(
+    app, client, monkeypatch,
+):
+    """A plain hash of the name could be reversed by trying usernames."""
+    import hashlib
+
+    import app.auth as auth
+    import app.login_devices as login_devices
+
+    _create_user(app, "device_digest")
+    _password_login(client, "device_digest")
+    raw = client.get_cookie(_DEVICE_COOKIE).value
+    with app.app_context():
+        payload = login_devices._serializer().loads(raw)
+    plain = hashlib.sha256(b"device_digest").hexdigest()
+    assert payload["u"] != plain
+    assert len(payload["u"]) == 64
+    assert type(payload["i"]) is int
+
+    original_secret = app.secret_key
+    with app.test_request_context():
+        keyed = login_devices.username_digest(" Device_Digest ")
+        app.secret_key = "another-instance-secret"
+        try:
+            assert login_devices.username_digest("device_digest") != keyed
+        finally:
+            app.secret_key = original_secret
+    assert payload["u"] == keyed
+
+    reserved = []
+
+    class _Limiter:
+        def reserve(self, key, _limit, _window):
+            reserved.append(key)
+            return key
+
+    monkeypatch.setattr(auth, "_get_rate_limiter", lambda: _Limiter())
+    with app.test_request_context():
+        auth.reserve_login_username_attempt(
+            "device_digest", "203.0.113.90", "login", "5 per minute", "100 per minute",
+        )
+    assert reserved
+    assert all(plain not in key and keyed in key for key in reserved)
 
 
 def test_device_cookie_rotates_on_each_success(app, client):

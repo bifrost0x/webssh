@@ -1,4 +1,3 @@
-import hashlib
 import ipaddress
 import re
 
@@ -13,6 +12,7 @@ from .login_devices import (
     FAILURE_BUDGET,
     FAILURE_WINDOW_SECONDS,
     failure_budget_key,
+    username_digest,
 )
 from .models import db, User, SocketSession
 from .rate_limiter import create_rate_limiter
@@ -138,38 +138,43 @@ def reserve_login_username_attempt(
 
     Buckets are keyed by the normalized name whether or not an account
     exists, so the answer does not reveal which accounts exist. The name is
-    hashed to bound the key size.
+    replaced by a keyed digest that bounds the key size and keeps it out of
+    the limiter store.
     """
-    normalized = str(username or '').strip().casefold()
-    if not normalized:
+    if not str(username or '').strip():
         return False, ()
-    digest = hashlib.sha256(
-        normalized.encode('utf-8', 'surrogatepass')
-    ).hexdigest()
+    digest = username_digest(username)
     limiter = _get_rate_limiter()
     source_key = f'{endpoint}:username:{digest}:{rate_limit_address(source)}'
     global_key = f'{endpoint}:username:{digest}'
     limit, window = parse_rate_limit(limit_str, default_limit=10)
-    if not limiter.allow(source_key, limit, window):
+    source_token = limiter.reserve(source_key, limit, window)
+    if source_token is None:
         return True, ()
     if device_nonce:
         device_key = failure_budget_key(endpoint, device_nonce)
-        if limiter.allow(device_key, FAILURE_BUDGET, FAILURE_WINDOW_SECONDS):
-            return False, (source_key, device_key)
+        device_token = limiter.reserve(
+            device_key, FAILURE_BUDGET, FAILURE_WINDOW_SECONDS,
+        )
+        if device_token is not None:
+            return False, (
+                (source_key, source_token), (device_key, device_token),
+            )
     global_limit, global_window = parse_rate_limit(
         global_limit_str, default_limit=100,
     )
-    if not limiter.allow(global_key, global_limit, global_window):
-        limiter.release(source_key)
+    global_token = limiter.reserve(global_key, global_limit, global_window)
+    if global_token is None:
+        limiter.release(source_key, source_token)
         return True, ()
-    return False, (source_key, global_key)
+    return False, ((source_key, source_token), (global_key, global_token))
 
 
 def release_login_username_attempt(reservation):
     """Return a reservation after the password was accepted."""
     limiter = _get_rate_limiter()
-    for key in reservation or ():
-        limiter.release(key)
+    for key, token in reservation or ():
+        limiter.release(key, token)
 
 def check_socket_rate_limit(user_id, endpoint, limit_str):
     """Return True if a per-user socket action should be blocked.

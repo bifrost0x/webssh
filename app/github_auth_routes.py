@@ -429,8 +429,11 @@ def github_unlink():
         invalidate_user_authentication,
     )
 
+    from . import login_devices
+
     github_user_id = row.github_user_id
     account = current_user._get_current_object()
+    device_digest = login_devices.presented_device_digest(account)
     db.session.delete(row)
     # Other browsers that signed in through GitHub must not keep the access
     # the unlinked identity gave them; this browser moves to a new session.
@@ -458,6 +461,9 @@ def github_unlink():
     # The owner acted here, so keep their persistent tmux sessions as on
     # sign-out; transports of every browser still close.
     user_lifecycle.revoke_user_access(account.id, socketio, kill_tmux=False)
+    # The new generation voids every device cookie, including the one of
+    # this browser, which stays signed in.
+    login_devices.reissue_device(account, device_digest)
     log_security_event(
         'GITHUB_IDENTITY_UNLINKED', level=logging.WARNING,
         user=current_user.username, github_user_id=github_user_id,

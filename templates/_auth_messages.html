@@ -21,7 +21,7 @@
     'New password must be at least 8 characters': 'auth.newPasswordChangeTooShort'
 } %}
 {# Data-only flash categories that are never displayed as messages. #}
-{% set flash_data_categories = ['login_username'] %}
+{% set flash_data_categories = ['login_username', 'login_auth_source'] %}
 {% macro render_auth_messages() %}
     {% for category, message in get_flashed_messages(with_categories=true) %}
         {% if category not in flash_data_categories %}
@@ -32,4 +32,7 @@
 {% endmacro %}
 {% macro login_username_hint() -%}
     {{ (get_flashed_messages(category_filter=['login_username']) or [''])[-1] }}
+{%- endmacro %}
+{% macro login_username_source() -%}
+    {{ (get_flashed_messages(category_filter=['login_auth_source']) or [''])[-1] }}
 {%- endmacro %}
