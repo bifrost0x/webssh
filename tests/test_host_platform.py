@@ -251,7 +251,7 @@ def test_services_map_fixed_facts_and_known_images_only():
         'image=$(rm -rf /)', 'unrelated=nextcloud',
     ])
     assert host_platform.parse_services(facts) == [
-        'docker', 'homeassistant', 'mariadb', 'nextcloud', 'nginx', 'nginxproxymanager', 'postgresql', 'wireguard',
+        'docker', 'homeassistant', 'mariadb', 'nextcloud', 'nginx', 'nginxproxymanager', 'postgresql', 'redis', 'wireguard',
     ]
     assert host_platform.parse_services('') == []
     for text in ['service=docker\x00', 'x' * 7000]:

@@ -23,3 +23,48 @@ def test_image_patterns_prefer_specific_names():
     assert first('ghcr.io/immich-app/immich-server:release') == 'immich'
     assert first('ghcr.io/paperless-ngx/paperless-ngx:2') == 'paperless'
     assert first('docker.io/library/postgres:16') == 'postgresql'
+
+
+def _image_id(image):
+    return next((i for i, p in c.SERVICE_IMAGES if p.search(image)), None)
+
+
+def test_image_rules_positive():
+    cases = {
+        'grafana/grafana:latest': 'grafana', 'grafana/grafana-oss:10': 'grafana',
+        'grafana/loki:2.9': 'loki', 'grafana/promtail:2': None, 'grafana/tempo:2': None,
+        'lscr.io/linuxserver/sonarr:latest': 'sonarr', 'ghcr.io/hotio/radarr': 'radarr',
+        'prom/prometheus:v2': 'prometheus', 'influxdb:2.7': 'influxdb',
+        'gitlab/gitlab-ce:latest': 'gitlab', 'qbittorrentofficial/qbittorrent-nox': 'qbittorrent',
+        'lscr.io/linuxserver/qbittorrent:4': 'qbittorrent', 'requarks/wiki:2': 'wikijs',
+        'mongo:7': 'mongodb', 'redis:7': 'redis', 'valkey/valkey:8': 'redis',
+        'eclipse-mosquitto:2': 'mosquitto', 'ollama/ollama': 'ollama',
+        'ghcr.io/open-webui/open-webui:main': 'openwebui', 'linuxserver/wireguard': 'wireguard',
+        'docker.io/library/haproxy:2': 'haproxy', 'kylemanna/openvpn': 'openvpn',
+    }
+    for image, expected in cases.items():
+        assert _image_id(image) == expected, image
+
+
+def test_image_rules_negative():
+    for image in ('grafana/promtail', 'prometheus-postgres-exporter:1', 'bitnami/postgres-exporter',
+                  'mongo-express:1', 'prom/postgres-exporter', 'haugene/transmission-openvpn',
+                  'dperson/openvpn-client', 'prometheuscommunity/influxdb-exporter',
+                  'wikipedia/mirror', 'redis-commander/redis-commander', 'oliver006/redis_exporter'):
+        assert _image_id(image) is None, image
+    assert _image_id('grafana/loki:2') == 'loki'
+
+
+def test_every_posix_platform_is_detectable():
+    reachable = (set(c.OS_ID_PLATFORMS.values()) | set(c.FAMILIES.values()) | set(c.MARKER_PLATFORMS.values())
+                 | set(c.KERNEL_PLATFORMS.values()) | {'raspberrypi'})
+    assert c.PLATFORMS - c.NON_POSIX_PLATFORMS - {'server', 'docker'} <= reachable
+    assert not reachable & c.NON_POSIX_PLATFORMS
+
+
+def test_ubiquiti_is_a_marker_platform():
+    assert 'ubiquiti' in c.PLATFORMS and 'ubiquiti' in c.MARKER_PLATFORMS.values()
+
+
+def test_service_paths_are_fixed_absolute():
+    assert all(p.startswith('/') and '..' not in p and ' ' not in p for p, _ in c.SERVICE_PATHS)
