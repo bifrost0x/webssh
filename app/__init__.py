@@ -2021,6 +2021,13 @@ def create_app(
             return jsonify({'error': 'Settings could not be saved'}), 500
 
         from .audit_logger import log_security_event
+        # Values that open the instance further: self-registration, the SSH
+        # gateway and lifting the tailnet block.
+        weakening_values = {
+            'registration_enabled': True,
+            'ssh_gateway_enabled': True,
+            'tailscale_ssh_restrict_tailnet_routes': False,
+        }
         for name, message in (
             ('registration_enabled', 'Admin changed registration setting'),
             ('ssh_gateway_enabled', 'Admin changed SSH gateway setting'),
@@ -2031,9 +2038,13 @@ def create_app(
         ):
             if name not in results:
                 continue
-            val = results[name][1]
+            previous, val = results[name]
             log_info(message, admin=current_user.username, **{name: val})
-            weakened = name == 'tailscale_ssh_restrict_tailnet_routes' and not val
+            weakened = (
+                name in weakening_values
+                and val is weakening_values[name]
+                and previous is not val
+            )
             log_security_event(
                 'APPLICATION_FEATURE_CHANGED',
                 level=logging.WARNING if weakened else logging.INFO,
@@ -2058,7 +2069,7 @@ def create_app(
                 previous_value=previous, value=stored,
             )
         for feature in ('credentials_enabled', 'automation_enabled'):
-            if feature in results:
+            if feature in results and results[feature][0] is not results[feature][1]:
                 log_security_event('APPLICATION_FEATURE_CHANGED', admin=current_user.username,
                                    feature=feature, enabled=data[feature])
         for name in RUNTIME_FEATURES:
