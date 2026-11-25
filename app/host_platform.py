@@ -350,10 +350,14 @@ def parse_identity(text, *, max_bytes=8192):
     """
     if not isinstance(text, str) or len(text.encode('utf-8')) > max_bytes:
         raise ValueError('Invalid identity facts')
-    if any(ord(char) < 32 and char not in '\n\r\t' for char in text):
+    # C0, DEL and C1 controls never appear in honest probe output.
+    if any((ord(char) < 32 and char not in '\n\r\t') or 0x7f <= ord(char) <= 0x9f for char in text):
         raise ValueError('Invalid identity facts')
     single, repeated, duplicates = {}, {}, set()
-    for line in text.splitlines():
+    # Only '\n' ends a line: str.splitlines() would also split on U+2028 and
+    # similar characters a hostile value could carry.
+    for line in text.split('\n'):
+        line = line[:-1] if line.endswith('\r') else line
         key, separator, value = line.partition('=')
         value = value.strip()
         if not separator or len(value) > _MAX_FACT_LENGTH:
@@ -418,13 +422,11 @@ def parse_identity(text, *, max_bytes=8192):
             services.add(engine)
             access.add(state)
     result['services'] = sorted(services)[:MAX_SERVICES]
-    # 'denied' also covers a stopped daemon or a timeout: some containers could not be read.
-    if 'denied' in access:
-        result['container_access'] = 'denied'
-    elif access:
+    # 'denied' also covers a stopped daemon or a timeout; one readable engine is enough for 'ok'.
+    if 'ok' in access:
         result['container_access'] = 'ok'
-    elif not services & {'docker', 'podman'}:
-        result['container_access'] = 'none'
+    elif access:
+        result['container_access'] = 'denied'
     return result
 
 

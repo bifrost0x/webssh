@@ -103,5 +103,23 @@ def test_app_image_rules_skip_exporters_sidecars_and_tools():
                   'clusterio/paperless-ai', 'icereed/paperless-gpt', 'damongolding/immich-kiosk',
                   'ghcr.io/linuxserver/nextcloud-backup', 'ghcr.io/bfren/vaultwarden-backup',
                   'ghcr.io/bakito/adguardhome-sync', 'tcpipuk/uptime-kuma-exporter',
-                  'ghcr.io/home-assistant/amd64-hassio-supervisor', 'homeassistant-exporter'):
+                  'ghcr.io/home-assistant/amd64-hassio-supervisor', 'homeassistant-exporter',
+                  'gitea:3000/me/app:latest', 'traefik:5000/whoami', 'nginx:8080/team/site',
+                  'postgres.internal/tools/backup:1', 'redis:6000/cache-warmer'):
         assert _image_id(image) is None, image
+
+
+def test_image_rules_skip_the_registry_host_only():
+    cases = {
+        'localhost:5000/gitea:latest': 'gitea', 'registry.example.com:5000/library/traefik:v3': 'traefik',
+        'ghcr.io/hotio/jellyfin': 'jellyfin', 'lscr.io/linuxserver/nextcloud': 'nextcloud',
+        'docker.io/library/postgres:16': 'postgresql', 'traefik:v3.2': 'traefik', 'nginx:1.27': 'nginx',
+        'nextcloud/all-in-one:latest': 'nextcloud', 'redis@sha256:abc': 'redis',
+    }
+    for image, expected in cases.items():
+        assert _image_id(image) == expected, image
+
+
+def test_cloud_and_other_hypervisors_are_vms():
+    for value in ('amazon', 'google', 'vm-other', 'apple', 'powervm', 'zvm', 'acrn', 'qnx', 'sre'):
+        assert c.VIRT_MAP[value] == 'vm', value

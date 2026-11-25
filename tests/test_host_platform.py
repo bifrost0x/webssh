@@ -51,6 +51,17 @@ def test_identity_rejects_oversized_control_and_non_text_output():
             host_platform.parse_identity(text)
     with pytest.raises(ValueError):
         host_platform.parse_identity('kernel=Linux\n' + 'x' * 100, max_bytes=64)
+    for char in ('\x7f', '\x80', '\x85', '\x9f'):
+        with pytest.raises(ValueError):
+            host_platform.parse_identity('kernel=Linux' + char + 'marker=proxmox')
+    assert host_platform.parse_identity('ID=debian\nkernel=Linux\nmodel=Raspberry Pi 5 \xa0')['state'] == 'detected'
+
+
+@pytest.mark.parametrize('separator', ['\u2028', '\u2029', '\u2028\u2029'])
+def test_identity_splits_lines_on_newline_only(separator):
+    result = host_platform.parse_identity('ID=debian' + separator + 'marker=proxmox\nkernel=Linux' + separator + 'guests=7')
+    assert result['platform'] is None and result['guests'] is None
+    assert host_platform.parse_identity('ID=debian\r\nkernel=Linux\r\n')['platform'] == 'debian'
     assert host_platform.parse_identity('kernel=Linux\t\r\n')['state'] == 'detected'
 
 
@@ -84,13 +95,15 @@ def test_identity_caps_services_and_ignores_overlong_values():
 
 
 @pytest.mark.parametrize('facts, expected', [
-    ('', 'none'),
+    ('', None),
     ('service=docker', None),
     ('service=podman', None),
     ('engine=docker:ok', 'ok'),
     ('engine=docker:denied', 'denied'),
-    ('engine=podman:ok\nengine=docker:denied', 'denied'),
-    ('engine=docker:unknown', 'none'),
+    ('engine=podman:denied\nengine=docker:denied', 'denied'),
+    ('engine=podman:ok\nengine=docker:denied', 'ok'),
+    ('engine=docker:ok\nengine=podman:denied', 'ok'),
+    ('engine=docker:unknown', None),
 ])
 def test_identity_container_access(facts, expected):
     assert host_platform.parse_identity('kernel=Linux\n' + facts)['container_access'] == expected

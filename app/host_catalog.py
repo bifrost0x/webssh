@@ -53,6 +53,8 @@ VIRT_MAP = {
     'none': 'bare-metal',
     'kvm': 'vm', 'qemu': 'vm', 'vmware': 'vm', 'microsoft': 'vm', 'oracle': 'vm',
     'xen': 'vm', 'bochs': 'vm', 'parallels': 'vm', 'bhyve': 'vm',
+    'amazon': 'vm', 'google': 'vm', 'vm-other': 'vm', 'apple': 'vm', 'powervm': 'vm',
+    'zvm': 'vm', 'acrn': 'vm', 'qnx': 'vm', 'sre': 'vm',
     'lxc': 'lxc', 'lxc-libvirt': 'lxc', 'openvz': 'lxc', 'systemd-nspawn': 'lxc',
     'docker': 'container', 'podman': 'container', 'rkt': 'container',
     'wsl': 'wsl',
@@ -167,12 +169,18 @@ SERVICE_SNAPS = {
 }
 
 
+# Start of an image name segment. The first segment does not count when it is a
+# registry host ("gitea:3000/me/app", "postgres.internal/x"), i.e. contains ':'
+# or '.' and more segments follow.
+_SEGMENT = r'(?:^(?![^/]*[.:][^/]*/)|/)'
+
+
 def _image(service, *names, strict=False):
     # Anchored at a path segment so e.g. "postgres-exporter" is not a database.
     # The strict form needs the whole segment; the loose form also allows the
     # edition suffixes of official images, but not exporters or bundles.
     tail = '' if strict else '(?:-server|-ce|-ee|-nox|-oss)?'
-    return (service, re.compile(r'(^|/)(?:' + '|'.join(names) + ')' + tail + r'(:|@|$)'))
+    return (service, re.compile(_SEGMENT + '(?:' + '|'.join(names) + ')' + tail + r'(:|@|$)'))
 
 
 # Matched against lower-cased image references; first match wins, so specific
@@ -180,7 +188,7 @@ def _image(service, *names, strict=False):
 SERVICE_IMAGES = (
     _image('nginxproxymanager', 'nginx-proxy-manager'),
     _image('nextcloud', 'nextcloud', 'aio-nextcloud', 'nextcloud/all-in-one', 'nextcloud-releases/all-in-one'),
-    ('homeassistant', re.compile(r'(^|/)(?:home-?assistant/[a-z0-9-]+-)?home-?assistant(:|@|$)')),
+    ('homeassistant', re.compile(_SEGMENT + r'(?:home-?assistant/[a-z0-9-]+-)?home-?assistant(:|@|$)')),
     _image('jellyfin', 'jellyfin'),
     _image('plex', 'plex', 'pms-docker'),
     _image('portainer', 'portainer', 'portainer/agent'),
@@ -189,7 +197,7 @@ SERVICE_IMAGES = (
     _image('immich', 'immich', 'immich-machine-learning'),
     _image('gitea', 'gitea', 'forgejo'),
     _image('paperless', 'paperless', 'paperless-ngx', 'paperless-ng'),
-    ('grafana', re.compile(r'(^|/)grafana(-oss|-enterprise)?(:|@|$)')),
+    ('grafana', re.compile(_SEGMENT + r'grafana(-oss|-enterprise)?(:|@|$)')),
     _image('pihole', 'pihole', 'pi-hole'),
     _image('adguard', 'adguardhome', 'adguard-home'),
     _image('uptimekuma', 'uptime-kuma'),
@@ -252,10 +260,10 @@ SERVICE_IMAGES = (
     _image('dashy', 'dashy'),
     _image('ollama', 'ollama'),
     _image('openwebui', 'open-webui'),
-    ('mariadb', re.compile(r'(^|/)(mariadb|mysql)(:|@|$)')),
-    ('postgresql', re.compile(r'(^|/)postgres(ql)?(:|@|$)')),
+    ('mariadb', re.compile(_SEGMENT + r'(mariadb|mysql)(:|@|$)')),
+    ('postgresql', re.compile(_SEGMENT + r'postgres(ql)?(:|@|$)')),
     _image('redis', 'redis', 'valkey', strict=True),
     _image('mongodb', 'mongo', strict=True),
-    ('nginx', re.compile(r'(^|/)nginx(:|@|$)')),
-    ('caddy', re.compile(r'(^|/)caddy(:|@|$)')),
+    ('nginx', re.compile(_SEGMENT + r'nginx(:|@|$)')),
+    ('caddy', re.compile(_SEGMENT + r'caddy(:|@|$)')),
 )
