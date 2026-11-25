@@ -1558,7 +1558,14 @@ def handle_ssh_connect(data, current_user=None):
 
         use_tmux = bool(data.get('use_tmux')) and runtime_feature_enabled('tmux_enabled')
         reconnect_tmux_name = None
+        display_name = None
         if use_tmux:
+            display_name = data.get('display_name')
+            if display_name is not None and not isinstance(display_name, str):
+                emit_error('Invalid tmux session name')
+                return
+            if display_name:
+                display_name = display_name.strip()[:128] or None
             raw_name = data.get('reconnect_tmux_name')
             if raw_name:
                 import re as _re
@@ -1584,9 +1591,12 @@ def handle_ssh_connect(data, current_user=None):
         lifecycle = app.extensions['runtime_lifecycle']
         registry = app.extensions['ssh_attempt_registry']
         gateway_attempt = None
+        # Requests without a client id still need a registry entry so that a
+        # socket disconnect cancels them. The tuple can never equal a
+        # client-chosen string id and therefore never trips duplicate checks.
         attempt_key = (
-            (str(current_user.id), socket_sid, client_request_id)
-            if client_request_id else None
+            str(current_user.id), socket_sid,
+            client_request_id or ('server', secrets.token_hex(16)),
         )
         is_gateway = ':' in username
         interactive_ssh = (
@@ -1628,14 +1638,14 @@ def handle_ssh_connect(data, current_user=None):
                 'handle': None,
                 'state': 'pending',
             }
-            if attempt_key is not None:
-                with _ssh_connect_attempts_lock:
-                    if (attempt_key in _ssh_connect_attempts
-                            or registry.get(current_user.id, socket_sid, client_request_id) is not None):
-                        credential_box.clear()
-                        emit_error('Connection request already in progress')
-                        return
-                    _ssh_connect_attempts[attempt_key] = attempt
+            with _ssh_connect_attempts_lock:
+                if client_request_id and (
+                        attempt_key in _ssh_connect_attempts
+                        or registry.get(current_user.id, socket_sid, client_request_id) is not None):
+                    credential_box.clear()
+                    emit_error('Connection request already in progress')
+                    return
+                _ssh_connect_attempts[attempt_key] = attempt
 
         @copy_current_request_context
         def connect_ssh(lifecycle_cancel_event, credentials=credential_box):
@@ -1660,6 +1670,8 @@ def handle_ssh_connect(data, current_user=None):
             local_bastion_key_content = credentials.pop(
                 'bastion_key_content', None
             )
+            committed_session_id = None
+            session_recorded = False
             try:
                 if cancellation.is_set():
                     return
@@ -1748,6 +1760,7 @@ def handle_ssh_connect(data, current_user=None):
                         ),
                     )
                     return
+                committed_session_id = session_id
 
                 created_session = ssh_manager.get_session(session_id)
                 if not created_session:
@@ -1764,11 +1777,7 @@ def handle_ssh_connect(data, current_user=None):
                     if actual_use_tmux else None
                 )
 
-                display_name = (
-                    data.get('display_name') if actual_use_tmux else None
-                )
-                if display_name:
-                    display_name = display_name.strip()[:128] or None
+                session_display_name = display_name if actual_use_tmux else None
                 try:
                     # Clean up the specific old disconnected persistent session
                     # when reconnecting to avoid ghost tabs on refresh.
@@ -1806,10 +1815,11 @@ def handle_ssh_connect(data, current_user=None):
                         via_jump=bastion_host,
                         reconnect_route_known=True,
                         tmux_session_name=created_tmux_name,
-                        display_name=display_name if actual_use_tmux else None,
+                        display_name=session_display_name,
                     )
                     db.session.add(ssh_session)
                     db.session.commit()
+                    session_recorded = True
                 except Exception as db_err:
                     db.session.rollback()
                     log_error(
@@ -1835,7 +1845,7 @@ def handle_ssh_connect(data, current_user=None):
                     'key_id': key_id,
                     'auth_type': auth_type,
                     'tmux_session_name': created_tmux_name,
-                    'display_name': display_name,
+                    'display_name': session_display_name,
                     'file_source': _public_file_source(
                         make_source_id(
                             FileSourceKind.SFTP_SESSION,
@@ -1844,6 +1854,7 @@ def handle_ssh_connect(data, current_user=None):
                         current_user.id,
                     ),
                 })
+                committed_session_id = None
                 log_ssh_connection(
                     current_user.username,
                     host,
@@ -1890,6 +1901,17 @@ def handle_ssh_connect(data, current_user=None):
                     error=str(error),
                     user=current_user.username,
                 )
+                if committed_session_id is not None:
+                    # The client never learns this session id. A recorded
+                    # persistent row stays a reconnect candidate, so keep its
+                    # tmux session; otherwise nothing could reach it again.
+                    ssh_manager.close_session(
+                        committed_session_id,
+                        kill_tmux=bool(
+                            use_tmux and not reconnect_tmux_name
+                            and not session_recorded
+                        ),
+                    )
                 if not cancellation.is_set():
                     emit_error('Connection failed')
             finally:
@@ -1911,10 +1933,9 @@ def handle_ssh_connect(data, current_user=None):
                 else:
                     with attempt['commit_lock']:
                         attempt['state'] = 'finished'
-                    if attempt_key is not None:
-                        with _ssh_connect_attempts_lock:
-                            if _ssh_connect_attempts.get(attempt_key) is attempt:
-                                _ssh_connect_attempts.pop(attempt_key, None)
+                    with _ssh_connect_attempts_lock:
+                        if _ssh_connect_attempts.get(attempt_key) is attempt:
+                            _ssh_connect_attempts.pop(attempt_key, None)
 
         try:
             handle = lifecycle.start_job(
@@ -1931,7 +1952,7 @@ def handle_ssh_connect(data, current_user=None):
         except Exception as error:
             if gateway_attempt is not None:
                 registry.finish(gateway_attempt)
-            elif attempt_key is not None:
+            else:
                 with _ssh_connect_attempts_lock:
                     if _ssh_connect_attempts.get(attempt_key) is attempt:
                         _ssh_connect_attempts.pop(attempt_key, None)

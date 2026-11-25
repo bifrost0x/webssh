@@ -998,3 +998,213 @@ def test_platform_detection_failure_still_emits_ssh_connected(
     finally:
         if socket_client.is_connected():
             socket_client.disconnect()
+
+
+def _enable_tmux(monkeypatch):
+    from app import socket_events
+
+    real = socket_events.runtime_feature_enabled
+    monkeypatch.setattr(
+        socket_events,
+        'runtime_feature_enabled',
+        lambda name: True if name == 'tmux_enabled' else real(name),
+    )
+
+
+def _record_close_session(monkeypatch):
+    calls = []
+
+    def close_session(session_id, kill_tmux=False, **_kwargs):
+        calls.append((session_id, kill_tmux))
+        with ssh_manager.sessions_lock:
+            ssh_manager.sessions.pop(session_id, None)
+        return True
+
+    monkeypatch.setattr(ssh_manager, 'close_session', close_session)
+    monkeypatch.setattr(
+        ssh_manager,
+        'get_session',
+        lambda session_id: dict(ssh_manager.sessions.get(session_id) or {}),
+    )
+    return calls
+
+
+def test_ssh_connect_non_string_display_name_closes_session(app, monkeypatch):
+    from app.models import SSHSession
+
+    socket_client, _user_id = _authenticated_socket(
+        app, 'display_name_type_user'
+    )
+    _enable_tmux(monkeypatch)
+    close_calls = _record_close_session(monkeypatch)
+
+    def create_connection(**_kwargs):
+        with ssh_manager.sessions_lock:
+            ssh_manager.sessions['display-name-session'] = {
+                'use_tmux': True,
+                'tmux_session_name': 'webssh_display_name',
+            }
+        return 'display-name-session', None
+
+    monkeypatch.setattr(ssh_manager, 'create_ssh_connection', create_connection)
+
+    try:
+        socket_client.emit('ssh_connect', {
+            'host': 'example.com',
+            'port': 22,
+            'username': 'alice',
+            'password': 'secret',
+            'use_tmux': True,
+            'display_name': [1],
+            'client_request_id': 'display-name-request',
+        })
+        events = _collect_until(socket_client, 'ssh_error')
+
+        errors = [event for event in events if event['name'] == 'ssh_error']
+        assert errors
+        assert errors[0]['args'][0]['error'] == 'Invalid tmux session name'
+        assert not any(event['name'] == 'ssh_connected' for event in events)
+        assert close_calls == []
+        with ssh_manager.sessions_lock:
+            assert 'display-name-session' not in ssh_manager.sessions
+        with app.app_context():
+            assert SSHSession.query.filter_by(
+                session_id='display-name-session').first() is None
+    finally:
+        with ssh_manager.sessions_lock:
+            ssh_manager.sessions.pop('display-name-session', None)
+        if socket_client.is_connected():
+            socket_client.disconnect()
+
+
+@pytest.mark.parametrize(
+    ('failure', 'expected_kill_tmux'),
+    (
+        # Nothing recorded the session yet: no reconnect candidate can reach
+        # the fresh tmux session, so it is ended with the connection.
+        ('before_record', True),
+        # The recorded persistent row stays a reconnect candidate.
+        ('after_record', False),
+    ),
+)
+def test_ssh_connect_failure_after_commit_closes_session(
+        app, monkeypatch, failure, expected_kill_tmux):
+    from app import herdr
+    from app.models import SSHSession
+
+    socket_client, _user_id = _authenticated_socket(
+        app, f'post_commit_{failure}'
+    )
+    _enable_tmux(monkeypatch)
+    close_calls = _record_close_session(monkeypatch)
+
+    def create_connection(**_kwargs):
+        with ssh_manager.sessions_lock:
+            ssh_manager.sessions['post-commit-session'] = {
+                'use_tmux': True,
+                'tmux_session_name': 'webssh_post_commit',
+            }
+        return 'post-commit-session', None
+
+    def failing_flags(_session):
+        raise RuntimeError('session flags unavailable')
+
+    monkeypatch.setattr(ssh_manager, 'create_ssh_connection', create_connection)
+    if failure == 'before_record':
+        monkeypatch.setattr(
+            ssh_manager, 'get_session', lambda _session_id: ['not-a-session']
+        )
+    else:
+        monkeypatch.setattr(herdr, 'session_flags', failing_flags)
+
+    try:
+        socket_client.emit('ssh_connect', {
+            'host': 'example.com',
+            'port': 22,
+            'username': 'alice',
+            'password': 'secret',
+            'use_tmux': True,
+            'display_name': '  Build host  ',
+            'client_request_id': 'post-commit-request',
+        })
+        events = _collect_until(socket_client, 'ssh_error')
+
+        errors = [event for event in events if event['name'] == 'ssh_error']
+        assert errors
+        assert errors[0]['args'][0]['error'] == 'Connection failed'
+        assert not any(event['name'] == 'ssh_connected' for event in events)
+        assert close_calls == [('post-commit-session', expected_kill_tmux)]
+        with ssh_manager.sessions_lock:
+            assert 'post-commit-session' not in ssh_manager.sessions
+        with app.app_context():
+            recorded = SSHSession.query.filter_by(
+                session_id='post-commit-session').first()
+            assert (recorded is not None) is (failure == 'after_record')
+            if recorded is not None:
+                assert recorded.display_name == 'Build host'
+    finally:
+        with ssh_manager.sessions_lock:
+            ssh_manager.sessions.pop('post-commit-session', None)
+        with app.app_context():
+            from app.models import db
+
+            SSHSession.query.filter_by(
+                session_id='post-commit-session').delete()
+            db.session.commit()
+        if socket_client.is_connected():
+            socket_client.disconnect()
+
+
+def test_ssh_connect_without_request_id_is_cancellable(app, monkeypatch):
+    import threading
+
+    from app import socket_events
+
+    socket_client, _user_id = _authenticated_socket(
+        app, 'anonymous_request_user'
+    )
+    entered = threading.Event()
+    cancelled = threading.Event()
+    seen_request_ids = []
+
+    def create_connection(**kwargs):
+        seen_request_ids.append(kwargs['client_request_id'])
+        entered.set()
+        if kwargs['cancel_event'].wait(5):
+            cancelled.set()
+        return None, 'Connection cancelled'
+
+    monkeypatch.setattr(ssh_manager, 'create_ssh_connection', create_connection)
+
+    try:
+        socket_client.emit('ssh_connect', {
+            'host': 'example.com',
+            'port': 22,
+            'username': 'alice',
+            'password': 'secret',
+        })
+        assert entered.wait(5)
+        with socket_events._ssh_connect_attempts_lock:
+            keys = [
+                key for key in socket_events._ssh_connect_attempts
+                if key[0] == str(_user_id)
+            ]
+        assert len(keys) == 1
+        # The server-side key must never equal a client-chosen request id.
+        assert not isinstance(keys[0][2], str)
+
+        socket_client.disconnect()
+
+        assert cancelled.wait(5)
+        assert seen_request_ids == [None]
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            with socket_events._ssh_connect_attempts_lock:
+                if keys[0] not in socket_events._ssh_connect_attempts:
+                    break
+            time.sleep(0.02)
+        with socket_events._ssh_connect_attempts_lock:
+            assert keys[0] not in socket_events._ssh_connect_attempts
+    finally:
+        if socket_client.is_connected():
+            socket_client.disconnect()

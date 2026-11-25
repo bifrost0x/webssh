@@ -1414,13 +1414,14 @@ def create_app(
     @app.route('/logout', methods=['POST'])
     @login_required
     def logout():
-        from . import user_lifecycle
-        from .auth_assurance import delete_current_authentication_session
+        from . import auth_assurance, user_lifecycle
+        from .models import User
 
         user_id = current_user.id
+        session_ended = True
         log_logout(current_user.username, get_client_ip())
         try:
-            delete_current_authentication_session()
+            auth_assurance.delete_current_authentication_session()
         except Exception as exc:
             db.session.rollback()
             log_warning(
@@ -1428,8 +1429,25 @@ def create_app(
                 user_id=user_id,
                 error=type(exc).__name__,
             )
+            # A copied session cookie must not outlive the logout, so fall
+            # back to ending every credential issued under this generation.
+            try:
+                auth_assurance.invalidate_user_authentication(
+                    db.session.get(User, user_id)
+                )
+                db.session.commit()
+            except Exception as invalidation_exc:
+                db.session.rollback()
+                session_ended = False
+                log_warning(
+                    'Authentication invalidation failed during logout',
+                    user_id=user_id,
+                    error=type(invalidation_exc).__name__,
+                )
         user_lifecycle.revoke_user_access(user_id, socketio, kill_tmux=False)
         clear_browser_authentication()
+        if not session_ended:
+            abort(500)
         return redirect(url_for('login'))
 
     @app.route('/change-password', methods=['GET', 'POST'])

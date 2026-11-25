@@ -667,6 +667,94 @@ def test_logout_deletes_current_authentication_session(app, client):
         assert AuthenticationSession.query.count() == 0
 
 
+def _login_and_copy_session_cookie(app, client, username):
+    _create_user(app, username)
+    assert client.post('/login', data={
+        'username': username,
+        'password': 'password123',
+        'remember': 'on',
+    }).status_code == 302
+    cookie_name = app.config['SESSION_COOKIE_NAME']
+    copied = client.get_cookie(cookie_name).value
+    assert client.get('/').status_code == 200
+    return cookie_name, copied
+
+
+def _failing_session_delete():
+    raise RuntimeError('authentication session store unavailable')
+
+
+def test_logout_invalidates_generation_when_session_delete_fails(
+    app, client, monkeypatch,
+):
+    from app import auth_assurance
+    from app.models import AuthenticationSession, User
+
+    cookie_name, copied = _login_and_copy_session_cookie(
+        app, client, 'logoutdeletefails'
+    )
+    monkeypatch.setattr(
+        auth_assurance,
+        'delete_current_authentication_session',
+        _failing_session_delete,
+    )
+
+    response = client.post('/logout')
+
+    assert response.status_code == 302
+    assert response.headers['Location'].endswith('/login')
+    assert client.get_cookie('remember_token') is None
+    with app.app_context():
+        user = User.query.filter_by(username='logoutdeletefails').one()
+        assert user.auth_generation == 1
+        assert AuthenticationSession.query.filter_by(
+            user_id=user.id
+        ).count() == 0
+
+    client.set_cookie(cookie_name, copied)
+    replayed = client.get('/')
+
+    assert replayed.status_code == 302
+    assert '/login' in replayed.headers['Location']
+
+
+def test_logout_fails_closed_when_session_cannot_be_ended(
+    app, client, monkeypatch,
+):
+    from app import auth_assurance
+    from app.models import AuthenticationSession, User
+
+    _login_and_copy_session_cookie(app, client, 'logoutinvalidatefails')
+
+    def failing_invalidation(*_args, **_kwargs):
+        raise RuntimeError('authentication state unavailable')
+
+    monkeypatch.setattr(
+        auth_assurance,
+        'delete_current_authentication_session',
+        _failing_session_delete,
+    )
+    monkeypatch.setattr(
+        auth_assurance,
+        'invalidate_user_authentication',
+        failing_invalidation,
+    )
+
+    response = client.post('/logout')
+
+    assert response.status_code == 500
+    assert client.get_cookie('remember_token') is None
+    with app.app_context():
+        user = User.query.filter_by(username='logoutinvalidatefails').one()
+        assert user.auth_generation == 0
+        assert AuthenticationSession.query.filter_by(
+            user_id=user.id
+        ).count() == 1
+    after = client.get('/')
+    assert after.status_code == 302
+    assert '/login' in after.headers['Location']
+
+
 # Expected values were captured from the strict sanitizer and the public
 # redirect pipeline before the OIDC and GitHub services shared them. Values
 # with leading whitespace must fall back to the root: browsers strip it and
