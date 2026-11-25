@@ -191,7 +191,17 @@
                 }
 
                 try {
-                    if (!dependencies.emitInput || await dependencies.emitInput(sessionId, insertText) === false) {
+                    const guard = dependencies.pasteGuard || root.TerminalPasteGuard;
+                    if (!dependencies.emitInput) return { ok: false, reason: 'send-failed' };
+                    if (guard?.needsReview(insertText)) {
+                        // Stored commands may carry control characters; the user confirms them first.
+                        const sent = await guard.review(
+                            guard.capture(sessionId),
+                            insertText,
+                            value => dependencies.emitInput(sessionId, value)
+                        );
+                        if (sent === false) return { ok: false, reason: 'cancelled' };
+                    } else if (await dependencies.emitInput(sessionId, insertText) === false) {
                         return { ok: false, reason: 'send-failed' };
                     }
                 } catch {
@@ -768,7 +778,7 @@
                         currentAvailable = false;
                     }
                     insert.disabled = !currentAvailable;
-                    if (!result.ok) {
+                    if (!result.ok && result.reason !== 'cancelled') {
                         root.showNotification?.(
                             this.t(
                                 'sessionCommands.sessionUnavailable',

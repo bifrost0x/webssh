@@ -589,3 +589,53 @@ test('parameter overrides change only the inserted text and respect sudo and emp
     assert.equal((await controller.insert('active', 'command', 'cmd-multiline', {parameters: ''})).ok, false);
     assert.equal(sent.length, 2);
 });
+
+test('library commands with control characters go through paste review before sending', async () => {
+    const sent = [];
+    const reviewed = [];
+    const guard = {
+        needsReview: text => /[\x00-\x1f]/.test(text),
+        capture: id => ({ id }),
+        review: async (binding, text, send) => {
+            reviewed.push([binding.id, text]);
+            return send(text);
+        },
+    };
+    const library = [
+        { id: 'ctl', name: 'Control', command: 'ls\x0f', parameters: '' },
+        { id: 'plain', name: 'Plain', command: 'ls -la', parameters: '' },
+    ];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true }), getCommands: () => library,
+        emitInput: (id, text) => { sent.push([id, text]); },
+        pasteGuard: guard,
+    });
+
+    assert.equal((await controller.insert('s', 'command', 'plain')).ok, true);
+    assert.deepEqual(reviewed, []);
+    assert.deepEqual(sent, [['s', 'ls -la']]);
+
+    assert.equal((await controller.insert('s', 'command', 'ctl')).ok, true);
+    assert.deepEqual(reviewed, [['s', 'ls\x0f']]);
+    assert.deepEqual(sent[1], ['s', 'ls\x0f']);
+});
+
+test('declined review sends nothing and reports a cancelled insert without notification', async () => {
+    const sent = [];
+    const notices = [];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true }),
+        getCommands: () => [{ id: 'ctl', name: 'Control', command: 'ls\x0f', parameters: '' }],
+        emitInput: (id, text) => { sent.push([id, text]); },
+        notify: (...args) => notices.push(args),
+        pasteGuard: {
+            needsReview: () => true,
+            capture: id => ({ id }),
+            review: async () => false,
+        },
+    });
+    const result = await controller.insert('s', 'command', 'ctl');
+    assert.deepEqual(result, { ok: false, reason: 'cancelled' });
+    assert.deepEqual(sent, []);
+    assert.deepEqual(notices, []);
+});

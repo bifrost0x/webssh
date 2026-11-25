@@ -1001,7 +1001,7 @@ def assign_command_set(user_id, profile_id, command_set_id):
         return None, str(exc)
     except Exception as e:
         log_error('Error assigning command set to profile', user_id=user_id, error=str(e))
-        return None, str(e)
+        return None, 'Failed to save profile'
 
 
 @user_operation

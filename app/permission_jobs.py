@@ -15,6 +15,8 @@ PREVIEW_SECONDS = 120
 TERMINAL_SECONDS = 120
 MAX_RETAINED = 64
 _ACTIVE = {'scanning', 'ready', 'running'}
+_EXECUTING = {'scanning', 'running'}
+MAX_EXECUTING = 2
 
 class _Cancelled(Exception):
     pass
@@ -146,7 +148,8 @@ class PermissionJobManager:
         with self._lock:
             self._cleanup()
             active = [j for j in self._jobs.values() if j.state in _ACTIVE]
-            if len(active) >= 2 or any((j.user_id == str(user_id) or j.source_id == source_id for j in active)):
+            executing = sum(1 for j in active if j.state in _EXECUTING)
+            if executing >= MAX_EXECUTING or any((j.user_id == str(user_id) or j.source_id == source_id for j in active)):
                 raise FileMutationError('CONFLICT')
             job = _Job(secrets.token_urlsafe(24), str(user_id), socket_sid, source_id, source.handle_id, recursive, file_mode, directory_mode, self.clock(), touched=self.clock())
             self._jobs[job.job_id] = job
@@ -157,6 +160,8 @@ class PermissionJobManager:
         with self._lock:
             job = self._owned(user_id, socket_sid, source_id, job_id)
             if job.state != 'ready' or job.cancel_event.is_set():
+                raise FileMutationError('CONFLICT')
+            if sum(1 for j in self._jobs.values() if j.state in _EXECUTING) >= MAX_EXECUTING:
                 raise FileMutationError('CONFLICT')
             source = authorize()
             if source.handle_id != job.handle_id:
