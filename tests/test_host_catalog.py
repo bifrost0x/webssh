@@ -218,3 +218,18 @@ def test_platform_logos_are_listed_with_their_license_and_trademark_notice():
     row = next((line for line in licensing.splitlines() if line.startswith('| Simple Icons')), '')
     assert '`static/icons/platforms/LICENSE.md`' in row and 'provenance.json' in row
     assert 'trademarks of their respective owners' in licensing
+
+
+def test_licensing_names_every_platform_logo_with_its_own_license():
+    root = Path(__file__).parents[1]
+    licensing = (root / 'docs' / 'licensing.md').read_text(encoding='utf-8')
+    provenance = json.loads((root / 'static' / 'icons' / 'platforms' / 'provenance.json').read_text(encoding='utf-8'))
+    own = {entry['title']: entry['license'] for entry in provenance['icons'].values() if 'license' in entry}
+    assert own, 'provenance.json lists no logo with its own license'
+    for title, license_entry in own.items():
+        line = next((line for line in licensing.splitlines() if title in line), '')
+        assert license_entry['type'] in line, title
+        if 'url' in license_entry:
+            assert license_entry['url'] in line, title
+    row = next(line for line in licensing.splitlines() if line.startswith('| Simple Icons'))
+    assert '(CC0-1.0)' not in row

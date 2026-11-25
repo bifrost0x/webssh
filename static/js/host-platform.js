@@ -17,9 +17,9 @@
         windows: 'Windows', mikrotik: 'MikroTik RouterOS', cisco: 'Cisco IOS', ubiquiti: 'Ubiquiti',
         embedded: 'Embedded / BusyBox',
     });
-    // Platforms without a logo of their own in the bundled set show a related logo:
-    // Simple Icons licenses the Rocky Linux and Gentoo marks under CC BY-SA, not CC0,
-    // and another vendor's mark would misname them, so both use the Linux one.
+    // Platforms without a logo of their own in the bundled set show a related logo.
+    // Rocky Linux and Gentoo have none there, and another vendor's mark would
+    // misname them, so both use the Linux one.
     const logoOf = Object.freeze({proxmoxbackup: 'proxmox', rockylinux: 'linux', gentoo: 'linux'});
     // Simple Icons carries no Windows logo, and embedded systems have no common mark.
     const glyphs = Object.freeze({server: 'dns', windows: 'desktop_windows', embedded: 'memory'});
