@@ -59,6 +59,19 @@ def password_exceeds_bcrypt_limit(password):
     except UnicodeEncodeError:
         return True
 
+
+def password_matches(user, password):
+    """Check a submitted password, rejecting non-strings and oversized input."""
+    try:
+        return (
+            isinstance(password, str)
+            and not password_exceeds_bcrypt_limit(password)
+            and user.check_password(password)
+        )
+    except (TypeError, ValueError):
+        return False
+
+
 def parse_rate_limit(limit_str, default_limit=5, default_window=60):
     """Parse rate limit strings like '5 per minute'."""
     if not limit_str or not isinstance(limit_str, str):

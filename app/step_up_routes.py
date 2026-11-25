@@ -24,7 +24,7 @@ import config
 
 from . import mfa_throttle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
-from .auth import check_reauth_rate_limit, password_exceeds_bcrypt_limit
+from .auth import check_reauth_rate_limit, password_matches
 from .auth_assurance import (
     AssuranceLevel,
     authentication_methods,
@@ -130,16 +130,7 @@ def password_step_up():
     ):
         log_rate_limit_exceeded("admin_step_up_password", client_ip)
         return _failure(429)
-    password = data.get("password", "")
-    try:
-        matches = (
-            isinstance(password, str)
-            and not password_exceeds_bcrypt_limit(password)
-            and account.check_password(password)
-        )
-    except (TypeError, ValueError):
-        matches = False
-    if not matches:
+    if not password_matches(account, data.get("password", "")):
         log_security_event(
             "ADMIN_STEP_UP_REJECTED",
             user=current_user.username,

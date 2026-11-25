@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import hashlib
 import io
 import secrets
 from threading import RLock
@@ -19,6 +18,7 @@ from .models import (
     User,
     as_naive_utc,
     db,
+    token_digest,
 )
 
 
@@ -48,10 +48,6 @@ class EnrollmentView:
     provisioning_uri: str
     qr_svg: str
     expires_at: datetime
-
-
-def _digest(value):
-    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
 
 
 def _utc_now(now=None):
@@ -114,9 +110,9 @@ def begin_totp_enrollment(user_id, session_binding, *, label="Authenticator"):
         for stale in live_rows[_MAX_ENROLLMENTS_PER_USER - 1:]:
             db.session.delete(stale)
         row = TOTPEnrollment(
-            token_hash=_digest(token),
+            token_hash=token_digest(token),
             user_id=user.id,
-            session_binding_hash=_digest(binding),
+            session_binding_hash=token_digest(binding),
             encrypted_secret=encrypt_totp_secret(user.id, secret),
             label=normalized_label,
             created_at=now,
@@ -140,8 +136,8 @@ def activate_totp_enrollment(token, code, session_binding, *, now=None, label=No
 
     now_aware = _utc_now(now)
     now_db = as_naive_utc(now_aware)
-    token_hash = _digest(token)
-    binding_hash = _digest(session_binding)
+    token_hash = token_digest(token)
+    binding_hash = token_digest(session_binding)
     with _totp_lock, _recovery_lock:
         enrollment = TOTPEnrollment.query.filter_by(
             token_hash=token_hash,

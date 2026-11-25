@@ -359,3 +359,32 @@ def test_authentication_invalidation_removes_pending_oidc_link_state(app):
         db.session.commit()
 
         assert OIDCLoginState.query.filter_by(user_id=user_id).count() == 0
+
+
+@pytest.mark.parametrize(
+    ("continuation", "expected"),
+    (
+        ("/admin?tab=users", "/admin?tab=users"),
+        ("/\tadmin", "/"),
+        ("/admin\x00", "/"),
+        ("//[", "/"),
+    ),
+)
+def test_oidc_state_stores_only_strictly_safe_continuations(
+    app, continuation, expected
+):
+    from app.oidc_service import consume_login_state, create_login_state
+
+    with app.app_context():
+        create_login_state(
+            state="continuation-state",
+            nonce="nonce-token",
+            session_binding="browser-binding",
+            code_verifier="pkce-verifier",
+            continuation=continuation,
+        )
+        intent = consume_login_state(
+            state="continuation-state",
+            session_binding="browser-binding",
+        )
+        assert intent.continuation == expected

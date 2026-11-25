@@ -665,3 +665,58 @@ def test_logout_deletes_current_authentication_session(app, client):
     assert client.get_cookie('remember_token') is None
     with app.app_context():
         assert AuthenticationSession.query.count() == 0
+
+
+# Expected values were captured from the strict sanitizer and the public
+# redirect pipeline before the OIDC and GitHub services shared them.
+_CONTINUATION_CASES = (
+    # value, stored continuation, public redirect target (no proxy prefix)
+    ('/', '/', '/'),
+    ('/x?y=1', '/x?y=1', '/x?y=1'),
+    ('//evil', '/', '/'),
+    ('/\\evil', '/', '/'),
+    ('/\tx', '/', '/'),
+    ('\x00', '/', '/'),
+    ('/\x00', '/', '/'),
+    ('https://e', '/', '/'),
+    ('/%2e%2e/', '/%2e%2e/', '/'),
+    ('/x#f', '/', '/'),
+    ('//[', '/', '/'),
+    ('/' + 'a' * 512, '/', '/'),
+    ('/' + 'a' * 511, '/' + 'a' * 511, '/' + 'a' * 511),
+    (None, '/', '/'),
+    ('', '/', '/'),
+)
+
+
+@pytest.mark.parametrize(('value', 'stored', 'public'), _CONTINUATION_CASES)
+def test_safe_continuation_matches_legacy_copies(value, stored, public):
+    from flask import Flask
+    from app.auth_assurance import safe_continuation
+    from app.auth_redirects import public_continuation
+
+    assert safe_continuation(value) == stored
+    with Flask(__name__).test_request_context('/'):
+        assert public_continuation(value) == public
+
+
+def test_token_digest_fixed_vector():
+    from app.models import token_digest
+
+    assert token_digest('abc') == (
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+    )
+    assert token_digest('ä-token') == (
+        '5a25a84e1a48164f62e8a55792faa66aeb0bc7a921b952d98403a32ddf4877b2'
+    )
+
+
+def test_assurance_rank_orders_every_level():
+    from app.auth_assurance import ASSURANCE_RANK, AssuranceLevel
+
+    assert set(ASSURANCE_RANK) == set(AssuranceLevel)
+    assert (
+        ASSURANCE_RANK[AssuranceLevel.BASIC]
+        < ASSURANCE_RANK[AssuranceLevel.MFA]
+        < ASSURANCE_RANK[AssuranceLevel.PHISHING_RESISTANT]
+    )

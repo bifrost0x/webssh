@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import hashlib
 import json
 import re
 from threading import Lock
@@ -11,12 +10,14 @@ from urllib.parse import urlencode, urlsplit
 import requests
 import config
 
+from .auth_assurance import safe_continuation
 from .github_auth_crypto import decrypt_client_secret, encrypt_client_secret
 from .models import (
     GitHubAuthConfiguration,
     GitHubOAuthState,
     as_naive_utc,
     db,
+    token_digest,
 )
 
 
@@ -95,26 +96,6 @@ class GitHubProfile:
     user_id: str
     login: str
     display_name: str | None
-
-
-def _hash(value):
-    return hashlib.sha256(str(value).encode('utf-8')).hexdigest()
-
-
-def _safe_continuation(value):
-    candidate = str(value or '/')
-    parsed = urlsplit(candidate)
-    if (
-        not candidate.startswith('/')
-        or candidate.startswith('//')
-        or '\\' in candidate
-        or parsed.scheme
-        or parsed.netloc
-        or parsed.fragment
-        or len(candidate) > 512
-    ):
-        return '/'
-    return candidate
 
 
 def _normalize_orgs(value):
@@ -322,13 +303,13 @@ def create_oauth_state(
             synchronize_session=False
         )
         row = GitHubOAuthState(
-            state_hash=_hash(state),
-            session_binding_hash=_hash(session_binding),
+            state_hash=token_digest(state),
+            session_binding_hash=token_digest(session_binding),
             code_verifier=code_verifier,
             purpose=purpose,
             user_id=user_id,
             step_up_intent_id=step_up_intent_id,
-            continuation=_safe_continuation(continuation),
+            continuation=safe_continuation(continuation),
             configuration_generation=int(generation),
             auth_generation=auth_generation if purpose == 'link' else None,
             authentication_session_id=authentication_session_id if purpose == 'link' else None,
@@ -343,14 +324,14 @@ def consume_oauth_state(*, state, session_binding, generation, now=None):
     now = as_naive_utc(now or datetime.now(timezone.utc))
     with _state_lock:
         row = GitHubOAuthState.query.filter_by(
-            state_hash=_hash(state),
-            session_binding_hash=_hash(session_binding),
+            state_hash=token_digest(state),
+            session_binding_hash=token_digest(session_binding),
         ).first()
         if row is None:
             raise GitHubStateError('OAuth state is unavailable')
         intent = GitHubIntent(
             row.code_verifier, row.purpose, row.user_id,
-            row.step_up_intent_id, _safe_continuation(row.continuation),
+            row.step_up_intent_id, safe_continuation(row.continuation),
             row.configuration_generation,
             row.auth_generation, row.authentication_session_id,
         )

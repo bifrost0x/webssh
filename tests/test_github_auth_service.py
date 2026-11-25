@@ -179,3 +179,30 @@ def test_organization_policy_accepts_active_membership_and_fails_closed():
         enforce_organization_policy('token', settings, http=MissingHttp)
     with pytest.raises(GitHubProviderError):
         enforce_organization_policy('token', settings, http=FailedHttp)
+
+
+@pytest.mark.parametrize(
+    ('continuation', 'expected'),
+    (
+        ('/admin?tab=users', '/admin?tab=users'),
+        ('/\tadmin', '/'),
+        ('/admin\x00', '/'),
+        ('//[', '/'),
+    ),
+)
+def test_oauth_state_stores_only_strictly_safe_continuations(
+    app, continuation, expected
+):
+    from app.github_auth_service import consume_oauth_state, create_oauth_state
+
+    with app.app_context():
+        create_oauth_state(
+            state='continuation-state', session_binding='browser-binding',
+            code_verifier='verifier-token', purpose='login', generation=1,
+            continuation=continuation,
+        )
+        intent = consume_oauth_state(
+            state='continuation-state', session_binding='browser-binding',
+            generation=1,
+        )
+        assert intent.continuation == expected

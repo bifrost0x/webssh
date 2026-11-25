@@ -1,7 +1,6 @@
 """Account-bound reauthentication ceremonies for factor mutations."""
 
 from datetime import datetime, timezone
-import hashlib
 import json
 import logging
 import secrets
@@ -25,7 +24,7 @@ from .app_settings import runtime_feature_enabled
 
 from . import mfa_throttle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
-from .auth import check_reauth_rate_limit, password_exceeds_bcrypt_limit
+from .auth import check_reauth_rate_limit, password_matches
 from .auth_assurance import (
     AssuranceLevel,
     authentication_methods,
@@ -44,6 +43,7 @@ from .models import (
     User,
     WebAuthnCredential,
     db,
+    token_digest,
 )
 from .oidc_service import OIDCStateError
 from .security_features import feature_is_active
@@ -256,8 +256,7 @@ def _passkey_binding(token):
         "account_step_up_webauthn_binding",
         secrets.token_urlsafe(32),
     )
-    token_hash = hashlib.sha256(str(token).encode("utf-8")).hexdigest()
-    return f"{browser_binding}:{token_hash}"
+    return f"{browser_binding}:{token_digest(token)}"
 
 
 @account_step_up_blueprint.post("/api/account/step-up/intents")
@@ -357,16 +356,7 @@ def password_step_up():
         return _error("step_up_failed", 403)
     if _reauth_limited("password"):
         return _rate_limit_error()
-    password = data.get("password", "")
-    try:
-        verified = (
-            isinstance(password, str)
-            and not password_exceeds_bcrypt_limit(password)
-            and user.check_password(password)
-        )
-    except (TypeError, ValueError):
-        verified = False
-    if not verified:
+    if not password_matches(user, data.get("password", "")):
         log_security_event(
             "ACCOUNT_STEP_UP_REJECTED",
             user=current_user.username,

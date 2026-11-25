@@ -314,3 +314,29 @@ def test_passkey_step_up_requires_exact_owned_credential(
     assert options.status_code == 200
     assert verified.status_code == 200
     assert verified.get_json()["grant"]
+
+
+def test_password_matches_rejects_invalid_input_without_hashing():
+    from types import SimpleNamespace
+
+    import config
+    from app.auth import password_matches
+
+    checked = []
+
+    def check_password(password):
+        checked.append(password)
+        if password == "broken":
+            raise ValueError("invalid salt")
+        return password == "password123"
+
+    user = SimpleNamespace(check_password=check_password)
+    assert password_matches(user, "password123") is True
+    assert password_matches(user, "wrong-password") is False
+    assert password_matches(user, "broken") is False
+    assert password_matches(user, None) is False
+    assert password_matches(user, ["password123"]) is False
+    assert password_matches(
+        user, "x" * (config.MAX_PASSWORD_LENGTH + 1)
+    ) is False
+    assert checked == ["password123", "wrong-password", "broken"]

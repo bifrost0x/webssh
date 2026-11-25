@@ -1,6 +1,8 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime, timezone
+import hashlib
+
 import bcrypt
 
 db = SQLAlchemy()
@@ -11,6 +13,11 @@ def as_naive_utc(value):
     if value.tzinfo is None:
         return value
     return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def token_digest(value):
+    """Return the hex SHA-256 digest stored in place of a bearer token."""
+    return hashlib.sha256(str(value).encode('utf-8')).hexdigest()
 
 
 class User(db.Model, UserMixin):

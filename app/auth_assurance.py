@@ -2,7 +2,6 @@
 
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-import hashlib
 import json
 import re
 import secrets
@@ -28,6 +27,7 @@ from .models import (
     WebAuthnChallenge,
     as_naive_utc,
     db,
+    token_digest,
 )
 from .session_epoch import current_epoch
 from .totp_service import disable_totp_mfa
@@ -47,16 +47,19 @@ class AssuranceLevel(str, Enum):
     PHISHING_RESISTANT = 'PHISHING_RESISTANT'
 
 
+ASSURANCE_RANK = {
+    AssuranceLevel.BASIC: 0,
+    AssuranceLevel.MFA: 1,
+    AssuranceLevel.PHISHING_RESISTANT: 2,
+}
+
+
 class PendingAuthenticationError(RuntimeError):
     """A pending authentication token is invalid, expired, or already used."""
 
 
 class AuthenticationFinalizationError(RuntimeError):
     """A verified authentication could not be finalized safely."""
-
-
-def _digest(value):
-    return hashlib.sha256(str(value).encode('utf-8')).hexdigest()
 
 
 def _normalize_assurance(value):
@@ -66,7 +69,7 @@ def _normalize_assurance(value):
         raise ValueError('unsupported assurance level') from exc
 
 
-def _safe_continuation(value):
+def safe_continuation(value):
     candidate = str(value or '/')
     if len(candidate) > 512 or '\\' in candidate or any(
         ord(character) < 0x20 for character in candidate
@@ -166,14 +169,14 @@ def begin_authentication(
 
     token = secrets.token_urlsafe(32)
     db.session.add(PendingAuthentication(
-        token_hash=_digest(token),
+        token_hash=token_digest(token),
         user_id=user.id,
         primary_method=method,
         assurance=_normalize_assurance(assurance),
         evidence_json=_evidence_json(user, evidence),
-        session_binding_hash=_digest(binding),
+        session_binding_hash=token_digest(binding),
         remember=remember,
-        continuation=_safe_continuation(continuation),
+        continuation=safe_continuation(continuation),
         recovery_required=recovery_required,
         created_at=now,
         expires_at=now + _PENDING_TTL,
@@ -192,9 +195,9 @@ def consume_pending(token, session_binding):
     statement = (
         delete(PendingAuthentication)
         .where(
-            PendingAuthentication.token_hash == _digest(token_value),
+            PendingAuthentication.token_hash == token_digest(token_value),
             PendingAuthentication.session_binding_hash
-            == _digest(binding_value),
+            == token_digest(binding_value),
             PendingAuthentication.expires_at > now,
         )
         .returning(*PendingAuthentication.__table__.c)
@@ -218,8 +221,8 @@ def pending_authentication(token, session_binding):
         raise PendingAuthenticationError('pending authentication is invalid')
     now = as_naive_utc(datetime.now(timezone.utc))
     pending = PendingAuthentication.query.filter_by(
-        token_hash=_digest(token_value),
-        session_binding_hash=_digest(binding_value),
+        token_hash=token_digest(token_value),
+        session_binding_hash=token_digest(binding_value),
     ).first()
     if pending is None or pending.expires_at <= now:
         raise PendingAuthenticationError('pending authentication is invalid')
@@ -233,8 +236,8 @@ def cancel_pending_authentication(token, session_binding):
     if not token_value or not binding_value:
         return False
     deleted = PendingAuthentication.query.filter_by(
-        token_hash=_digest(token_value),
-        session_binding_hash=_digest(binding_value),
+        token_hash=token_digest(token_value),
+        session_binding_hash=token_digest(binding_value),
     ).delete(synchronize_session=False)
     db.session.commit()
     return bool(deleted)
@@ -389,7 +392,7 @@ def invalidate_user_authentication(
 
     opaque_session_id = secrets.token_urlsafe(32)
     row = AuthenticationSession(
-        session_hash=_digest(opaque_session_id),
+        session_hash=token_digest(opaque_session_id),
         user_id=user.id,
         assurance=replacement['assurance'],
         methods_json=replacement['methods_json'],
@@ -461,7 +464,7 @@ def finalize_login(pending, *, methods, strong_authenticated_at=None):
 
     opaque_session_id = secrets.token_urlsafe(32)
     row = AuthenticationSession(
-        session_hash=_digest(opaque_session_id),
+        session_hash=token_digest(opaque_session_id),
         user_id=user.id,
         assurance=assurance.value,
         methods_json=json.dumps(normalized_methods, separators=(',', ':')),
@@ -522,12 +525,7 @@ def finalize_pending_with_factor(
         raise PendingAuthenticationError('pending authentication is invalid')
     upgraded = AssuranceLevel(assurance)
     current = AssuranceLevel(pending.assurance)
-    ranking = {
-        AssuranceLevel.BASIC: 0,
-        AssuranceLevel.MFA: 1,
-        AssuranceLevel.PHISHING_RESISTANT: 2,
-    }
-    if ranking[upgraded] < ranking[current]:
+    if ASSURANCE_RANK[upgraded] < ASSURANCE_RANK[current]:
         raise AuthenticationFinalizationError(
             'authentication assurance cannot be downgraded'
         )
@@ -545,7 +543,7 @@ def authentication_session_for_token(token, user_id, auth_generation):
     if not isinstance(token, str) or not token:
         return None
     row = AuthenticationSession.query.filter_by(
-        session_hash=_digest(token)
+        session_hash=token_digest(token)
     ).first()
     if row is None:
         return None
@@ -567,7 +565,7 @@ def current_authentication_session():
     if not isinstance(opaque_session_id, str) or not opaque_session_id:
         return None
     row = AuthenticationSession.query.filter_by(
-        session_hash=_digest(opaque_session_id)
+        session_hash=token_digest(opaque_session_id)
     ).first()
     if row is None:
         return None
@@ -599,7 +597,7 @@ def delete_current_authentication_session():
     if not isinstance(opaque_session_id, str) or not opaque_session_id:
         return False
     deleted = AuthenticationSession.query.filter_by(
-        session_hash=_digest(opaque_session_id)
+        session_hash=token_digest(opaque_session_id)
     ).delete(synchronize_session=False)
     db.session.commit()
     return bool(deleted)
