@@ -1407,35 +1407,65 @@ def test_ldap_success_does_not_consume_the_username_budget(
     assert statuses == [302, 302, 302]
 
 
-@pytest.mark.parametrize("limiter_kind", ["memory", "redis"])
-def test_release_returns_one_reservation(limiter_kind):
+def _limiter(limiter_kind):
     from app.rate_limiter import InMemoryRateLimiter, RedisRateLimiter
 
     if limiter_kind == "memory":
-        limiter = InMemoryRateLimiter()
-    else:
-        class _SortedSetRedis:
-            def __init__(self):
-                self.members = {}
+        return InMemoryRateLimiter()
 
-            def eval(self, _script, _numkeys, key, _start, now, limit, _ttl, member):
-                entries = self.members.setdefault(key, [])
-                if len(entries) >= int(limit):
-                    return 0
-                entries.append((float(now), member))
-                return 1
+    class _SortedSetRedis:
+        def __init__(self):
+            self.members = {}
 
-            def zpopmax(self, key):
-                entries = self.members.get(key, [])
-                return [entries.pop()] if entries else []
+        def eval(self, _script, _numkeys, key, _start, now, limit, _ttl, member):
+            entries = self.members.setdefault(key, {})
+            if len(entries) >= int(limit):
+                return 0
+            entries[member] = float(now)
+            return 1
 
-        limiter = RedisRateLimiter(_SortedSetRedis())
+        def zrem(self, key, member):
+            return int(self.members.get(key, {}).pop(member, None) is not None)
 
-    assert limiter.allow("bucket", 1, 60) is True
+    return RedisRateLimiter(_SortedSetRedis())
+
+
+@pytest.mark.parametrize("limiter_kind", ["memory", "redis"])
+def test_release_returns_one_reservation(limiter_kind):
+    limiter = _limiter(limiter_kind)
+
+    token = limiter.reserve("bucket", 1, 60)
+    assert token is not None
     assert limiter.allow("bucket", 1, 60) is False
-    limiter.release("bucket")
+    limiter.release("bucket", token)
     assert limiter.allow("bucket", 1, 60) is True
-    limiter.release("missing")
+    limiter.release("missing", token)
+
+
+@pytest.mark.parametrize("limiter_kind", ["memory", "redis"])
+def test_release_removes_only_the_callers_reservation(limiter_kind, monkeypatch):
+    """A later request in the same bucket keeps its own entry."""
+    import app.rate_limiter as rate_limiter
+
+    limiter = _limiter(limiter_kind)
+    clock = iter([1000.0, 1001.0, 1002.0, 1003.0])
+
+    class _Clock:
+        @staticmethod
+        def now(_tz=None):
+            return datetime.fromtimestamp(next(clock), timezone.utc)
+
+    monkeypatch.setattr(rate_limiter, "datetime", _Clock)
+    monkeypatch.setattr(rate_limiter.time, "time", lambda: next(clock))
+
+    first = limiter.reserve("bucket", 2, 60)
+    second = limiter.reserve("bucket", 2, 60)
+    assert None not in (first, second)
+    limiter.release("bucket", first)
+    # Releasing the first again must not take the second entry with it.
+    limiter.release("bucket", first)
+    assert limiter.reserve("bucket", 2, 60) is not None
+    assert limiter.reserve("bucket", 2, 60) is None
 
 
 # --- configurable IPv6 prefix and restart UI ------------------------------------
@@ -1594,9 +1624,9 @@ def test_device_cookie_and_limiter_keys_use_a_keyed_username_digest(
     reserved = []
 
     class _Limiter:
-        def allow(self, key, _limit, _window):
+        def reserve(self, key, _limit, _window):
             reserved.append(key)
-            return True
+            return key
 
     monkeypatch.setattr(auth, "_get_rate_limiter", lambda: _Limiter())
     with app.test_request_context():
