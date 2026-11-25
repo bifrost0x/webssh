@@ -75,6 +75,27 @@ def test_service_paths_are_fixed_absolute():
     assert all(p.startswith('/') and '..' not in p and ' ' not in p for p, _ in c.SERVICE_PATHS)
 
 
+def test_service_paths_skip_directories_that_agent_and_client_packages_create():
+    # zabbix-agent, mosquitto-clients (a single package on Fedora and Alpine), redis tools and
+    # prometheus-alertmanager create these without the server running; units and images decide.
+    paths = {path for path, _ in c.SERVICE_PATHS}
+    assert not paths & {'/etc/zabbix', '/etc/mosquitto', '/etc/redis', '/etc/prometheus'}
+    assert {'/etc/pihole', '/var/lib/mongodb', '/var/lib/influxdb', '/etc/haproxy'} <= paths
+
+
+def test_image_rules_for_generic_names_need_their_publisher():
+    cases = {
+        'ghcr.io/gethomepage/homepage:latest': 'homepage', 'gethomepage/homepage:v0.9': 'homepage',
+        'requarks/wiki:2': 'wikijs', 'ghcr.io/requarks/wiki:2.5': 'wikijs', 'lscr.io/linuxserver/wikijs': 'wikijs',
+        'ghcr.io/goauthentik/server:2024.10': 'authentik', 'goauthentik/server': 'authentik',
+        'joplin/server:latest': 'joplin', 'ghcr.io/goauthentik/proxy': None,
+        'me/homepage:1': None, 'acme/wiki:2': None, 'homepage:1': None, 'wiki:2': None,
+        'acme/server:1': None, 'someone/server': None,
+    }
+    for image, expected in cases.items():
+        assert _image_id(image) == expected, image
+
+
 def test_app_image_rules_match_the_image_name_only():
     cases = {
         'lscr.io/linuxserver/nextcloud:latest': 'nextcloud', 'nextcloud:30-apache': 'nextcloud',

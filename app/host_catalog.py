@@ -130,7 +130,9 @@ SERVICE_UNITS = {
     'homeassistant': 'homeassistant', 'home-assistant': 'homeassistant',
 }
 
-# Absolute path -> service. Only fixed paths whose existence alone identifies the service.
+# Absolute path -> service. Only fixed paths whose existence alone identifies the service:
+# directories that agent, client or tool packages also create (/etc/zabbix,
+# /etc/mosquitto, /etc/redis, /etc/prometheus) are left to units and images.
 SERVICE_PATHS = (
     ('/var/www/nextcloud/occ', 'nextcloud'),
     ('/var/www/html/nextcloud/occ', 'nextcloud'),
@@ -147,14 +149,10 @@ SERVICE_PATHS = (
     ('/opt/gitlab', 'gitlab'),
     ('/etc/gitlab', 'gitlab'),
     ('/var/lib/jenkins', 'jenkins'),
-    ('/etc/mosquitto', 'mosquitto'),
     ('/opt/zigbee2mqtt', 'zigbee2mqtt'),
     ('/var/lib/homebridge', 'homebridge'),
-    ('/etc/prometheus', 'prometheus'),
     ('/var/lib/influxdb', 'influxdb'),
-    ('/etc/zabbix', 'zabbix'),
     ('/etc/netdata', 'netdata'),
-    ('/etc/redis', 'redis'),
     ('/var/lib/mongodb', 'mongodb'),
     ('/etc/haproxy', 'haproxy'),
     ('/etc/authelia', 'authelia'),
@@ -230,10 +228,12 @@ SERVICE_IMAGES = (
     _image('stirlingpdf', 'stirling-pdf'),
     _image('bookstack', 'bookstack'),
     _image('wikijs', 'wikijs'),
-    _image('wikijs', 'wiki', strict=True),
+    _image('wikijs', 'requarks/wiki', strict=True),
     _image('joplin', 'joplin-server', 'joplin'),
+    _image('joplin', 'joplin/server', strict=True),
     _image('mealie', 'mealie'),
     _image('authentik', 'authentik'),
+    _image('authentik', 'goauthentik/server', strict=True),
     _image('authelia', 'authelia'),
     _image('keycloak', 'keycloak'),
     _image('gitlab', 'gitlab-ce', 'gitlab-ee', 'gitlab'),
@@ -259,7 +259,7 @@ SERVICE_IMAGES = (
     _image('haproxy', 'haproxy', strict=True),
     _image('dozzle', 'dozzle'),
     _image('watchtower', 'watchtower'),
-    _image('homepage', 'homepage'),
+    _image('homepage', 'gethomepage/homepage', 'benphelps/homepage', strict=True),
     _image('homarr', 'homarr'),
     _image('dashy', 'dashy'),
     _image('ollama', 'ollama'),
