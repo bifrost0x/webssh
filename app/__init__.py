@@ -67,8 +67,9 @@ _FLASK_OPTIONS_WITH_VALUES = frozenset({
     '-e',
 })
 _PARTIAL_LOGOUT_MESSAGE = (
-    'You were signed out in this browser, but other sessions could not be '
-    'ended. Try signing out again or ask an administrator.'
+    'You were signed out in this browser, but the server could not end your '
+    'session. Change your password or ask an administrator to end your '
+    'sessions.'
 )
 
 
@@ -1451,8 +1452,8 @@ def create_app(
         user_lifecycle.revoke_user_access(user_id, socketio, kill_tmux=False)
         clear_browser_authentication()
         if not session_ended:
-            # This browser is signed out; tell the user that copies of the
-            # session elsewhere may still be valid.
+            # This browser is signed out, but the server-side session row
+            # survives, so copies of this session cookie stay valid.
             flash(_PARTIAL_LOGOUT_MESSAGE, 'error')
         return redirect(url_for('login'))
 

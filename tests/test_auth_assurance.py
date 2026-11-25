@@ -662,9 +662,13 @@ def test_logout_deletes_current_authentication_session(app, client):
     response = client.post('/logout')
 
     assert response.status_code == 302
+    assert response.headers['Location'].endswith('/login')
     assert client.get_cookie('remember_token') is None
     with app.app_context():
         assert AuthenticationSession.query.count() == 0
+    login_page = client.get('/login').get_data(as_text=True)
+    assert 'auth.partialLogout' not in login_page
+    assert 'could not end your session' not in login_page
 
 
 def _login_and_copy_session_cookie(app, client, username):
@@ -766,8 +770,9 @@ def test_logout_explains_when_other_sessions_cannot_be_ended(
     assert login_page.status_code == 200
     assert 'data-i18n="auth.partialLogout"' in page
     assert (
-        'You were signed out in this browser, but other sessions could not be '
-        'ended. Try signing out again or ask an administrator.'
+        'You were signed out in this browser, but the server could not end '
+        'your session. Change your password or ask an administrator to end '
+        'your sessions.'
     ) in page
     after = client.get('/')
     assert after.status_code == 302

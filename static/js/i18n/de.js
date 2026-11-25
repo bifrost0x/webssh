@@ -2794,7 +2794,7 @@ window.i18n.registerLocales({
         "auth.retryAfterSeconds": "Zu viele Versuche. Erneut versuchen in {seconds} s.",
         "auth.retryAfterMinutes": "Zu viele Versuche. Erneut versuchen in {minutes} Min.",
         "auth.mfaRestart": "Zu viele ungültige Codes. Bitte erneut anmelden.",
-        "auth.partialLogout": "Du wurdest in diesem Browser abgemeldet, aber andere Sitzungen konnten nicht beendet werden. Melde dich erneut ab oder wende dich an einen Administrator.",
+        "auth.partialLogout": "Du wurdest in diesem Browser abgemeldet, aber der Server konnte deine Sitzung nicht beenden. Ändere dein Passwort oder bitte einen Administrator, deine Sitzungen zu beenden.",
         "automation.result.tailscale_route_restricted": "Dieser Host ist ein Tailscale-Knoten und nur mit Tailscale SSH erreichbar. Automatisierungsläufe nutzen normales SSH und erreichen ihn nicht.",
         "fm.newName": "Neuer Name",
         "fm.renameHint": "Benennt das Element in diesem Verzeichnis um. Gib einen Namen ein, keinen Pfad.",

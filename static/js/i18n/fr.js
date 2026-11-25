@@ -2790,7 +2790,7 @@ window.i18n.registerLocales({
         "auth.retryAfterSeconds": "Trop de tentatives. Réessayez dans {seconds} s.",
         "auth.retryAfterMinutes": "Trop de tentatives. Réessayez dans {minutes} min.",
         "auth.mfaRestart": "Trop de codes invalides. Reconnectez-vous.",
-        "auth.partialLogout": "Vous avez été déconnecté dans ce navigateur, mais les autres sessions n'ont pas pu être fermées. Réessayez de vous déconnecter ou contactez un administrateur.",
+        "auth.partialLogout": "Vous avez été déconnecté dans ce navigateur, mais le serveur n'a pas pu fermer votre session. Changez votre mot de passe ou demandez à un administrateur de fermer vos sessions.",
         "automation.result.tailscale_route_restricted": "Cet hôte est un nœud Tailscale et n’est joignable qu’avec Tailscale SSH. Les exécutions d’automatisation utilisent le SSH ordinaire et ne peuvent pas l’atteindre.",
         "fm.newName": "Nouveau nom",
         "fm.renameHint": "Renomme l’élément dans ce dossier. Saisissez un nom, pas un chemin.",
