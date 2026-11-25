@@ -95,7 +95,7 @@ earlier run found and does not run the probe again for a week. A host that
 prints nothing at all within four seconds may only have a slow login shell, so
 it is asked again after a day. When the probe starts answering but
 does not finish within four seconds, for example on a hung network mount,
-nothing is stored and it runs again on the next connection.
+stored facts stay as they are and it runs again after a day.
 
 The host icon shows where its platform came from: a manual choice, a
 detection, the SSH greeting, the host name, a detection that found no known

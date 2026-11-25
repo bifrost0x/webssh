@@ -285,7 +285,7 @@ def test_a_probe_that_stalls_after_its_kernel_line_is_retried_later(monkeypatch)
     # Our probe ran but hung on a read (pmxcfs, D-Bus, a stale NFS mount): what it
     # printed so far lacks the markers and services after that step.
     assert _stalled_identity(monkeypatch, b'ID=debian\nVERSION_ID="12"\nkernel=Linux\nvirt=kvm\nunit=nginx\n'
-                                          b'service=docker\nimage=redis') == (None, 'transient')
+                                          b'service=docker\nimage=redis') == (None, 'stalled')
 
 
 @pytest.mark.parametrize('payload', [b'ID=debian\nVERSION_ID="12"\n', b'ID=debian\nkernel=Lin', b'Welcome\nkernel=Linux\x07\n'])
@@ -314,12 +314,18 @@ def _stall_detection(app, monkeypatch, name, payload, **stored):
     return saved, published, session
 
 
-def test_a_stalled_probe_stores_nothing_and_asks_again_next_time(app, monkeypatch):
+def test_a_stalled_probe_stores_no_facts_and_asks_again_after_a_day(app, monkeypatch):
+    # A host that always hangs (a dead NFS mount) must not collect a stuck sh per login.
+    from types import SimpleNamespace
+    monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: 10_000_000.0))
     saved, published, session = _stall_detection(app, monkeypatch, 'slowprobe',
                                                   b'ID=ubuntu\nVERSION_ID="24.04"\nkernel=Linux\nservice=docker\n')
     assert published == [] and 'detected_platform' not in session
-    assert 'detection_state' not in saved and 'platform_checked_at' not in saved and 'detected_platform' not in saved
-    assert host_platform.identity_needed(saved)
+    assert 'detection_state' not in saved and 'detected_platform' not in saved and 'detected_services' not in saved
+    day, week = 24 * 3600, host_platform.IDENTITY_REFRESH_SECONDS
+    assert saved['platform_checked_at'] == 10_000_000.0 - week + day
+    assert not host_platform.identity_needed(saved, now=10_000_000.0 + 3600)
+    assert host_platform.identity_needed(saved, now=10_000_000.0 + day + 1)
 
 
 def test_a_silent_channel_is_unavailable_but_asked_again_after_a_day(app, monkeypatch):
@@ -349,9 +355,12 @@ def test_a_waiting_menu_is_not_asked_again_for_a_week(app, monkeypatch):
 def test_a_stall_that_cuts_off_the_markers_keeps_stored_proxmox_facts(app, monkeypatch):
     stored = dict(detected_platform='proxmox', detected_services=['nginx', 'samba'], detected_guests=4,
                   detection_state='detected', platform_checked_at=1_000.0, services_checked_at=1_000.0)
+    from types import SimpleNamespace
+    monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: 10_000_000.0))
     saved, published, _ = _stall_detection(app, monkeypatch, 'pve', b'ID=debian\nVERSION_ID="12"\nkernel=Linux\n', **stored)
     assert published == []
-    assert {key: saved.get(key) for key in stored} == stored
+    day, week = 24 * 3600, host_platform.IDENTITY_REFRESH_SECONDS
+    assert {key: saved.get(key) for key in stored} == dict(stored, platform_checked_at=10_000_000.0 - week + day)
 
 
 @pytest.mark.usefixtures('direct_socket_authentication')

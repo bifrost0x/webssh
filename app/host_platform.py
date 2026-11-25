@@ -430,11 +430,12 @@ def _identity_at_deadline(output):
     The probe prints os-release and its kernel line within milliseconds. With
     a complete kernel line it is our probe that hung later on (pmxcfs, D-Bus,
     a stale network mount, a container query), and the markers and services
-    after that step are missing: nothing is stored and the next connection
-    asks again. Anything else, silence included, is a forced command or menu
-    that waits and is not asked again this week. A channel that stayed
-    silent may also be a login shell that starts slowly and is asked again
-    after a day.
+    after that step are missing: no fact is stored, and the probe is asked
+    again after a day, not on every login, so a host that always hangs does
+    not collect a stuck shell per connection. Anything else, silence
+    included, is a forced command or menu that waits and is not asked again
+    this week. A channel that stayed silent may also be a login shell that
+    starts slowly and is asked again after a day.
     """
     if not output:
         return None, 'silent'
@@ -445,7 +446,7 @@ def _identity_at_deadline(output):
         return None, 'unsupported'
     if identity['state'] != 'detected':
         return None, 'unsupported'
-    return None, 'transient'
+    return None, 'stalled'
 
 
 def collect_identity(session_id, *, cancel_event=None):
@@ -590,15 +591,17 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
             return
         identity, error = collect_identity(session_id, cancel_event=cancel_event)
         checked_at = time.time()
-        if error in ('unsupported', 'silent'):
+        # Silence may be a slow shell start and a stall a hung mount; both are
+        # asked again after a day by recording the check as that much older.
+        if error in ('silent', 'stalled'):
+            checked_at -= IDENTITY_REFRESH_SECONDS - SILENT_RETRY_SECONDS
+        if error == 'stalled':
+            identity = None
+        elif error in ('unsupported', 'silent'):
             # The host answered, but not with the probe's output: a forced
             # command, a menu or a shell without the tools. Asking again on
-            # every login would only run that command again. Silence may also
-            # be a slow shell start, so that is asked again after a day by
-            # recording the check as if it were that much older.
+            # every login would only run that command again.
             identity = {key: None for key in _IDENTITY_KEYS} | {'state': 'unavailable', 'services': []}
-            if error == 'silent':
-                checked_at -= IDENTITY_REFRESH_SECONDS - SILENT_RETRY_SECONDS
         elif error or not valid_identity(identity):
             return
         with ssh_manager.sessions_lock:
@@ -606,8 +609,12 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
             if (current is not session or not current.get('connected') or endpoint(current) != expected
                     or (cancel_event is not None and cancel_event.is_set())):
                 return
-            if identity['platform'] is not None:
+            if identity is not None and identity['platform'] is not None:
                 current['detected_platform'] = identity['platform']
+        if identity is None:
+            # Only the attempt is recorded; stored facts stay as they are.
+            profile_manager.record_identity_attempt(user_id, profile_id, expected, now=checked_at)
+            return
         if not profile_manager.cache_detected_facts(user_id, profile_id, expected, identity=identity, now=checked_at):
             return
         if identity['state'] != 'detected':

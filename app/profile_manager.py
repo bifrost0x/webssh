@@ -1138,6 +1138,23 @@ def cache_detected_facts(user_id, profile_id, expected_endpoint, *, identity=Non
 
 
 @user_operation
+def record_identity_attempt(user_id, profile_id, expected_endpoint, *, now):
+    """Record when the identity probe last ran without changing any stored fact."""
+    if expected_endpoint is None or isinstance(now, bool) or not isinstance(now, (int, float)):
+        return False
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'profiles:{user_id}'):
+            profiles, error = _load_profiles_for_write(user_id)
+            if error:
+                return False
+            for profile in profiles:
+                if profile.get('id') == profile_id and endpoint(profile) == expected_endpoint:
+                    profile['platform_checked_at'] = now
+                    return save_profiles(user_id, profiles, previous_count=len(profiles))
+    return False
+
+
+@user_operation
 def settle_reboot_hint(user_id, profile_id, expected_endpoint, checked_at, *, cleared):
     """Lower a restart hint, or stop rechecking it, if it is still the one that was read.
 
