@@ -215,12 +215,12 @@ def test_runtime_locks_exclude_vulnerable_urllib3_versions(path):
 
 @pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
 def test_runtime_locks_include_reviewed_mfa_libraries(path):
-    """TOTP verification and local SVG provisioning require reviewed APIs."""
-    pyotp_version = locked_version(path, "pyotp")
+    """TOTP codes come from the standard library; only QR rendering is a dependency."""
     qrcode_version = locked_version(path, "qrcode")
 
-    assert Version("2.10") <= pyotp_version < Version("3")
     assert Version("8.2") <= qrcode_version < Version("9")
+    with pytest.raises(AssertionError, match="pyotp is not locked"):
+        locked_version(path, "pyotp")
 
 
 def test_frontend_lock_excludes_vulnerable_socket_io_parser_versions():

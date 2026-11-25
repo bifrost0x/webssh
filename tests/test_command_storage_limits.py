@@ -166,3 +166,75 @@ def test_combined_command_configuration_quota_is_prospective(app, monkeypatch):
         sets, load_error = command_set_manager.load_command_sets(user_id)
         assert load_error is None
         assert sets == []
+
+
+@pytest.mark.parametrize(('validate', 'record', 'legacy', 'message'), [
+    (
+        'command',
+        {'name': 'x' * 513},
+        None,
+        'Command storage quota exceeded: command name is too large',
+    ),
+    (
+        'command',
+        {'name': 5},
+        None,
+        'Command storage quota exceeded: command name must be text',
+    ),
+    (
+        'command',
+        {'name': '\udc80'},
+        None,
+        'Command storage quota exceeded: text is not valid UTF-8',
+    ),
+    (
+        'command',
+        {'name': 'x' * 600},
+        {'name': '\udc80'},
+        'Command storage quota exceeded: text is not valid UTF-8',
+    ),
+    (
+        'connection',
+        {'name': 'x' * 513},
+        None,
+        'Connection storage quota exceeded: profile name is too large',
+    ),
+    (
+        'connection',
+        {'name': 5},
+        None,
+        'Connection storage quota exceeded: profile name must be text',
+    ),
+    (
+        'connection',
+        {'name': '\udc80'},
+        None,
+        'Connection storage quota exceeded: text is not valid UTF-8',
+    ),
+])
+def test_storage_policies_keep_their_error_texts(
+    validate, record, legacy, message
+):
+    from app.command_storage_policy import validate_user_command
+    from app.connection_storage_policy import (
+        ConnectionStorageLimitError,
+        validate_profile,
+    )
+
+    if validate == 'command':
+        error_type, check = CommandStorageLimitError, validate_user_command
+    else:
+        error_type, check = ConnectionStorageLimitError, validate_profile
+
+    with pytest.raises(error_type) as caught:
+        check(record, legacy)
+
+    assert str(caught.value) == message
+
+
+def test_storage_policies_accept_oversized_text_that_does_not_grow():
+    from app.command_storage_policy import validate_user_command
+    from app.connection_storage_policy import validate_profile
+
+    validate_user_command({'name': 'x' * 600}, {'name': 'y' * 600})
+    validate_profile({'name': 'x' * 600}, {'name': 'y' * 601})

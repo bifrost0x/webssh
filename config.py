@@ -132,65 +132,46 @@ LDAP_LOGIN_RATE_LIMIT = os.environ.get(
 )
 
 
-def _positive_int_env(name, default):
+def _parse_int_env(name, default, requirement, is_valid=None):
+    """Parse an integer setting; ``requirement`` completes the error text."""
+    message = f'CONFIGURATION ERROR: {name} must be {requirement}'
     raw_value = os.environ.get(name, str(default))
     try:
         value = int(raw_value)
     except (TypeError, ValueError) as exc:
-        raise RuntimeError(
-            f'CONFIGURATION ERROR: {name} must be a positive integer'
-        ) from exc
-    if value <= 0:
-        raise RuntimeError(
-            f'CONFIGURATION ERROR: {name} must be a positive integer'
-        )
+        raise RuntimeError(message) from exc
+    if is_valid is not None and not is_valid(value):
+        raise RuntimeError(message)
     return value
+
+
+def _positive_int_env(name, default):
+    return _parse_int_env(
+        name, default, 'a positive integer', lambda value: value > 0
+    )
 
 
 def _int_env(name, default):
     """Parse an integer setting; any integer keeps its previous meaning."""
-    raw_value = os.environ.get(name, str(default))
-    try:
-        return int(raw_value)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError(
-            f'CONFIGURATION ERROR: {name} must be an integer number of bytes'
-        ) from exc
+    return _parse_int_env(name, default, 'an integer number of bytes')
 
 
 SESSION_TIMEOUT = _positive_int_env('SESSION_TIMEOUT', 1800)
 
 
 def _bounded_int_env(name, default, minimum, maximum):
-    raw_value = os.environ.get(name, str(default))
-    try:
-        value = int(raw_value)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError(
-            f'CONFIGURATION ERROR: {name} must be between {minimum} and '
-            f'{maximum}'
-        ) from exc
-    if not minimum <= value <= maximum:
-        raise RuntimeError(
-            f'CONFIGURATION ERROR: {name} must be between {minimum} and '
-            f'{maximum}'
-        )
-    return value
+    return _parse_int_env(
+        name,
+        default,
+        f'between {minimum} and {maximum}',
+        lambda value: minimum <= value <= maximum,
+    )
 
 
 def _non_negative_int_env(name, default):
-    raw_value = os.environ.get(name, str(default))
-    try:
-        value = int(raw_value)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError(
-            f'CONFIGURATION ERROR: {name} must be a non-negative integer'
-        ) from exc
-    if value < 0:
-        raise RuntimeError(
-            f'CONFIGURATION ERROR: {name} must be a non-negative integer'
-        )
-    return value
+    return _parse_int_env(
+        name, default, 'a non-negative integer', lambda value: value >= 0
+    )
 
 
 def _csv_env(name):

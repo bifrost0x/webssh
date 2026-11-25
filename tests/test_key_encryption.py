@@ -62,13 +62,20 @@ class TestKeyFileOperations:
     """Tests for key file read/write operations."""
 
     def test_write_and_read_key(self):
-        from app.key_encryption import write_key_content, read_key_content
+        from app.key_encryption import (
+            encrypt_key_content,
+            read_key_content,
+            write_prepared_key_content,
+        )
         user_id = '42'
         content = '-----BEGIN ' 'RSA PRIVATE KEY-----\ntest-key-data\n-----END RSA PRIVATE KEY-----'
 
         with tempfile.TemporaryDirectory() as tmpdir:
             key_path = os.path.join(tmpdir, 'test_key.pem')
-            assert write_key_content(user_id, key_path, content) is True
+            encrypted = encrypt_key_content(user_id, content)
+            assert write_prepared_key_content(
+                user_id, key_path, encrypted
+            ) is True
 
             # File should have restricted permissions (POSIX only; Windows
             # does not implement Unix permission bits).
@@ -85,9 +92,7 @@ class TestKeyFileOperations:
             read_key_content('1', '/nonexistent/path')
 
     def test_migrate_unencrypted_key(self, rsa_private_key_pem):
-        from app.key_encryption import (
-            migrate_key_to_encrypted, read_key_content, is_encrypted
-        )
+        from app.key_encryption import read_key_content, is_encrypted
         user_id = '42'
         content = rsa_private_key_pem
 
@@ -98,7 +103,7 @@ class TestKeyFileOperations:
             with open(key_path, 'w', newline='') as f:
                 f.write(content)
 
-            assert migrate_key_to_encrypted(user_id, key_path) is None
+            assert read_key_content(user_id, key_path) == content
 
             with open(key_path, 'rb') as f:
                 data = f.read()
@@ -117,11 +122,7 @@ class TestKeyFileOperations:
     )
     def test_migrates_real_supported_legacy_key_types(
             self, request, fixture_name):
-        from app.key_encryption import (
-            is_encrypted,
-            migrate_key_to_encrypted,
-            read_key_content,
-        )
+        from app.key_encryption import is_encrypted, read_key_content
 
         user_id = 'real-key-types'
         content = request.getfixturevalue(fixture_name)
@@ -131,7 +132,7 @@ class TestKeyFileOperations:
             key_path = Path(tmpdir) / f'{fixture_name}.pem'
             key_path.write_bytes(original)
 
-            migrate_key_to_encrypted(user_id, str(key_path))
+            assert read_key_content(user_id, str(key_path)) == content
 
             stored = key_path.read_bytes()
             assert stored != original
@@ -143,7 +144,7 @@ class TestKeyFileOperations:
         from app.key_encryption import (
             encrypt_key_content,
             is_encrypted,
-            migrate_key_to_encrypted,
+            read_key_content,
         )
 
         valid = encrypt_key_content('owner', 'private key material')
@@ -157,17 +158,19 @@ class TestKeyFileOperations:
             key_path = Path(tmpdir) / 'encrypted.pem'
 
             key_path.write_bytes(valid)
-            migrate_key_to_encrypted('owner', str(key_path))
+            assert read_key_content(
+                'owner', str(key_path)
+            ) == 'private key material'
             assert key_path.read_bytes() == valid
 
             key_path.write_bytes(other_user)
             with pytest.raises(InvalidToken):
-                migrate_key_to_encrypted('owner', str(key_path))
+                read_key_content('owner', str(key_path))
             assert key_path.read_bytes() == other_user
 
             key_path.write_bytes(corrupt)
             with pytest.raises(InvalidToken):
-                migrate_key_to_encrypted('owner', str(key_path))
+                read_key_content('owner', str(key_path))
             assert key_path.read_bytes() == corrupt
 
     @pytest.mark.parametrize(
@@ -178,50 +181,37 @@ class TestKeyFileOperations:
         ),
         ids=('truncated-fernet', 'arbitrary-text'),
     )
-    @pytest.mark.parametrize(
-        'operation_name',
-        ('migrate_key_to_encrypted', 'read_key_content'),
-    )
     def test_invalid_legacy_content_is_rejected_without_rewrite(
-            self, invalid_content, operation_name, tmp_path):
+            self, invalid_content, tmp_path):
         from app import key_encryption
         from app.ssh_key_loader import UnsupportedPrivateKeyError
 
-        key_path = tmp_path / f'{operation_name}.pem'
+        key_path = tmp_path / 'read_key_content.pem'
         key_path.write_bytes(invalid_content)
-        operation = getattr(key_encryption, operation_name)
 
         with pytest.raises(UnsupportedPrivateKeyError):
-            operation('owner', str(key_path))
+            key_encryption.read_key_content('owner', str(key_path))
 
         assert key_path.read_bytes() == invalid_content
 
-    @pytest.mark.parametrize(
-        'operation_name',
-        ('migrate_key_to_encrypted', 'read_key_content'),
-    )
     def test_passphrase_encrypted_legacy_key_is_rejected_without_rewrite(
-            self, encrypted_rsa_private_key_pem, operation_name, tmp_path):
+            self, encrypted_rsa_private_key_pem, tmp_path):
         import paramiko
         from app import key_encryption
 
         original = encrypted_rsa_private_key_pem.encode('utf-8')
-        key_path = tmp_path / f'{operation_name}.pem'
+        key_path = tmp_path / 'read_key_content.pem'
         key_path.write_bytes(original)
-        operation = getattr(key_encryption, operation_name)
 
         with pytest.raises(paramiko.PasswordRequiredException):
-            operation('owner', str(key_path))
+            key_encryption.read_key_content('owner', str(key_path))
 
         assert key_path.read_bytes() == original
 
     @pytest.mark.skipif(os.name != 'posix', reason='POSIX permissions only')
     def test_existing_encrypted_key_permissions_are_corrected_without_rewrite(
             self):
-        from app.key_encryption import (
-            encrypt_key_content,
-            migrate_key_to_encrypted,
-        )
+        from app.key_encryption import encrypt_key_content, read_key_content
 
         encrypted = encrypt_key_content('owner', 'private key material')
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -229,7 +219,9 @@ class TestKeyFileOperations:
             key_path.write_bytes(encrypted)
             key_path.chmod(0o644)
 
-            migrate_key_to_encrypted('owner', str(key_path))
+            assert read_key_content(
+                'owner', str(key_path)
+            ) == 'private key material'
 
             assert key_path.read_bytes() == encrypted
             assert key_path.stat().st_mode & 0o077 == 0
@@ -261,6 +253,7 @@ class TestKeyFileOperations:
     def test_failed_legacy_migration_never_returns_plaintext_as_success(
             self, monkeypatch, rsa_private_key_pem):
         from app import key_encryption
+        from app.storage_utils import atomic_write_bytes as real_atomic_write
 
         user_id = '7'
         original = rsa_private_key_pem.encode('utf-8')
@@ -270,8 +263,14 @@ class TestKeyFileOperations:
             with open(key_path, 'wb') as handle:
                 handle.write(original)
 
-            def fail_write(*_args, **_kwargs):
-                raise OSError('simulated write failure')
+            writes = []
+
+            def fail_write(path, payload, mode=0o600):
+                # Fail the migration write; let the rollback write through.
+                writes.append(payload)
+                if len(writes) == 1:
+                    raise OSError('simulated write failure')
+                real_atomic_write(path, payload, mode)
 
             monkeypatch.setattr(
                 key_encryption, 'atomic_write_bytes', fail_write
@@ -296,16 +295,22 @@ class TestKeyFileOperations:
             with open(key_path, 'wb') as handle:
                 handle.write(original)
 
+            writes = []
+
             def replace_then_fail(path, payload, mode=0o600):
+                # Only the forward write fails; the rollback write that
+                # restores the previous bytes goes through.
                 real_atomic_write(path, payload, mode)
-                raise OSError('simulated post-replace failure')
+                writes.append(payload)
+                if len(writes) == 1:
+                    raise OSError('simulated post-replace failure')
 
             monkeypatch.setattr(
                 key_encryption, 'atomic_write_bytes', replace_then_fail
             )
 
             with pytest.raises(OSError):
-                key_encryption.migrate_key_to_encrypted(user_id, key_path)
+                key_encryption.read_key_content(user_id, key_path)
 
             assert open(key_path, 'rb').read() == original
             assert sorted(os.listdir(tmpdir)) == ['legacy.pem']
@@ -326,9 +331,15 @@ class TestKeyFileOperations:
             key_path = Path(tmpdir) / 'stored.pem'
             key_path.write_bytes(original)
 
+            writes = []
+
             def replace_then_fail(path, payload, mode=0o600):
+                # Only the forward write fails; the rollback write that
+                # restores the previous bytes goes through.
                 real_atomic_write(path, payload, mode)
-                raise OSError('private post-replace failure detail')
+                writes.append(payload)
+                if len(writes) == 1:
+                    raise OSError('private post-replace failure detail')
 
             monkeypatch.setattr(
                 key_encryption, 'atomic_write_bytes', replace_then_fail
@@ -339,10 +350,13 @@ class TestKeyFileOperations:
                 lambda message, **fields: errors.append((message, fields)),
             )
 
-            replaced = key_encryption.replace_key_content(
+            replaced = key_encryption.replace_prepared_key_content(
                 user_id,
                 str(key_path),
                 rsa_openssh_private_key_pem,
+                key_encryption.encrypt_key_content(
+                    user_id, rsa_openssh_private_key_pem
+                ),
                 allowed_root=Path(tmpdir),
             )
 
@@ -354,6 +368,62 @@ class TestKeyFileOperations:
                 {'user_id': user_id, 'error_type': 'OSError'},
             )]
             assert 'private post-replace failure detail' not in repr(errors)
+
+    def test_key_replacement_rollback_fsync_failure_is_reported(
+            self, monkeypatch, rsa_private_key_pem,
+            rsa_openssh_private_key_pem):
+        from app import key_encryption, storage_utils
+
+        user_id = 'replacement-rollback-fsync'
+        original = key_encryption.encrypt_key_content(
+            user_id, rsa_private_key_pem
+        )
+        errors = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            key_path = Path(tmpdir) / 'stored.pem'
+            key_path.write_bytes(original)
+            monkeypatch.setattr(
+                key_encryption,
+                'decrypt_key_content',
+                lambda *_args: 'different plaintext',
+            )
+            fsync_calls = []
+
+            def fail_rollback_fsync(path):
+                # The first fsync belongs to the replacement write, the
+                # second to the rollback write that restores the ciphertext.
+                fsync_calls.append(path)
+                if len(fsync_calls) > 1:
+                    raise OSError('sentinel replacement rollback fsync')
+
+            monkeypatch.setattr(
+                storage_utils, 'fsync_parent_directory', fail_rollback_fsync
+            )
+            monkeypatch.setattr(
+                key_encryption,
+                'log_error',
+                lambda message, **fields: errors.append((message, fields)),
+            )
+
+            with pytest.raises(
+                    RuntimeError,
+                    match='SSH key replacement rollback failed') as caught:
+                key_encryption.replace_prepared_key_content(
+                    user_id,
+                    str(key_path),
+                    rsa_openssh_private_key_pem,
+                    key_encryption.encrypt_key_content(
+                        user_id, rsa_openssh_private_key_pem
+                    ),
+                    allowed_root=Path(tmpdir),
+                )
+
+            assert isinstance(caught.value.__cause__, OSError)
+            assert key_path.read_bytes() == original
+            assert sorted(os.listdir(tmpdir)) == ['stored.pem']
+            assert len(fsync_calls) == 2
+            assert errors == []
 
     def test_failed_readback_verification_restores_plaintext(
             self, monkeypatch, ecdsa_private_key_pem):
@@ -374,7 +444,7 @@ class TestKeyFileOperations:
             )
 
             with pytest.raises(ValueError, match='verification'):
-                key_encryption.migrate_key_to_encrypted(user_id, key_path)
+                key_encryption.read_key_content(user_id, key_path)
 
             assert open(key_path, 'rb').read() == original
             assert sorted(os.listdir(tmpdir)) == ['legacy.pem']
@@ -404,7 +474,7 @@ class TestKeyFileOperations:
             monkeypatch.setattr(Path, 'read_bytes', fail_stored_read)
 
             with pytest.raises(OSError):
-                key_encryption.migrate_key_to_encrypted(user_id, key_path)
+                key_encryption.read_key_content(user_id, key_path)
 
             assert real_read_bytes(Path(key_path)) == original
             assert sorted(os.listdir(tmpdir)) == ['legacy.pem']
@@ -437,7 +507,7 @@ class TestKeyFileOperations:
             )
 
             with pytest.raises(RuntimeError, match=secret_error):
-                key_encryption.migrate_key_to_encrypted(user_id, key_path)
+                key_encryption.read_key_content(user_id, key_path)
 
             assert open(key_path, 'rb').read() == original
             assert sorted(os.listdir(tmpdir)) == ['legacy.pem']
@@ -449,7 +519,7 @@ class TestKeyFileOperations:
 
     def test_rollback_fsync_failure_is_reported_even_after_replace(
             self, monkeypatch, rsa_private_key_pem):
-        from app import key_encryption
+        from app import key_encryption, storage_utils
 
         user_id = 'rollback-fsync'
         original = rsa_private_key_pem.encode('utf-8')
@@ -463,12 +533,17 @@ class TestKeyFileOperations:
                 'decrypt_key_content',
                 lambda *_args: 'different plaintext',
             )
+            fsync_calls = []
+
+            def fail_rollback_fsync(path):
+                # The first fsync belongs to the migration write, the second
+                # to the rollback write that restores the plaintext.
+                fsync_calls.append(path)
+                if len(fsync_calls) > 1:
+                    raise OSError('sentinel rollback fsync detail')
+
             monkeypatch.setattr(
-                key_encryption,
-                'fsync_parent_directory',
-                lambda *_args: (_ for _ in ()).throw(
-                    OSError('sentinel rollback fsync detail')
-                ),
+                storage_utils, 'fsync_parent_directory', fail_rollback_fsync
             )
             monkeypatch.setattr(
                 key_encryption,
@@ -479,12 +554,13 @@ class TestKeyFileOperations:
             with pytest.raises(
                     RuntimeError,
                     match='Legacy key migration rollback failed'):
-                key_encryption.migrate_key_to_encrypted(
+                key_encryption.read_key_content(
                     user_id, str(key_path)
                 )
 
             assert key_path.read_bytes() == original
             assert sorted(os.listdir(tmpdir)) == ['legacy.pem']
+            assert len(fsync_calls) == 2
             assert errors == [(
                 'Failed to migrate legacy key',
                 {'user_id': user_id, 'error_type': 'RuntimeError'},
@@ -661,9 +737,11 @@ class TestKeyFileOperations:
             except OSError as exc:
                 pytest.skip(f'symlink creation unavailable: {type(exc).__name__}')
 
-            assert key_encryption._canonical_key_path(alias) == (
-                key_encryption._canonical_key_path(path)
-            )
+            with key_encryption._key_file_lock(alias) as operation_path:
+                assert operation_path == path.resolve(strict=True)
+                assert os.path.normcase(str(path.resolve(strict=True))) in (
+                    key_encryption._key_file_locks
+                )
 
     def test_migration_through_symlink_preserves_link_and_encrypts_target(
             self, rsa_private_key_pem, monkeypatch):
@@ -692,7 +770,7 @@ class TestKeyFileOperations:
 
             monkeypatch.setattr(Path, 'resolve', recording_resolve)
 
-            key_encryption.migrate_key_to_encrypted(
+            key_encryption.read_key_content(
                 user_id, str(alias)
             )
 
@@ -784,16 +862,22 @@ class TestKeyFileOperations:
                     f'symlink creation unavailable: {type(exc).__name__}'
                 )
 
+            writes = []
+
             def replace_then_fail(path, payload, mode=0o600):
+                # Only the forward write fails; the rollback write that
+                # restores the previous bytes goes through.
                 real_atomic_write(path, payload, mode)
-                raise OSError('simulated post-replace failure')
+                writes.append(payload)
+                if len(writes) == 1:
+                    raise OSError('simulated post-replace failure')
 
             monkeypatch.setattr(
                 key_encryption, 'atomic_write_bytes', replace_then_fail
             )
 
             with pytest.raises(OSError):
-                key_encryption.migrate_key_to_encrypted(
+                key_encryption.read_key_content(
                     user_id, str(alias)
                 )
 
@@ -818,7 +902,7 @@ class TestKeyFileOperations:
                 )
 
             with pytest.raises(FileNotFoundError):
-                key_encryption.migrate_key_to_encrypted(
+                key_encryption.read_key_content(
                     'broken-symlink', str(alias)
                 )
 

@@ -158,3 +158,31 @@ def test_socketio_message_limit_tracks_control_payloads_not_http_uploads(app):
     assert config.SOCKETIO_MAX_MESSAGE_SIZE >= (
         config.MAX_EDITOR_FILE_SIZE * 6 + 64 * 1024
     )
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    (
+        (b'{"a": 1}', {"a": 1}),
+        (b"[1, 2]", {}),
+        (b"not json", {}),
+        (b"", {}),
+    ),
+)
+def test_json_object_returns_empty_dict_for_anything_but_an_object(
+    app, body, expected
+):
+    from app.request_limits import json_object
+
+    with app.test_request_context(
+        "/", method="POST", data=body, content_type="application/json"
+    ):
+        assert json_object() == expected
+
+
+def test_no_store_sets_cache_headers():
+    from app.request_limits import no_store
+
+    plain = no_store(Response())
+    assert plain.headers["Cache-Control"] == "no-store"
+    assert plain.headers["Pragma"] == "no-cache"

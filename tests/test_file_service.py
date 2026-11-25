@@ -16,10 +16,6 @@ class RecordingBackend:
     def __init__(self):
         self.calls = []
 
-    def list_directory(self, source, path):
-        self.calls.append(('list', source.source_id, path))
-        return [{'name': 'config.yml'}], None
-
 
 class RecordingListing:
     def __init__(self, pages):
@@ -147,19 +143,19 @@ def resolved_source(*capabilities, backend=None):
 
 
 def test_file_service_resolves_ownership_and_capability_before_backend_call():
-    backend = RecordingBackend()
+    backend = PagingBackend(RecordingListing([[{'name': 'config.yml'}]]))
     source = resolved_source(FileCapability.LIST, backend=backend)
     resolver = SimpleNamespace(resolve=lambda source_id, user_id: source)
     service = FileService(resolver)
 
-    result = service.list_directory(
+    result = service.list_directory_page(
         'sftp-session:owned',
         user_id=7,
         path='/etc',
     )
 
-    assert result == ([{'name': 'config.yml'}], None)
-    assert backend.calls == [('list', 'sftp-session:owned', '/etc')]
+    assert result == ([{'name': 'config.yml'}], None, None)
+    assert backend.calls == [('open', 'sftp-session:owned', '/etc')]
 
 
 def test_editor_read_binds_review_endpoint_to_the_resolved_source():
@@ -183,7 +179,7 @@ def test_file_service_rejects_missing_capability_before_backend_call():
     service = FileService(resolver)
 
     with pytest.raises(FileSourceUnavailable) as exc:
-        service.list_directory('sftp-session:owned', user_id=7, path='/etc')
+        service.list_directory_page('sftp-session:owned', user_id=7, path='/etc')
 
     assert exc.value.public_code == 'SOURCE_UNAVAILABLE'
     assert backend.calls == []
@@ -196,7 +192,7 @@ def test_file_service_preserves_uniform_resolver_failure():
     service = FileService(SimpleNamespace(resolve=unavailable))
 
     with pytest.raises(FileSourceUnavailable) as exc:
-        service.list_directory('sftp-session:foreign', user_id=7, path='/')
+        service.list_directory_page('sftp-session:foreign', user_id=7, path='/')
 
     assert exc.value.public_code == 'SOURCE_UNAVAILABLE'
     assert str(exc.value) == 'File source unavailable'
@@ -213,6 +209,52 @@ def test_recursive_delete_requires_recursive_capability_before_backend_call():
         service.delete('smb-quick:owned', user_id=7, path='/reports')
 
     assert backend.calls == []
+
+
+class DeleteRecordingBackend(RecordingBackend):
+    def normalize_path(self, path):
+        from app.sftp_handler import sanitize_path
+        return sanitize_path(path)
+
+    def delete(self, source, path, **kwargs):
+        self.calls.append(('delete', path))
+        return True, None
+
+
+def delete_service(backend):
+    source = resolved_source(
+        FileCapability.DELETE, FileCapability.RECURSIVE, backend=backend
+    )
+    return FileService(SimpleNamespace(resolve=lambda source_id, user_id: source))
+
+
+@pytest.mark.parametrize('path', [
+    '/', '.', '//', 'a/..', '/home/u/..', '..', '', ' ', '/./', '/a/./..',
+    '/x/../..', '\x00x', None,
+])
+def test_delete_rejects_root_and_dot_segments(path):
+    backend = DeleteRecordingBackend()
+
+    result = delete_service(backend).delete(
+        'sftp-session:owned', user_id=7, path=path
+    )
+
+    assert result == (False, 'Invalid path')
+    assert backend.calls == []
+
+
+@pytest.mark.parametrize('path', [
+    './name', 'name', '/srv/data/name', '/home/u/dir/', '..hidden', 'a..b', '...',
+])
+def test_delete_accepts_relative_child(path):
+    backend = DeleteRecordingBackend()
+
+    result = delete_service(backend).delete(
+        'sftp-session:owned', user_id=7, path=path
+    )
+
+    assert result == (True, None)
+    assert backend.calls == [('delete', path)]
 
 
 def test_directory_pages_resume_one_backend_enumeration_with_opaque_cursor(

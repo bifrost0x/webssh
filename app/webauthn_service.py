@@ -4,6 +4,10 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from threading import Lock
 
+from webauthn import verify_authentication_response
+
+import config
+
 from .models import WebAuthnChallenge, as_naive_utc, db
 
 
@@ -79,3 +83,24 @@ def consume_challenge(
         if expires_at < now:
             raise ChallengeError("WebAuthn challenge has expired")
         return challenge
+
+
+def verify_assertion(row, credential, challenge):
+    """Verify a passkey assertion for ``row`` and record its use.
+
+    The caller looks up the credential and commits the session.
+    """
+    verified = verify_authentication_response(
+        credential=credential,
+        expected_challenge=challenge,
+        expected_rp_id=config.WEBAUTHN_RP_ID,
+        expected_origin=config.WEBAUTHN_ORIGIN,
+        credential_public_key=bytes(row.public_key),
+        credential_current_sign_count=row.sign_count,
+        require_user_verification=True,
+    )
+    new_sign_count = int(verified.new_sign_count)
+    if row.sign_count and new_sign_count <= row.sign_count:
+        raise ChallengeError("authenticator counter did not advance")
+    row.sign_count = max(row.sign_count, new_sign_count)
+    row.last_used_at = datetime.now(timezone.utc)

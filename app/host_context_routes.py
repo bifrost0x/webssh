@@ -14,7 +14,6 @@ def context(profile_id):
     try:
         if request.method == 'GET':
             return jsonify(read_context(current_user.id, profile_id))
-        request.max_content_length = 1024 * 1024
         data = request.get_json(silent=True)
         if not isinstance(data, dict) or set(data) != {'revision', 'notes', 'directories', 'command_sets'}:
             raise ContextError('invalid')

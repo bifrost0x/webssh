@@ -46,10 +46,6 @@ class FileService:
             tail_lines=tail_lines,
         )
 
-    def list_directory(self, source_id, *, user_id, path):
-        source = self.resolve(source_id, user_id, FileCapability.LIST)
-        return source.backend.list_directory(source, path)
-
     def list_directory_page(
         self,
         source_id,
@@ -756,6 +752,21 @@ class FileService:
     def delete(self, source_id, *, user_id, path, cancel_event=None):
         self.resolve(source_id, user_id, FileCapability.DELETE)
         source = self.resolve(source_id, user_id, FileCapability.RECURSIVE)
+        # SMB already refuses the share root itself.
+        if source.descriptor.kind != 'smb':
+            # Normalisation can fold 'x/..' into the parent, so the raw path
+            # is checked as well.
+            safe_path = (
+                source.backend.normalize_path(path)
+                if isinstance(path, str)
+                else None
+            )
+            if (
+                safe_path is None
+                or any(segment == '..' for segment in path.split('/'))
+                or safe_path.strip('/') in {'', '.'}
+            ):
+                return False, 'Invalid path'
         return source.backend.delete(
             source,
             path,

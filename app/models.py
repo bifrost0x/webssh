@@ -1,6 +1,9 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime, timezone
+import hashlib
+import logging
+
 import bcrypt
 
 db = SQLAlchemy()
@@ -11,6 +14,11 @@ def as_naive_utc(value):
     if value.tzinfo is None:
         return value
     return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def token_digest(value):
+    """Return the hex SHA-256 digest stored in place of a bearer token."""
+    return hashlib.sha256(str(value).encode('utf-8')).hexdigest()
 
 
 class User(db.Model, UserMixin):
@@ -149,6 +157,23 @@ class User(db.Model, UserMixin):
         return f'<User {self.username}>'
 
 
+def _add_missing_columns(inspector, table, columns: dict[str, str]) -> set[str]:
+    """Run each ALTER statement whose column is absent from ``table``.
+
+    Statements run in the mapping's order. Returns the names of the columns
+    that were added; committing is left to the caller.
+    """
+    from sqlalchemy import text
+
+    existing = {column['name'] for column in inspector.get_columns(table)}
+    added = set()
+    for name, statement in columns.items():
+        if name not in existing:
+            db.session.execute(text(statement))
+            added.add(name)
+    return added
+
+
 def ensure_user_columns():
     """Additive, idempotent schema migration for the users table.
 
@@ -161,54 +186,42 @@ def ensure_user_columns():
     inspector = inspect(db.engine)
     if 'users' not in inspector.get_table_names():
         return  # fresh DB: create_all() already made the table with all columns
-    existing = {c['name'] for c in inspector.get_columns('users')}
-    added_is_admin = 'is_admin' not in existing
-    additions = []
-    if added_is_admin:
-        additions.append("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0")
-    if 'is_locked' not in existing:
-        additions.append("ALTER TABLE users ADD COLUMN is_locked BOOLEAN NOT NULL DEFAULT 0")
-    if 'auth_generation' not in existing:
-        additions.append(
+    added = _add_missing_columns(inspector, 'users', {
+        'is_admin': "ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0",
+        'is_locked': "ALTER TABLE users ADD COLUMN is_locked BOOLEAN NOT NULL DEFAULT 0",
+        'auth_generation': (
             "ALTER TABLE users ADD COLUMN auth_generation "
             "INTEGER NOT NULL DEFAULT 0"
-        )
-    if 'mfa_enabled' not in existing:
-        additions.append(
+        ),
+        'mfa_enabled': (
             "ALTER TABLE users ADD COLUMN mfa_enabled "
             "BOOLEAN NOT NULL DEFAULT 0"
-        )
-    if 'settings_default_generation' not in existing:
-        additions.append(
+        ),
+        'settings_default_generation': (
             "ALTER TABLE users ADD COLUMN settings_default_generation "
             "INTEGER NOT NULL DEFAULT 0"
-        )
-    if 'mfa_failed_attempts' not in existing:
-        additions.append(
+        ),
+        'mfa_failed_attempts': (
             "ALTER TABLE users ADD COLUMN mfa_failed_attempts "
             "INTEGER NOT NULL DEFAULT 0"
-        )
-    if 'mfa_last_failed_at' not in existing:
-        additions.append(
+        ),
+        'mfa_last_failed_at': (
             "ALTER TABLE users ADD COLUMN mfa_last_failed_at DATETIME"
-        )
-    if 'mfa_step_up_failed_attempts' not in existing:
-        additions.append(
+        ),
+        'mfa_step_up_failed_attempts': (
             "ALTER TABLE users ADD COLUMN mfa_step_up_failed_attempts "
             "INTEGER NOT NULL DEFAULT 0"
-        )
-    if 'mfa_step_up_last_failed_at' not in existing:
-        additions.append(
+        ),
+        'mfa_step_up_last_failed_at': (
             "ALTER TABLE users ADD COLUMN mfa_step_up_last_failed_at DATETIME"
-        )
-    for stmt in additions:
-        db.session.execute(text(stmt))
+        ),
+    })
     # First-time migration of an existing install: there was no role separation
     # before. Grant admin ONLY to the oldest account (lowest id) instead of every
     # user, so upgrading a multi-user install does not silently make everyone an
     # admin. Runs once — on later starts the column already exists, so this block
     # is skipped. On fresh installs, the first registered user becomes admin.
-    if added_is_admin:
+    if 'is_admin' in added:
         result = db.session.execute(text(
             "UPDATE users SET is_admin = 1 "
             "WHERE id = (SELECT id FROM users ORDER BY id LIMIT 1)"
@@ -217,9 +230,11 @@ def ensure_user_columns():
             from .audit_logger import log_info
             log_info("Schema migration: granted admin to the oldest pre-existing user",
                      count=getattr(result, 'rowcount', None))
-        except Exception:
-            pass
-    if additions:
+        except Exception as exc:
+            logging.getLogger('webssh').debug(
+                'Schema migration audit entry failed: %s', type(exc).__name__
+            )
+    if added:
         db.session.commit()
 
 
@@ -242,57 +257,43 @@ def ensure_security_columns():
         db.session.commit()
     if 'oidc_login_states' not in inspector.get_table_names():
         return
-    existing = {
-        column['name']
-        for column in inspector.get_columns('oidc_login_states')
-    }
-    additions = []
-    if 'purpose' not in existing:
-        additions.append(
+    added = _add_missing_columns(inspector, 'oidc_login_states', {
+        'purpose': (
             "ALTER TABLE oidc_login_states ADD COLUMN purpose "
             "VARCHAR(24) NOT NULL DEFAULT 'login'"
-        )
-    if 'continuation' not in existing:
-        additions.append(
+        ),
+        'continuation': (
             "ALTER TABLE oidc_login_states ADD COLUMN continuation "
             "VARCHAR(512) NOT NULL DEFAULT '/'"
-        )
-    if 'requested_acr' not in existing:
-        additions.append(
+        ),
+        'requested_acr': (
             "ALTER TABLE oidc_login_states ADD COLUMN requested_acr "
             "VARCHAR(512)"
-        )
-    if 'step_up_action' not in existing:
-        additions.append(
+        ),
+        'step_up_action': (
             "ALTER TABLE oidc_login_states ADD COLUMN step_up_action "
             "VARCHAR(96)"
-        )
-    if 'step_up_target_hash' not in existing:
-        additions.append(
+        ),
+        'step_up_target_hash': (
             "ALTER TABLE oidc_login_states ADD COLUMN step_up_target_hash "
             "VARCHAR(64)"
-        )
-    if 'step_up_intent_id' not in existing:
-        additions.append(
+        ),
+        'step_up_intent_id': (
             "ALTER TABLE oidc_login_states ADD COLUMN step_up_intent_id "
             "INTEGER"
-        )
-    if 'user_id' not in existing:
-        additions.append(
+        ),
+        'user_id': (
             "ALTER TABLE oidc_login_states ADD COLUMN user_id INTEGER"
-        )
-    if 'auth_generation' not in existing:
-        additions.append(
+        ),
+        'auth_generation': (
             "ALTER TABLE oidc_login_states ADD COLUMN auth_generation INTEGER"
-        )
-    if 'authentication_session_id' not in existing:
-        additions.append(
+        ),
+        'authentication_session_id': (
             "ALTER TABLE oidc_login_states ADD COLUMN "
             "authentication_session_id INTEGER"
-        )
-    for statement in additions:
-        db.session.execute(text(statement))
-    if additions:
+        ),
+    })
+    if added:
         db.session.commit()
 
 class SocketSession(db.Model):
@@ -869,39 +870,25 @@ def ensure_ssh_session_columns():
     inspector = inspect(db.engine)
     if 'ssh_sessions' not in inspector.get_table_names():
         return
-    existing = {c['name'] for c in inspector.get_columns('ssh_sessions')}
-    additions = []
-    if 'is_persistent' not in existing:
-        additions.append("ALTER TABLE ssh_sessions ADD COLUMN is_persistent BOOLEAN NOT NULL DEFAULT 0")
-    if 'key_id' not in existing:
-        additions.append("ALTER TABLE ssh_sessions ADD COLUMN key_id VARCHAR(64)")
-    added_auth_type = 'auth_type' not in existing
-    if added_auth_type:
-        additions.append(
+    added = _add_missing_columns(inspector, 'ssh_sessions', {
+        'is_persistent': "ALTER TABLE ssh_sessions ADD COLUMN is_persistent BOOLEAN NOT NULL DEFAULT 0",
+        'key_id': "ALTER TABLE ssh_sessions ADD COLUMN key_id VARCHAR(64)",
+        'auth_type': (
             "ALTER TABLE ssh_sessions ADD COLUMN auth_type VARCHAR(16) "
             "NOT NULL DEFAULT 'password'"
-        )
-    if 'tmux_session_name' not in existing:
-        additions.append("ALTER TABLE ssh_sessions ADD COLUMN tmux_session_name VARCHAR(256)")
-    if 'display_name' not in existing:
-        additions.append("ALTER TABLE ssh_sessions ADD COLUMN display_name VARCHAR(128)")
-    if 'jump_host_id' not in existing:
-        additions.append("ALTER TABLE ssh_sessions ADD COLUMN jump_host_id VARCHAR(64)")
-    if 'socks_proxy_id' not in existing:
-        additions.append("ALTER TABLE ssh_sessions ADD COLUMN socks_proxy_id VARCHAR(64)")
-    if 'via_socks' not in existing:
-        additions.append("ALTER TABLE ssh_sessions ADD COLUMN via_socks BOOLEAN NOT NULL DEFAULT 0")
-    if 'profile_id' not in existing:
-        additions.append("ALTER TABLE ssh_sessions ADD COLUMN profile_id VARCHAR(128)")
-    if 'via_jump' not in existing:
-        additions.append("ALTER TABLE ssh_sessions ADD COLUMN via_jump VARCHAR(256)")
-    if 'reconnect_route_known' not in existing:
-        additions.append("ALTER TABLE ssh_sessions ADD COLUMN reconnect_route_known BOOLEAN NOT NULL DEFAULT 0")
-    for stmt in additions:
-        db.session.execute(text(stmt))
-    if added_auth_type:
+        ),
+        'tmux_session_name': "ALTER TABLE ssh_sessions ADD COLUMN tmux_session_name VARCHAR(256)",
+        'display_name': "ALTER TABLE ssh_sessions ADD COLUMN display_name VARCHAR(128)",
+        'jump_host_id': "ALTER TABLE ssh_sessions ADD COLUMN jump_host_id VARCHAR(64)",
+        'socks_proxy_id': "ALTER TABLE ssh_sessions ADD COLUMN socks_proxy_id VARCHAR(64)",
+        'via_socks': "ALTER TABLE ssh_sessions ADD COLUMN via_socks BOOLEAN NOT NULL DEFAULT 0",
+        'profile_id': "ALTER TABLE ssh_sessions ADD COLUMN profile_id VARCHAR(128)",
+        'via_jump': "ALTER TABLE ssh_sessions ADD COLUMN via_jump VARCHAR(256)",
+        'reconnect_route_known': "ALTER TABLE ssh_sessions ADD COLUMN reconnect_route_known BOOLEAN NOT NULL DEFAULT 0",
+    })
+    if 'auth_type' in added:
         db.session.execute(text(
             "UPDATE ssh_sessions SET auth_type = 'key' WHERE key_id IS NOT NULL"
         ))
-    if additions:
+    if added:
         db.session.commit()

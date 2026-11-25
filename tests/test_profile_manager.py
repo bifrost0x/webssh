@@ -859,6 +859,31 @@ def test_assign_command_set_to_profile_retains_legacy_commands(app):
         assert updated['startup_commands'] == 'echo legacy'
 
 
+def test_assign_command_set_hides_unexpected_error_text(app, monkeypatch):
+    from app import command_set_manager, profile_manager
+
+    user_id = create_user(app, 'profile-assign-error-text')
+    with app.app_context():
+        profile, error = profile_manager.add_profile(
+            user_id, 'Production', 'example.com', 22, 'deploy', 'password'
+        )
+        assert error is None
+        command_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Status',
+            'steps': [{'type': 'inline', 'command': 'uptime'}],
+        })
+        assert error is None
+
+        def explode(*args, **kwargs):
+            raise RuntimeError('/srv/webssh/secret-path exploded')
+
+        monkeypatch.setattr(profile_manager, 'save_profiles', explode)
+
+        assert profile_manager.assign_command_set(
+            user_id, profile['id'], command_set['id']
+        ) == (None, 'Failed to save profile')
+
+
 def test_add_profile_does_not_overwrite_corrupt_profile_storage(app):
     from app import profile_manager
 

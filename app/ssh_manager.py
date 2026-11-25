@@ -7,7 +7,7 @@ import uuid
 import socket
 import codecs
 from dataclasses import dataclass, field, replace
-from threading import Lock, Timer
+from threading import Lock
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from .host_key_store import HostKeyStore, HostKeyNotAccepted
@@ -120,30 +120,8 @@ def _authentication_banner_accepted(transport, decision_callback, context):
         return False
 
 
-def _open_exec_channel(transport, command, *, timeout, pty=None, before_exec=None):
-    """Open a bounded exec channel for a reviewed, fully quoted command."""
-    deadline = time.monotonic() + timeout
-    channel = transport.open_session(timeout=timeout)
-    remaining = max(0, deadline - time.monotonic())
-    channel.settimeout(remaining)
-    timeout_guard = Timer(remaining, channel.close)
-    timeout_guard.daemon = True
-    timeout_guard.start()
-    try:
-        if pty is not None:
-            channel.get_pty(*pty)
-        if time.monotonic() >= deadline:
-            raise TimeoutError('SSH command deadline exceeded')
-        if before_exec is not None:
-            before_exec()
-        # Intentional SSH command boundary; callers provide reviewed quoting.
-        channel.exec_command(command)  # nosec B601
-    except Exception:
-        channel.close()
-        raise
-    finally:
-        timeout_guard.cancel()
-    return channel
+# Kept as a module attribute so callers and tests can replace it.
+_open_exec_channel = paramiko_channels.open_exec_channel
 
 
 def _probe_tmux_session(session):
@@ -211,7 +189,7 @@ def _herdr_available(transport):
                 pass
 
 
-def create_ssh_connection(host, port, username, password=None, key_path=None, key_content=None,
+def create_ssh_connection(host, port, username, password=None, key_content=None,
                           socketio_instance=None, app=None, user_id=None,
                           proxy_jump_host=None, proxy_jump_port=None, proxy_jump_username=None,
                           proxy_jump_password=None, proxy_jump_key_content=None,
@@ -231,8 +209,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         port: SSH server port
         username: SSH username
         password: Password for authentication (optional)
-        key_path: Path to SSH key file - DEPRECATED, use key_content instead
-        key_content: Decrypted SSH private key content (preferred)
+        key_content: Decrypted SSH private key content
         socketio_instance: SocketIO instance for output streaming
         app: Flask app instance
         user_id: User ID for session tracking
@@ -590,7 +567,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         if gateway_attempt is not None:
             from .ssh_gateway_auth import GatewayAuthStrategy, GatewayTransport
-            if auth_type == 'tailscale' or key_path:
+            if auth_type == 'tailscale':
                 return None, 'Unsupported gateway authentication method'
             auth_kwargs['transport_factory'] = GatewayTransport
             auth_kwargs['auth_strategy'] = GatewayAuthStrategy(
@@ -605,8 +582,6 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             auth_kwargs['allow_agent'] = False
             if key_content:
                 auth_kwargs['pkey'] = _load_private_key(key_content)
-            elif key_path:
-                auth_kwargs['key_filename'] = key_path
             elif password:
                 # Typed passwords keep paramiko's keyboard-interactive fallback.
                 if credential_guard is not None and 'target' in saved_password_hops:

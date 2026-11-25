@@ -198,36 +198,13 @@ def apply_audit_backup_count(value=None):
         )
     return value
 
-def log_info(message, **kwargs):
-    """Log info message with optional structured data."""
+def _log(level, message, kwargs, exc_info=False):
     safe_message = _sanitize_log_value(message)
     if kwargs:
+        # Structured records go straight to the handlers, bypassing the
+        # logger level check.
         record = logging.LogRecord(
-            'webssh', logging.INFO, '', 0, safe_message, (), None
-        )
-        record.extra_data = _sanitize_structured_log_data(kwargs)
-        app_logger.handle(record)
-    else:
-        app_logger.info(safe_message)
-
-def log_warning(message, **kwargs):
-    """Log warning message with optional structured data."""
-    safe_message = _sanitize_log_value(message)
-    if kwargs:
-        record = logging.LogRecord(
-            'webssh', logging.WARNING, '', 0, safe_message, (), None
-        )
-        record.extra_data = _sanitize_structured_log_data(kwargs)
-        app_logger.handle(record)
-    else:
-        app_logger.warning(safe_message)
-
-def log_error(message, exc_info=False, **kwargs):
-    """Log error message with optional exception and structured data."""
-    safe_message = _sanitize_log_value(message)
-    if kwargs:
-        record = logging.LogRecord(
-            'webssh', logging.ERROR, '', 0, safe_message, (), None
+            'webssh', level, '', 0, safe_message, (), None
         )
         record.extra_data = _sanitize_structured_log_data(kwargs)
         if exc_info:
@@ -235,19 +212,23 @@ def log_error(message, exc_info=False, **kwargs):
             record.exc_info = sys.exc_info()
         app_logger.handle(record)
     else:
-        app_logger.error(safe_message, exc_info=exc_info)
+        app_logger.log(level, safe_message, exc_info=exc_info)
+
+def log_info(message, **kwargs):
+    """Log info message with optional structured data."""
+    _log(logging.INFO, message, kwargs)
+
+def log_warning(message, **kwargs):
+    """Log warning message with optional structured data."""
+    _log(logging.WARNING, message, kwargs)
+
+def log_error(message, exc_info=False, **kwargs):
+    """Log error message with optional exception and structured data."""
+    _log(logging.ERROR, message, kwargs, exc_info=exc_info)
 
 def log_debug(message, **kwargs):
     """Log debug message with optional structured data."""
-    safe_message = _sanitize_log_value(message)
-    if kwargs:
-        record = logging.LogRecord(
-            'webssh', logging.DEBUG, '', 0, safe_message, (), None
-        )
-        record.extra_data = _sanitize_structured_log_data(kwargs)
-        app_logger.handle(record)
-    else:
-        app_logger.debug(safe_message)
+    _log(logging.DEBUG, message, kwargs)
 
 def _sanitize_log_value(value):
     """Sanitize a value for safe inclusion in log entries.

@@ -109,3 +109,45 @@ test('a late closed result with a partial mutation or uncertain failure refreshe
         assert.deepEqual(refreshed, ['sftp:bound']);
     }
 });
+
+test('a BUSY apply refusal keeps the ready job usable and closing still cancels it', () => {
+    const sent = [];
+    const emitted = [];
+    const dialog = Object.create(PermissionJobDialog.prototype);
+    Object.assign(dialog, {
+        state: 'running', pending: true, jobId: 'job', closed: false, cancelSent: false, disconnected: false,
+        target: { sourceId: 'sftp:a' }, isCurrent: () => true, update() {}, renderCounts() {},
+        status: {}, refreshBoundSource() { sent.push('refresh'); }, timer: null,
+        plan: { file_mode: '644', directory_mode: '755' }, acknowledgment: { checked: false },
+        manager: {
+            t: (_, fallback) => fallback, nextRequestId: () => 'req',
+            socket: { connected: true, emit: (...args) => emitted.push(args), off() {} },
+        },
+        dialog: { close() {}, remove() {} },
+    });
+    const message = 'Another permission change is still running. Try again in a moment.';
+    dialog.receive({ error: message, code: 'BUSY', job_id: 'job' }, true);
+    assert.equal(dialog.state, 'ready');
+    assert.equal(dialog.status.textContent, message);
+    assert.deepEqual(sent, []);
+    // Apply is possible again.
+    dialog.isCurrent = () => true;
+    dialog.send = (...args) => emitted.push(['send', ...args]);
+    dialog.pending = false;
+    dialog.apply();
+    assert.deepEqual(emitted.pop(), ['send', 'apply_file_permissions_job', { job_id: 'job' }]);
+    // Back to ready after a second refusal, then close cancels the owned job.
+    dialog.state = 'ready';
+    dialog.close();
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0][0], 'cancel_file_permissions_job');
+    assert.equal(emitted[0][1].job_id, 'job');
+});
+
+test('a BUSY prepare refusal returns to editing instead of failing', () => {
+    const dialog = Object.create(PermissionJobDialog.prototype);
+    Object.assign(dialog, { state: 'scanning', pending: true, jobId: null, closed: false, target: {}, isCurrent: () => true, update() {}, status: {}, manager: { t: (_, f) => f } });
+    dialog.receive({ error: 'busy text', code: 'BUSY' }, true);
+    assert.equal(dialog.state, 'editing');
+    assert.equal(dialog.status.textContent, 'busy text');
+});

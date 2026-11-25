@@ -4,11 +4,12 @@ import threading
 import pytest
 
 from app.automation_store import AutomationError
+from tests.credential_fixtures import assign_credential
 from tests.test_automation_service import context  # noqa: F401  (fixture)
 
 
-def _assign(service, uid, profile, record):
-    service.assign_named(uid, profile['id'], record['id'], True)
+def _assign(service, uid, aid, profile, record):
+    assign_credential(service, uid, aid, profile['id'], record['id'])
     assert profile['id'] in service.named.read(uid)['assignments']
 
 
@@ -19,7 +20,7 @@ def test_deleting_a_host_no_longer_blocks_deleting_its_password(app, context):
     record = service.create_named(uid, dict(name='Orphaned', password='orphan-secret'))
     profile, error = add_profile(uid, 'Temporary', 'temporary.example', 22, 'operator', 'password')
     assert error is None
-    _assign(service, uid, profile, record)
+    _assign(service, uid, aid, profile, record)
     assert delete_profile(uid, profile['id']) == (True, None)
 
     state = service.native_state(uid, aid)
@@ -33,20 +34,20 @@ def test_deleting_a_host_no_longer_blocks_deleting_its_password(app, context):
 
 
 def test_live_assignment_still_blocks_deletion_while_enabled(app, context):
-    uid, _aid, _book, profile = context
+    uid, aid, _book, profile = context
     service = app.extensions['credentials']
     record = service.create_named(uid, dict(name='In use', password='live-secret'))
-    _assign(service, uid, profile, record)
+    _assign(service, uid, aid, profile, record)
     with pytest.raises(AutomationError, match='credential_in_use'):
         service.delete_named(uid, record['id'])
 
 
 def test_users_can_erase_passwords_after_an_administrator_disables_storage(app, client, context):
     from app.app_settings import set_credentials_enabled
-    uid, _aid, _book, profile = context
+    uid, aid, _book, profile = context
     service = app.extensions['credentials']
     record = service.create_named(uid, dict(name='Erase me', password='erase-secret'))
-    _assign(service, uid, profile, record)
+    _assign(service, uid, aid, profile, record)
     set_credentials_enabled(False)
     secure = dict(base_url='https://localhost')
 
@@ -136,7 +137,7 @@ def test_concurrent_import_and_assignment_complete(app, context):
 
     threads = [
         threading.Thread(target=run, args=(lambda: service.import_legacy(uid, aid, 'separate vault passphrase long enough'),)),
-        threading.Thread(target=run, args=(lambda: service.assign_named(uid, other['id'], record['id'], True),)),
+        threading.Thread(target=run, args=(lambda: assign_credential(service, uid, aid, other['id'], record['id']),)),
     ]
     for thread in threads:
         thread.start()

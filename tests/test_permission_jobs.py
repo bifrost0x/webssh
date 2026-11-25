@@ -400,3 +400,50 @@ def test_real_runtime_queued_cancel_releases_reservation(setup):
         assert quotas.released == 1 and not remote.writes
     finally:
         blocked.set(); runtime.begin_shutdown(2)
+
+
+def test_ready_jobs_do_not_reserve_global_slots_but_apply_enforces_the_limit(setup):
+    from app.file_mutations import FileMutationError
+    manager, runtime, remote, prepare, authorize = setup
+
+    def new(owner, source):
+        return manager.prepare(user_id=owner, socket_sid='sid' + str(owner), source_id=source, paths=['/tree/a'], recursive=False, file_mode='644', directory_mode='755', authorize=authorize)
+
+    def apply(owner, source, job_id):
+        return manager.apply(owner, 'sid' + str(owner), source, job_id, authorize=authorize)
+
+    jobs = {owner: new(owner, 'sftp-session:' + str(owner))['job_id'] for owner in (8, 9)}
+    runtime.run(); runtime.run()
+    assert {job.state for job in manager._jobs.values()} == {'ready'}
+    third = new(10, 'sftp-session:10')['job_id']
+    runtime.run()
+    with pytest.raises(FileMutationError) as same_user:
+        new(8, 'sftp-session:other')
+    assert same_user.value.code == 'CONFLICT'
+    apply(8, 'sftp-session:8', jobs[8])
+    apply(9, 'sftp-session:9', jobs[9])
+    with pytest.raises(FileMutationError) as refused:
+        apply(10, 'sftp-session:10', third)
+    assert refused.value.code == 'BUSY'
+    assert 'try again' in str(refused.value).lower()
+    assert manager._jobs[third].state == 'ready'
+    runtime.run()
+    apply(10, 'sftp-session:10', third)
+    assert manager._jobs[third].state == 'running'
+
+
+def test_prepare_reports_busy_only_for_the_global_limit(setup):
+    from app.file_mutations import FileMutationError
+    manager, runtime, remote, prepare, authorize = setup
+
+    def new(owner, source):
+        return manager.prepare(user_id=owner, socket_sid='sid' + str(owner), source_id=source, paths=['/tree/a'], recursive=False, file_mode='644', directory_mode='755', authorize=authorize)
+
+    prepare()
+    new(8, 'sftp-session:second')
+    with pytest.raises(FileMutationError) as busy:
+        new(9, 'sftp-session:third')
+    assert busy.value.code == 'BUSY'
+    with pytest.raises(FileMutationError) as same_user:
+        new(7, 'sftp-session:fourth')
+    assert same_user.value.code == 'CONFLICT'

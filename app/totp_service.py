@@ -1,16 +1,19 @@
 """Encrypted TOTP enrollment and serialized replay-safe verification."""
 
+import base64
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
+import hmac
 import io
 import secrets
 from threading import RLock
+from urllib.parse import quote, urlencode
 
-import pyotp
 import qrcode
 from qrcode.image.svg import SvgPathImage
 
+from .audit_logger import log_warning
 from .mfa_crypto import decrypt_totp_secret, encrypt_totp_secret
 from .mfa_throttle import clear_all_uncommitted
 from .models import (
@@ -19,9 +22,12 @@ from .models import (
     User,
     as_naive_utc,
     db,
+    token_digest,
 )
 
 
+_BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+_MIN_SECRET_BITS = 112
 _ENROLLMENT_TTL = timedelta(minutes=5)
 _MAX_AUTHENTICATORS_PER_USER = 5
 _MAX_ENROLLMENTS_PER_USER = 5
@@ -50,10 +56,6 @@ class EnrollmentView:
     expires_at: datetime
 
 
-def _digest(value):
-    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
-
-
 def _utc_now(now=None):
     value = now or datetime.now(timezone.utc)
     if value.tzinfo is None:
@@ -61,15 +63,37 @@ def _utc_now(now=None):
     return value.astimezone(timezone.utc)
 
 
+def _random_base32(length=32):
+    return "".join(secrets.choice(_BASE32_ALPHABET) for _ in range(length))
+
+
+def _totp_code(secret_b32, step):
+    """Return the RFC 6238 HMAC-SHA1 code for a 30-second step."""
+    if step < 0:
+        raise ValueError("TOTP step must not be negative")
+    padded = secret_b32 + "=" * (-len(secret_b32) % 8)
+    key = base64.b32decode(padded, casefold=True)
+    if len(key) * 8 < _MIN_SECRET_BITS:
+        raise ValueError(f"TOTP secret must be at least {_MIN_SECRET_BITS} bits")
+    digest = hmac.digest(key, step.to_bytes(8, "big"), hashlib.sha1)
+    offset = digest[-1] & 0x0F
+    value = int.from_bytes(digest[offset:offset + 4], "big") & 0x7FFFFFFF
+    return f"{value % 1_000_000:06d}"
+
+
+def _provisioning_uri(secret, name, issuer):
+    query = urlencode({"secret": secret, "issuer": issuer}).replace("+", "%20")
+    return f"otpauth://totp/{quote(issuer)}:{quote(name)}?{query}"
+
+
 def _accepted_step(secret, code, now):
     candidate = str(code or "").strip()
     if len(candidate) != 6 or not candidate.isascii() or not candidate.isdigit():
         return None
-    totp = pyotp.TOTP(secret, digits=6, interval=30)
     base_step = int(now.timestamp()) // 30
     for offset in (-1, 0, 1):
         step = base_step + offset
-        if secrets.compare_digest(totp.at(step * 30), candidate):
+        if secrets.compare_digest(_totp_code(secret, step), candidate):
             return step
     return None
 
@@ -95,11 +119,8 @@ def begin_totp_enrollment(user_id, session_binding, *, label="Authenticator"):
     account_name = user.username
     now = as_naive_utc(datetime.now(timezone.utc))
     token = secrets.token_urlsafe(32)
-    secret = pyotp.random_base32(length=32)
-    provisioning_uri = pyotp.TOTP(secret).provisioning_uri(
-        name=account_name,
-        issuer_name="WebSSH",
-    )
+    secret = _random_base32(length=32)
+    provisioning_uri = _provisioning_uri(secret, account_name, "WebSSH")
 
     with _totp_lock:
         TOTPEnrollment.query.filter(
@@ -114,9 +135,9 @@ def begin_totp_enrollment(user_id, session_binding, *, label="Authenticator"):
         for stale in live_rows[_MAX_ENROLLMENTS_PER_USER - 1:]:
             db.session.delete(stale)
         row = TOTPEnrollment(
-            token_hash=_digest(token),
+            token_hash=token_digest(token),
             user_id=user.id,
-            session_binding_hash=_digest(binding),
+            session_binding_hash=token_digest(binding),
             encrypted_secret=encrypt_totp_secret(user.id, secret),
             label=normalized_label,
             created_at=now,
@@ -140,8 +161,8 @@ def activate_totp_enrollment(token, code, session_binding, *, now=None, label=No
 
     now_aware = _utc_now(now)
     now_db = as_naive_utc(now_aware)
-    token_hash = _digest(token)
-    binding_hash = _digest(session_binding)
+    token_hash = token_digest(token)
+    binding_hash = token_digest(session_binding)
     with _totp_lock, _recovery_lock:
         enrollment = TOTPEnrollment.query.filter_by(
             token_hash=token_hash,
@@ -207,7 +228,12 @@ def verify_totp(user_id, code, *, now=None):
         for row in rows:
             try:
                 secret = decrypt_totp_secret(row.user_id, row.encrypted_secret)
-            except Exception:
+            except Exception as exc:
+                log_warning(
+                    'TOTP secret could not be decrypted',
+                    user_id=int(user_id),
+                    error_type=type(exc).__name__,
+                )
                 continue
             step = _accepted_step(secret, code, now_aware)
             if step is None or (
@@ -224,7 +250,12 @@ def verify_totp(user_id, code, *, now=None):
         matched.last_used_at = now_db
         try:
             db.session.commit()
-        except Exception:
+        except Exception as exc:
             db.session.rollback()
+            log_warning(
+                'TOTP replay state could not be saved',
+                user_id=int(user_id),
+                error_type=type(exc).__name__,
+            )
             return False
         return True

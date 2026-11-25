@@ -469,6 +469,17 @@ def _stateful_fixture(original=b'old'):
     return backend, source, session
 
 
+def _list_all(backend, source, path):
+    """Read a whole directory through the paged listing contract."""
+    listing, error = backend.open_directory_listing(source, path)
+    if error:
+        return None, error
+    page, error, has_more = listing.read_page(10_000)
+    assert has_more is False
+    listing.close()
+    return page, error
+
+
 def test_listing_closes_iterator_and_marks_reparse_entries_unfollowable():
     backend, source, session = _fixture()
     iterator = _Iterator([
@@ -477,7 +488,7 @@ def test_listing_closes_iterator_and_marks_reparse_entries_unfollowable():
     ])
     session.responses['scandir'] = iterator
 
-    listing, error = backend.list_directory(source, '/')
+    listing, error = _list_all(backend, source, '/')
 
     assert error is None
     assert iterator.closed is True
@@ -491,7 +502,7 @@ def test_listing_preserves_valid_dollar_in_path_component():
     iterator = _Iterator([_Entry('budget$.xlsx', identity=17)])
     session.responses['scandir'] = iterator
 
-    listing, error = backend.list_directory(source, '/reports')
+    listing, error = _list_all(backend, source, '/reports')
 
     assert error is None
     assert listing == [{
@@ -510,7 +521,7 @@ def test_overdeep_path_is_rejected_before_any_smb_operation():
     backend, source, session = _fixture()
     overdeep = '/' + '/'.join('a' for _ in range(129))
 
-    listing, error = backend.list_directory(source, overdeep)
+    listing, error = _list_all(backend, source, overdeep)
 
     assert listing is None
     assert error == 'Invalid path'
@@ -575,7 +586,7 @@ def test_listing_fails_closed_when_server_identity_is_unavailable(
     iterator = _Iterator([entry])
     session.responses['scandir'] = iterator
 
-    listing, error = backend.list_directory(source, '/')
+    listing, error = _list_all(backend, source, '/')
 
     assert listing is None
     assert error == 'SMB object identity is unavailable'
@@ -694,7 +705,7 @@ def test_listing_and_recursive_traversal_use_verified_directory_handles():
     session.responses['scandir'] = _Iterator([])
     session.responses['scandir_no_follow'] = _Iterator([])
 
-    listing, error = backend.list_directory(source, '/')
+    listing, error = _list_all(backend, source, '/')
 
     assert error is None
     assert listing == []
@@ -715,7 +726,7 @@ def test_listing_rejects_unsafe_server_supplied_name_and_closes_iterator():
     iterator = _Iterator([_Entry('../escape')])
     session.responses['scandir'] = iterator
 
-    listing, error = backend.list_directory(source, '/')
+    listing, error = _list_all(backend, source, '/')
 
     assert listing is None
     assert error == 'Unsafe directory response'
@@ -1793,7 +1804,7 @@ def test_transfer_lane_does_not_block_control_lane_navigation():
             release_transfer.wait(2)
 
     def list_during_transfer():
-        listing_result.append(backend.list_directory(source, '/'))
+        listing_result.append(_list_all(backend, source, '/'))
         listing_finished.set()
 
     transfer_thread = Thread(target=hold_transfer_reader)
@@ -2334,7 +2345,7 @@ def test_protocol_errors_have_stable_non_sensitive_messages():
     backend, source, session = _fixture()
     session.responses['scandir'] = SMBProtocolError('PERMISSION_DENIED')
 
-    listing, error = backend.list_directory(source, '/denied')
+    listing, error = _list_all(backend, source, '/denied')
 
     assert listing is None
     assert error == 'Permission denied'

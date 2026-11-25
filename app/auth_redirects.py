@@ -3,12 +3,12 @@ from urllib.parse import urlsplit
 
 from flask import request
 
-from .auth_assurance import _safe_continuation
+from .auth_assurance import safe_continuation
 
 
 def public_continuation(value):
     """Add the trusted request prefix once, preserving the query string."""
-    candidate = _safe_continuation(value)
+    candidate = safe_continuation(value)
     prefix = request.script_root.rstrip('/')
     path = urlsplit(candidate).path
     # Browsers normalize literal and percent-encoded dot segments in URLs.

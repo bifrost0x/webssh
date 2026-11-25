@@ -196,7 +196,11 @@
                 return;
             }
             if (this.disconnected) return;
-            if (failed) {
+            if (failed && data.code === 'BUSY') {
+                // The server refused for capacity only; the prepared job (if any) stays usable.
+                this.state = this.jobId ? 'ready' : 'editing';
+                this.status.textContent = typeof data.error === 'string' ? data.error : this.t('fm.jobFailed', 'Permission operation failed. Refresh before another change.');
+            } else if (failed) {
                 this.state = 'failed';
                 this.status.textContent = typeof data.error === 'string' ? data.error : this.t('fm.jobFailed', 'Permission operation failed. Refresh before another change.');
             } else if (activeStates.has(data.state) || terminalStates.has(data.state) || data.state === 'ready') {

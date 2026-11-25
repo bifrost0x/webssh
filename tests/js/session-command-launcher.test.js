@@ -589,3 +589,143 @@ test('parameter overrides change only the inserted text and respect sudo and emp
     assert.equal((await controller.insert('active', 'command', 'cmd-multiline', {parameters: ''})).ok, false);
     assert.equal(sent.length, 2);
 });
+
+test('library commands with control characters go through paste review before sending', async () => {
+    const sent = [];
+    const reviewed = [];
+    const guard = {
+        needsReview: text => /[\x00-\x1f]/.test(text),
+        capture: id => ({ id }),
+        review: async (binding, text, send) => {
+            reviewed.push([binding.id, text]);
+            return send(text);
+        },
+    };
+    const library = [
+        { id: 'ctl', name: 'Control', command: 'ls\x0f', parameters: '' },
+        { id: 'plain', name: 'Plain', command: 'ls -la', parameters: '' },
+    ];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true }), getCommands: () => library,
+        emitInput: (id, text) => { sent.push([id, text]); },
+        pasteGuard: guard,
+    });
+
+    assert.equal((await controller.insert('s', 'command', 'plain')).ok, true);
+    assert.deepEqual(reviewed, []);
+    assert.deepEqual(sent, [['s', 'ls -la']]);
+
+    assert.equal((await controller.insert('s', 'command', 'ctl')).ok, true);
+    assert.deepEqual(reviewed, [['s', 'ls\x0f']]);
+    assert.deepEqual(sent[1], ['s', 'ls\x0f']);
+});
+
+test('declined review sends nothing and reports a cancelled insert without notification', async () => {
+    const sent = [];
+    const notices = [];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true }),
+        getCommands: () => [{ id: 'ctl', name: 'Control', command: 'ls\x0f', parameters: '' }],
+        emitInput: (id, text) => { sent.push([id, text]); },
+        notify: (...args) => notices.push(args),
+        pasteGuard: {
+            needsReview: () => true,
+            capture: id => ({ id }),
+            review: async () => false,
+        },
+    });
+    const result = await controller.insert('s', 'command', 'ctl');
+    assert.deepEqual(result, { ok: false, reason: 'cancelled' });
+    assert.deepEqual(sent, []);
+    assert.deepEqual(notices, []);
+});
+
+test('a confirmed review whose send fails reports send-failed, not cancelled', async () => {
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true }),
+        getCommands: () => [{ id: 'ctl', name: 'Control', command: 'ls\x0f', parameters: '' }],
+        emitInput: () => false,
+        pasteGuard: {
+            needsReview: () => true,
+            capture: id => ({ id }),
+            review: async (binding, text, send) => send(text),
+        },
+    });
+    assert.deepEqual(await controller.insert('s', 'command', 'ctl'), { ok: false, reason: 'send-failed' });
+});
+
+test('sudo insert reviews exactly the final text that would be sent', async () => {
+    const reviewed = [];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true }),
+        getCommands: () => [{ id: 'ctl', name: 'Control', command: 'ls\x0f', parameters: '' }],
+        emitInput: () => true,
+        pasteGuard: {
+            needsReview: text => /[\x00-\x1f]/.test(text),
+            capture: id => ({ id }),
+            review: async (binding, text, send) => { reviewed.push(text); return send(text); },
+        },
+    });
+    assert.equal((await controller.insert('s', 'command', 'ctl', { useSudo: true })).ok, true);
+    assert.deepEqual(reviewed, ['sudo ls\x0f']);
+});
+
+test('insert result handling stays quiet on cancel, reports failures and remembers only successes', () => {
+    const toasts = [];
+    const remembered = [];
+    let synced = 0;
+    globalThis.showNotification = (message, type) => toasts.push([message, type]);
+    try {
+        const view = {
+            t: (key, fallback) => fallback,
+            rememberUse: entry => remembered.push(entry.id),
+            sync: () => { synced += 1; },
+        };
+        launcher.finishInsert.call(view, { ok: false, reason: 'cancelled' }, { id: 'a' });
+        assert.deepEqual(toasts, []);
+        assert.deepEqual(remembered, []);
+        launcher.finishInsert.call(view, { ok: false, reason: 'send-failed' }, { id: 'b' });
+        assert.equal(toasts.length, 1);
+        assert.equal(toasts[0][1], 'error');
+        assert.equal(synced, 1);
+        assert.deepEqual(remembered, []);
+        launcher.finishInsert.call(view, { ok: true }, { id: 'c' });
+        assert.deepEqual(remembered, ['c']);
+    } finally {
+        delete globalThis.showNotification;
+    }
+});
+
+test('inserts that need review are refused when the paste guard is unavailable', async () => {
+    assert.equal(globalThis.TerminalPasteGuard, undefined);
+    const sent = [];
+    const library = [
+        { id: 'c0', name: 'C0', command: 'ls\x0f', parameters: '' },
+        { id: 'esc', name: 'Escape', command: 'ls\x1b[2J', parameters: '' },
+        { id: 'c1', name: 'C1', command: 'ls\x9b', parameters: '' },
+        { id: 'bidi', name: 'Bidi', command: 'ls ‮', parameters: '' },
+        { id: 'plain', name: 'Plain', command: 'ls -la', parameters: '' },
+    ];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true }), getCommands: () => library,
+        emitInput: (id, text) => { sent.push([id, text]); },
+    });
+    for (const id of ['c0', 'esc', 'c1', 'bidi']) {
+        assert.deepEqual(await controller.insert('s', 'command', id), { ok: false, reason: 'send-failed' });
+    }
+    assert.deepEqual(sent, []);
+    assert.equal((await controller.insert('s', 'command', 'plain')).ok, true);
+    assert.deepEqual(sent, [['s', 'ls -la']]);
+});
+
+test('the fallback review check matches the paste guard character set', () => {
+    const characterClass = (file, pattern) => {
+        const match = fs.readFileSync(require.resolve(`../../static/js/${file}`), 'utf8').match(pattern);
+        assert.ok(match, `${file} review pattern not found`);
+        return match[1];
+    };
+    assert.equal(
+        characterClass('session-command-launcher.js', /function needsPasteReview\(value\) \{\s*return \/(\[[^\]]+\])\/\.test\(value\)/),
+        characterClass('terminal-paste-guard.js', /const needsReview = text => \/(\[[^\]]+\])\/\.test\(text\)/),
+    );
+});

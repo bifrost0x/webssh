@@ -3,6 +3,8 @@ import os
 import threading
 import pytest
 
+from tests.credential_fixtures import assign_credential
+
 pytestmark = pytest.mark.skipif(os.environ.get('SMB_INTEGRATION') != '1', reason='requires disposable Samba lab')
 
 
@@ -25,7 +27,7 @@ def test_named_smb_credentials_preserve_source_on_policy_disable(app, client):
     service = app.extensions['credentials']
     resource = service.resolve_resource(uid, 'smb:' + share['id'])
     credential = service.create_named(uid, dict(name='SMB lab',password=os.environ['SMB_INTEGRATION_PASSWORD']))
-    service.assign_named(uid, resource['id'], credential['id'], True)
+    assign_credential(service, uid, aid, resource['id'], credential['id'])
     with pytest.raises(AutomationError):
         service.connection_password(uid, aid, 'smb', resource['id'], dict(resource, share='Other'))
     pool = SMBConnectionPool(allowed_targets=(resource['host'],))

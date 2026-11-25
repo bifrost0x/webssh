@@ -356,3 +356,63 @@ test('cancelling external authentication closes its popup and stops polling', as
     expect(polls).toBe(pollsAtCancel);
     expect(calls.filter(call => call.endpoint === 'execute')).toHaveLength(0);
 });
+
+test('passkey reauthentication decodes the options and posts the encoded assertion', async ({page}) => {
+    const calls = await setup(page);
+    const verified = [];
+    await page.route('**/api/account/step-up/**', async route => {
+        const endpoint = new URL(route.request().url()).pathname.split('/').slice(-2).join('/');
+        if (endpoint.endsWith('/intents')) {
+            await route.fulfill({json: {intent: 'passkey-intent', methods: ['passkey'], preferred_method: 'passkey'}});
+        } else if (endpoint === 'passkey/options') {
+            await route.fulfill({json: {
+                challenge: '-_8AAT4_PzA', rpId: 'example.test', timeout: 60000, userVerification: 'preferred',
+                allowCredentials: [{type: 'public-key', id: 'AQIDBA', transports: ['internal']}]
+            }});
+        } else if (endpoint === 'passkey/verify') {
+            verified.push(route.request().postDataJSON());
+            await route.fulfill({json: {grant: 'passkey-grant'}});
+        } else {
+            await route.fulfill({status: 404, json: {error: 'unexpected'}});
+        }
+    });
+    await page.evaluate(() => {
+        window.__passkeyRequests = [];
+        const buffer = values => new Uint8Array(values).buffer;
+        Object.defineProperty(navigator.credentials, 'get', {configurable: true, value: async request => {
+            const publicKey = request.publicKey;
+            window.__passkeyRequests.push({
+                aborts: request.signal instanceof AbortSignal,
+                challenge: publicKey.challenge instanceof Uint8Array ? Array.from(publicKey.challenge) : null,
+                ids: publicKey.allowCredentials.map(item => Array.from(item.id)),
+                rpId: publicKey.rpId
+            });
+            return {
+                id: '-_8AAT4_', type: 'public-key', authenticatorAttachment: 'platform',
+                rawId: buffer([0xfb, 0xff, 0x00, 0x01, 0x3e, 0x3f]),
+                getClientExtensionResults: () => ({}),
+                response: {
+                    clientDataJSON: buffer([0x7b, 0x7d]),
+                    authenticatorData: buffer([0xff, 0xfe, 0xfd, 0x80]),
+                    signature: buffer([0x00, 0x3e]),
+                    userHandle: null
+                }
+            };
+        }});
+    });
+    const execute = page.waitForRequest(request => request.url().endsWith('/api/server-operations/execute'));
+    await page.evaluate(() => window.ServerOperations.open('ops', 'service', {unit: 'sshd.service'}));
+    const dialog = page.locator('.server-management');
+    await dialog.getByRole('button', {name: 'Restart', exact: true}).click();
+    await dialog.getByRole('button', {name: 'Confirm and execute'}).click();
+    expect((await execute).headers()['x-webssh-step-up']).toBe('passkey-grant');
+    expect(await page.evaluate(() => window.__passkeyRequests)).toEqual([{
+        aborts: true, challenge: [251, 255, 0, 1, 62, 63, 63, 48], ids: [[1, 2, 3, 4]], rpId: 'example.test'
+    }]);
+    expect(verified).toEqual([{intent: 'passkey-intent', credential: {
+        id: '-_8AAT4_', rawId: '-_8AAT4_', type: 'public-key', authenticatorAttachment: 'platform',
+        clientExtensionResults: {},
+        response: {clientDataJSON: 'e30', authenticatorData: '__79gA', signature: 'AD4', userHandle: null}
+    }}]);
+    expect(calls.filter(call => call.endpoint === 'execute')).toHaveLength(1);
+});

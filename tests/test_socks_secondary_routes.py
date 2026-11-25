@@ -8,6 +8,7 @@ import zipfile
 import pytest
 
 from app.automation_store import AutomationError
+from tests.credential_fixtures import create_assigned_credential
 from tests.test_automation_service import context  # noqa: F401
 from tests.test_automation_schedules import scheduling, activate  # noqa: F401
 
@@ -62,10 +63,10 @@ def test_missing_proxy_is_broken_in_overview_and_restore_check(app, client, cont
 
 
 def test_overview_socks_auth_uses_the_proxy_credential_binding(app, client, context):
-    uid = context[0]
+    uid, aid = context[:2]
     profile, proxy = _routed_profile(uid, auth_type='password')
-    app.extensions['credentials'].create_assigned(uid, 'socks:' + proxy['id'],
-        {'name': 'Proxy login', 'password': 'test-only-proxy-password'}, True)
+    create_assigned_credential(app.extensions['credentials'], uid, aid, 'socks:' + proxy['id'],
+        {'name': 'Proxy login', 'password': 'test-only-proxy-password'})
     response = client.get('/api/overview/status')
     row = next(item for item in response.json['hosts'] if item['id'] == profile['id'])
     assert row['socks_auth'] == 'saved'

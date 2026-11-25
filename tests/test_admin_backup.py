@@ -233,6 +233,7 @@ def test_admin_can_create_and_one_time_download_online_backup(
     assert download.status_code == 200
     assert download.mimetype == 'application/zip'
     assert download.headers['Cache-Control'] == 'no-store'
+    assert download.headers['Pragma'] == 'no-cache'
     assert download.headers['X-Content-Type-Options'] == 'nosniff'
     assert b''.join(download.response).startswith(b'PK')
     assert operation_id not in isolated_operations._records

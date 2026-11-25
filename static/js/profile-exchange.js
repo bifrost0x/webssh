@@ -23,7 +23,10 @@
         if (response.ok && response.headers.get('Content-Type')?.includes('application/zip')) {
             return response.blob();
         }
-        const data = await response.json();
+        const data = await response.json().catch(error => {
+            if (response.ok) throw error;
+            return {};
+        });
         if (!response.ok) throw new Error(data.error || t('exchange.failed'));
         return data;
     };

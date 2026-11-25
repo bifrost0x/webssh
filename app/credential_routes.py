@@ -2,13 +2,12 @@
 from flask import Blueprint, current_app, jsonify, redirect, url_for, request
 from flask_login import current_user, login_required
 from .automation_store import AutomationError
-from .automation_routes import _auth, _data, _grant, bounds, private, corrupt, storage_failure
+from .automation_routes import _auth, _data, _grant, private, corrupt, storage_failure
 from .auth import check_reauth_rate_limit
 from .storage_errors import StorageCorruptionError
 from .transport_security import request_reached_over_https
 
 credentials_blueprint = Blueprint('credentials', __name__)
-credentials_blueprint.before_request(bounds)
 credentials_blueprint.after_request(private)
 credentials_blueprint.register_error_handler(StorageCorruptionError, corrupt)
 credentials_blueprint.register_error_handler(OSError, storage_failure)

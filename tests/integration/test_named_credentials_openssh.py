@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.credential_fixtures import assign_credential
 from tests.integration.test_automation_openssh import peer, trust, PASSWORD  # noqa: F401
 
 pytestmark = pytest.mark.skipif(os.environ.get('PARAMIKO5_INTEGRATION') != '1', reason='requires disposable OpenSSH lab')
@@ -27,7 +28,7 @@ def test_named_password_sftp_and_unattended_schedule(app, client, peer):
     aid = auth.id
     credentials = app.extensions['credentials']
     record = credentials.create_named(uid, dict(name='Disposable SSH', username=target['username'], password=PASSWORD))
-    credentials.assign_named(uid, profile['id'], record['id'], True)
+    assign_credential(credentials, uid, aid, profile['id'], record['id'])
     token = credentials.connection_generation(uid, aid, 'ssh', profile['id'], profile)
     def check():
         if credentials.connection_generation(uid, aid, 'ssh', profile['id'], profile) != token:

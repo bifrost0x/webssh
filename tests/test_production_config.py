@@ -1145,3 +1145,54 @@ def test_download_limits_keep_every_integer(name, value):
     result = _load_config(_production_env(**{name: value}), f'import config; print(config.{name})')
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == value
+
+
+@pytest.mark.parametrize(('name', 'value', 'message'), [
+    ('SESSION_TIMEOUT', 'x', 'SESSION_TIMEOUT must be a positive integer'),
+    ('SESSION_TIMEOUT', '0', 'SESSION_TIMEOUT must be a positive integer'),
+    (
+        'MAX_DOWNLOAD_SIZE',
+        '1.5',
+        'MAX_DOWNLOAD_SIZE must be an integer number of bytes',
+    ),
+    (
+        'LDAP_CONNECT_TIMEOUT',
+        'x',
+        'LDAP_CONNECT_TIMEOUT must be between 1 and 15',
+    ),
+    (
+        'LDAP_CONNECT_TIMEOUT',
+        '16',
+        'LDAP_CONNECT_TIMEOUT must be between 1 and 15',
+    ),
+    (
+        'LDAP_CONNECT_TIMEOUT',
+        '0',
+        'LDAP_CONNECT_TIMEOUT must be between 1 and 15',
+    ),
+    ('TRUSTED_PROXIES', 'x', 'TRUSTED_PROXIES must be a non-negative integer'),
+    ('TRUSTED_PROXIES', '-1', 'TRUSTED_PROXIES must be a non-negative integer'),
+])
+def test_integer_settings_keep_their_configuration_error_texts(
+    name, value, message
+):
+    result = _load_config(_production_env(**{name: value}))
+
+    assert result.returncode != 0
+    assert f'CONFIGURATION ERROR: {message}' in result.stderr
+
+
+@pytest.mark.parametrize(('name', 'value'), [
+    ('LDAP_CONNECT_TIMEOUT', '1'),
+    ('LDAP_CONNECT_TIMEOUT', '15'),
+    ('TRUSTED_PROXIES', '0'),
+    ('MAX_DOWNLOAD_SIZE', '-1'),
+])
+def test_integer_settings_accept_their_boundaries(name, value):
+    result = _load_config(
+        _production_env(**{name: value}),
+        f'import config; print(config.{name})',
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == value

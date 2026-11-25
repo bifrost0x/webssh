@@ -161,33 +161,14 @@ def save_user_commands(
         previous_size=previous_size,
         previous_count=previous_count,
     )
-    user_commands_file.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(user_commands_file, commands)
     return True
 
 @user_operation
 def get_all_commands(user_id, os_filter=None):
     """Get both system and user commands, optionally filtered by OS."""
-    system_cmds = load_system_commands()
-    user_cmds = load_user_commands(user_id)
-
-    for cmd in system_cmds:
-        cmd['isSystem'] = True
-        cmd['userId'] = None
-
-    for cmd in user_cmds:
-        cmd['isSystem'] = False
-        cmd['userId'] = user_id
-
-    all_commands = system_cmds + user_cmds
-
-    if os_filter:
-        all_commands = [
-            cmd for cmd in all_commands
-            if 'all' in cmd.get('os', ['all']) or os_filter.lower() in [o.lower() for o in cmd.get('os', [])]
-        ]
-
-    return all_commands
+    with storage_lock(f'commands:{user_id}'):
+        return _get_all_commands_with_lock_held(user_id, os_filter)
 
 
 def _get_all_commands_with_lock_held(user_id, os_filter=None):

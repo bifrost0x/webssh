@@ -4,6 +4,7 @@ from copy import deepcopy
 import pytest
 
 from app.automation_store import AutomationError
+from tests.credential_fixtures import assign_credential
 from tests.test_automation_service import context  # noqa: F401
 
 
@@ -269,7 +270,7 @@ def test_native_named_password_real_engine_without_browser_session(app, context,
     service = ScheduleService(app)
     credentials = service.automation.credentials
     record = credentials.create_named(uid, dict(name='Scheduled password', username=profile['username'], password='native-scheduled-secret'))
-    credentials.assign_named(uid, profile['id'], record['id'], True)
+    assign_credential(credentials, uid, aid, profile['id'], record['id'])
     now = datetime(2026, 11, 3, 12, 0, tzinfo=timezone.utc)
     activate((service, uid, aid, book, profile), now)
     db.session.delete(db.session.get(AuthenticationSession, aid))

@@ -11,7 +11,6 @@ from flask import (Blueprint, current_app, jsonify, redirect, render_template,
                    request, session, url_for)
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
-from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
 
@@ -19,7 +18,9 @@ from . import login_devices, socketio, user_lifecycle
 from .app_settings import login_username_rate_limits
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
+    CONFIG_ADMIN_CONVERSION_REFUSED,
     check_rate_limit,
+    is_config_admin_name,
     password_exceeds_bcrypt_limit,
     release_login_username_attempt,
     reserve_login_username_attempt,
@@ -51,16 +52,12 @@ _JSON_BODY_TOO_LARGE = object()
 
 
 def _bounded_json():
-    request.max_content_length = _MAX_LDAP_JSON_BYTES
     if (
         request.content_length is not None
         and request.content_length > _MAX_LDAP_JSON_BYTES
     ):
         return _JSON_BODY_TOO_LARGE
-    try:
-        raw_data = request.get_data(cache=True)
-    except RequestEntityTooLarge:
-        return _JSON_BODY_TOO_LARGE
+    raw_data = request.get_data(cache=True)
     if len(raw_data) > _MAX_LDAP_JSON_BYTES:
         return _JSON_BODY_TOO_LARGE
     data = request.get_json(silent=True)
@@ -485,6 +482,15 @@ def unlink_ldap_identity(user_id, identity_id):
     row = db.session.get(LDAPIdentity, identity_id)
     if row is None or row.user_id != target.id:
         return jsonify({'error': 'LDAP identity not found'}), 404
+    if is_config_admin_name(target.username):
+        log_security_event(
+            'LDAP_IDENTITY_UNLINK_REJECTED',
+            level=logging.WARNING,
+            admin=current_user.username,
+            user=target.username,
+            reason='listed_in_admin_users',
+        )
+        return jsonify({'error': CONFIG_ADMIN_CONVERSION_REFUSED}), 409
     new_password = data.get('new_password')
     if not isinstance(new_password, str):
         return jsonify({'error': 'New password is required'}), 400

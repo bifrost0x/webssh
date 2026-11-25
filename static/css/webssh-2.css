@@ -927,8 +927,7 @@ body:has(.auth-container) {
     letter-spacing: -0.02em;
 }
 
-.auth-source-selector,
-.auth-tabs {
+.auth-source-selector {
     border-color: var(--ws2-border);
     background: color-mix(in srgb, var(--ws2-canvas) 70%, var(--ws2-surface));
 }
@@ -2078,17 +2077,6 @@ body:has(.auth-shell)::after {
     color: var(--ws2-text-primary);
 }
 
-.auth-shell-header {
-    display: flex;
-    width: min(1080px, calc(100% - 40px));
-    min-height: 58px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-    margin: 0 auto;
-    border-bottom: 1px solid var(--ws2-border);
-}
-
 .auth-shell-brand {
     display: inline-flex;
     align-items: center;
@@ -2223,21 +2211,12 @@ body:has(.auth-shell)::after {
     margin: 26px auto 36px;
 }
 
-.auth-brand-panel,
 .auth-form-panel {
     min-width: 0;
     border: 1px solid var(--ws2-border);
     border-radius: var(--ws2-radius-lg);
     background: var(--ws2-surface);
     box-shadow: var(--ws2-shadow);
-}
-
-.auth-brand-panel {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 34px;
-    background: var(--ws2-panel);
 }
 
 .auth-brand-eyebrow,
@@ -2248,24 +2227,6 @@ body:has(.auth-shell)::after {
     font-weight: 750;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-}
-
-.auth-brand-panel h2 {
-    max-width: 16ch;
-    margin: 12px 0 0;
-    color: var(--ws2-text-primary);
-    font-size: clamp(24px, 2.4vw, 34px);
-    font-weight: 650;
-    letter-spacing: -0.035em;
-    line-height: 1.08;
-}
-
-.auth-brand-panel > p {
-    max-width: 40ch;
-    margin: 16px 0 0;
-    color: var(--ws2-text-secondary);
-    font-size: 13px;
-    line-height: 1.6;
 }
 
 .auth-capability-list {
@@ -2422,18 +2383,9 @@ body:has(.auth-shell)::after {
         grid-template-columns: minmax(0, 1fr);
         margin-top: 20px;
     }
-
-    .auth-brand-panel {
-        display: none;
-    }
 }
 
 @media (max-width: 479px) {
-    .auth-shell-header {
-        width: calc(100% - 24px);
-        min-height: 54px;
-    }
-
     .auth-shell-brand small,
     .auth-shell .lang-btn #currentLangName,
     .auth-shell-return span:last-child {

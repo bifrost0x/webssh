@@ -21,7 +21,12 @@ from .auth import (
     register_socket_session,
 )
 from .models import db, SSHSession, SocketSession
-from .user_settings import save_user_settings, get_user_settings
+from .user_settings import (
+    DISCONNECT_SESSION_ACTIONS,
+    THEMES,
+    get_user_settings,
+    save_user_settings,
+)
 from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_security_event,
                               log_ssh_connection, log_ssh_disconnect,
@@ -53,7 +58,6 @@ from .socket_protocol import (
 )
 from .remote_transfer import (
     RemoteTransferCancelled,
-    RemoteTransferError,
     TransferBudget,
     copy_remote_entry,
 )
@@ -423,12 +427,10 @@ def _is_valid_host(host_str):
     except ValueError:
         return False
 
-def _validate_ssh_params(host, port, username, allow_internal=False, *, allow_gateway=False):
+def _validate_ssh_params(host, port, username, *, allow_gateway=False):
     """Validate SSH connection parameters. Returns (clean_host, clean_port, clean_username, error).
 
-    ``allow_internal`` remains for compatibility with callers. DNS and address
-    policy are enforced only at the connector, where the validated result can
-    be pinned to the socket without a time-of-check/time-of-use gap.
+    Network policy is enforced at the connector.
     """
     host = (host or '').strip()
     if not host:
@@ -456,7 +458,7 @@ def _validate_ssh_params(host, port, username, allow_internal=False, *, allow_ga
     username = (username or '').strip()
     if not username:
         return None, None, None, 'Username is required'
-    if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
+    if not profile_manager.USERNAME_PATTERN.match(username):
         return None, None, None, 'Invalid username format'
 
     return canonicalize_hostname(host), port, username, None
@@ -1473,10 +1475,9 @@ def handle_ssh_connect(data, current_user=None):
                 )
                 return
 
-        # The target may be internal when reached via a bastion (legitimate).
         host, port, username, error = _validate_ssh_params(
             data.get('host'), data.get('port', 22), data.get('username'),
-            allow_internal=bool(proxy_jump or socks_proxy), allow_gateway=auth_type != 'tailscale'
+            allow_gateway=auth_type != 'tailscale'
         )
         if error:
             emit_error(error)
@@ -1545,8 +1546,7 @@ def handle_ssh_connect(data, current_user=None):
                 emit_error(f'SSH key error: {key_error}')
                 return
 
-        # Resolve optional ProxyJump / bastion parameters. The bastion is reached
-        # directly by the server, so it is validated WITHOUT allow_internal.
+        # Resolve optional ProxyJump / bastion parameters.
         bastion_host = bastion_port = bastion_username = None
         if proxy_jump:
             bastion_host, bastion_port, bastion_username, bastion_error = _validate_ssh_params(
@@ -1558,7 +1558,14 @@ def handle_ssh_connect(data, current_user=None):
 
         use_tmux = bool(data.get('use_tmux')) and runtime_feature_enabled('tmux_enabled')
         reconnect_tmux_name = None
+        display_name = None
         if use_tmux:
+            display_name = data.get('display_name')
+            if display_name is not None and not isinstance(display_name, str):
+                emit_error('Invalid tmux session name')
+                return
+            if display_name:
+                display_name = display_name.strip()[:128] or None
             raw_name = data.get('reconnect_tmux_name')
             if raw_name:
                 import re as _re
@@ -1584,9 +1591,12 @@ def handle_ssh_connect(data, current_user=None):
         lifecycle = app.extensions['runtime_lifecycle']
         registry = app.extensions['ssh_attempt_registry']
         gateway_attempt = None
+        # Requests without a client id still need a registry entry so that a
+        # socket disconnect cancels them. The tuple can never equal a
+        # client-chosen string id and therefore never trips duplicate checks.
         attempt_key = (
-            (str(current_user.id), socket_sid, client_request_id)
-            if client_request_id else None
+            str(current_user.id), socket_sid,
+            client_request_id or ('server', secrets.token_hex(16)),
         )
         is_gateway = ':' in username
         interactive_ssh = (
@@ -1628,14 +1638,14 @@ def handle_ssh_connect(data, current_user=None):
                 'handle': None,
                 'state': 'pending',
             }
-            if attempt_key is not None:
-                with _ssh_connect_attempts_lock:
-                    if (attempt_key in _ssh_connect_attempts
-                            or registry.get(current_user.id, socket_sid, client_request_id) is not None):
-                        credential_box.clear()
-                        emit_error('Connection request already in progress')
-                        return
-                    _ssh_connect_attempts[attempt_key] = attempt
+            with _ssh_connect_attempts_lock:
+                if client_request_id and (
+                        attempt_key in _ssh_connect_attempts
+                        or registry.get(current_user.id, socket_sid, client_request_id) is not None):
+                    credential_box.clear()
+                    emit_error('Connection request already in progress')
+                    return
+                _ssh_connect_attempts[attempt_key] = attempt
 
         @copy_current_request_context
         def connect_ssh(lifecycle_cancel_event, credentials=credential_box):
@@ -1660,6 +1670,8 @@ def handle_ssh_connect(data, current_user=None):
             local_bastion_key_content = credentials.pop(
                 'bastion_key_content', None
             )
+            committed_session_id = None
+            session_recorded = False
             try:
                 if cancellation.is_set():
                     return
@@ -1748,6 +1760,7 @@ def handle_ssh_connect(data, current_user=None):
                         ),
                     )
                     return
+                committed_session_id = session_id
 
                 created_session = ssh_manager.get_session(session_id)
                 if not created_session:
@@ -1764,11 +1777,7 @@ def handle_ssh_connect(data, current_user=None):
                     if actual_use_tmux else None
                 )
 
-                display_name = (
-                    data.get('display_name') if actual_use_tmux else None
-                )
-                if display_name:
-                    display_name = display_name.strip()[:128] or None
+                session_display_name = display_name if actual_use_tmux else None
                 try:
                     # Clean up the specific old disconnected persistent session
                     # when reconnecting to avoid ghost tabs on refresh.
@@ -1806,10 +1815,11 @@ def handle_ssh_connect(data, current_user=None):
                         via_jump=bastion_host,
                         reconnect_route_known=True,
                         tmux_session_name=created_tmux_name,
-                        display_name=display_name if actual_use_tmux else None,
+                        display_name=session_display_name,
                     )
                     db.session.add(ssh_session)
                     db.session.commit()
+                    session_recorded = True
                 except Exception as db_err:
                     db.session.rollback()
                     log_error(
@@ -1835,7 +1845,7 @@ def handle_ssh_connect(data, current_user=None):
                     'key_id': key_id,
                     'auth_type': auth_type,
                     'tmux_session_name': created_tmux_name,
-                    'display_name': display_name,
+                    'display_name': session_display_name,
                     'file_source': _public_file_source(
                         make_source_id(
                             FileSourceKind.SFTP_SESSION,
@@ -1844,6 +1854,7 @@ def handle_ssh_connect(data, current_user=None):
                         current_user.id,
                     ),
                 })
+                committed_session_id = None
                 log_ssh_connection(
                     current_user.username,
                     host,
@@ -1859,8 +1870,11 @@ def handle_ssh_connect(data, current_user=None):
                             lambda payload: socketio.emit('host_platform', payload, to=request.sid),
                             cancel_event=cancellation,
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log_debug(
+                            'Host platform detection failed',
+                            error_type=type(exc).__name__,
+                        )
                     try:
                         from .host_platform import recheck_reboot_hint
                         recheck_reboot_hint(
@@ -1868,8 +1882,11 @@ def handle_ssh_connect(data, current_user=None):
                             lambda payload: socketio.emit('host_maintenance', payload, to=request.sid),
                             cancel_event=cancellation,
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log_debug(
+                            'Host reboot hint check failed',
+                            error_type=type(exc).__name__,
+                        )
             except StorageCorruptionError as error:
                 if not cancellation.is_set():
                     emit('ssh_error', _storage_error_payload(
@@ -1884,6 +1901,17 @@ def handle_ssh_connect(data, current_user=None):
                     error=str(error),
                     user=current_user.username,
                 )
+                if committed_session_id is not None:
+                    # The client never learns this session id. A recorded
+                    # persistent row stays a reconnect candidate, so keep its
+                    # tmux session; otherwise nothing could reach it again.
+                    ssh_manager.close_session(
+                        committed_session_id,
+                        kill_tmux=bool(
+                            use_tmux and not reconnect_tmux_name
+                            and not session_recorded
+                        ),
+                    )
                 if not cancellation.is_set():
                     emit_error('Connection failed')
             finally:
@@ -1905,10 +1933,9 @@ def handle_ssh_connect(data, current_user=None):
                 else:
                     with attempt['commit_lock']:
                         attempt['state'] = 'finished'
-                    if attempt_key is not None:
-                        with _ssh_connect_attempts_lock:
-                            if _ssh_connect_attempts.get(attempt_key) is attempt:
-                                _ssh_connect_attempts.pop(attempt_key, None)
+                    with _ssh_connect_attempts_lock:
+                        if _ssh_connect_attempts.get(attempt_key) is attempt:
+                            _ssh_connect_attempts.pop(attempt_key, None)
 
         try:
             handle = lifecycle.start_job(
@@ -1925,7 +1952,7 @@ def handle_ssh_connect(data, current_user=None):
         except Exception as error:
             if gateway_attempt is not None:
                 registry.finish(gateway_attempt)
-            elif attempt_key is not None:
+            else:
                 with _ssh_connect_attempts_lock:
                     if _ssh_connect_attempts.get(attempt_key) is attempt:
                         _ssh_connect_attempts.pop(attempt_key, None)
@@ -2703,7 +2730,7 @@ def handle_upload_key(data, current_user=None):
             return _key_mutation_error(
                 'Key name too long (max 128 characters)'
             )
-        if len(key_content.encode('utf-8')) > 64 * 1024:
+        if len(key_content.encode('utf-8')) > key_manager.SSH_KEY_CONTENT_MAX_BYTES:
             return _key_mutation_error(
                 'Key content too large (max 64KB)'
             )
@@ -2783,7 +2810,7 @@ def handle_replace_key(data, current_user=None):
             or not key_content
         ):
             return _key_mutation_error('Key ID and key content required')
-        if len(key_content.encode('utf-8')) > 64 * 1024:
+        if len(key_content.encode('utf-8')) > key_manager.SSH_KEY_CONTENT_MAX_BYTES:
             return _key_mutation_error(
                 'Key content too large (max 64KB)'
             )
@@ -3056,11 +3083,7 @@ def handle_set_theme(data, current_user=None):
     """Persist theme selection for the current user."""
     try:
         theme = data.get('theme')
-        valid_themes = [
-            'glass', 'werkbank', 'retro', 'solar', 'paper', 'noir',
-            'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'
-        ]
-        if theme not in valid_themes:
+        if not isinstance(theme, str) or theme not in THEMES:
             emit('error', {'error': 'Invalid theme'})
             return
 
@@ -3126,7 +3149,7 @@ def handle_set_disconnect_session_action(data, current_user=None):
     """Persist how the workspace handles a completed SSH connection."""
     try:
         action = data.get('action') if isinstance(data, dict) else None
-        if action not in {'retry', 'close'}:
+        if action not in DISCONNECT_SESSION_ACTIONS:
             payload = {
                 'success': False,
                 'error': 'Invalid disconnect session action',
@@ -5434,6 +5457,33 @@ def handle_transfer_server_to_server(data, current_user=None):
             'destination_source_id': destination_source_id,
         }
 
+        def fail(**fields):
+            emit('s2s_transfer_error', {
+                **response_context,
+                'transfer_id': transfer_id,
+                **fields,
+            })
+            return {'success': False, **fields, **response_context}
+
+        def resolve(resolved_source_id, capability):
+            try:
+                resolved = file_service.resolve(
+                    resolved_source_id,
+                    current_user.id,
+                    capability,
+                )
+                file_service.resolve(
+                    resolved_source_id,
+                    current_user.id,
+                    FileCapability.REMOTE_TRANSFER,
+                )
+            except FileSourceUnavailable:
+                failure = classify_transfer_failure(
+                    FileSourceUnavailable(), operation='remote_transfer'
+                )
+                return None, fail(**failure.to_public_dict())
+            return resolved, None
+
         if (
             not _valid_file_request(identity)
             or conflict_policy not in {'error', 'replace'}
@@ -5443,82 +5493,16 @@ def handle_transfer_server_to_server(data, current_user=None):
                 requested_dest_path,
             ])
         ):
-            emit('s2s_transfer_error', {
-                **response_context,
-                'transfer_id': None,
-                'error': 'Missing required fields'
-            })
-            return {
-                'success': False,
-                'error': 'Missing required fields',
-                **response_context,
-            }
+            return fail(error='Missing required fields')
 
-        legacy_source_path = sftp_handler.sanitize_path(requested_source_path)
-        legacy_dest_path = sftp_handler.sanitize_path(requested_dest_path)
-        if legacy_source_path is None or legacy_dest_path is None:
-            emit('s2s_transfer_error', {
-                **response_context,
-                'transfer_id': transfer_id,
-                'error': 'Invalid path'
-            })
-            return {
-                'success': False,
-                'error': 'Invalid path',
-                **response_context,
-            }
-
-        try:
-            source = file_service.resolve(
-                source_id,
-                current_user.id,
-                FileCapability.READ,
-            )
-            file_service.resolve(
-                source_id,
-                current_user.id,
-                FileCapability.REMOTE_TRANSFER,
-            )
-        except FileSourceUnavailable:
-            failure = classify_transfer_failure(
-                FileSourceUnavailable(), operation='remote_transfer'
-            )
-            emit('s2s_transfer_error', {
-                **response_context,
-                'transfer_id': transfer_id,
-                **failure.to_public_dict(),
-            })
-            return {
-                'success': False,
-                **failure.to_public_dict(),
-                **response_context,
-            }
-
-        try:
-            destination = file_service.resolve(
-                destination_source_id,
-                current_user.id,
-                FileCapability.WRITE,
-            )
-            file_service.resolve(
-                destination_source_id,
-                current_user.id,
-                FileCapability.REMOTE_TRANSFER,
-            )
-        except FileSourceUnavailable:
-            failure = classify_transfer_failure(
-                FileSourceUnavailable(), operation='remote_transfer'
-            )
-            emit('s2s_transfer_error', {
-                **response_context,
-                'transfer_id': transfer_id,
-                **failure.to_public_dict(),
-            })
-            return {
-                'success': False,
-                **failure.to_public_dict(),
-                **response_context,
-            }
+        source, rejected = resolve(source_id, FileCapability.READ)
+        if rejected:
+            return rejected
+        destination, rejected = resolve(
+            destination_source_id, FileCapability.WRITE
+        )
+        if rejected:
+            return rejected
 
         try:
             source_audit_identity = file_source_audit_identity(source)
@@ -5566,23 +5550,10 @@ def handle_transfer_server_to_server(data, current_user=None):
                     exception_type=type(error).__name__,
                 )
 
-        if hasattr(source, 'backend') and hasattr(destination, 'backend'):
-            source_path = source.backend.normalize_path(requested_source_path)
-            dest_path = destination.backend.normalize_path(requested_dest_path)
-        else:
-            source_path = legacy_source_path
-            dest_path = legacy_dest_path
+        source_path = source.backend.normalize_path(requested_source_path)
+        dest_path = destination.backend.normalize_path(requested_dest_path)
         if source_path is None or dest_path is None:
-            emit('s2s_transfer_error', {
-                **response_context,
-                'transfer_id': transfer_id,
-                'error': 'Invalid path',
-            })
-            return {
-                'success': False,
-                'error': 'Invalid path',
-                **response_context,
-            }
+            return fail(error='Invalid path')
 
         user_id = current_user.id
         user_room = f'user_{user_id}'
@@ -5647,72 +5618,49 @@ def handle_transfer_server_to_server(data, current_user=None):
                     user_id,
                     FileCapability.REMOTE_TRANSFER,
                 )
-                if (
-                    hasattr(active_source, 'backend')
-                    and hasattr(active_destination, 'backend')
-                ):
-                    progress_throttle = ProgressThrottle()
+                progress_throttle = ProgressThrottle()
 
-                    def report_progress(progress):
-                        nonlocal transferred
-                        transferred = progress['transferred']
-                        if not progress_throttle.ready():
-                            return
-                        total = max(
-                            transferred,
-                            progress.get('file_size', 0),
-                        )
-                        socketio.emit('s2s_transfer_progress', {
-                            **response_context,
-                            'transfer_id': transfer_id,
-                            'filename': posixpath.basename(
-                                progress['path'].rstrip('/')
-                            ),
-                            'transferred': transferred,
-                            'total': total,
-                            'percent': (
-                                min(100, int(transferred * 100 / total))
-                                if total else 0
-                            ),
-                            'status': 'transferring',
-                        }, room=user_room)
-
-                    transfer_result = copy_remote_entry(
-                        active_source,
-                        source_path,
-                        active_destination,
-                        dest_path,
-                        conflict_policy=conflict_policy,
-                        budget=TransferBudget(
-                            max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
-                            max_members=config.MAX_TRANSFER_MEMBERS,
+                def report_progress(progress):
+                    nonlocal transferred
+                    transferred = progress['transferred']
+                    if not progress_throttle.ready():
+                        return
+                    total = max(
+                        transferred,
+                        progress.get('file_size', 0),
+                    )
+                    socketio.emit('s2s_transfer_progress', {
+                        **response_context,
+                        'transfer_id': transfer_id,
+                        'filename': posixpath.basename(
+                            progress['path'].rstrip('/')
                         ),
-                        cancel_event=cancel_event,
-                        progress=report_progress,
-                        chunk_size=config.CHUNK_SIZE,
-                    )
-                    transferred = transfer_result.bytes_transferred
-                    success, error = True, None
-                else:
-                    success, error = sftp_handler.transfer_server_to_server(
-                        source_session_id=active_source.handle_id,
-                        source_path=source_path,
-                        dest_session_id=active_destination.handle_id,
-                        dest_path=dest_path,
-                        transfer_id=transfer_id,
-                        socketio_instance=socketio,
-                        is_dir=is_dir,
-                        user_room=user_room,
-                        cancel_event=cancel_event,
-                        max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
-                        chunk_size=config.CHUNK_SIZE,
-                        event_context=response_context,
-                        conflict_policy=conflict_policy,
-                    )
-                    if isinstance(error, sftp_handler.TransferCancelled):
-                        raise RemoteTransferCancelled('Transfer cancelled')
+                        'transferred': transferred,
+                        'total': total,
+                        'percent': (
+                            min(100, int(transferred * 100 / total))
+                            if total else 0
+                        ),
+                        'status': 'transferring',
+                    }, room=user_room)
 
-                if success and _terminalize(
+                transfer_result = copy_remote_entry(
+                    active_source,
+                    source_path,
+                    active_destination,
+                    dest_path,
+                    conflict_policy=conflict_policy,
+                    budget=TransferBudget(
+                        max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                        max_members=config.MAX_TRANSFER_MEMBERS,
+                    ),
+                    cancel_event=cancel_event,
+                    progress=report_progress,
+                    chunk_size=config.CHUNK_SIZE,
+                )
+                transferred = transfer_result.bytes_transferred
+
+                if _terminalize(
                     record, user_id, 'completed', manager=transfer_manager
                 ):
                     audit_s2s('COMPLETED', transferred)
@@ -5724,37 +5672,6 @@ def handle_transfer_server_to_server(data, current_user=None):
                         ),
                         'source_path': source_path,
                         'dest_path': dest_path,
-                    }, room=user_room)
-                elif error:
-                    internal_error = (
-                        error
-                        if isinstance(error, BaseException)
-                        else RemoteTransferError('Transfer unavailable')
-                    )
-                    failure = classify_transfer_failure(
-                        internal_error, operation='remote_transfer'
-                    )
-                    if not _terminalize(
-                        record,
-                        user_id,
-                        'failed',
-                        manager=transfer_manager,
-                        failure=failure,
-                    ):
-                        return
-                    audit_s2s(failure.code, transferred)
-                    log_error(
-                        'S2S transfer failed',
-                        user_id=user_id,
-                        transfer_id=transfer_id,
-                        result_code=failure.code,
-                        operation='remote_transfer',
-                        exception_type=type(internal_error).__name__,
-                    )
-                    socketio.emit('s2s_transfer_error', {
-                        **response_context,
-                        'transfer_id': transfer_id,
-                        **failure.to_public_dict(),
                     }, room=user_room)
             except RemoteTransferCancelled as error:
                 failure = classify_transfer_failure(

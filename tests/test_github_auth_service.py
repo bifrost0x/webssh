@@ -179,3 +179,53 @@ def test_organization_policy_accepts_active_membership_and_fails_closed():
         enforce_organization_policy('token', settings, http=MissingHttp)
     with pytest.raises(GitHubProviderError):
         enforce_organization_policy('token', settings, http=FailedHttp)
+
+
+@pytest.mark.parametrize(
+    ('continuation', 'expected'),
+    (
+        ('/admin?tab=users', '/admin?tab=users'),
+        ('/\tadmin', '/'),
+        ('/admin\x00', '/'),
+        ('//[', '/'),
+        (' ///evil.example', '/'),
+        (' /admin', '/'),
+        (' //[', '/'),
+    ),
+)
+def test_oauth_state_stores_only_strictly_safe_continuations(
+    app, continuation, expected
+):
+    from app.github_auth_service import consume_oauth_state, create_oauth_state
+
+    with app.app_context():
+        create_oauth_state(
+            state='continuation-state', session_binding='browser-binding',
+            code_verifier='verifier-token', purpose='login', generation=1,
+            continuation=continuation,
+        )
+        intent = consume_oauth_state(
+            state='continuation-state', session_binding='browser-binding',
+            generation=1,
+        )
+        assert intent.continuation == expected
+
+
+def test_github_status_db_error_is_logged(app, monkeypatch, caplog):
+    from app import github_auth_service
+
+    def broken_settings(**_kwargs):
+        raise RuntimeError('database password hunter2 unreachable')
+
+    monkeypatch.setattr(github_auth_service, 'get_settings', broken_settings)
+
+    with app.app_context(), caplog.at_level('WARNING'):
+        assert github_auth_service.github_auth_is_active() is False
+
+    records = [
+        record for record in caplog.records
+        if record.getMessage() == 'GitHub sign-in status could not be determined'
+    ]
+    assert len(records) == 1
+    assert records[0].extra_data == {'error_type': 'RuntimeError'}
+    assert 'hunter2' not in caplog.text

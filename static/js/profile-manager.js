@@ -3,7 +3,6 @@ const ProfileManager = {
     keys: [],
     keysLoaded: false,
     profilesLoaded: false,
-    selectedLegacyStartupCommands: '',
     selectedProfileId: null,
     editingProfileId: null,
     editorBaseline: null,
@@ -757,9 +756,6 @@ const ProfileManager = {
             && !profile.command_set_id
             && typeof profile.startup_commands === 'string'
             && profile.startup_commands.trim();
-        this.selectedLegacyStartupCommands = hasLegacyCommands
-            ? profile.startup_commands
-            : '';
         legacyNotice?.classList.toggle('hidden', !hasLegacyCommands);
         if (convertButton) {
             convertButton.onclick = hasLegacyCommands
@@ -798,10 +794,6 @@ const ProfileManager = {
         );
     },
 
-    getLegacyStartupCommands() {
-        return this.selectedLegacyStartupCommands;
-    },
-
     connectionProfileId(data) {
         const profile = this.profiles.find(item => item.id === this.selectedProfileId);
         if (!profile || profile.host !== data.host || Number(profile.port || 22) !== Number(data.port)
@@ -812,7 +804,6 @@ const ProfileManager = {
     },
 
     clearLegacyCommands() {
-        this.selectedLegacyStartupCommands = '';
         document.getElementById('legacyCommandsNotice')?.classList.add('hidden');
     },
 

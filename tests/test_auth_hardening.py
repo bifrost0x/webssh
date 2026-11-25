@@ -5,7 +5,6 @@ import logging
 import time
 from urllib.parse import urlsplit
 
-import pyotp
 import pytest
 
 from tests.step_up_helpers import (
@@ -13,6 +12,7 @@ from tests.step_up_helpers import (
     mint_account_step_up_headers,
     password_step_up_headers,
 )
+from tests.totp_helpers import totp_at, totp_now
 
 
 def _create_user(app, username, *, is_admin=False):
@@ -81,7 +81,7 @@ def _enroll_totp(app, client, monkeypatch, username):
     secret = started["secret"]
     assert client.post("/api/totp/enroll/verify", json={
         "token": started["token"],
-        "code": pyotp.TOTP(secret).now(),
+        "code": totp_now(secret),
         "confirm_enable_mfa": True,
     }).status_code == 200
     client.post("/logout")
@@ -90,7 +90,7 @@ def _enroll_totp(app, client, monkeypatch, username):
 
 def _wrong_code(secret):
     valid = {
-        pyotp.TOTP(secret).at(time.time() + offset)
+        totp_at(secret, time.time() + offset)
         for offset in (-60, -30, 0, 30, 60)
     }
     return next(
@@ -222,7 +222,7 @@ def test_login_totp_failures_back_off_and_success_resets(
         assert rejected.get_json()["error"] == "TOTP code is invalid"
         assert _failure_state(app, user_id)[0] == expected
 
-    valid = pyotp.TOTP(secret).at(time.time() + 30)
+    valid = totp_at(secret, time.time() + 30)
     with caplog.at_level(logging.WARNING, logger="security_audit"):
         throttled = client.post("/api/totp/auth/verify", json={"code": valid})
     assert throttled.status_code == 429
@@ -261,7 +261,7 @@ def test_new_password_step_does_not_reset_the_failure_count(
     assert _password_login(client, "backoff_renew").status_code == 200
     throttled = client.post(
         "/api/totp/auth/verify",
-        json={"code": pyotp.TOTP(secret).at(time.time() + 30)},
+        json={"code": totp_at(secret, time.time() + 30)},
     )
     assert throttled.status_code == 429
     assert _failure_state(app, user_id)[0] == 3
@@ -294,7 +294,7 @@ def test_pending_login_is_discarded_after_repeated_failures(
     _set_failure_state(app, user_id, 5, seconds_ago=300)
     retried = client.post(
         "/api/totp/auth/verify",
-        json={"code": pyotp.TOTP(secret).at(time.time() + 30)},
+        json={"code": totp_at(secret, time.time() + 30)},
     )
     assert retried.status_code == 401
     assert retried.get_json()["error"] == "Pending authentication is invalid"
@@ -428,7 +428,7 @@ def test_backoff_never_locks_the_account(
     assert _password_login(client, "backoff_nolock").status_code == 200
     throttled = client.post(
         "/api/totp/auth/verify",
-        json={"code": pyotp.TOTP(secret).at(time.time() + 30)},
+        json={"code": totp_at(secret, time.time() + 30)},
     )
     assert throttled.status_code == 429
     assert throttled.get_json()["retry_after"] <= 900
@@ -436,7 +436,7 @@ def test_backoff_never_locks_the_account(
     _set_failure_state(app, user_id, 500, seconds_ago=901)
     accepted = client.post(
         "/api/totp/auth/verify",
-        json={"code": pyotp.TOTP(secret).at(time.time() + 30)},
+        json={"code": totp_at(secret, time.time() + 30)},
     )
     assert accepted.status_code == 200
     with app.app_context():
@@ -548,7 +548,7 @@ def test_step_up_failures_do_not_delay_a_fresh_login(
     stolen = client
     assert _password_login(stolen, "split_step_up").status_code == 200
     assert stolen.post("/api/totp/auth/verify", json={
-        "code": pyotp.TOTP(secret).at(time.time() + 30),
+        "code": totp_at(secret, time.time() + 30),
     }).status_code == 200
     statuses = [
         stolen.post("/api/step-up/totp", json={
@@ -567,7 +567,7 @@ def test_step_up_failures_do_not_delay_a_fresh_login(
     assert _password_login(client, "split_step_up").status_code == 200
     accepted = client.post(
         "/api/totp/auth/verify",
-        json={"code": pyotp.TOTP(secret).at(time.time() + 30)},
+        json={"code": totp_at(secret, time.time() + 30)},
     )
 
     assert accepted.status_code == 200
@@ -1300,8 +1300,7 @@ def test_passkey_step_up_clears_the_counters(
         step_up_routes, "_factor_available", lambda name: name == "passkey",
     )
     monkeypatch.setattr(
-        step_up_routes,
-        "verify_authentication_response",
+        "app.webauthn_service.verify_authentication_response",
         lambda **_kwargs: SimpleNamespace(new_sign_count=1),
     )
 
@@ -1331,7 +1330,7 @@ def test_totp_enrollment_and_disable_clear_the_counters(app):
     with app.app_context():
         view = begin_totp_enrollment(user_id, "reset-binding")
         activate_totp_enrollment(
-            view.token, pyotp.TOTP(view.secret).now(), "reset-binding",
+            view.token, totp_now(view.secret), "reset-binding",
         )
     assert _both_counters(app, user_id) == (0, 0)
 

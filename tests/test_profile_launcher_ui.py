@@ -53,10 +53,20 @@ def test_merged_profile_frontend_assets_use_content_addressed_urls():
         'js/command-set-manager.js',
         'js/session-command-launcher.js',
         'js/connection-history.js',
+        'js/terminal-search.js',
+        'js/file-preview.js',
         'js/app.js',
     )
     for asset in expected_assets:
         assert f"static_asset_url(filename='{asset}')" in template
+
+
+def test_preview_and_search_modules_load_before_application_code():
+    template = read('templates/index.html')
+    application = template.index("filename='js/app.js'")
+
+    assert template.index("filename='js/terminal-search.js'") < application
+    assert template.index("filename='js/file-preview.js'") < application
 
 
 def test_index_exposes_only_bounded_numeric_transfer_limits():

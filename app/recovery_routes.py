@@ -6,9 +6,9 @@ import config
 from .auth_redirects import public_continuation
 from flask import Blueprint, abort, jsonify, request, session
 from flask_login import current_user, login_required
-from werkzeug.exceptions import RequestEntityTooLarge
 
 from . import mfa_throttle
+from .request_limits import json_object, no_store
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_rate_limit, check_reauth_rate_limit
 from .auth_assurance import (
@@ -23,11 +23,7 @@ from .auth_assurance import (
 from .decorators import admin_required, step_up_required
 from .models import User, db
 from .recovery_service import consume_code, generate_codes
-from .step_up import (
-    SecurityUIUpgradeRequired,
-    StepUpError,
-    consume_account_step_up_grant,
-)
+from .step_up import consume_account_grant_or_error
 
 
 recovery_blueprint = Blueprint("recovery", __name__)
@@ -40,64 +36,21 @@ def _require_enabled():
         abort(404)
 
 
-def _bounded_json():
-    """Parse one small recovery payload without materializing an unbounded body."""
-    request.max_content_length = config.MAX_RECOVERY_JSON_SIZE
-    if (
-        request.content_length is not None
-        and request.content_length > config.MAX_RECOVERY_JSON_SIZE
-    ):
-        return None
-    try:
-        data = request.get_json(silent=True)
-    except RequestEntityTooLarge:
-        return None
-    return data if isinstance(data, dict) else {}
-
-
-def _request_body_too_large():
-    return jsonify({"error": "Request body too large"}), 413
-
-
-def _no_store(response):
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["Pragma"] = "no-cache"
-    return response
-
-
 @recovery_blueprint.post("/api/recovery-codes")
 @login_required
 def regenerate_own_recovery_codes():
     _require_enabled()
-    data = _bounded_json()
-    if data is None:
-        return _request_body_too_large()
-    try:
-        consume_account_step_up_grant(
-            "recovery.rotate",
-            current_user.id,
-        )
-    except SecurityUIUpgradeRequired:
-        return jsonify({
-            "error": "Reload the Security page before continuing",
-            "code": "security_ui_upgrade_required",
-        }), 409
-    except StepUpError:
-        return jsonify({
-            "error": "Additional authentication is required",
-            "code": "step_up_required",
-        }), 403
-    log_security_event(
-        "ACCOUNT_STEP_UP_CONSUMED",
-        user=current_user.username,
-        action="recovery.rotate",
+    grant_error = consume_account_grant_or_error(
+        "recovery.rotate", current_user.id
     )
+    if grant_error is not None:
+        return grant_error
     codes = generate_codes(current_user.id)
     log_security_event(
         "RECOVERY_CODES_REGENERATED",
         user=current_user.username,
     )
-    return _no_store(jsonify({"codes": codes}))
+    return no_store(jsonify({"codes": codes}))
 
 
 @recovery_blueprint.post("/login/recovery")
@@ -120,9 +73,7 @@ def complete_pending_with_recovery():
     ):
         log_rate_limit_exceeded("recovery_mfa", client_ip)
         return jsonify({"error": "Too many authentication attempts"}), 429
-    data = _bounded_json()
-    if data is None:
-        return _request_body_too_large()
+    data = json_object()
     token = session.get("_pending_authentication")
     binding = session.get("_auth_binding")
     try:
@@ -178,9 +129,7 @@ def disable_mfa_after_recovery():
     _require_enabled()
     if not recovery_session_required():
         return jsonify({"error": "Recovery session is required"}), 403
-    data = _bounded_json()
-    if data is None:
-        return _request_body_too_large()
+    data = json_object()
     if data.get("confirm_username") != current_user.username:
         return jsonify({"error": "Account confirmation does not match"}), 400
     clear_recovery_restriction(disable_mfa=True)
@@ -197,9 +146,7 @@ def disable_mfa_after_recovery():
 @step_up_required("recovery.reset", lambda user_id: user_id)
 def admin_recovery(user_id):
     _require_enabled()
-    data = _bounded_json()
-    if data is None:
-        return _request_body_too_large()
+    data = json_object()
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({"error": "User not found"}), 404
@@ -212,4 +159,4 @@ def admin_recovery(user_id):
         admin=current_user.username,
         user=target.username,
     )
-    return _no_store(jsonify({"codes": codes}))
+    return no_store(jsonify({"codes": codes}))

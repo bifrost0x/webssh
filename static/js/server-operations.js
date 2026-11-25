@@ -35,7 +35,11 @@
             },
             ...(options.body ? {body: JSON.stringify(options.body)} : {})
         });
-        const data = await response.json();
+        // A gateway error page is not JSON; fall through to the generic text.
+        const data = await response.json().catch(error => {
+            if (response.ok) throw error;
+            return {};
+        });
         if (!response.ok) {
             const messages = {
                 unknown: 'The outcome is unknown. Inspect the server before trying another action; do not retry automatically.',
@@ -53,25 +57,6 @@
             throw error;
         }
         return data;
-    }
-    function bytes(value) {
-        return Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), character => character.charCodeAt(0));
-    }
-    function encoded(value) {
-        return btoa(String.fromCharCode(...new Uint8Array(value))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    }
-    function credentialJSON(credential) {
-        return {
-            id: credential.id, rawId: encoded(credential.rawId), type: credential.type,
-            authenticatorAttachment: credential.authenticatorAttachment,
-            clientExtensionResults: credential.getClientExtensionResults(),
-            response: {
-                clientDataJSON: encoded(credential.response.clientDataJSON),
-                authenticatorData: encoded(credential.response.authenticatorData),
-                signature: encoded(credential.response.signature),
-                userHandle: credential.response.userHandle ? encoded(credential.response.userHandle) : null
-            }
-        };
     }
     function open(sessionId, kind, sourceTarget = {}) {
         const session = manager()?.sessions?.[sessionId];
@@ -451,13 +436,9 @@
                     guard();
                     return navigator.credentials.get({
                         signal,
-                        publicKey: {
-                            ...options, challenge: bytes(options.challenge),
-                            allowCredentials: (options.allowCredentials || []).map(item => ({...item, id: bytes(item.id)}))
-                        }
+                        publicKey: window.WebSSHSecurityUI.decodeAssertionOptions(options)
                     });
                 },
-                serializeCredential: credentialJSON,
                 openAuthorization: url => {
                     guard();
                     const popup = window.open(url, 'webssh-server-step-up', 'popup,width=720,height=760');

@@ -658,8 +658,6 @@
         (choices ? $('promptSelect') : confirm ? $('promptCancel') : $('promptInput')).focus();
         return new Promise(resolve => { promptResolve = resolve; });
     }
-    const decode = value => Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-    const encode = value => btoa(String.fromCharCode(...new Uint8Array(value))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     async function authorize(actionName, token, generation = authorizationGeneration) {
         assertAuthorizationCurrent(generation);
         const context = {controller: new AbortController(), popup: null};
@@ -673,12 +671,8 @@
         const stepUp = window.WebSSHSecurityUI.createAccountStepUpClient({api: guarded(api),
         chooseMethod: guarded(methods => question(tr('authMethod'), tr('authHint'), {choices: methods})),
         requestSecret: guarded(method => question(tr(method === 'totp' ? 'authCode' : method === 'bootstrap' ? 'bootstrapCode' : 'accountPassword'), tr('authHint'), {secret: true, numeric: method === 'totp'})),
-        getPasskeyAssertion: guarded(options => navigator.credentials.get({signal: context.controller.signal, publicKey: {...options,
-            challenge: decode(options.challenge), allowCredentials: (options.allowCredentials || []).map(item => ({...item, id: decode(item.id)}))}})),
-        serializeCredential: credential => ({id: credential.id, rawId: encode(credential.rawId), type: credential.type,
-            authenticatorAttachment: credential.authenticatorAttachment, clientExtensionResults: credential.getClientExtensionResults(),
-            response: {clientDataJSON: encode(credential.response.clientDataJSON), authenticatorData: encode(credential.response.authenticatorData),
-                signature: encode(credential.response.signature), userHandle: credential.response.userHandle ? encode(credential.response.userHandle) : null}}),
+        getPasskeyAssertion: guarded(options => navigator.credentials.get({signal: context.controller.signal,
+            publicKey: window.WebSSHSecurityUI.decodeAssertionOptions(options)})),
         openAuthorization: url => {
             assertAuthorizationCurrent(generation);
             const popup = window.open(url, 'webssh-automation-auth', 'popup,width=720,height=760');

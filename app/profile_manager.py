@@ -84,6 +84,13 @@ def _next_sort_order(profiles, group, exclude_id=None):
     return len(_ordered_group(profiles, group, exclude_id=exclude_id))
 
 
+_HOSTNAME_PATTERN = re.compile(
+    r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
+    r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+)
+USERNAME_PATTERN = re.compile(r'^[a-zA-Z0-9_\-\.]{1,32}$')
+
+
 def _is_valid_host(host_str):
     """Validate host is a valid hostname or IP address."""
     if not host_str or not isinstance(host_str, str):
@@ -94,11 +101,7 @@ def _is_valid_host(host_str):
         return True
     except ValueError:
         pass
-    hostname_pattern = re.compile(
-        r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
-        r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
-    )
-    return bool(hostname_pattern.match(host_str))
+    return bool(_HOSTNAME_PATTERN.match(host_str))
 
 @user_operation
 def get_user_profiles_file(user_id):
@@ -389,8 +392,6 @@ def save_profiles(
             compact=compact,
         )
 
-        profiles_file.parent.mkdir(parents=True, exist_ok=True)
-
         atomic_write_bytes(profiles_file, payload)
         return True
     except ConnectionStorageLimitError:
@@ -446,7 +447,7 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
             return None, str(error)
     else:
         username = str(username).strip()
-        if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
+        if not USERNAME_PATTERN.match(username):
             return None, 'Invalid username format'
     if auth_type not in {'password', 'key', 'tailscale'}:
         return None, 'Invalid auth_type'
@@ -1047,7 +1048,7 @@ def assign_command_set(user_id, profile_id, command_set_id):
         return None, str(exc)
     except Exception as e:
         log_error('Error assigning command set to profile', user_id=user_id, error=str(e))
-        return None, str(e)
+        return None, 'Failed to save profile'
 
 
 @user_operation

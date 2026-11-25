@@ -13,6 +13,14 @@ DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES = 30
 # Overview opens and periodically while it is visible.
 OVERVIEW_REACHABILITY_MODES = frozenset({'off', 'manual', 'automatic'})
 
+THEMES = frozenset({
+    'glass', 'werkbank', 'retro', 'solar', 'paper', 'noir',
+    'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian',
+})
+START_PAGES = frozenset({'overview', 'workspaces'})
+OVERVIEW_LAYOUTS = frozenset({'dashboard', 'classic'})
+DISCONNECT_SESSION_ACTIONS = frozenset({'retry', 'close'})
+
 # Overview panels the account can arrange. Widths are columns of a 12-column
 # grid; a height of None follows the content, otherwise it is in 8px rows.
 OVERVIEW_PANELS = ('kpis', 'topology', 'hosts', 'attention', 'automation', 'platforms', 'activity', 'continue', 'agents')
@@ -96,10 +104,10 @@ def _valid_settings(value):
     if value.get('schema_version') != CURRENT_STORAGE_VERSIONS['settings']:
         return False
     if ('overview_layout' in value and (not isinstance(value['overview_layout'], str)
-            or value['overview_layout'] not in {'dashboard', 'classic'})):
+            or value['overview_layout'] not in OVERVIEW_LAYOUTS)):
         return False
     if ('start_page' in value and (not isinstance(value['start_page'], str)
-            or value['start_page'] not in {'overview', 'workspaces'})):
+            or value['start_page'] not in START_PAGES)):
         return False
     if ('overview_reachability' in value and (not isinstance(value['overview_reachability'], str)
             or value['overview_reachability'] not in OVERVIEW_REACHABILITY_MODES)):
@@ -132,7 +140,7 @@ def _valid_settings(value):
         'disconnect_session_action' in value
         and (
             not isinstance(value['disconnect_session_action'], str)
-            or value['disconnect_session_action'] not in {'retry', 'close'}
+            or value['disconnect_session_action'] not in DISCONNECT_SESSION_ACTIONS
         )
     ):
         return False
@@ -158,9 +166,9 @@ def _valid_settings_update(value):
     return (
         isinstance(value, dict)
         and ('start_page' not in value or (isinstance(value['start_page'], str)
-             and value['start_page'] in {'overview', 'workspaces'}))
+             and value['start_page'] in START_PAGES))
         and ('overview_layout' not in value or (isinstance(value['overview_layout'], str)
-             and value['overview_layout'] in {'dashboard', 'classic'}))
+             and value['overview_layout'] in OVERVIEW_LAYOUTS))
         and ('overview_reachability' not in value or (isinstance(value['overview_reachability'], str)
              and value['overview_reachability'] in OVERVIEW_REACHABILITY_MODES))
         and ('overview_panels' not in value or valid_overview_layout(value['overview_panels']))
@@ -189,7 +197,7 @@ def _valid_settings_update(value):
             'disconnect_session_action' not in value
             or (
                 isinstance(value['disconnect_session_action'], str)
-                and value['disconnect_session_action'] in {'retry', 'close'}
+                and value['disconnect_session_action'] in DISCONNECT_SESSION_ACTIONS
             )
         )
         and (
@@ -260,7 +268,6 @@ def save_user_settings(user_id, settings):
         return False
 
     settings_file = user.get_data_dir() / 'settings.json'
-    settings_file.parent.mkdir(parents=True, exist_ok=True)
 
     try:
         with storage_lock(f'settings:{user_id}'):

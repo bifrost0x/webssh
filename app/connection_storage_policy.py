@@ -1,5 +1,6 @@
 """Prospective quotas for saved connection and route metadata."""
 
+from functools import partial
 from hashlib import sha256
 import hmac
 import json
@@ -7,6 +8,9 @@ from pathlib import Path
 import re
 
 import config
+
+from .storage_quota import bounded_text as _bounded_text
+from .storage_quota import file_size as _file_size
 
 
 class ConnectionStorageLimitError(ValueError):
@@ -28,28 +32,17 @@ _RECOVERY_SELECTOR_PATTERN = re.compile(
 _RECOVERY_SELECTOR_DOMAIN = b'webssh-connection-recovery-selector-v1\0'
 
 
-def _error(message):
-    raise ConnectionStorageLimitError(
+def _limit_error(message):
+    return ConnectionStorageLimitError(
         f'Connection storage quota exceeded: {message}'
     )
 
 
-def utf8_size(value):
-    try:
-        return len(value.encode('utf-8'))
-    except UnicodeEncodeError:
-        _error('text is not valid UTF-8')
+def _error(message):
+    raise _limit_error(message)
 
 
-def bounded_text(value, maximum, label, legacy=None):
-    if not isinstance(value, str):
-        _error(f'{label} must be text')
-    size = utf8_size(value)
-    if size <= maximum:
-        return
-    if isinstance(legacy, str) and size <= utf8_size(legacy):
-        return
-    _error(f'{label} is too large')
+bounded_text = partial(_bounded_text, error=_limit_error)
 
 
 def validate_profile(profile, legacy=None):
@@ -93,13 +86,6 @@ def validate_jump_host(jump_host, legacy=None):
         if value is None:
             continue
         bounded_text(value, maximum, label, legacy.get(field))
-
-
-def _file_size(path):
-    try:
-        return Path(path).stat().st_size
-    except FileNotFoundError:
-        return 0
 
 
 def validate_socks_proxy(proxy, legacy=None):

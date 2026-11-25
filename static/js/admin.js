@@ -71,43 +71,6 @@
         return data;
     }
 
-    function decodeBase64url(value) {
-        const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-        const raw = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='));
-        return Uint8Array.from(raw, character => character.charCodeAt(0));
-    }
-
-    function encodeBase64url(value) {
-        const raw = String.fromCharCode.apply(null, new Uint8Array(value));
-        return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    }
-
-    function decodePasskeyOptions(options) {
-        options.challenge = decodeBase64url(options.challenge);
-        (options.allowCredentials || []).forEach(item => {
-            item.id = decodeBase64url(item.id);
-        });
-        return options;
-    }
-
-    function serializePasskey(credential) {
-        return {
-            id: credential.id,
-            rawId: encodeBase64url(credential.rawId),
-            type: credential.type,
-            authenticatorAttachment: credential.authenticatorAttachment,
-            clientExtensionResults: credential.getClientExtensionResults(),
-            response: {
-                clientDataJSON: encodeBase64url(credential.response.clientDataJSON),
-                authenticatorData: encodeBase64url(credential.response.authenticatorData),
-                signature: encodeBase64url(credential.response.signature),
-                userHandle: credential.response.userHandle
-                    ? encodeBase64url(credential.response.userHandle)
-                    : null
-            }
-        };
-    }
-
     let stepUpGeneration = 0;
     let activeStepUpPrompt = null;
     let stepUpReturnFocus = null;
@@ -340,14 +303,14 @@
         if (intent.grant) { return intent.grant; }
         const methods = intent.methods || [intent.method];
         if (methods.includes('passkey') && window.PublicKeyCredential) {
-            const options = decodePasskeyOptions(await api('/api/step-up/passkey/options', {
+            const options = window.WebSSHSecurityUI.decodeAssertionOptions(await api('/api/step-up/passkey/options', {
                 method: 'POST', body: { action, target }
             }));
             assertCurrentStepUp(generation);
             const credential = await navigator.credentials.get({ publicKey: options });
             assertCurrentStepUp(generation);
             const result = await api('/api/step-up/passkey/verify', {
-                method: 'POST', body: { credential: serializePasskey(credential) }
+                method: 'POST', body: { credential: window.WebSSHSecurityUI.serializeAssertion(credential) }
             });
             if (generation !== stepUpGeneration) {
                 throw new Error(t('admin.stepUpCancelled', 'Additional authentication was cancelled'));
@@ -696,7 +659,11 @@
         const isSelf = u.username === CURRENT_USER;
         const parts = [];
         if (u.is_admin) {
-            parts.push(`<button class="btn btn-secondary" data-act="demote" ${isSelf ? 'disabled' : ''}>${escapeHtml(t('admin.demote', 'Demote'))}</button>`);
+            // The server refuses it too: ADMIN_USERS would promote the account again.
+            const demoteState = u.admin_managed_by_config
+                ? `disabled title="${escapeHtml(t('admin.configManagedAdmin', 'set by ADMIN_USERS'))}"`
+                : (isSelf ? 'disabled' : '');
+            parts.push(`<button class="btn btn-secondary" data-act="demote" ${demoteState}>${escapeHtml(t('admin.demote', 'Demote'))}</button>`);
         } else if (!u.ldap_managed && !u.github_managed) {
             parts.push(`<button class="btn btn-secondary" data-act="promote">${escapeHtml(t('admin.promote', 'Promote'))}</button>`);
         }
@@ -781,7 +748,7 @@
                 : `<span class="admin-badge">${escapeHtml(t('admin.statusActive', 'Active'))}</span>`;
             tr.innerHTML =
                 `<td>${u.id}</td>` +
-                `<td>${escapeHtml(u.username)}${u.ldap_managed ? ' <span class="admin-muted">(LDAP)</span>' : ''}${u.github_managed ? ' <span class="admin-muted">(GitHub)</span>' : ''}${u.username === CURRENT_USER ? ' <span class="admin-muted">(' + escapeHtml(t('admin.you', 'you')) + ')</span>' : ''}</td>` +
+                `<td>${escapeHtml(u.username)}${u.ldap_managed ? ' <span class="admin-muted">(LDAP)</span>' : ''}${u.github_managed ? ' <span class="admin-muted">(GitHub)</span>' : ''}${u.admin_managed_by_config ? ' <span class="admin-muted">(' + escapeHtml(t('admin.configManagedAdmin', 'set by ADMIN_USERS')) + ')</span>' : ''}${u.username === CURRENT_USER ? ' <span class="admin-muted">(' + escapeHtml(t('admin.you', 'you')) + ')</span>' : ''}</td>` +
                 `<td>${role}</td>` +
                 `<td>${status}</td>` +
                 `<td>${escapeHtml(fmtDate(u.created_at))}</td>` +

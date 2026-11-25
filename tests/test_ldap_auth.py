@@ -640,6 +640,44 @@ def test_ldap_auto_provisioning_uses_shared_user_creation_lock(app):
     assert result["username"] == "alice"
 
 
+def test_ldap_first_login_provisions_a_listed_name_without_promoting_it(
+    app, client, monkeypatch, caplog,
+):
+    import logging
+
+    import config
+    from app.auth import sync_admin_users
+    from app.models import User
+
+    _create_user(app, "local_admin", is_admin=True)
+    directory = _FakeDirectory(_DirectoryIdentity(
+        provider="default",
+        subject="stable-directory-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    ))
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(config, "LDAP_AUTO_PROVISION", True)
+    monkeypatch.setattr(config, "ADMIN_USERS", ["alice"])
+
+    with caplog.at_level(logging.INFO):
+        response = client.post(
+            "/login/ldap",
+            data={"username": "alice", "password": "directory-password"},
+        )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+    assert not any(
+        record.getMessage() == "Account name refused: reserved by ADMIN_USERS"
+        for record in caplog.records
+    )
+    with app.app_context():
+        sync_admin_users()
+        user = User.query.filter_by(username="alice").one()
+        assert user.is_ldap_managed
+        assert user.is_admin is False
+
+
 def test_ldap_auto_provisioning_rolls_back_when_user_storage_fails(
     app,
     client,
@@ -1045,6 +1083,93 @@ def test_admin_unlink_requires_a_new_local_password_and_revokes_access(
         assert target.check_password(
             "new-local-password-123"
         )
+
+
+def test_admin_unlink_refuses_to_convert_an_account_listed_in_admin_users(
+    app,
+    client,
+    monkeypatch,
+    caplog,
+):
+    import logging
+
+    import config
+    import app.ldap_routes as ldap_routes
+    from app.models import LDAPIdentity, User, db
+
+    _create_user(app, "local_admin", is_admin=True)
+    target_id = _create_user(app, "alice")
+    with app.app_context():
+        row = LDAPIdentity(
+            user_id=target_id,
+            provider="default",
+            subject="stable-alice-id",
+            directory_username="alice",
+            distinguished_name="uid=alice,dc=example,dc=com",
+        )
+        db.session.add(row)
+        db.session.commit()
+        identity_id = row.id
+        target = db.session.get(User, target_id)
+        password_hash = target.password_hash
+        generation = target.auth_generation
+    _enable_ldap_blueprint(
+        app,
+        monkeypatch,
+        _FakeDirectory(_DirectoryIdentity("default", "id", "uid=alice")),
+    )
+    assert client.post(
+        "/login",
+        data={"username": "local_admin", "password": "password123"},
+    ).status_code == 302
+    revoked = []
+    monkeypatch.setattr(
+        ldap_routes.user_lifecycle,
+        "revoke_user_access",
+        lambda user_id, socketio_instance=None: revoked.append(user_id),
+    )
+    monkeypatch.setattr(config, "ADMIN_USERS", ["ALICE"])
+
+    def unlink():
+        return client.delete(
+            f"/admin/api/users/{target_id}/ldap-identities/{identity_id}",
+            json={
+                "confirm_username": "alice",
+                "new_password": "new-local-password-123",
+            },
+            headers=_step_up(
+                client, "ldap.unlink", f"{target_id}:{identity_id}"
+            ),
+        )
+
+    with caplog.at_level(logging.WARNING):
+        refused = unlink()
+
+    assert refused.status_code == 409
+    assert refused.get_json() == {"error": (
+        "This account is listed in ADMIN_USERS. Remove it from ADMIN_USERS "
+        "before converting it to a local account."
+    )}
+    assert any(
+        record.getMessage().startswith("LDAP_IDENTITY_UNLINK_REJECTED")
+        for record in caplog.records
+    )
+    assert revoked == []
+    with app.app_context():
+        assert db.session.get(LDAPIdentity, identity_id) is not None
+        target = db.session.get(User, target_id)
+        assert target.password_hash == password_hash
+        assert target.auth_generation == generation
+
+    monkeypatch.setattr(config, "ADMIN_USERS", ["bob"])
+    converted = unlink()
+
+    assert converted.status_code == 200
+    assert revoked == [target_id]
+    with app.app_context():
+        target = db.session.get(User, target_id)
+        assert not target.is_ldap_managed
+        assert target.check_password("new-local-password-123")
 
 
 def test_linked_user_cannot_use_recovery_code_without_primary_authentication(

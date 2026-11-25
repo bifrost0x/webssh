@@ -1,9 +1,12 @@
 """Prospective resource policy for per-user command configuration."""
 
+from functools import partial
 import json
 from pathlib import Path
 
 import config
+
+from .storage_quota import bounded_text, file_size as _file_size
 
 
 COMMAND_NAME_MAX_BYTES = 512
@@ -19,17 +22,17 @@ class CommandStorageLimitError(ValueError):
     """A command mutation would exceed a persistent resource boundary."""
 
 
-def _error(message):
-    raise CommandStorageLimitError(
+def _limit_error(message):
+    return CommandStorageLimitError(
         f'Command storage quota exceeded: {message}'
     )
 
 
-def utf8_size(value):
-    try:
-        return len(value.encode('utf-8'))
-    except UnicodeEncodeError:
-        _error('text is not valid UTF-8')
+def _error(message):
+    raise _limit_error(message)
+
+
+_bounded_text = partial(bounded_text, error=_limit_error)
 
 
 def serialized_size(value):
@@ -39,17 +42,6 @@ def serialized_size(value):
         raise CommandStorageLimitError(
             'Command storage quota exceeded: data is not serializable'
         ) from exc
-
-
-def _bounded_text(value, limit, label, legacy=None):
-    if not isinstance(value, str):
-        _error(f'{label} must be text')
-    size = utf8_size(value)
-    if size <= limit:
-        return
-    if isinstance(legacy, str) and size <= utf8_size(legacy):
-        return
-    _error(f'{label} is too large')
 
 
 def validate_user_command(command, legacy=None):
@@ -156,13 +148,6 @@ def validate_command_set(command_set, legacy=None):
                     'command parameter override',
                     previous.get('parameters_override'),
                 )
-
-
-def _file_size(path):
-    try:
-        return Path(path).stat().st_size
-    except FileNotFoundError:
-        return 0
 
 
 def enforce_store_transition(

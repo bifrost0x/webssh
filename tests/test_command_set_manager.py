@@ -18,6 +18,16 @@ def create_user(app, username='command-set-user'):
         return user.id
 
 
+def resolve_saved_set(user_id, command_set_id):
+    """Resolve a saved set through the post-connect configuration path."""
+    from app import post_connect_manager
+
+    return post_connect_manager.resolve_configuration(user_id, {
+        'startup_mode': 'command_set',
+        'command_set_id': command_set_id,
+    })
+
+
 def library_commands():
     return [
         {
@@ -351,7 +361,7 @@ def test_delete_command_set_reads_profiles_before_command_set_store(
 def test_public_cross_store_reads_use_coordinator_and_sequential_snapshots(
     app, monkeypatch, operation, expected_stores
 ):
-    from app import command_manager, command_set_manager
+    from app import command_manager, command_set_manager, post_connect_manager
     from app.storage_utils import storage_lock as real_storage_lock
 
     user_id = create_user(app, f'public-read-{operation}')
@@ -378,14 +388,11 @@ def test_public_cross_store_reads_use_coordinator_and_sequential_snapshots(
         requested.append(key)
         return real_storage_lock(key)
 
-    monkeypatch.setattr(
-        command_set_manager, 'storage_lock', instrumented_storage_lock
-    )
+    for module in (command_manager, command_set_manager, post_connect_manager):
+        monkeypatch.setattr(module, 'storage_lock', instrumented_storage_lock)
     with app.app_context():
         if operation == 'resolve':
-            result = command_set_manager.resolve_command_set(
-                user_id, command_set['id']
-            )
+            result = resolve_saved_set(user_id, command_set['id'])
             assert result == ('echo safe', None)
         elif operation == 'list':
             result = command_set_manager.load_command_sets_with_resolution(
@@ -393,10 +400,10 @@ def test_public_cross_store_reads_use_coordinator_and_sequential_snapshots(
             )
             assert result[1] is None
         else:
-            result = command_set_manager.get_command_usage(
+            result = command_manager.delete_user_command(
                 user_id, command['id']
             )
-            assert result[1] is None
+            assert result[:2] == (False, 'Command is used by 1 command set')
 
     assert requested == [
         f'command-config:{user_id}',
@@ -444,7 +451,7 @@ def test_public_command_set_resolution_blocks_command_writer_until_snapshot_done
     def resolve():
         with app.app_context():
             resolver_result['value'] = (
-                command_set_manager.resolve_command_set(
+                resolve_saved_set(
                     user_id, command_set['id']
                 )
             )
@@ -635,7 +642,7 @@ def test_resolve_preserves_order_and_parameter_semantics(app, monkeypatch):
         })
         assert error is None
 
-        resolved, error = command_set_manager.resolve_command_set(user_id, created['id'])
+        resolved, error = resolve_saved_set(user_id, created['id'])
 
     assert error is None
     assert resolved == (
@@ -662,7 +669,7 @@ def test_resolve_chains_steps_without_rewriting_internal_inline_lines(app, monke
             ],
         })
         assert error is None
-        resolved, error = command_set_manager.resolve_command_set(
+        resolved, error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -698,7 +705,7 @@ def test_resolve_trims_trailing_whitespace_at_step_boundaries(
             ],
         })
         assert error is None
-        resolved, error = command_set_manager.resolve_command_set(
+        resolved, error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -734,7 +741,7 @@ def test_resolve_preserves_trailing_comment_without_hiding_next_step(
             ],
         })
         assert error is None
-        resolved, error = command_set_manager.resolve_command_set(
+        resolved, error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -772,7 +779,7 @@ def test_resolve_preserves_inline_comment_without_hiding_next_step(
             ],
         })
         assert error is None
-        resolved, error = command_set_manager.resolve_command_set(
+        resolved, error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -804,7 +811,7 @@ def test_resolve_does_not_treat_literal_hash_as_shell_comment(
             ],
         })
         assert error is None
-        resolved, error = command_set_manager.resolve_command_set(
+        resolved, error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -840,7 +847,7 @@ def test_resolve_removes_only_unescaped_semicolon_before_comment(
             ],
         })
         assert error is None
-        resolved, error = command_set_manager.resolve_command_set(
+        resolved, error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -884,7 +891,7 @@ def test_resolve_handles_terminal_list_operators(
             ],
         })
         assert error is None
-        resolved, error = command_set_manager.resolve_command_set(
+        resolved, error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -921,7 +928,7 @@ def test_resolve_treats_comment_only_step_as_successful_noop(
             ],
         })
         assert error is None
-        resolved, error = command_set_manager.resolve_command_set(
+        resolved, error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -950,7 +957,7 @@ def test_trailing_comment_boundary_preserves_errexit_semantics(app, monkeypatch)
             ],
         })
         assert error is None
-        resolved, error = command_set_manager.resolve_command_set(
+        resolved, error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -1002,7 +1009,7 @@ def test_resolve_sudo_prefixes_commands_without_changing_non_commands(app, monke
             ],
         })
         assert error is None
-        resolved, resolve_error = command_set_manager.resolve_command_set(
+        resolved, resolve_error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -1035,7 +1042,7 @@ def test_resolve_revalidates_length_after_sudo_prefix(app, monkeypatch):
             'steps': [{'type': 'inline', 'command': 'x' * 4092}],
         })
         assert error is None
-        resolved, resolve_error = command_set_manager.resolve_command_set(
+        resolved, resolve_error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -1060,7 +1067,7 @@ def test_resolve_revalidates_length_after_step_separators(app, monkeypatch):
             ],
         })
         assert error is None
-        resolved, resolve_error = command_set_manager.resolve_command_set(
+        resolved, resolve_error = resolve_saved_set(
             user_id, created['id']
         )
 
@@ -1082,7 +1089,7 @@ def test_resolve_rejects_reference_removed_after_save(app, monkeypatch):
         assert error is None
         commands.clear()
 
-        resolved, error = command_set_manager.resolve_command_set(user_id, created['id'])
+        resolved, error = resolve_saved_set(user_id, created['id'])
 
     assert resolved is None
     assert error == "Command set 'Bootstrap' step 1 references a missing command"
@@ -1130,7 +1137,7 @@ def test_duplicate_uses_new_id_and_unique_copy_name_but_keeps_references(app, mo
     assert duplicate['use_sudo'] is True
 
 
-def test_get_command_usage_and_delete_guard_report_names(app, monkeypatch):
+def test_command_and_set_delete_guards_report_names(app, monkeypatch):
     from app import command_manager, command_set_manager, profile_manager
 
     monkeypatch.setattr(command_manager, '_get_all_commands_with_lock_held', lambda user_id, os_filter=None: library_commands())
@@ -1141,8 +1148,11 @@ def test_get_command_usage_and_delete_guard_report_names(app, monkeypatch):
             'steps': [{'type': 'library', 'command_id': 'cmd-pwd'}],
         })
         assert error is None
-        usages, error = command_set_manager.get_command_usage(user_id, 'cmd-pwd')
-        assert error is None
+        success, error, usages = command_manager.delete_user_command(
+            user_id, 'cmd-pwd'
+        )
+        assert success is False
+        assert error == 'Command is used by 1 command set'
         assert [item['name'] for item in usages] == ['Bootstrap']
 
         profile_manager.save_profiles(user_id, [{
@@ -1158,7 +1168,7 @@ def test_get_command_usage_and_delete_guard_report_names(app, monkeypatch):
 
 
 def test_direct_profile_command_reference_blocks_command_deletion(app):
-    from app import command_manager, command_set_manager, profile_manager
+    from app import command_manager, profile_manager
 
     user_id = create_user(app)
     with app.app_context():
@@ -1168,22 +1178,17 @@ def test_direct_profile_command_reference_blocks_command_deletion(app):
             'startup_mode': 'command',
             'command_id': 'cmd-direct',
         }])
-        usages, usage_error = command_set_manager.get_command_usage(
-            user_id, 'cmd-direct'
-        )
         success, delete_error, delete_usages = command_manager.delete_user_command(
             user_id, 'cmd-direct'
         )
 
-    assert usage_error is None
-    assert usages == [{
+    assert delete_usages == [{
         'id': 'profile-command',
         'name': 'Direct Command Profile',
         'type': 'profile',
     }]
     assert success is False
     assert delete_error == 'Command is used by 1 profile'
-    assert delete_usages == usages
 
 
 def test_mixed_command_references_are_safe_and_missing_ids_are_not_found(app):
@@ -1377,10 +1382,6 @@ def test_command_reference_details_are_bounded_and_sanitized(
             user_id,
             'guarded-set',
         )
-        public_usages, public_error = command_set_manager.get_command_usage(
-            user_id,
-            'guarded-command',
-        )
 
     expected_count = len(profiles)
     assert command_result[0] is False
@@ -1389,15 +1390,14 @@ def test_command_reference_details_are_bounded_and_sanitized(
         f'(showing first {detail_limit})'
     )
     assert len(command_result[2]) == detail_limit
-    assert command_result[2] == public_usages
-    assert public_error is None
-    assert all('\n' not in item['id'] for item in public_usages)
-    assert all('\r' not in item['name'] for item in public_usages)
+    usages = command_result[2]
+    assert all('\n' not in item['id'] for item in usages)
+    assert all('\r' not in item['name'] for item in usages)
     assert all(
-        len(item['id'].encode('utf-8')) <= 128 for item in public_usages
+        len(item['id'].encode('utf-8')) <= 128 for item in usages
     )
     assert all(
-        len(item['name'].encode('utf-8')) <= 128 for item in public_usages
+        len(item['name'].encode('utf-8')) <= 128 for item in usages
     )
 
     assert set_result[0] is False

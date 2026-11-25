@@ -28,6 +28,7 @@ from .backup_manager import (
 from .backup_operations import backup_operations
 from .decorators import admin_required, step_up_required
 from .online_backup import create_online_backup
+from .request_limits import no_store
 from . import socketio
 
 
@@ -138,8 +139,7 @@ def _incompatible_restore_response(record):
 
 
 def _no_store(response):
-    response.headers['Cache-Control'] = 'no-store'
-    response.headers['Pragma'] = 'no-cache'
+    no_store(response)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     return response
 

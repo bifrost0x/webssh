@@ -1,7 +1,6 @@
 """Account-bound reauthentication ceremonies for factor mutations."""
 
 from datetime import datetime, timezone
-import hashlib
 import json
 import logging
 import secrets
@@ -13,7 +12,6 @@ from webauthn import (
     base64url_to_bytes,
     generate_authentication_options,
     options_to_json,
-    verify_authentication_response,
 )
 from webauthn.helpers.structs import (
     PublicKeyCredentialDescriptor,
@@ -25,7 +23,7 @@ from .app_settings import runtime_feature_enabled
 
 from . import mfa_throttle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
-from .auth import check_reauth_rate_limit, password_exceeds_bcrypt_limit
+from .auth import check_reauth_rate_limit, password_matches
 from .auth_assurance import (
     AssuranceLevel,
     authentication_methods,
@@ -44,6 +42,7 @@ from .models import (
     User,
     WebAuthnCredential,
     db,
+    token_digest,
 )
 from .oidc_service import OIDCStateError
 from .security_features import feature_is_active
@@ -60,7 +59,12 @@ from .step_up import (
     recent_strong_assurance,
 )
 from .totp_service import disable_totp_mfa, verify_totp
-from .webauthn_service import ChallengeError, consume_challenge, create_challenge
+from .webauthn_service import (
+    ChallengeError,
+    consume_challenge,
+    create_challenge,
+    verify_assertion,
+)
 
 
 account_step_up_blueprint = Blueprint("account_step_up", __name__)
@@ -256,8 +260,7 @@ def _passkey_binding(token):
         "account_step_up_webauthn_binding",
         secrets.token_urlsafe(32),
     )
-    token_hash = hashlib.sha256(str(token).encode("utf-8")).hexdigest()
-    return f"{browser_binding}:{token_hash}"
+    return f"{browser_binding}:{token_digest(token)}"
 
 
 @account_step_up_blueprint.post("/api/account/step-up/intents")
@@ -357,16 +360,7 @@ def password_step_up():
         return _error("step_up_failed", 403)
     if _reauth_limited("password"):
         return _rate_limit_error()
-    password = data.get("password", "")
-    try:
-        verified = (
-            isinstance(password, str)
-            and not password_exceeds_bcrypt_limit(password)
-            and user.check_password(password)
-        )
-    except (TypeError, ValueError):
-        verified = False
-    if not verified:
+    if not password_matches(user, data.get("password", "")):
         log_security_event(
             "ACCOUNT_STEP_UP_REJECTED",
             user=current_user.username,
@@ -557,20 +551,7 @@ def passkey_step_up_verify():
             ).first()
             if row is None:
                 raise ChallengeError("credential is unavailable")
-            verified = verify_authentication_response(
-                credential=credential,
-                expected_challenge=challenge,
-                expected_rp_id=config.WEBAUTHN_RP_ID,
-                expected_origin=config.WEBAUTHN_ORIGIN,
-                credential_public_key=bytes(row.public_key),
-                credential_current_sign_count=row.sign_count,
-                require_user_verification=True,
-            )
-            new_sign_count = int(verified.new_sign_count)
-            if row.sign_count and new_sign_count <= row.sign_count:
-                raise ChallengeError("authenticator counter did not advance")
-            row.sign_count = max(row.sign_count, new_sign_count)
-            row.last_used_at = datetime.now(timezone.utc)
+            verify_assertion(row, credential, challenge)
             mfa_throttle.clear_all_uncommitted(db.session.get(User, row.user_id))
             db.session.commit()
         return _complete_intent(

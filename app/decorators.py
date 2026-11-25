@@ -70,10 +70,6 @@ def _positional_arguments(handler):
     return required, limit
 
 
-def _positional_argument_limit(handler):
-    return _positional_arguments(handler)[1]
-
-
 def socket_login_required(f):
     """
     Decorator to require authentication for socket events.

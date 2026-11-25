@@ -155,3 +155,12 @@ def test_encoding_refusal_reports_the_line_of_the_first_bad_character():
 
 def test_unknown_encoding_keeps_the_utf8_default():
     assert encode_editor_text('€', encoding='cp1252', newline='lf') == '€'.encode('utf-8')
+
+
+def test_decode_text_prefers_utf8_then_latin1_and_flags_binary():
+    from app.editor_text import decode_text
+
+    assert decode_text('café'.encode('utf-8')) == ('café', False, 'utf-8')
+    assert decode_text(b'caf\xe9') == ('café', False, 'latin-1')
+    assert decode_text(b'ab\x00cd') == (None, True, None)
+    assert decode_text(b'a' * 1024 + b'\x00') == ('a' * 1024 + '\x00', False, 'utf-8')

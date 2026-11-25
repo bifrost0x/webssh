@@ -108,7 +108,7 @@ def _module_available(name):
 def initialize_feature_readiness(app, *, oidc_ready=False, ldap_ready=False):
     """Record startup validation results without retaining or rereading secrets."""
     passkey_ready = _module_available('webauthn')
-    totp_ready = _module_available('pyotp') and _module_available('qrcode')
+    totp_ready = _module_available('qrcode')
     app.extensions['security_feature_readiness'] = {
         'passkey': (
             passkey_ready,

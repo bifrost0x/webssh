@@ -42,6 +42,20 @@ def detect_newline(raw):
     return 'mixed'
 
 
+def decode_text(raw):
+    """Return (text, is_binary, encoding) for editable bytes.
+
+    Bytes with a NUL in the first kilobyte are binary. Everything else decodes
+    as UTF-8 or, failing that, as Latin-1, which accepts any byte sequence.
+    """
+    if b'\x00' in raw[:1024]:
+        return None, True, None
+    try:
+        return raw.decode('utf-8'), False, 'utf-8'
+    except UnicodeDecodeError:
+        return raw.decode('latin-1'), False, 'latin-1'
+
+
 def _split_lines(text):
     """Split into (body, ending) pairs; the last pair has no ending."""
     parts = text.split('\n')

@@ -250,20 +250,22 @@ def wait_for_exit_status(channel, *, timeout, poll_interval=0.05):
         time.sleep(min(poll_interval, remaining))
     return channel.recv_exit_status()
 
-def open_exec_channel(transport, command, *, timeout, before_exec=None):
+def open_exec_channel(transport, command, *, timeout, pty=None, before_exec=None):
     """Open one noninteractive command channel with bounded request waits."""
-    import time
     deadline = time.monotonic() + timeout
     channel = transport.open_session(timeout=timeout)
     remaining = max(0, deadline - time.monotonic())
     channel.settimeout(remaining)
     guard = _request_guard(channel, remaining)
     try:
+        if pty is not None:
+            channel.get_pty(*pty)
         if time.monotonic() >= deadline:
             raise socket.timeout('SSH exec request exceeded its deadline')
         if before_exec is not None:
             before_exec()
-        channel.exec_command(command)  # nosec B601 -- explicit user-authored remote runbook
+        # Intentional SSH command boundary; callers provide reviewed quoting.
+        channel.exec_command(command)  # nosec B601
     except BaseException:
         channel.close()
         raise

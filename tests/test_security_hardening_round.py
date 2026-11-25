@@ -3,13 +3,13 @@ import logging
 import threading
 import time
 
-import pyotp
 import pytest
 
 import config
 from tests.step_up_helpers import account_password_step_up_headers
 from tests.test_automation_service import context  # noqa: F401  (fixture)
 from tests.test_totp_routes import _activate_totp_feature, _create_user, _login
+from tests.totp_helpers import totp_at, totp_now
 
 
 def _enable_rate_limits(monkeypatch):
@@ -25,7 +25,7 @@ def test_totp_login_is_limited_per_account_across_source_addresses(app, client, 
     started = client.post('/api/totp/enroll', json={}, headers=headers).get_json()
     secret = started['secret']
     assert client.post('/api/totp/enroll/verify', json={
-        'token': started['token'], 'code': pyotp.TOTP(secret).now(), 'confirm_enable_mfa': True}).status_code == 200
+        'token': started['token'], 'code': totp_now(secret), 'confirm_enable_mfa': True}).status_code == 200
     client.post('/logout')
     assert client.post('/login', data={'username': 'totp_spray_user', 'password': 'password123'}).status_code == 200
     _enable_rate_limits(monkeypatch)
@@ -39,7 +39,7 @@ def test_totp_login_is_limited_per_account_across_source_addresses(app, client, 
             db.session.get(User, user_id).mfa_failed_attempts = 0
             db.session.commit()
     # A fresh source address does not reset the per-account budget, even with the right code.
-    blocked = client.post('/api/totp/auth/verify', json={'code': pyotp.TOTP(secret).at(time.time() + 30)},
+    blocked = client.post('/api/totp/auth/verify', json={'code': totp_at(secret, time.time() + 30)},
                           environ_base={'REMOTE_ADDR': '198.51.100.99'})
     assert blocked.status_code == 429
 
@@ -78,6 +78,58 @@ def test_admin_users_skips_missing_and_locked_accounts(app, caplog):
             config.ADMIN_USERS = original
         assert db.session.query(User).filter_by(username='locked_listed').one().is_admin is False
     assert 'ADMIN_USERS lists an account that does not exist' in caplog.text
+
+
+def _reserved_name_refusals(caplog):
+    return [
+        record.extra_data for record in caplog.records
+        if record.getMessage() == 'Account name refused: reserved by ADMIN_USERS'
+    ]
+
+
+def test_listed_missing_admin_name_cannot_register(app, client, monkeypatch, caplog):
+    from app.auth import register_user, sync_admin_users, validate_new_user
+    from app.models import GitHubIdentity, User
+    from tests.step_up_helpers import password_step_up_headers
+    from tests.test_github_auth_routes import _begin_login, _configure, _provider
+
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['Reserved_Admin', 'cli_admin', 'ui_admin', 'octo_admin'])
+    # The first account becomes administrator anyway; the reservation does not apply to it.
+    admin_id = _create_user(app, 'reserved_admin')
+    _login(client, 'reserved_admin')
+    caplog.set_level(logging.INFO)
+    with app.app_context():
+        user, error = register_user('RESERVED_ADMIN_', 'password123')
+        assert error is None
+        for name in ('ui_admin', 'UI_ADMIN', 'Cli_Admin'):
+            assert register_user(name, 'password123') == (None, 'Username already exists')
+            assert validate_new_user(name, 'password123') == 'Username already exists'
+        assert User.query.filter(User.username.ilike('ui_admin')).first() is None
+    assert {'user': 'Cli_Admin', 'source': 'registration'} in _reserved_name_refusals(caplog)
+
+    # An administrator still creates the intended account in the admin UI or with the CLI.
+    headers = password_step_up_headers(client, 'user.create', 'ui_admin')[0]
+    created = client.post('/admin/api/users', headers=headers, json={'username': 'ui_admin', 'password': 'password123'})
+    assert created.status_code == 201, created.get_data(as_text=True)
+    result = app.test_cli_runner().invoke(args=['create-admin', '--username', 'cli_admin'], input='password123\npassword123\n')
+    assert result.exit_code == 0, result.output
+
+    # GitHub auto-provisioning keeps the listed name: the account stays GitHub-managed
+    # and is never promoted.
+    _configure(app, admin_id, auto_provision=True)
+    state = _begin_login(client)
+    _provider(monkeypatch, user_id='4242', login='Octo-Admin')
+    assert client.get(f'/auth/github/callback?code=code&state={state}').status_code == 302
+    with app.app_context():
+        identity = GitHubIdentity.query.filter_by(github_user_id='4242').one()
+        provisioned = User.query.filter_by(id=identity.user_id).one()
+        assert provisioned.username == 'octo_admin'
+        assert provisioned.is_admin is False
+        sync_admin_users()
+        assert User.query.filter_by(username='octo_admin').one().is_admin is False
+        assert User.query.filter_by(username='ui_admin').one() is not None
+        assert User.query.filter_by(username='cli_admin').one().is_admin is True
+    assert not any(entry.get('source') == 'github' for entry in _reserved_name_refusals(caplog))
 
 
 def test_github_auto_provisioning_without_organizations_is_refused_in_production(app, monkeypatch):
