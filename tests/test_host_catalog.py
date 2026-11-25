@@ -68,3 +68,40 @@ def test_ubiquiti_is_a_marker_platform():
 
 def test_service_paths_are_fixed_absolute():
     assert all(p.startswith('/') and '..' not in p and ' ' not in p for p, _ in c.SERVICE_PATHS)
+
+
+def test_app_image_rules_match_the_image_name_only():
+    cases = {
+        'lscr.io/linuxserver/nextcloud:latest': 'nextcloud', 'nextcloud:30-apache': 'nextcloud',
+        'nextcloud/all-in-one:latest': 'nextcloud', 'ghcr.io/nextcloud-releases/aio-nextcloud:latest': 'nextcloud',
+        'ghcr.io/nextcloud-releases/all-in-one:latest': 'nextcloud',
+        'jellyfin/jellyfin:10.10': 'jellyfin', 'ghcr.io/hotio/jellyfin': 'jellyfin',
+        'plexinc/pms-docker:latest': 'plex', 'lscr.io/linuxserver/plex': 'plex',
+        'portainer/portainer-ce:2.21': 'portainer', 'portainer/portainer-ee': 'portainer', 'portainer/agent:2': 'portainer',
+        'traefik:v3.2': 'traefik', 'docker.io/library/traefik': 'traefik',
+        'gitea/gitea:1.22': 'gitea', 'codeberg.org/forgejo/forgejo:9': 'gitea',
+        'ghcr.io/paperless-ngx/paperless-ngx:2': 'paperless', 'jonaswinkler/paperless-ng': 'paperless',
+        'ghcr.io/immich-app/immich-server:release': 'immich', 'ghcr.io/immich-app/immich-machine-learning:release': 'immich',
+        'ghcr.io/imagegenius/immich:latest': 'immich',
+        'pihole/pihole:2024.07.0': 'pihole',
+        'homeassistant/home-assistant:stable': 'homeassistant', 'ghcr.io/home-assistant/home-assistant:2024.11': 'homeassistant',
+        'lscr.io/linuxserver/homeassistant': 'homeassistant',
+        'ghcr.io/home-assistant/qemux86-64-homeassistant:2024.11.3': 'homeassistant',
+        'vaultwarden/server:1.32.5': 'vaultwarden', 'bitwardenrs/server': 'vaultwarden',
+        'adguard/adguardhome:v0.107': 'adguard', 'louislam/uptime-kuma:1': 'uptimekuma',
+        'jc21/nginx-proxy-manager:latest': 'nginxproxymanager',
+    }
+    for image, expected in cases.items():
+        assert _image_id(image) == expected, image
+
+
+def test_app_image_rules_skip_exporters_sidecars_and_tools():
+    for image in ('thomseddon/traefik-forward-auth:2', 'traefik/whoami', 'ghcr.io/jmbannon/jellyfin-exporter',
+                  'jellyfin/jellyfin-vue', 'meisnate12/plex-meta-manager', 'kometateam/plex-meta-manager',
+                  'plexinc/plex-exporter', 'ghcr.io/nextcloud/nextcloud-exporter', 'xperimental/nextcloud-exporter',
+                  'portainer/helper-reset-password', 'gitea/act_runner:0.2', 'ekofr/pihole-exporter',
+                  'clusterio/paperless-ai', 'icereed/paperless-gpt', 'damongolding/immich-kiosk',
+                  'ghcr.io/linuxserver/nextcloud-backup', 'ghcr.io/bfren/vaultwarden-backup',
+                  'ghcr.io/bakito/adguardhome-sync', 'tcpipuk/uptime-kuma-exporter',
+                  'ghcr.io/home-assistant/amd64-hassio-supervisor', 'homeassistant-exporter'):
+        assert _image_id(image) is None, image

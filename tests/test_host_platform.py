@@ -23,6 +23,95 @@ def test_rejects_duplicate_oversized_and_control_output():
         with pytest.raises(ValueError):
             host_platform.parse_platform(text)
 
+@pytest.mark.parametrize('facts, expected', [
+    ('ID=ubuntu\nkernel=Linux', 'ubuntu'),
+    ('ID=debian\nkernel=Linux\nmarker=proxmox', 'proxmox'),
+    ('ID=debian\nkernel=Linux\nmodel=Raspberry Pi 5 Model B', 'raspberrypi'),
+    ('ID=haos\nkernel=Linux', 'homeassistant'), ('ID=truenas\nkernel=Linux', 'truenas'),
+    ('kernel=FreeBSD\nmarker=opnsense', 'opnsense'),
+    ('kernel=Darwin', 'apple'), ('kernel=FreeBSD', 'freebsd'),
+    ('ID=unknown\nkernel=Linux\ndocker=yes', 'linux'),
+    ('ID=ubuntu;$(touch /tmp/bad)\nkernel=Linux', 'linux'),
+])
+def test_identity_platform_uses_fixed_facts(facts, expected):
+    assert host_platform.parse_identity(facts)['platform'] == expected
+
+
+@pytest.mark.parametrize('facts', ['ID=haos', 'ID=unknown\ndocker=yes', 'ID=ubuntu;$(touch /tmp/bad)'])
+def test_identity_without_kernel_line_is_unavailable(facts):
+    assert host_platform.parse_identity(facts) == {
+        'state': 'unavailable', 'platform': None, 'family': None, 'os_id': None, 'os_version': None,
+        'virt': None, 'graphical': None, 'guests': None, 'services': [], 'container_access': None,
+    }
+
+
+def test_identity_rejects_oversized_control_and_non_text_output():
+    for text in ['x' * 8193, 'ID=ubuntu\x00\nkernel=Linux', 'kernel=Linux\x1b[31m', b'kernel=Linux', None]:
+        with pytest.raises(ValueError):
+            host_platform.parse_identity(text)
+    with pytest.raises(ValueError):
+        host_platform.parse_identity('kernel=Linux\n' + 'x' * 100, max_bytes=64)
+    assert host_platform.parse_identity('kernel=Linux\t\r\n')['state'] == 'detected'
+
+
+def test_identity_drops_duplicate_os_release_keys_without_failing():
+    result = host_platform.parse_identity('ID=ubuntu\nID=debian\nID_LIKE=arch\nkernel=Linux')
+    assert result['state'] == 'detected' and result['platform'] == 'archlinux' and result['os_id'] is None
+
+
+def test_identity_maps_fixed_service_facts_and_known_images_only():
+    facts = '\n'.join([
+        'kernel=Linux', 'service=docker', 'unit=nginx', 'unit=mysql', 'service=wireguard',
+        'unit=sshd', 'service=evil', 'service=unit:nginx',
+        'image=lscr.io/linuxserver/nextcloud:latest',
+        'image=ghcr.io/home-assistant/home-assistant:stable',
+        'image=jc21/nginx-proxy-manager:latest',
+        'image=postgres:16', 'image=redis:7', 'image=nginx:alpine',
+        'image=$(rm -rf /)', 'unrelated=nextcloud',
+    ])
+    assert host_platform.parse_identity(facts)['services'] == [
+        'docker', 'homeassistant', 'mariadb', 'nextcloud', 'nginx', 'nginxproxymanager', 'postgresql', 'redis', 'wireguard',
+    ]
+    assert host_platform.parse_identity('kernel=Linux')['services'] == []
+
+
+def test_identity_caps_services_and_ignores_overlong_values():
+    units = sorted(host_catalog.SERVICE_UNITS)
+    result = host_platform.parse_identity('kernel=Linux\n' + '\n'.join('unit=' + unit for unit in units))
+    assert len(result['services']) == host_catalog.MAX_SERVICES
+    assert result['services'] == sorted(set(host_catalog.SERVICE_UNITS.values()))[:host_catalog.MAX_SERVICES]
+    assert host_platform.parse_identity('kernel=Linux\nimage=nginx:' + 'a' * 200)['services'] == []
+
+
+@pytest.mark.parametrize('facts, expected', [
+    ('', 'none'),
+    ('service=docker', None),
+    ('service=podman', None),
+    ('engine=docker:ok', 'ok'),
+    ('engine=docker:denied', 'denied'),
+    ('engine=podman:ok\nengine=docker:denied', 'denied'),
+    ('engine=docker:unknown', 'none'),
+])
+def test_identity_container_access(facts, expected):
+    assert host_platform.parse_identity('kernel=Linux\n' + facts)['container_access'] == expected
+
+
+@pytest.mark.parametrize('facts, expected', [
+    ('guests=0', 0), ('guests=9999', 9999), ('guests=10000', None), ('guests=-1', None),
+    ('guests= 7', 7), ('guests=7a', None), ('guests=', None),
+])
+def test_identity_guest_count_is_bounded(facts, expected):
+    assert host_platform.parse_identity('kernel=Linux\n' + facts)['guests'] == expected
+
+
+@pytest.mark.parametrize('facts, expected', [
+    ('VERSION_ID="24.04"', '24.04'), ("VERSION_ID='13'", '13'), ('VERSION_ID=rolling', None),
+    ('VERSION_ID="1.2.3.4.5.6.7.8.9"', None), ('VERSION_ID="24.04', None), ('VERSION_ID=24.04"', None),
+])
+def test_identity_os_version_pattern(facts, expected):
+    assert host_platform.parse_identity('kernel=Linux\n' + facts)['os_version'] == expected
+
+
 def test_probe_never_sources_remote_files():
     command = host_platform.PLATFORM_COMMAND
     assert '. /etc/' not in command and 'source ' not in command
@@ -652,6 +741,8 @@ def test_identity_probe_runs_under_a_minimal_posix_shell():
     assert keys <= {'ID', 'ID_LIKE', 'VERSION_ID', 'VARIANT_ID', 'kernel', 'model', 'marker', 'virt',
                     'target', 'guests', 'service', 'unit', 'snap', 'image', 'engine'}
     assert len([line for line in result.stdout.splitlines() if line.startswith('image=')]) <= 100
+    identity = host_platform.parse_identity(result.stdout)
+    assert identity['state'] == 'detected' and identity['platform'] not in (None, 'server')
 
 
 def test_identity_probe_never_runs_a_plain_podman_query():

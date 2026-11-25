@@ -4,7 +4,8 @@ import time
 
 from .host_catalog import (
     PLATFORMS, SERVICES, MAX_SERVICES, SERVICE_UNITS as _SERVICE_UNITS, SERVICE_IMAGES as _SERVICE_IMAGES,  # noqa: F401
-    SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS,
+    SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS, SERVICE_IMAGES,
+    FAMILIES, KERNEL_PLATFORMS, MARKER_PLATFORMS, OS_ID_PLATFORMS, VIRT_MAP,
 )
 
 PLATFORM_COMMAND = r'''LC_ALL=C
@@ -322,6 +323,109 @@ def parse_platform(text, *, max_bytes=4096):
     if identity in {'ubuntu', 'debian', 'fedora'}:
         return identity
     return {'Linux': 'linux', 'Darwin': 'apple', 'FreeBSD': 'freebsd'}.get(facts.get('kernel'), 'server')
+
+
+_OS_RELEASE_KEYS = ('ID', 'ID_LIKE', 'VERSION_ID', 'VARIANT_ID')
+_SINGLE_KEYS = frozenset({*_OS_RELEASE_KEYS, 'kernel', 'model', 'virt', 'target', 'guests'})
+_MAX_FACT_LENGTH = 200
+_OS_ID = re.compile(r'[a-z0-9._-]{1,32}')
+_OS_VERSION = re.compile(r'[0-9][0-9A-Za-z._-]{0,15}')
+_PI_MODEL = re.compile(r'Raspberry Pi [A-Za-z0-9 .+()-]{1,120}')
+_GUESTS = re.compile(r'[0-9]{1,4}')
+_ENGINES = {'docker:ok': ('docker', 'ok'), 'docker:denied': ('docker', 'denied'),
+            'podman:ok': ('podman', 'ok'), 'podman:denied': ('podman', 'denied')}
+
+
+def _unquote(value):
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in '"\'':
+        return value[1:-1]
+    return value
+
+
+def parse_identity(text, *, max_bytes=8192):
+    """Map IDENTITY_COMMAND output to catalog ids, enums and checked patterns.
+
+    Anything that does not map is dropped. Output without a kernel line did not
+    come from the probe (forced command, menu, banner) and reports 'unavailable'.
+    """
+    if not isinstance(text, str) or len(text.encode('utf-8')) > max_bytes:
+        raise ValueError('Invalid identity facts')
+    if any(ord(char) < 32 and char not in '\n\r\t' for char in text):
+        raise ValueError('Invalid identity facts')
+    single, repeated, duplicates = {}, {}, set()
+    for line in text.splitlines():
+        key, separator, value = line.partition('=')
+        value = value.strip()
+        if not separator or len(value) > _MAX_FACT_LENGTH:
+            continue
+        if key in _SINGLE_KEYS:
+            if key in single:
+                duplicates.add(key)
+            single[key] = _unquote(value) if key in _OS_RELEASE_KEYS else value
+        elif key in {'marker', 'service', 'unit', 'snap', 'image', 'engine'}:
+            repeated.setdefault(key, []).append(value)
+    result = {
+        'state': 'unavailable', 'platform': None, 'family': None, 'os_id': None, 'os_version': None,
+        'virt': None, 'graphical': None, 'guests': None, 'services': [], 'container_access': None,
+    }
+    if 'kernel' not in single:
+        return result
+    # A key the probe prints once but that came twice cannot be trusted either way.
+    facts = {key: value for key, value in single.items() if key not in duplicates}
+
+    os_id = facts.get('ID', '')
+    os_id = os_id if _OS_ID.fullmatch(os_id) else ''
+    family = next((FAMILIES[token] for token in facts.get('ID_LIKE', '').split() if token in FAMILIES), None)
+    markers = set(repeated.get('marker', ()))
+    platform = next((MARKER_PLATFORMS[marker] for marker in MARKER_PLATFORMS if marker in markers), None)
+    if platform is None and _PI_MODEL.fullmatch(facts.get('model', '')):
+        platform = 'raspberrypi'
+    if platform is None:
+        platform = OS_ID_PLATFORMS.get(os_id) or family or KERNEL_PLATFORMS.get(facts.get('kernel'))
+
+    version = facts.get('VERSION_ID', '')
+    guests = facts.get('guests', '')
+    target = facts.get('target')
+    result.update({
+        'state': 'detected',
+        'platform': platform,
+        'family': family,
+        'os_id': os_id if os_id and os_id not in OS_ID_PLATFORMS else None,
+        'os_version': version if _OS_VERSION.fullmatch(version) else None,
+        'virt': VIRT_MAP.get(facts.get('virt')),
+        'graphical': (target == 'graphical.target') if target else None,
+        'guests': int(guests) if _GUESTS.fullmatch(guests) else None,
+    })
+
+    services, access = set(), set()
+    for value in repeated.get('service', ()):
+        if value in SERVICES:
+            services.add(value)
+    for value in repeated.get('unit', ()):
+        if value in SERVICE_UNITS:
+            services.add(SERVICE_UNITS[value])
+    for value in repeated.get('snap', ()):
+        if value in SERVICE_SNAPS:
+            services.add(SERVICE_SNAPS[value])
+    for value in repeated.get('image', ()):
+        image = value.lower()
+        match = next((name for name, pattern in SERVICE_IMAGES if pattern.search(image)), None)
+        if match:
+            services.add(match)
+    for value in repeated.get('engine', ()):
+        if value in _ENGINES:
+            engine, state = _ENGINES[value]
+            services.add(engine)
+            access.add(state)
+    result['services'] = sorted(services)[:MAX_SERVICES]
+    # 'denied' also covers a stopped daemon or a timeout: some containers could not be read.
+    if 'denied' in access:
+        result['container_access'] = 'denied'
+    elif access:
+        result['container_access'] = 'ok'
+    elif not services & {'docker', 'podman'}:
+        result['container_access'] = 'none'
+    return result
 
 
 def collect_services(session_id, *, cancel_event=None):
