@@ -74,6 +74,9 @@ CASES = [
     ('synology-dsm', 'kernel=Linux\nmarker=synology\nservice=docker\nengine=docker:denied', {'platform': 'synology', 'container_access': 'denied'}),
     ('qnap-qts', 'kernel=Linux\nmarker=qnap', {'platform': 'qnap'}),
     ('unifi-os', 'ID=debian\nVERSION_ID="11"\nkernel=Linux\nmarker=ubiquiti\nvirt=none', {'platform': 'ubiquiti', 'family': None}),
+    # VyOS also has /opt/vyatta; the probe prints no Ubiquiti marker there.
+    ('vyos-1.4', 'ID=vyos\nID_LIKE=debian\nVERSION_ID="1.4.0"\nkernel=Linux\nvirt=kvm',
+     {'platform': 'debian', 'family': 'debian', 'os_id': 'vyos', 'os_version': '1.4.0', 'virt': 'vm'}),
     ('proxmox-with-backup-server', 'ID=debian\nVERSION_ID="12"\nkernel=Linux\nmarker=proxmox\nmarker=proxmoxbackup\nguests=0',
      {'platform': 'proxmox', 'guests': 0}),
     ('proxmox-unreadable-pve', 'ID=debian\nVERSION_ID="12"\nkernel=Linux\nmarker=proxmox', {'platform': 'proxmox', 'guests': None}),

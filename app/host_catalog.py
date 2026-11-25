@@ -130,6 +130,11 @@ SERVICE_UNITS = {
     'homeassistant': 'homeassistant', 'home-assistant': 'homeassistant',
 }
 
+# Templated systemd unit (name before '@') -> service
+SERVICE_UNIT_TEMPLATES = {
+    'syncthing': 'syncthing', 'openvpn': 'openvpn', 'openvpn-server': 'openvpn', 'openvpn-client': 'openvpn',
+}
+
 # Absolute path -> service. Only fixed paths whose existence alone identifies the service:
 # directories that agent, client or tool packages also create (/etc/zabbix,
 # /etc/mosquitto, /etc/redis, /etc/prometheus) are left to units and images.

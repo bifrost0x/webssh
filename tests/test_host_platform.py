@@ -678,7 +678,7 @@ def test_identity_probe_is_read_only_bounded_and_posix():
     command = host_platform.IDENTITY_COMMAND
     for forbidden in ('. /etc/', 'source ', 'eval ', 'sudo', '>/etc', 'tee ', 'mkdir', 'rm '):
         assert forbidden not in command
-    assert command.count('timeout 2') >= 2            # docker and podman queries
+    assert command.count('timeout 1') >= 2            # docker and podman queries
     assert 'head -n 100' in command                   # image lines
     assert 'systemd-detect-virt' in command and 'get-default' in command
     assert '/etc/pve/qemu-server' in command and '/etc/pve/lxc' in command
@@ -694,6 +694,8 @@ def test_identity_probe_covers_the_catalog():
         assert "'%s'" % path in command
     for snap in host_catalog.SERVICE_SNAPS:
         assert "/snap/%s'" % snap in command
+    for prefix, service in host_catalog.SERVICE_UNIT_TEMPLATES.items():
+        assert "'%s'@*) found '%s' ;;" % (prefix, service) in command
 
 
 @pytest.mark.parametrize('units, paths, snaps', [
@@ -741,19 +743,13 @@ def _module_text_without_comments(module):
 def test_identity_probe_never_runs_a_plain_podman_query():
     # Every probe in the module, not only the identity probe, may ask podman only through a socket.
     command = _module_text_without_comments(host_platform)
-    invocations = re.findall(r'timeout 2 podman\S*(?: \S+)?', command)
-    assert invocations and all(item.startswith('timeout 2 podman --remote') for item in invocations)
-    # Container listings name their engine literally: docker, or podman behind --remote --url.
-    assert set(re.findall(r'(\S+) ps\b', command)) == {'docker', '"unix://$sock"'}
+    invocations = re.findall(r'timeout \d+ podman\S*(?: \S+)?', command)
+    assert invocations and all(re.match(r'timeout \d+ podman --remote', item) for item in invocations)
+    # Container listings always name a local socket: docker -H, or podman behind --remote --url.
+    assert set(re.findall(r'(\S+) ps\b', command)) == {'"unix://$dsock"', '"unix://$sock"'}
     assert not re.search(r'podman (ps|info|images|version)', command)
     assert 'unix:///run/podman/podman.sock' not in command or '--remote' in command
     assert '$XDG_RUNTIME_DIR/podman/podman.sock' in command and '[ -S ' in command
-
-
-def test_identity_probe_keeps_docker_presence_without_timeout():
-    command = host_platform.IDENTITY_COMMAND
-    line = next(line for line in command.splitlines() if line.startswith('if command -v docker') and 'found docker' in line)
-    assert '/var/run/docker.sock' in line and 'timeout' not in line
 
 
 def test_identity_probe_virt_fallbacks_also_cover_none():
@@ -781,6 +777,7 @@ def test_identity_probe_worst_case_output_fits_the_budget():
     lines += ['snap=' + name for name in host_catalog.SERVICE_SNAPS]
     lines += ['service=' + service for _, service in host_catalog.SERVICE_PATHS]
     lines += ['service=docker', 'service=podman', 'service=wireguard', 'engine=docker:denied', 'engine=podman:denied']
+    lines += ['service=' + service for service in set(host_catalog.SERVICE_UNIT_TEMPLATES.values())]
     size = sum(len(line) + 1 for line in lines)
     # Images: the probe stops at 3000 bytes whatever the daemon returns.
     assert '> 3000' in host_platform.IDENTITY_COMMAND and 'sort -u' in host_platform.IDENTITY_COMMAND
@@ -970,3 +967,226 @@ def test_a_stored_server_platform_counts_as_not_detected(app, monkeypatch):
     assert host_platform.identity_needed({'detected_platform': 'debian', 'services_checked_at': now}, now=now + 60)
     for checked in (None, True, 'yesterday', now + 3600):
         assert host_platform.identity_needed({'detected_platform': 'debian', 'platform_checked_at': checked}, now=now)
+
+
+_PROBE_TOOLS = ('timeout', 'head', 'sort', 'cut', 'sed', 'awk', 'ls', 'wc', 'tr', 'grep')
+
+
+def _probe_part(start):
+    """The probe block that starts with the line ``start`` and ends at its own ``fi``."""
+    command = host_platform.IDENTITY_COMMAND
+    begin = command.index(start)
+    return command[begin:command.index('\nfi\n', begin) + 4]
+
+
+def _run_probe_part(snippet, root, *, replace=(), tools=None, system_tools=_PROBE_TOOLS, env=None):
+    """Run a probe block with fake tools; paths in ``replace`` point into root."""
+    bin_dir = root / 'bin'
+    bin_dir.mkdir(exist_ok=True)
+    for name in system_tools:
+        if shutil.which(name) and not (bin_dir / name).exists():
+            (bin_dir / name).symlink_to(shutil.which(name))
+    for name, body in (tools or {}).items():
+        tool = bin_dir / name
+        tool.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "' + str(root / 'calls') + '"\n' + body + '\n')
+        tool.chmod(0o755)
+    for old, new in replace:
+        snippet = snippet.replace(old, new)
+    script = "found() { printf 'service=%s\\n' \"$1\"; }\nimages=\n" + snippet + '\nprintf \'images=%s\\n\' "$images"\n'
+    busybox = shutil.which('busybox')
+    argv = [busybox, 'sh', '-c', script] if busybox else [shutil.which('dash') or shutil.which('sh'), '-c', script]
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=10,
+                            env={'PATH': str(bin_dir), **(env or {})})
+    assert result.returncode == 0, result.stderr
+    calls = (root / 'calls').read_text().splitlines() if (root / 'calls').exists() else []
+    return result.stdout.splitlines(), calls
+
+
+@pytest.fixture
+def short_root():
+    # Unix socket paths are limited to about 100 bytes; pytest's tmp_path can be longer.
+    import tempfile
+    from pathlib import Path
+    directory = tempfile.mkdtemp(prefix='probe-', dir='/tmp')
+    yield Path(directory)
+    shutil.rmtree(directory, ignore_errors=True)
+
+
+def _unix_socket(path):
+    import socket
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(path))
+    return server
+
+
+def _docker_part():
+    command = host_platform.IDENTITY_COMMAND
+    begin = command.index('dsock=')
+    return command[begin:command.index('\nfi\n', command.index('found docker', begin)) + 4]
+
+
+_DOCKER_LISTS = {'docker': "[ \"$1\" = -H ] || exit 125\nprintf 'nginx:1.27\\n'"}
+
+
+def test_docker_is_asked_only_through_the_system_socket(short_root):
+    sock = _unix_socket(short_root / 'docker.sock')
+    try:
+        lines, calls = _run_probe_part(_docker_part(), short_root, tools=_DOCKER_LISTS,
+                                       replace=(('/var/run/docker.sock', str(short_root / 'docker.sock')),),
+                                       env={'DOCKER_HOST': 'ssh://elsewhere'})
+    finally:
+        sock.close()
+    assert calls == ['-H unix://%s ps --format {{.Image}}' % (short_root / 'docker.sock')]
+    assert 'service=docker' in lines and 'engine=docker:ok' in lines
+    assert lines[-2:] == ['images=', 'nginx:1.27']
+
+
+def test_rootless_docker_is_asked_through_its_runtime_socket(short_root):
+    (short_root / 'run').mkdir()
+    sock = _unix_socket(short_root / 'run' / 'docker.sock')
+    try:
+        lines, calls = _run_probe_part(_docker_part(), short_root, tools=_DOCKER_LISTS,
+                                       replace=(('/var/run/docker.sock', str(short_root / 'missing.sock')),),
+                                       env={'XDG_RUNTIME_DIR': str(short_root / 'run')})
+    finally:
+        sock.close()
+    assert calls == ['-H unix://%s ps --format {{.Image}}' % (short_root / 'run' / 'docker.sock')]
+    assert 'engine=docker:ok' in lines
+
+
+def test_docker_without_a_local_socket_is_never_run(short_root):
+    # The podman-docker shim, a docker context or DOCKER_HOST would otherwise start
+    # rootless podman or reach another host.
+    (short_root / 'run').mkdir()
+    (short_root / 'run' / 'docker.sock').write_text('')
+    lines, calls = _run_probe_part(_docker_part(), short_root, tools=_DOCKER_LISTS,
+                                   replace=(('/var/run/docker.sock', str(short_root / 'missing.sock')),),
+                                   env={'XDG_RUNTIME_DIR': str(short_root / 'run'), 'DOCKER_HOST': 'tcp://elsewhere:2375'})
+    assert calls == [] and lines == ['images=']
+
+
+def test_a_docker_shim_that_rejects_the_socket_ends_as_denied(short_root):
+    sock = _unix_socket(short_root / 'docker.sock')
+    try:
+        lines, calls = _run_probe_part(_docker_part(), short_root, tools={'docker': 'exit 125'},
+                                       replace=(('/var/run/docker.sock', str(short_root / 'docker.sock')),))
+    finally:
+        sock.close()
+    assert len(calls) == 1 and lines == ['service=docker', 'engine=docker:denied', 'images=']
+
+
+def test_a_docker_socket_without_the_client_still_names_docker(short_root):
+    sock = _unix_socket(short_root / 'docker.sock')
+    try:
+        lines, calls = _run_probe_part(_docker_part(), short_root,
+                                       replace=(('/var/run/docker.sock', str(short_root / 'docker.sock')),))
+    finally:
+        sock.close()
+    assert calls == [] and lines == ['service=docker', 'images=']
+
+
+def test_every_docker_query_in_the_module_names_a_unix_socket():
+    # Every probe in the module, not only the identity probe.
+    command = _module_text_without_comments(host_platform)
+    queries = [match for match in re.finditer(r'\bdocker (\S+)', command)
+               if not command[:match.start()].endswith(('command -v ', 'found ', 'grep -q -e '))]
+    assert queries and all(match.group(1) == '-H' and command.startswith('"unix://', match.end() + 1)
+                           for match in queries), [match.group(0) for match in queries]
+
+
+def test_container_queries_leave_room_within_the_deadline():
+    limits = re.findall(r'timeout (\d+) (docker|podman)', host_platform.IDENTITY_COMMAND)
+    assert sorted(engine for _, engine in limits) == ['docker', 'podman']
+    assert sum(int(limit) for limit, _ in limits) <= 2
+
+
+def test_podman_with_a_socket_but_no_timeout_still_names_podman(short_root):
+    command = host_platform.IDENTITY_COMMAND
+    (short_root / 'podman').mkdir()
+    sock = _unix_socket(short_root / 'podman' / 'podman.sock')
+    try:
+        lines, calls = _run_probe_part(_probe_part('if command -v podman'), short_root, tools={'podman': ''},
+                                       system_tools=(), env={'XDG_RUNTIME_DIR': str(short_root)})
+    finally:
+        sock.close()
+    assert 'timeout 1 podman --remote' in command
+    assert calls == [] and lines == ['service=podman', 'images=']
+
+
+@pytest.mark.parametrize('vyatta, vyos, version, expected', [
+    (True, False, '', ['marker=ubiquiti']),                     # EdgeOS
+    (True, True, '', []),                                       # VyOS 1.2 and later
+    (True, False, 'Version:      VyOS 1.1.8', []),             # VyOS 1.1
+    (False, False, '', []),
+])
+def test_ubiquiti_marker_skips_vyos(short_root, vyatta, vyos, version, expected):
+    if vyatta:
+        (short_root / 'vyatta' / 'etc').mkdir(parents=True)
+        if version:
+            (short_root / 'vyatta' / 'etc' / 'version').write_text(version + '\n')
+    if vyos:
+        (short_root / 'vyos').mkdir()
+    line = next(line for line in host_platform.IDENTITY_COMMAND.splitlines() if 'marker=ubiquiti' in line)
+    lines, _ = _run_probe_part(line, short_root, replace=(
+        ('/opt/vyatta', str(short_root / 'vyatta')), ('/usr/libexec/vyos', str(short_root / 'vyos')),
+        ('/usr/lib/version', str(short_root / 'version'))))
+    assert lines[:-1] == expected
+
+
+def test_ubiquiti_marker_still_covers_unifi_os(short_root):
+    (short_root / 'version').write_text('UDMPRO.al324.v4.0.6\nUniFi OS\n')
+    line = next(line for line in host_platform.IDENTITY_COMMAND.splitlines() if 'marker=ubiquiti' in line)
+    lines, _ = _run_probe_part(line, short_root, replace=(
+        ('/opt/vyatta', str(short_root / 'vyatta')), ('/usr/libexec/vyos', str(short_root / 'vyos')),
+        ('/usr/lib/version', str(short_root / 'version'))))
+    assert lines[:-1] == ['marker=ubiquiti']
+
+
+def _guest_part():
+    command = host_platform.IDENTITY_COMMAND
+    begin = command.rindex('\nif ', 0, command.index("'guests=")) + 1
+    return command[begin:command.index('\nfi\n', begin) + 4]
+
+
+@pytest.mark.parametrize('unreadable, expected', [(None, ['guests=3']), ('qemu-server', []), ('lxc', [])])
+def test_guest_count_is_printed_only_when_both_config_directories_are_readable(short_root, unreadable, expected):
+    import os
+    if os.geteuid() == 0:
+        pytest.skip('root reads every directory')
+    pve = short_root / 'pve'
+    for name, count in (('qemu-server', 2), ('lxc', 1)):
+        (pve / name).mkdir(parents=True)
+        for index in range(count):
+            (pve / name / f'{100 + index}.conf').write_text('')
+    if unreadable:
+        (pve / unreadable).chmod(0)
+    try:
+        lines, _ = _run_probe_part(_guest_part(), short_root, replace=(('/etc/pve', str(pve)),))
+    finally:
+        if unreadable:
+            (pve / unreadable).chmod(0o755)
+    assert lines[:-1] == expected
+
+
+def _units_part():
+    return _probe_part('if command -v systemctl')
+
+
+def test_templated_units_map_to_their_service_once(short_root):
+    units = '\n'.join(f'{name}.service loaded active running Something' for name in (
+        'syncthing@alice', 'syncthing@bob', 'openvpn-server@site', 'openvpn-client@home', 'openvpn@legacy',
+        'nginx', 'syncthingx', 'wg-quick@wg0', 'evil@syncthing'))
+    systemctl = ('case "$1" in get-default) echo multi-user.target ;; *) cat <<"UNITS"\n' + units + '\nUNITS\n;; esac')
+    lines, _ = _run_probe_part(_units_part(), short_root, tools={'systemctl': systemctl},
+                               system_tools=(*_PROBE_TOOLS, 'cat'))
+    assert sorted(lines[:-1]) == ['service=openvpn', 'service=syncthing', 'service=wireguard',
+                                  'target=multi-user.target', 'unit=nginx']
+
+
+def test_templated_unit_catalog_values_are_validated():
+    with pytest.raises(ValueError):
+        host_platform._identity_command({}, (), {}, {'sync$(id)': 'syncthing'})
+    with pytest.raises(ValueError):
+        host_platform._identity_command({}, (), {}, {'syncthing': 'a b'})
+    command = host_platform._identity_command({}, (), {}, {'syncthing': 'syncthing'})
+    assert "'syncthing'@*) found 'syncthing' ;;" in command

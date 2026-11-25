@@ -4,7 +4,7 @@ import time
 
 from .host_catalog import (
     PLATFORMS, SERVICES, MAX_SERVICES, NON_POSIX_PLATFORMS, CONTAINER_ACCESS, VIRT_KINDS,
-    SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS, SERVICE_IMAGES,
+    SERVICE_UNITS, SERVICE_UNIT_TEMPLATES, SERVICE_PATHS, SERVICE_SNAPS, SERVICE_IMAGES,
     FAMILIES, KERNEL_PLATFORMS, MARKER_PLATFORMS, OS_ID_PLATFORMS, VIRT_MAP,
 )
 
@@ -43,7 +43,7 @@ if [ -e /etc/unraid-version ]; then printf 'marker=unraid\n'; fi
 if [ -r /etc.defaults/VERSION ] && head -c 2048 /etc.defaults/VERSION 2>/dev/null | grep -qi synology; then printf 'marker=synology\n'; fi
 if [ -e /etc/config/uLinux.conf ]; then printf 'marker=qnap\n'; fi
 if [ -e /etc/openwrt_release ]; then printf 'marker=openwrt\n'; fi
-if [ -d /opt/vyatta ] || { [ -r /usr/lib/version ] && head -c 256 /usr/lib/version 2>/dev/null | grep -q UniFi; }; then printf 'marker=ubiquiti\n'; fi
+if { [ -d /opt/vyatta ] && [ ! -e /usr/libexec/vyos ] && ! head -c 256 /opt/vyatta/etc/version 2>/dev/null | grep -qi vyos; } || { [ -r /usr/lib/version ] && head -c 256 /usr/lib/version 2>/dev/null | grep -q UniFi; }; then printf 'marker=ubiquiti\n'; fi
 virt=$(systemd-detect-virt 2>/dev/null | head -n 1 | cut -c1-32)
 if [ -z "$virt" ] || [ "$virt" = none ]; then
   if [ -e /.dockerenv ]; then virt=docker
@@ -63,12 +63,13 @@ if command -v systemctl >/dev/null 2>&1; then
       case "$name" in
         wg-quick@*) wireguard=1 ;;
 @UNITCASE@
+@TEMPLATECASE@
       esac
     done
     if [ -n "$wireguard" ]; then found wireguard; fi
-  }
+  } | sort -u
 fi
-if [ -d /etc/pve ] && [ -r /etc/pve ]; then
+if [ -r /etc/pve/qemu-server ] && [ -x /etc/pve/qemu-server ] && [ -r /etc/pve/lxc ] && [ -x /etc/pve/lxc ]; then
   printf 'guests=%s\n' "$(ls /etc/pve/qemu-server/*.conf /etc/pve/lxc/*.conf 2>/dev/null | wc -l | tr -d ' ')"
 fi
 @PATHS@
@@ -79,14 +80,24 @@ printf '%s\n' "$images" | sed '/^$/d' | sort -u | head -n 100 | cut -c1-120 | aw
 :
 """
 
-_DOCKER_BLOCK = r"""if command -v docker >/dev/null 2>&1 || [ -S /var/run/docker.sock ]; then found docker; fi
-if command -v docker >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
-  if out=$(timeout 2 docker ps --format '{{.Image}}' 2>/dev/null); then
-    printf 'engine=docker:ok\n'
-    images="$images
+# Docker is only asked through a local daemon socket, named explicitly with -H:
+# a plain "docker ps" follows docker contexts and DOCKER_HOST (ssh://, tcp://)
+# to other hosts, and the podman-docker shim would start rootless podman. That
+# shim rejects -H, so such a host ends as denied without running anything.
+_DOCKER_BLOCK = r"""dsock=
+if [ -S /var/run/docker.sock ]; then dsock=/var/run/docker.sock
+elif [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/docker.sock" ]; then dsock=$XDG_RUNTIME_DIR/docker.sock
+fi
+if [ -n "$dsock" ]; then
+  found docker
+  if command -v docker >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+    if out=$(timeout 1 docker -H "unix://$dsock" ps --format '{{.Image}}' 2>/dev/null); then
+      printf 'engine=docker:ok\n'
+      images="$images
 $out"
-  else
-    printf 'engine=docker:denied\n'
+    else
+      printf 'engine=docker:denied\n'
+    fi
   fi
 fi"""
 
@@ -97,9 +108,9 @@ _PODMAN_BLOCK = r"""if command -v podman >/dev/null 2>&1; then
   if [ -S /run/podman/podman.sock ]; then sock=/run/podman/podman.sock
   elif [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]; then sock=$XDG_RUNTIME_DIR/podman/podman.sock
   fi
-  if [ -z "$sock" ]; then found podman
-  elif command -v timeout >/dev/null 2>&1; then
-    if out=$(timeout 2 podman --remote --url "unix://$sock" ps --format '{{.Image}}' 2>/dev/null); then
+  found podman
+  if [ -n "$sock" ] && command -v timeout >/dev/null 2>&1; then
+    if out=$(timeout 1 podman --remote --url "unix://$sock" ps --format '{{.Image}}' 2>/dev/null); then
       printf 'engine=podman:ok\n'
       images="$images
 $out"
@@ -110,9 +121,12 @@ $out"
 fi"""
 
 
-def _identity_command(units, paths, snaps):
+def _identity_command(units, paths, snaps, templates=None):
     unit_patterns = '|'.join(_shell_word(unit) for unit in units)
     unit_case = ("        %s) printf 'unit=%%s\\n' \"$name\" ;;" % unit_patterns) if unit_patterns else ''
+    # Instances of a templated unit (syncthing@alice) name their service directly.
+    template_case = '\n'.join("        %s@*) found %s ;;" % (_shell_word(prefix), _shell_word(service))
+                               for prefix, service in (templates or {}).items())
     [_shell_word(service) for service in (*units.values(), *(s for _, s in paths), *snaps.values())]
     by_service = {}
     for path, service in paths:
@@ -126,7 +140,8 @@ def _identity_command(units, paths, snaps):
         for snap in snaps
     )
     engines = _DOCKER_BLOCK + '\n' + _PODMAN_BLOCK
-    return (_IDENTITY_TEMPLATE.replace('@UNITCASE@', unit_case).replace('@PATHS@', path_lines)
+    return (_IDENTITY_TEMPLATE.replace('@UNITCASE@', unit_case).replace('@TEMPLATECASE@', template_case)
+            .replace('@PATHS@', path_lines)
             .replace('@SNAPS@', snap_lines).replace('@ENGINES@', engines))
 
 
@@ -135,7 +150,7 @@ def _identity_command(units, paths, snaps):
 # known services and, where the SSH user may already talk to a Docker or Podman
 # daemon (no sudo), the names of running images. Nothing is installed, changed
 # or sourced; every file read is bounded.
-IDENTITY_COMMAND = _identity_command(SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS)
+IDENTITY_COMMAND = _identity_command(SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS, SERVICE_UNIT_TEMPLATES)
 
 # Pending package updates and a required restart. WebSSH never runs this on its
 # own: only a workflow the user starts or explicitly schedules executes it, and
