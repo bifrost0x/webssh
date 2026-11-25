@@ -211,3 +211,10 @@ def test_official_images_under_their_publisher_names():
                   'wg-easy-exporter', 'haproxytech/kubernetes-ingress', 'quay.io/prometheus/haproxy-exporter',
                   'seafileltd/seafile-mc-backup', 'someone/server'):
         assert _image_id(image) is None, image
+
+
+def test_platform_logos_are_listed_with_their_license_and_trademark_notice():
+    licensing = (Path(__file__).parents[1] / 'docs' / 'licensing.md').read_text(encoding='utf-8')
+    row = next((line for line in licensing.splitlines() if line.startswith('| Simple Icons')), '')
+    assert '`static/icons/platforms/LICENSE.md`' in row and 'provenance.json' in row
+    assert 'trademarks of their respective owners' in licensing
