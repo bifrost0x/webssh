@@ -369,6 +369,62 @@ class TestKeyFileOperations:
             )]
             assert 'private post-replace failure detail' not in repr(errors)
 
+    def test_key_replacement_rollback_fsync_failure_is_reported(
+            self, monkeypatch, rsa_private_key_pem,
+            rsa_openssh_private_key_pem):
+        from app import key_encryption, storage_utils
+
+        user_id = 'replacement-rollback-fsync'
+        original = key_encryption.encrypt_key_content(
+            user_id, rsa_private_key_pem
+        )
+        errors = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            key_path = Path(tmpdir) / 'stored.pem'
+            key_path.write_bytes(original)
+            monkeypatch.setattr(
+                key_encryption,
+                'decrypt_key_content',
+                lambda *_args: 'different plaintext',
+            )
+            fsync_calls = []
+
+            def fail_rollback_fsync(path):
+                # The first fsync belongs to the replacement write, the
+                # second to the rollback write that restores the ciphertext.
+                fsync_calls.append(path)
+                if len(fsync_calls) > 1:
+                    raise OSError('sentinel replacement rollback fsync')
+
+            monkeypatch.setattr(
+                storage_utils, 'fsync_parent_directory', fail_rollback_fsync
+            )
+            monkeypatch.setattr(
+                key_encryption,
+                'log_error',
+                lambda message, **fields: errors.append((message, fields)),
+            )
+
+            with pytest.raises(
+                    RuntimeError,
+                    match='SSH key replacement rollback failed') as caught:
+                key_encryption.replace_prepared_key_content(
+                    user_id,
+                    str(key_path),
+                    rsa_openssh_private_key_pem,
+                    key_encryption.encrypt_key_content(
+                        user_id, rsa_openssh_private_key_pem
+                    ),
+                    allowed_root=Path(tmpdir),
+                )
+
+            assert isinstance(caught.value.__cause__, OSError)
+            assert key_path.read_bytes() == original
+            assert sorted(os.listdir(tmpdir)) == ['stored.pem']
+            assert len(fsync_calls) == 2
+            assert errors == []
+
     def test_failed_readback_verification_restores_plaintext(
             self, monkeypatch, ecdsa_private_key_pem):
         from app import key_encryption

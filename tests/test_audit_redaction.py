@@ -122,7 +122,7 @@ def test_audit_sanitization_bounds_nested_attacker_controlled_values():
     assert nested['provider']['access_token'] == '[REDACTED]'
 
 
-def test_log_helpers_keep_level_and_exception_handling(monkeypatch):
+def test_log_helpers_keep_level_and_exception_handling():
     from app import audit_logger
 
     records = []
@@ -133,8 +133,13 @@ def test_log_helpers_keep_level_and_exception_handling(monkeypatch):
 
     handler = Collect()
     logger = audit_logger.app_logger
+    previous_level = logger.level
+    logger.setLevel(logging.INFO)
+    # Warm the logger's level cache so the check below cannot depend on
+    # which tests ran earlier in this worker.
+    audit_logger.log_info("warm cache")
     logger.addHandler(handler)
-    monkeypatch.setattr(logger, "level", logging.WARNING)
+    logger.setLevel(logging.WARNING)
     try:
         # Plain messages honour the logger level; structured ones bypass it.
         audit_logger.log_debug("plain debug")
@@ -151,6 +156,7 @@ def test_log_helpers_keep_level_and_exception_handling(monkeypatch):
             audit_logger.log_error("structured error without trace", detail=4)
     finally:
         logger.removeHandler(handler)
+        logger.setLevel(previous_level)
 
     assert [
         (
