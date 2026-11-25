@@ -68,7 +68,7 @@ def test_file_manager_exposes_move_picker_folder_drop_and_concise_smb_help():
     source = FILE_MANAGER_JS.read_text(encoding='utf-8')
     template = INDEX_TEMPLATE.read_text(encoding='utf-8')
 
-    pane_start = source.index('    paneMarkup(side, active) {')
+    pane_start = source.index('    paneMarkup(paneSide, active) {')
     pane_markup = source[pane_start:source.index('`;', pane_start)]
     assert pane_markup.count('data-pane-action="move"') == 1
     assert source.count('data-pane-action="move"') == 1
