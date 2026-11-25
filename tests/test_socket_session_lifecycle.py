@@ -939,3 +939,62 @@ def test_page_reload_frees_quick_connect_quota_of_idle_sources(app, monkeypatch)
     assert pool.release_hold('uploading', user_id) is True
     assert clients['uploading'].closed is True
     assert pool.connections == {}
+
+
+def test_platform_detection_failure_still_emits_ssh_connected(
+        app, monkeypatch, caplog):
+    from app import host_platform
+
+    socket_client, _user_id = _authenticated_socket(
+        app, 'platform_failure_user'
+    )
+
+    def run_inline(_name, target, **_kwargs):
+        target(SimpleNamespace(is_set=lambda: False))
+        return SimpleNamespace(cancel=lambda: None)
+
+    def failed_detection(*_args, **_kwargs):
+        raise RuntimeError('detector failed for /private/path')
+
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **_kwargs: ('platform-session', None),
+    )
+    monkeypatch.setattr(
+        ssh_manager, 'get_session', lambda _session_id: {'use_tmux': False}
+    )
+    monkeypatch.setattr(
+        host_platform, 'detect_connected_platform', failed_detection
+    )
+    monkeypatch.setattr(
+        host_platform, 'recheck_reboot_hint', lambda *_a, **_k: None
+    )
+
+    try:
+        with caplog.at_level('DEBUG'):
+            socket_client.emit('ssh_connect', {
+                'host': 'example.com',
+                'port': 22,
+                'username': 'alice',
+                'password': 'secret',
+                'use_tmux': False,
+                'client_request_id': 'platform-failure',
+            })
+            events = _collect_until(socket_client, 'ssh_connected')
+            time.sleep(0.2)
+            events.extend(socket_client.get_received())
+
+        names = [event['name'] for event in events]
+        assert 'ssh_connected' in names
+        assert 'ssh_error' not in names
+        records = [
+            record for record in caplog.records
+            if record.getMessage() == 'Host platform detection failed'
+        ]
+        assert len(records) == 1
+        assert records[0].extra_data == {'error_type': 'RuntimeError'}
+        assert '/private/path' not in caplog.text
+    finally:
+        if socket_client.is_connected():
+            socket_client.disconnect()

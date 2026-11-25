@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime, timezone
 import hashlib
+import logging
 
 import bcrypt
 
@@ -224,8 +225,10 @@ def ensure_user_columns():
             from .audit_logger import log_info
             log_info("Schema migration: granted admin to the oldest pre-existing user",
                      count=getattr(result, 'rowcount', None))
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger('webssh').debug(
+                'Schema migration audit entry failed: %s', type(exc).__name__
+            )
     if additions:
         db.session.commit()
 

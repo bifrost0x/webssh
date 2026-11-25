@@ -1854,8 +1854,11 @@ def handle_ssh_connect(data, current_user=None):
                             lambda payload: socketio.emit('host_platform', payload, to=request.sid),
                             cancel_event=cancellation,
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log_debug(
+                            'Host platform detection failed',
+                            error_type=type(exc).__name__,
+                        )
                     try:
                         from .host_platform import recheck_reboot_hint
                         recheck_reboot_hint(
@@ -1863,8 +1866,11 @@ def handle_ssh_connect(data, current_user=None):
                             lambda payload: socketio.emit('host_maintenance', payload, to=request.sid),
                             cancel_event=cancellation,
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log_debug(
+                            'Host reboot hint check failed',
+                            error_type=type(exc).__name__,
+                        )
             except StorageCorruptionError as error:
                 if not cancellation.is_set():
                     emit('ssh_error', _storage_error_payload(

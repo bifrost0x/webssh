@@ -10,6 +10,7 @@ import pyotp
 import qrcode
 from qrcode.image.svg import SvgPathImage
 
+from .audit_logger import log_warning
 from .mfa_crypto import decrypt_totp_secret, encrypt_totp_secret
 from .mfa_throttle import clear_all_uncommitted
 from .models import (
@@ -203,7 +204,12 @@ def verify_totp(user_id, code, *, now=None):
         for row in rows:
             try:
                 secret = decrypt_totp_secret(row.user_id, row.encrypted_secret)
-            except Exception:
+            except Exception as exc:
+                log_warning(
+                    'TOTP secret could not be decrypted',
+                    user_id=row.user_id,
+                    error_type=type(exc).__name__,
+                )
                 continue
             step = _accepted_step(secret, code, now_aware)
             if step is None or (
@@ -220,7 +226,12 @@ def verify_totp(user_id, code, *, now=None):
         matched.last_used_at = now_db
         try:
             db.session.commit()
-        except Exception:
+        except Exception as exc:
             db.session.rollback()
+            log_warning(
+                'TOTP replay state could not be saved',
+                user_id=matched.user_id,
+                error_type=type(exc).__name__,
+            )
             return False
         return True

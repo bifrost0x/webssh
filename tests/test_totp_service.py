@@ -147,3 +147,44 @@ def test_totp_ciphertext_is_user_and_domain_separated(app):
         assert decrypt_totp_secret(11, ciphertext) == "ABCDEFGHIJKLMNOPQRSTUVWX23456789"
         with pytest.raises(InvalidToken):
             decrypt_totp_secret(12, ciphertext)
+
+
+def test_totp_decrypt_failure_is_logged(app, caplog):
+    from app.models import TOTPAuthenticator, db
+    from app.totp_service import (
+        activate_totp_enrollment,
+        begin_totp_enrollment,
+        verify_totp,
+    )
+
+    user_id = _create_user(app, "totp_decrypt_logged")
+    activation_time = datetime.now(timezone.utc)
+    with app.app_context():
+        view = begin_totp_enrollment(user_id, "binding")
+        activate_totp_enrollment(
+            view.token,
+            pyotp.TOTP(view.secret).at(activation_time),
+            "binding",
+            now=activation_time,
+        )
+        row = TOTPAuthenticator.query.filter_by(user_id=user_id).one()
+        row.encrypted_secret = b"not-a-valid-ciphertext"
+        db.session.commit()
+        code = pyotp.TOTP(view.secret).at(activation_time + timedelta(minutes=5))
+
+        caplog.clear()
+        with caplog.at_level("WARNING"):
+            result = verify_totp(
+                user_id, code, now=activation_time + timedelta(minutes=5)
+            )
+
+    assert result is False
+    records = [
+        record for record in caplog.records
+        if record.getMessage() == "TOTP secret could not be decrypted"
+    ]
+    assert len(records) == 1
+    assert records[0].extra_data["user_id"] == user_id
+    assert records[0].extra_data["error_type"]
+    assert view.secret not in caplog.text
+    assert "not-a-valid-ciphertext" not in caplog.text

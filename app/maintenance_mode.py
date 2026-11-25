@@ -11,6 +11,7 @@ import time
 
 import config
 
+from .audit_logger import log_error
 from .backup_coordination import ensure_backup_temp_dir, operation_lock
 
 
@@ -343,7 +344,11 @@ def recover_interrupted_restore() -> None:
             reset_cache()
             rotate_epoch()
         mark_failed(operation_id, 'Interrupted restore rolled back automatically')
-    except Exception:
+    except Exception as exc:
+        log_error(
+            'Interrupted restore rollback failed',
+            error_type=type(exc).__name__,
+        )
         mark_failed(
             operation_id,
             'Interrupted restore rollback failed; use the CLI recovery path',

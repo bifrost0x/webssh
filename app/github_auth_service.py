@@ -10,6 +10,7 @@ from urllib.parse import urlencode, urlsplit
 import requests
 import config
 
+from .audit_logger import log_warning
 from .auth_assurance import safe_continuation
 from .github_auth_crypto import decrypt_client_secret, encrypt_client_secret
 from .models import (
@@ -195,7 +196,11 @@ def get_settings(*, include_secret=False):
 def github_auth_is_active():
     try:
         return get_settings().active
-    except Exception:
+    except Exception as exc:
+        log_warning(
+            'GitHub sign-in status could not be determined',
+            error_type=type(exc).__name__,
+        )
         return False
 
 
