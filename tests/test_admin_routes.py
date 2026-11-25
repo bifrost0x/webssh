@@ -12,6 +12,8 @@ ADMIN_REQUESTS = (
     pytest.param('get', '/admin/api/operations', None, id='operations'),
     pytest.param('post', '/admin/api/settings', {'ssh_gateway_enabled': True}, id='set-gateway'),
     pytest.param('post', '/admin/api/settings', {'herdr_enabled': True}, id='set-herdr'),
+    pytest.param('post', '/admin/api/settings', {'login_username_limit': 1}, id='set-sign-in-protection'),
+    pytest.param('post', '/admin/api/settings', {'tailscale_ssh_restrict_tailnet_routes': False}, id='set-tailnet-restriction'),
     pytest.param('get', '/admin', None, id='admin-page'),
     pytest.param('get', '/admin/api/users', None, id='list-users'),
     pytest.param(
@@ -507,6 +509,321 @@ def test_invalid_support_links_setting_is_rejected(app, client):
     assert app_settings.is_support_links_enabled() is True
     assert app_settings.is_ssh_gateway_enabled() is False
     assert app_settings.set_support_links_enabled('false') is False
+
+
+@pytest.mark.parametrize(('role', 'panel', 'expected'), [
+    ('admin', True, 'true'),
+    ('admin', False, 'false'),
+    ('normal', True, 'false'),
+])
+def test_workspace_marks_administrators_for_admin_setting_links(
+    app, client, monkeypatch, role, panel, expected,
+):
+    import config
+
+    _prepare_role(app, client, role)
+    monkeypatch.setattr(config, 'ADMIN_PANEL_ENABLED', panel)
+    page = client.get('/').get_data(as_text=True)
+    assert f'<meta name="current-user-admin" content="{expected}">' in page
+
+
+@pytest.mark.parametrize('enabled', [True, False])
+def test_settings_report_whether_tailscale_ssh_is_enabled(app, client, monkeypatch, enabled):
+    import config
+
+    _prepare_role(app, client, 'admin')
+    monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', enabled)
+    assert client.get('/admin/api/settings').get_json()['tailscale_ssh_enabled'] is enabled
+
+
+def test_sign_in_protection_defaults_are_reported(app, client):
+    _prepare_role(app, client, 'admin')
+    data = client.get('/admin/api/settings').get_json()
+    assert data['login_username_limit'] == 10
+    assert data['login_username_global_limit'] == 100
+    assert data['ratelimit_ipv6_prefix'] == 128
+    assert data['tailscale_ssh_restrict_tailnet_routes'] is True
+
+
+def test_sign_in_protection_requires_step_up_and_is_audited(app, client, caplog):
+    import logging
+    from app import app_settings
+
+    _prepare_role(app, client, 'admin')
+    payload = {
+        'login_username_limit': 7,
+        'login_username_global_limit': 250,
+        'ratelimit_ipv6_prefix': 56,
+    }
+    response = client.post('/admin/api/settings', json=payload)
+    assert response.status_code == 403
+    assert app_settings.sign_in_protection() == app_settings.SIGN_IN_PROTECTION_DEFAULTS
+
+    caplog.set_level(logging.INFO, logger='security_audit')
+    response = client.post('/admin/api/settings', json=payload,
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+
+    assert response.status_code == 200
+    assert {name: response.get_json()[name] for name in payload} == payload
+    assert app_settings.sign_in_protection() == payload
+    assert app_settings.login_username_rate_limits() == ('7 per minute', '250 per minute')
+    events = [(record.levelno, record.getMessage()) for record in caplog.records
+              if record.name == 'security_audit']
+    # Raising the ceiling weakens protection; the other two tighten it.
+    for name, old, new, level in (('login_username_limit', 10, 7, logging.INFO),
+                                  ('login_username_global_limit', 100, 250, logging.WARNING),
+                                  ('ratelimit_ipv6_prefix', 128, 56, logging.INFO)):
+        assert any(
+            levelno == level
+            and 'APPLICATION_FEATURE_CHANGED' in event and f'feature={name}' in event
+            and f'previous_value={old}' in event and f'value={new}' in event
+            and 'admin=adminuser' in event
+            for levelno, event in events
+        ), (name, events)
+
+
+@pytest.mark.parametrize(('payload', 'level'), [
+    ({'login_username_limit': 50}, 'WARNING'),
+    ({'login_username_limit': 5}, 'INFO'),
+    ({'login_username_global_limit': 500}, 'WARNING'),
+    ({'login_username_global_limit': 20}, 'INFO'),
+    ({'ratelimit_ipv6_prefix': 128}, 'WARNING'),
+    ({'ratelimit_ipv6_prefix': 48}, 'INFO'),
+])
+def test_sign_in_protection_audit_level_follows_the_direction(app, client, caplog, payload, level):
+    import logging
+    from app import app_settings
+
+    _prepare_role(app, client, 'admin')
+    # Start from a grouped prefix so that both directions are a change.
+    app_settings.update_admin_settings({'ratelimit_ipv6_prefix': 64})
+    caplog.set_level(logging.INFO, logger='security_audit')
+    response = client.post('/admin/api/settings', json=payload,
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+    assert response.status_code == 200
+    (name,) = payload
+    records = [record for record in caplog.records
+               if record.name == 'security_audit' and f'feature={name}' in record.getMessage()]
+    assert [record.levelname for record in records] == [level]
+
+
+def test_global_limit_below_source_limit_is_rejected(app, client):
+    from app import app_settings
+
+    _prepare_role(app, client, 'admin')
+    headers = password_step_up_headers(client, 'settings.update', 'global')[0]
+    response = client.post('/admin/api/settings', headers=headers, json={
+        'herdr_enabled': True, 'login_username_limit': 30,
+        'login_username_global_limit': 20,
+    })
+    assert response.status_code == 400
+    body = response.get_json()
+    assert body['code'] == 'global_limit_below_source_limit'
+    assert body['setting'] == 'login_username_global_limit'
+    assert app_settings.sign_in_protection() == app_settings.SIGN_IN_PROTECTION_DEFAULTS
+    assert app_settings.is_herdr_enabled() is False
+
+    # The stored per-source limit counts when only the ceiling is sent.
+    response = client.post('/admin/api/settings', json={'login_username_global_limit': 9},
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+    assert response.status_code == 400
+    assert response.get_json()['code'] == 'global_limit_below_source_limit'
+
+
+def test_failed_settings_write_applies_nothing(app, client, monkeypatch, caplog):
+    import logging
+    from app import app_settings
+
+    _prepare_role(app, client, 'admin')
+    assert app_settings.is_ssh_gateway_enabled() is False
+
+    def fail(_target, _data):
+        raise OSError('disk full')
+
+    original_write = app_settings.atomic_write_json
+    monkeypatch.setattr(app_settings, 'atomic_write_json', fail)
+    caplog.set_level(logging.INFO, logger='security_audit')
+    response = client.post('/admin/api/settings', json={
+        'ssh_gateway_enabled': True, 'herdr_enabled': True,
+        'tailscale_ssh_restrict_tailnet_routes': False,
+        'login_username_limit': 3, 'credentials_enabled': True,
+    }, headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+
+    assert response.status_code == 500
+    assert response.get_json() == {'error': 'Settings could not be saved'}
+    monkeypatch.setattr(app_settings, 'atomic_write_json', original_write)
+    assert app_settings.is_ssh_gateway_enabled() is False
+    assert app_settings.is_herdr_enabled() is False
+    assert app_settings.is_tailnet_route_restricted() is True
+    assert app_settings.sign_in_protection()['login_username_limit'] == 10
+    assert app_settings.is_credentials_enabled() is False
+    assert not [record for record in caplog.records
+                if 'APPLICATION_FEATURE_CHANGED' in record.getMessage()]
+
+
+def test_unchanged_sign_in_protection_value_is_not_audited(app, client, caplog):
+    import logging
+
+    _prepare_role(app, client, 'admin')
+    caplog.set_level(logging.INFO, logger='security_audit')
+    response = client.post('/admin/api/settings', json={'login_username_limit': 10},
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+    assert response.status_code == 200
+    assert not [record for record in caplog.records
+                if 'feature=login_username_limit' in record.getMessage()]
+
+
+@pytest.mark.parametrize(('name', 'value'), [
+    ('login_username_limit', 0),
+    ('login_username_limit', 1001),
+    ('login_username_limit', '10'),
+    ('login_username_limit', 10.0),
+    ('login_username_limit', True),
+    ('login_username_limit', None),
+    ('login_username_global_limit', 0),
+    ('login_username_global_limit', 5000),
+    ('ratelimit_ipv6_prefix', 47),
+    ('ratelimit_ipv6_prefix', 129),
+    ('ratelimit_ipv6_prefix', '64'),
+])
+def test_invalid_sign_in_protection_value_changes_nothing(app, client, name, value):
+    from app import app_settings
+
+    _prepare_role(app, client, 'admin')
+    # A valid sibling must not be stored when another field is rejected.
+    payload = {'herdr_enabled': True, 'login_username_global_limit': 500,
+               'ratelimit_ipv6_prefix': 96, name: value}
+    response = client.post('/admin/api/settings', json=payload,
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+
+    assert response.status_code == 400
+    body = response.get_json()
+    assert body['setting'] == name
+    low, high = app_settings.SIGN_IN_PROTECTION_BOUNDS[name]
+    assert (body['min'], body['max']) == (low, high)
+    assert app_settings.sign_in_protection() == app_settings.SIGN_IN_PROTECTION_DEFAULTS
+    assert app_settings.is_herdr_enabled() is False
+
+
+def test_saved_username_limit_applies_to_the_next_login(app, client):
+    _prepare_role(app, client, 'admin')
+    response = client.post('/admin/api/settings', json={'login_username_limit': 2},
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+    assert response.status_code == 200
+    client.post('/logout')
+
+    limited = []
+    for _attempt in range(3):
+        response = client.post('/login', data={'username': 'targetuser', 'password': 'wrong'},
+                               environ_base={'REMOTE_ADDR': '198.51.100.30'})
+        limited.append('Too many login attempts' in response.get_data(as_text=True))
+    assert limited == [False, False, True]
+
+
+def test_tailnet_restriction_requires_step_up_and_is_audited(app, client, caplog):
+    import logging
+    from app import app_settings
+
+    _prepare_role(app, client, 'admin')
+    response = client.post('/admin/api/settings',
+                           json={'tailscale_ssh_restrict_tailnet_routes': False})
+    assert response.status_code == 403
+    assert app_settings.is_tailnet_route_restricted() is True
+
+    caplog.set_level(logging.INFO, logger='security_audit')
+    for enabled in (False, True):
+        response = client.post('/admin/api/settings',
+            json={'tailscale_ssh_restrict_tailnet_routes': enabled},
+            headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+        assert response.status_code == 200
+        assert response.get_json()['tailscale_ssh_restrict_tailnet_routes'] is enabled
+        assert app_settings.is_tailnet_route_restricted() is enabled
+    changes = [record for record in caplog.records
+               if 'feature=tailscale_ssh_restrict_tailnet_routes' in record.getMessage()]
+    assert [(record.levelno, 'enabled=True' in record.getMessage()) for record in changes] == [
+        (logging.WARNING, False), (logging.INFO, True)]
+
+
+@pytest.mark.parametrize('name', ['registration_enabled', 'ssh_gateway_enabled'])
+def test_opening_registration_or_the_gateway_is_audited_as_warning(
+    app, client, caplog, monkeypatch, name
+):
+    import logging
+
+    import config
+
+    monkeypatch.setattr(config, 'REGISTRATION_ENABLED', False)
+    _prepare_role(app, client, 'admin')
+    caplog.set_level(logging.INFO, logger='security_audit')
+    for enabled in (True, True, False):
+        response = client.post('/admin/api/settings', json={name: enabled},
+            headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+        assert response.status_code == 200
+    changes = [record for record in caplog.records
+               if f'feature={name}' in record.getMessage()]
+    # Saving an already enabled switch again does not open anything further.
+    assert [(record.levelno, f'enabled={value}' in record.getMessage())
+            for record, value in zip(changes, (True, True, False))] == [
+        (logging.WARNING, True), (logging.INFO, True), (logging.INFO, True)]
+
+
+def test_saving_the_registration_default_is_not_audited_as_warning(
+    app, client, caplog, monkeypatch
+):
+    import logging
+
+    import config
+
+    monkeypatch.setattr(config, 'REGISTRATION_ENABLED', True)
+    _prepare_role(app, client, 'admin')
+    caplog.set_level(logging.INFO, logger='security_audit')
+    response = client.post('/admin/api/settings', json={'registration_enabled': True},
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+    assert response.status_code == 200
+    levels = [record.levelno for record in caplog.records
+              if 'feature=registration_enabled' in record.getMessage()]
+    assert levels == [logging.INFO]
+
+
+@pytest.mark.parametrize('name', ['credentials_enabled', 'automation_enabled'])
+def test_unchanged_feature_policy_is_not_audited(app, client, caplog, name):
+    import logging
+
+    _prepare_role(app, client, 'admin')
+    caplog.set_level(logging.INFO, logger='security_audit')
+    for _ in range(2):
+        response = client.post('/admin/api/settings', json={name: True},
+            headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+        assert response.status_code == 200
+    changes = [record for record in caplog.records
+               if 'APPLICATION_FEATURE_CHANGED' in record.getMessage()
+               and f'feature={name}' in record.getMessage()]
+    assert len(changes) == 1
+
+
+@pytest.mark.parametrize('value', ['false', 0, None, []])
+def test_invalid_tailnet_restriction_is_rejected(app, client, value):
+    from app import app_settings
+
+    _prepare_role(app, client, 'admin')
+    response = client.post('/admin/api/settings',
+        json={'tailscale_ssh_restrict_tailnet_routes': value, 'login_username_limit': 3},
+        headers=password_step_up_headers(client, 'settings.update', 'global')[0])
+    assert response.status_code == 400
+    assert response.get_json() == {
+        'error': 'tailscale_ssh_restrict_tailnet_routes must be a boolean'
+    }
+    assert app_settings.is_tailnet_route_restricted() is True
+    assert app_settings.sign_in_protection()['login_username_limit'] == 10
+
+
+def test_admin_page_renders_sign_in_protection_controls(app, client):
+    _prepare_role(app, client, 'admin')
+    page = client.get('/settings?section=settings').get_data(as_text=True)
+    for fragment in ('id="signInProtection"', 'id="signInUsernameLimit"',
+                     'id="signInUsernameGlobalLimit"', 'id="signInIpv6Prefix"',
+                     'id="settingTailnetRestriction"'):
+        assert fragment in page
 
 
 def test_security_feature_status_exposes_all_supported_gates(app, client):

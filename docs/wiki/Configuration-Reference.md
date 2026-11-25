@@ -29,7 +29,7 @@ Treat `SECRET_KEY` as long-lived installation state. Replacing it without the su
 | `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none. Saved passwords and automation still work behind a TLS proxy at `0`: a page the browser loaded over `https://` from the same host counts as HTTPS. Set it to trust forwarded client addresses |
 | `SESSION_COOKIE_SECURE` | Sends the session cookie only over HTTPS. Default `true` (`false` only with `DEBUG=true`); the homelab Compose file sets `false`. With `true`, browsers drop the cookie on plain `http://` addresses other than localhost and sign-in fails; the homelab profile warns at start while the value is not set explicitly |
 | `SESSION_TIMEOUT` | Idle SSH session timeout in seconds; positive integer, default `1800` |
-| `SESSION_COOKIE_NAME` / `REMEMBER_COOKIE_NAME` | Cookie names, default `session` and `remember_token`. Give each instance its own names when several run on one host name, so they do not overwrite each other's sign-ins; the two names must differ |
+| `SESSION_COOKIE_NAME` / `REMEMBER_COOKIE_NAME` | Cookie names, default `session` and `remember_token`. Give each instance its own names when several run on one host name, so they do not overwrite each other's sign-ins; the two names must differ. The known-device cookie follows the session name as `<SESSION_COOKIE_NAME>_device` |
 
 The production profile requires explicit HTTPS origins, secure cookies, and explicit trusted proxies. Wildcard origins are not a production configuration. See [Reverse Proxy and Subfolder Deployment](Reverse-Proxy-and-Subfolder-Deployment).
 
@@ -54,9 +54,11 @@ Prefer `flask create-admin` for controlled deployments. Public registration is i
 | `SOCKS_REMOTE_DNS_ALLOWLIST` | Comma-separated exact target hostnames a trusted SOCKS5 proxy may resolve when `remote_dns=true` and internal targets are blocked; empty by default |
 | `SERVER_OPERATIONS_ENABLED` | Optional authoritative environment override; otherwise Admin → Integrations controls reviewed, step-up protected service/container actions, process TERM and reboot. Product default: `false` |
 
+While `TAILSCALE_SSH_ENABLED=true`, the Admin setting **Block ordinary SSH to tailnet nodes** (Settings → Administration → Integrations, enabled by default, no environment variable) refuses every non-Tailscale-SSH connection and probe to a Tailscale node address (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) that routes through `TAILSCALE_SSH_INTERFACE`; subnet-route and exit-node destinations are unaffected. See [Tailscale SSH](Tailscale-SSH#ordinary-ssh-over-the-tailnet).
+
 `BLOCK_INTERNAL_SSH=true` is appropriate for an Internet-facing gateway but can conflict with homelab use. Resolve and validate the exact target policy before enabling it. Host-key verification remains a separate control.
 
-`SSH_ALLOWED_INTERNAL_NETWORKS` keeps `BLOCK_INTERNAL_SSH=true` in place and re-admits only the listed private networks, for example `10.20.0.0/16,fd00:20::/64`. It applies to direct targets, Jump Hosts, SOCKS5 proxy endpoints, locally validated SOCKS destinations and file-transfer connections, and it is accepted by the production profile. Entries must lie inside `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` or `fc00::/7`; host bits, broader networks or any other range stop startup. Loopback, link-local (including cloud metadata addresses), multicast, reserved and IPv4-mapped IPv6 addresses always stay blocked. Every connection admitted through the list is recorded in the audit log.
+`SSH_ALLOWED_INTERNAL_NETWORKS` keeps `BLOCK_INTERNAL_SSH=true` in place and re-admits only the listed private networks, for example `10.20.0.0/16,fd00:20::/64`. It applies to direct targets, Jump Hosts, SOCKS5 proxy endpoints, locally validated SOCKS destinations and file-transfer connections, and it is accepted by the production profile. Entries must lie inside `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` or `fc00::/7`; host bits, broader networks or any other range stop startup. Loopback, link-local (including cloud metadata addresses), multicast, reserved and IPv4-mapped IPv6 addresses always stay blocked. Every connection admitted through the list is recorded in the audit log. While Tailscale SSH is enabled, listing `100.64.0.0/10` does not re-admit Tailscale node addresses routed through the tailnet interface for ordinary connections; see **Block ordinary SSH to tailnet nodes** above.
 
 `SOCKS_REMOTE_DNS_ALLOWLIST` is independent of the ProxyJump allowlist. Names are
 canonicalized at startup; wildcards, IP literals and names with a port are
@@ -139,6 +141,45 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | `RATELIMIT_BACKUP_UPLOAD` | `5 per hour` |
 | `RATELIMIT_BACKUP_DOWNLOAD` | `10 per hour` |
 | `RATELIMIT_BACKUP_RESTORE` | `3 per hour` |
+
+### Sign-in protection (Admin setting)
+
+**Settings → Administration → Authentication → Sign-in protection** holds three
+values that have no environment variable. They are stored in
+`DATA_DIR/app_settings.json`, apply immediately without a restart, require
+administrator reauthentication, and each change is recorded in the security
+audit log as `APPLICATION_FEATURE_CHANGED` with the old and new value: at
+`WARNING` when it loosens protection (a higher value), otherwise at `INFO`.
+They only take effect while `RATELIMIT_ENABLED=true`. All values sent in one
+save are applied together or not at all.
+
+| Setting | Default | Allowed |
+|---|---|---|
+| Attempts per username and source (per minute) | `10` | `1` to `1000` |
+| Attempts per username from all sources (per minute) | `100` | `1` to `1000`, not lower than the per-source value |
+| IPv6 grouping prefix length | `128` | `48` to `128` |
+
+Source-address limits count an IPv6 client per network of the configured
+prefix length and an IPv4 or IPv4-mapped IPv6 client per address. The
+default `128` keeps one limit per address, as in earlier releases. A client
+normally controls a whole /64 and can rotate addresses inside it; set `64` to
+stop that rotation from multiplying the budget. The trade-off: every device in
+one /64, for example an office or home network using SLAAC, then shares one
+`RATELIMIT_LOGIN_LIMIT`.
+
+The per-source username limit bounds failed local and LDAP password attempts
+for one submitted username from one such source, so one source cannot use up
+the attempts of another. The all-sources limit is a much higher ceiling per
+username that only slows distributed guessing. Only failed attempts count; a
+successful sign-in returns its reservation, so accounts that sign in often are
+not slowed. Both are time windows, not lockouts, and apply whether or not the
+account exists. A sender spread over enough sources to exceed the ceiling
+(twenty sources at the default `RATELIMIT_LOGIN_LIMIT`) can still keep one
+username throttled while it keeps sending. Browsers that signed in to that
+username before carry a known-device cookie (`<SESSION_COOKIE_NAME>_device`,
+signed, HttpOnly, 90 days) and skip the all-sources ceiling, so the owner
+keeps access from known devices; new devices wait until the attack stops. See
+[Authentication Overview](Authentication-Overview).
 
 Key listings and the refresh after renaming, replacing, or deleting a key share
 `SSH_KEY_LIST_RATELIMIT` per user across browser connections. Admission is checked

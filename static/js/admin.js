@@ -58,10 +58,14 @@
         let data = null;
         try { data = await res.json(); } catch { /* ignore */ }
         if (!res.ok) {
-            const msg = (data && data.error) ? data.error : ('Request failed (' + res.status + ')');
+            const described = window.WebSSHSecurityUI
+                ?.describeAuthenticationError?.(data, t);
+            const msg = described
+                || ((data && data.error) ? data.error : ('Request failed (' + res.status + ')'));
             const error = new Error(msg);
             error.status = res.status;
             error.code = data && data.code;
+            error.setting = data && data.setting;
             throw error;
         }
         return data;
@@ -118,8 +122,15 @@
             const input = document.getElementById(id);
             if (input) { input.value = ''; }
         });
+        setStepUpBusy(false);
+        showStepUpError('');
         if (!pending) { return; }
-        if (error) { pending.reject(error); } else { pending.resolve(value); }
+        if (error && pending.inFlight) {
+            // Cancelled while the server checks the value: the caller stays
+            // pending until that answer arrives, so no second request can
+            // start beside it. The late answer itself is discarded.
+            pending.inFlight.then(() => pending.reject(error), () => pending.reject(error));
+        } else if (error) { pending.reject(error); } else { pending.resolve(value); }
         setTimeout(() => {
             if (!activeStepUpPrompt && pending.returnFocus?.isConnected
                 && !pending.returnFocus.disabled && pending.returnFocus.getClientRects().length) {
@@ -128,10 +139,57 @@
         }, 0);
     }
 
-    function requestStepUpValue(method) {
+    function showStepUpError(message) {
+        const error = document.getElementById('stepUpError');
+        if (!error) { return; }
+        error.textContent = message || '';
+        error.classList.toggle('hidden', !message);
+    }
+
+    function setStepUpBusy(busy) {
+        ['stepUpSubmit', 'stepUpPassword', 'stepUpTotp'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) { element.disabled = busy; }
+        });
+        document.getElementById('stepUpModal')?.setAttribute('aria-busy', busy ? 'true' : 'false');
+    }
+
+    // Answers that let the administrator try again in the open dialog: a
+    // wrong value (403 invalid_value) or throttling (429), whose wait time
+    // must be read before retrying. Anything else ends the prompt.
+    function stepUpRetryMessage(error) {
+        if (error?.status === 429) {
+            return error.code === 'rate_limited'
+                ? error.message
+                : t('admin.stepUpThrottled', 'Too many attempts. Wait a moment and try again.');
+        }
+        if (error?.status === 403 && error.code === 'invalid_value') {
+            return t('admin.stepUpRejected', 'Authentication failed. Check the value and try again.');
+        }
+        return null;
+    }
+
+    // Other refusals (factor removed, account now uses MFA or LDAP, session
+    // ended) cannot succeed with another value.
+    function stepUpFailure(error) {
+        if (error?.status !== 401 && error?.status !== 403) { return error; }
+        const failure = new Error(t(
+            'admin.stepUpUnavailable',
+            'Additional authentication is not available for this account right now. Reload the page and try again.'
+        ));
+        failure.status = error.status;
+        failure.code = error.code;
+        return failure;
+    }
+
+    // ``verify`` sends the entered value to the server; the dialog stays open
+    // until it answers so rejections and throttling are shown in place.
+    function requestStepUpValue(method, verify) {
         if (activeStepUpPrompt) {
             closeStepUpPrompt(new Error('Additional authentication was replaced'));
         }
+        showStepUpError('');
+        setStepUpBusy(false);
         const password = method === 'password';
         document.getElementById('stepUpPasswordGroup')?.classList.toggle('hidden', !password);
         document.getElementById('stepUpTotpGroup')?.classList.toggle('hidden', password);
@@ -139,7 +197,7 @@
         modal?.classList.add('show');
         modal?.setAttribute('aria-hidden', 'false');
         return new Promise((resolve, reject) => {
-            const pending = { method, resolve, reject, returnFocus: stepUpReturnFocus || document.activeElement };
+            const pending = { method, verify, resolve, reject, busy: false, returnFocus: stepUpReturnFocus || document.activeElement };
             activeStepUpPrompt = pending;
             setTimeout(() => {
                 if (activeStepUpPrompt === pending) {
@@ -164,10 +222,11 @@
         document.getElementById('stepUpModal')?.addEventListener('click', event => {
             if (event.target.id === 'stepUpModal') { cancel(); }
         });
-        const submit = () => {
-            if (!activeStepUpPrompt) { return; }
+        const submit = async () => {
+            const pending = activeStepUpPrompt;
+            if (!pending || pending.busy) { return; }
             const field = document.getElementById(
-                activeStepUpPrompt.method === 'password'
+                pending.method === 'password'
                     ? 'stepUpPassword'
                     : 'stepUpTotp'
             );
@@ -176,7 +235,34 @@
                 field?.focus();
                 return;
             }
-            closeStepUpPrompt(null, value);
+            if (!pending.verify) {
+                closeStepUpPrompt(null, value);
+                return;
+            }
+            pending.busy = true;
+            setStepUpBusy(true);
+            showStepUpError('');
+            pending.inFlight = pending.verify(value);
+            try {
+                const result = await pending.inFlight;
+                pending.inFlight = null;
+                if (activeStepUpPrompt === pending) { closeStepUpPrompt(null, result); }
+            } catch (error) {
+                pending.inFlight = null;
+                if (activeStepUpPrompt !== pending) { return; }
+                const message = stepUpRetryMessage(error);
+                if (!message) {
+                    closeStepUpPrompt(stepUpFailure(error));
+                    return;
+                }
+                pending.busy = false;
+                setStepUpBusy(false);
+                showStepUpError(message);
+                if (field) {
+                    field.value = '';
+                    field.focus();
+                }
+            }
         };
         document.getElementById('stepUpSubmit')?.addEventListener('click', submit);
         document.addEventListener('keydown', event => {
@@ -269,21 +355,19 @@
             return result.grant;
         }
         if (methods.includes('totp')) {
-            const code = await requestStepUpValue('totp');
-            assertCurrentStepUp(generation);
-            const result = await api('/api/step-up/totp', {
+            const result = await requestStepUpValue('totp', code => api('/api/step-up/totp', {
                 method: 'POST', body: { action, target, code }
-            });
+            }));
+            assertCurrentStepUp(generation);
             return result.grant;
         }
         if (methods.includes('oidc')) {
             return oidcStepUp(action, target, generation);
         }
-        const password = await requestStepUpValue('password');
-        assertCurrentStepUp(generation);
-        const result = await api('/api/step-up/password', {
+        const result = await requestStepUpValue('password', password => api('/api/step-up/password', {
             method: 'POST', body: { action, target, password }
-        });
+        }));
+        assertCurrentStepUp(generation);
         return result.grant;
     }
 
@@ -1328,6 +1412,134 @@
 
     let settingsReadGeneration = 0;
     const settingsWrites = new Set();
+    const SETTING_TOGGLES = [
+        ['settingCredentials', 'credentials_enabled'],
+        ['settingAutomation', 'automation_enabled'],
+        ['settingHerdr', 'herdr_enabled'],
+        ['settingSupportLinks', 'support_links_enabled'],
+        ['settingTailnetRestriction', 'tailscale_ssh_restrict_tailnet_routes'],
+    ];
+    const SIGN_IN_PROTECTION_FIELDS = [
+        ['signInUsernameLimit', 'login_username_limit'],
+        ['signInUsernameGlobalLimit', 'login_username_global_limit'],
+        ['signInIpv6Prefix', 'ratelimit_ipv6_prefix'],
+    ];
+
+    function setSignInFieldError(input, message) {
+        const error = document.getElementById(input.id + 'Error');
+        if (message) {
+            input.setAttribute('aria-invalid', 'true');
+        } else {
+            input.removeAttribute('aria-invalid');
+        }
+        if (error) {
+            error.textContent = message || '';
+            error.classList.toggle('hidden', !message);
+        }
+    }
+
+    // A settings reload (tab switch, another switch saved) refreshes only
+    // fields the administrator has not edited since the last save, so an
+    // unsaved draft and its error state survive.
+    function renderSignInProtection(data, { replaceDraft = false } = {}) {
+        const form = document.getElementById('signInProtection');
+        if (!form) { return; }
+        for (const [id, key] of SIGN_IN_PROTECTION_FIELDS) {
+            const input = document.getElementById(id);
+            if (!input) { continue; }
+            input.disabled = false;
+            if (input.dataset.draft === 'true' && !replaceDraft) { continue; }
+            delete input.dataset.draft;
+            if (Number.isInteger(data[key])) { input.value = String(data[key]); }
+            setSignInFieldError(input, '');
+        }
+        document.getElementById('signInProtectionSave').disabled = false;
+    }
+
+    function renderTailnetRestrictionState(data) {
+        const state = document.getElementById('tailnetRestrictionState');
+        if (!state || typeof data.tailscale_ssh_enabled !== 'boolean') { return; }
+        state.textContent = data.tailscale_ssh_enabled
+            ? t('admin.tailnetRestrictionActive', 'Tailscale SSH is enabled on this server, so this setting is in effect.')
+            : t('admin.tailnetRestrictionInactive', 'Tailscale SSH is not enabled on this server, so this setting currently has no effect.');
+        state.classList.remove('hidden');
+    }
+
+    function signInRangeMessage(input) {
+        return t('admin.signInValueRange', 'Enter a whole number from {min} to {max}.')
+            .replace('{min}', String(input.min)).replace('{max}', String(input.max));
+    }
+
+    function signInGlobalBelowSourceMessage() {
+        return t('admin.signInGlobalBelowSource', 'Attempts from all sources must be at least the attempts per source.');
+    }
+
+    function readSignInProtection() {
+        const values = {};
+        let firstInvalid = null;
+        for (const [id, key] of SIGN_IN_PROTECTION_FIELDS) {
+            const input = document.getElementById(id);
+            const raw = input.value.trim();
+            const value = Number(raw);
+            if (!/^\d+$/.test(raw) || value < Number(input.min) || value > Number(input.max)) {
+                setSignInFieldError(input, signInRangeMessage(input));
+                firstInvalid = firstInvalid || input;
+                continue;
+            }
+            setSignInFieldError(input, '');
+            values[key] = value;
+        }
+        const ceiling = document.getElementById('signInUsernameGlobalLimit');
+        if (!firstInvalid && values.login_username_global_limit < values.login_username_limit) {
+            setSignInFieldError(ceiling, signInGlobalBelowSourceMessage());
+            firstInvalid = ceiling;
+        }
+        if (firstInvalid) {
+            // The per-field messages are not live regions; one status line
+            // announces the first problem instead of several alerts at once.
+            document.getElementById('signInProtectionStatus').textContent =
+                document.getElementById(firstInvalid.id + 'Error')?.textContent || '';
+            firstInvalid.focus();
+            return null;
+        }
+        return values;
+    }
+
+    function signInServerErrorMessage(error, input) {
+        if (error.code === 'global_limit_below_source_limit') { return signInGlobalBelowSourceMessage(); }
+        if (error.code === 'out_of_range' && input) { return signInRangeMessage(input); }
+        return error.message;
+    }
+
+    async function saveSignInProtection(event) {
+        event.preventDefault();
+        const status = document.getElementById('signInProtectionStatus');
+        const save = document.getElementById('signInProtectionSave');
+        status.textContent = '';
+        const values = readSignInProtection();
+        if (!values) { return; }
+        save.disabled = true;
+        settingsWrites.add('sign_in_protection');
+        settingsReadGeneration += 1;
+        try {
+            const data = await stepUpApi('settings.update', 'global', '/admin/api/settings', {
+                method: 'POST', body: values
+            });
+            renderSignInProtection(data, { replaceDraft: true });
+            status.textContent = t('admin.settingsSaved', 'Settings saved');
+            notify(t('admin.settingsSaved', 'Settings saved'), 'success');
+        } catch (error) {
+            const field = SIGN_IN_PROTECTION_FIELDS.find(([, key]) => key === error.setting);
+            const input = field ? document.getElementById(field[0]) : null;
+            const message = signInServerErrorMessage(error, input);
+            if (input) { setSignInFieldError(input, message); }
+            status.textContent = message;
+            notify(message, 'error');
+        } finally {
+            settingsWrites.delete('sign_in_protection');
+            save.disabled = false;
+        }
+    }
 
     function renderRuntimeFeatures(policies) {
         const root = document.getElementById('runtimeFeatureSettings');
@@ -1398,13 +1610,17 @@
                 gateway.checked = data.ssh_gateway_enabled === true;
                 gateway.disabled = false;
             }
-            for (const [id, key] of [['settingCredentials', 'credentials_enabled'], ['settingAutomation', 'automation_enabled'], ['settingHerdr', 'herdr_enabled'], ['settingSupportLinks', 'support_links_enabled']]) {
+            for (const [id, key] of SETTING_TOGGLES) {
                 const input = document.getElementById(id);
                 if (input && !settingsWrites.has(key)) {
                     input.checked = data[key] === true;
                     input.disabled = input.dataset.deploymentLocked === 'true';
                 }
             }
+            if (!settingsWrites.has('sign_in_protection')) {
+                renderSignInProtection(data);
+            }
+            renderTailnetRestrictionState(data);
         } catch (e) {
             if (generation !== settingsReadGeneration) { return; }
             notify(e.message, 'error');
@@ -1570,7 +1786,11 @@
                 target.disabled = false;
             }
         });
-        for (const [id, key] of [['settingCredentials', 'credentials_enabled'], ['settingAutomation', 'automation_enabled'], ['settingHerdr', 'herdr_enabled'], ['settingSupportLinks', 'support_links_enabled']]) {
+        document.getElementById('signInProtection')?.addEventListener('submit', saveSignInProtection);
+        document.getElementById('signInProtection')?.addEventListener('input', event => {
+            if (event.target.matches('input')) { event.target.dataset.draft = 'true'; }
+        });
+        for (const [id, key] of SETTING_TOGGLES) {
             document.getElementById(id)?.addEventListener('change', async (event) => {
                 const input = event.target;
                 const enabled = input.checked;

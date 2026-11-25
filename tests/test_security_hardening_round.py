@@ -29,10 +29,15 @@ def test_totp_login_is_limited_per_account_across_source_addresses(app, client, 
     client.post('/logout')
     assert client.post('/login', data={'username': 'totp_spray_user', 'password': 'password123'}).status_code == 200
     _enable_rate_limits(monkeypatch)
+    from app.models import User, db
     for index in range(5):
         wrong = client.post('/api/totp/auth/verify', json={'code': '000000'},
                             environ_base={'REMOTE_ADDR': f'198.51.100.{index + 1}'})
         assert wrong.status_code == 401
+        # Isolate the request limit from the persistent code backoff.
+        with app.app_context():
+            db.session.get(User, user_id).mfa_failed_attempts = 0
+            db.session.commit()
     # A fresh source address does not reset the per-account budget, even with the right code.
     blocked = client.post('/api/totp/auth/verify', json={'code': pyotp.TOTP(secret).at(time.time() + 30)},
                           environ_base={'REMOTE_ADDR': '198.51.100.99'})

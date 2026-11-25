@@ -84,13 +84,66 @@
         }
     });
 
+    // The one HTML escaper of the workspace. Quotes are escaped too, so the
+    // result is also safe inside quoted attribute values.
     window.escapeHtml = function(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        // Quotes too, so the result is also safe inside attribute values.
-        return div.innerHTML.replaceAll('"', '&quot;').replaceAll('\'', '&#39;');
+        return String(text ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll('\'', '&#39;');
     };
+
+    const MAX_TIMED_NOTIFICATIONS = 4;
+    const MAX_TIMED_NOTIFICATIONS_NARROW = 2;
+    // Success and info toasts that arrive while errors fill the stack wait
+    // here and appear once a slot frees, so a prompt is never lost unseen.
+    const MAX_QUEUED_NOTIFICATIONS = 8;
+    const queuedNotifications = [];
+    let placingTimedNotification = false;
+    const timedNotificationDismissers = new WeakMap();
+    // Where keyboard focus was before it entered the toast stack.
+    const notificationReturnFocus = new WeakMap();
+
+    function timedNotificationLimit() {
+        try {
+            return window.matchMedia?.('(max-width: 599px)').matches
+                ? MAX_TIMED_NOTIFICATIONS_NARROW
+                : MAX_TIMED_NOTIFICATIONS;
+        } catch {
+            return MAX_TIMED_NOTIFICATIONS;
+        }
+    }
+
+    // Oldest success and info toasts give way first; errors and warnings are
+    // only evicted when nothing less important is left. The newest toast is a
+    // candidate as well, so a success never pushes out an unread error.
+    function selectTimedEvictions(entries, limit) {
+        const evicted = new Set();
+        const excess = Math.max(0, entries.length - limit);
+        const byPriority = [
+            ...entries.filter(entry => !entry.urgent),
+            ...entries.filter(entry => entry.urgent),
+        ];
+        byPriority.slice(0, excess).forEach(entry => evicted.add(entry));
+        return evicted;
+    }
+    window.WebSSHNotificationPolicy = { selectTimedEvictions };
+
+    function visibleTimedNotificationCount(container) {
+        return Array.from(container.children).filter(item => (
+            item.dataset.timedNotification === 'true' && !item.classList.contains('fade-out')
+        )).length;
+    }
+
+    function showQueuedNotification(container) {
+        if (placingTimedNotification) return;
+        while (queuedNotifications.length > 0
+            && visibleTimedNotificationCount(container) < timedNotificationLimit()) {
+            queuedNotifications.shift().show();
+        }
+    }
 
     window.showNotification = function(message, type = 'info', duration) {
         const presentation = typeof message === 'object' && message !== null
@@ -106,18 +159,49 @@
         copy.textContent = String(presentation.message || '');
         notification.appendChild(copy);
         let dismissed = false;
+        let queued = null;
         let fadeTimer = null;
         let removeTimer = null;
+        notification.addEventListener('focusin', event => {
+            const from = event.relatedTarget;
+            if (from && !container.contains(from)) notificationReturnFocus.set(container, from);
+        });
+        // Keyboard users keep their place: focus moves to the neighbouring
+        // toast's close button, otherwise back to where it came from.
+        const restoreFocus = () => {
+            const toasts = Array.from(container.querySelectorAll('.notification'))
+                .filter(item => item !== notification && !item.classList.contains('fade-out'));
+            const index = Array.from(container.children).indexOf(notification);
+            const next = toasts.find(item => Array.from(container.children).indexOf(item) > index)
+                || toasts[toasts.length - 1];
+            const target = next?.querySelector('.notification-close, .notification-action');
+            if (target) {
+                target.focus();
+            } else {
+                const returnFocus = notificationReturnFocus.get(container);
+                if (returnFocus?.isConnected && typeof returnFocus.focus === 'function') returnFocus.focus();
+            }
+        };
         const dismiss = () => {
             if (dismissed) return;
             dismissed = true;
+            if (queued) {
+                const index = queuedNotifications.indexOf(queued);
+                if (index !== -1) queuedNotifications.splice(index, 1);
+                queued = null;
+                presentation.onDismiss?.();
+                return;
+            }
             clearTimeout(fadeTimer);
             clearTimeout(removeTimer);
+            const hadFocus = notification.contains(document.activeElement);
             notification.classList.add('fade-out');
+            if (hadFocus) restoreFocus();
             try {
                 presentation.onDismiss?.();
             } finally {
                 removeTimer = setTimeout(() => notification.remove(), 300);
+                if (notification.dataset.timedNotification === 'true') showQueuedNotification(container);
             }
         };
         if (
@@ -153,13 +237,108 @@
             action.textContent = presentation.action.label;
             notification.appendChild(action);
         }
-        container.appendChild(notification);
-
-        if (presentation.persistent !== true) {
-            const timeout = presentation.duration
-                || (notificationType === 'success' || notificationType === 'info' ? 2000 : 3000);
-            fadeTimer = setTimeout(dismiss, timeout);
+        const urgent = notificationType === 'error' || notificationType === 'warning';
+        if (urgent || presentation.persistent === true) {
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'notification-close';
+            close.setAttribute(
+                'aria-label',
+                (() => {
+                    const label = window.i18n?.t('common.dismissNotification');
+                    return label && label !== 'common.dismissNotification' ? label : 'Dismiss notification';
+                })(),
+            );
+            const icon = document.createElement('span');
+            icon.className = 'material-icons';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = 'close';
+            close.appendChild(icon);
+            close.addEventListener('click', dismiss);
+            notification.classList.add('notification-dismissible');
+            notification.appendChild(close);
         }
+        // Errors now stay longer; repeated failures (reconnects, polling) must
+        // not pile up without bound. The oldest timed toasts give way first.
+        notification.addEventListener('keydown', event => {
+            if (event.key !== 'Escape' || !notification.classList.contains('notification-dismissible')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            dismiss();
+        });
+        const show = () => {
+            queued = null;
+            if (presentation.persistent !== true) {
+                notification.dataset.timedNotification = 'true';
+                const entries = Array.from(container.children)
+                    .filter(item => (
+                        item.dataset.timedNotification === 'true' && !item.classList.contains('fade-out')
+                    ))
+                    .map(item => ({ item, urgent: item.dataset.urgent === 'true' }));
+                const incoming = { item: notification, urgent };
+                entries.push(incoming);
+                const evicted = selectTimedEvictions(entries, timedNotificationLimit());
+                if (evicted.has(incoming)) {
+                    // Less important than everything on screen; wait for a free slot.
+                    queued = { show, dismiss };
+                    queuedNotifications.push(queued);
+                    if (queuedNotifications.length > MAX_QUEUED_NOTIFICATIONS) {
+                        queuedNotifications[0].dismiss();
+                    }
+                    return;
+                }
+                placingTimedNotification = true;
+                try {
+                    evicted.forEach(entry => timedNotificationDismissers.get(entry.item)?.());
+                } finally {
+                    placingTimedNotification = false;
+                }
+                notification.dataset.urgent = String(urgent);
+                timedNotificationDismissers.set(notification, dismiss);
+            }
+            container.appendChild(notification);
+            if (presentation.persistent !== true) startTimer();
+        };
+
+        const startTimer = () => {
+            // Errors and warnings stay long enough to be read. Every timed
+            // toast waits while the pointer or keyboard focus is on it.
+            let remaining = presentation.duration || (urgent ? 8000 : 2000);
+            let startedAt = 0;
+            let hovered = false;
+            let focused = false;
+            const start = () => {
+                if (dismissed || hovered || focused || fadeTimer !== null) return;
+                startedAt = Date.now();
+                fadeTimer = setTimeout(dismiss, remaining);
+            };
+            const pause = () => {
+                if (dismissed || fadeTimer === null) return;
+                clearTimeout(fadeTimer);
+                fadeTimer = null;
+                remaining = Math.max(1000, remaining - (Date.now() - startedAt));
+            };
+            notification.addEventListener('mouseenter', () => {
+                hovered = true;
+                pause();
+            });
+            notification.addEventListener('mouseleave', () => {
+                hovered = false;
+                start();
+            });
+            notification.addEventListener('focusin', () => {
+                focused = true;
+                pause();
+            });
+            notification.addEventListener('focusout', event => {
+                if (notification.contains(event.relatedTarget)) return;
+                focused = false;
+                start();
+            });
+            start();
+        };
+
+        show();
         return dismiss;
     };
 
@@ -226,8 +405,35 @@
 
     window.ModalManager = {
         activeModal: null,
+        // Modals opened on top of another one; closing the top one hands the
+        // focus trap back to the dialog underneath.
+        openStack: [],
         previouslyFocused: new WeakMap(),
         focusableSelector: 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+
+        focusableElements(modal) {
+            // Only hiding inside the dialog counts: some dialogs are shown again
+            // without open(), so the root can keep a stale aria-hidden.
+            const hiddenWithin = element => {
+                const hidden = element.closest('[hidden], [inert], [aria-hidden="true"]');
+                return Boolean(hidden && hidden !== modal && modal.contains(hidden));
+            };
+            return Array.from(modal.querySelectorAll(this.focusableSelector)).filter(element => (
+                !element.matches(':disabled')
+                && element.getAttribute('tabindex') !== '-1'
+                && !hiddenWithin(element)
+                && element.getClientRects().length > 0
+                && getComputedStyle(element).visibility !== 'hidden'
+            ));
+        },
+
+        isTrappable(modal) {
+            return Boolean(
+                modal?.isConnected
+                && modal.classList.contains('show')
+                && !modal.classList.contains('primary-workspace-view')
+            );
+        },
 
         open(modal) {
             if (!modal) return;
@@ -236,9 +442,14 @@
             }
             modal.classList.add('show');
             modal.setAttribute('aria-hidden', 'false');
+            if (this.activeModal && this.activeModal !== modal && !this.openStack.includes(this.activeModal)) {
+                this.openStack.push(this.activeModal);
+            }
+            this.openStack = this.openStack.filter(entry => entry !== modal);
+            this.openStack.push(modal);
             this.activeModal = modal;
 
-            const focusable = modal.querySelectorAll(this.focusableSelector);
+            const focusable = this.focusableElements(modal);
             if (focusable.length > 0) {
                 focusable[0].focus();
             }
@@ -248,8 +459,9 @@
             if (!modal) return;
             modal.classList.remove('show');
             modal.setAttribute('aria-hidden', 'true');
+            this.openStack = this.openStack.filter(entry => entry !== modal && this.isTrappable(entry));
             if (this.activeModal === modal) {
-                this.activeModal = null;
+                this.activeModal = this.openStack[this.openStack.length - 1] || null;
             }
             const previouslyFocused = this.previouslyFocused.get(modal);
             if (previouslyFocused?.isConnected) {
@@ -259,19 +471,33 @@
         },
 
         trapFocus(event) {
-            if (!this.activeModal || event.key !== 'Tab') {
+            if (
+                !this.activeModal
+                || event.key !== 'Tab'
+                || event.defaultPrevented
+                || event.ctrlKey
+                || event.altKey
+                || event.metaKey
+                || !this.isTrappable(this.activeModal)
+            ) {
                 return;
             }
-            const focusable = Array.from(this.activeModal.querySelectorAll(this.focusableSelector));
+            const modal = this.activeModal;
+            const focusable = this.focusableElements(modal);
             if (focusable.length === 0) {
+                event.preventDefault();
                 return;
             }
             const first = focusable[0];
             const last = focusable[focusable.length - 1];
-            if (event.shiftKey && document.activeElement === first) {
+            const active = document.activeElement;
+            // Focus left on the page body re-enters the dialog. Terminals and
+            // native dialogs outside it handle their own keyboard focus.
+            const outside = !modal.contains(active) && !active?.closest?.('dialog[open], .xterm');
+            if (event.shiftKey && (active === first || outside)) {
                 event.preventDefault();
                 last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
+            } else if (!event.shiftKey && (active === last || outside)) {
                 event.preventDefault();
                 first.focus();
             }
@@ -2844,7 +3070,8 @@
                 const row = document.createElement('div');
                 row.className = 'shortcut-row';
                 const label = window.i18n ? i18n.t(shortcut.labelKey) : shortcut.labelKey;
-                row.innerHTML = `<strong>${shortcut.keys}</strong><span>${label}</span>`;
+                row.innerHTML = `<strong>${window.escapeHtml(shortcut.keys)}</strong>`
+                    + `<span>${window.escapeHtml(label)}</span>`;
                 list.appendChild(row);
             });
         };
@@ -3646,6 +3873,9 @@
         });
 
         document.addEventListener('keydown', (e) => {
+            // Before the text-field early return: Tab from the last enabled
+            // field of a dialog must stay inside it as well.
+            window.ModalManager.trapFocus(e);
             const tag = document.activeElement?.tagName;
             if ((tag === 'INPUT' || tag === 'TEXTAREA') && e.key !== 'F1' && e.key !== 'Escape') {
                 return;
@@ -3737,8 +3967,6 @@
                     }
                 }
             }
-
-            window.ModalManager.trapFocus(e);
         });
 
         document.getElementById('mobileMenuBtn').addEventListener('click', () => {

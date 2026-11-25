@@ -140,6 +140,7 @@ requirements-graph.*
 scripts/
 .trivyignore.yaml
 .gitleaks.toml
+ruff.toml
 .graphifyignore
 .env.example
 docker-compose*.yml

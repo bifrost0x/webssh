@@ -50,7 +50,7 @@ body[data-theme] .terminal-grid > .terminal-pane { background-image: none; }
     #commandLibraryPanel .command-actions button { min-width: 44px; min-height: 44px; }
     #commandLibraryPanel .command-row:hover { transform: none; }
 }
-.fm-source-status, .fm-source-action { overflow-wrap: anywhere; white-space: normal; }
+.fm-source-action { overflow-wrap: anywhere; white-space: normal; }
 .terminal-file-content { width: min(560px, calc(100vw - 24px)); }
 #terminalFileForm { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .terminal-file-content .modal-body { min-height: 0; overflow: auto; padding: 20px 24px; }

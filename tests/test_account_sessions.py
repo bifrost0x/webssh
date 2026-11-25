@@ -149,7 +149,7 @@ def test_ongoing_http_operation_cancellation_observes_revoked_login(app):
     from app.models import AuthenticationSession
     from app.account_sessions import login_cancellation_check
     current = _login(app, create=True)
-    selected = _login(app)
+    _login(app)
     with app.app_context():
         auth = AuthenticationSession.query.order_by(AuthenticationSession.id.desc()).first()
         cancelled = login_cancellation_check(auth)

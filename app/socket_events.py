@@ -41,7 +41,7 @@ from .network_policy import canonicalize_hostname
 from .ssh_errors import connection_error_payload
 from .credential_connections import connection_password, credential_error, CredentialGuard
 from .automation_store import AutomationError
-from . import binary_transfer, connection_pool
+from . import connection_pool
 from .transfer_routes import prepare_transfer, transfer_manager, _terminalize
 from .quota_manager import QuotaExceeded, QuotaKind, quota_manager
 from .socket_capacity import socket_capacity
@@ -58,6 +58,7 @@ from .remote_transfer import (
     copy_remote_entry,
 )
 from .transfer_errors import classify_transfer_failure
+from .transfer_progress import ProgressThrottle
 from .file_sources import (
     FileCapability,
     FileSourceKind,
@@ -5650,9 +5651,13 @@ def handle_transfer_server_to_server(data, current_user=None):
                     hasattr(active_source, 'backend')
                     and hasattr(active_destination, 'backend')
                 ):
+                    progress_throttle = ProgressThrottle()
+
                     def report_progress(progress):
                         nonlocal transferred
                         transferred = progress['transferred']
+                        if not progress_throttle.ready():
+                            return
                         total = max(
                             transferred,
                             progress.get('file_size', 0),

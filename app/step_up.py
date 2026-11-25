@@ -8,7 +8,6 @@ import secrets
 from threading import Lock
 
 from flask import jsonify, request
-from flask_login import current_user
 from sqlalchemy import delete
 
 import config

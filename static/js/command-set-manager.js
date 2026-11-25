@@ -152,10 +152,6 @@ window.CommandSetManager = {
         return typeof CommandLibrary !== 'undefined' ? CommandLibrary : null;
     },
 
-    getSelectedId() {
-        return this.selectedId || null;
-    },
-
     selectForConnection(id) {
         this.selectedId = typeof id === 'string' ? id : '';
         this.renderSelect();

@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 import json
+import logging
 import secrets
 import time
 from threading import Lock
@@ -21,6 +22,7 @@ from webauthn.helpers.structs import (
 
 import config
 
+from . import mfa_throttle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_reauth_rate_limit, password_exceeds_bcrypt_limit
 from .auth_assurance import (
@@ -59,8 +61,10 @@ def _intent():
     return data, action, target
 
 
-def _failure(status=403):
-    return jsonify({"error": "Step-up authentication failed"}), status
+def _failure(status=403, code="step_up_failed"):
+    # Only ``invalid_value`` means the entered password or code was wrong and
+    # may be retried; every other failure ends the prompt.
+    return jsonify({"error": "Step-up authentication failed", "code": code}), status
 
 
 def _factor_available(name):
@@ -142,7 +146,7 @@ def password_step_up():
             method="password",
             ip=client_ip,
         )
-        return _failure()
+        return _failure(code="invalid_value")
     try:
         grant = create_step_up_grant(
             current_authentication_session(),
@@ -180,14 +184,32 @@ def totp_step_up():
     ):
         log_rate_limit_exceeded("admin_step_up_totp", client_ip)
         return _failure(429)
+    try:
+        failures = mfa_throttle.claim_attempt(
+            current_user.id, scope=mfa_throttle.STEP_UP,
+        )
+    except mfa_throttle.MFAAttemptThrottled as exc:
+        log_security_event(
+            "MFA_ATTEMPT_THROTTLED",
+            level=logging.WARNING,
+            user=current_user.username,
+            method="totp",
+            flow="admin_step_up",
+            failures=exc.failures,
+            retry_after=exc.retry_after,
+            ip=client_ip,
+        )
+        return mfa_throttle.throttled_response(exc)
     if not verify_totp(current_user.id, data.get("code", "")):
         log_security_event(
             "ADMIN_STEP_UP_REJECTED",
             user=current_user.username,
             method="totp",
+            failures=failures,
             ip=client_ip,
         )
-        return _failure()
+        return _failure(code="invalid_value")
+    mfa_throttle.record_success(current_user.id, scope=mfa_throttle.STEP_UP)
     try:
         grant = create_step_up_grant(
             current_authentication_session(),
@@ -291,6 +313,7 @@ def passkey_step_up_verify():
                 raise ChallengeError("authenticator counter did not advance")
             row.sign_count = max(row.sign_count, new_sign_count)
             row.last_used_at = datetime.now(timezone.utc)
+            mfa_throttle.clear_all_uncommitted(db.session.get(User, row.user_id))
             db.session.commit()
         grant = create_step_up_grant_for_hash(
             current_authentication_session(),

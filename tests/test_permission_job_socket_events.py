@@ -124,7 +124,6 @@ def test_disabled_feature_rejects_job_even_with_backend_capability(socket_lab, m
     assert not runtime.pending and (not remote.writes)
 
 def test_authenticated_job_runs_in_a_real_worker_request_context(socket_lab,monkeypatch):
-    import time
     from app.runtime_lifecycle import RuntimeLifecycle
     app,client,_,remote,source,user_id,sid,prepare,http=socket_lab
     runtime=RuntimeLifecycle(1)

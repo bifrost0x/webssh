@@ -12,7 +12,6 @@ from flask import current_app, session
 from flask_login import current_user, login_user, logout_user
 from sqlalchemy import delete
 
-import config
 
 from .audit_logger import log_security_event, log_warning
 from .models import (

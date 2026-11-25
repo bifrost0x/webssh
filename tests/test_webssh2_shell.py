@@ -170,6 +170,29 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         assert _versioned_asset_marker(app, 'js/i18n-auth.js') in response.data
 
 
+def test_full_translation_pages_load_english_and_declare_every_locale_file(app, client):
+    import html
+    import json
+
+    _create_login(app, client)
+    locales = ('en', 'vi', 'de', 'fr', 'es', 'zh')
+    for path in ("/", "/security", "/settings"):
+        response = client.get(path)
+        assert response.status_code == 200
+        page = response.get_data(as_text=True)
+        core = re.search(r'''<script src="[^"]*js/i18n\.js\?v=[0-9a-f]{16}" data-locales='([^']+)'></script>''', page)
+        assert core, path
+        declared = json.loads(html.unescape(core.group(1)))
+        assert sorted(declared) == sorted(locales)
+        for locale in locales:
+            assert declared[locale].endswith(_versioned_asset_marker(app, f'js/i18n/{locale}.js').decode())
+        # English is the fallback and always follows the runtime directly.
+        english = _versioned_asset_marker(app, 'js/i18n/en.js').decode()
+        assert page[core.end():].lstrip().startswith(f'<script src="/static/{english}"></script>')
+        assert page.count('js/i18n.js?v=') == 1
+        assert page.count('js/i18n/en.js?v=') == 2  # once as a tag, once in the map
+
+
 def test_compact_workspace_controls_keep_accessible_names_and_close_command_input(
     app,
     client,

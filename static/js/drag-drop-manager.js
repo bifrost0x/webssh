@@ -3,7 +3,6 @@ class DragDropManager {
   constructor({sessionManager} = {}) {
     this.sessionManager = sessionManager;
     this.overlay = null;
-    this.dropZones = new Set();
     this.isDragging = false;
     this.dragCounter = 0;
     this.transferClient = null;
@@ -339,18 +338,6 @@ class DragDropManager {
   isFileDrag(e) {
     const types = e.dataTransfer?.types;
     return types && types.includes('Files');
-  }
-
-  registerDropZone(element, options = {}) {
-    this.dropZones.add({ element, options });
-  }
-
-  unregisterDropZone(element) {
-    this.dropZones.forEach(zone => {
-      if (zone.element === element) {
-        this.dropZones.delete(zone);
-      }
-    });
   }
 
   destroy() {

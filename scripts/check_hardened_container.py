@@ -2,7 +2,6 @@
 identity using disposable containers."""
 
 import argparse
-import json
 from pathlib import Path
 import re
 import shlex

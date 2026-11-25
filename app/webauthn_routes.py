@@ -46,6 +46,7 @@ from .auth_assurance import (
     pending_authentication,
     recovery_session_required,
 )
+from . import mfa_throttle
 from .models import User, WebAuthnCredential, db
 from .step_up import (
     SecurityUIUpgradeRequired,
@@ -478,6 +479,7 @@ def verify_authentication():
                 raise ChallengeError("Authenticator counter did not advance")
             row.sign_count = max(row.sign_count, new_sign_count)
             row.last_used_at = datetime.now(timezone.utc)
+            mfa_throttle.clear_all_uncommitted(db.session.get(User, row.user_id))
             db.session.commit()
         if pending is not None:
             _auth_session, continuation = finalize_pending_with_factor(

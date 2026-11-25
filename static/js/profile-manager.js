@@ -327,15 +327,6 @@ const ProfileManager = {
         return this.profiles.find(profile => profile && profile.id === profileId) || null;
     },
 
-    getLaunchMode(profile) {
-        return ProfileLauncherUtils.determineLaunchMode(profile, {
-            keys: this.keys,
-            jumpHosts: window.JumpHostManager?.jumpHosts || [],
-            socksProxies: window.SocksProxyManager?.socksProxies || [],
-            socksProxiesLoaded: window.SocksProxyManager?.loaded,
-        });
-    },
-
     createEmptyPaneContent(paneIndex, options = {}) {
         const empty = document.createElement('div');
         empty.className = 'pane-empty profile-launcher';
@@ -1819,23 +1810,6 @@ const ProfileManager = {
         });
     },
 
-    adoptAuthoritativeProfiles(profiles) {
-        if (!Array.isArray(profiles)) return false;
-        const transientAuthorization = new Map(this.profiles.map(profile => (
-            [profile.id, profile.tailscale_authorized]
-        )));
-        this.profiles = profiles.map(profile => {
-            const authorization = transientAuthorization.get(profile.id);
-            return {
-                ...profile,
-                ...(authorization === undefined
-                    ? {}
-                    : {tailscale_authorized: authorization}),
-            };
-        });
-        return true;
-    },
-
     applyOrganizationPatch(organization) {
         if (!Array.isArray(organization)) return false;
         const changes = new Map(organization
@@ -1950,12 +1924,6 @@ const ProfileManager = {
         this.pendingProfileMove = null;
         this.closeProfileMoveConfirmation();
         return this.requestProfileMove(pending.move, pending.emit, true);
-    },
-
-    saveProfile(profileData) {
-        if (window.socket) {
-            window.socket.emit('save_profile', profileData);
-        }
     },
 
     deleteProfile(profileId) {

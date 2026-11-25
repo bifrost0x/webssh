@@ -16,8 +16,13 @@ Use Tailscale SSH only when you have:
 - a tested local WebSSH administrator and recovery path;
 - persistent Tailscale node state.
 
-Hiding the UI is not authorization. The backend enforces WebSSH user, target,
-remote-user, and tailnet policy.
+Hiding the UI is not authorization. The backend enforces the WebSSH user,
+target, and remote-user allowlists for Tailscale SSH connections; the tailnet
+ACL and SSH policy remain authoritative for the node itself. Tailscale SSH
+servers authorize the WebSSH node, not the password or key a client offers, so
+these allowlists only hold while ordinary connections cannot reach tailnet
+hosts. WebSSH therefore reserves tailnet routes for Tailscale SSH by default;
+see [Ordinary SSH over the tailnet](#ordinary-ssh-over-the-tailnet).
 
 ## WebSSH settings
 
@@ -46,6 +51,88 @@ tailnet SSH policy.
 
 Tailscale authentication cannot be combined with ProxyJump. The route and
 interface proof applies only to a direct connection from the WebSSH host.
+
+## Ordinary SSH over the tailnet
+
+The admin setting **Block ordinary SSH to tailnet nodes** (Admin →
+Integrations) is enabled by default and takes effect only while
+`TAILSCALE_SSH_ENABLED=true` and `TAILSCALE_SSH_INTERFACE` is set. A change
+applies to the next connection without a restart. Turning the block on also
+closes open terminal sessions and file-transfer connections it would now
+refuse, judged by the address each was pinned to when it opened; tmux sessions
+are detached, not ended. Tailscale SSH sessions stay open, and an automation
+run already in progress finishes. A connection still being opened at that
+moment, or a settings file changed by hand, is not swept; restart WebSSH after
+such a change to be sure. A change requires admin
+reauthentication, and is recorded in the security audit log as
+`APPLICATION_FEATURE_CHANGED` with
+`feature=tailscale_ssh_restrict_tailnet_routes`. It
+covers Tailscale node addresses only: an address in `100.64.0.0/10` or
+`fd7a:115c:a1e0::/48` (including the IPv4-mapped IPv6 form) whose kernel route
+uses that interface, and the WebSSH node's own tailnet address, which routes
+through the loopback device. WebSSH refuses such an address for everything except
+Tailscale SSH, before it opens a socket:
+
+- password and key terminal connections, including Gateway selectors;
+- Jump Hosts and targets behind them that WebSSH validates locally;
+- SOCKS5 proxy endpoints and locally validated SOCKS5 destinations;
+- file-transfer connections and automation runs;
+- host discovery and the reachability check. Saved Tailscale SSH hosts that
+  the account may still use stay checkable.
+
+The browser shows that the host requires Tailscale SSH (administrators also get
+a link to the setting), and automation records
+the reason `tailscale_route_restricted`. Without this restriction, any signed-in
+user could open a password connection with an arbitrary password to a tailnet
+host running Tailscale SSH and obtain a shell under the shared node identity,
+outside every WebSSH allowlist.
+
+Hosts reached through subnet routes or an exit node are not affected: they run
+their own SSH server, which checks the offered password or key. This includes
+4via6 subnet routes in `fd7a:115c:a1e0:b1a::/64`, inside the node range. A `100.64.0.0/10`
+address that does not route through the interface, such as carrier-grade NAT on
+the local network, also stays reachable. If the kernel route of a node address
+cannot be determined, for example because the route query fails or times out,
+the address is refused. An IPv4-mapped IPv6 address is checked against the
+IPv4 route, because the connection leaves over IPv4. When Tailscale SSH is
+disabled, connections behave exactly as before.
+
+Proxies and jump hosts that resolve names themselves are covered too:
+
+- A SOCKS5 proxy or jump host whose address is loopback, unspecified or one of
+  the WebSSH host's own addresses is refused. Such a relay shares the WebSSH
+  network namespace, for example tailscaled's own SOCKS5 server
+  (`TS_SOCKS5_SERVER`) in the sidecar, so its connections leave with the node
+  identity. A relay whose kernel route cannot be determined is refused as
+  well.
+- A target name handed to a SOCKS5 proxy with remote DNS, or to a jump host
+  because only the bastion can resolve it, is refused when it ends in
+  `.ts.net` (MagicDNS) or when it resolves locally to a restricted node
+  address. A name that does not resolve on the WebSSH host is still passed on.
+
+**Disabling Tailscale SSH does not remove the node from the tailnet.** The
+restriction is only active while `TAILSCALE_SSH_ENABLED=true`. If the feature is
+switched off while the sidecar stays logged in to the tailnet and the tailnet
+policy still contains an `ssh` rule with `"action": "accept"` for the WebSSH
+node or its tag, any WebSSH user can open a password connection with an
+arbitrary password to those Tailscale SSH nodes and get a shell under the node
+identity. Remove the node or its tag from such rules, or log the sidecar out of
+the tailnet, before disabling the feature; otherwise keep the feature enabled
+with the block on. While the feature is enabled and the block is off, WebSSH
+logs a warning at startup and after a restore. While the feature is disabled
+and the `TAILSCALE_SSH_INTERFACE` interface (default `tailscale0`) exists on
+the host, WebSSH logs a warning at the same points.
+
+Disable the setting only when users must reach ordinary OpenSSH servers over
+the tailnet with their own credentials, and only when the tailnet SSH policy
+does not grant the WebSSH node access to any host those users can reach. With
+the restriction lifted, the WebSSH allowlists no longer bound what the node
+identity can be used for.
+
+When upgrading an installation that already has Tailscale SSH enabled, check
+whether users reach tailnet node addresses with passwords, keys, Jump Hosts or
+SOCKS5 proxies. Those connections now fail until the hosts are added to the Tailscale
+SSH allowlists or the operator opts out.
 
 ## Tailnet policy concept
 
@@ -202,6 +289,13 @@ listed in `TAILSCALE_SSH_ALLOWED_WEBSSH_USERS`.
 
 Check the exact WebSSH target allowlist, DNS/Tailscale name, tailnet grants, SSH
 rules, and remote-user allowlist.
+
+### Password or key connection to a tailnet host is refused
+
+The address is a Tailscale node address that routes through
+`TAILSCALE_SSH_INTERFACE` while Tailscale SSH is enabled. Connect with Tailscale SSH and add the host to the allowlists, or see
+[Ordinary SSH over the tailnet](#ordinary-ssh-over-the-tailnet) before opting
+out.
 
 ### Node identity changes after restart
 

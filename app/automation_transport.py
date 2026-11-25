@@ -16,7 +16,8 @@ from . import paramiko_channels
 from .automation_store import AutomationError
 from .host_key_store import HostKeyStore, HostKeyNotAccepted, RevokedHostKeyError
 from .key_manager import read_key_content
-from .network_policy import (audit_internal_allowlist_use, canonicalize_hostname, open_validated_socket,
+from .network_policy import (TailnetRouteRestricted, audit_internal_allowlist_use, canonicalize_hostname,
+                             check_relay_endpoint, check_remote_name, open_validated_socket,
                              proxy_jump_remote_dns_allowed, resolve_allowed_target)
 from .quota_manager import quota_manager, QuotaKind
 from .ssh_key_loader import load_private_key
@@ -53,7 +54,7 @@ class _Authentication(AuthStrategy):
 
 CONNECTION_REASONS = frozenset({'host_key_required','host_key_changed','host_key_revoked',
     'authentication_failed','connect_timeout','connection_failed','preview_changed','key_unavailable',
-    'credential_missing','vault_locked','run_interrupted'})
+    'credential_missing','vault_locked','run_interrupted','tailscale_route_restricted'})
 
 def connection_reason(error):
     if isinstance(error, HostKeyNotAccepted):
@@ -66,6 +67,8 @@ def connection_reason(error):
         return 'authentication_failed'
     if isinstance(error, TimeoutError):
         return 'connect_timeout'
+    if isinstance(error, TailnetRouteRestricted):
+        return error.code
     if isinstance(error, AutomationError) and error.code in CONNECTION_REASONS:
         return error.code
     return 'connection_failed'
@@ -83,16 +86,20 @@ def _destination_behind_jump(profile):
 
     A locally resolvable target must pass the network policy and is reached by
     its validated address. A name that only the jump host can resolve is
-    allowed when internal SSH is open or the name is on the remote DNS allowlist.
+    allowed when internal SSH is open or the name is on the remote DNS allowlist,
+    unless the local resolution was refused as a reserved tailnet route.
     """
     host = canonicalize_hostname(profile['host'])
     port = int(profile.get('port', 22))
     try:
         target = _allowed_target(host, port)
+    except TailnetRouteRestricted:
+        raise
     except ValueError:
         if config.BLOCK_INTERNAL_SSH and not proxy_jump_remote_dns_allowed(
                 host, config.PROXY_JUMP_REMOTE_DNS_ALLOWLIST):
             raise
+        check_remote_name(host)
         return host, port, (host, port)
     audit_internal_allowlist_use(target, 'automation_target')
     return target.hostname, target.port, (target.ip, target.port)
@@ -173,6 +180,7 @@ def connect_profile(user_id, profile, password, cancelled, own=lambda _resource:
             else:
                 hostname, port, destination = _destination_behind_jump(profile)
                 bastion = _allowed_target(route['host'], route.get('port', 22))
+                check_relay_endpoint(bastion)
                 audit_internal_allowlist_use(bastion, 'automation_jump_host')
                 bastion_socket = hold(open_validated_socket(bastion, timeout))
                 if cancelled():

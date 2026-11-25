@@ -68,6 +68,22 @@ class BaseRateLimiter(ABC):
             True if the request is allowed, False if rate limited.
         """
 
+    def reserve(self, key: str, limit: int, window_seconds: int):
+        """Like :meth:`allow`, but return a token for :meth:`release`.
+
+        Returns ``None`` when the request is rate limited.
+        """
+        return True if self.allow(key, limit, window_seconds) else None
+
+    def release(self, key: str, token) -> None:
+        """Return the request reserved as ``token`` to the bucket.
+
+        For limits that should count only failed attempts: the caller
+        reserves before the check and releases the reservation when the
+        attempt succeeded. A reservation that already left the window, or
+        one made by another backend, is ignored. Best effort.
+        """
+
 
 class InMemoryRateLimiter(BaseRateLimiter):
     """In-memory sliding window rate limiter.
@@ -119,6 +135,9 @@ class InMemoryRateLimiter(BaseRateLimiter):
             self._cleanup_keys.append(key)
 
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
+        return self.reserve(key, limit, window_seconds) is not None
+
+    def reserve(self, key: str, limit: int, window_seconds: int):
         now = datetime.now(timezone.utc).timestamp()
         window_start = now - window_seconds
         with self._lock:
@@ -136,7 +155,7 @@ class InMemoryRateLimiter(BaseRateLimiter):
             if limit <= 0 or (queue is not None and len(queue) >= limit):
                 if queue is not None and not queue:
                     self._remove_bucket(key)
-                return False
+                return None
 
             # Record this request
             if queue is None:
@@ -158,7 +177,21 @@ class InMemoryRateLimiter(BaseRateLimiter):
                 (deadline, self._expiry_sequence, key),
             )
 
-            return True
+            # Entries with the same timestamp are interchangeable, so the
+            # timestamp identifies this reservation.
+            return now
+
+    def release(self, key: str, token) -> None:
+        with self._lock:
+            queue = self.events.get(key)
+            if not queue:
+                return
+            try:
+                queue.remove(token)
+            except ValueError:
+                return
+            if not queue:
+                self._remove_bucket(key)
 
 
 class RedisRateLimiter(BaseRateLimiter):
@@ -196,6 +229,9 @@ class RedisRateLimiter(BaseRateLimiter):
             )
 
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
+        return self.reserve(key, limit, window_seconds) is not None
+
+    def reserve(self, key: str, limit: int, window_seconds: int):
         with self._fallback_lock:
             fallback = (
                 self._fallback
@@ -206,11 +242,12 @@ class RedisRateLimiter(BaseRateLimiter):
                 else None
             )
         if fallback is not None:
-            return fallback.allow(key, limit, window_seconds)
+            return fallback.reserve(key, limit, window_seconds)
 
         now = time.time()
         window_start = now - window_seconds
         redis_key = f"ratelimit:{key}"
+        member = uuid.uuid4().hex
 
         try:
             allowed = self.redis.eval(
@@ -221,7 +258,7 @@ class RedisRateLimiter(BaseRateLimiter):
                 now,
                 limit,
                 window_seconds + 1,
-                uuid.uuid4().hex,
+                member,
             )
             with self._fallback_lock:
                 if self._fallback is not None:
@@ -232,12 +269,32 @@ class RedisRateLimiter(BaseRateLimiter):
                     self._fallback = None
                     self._fallback_until = 0.0
 
-            return bool(allowed)
+            return member if allowed else None
         except Exception as e:
             self._activate_fallback(e)
             with self._fallback_lock:
                 fallback = self._fallback
-            return fallback.allow(key, limit, window_seconds)
+            return fallback.reserve(key, limit, window_seconds)
+
+    def release(self, key: str, token) -> None:
+        with self._fallback_lock:
+            fallback = (
+                self._fallback
+                if (
+                    self._fallback is not None
+                    and time.monotonic() < self._fallback_until
+                )
+                else None
+            )
+        if fallback is not None:
+            fallback.release(key, token)
+            return
+        if not isinstance(token, str):
+            return
+        try:
+            self.redis.zrem(f"ratelimit:{key}", token)
+        except Exception as e:
+            self._activate_fallback(e)
 
 
 def create_rate_limiter(storage_url: str = "memory://") -> BaseRateLimiter:

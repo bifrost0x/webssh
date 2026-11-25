@@ -4,7 +4,6 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import pytest
 

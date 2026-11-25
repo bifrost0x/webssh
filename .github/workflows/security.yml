@@ -12,6 +12,7 @@ permissions:
 jobs:
   change-scope:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       mode: ${{ steps.scope.outputs.mode }}
     steps:
@@ -29,6 +30,7 @@ jobs:
     if: needs.change-scope.outputs.mode == 'full'
     name: Image security (AMD64)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -121,6 +123,7 @@ jobs:
     if: needs.change-scope.outputs.mode == 'full'
     name: Image security (ARM64)
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -190,6 +193,7 @@ jobs:
     needs: [change-scope, image-security-amd64, image-security-arm64]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
 
     steps:
       - name: Checkout tested revision

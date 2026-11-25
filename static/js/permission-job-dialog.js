@@ -52,7 +52,7 @@
             const modes = initialModes(files);
             this.buildMode('file', modes.file, 'fm.jobFiles', 'Files');
             this.buildMode('directory', modes.directory, 'fm.jobDirectories', 'Folders');
-            this.dialog.querySelector('form').addEventListener('submit', event => { event.preventDefault(); this.state === 'ready' ? this.apply() : this.prepare(); });
+            this.dialog.querySelector('form').addEventListener('submit', event => { event.preventDefault(); if (this.state === 'ready') this.apply(); else this.prepare(); });
             this.dialog.querySelector('[data-close]').addEventListener('click', () => this.close());
             this.stopButton.addEventListener('click', () => this.stop());
             this.editButton.addEventListener('click', () => this.edit());

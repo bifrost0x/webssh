@@ -12,8 +12,11 @@ import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from .host_key_store import HostKeyStore, HostKeyNotAccepted
 from .network_policy import (
+    TailnetRouteRestricted,
     audit_internal_allowlist_use,
     canonicalize_hostname,
+    check_relay_endpoint,
+    check_remote_name,
     open_validated_socket,
     proxy_jump_remote_dns_allowed,
     resolve_allowed_target,
@@ -315,6 +318,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
     client = None
     validated_socket = None
     connection_stored = False
+    # The address WebSSH connects to and, behind a relay, what the relay
+    # is asked to reach; kept to re-check the tailnet block on open sessions.
+    peer_ip = None
+    relay_destination = None
     try:
         if connection_cancelled():
             return None, "Connection cancelled"
@@ -339,6 +346,11 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     channel_destination = (target.ip, target.port)
                     host = target.hostname
                     port = target.port
+                except TailnetRouteRestricted as error:
+                    # Bastion-side DNS must not reopen a refused tailnet route.
+                    return None, SSHConnectionError(
+                        str(error), code=error.code, context='target'
+                    )
                 except ValueError:
                     remote_dns_allowed = (
                         not tailscale_target_authorized
@@ -357,6 +369,12 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                         )
                     host = canonicalize_hostname(host)
                     port = int(port)
+                    try:
+                        check_remote_name(host)
+                    except TailnetRouteRestricted as error:
+                        return None, SSHConnectionError(
+                            str(error), code=error.code, context='target'
+                        )
                     channel_destination = (host, port)
 
                 bastion_target = resolve_allowed_target(
@@ -365,7 +383,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     allow_internal=not config.BLOCK_INTERNAL_SSH,
                     allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
                 )
+                check_relay_endpoint(bastion_target)
                 audit_internal_allowlist_use(bastion_target, 'jump_host')
+                peer_ip = bastion_target.ip
+                relay_destination = channel_destination[0]
                 validated_socket = open_validated_socket(
                     bastion_target, config.SSH_CONNECT_TIMEOUT
                 )
@@ -456,6 +477,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 )
             except paramiko.AuthenticationException:
                 return None, "Jump host authentication failed - invalid credentials"
+            except TailnetRouteRestricted as error:
+                return None, SSHConnectionError(
+                    str(error), code=error.code, context='jump_host'
+                )
             except Exception as e:
                 log_warning(
                     "Jump host connection failed",
@@ -477,9 +502,16 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     allow_internal=not config.BLOCK_INTERNAL_SSH,
                     allowed_internal_networks=config.SSH_ALLOWED_INTERNAL_NETWORKS,
                 )
+                check_relay_endpoint(proxy_target)
+            except TailnetRouteRestricted as error:
+                return None, SSHConnectionError(
+                    str(error), code=error.code, context='socks_proxy'
+                )
             except ValueError as error:
                 raise ValueError(f'SOCKS5 proxy: {error}') from error
             audit_internal_allowlist_use(proxy_target, 'socks_proxy')
+            peer_ip = proxy_target.ip
+            relay_destination = getattr(destination, 'ip', None) or destination.hostname
             try:
                 validated_socket = open_validated_socket(proxy_target, config.SSH_CONNECT_TIMEOUT)
             except OSError:
@@ -523,6 +555,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             audit_internal_allowlist_use(target, 'target')
             host = target.hostname
             port = target.port
+            peer_ip = target.ip
             if tailscale_target_authorized:
                 validated_socket = open_validated_socket(
                     target,
@@ -758,6 +791,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'jump_host_id': jump_host_id,
                 'socks_proxy_id': socks_proxy.proxy_id if socks_proxy else None,
                 'via_socks': socks_proxy is not None,
+                'peer_ip': peer_ip,
+                'relay_destination': relay_destination,
                 'profile_id': profile_id,
                 'auth_type': auth_type,
                 'use_tmux': use_tmux,
@@ -876,6 +911,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         )
     except paramiko.AuthenticationException:
         return None, "Authentication failed - invalid credentials"
+    except TailnetRouteRestricted as error:
+        return None, SSHConnectionError(
+            str(error), code=error.code, context='target'
+        )
     except ValueError as e:
         return None, str(e)
     except HostKeyNotAccepted:
@@ -1026,6 +1065,10 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None, disco
             if db_session:
                 cached_user_id = db_session.user_id
                 cached_room = f'user_{db_session.user_id}'
+            # The reader can wait for output for hours. End the lookup
+            # transaction so an idle terminal does not keep a pooled
+            # connection checked out.
+            db.session.rollback()
 
             if not cached_room:
                 log_error("No DB session found for output reader", session_id=session_id)
@@ -1075,6 +1118,8 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None, disco
                                 if db_session:
                                     db_session.last_activity = datetime.now(timezone.utc)
                                     db.session.commit()
+                                else:
+                                    db.session.rollback()
                             except Exception:
                                 db.session.rollback()
                     if not data:
@@ -1351,11 +1396,6 @@ def get_session(session_id):
                 'client_request_id': session.get('client_request_id'),
             }
     return None
-
-def get_output_buffer(session_id):
-    """Get buffered output for a session (for replay on reconnect)."""
-    return get_output_snapshot(session_id)[0]
-
 
 def get_output_snapshot(session_id):
     """Return buffered output and its atomic monotone sequence watermark."""

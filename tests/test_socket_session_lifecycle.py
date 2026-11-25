@@ -1,7 +1,6 @@
 import importlib
 import os
 import tempfile
-import threading
 import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace

@@ -134,6 +134,16 @@ def _perform_restore(app, socketio, record, username, source_ip,
             log_security_event(
                 'RESTORE_SUCCEEDED', user=username, ip=source_ip
             )
+            # Logged after success is recorded; a logging failure must not
+            # turn a completed restore into a rollback.
+            try:
+                from .tailscale_ssh import log_tailnet_route_restriction
+                log_tailnet_route_restriction('restore')
+            except Exception as error:
+                log_security_event(
+                    'TAILNET_RESTRICTION_LOG_FAILED',
+                    error_type=type(error).__name__,
+                )
             restart_required = True
     except Exception as restore_error:
         if rollback_available:

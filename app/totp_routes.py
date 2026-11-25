@@ -5,9 +5,10 @@ import secrets
 
 import config
 from .auth_redirects import public_continuation
-from flask import Blueprint, abort, jsonify, request, session
+from flask import Blueprint, abort, flash, jsonify, request, session
 from flask_login import current_user, login_required
 
+from . import mfa_throttle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_rate_limit, check_reauth_rate_limit
 from .auth_assurance import (
@@ -15,6 +16,7 @@ from .auth_assurance import (
     AuthenticationFinalizationError,
     PendingAuthenticationError,
     browser_session_binding,
+    cancel_pending_authentication,
     clear_recovery_restriction,
     finalize_pending_with_factor,
     pending_authentication,
@@ -226,6 +228,23 @@ def finish_totp_enrollment():
     return _no_store(response)
 
 
+def _restart_username_hint(pending):
+    """Return ``(source, name)`` for the form the discarded login started on.
+
+    A local sign-in matches the account name exactly; an LDAP sign-in stores
+    the directory name it was given on the identity. Logins that did not
+    start with a typed name (OIDC, GitHub) get no hint.
+    """
+    user = db.session.get(User, pending.user_id)
+    if user is None:
+        return None
+    if pending.primary_method == "password":
+        return "local", user.username
+    if pending.primary_method == "ldap" and user.ldap_identity is not None:
+        return "ldap", user.ldap_identity.directory_username
+    return None
+
+
 @totp_blueprint.post("/api/totp/auth/verify")
 def verify_totp_login():
     _require_enabled()
@@ -250,19 +269,58 @@ def verify_totp_login():
         log_rate_limit_exceeded("totp_login_account", client_ip)
         return jsonify({"error": "Too many authentication attempts"}), 429
     data = _bounded_json()
-    if not verify_totp(pending.user_id, data.get("code")):
+    user_id = pending.user_id
+    try:
+        failures = mfa_throttle.claim_attempt(user_id, scope=mfa_throttle.LOGIN)
+    except mfa_throttle.MFAAttemptThrottled as exc:
+        log_security_event(
+            "MFA_ATTEMPT_THROTTLED",
+            level=logging.WARNING,
+            user_id=user_id,
+            method="totp",
+            flow="login",
+            failures=exc.failures,
+            retry_after=exc.retry_after,
+            ip=client_ip,
+        )
+        return mfa_throttle.throttled_response(exc)
+    if not verify_totp(user_id, data.get("code")):
         log_security_event(
             "TOTP_AUTHENTICATION_REJECTED",
             level=logging.WARNING,
-            user_id=pending.user_id,
+            user_id=user_id,
+            failures=failures,
             ip=client_ip,
         )
-        return jsonify({"error": "TOTP code is invalid"}), 401
+        if mfa_throttle.pending_should_be_discarded(failures):
+            hint = _restart_username_hint(pending)
+            cancel_pending_authentication(token, binding)
+            session.pop("_pending_authentication", None)
+            flash("Too many invalid codes. Sign in again.", "error")
+            # One-shot hint for the password form; the login page consumes it
+            # with the other flashes, so it never reaches a URL or lingers.
+            if hint is not None:
+                flash(hint[0], "login_auth_source")
+                flash(hint[1], "login_username")
+            log_security_event(
+                "MFA_PENDING_LOGIN_DISCARDED",
+                level=logging.WARNING,
+                user_id=user_id,
+                method="totp",
+                failures=failures,
+                ip=client_ip,
+            )
+            return jsonify({
+                "error": "Too many invalid codes. Sign in again.",
+                "code": "mfa_restart",
+            }), 401
+        return jsonify({"error": "TOTP code is invalid", "code": "invalid_code"}), 401
+    mfa_throttle.record_success(user_id, scope=mfa_throttle.LOGIN)
     try:
         _row, continuation = finalize_pending_with_factor(
             token,
             binding,
-            user_id=pending.user_id,
+            user_id=user_id,
             factor="totp",
             assurance=AssuranceLevel.MFA,
         )

@@ -14,6 +14,7 @@ import zipfile
 import zlib
 
 import config
+from .audit_logger import log_warning
 from .backup_coordination import ensure_backup_temp_dir
 from .storage_utils import atomic_copy_file, fsync_parent_directory
 from .restore_database import SQLITE_SIDECARS, harden_imported_database
@@ -499,7 +500,9 @@ def _create_archive(data_dir, destination, *, include_remote_credentials):
                 temporary_archive = Path(handle.name)
             _write_archive(stage, temporary_archive, manifest)
             os.chmod(temporary_archive, 0o600)
-            if verify_backup(temporary_archive) != manifest:
+            if verify_backup(
+                temporary_archive, work_dir=temporary_directory
+            ) != manifest:
                 raise BackupIntegrityError(
                     'published backup verification failed'
                 )
@@ -598,10 +601,38 @@ def _validate_webssh_database(path: Path) -> None:
             connection.close()
 
 
-def _verify_database_member(backup, info, expected_size) -> None:
+def _database_verification_directory(work_dir):
+    """Directory for the extracted database copy, never the shared /tmp.
+
+    The copy holds the complete account database. Callers that already own
+    a private directory pass it; otherwise the private backup namespace is
+    used, and only an unusable namespace falls back to the system default.
+    """
+    if work_dir is not None:
+        return Path(work_dir)
+    try:
+        return ensure_backup_temp_dir()
+    except (OSError, RuntimeError) as exc:
+        # The CLI and container checks verify archives without a usable
+        # namespace; mkstemp still creates the copy readable only by us.
+        # RuntimeError texts are fixed; an OSError text would name the path.
+        if isinstance(exc, OSError):
+            reason = exc.strerror or type(exc).__name__
+        else:
+            reason = str(exc)
+        log_warning(
+            'Backup operation directory is unusable; verifying the database '
+            'copy in the system temporary directory',
+            error_type=type(exc).__name__, reason=reason,
+        )
+        return None
+
+
+def _verify_database_member(backup, info, expected_size, work_dir=None) -> None:
     descriptor, temporary_name = tempfile.mkstemp(
         prefix='.webssh-backup-database-',
         suffix='.db',
+        dir=_database_verification_directory(work_dir),
     )
     temporary = Path(temporary_name)
     try:
@@ -628,7 +659,7 @@ def _verify_database_member(backup, info, expected_size) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def verify_backup(archive):
+def verify_backup(archive, *, work_dir=None):
     try:
         with zipfile.ZipFile(Path(archive), 'r') as backup:
             members = _validated_members(backup)
@@ -691,6 +722,7 @@ def verify_backup(archive):
                 backup,
                 members[_DATA_PREFIX + _DATABASE_PATH],
                 database.size,
+                work_dir,
             )
             return manifest
     except BackupIntegrityError:
@@ -878,7 +910,13 @@ def _restore_archive(archive, data_dir, *, include_remote_credentials):
             'restore destination must be a real directory'
         )
     data_dir = data_dir.resolve(strict=False)
-    manifest = verify_backup(archive)
+    recovery_root = Path(config.BACKUP_TEMP_DIR).expanduser().resolve(strict=False)
+    if recovery_root.is_relative_to(data_dir) or data_dir.is_relative_to(recovery_root):
+        raise BackupIntegrityError('restore staging must be outside the destination')
+    operation_root = ensure_backup_temp_dir()
+    if operation_root.is_relative_to(data_dir) or data_dir.is_relative_to(operation_root):
+        raise BackupIntegrityError('restore staging must be outside the destination')
+    manifest = verify_backup(archive, work_dir=operation_root)
     require_restore_compatible(manifest)
     _validate_restore_targets(data_dir, manifest)
     restorable_manifest = BackupManifest(
@@ -906,14 +944,8 @@ def _restore_archive(archive, data_dir, *, include_remote_credentials):
         for item in restorable_manifest.files
     }
     extra_paths = existing_paths - manifest_paths
-    recovery_root = Path(config.BACKUP_TEMP_DIR).expanduser().resolve(strict=False)
-    if recovery_root.is_relative_to(data_dir) or data_dir.is_relative_to(recovery_root):
-        raise BackupIntegrityError('restore staging must be outside the destination')
     data_dir.parent.mkdir(parents=True, exist_ok=True)
 
-    operation_root = ensure_backup_temp_dir()
-    if operation_root.is_relative_to(data_dir) or data_dir.is_relative_to(operation_root):
-        raise BackupIntegrityError('restore staging must be outside the destination')
     with tempfile.TemporaryDirectory(
         dir=operation_root,
         prefix='.webssh-restore-',

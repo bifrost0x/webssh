@@ -547,17 +547,34 @@ def test_workflows_use_an_explicit_runner_release():
                 assert runner.strip() in allowed, f'{workflow}: {runner}'
 
 
-def test_browser_ci_runs_javascript_units_before_playwright():
+def test_every_workflow_job_with_steps_has_a_timeout():
+    for path in WORKFLOWS.glob('*.yml'):
+        jobs = path.read_text(encoding='utf-8').split('\njobs:\n', 1)[1]
+        for job in re.split(r'\n  (?=[a-z][a-z0-9-]*:\s*\n)', '\n' + jobs)[1:]:
+            name = job.split(':', 1)[0]
+            if re.search(r'^    runs-on:', job, re.MULTILINE):
+                assert re.search(r'^    timeout-minutes: \d+$', job, re.MULTILINE), (path.name, name)
+
+
+def test_static_checks_run_once_in_the_lint_job():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    lint_job = workflow.split('\n  lint:', 1)[1].split('\n  dependency-locks:', 1)[0]
     browser_job = workflow.split('  browser-e2e-shards:', 1)[1].split(
         '\n  browser-e2e:',
         1,
     )[0]
 
-    unit_step = browser_job.index('run: npm run test:js')
-    browser_step = browser_job.index('run: node scripts/run-e2e-ci-parallel.js')
-
-    assert unit_step < browser_step
+    for command in (
+        'run: python -m ruff check --output-format=github .',
+        'run: npm run vendor:check',
+        'run: npm run lint:js',
+        'run: npm run test:js',
+    ):
+        assert command in lint_job
+        assert command not in browser_job
+    assert 'timeout-minutes:' in lint_job
+    assert 'needs:' not in lint_job
+    assert 'if:' not in lint_job
 
 
 def test_slow_test_gates_are_sharded_without_duplicate_redis_unit_runs():
@@ -782,7 +799,8 @@ def test_docs_selection_is_job_level_and_keeps_both_required_aggregates():
     assert 'python -m unittest discover -s tests -p test_documentation_surface.py -v' in tests
     assert '--ignore=tests/test_documentation_surface.py' in tests
     from scripts.check_release_gates import REQUIRED
-    for name in REQUIRED - {'dispatch-integrity', 'browser-e2e', 'pytest', 'redis-rate-limiter', 'smb-integration', 'release-contract'}:
+    from scripts.check_release_gates import ALWAYS_RUN
+    for name in REQUIRED - ALWAYS_RUN - {'dispatch-integrity', 'browser-e2e', 'pytest', 'redis-rate-limiter', 'smb-integration', 'release-contract'}:
         job = re.split(r'\n  [a-z][a-z-]*:', tests.split('\n  ' + name + ':', 1)[1], maxsplit=1)[0]
         assert 'needs: dispatch-integrity' in job
         assert "if: needs.dispatch-integrity.outputs.mode == 'full'" in job

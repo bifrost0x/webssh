@@ -28,6 +28,164 @@ class ResolvedTarget:
         object.__setattr__(self, 'sockaddr', sockaddr)
 
 
+class TailnetRouteRestricted(ValueError):
+    """A pinned address leaves through the Tailscale SSH interface."""
+
+    code = 'tailscale_route_restricted'
+
+    def __init__(self, message='This target is on the tailnet and requires Tailscale SSH'):
+        super().__init__(message)
+
+
+_TAILSCALE_NODE_NETWORKS = (
+    ipaddress.ip_network('100.64.0.0/10'),
+    ipaddress.ip_network('fd7a:115c:a1e0::/48'),
+)
+# Tailscale's 4via6 subnet routes embed a site ID and an IPv4 address in this
+# prefix; the destinations behind them are subnet hosts with their own sshd.
+_TAILSCALE_4VIA6_NETWORK = ipaddress.ip_network('fd7a:115c:a1e0:b1a::/64')
+
+
+def _tailscale_node_address(address):
+    """Return the address in its routed form if it is a tailnet node address.
+
+    An IPv4-mapped IPv6 address is returned as IPv4: a dual-stack socket sends
+    it over IPv4, so only the IPv4 route table describes where it leaves.
+    """
+    address = ipaddress.ip_address(address)
+    if address.version == 6 and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    if address.version == 6 and address in _TAILSCALE_4VIA6_NETWORK:
+        return None
+    if any(
+        address.version == network.version and address in network
+        for network in _TAILSCALE_NODE_NETWORKS
+    ):
+        return address
+    return None
+
+
+def _tailnet_route_restricted(address):
+    """Return whether an ordinary connection must not use this address.
+
+    tailssh listens on tailnet node addresses and authorizes the WebSSH node,
+    not the credential it is offered, so a password or key connection to such
+    an address would run under the shared node identity outside every
+    Tailscale SSH allowlist. Subnet-route and exit-node destinations run their
+    own sshd and stay unaffected. A node address whose route cannot be
+    determined is restricted, and so is this node's own tailnet address,
+    which the kernel routes through the loopback device. One routed through
+    another interface, such as carrier-grade NAT on the local network, is not.
+    """
+    node_address = _tailscale_node_address(address)
+    if node_address is None:
+        return False
+    interface = _active_tailnet_restriction()
+    if interface is None:
+        return False
+    from . import tailscale_ssh
+    route_interface = tailscale_ssh._route_interface_for_ip(node_address.compressed)
+    return route_interface in (None, 'lo', interface)
+
+
+def _active_tailnet_restriction():
+    """Return the Tailscale interface while the restriction applies, else None."""
+    import config
+    interface = str(config.TAILSCALE_SSH_INTERFACE or '').strip()
+    if not (config.TAILSCALE_SSH_ENABLED and interface):
+        return None
+    from .app_settings import is_tailnet_route_restricted
+    if not is_tailnet_route_restricted():
+        return None
+    return interface
+
+
+_RELAY_MESSAGE = (
+    'A proxy or jump host on the WebSSH host itself, or one whose route '
+    'cannot be determined, would use the Tailscale node identity'
+)
+_REMOTE_NAME_MESSAGE = (
+    'This name resolves to the tailnet and requires Tailscale SSH'
+)
+
+
+def check_relay_endpoint(target):
+    """Refuse a SOCKS5 proxy or jump host that would egress as this node.
+
+    A relay on loopback or on one of this host's own addresses shares the
+    WebSSH network namespace, for example tailscaled's SOCKS5 server, so its
+    onward connections leave with the shared node identity. Tailnet node
+    addresses are already refused when the relay address is resolved. A relay
+    whose route cannot be determined may be one of those addresses and is
+    refused as well.
+    """
+    if _active_tailnet_restriction() is None:
+        return
+    if _relay_address_restricted(target.ip):
+        raise TailnetRouteRestricted(_RELAY_MESSAGE)
+
+
+def _relay_address_restricted(ip):
+    address = ipaddress.ip_address(ip)
+    if address.version == 6 and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    if address.is_loopback or address.is_unspecified:
+        return True
+    from . import tailscale_ssh
+    # The kernel routes this host's own addresses through the local table,
+    # whose output interface is the loopback device.
+    return tailscale_ssh._route_interface_for_ip(address.compressed) in (None, 'lo')
+
+
+def check_remote_name(hostname):
+    """Refuse a name a proxy or bastion would resolve onto the tailnet.
+
+    MagicDNS names are refused outright. Any other name is resolved locally
+    once; if a candidate is a restricted tailnet node address, a resolver in
+    this network namespace would return the same address. A name that does
+    not resolve here stays allowed for the remote side.
+    """
+    if _active_tailnet_restriction() is None:
+        return
+    canonical = canonicalize_hostname(hostname)
+    if canonical == 'ts.net' or canonical.endswith('.ts.net'):
+        raise TailnetRouteRestricted(_REMOTE_NAME_MESSAGE)
+    try:
+        candidates = socket.getaddrinfo(canonical, None, type=socket.SOCK_STREAM)
+    except (socket.gaierror, OSError, UnicodeError):
+        return
+    for _family, _type, _proto, _canonname, sockaddr in candidates:
+        try:
+            restricted = _tailnet_route_restricted(sockaddr[0])
+        except (ValueError, TypeError, IndexError):
+            continue
+        if restricted:
+            raise TailnetRouteRestricted(_REMOTE_NAME_MESSAGE)
+
+
+def open_route_restricted(peer_ip, relay_destination=None):
+    """Return whether an open ordinary connection uses a now refused route.
+
+    ``peer_ip`` is the address the connection was pinned to: the target, or
+    the jump host or SOCKS5 proxy when ``relay_destination`` names what the
+    relay connects to. Applies the checks a new connection would pass; an
+    unknown or unparsable address is treated as restricted.
+    """
+    if _active_tailnet_restriction() is None:
+        return False
+    try:
+        if peer_ip is None or _tailnet_route_restricted(peer_ip):
+            return True
+        if relay_destination is None:
+            return False
+        if _relay_address_restricted(peer_ip):
+            return True
+        check_remote_name(relay_destination)
+    except ValueError:
+        return True
+    return False
+
+
 def canonicalize_hostname(hostname):
     """Return the canonical hostname used for policy and host-key identity."""
     value = str(hostname or '').strip()
@@ -112,12 +270,18 @@ def resolve_allowed_target(
     *,
     target_validator=None,
     allowed_internal_networks=(),
+    tailscale_ssh=False,
 ):
     """Resolve once and select the first policy-allowed TCP address.
 
     ``allowed_internal_networks`` re-admits internal addresses inside the
     given networks while ``allow_internal`` is false. Loopback, link-local,
     multicast, unspecified, reserved and IPv4-mapped addresses stay blocked.
+
+    While Tailscale SSH is enabled, addresses routed through its interface
+    are reserved for the Tailscale SSH strategy, which alone passes
+    ``tailscale_ssh=True``. Raises ``TailnetRouteRestricted`` when such an
+    address was the only candidate left.
     """
     canonical = canonicalize_hostname(hostname)
     try:
@@ -138,6 +302,8 @@ def resolve_allowed_target(
         )
         if not allowed:
             raise ValueError('Connections to this address are not allowed')
+        if not tailscale_ssh and _tailnet_route_restricted(literal.compressed):
+            raise TailnetRouteRestricted()
         target = ResolvedTarget(
             canonical,
             clean_port,
@@ -160,6 +326,7 @@ def resolve_allowed_target(
         raise ValueError('Host could not be resolved') from error
 
     seen = set()
+    tailnet_restricted = False
     for family, socktype, _protocol, _canonname, sockaddr in candidates:
         if family not in (socket.AF_INET, socket.AF_INET6):
             continue
@@ -181,6 +348,11 @@ def resolve_allowed_target(
         allowed, via_allowlist = _address_decision(
             address, allow_internal, allowed_internal_networks
         )
+        if allowed and not tailscale_ssh and _tailnet_route_restricted(
+            address.compressed
+        ):
+            tailnet_restricted = True
+            continue
         if allowed:
             target = ResolvedTarget(
                 canonical,
@@ -193,6 +365,8 @@ def resolve_allowed_target(
             if target_validator is None or target_validator(target):
                 return target
 
+    if tailnet_restricted:
+        raise TailnetRouteRestricted()
     raise ValueError('Connections to this address are not allowed')
 
 
@@ -310,6 +484,7 @@ def socks_destination(
     if not literal and remote_dns and (
         allow_internal or remote_dns_allowed(canonical, remote_dns_allowlist)
     ):
+        check_remote_name(canonical)
         if not allow_internal:
             from .audit_logger import log_info
             log_info(
@@ -323,6 +498,8 @@ def socks_destination(
             canonical, port, allow_internal=allow_internal,
             allowed_internal_networks=allowed_internal_networks,
         )
+    except TailnetRouteRestricted:
+        raise
     except ValueError:
         if remote_dns and not allow_internal:
             raise ValueError('Connections to this address are not allowed') from None

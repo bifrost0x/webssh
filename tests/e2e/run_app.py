@@ -355,9 +355,18 @@ def main():
 
         app = create_app()
         with app.app_context():
-            from app.app_settings import set_automation_enabled, set_registration_enabled
+            from app.app_settings import (
+                set_automation_enabled,
+                set_registration_enabled,
+                update_admin_settings,
+            )
             set_automation_enabled(True)
             set_registration_enabled(True)
+            # Browser cases sign in to the same seeded accounts repeatedly.
+            update_admin_settings({
+                'login_username_limit': 100,
+                'login_username_global_limit': 1000,
+            })
             from app.models import (
                 GitHubIdentity,
                 OIDCIdentity,

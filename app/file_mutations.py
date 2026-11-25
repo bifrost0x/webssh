@@ -89,9 +89,16 @@ def validate_path(path, *, mutation=False):
     return normalized
 
 
+def is_blank_name(name):
+    """A new name made only of whitespace is accepted by servers but unusable."""
+    return isinstance(name, str) and name != '' and name.strip() == ''
+
+
 def creation_path(parent_path, name):
     parent = validate_path(parent_path)
     leaf = validate_leaf(name)
+    if is_blank_name(leaf):
+        raise FileMutationError('INVALID_REQUEST')
     return validate_path(posixpath.join(parent, leaf), mutation=True)
 
 

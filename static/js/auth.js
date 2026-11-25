@@ -2,12 +2,47 @@
     'use strict';
 
     let mfaSubmissionPending = false;
+    let totpRetryBlocked = false;
     function setMfaSubmissionPending(pending) {
         mfaSubmissionPending = pending;
         for (const id of ['submitTotpMfa', 'submitRecoveryMfa']) {
             const button = document.getElementById(id);
-            if (button) button.disabled = pending;
+            if (button) button.disabled = pending || (id === 'submitTotpMfa' && totpRetryBlocked);
         }
+    }
+
+    // Counts down a server retry delay on the verify button. The alert states
+    // the delay once; the disabled button shows the remaining seconds.
+    function createRetryCountdown({ button, label, restoreLabel, onTick, onDone, now = () => Date.now(),
+        schedule = (callback, delay) => setTimeout(callback, delay), cancel = timer => clearTimeout(timer) }) {
+        let until = 0;
+        let timer = null;
+        const originalLabel = button.textContent;
+        const tick = () => {
+            timer = null;
+            const remaining = Math.ceil((until - now()) / 1000);
+            if (remaining <= 0) {
+                until = 0;
+                button.textContent = restoreLabel ? restoreLabel() : originalLabel;
+                onDone?.();
+                return;
+            }
+            button.textContent = label(remaining);
+            onTick?.(remaining);
+            // Wake up when the displayed second changes.
+            timer = schedule(tick, Math.max(1, until - now() - (remaining - 1) * 1000));
+        };
+        return {
+            start(seconds) {
+                const value = Number(seconds);
+                if (!Number.isFinite(value) || value <= 0) return false;
+                if (timer !== null) cancel(timer);
+                until = now() + Math.ceil(value) * 1000;
+                tick();
+                return true;
+            },
+            active: () => until > now(),
+        };
     }
 
     function t(key, fallback) {
@@ -388,8 +423,24 @@
         const root = (document.querySelector('meta[name="app-root"]')?.content || '')
             .replace(/\/$/, '');
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const countdown = createRetryCountdown({
+            button,
+            label: seconds => t('auth.verifyCodeIn', 'Verify code in {seconds} s')
+                .replace('{seconds}', String(seconds)),
+            restoreLabel: () => t('auth.verifyCode', 'Verify code'),
+            onTick: () => {
+                totpRetryBlocked = true;
+                button.disabled = true;
+            },
+            onDone: () => {
+                totpRetryBlocked = false;
+                button.disabled = mfaSubmissionPending;
+                error.classList.add('hidden');
+                input.focus();
+            },
+        });
         const submit = async () => {
-            if (mfaSubmissionPending) return;
+            if (mfaSubmissionPending || totpRetryBlocked) return;
             const code = normalizeTotpCode(input.value);
             if (!code) {
                 error.textContent = t(
@@ -413,8 +464,21 @@
                     body: JSON.stringify({ code })
                 });
                 const data = await response.json().catch(() => ({}));
+                if (!response.ok && data.code === 'mfa_restart') {
+                    // The pending login is gone; the server queued the
+                    // translated notice for the password form.
+                    window.location.assign(root + '/login');
+                    return;
+                }
                 if (!response.ok) {
-                    throw new Error(data.error || t(
+                    const described = window.WebSSHSecurityUI
+                        ?.describeAuthenticationError?.(data, t);
+                    if (data.code === 'rate_limited') countdown.start(data.retry_after);
+                    const invalid = data.code === 'invalid_code' || data.error === 'TOTP code is invalid';
+                    throw new Error(described || (invalid ? t(
+                        'auth.totpCodeInvalid',
+                        'The code is not valid. Check the time on your device and enter the current code.'
+                    ) : null) || data.error || t(
                         'auth.codeVerificationFailed',
                         'The code could not be verified.'
                     ));
@@ -581,7 +645,7 @@
         // while a password manager or the user is already entering credentials.
         if (document.activeElement === document.body
                 && !Array.from(document.querySelectorAll('input:not([type="hidden"])'))
-                    .some(input => input.value)) {
+                    .some(input => input.value && input.value !== input.defaultValue)) {
             Array.from(document.querySelectorAll('[data-initial-focus]'))
                 .find(input => input.getClientRects().length > 0)?.focus();
         }
@@ -600,6 +664,7 @@
             createAuthMethodSwitcherController,
             createAuthenticationSourceController,
             createLanguageSelectorController,
+            createRetryCountdown,
             createPasskeyOperationRunner,
             describePasskeyError,
             safeConfiguredWebAuthnOrigin,

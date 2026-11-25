@@ -314,6 +314,16 @@ the archive path requires it. Size, member, timeout, ownership, and temporary
 byte quotas apply. Symlinks and unsafe traversal are not followed as arbitrary
 host filesystem paths.
 
+An archive that WebSSH builds itself (SMB folders, and SFTP folders when the
+remote `zip` command is unavailable) is held in `TRANSFER_TEMP_DIR` and backed
+by a temporary-byte reservation. Its size is therefore limited by the smaller
+of `MAX_ZIP_DOWNLOAD_SIZE` and `QUOTA_TEMP_BYTES_PER_USER`; startup logs a
+warning when the archive limit is larger than the quota or not positive.
+These archives are named `webssh-folder-*.zip`, and files with that name left
+behind by an interrupted process are removed when the service starts, once
+they have not been modified for six hours. The age limit keeps archives that
+another instance sharing the directory is still building or streaming.
+
 ## Preview and editor safety
 
 Preview loads only bounded content. Tail mode limits requested line count. The

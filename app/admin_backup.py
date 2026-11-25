@@ -118,7 +118,9 @@ def _archive_summary(manifest):
 
 
 def _restore_compatibility(record):
-    manifest = verify_backup(record.archive_path)
+    manifest = verify_backup(
+        record.archive_path, work_dir=record.directory
+    )
     return evaluate_backup_compatibility(manifest)
 
 
@@ -329,7 +331,9 @@ def upload_backup():
         backup_operations.set_status(record.operation_id, 'verifying', size=size)
         try:
             with operation_lock():
-                manifest = verify_backup(record.archive_path)
+                manifest = verify_backup(
+                    record.archive_path, work_dir=record.directory
+                )
             if cancel_event.is_set():
                 backup_operations.remove(record.operation_id)
                 return

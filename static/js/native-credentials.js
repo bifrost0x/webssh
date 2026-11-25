@@ -88,7 +88,19 @@
    return await send(headers);
   }
  }
- async function load(){const generation=++loadGeneration;const data=await api('/api/credentials/state');if(generation===loadGeneration)state=data;return data;}
+ // Concurrent callers share one request. A mutation advances the generation,
+ // so later callers never join a request that started before it.
+ let pendingLoad=null;
+ function load(){
+  if(pendingLoad&&pendingLoad.generation===loadGeneration)return pendingLoad.promise;
+  const generation=++loadGeneration;
+  const request=(async()=>{
+   try{const data=await api('/api/credentials/state');if(generation===loadGeneration)state=data;return data;}
+   finally{if(pendingLoad?.generation===generation)pendingLoad=null;}
+  })();
+  pendingLoad={generation,promise:request};
+  return request;
+ }
  function assignmentReady(use,resource){
   return use?.valid===true&&(!resource?.credential_status||resource.credential_status==='ready');
  }

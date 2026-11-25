@@ -1,5 +1,5 @@
 import pytest
-from tests.test_automation_service import context
+from tests.test_automation_service import context  # noqa: F401
 from app.automation_store import AutomationError
 
 
@@ -299,7 +299,7 @@ def test_native_replacement_requires_specific_consent_and_freezes_assignment(app
         service.prepare_vault(uid, aid, dict(operation='native', mutation=mutation))
     mutation['replace_credential_id'] = first['id']
     token = service.prepare_vault(uid, aid, dict(operation='native', mutation=mutation))['intent']
-    original = service.named.read(uid)['assignments'][profile['id']]
+    assert profile['id'] in service.named.read(uid)['assignments']
     def race(doc):
         doc['assignments'][profile['id']]['generation'] = 'concurrent-generation'
     service.named.mutate(uid, race)

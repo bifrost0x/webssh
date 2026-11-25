@@ -17,6 +17,13 @@
     function format(text, values) {
         return text.replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
     }
+    // Throttling tells the user to wait, not to retry immediately.
+    function requestErrorMessage(status, data, t = defaultT) {
+        const described = globalThis.WebSSHSecurityUI?.describeAuthenticationError?.(data, t);
+        if (described) return described;
+        if (status === 429) return t('accountControls.throttled', 'Too many requests. Wait a moment and try again.');
+        return t('accountControls.failed', 'Could not update logins. Refresh and try again.');
+    }
     function methodLabel(method, t = defaultT) {
         const labels = {password:'Password', passkey:'Passkey', totp:'Authenticator app', recovery:'Recovery codes',
             recovery_code:'Recovery code', oidc:'Identity provider', ldap:'LDAP', github:'GitHub'};
@@ -136,8 +143,8 @@
             const response = await fetch(appRoot + path, {method:body ? 'POST' : 'GET',
                 headers:{Accept:'application/json', 'Content-Type':'application/json', 'X-CSRFToken':csrf},
                 ...(body ? {body:JSON.stringify(body)} : {})});
-            const data = await response.json();
-            if (!response.ok) throw new Error(translate('accountControls.failed', 'Could not update logins. Refresh and try again.'));
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(requestErrorMessage(response.status, data, translate));
             return data;
         }
         const timestamp = value => new Date(value).toLocaleString(document.documentElement.lang || undefined);
@@ -191,5 +198,5 @@
         window.addEventListener('languageChanged', render);
         load();
     }
-    return {init, methodLabel, featureImpactLines, deletionConfirmation, confirmFeatureImpact};
+    return {init, methodLabel, featureImpactLines, deletionConfirmation, confirmFeatureImpact, requestErrorMessage};
 });

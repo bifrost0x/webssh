@@ -7,7 +7,6 @@ from pathlib import Path
 from .data_access import user_operation
 from .models import User, db
 from .storage_utils import atomic_write_json, load_json_strict, storage_lock
-from .storage_errors import StorageCorruptionError
 
 MAX_STORE_BYTES = 1024 * 1024
 

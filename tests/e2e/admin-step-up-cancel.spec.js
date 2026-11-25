@@ -39,6 +39,13 @@ for (const method of ['password', 'totp', 'recent']) {
             await page.locator('#stepUpSubmit').click();
         }
         await started;
+        if (method !== 'recent') {
+            // The dialog stays open while the server checks the value.
+            await expect(page.locator('#stepUpModal')).toBeVisible();
+            await expect(page.locator('#stepUpSubmit')).toBeDisabled();
+            await page.locator('#stepUpCancelButton').click();
+            await expect(page.locator('#stepUpModal')).toBeHidden();
+        }
         await page.locator('#closeSecurityAction').click();
         await open();
         await expect(page.locator('#submitSecurityAction')).toBeDisabled();

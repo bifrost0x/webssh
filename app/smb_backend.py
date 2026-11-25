@@ -244,13 +244,6 @@ class SMBBackend:
     def _is_reparse(file_stat):
         return bool(getattr(file_stat, 'st_file_attributes', 0) & _REPARSE_POINT)
 
-    @staticmethod
-    def _is_directory(file_stat):
-        attributes = getattr(file_stat, 'st_file_attributes', 0)
-        return bool(attributes & 0x10) or stat_module.S_ISDIR(
-            getattr(file_stat, 'st_mode', 0)
-        )
-
     def _directory_payload(
         self,
         directory,

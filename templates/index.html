@@ -15,6 +15,7 @@
     <meta name="app-root" content="{{ url_prefix }}">
     <meta name="ssh-gateway-enabled" content="{{ 'true' if ssh_gateway_enabled else 'false' }}">
     <meta name="herdr-enabled" content="{{ 'true' if herdr_enabled else 'false' }}">
+    <meta name="current-user-admin" content="{{ 'true' if admin_panel_enabled and current_user.is_admin else 'false' }}">
     <meta name="max-editor-file-size" content="{{ max_editor_file_size|default(5242880) }}">
     <title>Web SSH Terminal</title>
 
@@ -189,7 +190,7 @@
                 <button class="tab-row-icon-btn" id="herdrBarToggleBtn" type="button" aria-pressed="true" aria-controls="herdrControlBar" title="Herdr controls" aria-label="Herdr controls" hidden>
                     <span class="material-icons" aria-hidden="true">keyboard</span>
                 </button>
-                <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
+                <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" aria-label="Broadcast to all sessions" data-i18n-title="broadcast.toggle" data-i18n-aria-label="broadcast.toggle">
                     <span class="material-icons" aria-hidden="true">cell_tower</span>
                 </button>
                 <button class="tab-row-icon-btn" id="saveTranscriptBtn" title="Save Transcript" aria-label="Save transcript" data-i18n-title="terminal.saveTranscript" data-i18n-aria-label="terminal.saveTranscript">
@@ -1734,17 +1735,17 @@
                     <span class="preview-size" id="previewSize"></span>
                 </div>
                 <div class="preview-header-actions">
-                    <button class="btn btn-icon" id="previewCopyBtn" title="Copy to clipboard" data-i18n-title="preview.copy">
-                        <span class="material-icons">content_copy</span>
+                    <button type="button" class="btn btn-icon" id="previewCopyBtn" title="Copy to clipboard" aria-label="Copy to clipboard" data-i18n-title="preview.copy" data-i18n-aria-label="preview.copy">
+                        <span class="material-icons" aria-hidden="true">content_copy</span>
                     </button>
-                    <button class="btn btn-icon" id="previewDownloadBtn" title="Download file" data-i18n-title="preview.download">
-                        <span class="material-icons">download</span>
+                    <button type="button" class="btn btn-icon" id="previewDownloadBtn" title="Download file" aria-label="Download file" data-i18n-title="preview.download" data-i18n-aria-label="preview.download">
+                        <span class="material-icons" aria-hidden="true">download</span>
                     </button>
-                    <button class="btn btn-icon hidden" id="previewEditBtn" title="Edit file" data-i18n-title="editor.edit">
-                        <span class="material-icons">edit</span>
+                    <button type="button" class="btn btn-icon hidden" id="previewEditBtn" title="Edit file" aria-label="Edit file" data-i18n-title="editor.edit" data-i18n-aria-label="editor.edit">
+                        <span class="material-icons" aria-hidden="true">edit</span>
                     </button>
-                    <button class="btn btn-icon" id="previewRefreshBtn" title="Refresh" data-i18n-title="preview.refresh">
-                        <span class="material-icons">refresh</span>
+                    <button type="button" class="btn btn-icon" id="previewRefreshBtn" title="Refresh" aria-label="Refresh" data-i18n-title="preview.refresh" data-i18n-aria-label="preview.refresh">
+                        <span class="material-icons" aria-hidden="true">refresh</span>
                     </button>
                 <button type="button" class="close material-icons" id="closeFilePreviewModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
                 </div>
@@ -1825,7 +1826,8 @@
 
     <script id="websshRuntimeLimits" type="application/json">{{ {'transfer': transfer_limits, 'sshInput': ssh_input_limits} | tojson }}</script>
     <script src="{{ static_asset_url(filename='js/runtime-limits.js') }}"></script>
-    <script src="{{ static_asset_url(filename='js/i18n.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/i18n.js') }}" data-locales='{{ translation_asset_urls()|tojson }}'></script>
+    <script src="{{ static_asset_url(filename='js/i18n/en.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/command-safety-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/work-first-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/customer-workflows-i18n.js') }}"></script>
@@ -1896,7 +1898,6 @@
     <script src="{{ static_asset_url(filename='js/trust-files-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/native-credentials.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/credential-picker.js') }}"></script>
-    <script src="{{ static_asset_url(filename='js/automation-i18n.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/automation-guidance.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/automation-templates.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/automation-tools.js') }}"></script>
@@ -1913,7 +1914,7 @@
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-file-bridge.js') }}"></script>
     {% from '_auth_messages.html' import flash_message_keys %}
-    <script id="websshFlashedMessages" type="application/json">{{ {'keys': flash_message_keys, 'messages': get_flashed_messages(with_categories=true)} | tojson }}</script>
+    <script id="websshFlashedMessages" type="application/json">{{ {'keys': flash_message_keys, 'messages': get_flashed_messages(with_categories=true) | rejectattr(0, 'equalto', 'login_username') | list} | tojson }}</script>
     <script src="{{ static_asset_url(filename='js/flash-messages.js') }}"></script>
 
     <script src="{{ static_asset_url(filename='js/customer-workflows.js') }}"></script>

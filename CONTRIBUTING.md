@@ -94,11 +94,17 @@ See the [planning and release workflow](docs/project-planning.md) for the lightw
 - Use meaningful variable names
 - Keep functions focused and small
 - Lean code: no unnecessary comments, docstrings only where logic is non-obvious
+- Lint with `python -m ruff check .`; ruff is part of `requirements-test.txt` and configured in `ruff.toml`
 
 **JavaScript:**
 - Vanilla JS only (no frameworks - intentional architecture decision)
 - Use consistent indentation (4 spaces)
 - Prefer `const` over `let`, avoid `var`
+- Lint with `npm run lint:js` (rules in `eslint.config.js`)
+
+**Translations:**
+- Each language has its own dictionary in `static/js/i18n/<lang>.js`. Add every new key to all of them; the tests reject missing, empty or unused keys.
+- The sign-in pages use `static/js/i18n-auth.js`, generated from those dictionaries. Run `npm run i18n:auth` after changing a key they show.
 
 **General:**
 - No trailing whitespace

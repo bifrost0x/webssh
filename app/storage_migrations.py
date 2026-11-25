@@ -128,13 +128,40 @@ def migrate_smb_shares_v1_to_v2(document):
 
 
 _MIGRATIONS = {
-    store_name: {
-        0: globals()[f'migrate_{store_name}_v0_to_v1'],
-        1: globals()[f'migrate_{store_name}_v1_to_v2'],
-    }
-    for store_name in CURRENT_STORAGE_VERSIONS
+    'profiles': {
+        0: migrate_profiles_v0_to_v1,
+        1: migrate_profiles_v1_to_v2,
+        2: migrate_profiles_v2_to_v3,
+    },
+    'command_sets': {
+        0: migrate_command_sets_v0_to_v1,
+        1: migrate_command_sets_v1_to_v2,
+    },
+    'jump_hosts': {
+        0: migrate_jump_hosts_v0_to_v1,
+        1: migrate_jump_hosts_v1_to_v2,
+    },
+    'socks_proxies': {
+        0: migrate_socks_proxies_v0_to_v1,
+        1: migrate_socks_proxies_v1_to_v2,
+    },
+    'keys': {
+        0: migrate_keys_v0_to_v1,
+        1: migrate_keys_v1_to_v2,
+    },
+    'settings': {
+        0: migrate_settings_v0_to_v1,
+        1: migrate_settings_v1_to_v2,
+    },
+    'app_settings': {
+        0: migrate_app_settings_v0_to_v1,
+        1: migrate_app_settings_v1_to_v2,
+    },
+    'smb_shares': {
+        0: migrate_smb_shares_v0_to_v1,
+        1: migrate_smb_shares_v1_to_v2,
+    },
 }
-_MIGRATIONS['profiles'][2] = migrate_profiles_v2_to_v3
 
 
 def migrate_document(store_name: str, document: object) -> tuple[object, bool]:

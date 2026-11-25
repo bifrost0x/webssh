@@ -5,10 +5,13 @@ import os
 
 
 REQUIRED = frozenset({
-    'dispatch-integrity', 'dependency-locks', 'pytest-shards', 'pytest', 'redis-rate-limiter',
+    'dispatch-integrity', 'lint', 'dependency-locks', 'pytest-shards', 'pytest', 'redis-rate-limiter',
     'ssh-integration', 'smb-integration', 'browser-e2e-shards', 'browser-fonts', 'browser-e2e',
     'container-threading-smoke', 'container-upgrade', 'release-contract',
 })
+
+# Jobs that run for every change scope, including documentation-only changes.
+ALWAYS_RUN = frozenset({'lint'})
 
 
 IMAGE_REQUIRED = frozenset({'change-scope', 'image-security-amd64', 'image-security-arm64'})
@@ -27,9 +30,13 @@ def validate_gates(results, *, kind='tests'):
     mode = scope.get('outputs', {}).get('mode')
     if mode not in {'full', 'docs'}:
         raise ValueError('Missing or invalid change scope')
-    expected = 'success' if mode == 'full' else 'skipped'
+    always_run = ALWAYS_RUN if kind == 'tests' else frozenset()
+
+    def expected(name):
+        return 'success' if mode == 'full' or name in always_run else 'skipped'
+
     unexpected = sorted(name for name, value in results.items()
-                        if name != scope_name and value.get('result') != expected)
+                        if name != scope_name and value.get('result') != expected(name))
     if unexpected:
         raise ValueError('Required gates did not succeed as planned: ' + ', '.join(unexpected))
     return mode

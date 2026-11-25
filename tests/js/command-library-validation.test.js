@@ -125,9 +125,7 @@ test('library source selection combines with OS and text filters across refreshe
 
 test('empty library uses existing translations in all six languages', () => {
     const state = setup();
-    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../static/js/i18n.js'), 'utf8'), {
-        window: state.window, document: {addEventListener() {}},
-    });
+    require('./i18n-locales.js').runI18n({window: state.window, document: {addEventListener() {}}});
     const expected = {en: 'No commands found', de: 'Keine Befehle gefunden', vi: 'Không tìm thấy lệnh', fr: 'Aucune commande trouvée', es: 'No se encontraron comandos', zh: '未找到命令'};
     for (const [language, text] of Object.entries(expected)) {
         state.window.i18n.currentLang = language;

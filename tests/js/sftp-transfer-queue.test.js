@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-global.window = {};
+const { loadEscapeHtml } = require('./support/escape-html');
+
+global.window = { escapeHtml: loadEscapeHtml() };
 global.document = { getElementById: () => null };
 require('../../static/js/file-workspace-state.js');
 require('../../static/js/profile-launcher-utils.js');
@@ -548,6 +550,44 @@ test('an open transfer queue follows appended work but preserves manual history 
     } finally {
         global.document = previousDocument;
     }
+});
+
+test('transfer rows use only known class names and label the cancel button', () => {
+    const previousDocument = global.document;
+    const list = { innerHTML: '', scrollHeight: 0, scrollTop: 0, clientHeight: 0 };
+    global.document = {
+        getElementById(id) {
+            return {
+                fmQueue: { classList: classList() },
+                fmQueueList: list,
+                fmQueueBadge: { textContent: '', style: {} },
+            }[id] || null;
+        },
+    };
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        transferQueue: [
+            { id: 'known', type: 'upload', filename: 'a.bin', status: 'active', progress: '40"><b>' },
+            { id: 'odd', type: 'x" onclick="y', filename: 'b.bin', status: 'pending x" onfocus="z', progress: 0 },
+        ],
+        t(key, fallback) { return key === 'fm.cancelTransfer' ? 'Cancel "transfer"' : fallback; },
+    });
+
+    try {
+        manager.renderTransferQueue();
+    } finally {
+        global.document = previousDocument;
+    }
+    const html = list.innerHTML;
+    assert.match(html, /class="fm-transfer-item active"/);
+    assert.match(html, /class="fm-transfer-icon upload"/);
+    assert.match(html, /class="fm-transfer-item "/);
+    assert.doesNotMatch(html, /onclick|onfocus|<b>/);
+    assert.match(html, /style="width: 0%"/);
+    assert.match(
+        html,
+        /<button type="button" class="fm-transfer-btn cancel"\s+data-transfer-cancel="known"\s+title="Cancel &quot;transfer&quot;" aria-label="Cancel &quot;transfer&quot;"><span class="material-icons" aria-hidden="true">close<\/span><\/button>/,
+    );
 });
 
 test('embedded pane state cannot overwrite standalone workspace tabs', () => {

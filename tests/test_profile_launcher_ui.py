@@ -1,4 +1,5 @@
 from pathlib import Path
+from tests.i18n_sources import translation_source
 
 
 def read(path):
@@ -412,7 +413,7 @@ def test_profile_management_keeps_toolbar_controls_outside_the_scroll_region():
 
 
 def test_profile_collapse_all_is_translated_for_every_supported_locale():
-    source = read('static/js/i18n.js')
+    source = translation_source()
 
     assert source.count("'profiles.collapseAll':") == 6
 

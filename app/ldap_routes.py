@@ -15,11 +15,14 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
 
-from . import socketio, user_lifecycle
+from . import login_devices, socketio, user_lifecycle
+from .app_settings import login_username_rate_limits
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
     check_rate_limit,
     password_exceeds_bcrypt_limit,
+    release_login_username_attempt,
+    reserve_login_username_attempt,
     user_creation_transaction,
 )
 from .auth_assurance import (
@@ -82,6 +85,16 @@ def _rate_limited(endpoint):
         log_rate_limit_exceeded(endpoint, client_ip)
         return True
     return False
+
+
+def _rate_limited_response():
+    # The same answer for the source and the username limit, as on the local
+    # form, so it does not tell which limit applied.
+    return render_template(
+        'login.html',
+        ldap_error='Too many login attempts. Please try again later.',
+        auth_source='ldap',
+    ), 429
 
 
 def _auto_provision_ldap_identity(username, resolved, *, presented_username=None):
@@ -177,12 +190,25 @@ def ldap_login():
     if request.content_length and request.content_length > _MAX_LDAP_FORM_BYTES:
         return render_template('login.html', auth_source='ldap'), 413
     if _rate_limited('ldap_login'):
-        return render_template('login.html', auth_source='ldap'), 429
+        return _rate_limited_response()
 
     presented_username = str(request.form.get('username') or '')
     username = presented_username.strip()
     password = request.form.get('password') or ''
     client_ip = request.remote_addr or 'unknown'
+    username_limited, username_reservation = (
+        reserve_login_username_attempt(
+            username,
+            client_ip,
+            'ldap_login',
+            *login_username_rate_limits(),
+            device_nonce=login_devices.trusted_device(username),
+        )
+        if config.RATELIMIT_ENABLED else (False, ())
+    )
+    if username_limited:
+        log_rate_limit_exceeded('ldap_login_username', client_ip, user=username)
+        return _rate_limited_response()
     try:
         directory = get_directory()
         resolved = directory.lookup(username)
@@ -227,6 +253,8 @@ def ldap_login():
             auth_source='ldap',
         ), 401
     except LDAPUnavailable as exc:
+        # No verdict on the credentials, so the attempt does not count.
+        release_login_username_attempt(username_reservation)
         log_security_event(
             'LDAP_LOGIN_UNAVAILABLE',
             level=logging.ERROR,
@@ -240,7 +268,9 @@ def ldap_login():
             auth_source='ldap',
         ), 503
 
+    release_login_username_attempt(username_reservation)
     user = mapping.user
+    login_devices.remember_device(user, username)
     verified_at = int(time.time())
     mapping.directory_username = username
     mapping.distinguished_name = resolved.distinguished_name

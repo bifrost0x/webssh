@@ -352,7 +352,7 @@ def test_uv_installer_policy_is_exact_and_keeps_all_hash_requirements(lines, all
 def test_every_host_test_environment_sets_up_the_reviewed_uv_before_installing():
     workflow = Path('.github/workflows/tests.yml').read_text(encoding='utf-8')
     setup = 'astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2'
-    for name in ['dependency-locks', 'pytest-shards', 'ssh-integration', 'browser-e2e-shards', 'browser-fonts']:
+    for name in ['lint', 'dependency-locks', 'pytest-shards', 'ssh-integration', 'browser-e2e-shards', 'browser-fonts']:
         job = re.split(r'\n  [a-z][a-z0-9-]*:', workflow.split('\n  ' + name + ':', 1)[1], maxsplit=1)[0]
         install = 'python scripts/run_ci_protocol_checks.py' if name == 'ssh-integration' else 'uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt'
         assert job.index(setup) < job.index(install)

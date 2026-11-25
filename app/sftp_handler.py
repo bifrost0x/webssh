@@ -38,6 +38,7 @@ from .paramiko_channels import (
     optional_channel_rejection_fields,
 )
 from .audit_logger import log_info, log_warning, log_error
+from .transfer_progress import ProgressThrottle
 from .file_backend import FileReaderLease, FileWriteOutcome
 from .editor_text import EditorEncodingError, detect_newline, encode_editor_text
 from .file_mutations import FileMutationError, permission_snapshot
@@ -973,9 +974,79 @@ def inspect_remote_tree(sftp, remote_folder, *, cancel_event, max_bytes,
     return total, has_symlink
 
 
+# Local folder archives carry their own prefix so the startup sweep can tell
+# them apart from anything else in TRANSFER_TEMP_DIR, which operators may
+# point at a shared directory. tempfile adds eight characters from this set.
+FOLDER_ARCHIVE_PREFIX = 'webssh-folder-'
+FOLDER_ARCHIVE_SUFFIX = '.zip'
+_TEMPFILE_NAME_CHARACTERS = frozenset('abcdefghijklmnopqrstuvwxyz0123456789_')
+
+
+def _is_folder_archive_name(name):
+    if not (
+        name.startswith(FOLDER_ARCHIVE_PREFIX)
+        and name.endswith(FOLDER_ARCHIVE_SUFFIX)
+    ):
+        return False
+    random_part = name[len(FOLDER_ARCHIVE_PREFIX):-len(FOLDER_ARCHIVE_SUFFIX)]
+    return (
+        len(random_part) == 8
+        and all(character in _TEMPFILE_NAME_CHARACTERS for character in random_part)
+    )
+
+
+# Another instance sharing TRANSFER_TEMP_DIR may still be writing or streaming
+# its archives; only files untouched for this long count as orphaned.
+ORPHANED_ARCHIVE_MIN_AGE_SECONDS = 6 * 60 * 60
+
+
+def sweep_orphaned_folder_archives(temp_dir, *, min_age_seconds=ORPHANED_ARCHIVE_MIN_AGE_SECONDS):
+    """Remove folder archives left behind by a process that did not finish.
+
+    Only regular files named like the archives this module creates, not
+    modified for ``min_age_seconds``, are removed, and only directly inside
+    ``temp_dir``. Symbolic links, other names and subdirectories are left
+    alone. Returns the number removed.
+    """
+    directory = Path(temp_dir)
+    cutoff = time.time() - max(0, min_age_seconds)
+    try:
+        directory_metadata = os.lstat(directory)
+    except FileNotFoundError:
+        return 0
+    if not stat.S_ISDIR(directory_metadata.st_mode):
+        return 0
+    removed = 0
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            if not _is_folder_archive_name(entry.name):
+                continue
+            try:
+                metadata = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_mtime > cutoff:
+                continue
+            try:
+                os.unlink(entry.path)
+            except FileNotFoundError:
+                continue
+            except OSError as error:
+                log_warning(
+                    'Could not remove orphaned folder archive',
+                    exception_type=type(error).__name__,
+                )
+                continue
+            removed += 1
+    return removed
+
+
 def _create_private_temporary_archive(temp_dir):
     temporary = tempfile.NamedTemporaryFile(
-        suffix='.zip', delete=False, dir=temp_dir
+        prefix=FOLDER_ARCHIVE_PREFIX,
+        suffix=FOLDER_ARCHIVE_SUFFIX,
+        delete=False,
+        dir=temp_dir,
     )
     archive_path = Path(temporary.name)
     try:
@@ -2123,8 +2194,15 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
         if error:
             return False, f"Destination connection error: {error}"
 
+        progress_throttle = ProgressThrottle()
+
         def emit_progress(filename, transferred, total, status='transferring'):
             """Emit progress update to client."""
+            if (
+                status == 'transferring'
+                and not progress_throttle.ready()
+            ):
+                return
             if socketio_instance and user_room:
                 safe_total = max(int(total), int(transferred), 0)
                 percent = (

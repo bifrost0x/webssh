@@ -3,7 +3,7 @@ import json
 import pytest
 
 from app.automation_store import AutomationError
-from tests.test_automation_service import context
+from tests.test_automation_service import context  # noqa: F401
 
 PASSPHRASE = 'a separate strong vault passphrase 2026'
 

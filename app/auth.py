@@ -1,3 +1,4 @@
+import ipaddress
 import re
 
 import bcrypt
@@ -7,6 +8,12 @@ from threading import Lock
 from flask_login import LoginManager
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
+from .login_devices import (
+    FAILURE_BUDGET,
+    FAILURE_WINDOW_SECONDS,
+    failure_budget_key,
+    username_digest,
+)
 from .models import db, User, SocketSession
 from .rate_limiter import create_rate_limiter
 
@@ -73,11 +80,104 @@ def parse_rate_limit(limit_str, default_limit=5, default_window=60):
     except (ValueError, IndexError):
         return default_limit, default_window
 
+def rate_limit_address(address):
+    """Return the source bucket used to rate limit ``address``.
+
+    IPv6 addresses share one bucket per network of the prefix length set in
+    the admin sign-in protection settings. The default of 128 keeps one
+    bucket per address, as before grouping existed, so clients sharing a
+    network do not share login limits. A shorter prefix such as /64 stops a
+    client from rotating through the addresses it controls. IPv4 and
+    IPv4-mapped IPv6 addresses keep one bucket per address. Values that are not an IP
+    address are returned unchanged.
+    """
+    value = str(address if address is not None else 'unknown')
+    try:
+        parsed = ipaddress.ip_address(value.strip())
+    except ValueError:
+        return value
+    if parsed.version == 6:
+        if parsed.ipv4_mapped is not None:
+            return str(parsed.ipv4_mapped)
+        from .app_settings import ratelimit_ipv6_prefix
+        prefix = ratelimit_ipv6_prefix()
+        if prefix == 128:
+            return str(parsed)
+        host_bits = 128 - prefix
+        network = (int(parsed) >> host_bits) << host_bits
+        return str(ipaddress.IPv6Network((network, prefix)))
+    return str(parsed)
+
+
 def check_rate_limit(ip_address, endpoint, limit_str):
     """Return True if request should be blocked."""
     limit, window = parse_rate_limit(limit_str)
-    key = f'{endpoint}:{ip_address}'
+    key = f'{endpoint}:{rate_limit_address(ip_address)}'
     return not _get_rate_limiter().allow(key, limit, window)
+
+
+def reserve_login_username_attempt(
+    username, source, endpoint, limit_str, global_limit_str,
+    *, device_nonce=None,
+):
+    """Reserve one password attempt for ``username``.
+
+    Returns ``(limited, reservation)``. ``limit_str`` applies per submitted
+    name and source bucket, so one source cannot spend another source's
+    attempts on the same name. ``global_limit_str`` is a much higher ceiling
+    per name across all sources that only slows distributed guessing; it is
+    not a lockout, but a sender spread over enough sources can still hold a
+    name at it while it keeps sending.
+
+    The attempt is reserved before the password is checked, so concurrent
+    guesses cannot overrun the limit, and only failed attempts keep their
+    reservation: pass the reservation to
+    :func:`release_login_username_attempt` after a successful login.
+
+    ``device_nonce`` comes from a valid known-device cookie for this name
+    (see :mod:`app.login_devices`). Such a request skips only the global
+    ceiling, while its failures spend the cookie's own small budget; once
+    that is used up the cookie is treated like no cookie.
+
+    Buckets are keyed by the normalized name whether or not an account
+    exists, so the answer does not reveal which accounts exist. The name is
+    replaced by a keyed digest that bounds the key size and keeps it out of
+    the limiter store.
+    """
+    if not str(username or '').strip():
+        return False, ()
+    digest = username_digest(username)
+    limiter = _get_rate_limiter()
+    source_key = f'{endpoint}:username:{digest}:{rate_limit_address(source)}'
+    global_key = f'{endpoint}:username:{digest}'
+    limit, window = parse_rate_limit(limit_str, default_limit=10)
+    source_token = limiter.reserve(source_key, limit, window)
+    if source_token is None:
+        return True, ()
+    if device_nonce:
+        device_key = failure_budget_key(endpoint, device_nonce)
+        device_token = limiter.reserve(
+            device_key, FAILURE_BUDGET, FAILURE_WINDOW_SECONDS,
+        )
+        if device_token is not None:
+            return False, (
+                (source_key, source_token), (device_key, device_token),
+            )
+    global_limit, global_window = parse_rate_limit(
+        global_limit_str, default_limit=100,
+    )
+    global_token = limiter.reserve(global_key, global_limit, global_window)
+    if global_token is None:
+        limiter.release(source_key, source_token)
+        return True, ()
+    return False, ((source_key, source_token), (global_key, global_token))
+
+
+def release_login_username_attempt(reservation):
+    """Return a reservation after the password was accepted."""
+    limiter = _get_rate_limiter()
+    for key, token in reservation or ():
+        limiter.release(key, token)
 
 def check_socket_rate_limit(user_id, endpoint, limit_str):
     """Return True if a per-user socket action should be blocked.
@@ -113,7 +213,7 @@ def check_reauth_rate_limit(user_id, ip_address, endpoint, limit_str):
         window,
     )
     ip_allowed = limiter.allow(
-        f'{endpoint}:ip:{ip_address or "unknown"}',
+        f'{endpoint}:ip:{rate_limit_address(ip_address or "unknown")}',
         limit,
         window,
     )

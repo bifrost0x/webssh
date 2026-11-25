@@ -1,7 +1,7 @@
 import threading
 from types import SimpleNamespace
 
-from tests.test_automation_service import context
+from tests.test_automation_service import context  # noqa: F401
 
 
 def test_corrupt_history_does_not_prevent_local_stop(app, context, monkeypatch):

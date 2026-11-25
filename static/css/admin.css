@@ -1111,6 +1111,33 @@
     width: 100px;
 }
 
+#signInProtection > .form-group,
+#signInProtection > .admin-toolbar {
+    margin: 0;
+    padding: 14px 18px 0;
+}
+
+#signInProtection > .admin-toolbar {
+    padding-bottom: 16px;
+}
+
+#signInProtection .form-control {
+    width: min(100%, 160px);
+}
+
+#signInProtection .form-group p {
+    margin: 6px 0 0;
+}
+
+.admin-field-error {
+    color: #f43f5e;
+    font-weight: 550;
+}
+
+#signInProtection .form-control[aria-invalid="true"] {
+    border-color: #f43f5e;
+}
+
 .admin-trust-import {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

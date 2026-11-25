@@ -5,6 +5,7 @@ at runtime without restarting (e.g. whether self-registration is open). Each
 value falls back to its config/env default when no override has been saved.
 """
 import secrets
+import threading
 
 import config
 
@@ -23,7 +24,29 @@ _BOOLEAN_SETTINGS = (
     'tmux_enabled',
     'tmux_default',
     'support_links_enabled',
+    'tailscale_ssh_restrict_tailnet_routes',
 )
+
+# Both username limits count failed password attempts per minute; the prefix
+# is the IPv6 network length that shares one source rate limit bucket.
+SIGN_IN_PROTECTION_DEFAULTS = {
+    'login_username_limit': 10,
+    'login_username_global_limit': 100,
+    'ratelimit_ipv6_prefix': 128,
+}
+SIGN_IN_PROTECTION_BOUNDS = {
+    'login_username_limit': (1, 1000),
+    'login_username_global_limit': (1, 1000),
+    'ratelimit_ipv6_prefix': (48, 128),
+}
+
+_cache_lock = threading.Lock()
+_cached_document = None
+
+
+def _valid_bounded_int(value, bounds):
+    low, high = bounds
+    return type(value) is int and low <= value <= high
 
 
 def _valid_settings(value):
@@ -44,6 +67,10 @@ def _valid_settings(value):
         and (
             'registration_enabled' not in value
             or type(value['registration_enabled']) is bool
+        )
+        and all(
+            name not in value or _valid_bounded_int(value[name], bounds)
+            for name, bounds in SIGN_IN_PROTECTION_BOUNDS.items()
         )
         and (
             'audit_backup_count' not in value
@@ -70,9 +97,90 @@ def _load():
 
 
 def _save(data):
+    global _cached_document
     _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     data['schema_version'] = CURRENT_STORAGE_VERSIONS['app_settings']
-    atomic_write_json(_SETTINGS_FILE, data)
+    try:
+        atomic_write_json(_SETTINGS_FILE, data)
+    finally:
+        with _cache_lock:
+            _cached_document = None
+
+
+def _file_signature(path):
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+
+
+def _load_cached():
+    """Return the stored settings for hot read paths.
+
+    Login requests, rate limit checks and SSH connects consult these values,
+    so the parsed document is reused while the file is unchanged. The stat
+    signature catches writes outside this process, such as the admin CLI or
+    a restore; writes in this process also drop the cache in ``_save``.
+    Callers must treat the returned mapping as read-only.
+    """
+    global _cached_document
+    path = _SETTINGS_FILE
+    signature = _file_signature(path)
+    cached = _cached_document
+    if cached is not None and cached[0] == path and cached[1] == signature:
+        return cached[2]
+    # A write between the stat and the load pairs an old signature with new
+    # data, which only costs one extra reload on the next call.
+    data = _load()
+    with _cache_lock:
+        _cached_document = (path, signature, data)
+    return data
+
+
+def sign_in_protection():
+    """Effective username limits (per minute) and IPv6 grouping prefix."""
+    data = _load_cached()
+    return {
+        name: data.get(name, default)
+        for name, default in SIGN_IN_PROTECTION_DEFAULTS.items()
+    }
+
+
+def login_username_rate_limits():
+    """Return the per-source and global username limits as limit strings."""
+    settings = sign_in_protection()
+    return (
+        f"{settings['login_username_limit']} per minute",
+        f"{settings['login_username_global_limit']} per minute",
+    )
+
+
+def ratelimit_ipv6_prefix():
+    return sign_in_protection()['ratelimit_ipv6_prefix']
+
+
+def invalid_sign_in_protection_field(values):
+    """Return the first field of ``values`` that is unknown or out of range."""
+    for name, value in values.items():
+        bounds = SIGN_IN_PROTECTION_BOUNDS.get(name)
+        if bounds is None or not _valid_bounded_int(value, bounds):
+            return name
+    return None
+
+
+def _global_limit_below_source_limit(data):
+    """A ceiling across all sources below the per-source limit is a mistake."""
+    defaults = SIGN_IN_PROTECTION_DEFAULTS
+    return (
+        data.get('login_username_global_limit', defaults['login_username_global_limit'])
+        < data.get('login_username_limit', defaults['login_username_limit'])
+    )
+
+
+def is_tailnet_route_restricted():
+    """Ordinary SSH to tailnet node addresses stays blocked unless lifted."""
+    return _load_cached().get('tailscale_ssh_restrict_tailnet_routes') is not False
 
 
 def is_registration_enabled():
@@ -185,22 +293,28 @@ def is_automation_enabled():
     return _load().get('automation_enabled') is True
 
 
+def _apply_feature(data, name, value):
+    """Return whether ``data`` changed."""
+    if data.get(name) is value:
+        return False
+    data[name] = value
+    # Changing away and back must revoke old background grants too.
+    data[name + '_revision'] = secrets.token_hex(32)
+    if name == 'automation_enabled':
+        # The new revision already reflects this change; a restart must
+        # not rotate it a second time and revoke grants approved since.
+        data['automation_effective_observed'] = _effective_automation_enabled(data)
+        data['automation_enabled_from_environment'] = False
+    return True
+
+
 def _set_feature(name, value):
     if type(value) is not bool:
         return False
     with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
         data = _load_with_lock_held()
-        if data.get(name) is value:
-            return value
-        data[name] = value
-        # Changing away and back must revoke old background grants too.
-        data[name + '_revision'] = secrets.token_hex(32)
-        if name == 'automation_enabled':
-            # The new revision already reflects this change; a restart must
-            # not rotate it a second time and revoke grants approved since.
-            data['automation_effective_observed'] = _effective_automation_enabled(data)
-            data['automation_enabled_from_environment'] = False
-        _save(data)
+        if _apply_feature(data, name, value):
+            _save(data)
     return value
 
 
@@ -298,9 +412,89 @@ def set_runtime_feature(name, enabled):
         raise ValueError(status['environment_key'])
     with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
         data = _load_with_lock_held()
-        data[name] = enabled
-        data['runtime_feature_migration'] = [key for key in data.get('runtime_feature_migration', []) if key != name]
+        _apply_runtime_feature(data, name, enabled)
         _save(data)
+
+
+def _apply_runtime_feature(data, name, enabled):
+    data[name] = enabled
+    data['runtime_feature_migration'] = [key for key in data.get('runtime_feature_migration', []) if key != name]
+
+
+# Admin switches that are stored as plain booleans.
+_ADMIN_FLAGS = (
+    'registration_enabled',
+    'ssh_gateway_enabled',
+    'herdr_enabled',
+    'support_links_enabled',
+    'tailscale_ssh_restrict_tailnet_routes',
+)
+
+
+class SettingsUpdateError(ValueError):
+    """An admin settings change was rejected; nothing was written."""
+
+    def __init__(self, message, *, setting=None, code='invalid_settings'):
+        super().__init__(message)
+        self.setting = setting
+        self.code = code
+
+
+def _stored_value(data, name):
+    if name in SIGN_IN_PROTECTION_DEFAULTS:
+        return data.get(name, SIGN_IN_PROTECTION_DEFAULTS[name])
+    if name == 'tailscale_ssh_restrict_tailnet_routes':
+        return data.get(name) is not False
+    return data.get(name)
+
+
+def update_admin_settings(changes):
+    """Apply type-checked admin changes as one locked load-modify-save.
+
+    Returns ``{name: (previous, current)}`` read under the same lock, so the
+    audit record describes exactly this write. Raises SettingsUpdateError for
+    a combination that is invalid as a whole; then nothing is written, and an
+    I/O error during the single save also leaves the stored file unchanged.
+    """
+    with storage_lock(f'app-settings:{_SETTINGS_FILE}'):
+        data = _load_with_lock_held()
+        previous = {name: _stored_value(data, name) for name in changes}
+        changed = False
+        for name, value in changes.items():
+            if name in ('credentials_enabled', 'automation_enabled'):
+                changed = _apply_feature(data, name, value) or changed
+            elif name in RUNTIME_FEATURES:
+                _apply_runtime_feature(data, name, value)
+                changed = True
+            elif name in _ADMIN_FLAGS or name in SIGN_IN_PROTECTION_BOUNDS:
+                data[name] = value
+                changed = True
+            else:
+                raise SettingsUpdateError(
+                    f'{name} is not an admin setting', setting=name,
+                    code='unknown_setting',
+                )
+        if not _valid_settings(data):
+            raise SettingsUpdateError('Invalid settings')
+        # Loading accepts any in-range pair, so only a change to one of the
+        # two limits is held to their relation; an older file with a lower
+        # ceiling must not block unrelated settings.
+        limits_changed = [
+            name for name in ('login_username_global_limit', 'login_username_limit')
+            if name in changes
+        ]
+        if limits_changed and _global_limit_below_source_limit(data):
+            raise SettingsUpdateError(
+                'login_username_global_limit must not be lower than '
+                'login_username_limit',
+                setting=limits_changed[0],
+                code='global_limit_below_source_limit',
+            )
+        if changed:
+            _save(data)
+    return {
+        name: (previous[name], _stored_value(data, name)) for name in changes
+    }
 
 
 def migrate_runtime_features():

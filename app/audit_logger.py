@@ -418,27 +418,6 @@ def log_ssh_disconnect(username, target_host, target_port, ip_address, reason=No
         f"ip={_sanitize_log_value(ip_address)}{reason_msg}"
     )
 
-def log_file_upload(username, target_host, filename, size, success, ip_address, error=None):
-    status = "SUCCESS" if success else "FAILED"
-    error_msg = f" | error={_sanitize_log_value(error)}" if error else ""
-    audit_logger.info(
-        f"FILE_UPLOAD_{status} | user={_sanitize_log_value(username)} | "
-        f"target={_sanitize_log_value(target_host)} | "
-        f"file={_sanitize_log_value(filename)} | size={size} | "
-        f"ip={_sanitize_log_value(ip_address)}{error_msg}"
-    )
-
-def log_file_download(username, target_host, filename, size, success, ip_address, error=None):
-    status = "SUCCESS" if success else "FAILED"
-    error_msg = f" | error={_sanitize_log_value(error)}" if error else ""
-    audit_logger.info(
-        f"FILE_DOWNLOAD_{status} | user={_sanitize_log_value(username)} | "
-        f"target={_sanitize_log_value(target_host)} | "
-        f"file={_sanitize_log_value(filename)} | size={size} | "
-        f"ip={_sanitize_log_value(ip_address)}{error_msg}"
-    )
-
-
 def log_file_source_operation(
     username,
     operation,

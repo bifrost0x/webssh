@@ -1,6 +1,6 @@
 """Admin-managed GitHub configuration and provider boundary tests."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest

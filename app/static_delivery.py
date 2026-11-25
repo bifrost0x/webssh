@@ -18,6 +18,8 @@ _VERSION_PATTERN = re.compile(r"[0-9a-f]{16}")
 _COMPRESSIBLE_MIMETYPES = (
     "application/javascript",
     "application/x-javascript",
+    "font/otf",
+    "font/ttf",
     "image/svg+xml",
     "text/css",
     "text/javascript",
@@ -101,8 +103,11 @@ def static_asset_version(app, filename: str) -> str | None:
 # Compressed bytes per opened file version (device, inode, mtime, ctime and
 # size). Static files are public and the same for every request, so
 # compressing them once avoids repeating the work on each hit, including
-# conditional requests that end as 304.
-_GZIP_CACHE_SIZE = 64
+# conditional requests that end as 304. The index page alone loads well over
+# a hundred compressible assets in a fixed order, so the cache holds more
+# entries than that and is bounded by the compressed bytes it keeps.
+_GZIP_CACHE_SIZE = 256
+_GZIP_CACHE_MAX_BYTES = 4 * 1024 * 1024
 _gzip_cache: "OrderedDict[tuple, tuple[bytes, int]]" = OrderedDict()
 _gzip_cache_lock = Lock()
 
@@ -118,11 +123,18 @@ def _compressed_asset(identity, response) -> tuple[bytes, int]:
     if len(plain) != identity[4]:
         # The handle did not deliver the whole file; do not keep the result.
         return entry
+    if len(entry[0]) > _GZIP_CACHE_MAX_BYTES:
+        return entry
     with _gzip_cache_lock:
         _gzip_cache[identity] = entry
         _gzip_cache.move_to_end(identity)
-        while len(_gzip_cache) > _GZIP_CACHE_SIZE:
-            _gzip_cache.popitem(last=False)
+        cached_bytes = sum(len(data) for data, _length in _gzip_cache.values())
+        while (
+            len(_gzip_cache) > _GZIP_CACHE_SIZE
+            or cached_bytes > _GZIP_CACHE_MAX_BYTES
+        ):
+            evicted, _length = _gzip_cache.popitem(last=False)[1]
+            cached_bytes -= len(evicted)
     return entry
 
 
@@ -268,6 +280,19 @@ def init_static_delivery(app) -> None:
         return url_for("static", filename=filename, v=version)
 
     app.jinja_env.globals["static_asset_url"] = static_asset_url
+
+    def translation_asset_urls() -> dict[str, str]:
+        """Versioned URLs of the per-language files in static/js/i18n/."""
+        prefix = "js/i18n/"
+        return {
+            path[len(prefix):-len(".js")]: static_asset_url(path)
+            for path in sorted(app.extensions[_ASSET_INDEX_EXTENSION])
+            if path.startswith(prefix)
+            and path.endswith(".js")
+            and "/" not in path[len(prefix):]
+        }
+
+    app.jinja_env.globals["translation_asset_urls"] = translation_asset_urls
 
     @app.after_request
     def optimize_static_delivery(response):

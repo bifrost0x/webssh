@@ -89,7 +89,6 @@ def test_vault_passphrase_change_and_account_substitution(app, owner):
 
 def test_global_kdf_admission_rejects_before_waiting_for_vault_lock(app, owner):
     import app.automation_vault as module
-    import threading
     with app.app_context():
         vault=Vault()
         module._KDF.acquire()

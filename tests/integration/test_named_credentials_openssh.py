@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.integration.test_automation_openssh import peer, trust, PASSWORD
+from tests.integration.test_automation_openssh import peer, trust, PASSWORD  # noqa: F401
 
 pytestmark = pytest.mark.skipif(os.environ.get('PARAMIKO5_INTEGRATION') != '1', reason='requires disposable OpenSSH lab')
 

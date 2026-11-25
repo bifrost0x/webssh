@@ -128,6 +128,36 @@ def test_valid_sharded_browser_job_is_accepted(tmp_path):
     assert output.exists()
 
 
+def test_vendor_check_failure_in_lint_job_is_accepted(tmp_path):
+    def mutate(_event, _pull_request, _files, jobs):
+        jobs['jobs'][0]['name'] = 'lint'
+
+    result, output = _run_validator(tmp_path, mutate)
+
+    assert result.returncode == 0, result.stderr
+    assert output.exists()
+
+
+@pytest.mark.parametrize('name', ['lint-extra', 'pre-lint', 'pytest'])
+def test_vendor_check_failure_in_other_jobs_is_rejected(tmp_path, name):
+    def mutate(_event, _pull_request, _files, jobs):
+        jobs['jobs'][0]['name'] = name
+
+    result, output = _run_validator(tmp_path, mutate)
+
+    assert result.returncode != 0
+    assert not output.exists()
+
+
+def test_tests_workflow_runs_the_vendor_check_in_the_lint_job():
+    from scripts.dependabot_vendor import PROFILES
+    workflow = (ROOT / '.github/workflows/tests.yml').read_text(encoding='utf-8')
+    lint_job = workflow.split('\n  lint:', 1)[1].split('\n  dependency-locks:', 1)[0]
+
+    assert PROFILES['npm'].failed_job.fullmatch('lint')
+    assert f"- name: {PROFILES['npm'].failed_step}\n        run: npm run vendor:check" in lint_job
+
+
 def test_gate_rejects_pr_code_outside_manifests_and_generated_vendor(tmp_path):
     def add_untrusted_script(_event, pull_request, files, _jobs):
         files.append({'filename': 'scripts/vendor.js', 'status': 'modified'})

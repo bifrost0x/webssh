@@ -55,10 +55,12 @@ def test_legacy_user_schema_adds_disabled_mfa_idempotently(app):
         ensure_security_columns()
 
         row = db.session.execute(text(
-            'SELECT username, mfa_enabled, settings_default_generation '
+            'SELECT username, mfa_enabled, settings_default_generation, '
+            'mfa_failed_attempts, mfa_last_failed_at, '
+            'mfa_step_up_failed_attempts, mfa_step_up_last_failed_at '
             'FROM users WHERE id = 1'
         )).one()
-        assert row == ('legacy-user', 0, 0)
+        assert row == ('legacy-user', 0, 0, 0, None, 0, None)
 
 
 def test_legacy_oidc_state_adds_assurance_intent_columns_idempotently(app):

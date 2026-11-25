@@ -5,6 +5,7 @@
     'Too many login attempts. Please try again later.': 'auth.tooManyAttempts',
     'Too many registration attempts. Please try again later.': 'auth.tooManyAttempts',
     'Too many attempts. Please try again later.': 'auth.tooManyAttempts',
+    'Too many invalid codes. Sign in again.': 'auth.mfaRestart',
     'Registration is currently disabled.': 'auth.registrationDisabled',
     'This account is locked. Please contact an administrator.': 'auth.accountLocked',
     'Account created successfully!': 'auth.accountCreated',
@@ -19,9 +20,22 @@
     'Password must be at least 8 characters': 'auth.newPasswordTooShort',
     'New password must be at least 8 characters': 'auth.newPasswordChangeTooShort'
 } %}
+{# Data-only flash categories that are never displayed as messages. #}
+{% set flash_data_categories = ['login_username', 'login_auth_source'] %}
+{% macro render_auth_alert(message, category='error') -%}
+    {% set key = flash_message_keys.get(message) %}
+    <div class="alert alert-{{ category }}"{% if key %} data-i18n="{{ key }}"{% endif %}>{{ message }}</div>
+{%- endmacro %}
 {% macro render_auth_messages() %}
     {% for category, message in get_flashed_messages(with_categories=true) %}
-        {% set key = flash_message_keys.get(message) %}
-        <div class="alert alert-{{ category }}"{% if key %} data-i18n="{{ key }}"{% endif %}>{{ message }}</div>
+        {% if category not in flash_data_categories %}
+        {{ render_auth_alert(message, category) }}
+        {% endif %}
     {% endfor %}
 {% endmacro %}
+{% macro login_username_hint() -%}
+    {{ (get_flashed_messages(category_filter=['login_username']) or [''])[-1] }}
+{%- endmacro %}
+{% macro login_username_source() -%}
+    {{ (get_flashed_messages(category_filter=['login_auth_source']) or [''])[-1] }}
+{%- endmacro %}

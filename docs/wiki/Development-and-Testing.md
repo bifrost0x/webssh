@@ -70,6 +70,12 @@ Run the suite with:
 .\.venv\Scripts\python.exe -m pytest tests --ignore=tests/integration -q -n 2 --dist=loadscope
 ```
 
+Lint Python sources with the pinned ruff from the test requirements; `ruff.toml` holds the selected rules:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check .
+```
+
 The pytest harness uses a reduced bcrypt work factor to keep authentication-heavy
 tests fast. An isolated subprocess contract verifies that normal application
 processes retain bcrypt's production work factor. The maintained gates execute
@@ -324,7 +330,7 @@ runs cannot satisfy a newer revision.
 | Change or trigger | Tests | Container scans and publication |
 |---|---|---|
 | Code, tests, dependencies, workflow or mixed PR | Full Python 3.15 partitions; Python 3.11 compatibility; Redis 7/8; OpenSSH with real browser lifecycle; SMB; JavaScript, vendor and lint checks; all 32 browser partitions; Firefox/WebKit fonts; runtime and release contracts | Native AMD64 and ARM64 scans; no publication |
-| Documentation-only PR | Exact-revision classification, documentation contracts and both required aggregates | Both image scans deliberately skipped; no publication |
+| Documentation-only PR | Exact-revision classification, documentation contracts, the `lint` job and both required aggregates | Both image scans deliberately skipped; no publication |
 | Main push or version tag | Complete reusable Tests workflow once | Native candidates build alongside tests; publish only after all gates pass |
 | Manual exact-SHA test run | Full tests, regardless of changed paths | No publication from the Tests workflow |
 | Scheduled or manual Container Security run | Independent image validation | Both native architecture scans; no publication |
@@ -357,6 +363,12 @@ Only a successful `docs` classification permits the named expensive jobs to
 be skipped. An unexpected result, a missing job or a missing scope fails the
 aggregate. Workflow-level path filters are intentionally avoided so required
 checks cannot remain pending merely because documentation changed.
+
+The `lint` job runs ruff, ESLint, the vendor check and the JavaScript unit tests
+(including the sign-in translation check) for every change scope. It starts
+without waiting for the classification, and `all-tests` requires its success
+in both scopes. Every job that runs steps declares a `timeout-minutes` limit above its
+usual duration, so a stalled runner fails instead of blocking the gate.
 
 Main and tag pushes always run the full release pipeline, including docs merges.
 Every published image therefore belongs to its fully tested source revision.

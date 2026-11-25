@@ -43,6 +43,44 @@ const TerminalManager = {
         return getComputedStyle(document.body).getPropertyValue(name).trim() || fallback;
     },
 
+    // OSC 8 hyperlinks come from remote output. Only plain http(s) targets
+    // without embedded credentials are opened, after the user confirms the
+    // exact address, and the new tab gets neither opener nor referrer.
+    terminalLinkTarget(uri) {
+        let url;
+        try {
+            url = new URL(String(uri));
+        } catch {
+            return null;
+        }
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+        return url.href;
+    },
+
+    activateTerminalLink(event, uri) {
+        const target = this.terminalLinkTarget(uri);
+        if (!target) return false;
+        // The host comes first: a dialog may cut a long address before the
+        // registrable domain. The address stays on its own line so no
+        // punctuation reads as part of it.
+        const host = new URL(target).host;
+        const template = window.i18n?.t('terminal.openLinkConfirm');
+        const message = template && template !== 'terminal.openLinkConfirm'
+            ? template.replace(/\{(host|url)\}/g, (_match, name) => (name === 'host' ? host : target))
+            : `Do you want to open this link?\n\nHost: ${host}\n${target}\n\nWARNING: This link could potentially be dangerous`;
+        if (!window.confirm(message)) return false;
+        window.open(target, '_blank', 'noopener,noreferrer');
+        return true;
+    },
+
+    createLinkHandler() {
+        return {
+            activate: (event, uri) => {
+                this.activateTerminalLink(event, uri);
+            },
+        };
+    },
+
     isMacPlatform() {
         const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
         return /mac|iphone|ipad|ipod/i.test(platform);
@@ -513,6 +551,7 @@ const TerminalManager = {
             tabStopWidth: 4,
             allowProposedApi: true,
             ...this.getAppearance().options,
+            linkHandler: this.createLinkHandler(),
         });
 
         const isMac = this.isMacPlatform();
@@ -1087,18 +1126,6 @@ const TerminalManager = {
 
     clearSyncedSize(sessionId) {
         delete this.syncedSizes[sessionId];
-    },
-
-    getTerminalSize(sessionId) {
-        const terminalKeys = this.sessionTerminals[sessionId] || [];
-        const terminal = terminalKeys.length > 0 ? this.terminals[terminalKeys[0]] : null;
-        if (terminal) {
-            return {
-                rows: terminal.rows,
-                cols: terminal.cols
-            };
-        }
-        return null;
     },
 
     destroyTerminal(sessionId) {

@@ -114,11 +114,23 @@
                 {% endif %}
             </div>
 
-            {% from '_auth_messages.html' import render_auth_messages %}
+            {% from '_auth_messages.html' import render_auth_messages, login_username_hint, login_username_source %}
+            {% set username_hint = login_username_hint()|trim %}
+            {% set username_hint_source = login_username_source()|trim %}
+            {% set local_username_hint = username_hint if username_hint_source == 'local' else '' %}
+            {% set ldap_username_hint = username_hint if username_hint_source == 'ldap' and ldap_enabled else '' %}
             {{ render_auth_messages() }}
             <div id="authNotificationContainer" class="auth-notification-container" aria-live="polite" aria-atomic="true"></div>
 
-            {% set selected_auth_source = auth_source if auth_source in ('local', 'ldap') else ('ldap' if ldap_enabled else 'local') %}
+            {% if auth_source in ('local', 'ldap') %}
+            {% set selected_auth_source = auth_source %}
+            {% elif local_username_hint %}
+            {% set selected_auth_source = 'local' %}
+            {% elif ldap_username_hint %}
+            {% set selected_auth_source = 'ldap' %}
+            {% else %}
+            {% set selected_auth_source = 'ldap' if ldap_enabled else 'local' %}
+            {% endif %}
             {% if mfa_required %}
             <form class="auth-mfa-back-form" method="POST" action="{{ url_for('cancel_login') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -228,7 +240,7 @@
                     <div class="input-wrapper">
                         <span class="input-icon material-icons" aria-hidden="true">person</span>
                         <input type="text" id="username" name="username" class="form-control"
-                               data-i18n-placeholder="auth.username" placeholder="Username" required{% if selected_auth_source == 'local' %} data-initial-focus{% endif %}>
+                               data-i18n-placeholder="auth.username" placeholder="Username" value="{{ local_username_hint }}" required{% if selected_auth_source == 'local' and not local_username_hint %} data-initial-focus{% endif %}>
                     </div>
                 </div>
 
@@ -237,7 +249,7 @@
                     <div class="input-wrapper">
                         <span class="input-icon material-icons" aria-hidden="true">lock</span>
                         <input type="password" id="password" name="password" class="form-control"
-                               data-i18n-placeholder="auth.password" placeholder="Password" required>
+                               data-i18n-placeholder="auth.password" placeholder="Password" required{% if selected_auth_source == 'local' and local_username_hint %} data-initial-focus{% endif %}>
                         <button type="button" class="password-toggle material-icons" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
                 </div>
@@ -259,14 +271,14 @@
                     <label for="ldapUsername" data-i18n="auth.directoryUsername">Directory username</label>
                     <div class="input-wrapper">
                         <span class="input-icon material-icons" aria-hidden="true">person</span>
-                        <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" data-i18n-placeholder="auth.directoryUsername" placeholder="Directory username" required{% if selected_auth_source == 'ldap' %} data-initial-focus{% endif %}>
+                        <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" data-i18n-placeholder="auth.directoryUsername" placeholder="Directory username" value="{{ ldap_username_hint }}" required{% if selected_auth_source == 'ldap' and not ldap_username_hint %} data-initial-focus{% endif %}>
                     </div>
                 </div>
                 <div class="form-group">
                     <label for="ldapPassword" data-i18n="security.directoryPassword">Directory password</label>
                     <div class="input-wrapper">
                         <span class="input-icon material-icons" aria-hidden="true">lock</span>
-                        <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" data-i18n-placeholder="security.directoryPassword" placeholder="Directory password" required>
+                        <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" data-i18n-placeholder="security.directoryPassword" placeholder="Directory password" required{% if selected_auth_source == 'ldap' and ldap_username_hint %} data-initial-focus{% endif %}>
                         <button type="button" class="password-toggle material-icons" data-target="ldapPassword" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
                 </div>
@@ -274,7 +286,7 @@
                     <input type="checkbox" id="ldapRemember" name="remember">
                     <label for="ldapRemember" data-i18n="auth.rememberMe">Remember me</label>
                 </div>
-                {% if ldap_error %}<div class="alert alert-error">{{ ldap_error }}</div>{% endif %}
+                {% if ldap_error %}{% from '_auth_messages.html' import render_auth_alert %}{{ render_auth_alert(ldap_error) }}{% endif %}
                 <button type="submit" class="btn-primary" data-i18n="auth.login">Sign in</button>
             </form>
             {% endif %}

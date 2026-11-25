@@ -19,6 +19,7 @@ from datetime import datetime
 import config
 from .host_key_store import HostKeyStore, HostKeyNotAccepted
 from .network_policy import (
+    TailnetRouteRestricted,
     audit_internal_allowlist_use,
     open_validated_socket,
     resolve_allowed_target,
@@ -209,6 +210,7 @@ class TemporaryConnectionPool:
                     'user_id': user_id,
                     'host': host,
                     'port': port,
+                    'peer_ip': target.ip,
                     'username': username,
                     'quota_reservation': reservation,
                     'hold_count': 0,
@@ -236,6 +238,10 @@ class TemporaryConnectionPool:
             )
         except paramiko.AuthenticationException:
             return None, "Authentication failed: Invalid username or password"
+        except TailnetRouteRestricted as error:
+            return None, SSHConnectionError(
+                str(error), code=error.code, context='target'
+            )
         except ValueError as e:
             return None, str(e)
         except paramiko.SSHException as e:
@@ -523,6 +529,27 @@ class TemporaryConnectionPool:
         detached = self._detach_connections(
             lambda _connection_id, conn: conn['user_id'] == user_id,
             defer_held=defer_held,
+        )
+        self._close_detached_connections(detached)
+        return len(detached)
+
+    def close_connections_where(self, restricted):
+        """Close connections whose pinned peer address ``restricted`` matches.
+
+        ``restricted`` runs outside the registry lock because it may query
+        the kernel route table. Held connections close too, as on revocation.
+        """
+        with self.lock:
+            peers = {
+                connection_id: conn.get('peer_ip')
+                for connection_id, conn in self.connections.items()
+            }
+        matched = {
+            connection_id for connection_id, peer_ip in peers.items()
+            if restricted(peer_ip)
+        }
+        detached = self._detach_connections(
+            lambda connection_id, _conn: connection_id in matched
         )
         self._close_detached_connections(detached)
         return len(detached)

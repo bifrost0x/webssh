@@ -32,7 +32,49 @@ sensitive action and target.
 - Flask-Login manages browser authentication.
 - Forms use Flask-WTF CSRF protection.
 - Unknown-user password checks perform dummy bcrypt work.
-- Login and reauthentication paths are rate-limited.
+- Login and reauthentication paths are rate-limited. Source-address limits
+  count each address on its own by default; IPv6 clients can be grouped per
+  network (for example /64) in the sign-in protection settings. Failed
+  password sign-ins are also limited per submitted username and source, with a much higher ceiling per username across all sources that
+  only slows distributed guessing; successful sign-ins do not count. These
+  are time windows, not lockouts, and apply whether or not the account
+  exists. A sender using many sources can still fill the ceiling for one
+  username while it keeps sending, so a browser that completed a password
+  sign-in before is exempt from it: after each successful password or LDAP
+  password step WebSSH sets a signed, HttpOnly known-device cookie (90 days,
+  rotated on every success, bound to the account and to a digest of the typed
+  username keyed with the instance secret).
+  With that cookie only the ceiling across sources is skipped; the limits per
+  source and per username and source still apply, and five failures with one
+  cookie within an hour end its exemption, so a stolen cookie gives no
+  unlimited guessing. Anything that ends all sessions of the account (password
+  change or reset, lock, MFA reset, identity link or unlink) invalidates its
+  device cookies; when the owner unlinks their own OIDC or GitHub identity,
+  the browser that stays signed in receives a fresh one. The remaining
+  risk: during such an attack, a browser without a valid device cookie (a new
+  device, cleared cookies, a private window) cannot sign in to that username
+  until the attack stops. Both username limits and the IPv6 grouping prefix
+  are Admin settings under **Settings → Administration → Authentication →
+  Sign-in protection**; changes apply immediately, require reauthentication
+  and are audited. See
+  [Configuration Reference](Configuration-Reference#sign-in-protection-admin-setting).
+- Rejected TOTP codes are counted per account in the database, separately for
+  sign-in and for step-up, so failures in one never delay the other. After
+  three consecutive rejections each further code waits 30 seconds, doubling up
+  to 15 minutes; an accepted code resets the count, and every full 30 minutes
+  without a rejection halve it, so a pause does not restore the three free
+  attempts at once. A Recovery Code or
+  passkey sign-in, a passkey step-up, enrolling or disabling TOTP, and an
+  administrator MFA reset clear both counts. From five
+  consecutive rejections on, a rejected sign-in code discards the pending
+  login, so the password step has to be repeated. The account is never
+  locked. Someone who holds the password can keep delaying new TOTP sign-ins;
+  Recovery Codes and passkeys stay available, and changing the password from
+  an existing session is not affected.
+- Unlinking an OIDC or GitHub identity signs out every session of the
+  account and ends its live connections, like LDAP link and unlink. When the
+  account owner unlinks their own identity, the acting browser stays signed in
+  and persistent tmux sessions keep running, as after signing out.
 - Session cookies are `HttpOnly` and `SameSite=Lax`; production requires the
   `Secure` flag.
 - Lock, deletion, logout, and failed LDAP revalidation revoke tracked live
