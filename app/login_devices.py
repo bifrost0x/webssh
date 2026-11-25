@@ -56,15 +56,10 @@ def username_digest(username):
     ).hexdigest()
 
 
-def trusted_device(username):
-    """Return the device nonce when this request presents a valid cookie.
-
-    The cookie must be well signed, younger than ``MAX_AGE``, issued for the
-    submitted username, and still match the account's authentication
-    generation. Anything else is treated as no cookie at all.
-    """
+def _presented_payload():
+    """Return the verified payload of this request's cookie, else ``None``."""
     raw_value = request.cookies.get(cookie_name())
-    if not raw_value or not str(username or "").strip():
+    if not raw_value:
         return None
     try:
         payload = _serializer().loads(
@@ -72,26 +67,37 @@ def trusted_device(username):
         )
     except BadData:
         return None
-    if not isinstance(payload, dict):
-        return None
-    nonce = payload.get("n")
-    user_id = payload.get("i")
-    generation = payload.get("g")
     if (
-        not isinstance(nonce, str)
-        or type(user_id) is not int
-        or type(generation) is not int
-        or payload.get("u") != username_digest(username)
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("n"), str)
+        or not isinstance(payload.get("u"), str)
+        or type(payload.get("i")) is not int
+        or type(payload.get("g")) is not int
     ):
         return None
-    user = db.session.get(User, user_id)
+    user = db.session.get(User, payload["i"])
     if (
         user is None
         or user.is_locked
-        or int(user.auth_generation or 0) != generation
+        or int(user.auth_generation or 0) != payload["g"]
     ):
         return None
-    return nonce
+    return payload
+
+
+def trusted_device(username):
+    """Return the device nonce when this request presents a valid cookie.
+
+    The cookie must be well signed, younger than ``MAX_AGE``, issued for the
+    submitted username, and still match the account's authentication
+    generation. Anything else is treated as no cookie at all.
+    """
+    if not str(username or "").strip():
+        return None
+    payload = _presented_payload()
+    if payload is None or payload["u"] != username_digest(username):
+        return None
+    return payload["n"]
 
 
 def failure_budget_key(endpoint, nonce):
@@ -100,8 +106,31 @@ def failure_budget_key(endpoint, nonce):
 
 def remember_device(user, username):
     """Issue a fresh cookie with the response of a successful password step."""
+    _issue(user, username_digest(username))
+
+
+def presented_device_digest(user):
+    """Return the username digest of a valid cookie this request holds for ``user``.
+
+    Call it before ``auth_generation`` changes and pass the result to
+    :func:`reissue_device` afterwards, so a browser that stays signed in keeps
+    its exemption.
+    """
+    payload = _presented_payload()
+    if payload is None or payload["i"] != int(user.id):
+        return None
+    return payload["u"]
+
+
+def reissue_device(user, digest):
+    """Issue a cookie for ``digest`` under the account's current generation."""
+    if digest:
+        _issue(user, digest)
+
+
+def _issue(user, digest):
     value = _serializer().dumps({
-        "u": username_digest(username),
+        "u": digest,
         "i": int(user.id),
         "g": int(user.auth_generation or 0),
         "n": secrets.token_urlsafe(16),

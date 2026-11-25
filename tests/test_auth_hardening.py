@@ -892,6 +892,25 @@ def _is_signed_out(test_client):
     )
 
 
+def _device_trusted(app, test_client, username):
+    from app import login_devices
+
+    cookie = test_client.get_cookie(_DEVICE_COOKIE)
+    if cookie is None:
+        return False
+    with app.test_request_context(
+        headers={"Cookie": f"{_DEVICE_COOKIE}={cookie.value}"},
+    ):
+        return login_devices.trusted_device(username) is not None
+
+
+def _sets_device_cookie(response):
+    return any(
+        value.startswith(f"{_DEVICE_COOKIE}=")
+        for value in response.headers.getlist("Set-Cookie")
+    )
+
+
 def test_oidc_unlink_revokes_the_target_sessions(app, browsers, monkeypatch):
     import config
     import app.user_lifecycle as user_lifecycle
@@ -931,6 +950,7 @@ def test_oidc_unlink_revokes_the_target_sessions(app, browsers, monkeypatch):
     )
 
     assert removed.status_code == 200
+    assert not _sets_device_cookie(removed)
     assert revoked == [(target_id, True)]
     with app.app_context():
         assert db.session.get(OIDCIdentity, identity_id) is None
@@ -985,6 +1005,9 @@ def test_admin_unlinking_own_oidc_identity_keeps_the_current_browser(
     assert revoked == [(admin_id, False)]
     assert _is_signed_out(other_browser)
     assert not _is_signed_out(client)
+    # Only the browser that stays signed in gets a cookie for the new state.
+    assert _device_trusted(app, client, "oidc_self_admin")
+    assert not _device_trusted(app, other_browser, "oidc_self_admin")
 
 
 def test_github_unlink_revokes_other_sessions_and_keeps_this_browser(
@@ -1026,6 +1049,8 @@ def test_github_unlink_revokes_other_sessions_and_keeps_this_browser(
         )
     assert _is_signed_out(other_browser)
     assert client.get("/api/account/github").status_code == 200
+    assert _device_trusted(app, client, "github_unlink_user")
+    assert not _device_trusted(app, other_browser, "github_unlink_user")
 
 
 # --- counter resets by other proofs of possession -----------------------------

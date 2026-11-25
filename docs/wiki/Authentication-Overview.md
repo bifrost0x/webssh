@@ -49,7 +49,8 @@ sensitive action and target.
   cookie within an hour end its exemption, so a stolen cookie gives no
   unlimited guessing. Anything that ends all sessions of the account (password
   change or reset, lock, MFA reset, identity link or unlink) invalidates its
-  device cookies. The remaining
+  device cookies; when the owner unlinks their own OIDC or GitHub identity,
+  the browser that stays signed in receives a fresh one. The remaining
   risk: during such an attack, a browser without a valid device cookie (a new
   device, cleared cookies, a private window) cannot sign in to that username
   until the attack stops. Both username limits and the IPv6 grouping prefix
