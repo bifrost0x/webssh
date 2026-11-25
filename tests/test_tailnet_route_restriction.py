@@ -135,6 +135,13 @@ def test_only_the_4via6_prefix_is_exempt_from_the_node_range(tailnet):
             resolve_allowed_target(address, 22, allow_internal=True)
 
 
+@pytest.mark.parametrize('address', ['100.64.0.10', 'fd7a:115c:a1e0::10'])
+def test_own_tailnet_address_is_restricted(tailnet, address):
+    tailnet.routes[address] = 'lo'
+    with pytest.raises(TailnetRouteRestricted):
+        resolve_allowed_target(address, 22, allow_internal=True)
+
+
 def test_cgnat_address_off_the_tailnet_stays_allowed(tailnet):
     tailnet.routes['100.64.0.10'] = 'eth0'
     assert resolve_allowed_target('100.64.0.10', 22, allow_internal=True).ip == '100.64.0.10'

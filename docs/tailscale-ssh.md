@@ -77,7 +77,8 @@ log as `APPLICATION_FEATURE_CHANGED` with
 refuses, before opening a socket, every Tailscale node address for everything
 except Tailscale SSH. A node address is one in `100.64.0.0/10` or
 `fd7a:115c:a1e0::/48` (including the IPv4-mapped IPv6 form) whose kernel route
-uses that interface. This applies to password and key terminal connections,
+uses that interface, and the WebSSH node's own tailnet address, which routes
+through the loopback device. This applies to password and key terminal connections,
 Gateway selectors, Jump Hosts and locally validated targets behind them,
 SOCKS5 proxy endpoints and
 locally validated SOCKS5 destinations, file transfers, automation runs, host

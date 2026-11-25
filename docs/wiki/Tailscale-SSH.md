@@ -63,7 +63,8 @@ reauthentication, and is recorded in the security audit log as
 `feature=tailscale_ssh_restrict_tailnet_routes`. It
 covers Tailscale node addresses only: an address in `100.64.0.0/10` or
 `fd7a:115c:a1e0::/48` (including the IPv4-mapped IPv6 form) whose kernel route
-uses that interface. WebSSH refuses such an address for everything except
+uses that interface, and the WebSSH node's own tailnet address, which routes
+through the loopback device. WebSSH refuses such an address for everything except
 Tailscale SSH, before it opens a socket:
 
 - password and key terminal connections, including Gateway selectors;

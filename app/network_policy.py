@@ -73,8 +73,9 @@ def _tailnet_route_restricted(address):
     an address would run under the shared node identity outside every
     Tailscale SSH allowlist. Subnet-route and exit-node destinations run their
     own sshd and stay unaffected. A node address whose route cannot be
-    determined is restricted; one routed through another interface, such as
-    carrier-grade NAT on the local network, is not.
+    determined is restricted, and so is this node's own tailnet address,
+    which the kernel routes through the loopback device. One routed through
+    another interface, such as carrier-grade NAT on the local network, is not.
     """
     node_address = _tailscale_node_address(address)
     if node_address is None:
@@ -84,7 +85,7 @@ def _tailnet_route_restricted(address):
         return False
     from . import tailscale_ssh
     route_interface = tailscale_ssh._route_interface_for_ip(node_address.compressed)
-    return route_interface is None or route_interface == interface
+    return route_interface in (None, 'lo', interface)
 
 
 def _active_tailnet_restriction():
