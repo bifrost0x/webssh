@@ -847,18 +847,55 @@ def test_ldap_login_is_limited_per_username(app, client, monkeypatch):
     monkeypatch.setattr(config, "LDAP_LOGIN_RATE_LIMIT", "1000 per minute")
     _set_username_limits(per_source=2)
 
-    statuses = [
+    responses = [
         client.post(
             "/login/ldap",
             data={"username": "Directory_User", "password": "secret-value"},
             environ_base={"REMOTE_ADDR": "203.0.113.100"},
-        ).status_code
+        )
         for _attempt in range(3)
     ]
+    statuses = [response.status_code for response in responses]
 
     assert statuses[2] == 429
     assert statuses[:2] != [429, 429]
     assert len(calls) == 2
+    _assert_ldap_limit_message(responses[2])
+
+
+def _assert_ldap_limit_message(response):
+    html = response.get_data(as_text=True)
+    assert response.status_code == 429
+    assert (
+        '<div class="alert alert-error" data-i18n="auth.tooManyAttempts">'
+        "Too many login attempts. Please try again later.</div>"
+    ) in html
+
+
+def test_ldap_source_limit_names_the_limit(app, client, monkeypatch):
+    import config
+    from app.ldap_service import LDAPLookupRejected
+    from tests.test_ldap_auth import _enable_ldap_blueprint
+
+    class _Directory:
+        def lookup(self, username):
+            raise LDAPLookupRejected("not found")
+
+    _enable_ldap_blueprint(app, monkeypatch, _Directory())
+    monkeypatch.setattr(config, "LDAP_LOGIN_RATE_LIMIT", "1 per minute")
+
+    responses = [
+        client.post(
+            "/login/ldap",
+            data={"username": "someone", "password": "secret-value"},
+            environ_base={"REMOTE_ADDR": "203.0.113.101"},
+        )
+        for _attempt in range(2)
+    ]
+
+    assert responses[0].status_code == 401
+    assert 'data-i18n="auth.invalidCredentials"' in responses[0].get_data(as_text=True)
+    _assert_ldap_limit_message(responses[1])
 
 
 # --- identity unlink revocation ----------------------------------------------

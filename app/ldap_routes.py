@@ -87,6 +87,16 @@ def _rate_limited(endpoint):
     return False
 
 
+def _rate_limited_response():
+    # The same answer for the source and the username limit, as on the local
+    # form, so it does not tell which limit applied.
+    return render_template(
+        'login.html',
+        ldap_error='Too many login attempts. Please try again later.',
+        auth_source='ldap',
+    ), 429
+
+
 def _auto_provision_ldap_identity(username, resolved, *, presented_username=None):
     """Create one non-admin LDAP account after its credentials are verified."""
     presented_username = (
@@ -180,7 +190,7 @@ def ldap_login():
     if request.content_length and request.content_length > _MAX_LDAP_FORM_BYTES:
         return render_template('login.html', auth_source='ldap'), 413
     if _rate_limited('ldap_login'):
-        return render_template('login.html', auth_source='ldap'), 429
+        return _rate_limited_response()
 
     presented_username = str(request.form.get('username') or '')
     username = presented_username.strip()
@@ -198,7 +208,7 @@ def ldap_login():
     )
     if username_limited:
         log_rate_limit_exceeded('ldap_login_username', client_ip, user=username)
-        return render_template('login.html', auth_source='ldap'), 429
+        return _rate_limited_response()
     try:
         directory = get_directory()
         resolved = directory.lookup(username)

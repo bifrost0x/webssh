@@ -275,7 +275,7 @@
                     <input type="checkbox" id="ldapRemember" name="remember">
                     <label for="ldapRemember" data-i18n="auth.rememberMe">Remember me</label>
                 </div>
-                {% if ldap_error %}<div class="alert alert-error">{{ ldap_error }}</div>{% endif %}
+                {% if ldap_error %}{% from '_auth_messages.html' import flash_message_keys %}{% set ldap_error_key = flash_message_keys.get(ldap_error) %}<div class="alert alert-error"{% if ldap_error_key %} data-i18n="{{ ldap_error_key }}"{% endif %}>{{ ldap_error }}</div>{% endif %}
                 <button type="submit" class="btn-primary" data-i18n="auth.login">Sign in</button>
             </form>
             {% endif %}
