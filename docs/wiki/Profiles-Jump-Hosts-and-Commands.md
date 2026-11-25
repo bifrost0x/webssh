@@ -70,7 +70,9 @@ The probe collects:
 - known services from active systemd units, fixed install paths and snaps;
 - where the SSH user may already use Docker or Podman without sudo, the image
   names of running containers, mapped to known services, and whether that
-  access worked.
+  access worked. Both are asked only through an existing local daemon socket
+  (`/var/run/docker.sock`, the rootless Docker or the Podman API socket);
+  Docker contexts and `DOCKER_HOST` are never followed.
 
 Only values that map to a fixed catalog entry or a strict pattern are stored.
 WebSSH never stores raw command output, host names, IP addresses, user
@@ -79,11 +81,14 @@ changes nothing and runs nothing with elevated rights.
 
 Windows, MikroTik RouterOS and Cisco IOS hosts are recognised only from the SSH
 greeting that **Find hosts** or a reachability check reads; when the greeting
-names one of them, WebSSH does not run the probe. A Dropbear greeting marks a
+names one of them, WebSSH does not run the probe. When a later greeting from
+the same address and port names no platform, the hint is dropped and the
+probe runs on the next connection. A Dropbear greeting marks a
 host as embedded until a connection detects more. When a host answers
-with something other than the probe output, for example a forced command or a
-menu, the profile records that detection is not possible and keeps any facts an
-earlier run found.
+with something other than the probe output, for example a forced command, a
+menu or no output at all, the profile records that detection is not possible
+and keeps any facts an earlier run found. A probe that is only slow keeps the
+facts it printed before its four-second limit.
 
 The host icon shows where its platform came from: a manual choice, a
 detection, the SSH greeting, the host name, or "not detected yet". Choosing a
