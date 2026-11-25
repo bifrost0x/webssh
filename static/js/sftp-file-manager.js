@@ -706,8 +706,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                         </span>
                     </button>`;
             }).join('');
-            return { id: group.id, html: `<section class="fm-source-group" aria-labelledby="fm-source-group-${group.id}">
-                <h4 id="fm-source-group-${group.id}"><span>${this.escapeHtml(group.label)}</span><span class="fm-source-group-count">${items.length}</span></h4>
+            return { id: group.id, html: `<section class="fm-source-group" aria-labelledby="fm-source-group-${this.escapeHtml(group.id)}">
+                <h4 id="fm-source-group-${this.escapeHtml(group.id)}"><span>${this.escapeHtml(group.label)}</span><span class="fm-source-group-count">${this.escapeHtml(items.length)}</span></h4>
                 <div class="fm-source-group-items">${rows}</div>
             </section>` };
         }).filter(Boolean);
@@ -1273,7 +1273,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                                     <span class="material-icons" aria-hidden="true">home</span>
                                 </button>
                                 <div class="fm-breadcrumb" id="fmLeftBreadcrumb">
-                                    <input type="text" class="fm-path-input" id="fmLeftPath" aria-label="${this.t('terminalFiles.path', 'Absolute path')}" data-i18n-aria-label="terminalFiles.path" value="/" placeholder="/path" spellcheck="false" autocomplete="off">
+                                    <input type="text" class="fm-path-input" id="fmLeftPath" aria-label="${this.escapeHtml(this.t('terminalFiles.path', 'Absolute path'))}" data-i18n-aria-label="terminalFiles.path" value="/" placeholder="/path" spellcheck="false" autocomplete="off">
                                 </div>
                                 <button type="button" class="fm-nav-btn" id="fmLeftRefresh" aria-label="Refresh" title="Refresh" data-i18n-aria-label="fm.refresh" data-i18n-title="fm.refresh">
                                     <span class="material-icons" aria-hidden="true">refresh</span>
@@ -1336,7 +1336,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                                     <span class="material-icons" aria-hidden="true">home</span>
                                 </button>
                                 <div class="fm-breadcrumb" id="fmRightBreadcrumb">
-                                    <input type="text" class="fm-path-input" id="fmRightPath" aria-label="${this.t('terminalFiles.path', 'Absolute path')}" data-i18n-aria-label="terminalFiles.path" value="/" placeholder="/path" spellcheck="false" autocomplete="off">
+                                    <input type="text" class="fm-path-input" id="fmRightPath" aria-label="${this.escapeHtml(this.t('terminalFiles.path', 'Absolute path'))}" data-i18n-aria-label="terminalFiles.path" value="/" placeholder="/path" spellcheck="false" autocomplete="off">
                                 </div>
                                 <button type="button" class="fm-nav-btn" id="fmRightRefresh" aria-label="Refresh" title="Refresh" data-i18n-aria-label="fm.refresh" data-i18n-title="fm.refresh">
                                     <span class="material-icons" aria-hidden="true">refresh</span>
@@ -1381,15 +1381,15 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                             <span class="fm-queue-toggle material-icons" id="fmQueueToggle" aria-hidden="true">expand_more</span>
                         </button>
                         <div class="fm-queue-controls" id="fmQueueControls">
-                            <label>${this.t('trustFiles.filter', 'Show')} <select id="fmQueueFilter" class="form-control">
-                                <option value="all">${this.t('trustFiles.all', 'All · active and failed first')}</option>
-                                <option value="active">${this.t('trustFiles.active', 'Active')}</option>
-                                <option value="error">${this.t('trustFiles.errors', 'Failed / unconfirmed')}</option>
-                                <option value="history">${this.t('trustFiles.history', 'Finished')}</option>
+                            <label>${this.escapeHtml(this.t('trustFiles.filter', 'Show'))} <select id="fmQueueFilter" class="form-control">
+                                <option value="all">${this.escapeHtml(this.t('trustFiles.all', 'All · active and failed first'))}</option>
+                                <option value="active">${this.escapeHtml(this.t('trustFiles.active', 'Active'))}</option>
+                                <option value="error">${this.escapeHtml(this.t('trustFiles.errors', 'Failed / unconfirmed'))}</option>
+                                <option value="history">${this.escapeHtml(this.t('trustFiles.history', 'Finished'))}</option>
                             </select></label>
-                            <button type="button" id="fmQueuePrevious" class="btn btn-secondary">${this.t('trustFiles.previous', 'Previous')}</button>
+                            <button type="button" id="fmQueuePrevious" class="btn btn-secondary">${this.escapeHtml(this.t('trustFiles.previous', 'Previous'))}</button>
                             <span id="fmQueuePage" role="status"></span>
-                            <button type="button" id="fmQueueNext" class="btn btn-secondary">${this.t('trustFiles.next', 'Next')}</button>
+                            <button type="button" id="fmQueueNext" class="btn btn-secondary">${this.escapeHtml(this.t('trustFiles.next', 'Next'))}</button>
                         </div>
                         <div class="fm-queue-list" id="fmQueueList"></div>
                     </div>
@@ -1415,7 +1415,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                         </div>
                         <label class="fm-source-search">
                             <span class="material-icons" aria-hidden="true">search</span>
-                            <input type="search" id="fmSourceSearch" aria-label="${this.t('fm.workspace.searchSources', 'Search sources')}" data-i18n-aria-label="fm.workspace.searchSources" autocomplete="off" placeholder="Search sources" data-i18n-placeholder="fm.workspace.searchSources">
+                            <input type="search" id="fmSourceSearch" aria-label="${this.escapeHtml(this.t('fm.workspace.searchSources', 'Search sources'))}" data-i18n-aria-label="fm.workspace.searchSources" autocomplete="off" placeholder="Search sources" data-i18n-placeholder="fm.workspace.searchSources">
                         </label>
                         <div class="fm-source-groups" id="fmSourceGroups"></div>
                         <div class="fm-source-launcher-actions">
@@ -3257,7 +3257,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             container.innerHTML = `
                 <div class="fm-loading" role="status">
                     <div class="fm-loading-spinner"></div>
-                    ${this.t('fm.loading', 'Loading...')}
+                    ${this.escapeHtml(this.t('fm.loading', 'Loading...'))}
                 </div>
             `;
             this.updatePaneStatus(pane);
@@ -3269,9 +3269,9 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                 <div class="fm-error" role="alert">
                     <span class="material-icons fm-error-icon">error_outline</span>
                     <div class="fm-error-text">${this.escapeHtml(state.error)}</div>
-                    <button class="btn btn-secondary btn-sm fm-error-retry" data-pane="${pane}">
+                    <button class="btn btn-secondary btn-sm fm-error-retry" data-pane="${this.escapeHtml(pane)}">
                         <span class="material-icons">refresh</span>
-                        ${this.t('fm.retry', 'Retry')}
+                        ${this.escapeHtml(this.t('fm.retry', 'Retry'))}
                     </button>
                 </div>
             `;
@@ -3345,7 +3345,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                     </div>
                     <div class="fm-file-size">-</div>
                     <div class="fm-file-modified">-</div>
-                    <div class="fm-file-permissions">${this.t('fm.parentDirectory', 'Parent directory')}</div>
+                    <div class="fm-file-permissions">${this.escapeHtml(this.t('fm.parentDirectory', 'Parent directory'))}</div>
                 </div>
             `;
         }
@@ -3354,7 +3354,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             html += `
                 <div class="fm-empty">
                     <span class="material-icons fm-empty-icon">folder_off</span>
-                    <div class="fm-empty-text">${this.t('fm.emptyDirectory', 'Empty directory')}</div>
+                    <div class="fm-empty-text">${this.escapeHtml(this.t('fm.emptyDirectory', 'Empty directory'))}</div>
                 </div>
             `;
         }
@@ -3364,7 +3364,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             const icon = file.is_dir ? 'folder' : this.getFileIcon(file.name);
             return `
                 <div class="fm-file-item ${file.is_dir ? 'directory' : ''} ${state.selected.has(originalIndex) ? 'selected' : ''}"
-                     data-index="${originalIndex}"
+                     data-index="${this.escapeHtml(originalIndex)}"
                      data-type="${file.is_dir ? 'directory' : 'file'}"
                      role="option"
                      aria-selected="${state.selected.has(originalIndex)}"
@@ -3374,11 +3374,11 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                             tabindex="-1"
                             aria-checked="${state.selected.has(originalIndex)}"
                             aria-label="${this.escapeHtml(this.t('fm.workspace.selectItem', 'Select'))}: ${this.escapeHtml(file.name)}">${state.selected.has(originalIndex) ? 'check_box' : 'check_box_outline_blank'}</button>
-                    <span class="material-icons fm-file-icon ${file.is_dir ? 'folder' : 'file'}">${icon}</span>
+                    <span class="material-icons fm-file-icon ${file.is_dir ? 'folder' : 'file'}">${this.escapeHtml(icon)}</span>
                     <div class="fm-file-info">
                         <div class="fm-file-name">${this.escapeHtml(file.name)}</div>
                     </div>
-                    <div class="fm-file-size">${file.is_dir ? '-' : this.formatSize(file.size || 0)}</div>
+                    <div class="fm-file-size">${this.escapeHtml(file.is_dir ? '-' : this.formatSize(file.size || 0))}</div>
                     <div class="fm-file-modified">${this.escapeHtml(this.formatModified(file.modified))}</div>
                     <div class="fm-file-permissions">${this.escapeHtml(this.formatPermissions(file))}</div>
                 </div>
@@ -4564,7 +4564,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                             && !this.isDirectoryContinuationCursor(picker.nextCursor)
                             ? `<div class="fm-move-picker-empty"><span class="material-icons" aria-hidden="true">folder_open</span>${this.escapeHtml(this.t('fm.movePickerNoFolders', 'No subfolders'))}</div>`
                             : picker.directories.map((directory, index) => `
-                                <button type="button" class="fm-move-picker-directory" data-move-picker-directory="${index}">
+                                <button type="button" class="fm-move-picker-directory" data-move-picker-directory="${this.escapeHtml(index)}">
                                     <span class="material-icons" aria-hidden="true">folder</span>
                                     <span>${this.escapeHtml(directory.name)}</span>
                                     <span class="material-icons" aria-hidden="true">chevron_right</span>
@@ -6102,8 +6102,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                     ${t.status === 'error' && window.CustomerWorkflows ? `<details class="fm-recovery-guidance"><summary>${this.escapeHtml(this.t('customer.nextSteps', 'What can I do?'))}</summary><p>${this.escapeHtml(this.t('customer.' + window.CustomerWorkflows.adviceKey(t.errorCode), 'Inspect the destination before repeating this operation.'))}</p><p>${this.escapeHtml([t.sourcePath, t.targetPath].filter(Boolean).join(' → '))}</p></details>` : ''}
                     ${retryHint ? `<div class="fm-transfer-error">${this.escapeHtml(retryHint)}</div>` : ''}
                     ${t.status === 'active' ? `
-                        <div class="fm-transfer-progress-bar" role="progressbar" aria-label="${this.escapeHtml(t.filename)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}">
-                            <div class="fm-transfer-progress-fill" style="width: ${progress}%"></div>
+                        <div class="fm-transfer-progress-bar" role="progressbar" aria-label="${this.escapeHtml(t.filename)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${this.escapeHtml(progress)}">
+                            <div class="fm-transfer-progress-fill" style="width: ${this.escapeHtml(progress)}%"></div>
                         </div>
                     ` : ''}
                 </div>
@@ -6541,13 +6541,13 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                         <span class="material-icons spinning">cloud_upload</span>
                     </div>
                     <div class="upload-progress-info">
-                        <div class="upload-progress-text">${this.t('fm.uploadingFiles', 'Uploading files')}...</div>
+                        <div class="upload-progress-text">${this.escapeHtml(this.t('fm.uploadingFiles', 'Uploading files'))}...</div>
                         <div class="upload-progress-stats">
-                            <span class="upload-progress-count">${completed} / ${total}</span>
-                            <span class="upload-progress-percent">${percent}%</span>
+                            <span class="upload-progress-count">${this.escapeHtml(completed)} / ${this.escapeHtml(total)}</span>
+                            <span class="upload-progress-percent">${this.escapeHtml(percent)}%</span>
                         </div>
                         <div class="upload-progress-bar">
-                            <div class="upload-progress-fill" style="width: ${percent}%"></div>
+                            <div class="upload-progress-fill" style="width: ${this.escapeHtml(percent)}%"></div>
                         </div>
                     </div>
                 </div>
@@ -6704,13 +6704,13 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         this.uploadProgressNotification.classList.add(presentation.state);
         this.uploadProgressNotification.innerHTML = `
             <div class="upload-progress-content">
-                <div class="upload-progress-icon ${presentation.state}">
-                    <span class="material-icons">${presentation.icon}</span>
+                <div class="upload-progress-icon ${this.escapeHtml(presentation.state)}">
+                    <span class="material-icons">${this.escapeHtml(presentation.icon)}</span>
                 </div>
                 <div class="upload-progress-info">
-                    <div class="upload-progress-text">${presentation.heading}</div>
+                    <div class="upload-progress-text">${this.escapeHtml(presentation.heading)}</div>
                     <div class="upload-progress-stats">
-                        <span>${presentation.details}</span>
+                        <span>${this.escapeHtml(presentation.details)}</span>
                     </div>
                 </div>
             </div>
