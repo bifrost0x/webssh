@@ -59,8 +59,9 @@ sensitive action and target.
 - Rejected TOTP codes are counted per account in the database, separately for
   sign-in and for step-up, so failures in one never delay the other. After
   three consecutive rejections each further code waits 30 seconds, doubling up
-  to 15 minutes; an accepted code resets the count, and a count whose last
-  failure is older than 30 minutes starts again from zero. A Recovery Code or
+  to 15 minutes; an accepted code resets the count, and every full 30 minutes
+  without a rejection halve it, so a pause does not restore the three free
+  attempts at once. A Recovery Code or
   passkey sign-in, a passkey step-up, enrolling or disabling TOTP, and an
   administrator MFA reset clear both counts. From five
   consecutive rejections on, a rejected sign-in code discards the pending

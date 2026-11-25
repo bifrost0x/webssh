@@ -11,9 +11,10 @@ in one never delay the other, so a password holder cannot block step-up in
 the owner's existing sessions and a stolen session cannot block the owner's
 fresh sign-in.
 
-The wait grows exponentially up to a cap and the count decays: once the last
-failure is older than ``QUIET_PERIOD_SECONDS`` the next attempt starts from
-zero, so the backoff never turns into a lockout. Proving possession another
+The wait grows exponentially up to a cap and the count decays: every full
+``QUIET_PERIOD_SECONDS`` since the last failure halves it, so the backoff never
+turns into a lockout, while pausing between guesses does not buy back the
+free attempts at once. Proving possession another
 way (Recovery Code, passkey) or replacing the factors clears both counters.
 The remaining trade-off is
 that someone who holds the password can keep delaying new TOTP sign-ins by
@@ -33,7 +34,7 @@ from .models import User, as_naive_utc, db
 FREE_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 30
 BACKOFF_MAX_SECONDS = 15 * 60
-# A failure older than this no longer counts toward the backoff.
+# Each full period without a failure halves the count.
 QUIET_PERIOD_SECONDS = 2 * BACKOFF_MAX_SECONDS
 # From this many consecutive failures on, every further failure discards the
 # pending login, so the next code requires the password step again.
@@ -104,8 +105,11 @@ def claim_attempt(user_id, *, scope=LOGIN, now=None):
         if last_failed_at is not None:
             last_failed_at = as_naive_utc(last_failed_at)
             quiet = (current_time - last_failed_at).total_seconds()
-            if quiet >= QUIET_PERIOD_SECONDS:
-                failures = 0
+            quiet_periods = int(max(0.0, quiet) // QUIET_PERIOD_SECONDS)
+            if quiet_periods:
+                # The quiet period exceeds the longest wait, so a decayed
+                # count never has to wait for its own backoff.
+                failures >>= min(quiet_periods, 64)
             else:
                 wait = backoff_seconds(failures)
                 ready_at = last_failed_at + timedelta(seconds=wait)

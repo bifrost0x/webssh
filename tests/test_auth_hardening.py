@@ -545,12 +545,63 @@ def test_failure_count_decays_after_the_quiet_period(app):
                     user_id, scope=scope,
                     now=moment - timedelta(seconds=1),
                 )
-            quiet = moment - timedelta(
+            last_failure = moment - timedelta(
                 seconds=mfa_throttle.backoff_seconds(failures)
-            ) + timedelta(seconds=mfa_throttle.QUIET_PERIOD_SECONDS)
+            )
+            quiet = timedelta(seconds=mfa_throttle.QUIET_PERIOD_SECONDS)
+            # Four quiet periods halve twelve failures down to zero.
             assert mfa_throttle.claim_attempt(
-                user_id, scope=scope, now=quiet,
+                user_id, scope=scope, now=last_failure + 4 * quiet,
             ) == 1
+
+
+@pytest.mark.parametrize(("stored", "periods", "expected"), [
+    (12, 1, 7),
+    (12, 2, 4),
+    (12, 3, 2),
+    (12, 4, 1),
+    (5, 1, 3),
+    (1, 1, 1),
+    (12, 1000, 1),
+])
+def test_each_quiet_period_halves_the_failure_count(app, stored, periods, expected):
+    """A pause halves the count instead of restoring every free attempt."""
+    from app import mfa_throttle
+
+    user_id = _create_user(app, f"halve_{stored}_{periods}")
+    _set_failure_state(
+        app, user_id, stored,
+        seconds_ago=periods * mfa_throttle.QUIET_PERIOD_SECONDS + 5,
+    )
+    with app.app_context():
+        assert mfa_throttle.claim_attempt(user_id) == expected
+    assert _failure_state(app, user_id)[0] == expected
+
+
+def test_a_pause_at_the_cap_does_not_restore_the_free_attempts(app):
+    """Waiting one quiet period after many failures leaves the backoff on."""
+    from app import mfa_throttle
+
+    user_id = _create_user(app, "halve_pause_user")
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    _set_failure_state(app, user_id, 0, seconds_ago=0)
+    with app.app_context():
+        moment = start
+        for _attempt in range(10):
+            failures = mfa_throttle.claim_attempt(user_id, now=moment)
+            moment += timedelta(seconds=mfa_throttle.backoff_seconds(failures))
+        last_failure = moment - timedelta(
+            seconds=mfa_throttle.backoff_seconds(failures)
+        )
+        resumed = last_failure + timedelta(
+            seconds=mfa_throttle.QUIET_PERIOD_SECONDS,
+        )
+        assert mfa_throttle.claim_attempt(user_id, now=resumed) == 6
+        with pytest.raises(mfa_throttle.MFAAttemptThrottled) as throttled:
+            mfa_throttle.claim_attempt(
+                user_id, now=resumed + timedelta(seconds=1),
+            )
+        assert throttled.value.retry_after == mfa_throttle.backoff_seconds(6) - 1
 
 
 def test_decayed_claim_still_loses_a_concurrent_update(app, monkeypatch):
