@@ -66,6 +66,10 @@ _FLASK_OPTIONS_WITH_VALUES = frozenset({
     '--env-file',
     '-e',
 })
+_PARTIAL_LOGOUT_MESSAGE = (
+    'You were signed out in this browser, but other sessions could not be '
+    'ended. Try signing out again or ask an administrator.'
+)
 
 
 def _is_flask_cli_process(program_name=None, main_module_name=None):
@@ -1447,7 +1451,9 @@ def create_app(
         user_lifecycle.revoke_user_access(user_id, socketio, kill_tmux=False)
         clear_browser_authentication()
         if not session_ended:
-            abort(500)
+            # This browser is signed out; tell the user that copies of the
+            # session elsewhere may still be valid.
+            flash(_PARTIAL_LOGOUT_MESSAGE, 'error')
         return redirect(url_for('login'))
 
     @app.route('/change-password', methods=['GET', 'POST'])

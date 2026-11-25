@@ -2789,6 +2789,7 @@ window.i18n.registerLocales({
         "auth.retryAfterSeconds": "尝试次数过多。请在 {seconds} 秒后重试。",
         "auth.retryAfterMinutes": "尝试次数过多。请在 {minutes} 分钟后重试。",
         "auth.mfaRestart": "无效验证码过多。请重新登录。",
+        "auth.partialLogout": "你已在此浏览器中退出登录，但无法结束其他会话。请再次尝试退出登录或联系管理员。",
         "automation.result.tailscale_route_restricted": "此主机是 Tailscale 节点，只能通过 Tailscale SSH 访问。自动化运行使用普通 SSH，无法访问此主机。",
         "fm.newName": "新名称",
         "fm.renameHint": "在此目录中重命名该项目。请输入名称，而不是路径。",

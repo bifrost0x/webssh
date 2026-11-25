@@ -2790,6 +2790,7 @@ window.i18n.registerLocales({
         "auth.retryAfterSeconds": "Quá nhiều lần thử. Thử lại sau {seconds} giây.",
         "auth.retryAfterMinutes": "Quá nhiều lần thử. Thử lại sau {minutes} phút.",
         "auth.mfaRestart": "Quá nhiều mã không hợp lệ. Vui lòng đăng nhập lại.",
+        "auth.partialLogout": "Bạn đã đăng xuất trên trình duyệt này, nhưng không thể kết thúc các phiên khác. Hãy thử đăng xuất lại hoặc liên hệ quản trị viên.",
         "automation.result.tailscale_route_restricted": "Máy chủ này là một nút Tailscale và chỉ có thể truy cập bằng Tailscale SSH. Các lần chạy tự động hóa dùng SSH thông thường nên không thể truy cập máy chủ này.",
         "fm.newName": "Tên mới",
         "fm.renameHint": "Đổi tên mục trong thư mục này. Nhập tên, không phải đường dẫn.",

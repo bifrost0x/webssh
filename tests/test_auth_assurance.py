@@ -718,9 +718,11 @@ def test_logout_invalidates_generation_when_session_delete_fails(
     assert '/login' in replayed.headers['Location']
 
 
-def test_logout_fails_closed_when_session_cannot_be_ended(
-    app, client, monkeypatch,
+def test_logout_explains_when_other_sessions_cannot_be_ended(
+    app, client, monkeypatch, caplog,
 ):
+    import logging
+
     from app import auth_assurance
     from app.models import AuthenticationSession, User
 
@@ -740,16 +742,33 @@ def test_logout_fails_closed_when_session_cannot_be_ended(
         failing_invalidation,
     )
 
-    response = client.post('/logout')
+    with caplog.at_level(logging.WARNING):
+        response = client.post('/logout')
 
-    assert response.status_code == 500
+    assert response.status_code == 302
+    assert response.headers['Location'].endswith('/login')
     assert client.get_cookie('remember_token') is None
+    failures = [
+        record for record in caplog.records
+        if record.getMessage() == 'Authentication invalidation failed during logout'
+    ]
+    assert len(failures) == 1
+    assert 'authentication state unavailable' not in caplog.text
     with app.app_context():
         user = User.query.filter_by(username='logoutinvalidatefails').one()
         assert user.auth_generation == 0
         assert AuthenticationSession.query.filter_by(
             user_id=user.id
         ).count() == 1
+
+    login_page = client.get('/login')
+    page = login_page.get_data(as_text=True)
+    assert login_page.status_code == 200
+    assert 'data-i18n="auth.partialLogout"' in page
+    assert (
+        'You were signed out in this browser, but other sessions could not be '
+        'ended. Try signing out again or ask an administrator.'
+    ) in page
     after = client.get('/')
     assert after.status_code == 302
     assert '/login' in after.headers['Location']

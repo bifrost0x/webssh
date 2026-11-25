@@ -2790,6 +2790,7 @@ window.i18n.registerLocales({
         "auth.retryAfterSeconds": "Demasiados intentos. Inténtalo de nuevo en {seconds} s.",
         "auth.retryAfterMinutes": "Demasiados intentos. Inténtalo de nuevo en {minutes} min.",
         "auth.mfaRestart": "Demasiados códigos no válidos. Vuelve a iniciar sesión.",
+        "auth.partialLogout": "Se cerró tu sesión en este navegador, pero no se pudieron cerrar las demás sesiones. Vuelve a cerrar sesión o contacta con un administrador.",
         "automation.result.tailscale_route_restricted": "Este host es un nodo de Tailscale y solo se puede alcanzar con Tailscale SSH. Las ejecuciones de automatización usan SSH normal y no pueden alcanzarlo.",
         "fm.newName": "Nuevo nombre",
         "fm.renameHint": "Cambia el nombre del elemento en este directorio. Introduce un nombre, no una ruta.",
