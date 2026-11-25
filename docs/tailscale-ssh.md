@@ -119,7 +119,9 @@ arbitrary password to those Tailscale SSH nodes and get a shell under the node
 identity. Remove the node or its tag from such rules, or log the sidecar out of
 the tailnet, before disabling the feature; otherwise keep the feature enabled
 with the block on. While the feature is enabled and the block is off, WebSSH
-logs a warning at startup and after a restore.
+logs a warning at startup and after a restore. While the feature is disabled
+and the `TAILSCALE_SSH_INTERFACE` interface (default `tailscale0`) exists on
+the host, WebSSH logs a warning at the same points.
 
 Disable the setting only when users must reach ordinary OpenSSH servers over
 the tailnet with their own credentials and the tailnet SSH policy grants the

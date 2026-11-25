@@ -654,6 +654,33 @@ def test_restriction_state_is_logged(tailnet, monkeypatch, tmp_path):
     assert warnings[-1][1] == {'event': 'restore', 'tailscale_ssh_restrict_tailnet_routes': False}
 
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', False)
+    monkeypatch.setattr(tailscale_ssh, '_interface_present', lambda _name: False)
     count = len(infos) + len(warnings)
     assert tailscale_ssh.log_tailnet_route_restriction('startup') is None
     assert len(infos) + len(warnings) == count
+
+
+@pytest.mark.parametrize('configured, expected', [('tailscale0', 'tailscale0'), ('', 'tailscale0'), ('ts1', 'ts1')])
+def test_disabled_feature_warns_while_the_interface_exists(tailnet, monkeypatch, configured, expected):
+    from app import audit_logger
+    warnings, checked = [], []
+    monkeypatch.setattr(audit_logger, 'log_warning', lambda message, **kw: warnings.append((message, kw)))
+    monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', False)
+    monkeypatch.setattr(config, 'TAILSCALE_SSH_INTERFACE', configured)
+    monkeypatch.setattr(tailscale_ssh, '_interface_present', lambda name: checked.append(name) or True)
+
+    assert tailscale_ssh.log_tailnet_route_restriction('startup') is None
+    assert checked == [expected]
+    assert len(warnings) == 1
+    assert 'not blocked' in warnings[0][0]
+    assert warnings[0][1] == {'event': 'startup', 'interface': expected}
+
+
+def test_interface_presence_uses_the_kernel_interface_table(monkeypatch):
+    def nametoindex(name):
+        if name == 'tailscale0':
+            return 7
+        raise OSError('no such device')
+    monkeypatch.setattr(socket, 'if_nametoindex', nametoindex)
+    assert tailscale_ssh._interface_present('tailscale0') is True
+    assert tailscale_ssh._interface_present('missing0') is False

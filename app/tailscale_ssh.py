@@ -165,6 +165,14 @@ def _route_interface_for_ip(address, *, socket_factory=socket.socket):
         return None
 
 
+def _interface_present(name):
+    try:
+        socket.if_nametoindex(name)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def log_tailnet_route_restriction(event):
     """Record the effective restriction while Tailscale SSH is enabled.
 
@@ -173,6 +181,17 @@ def log_tailnet_route_restriction(event):
     Returns the effective value, or None while Tailscale SSH is disabled.
     """
     if not config.TAILSCALE_SSH_ENABLED:
+        # The block only applies while the feature is enabled. A Tailscale
+        # interface on the host suggests the node may still be logged in.
+        interface = str(config.TAILSCALE_SSH_INTERFACE or '').strip() or 'tailscale0'
+        if _interface_present(interface):
+            from .audit_logger import log_warning
+            log_warning(
+                'Tailscale SSH is disabled but the Tailscale interface exists; '
+                'ordinary SSH to tailnet nodes is not blocked, see '
+                'docs/tailscale-ssh.md',
+                event=event, interface=interface,
+            )
         return None
     from .app_settings import is_tailnet_route_restricted
     from .audit_logger import log_info, log_warning
