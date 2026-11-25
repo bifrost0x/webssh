@@ -321,6 +321,86 @@ def test_discarded_login_prefills_the_username_once_without_a_url(
     assert 'value="prefill_restart"' not in client.get("/login").get_data(as_text=True)
 
 
+def test_discarded_ldap_login_prefills_only_the_directory_form(
+    app, client, monkeypatch, generous_request_limits,
+):
+    import app.ldap_session as ldap_session
+    from app.models import LDAPIdentity, db
+    from tests.test_ldap_auth import (
+        _DirectoryIdentity,
+        _FakeDirectory,
+        _enable_ldap_blueprint,
+    )
+
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="restart-ldap-id",
+        distinguished_name="uid=jdoe,dc=example,dc=com",
+    )
+    _enable_ldap_blueprint(app, monkeypatch, _FakeDirectory(identity))
+    user_id, secret = _enroll_totp(app, client, monkeypatch, "restart_ldap")
+    with app.app_context():
+        db.session.add(LDAPIdentity(
+            user_id=user_id,
+            provider=identity.provider,
+            subject=identity.subject,
+            directory_username="jdoe",
+            distinguished_name=identity.distinguished_name,
+        ))
+        db.session.commit()
+    monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: None)
+    _set_failure_state(app, user_id, 4, seconds_ago=120)
+    assert client.post(
+        "/login/ldap", data={"username": "J.Doe", "password": "directory-secret"},
+    ).status_code == 200
+
+    discarded = client.post("/api/totp/auth/verify", json={"code": _wrong_code(secret)})
+    assert discarded.get_json()["code"] == "mfa_restart"
+
+    html = client.get("/login").get_data(as_text=True)
+    assert 'id="ldapUsername" name="username"' in html
+    assert 'placeholder="Directory username" value="J.Doe"' in html
+    assert 'placeholder="Username" value=""' in html
+    assert "restart_ldap" not in html
+    assert '<option value="ldap" selected>' in html
+    assert 'alert-login_auth_source' not in html
+
+
+def test_discarded_local_login_keeps_the_local_form_when_ldap_is_offered(
+    app, client, monkeypatch, generous_request_limits,
+):
+    from tests.test_ldap_auth import _enable_ldap_blueprint
+
+    _enable_ldap_blueprint(app, monkeypatch, object())
+    user_id, secret = _enroll_totp(app, client, monkeypatch, "restart_local")
+    _set_failure_state(app, user_id, 4, seconds_ago=120)
+    assert _password_login(client, "restart_local").status_code == 200
+
+    discarded = client.post("/api/totp/auth/verify", json={"code": _wrong_code(secret)})
+    assert discarded.get_json()["code"] == "mfa_restart"
+
+    html = client.get("/login").get_data(as_text=True)
+    assert 'placeholder="Username" value="restart_local"' in html
+    assert 'placeholder="Directory username" value=""' in html
+    assert '<option value="local" selected' in html
+
+
+def test_logins_without_a_typed_name_get_no_restart_hint(app):
+    from types import SimpleNamespace
+
+    from app.totp_routes import _restart_username_hint
+
+    user_id = _create_user(app, "restart_oidc")
+    with app.app_context():
+        for method in ("oidc", "github", "ldap"):
+            assert _restart_username_hint(
+                SimpleNamespace(user_id=user_id, primary_method=method),
+            ) is None
+        assert _restart_username_hint(
+            SimpleNamespace(user_id=user_id, primary_method="password"),
+        ) == ("local", "restart_oidc")
+
+
 def test_failures_below_the_discard_threshold_keep_the_pending_login(
     app, client, monkeypatch, generous_request_limits,
 ):
