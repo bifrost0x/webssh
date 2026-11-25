@@ -244,6 +244,7 @@ def valid_services(value):
 _OS_RELEASE_KEYS = ('ID', 'ID_LIKE', 'VERSION_ID', 'VARIANT_ID')
 _SINGLE_KEYS = frozenset({*_OS_RELEASE_KEYS, 'kernel', 'model', 'virt', 'target', 'guests'})
 _MAX_FACT_LENGTH = 200
+_CONTROL = re.compile(r'[\x00-\x08\x0a-\x1f\x7f-\x9f]')
 _OS_ID = re.compile(r'[a-z0-9._-]{1,32}')
 _OS_VERSION = re.compile(r'[0-9][0-9A-Za-z._-]{0,15}')
 _PI_MODEL = re.compile(r'Raspberry Pi [A-Za-z0-9 .+()-]{1,120}')
@@ -266,14 +267,16 @@ def parse_identity(text, *, max_bytes=8192):
     """
     if not isinstance(text, str) or len(text.encode('utf-8')) > max_bytes:
         raise ValueError('Invalid identity facts')
-    # C0, DEL and C1 controls never appear in honest probe output.
-    if any((ord(char) < 32 and char not in '\n\r\t') or 0x7f <= ord(char) <= 0x9f for char in text):
-        raise ValueError('Invalid identity facts')
     single, repeated, duplicates = {}, {}, set()
     # Only '\n' ends a line: str.splitlines() would also split on U+2028 and
     # similar characters a hostile value could carry.
     for line in text.split('\n'):
         line = line[:-1] if line.endswith('\r') else line
+        # The probe never prints C0, DEL or C1 controls. A line with one came
+        # from a shell startup file (coloured greetings) or is hostile; it is
+        # dropped whole, so no control character can start a new key.
+        if _CONTROL.search(line):
+            continue
         key, separator, value = line.partition('=')
         value = value.strip()
         if not separator or len(value) > _MAX_FACT_LENGTH:

@@ -27,16 +27,32 @@ def test_identity_without_kernel_line_is_unavailable(facts):
     }
 
 
-def test_identity_rejects_oversized_control_and_non_text_output():
-    for text in ['x' * 8193, 'ID=ubuntu\x00\nkernel=Linux', 'kernel=Linux\x1b[31m', b'kernel=Linux', None]:
+def test_identity_rejects_oversized_and_non_text_output():
+    for text in ['x' * 8193, b'kernel=Linux', None]:
         with pytest.raises(ValueError):
             host_platform.parse_identity(text)
     with pytest.raises(ValueError):
         host_platform.parse_identity('kernel=Linux\n' + 'x' * 100, max_bytes=64)
-    for char in ('\x7f', '\x80', '\x85', '\x9f'):
-        with pytest.raises(ValueError):
-            host_platform.parse_identity('kernel=Linux' + char + 'marker=proxmox')
     assert host_platform.parse_identity('ID=debian\nkernel=Linux\nmodel=Raspberry Pi 5 \xa0')['state'] == 'detected'
+
+
+def test_identity_drops_lines_with_control_characters_only():
+    # Shell startup files print coloured greetings; they must not hide the probe's answer.
+    motd = '\x1b[1;32mWelcome to node-1\x1b[0m\n\x07\nLast login: today\n'
+    result = host_platform.parse_identity(motd + 'ID=ubuntu\nVERSION_ID="24.04"\nkernel=Linux\nunit=nginx\x1b[0m\nunit=caddy\n')
+    assert result['state'] == 'detected' and result['platform'] == 'ubuntu' and result['os_version'] == '24.04'
+    assert result['services'] == ['caddy']
+    assert host_platform.parse_identity('\x1b]0;title\x07ID=debian\nkernel=Linux')['platform'] == 'linux'
+    assert host_platform.parse_identity('kernel=Linux\x1b[31m')['state'] == 'unavailable'
+
+
+@pytest.mark.parametrize('char', ['\x00', '\x0b', '\x0c', '\x1b', '\r', '\x7f', '\x80', '\x85', '\x9f'])
+def test_a_control_character_never_splits_a_line_into_a_new_key(char):
+    assert host_platform.parse_identity('kernel=Linux' + char + 'marker=proxmox')['state'] == 'unavailable'
+    result = host_platform.parse_identity('ID=debian' + char + 'marker=proxmox\nkernel=Linux\nguests=1' + char + 'guests=7')
+    assert result['state'] == 'detected' and result['platform'] == 'linux' and result['guests'] is None
+    result = host_platform.parse_identity('kernel=Linux\nunit=nginx' + char + 'unit=caddy\nimage=x' + char + '\nimage=redis:7')
+    assert result['services'] == ['redis']
 
 
 @pytest.mark.parametrize('separator', ['\u2028', '\u2029', '\u2028\u2029'])
