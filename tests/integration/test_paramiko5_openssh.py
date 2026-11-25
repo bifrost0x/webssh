@@ -57,6 +57,27 @@ def make_pool():
     return pool
 
 
+def upload_through_route(
+        session_id, path, stream, *, chunk_size, max_bytes, replace=False,
+        progress=None):
+    """Upload exactly as the HTTP transfer route does."""
+    from app import transfer_routes
+    from app.sftp_backend import SFTPBackend
+
+    source = SimpleNamespace(handle_id=session_id, backend=SFTPBackend())
+    return transfer_routes._upload_to_backend(
+        source,
+        path,
+        stream,
+        chunk_size=chunk_size,
+        max_bytes=max_bytes,
+        cancel_event=threading.Event(),
+        cancelled=lambda: False,
+        progress=progress or (lambda _count: None),
+        replace=replace,
+    )
+
+
 def read_terminal_marker(session_id, marker):
     channel = ssh_manager.sessions[session_id]['channel']
     split_at = len(marker) // 2
@@ -137,11 +158,10 @@ def test_direct_password_terminal_roundtrip():
 
 
 @pytest.mark.parametrize('mode', [0o600, 0o640, 0o750])
-@pytest.mark.parametrize('route', ['backend', 'legacy-upload', 'backend-copy'])
+@pytest.mark.parametrize('route', ['backend', 'http-upload', 'backend-copy'])
 def test_atomic_transfer_keeps_staging_private_and_preserves_destination_mode(mode, route):
     import io
     from types import SimpleNamespace
-    from app import sftp_handler
     from app.sftp_backend import SFTPBackend
     from app.paramiko_channels import open_sftp_client
 
@@ -165,8 +185,8 @@ def test_atomic_transfer_keeps_staging_private_and_preserves_destination_mode(mo
                                                   cancel_event=threading.Event()) as writer:
                 writer.write(b'replacement')
                 inspect_staging()
-        elif route == 'legacy-upload':
-            sftp_handler.upload_request_stream(session_id, target, io.BytesIO(b'replacement'),
+        elif route == 'http-upload':
+            upload_through_route(session_id, target, io.BytesIO(b'replacement'),
                 chunk_size=4, max_bytes=100, replace=True, progress=inspect_staging)
         else:
             source_path = directory + '/source'
@@ -565,7 +585,7 @@ def test_names_with_two_dots_can_be_listed_opened_and_uploaded(remote_workspace)
         remote_workspace.session_id, f'{remote_workspace.path}/notes..txt',
     )
     assert error is None and opened['content'] == 'two dots\n'
-    sftp_handler.upload_request_stream(
+    upload_through_route(
         remote_workspace.session_id, f'{remote_workspace.path}/backup..old/v1..2.tar.gz',
         io.BytesIO(b'archive'), chunk_size=4, max_bytes=100,
     )
@@ -641,11 +661,10 @@ def test_editor_refuses_to_reencode_a_latin1_file(remote_workspace):
 
 def test_long_file_names_can_be_uploaded_and_saved(remote_workspace):
     import io
-    from app import sftp_handler
 
     name = '日' * 80 + '.txt'
     assert len(name.encode('utf-8')) <= 255
-    sftp_handler.upload_request_stream(
+    upload_through_route(
         remote_workspace.session_id, f'{remote_workspace.path}/{name}',
         io.BytesIO(b'first\n'), chunk_size=4, max_bytes=100,
     )

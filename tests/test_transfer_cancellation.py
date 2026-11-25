@@ -1,4 +1,3 @@
-import io
 import os
 import stat
 import threading
@@ -42,18 +41,6 @@ class BoundedReader:
             st_size=len(self.payload),
             st_mtime=1,
         )
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args):
-        return False
-
-
-class MemoryWriter(io.BytesIO):
-    def stat(self):
-        return SimpleNamespace(st_mode=stat.S_IFREG | 0o600,
-                               st_size=len(self.getvalue()), st_mtime=1)
 
     def __enter__(self):
         return self
@@ -407,56 +394,25 @@ def test_recursive_delete_stops_before_remote_mutation_when_cancelled(monkeypatc
     assert sftp.removed_dirs == []
 
 
-def test_copy_sftp_stream_uses_bounded_reads_and_checks_cancellation():
-    from app.sftp_handler import TransferCancelled, copy_sftp_stream
+def _zip_source(monkeypatch, sftp):
+    """Resolved SFTP source whose sessions are served by ``sftp``."""
+    from app import sftp_handler
+    from app.sftp_backend import SFTPBackend
 
-    source = BoundedReader(b'abcdefgh')
-    destination = MemoryWriter()
-    cancelled = threading.Event()
+    @contextmanager
+    def fake_session(_session_id, io_lane='control'):
+        yield sftp, 'session'
 
-    def progress(transferred):
-        if transferred == 4:
-            cancelled.set()
-
-    with pytest.raises(TransferCancelled):
-        copy_sftp_stream(
-            source,
-            destination,
-            cancel_event=cancelled,
-            max_bytes=8,
-            chunk_size=4,
-            progress=progress,
-        )
-
-    assert destination.getvalue() == b'abcd'
-    assert source.read_sizes == [4]
+    monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+    return SimpleNamespace(handle_id='session', backend=SFTPBackend())
 
 
-def test_stream_remote_zip_is_bounded_and_cancellable():
-    from app.sftp_handler import TransferCancelled, stream_remote_zip
-
-    remote = BoundedReader(b'abcdefgh')
-    cancelled = threading.Event()
-    chunks = stream_remote_zip(
-        remote,
-        cancel_event=cancelled,
-        max_bytes=8,
-        chunk_size=4,
-    )
-
-    assert next(chunks) == b'abcd'
-    cancelled.set()
-    with pytest.raises(TransferCancelled):
-        next(chunks)
-    assert remote.read_sizes == [4]
-
-
-def test_fallback_zip_uses_disk_and_bounded_remote_reads(tmp_path):
-    from app.sftp_handler import build_fallback_zip_to_disk
+def test_folder_zip_uses_disk_and_bounded_remote_reads(tmp_path, monkeypatch):
+    from app.transfer_routes import _build_backend_zip_to_disk
 
     sftp = FallbackSFTP({'/reports/a.txt': b'a' * 9})
-    archive = build_fallback_zip_to_disk(
-        sftp,
+    archive = _build_backend_zip_to_disk(
+        _zip_source(monkeypatch, sftp),
         '/reports',
         'reports',
         cancel_event=threading.Event(),
@@ -472,94 +428,47 @@ def test_fallback_zip_uses_disk_and_bounded_remote_reads(tmp_path):
         assert max(sftp.readers[0].read_sizes) == 4
     finally:
         os.unlink(archive)
-
-
-def test_fallback_zip_cancellation_removes_temporary_archive(tmp_path):
-    from app.sftp_handler import TransferCancelled, build_fallback_zip_to_disk
+def test_folder_zip_cancellation_removes_temporary_archive(tmp_path, monkeypatch):
+    from app.remote_transfer import RemoteTransferCancelled
+    from app.transfer_routes import _build_backend_zip_to_disk
 
     cancelled = threading.Event()
-    sftp = FallbackSFTP({'/reports/a.txt': b'a' * 9})
 
-    def progress(transferred):
-        if transferred == 4:
+    class CancellingReader(BoundedReader):
+        def read(self, size=-1):
+            chunk = super().read(size)
             cancelled.set()
+            return chunk
 
-    with pytest.raises(TransferCancelled):
-        build_fallback_zip_to_disk(
-            sftp,
+    class CancellingSFTP(FallbackSFTP):
+        def file(self, path, _mode):
+            reader = CancellingReader(self.files[path])
+            self.readers.append(reader)
+            return reader
+
+    sftp = CancellingSFTP({'/reports/a.txt': b'a' * 9})
+
+    with pytest.raises(RemoteTransferCancelled):
+        _build_backend_zip_to_disk(
+            _zip_source(monkeypatch, sftp),
             '/reports',
             'reports',
             cancel_event=cancelled,
             max_bytes=1024,
             chunk_size=4,
             temp_dir=tmp_path,
-            progress=progress,
         )
 
+    assert sftp.readers[0].read_sizes == [4]
     assert list(tmp_path.iterdir()) == []
+def test_empty_directory_entries_cannot_exceed_reserved_zip_bytes(
+        tmp_path, monkeypatch):
+    from app.remote_transfer import RemoteTransferLimitExceeded
+    from app.transfer_routes import _build_backend_zip_to_disk
 
-
-def test_fallback_zip_chmod_failure_removes_temporary_archive(
-    tmp_path,
-    monkeypatch,
-):
-    from app import sftp_handler
-
-    real_chmod = os.chmod
-
-    def reject_archive_chmod(path, mode):
-        if mode == 0o600:
-            raise OSError('chmod unavailable')
-        return real_chmod(path, mode)
-
-    monkeypatch.setattr(sftp_handler.os, 'chmod', reject_archive_chmod)
-
-    with pytest.raises(OSError, match='chmod unavailable'):
-        sftp_handler.build_fallback_zip_to_disk(
-            None,
-            '/reports',
-            'reports',
-            cancel_event=threading.Event(),
-            max_bytes=1024,
-            chunk_size=4,
-            temp_dir=tmp_path,
-        )
-
-    assert list(tmp_path.iterdir()) == []
-
-
-def test_fallback_zip_base_exception_removes_temporary_archive(
-    tmp_path,
-    monkeypatch,
-):
-    from app import sftp_handler
-
-    monkeypatch.setattr(
-        sftp_handler.zipfile,
-        'ZipFile',
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
-    )
-
-    with pytest.raises(KeyboardInterrupt):
-        sftp_handler.build_fallback_zip_to_disk(
-            None,
-            '/reports',
-            'reports',
-            cancel_event=threading.Event(),
-            max_bytes=1024,
-            chunk_size=4,
-            temp_dir=tmp_path,
-        )
-
-    assert list(tmp_path.iterdir()) == []
-
-
-def test_empty_directory_entries_cannot_exceed_reserved_zip_bytes(tmp_path):
-    from app.sftp_handler import TransferSizeExceeded, build_fallback_zip_to_disk
-
-    with pytest.raises(TransferSizeExceeded):
-        build_fallback_zip_to_disk(
-            EmptyDirectorySFTP(),
+    with pytest.raises(RemoteTransferLimitExceeded):
+        _build_backend_zip_to_disk(
+            _zip_source(monkeypatch, EmptyDirectorySFTP()),
             '/reports',
             'reports',
             cancel_event=threading.Event(),
@@ -569,33 +478,28 @@ def test_empty_directory_entries_cannot_exceed_reserved_zip_bytes(tmp_path):
         )
 
     assert list(tmp_path.iterdir()) == []
+def test_remote_tree_counts_zero_byte_members(monkeypatch):
+    from app import sftp_handler
+    from app.remote_transfer import TransferBudget
 
+    monkeypatch.setattr(sftp_handler.config, 'MAX_TRANSFER_MEMBERS', 3)
+    source = _zip_source(monkeypatch, ManyZeroFilesSFTP(4))
 
-def test_remote_tree_counts_zero_byte_members():
-    from app.sftp_handler import (
-        TransferMemberLimitExceeded,
-        inspect_remote_tree,
-    )
-
-    with pytest.raises(TransferMemberLimitExceeded):
-        inspect_remote_tree(
-            ManyZeroFilesSFTP(4),
+    with pytest.raises(sftp_handler.TransferMemberLimitExceeded):
+        list(source.backend.iter_tree(
+            source,
             '/reports',
+            budget=TransferBudget(max_bytes=1, max_members=3),
             cancel_event=threading.Event(),
-            max_bytes=1,
-            max_members=3,
-        )
-
-
-def test_remote_tree_closes_paramiko_directory_handle_on_member_rejection():
+        ))
+def test_remote_tree_closes_paramiko_directory_handle_on_member_rejection(
+        monkeypatch):
     import paramiko
     from paramiko.message import Message
     from paramiko.sftp import CMD_CLOSE, CMD_HANDLE, CMD_NAME, CMD_OPENDIR, CMD_READDIR
     from paramiko.sftp_attr import SFTPAttributes
-    from app.sftp_handler import (
-        TransferMemberLimitExceeded,
-        inspect_remote_tree,
-    )
+    from app import sftp_handler
+    from app.remote_transfer import TransferBudget
 
     class ProtocolSFTP(paramiko.SFTPClient):
         def __init__(self):
@@ -633,40 +537,38 @@ def test_remote_tree_closes_paramiko_directory_handle_on_member_rejection():
             return SimpleNamespace(st_mode=stat.S_IFREG, st_size=0)
 
     sftp = ProtocolSFTP()
+    monkeypatch.setattr(sftp_handler.config, 'MAX_TRANSFER_MEMBERS', 1)
+    source = _zip_source(monkeypatch, sftp)
 
-    with pytest.raises(TransferMemberLimitExceeded):
-        inspect_remote_tree(
-            sftp,
+    with pytest.raises(sftp_handler.TransferMemberLimitExceeded):
+        list(source.backend.iter_tree(
+            source,
             '/reports',
+            budget=TransferBudget(max_bytes=1, max_members=1),
             cancel_event=threading.Event(),
-            max_bytes=1,
-            max_members=1,
-        )
+        ))
 
     assert [command for command, _args in sftp.requests].count(CMD_CLOSE) == 1
 
 
-def test_fallback_zip_counts_zero_byte_members(tmp_path):
-    from app.sftp_handler import (
-        TransferMemberLimitExceeded,
-        build_fallback_zip_to_disk,
-    )
+def test_folder_zip_counts_zero_byte_members(tmp_path, monkeypatch):
+    from app import sftp_handler
+    from app.transfer_routes import _build_backend_zip_to_disk
 
-    with pytest.raises(TransferMemberLimitExceeded):
-        build_fallback_zip_to_disk(
-            ManyZeroFilesSFTP(4),
+    monkeypatch.setattr(sftp_handler.config, 'MAX_TRANSFER_MEMBERS', 3)
+
+    with pytest.raises(sftp_handler.TransferMemberLimitExceeded):
+        _build_backend_zip_to_disk(
+            _zip_source(monkeypatch, ManyZeroFilesSFTP(4)),
             '/reports',
             'reports',
             cancel_event=threading.Event(),
             max_bytes=1024,
-            max_members=3,
             chunk_size=4,
             temp_dir=tmp_path,
         )
 
     assert list(tmp_path.iterdir()) == []
-
-
 class _PathBackend:
     @staticmethod
     def normalize_path(path):
@@ -1276,41 +1178,6 @@ def test_server_copy_lifecycle_rejection_releases_each_reservation_once(
     assert result['request_id'] == 's2s:test'
     assert reservation.release_calls == 1
     assert manager._records == {}
-
-
-def test_remote_zip_command_can_be_cancelled_before_exit():
-    from app import sftp_handler, transfer_routes
-
-    cancelled = threading.Event()
-    cancelled.set()
-
-    class Channel:
-        def settimeout(self, _timeout): pass
-        def exec_command(self, _command): pass
-        def exit_status_ready(self): return False
-        def close(self): pass
-
-    class Transport:
-        def open_session(self, timeout=None):
-            return Channel()
-
-    class SFTP:
-        def __init__(self):
-            self._client = SimpleNamespace(
-                get_transport=lambda: Transport(),
-            )
-            self.removed = []
-
-        def remove(self, path):
-            self.removed.append(path)
-
-    sftp = SFTP()
-    with pytest.raises(sftp_handler.TransferCancelled):
-        transfer_routes._remote_zip_path(
-            sftp, sftp._client, '/reports', cancelled
-        )
-
-    assert len(sftp.removed) == 1
 
 
 def test_server_copy_rejects_invalid_paths_before_allocating(app, monkeypatch):

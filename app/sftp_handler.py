@@ -7,9 +7,7 @@ import stat
 import posixpath
 import secrets
 import struct
-import tempfile
 import time
-import zipfile
 from pathlib import Path
 from threading import Event, Lock, Timer
 from contextlib import contextmanager
@@ -884,95 +882,6 @@ def _is_cancelled(cancel_event):
     return cancel_event is not None and cancel_event.is_set()
 
 
-def copy_sftp_stream(source, destination, *, cancel_event, max_bytes,
-                     chunk_size, progress=None):
-    """Copy between file-like objects without an unbounded read."""
-    transferred = 0
-    while True:
-        if _is_cancelled(cancel_event):
-            raise TransferCancelled()
-        chunk = source.read(chunk_size)
-        if not chunk:
-            return transferred
-        next_size = transferred + len(chunk)
-        if next_size > max_bytes:
-            raise TransferSizeExceeded()
-        destination.write(chunk)
-        transferred = next_size
-        if progress:
-            progress(transferred)
-        if _is_cancelled(cancel_event):
-            raise TransferCancelled()
-
-
-def stream_remote_zip(remote_file, *, cancel_event, max_bytes, chunk_size):
-    """Yield a remotely generated ZIP in bounded chunks."""
-    transferred = 0
-    while True:
-        if _is_cancelled(cancel_event):
-            raise TransferCancelled()
-        chunk = remote_file.read(chunk_size)
-        if not chunk:
-            return
-        transferred += len(chunk)
-        if transferred > max_bytes:
-            raise TransferSizeExceeded()
-        yield chunk
-
-
-def inspect_remote_tree(sftp, remote_folder, *, cancel_event, max_bytes,
-                        max_members=None, depth=0, _member_budget=None):
-    """Validate archive entry names and bound declared uncompressed bytes."""
-    if _member_budget is None:
-        _member_budget = _TransferMemberBudget(
-            config.MAX_TRANSFER_MEMBERS if max_members is None else max_members
-        )
-    if depth > 50:
-        raise SFTPOperationError('maximum directory depth exceeded')
-    if _is_cancelled(cancel_event):
-        raise TransferCancelled()
-    total = 0
-    has_symlink = False
-    with _directory_entries(
-        sftp, remote_folder, member_budget=_member_budget
-    ) as entries:
-        for entry in entries:
-            name = entry.filename
-            if (
-                not isinstance(name, str)
-                or name in {'', '.', '..'}
-                or '/' in name
-                or '\\' in name
-                or '\x00' in name
-            ):
-                raise SFTPOperationError('unsafe archive entry name')
-            path = posixpath.join(remote_folder, name)
-            try:
-                entry_stat = sftp.lstat(path)
-            except Exception:
-                entry_stat = entry
-            if stat.S_ISLNK(entry_stat.st_mode):
-                has_symlink = True
-                continue
-            if stat.S_ISDIR(entry_stat.st_mode):
-                child_total, child_symlink = inspect_remote_tree(
-                    sftp,
-                    path,
-                    cancel_event=cancel_event,
-                    max_bytes=max_bytes - total,
-                    max_members=max_members,
-                    depth=depth + 1,
-                    _member_budget=_member_budget,
-                )
-                total += child_total
-                has_symlink = has_symlink or child_symlink
-            else:
-                total += getattr(entry_stat, 'st_size', 0) or 0
-            if total > max_bytes:
-                raise TransferSizeExceeded()
-    return total, has_symlink
-
-
 # Local folder archives carry their own prefix so the startup sweep can tell
 # them apart from anything else in TRANSFER_TEMP_DIR, which operators may
 # point at a shared directory. tempfile adds eight characters from this set.
@@ -1039,121 +948,6 @@ def sweep_orphaned_folder_archives(temp_dir, *, min_age_seconds=ORPHANED_ARCHIVE
             removed += 1
     return removed
 
-
-def _create_private_temporary_archive(temp_dir):
-    temporary = tempfile.NamedTemporaryFile(
-        prefix=FOLDER_ARCHIVE_PREFIX,
-        suffix=FOLDER_ARCHIVE_SUFFIX,
-        delete=False,
-        dir=temp_dir,
-    )
-    archive_path = Path(temporary.name)
-    try:
-        temporary.close()
-        os.chmod(archive_path, 0o600)
-    except BaseException:
-        try:
-            temporary.close()
-        except BaseException:
-            pass
-        try:
-            archive_path.unlink(missing_ok=True)
-        except BaseException:
-            pass
-        raise
-    return archive_path
-
-
-def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
-                               cancel_event, max_bytes, chunk_size,
-                               max_members=None, temp_dir=None, progress=None):
-    """Build a ZIP on disk while bounding every remote read and total input."""
-    transferred = 0
-    member_budget = _TransferMemberBudget(
-        config.MAX_TRANSFER_MEMBERS if max_members is None else max_members
-    )
-    if temp_dir is not None:
-        temp_dir = Path(temp_dir)
-        temp_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(temp_dir, 0o700)
-    archive_path = _create_private_temporary_archive(temp_dir)
-
-    def add_directory(archive, remote_path, archive_prefix, depth=0):
-        nonlocal transferred
-        if depth > 50:
-            raise SFTPOperationError('maximum directory depth exceeded')
-        if _is_cancelled(cancel_event):
-            raise TransferCancelled()
-        saw_entry = False
-        with _directory_entries(
-            sftp, remote_path, member_budget=member_budget
-        ) as entries:
-            for entry in entries:
-                saw_entry = True
-                if _is_cancelled(cancel_event):
-                    raise TransferCancelled()
-                name = entry.filename
-                if (
-                    not isinstance(name, str)
-                    or name in {'', '.', '..'}
-                    or '/' in name
-                    or '\\' in name
-                    or '\x00' in name
-                ):
-                    raise SFTPOperationError('unsafe archive entry name')
-                source_path = posixpath.join(remote_path, name)
-                archive_pathname = posixpath.join(archive_prefix, name)
-                try:
-                    entry_stat = sftp.lstat(source_path)
-                except Exception:
-                    entry_stat = entry
-                if stat.S_ISLNK(entry_stat.st_mode):
-                    continue
-                if stat.S_ISDIR(entry_stat.st_mode):
-                    add_directory(
-                        archive, source_path, archive_pathname, depth + 1
-                    )
-                    continue
-                with _open_bound_reader_from_client(
-                    sftp,
-                    source_path,
-                ) as lease:
-                    if transferred + lease.size > max_bytes:
-                        raise TransferSizeExceeded()
-                    with archive.open(archive_pathname, 'w') as zip_entry:
-                        copied = copy_sftp_stream(
-                            lease.reader,
-                            zip_entry,
-                            cancel_event=cancel_event,
-                            max_bytes=max_bytes - transferred,
-                            chunk_size=chunk_size,
-                            progress=(
-                                (lambda count: progress(transferred + count))
-                                if progress else None
-                            ),
-                        )
-                transferred += copied
-                if archive_path.stat().st_size > max_bytes:
-                    raise TransferSizeExceeded()
-        if not saw_entry and archive_prefix:
-            archive.writestr(archive_prefix.rstrip('/') + '/', b'')
-            if archive_path.stat().st_size > max_bytes:
-                raise TransferSizeExceeded()
-
-    try:
-        with zipfile.ZipFile(
-            archive_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6
-        ) as archive:
-            add_directory(archive, remote_folder, folder_name)
-        if archive_path.stat().st_size > max_bytes:
-            raise TransferSizeExceeded()
-        return archive_path
-    except BaseException:
-        try:
-            archive_path.unlink(missing_ok=True)
-        except BaseException:
-            pass
-        raise
 
 def get_sftp_client(session_id):
     """Get cached or create new SFTP client from existing SSH session.
@@ -1521,51 +1315,6 @@ def atomic_transfer_writer(sftp, path, temporary_path, *, replace, cancelled=Non
             except Exception:
                 pass
 
-
-def upload_request_stream(
-    session_id,
-    remote_path,
-    source,
-    *,
-    chunk_size,
-    max_bytes,
-    cancelled=None,
-    progress=None,
-    replace=False,
-):
-    """Write a request stream to a temporary remote file and atomically rename it.
-
-    ``source`` is purposely consumed only with an explicit ``chunk_size``.
-    The final path is never opened for writing: an interrupted or oversized
-    request can leave at most a best-effort-cleaned temporary sibling.
-    """
-    safe_path = sanitize_path(remote_path)
-    if safe_path is None:
-        raise SFTPOperationError('invalid remote path')
-    temporary_path = staging_path(safe_path, 'upload')
-    transferred = 0
-
-    with sftp_session(session_id) as (sftp, _source_type):
-        with atomic_transfer_writer(
-            sftp, safe_path, temporary_path, replace=replace, cancelled=cancelled,
-        ) as remote_file:
-            while True:
-                if cancelled and cancelled():
-                    raise TransferCancelled()
-                chunk = source.read(chunk_size)
-                if not chunk:
-                    break
-                next_size = transferred + len(chunk)
-                if next_size > max_bytes:
-                    raise UploadSizeExceeded()
-                remote_file.write(chunk)
-                transferred = next_size
-                if progress:
-                    progress(transferred)
-                if cancelled and cancelled():
-                    raise TransferCancelled()
-
-    return transferred
 
 def rename_item(session_id, old_path, new_path):
     """Rename a file or directory on remote server."""

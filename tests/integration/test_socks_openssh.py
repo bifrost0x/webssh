@@ -16,7 +16,10 @@ from app import sftp_handler, ssh_manager
 from app.host_key_store import HostKeyStore
 from app.quota_manager import QuotaManager
 from tests.integration.socks_forwarder import SocksForwarder
-from tests.integration.test_paramiko5_openssh import read_terminal_marker
+from tests.integration.test_paramiko5_openssh import (
+    read_terminal_marker,
+    upload_through_route,
+)
 
 
 pytestmark = pytest.mark.skipif(
@@ -113,7 +116,7 @@ def test_socks_remote_dns_terminal_and_session_sftp(
             sftp, error = sftp_handler.get_sftp_client(session_id)
             assert error is None
             payload = b'SOCKS session SFTP upload\n'
-            assert sftp_handler.upload_request_stream(
+            assert upload_through_route(
                 session_id, remote_path, io.BytesIO(payload),
                 chunk_size=7, max_bytes=1024,
             ) == len(payload)

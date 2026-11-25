@@ -7,6 +7,7 @@ import hashlib
 import pytest
 
 from app.file_backend import FileReaderLease
+from app.remote_transfer import RemoteTransferError
 
 
 class _BoundedReader(BytesIO):
@@ -120,6 +121,23 @@ class _Backend:
     def mkdir(self, _source, path):
         self.created.append(path)
         return True, None
+
+    def stat_or_raise(self, source, path, *, follow_links=False):
+        file_stat, error = self.stat(source, path, follow_links=follow_links)
+        if error:
+            raise RemoteTransferError('Source unavailable')
+        return file_stat
+
+    def check_exists_or_raise(self, source, path):
+        exists, error = self.check_exists(source, path)
+        if error:
+            raise RemoteTransferError('Destination unavailable')
+        return exists
+
+    def mkdir_or_raise(self, source, path):
+        success, error = self.mkdir(source, path)
+        if not success or error:
+            raise RemoteTransferError('Destination directory unavailable')
 
 
 def _source(kind, backend):
@@ -821,13 +839,13 @@ def test_opposite_direction_transfers_use_one_canonical_source_lock_order():
         def normalize_path(self, path):
             return path
 
-        def stat(self, source, _path, *, follow_links=False):
+        def stat_or_raise(self, source, _path, *, follow_links=False):
             assert follow_links is False
             return {
                 'size': len(payloads[source.handle_id]),
                 'is_dir': False,
                 'is_symlink': False,
-            }, None
+            }
 
         @contextmanager
         def open_reader(self, source, _path, *, io_lane='control'):

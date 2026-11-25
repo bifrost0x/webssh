@@ -10,6 +10,7 @@ import pytest
 from app import socketio, ssh_manager
 from app.auth import register_user
 from app.file_sources import SourceHoldSet
+from app.sftp_backend import SFTPBackend
 from app.socket_protocol import SOCKET_WIRE_REVISION
 
 
@@ -665,7 +666,9 @@ def test_disconnect_cancels_only_transfers_prepared_by_that_socket(app, monkeypa
     monkeypatch.setattr(
         transfer_routes.file_service,
         'resolve',
-        lambda *_args, **_kwargs: SimpleNamespace(handle_id='owned-session'),
+        lambda *_args, **_kwargs: SimpleNamespace(
+            handle_id='owned-session', backend=SFTPBackend(),
+        ),
     )
     monkeypatch.setattr(
         transfer_routes.file_source_resolver,
@@ -820,7 +823,9 @@ def test_socket_reconnect_keeps_running_http_transfers_and_their_sources(app, mo
     monkeypatch.setattr(
         transfer_routes.file_service,
         'resolve',
-        lambda *_args, **_kwargs: SimpleNamespace(handle_id='quick-source'),
+        lambda *_args, **_kwargs: SimpleNamespace(
+            handle_id='quick-source', backend=SFTPBackend(),
+        ),
     )
     monkeypatch.setattr(
         transfer_routes.file_source_resolver,

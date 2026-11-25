@@ -145,15 +145,7 @@ def _write_all(remote_file, chunk):
 
 
 def _stat_or_raise(source, path):
-    operation = getattr(source.backend, 'stat_or_raise', None)
-    if callable(operation):
-        return operation(source, path, follow_links=False)
-    file_stat, error = source.backend.stat(
-        source, path, follow_links=False
-    )
-    if error:
-        raise RemoteTransferError('Source unavailable')
-    return file_stat
+    return source.backend.stat_or_raise(source, path, follow_links=False)
 
 
 def _copy_file(
@@ -260,15 +252,7 @@ def _destination_child(root, relative):
 
 
 def _ensure_directory(destination, path, *, allow_existing=True):
-    check_exists = getattr(
-        destination.backend, 'check_exists_or_raise', None
-    )
-    if callable(check_exists):
-        exists = check_exists(destination, path)
-    else:
-        exists, error = destination.backend.check_exists(destination, path)
-        if error:
-            raise RemoteTransferError('Destination unavailable')
+    exists = destination.backend.check_exists_or_raise(destination, path)
     if exists and exists.get('exists'):
         if (
             not exists.get('is_dir')
@@ -276,13 +260,7 @@ def _ensure_directory(destination, path, *, allow_existing=True):
         ):
             raise RemoteTransferConflict('Destination exists')
         return
-    mkdir = getattr(destination.backend, 'mkdir_or_raise', None)
-    if callable(mkdir):
-        mkdir(destination, path)
-    else:
-        success, error = destination.backend.mkdir(destination, path)
-        if not success or error:
-            raise RemoteTransferError('Destination directory unavailable')
+    destination.backend.mkdir_or_raise(destination, path)
 
 
 def _copy_remote_entry_locked(
