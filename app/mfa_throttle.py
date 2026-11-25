@@ -89,7 +89,15 @@ def claim_attempt(user_id, *, scope=LOGIN, now=None):
     cleared by :func:`record_success`, so concurrent requests cannot slip
     past the backoff together. Raises :class:`MFAAttemptThrottled` while the
     account has to wait.
+
+    The claim is committed on its own, so it must not run while the shared
+    session holds unrelated pending changes; it raises ``RuntimeError``
+    instead of committing or rolling them back.
     """
+    if db.session.new or db.session.dirty or db.session.deleted:
+        raise RuntimeError(
+            "claim_attempt requires a session without pending changes"
+        )
     count_column, failed_at_column = _columns(scope)
     user_id = int(user_id)
     current_time = _now(now)

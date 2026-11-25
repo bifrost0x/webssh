@@ -604,6 +604,22 @@ def test_a_pause_at_the_cap_does_not_restore_the_free_attempts(app):
         assert throttled.value.retry_after == mfa_throttle.backoff_seconds(6) - 1
 
 
+def test_claim_refuses_a_session_with_pending_changes(app):
+    """The claim commits on its own and must not take foreign changes along."""
+    from app import mfa_throttle
+    from app.models import User, db
+
+    user_id = _create_user(app, "claim_dirty_user")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.is_locked = True
+        with pytest.raises(RuntimeError):
+            mfa_throttle.claim_attempt(user_id)
+        db.session.rollback()
+        assert db.session.get(User, user_id).is_locked is False
+    assert _failure_state(app, user_id) == (0, None)
+
+
 def test_decayed_claim_still_loses_a_concurrent_update(app, monkeypatch):
     """The compare-and-set uses the stored count even after decay."""
     from sqlalchemy import update
