@@ -966,7 +966,7 @@ window.i18n.registerLocales({
         'admin.signInUsernameGlobalLimit': "Tentatives par nom d'utilisateur toutes sources confondues (par minute)",
         'admin.signInUsernameGlobalLimitHint': "Par défaut 100, au moins la limite par source. Freine les essais répartis sur de nombreuses adresses ; un expéditeur à ce plafond retarde aussi la connexion du véritable utilisateur.",
         'admin.signInIpv6Prefix': "Longueur du préfixe de regroupement IPv6",
-        'admin.signInIpv6PrefixHint': "Par défaut 64. Les clients d'un même réseau IPv6 de cette taille partagent toutes les limites par source. 128 limite chaque adresse séparément, mais permet à un client de changer d'adresse.",
+        'admin.signInIpv6PrefixHint': "Par défaut 128 : chaque adresse est limitée séparément. Un préfixe plus court, comme 64, empêche un client de changer d'adresse, mais tous les clients d'un réseau IPv6 de cette taille partagent alors toutes les limites par source.",
         'admin.signInValueRange': "Saisissez un nombre entier entre {min} et {max}.",
         'admin.signInGlobalBelowSource': "Les tentatives toutes sources confondues doivent être au moins égales aux tentatives par source.",
         'admin.tailnetRestriction': "Bloquer le SSH ordinaire vers les nœuds du tailnet",

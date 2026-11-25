@@ -966,7 +966,7 @@ window.i18n.registerLocales({
         'admin.signInUsernameGlobalLimit': "Intentos por usuario desde todos los orígenes (por minuto)",
         'admin.signInUsernameGlobalLimitHint': "Predeterminado 100, como mínimo el límite por origen. Frena los intentos repartidos entre muchas direcciones; un remitente en este límite también retrasa el inicio de sesión del usuario real.",
         'admin.signInIpv6Prefix': "Longitud del prefijo de agrupación IPv6",
-        'admin.signInIpv6PrefixHint': "Predeterminado 64. Los clientes de una red IPv6 de este tamaño comparten todos los límites por origen. 128 limita cada dirección por separado, pero permite que un cliente rote direcciones.",
+        'admin.signInIpv6PrefixHint': "Predeterminado 128: cada dirección se limita por separado. Un prefijo más corto, como 64, impide que un cliente rote direcciones, pero entonces todos los clientes de una red IPv6 de ese tamaño comparten todos los límites por origen.",
         'admin.signInValueRange': "Introduce un número entero entre {min} y {max}.",
         'admin.signInGlobalBelowSource': "Los intentos desde todos los orígenes deben ser al menos los intentos por origen.",
         'admin.tailnetRestriction': "Bloquear el SSH normal a nodos del tailnet",

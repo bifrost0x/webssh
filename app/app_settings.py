@@ -32,7 +32,7 @@ _BOOLEAN_SETTINGS = (
 SIGN_IN_PROTECTION_DEFAULTS = {
     'login_username_limit': 10,
     'login_username_global_limit': 100,
-    'ratelimit_ipv6_prefix': 64,
+    'ratelimit_ipv6_prefix': 128,
 }
 SIGN_IN_PROTECTION_BOUNDS = {
     'login_username_limit': (1, 1000),

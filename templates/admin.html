@@ -247,7 +247,7 @@
                     <div class="form-group">
                         <label for="signInIpv6Prefix" data-i18n="admin.signInIpv6Prefix">IPv6 grouping prefix length</label>
                         <input class="form-control" id="signInIpv6Prefix" name="ratelimit_ipv6_prefix" type="number" inputmode="numeric" min="48" max="128" step="1" required aria-describedby="signInIpv6PrefixHint signInIpv6PrefixError" disabled>
-                        <p class="admin-muted" id="signInIpv6PrefixHint" data-i18n="admin.signInIpv6PrefixHint">Default 64. Clients in one IPv6 network of this size share all source rate limits. 128 limits each address on its own but lets one client rotate addresses.</p>
+                        <p class="admin-muted" id="signInIpv6PrefixHint" data-i18n="admin.signInIpv6PrefixHint">Default 128: each address is limited on its own. A shorter prefix such as 64 stops one client from rotating addresses, but all clients in one IPv6 network of that size then share all source rate limits.</p>
                         <p class="admin-field-error hidden" id="signInIpv6PrefixError"></p>
                     </div>
                     <div class="admin-toolbar">

@@ -965,7 +965,7 @@ window.i18n.registerLocales({
         'admin.signInUsernameGlobalLimit': "每个用户名来自所有来源的尝试次数（每分钟）",
         'admin.signInUsernameGlobalLimitHint': "默认 100，且不得低于每个来源的限制。减缓分散在多个地址上的猜测；达到此上限的发送方也会延迟真实用户的登录。",
         'admin.signInIpv6Prefix': "IPv6 分组前缀长度",
-        'admin.signInIpv6PrefixHint': "默认 64。同一个此大小的 IPv6 网络中的客户端共享所有按来源的速率限制。128 会单独限制每个地址，但允许单个客户端轮换地址。",
+        'admin.signInIpv6PrefixHint': "默认 128：每个地址单独限制。较短的前缀（如 64）可防止单个客户端轮换地址，但同一个该大小的 IPv6 网络中的所有客户端将共享所有按来源的速率限制。",
         'admin.signInValueRange': "请输入 {min} 到 {max} 之间的整数。",
         'admin.signInGlobalBelowSource': "来自所有来源的尝试次数不得低于每个来源的尝试次数。",
         'admin.tailnetRestriction': "阻止普通 SSH 访问 tailnet 节点",

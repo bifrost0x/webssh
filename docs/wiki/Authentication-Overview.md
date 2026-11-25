@@ -33,9 +33,9 @@ sensitive action and target.
 - Forms use Flask-WTF CSRF protection.
 - Unknown-user password checks perform dummy bcrypt work.
 - Login and reauthentication paths are rate-limited. Source-address limits
-  count IPv6 clients per /64 and IPv4 (including IPv4-mapped IPv6) per
-  address. Failed password sign-ins are also limited per submitted username
-  and source, with a much higher ceiling per username across all sources that
+  count each address on its own by default; IPv6 clients can be grouped per
+  network (for example /64) in the sign-in protection settings. Failed
+  password sign-ins are also limited per submitted username and source, with a much higher ceiling per username across all sources that
   only slows distributed guessing; successful sign-ins do not count. These
   are time windows, not lockouts, and apply whether or not the account
   exists. A sender using many sources can still fill the ceiling for one

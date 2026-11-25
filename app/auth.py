@@ -83,11 +83,12 @@ def parse_rate_limit(limit_str, default_limit=5, default_window=60):
 def rate_limit_address(address):
     """Return the source bucket used to rate limit ``address``.
 
-    An IPv6 client usually controls at least a whole /64 and can rotate
-    through it freely, so IPv6 addresses share one bucket per network of
-    the prefix length set in the admin sign-in protection settings (default
-    /64). IPv4 and IPv4-mapped IPv6
-    addresses keep one bucket per address. Values that are not an IP
+    IPv6 addresses share one bucket per network of the prefix length set in
+    the admin sign-in protection settings. The default of 128 keeps one
+    bucket per address, as before grouping existed, so clients sharing a
+    network do not share login limits. A shorter prefix such as /64 stops a
+    client from rotating through the addresses it controls. IPv4 and
+    IPv4-mapped IPv6 addresses keep one bucket per address. Values that are not an IP
     address are returned unchanged.
     """
     value = str(address if address is not None else 'unknown')
@@ -100,6 +101,8 @@ def rate_limit_address(address):
             return str(parsed.ipv4_mapped)
         from .app_settings import ratelimit_ipv6_prefix
         prefix = ratelimit_ipv6_prefix()
+        if prefix == 128:
+            return str(parsed)
         host_bits = 128 - prefix
         network = (int(parsed) >> host_bits) << host_bits
         return str(ipaddress.IPv6Network((network, prefix)))

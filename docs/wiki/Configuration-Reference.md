@@ -157,14 +157,15 @@ save are applied together or not at all.
 |---|---|---|
 | Attempts per username and source (per minute) | `10` | `1` to `1000` |
 | Attempts per username from all sources (per minute) | `100` | `1` to `1000`, not lower than the per-source value |
-| IPv6 grouping prefix length | `64` | `48` to `128` |
+| IPv6 grouping prefix length | `128` | `48` to `128` |
 
 Source-address limits count an IPv6 client per network of the configured
-prefix length and an IPv4 or IPv4-mapped IPv6 client per address. A client
-normally controls a whole /64 and can rotate addresses inside it, so the
-default stops that rotation from multiplying the budget. The trade-off: every
-device in one /64, for example an office or home network using SLAAC, shares
-one `RATELIMIT_LOGIN_LIMIT`. Set `128` for per-address limits.
+prefix length and an IPv4 or IPv4-mapped IPv6 client per address. The
+default `128` keeps one limit per address, as in earlier releases. A client
+normally controls a whole /64 and can rotate addresses inside it; set `64` to
+stop that rotation from multiplying the budget. The trade-off: every device in
+one /64, for example an office or home network using SLAAC, then shares one
+`RATELIMIT_LOGIN_LIMIT`.
 
 The per-source username limit bounds failed local and LDAP password attempts
 for one submitted username from one such source, so one source cannot use up

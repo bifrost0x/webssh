@@ -965,7 +965,7 @@ window.i18n.registerLocales({
         'admin.signInUsernameGlobalLimit': "Số lần thử mỗi tên người dùng từ mọi nguồn (mỗi phút)",
         'admin.signInUsernameGlobalLimitHint': "Mặc định 100, tối thiểu bằng giới hạn mỗi nguồn. Làm chậm việc dò mật khẩu phân tán qua nhiều địa chỉ; bên gửi chạm mức trần này cũng làm chậm việc đăng nhập của người dùng thật.",
         'admin.signInIpv6Prefix': "Độ dài tiền tố nhóm IPv6",
-        'admin.signInIpv6PrefixHint': "Mặc định 64. Các máy khách trong cùng một mạng IPv6 cỡ này dùng chung mọi giới hạn theo nguồn. 128 giới hạn riêng từng địa chỉ nhưng cho phép một máy khách xoay vòng địa chỉ.",
+        'admin.signInIpv6PrefixHint': "Mặc định 128: mỗi địa chỉ được giới hạn riêng. Tiền tố ngắn hơn như 64 ngăn một máy khách xoay vòng địa chỉ, nhưng khi đó mọi máy khách trong cùng một mạng IPv6 cỡ đó dùng chung mọi giới hạn theo nguồn.",
         'admin.signInValueRange': "Nhập số nguyên từ {min} đến {max}.",
         'admin.signInGlobalBelowSource': "Số lần thử từ mọi nguồn phải ít nhất bằng số lần thử mỗi nguồn.",
         'admin.tailnetRestriction': "Chặn SSH thông thường tới các nút tailnet",

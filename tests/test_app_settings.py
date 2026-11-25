@@ -142,10 +142,10 @@ def test_sign_in_protection_and_tailnet_restriction_defaults(tmp_path, monkeypat
     assert app_settings.sign_in_protection() == {
         'login_username_limit': 10,
         'login_username_global_limit': 100,
-        'ratelimit_ipv6_prefix': 64,
+        'ratelimit_ipv6_prefix': 128,
     }
     assert app_settings.login_username_rate_limits() == ('10 per minute', '100 per minute')
-    assert app_settings.ratelimit_ipv6_prefix() == 64
+    assert app_settings.ratelimit_ipv6_prefix() == 128
     assert app_settings.is_tailnet_route_restricted() is True
     assert not (tmp_path / 'app_settings.json').exists()
 
@@ -251,8 +251,8 @@ def test_cached_settings_follow_saves_and_external_writes(tmp_path, monkeypatch)
     assert app_settings.is_tailnet_route_restricted() is True
     app_settings.update_admin_settings({'tailscale_ssh_restrict_tailnet_routes': False})
     assert app_settings.is_tailnet_route_restricted() is False
-    app_settings.update_admin_settings({'ratelimit_ipv6_prefix': 128})
-    assert app_settings.ratelimit_ipv6_prefix() == 128
+    app_settings.update_admin_settings({'ratelimit_ipv6_prefix': 64})
+    assert app_settings.ratelimit_ipv6_prefix() == 64
 
     # Another process, such as the admin CLI or a restore, replaces the file.
     replacement = tmp_path / 'replacement.json'
@@ -266,7 +266,7 @@ def test_cached_settings_follow_saves_and_external_writes(tmp_path, monkeypatch)
     assert app_settings.is_tailnet_route_restricted() is True
 
     path.unlink()
-    assert app_settings.ratelimit_ipv6_prefix() == 64
+    assert app_settings.ratelimit_ipv6_prefix() == 128
 
 
 def test_cached_settings_skip_the_file_read_while_unchanged(tmp_path, monkeypatch):
@@ -294,7 +294,7 @@ def test_cache_is_keyed_by_settings_path(tmp_path, monkeypatch):
     app_settings.update_admin_settings({'ratelimit_ipv6_prefix': 96})
     assert app_settings.ratelimit_ipv6_prefix() == 96
     monkeypatch.setattr(app_settings, '_SETTINGS_FILE', second)
-    assert app_settings.ratelimit_ipv6_prefix() == 64
+    assert app_settings.ratelimit_ipv6_prefix() == 128
 
 
 def test_global_limit_below_stored_source_limit_is_rejected(tmp_path, monkeypatch):
@@ -334,7 +334,7 @@ def test_admin_update_writes_all_changes_once_and_reports_previous_values(tmp_pa
         'herdr_enabled': (None, True),
         'tailscale_ssh_restrict_tailnet_routes': (True, False),
         'login_username_limit': (10, 20),
-        'ratelimit_ipv6_prefix': (64, 56),
+        'ratelimit_ipv6_prefix': (128, 56),
     }
     stored = json.loads(path.read_text(encoding='utf-8'))
     assert stored['herdr_enabled'] is True
@@ -410,7 +410,7 @@ def test_stored_global_limit_below_source_limit_only_blocks_limit_changes(
     )
     assert app_settings.update_admin_settings({
         'herdr_enabled': True, 'ratelimit_ipv6_prefix': 56,
-    }) == {'herdr_enabled': (None, True), 'ratelimit_ipv6_prefix': (64, 56)}
+    }) == {'herdr_enabled': (None, True), 'ratelimit_ipv6_prefix': (128, 56)}
 
     with pytest.raises(app_settings.SettingsUpdateError) as raised:
         app_settings.update_admin_settings({'login_username_limit': 40})

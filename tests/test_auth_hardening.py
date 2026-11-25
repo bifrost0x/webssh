@@ -746,10 +746,29 @@ def test_decayed_claim_still_loses_a_concurrent_update(app, monkeypatch):
     ("unknown", "unknown"),
     ("7:192.0.2.7", "7:192.0.2.7"),
 ])
-def test_rate_limit_address_buckets_ipv6_per_64(address, bucket):
+def test_rate_limit_address_buckets_ipv6_per_64(tmp_path, monkeypatch, address, bucket):
+    from app import app_settings
     from app.auth import rate_limit_address
 
+    monkeypatch.setattr(app_settings, "_SETTINGS_FILE", tmp_path / "app_settings.json")
+    app_settings.update_admin_settings({"ratelimit_ipv6_prefix": 64})
     assert rate_limit_address(address) == bucket
+
+
+@pytest.mark.parametrize("address", [
+    "2001:db8:1:2:aaaa:bbbb:cccc:dddd",
+    "2001:db8:1:2::1",
+    "192.0.2.7",
+])
+def test_rate_limit_address_keeps_one_bucket_per_address_by_default(tmp_path, monkeypatch, address):
+    # Clients that share an IPv6 network must not share login limits unless
+    # the admin opts into grouping.
+    from app import app_settings
+    from app.auth import rate_limit_address
+
+    monkeypatch.setattr(app_settings, "_SETTINGS_FILE", tmp_path / "app_settings.json")
+
+    assert rate_limit_address(address) == address
 
 
 def test_rotating_ipv6_addresses_in_one_64_share_the_login_limit(
@@ -757,8 +776,11 @@ def test_rotating_ipv6_addresses_in_one_64_share_the_login_limit(
 ):
     import config
 
+    from app import app_settings
+
     monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "5 per minute")
     _set_username_limits(per_source=1000)
+    app_settings.update_admin_settings({"ratelimit_ipv6_prefix": 64})
 
     statuses = []
     for index in range(1, 8):
@@ -1472,7 +1494,7 @@ def test_release_removes_only_the_callers_reservation(limiter_kind, monkeypatch)
 
 
 @pytest.mark.parametrize(("prefix", "bucket"), [
-    (128, "2001:db8:1:2:aaaa:bbbb:cccc:dddd/128"),
+    (64, "2001:db8:1:2::/64"),
     (56, "2001:db8:1::/56"),
     (48, "2001:db8:1::/48"),
 ])
@@ -1481,7 +1503,7 @@ def test_ipv6_prefix_is_configurable(tmp_path, monkeypatch, prefix, bucket):
     from app.auth import rate_limit_address
 
     monkeypatch.setattr(app_settings, "_SETTINGS_FILE", tmp_path / "app_settings.json")
-    assert rate_limit_address("2001:db8:1:2:aaaa:bbbb:cccc:dddd") == "2001:db8:1:2::/64"
+    assert rate_limit_address("2001:db8:1:2:aaaa:bbbb:cccc:dddd") == "2001:db8:1:2:aaaa:bbbb:cccc:dddd"
 
     app_settings.update_admin_settings({"ratelimit_ipv6_prefix": prefix})
 
@@ -1507,6 +1529,7 @@ def test_ipv6_prefix_change_moves_the_login_limit_to_the_new_bucket(
         )
         return "Too many login attempts" in response.get_data(as_text=True)
 
+    app_settings.update_admin_settings({"ratelimit_ipv6_prefix": 64})
     assert limited("2001:db8:77:1::1") is False
     assert limited("2001:db8:77:1::2") is True
     app_settings.update_admin_settings({"ratelimit_ipv6_prefix": 128})

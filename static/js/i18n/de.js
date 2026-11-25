@@ -970,7 +970,7 @@ window.i18n.registerLocales({
         'admin.signInUsernameGlobalLimit': "Versuche pro Benutzername aus allen Quellen (pro Minute)",
         'admin.signInUsernameGlobalLimitHint': "Standard 100, mindestens so hoch wie die Grenze pro Quelle. Bremst Rateversuche, die über viele Adressen verteilt sind; ein Absender an dieser Obergrenze verzögert auch die Anmeldung des echten Benutzers.",
         'admin.signInIpv6Prefix': "IPv6-Präfixlänge für die Gruppierung",
-        'admin.signInIpv6PrefixHint': "Standard 64. Clients in einem IPv6-Netz dieser Größe teilen sich alle quellbezogenen Ratenlimits. 128 begrenzt jede Adresse einzeln, erlaubt einem Client aber, Adressen zu wechseln.",
+        'admin.signInIpv6PrefixHint': "Standard 128: Jede Adresse wird einzeln begrenzt. Ein kürzeres Präfix wie 64 verhindert, dass ein Client Adressen wechselt, dann teilen sich aber alle Clients in einem IPv6-Netz dieser Größe alle quellbezogenen Ratenlimits.",
         'admin.signInValueRange': "Geben Sie eine ganze Zahl von {min} bis {max} ein.",
         'admin.signInGlobalBelowSource': "Versuche aus allen Quellen müssen mindestens so hoch sein wie die Versuche pro Quelle.",
         'admin.tailnetRestriction': "Normales SSH zu Tailnet-Knoten sperren",

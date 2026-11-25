@@ -541,7 +541,7 @@ def test_sign_in_protection_defaults_are_reported(app, client):
     data = client.get('/admin/api/settings').get_json()
     assert data['login_username_limit'] == 10
     assert data['login_username_global_limit'] == 100
-    assert data['ratelimit_ipv6_prefix'] == 64
+    assert data['ratelimit_ipv6_prefix'] == 128
     assert data['tailscale_ssh_restrict_tailnet_routes'] is True
 
 
@@ -572,7 +572,7 @@ def test_sign_in_protection_requires_step_up_and_is_audited(app, client, caplog)
     # Raising the ceiling weakens protection; the other two tighten it.
     for name, old, new, level in (('login_username_limit', 10, 7, logging.INFO),
                                   ('login_username_global_limit', 100, 250, logging.WARNING),
-                                  ('ratelimit_ipv6_prefix', 64, 56, logging.INFO)):
+                                  ('ratelimit_ipv6_prefix', 128, 56, logging.INFO)):
         assert any(
             levelno == level
             and 'APPLICATION_FEATURE_CHANGED' in event and f'feature={name}' in event
@@ -592,8 +592,11 @@ def test_sign_in_protection_requires_step_up_and_is_audited(app, client, caplog)
 ])
 def test_sign_in_protection_audit_level_follows_the_direction(app, client, caplog, payload, level):
     import logging
+    from app import app_settings
 
     _prepare_role(app, client, 'admin')
+    # Start from a grouped prefix so that both directions are a change.
+    app_settings.update_admin_settings({'ratelimit_ipv6_prefix': 64})
     caplog.set_level(logging.INFO, logger='security_audit')
     response = client.post('/admin/api/settings', json=payload,
         headers=password_step_up_headers(client, 'settings.update', 'global')[0])

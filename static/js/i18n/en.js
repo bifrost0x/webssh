@@ -970,7 +970,7 @@ window.i18n.registerLocales({
         'admin.signInUsernameGlobalLimit': "Attempts per username from all sources (per minute)",
         'admin.signInUsernameGlobalLimitHint': "Default 100, at least the limit per source. Slows guessing spread over many addresses; a sender at this ceiling also delays the real user's sign-in.",
         'admin.signInIpv6Prefix': "IPv6 grouping prefix length",
-        'admin.signInIpv6PrefixHint': "Default 64. Clients in one IPv6 network of this size share all source rate limits. 128 limits each address on its own but lets one client rotate addresses.",
+        'admin.signInIpv6PrefixHint': "Default 128: each address is limited on its own. A shorter prefix such as 64 stops one client from rotating addresses, but all clients in one IPv6 network of that size then share all source rate limits.",
         'admin.signInValueRange': "Enter a whole number from {min} to {max}.",
         'admin.signInGlobalBelowSource': "Attempts from all sources must be at least the attempts per source.",
         'admin.tailnetRestriction': "Block ordinary SSH to tailnet nodes",

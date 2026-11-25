@@ -80,7 +80,7 @@ test('help lines name the defaults and the tailnet setting states whether it app
     await openAuthenticationSettings(page);
     await expect(page.locator('#signInUsernameLimitHint')).toContainText('Default 10.');
     await expect(page.locator('#signInUsernameGlobalLimitHint')).toContainText('Default 100');
-    await expect(page.locator('#signInIpv6PrefixHint')).toContainText('Default 64.');
+    await expect(page.locator('#signInIpv6PrefixHint')).toContainText('Default 128:');
     await expect(page.locator('#signInProtection [role="alert"]')).toHaveCount(0);
     await page.goto('/settings#integrations');
     // The E2E server runs with Tailscale SSH enabled.
