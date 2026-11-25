@@ -286,8 +286,28 @@ def init_auth(app):
         getattr(config, 'RATELIMIT_STORAGE_URL', 'memory://')
     )
 
-def validate_new_user(username, password):
-    """Return a validation error for new credentials, or None."""
+def is_config_admin_name(username):
+    """Return whether ADMIN_USERS lists this name, ignoring case."""
+    normalized = username.casefold()
+    return any(name.casefold() == normalized for name in config.ADMIN_USERS)
+
+
+def is_config_managed_admin(user):
+    """Return whether sync_admin_users keeps this account an administrator."""
+    return (
+        bool(user.is_admin)
+        and user.username in config.ADMIN_USERS
+        and not user.is_ldap_managed
+        and not user.is_github_managed
+    )
+
+
+def validate_new_user(username, password, *, allow_config_admin=False):
+    """Return a validation error for new credentials, or None.
+
+    A name listed in ADMIN_USERS is promoted on the next start, so only an
+    administrator may create it (``allow_config_admin``).
+    """
     if not username or len(username) < 3 or len(username) > 32:
         return "Username must be between 3 and 32 characters"
 
@@ -299,6 +319,8 @@ def validate_new_user(username, password):
     normalized_username = username.casefold()
     existing_names = User.query.with_entities(User.username).all()
     if any(row.username.casefold() == normalized_username for row in existing_names):
+        return "Username already exists"
+    if not allow_config_admin and is_config_admin_name(username):
         return "Username already exists"
 
     if not password or len(password) < 8:
@@ -313,13 +335,17 @@ def validate_new_user(username, password):
     return None
 
 
-def register_user(username, password, *, first_user_only=False):
+def register_user(
+    username, password, *, first_user_only=False, allow_config_admin=False,
+):
     """
     Register a user, granting administrator rights only to the first account.
 
     ``first_user_only`` atomically closes browser bootstrap registration as
     soon as any account exists. Administrative and explicitly enabled normal
-    registration keep the default behavior.
+    registration keep the default behavior. ``allow_config_admin`` lets an
+    administrator create a name listed in ADMIN_USERS; the first account may
+    take one as well because it becomes administrator regardless.
     Returns:
         tuple: (User object, error message) - one will be None
     """
@@ -328,7 +354,11 @@ def register_user(username, password, *, first_user_only=False):
         if first_user_only and not is_first_user:
             return None, 'Registration is currently disabled.'
 
-        error = validate_new_user(username, password)
+        error = validate_new_user(
+            username,
+            password,
+            allow_config_admin=allow_config_admin or is_first_user,
+        )
         if error:
             return None, error
 
@@ -422,11 +452,9 @@ def sync_admin_users():
     Runs on startup so an operator can promote existing accounts on a production
     database without manual SQL. Must run inside an app context.
     """
-    import config
-    from .audit_logger import log_info
+    from .audit_logger import log_info, log_warning
     changed = False
-    from .audit_logger import log_warning
-    for name in getattr(config, 'ADMIN_USERS', []):
+    for name in config.ADMIN_USERS:
         u = User.query.filter_by(username=name).first()
         if u is None:
             # Whoever registers this name later would become admin on the next start.

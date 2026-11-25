@@ -1918,6 +1918,7 @@ window.i18n.registerLocales({
         'admin.statusLocked': '已锁定',
         'admin.statusActive': '活跃',
         'admin.you': '你',
+        'admin.configManagedAdmin': '由 ADMIN_USERS 设定',
         'admin.actionDone': '完成',
         'admin.userCreated': '用户已创建',
         'admin.noLogs': '无日志条目',

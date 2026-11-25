@@ -1901,6 +1901,7 @@ window.i18n.registerLocales({
         'admin.statusLocked': 'Đã khóa',
         'admin.statusActive': 'Hoạt động',
         'admin.you': 'bạn',
+        'admin.configManagedAdmin': 'do ADMIN_USERS đặt',
         'admin.actionDone': 'Đã xong',
         'admin.userCreated': 'Đã tạo người dùng',
         'admin.noLogs': 'Không có nhật ký',

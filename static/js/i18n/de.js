@@ -1520,6 +1520,7 @@ window.i18n.registerLocales({
         'admin.statusLocked': 'Gesperrt',
         'admin.statusActive': 'Aktiv',
         'admin.you': 'du',
+        'admin.configManagedAdmin': 'durch ADMIN_USERS festgelegt',
         'admin.actionDone': 'Erledigt',
         'admin.userCreated': 'Benutzer erstellt',
         'admin.noLogs': 'Keine Log-Einträge',

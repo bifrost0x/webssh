@@ -162,7 +162,9 @@ def create_admin(username, password_file):
         password = _read_password_file(password_file)
 
     with user_creation_transaction():
-        error = validate_new_user(username, password)
+        error = validate_new_user(
+            username, password, allow_config_admin=True,
+        )
         if error:
             raise click.ClickException(error)
 

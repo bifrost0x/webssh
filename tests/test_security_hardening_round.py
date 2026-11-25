@@ -80,6 +80,43 @@ def test_admin_users_skips_missing_and_locked_accounts(app, caplog):
     assert 'ADMIN_USERS lists an account that does not exist' in caplog.text
 
 
+def test_listed_missing_admin_name_cannot_register(app, client, monkeypatch):
+    from app.auth import register_user, validate_new_user
+    from app.models import GitHubIdentity, User
+    from tests.step_up_helpers import password_step_up_headers
+    from tests.test_github_auth_routes import _begin_login, _configure, _provider
+
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['Reserved_Admin', 'cli_admin', 'ui_admin', 'octo_admin'])
+    # The first account becomes administrator anyway; the reservation does not apply to it.
+    admin_id = _create_user(app, 'reserved_admin')
+    _login(client, 'reserved_admin')
+    with app.app_context():
+        user, error = register_user('RESERVED_ADMIN_', 'password123')
+        assert error is None
+        for name in ('ui_admin', 'UI_ADMIN', 'Cli_Admin'):
+            assert register_user(name, 'password123') == (None, 'Username already exists')
+            assert validate_new_user(name, 'password123') == 'Username already exists'
+        assert User.query.filter(User.username.ilike('ui_admin')).first() is None
+
+    # An administrator still creates the intended account in the admin UI or with the CLI.
+    headers = password_step_up_headers(client, 'user.create', 'ui_admin')[0]
+    created = client.post('/admin/api/users', headers=headers, json={'username': 'ui_admin', 'password': 'password123'})
+    assert created.status_code == 201, created.get_data(as_text=True)
+    result = app.test_cli_runner().invoke(args=['create-admin', '--username', 'cli_admin'], input='password123\npassword123\n')
+    assert result.exit_code == 0, result.output
+
+    # GitHub auto-provisioning falls back to another name instead of taking the listed one.
+    _configure(app, admin_id, auto_provision=True)
+    state = _begin_login(client)
+    _provider(monkeypatch, user_id='4242', login='Octo-Admin')
+    assert client.get(f'/auth/github/callback?code=code&state={state}').status_code == 302
+    with app.app_context():
+        identity = GitHubIdentity.query.filter_by(github_user_id='4242').one()
+        assert User.query.filter_by(id=identity.user_id).one().username == 'octo_admin_gh4242'
+        assert User.query.filter_by(username='ui_admin').one() is not None
+        assert User.query.filter_by(username='cli_admin').one().is_admin is True
+
+
 def test_github_auto_provisioning_without_organizations_is_refused_in_production(app, monkeypatch):
     from app import github_auth_service as service
     monkeypatch.setattr(config, 'DEPLOYMENT_PROFILE', 'production')

@@ -19,7 +19,7 @@ from .automation_schedule import AutomationSchedule  # noqa: F401
 from .auth import (init_auth, authenticate_user, register_user,
                    check_rate_limit, check_reauth_rate_limit,
                    release_login_username_attempt, reserve_login_username_attempt,
-                   is_bootstrap_registration_available,
+                   is_bootstrap_registration_available, is_config_managed_admin,
                    password_exceeds_bcrypt_limit)
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
                               log_login_attempt, log_logout, log_registration, log_password_change)
@@ -1679,6 +1679,7 @@ def create_app(
             'mfa_enabled': bool(u.mfa_enabled),
             'ldap_managed': bool(u.is_ldap_managed),
             'github_managed': bool(u.is_github_managed),
+            'admin_managed_by_config': is_config_managed_admin(u),
             'created_at': u.created_at.isoformat() if u.created_at else None,
             'last_login': u.last_login.isoformat() if u.last_login else None,
         }
@@ -1727,7 +1728,9 @@ def create_app(
         ):
             return jsonify({'error': 'Invalid user payload'}), 400
         username = username.strip()
-        user, error = register_user(username, password)
+        user, error = register_user(
+            username, password, allow_config_admin=True,
+        )
         if error:
             return jsonify({'error': error}), 400
         if make_admin:
@@ -1789,6 +1792,13 @@ def create_app(
                 return jsonify({'error': 'You cannot remove your own admin rights'}), 400
             if _is_last_admin():
                 return jsonify({'error': 'Cannot demote the last administrator'}), 400
+            if is_config_managed_admin(target):
+                # sync_admin_users would promote the account again on the next start.
+                return jsonify({'error': (
+                    'This account is an administrator through the ADMIN_USERS '
+                    'setting; remove it from ADMIN_USERS and restart before '
+                    'demoting it'
+                )}), 409
             target.is_admin = False
         elif action == 'delete':
             if is_self:

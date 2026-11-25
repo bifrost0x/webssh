@@ -156,6 +156,8 @@ def _provision_username(login, github_user_id):
         row.username.casefold()
         for row in User.query.with_entities(User.username).all()
     }
+    # Names reserved by ADMIN_USERS are left to an administrator.
+    existing_names.update(name.casefold() for name in config.ADMIN_USERS)
     candidates = (
         base,
         f'{base[:20]}_gh{str(github_user_id)[-8:]}'[:32],

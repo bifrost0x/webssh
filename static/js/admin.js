@@ -781,7 +781,7 @@
                 : `<span class="admin-badge">${escapeHtml(t('admin.statusActive', 'Active'))}</span>`;
             tr.innerHTML =
                 `<td>${u.id}</td>` +
-                `<td>${escapeHtml(u.username)}${u.ldap_managed ? ' <span class="admin-muted">(LDAP)</span>' : ''}${u.github_managed ? ' <span class="admin-muted">(GitHub)</span>' : ''}${u.username === CURRENT_USER ? ' <span class="admin-muted">(' + escapeHtml(t('admin.you', 'you')) + ')</span>' : ''}</td>` +
+                `<td>${escapeHtml(u.username)}${u.ldap_managed ? ' <span class="admin-muted">(LDAP)</span>' : ''}${u.github_managed ? ' <span class="admin-muted">(GitHub)</span>' : ''}${u.admin_managed_by_config ? ' <span class="admin-muted">(' + escapeHtml(t('admin.configManagedAdmin', 'set by ADMIN_USERS')) + ')</span>' : ''}${u.username === CURRENT_USER ? ' <span class="admin-muted">(' + escapeHtml(t('admin.you', 'you')) + ')</span>' : ''}</td>` +
                 `<td>${role}</td>` +
                 `<td>${status}</td>` +
                 `<td>${escapeHtml(fmtDate(u.created_at))}</td>` +

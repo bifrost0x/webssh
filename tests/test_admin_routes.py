@@ -1167,3 +1167,55 @@ def test_admin_user_and_setting_changes_reach_the_security_audit_log(app, client
         ('APPLICATION_FEATURE_CHANGED', 'feature=herdr_enabled', 'enabled=True'),
     ):
         assert any(all(part in event for part in expected) for event in events), (expected, events)
+
+
+def test_admin_list_marks_config_managed_admins(app, client, monkeypatch):
+    import config
+
+    _prepare_role(app, client, 'admin')
+    # Exact names of administrators only, as sync_admin_users matches them.
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['adminuser', 'TargetUser', 'normaluser'])
+
+    response = client.get('/admin/api/users')
+
+    assert response.status_code == 200
+    flags = {
+        user['username']: user['admin_managed_by_config']
+        for user in response.get_json()['users']
+    }
+    assert flags == {
+        'adminuser': True,
+        'targetuser': False,
+        'normaluser': False,
+        'lockeduser': False,
+    }
+
+
+def test_demote_config_managed_admin_is_refused(app, client, monkeypatch):
+    import config
+    from app.models import User, db
+
+    _prepare_role(app, client, 'admin')
+    with app.app_context():
+        listed = _create_user('listedadmin', is_admin=True)
+        db.session.commit()
+        listed_id = listed.id
+    monkeypatch.setattr(config, 'ADMIN_USERS', ['listedadmin'])
+
+    path = f'/admin/api/users/{listed_id}/demote'
+    headers = password_step_up_headers(client, 'user.manage', f'{listed_id}:demote')[0]
+    response = client.post(path, headers=headers)
+
+    assert response.status_code == 409
+    assert response.get_json() == {'error': (
+        'This account is an administrator through the ADMIN_USERS setting; '
+        'remove it from ADMIN_USERS and restart before demoting it'
+    )}
+    with app.app_context():
+        assert db.session.get(User, listed_id).is_admin is True
+
+    monkeypatch.setattr(config, 'ADMIN_USERS', [])
+    headers = password_step_up_headers(client, 'user.manage', f'{listed_id}:demote')[0]
+    assert client.post(path, headers=headers).status_code == 200
+    with app.app_context():
+        assert db.session.get(User, listed_id).is_admin is False

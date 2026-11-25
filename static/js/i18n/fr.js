@@ -1930,6 +1930,7 @@ window.i18n.registerLocales({
         'admin.statusLocked': 'Verrouillé',
         'admin.statusActive': 'Actif',
         'admin.you': 'vous',
+        'admin.configManagedAdmin': 'défini par ADMIN_USERS',
         'admin.actionDone': 'Terminé',
         'admin.userCreated': 'Utilisateur créé',
         'admin.noLogs': 'Aucune entrée de journal',

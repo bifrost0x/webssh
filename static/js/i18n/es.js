@@ -1930,6 +1930,7 @@ window.i18n.registerLocales({
         'admin.statusLocked': 'Bloqueado',
         'admin.statusActive': 'Activo',
         'admin.you': 'tú',
+        'admin.configManagedAdmin': 'definido por ADMIN_USERS',
         'admin.actionDone': 'Hecho',
         'admin.userCreated': 'Usuario creado',
         'admin.noLogs': 'Sin entradas de registro',
