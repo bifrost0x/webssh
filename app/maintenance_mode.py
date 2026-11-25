@@ -91,7 +91,9 @@ def _directory_identity(directory: Path):
     """Return the lstat identity of a private directory, or None if unsafe.
 
     Mirrors what ensure_backup_temp_dir() establishes: a real directory, not
-    a symlink, owned by this process and without group or other access.
+    a symlink, owned by this process and without group or other access. Root
+    may use a directory owned by another account, such as a bind mount,
+    because ensure_backup_temp_dir() accepts and restricts it as well.
     """
     try:
         metadata = os.lstat(directory)
@@ -100,7 +102,8 @@ def _directory_identity(directory: Path):
     if not stat.S_ISDIR(metadata.st_mode):
         return None
     if os.name != 'nt' and (
-        metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077
+        metadata.st_mode & 0o077
+        or (os.geteuid() != 0 and metadata.st_uid != os.geteuid())
     ):
         return None
     return (metadata.st_dev, metadata.st_ino)
@@ -115,16 +118,17 @@ def _status_directory_identities(path: Path):
 
 
 def _read_status_path() -> Path:
-    global _read_location, _state, _state_path
+    global _read_location
     key = _status_location_key()
     cached = _read_location
     if cached is not None and cached[0] == key:
         if _status_directory_identities(cached[1]) == cached[2]:
             return cached[1]
         # The namespace was removed, replaced or changed ownership or mode
-        # since it was validated; its cached document no longer applies.
-        _state = None
-        _state_path = None
+        # since it was validated. A document this process wrote or read stays
+        # in force for the same path, so removing the directory cannot end
+        # maintenance; only a file planted while none was cached is read anew
+        # after full validation.
     # Unknown or changed locations run the full validation again, so an
     # unsafe directory raises here.
     _read_location = None

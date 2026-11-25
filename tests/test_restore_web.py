@@ -496,7 +496,7 @@ def test_cached_maintenance_location_rejects_a_foreign_namespace(
     assert len(validations) == 3
 
 
-def test_cached_maintenance_location_drops_the_document_of_a_removed_namespace(
+def test_cached_maintenance_location_keeps_the_document_of_a_removed_namespace(
     monkeypatch, tmp_path
 ):
     import shutil
@@ -506,7 +506,22 @@ def test_cached_maintenance_location_drops_the_document_of_a_removed_namespace(
     assert maintenance.is_active() is True
     namespace = maintenance._read_status_path().parent
 
+    # A tmp cleaner removing the namespace must not end maintenance.
     shutil.rmtree(namespace)
 
-    assert maintenance.is_active() is False
+    assert maintenance.is_active() is True
     assert namespace.is_dir()
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX ownership')
+def test_cached_maintenance_location_accepts_a_foreign_owner_for_root(
+    monkeypatch, tmp_path
+):
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    maintenance.is_active()
+    # Root may run with a temp directory owned by another account, such as a
+    # bind mount; the read cache must still be used.
+    monkeypatch.setattr(os, 'geteuid', lambda: 0)
+    maintenance._read_location = None
+    maintenance.is_active()
+    assert maintenance._read_location is not None
