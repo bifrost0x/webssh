@@ -222,7 +222,10 @@ def test_detection_task_checks_session_ownership_and_uses_facts(app, monkeypatch
             monkeypatch.setattr(host_platform, 'collect_identity', lambda _, answer=answer, **kwargs: answer)
             host_platform.detect_connected_platform('platform-test', user_id, events.append)
         assert len(events) == 1
-        assert profile_manager.get_profile(user_id, profile['id'])['platform_checked_at'] == 0
+        saved = profile_manager.get_profile(user_id, profile['id'])
+        # An answer that came back from the host still counts as an attempt; nothing reached it on 'transient'.
+        assert saved['detected_platform'] == 'debian' and saved['detection_state'] == 'detected'
+        assert not host_platform.identity_needed(saved) and saved['platform_checked_at'] > 0
 
 @pytest.mark.parametrize('saved, live', [('NAS.Example.test', 'nas.example.test'), ('2001:0db8:0000:0000:0000:0000:0000:0001', '2001:db8::1')])
 def test_endpoint_compares_canonical_hosts_and_default_port(saved, live):
@@ -1282,6 +1285,151 @@ def test_a_non_posix_greeting_replaces_facts_from_an_earlier_system(app, monkeyp
         saved = profile_manager.get_profile(user_id, profile['id'])
     assert saved['greeting_platform'] == greeting
     assert not set(_STORED_FACTS) & set(saved), json.dumps(saved)
+
+
+class _Clock:
+    def __init__(self, now):
+        self.now = now
+
+    def time(self):
+        return self.now
+
+
+@pytest.fixture(autouse=True)
+def _no_remembered_attempts(monkeypatch):
+    monkeypatch.setattr(host_platform, '_PENDING_ATTEMPTS', {})
+
+
+def _sent_then(monkeypatch, result, during=None):
+    """Answer collect_identity as a host that received the exec request, then gave result."""
+    calls = []
+
+    def collect(session_id, *, on_exec=None, **kwargs):
+        calls.append(session_id)
+        on_exec()
+        if during:
+            during()
+        return result
+
+    monkeypatch.setattr(host_platform, 'collect_identity', collect)
+    return calls
+
+
+def _backed_off_for_a_day(saved, now):
+    day, week = 24 * 3600, host_platform.IDENTITY_REFRESH_SECONDS
+    return (saved['platform_checked_at'] == now - week + day
+            and not host_platform.identity_needed(saved, now=now + 3600)
+            and host_platform.identity_needed(saved, now=now + day + 1))
+
+
+@pytest.mark.parametrize('result', [(None, 'transient'), (None, 'resource_shortage'), ({'state': 'odd'}, None)])
+def test_a_failure_after_the_probe_was_sent_backs_off_for_a_day(app, monkeypatch, result):
+    from app import profile_manager
+    monkeypatch.setattr(host_platform, 'time', _Clock(10_000_000.0))
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'sent')
+    _store(app, user_id, profile['id'], **_STORED_FACTS)
+    calls = _sent_then(monkeypatch, result)
+    with app.app_context():
+        host_platform.detect_connected_platform('sent', user_id, pytest.fail)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+        assert _backed_off_for_a_day(saved, 10_000_000.0)
+        assert {key: saved.get(key) for key in _STORED_FACTS if key != 'platform_checked_at'} == {
+            key: value for key, value in _STORED_FACTS.items() if key != 'platform_checked_at'}
+        host_platform.detect_connected_platform('sent', user_id, pytest.fail)
+    assert len(calls) == 1
+
+
+def test_a_connection_closed_after_the_probe_was_sent_backs_off_for_a_day(app, monkeypatch):
+    import threading
+    from app import profile_manager
+    monkeypatch.setattr(host_platform, 'time', _Clock(10_000_000.0))
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'closing')
+    cancel = threading.Event()
+    calls = _sent_then(monkeypatch, (_identity(), None), during=cancel.set)
+    with app.app_context():
+        host_platform.detect_connected_platform('closing', user_id, pytest.fail, cancel_event=cancel)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+    assert len(calls) == 1 and 'detected_platform' not in saved and 'detection_state' not in saved
+    assert _backed_off_for_a_day(saved, 10_000_000.0)
+
+
+def test_an_ssh_error_after_the_exec_request_backs_off_for_a_day(app, monkeypatch):
+    import paramiko
+    from app import profile_manager, session_insights
+    from tests.test_session_insights import FakeClient, FakeTransport
+    monkeypatch.setattr(host_platform, 'time', _Clock(10_000_000.0))
+    user_id, profile, session = _identity_session(app, monkeypatch, 'sshfail')
+    session['client'] = FakeClient(FakeTransport())
+    opened = []
+
+    def open_channel(transport, command, *, timeout, before_exec=None):
+        opened.append(command)
+        before_exec()
+        raise paramiko.SSHException('Channel closed.')
+
+    monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', open_channel)
+    with app.app_context():
+        host_platform.detect_connected_platform('sshfail', user_id, pytest.fail)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+        assert _backed_off_for_a_day(saved, 10_000_000.0)
+        host_platform.detect_connected_platform('sshfail', user_id, pytest.fail)
+    assert opened == [host_platform.IDENTITY_EXEC]
+
+
+def test_a_failure_before_anything_was_sent_records_nothing(app, monkeypatch):
+    import paramiko
+    from app import profile_manager, session_insights
+    from tests.test_session_insights import FakeClient, FakeTransport
+    user_id, profile, session = _identity_session(app, monkeypatch, 'nochannel')
+    session['client'] = FakeClient(FakeTransport())
+    opened = []
+
+    def open_channel(transport, command, *, timeout, before_exec=None):
+        opened.append(command)
+        raise paramiko.ChannelException(4, 'Resource shortage')
+
+    monkeypatch.setattr(session_insights.ssh_manager, '_open_exec_channel', open_channel)
+    with app.app_context():
+        for _ in range(2):
+            host_platform.detect_connected_platform('nochannel', user_id, pytest.fail)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+    assert len(opened) == 2 and 'platform_checked_at' not in saved and 'detection_state' not in saved
+
+
+@pytest.mark.parametrize('result', [(None, 'stalled'), (None, 'transient'), (None, 'unsupported'), (_identity(), None)])
+def test_a_full_connection_store_still_keeps_the_probe_from_repeating(app, monkeypatch, result):
+    from app import profile_manager
+    from app.connection_storage_policy import ConnectionStorageLimitError
+    monkeypatch.setattr(host_platform, 'time', _Clock(10_000_000.0))
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'full')
+
+    def full(*args, **kwargs):
+        raise ConnectionStorageLimitError('Connection storage limit reached')
+
+    monkeypatch.setattr(profile_manager, 'save_profiles', full)
+    calls = _sent_then(monkeypatch, result)
+    with app.app_context():
+        assert profile_manager.record_identity_attempt(user_id, profile['id'], host_platform.endpoint(profile),
+                                                       now=10_000_000.0) is False
+        host_platform.detect_connected_platform('full', user_id, lambda payload: None)
+        host_platform.detect_connected_platform('full', user_id, lambda payload: None)
+        assert len(calls) == 1
+        # The remembered attempt ends after a day, as a stored one would.
+        host_platform.time.now = 10_000_000.0 + 24 * 3600 + 1
+        host_platform.detect_connected_platform('full', user_id, lambda payload: None)
+    assert len(calls) == 2
+
+
+def test_remembered_attempts_stay_bounded(monkeypatch):
+    monkeypatch.setattr(host_platform, 'time', _Clock(1_000.0))
+    for index in range(host_platform._PENDING_ATTEMPT_LIMIT + 50):
+        host_platform._remember_attempt((1, str(index), None), 5_000.0)
+    assert len(host_platform._PENDING_ATTEMPTS) == host_platform._PENDING_ATTEMPT_LIMIT
+    assert host_platform._attempt_pending((1, str(host_platform._PENDING_ATTEMPT_LIMIT + 49), None))
+    assert not host_platform._attempt_pending((1, '0', None))
+    host_platform.time.now = 6_000.0
+    host_platform._remember_attempt((2, 'x', None), 9_000.0)
+    assert list(host_platform._PENDING_ATTEMPTS) == [(2, 'x', None)]
 
 
 def test_a_legacy_server_platform_goes_when_the_probe_stalls(app, monkeypatch):

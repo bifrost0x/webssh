@@ -1,5 +1,6 @@
 """Small, read-only platform facts collected through an existing SSH transport."""
 import re
+import threading
 import time
 
 from .host_catalog import (
@@ -513,13 +514,13 @@ def _identity_at_deadline(output):
     return None, 'unsupported'
 
 
-def collect_identity(session_id, *, cancel_event=None):
+def collect_identity(session_id, *, cancel_event=None, on_exec=None):
     from .session_insights import collect_linux_stats
     return collect_linux_stats(
         session_id, timeout=4.0, max_bytes=8192,
         command=IDENTITY_EXEC, parser=parse_identity,
         allow_partial=False, cancel_event=cancel_event,
-        on_deadline=_identity_at_deadline,
+        on_deadline=_identity_at_deadline, before_exec=on_exec,
     )
 
 
@@ -634,9 +635,49 @@ def recheck_reboot_hint(session_id, user_id, publish, *, cancel_event=None):
         return
 
 
+# Probe attempts that could not be written to the profile, for instance with
+# a full connection store: (user, profile, endpoint) -> time the probe is due.
+# They keep a host from being probed on every login until the process ends.
+_PENDING_ATTEMPTS = {}
+_PENDING_ATTEMPT_LIMIT = 4096
+_PENDING_ATTEMPTS_LOCK = threading.Lock()
+
+
+def _remember_attempt(key, due):
+    with _PENDING_ATTEMPTS_LOCK:
+        now = time.time()
+        for stale in [item for item, until in _PENDING_ATTEMPTS.items() if until <= now]:
+            del _PENDING_ATTEMPTS[stale]
+        _PENDING_ATTEMPTS.pop(key, None)
+        while len(_PENDING_ATTEMPTS) >= _PENDING_ATTEMPT_LIMIT:
+            del _PENDING_ATTEMPTS[next(iter(_PENDING_ATTEMPTS))]
+        _PENDING_ATTEMPTS[key] = due
+
+
+def _attempt_pending(key):
+    with _PENDING_ATTEMPTS_LOCK:
+        due = _PENDING_ATTEMPTS.get(key)
+    return due is not None and time.time() < due
+
+
+def _record_attempt(user_id, profile_id, expected, checked_at):
+    from . import profile_manager
+    try:
+        if profile_manager.record_identity_attempt(user_id, profile_id, expected, now=checked_at):
+            return
+    except Exception:
+        pass
+    _remember_attempt((user_id, profile_id, expected), checked_at + IDENTITY_REFRESH_SECONDS)
+
+
+_ANSWERS = ('stalled', 'silent', 'unsupported')
+
+
 def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None):
     """Optional weekly work per saved host; all failures leave the PTY alone."""
     from . import ssh_manager, profile_manager
+    sent, settled = [], []
+    attempt = None
     try:
         with ssh_manager.sessions_lock:
             session = ssh_manager.sessions.get(session_id)
@@ -653,35 +694,47 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
         profile = profile_manager.get_profile(user_id, profile_id) if profile_id else None
         if not identity_needed(profile):
             return
-        identity, error = collect_identity(session_id, cancel_event=cancel_event)
+        attempt = (user_id, profile_id, expected)
+        if _attempt_pending(attempt):
+            return
+        identity, error = collect_identity(session_id, cancel_event=cancel_event, on_exec=lambda: sent.append(True))
+        if error and error not in _ANSWERS and not sent:
+            # Busy, no channel or no capacity for one: nothing reached the host.
+            return
         checked_at = time.time()
         # Silence may be a slow shell start and a stall a hung mount; both are
         # asked again after a day by recording the check as that much older.
-        if error in ('silent', 'stalled'):
-            checked_at -= IDENTITY_REFRESH_SECONDS - SILENT_RETRY_SECONDS
-        if error == 'stalled':
-            identity = None
-        elif error in ('unsupported', 'silent'):
+        # So is any failure once the command was sent: it may have run.
+        retry_at = checked_at - (IDENTITY_REFRESH_SECONDS - SILENT_RETRY_SECONDS)
+        if error in ('unsupported', 'silent'):
             # The host answered, but not with the probe's output: a forced
             # command, a menu or a shell without the tools. Asking again on
             # every login would only run that command again.
             identity = {key: None for key in _IDENTITY_KEYS} | {'state': 'unavailable', 'services': []}
+            if error == 'silent':
+                checked_at = retry_at
         elif error or not valid_identity(identity):
-            return
+            identity, checked_at = None, retry_at
         with ssh_manager.sessions_lock:
             current = ssh_manager.sessions.get(session_id)
             if (current is not session or not current.get('connected') or endpoint(current) != expected
                     or (cancel_event is not None and cancel_event.is_set())):
-                return
-            if identity is not None and identity['platform'] is not None:
+                identity, checked_at = None, min(checked_at, retry_at)
+            elif identity is not None and identity['platform'] is not None:
                 current['detected_platform'] = identity['platform']
+        settled.append(True)
         if identity is None:
             # Only the attempt is recorded; stored facts stay as they are.
-            profile_manager.record_identity_attempt(user_id, profile_id, expected, now=checked_at)
+            _record_attempt(user_id, profile_id, expected, checked_at)
             return
-        # Silence may only be a slow shell: it does not undo an earlier detection.
-        if not profile_manager.cache_detected_facts(user_id, profile_id, expected, identity=identity, now=checked_at,
-                                                    keep_detected=error == 'silent'):
+        try:
+            # Silence may only be a slow shell: it does not undo an earlier detection.
+            stored = profile_manager.cache_detected_facts(user_id, profile_id, expected, identity=identity,
+                                                          now=checked_at, keep_detected=error == 'silent')
+        except Exception:
+            stored = False
+        if not stored:
+            _record_attempt(user_id, profile_id, expected, min(checked_at, retry_at))
             return
         if identity['state'] != 'detected':
             return
@@ -691,4 +744,6 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
             payload['platform'] = identity['platform']
         publish(payload)
     except Exception:
+        if sent and not settled:
+            _record_attempt(*attempt, time.time() - (IDENTITY_REFRESH_SECONDS - SILENT_RETRY_SECONDS))
         return

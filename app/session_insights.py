@@ -376,12 +376,13 @@ def _release_session_lock(session_id, collector_lock):
 def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
                         max_bytes=DEFAULT_MAX_BYTES,
                         include_diagnostics=False, command=None, parser=parse_linux_stats,
-                        allow_partial=True, cancel_event=None, on_deadline=None):
+                        allow_partial=True, cancel_event=None, on_deadline=None, before_exec=None):
     """Collect one Linux sample without touching the interactive PTY.
 
     When the deadline passes and partial output is not accepted, on_deadline,
     if given, decides the (result, error) pair from the raw output so far;
-    otherwise the sample is 'transient'.
+    otherwise the sample is 'transient'. before_exec, if given, is called
+    right before the exec request is sent.
     """
     if not isinstance(session_id, str) or not session_id:
         return None, 'transient'
@@ -411,6 +412,7 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
             transport,
             command,
             timeout=timeout,
+            **({'before_exec': before_exec} if before_exec is not None else {}),
         )
         deadline = time.monotonic() + timeout
         output = bytearray()

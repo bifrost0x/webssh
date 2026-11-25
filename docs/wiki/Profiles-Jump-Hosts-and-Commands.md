@@ -103,7 +103,10 @@ prints nothing within four seconds, or only colour or window title sequences,
 may only have a slow login shell, so it is asked again after a day and an
 earlier detection stays as it is. When the probe starts answering but
 does not finish within four seconds, for example on a hung network mount,
-stored facts stay as they are and it runs again after a day.
+stored facts stay as they are and it runs again after a day. The same applies
+to any other failure once the probe was sent, such as a connection that closes
+meanwhile. If the connection store is full, the attempt is kept in memory
+instead, so the probe still does not repeat on every login until WebSSH restarts.
 
 The host icon shows where its platform came from: a manual choice, a
 detection, the SSH greeting, the host name, a detection that found no known
