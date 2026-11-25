@@ -695,3 +695,37 @@ test('insert result handling stays quiet on cancel, reports failures and remembe
         delete globalThis.showNotification;
     }
 });
+
+test('inserts that need review are refused when the paste guard is unavailable', async () => {
+    assert.equal(globalThis.TerminalPasteGuard, undefined);
+    const sent = [];
+    const library = [
+        { id: 'c0', name: 'C0', command: 'ls\x0f', parameters: '' },
+        { id: 'esc', name: 'Escape', command: 'ls\x1b[2J', parameters: '' },
+        { id: 'c1', name: 'C1', command: 'ls\x9b', parameters: '' },
+        { id: 'bidi', name: 'Bidi', command: 'ls ‮', parameters: '' },
+        { id: 'plain', name: 'Plain', command: 'ls -la', parameters: '' },
+    ];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true }), getCommands: () => library,
+        emitInput: (id, text) => { sent.push([id, text]); },
+    });
+    for (const id of ['c0', 'esc', 'c1', 'bidi']) {
+        assert.deepEqual(await controller.insert('s', 'command', id), { ok: false, reason: 'send-failed' });
+    }
+    assert.deepEqual(sent, []);
+    assert.equal((await controller.insert('s', 'command', 'plain')).ok, true);
+    assert.deepEqual(sent, [['s', 'ls -la']]);
+});
+
+test('the fallback review check matches the paste guard character set', () => {
+    const characterClass = (file, pattern) => {
+        const match = fs.readFileSync(require.resolve(`../../static/js/${file}`), 'utf8').match(pattern);
+        assert.ok(match, `${file} review pattern not found`);
+        return match[1];
+    };
+    assert.equal(
+        characterClass('session-command-launcher.js', /function needsPasteReview\(value\) \{\s*return \/(\[[^\]]+\])\/\.test\(value\)/),
+        characterClass('terminal-paste-guard.js', /const needsReview = text => \/(\[[^\]]+\])\/\.test\(text\)/),
+    );
+});

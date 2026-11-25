@@ -13,6 +13,11 @@
         return /[\r\n]/.test(value);
     }
 
+    // Same set the paste guard reviews; used to fail closed when it is not loaded.
+    function needsPasteReview(value) {
+        return /[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/.test(value);
+    }
+
     function prefixWithSudo(value) {
         const stripped = value.trimStart();
         const sudoBoundary = stripped.charAt(4);
@@ -193,6 +198,7 @@
                 try {
                     const guard = dependencies.pasteGuard || root.TerminalPasteGuard;
                     if (!dependencies.emitInput) return { ok: false, reason: 'send-failed' };
+                    if (!guard && needsPasteReview(insertText)) return { ok: false, reason: 'send-failed' };
                     if (guard?.needsReview(insertText)) {
                         // Stored commands may carry control characters; the user confirms them first.
                         let attempted = false;
