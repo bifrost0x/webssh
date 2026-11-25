@@ -90,7 +90,7 @@ if [ -e /etc/config/uLinux.conf ]; then printf 'marker=qnap\n'; fi
 if [ -e /etc/openwrt_release ]; then printf 'marker=openwrt\n'; fi
 if [ -d /opt/vyatta ] || { [ -r /usr/lib/version ] && head -c 256 /usr/lib/version 2>/dev/null | grep -q UniFi; }; then printf 'marker=ubiquiti\n'; fi
 virt=$(systemd-detect-virt 2>/dev/null | head -n 1 | cut -c1-32)
-if [ -z "$virt" ]; then
+if [ -z "$virt" ] || [ "$virt" = none ]; then
   if [ -e /.dockerenv ]; then virt=docker
   elif [ -e /run/.containerenv ]; then virt=podman
   elif head -c 4096 /proc/1/cgroup 2>/dev/null | grep -q -e docker -e kubepods -e containerd; then virt=docker
@@ -107,7 +107,7 @@ if command -v systemctl >/dev/null 2>&1; then
       name=${name%.service}
       case "$name" in
         wg-quick@*) wireguard=1 ;;
-        @UNITS@) printf 'unit=%s\n' "$name" ;;
+@UNITCASE@
       esac
     done
     if [ -n "$wireguard" ]; then found wireguard; fi
@@ -120,23 +120,44 @@ fi
 @SNAPS@
 images=
 @ENGINES@
-printf '%s\n' "$images" | sed '/^$/d' | head -n 100 | cut -c1-120 | sed 's/^/image=/'
+printf '%s\n' "$images" | sed '/^$/d' | sort -u | head -n 100 | cut -c1-120 | awk '{ used += length($0) + 7; if (used > 3000) exit; print "image=" $0 }'
 :
 """
 
-_ENGINE_BLOCK = r"""if command -v @ENGINE@ >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
-  if out=$(timeout 2 @ENGINE@ ps --format '{{.Image}}' 2>/dev/null); then
-    printf 'engine=@ENGINE@:ok\n'
+_DOCKER_BLOCK = r"""if command -v docker >/dev/null 2>&1 || [ -S /var/run/docker.sock ]; then found docker; fi
+if command -v docker >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+  if out=$(timeout 2 docker ps --format '{{.Image}}' 2>/dev/null); then
+    printf 'engine=docker:ok\n'
     images="$images
 $out"
   else
-    printf 'engine=@ENGINE@:denied\n'
+    printf 'engine=docker:denied\n'
+  fi
+fi"""
+
+# Podman is only asked through an existing API socket (--remote): a plain
+# "podman ps" would start a rootless runtime and create state in the user's home.
+_PODMAN_BLOCK = r"""if command -v podman >/dev/null 2>&1; then
+  sock=
+  if [ -S /run/podman/podman.sock ]; then sock=/run/podman/podman.sock
+  elif [ -n "$XDG_RUNTIME_DIR" ] && [ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]; then sock=$XDG_RUNTIME_DIR/podman/podman.sock
+  fi
+  if [ -z "$sock" ]; then found podman
+  elif command -v timeout >/dev/null 2>&1; then
+    if out=$(timeout 2 podman --remote --url "unix://$sock" ps --format '{{.Image}}' 2>/dev/null); then
+      printf 'engine=podman:ok\n'
+      images="$images
+$out"
+    else
+      printf 'engine=podman:denied\n'
+    fi
   fi
 fi"""
 
 
 def _identity_command(units, paths, snaps):
     unit_patterns = '|'.join(_shell_word(unit) for unit in units)
+    unit_case = ("        %s) printf 'unit=%%s\\n' \"$name\" ;;" % unit_patterns) if unit_patterns else ''
     [_shell_word(service) for service in (*units.values(), *(s for _, s in paths), *snaps.values())]
     by_service = {}
     for path, service in paths:
@@ -149,8 +170,8 @@ def _identity_command(units, paths, snaps):
         "if [ -d %s ]; then printf 'snap=%%s\\n' %s; fi" % (_shell_word('/snap/' + snap), _shell_word(snap))
         for snap in snaps
     )
-    engines = '\n'.join(_ENGINE_BLOCK.replace('@ENGINE@', engine) for engine in ('docker', 'podman'))
-    return (_IDENTITY_TEMPLATE.replace('@UNITS@', unit_patterns).replace('@PATHS@', path_lines)
+    engines = _DOCKER_BLOCK + '\n' + _PODMAN_BLOCK
+    return (_IDENTITY_TEMPLATE.replace('@UNITCASE@', unit_case).replace('@PATHS@', path_lines)
             .replace('@SNAPS@', snap_lines).replace('@ENGINES@', engines))
 
 

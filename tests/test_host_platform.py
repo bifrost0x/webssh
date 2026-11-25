@@ -652,3 +652,49 @@ def test_identity_probe_runs_under_a_minimal_posix_shell():
     assert keys <= {'ID', 'ID_LIKE', 'VERSION_ID', 'VARIANT_ID', 'kernel', 'model', 'marker', 'virt',
                     'target', 'guests', 'service', 'unit', 'snap', 'image', 'engine'}
     assert len([line for line in result.stdout.splitlines() if line.startswith('image=')]) <= 100
+
+
+def test_identity_probe_never_runs_a_plain_podman_query():
+    command = host_platform.IDENTITY_COMMAND
+    invocations = re.findall(r'timeout 2 podman\S*(?: \S+)?', command)
+    assert invocations and all(item.startswith('timeout 2 podman --remote') for item in invocations)
+    assert not re.search(r'podman (ps|info|images|version)', command)
+    assert 'unix:///run/podman/podman.sock' not in command or '--remote' in command
+    assert '$XDG_RUNTIME_DIR/podman/podman.sock' in command and '[ -S ' in command
+
+
+def test_identity_probe_keeps_docker_presence_without_timeout():
+    command = host_platform.IDENTITY_COMMAND
+    line = next(line for line in command.splitlines() if line.startswith('if command -v docker') and 'found docker' in line)
+    assert '/var/run/docker.sock' in line and 'timeout' not in line
+
+
+def test_identity_probe_virt_fallbacks_also_cover_none():
+    command = host_platform.IDENTITY_COMMAND
+    assert '[ -z "$virt" ] || [ "$virt" = none ]' in command
+
+
+@pytest.mark.parametrize('units, paths, snaps', [
+    ({}, (), {}),
+    ({}, (('/etc/x', 'redis'),), {'a': 'plex'}),
+    ({'nginx': 'nginx'}, (), {}),
+])
+def test_identity_probe_generates_valid_shell_for_any_mapping(units, paths, snaps, tmp_path):
+    script = tmp_path / 'probe.sh'
+    script.write_text(host_platform._identity_command(units, paths, snaps))
+    for shell in (['sh'], ['bash', '--posix']):
+        assert subprocess.run([*shell, '-n', str(script)], capture_output=True).returncode == 0
+
+
+def test_identity_probe_worst_case_output_fits_the_budget():
+    lines = ['ID=' + 'x' * 197, 'ID_LIKE=' + 'x' * 192, 'VERSION_ID=' + 'x' * 189, 'VARIANT_ID=' + 'x' * 189]
+    lines += ['kernel=' + 'x' * 32, 'model=' + 'x' * 160, 'virt=' + 'x' * 32, 'target=' + 'x' * 40, 'guests=' + '9' * 6]
+    lines += ['marker=' + name for name in host_catalog.MARKER_PLATFORMS]
+    lines += ['unit=' + name for name in host_catalog.SERVICE_UNITS]
+    lines += ['snap=' + name for name in host_catalog.SERVICE_SNAPS]
+    lines += ['service=' + service for _, service in host_catalog.SERVICE_PATHS]
+    lines += ['service=docker', 'service=podman', 'service=wireguard', 'engine=docker:denied', 'engine=podman:denied']
+    size = sum(len(line) + 1 for line in lines)
+    # Images: the probe stops at 3000 bytes whatever the daemon returns.
+    assert '> 3000' in host_platform.IDENTITY_COMMAND and 'sort -u' in host_platform.IDENTITY_COMMAND
+    assert size + 3000 < 8192
