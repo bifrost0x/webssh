@@ -846,6 +846,21 @@ def test_a_session_that_changed_during_the_recheck_writes_nothing(app, monkeypat
     assert saved['reboot_required'] is True and 'recheck_stopped' not in saved
 
 
+def test_a_failed_reboot_hint_check_is_logged_without_its_detail(app, monkeypatch, caplog):
+    from app import profile_manager
+    user_id, _ = _restart_hint_session(app, monkeypatch, 'hintfail')
+
+    def broken(*args, **kwargs):
+        raise RuntimeError('db hunter2 gone')
+
+    monkeypatch.setattr(profile_manager, 'get_profile', broken)
+    with app.app_context(), caplog.at_level('DEBUG'):
+        host_platform.recheck_reboot_hint('hintfail', user_id, pytest.fail)
+    assert _logged(caplog, 'Host reboot hint check failed') == [
+        {'session_id': 'hintfail', 'error_type': 'RuntimeError'}]
+    assert 'hunter2' not in caplog.text
+
+
 @pytest.mark.parametrize('case', ['no-hint', 'stale', 'stopped', 'other-user', 'moved', 'cancelled', 'quick-connection'])
 def test_hosts_without_a_current_restart_hint_are_never_asked(app, monkeypatch, case):
     import threading
@@ -1624,6 +1639,75 @@ def test_remembered_attempts_stay_bounded(monkeypatch):
     host_platform.time.now = 6_000.0
     host_platform._remember_attempt((2, 'x', None), 9_000.0)
     assert list(host_platform._PENDING_ATTEMPTS) == [(2, 'x', None)]
+
+
+def _logged(caplog, message):
+    return [record.extra_data for record in caplog.records if record.getMessage() == message]
+
+
+def test_a_failed_detection_is_logged_without_its_detail(app, monkeypatch, caplog):
+    user_id, _, _ = _identity_session(app, monkeypatch, 'broken')
+
+    def collect(session_id, **kwargs):
+        raise RuntimeError('token hunter2 leaked')
+
+    monkeypatch.setattr(host_platform, 'collect_identity', collect)
+    with app.app_context(), caplog.at_level('DEBUG'):
+        host_platform.detect_connected_platform('broken', user_id, pytest.fail)
+    assert _logged(caplog, 'Host identity detection failed') == [
+        {'session_id': 'broken', 'error_type': 'RuntimeError'}]
+    assert 'hunter2' not in caplog.text
+
+
+def test_an_attempt_that_cannot_be_saved_is_logged_and_kept_in_memory(app, monkeypatch, caplog):
+    from app import profile_manager
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'unsaved')
+
+    def broken(*args, **kwargs):
+        raise OSError('disk /secret/path failed')
+
+    monkeypatch.setattr(profile_manager, 'record_identity_attempt', broken)
+    calls = _sent_then(monkeypatch, (None, 'stalled'))
+    with app.app_context(), caplog.at_level('DEBUG'):
+        host_platform.detect_connected_platform('unsaved', user_id, pytest.fail)
+        host_platform.detect_connected_platform('unsaved', user_id, pytest.fail)
+    assert len(calls) == 1
+    assert _logged(caplog, 'Host identity attempt could not be saved') == [
+        {'user_id': user_id, 'profile_id': profile['id'], 'error_type': 'OSError'}]
+    assert '/secret/path' not in caplog.text
+
+
+def test_facts_that_cannot_be_saved_are_logged_unless_the_store_is_full(app, monkeypatch, caplog):
+    from app import profile_manager
+    from app.connection_storage_policy import ConnectionStorageLimitError
+    errors = [ConnectionStorageLimitError('Connection storage limit reached'), RuntimeError('db hunter2 gone')]
+    for name, error in zip(('fullstore', 'brokenstore'), errors):
+        user_id, profile, _ = _identity_session(app, monkeypatch, name)
+
+        def refuse(*args, error=error, **kwargs):
+            raise error
+
+        monkeypatch.setattr(profile_manager, 'cache_detected_facts', refuse)
+        calls = _sent_then(monkeypatch, (_identity(), None))
+        with app.app_context(), caplog.at_level('DEBUG'):
+            host_platform.detect_connected_platform(name, user_id, pytest.fail)
+            host_platform.detect_connected_platform(name, user_id, pytest.fail)
+        assert len(calls) == 1
+    records = [record for record in caplog.records if record.getMessage() == 'Detected host facts could not be saved']
+    assert len(records) == 1 and records[0].levelname == 'WARNING'
+    assert records[0].extra_data == {'user_id': user_id, 'profile_id': profile['id'], 'error_type': 'RuntimeError'}
+    assert 'hunter2' not in caplog.text
+
+
+def test_an_unreadable_version_string_is_logged_and_skipped(caplog):
+    class Client:
+        def get_transport(self):
+            raise EOFError('socket hunter2 closed')
+
+    with caplog.at_level('DEBUG'):
+        assert host_platform._connection_greeting(Client()) is host_platform._NO_VERSION
+    assert _logged(caplog, 'SSH version string could not be read') == [{'error_type': 'EOFError'}]
+    assert 'hunter2' not in caplog.text
 
 
 def test_a_legacy_server_platform_goes_when_the_probe_stalls(app, monkeypatch):

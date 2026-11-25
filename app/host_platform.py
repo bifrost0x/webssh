@@ -3,6 +3,8 @@ import re
 import threading
 import time
 
+from .audit_logger import log_debug, log_warning
+from .connection_storage_policy import ConnectionStorageLimitError
 from .host_catalog import (
     PLATFORMS, SERVICES, MAX_SERVICES, PRIORITY_SERVICES, INFRASTRUCTURE_SERVICES, NON_POSIX_PLATFORMS, CONTAINER_ACCESS, VIRT_KINDS,
     SERVICE_UNITS, SERVICE_UNIT_TEMPLATES, SERVICE_PATHS, SERVICE_SNAPS, SERVICE_IMAGES,
@@ -659,8 +661,8 @@ def recheck_reboot_hint(session_id, user_id, publish, *, cancel_event=None):
                 publish({'profile_id': profile_id})
             return
         profile_manager.settle_reboot_hint(user_id, profile_id, expected, checked_at, cleared=False)
-    except Exception:
-        return
+    except Exception as exc:
+        log_debug('Host reboot hint check failed', session_id=session_id, error_type=type(exc).__name__)
 
 
 # Probe attempts that could not be written to the profile, for instance with
@@ -694,8 +696,9 @@ def _record_attempt(user_id, profile_id, expected, checked_at):
     try:
         if profile_manager.record_identity_attempt(user_id, profile_id, expected, now=checked_at):
             return
-    except Exception:
-        pass
+    except Exception as exc:
+        log_debug('Host identity attempt could not be saved', user_id=user_id, profile_id=profile_id,
+                  error_type=type(exc).__name__)
     _remember_attempt((user_id, profile_id, expected), checked_at + IDENTITY_REFRESH_SECONDS)
 
 
@@ -712,7 +715,8 @@ def _connection_greeting(client):
     try:
         transport = client.get_transport() if client else None
         version = getattr(transport, 'remote_version', None)
-    except Exception:
+    except Exception as exc:
+        log_debug('SSH version string could not be read', error_type=type(exc).__name__)
         return _NO_VERSION
     if not isinstance(version, str) or not version.startswith('SSH-'):
         return _NO_VERSION
@@ -797,7 +801,12 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
             # Silence may only be a slow shell: it does not undo an earlier detection.
             stored = profile_manager.cache_detected_facts(user_id, profile_id, expected, identity=identity,
                                                           now=checked_at, keep_detected=error == 'silent')
-        except Exception:
+        except ConnectionStorageLimitError:
+            # A full store is the user's to resolve; the attempt is kept in memory below.
+            stored = False
+        except Exception as exc:
+            log_warning('Detected host facts could not be saved', user_id=user_id, profile_id=profile_id,
+                        error_type=type(exc).__name__)
             stored = False
         if not stored:
             _record_attempt(user_id, profile_id, expected, min(checked_at, retry_at))
@@ -811,7 +820,7 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
         if identity['platform'] is not None:
             payload['platform'] = identity['platform']
         publish(payload)
-    except Exception:
+    except Exception as exc:
         if sent and not settled:
             _record_attempt(*attempt, time.time() - (IDENTITY_REFRESH_SECONDS - SILENT_RETRY_SECONDS))
-        return
+        log_debug('Host identity detection failed', session_id=session_id, error_type=type(exc).__name__)
