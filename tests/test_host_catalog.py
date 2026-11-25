@@ -192,3 +192,22 @@ def test_units_that_client_packages_keep_active_name_no_service():
     assert 'openvpn' not in c.SERVICE_UNITS
     assert host_platform.parse_identity('kernel=Linux\nunit=openvpn')['services'] == []
     assert {'openvpn', 'openvpn-server', 'openvpn-client'} <= set(c.SERVICE_UNIT_TEMPLATES)
+
+
+def test_official_images_under_their_publisher_names():
+    cases = {
+        'owncloud/server:10.15': 'owncloud', 'docker.io/owncloud/server': 'owncloud',
+        'seafileltd/seafile-mc:11.0-latest': 'seafile',
+        'zabbix/zabbix-server-mysql:alpine-7.0-latest': 'zabbix', 'zabbix/zabbix-server-pgsql:ubuntu-7.0': 'zabbix',
+        'httpd:2.4': 'apache', 'docker.io/library/httpd:2.4-alpine': 'apache',
+        'ghcr.io/wg-easy/wg-easy:14': 'wireguard', 'weejewel/wg-easy': 'wireguard',
+        'haproxytech/haproxy-alpine:3.0': 'haproxy', 'haproxytech/haproxy-debian:2.8': 'haproxy',
+        'haproxytech/haproxy-ubuntu': 'haproxy',
+    }
+    for image, expected in cases.items():
+        assert _image_id(image) == expected, image
+    for image in ('owncloud/ocis-exporter', 'zabbix/zabbix-agent:7.0', 'zabbix/zabbix-agent2', 'zabbix/zabbix-proxy-sqlite3',
+                  'zabbix/zabbix-web-nginx-mysql', 'lighttpd:1', 'busybox-httpd', 'httpd-exporter:1',
+                  'wg-easy-exporter', 'haproxytech/kubernetes-ingress', 'quay.io/prometheus/haproxy-exporter',
+                  'seafileltd/seafile-mc-backup', 'someone/server'):
+        assert _image_id(image) is None, image
