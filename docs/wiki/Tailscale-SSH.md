@@ -95,7 +95,8 @@ Proxies and jump hosts that resolve names themselves are covered too:
   the WebSSH host's own addresses is refused. Such a relay shares the WebSSH
   network namespace, for example tailscaled's own SOCKS5 server
   (`TS_SOCKS5_SERVER`) in the sidecar, so its connections leave with the node
-  identity.
+  identity. A relay whose kernel route cannot be determined is refused as
+  well.
 - A target name handed to a SOCKS5 proxy with remote DNS, or to a jump host
   because only the bastion can resolve it, is refused when it ends in
   `.ts.net` (MagicDNS) or when it resolves locally to a restricted node

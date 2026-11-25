@@ -470,6 +470,12 @@ def test_relay_on_an_own_address_is_refused(tailnet):
         network_policy.check_relay_endpoint(_relay('172.17.0.2'))
 
 
+def test_relay_with_an_unknown_route_is_refused(tailnet):
+    tailnet.routes['192.168.1.9'] = None
+    with pytest.raises(TailnetRouteRestricted):
+        network_policy.check_relay_endpoint(_relay('192.168.1.9'))
+
+
 @pytest.mark.parametrize('ip', ['192.168.1.9', '203.0.113.7'])
 def test_remote_relay_is_allowed(tailnet, ip):
     network_policy.check_relay_endpoint(_relay(ip))

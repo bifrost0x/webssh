@@ -109,7 +109,9 @@ def check_relay_endpoint(target):
     A relay on loopback or on one of this host's own addresses shares the
     WebSSH network namespace, for example tailscaled's SOCKS5 server, so its
     onward connections leave with the shared node identity. Tailnet node
-    addresses are already refused when the relay address is resolved.
+    addresses are already refused when the relay address is resolved. A relay
+    whose route cannot be determined may be one of those addresses and is
+    refused as well.
     """
     if _active_tailnet_restriction() is None:
         return
@@ -121,7 +123,7 @@ def check_relay_endpoint(target):
     from . import tailscale_ssh
     # The kernel routes this host's own addresses through the local table,
     # whose output interface is the loopback device.
-    if tailscale_ssh._route_interface_for_ip(address.compressed) == 'lo':
+    if tailscale_ssh._route_interface_for_ip(address.compressed) in (None, 'lo'):
         raise TailnetRouteRestricted(_RELAY_MESSAGE)
 
 
