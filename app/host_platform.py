@@ -2,7 +2,10 @@
 import re
 import time
 
-from .host_catalog import PLATFORMS, SERVICES, MAX_SERVICES, SERVICE_UNITS as _SERVICE_UNITS, SERVICE_IMAGES as _SERVICE_IMAGES  # noqa: F401
+from .host_catalog import (
+    PLATFORMS, SERVICES, MAX_SERVICES, SERVICE_UNITS as _SERVICE_UNITS, SERVICE_IMAGES as _SERVICE_IMAGES,  # noqa: F401
+    SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS,
+)
 
 PLATFORM_COMMAND = r'''LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -49,6 +52,114 @@ if command -v timeout >/dev/null 2>&1; then
 fi
 :
 '''
+
+# Catalog values end up inside the shell text below. They are fixed strings, but
+# a later edit must never be able to bring in shell syntax, so every one is
+# checked against a conservative pattern and then single-quoted.
+_SHELL_WORD = re.compile(r'[A-Za-z0-9@_.:/+-]+')
+
+
+def _shell_word(value):
+    if not isinstance(value, str) or not _SHELL_WORD.fullmatch(value):
+        raise ValueError('Unsafe value in the identity probe: %r' % (value,))
+    return "'%s'" % value
+
+
+_IDENTITY_TEMPLATE = r"""LC_ALL=C
+PATH=/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin:/snap/bin
+export LC_ALL PATH
+found() { printf 'service=%s\n' "$1"; }
+if [ -r /etc/os-release ]; then
+  head -c 2048 /etc/os-release 2>/dev/null | awk -F= '$1 ~ /^(ID|ID_LIKE|VERSION_ID|VARIANT_ID)$/ && !seen[$1]++ { print substr($0, 1, 200) }'
+fi
+printf 'kernel=%s\n' "$(uname -s 2>/dev/null)"
+if [ -r /proc/device-tree/model ]; then
+  printf 'model='; head -c 160 /proc/device-tree/model 2>/dev/null | tr -d '\000-\037'; printf '\n'
+fi
+if [ -r /etc/pve/.version ] || [ -d /usr/share/pve-manager ]; then printf 'marker=proxmox\n';
+elif [ -r /conf/config.xml ] && [ -d /usr/local/opnsense ]; then printf 'marker=opnsense\n';
+elif [ -r /etc/version ]; then
+  head -c 256 /etc/version 2>/dev/null | awk '/^TrueNAS-/ { print "marker=truenas"; exit }'
+fi
+if [ -d /usr/share/proxmox-backup ] || [ -d /etc/proxmox-backup ]; then printf 'marker=proxmoxbackup\n'; fi
+pf=/etc/platform
+if head -c 256 "$pf" 2>/dev/null | grep -q pfSense; then printf 'marker=pfsense\n'; fi
+if [ -e /etc/unraid-version ]; then printf 'marker=unraid\n'; fi
+if [ -r /etc.defaults/VERSION ] && head -c 2048 /etc.defaults/VERSION 2>/dev/null | grep -qi synology; then printf 'marker=synology\n'; fi
+if [ -e /etc/config/uLinux.conf ]; then printf 'marker=qnap\n'; fi
+if [ -e /etc/openwrt_release ]; then printf 'marker=openwrt\n'; fi
+if [ -d /opt/vyatta ] || { [ -r /usr/lib/version ] && head -c 256 /usr/lib/version 2>/dev/null | grep -q UniFi; }; then printf 'marker=ubiquiti\n'; fi
+virt=$(systemd-detect-virt 2>/dev/null | head -n 1 | cut -c1-32)
+if [ -z "$virt" ]; then
+  if [ -e /.dockerenv ]; then virt=docker
+  elif [ -e /run/.containerenv ]; then virt=podman
+  elif head -c 4096 /proc/1/cgroup 2>/dev/null | grep -q -e docker -e kubepods -e containerd; then virt=docker
+  elif head -c 4096 /proc/1/cgroup 2>/dev/null | grep -q lxc; then virt=lxc
+  fi
+fi
+if [ -n "$virt" ]; then printf 'virt=%s\n' "$virt"; fi
+if command -v systemctl >/dev/null 2>&1; then
+  target=$(systemctl get-default 2>/dev/null | head -n 1 | cut -c1-40)
+  if [ -n "$target" ]; then printf 'target=%s\n' "$target"; fi
+  systemctl list-units --type=service --state=active --no-legend --plain 2>/dev/null | head -n 2000 | {
+    wireguard=
+    while read -r name rest; do
+      name=${name%.service}
+      case "$name" in
+        wg-quick@*) wireguard=1 ;;
+        @UNITS@) printf 'unit=%s\n' "$name" ;;
+      esac
+    done
+    if [ -n "$wireguard" ]; then found wireguard; fi
+  }
+fi
+if [ -d /etc/pve ] && [ -r /etc/pve ]; then
+  printf 'guests=%s\n' "$(ls /etc/pve/qemu-server/*.conf /etc/pve/lxc/*.conf 2>/dev/null | wc -l | tr -d ' ')"
+fi
+@PATHS@
+@SNAPS@
+images=
+@ENGINES@
+printf '%s\n' "$images" | sed '/^$/d' | head -n 100 | cut -c1-120 | sed 's/^/image=/'
+:
+"""
+
+_ENGINE_BLOCK = r"""if command -v @ENGINE@ >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+  if out=$(timeout 2 @ENGINE@ ps --format '{{.Image}}' 2>/dev/null); then
+    printf 'engine=@ENGINE@:ok\n'
+    images="$images
+$out"
+  else
+    printf 'engine=@ENGINE@:denied\n'
+  fi
+fi"""
+
+
+def _identity_command(units, paths, snaps):
+    unit_patterns = '|'.join(_shell_word(unit) for unit in units)
+    [_shell_word(service) for service in (*units.values(), *(s for _, s in paths), *snaps.values())]
+    by_service = {}
+    for path, service in paths:
+        by_service.setdefault(service, []).append(path)
+    path_lines = '\n'.join(
+        'if %s; then found %s; fi' % (' || '.join('[ -e %s ]' % _shell_word(path) for path in found), service)
+        for service, found in by_service.items()
+    )
+    snap_lines = '\n'.join(
+        "if [ -d %s ]; then printf 'snap=%%s\\n' %s; fi" % (_shell_word('/snap/' + snap), _shell_word(snap))
+        for snap in snaps
+    )
+    engines = '\n'.join(_ENGINE_BLOCK.replace('@ENGINE@', engine) for engine in ('docker', 'podman'))
+    return (_IDENTITY_TEMPLATE.replace('@UNITS@', unit_patterns).replace('@PATHS@', path_lines)
+            .replace('@SNAPS@', snap_lines).replace('@ENGINES@', engines))
+
+
+# One read-only probe for everything the host identity needs: os-release, kernel,
+# board model, platform markers, virtualization, systemd target, guest count,
+# known services and, where the SSH user may already talk to a Docker or Podman
+# daemon (no sudo), the names of running images. Nothing is installed, changed
+# or sourced; every file read is bounded.
+IDENTITY_COMMAND = _identity_command(SERVICE_UNITS, SERVICE_PATHS, SERVICE_SNAPS)
 
 # Pending package updates and a required restart. WebSSH never runs this on its
 # own: only a workflow the user starts or explicitly schedules executes it, and

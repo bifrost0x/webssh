@@ -1,5 +1,9 @@
+import re
+import shutil
+import subprocess
+
 import pytest
-from app import host_platform
+from app import host_catalog, host_platform
 
 @pytest.mark.parametrize('facts, expected', [
     ('ID=ubuntu\nkernel=Linux', 'ubuntu'),
@@ -595,3 +599,56 @@ def test_hosts_without_a_current_restart_hint_are_never_asked(app, monkeypatch, 
         host_platform.recheck_reboot_hint('quiet', user_id + 1 if case == 'other-user' else user_id,
                                           lambda payload: None, cancel_event=cancel)
     assert commands == []
+
+
+def test_identity_probe_is_read_only_bounded_and_posix():
+    command = host_platform.IDENTITY_COMMAND
+    for forbidden in ('. /etc/', 'source ', 'eval ', 'sudo', '>/etc', 'tee ', 'mkdir', 'rm '):
+        assert forbidden not in command
+    assert command.count('timeout 2') >= 2            # docker and podman queries
+    assert 'head -n 100' in command                   # image lines
+    assert 'systemd-detect-virt' in command and 'get-default' in command
+    assert '/etc/pve/qemu-server' in command and '/etc/pve/lxc' in command
+    assert 'ID_LIKE' in command and 'VERSION_ID' in command
+    assert 'marker=ubiquiti' in command
+
+
+def test_identity_probe_covers_the_catalog():
+    command = host_platform.IDENTITY_COMMAND
+    for unit in host_catalog.SERVICE_UNITS:
+        assert re.search(r"[|(\s]'%s'[|)]" % re.escape(unit), command)
+    for path, _ in host_catalog.SERVICE_PATHS:
+        assert "'%s'" % path in command
+    for snap in host_catalog.SERVICE_SNAPS:
+        assert "/snap/%s'" % snap in command
+
+
+@pytest.mark.parametrize('units, paths, snaps', [
+    ({'nginx; rm -rf /': 'nginx'}, (), {}),
+    ({'nginx': "x'; id; '"}, (), {}),
+    ({}, (('/etc/x y', 'redis'),), {}),
+    ({}, (('/etc/$(id)', 'redis'),), {}),
+    ({}, (('/etc/x', 'redis\nservice=evil'),), {}),
+    ({}, (), {'a`id`': 'plex'}),
+    ({}, (), {'plex': 'a|b'}),
+])
+def test_identity_probe_rejects_unsafe_catalog_values(units, paths, snaps):
+    with pytest.raises(ValueError):
+        host_platform._identity_command(units, paths, snaps)
+
+
+def test_identity_probe_accepts_catalog_style_values():
+    command = host_platform._identity_command({'wg@x': 'wireguard'}, (('/opt/a-b_c.d+e', 'redis'),), {'a-b': 'plex'})
+    assert "'wg@x'" in command and "'/opt/a-b_c.d+e'" in command
+
+
+def test_identity_probe_runs_under_a_minimal_posix_shell():
+    shell = shutil.which('busybox') and ['busybox', 'sh'] or [shutil.which('dash') or 'sh']
+    result = subprocess.run([*shell, '-c', host_platform.IDENTITY_COMMAND], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0
+    assert re.search(r'^kernel=\S+$', result.stdout, re.M)
+    assert all(re.fullmatch(r'[A-Za-z_]+=.*', line) for line in result.stdout.splitlines())
+    keys = {line.partition('=')[0] for line in result.stdout.splitlines()}
+    assert keys <= {'ID', 'ID_LIKE', 'VERSION_ID', 'VARIANT_ID', 'kernel', 'model', 'marker', 'virt',
+                    'target', 'guests', 'service', 'unit', 'snap', 'image', 'engine'}
+    assert len([line for line in result.stdout.splitlines() if line.startswith('image=')]) <= 100
