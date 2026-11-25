@@ -736,7 +736,8 @@ def detect_connected_platform(session_id, user_id, publish, *, cancel_event=None
             return
         greeting = _connection_greeting(client)
         if greeting is not _NO_VERSION and (greeting in NON_POSIX_PLATFORMS
-                                            or greeting != profile.get('greeting_platform')):
+                                            or greeting != profile.get('greeting_platform')
+                                            or (greeting or '') != profile.get('authenticated_greeting')):
             updated, changed = profile_manager.record_connect_greeting(
                 user_id, profile_id, expected, greeting, now=time.time())
             if greeting in NON_POSIX_PLATFORMS:

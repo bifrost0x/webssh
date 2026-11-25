@@ -1365,11 +1365,17 @@ def test_a_changed_authenticated_greeting_asks_again_at_most_once_a_day(app, mon
     start = 2_000_000_000.0
     clock = _Clock(start)
     monkeypatch.setattr(host_platform, 'time', clock)
-    user_id, profile, session = _identity_session(app, monkeypatch, 'flip', greeting_platform='ubuntu')
+    user_id, profile, session = _identity_session(app, monkeypatch, 'flip')
     _store(app, user_id, profile['id'], **dict(_STORED_FACTS, platform_checked_at=start - 2 * day))
     calls = _fake_identity(monkeypatch, (_identity(), None))
     with app.app_context():
-        # Two days after the last run, a new greeting asks the probe again at once.
+        # The first login only records its greeting: there is nothing to compare with yet.
+        clock.now = start - 60
+        _connect_as(session, 'ubuntu')
+        host_platform.detect_connected_platform('flip', user_id, lambda payload: None)
+        assert calls == []
+        clock.now = start
+        # Two days after the last run, a changed greeting asks the probe again at once.
         _connect_as(session, 'debian')
         host_platform.detect_connected_platform('flip', user_id, lambda payload: None)
         assert len(calls) == 1
@@ -1380,10 +1386,58 @@ def test_a_changed_authenticated_greeting_asks_again_at_most_once_a_day(app, mon
             host_platform.detect_connected_platform('flip', user_id, lambda payload: None)
         assert len(calls) == 1
         clock.now = start + day + 60
-        _connect_as(session, 'ubuntu' if profile_manager.get_profile(user_id, profile['id']).get('greeting_platform') != 'ubuntu'
-                    else 'debian')
+        last = profile_manager.get_profile(user_id, profile['id']).get('authenticated_greeting')
+        _connect_as(session, 'ubuntu' if last != 'ubuntu' else 'debian')
         host_platform.detect_connected_platform('flip', user_id, lambda payload: None)
         assert len(calls) == 2
+
+
+@pytest.mark.parametrize('forged', ['windows', 'ubuntu', None])
+@pytest.mark.parametrize('earlier', ['debian', 'missing'])
+def test_a_forged_overview_hint_never_brings_the_probe_forward(app, monkeypatch, forged, earlier):
+    # Only a change between two logged-in greetings counts, not one against
+    # what the overview read without logging in.
+    from app import profile_manager
+    day = 24 * 3600
+    start = 2_000_000_000.0
+    monkeypatch.setattr(host_platform, 'time', _Clock(start))
+    user_id, profile, session = _identity_session(app, monkeypatch, 'hinted')
+    stored = dict(_STORED_FACTS, platform_checked_at=start - 2 * day)
+    if earlier != 'missing':
+        stored['authenticated_greeting'] = earlier
+    _store(app, user_id, profile['id'], **stored)
+    calls = _fake_identity(monkeypatch, (_identity(), None))
+    with app.app_context():
+        if forged:
+            assert profile_manager.cache_greeting_platforms(user_id, {profile['id']: (('hinted.example', 22), forged)}) == 1
+        _connect_as(session, 'debian')
+        host_platform.detect_connected_platform('hinted', user_id, pytest.fail)
+        saved = profile_manager.get_profile(user_id, profile['id'])
+    assert calls == []
+    assert saved['platform_checked_at'] == start - 2 * day
+    assert saved['greeting_platform'] == 'debian' and saved['authenticated_greeting'] == 'debian'
+
+
+def test_the_authenticated_greeting_is_validated_and_bound_to_the_endpoint(app, monkeypatch):
+    from app import profile_manager
+    user_id, profile, _ = _identity_session(app, monkeypatch, 'bound')
+    with app.app_context():
+        payload = dict(name='bound', host='bound.example', port=22, username='deploy', auth_type='password',
+                       authenticated_greeting='windows')
+        edited, error = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id']))
+        assert error is None and 'authenticated_greeting' not in edited
+    _store(app, user_id, profile['id'], authenticated_greeting='debian')
+    with app.app_context():
+        renamed, _ = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], name='renamed'))
+        assert renamed['authenticated_greeting'] == 'debian'
+        moved, _ = profile_manager.upsert_profile(user_id, dict(payload, id=profile['id'], host='other.example'))
+        assert 'authenticated_greeting' not in moved
+    _store(app, user_id, profile['id'], authenticated_greeting='plan9')
+    with app.app_context():
+        assert 'authenticated_greeting' not in profile_manager.get_profile(user_id, profile['id'])
+    _store(app, user_id, profile['id'], authenticated_greeting='')
+    with app.app_context():
+        assert profile_manager.get_profile(user_id, profile['id'])['authenticated_greeting'] == ''
 
 
 def test_a_changed_greeting_does_not_repeat_a_probe_that_just_stalled(app, monkeypatch):

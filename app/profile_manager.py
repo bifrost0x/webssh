@@ -158,6 +158,8 @@ def _valid_profile(item):
         return False
     if 'greeting_platform' in item and not isinstance(item['greeting_platform'], str):
         return False
+    if 'authenticated_greeting' in item and not isinstance(item['authenticated_greeting'], str):
+        return False
     if 'detected_services' in item and not (isinstance(item['detected_services'], list)
                                             and all(isinstance(entry, str) for entry in item['detected_services'])):
         return False
@@ -179,9 +181,12 @@ _IDENTITY_FACTS = {
     'detected_virt': 'virt', 'detected_container_access': 'container_access',
     'detected_guests': 'guests', 'detected_graphical': 'graphical',
 }
+# authenticated_greeting: the platform the last logged-in connection's SSH
+# version string named, '' for none. Unlike greeting_platform, which the
+# overview may set without logging in, it decides when the probe runs again.
 _ENDPOINT_FACTS = (
     *_IDENTITY_FACTS, 'detected_services', 'services_checked_at', 'detected_maintenance',
-    'detection_state', 'platform_checked_at',
+    'detection_state', 'platform_checked_at', 'authenticated_greeting',
 )
 
 
@@ -192,6 +197,8 @@ def _valid_stored_fact(field, value):
         return not isinstance(value, bool) and isinstance(value, (int, float))
     if field == 'role_override':
         return isinstance(value, str) and (value == 'auto' or value in ROLES)
+    if field == 'authenticated_greeting':
+        return isinstance(value, str) and (value == '' or value in PLATFORMS)
     return valid_identity_value(_IDENTITY_FACTS[field], value)
 
 
@@ -199,7 +206,8 @@ def _drop_invalid_stored_facts(profiles):
     for profile in profiles:
         if not isinstance(profile, dict):
             continue
-        for field in (*_IDENTITY_FACTS, 'detection_state', 'platform_checked_at', 'role_override'):
+        for field in (*_IDENTITY_FACTS, 'detection_state', 'platform_checked_at', 'role_override',
+                      'authenticated_greeting'):
             if field in profile and not _valid_stored_fact(field, profile[field]):
                 del profile[field]
     return profiles
@@ -221,7 +229,7 @@ _PROFILE_FIELDS = {
     'group', 'favorite', 'created_at', 'updated_at',
     'sort_order', 'platform_icon', 'detected_platform', 'greeting_platform',
     'detected_services', 'services_checked_at', 'detected_maintenance',
-    *_IDENTITY_FACTS, 'detection_state', 'platform_checked_at', 'role_override',
+    *_IDENTITY_FACTS, 'detection_state', 'platform_checked_at', 'role_override', 'authenticated_greeting',
 }
 
 
@@ -1093,16 +1101,19 @@ def record_connect_greeting(user_id, profile_id, expected_endpoint, platform, *,
     Unlike the overview's greeting this one came from the host-key-verified
     transport, so it may change detection. A system without a POSIX shell
     drops what the probe found at this endpoint before, which belonged to
-    another system. A change to another platform, or to none, makes the probe
-    due again, but only when it last ran at least a day ago: alternating
-    greetings ask it at most once a day. A check recorded as older than it
-    is (a stall, a silent login) is due within a day already and stays.
+    another system. Otherwise the display hint follows it, and when it differs
+    from the greeting of the previous logged-in connection, the probe is due
+    again, but only when it last ran at least a day ago: alternating greetings
+    ask it at most once a day. A hint the overview stored without logging in
+    never counts as such a change. A check recorded as older than it is (a
+    stall, a silent login) is due within a day already and stays.
     profile is the stored profile, or None when nothing could be saved.
     """
     from .host_platform import IDENTITY_REFRESH_SECONDS, SILENT_RETRY_SECONDS
     if (expected_endpoint is None or (platform is not None and platform not in PLATFORMS)
             or isinstance(now, bool) or not isinstance(now, (int, float))):
         return None, False
+    value = platform or ''
     try:
         with storage_lock(f'command-config:{user_id}'):
             with storage_lock(f'profiles:{user_id}'):
@@ -1112,20 +1123,21 @@ def record_connect_greeting(user_id, profile_id, expected_endpoint, platform, *,
                 for profile in profiles:
                     if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
                         continue
-                    previous = profile.get('greeting_platform')
-                    changed = previous != platform
+                    previous = profile.get('authenticated_greeting')
+                    changed = previous != value or profile.get('greeting_platform') != platform
                     if platform in NON_POSIX_PLATFORMS:
                         for field in ('detected_platform', *_ENDPOINT_FACTS):
-                            if field in profile:
+                            if field in profile and field != 'authenticated_greeting':
                                 del profile[field]
                                 changed = True
-                    elif changed and previous is not None:
+                    elif previous is not None and previous != value:
                         checked = profile.get('platform_checked_at')
                         if (not isinstance(checked, bool) and isinstance(checked, (int, float))
                                 and SILENT_RETRY_SECONDS <= now - checked < IDENTITY_REFRESH_SECONDS - SILENT_RETRY_SECONDS):
                             del profile['platform_checked_at']
                     if not changed:
                         return dict(profile), False
+                    profile['authenticated_greeting'] = value
                     if platform is None:
                         profile.pop('greeting_platform', None)
                     else:

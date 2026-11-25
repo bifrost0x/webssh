@@ -105,9 +105,10 @@ from the logged-in connection, whose host key was verified. When it names one
 of these systems, the probe does not run and what an earlier probe found at
 that endpoint is dropped. When it names another platform, or none, a stored
 Windows, MikroTik or Cisco hint is replaced and the probe keeps its usual
-schedule; a greeting that differs from the stored one runs the probe on that
-connection when it last ran more than a day ago, so greetings that alternate
-ask it at most once a day.
+schedule. A greeting that differs from the one of the previous logged-in
+connection runs the probe on that connection when it last ran more than a day
+ago, so greetings that alternate ask it at most once a day; what the overview
+read without logging in never counts as such a change.
 A Dropbear greeting marks a host as embedded until a connection detects more. When a host answers
 with something other than the probe output, for example a forced command or a
 menu, the profile records that detection is not possible, keeps any facts an
