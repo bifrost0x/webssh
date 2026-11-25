@@ -64,6 +64,8 @@ function sameOriginLocaleUrl(url, lang) {
 }
 
 const localeUrls = readLocaleUrls();
+// A stalled request must not leave a language switch pending forever.
+const LOCALE_LOAD_TIMEOUT_MS = 15000;
 
 function loadLocale(lang) {
     if (loadedLocales.has(lang)) return Promise.resolve();
@@ -76,11 +78,19 @@ function loadLocale(lang) {
         const script = document.createElement('script');
         script.src = url;
         script.async = true;
+        const timer = setTimeout(() => {
+            script.onload = null;
+            script.onerror = null;
+            script.remove();
+            reject(new Error(`Translation file for ${lang} timed out`));
+        }, LOCALE_LOAD_TIMEOUT_MS);
         script.onload = () => {
+            clearTimeout(timer);
             if (loadedLocales.has(lang)) resolve();
             else reject(new Error(`Translation file for ${lang} did not register`));
         };
         script.onerror = () => {
+            clearTimeout(timer);
             script.remove();
             reject(new Error(`Translation file for ${lang} could not be loaded`));
         };
