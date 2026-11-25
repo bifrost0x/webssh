@@ -1384,61 +1384,62 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         this.setupEventListeners();
     }
 
-    paneMarkup(side, active) {
-        const prefix = side === 'left' ? 'Left' : 'Right';
-        const sourcesLabel = side === 'left'
+    paneMarkup(paneSide, active) {
+        if (paneSide !== 'left' && paneSide !== 'right') throw new Error(`Unknown pane side: ${paneSide}`);
+        const paneIdPrefix = paneSide === 'left' ? 'Left' : 'Right';
+        const sourcesLabel = paneSide === 'left'
             ? 'aria-label="Left side sources" data-i18n-aria-label="fm.workspace.leftSources"'
             : 'aria-label="Right side sources" data-i18n-aria-label="fm.workspace.rightSources"';
-        return `<div class="fm-pane${active ? ' active' : ''}" id="fm${prefix}Pane" data-pane="${side}">
+        return `<div class="fm-pane${active ? ' active' : ''}" id="fm${paneIdPrefix}Pane" data-pane="${paneSide}">
                             <div class="fm-pane-header">
-                                <div class="fm-source-tabs" id="fm${prefix}Tabs" role="tablist" ${sourcesLabel}></div>
-                                <button type="button" class="fm-source-tab-add" data-source-target="${side}" aria-label="Open source" title="Open source" data-i18n-aria-label="fm.workspace.openSource" data-i18n-title="fm.workspace.openSource">
+                                <div class="fm-source-tabs" id="fm${paneIdPrefix}Tabs" role="tablist" ${sourcesLabel}></div>
+                                <button type="button" class="fm-source-tab-add" data-source-target="${paneSide}" aria-label="Open source" title="Open source" data-i18n-aria-label="fm.workspace.openSource" data-i18n-title="fm.workspace.openSource">
                                     <span class="material-icons" aria-hidden="true">add</span><span data-i18n="fm.workspace.openSource">Open source</span>
                                 </button>
-                                <select class="fm-source-select form-control fm-legacy-source-select" id="fm${prefix}Source" tabindex="-1" aria-hidden="true">
+                                <select class="fm-source-select form-control fm-legacy-source-select" id="fm${paneIdPrefix}Source" tabindex="-1" aria-hidden="true">
                                     <option value="" data-i18n="fm.selectSource">-- Select Source --</option>
-                                    <optgroup data-i18n-label="fm.sshSessions" label="SSH Sessions" id="fm${prefix}Sessions"></optgroup>
+                                    <optgroup data-i18n-label="fm.sshSessions" label="SSH Sessions" id="fm${paneIdPrefix}Sessions"></optgroup>
                                     <option value="quick-connect" data-i18n="fm.newConnection">+ Quick Connect...</option>
                                 </select>
                             </div>
-                            <div class="fm-source-identity" id="fm${prefix}Identity"></div>
+                            <div class="fm-source-identity" id="fm${paneIdPrefix}Identity"></div>
                             <div class="fm-pane-nav">
-                                <button type="button" class="fm-nav-btn" id="fm${prefix}Up" aria-label="Go up" title="Go up" data-i18n-aria-label="fm.goUp" data-i18n-title="fm.goUp">
+                                <button type="button" class="fm-nav-btn" id="fm${paneIdPrefix}Up" aria-label="Go up" title="Go up" data-i18n-aria-label="fm.goUp" data-i18n-title="fm.goUp">
                                     <span class="material-icons" aria-hidden="true">arrow_upward</span>
                                 </button>
-                                <button type="button" class="fm-nav-btn" id="fm${prefix}Home" aria-label="Go home" title="Go home" data-i18n-aria-label="fm.goHome" data-i18n-title="fm.goHome">
+                                <button type="button" class="fm-nav-btn" id="fm${paneIdPrefix}Home" aria-label="Go home" title="Go home" data-i18n-aria-label="fm.goHome" data-i18n-title="fm.goHome">
                                     <span class="material-icons" aria-hidden="true">home</span>
                                 </button>
-                                <div class="fm-breadcrumb" id="fm${prefix}Breadcrumb">
-                                    <input type="text" class="fm-path-input" id="fm${prefix}Path" aria-label="${this.escapeHtml(this.t('terminalFiles.path', 'Absolute path'))}" data-i18n-aria-label="terminalFiles.path" value="/" placeholder="/path" spellcheck="false" autocomplete="off">
+                                <div class="fm-breadcrumb" id="fm${paneIdPrefix}Breadcrumb">
+                                    <input type="text" class="fm-path-input" id="fm${paneIdPrefix}Path" aria-label="${this.escapeHtml(this.t('terminalFiles.path', 'Absolute path'))}" data-i18n-aria-label="terminalFiles.path" value="/" placeholder="/path" spellcheck="false" autocomplete="off">
                                 </div>
-                                <button type="button" class="fm-nav-btn" id="fm${prefix}Refresh" aria-label="Refresh" title="Refresh" data-i18n-aria-label="fm.refresh" data-i18n-title="fm.refresh">
+                                <button type="button" class="fm-nav-btn" id="fm${paneIdPrefix}Refresh" aria-label="Refresh" title="Refresh" data-i18n-aria-label="fm.refresh" data-i18n-title="fm.refresh">
                                     <span class="material-icons" aria-hidden="true">refresh</span>
                                 </button>
                             </div>
-                            <div class="fm-pane-toolbar" data-pane-toolbar="${side}"><details class="fm-action-menu fm-action-menu-new"><summary><span class="material-icons" aria-hidden="true">add</span><span data-i18n="fm.new">New</span><span class="material-icons fm-menu-chevron" aria-hidden="true">expand_more</span></summary><div class="fm-action-menu-items"><button type="button" data-pane-action="newfile" aria-label="New file" data-i18n-aria-label="fm.newFile"><span class="material-icons" aria-hidden="true">note_add</span><span data-i18n="fm.newFile">New file</span></button>
+                            <div class="fm-pane-toolbar" data-pane-toolbar="${paneSide}"><details class="fm-action-menu fm-action-menu-new"><summary><span class="material-icons" aria-hidden="true">add</span><span data-i18n="fm.new">New</span><span class="material-icons fm-menu-chevron" aria-hidden="true">expand_more</span></summary><div class="fm-action-menu-items"><button type="button" data-pane-action="newfile" aria-label="New file" data-i18n-aria-label="fm.newFile"><span class="material-icons" aria-hidden="true">note_add</span><span data-i18n="fm.newFile">New file</span></button>
 <button type="button" data-pane-action="newfolder" aria-label="New Folder" title="New Folder" data-i18n-aria-label="fm.newFolder" data-i18n-title="fm.newFolder"><span class="material-icons" aria-hidden="true">create_new_folder</span><span data-i18n="fm.newFolder">New Folder</span></button></div></details><button type="button" data-pane-action="upload" aria-label="Upload" title="Upload" data-i18n-aria-label="fm.upload" data-i18n-title="fm.upload"><span class="material-icons" aria-hidden="true">upload</span><span data-i18n="fm.upload">Upload</span></button><button type="button" data-pane-action="download" aria-label="Download" title="Download" data-i18n-aria-label="fm.download" data-i18n-title="fm.download"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="fm.download">Download</span></button><button type="button" data-pane-action="preview" aria-label="Preview" title="Preview" data-i18n-aria-label="fm.preview" data-i18n-title="fm.preview"><span class="material-icons" aria-hidden="true">preview</span><span data-i18n="fm.preview">Preview</span></button><details class="fm-action-menu fm-action-menu-more"><summary aria-label="More…" data-i18n-aria-label="fm.more"><span class="material-icons" aria-hidden="true">more_horiz</span><span data-i18n="fm.more">More…</span></summary><div class="fm-action-menu-items"><button type="button" data-pane-action="rename" aria-label="Rename" title="Rename" data-i18n-aria-label="fm.rename" data-i18n-title="fm.rename"><span class="material-icons" aria-hidden="true">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
 <button type="button" data-pane-action="move" aria-label="Move…" title="Move…" data-i18n-aria-label="fm.moveAction" data-i18n-title="fm.moveAction"><span class="material-icons" aria-hidden="true">drive_file_move</span><span data-i18n="fm.moveAction">Move…</span></button>
 <button type="button" data-pane-action="permissions" aria-label="Permissions" data-i18n-aria-label="fm.permissions" hidden><span class="material-icons" aria-hidden="true">lock</span><span data-i18n="fm.permissions">Permissions</span></button>
 <button type="button" class="is-danger" data-pane-action="delete" aria-label="Delete" title="Delete" data-i18n-aria-label="fm.delete" data-i18n-title="fm.delete"><span class="material-icons" aria-hidden="true">delete</span><span data-i18n="fm.delete">Delete</span></button></div></details></div>
                             <div class="fm-file-list-header">
-                                <input type="checkbox" data-pane-select-all="${side}" aria-label="Select all files" data-i18n-aria-label="fm.workspace.selectAll">
+                                <input type="checkbox" data-pane-select-all="${paneSide}" aria-label="Select all files" data-i18n-aria-label="fm.workspace.selectAll">
                                 <span data-i18n="fm.name">Name</span>
                                 <span data-i18n="fm.size">Size</span>
                                 <span data-i18n="fm.modified">Modified</span>
                                 <span data-i18n="fm.permissions">Permissions</span>
                             </div>
-                            <div class="fm-file-list" id="fm${prefix}List">
+                            <div class="fm-file-list" id="fm${paneIdPrefix}List">
                                 <div class="fm-empty">
                                     <span class="material-icons fm-empty-icon">folder_open</span>
                                     <div class="fm-empty-text" data-i18n="fm.selectSourceAbove">Select a source above</div>
                                 </div>
                             </div>
                             <div class="fm-pane-footer">
-                                <span class="fm-host-badge" id="fm${prefix}Badge"></span>
+                                <span class="fm-host-badge" id="fm${paneIdPrefix}Badge"></span>
                                 <div class="fm-pane-status">
-                                    <span id="fm${prefix}Count">0 items</span>
-                                    <span id="fm${prefix}Selected"></span>
+                                    <span id="fm${paneIdPrefix}Count">0 items</span>
+                                    <span id="fm${paneIdPrefix}Selected"></span>
                                 </div>
                             </div>
                         </div>`;

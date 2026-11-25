@@ -89,8 +89,8 @@ const REVIEWED = new Set([
     "this.paneMarkup('left', true)",
     "this.paneMarkup('right', false)",
     "active ? ' active' : ''",
-    'prefix',
-    'side',
+    'paneIdPrefix',
+    'paneSide',
     'sourcesLabel',
 ]);
 

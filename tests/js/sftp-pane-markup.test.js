@@ -71,3 +71,10 @@ test('both file manager panes render the same structure with side-specific ids',
     assert.ok(html.indexOf('<!-- Left Pane -->') < html.indexOf('id="fmLeftPane"'));
     assert.ok(html.indexOf('<!-- Right Pane -->') < html.indexOf('id="fmRightPane"'));
 });
+
+test('pane markup rejects sides other than left and right', () => {
+    const manager = Object.create(Manager.prototype);
+    for (const side of ['center', '"><img src=x>', undefined, 'Left']) {
+        assert.throws(() => manager.paneMarkup(side, false), /Unknown pane side/);
+    }
+});
