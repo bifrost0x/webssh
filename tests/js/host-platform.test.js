@@ -122,7 +122,9 @@ test('every platform renders a local icon, a family logo or a glyph', () => {
         assert.ok(files.has(file), `${id} -> ${file}`);
     }
     assert.match(icons.render({platform_icon: 'proxmoxbackup'}, fakeDocument()).style.maskImage, /proxmox\.svg/);
-    assert.match(icons.render({platform_icon: 'rockylinux'}, fakeDocument()).style.maskImage, /redhat\.svg/);
+    // Rocky Linux is not Red Hat; like Gentoo it falls back to the neutral Linux mark.
+    assert.match(icons.render({platform_icon: 'rockylinux'}, fakeDocument()).style.maskImage, /\/linux\.svg"/);
+    assert.match(icons.render({platform_icon: 'gentoo'}, fakeDocument()).style.maskImage, /\/linux\.svg"/);
     const doc = fakeDocument();
     doc.getElementById = id => id === 'hostPlatformAssets' ? {textContent: JSON.stringify({proxmox: '/static/icons/platforms/proxmox.svg?v=0123456789abcdef'})} : null;
     assert.equal(icons.render({platform_icon: 'proxmoxbackup'}, doc).style.maskImage, 'url("/static/icons/platforms/proxmox.svg?v=0123456789abcdef")');
