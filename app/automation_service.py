@@ -12,7 +12,7 @@ import uuid
 
 import config
 from .automation_store import (AutomationError, AutomationHostKeyRequired, AutomationNotDispatched, remember_intent, profile_fingerprint,
-    runbooks, user_path, read_document, write_document, MAX_STORE_BYTES)
+    runbooks, user_path, read_document, write_document, document_bytes, MAX_STORE_BYTES)
 from .credential_service import session_identity
 from .automation_transport import (CONNECTION_REASONS, STEP_REASONS, STEP_OUTPUT_BYTES,
     RUN_OUTPUT_BYTES, connect_profile, connection_reason, execute_step)
@@ -257,7 +257,7 @@ class AutomationService:
             document = self._read_history(path)
             document['runs'] = [deepcopy(record)] + [r for r in document['runs'] if r['id'] != record['id']]
             document['runs'] = document['runs'][:50]
-            while len(document['runs']) > 1 and len(json.dumps(document).encode()) > MAX_STORE_BYTES:
+            while len(document['runs']) > 1 and len(document_bytes(document)) > MAX_STORE_BYTES:
                 document['runs'].pop()
             # Never silently evict the current run, even if metadata alone exceeds the limit.
             write_document(path, document)

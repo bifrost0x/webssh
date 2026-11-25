@@ -269,6 +269,24 @@ def test_run_output_budget_retains_current_run_and_still_executes_every_step(app
     assert user_path(uid, 'automation-runs.json').stat().st_size <= MAX_STORE_BYTES
 
 
+def test_full_history_stays_readable(app, context):
+    import os
+    from app.automation_store import MAX_STORE_BYTES, user_path
+    uid, _, _, _ = context
+    service = AutomationService(app)
+    def run(number):
+        steps = [dict(name=f'Step {n}', status='succeeded', exit_code=0, duration=1, reason=None,
+                      stdout='x' * 3276, stderr='', output_truncated=False) for n in range(20)]
+        target = dict(id='host', name='Host', host='example.test', port=22, username='user', group=None,
+                      status='succeeded', reason=None, steps=steps)
+        return dict(id=f'run-{number}', name='Run', created_at='now', finished_at='now', status='succeeded', targets=[target])
+    for number in range(50):
+        service._persist(uid, run(number))
+    assert os.path.getsize(user_path(uid, 'automation-runs.json')) <= MAX_STORE_BYTES
+    history = AutomationService(app).history(uid)
+    assert history and history[0]['id'] == 'run-49'
+
+
 def test_edit_during_run_skips_remaining_hosts_with_reason(app, context, monkeypatch):
     import time
     from contextlib import contextmanager
