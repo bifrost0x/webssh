@@ -120,9 +120,11 @@ def test_socks_remote_dns_terminal_and_session_sftp(
                 session_id, remote_path, io.BytesIO(payload),
                 chunk_size=7, max_bytes=1024,
             ) == len(payload)
-            listing, error = sftp_handler.list_directory(session_id, '/tmp')
+            listing, error = sftp_handler.open_directory_listing(session_id, '/tmp')
             assert error is None
-            assert remote_path.rsplit('/', 1)[-1] in {item['name'] for item in listing}
+            entries, error, _more = listing.read_page(100_000)
+            assert error is None
+            assert remote_path.rsplit('/', 1)[-1] in {item['name'] for item in entries}
             with sftp.file(remote_path, 'rb') as uploaded:
                 assert uploaded.read() == payload
             assert proxy.requests == [(3, 'target', 22)]

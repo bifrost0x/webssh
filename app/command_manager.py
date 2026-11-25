@@ -161,7 +161,6 @@ def save_user_commands(
         previous_size=previous_size,
         previous_count=previous_count,
     )
-    user_commands_file.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(user_commands_file, commands)
     return True
 

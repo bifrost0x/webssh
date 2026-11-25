@@ -145,9 +145,6 @@ class FileBackend(Protocol):
     def create_file(self, source: 'ResolvedFileSource', parent_path: str, name: str, *, authorize=None) -> dict:
         ...
 
-    def list_directory(self, source: 'ResolvedFileSource', path: str) -> Any:
-        ...
-
     def open_directory_listing(
         self,
         source: 'ResolvedFileSource',

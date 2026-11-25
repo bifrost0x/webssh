@@ -900,17 +900,6 @@ def create_app(
                 abort(403)
 
 
-    if not config.DEBUG:
-        if not os.environ.get('SECRET_KEY'):
-            log_error("CRITICAL: SECRET_KEY not set in environment variables! "
-                      "Using auto-generated SECRET_KEY will break sessions after restart. "
-                      "Set SECRET_KEY environment variable for production deployment!")
-
-        if config.CORS_ORIGINS == '*' and not os.environ.get('ALLOW_CORS_WILDCARD', '').lower() == 'true':
-            log_warning("CORS_ORIGINS set to wildcard (*) in production mode! "
-                        "This allows any domain to access your API - significant security risk. "
-                        "Set CORS_ORIGINS to specific allowed origins.")
-
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{config.DATA_DIR / "app.db"}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)

@@ -74,15 +74,16 @@ def test_mkdir_or_raise_preserves_sftp_permission_failure(monkeypatch):
 
 def test_sftp_backend_delegates_listing_without_changing_path_semantics(monkeypatch):
     calls = []
+    listing = object()
     monkeypatch.setattr(
         sftp_handler,
-        'list_directory',
-        lambda session_id, path: calls.append((session_id, path)) or ([], None),
+        'open_directory_listing',
+        lambda session_id, path: calls.append((session_id, path)) or (listing, None),
     )
 
-    files, error = SFTPBackend().list_directory(source(), '/home/user')
+    result, error = SFTPBackend().open_directory_listing(source(), '/home/user')
 
-    assert (files, error) == ([], None)
+    assert (result, error) == (listing, None)
     assert calls == [('session-a', '/home/user')]
 
 

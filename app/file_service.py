@@ -46,10 +46,6 @@ class FileService:
             tail_lines=tail_lines,
         )
 
-    def list_directory(self, source_id, *, user_id, path):
-        source = self.resolve(source_id, user_id, FileCapability.LIST)
-        return source.backend.list_directory(source, path)
-
     def list_directory_page(
         self,
         source_id,

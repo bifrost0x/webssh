@@ -1074,45 +1074,6 @@ def sanitize_path(remote_path):
 
     return normalized
 
-def _read_directory_listing(session_id, remote_path='.'):
-    """Materialize one metadata-bounded directory snapshot."""
-    try:
-        safe_path = sanitize_path(remote_path)
-        if safe_path is None:
-            return None, "Invalid path: path traversal detected"
-
-        with sftp_session(session_id) as (sftp, source_type):
-            files = []
-            member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
-            with _directory_entries(
-                sftp, safe_path, member_budget=member_budget,
-                undecodable_names=True,
-            ) as entries:
-                for entry in entries:
-                    is_symlink = stat.S_ISLNK(entry.st_mode)
-                    files.append({
-                        'name': entry.filename,
-                        'size': entry.st_size,
-                        'mode': entry.st_mode,
-                        'is_dir': stat.S_ISDIR(entry.st_mode),
-                        'is_symlink': is_symlink,
-                        'modified': entry.st_mtime
-                    })
-        return files, None
-    except TransferMemberLimitExceeded:
-        return None, 'Directory exceeds configured member limit'
-    except RemoteMetadataLimitExceeded as e:
-        return None, public_sftp_error(e)
-    except SFTPOperationError as e:
-        return None, public_sftp_error(e)
-    except Exception as e:
-        return None, public_sftp_error(e)
-
-
-def list_directory(session_id, remote_path='.'):
-    """Return one bounded snapshot for service-layer pagination."""
-    return _read_directory_listing(session_id, remote_path)
-
 
 def probe_sftp_capability(session_id):
     """Return whether an existing SSH session can browse via SFTP.
@@ -1427,25 +1388,6 @@ def get_home_directory(session_id):
         with sftp_session(session_id) as (sftp, source_type):
             home_path = sftp.normalize('.')
         return home_path, None
-    except SFTPOperationError as e:
-        return None, public_sftp_error(e)
-    except Exception as e:
-        return None, public_sftp_error(e)
-
-def check_exists(session_id, path):
-    """Check if a file or directory exists on remote server."""
-    try:
-        safe_path = sanitize_path(path)
-        if safe_path is None:
-            return None, "Invalid path"
-
-        with sftp_session(session_id) as (sftp, source_type):
-            try:
-                file_stat = sftp.stat(safe_path)
-                is_dir = file_stat.st_mode & 0o040000 != 0
-                return {'exists': True, 'is_dir': is_dir, 'size': file_stat.st_size}, None
-            except FileNotFoundError:
-                return {'exists': False, 'is_dir': False, 'size': 0}, None
     except SFTPOperationError as e:
         return None, public_sftp_error(e)
     except Exception as e:

@@ -73,7 +73,7 @@ class TemporaryConnectionPool:
             )
             return self.cleanup_handle
 
-    def create_connection(self, host, port, username, password=None, key_path=None, key_content=None, user_id=None, gateway_attempt=None, credential_guard=None):
+    def create_connection(self, host, port, username, password=None, key_content=None, user_id=None, gateway_attempt=None, credential_guard=None):
         """
         Create a temporary SSH+SFTP connection.
 
@@ -82,8 +82,7 @@ class TemporaryConnectionPool:
             port (int): SSH server port
             username (str): SSH username
             password (str, optional): SSH password
-            key_path (str, optional): Path to SSH private key file - DEPRECATED
-            key_content (str, optional): Decrypted SSH private key content (preferred)
+            key_content (str, optional): Decrypted SSH private key content
             user_id (str): Application user ID (for tracking)
 
         Returns:
@@ -143,8 +142,6 @@ class TemporaryConnectionPool:
                 from .ssh_gateway_auth import GatewayAuthStrategy, GatewayTransport
                 gateway_attempt.own(client)
                 gateway_attempt.own(validated_socket)
-                if key_path:
-                    return None, "Gateway authentication requires a stored key"
                 connect_kwargs.pop('look_for_keys', None)
                 connect_kwargs.pop('allow_agent', None)
                 connect_kwargs['transport_factory'] = GatewayTransport
@@ -155,10 +152,6 @@ class TemporaryConnectionPool:
                 )
             elif key_content:
                 connect_kwargs['pkey'] = _load_private_key(key_content)
-            elif key_path:
-                connect_kwargs['key_filename'] = key_path
-                if password:
-                    connect_kwargs['passphrase'] = password
             elif password:
                 if credential_guard is not None:
                     from .credential_connections import SavedPasswordAuth

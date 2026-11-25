@@ -305,8 +305,6 @@ def save_keys(user_id, keys):
         if not keys_file or not _valid_key_document(document):
             return False
 
-        keys_file.parent.mkdir(parents=True, exist_ok=True)
-
         atomic_write_json(keys_file, document)
         return True
     except OSError as e:

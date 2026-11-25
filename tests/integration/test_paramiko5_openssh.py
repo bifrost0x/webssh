@@ -577,10 +577,11 @@ def test_names_with_two_dots_can_be_listed_opened_and_uploaded(remote_workspace)
 
     remote_workspace.sftp.mkdir(f'{remote_workspace.path}/backup..old')
     remote_workspace.write('notes..txt', b'two dots\n')
-    files, error = sftp_handler.list_directory(
+    listing, error = sftp_handler.open_directory_listing(
         remote_workspace.session_id, f'{remote_workspace.path}/backup..old',
     )
-    assert (files, error) == ([], None)
+    assert error is None
+    assert listing.read_page(10) == ([], None, False)
     opened, error = sftp_handler.read_file_for_edit(
         remote_workspace.session_id, f'{remote_workspace.path}/notes..txt',
     )
@@ -629,17 +630,13 @@ def test_directory_with_a_non_utf8_name_stays_browsable(remote_workspace):
 
     remote_workspace.write('normal.txt', b'ok')
     remote_workspace.write('caf\udce9.txt', b'latin-1 name')
-    files, error = sftp_handler.list_directory(
-        remote_workspace.session_id, remote_workspace.path,
-    )
-    assert error is None
-    assert sorted(entry['name'] for entry in files) == ['caf\udce9.txt', 'normal.txt']
     listing, error = sftp_handler.open_directory_listing(
         remote_workspace.session_id, remote_workspace.path,
     )
     assert error is None
     page, error, _more = listing.read_page(10)
-    assert error is None and len(page) == 2
+    assert error is None
+    assert sorted(entry['name'] for entry in page) == ['caf\udce9.txt', 'normal.txt']
 
 
 def test_editor_refuses_to_reencode_a_latin1_file(remote_workspace):

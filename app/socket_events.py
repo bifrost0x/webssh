@@ -422,12 +422,10 @@ def _is_valid_host(host_str):
     except ValueError:
         return False
 
-def _validate_ssh_params(host, port, username, allow_internal=False, *, allow_gateway=False):
+def _validate_ssh_params(host, port, username, *, allow_gateway=False):
     """Validate SSH connection parameters. Returns (clean_host, clean_port, clean_username, error).
 
-    ``allow_internal`` remains for compatibility with callers. DNS and address
-    policy are enforced only at the connector, where the validated result can
-    be pinned to the socket without a time-of-check/time-of-use gap.
+    Network policy is enforced at the connector.
     """
     host = (host or '').strip()
     if not host:
@@ -1472,10 +1470,9 @@ def handle_ssh_connect(data, current_user=None):
                 )
                 return
 
-        # The target may be internal when reached via a bastion (legitimate).
         host, port, username, error = _validate_ssh_params(
             data.get('host'), data.get('port', 22), data.get('username'),
-            allow_internal=bool(proxy_jump or socks_proxy), allow_gateway=auth_type != 'tailscale'
+            allow_gateway=auth_type != 'tailscale'
         )
         if error:
             emit_error(error)
@@ -1544,8 +1541,7 @@ def handle_ssh_connect(data, current_user=None):
                 emit_error(f'SSH key error: {key_error}')
                 return
 
-        # Resolve optional ProxyJump / bastion parameters. The bastion is reached
-        # directly by the server, so it is validated WITHOUT allow_internal.
+        # Resolve optional ProxyJump / bastion parameters.
         bastion_host = bastion_port = bastion_username = None
         if proxy_jump:
             bastion_host, bastion_port, bastion_username, bastion_error = _validate_ssh_params(

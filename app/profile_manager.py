@@ -344,8 +344,6 @@ def save_profiles(
             compact=compact,
         )
 
-        profiles_file.parent.mkdir(parents=True, exist_ok=True)
-
         atomic_write_bytes(profiles_file, payload)
         return True
     except ConnectionStorageLimitError:

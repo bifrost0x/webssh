@@ -415,33 +415,6 @@ class SMBBackend:
         with actual.lock:
             return actual.session.inspect_directory_access(unc)
 
-    def list_directory(self, source, path):
-        try:
-            actual = self._owned_source(source)
-            directory = self._path(path)
-            items = []
-            iterator = None
-            with actual.lock:
-                try:
-                    iterator = actual.session.invoke(
-                        'scandir_verified',
-                        directory.to_unc(actual.target_ip, actual.share),
-                    )
-                    for entry in iterator:
-                        if len(items) >= config.MAX_TRANSFER_MEMBERS:
-                            raise SMBBackendError(
-                                'Directory exceeds configured member limit'
-                            )
-                        items.append(
-                            self._directory_payload(directory, entry)
-                        )
-                finally:
-                    if iterator is not None:
-                        iterator.close()
-            return items, None
-        except Exception as exc:
-            return None, self._public_error(exc)
-
     def open_directory_listing(self, source, path):
         try:
             return _SMBDirectoryListing(self, source, path), None

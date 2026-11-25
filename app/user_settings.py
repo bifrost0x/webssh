@@ -260,7 +260,6 @@ def save_user_settings(user_id, settings):
         return False
 
     settings_file = user.get_data_dir() / 'settings.json'
-    settings_file.parent.mkdir(parents=True, exist_ok=True)
 
     try:
         with storage_lock(f'settings:{user_id}'):

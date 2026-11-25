@@ -16,6 +16,15 @@ from app.smb_protocol import SMBProtocolError
 from app.transfer_errors import classify_transfer_failure
 
 
+def _list_all(backend, source, path):
+    listing, error = backend.open_directory_listing(source, path)
+    if error:
+        return None, error
+    page, error, _more = listing.read_page(10_000)
+    listing.close()
+    return page, error
+
+
 def _required(name):
     value = os.environ.get(name)
     if not value:
@@ -94,7 +103,7 @@ def run_checks():
             else:
                 raise AssertionError('SMB source unexpectedly accepted chmod')
 
-        listing, error = backend.list_directory(source, '/')
+        listing, error = _list_all(backend, source, '/')
         assert error is None, error
         names = {item['name'] for item in listing}
         assert {'hello.txt', 'Überblick.txt'}.issubset(names)
@@ -114,7 +123,7 @@ def run_checks():
         if link is not None:
             assert link['is_dir'] is False
 
-        hidden_listing, error = backend.list_directory(source, '/known-only')
+        hidden_listing, error = _list_all(backend, source, '/known-only')
         assert hidden_listing is None and error == 'Permission denied', (
             hidden_listing,
             error,
@@ -265,7 +274,7 @@ def run_checks():
             assert interrupted is True
             with backend.open_reader(source, editor_path) as lease:
                 assert lease.reader.read() == expected_bytes
-            listing, error = backend.list_directory(source, '/')
+            listing, error = _list_all(backend, source, '/')
             assert error is None, error
             assert not any(
                 scenario in item['name'] and '.webssh-' in item['name']
@@ -352,7 +361,7 @@ def run_checks():
             copied = b''.join(iter(lambda: lease.reader.read(65536), b''))
         assert hashlib.sha256(copied).digest() == hashlib.sha256(payload).digest()
 
-        denied, error = backend.list_directory(source, '/denied')
+        denied, error = _list_all(backend, source, '/denied')
         assert denied is None and error == 'Permission denied', (denied, error)
 
         read_only_descriptor = pool.create_source(
@@ -376,7 +385,7 @@ def run_checks():
             handle_id=read_only_descriptor.source_id.split(':', 1)[1],
             backend=backend,
         )
-        read_only_listing, error = backend.list_directory(read_only_source, '/')
+        read_only_listing, error = _list_all(backend, read_only_source, '/')
         assert error is None
         assert [item['name'] for item in read_only_listing] == ['read-only.txt']
         try:
@@ -396,7 +405,7 @@ def run_checks():
             }
         else:
             raise AssertionError('read-only share accepted a write')
-        read_only_listing, error = backend.list_directory(read_only_source, '/')
+        read_only_listing, error = _list_all(backend, read_only_source, '/')
         assert error is None
         assert [item['name'] for item in read_only_listing] == ['read-only.txt']
 
@@ -428,7 +437,7 @@ def run_checks():
             budget=TransferBudget(max_bytes=len(payload) * 2, max_members=100),
             cancel_event=Event(),
         ) == (True, None)
-        listing, error = backend.list_directory(source, '/')
+        listing, error = _list_all(backend, source, '/')
         assert error is None
         assert not any('.webssh-write-' in item['name'] for item in listing)
 

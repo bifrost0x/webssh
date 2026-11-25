@@ -255,7 +255,7 @@ def cleanup_sftp_session(sftp):
     yield sftp, 'session'
 
 
-def test_list_directory_allows_exact_configured_member_limit(monkeypatch):
+def test_directory_listing_allows_exact_configured_member_limit(monkeypatch):
     import app.sftp_handler as sftp_handler
 
     iterator = CleanupDirectoryIterator([cleanup_entry('visible.txt', stat.S_IFREG)])
@@ -265,18 +265,23 @@ def test_list_directory_allows_exact_configured_member_limit(monkeypatch):
     )
     monkeypatch.setattr(sftp_handler.config, 'MAX_TRANSFER_MEMBERS', 1)
     monkeypatch.setattr(
-        sftp_handler, 'sftp_session', lambda _session_id: cleanup_sftp_session(sftp)
+        sftp_handler,
+        'sftp_session',
+        lambda _session_id, **_kwargs: cleanup_sftp_session(sftp),
     )
 
-    files, error = sftp_handler.list_directory('session', '/remote')
+    listing, error = sftp_handler.open_directory_listing('session', '/remote')
+    assert error is None
+    files, error, has_more = listing.read_page(10)
 
     assert error is None
+    assert has_more is False
     assert [file['name'] for file in files] == ['visible.txt']
     assert iterator.consumed == 1
     assert iterator.closed is True
 
 
-def test_list_directory_rejects_limit_plus_one_without_appending_probe(monkeypatch):
+def test_directory_listing_rejects_limit_plus_one_without_appending_probe(monkeypatch):
     import app.sftp_handler as sftp_handler
 
     iterator = CleanupDirectoryIterator([
@@ -292,12 +297,17 @@ def test_list_directory_rejects_limit_plus_one_without_appending_probe(monkeypat
     )
     monkeypatch.setattr(sftp_handler.config, 'MAX_TRANSFER_MEMBERS', 1)
     monkeypatch.setattr(
-        sftp_handler, 'sftp_session', lambda _session_id: cleanup_sftp_session(sftp)
+        sftp_handler,
+        'sftp_session',
+        lambda _session_id, **_kwargs: cleanup_sftp_session(sftp),
     )
 
-    files, error = sftp_handler.list_directory('session', '/remote')
+    listing, error = sftp_handler.open_directory_listing('session', '/remote')
+    assert error is None
+    files, error, has_more = listing.read_page(10)
 
     assert files is None
+    assert has_more is False
     assert error == 'Directory exceeds configured member limit'
     assert iterator.consumed == 2
     assert iterator.closed is True
