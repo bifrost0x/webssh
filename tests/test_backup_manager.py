@@ -4,6 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 import sqlite3
+import stat
 import subprocess
 import sys
 import zipfile
@@ -1439,9 +1440,37 @@ def test_backup_verification_still_works_without_a_usable_private_root(
         backup_manager.config, 'BACKUP_TEMP_DIR', tmp_path / 'data' / 'tmp',
     )
     directories = _record_database_copies(monkeypatch)
+    warnings = []
+    monkeypatch.setattr(
+        backup_manager, 'log_warning',
+        lambda message, **fields: warnings.append((message, fields)),
+    )
+    copy_modes = []
+    real_validate = backup_manager._validate_webssh_database
 
-    manifest = verify_backup(archive)
+    def recording_validate(path):
+        copy_modes.append(stat.S_IMODE(os.stat(path).st_mode))
+        return real_validate(path)
+
+    monkeypatch.setattr(
+        backup_manager, '_validate_webssh_database', recording_validate,
+    )
+    previous_umask = os.umask(0)
+    try:
+        manifest = verify_backup(archive)
+    finally:
+        os.umask(previous_umask)
 
     assert manifest.files
     assert directories == [None]
     assert not (tmp_path / 'data').exists()
+    if os.name != 'nt':
+        assert copy_modes == [0o600]
+    assert len(warnings) == 1
+    message, fields = warnings[0]
+    assert 'system temporary directory' in message
+    assert fields == {
+        'error_type': 'RuntimeError',
+        'reason': 'BACKUP_TEMP_DIR must be outside DATA_DIR, static, and logs',
+    }
+    assert str(tmp_path) not in repr(warnings)
