@@ -1139,7 +1139,7 @@ def cache_detected_facts(user_id, profile_id, expected_endpoint, *, identity=Non
 
 @user_operation
 def record_identity_attempt(user_id, profile_id, expected_endpoint, *, now):
-    """Record when the identity probe last ran without changing any stored fact."""
+    """Record when the identity probe last ran; stored facts other than a legacy 'server' stay."""
     if expected_endpoint is None or isinstance(now, bool) or not isinstance(now, (int, float)):
         return False
     with storage_lock(f'command-config:{user_id}'):
@@ -1150,6 +1150,9 @@ def record_identity_attempt(user_id, profile_id, expected_endpoint, *, now):
             for profile in profiles:
                 if profile.get('id') == profile_id and endpoint(profile) == expected_endpoint:
                     profile['platform_checked_at'] = now
+                    # The old probe's 'server' would otherwise bring the probe back on every login.
+                    if profile.get('detected_platform') == 'server':
+                        del profile['detected_platform']
                     return save_profiles(user_id, profiles, previous_count=len(profiles))
     return False
 

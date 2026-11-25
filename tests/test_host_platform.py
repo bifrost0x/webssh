@@ -1194,6 +1194,18 @@ def test_a_non_posix_greeting_replaces_facts_from_an_earlier_system(app, monkeyp
     assert not set(_STORED_FACTS) & set(saved), json.dumps(saved)
 
 
+def test_a_legacy_server_platform_goes_when_the_probe_stalls(app, monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(host_platform, 'time', SimpleNamespace(time=lambda: 10_000_000.0))
+    saved, published, _ = _stall_detection(app, monkeypatch, 'oldstall', b'ID=debian\nkernel=Linux\n',
+                                           detected_platform='server', detected_services=['nginx'],
+                                           services_checked_at=5)
+    assert published == [] and 'detected_platform' not in saved and saved['detected_services'] == ['nginx']
+    day = 24 * 3600
+    assert not host_platform.identity_needed(saved, now=10_000_000.0 + 3600)
+    assert host_platform.identity_needed(saved, now=10_000_000.0 + day + 1)
+
+
 def test_a_changed_posix_greeting_asks_the_probe_again(app, monkeypatch):
     from app import profile_manager
     user_id, profile, _ = _identity_session(app, monkeypatch, 'moved', greeting_platform='ubuntu')
