@@ -1029,7 +1029,7 @@ def _record_close_session(monkeypatch):
     return calls
 
 
-def test_ssh_connect_non_string_display_name_closes_session(app, monkeypatch):
+def test_ssh_connect_non_string_display_name_is_rejected_before_connect(app, monkeypatch):
     from app.models import SSHSession
 
     socket_client, _user_id = _authenticated_socket(
@@ -1037,13 +1037,10 @@ def test_ssh_connect_non_string_display_name_closes_session(app, monkeypatch):
     )
     _enable_tmux(monkeypatch)
     close_calls = _record_close_session(monkeypatch)
+    connect_calls = []
 
-    def create_connection(**_kwargs):
-        with ssh_manager.sessions_lock:
-            ssh_manager.sessions['display-name-session'] = {
-                'use_tmux': True,
-                'tmux_session_name': 'webssh_display_name',
-            }
+    def create_connection(**kwargs):
+        connect_calls.append(kwargs)
         return 'display-name-session', None
 
     monkeypatch.setattr(ssh_manager, 'create_ssh_connection', create_connection)
@@ -1064,6 +1061,7 @@ def test_ssh_connect_non_string_display_name_closes_session(app, monkeypatch):
         assert errors
         assert errors[0]['args'][0]['error'] == 'Invalid tmux session name'
         assert not any(event['name'] == 'ssh_connected' for event in events)
+        assert connect_calls == []
         assert close_calls == []
         with ssh_manager.sessions_lock:
             assert 'display-name-session' not in ssh_manager.sessions
