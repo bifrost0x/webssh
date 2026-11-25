@@ -2,12 +2,11 @@
 
 import time
 
-import pyotp
-
 from tests.step_up_helpers import (
     account_password_step_up_headers,
     mint_account_step_up_headers,
 )
+from tests.totp_helpers import totp_at, totp_now
 
 
 def _create_user(app, username="totp_route_user"):
@@ -92,7 +91,7 @@ def test_user_explicitly_enrolls_totp_and_receives_one_time_recovery_codes(
         "/api/totp/enroll/verify",
         json={
             "token": enrollment["token"],
-            "code": pyotp.TOTP(enrollment["secret"]).now(),
+            "code": totp_now(enrollment["secret"]),
             "confirm_enable_mfa": False,
         },
     )
@@ -112,7 +111,7 @@ def test_user_explicitly_enrolls_totp_and_receives_one_time_recovery_codes(
         "/api/totp/enroll/verify",
         json={
             "token": enrollment["token"],
-            "code": pyotp.TOTP(enrollment["secret"]).now(),
+            "code": totp_now(enrollment["secret"]),
             "confirm_enable_mfa": True,
         },
     )
@@ -153,7 +152,7 @@ def test_totp_completes_pending_password_login(app, client, monkeypatch):
         "/api/totp/enroll/verify",
         json={
             "token": started["token"],
-            "code": pyotp.TOTP(secret).now(),
+            "code": totp_now(secret),
             "confirm_enable_mfa": True,
         },
     ).status_code == 200
@@ -166,7 +165,7 @@ def test_totp_completes_pending_password_login(app, client, monkeypatch):
     assert primary.status_code == 200
     assert 'id="totpMfaPanel"' in primary.get_data(as_text=True)
 
-    next_code = pyotp.TOTP(secret).at(time.time() + 30)
+    next_code = totp_at(secret, time.time() + 30)
     verified = client.post(
         "/api/totp/auth/verify",
         json={"code": next_code},
@@ -411,7 +410,7 @@ def test_mfa_disable_is_explicit_and_recently_reauthenticated(
         "/api/totp/enroll/verify",
         json={
             "token": started["token"],
-            "code": pyotp.TOTP(started["secret"]).now(),
+            "code": totp_now(started["secret"]),
             "confirm_enable_mfa": True,
         },
     ).status_code == 200

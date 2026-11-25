@@ -5,13 +5,13 @@ import io
 import json
 import time
 
-import pyotp
 from werkzeug.test import EnvironBuilder
 
 from tests.step_up_helpers import (
     mint_account_step_up_headers,
     password_step_up_headers,
 )
+from tests.totp_helpers import totp_now
 
 
 def _create_user(app, username, *, is_admin=False):
@@ -263,7 +263,7 @@ def test_verified_totp_replacement_releases_restricted_session(
         "/api/totp/enroll/verify",
         json={
             "token": enrollment["token"],
-            "code": pyotp.TOTP(enrollment["secret"]).now(),
+            "code": totp_now(enrollment["secret"]),
             "confirm_enable_mfa": True,
         },
     )

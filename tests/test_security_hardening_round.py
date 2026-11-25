@@ -3,13 +3,13 @@ import logging
 import threading
 import time
 
-import pyotp
 import pytest
 
 import config
 from tests.step_up_helpers import account_password_step_up_headers
 from tests.test_automation_service import context  # noqa: F401  (fixture)
 from tests.test_totp_routes import _activate_totp_feature, _create_user, _login
+from tests.totp_helpers import totp_at, totp_now
 
 
 def _enable_rate_limits(monkeypatch):
@@ -25,7 +25,7 @@ def test_totp_login_is_limited_per_account_across_source_addresses(app, client, 
     started = client.post('/api/totp/enroll', json={}, headers=headers).get_json()
     secret = started['secret']
     assert client.post('/api/totp/enroll/verify', json={
-        'token': started['token'], 'code': pyotp.TOTP(secret).now(), 'confirm_enable_mfa': True}).status_code == 200
+        'token': started['token'], 'code': totp_now(secret), 'confirm_enable_mfa': True}).status_code == 200
     client.post('/logout')
     assert client.post('/login', data={'username': 'totp_spray_user', 'password': 'password123'}).status_code == 200
     _enable_rate_limits(monkeypatch)
@@ -39,7 +39,7 @@ def test_totp_login_is_limited_per_account_across_source_addresses(app, client, 
             db.session.get(User, user_id).mfa_failed_attempts = 0
             db.session.commit()
     # A fresh source address does not reset the per-account budget, even with the right code.
-    blocked = client.post('/api/totp/auth/verify', json={'code': pyotp.TOTP(secret).at(time.time() + 30)},
+    blocked = client.post('/api/totp/auth/verify', json={'code': totp_at(secret, time.time() + 30)},
                           environ_base={'REMOTE_ADDR': '198.51.100.99'})
     assert blocked.status_code == 429
 

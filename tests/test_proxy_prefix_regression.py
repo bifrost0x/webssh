@@ -149,14 +149,15 @@ def proxy_browser(proxy_app):
 def test_second_factor_returns_a_public_continuation(proxy_app, proxy_browser, monkeypatch, factor):
     import base64
     import config
-    import pyotp
     from types import SimpleNamespace
     from app.auth import register_user
     from app.models import TOTPAuthenticator, WebAuthnCredential, SecurityFeatureState, db
     from app.mfa_crypto import encrypt_totp_secret
     from app.recovery_service import generate_codes
+    from app.totp_service import _random_base32
+    from tests.totp_helpers import totp_now
     app, prefix = proxy_app
-    secret = pyotp.random_base32()
+    secret = _random_base32()
     credential_id = b'prefix-passkey'
     monkeypatch.setattr(config, 'TOTP_ENABLED', True)
     monkeypatch.setattr(config, 'WEBAUTHN_ENABLED', True)
@@ -175,7 +176,7 @@ def test_second_factor_returns_a_public_continuation(proxy_app, proxy_browser, m
                            data={'username': 'factor_user', 'password': 'password123'})
     assert response.status_code == 200
     if factor == 'totp':
-        response = client.post('/api/totp/auth/verify', json={'code': pyotp.TOTP(secret).now()})
+        response = client.post('/api/totp/auth/verify', json={'code': totp_now(secret)})
     elif factor == 'recovery':
         response = client.post('/api/auth/recovery', json={'code': code})
     else:

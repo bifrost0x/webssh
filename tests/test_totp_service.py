@@ -2,8 +2,10 @@
 
 from datetime import datetime, timedelta, timezone
 
-import pyotp
 import pytest
+
+from app.totp_service import _provisioning_uri, _random_base32, _totp_code
+from tests.totp_helpers import totp_at, totp_now
 
 
 def _create_user(app, username="totp_user"):
@@ -45,7 +47,7 @@ def test_activation_requires_bound_valid_code_and_enables_mfa_atomically(app):
     user_id = _create_user(app, "activate_totp")
     with app.app_context():
         view = begin_totp_enrollment(user_id, "correct-binding")
-        code = pyotp.TOTP(view.secret).now()
+        code = totp_now(view.secret)
 
         with pytest.raises(TOTPEnrollmentError):
             activate_totp_enrollment(view.token, code, "wrong-binding")
@@ -80,14 +82,14 @@ def test_totp_accepts_adjacent_steps_once_and_tracks_exact_timecode(app):
     reference = activation_time + timedelta(minutes=5)
     with app.app_context():
         view = begin_totp_enrollment(user_id, "binding")
-        activation_code = pyotp.TOTP(view.secret).at(activation_time)
+        activation_code = totp_at(view.secret, activation_time)
         authenticator = activate_totp_enrollment(
             view.token,
             activation_code,
             "binding",
             now=activation_time,
         )
-        previous_code = pyotp.TOTP(view.secret).at(reference - timedelta(seconds=30))
+        previous_code = totp_at(view.secret, reference - timedelta(seconds=30))
 
         assert verify_totp(user_id, previous_code, now=reference) is True
         db.session.refresh(authenticator)
@@ -95,7 +97,7 @@ def test_totp_accepts_adjacent_steps_once_and_tracks_exact_timecode(app):
         assert authenticator.last_accepted_step == accepted_step
         assert verify_totp(user_id, previous_code, now=reference) is False
 
-        current_code = pyotp.TOTP(view.secret).at(reference)
+        current_code = totp_at(view.secret, reference)
         assert verify_totp(user_id, current_code, now=reference) is True
         assert verify_totp(user_id, current_code, now=reference) is False
 
@@ -123,12 +125,12 @@ def test_parallel_totp_enrollments_keep_their_own_tokens_and_labels(app):
         assert TOTPEnrollment.query.count() == 2
         activate_totp_enrollment(
             phone.token,
-            pyotp.TOTP(phone.secret).now(),
+            totp_now(phone.secret),
             "shared-browser-binding",
         )
         activate_totp_enrollment(
             tablet.token,
-            pyotp.TOTP(tablet.secret).now(),
+            totp_now(tablet.secret),
             "shared-browser-binding",
         )
 
@@ -163,14 +165,14 @@ def test_totp_decrypt_failure_is_logged(app, caplog):
         view = begin_totp_enrollment(user_id, "binding")
         activate_totp_enrollment(
             view.token,
-            pyotp.TOTP(view.secret).at(activation_time),
+            totp_at(view.secret, activation_time),
             "binding",
             now=activation_time,
         )
         row = TOTPAuthenticator.query.filter_by(user_id=user_id).one()
         row.encrypted_secret = b"not-a-valid-ciphertext"
         db.session.commit()
-        code = pyotp.TOTP(view.secret).at(activation_time + timedelta(minutes=5))
+        code = totp_at(view.secret, activation_time + timedelta(minutes=5))
 
         caplog.clear()
         with caplog.at_level("WARNING"):
@@ -209,11 +211,11 @@ def test_totp_commit_failure_logs_without_touching_the_failed_session(
         view = begin_totp_enrollment(user_id, "binding")
         activate_totp_enrollment(
             view.token,
-            pyotp.TOTP(view.secret).at(activation_time),
+            totp_at(view.secret, activation_time),
             "binding",
             now=activation_time,
         )
-        code = pyotp.TOTP(view.secret).at(reference)
+        code = totp_at(view.secret, reference)
 
         def failing_commit():
             raise RuntimeError("database unavailable")
@@ -239,3 +241,53 @@ def test_totp_commit_failure_logs_without_touching_the_failed_session(
         "user_id": user_id,
         "error_type": "RuntimeError",
     }
+
+
+# Reference values captured from PyOTP 2.12.1 before it was dropped.
+_REFERENCE_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+_REFERENCE_CODES = ((0, "702218"), (1, "503347"), (59_259_259, "671954"))
+_RFC6238_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"  # b"12345678901234567890"
+
+
+@pytest.mark.parametrize(("step", "expected"), _REFERENCE_CODES)
+def test_totp_code_matches_reference_values(step, expected):
+    assert _totp_code(_REFERENCE_SECRET, step) == expected
+
+
+@pytest.mark.parametrize(
+    ("timestamp", "expected"),
+    ((59, "287082"), (1111111109, "081804"), (1234567890, "005924")),
+)
+def test_totp_code_matches_rfc6238_sha1_vectors(timestamp, expected):
+    assert _totp_code(_RFC6238_SECRET, timestamp // 30) == expected
+
+
+def test_totp_code_accepts_lowercase_and_unpadded_secrets():
+    assert _totp_code(_REFERENCE_SECRET.lower(), 1) == "503347"
+    assert _totp_code("JBSWY3DPEHPK3PXPJBSWY3DPEH", 1000) == "078585"
+
+
+def test_totp_code_rejects_secrets_below_112_bits():
+    with pytest.raises(ValueError):
+        _totp_code("JBSWY3DPEHPK3PXP", 1)
+
+
+def test_provisioning_uri_matches_reference_format():
+    assert _provisioning_uri(_REFERENCE_SECRET, "alice@example.com", "WebSSH") == (
+        "otpauth://totp/WebSSH:alice%40example.com"
+        "?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=WebSSH"
+    )
+    assert _provisioning_uri(_REFERENCE_SECRET, "a b/ü", "WebSSH") == (
+        "otpauth://totp/WebSSH:a%20b/%C3%BC"
+        "?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=WebSSH"
+    )
+
+
+def test_random_base32_secret_uses_the_base32_alphabet():
+    secrets = {_random_base32() for _ in range(20)}
+
+    assert len(secrets) == 20
+    for secret in secrets:
+        assert len(secret) == 32
+        assert set(secret) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")
+        assert len(_totp_code(secret, 1)) == 6
