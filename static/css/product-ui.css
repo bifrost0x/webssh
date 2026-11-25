@@ -30,7 +30,7 @@ body.webssh-ui {
 .webssh-ui :is(.form-group > label, .form-label) { color: var(--ws2-text-secondary); font-weight: 550; }
 .webssh-ui :is(.form-hint, .field-hint, .admin-muted) { color: var(--ws2-text-muted); line-height: 1.55; }
 .webssh-ui :is(button, input, select, textarea):disabled { cursor: not-allowed; }
-.webssh-ui :is(.dropdown-menu, .account-dropdown, .lang-dropdown, .context-menu, .fm-context-menu) {
+.webssh-ui :is(.account-dropdown, .lang-dropdown, .context-menu, .fm-context-menu) {
     background: var(--ws2-surface);
     border-color: var(--ws2-border-strong);
     border-radius: 8px;
@@ -91,13 +91,13 @@ body.webssh-ui {
     border-color: var(--ws2-border);
 }
 .webssh-ui :is(.profile-editor-actions, .command-set-editor-actions) { background: var(--ws2-surface); border-color: var(--ws2-border); }
-.webssh-ui :is(.key-item, .jump-host-item, .command-set-management-item, .command-set-step, .command-set-library-item) {
+.webssh-ui :is(.key-item, .command-set-management-item, .command-set-step, .command-set-library-item) {
     background: var(--ws2-canvas);
     border-color: var(--ws2-border);
     border-radius: 5px;
     box-shadow: none;
 }
-.webssh-ui :is(.key-item, .jump-host-item, .command-set-management-item):hover { background: var(--ws2-row-hover); border-color: var(--ws2-border-strong); }
+.webssh-ui :is(.key-item, .command-set-management-item):hover { background: var(--ws2-row-hover); border-color: var(--ws2-border-strong); }
 .webssh-ui :is(.key-name, .jump-host-name) { color: var(--ws2-text); }
 .webssh-ui :is(.key-info, .jump-host-info) { color: var(--ws2-text-secondary); }
 .webssh-ui :is(.command-set-preview, .command-set-sudo-option, .command-help) { background: var(--ws2-panel); border-color: var(--ws2-border); }
@@ -119,7 +119,7 @@ body.webssh-ui {
 .webssh-ui .primary-workspace-surface .profile-management-section-toggle { background: var(--ws2-panel); }
 
 /* File and session tools: preserve existing pane sizes and terminal colors. */
-.webssh-ui :is(.fm-breadcrumb, .fm-queue-header, .fm-preview-header, .fm-quick-connect-panel) {
+.webssh-ui :is(.fm-breadcrumb, .fm-queue-header, .fm-preview-header) {
     background: var(--ws2-surface);
     border-color: var(--ws2-border);
 }
