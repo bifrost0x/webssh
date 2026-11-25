@@ -796,32 +796,68 @@ def test_identity_probe_is_read_only_bounded_and_posix():
 def test_identity_probe_covers_the_catalog():
     command = host_platform.IDENTITY_COMMAND
     for unit in host_catalog.SERVICE_UNITS:
-        assert re.search(r"[|(\s]'%s'[|)]" % re.escape(unit), command)
+        assert re.search(r"[|(\s]%s[|)]" % re.escape(unit), command), unit
     for path, _ in host_catalog.SERVICE_PATHS:
-        assert "'%s'" % path in command
+        assert '[ -e %s ]' % path in command
     for snap in host_catalog.SERVICE_SNAPS:
-        assert "/snap/%s'" % snap in command
+        assert '[ -d /snap/%s ] && echo snap=%s\n' % (snap, snap) in command
     for prefix, service in host_catalog.SERVICE_UNIT_TEMPLATES.items():
-        assert "'%s'@*) found '%s' ;;" % (prefix, service) in command
+        assert '%s@*) found %s ;;' % (prefix, service) in command
 
 
-@pytest.mark.parametrize('units, paths, snaps', [
-    ({'nginx; rm -rf /': 'nginx'}, (), {}),
-    ({'nginx': "x'; id; '"}, (), {}),
-    ({}, (('/etc/x y', 'redis'),), {}),
-    ({}, (('/etc/$(id)', 'redis'),), {}),
-    ({}, (('/etc/x', 'redis\nservice=evil'),), {}),
-    ({}, (), {'a`id`': 'plex'}),
-    ({}, (), {'plex': 'a|b'}),
+def test_the_wrapped_probe_fits_dropbears_command_limit():
+    # Dropbear refuses exec requests longer than MAX_CMD_LEN (9000 bytes), which
+    # would leave OpenWrt and other Dropbear hosts undetected and asked on every
+    # connection. Keep room below it as the catalog grows.
+    size = len(host_platform.IDENTITY_EXEC.encode('utf-8'))
+    assert size <= 8192, f'the wrapped identity probe is {size} bytes; Dropbear accepts at most 9000'
+
+
+@pytest.mark.parametrize('units, paths, snaps, templates', [
+    ({'nginx; rm -rf /': 'nginx'}, (), {}, {}),
+    ({'nginx': "x'; id; '"}, (), {}, {}),
+    ({}, (('/etc/x y', 'redis'),), {}, {}),
+    ({}, (('/etc/$(id)', 'redis'),), {}, {}),
+    ({}, (('/etc/x', 'redis\nservice=evil'),), {}, {}),
+    ({}, (), {'a`id`': 'plex'}, {}),
+    ({}, (), {'plex': 'a|b'}, {}),
+    # Words appear unquoted: no globs, tilde, assignments, options or reserved words.
+    ({'ngin*': 'nginx'}, (), {}, {}),
+    ({'ngin?x': 'nginx'}, (), {}, {}),
+    ({'[a]x': 'nginx'}, (), {}, {}),
+    ({'esac': 'nginx'}, (), {}, {}),
+    ({'in': 'nginx'}, (), {}, {}),
+    ({}, (('~root/x', 'redis'),), {}, {}),
+    ({}, (('/etc/*', 'redis'),), {}, {}),
+    ({}, (('-o', 'redis'),), {}, {}),
+    ({}, (('/etc/x', 'a=b'),), {}, {}),
+    ({}, (('/etc/x', '-n'),), {}, {}),
+    ({}, (), {'-n': 'plex'}, {}),
+    ({}, (), {'a\\b': 'plex'}, {}),
+    ({}, (), {}, {'esac': 'syncthing'}),
+    ({}, (), {}, {'sync': 'a;b'}),
+    ({}, (), {'': 'plex'}, {}),
 ])
-def test_identity_probe_rejects_unsafe_catalog_values(units, paths, snaps):
+def test_identity_probe_rejects_unsafe_catalog_values(units, paths, snaps, templates):
     with pytest.raises(ValueError):
-        host_platform._identity_command(units, paths, snaps)
+        host_platform._identity_command(units, paths, snaps, templates)
 
 
 def test_identity_probe_accepts_catalog_style_values():
     command = host_platform._identity_command({'wg@x': 'wireguard'}, (('/opt/a-b_c.d+e', 'redis'),), {'a-b': 'plex'})
-    assert "'wg@x'" in command and "'/opt/a-b_c.d+e'" in command
+    assert 'wg@x)' in command and '[ -e /opt/a-b_c.d+e ]' in command and 'echo snap=a-b' in command
+
+
+def test_unquoted_catalog_words_reach_the_shell_literally(short_root):
+    (short_root / 'present').mkdir()
+    (short_root / 'snap' / 'a-b').mkdir(parents=True)
+    command = host_platform._identity_command(
+        {}, ((str(short_root / 'missing'), 'redis'), (str(short_root / 'present'), 'nextcloud'),
+             (str(short_root / 'gone'), 'plex')), {'a-b': 'plex', 'c.d': 'jellyfin'})
+    begin = command.index('\nif [ -e ') + 1
+    snippet = command[begin:command.index('\nimages=', begin)]
+    lines, _ = _run_probe_part(snippet.replace('/snap/', str(short_root / 'snap') + '/'), short_root)
+    assert lines[:-1] == ['service=nextcloud', 'snap=a-b']
 
 
 def test_identity_probe_runs_under_a_minimal_posix_shell():
@@ -1450,4 +1486,4 @@ def test_templated_unit_catalog_values_are_validated():
     with pytest.raises(ValueError):
         host_platform._identity_command({}, (), {}, {'syncthing': 'a b'})
     command = host_platform._identity_command({}, (), {}, {'syncthing': 'syncthing'})
-    assert "'syncthing'@*) found 'syncthing' ;;" in command
+    assert 'syncthing@*) found syncthing ;;' in command

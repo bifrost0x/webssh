@@ -8,16 +8,26 @@ from .host_catalog import (
     FAMILIES, KERNEL_PLATFORMS, MARKER_PLATFORMS, OS_ID_PLATFORMS, VIRT_MAP,
 )
 
-# Catalog values end up inside the shell text below. They are fixed strings, but
-# a later edit must never be able to bring in shell syntax, so every one is
-# checked against a conservative pattern and then single-quoted.
-_SHELL_WORD = re.compile(r'[A-Za-z0-9@_.:/+-]+')
+# Catalog values end up unquoted inside the shell text below; quoting them all
+# would push the wrapped probe past Dropbear's 9000-byte command limit. They are
+# fixed strings, but a later edit must never be able to bring in shell syntax,
+# so every one must be a plain literal word: no quotes, expansions, globs,
+# tilde, '=' or whitespace, no leading '-', and no reserved word.
+_SHELL_WORD = re.compile(r'[A-Za-z0-9/][A-Za-z0-9@_.:/+-]*')
+_RESERVED_WORDS = frozenset({'if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'case', 'esac',
+                             'while', 'until', 'for', 'in', 'function', 'select', 'time'})
 
 
 def _shell_word(value):
-    if not isinstance(value, str) or not _SHELL_WORD.fullmatch(value):
+    if not isinstance(value, str) or not _SHELL_WORD.fullmatch(value) or value in _RESERVED_WORDS:
         raise ValueError('Unsafe value in the identity probe: %r' % (value,))
-    return "'%s'" % value
+    return value
+
+
+def _shell_path(value):
+    if not isinstance(value, str) or not value.startswith('/'):
+        raise ValueError('Unsafe path in the identity probe: %r' % (value,))
+    return _shell_word(value)
 
 
 _IDENTITY_TEMPLATE = r"""LC_ALL=C
@@ -139,13 +149,10 @@ def _identity_command(units, paths, snaps, templates=None):
     for path, service in paths:
         by_service.setdefault(service, []).append(path)
     path_lines = '\n'.join(
-        'if %s; then found %s; fi' % (' || '.join('[ -e %s ]' % _shell_word(path) for path in found), service)
+        'if %s; then found %s; fi' % (' || '.join('[ -e %s ]' % _shell_path(path) for path in found), service)
         for service, found in by_service.items()
     )
-    snap_lines = '\n'.join(
-        "if [ -d %s ]; then printf 'snap=%%s\\n' %s; fi" % (_shell_word('/snap/' + snap), _shell_word(snap))
-        for snap in snaps
-    )
+    snap_lines = '\n'.join('[ -d /snap/%s ] && echo snap=%s' % (_shell_word(snap), snap) for snap in snaps)
     engines = _DOCKER_BLOCK + '\n' + _PODMAN_BLOCK
     return (_IDENTITY_TEMPLATE.replace('@UNITCASE@', unit_case).replace('@TEMPLATECASE@', template_case)
             .replace('@PATHS@', path_lines)
