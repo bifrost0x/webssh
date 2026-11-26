@@ -137,6 +137,7 @@ func openSystem(ctx context.Context, in bootInput) (sys *system, err error) {
 		return sys, fmt.Errorf("audit log: %w", err)
 	}
 	sys.closers = append(sys.closers, sys.audit.Close)
+	auditMigration(sys.audit, sys.startup)
 	if err := sys.buildCore(ctx, in); err != nil {
 		return sys, err
 	}

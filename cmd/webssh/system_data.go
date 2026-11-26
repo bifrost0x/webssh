@@ -150,3 +150,28 @@ func schemas() []store.Schema {
 	}
 	return out
 }
+
+// plaintextKeySealed is the migration warning of an SSH key that Python
+// kept in plain text and that the migration sealed (D2).
+const plaintextKeySealed = "plaintext_key_sealed"
+
+// securityAuditor is the part of the audit log the migration events use.
+type securityAuditor interface {
+	SecurityWarning(event string, kv ...any)
+}
+
+// auditMigration records the security-relevant outcome of a migration
+// this start ran in the audit log: one event per SSH key that was stored
+// in plain text and is sealed now.
+func auditMigration(a securityAuditor, st *legacy.Startup) {
+	if st == nil || !st.Migrated || st.Report == nil {
+		return
+	}
+	for _, e := range st.Report.Entities {
+		for _, w := range e.Warnings {
+			if w.Code == plaintextKeySealed {
+				a.SecurityWarning("MIGRATION_PLAINTEXT_KEY_SEALED", "entity", e.Entity, "user_id", w.UserID, "count", w.Count)
+			}
+		}
+	}
+}

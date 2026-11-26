@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/migrate/legacy"
 )
 
 func TestRecordPort(t *testing.T) {
@@ -51,5 +52,24 @@ func TestIsProbe(t *testing.T) {
 		if got := isProbe("/webssh", path); got != want {
 			t.Errorf("isProbe(%s) = %v", path, got)
 		}
+	}
+}
+
+type warnings struct{ events [][]any }
+
+func (w *warnings) SecurityWarning(event string, kv ...any) {
+	w.events = append(w.events, append([]any{event}, kv...))
+}
+
+func TestAuditMigrationNamesSealedPlaintextKeys(t *testing.T) {
+	var w warnings
+	auditMigration(&w, nil)
+	auditMigration(&w, &legacy.Startup{})
+	st := &legacy.Startup{Migrated: true, Report: &legacy.Report{Entities: []legacy.StepReport{
+		{Entity: "E23", Warnings: []legacy.Warning{{Code: plaintextKeySealed, UserID: 3, Count: 2}, {Code: "other"}}},
+	}}}
+	auditMigration(&w, st)
+	if len(w.events) != 1 || w.events[0][0] != "MIGRATION_PLAINTEXT_KEY_SEALED" || w.events[0][4] != int64(3) {
+		t.Fatalf("events %v", w.events)
 	}
 }
