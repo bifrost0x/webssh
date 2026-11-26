@@ -8,17 +8,32 @@ import (
 	"path/filepath"
 )
 
-// Layout of the keyring material below DATA_DIR (migration specification,
+// Layout of the Go-owned paths below DATA_DIR (migration specification,
 // sections 2 and 2.2). The material lives under logs/.webssh-go/ while
 // legacy data exists, because Python 3.3.x never exports logs/, and in go/
-// otherwise. The Go directory and database names are shared with the
-// migration and the composition root.
+// otherwise. These names are the one source for every package that needs
+// them (the migration and the composition root); no package spells them a
+// second time.
 const (
-	goDirName      = "go"
-	databaseName   = "webssh.db"
-	logsDirName    = "logs"
-	stateDirName   = ".webssh-go"
-	materialName   = "keyring-material"
+	// GoDirName is the Go directory below DATA_DIR.
+	GoDirName = "go"
+	// DatabaseName is the Go database in the Go directory.
+	DatabaseName = "webssh.db"
+	// LogsDirName is the shared log directory below DATA_DIR.
+	LogsDirName = "logs"
+	// StateDirName is the Go state directory below LogsDirName, which
+	// exists only while legacy data exists.
+	StateDirName = ".webssh-go"
+	// MaterialName is the keyring material file.
+	MaterialName = "keyring-material"
+)
+
+const (
+	goDirName      = GoDirName
+	databaseName   = DatabaseName
+	logsDirName    = LogsDirName
+	stateDirName   = StateDirName
+	materialName   = MaterialName
 	materialTmp    = ".keyring-material.tmp"
 	materialHelpGo = "go/" + materialName
 	materialHelpLg = "logs/" + stateDirName + "/" + materialName
