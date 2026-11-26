@@ -119,7 +119,6 @@ var variables = map[string]usage{
 	"PYTHONDONTWRITEBYTECODE": obsolete, "PYTHONUNBUFFERED": obsolete, "PYTHON_DOTENV_DISABLED": obsolete,
 	"WEBSSH_SECRET_KEY_SOURCE": internal, "WEBSSH_REVISION": internal, "SERVER_SOFTWARE": internal,
 	"XDG_RUNTIME_DIR": internal, "HOME": internal, "TMPDIR": internal, "TEMP": internal, "TMP": internal,
-	"WEBSSH_E2E_FAST_HASHING": internal,
 	// Read by Compose only.
 	"WEBSSH_ORIGIN": internal, "WEBSSH_PIDS_LIMIT": internal, "WEBSSH_MEMORY_LIMIT": internal,
 	"WEBSSH_TMPFS_SIZE": internal, "WEBSSH_RUNTIME_UID": internal, "WEBSSH_RUNTIME_GID": internal,
