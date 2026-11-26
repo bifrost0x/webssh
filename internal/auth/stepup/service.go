@@ -131,10 +131,11 @@ func rejected() error {
 var adminActions = []principal.Action{principal.ActionSecurityFeatureUpdate, principal.ActionUserCreate}
 
 // selfActions target the principal's own account; the target defaults to
-// the user id and must equal it.
+// the user id and must equal it. key.upload is one of them: the page
+// sends no target and the vault binds the grant to the user id.
 var selfActions = []principal.Action{
 	principal.ActionTOTPEnroll, principal.ActionPasskeyEnroll, principal.ActionMFAEnable,
-	principal.ActionMFADisable, principal.ActionRecoveryRotate,
+	principal.ActionMFADisable, principal.ActionRecoveryRotate, principal.ActionKeyUpload,
 }
 
 // actionFeature is the security feature an action needs.

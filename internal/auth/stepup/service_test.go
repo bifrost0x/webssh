@@ -131,31 +131,31 @@ func TestPlanMethods(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
 	p := principaltest.User(3)
-	plan, _, err := e.svc.Plan(ctx, p, principal.ActionKeyUpload, "k", ChannelAccount)
+	plan, _, err := e.svc.Plan(ctx, p, principal.ActionKeyReplace, "k", ChannelAccount)
 	if err != nil || !slices.Equal(plan.Methods, []string{MethodPassword}) || plan.Required != auth.AssuranceBasic {
 		t.Fatalf("without MFA: %+v %v", plan, err)
 	}
 	e.accounts.mfa[3], e.totp.enrolled[3], e.passkeys.enrolled[3] = true, true, true
-	plan, _, err = e.svc.Plan(ctx, p, principal.ActionKeyUpload, "k", ChannelAccount)
+	plan, _, err = e.svc.Plan(ctx, p, principal.ActionKeyReplace, "k", ChannelAccount)
 	if err != nil || !slices.Equal(plan.Methods, []string{MethodPasskey, MethodTOTP}) || plan.Required != auth.AssuranceMFA {
 		t.Fatalf("with MFA: %+v %v", plan, err)
 	}
 	e.svc.Gates = fakeGates{auth.FeatureTOTP: true}
-	if plan, _, _ = e.svc.Plan(ctx, p, principal.ActionKeyUpload, "k", ChannelAccount); !slices.Equal(plan.Methods, []string{MethodTOTP}) {
+	if plan, _, _ = e.svc.Plan(ctx, p, principal.ActionKeyReplace, "k", ChannelAccount); !slices.Equal(plan.Methods, []string{MethodTOTP}) {
 		t.Fatalf("passkeys off: %+v", plan)
 	}
 	e.totp.enrolled[3] = false
-	if _, _, err := e.svc.Plan(ctx, p, principal.ActionKeyUpload, "k", ChannelAccount); !fault.Is(err, fault.StepUpFailed) {
+	if _, _, err := e.svc.Plan(ctx, p, principal.ActionKeyReplace, "k", ChannelAccount); !fault.Is(err, fault.StepUpFailed) {
 		t.Fatalf("MFA without a usable factor: %v", err)
 	}
 	// A recovery session gets no grant.
 	rp := principaltest.User(4)
 	rp.Recovery = true
-	if _, _, err := e.svc.Plan(ctx, rp, principal.ActionKeyUpload, "k", ChannelAccount); !fault.Is(err, fault.StepUpFailed) {
+	if _, _, err := e.svc.Plan(ctx, rp, principal.ActionKeyReplace, "k", ChannelAccount); !fault.Is(err, fault.StepUpFailed) {
 		t.Fatalf("recovery session: %v", err)
 	}
 	e.sessions.revoked[p.SessionID] = true
-	if _, _, err := e.svc.Plan(ctx, p, principal.ActionKeyUpload, "k", ChannelAccount); !fault.Is(err, fault.StepUpFailed) {
+	if _, _, err := e.svc.Plan(ctx, p, principal.ActionKeyReplace, "k", ChannelAccount); !fault.Is(err, fault.StepUpFailed) {
 		t.Fatalf("revoked session: %v", err)
 	}
 }
@@ -203,24 +203,24 @@ func TestRecentStrongSignIn(t *testing.T) {
 	p := principaltest.User(8)
 	e.accounts.mfa[8], e.totp.enrolled[8] = true, true
 	e.sessions.byID[p.SessionID] = SessionAssurance{Level: auth.AssuranceMFA, StrongAt: e.clock.Now(), Methods: []string{"password", "totp"}}
-	c, err := e.svc.Begin(ctx, p, principal.ActionKeyUpload, "k", ChannelAccount)
+	c, err := e.svc.Begin(ctx, p, principal.ActionKeyReplace, "k", ChannelAccount)
 	if err != nil || c.Grant == "" || c.Intent != "" {
 		t.Fatalf("recent: %+v %v", c, err)
 	}
-	if err := e.svc.Consume(ctx, p, principal.ActionKeyUpload, "k", c.Grant); err != nil {
+	if err := e.svc.Consume(ctx, p, principal.ActionKeyReplace, "k", c.Grant); err != nil {
 		t.Fatal(err)
 	}
-	if c, err = e.svc.BeginCeremony(ctx, p, principal.ActionKeyUpload, "k", ChannelAdmin); err != nil || c.Grant != "" {
+	if c, err = e.svc.BeginCeremony(ctx, p, principal.ActionKeyReplace, "k", ChannelAdmin); err != nil || c.Grant != "" {
 		t.Fatalf("ceremony: %+v %v", c, err)
 	}
 	e.clock.Advance(301 * time.Second)
-	if c, err = e.svc.Begin(ctx, p, principal.ActionKeyUpload, "k", ChannelAccount); err != nil || c.Grant != "" {
+	if c, err = e.svc.Begin(ctx, p, principal.ActionKeyReplace, "k", ChannelAccount); err != nil || c.Grant != "" {
 		t.Fatalf("after the window: %+v %v", c, err)
 	}
 	// BASIC sign-ins never count as recent.
 	q := principaltest.User(9)
 	e.sessions.byID[q.SessionID] = SessionAssurance{Level: auth.AssuranceBasic, StrongAt: e.clock.Now(), Methods: []string{"password"}}
-	if c, _ = e.svc.Begin(ctx, q, principal.ActionKeyUpload, "k", ChannelAccount); c.Grant != "" {
+	if c, _ = e.svc.Begin(ctx, q, principal.ActionKeyReplace, "k", ChannelAccount); c.Grant != "" {
 		t.Fatal("a BASIC session got a grant without proof")
 	}
 }
@@ -230,7 +230,7 @@ func TestProveRules(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
 	p := principaltest.User(10)
-	c, err := e.svc.Begin(ctx, p, principal.ActionKeyUpload, "k", ChannelAccount)
+	c, err := e.svc.Begin(ctx, p, principal.ActionKeyReplace, "k", ChannelAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,18 +252,18 @@ func TestProveRules(t *testing.T) {
 	if _, err := e.svc.Prove(ctx, p, c.Intent, Proof{Method: MethodPassword, Secret: "secret"}); err == nil {
 		t.Fatal("an intent issued two grants")
 	}
-	if err := e.svc.Consume(ctx, p, principal.ActionKeyUpload, "k", grant); err != nil {
+	if err := e.svc.Consume(ctx, p, principal.ActionKeyReplace, "k", grant); err != nil {
 		t.Fatal(err)
 	}
 	// MFA switched on after the intent: start again.
-	c, _ = e.svc.Begin(ctx, p, principal.ActionKeyUpload, "k", ChannelAccount)
+	c, _ = e.svc.Begin(ctx, p, principal.ActionKeyReplace, "k", ChannelAccount)
 	e.accounts.mfa[10] = true
 	if _, err := e.svc.Prove(ctx, p, c.Intent, Proof{Method: MethodPassword, Secret: "secret"}); err == nil {
 		t.Fatal("a BASIC intent completed after MFA was turned on")
 	}
 	// Expired intent.
 	e.accounts.mfa[10] = false
-	c, _ = e.svc.Begin(ctx, p, principal.ActionKeyUpload, "k", ChannelAccount)
+	c, _ = e.svc.Begin(ctx, p, principal.ActionKeyReplace, "k", ChannelAccount)
 	e.clock.Advance(IntentTTL)
 	if _, err := e.svc.Prove(ctx, p, c.Intent, Proof{Method: MethodPassword, Secret: "secret"}); err == nil {
 		t.Fatal("expired intent completed")

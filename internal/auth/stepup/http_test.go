@@ -4,6 +4,7 @@ import (
 	json "encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -84,6 +85,19 @@ func TestAccountFamily(t *testing.T) {
 	if err := e.svc.Consume(t.Context(), p, principal.ActionKeyDelete, "42", out["grant"].(string)); err != nil {
 		t.Fatalf("integer target grant: %v", err)
 	}
+	// key.upload has no target in the page's request; the grant binds to
+	// the user id, which the vault passes to Consume.
+	code, out = e.post(t, p, "/api/account/step-up/intents", `{"action":"key.upload"}`)
+	if code != 200 {
+		t.Fatalf("key.upload: %d %v", code, out)
+	}
+	_, out = e.post(t, p, "/api/account/step-up/password", `{"intent":"`+out["intent"].(string)+`","password":"secret"}`)
+	if err := e.svc.Consume(t.Context(), p, principal.ActionKeyUpload, strconv.FormatInt(p.UserID, 10), out["grant"].(string)); err != nil {
+		t.Fatalf("key.upload grant: %v", err)
+	}
+	if code, _ := e.post(t, p, "/api/account/step-up/intents", `{"action":"key.upload","target":"999"}`); code != 400 {
+		t.Errorf("key.upload for another account: %d", code)
+	}
 	for _, body := range []string{`{"action":"key.delete","target":true}`, `{"action":"key.delete","target":1.5}`, `{"action":"nope","target":"x"}`, `[]`, `{"action":"key.delete","target":""}`} {
 		if code, out := e.post(t, p, "/api/account/step-up/intents", body); code != 400 || out["code"] != "invalid_request" {
 			t.Errorf("%s: %d %v", body, code, out)
@@ -101,7 +115,7 @@ func TestAccountPasskey(t *testing.T) {
 	e := newHTTPEnv(t)
 	p := principaltest.User(2)
 	e.accounts.mfa[2], e.passkeys.enrolled[2] = true, true
-	_, out := e.post(t, p, "/api/account/step-up/intents", `{"action":"key.upload","target":"new"}`)
+	_, out := e.post(t, p, "/api/account/step-up/intents", `{"action":"key.upload"}`)
 	intent, _ := out["intent"].(string)
 	if out["preferred_method"] != "passkey" {
 		t.Fatalf("intent %v", out)
