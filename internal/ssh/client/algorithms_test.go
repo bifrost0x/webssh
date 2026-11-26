@@ -20,7 +20,7 @@ import (
 )
 
 func TestAlgorithmsExcludeLegacyByDefault(t *testing.T) {
-	never := []string{ssh.InsecureKeyExchangeDH1SHA1, keyAlgoDSA, "aes192-cbc", "aes256-cbc", "hmac-md5", "hmac-md5-96", ssh.InsecureHMACSHA196, "arcfour", "arcfour128", "arcfour256"}
+	never := []string{ssh.InsecureKeyExchangeDH1SHA1, "ssh-dss", "aes192-cbc", "aes256-cbc", "hmac-md5", "hmac-md5-96", ssh.InsecureHMACSHA196, "arcfour", "arcfour128", "arcfour256"}
 	legacyOnly := []string{ssh.KeyAlgoRSA, ssh.InsecureKeyExchangeDH14SHA1, ssh.InsecureKeyExchangeDHGEXSHA1, ssh.InsecureCipherAES128CBC, ssh.InsecureCipherTripleDESCBC}
 	plain, legacy := Algorithms(false), Algorithms(true)
 	all := func(a ssh.Algorithms) []string {

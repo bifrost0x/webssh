@@ -230,19 +230,9 @@ func TestLabPasswordAndKeys(t *testing.T) {
 			}
 			var passphrase []byte
 			if strings.HasSuffix(name, "-encrypted") {
-				if _, _, err := client.ParsePrivateKey(raw, nil); !errors.Is(err, client.ErrPassphraseRequired) {
-					t.Fatalf("without passphrase: %v", err)
-				}
-				if _, _, err := client.ParsePrivateKey(raw, []byte("wrong")); !errors.Is(err, client.ErrWrongPassphrase) {
-					t.Fatalf("wrong passphrase: %v", err)
-				}
 				passphrase = []byte(secret(t, "secrets/ssh-key-"+name+"-passphrase"))
 			}
-			signer, _, err := client.ParsePrivateKey(raw, passphrase)
-			if err != nil {
-				t.Fatal(err)
-			}
-			r.signer[name] = signer
+			r.signer[name] = labSigner(t, raw, passphrase)
 			tgt := client.Target{Owner: 1, Hop: hop(t, "ssh-modern", "keyuser", client.Auth{KeyID: name})}
 			if got := whoami(t, r, tgt); got != "keyuser" {
 				t.Fatalf("keyuser: %q", got)
@@ -265,11 +255,7 @@ func TestLabKeyboardInteractive(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			signer, _, err := client.ParsePrivateKey(raw, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			r.signer["mfa"] = signer
+			r.signer["mfa"] = labSigner(t, raw, nil)
 			auth.KeyID = "mfa"
 		}
 		tgt := client.Target{Owner: 1, Hop: hop(t, "ssh-modern", user, auth)}
@@ -344,8 +330,10 @@ func TestLabSOCKS(t *testing.T) {
 	if he, _ := errors.AsType[*client.HopError](err); he == nil || he.Role != client.RoleSOCKS || he.Detail != "socks_auth_required" {
 		t.Fatalf("proxy with login: %v", err)
 	}
+	// A proxy that is down has its own code since the socks_* codes of the
+	// Python release are in the catalog.
 	tgt.Proxy = &client.SOCKS{Host: "127.0.0.1", Port: 1, RemoteDNS: true}
-	if _, err := r.dialer.Dial(t.Context(), tgt, r.ix); code(err) != fault.Unreachable {
+	if _, err := r.dialer.Dial(t.Context(), tgt, r.ix); code(err) != fault.SOCKSProxyUnreachable {
 		t.Fatalf("proxy down: %v", err)
 	}
 }
@@ -364,11 +352,7 @@ func TestLabLegacyServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signer, _, err := client.ParsePrivateKey(raw, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.signer["legacy-rsa"] = signer
+	r.signer["legacy-rsa"] = labSigner(t, raw, nil)
 	tgt.Hop.Auth = client.Auth{KeyID: "legacy-rsa"}
 	if got := whoami(t, r, tgt); got != "legacyuser" {
 		t.Fatalf("RSA key with the legacy setting: %q", got)
@@ -377,13 +361,26 @@ func TestLabLegacyServer(t *testing.T) {
 	if _, err := r.dialer.Dial(t.Context(), tgt, r.ix); err == nil {
 		t.Fatal("RSA key without the legacy setting")
 	}
-	dsa, err := os.ReadFile(filepath.Join(lab(t).RuntimeDir, "ssh", "legacy", "client", "dsa-1024"))
+}
+
+// labSigner reads a lab client key. The dialer only receives signers;
+// parsing and checking uploaded keys is the vault's (its lab test covers
+// the same files and the DSA key).
+func labSigner(t *testing.T, raw, passphrase []byte) ssh.Signer {
+	t.Helper()
+	var (
+		signer ssh.Signer
+		err    error
+	)
+	if passphrase != nil {
+		signer, err = ssh.ParsePrivateKeyWithPassphrase(raw, passphrase)
+	} else {
+		signer, err = ssh.ParsePrivateKey(raw)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := client.ParsePrivateKey(dsa, nil); !errors.Is(err, client.ErrDSAKey) {
-		t.Fatalf("DSA key: %v", err)
-	}
+	return signer
 }
 
 func TestLabHostKeys(t *testing.T) {

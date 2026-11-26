@@ -25,6 +25,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal/principaltest"
 )
 
@@ -82,6 +83,13 @@ func TestLabKeyFormats(t *testing.T) {
 					t.Fatal(err)
 				}
 				passphrase = strings.TrimSpace(string(raw))
+				for _, wrong := range []string{"", "wrong"} {
+					grant := r.grant(alice, "key.upload", userTarget(alice))
+					_, err := r.svc.Upload(as(alice), Upload{Name: name + "-try", Content: string(content), Passphrase: wrong, Grant: grant})
+					if fault.DetailsOf(err)[DetailPassphraseRequired] != true {
+						t.Fatalf("passphrase %q: %v", wrong, err)
+					}
+				}
 			}
 			grant := r.grant(alice, "key.upload", userTarget(alice))
 			s, err := r.svc.Upload(as(alice), Upload{Name: name, Content: string(content), Passphrase: passphrase, Grant: grant})
@@ -99,6 +107,22 @@ func TestLabKeyFormats(t *testing.T) {
 				t.Fatalf("sign-in as keyuser: %v", err)
 			}
 		})
+	}
+}
+
+// The DSA key of the lab's legacy server is refused with its own text.
+func TestLabDSAKeyRefused(t *testing.T) {
+	l := loadLab(t)
+	content, err := os.ReadFile(filepath.Join(l.RuntimeDir, "ssh", "legacy", "client", "dsa-1024"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRig(t, Limits{})
+	alice := principaltest.User(1)
+	grant := r.grant(alice, "key.upload", userTarget(alice))
+	_, err = r.svc.Upload(as(alice), Upload{Name: "dsa", Content: string(content), Grant: grant})
+	if fe, ok := fault.From(err); !ok || fe.Message != textDSA {
+		t.Fatalf("DSA key: %v", err)
 	}
 }
 
