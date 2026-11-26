@@ -32,8 +32,9 @@ their owner instead, as `provenance.json` records per logo:
 - Fedora logo: custom license, see <https://docs.fedoraproject.org/en-US/project/brand/>
 
 The service logos come from the same Simple Icons release. Only marks that
-Simple Icons publishes under CC0-1.0 are bundled; a service whose mark carries
-its own license is shown as a two-letter monogram of its name instead.
+Simple Icons publishes under CC0-1.0 are bundled. A service whose mark carries
+its own license, or that Simple Icons does not include, is shown as a
+two-letter monogram of its name instead.
 
 Brand names and logos are trademarks of their respective owners; WebSSH uses
 them only to identify the software a host runs, which implies no endorsement.

@@ -178,7 +178,8 @@ test('service logos come from the versioned manifest and carry the label', () =>
 
 test('services without a bundled logo show a two-letter monogram', () => {
     const doc = serviceDocument(JSON.stringify({immich: '/static/icons/services/immich.svg?v=1'}));
-    const cases = {filebrowser: 'FB', haproxy: 'HA', stirlingpdf: 'SP', openwebui: 'OW', samba: 'SA', k3s: 'K3'};
+    const cases = {filebrowser: 'FB', haproxy: 'HA', stirlingpdf: 'SP', openwebui: 'OW', samba: 'SM', sabnzbd: 'SA',
+        jenkins: 'JN', jellyseerr: 'JL', keycloak: 'KC', k3s: 'K3'};
     for (const [id, letters] of Object.entries(cases)) {
         const icon = icons.renderService(id, doc);
         assert.equal(icon.className, 'host-service-icon', id);
@@ -198,13 +199,14 @@ test('services without a bundled logo show a two-letter monogram', () => {
 
 test('monograms follow word and capital boundaries of the label', () => {
     const doc = serviceDocument('{}');
-    const labels = {netbird: 'NetBird', uptime: 'Uptime Kuma', single: 'Grafana', camel: 'qBittorrent', short: 'X'};
+    const labels = {netbird: 'NetBird', uptime: 'Uptime Kuma', single: 'Grafana', vowel: 'Overseerr', camel: 'qBittorrent', short: 'X'};
     try {
         Object.assign(icons.serviceLabels, labels);
         const letters = id => icons.renderService(id, doc).children[0].textContent;
         assert.equal(letters('netbird'), 'NB');
         assert.equal(letters('uptime'), 'UK');
         assert.equal(letters('single'), 'GR');
+        assert.equal(letters('vowel'), 'OV');
         assert.equal(letters('camel'), 'QB');
         assert.equal(letters('short'), 'X');
     } finally {
@@ -228,4 +230,22 @@ test('unknown services render nothing and labels never become markup', () => {
     } finally {
         delete icons.serviceLabels.markup;
     }
+});
+
+test('every monogram shown for a catalog service is distinct', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const logos = fs.readdirSync(path.join(__dirname, '../../static/icons/services'))
+        .filter(name => name.endsWith('.svg')).map(name => name.slice(0, -4));
+    const doc = serviceDocument(JSON.stringify(Object.fromEntries(logos.map(id => [id, `/static/icons/services/${id}.svg`]))));
+    const shown = new Map();
+    for (const id of catalog.services) {
+        const icon = icons.renderService(id, doc);
+        if (icon.style.maskImage) continue;
+        const letters = icon.children[0].textContent;
+        assert.match(letters, /^[A-Z0-9]{2}$/, id);
+        assert.ok(!shown.has(letters), `${id} and ${shown.get(letters)} share ${letters}`);
+        shown.set(letters, id);
+    }
+    assert.ok(shown.size > 0);
 });

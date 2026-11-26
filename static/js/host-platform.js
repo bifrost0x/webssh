@@ -87,13 +87,17 @@
         return typeof asset === 'string' && asset !== '' ? asset : null;
     }
     // Two capitals from the label: the first letters of two words, else the first
-    // letter and the next capital (NetBird -> NB), else the first two letters.
+    // letter and the next capital (NetBird -> NB), else the first letter and the
+    // next consonant, which keeps names like Samba and SABnzbd or Jenkins and
+    // Jellyseerr apart (SM, SA, JN, JL).
     function monogram(label) {
         const words = String(label).match(/[\p{L}\p{N}]+/gu) || [];
         if (words.length > 1) return `${[...words[0]][0]}${[...words[1]][0]}`.toUpperCase();
         const letters = [...(words[0] || '')];
-        const capital = letters.slice(1).find(letter => /\p{Lu}/u.test(letter));
-        return `${letters[0] || ''}${capital || letters[1] || ''}`.toUpperCase();
+        const rest = letters.slice(1);
+        const second = rest.find(letter => /\p{Lu}/u.test(letter))
+            || rest.find(letter => !/[aeiouy]/i.test(letter)) || rest[0] || '';
+        return `${letters[0] || ''}${second}`.toUpperCase();
     }
     /** A service logo (or monogram) for a known service id; null for any other value. */
     function renderService(id, doc = document) {
