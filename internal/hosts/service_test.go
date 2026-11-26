@@ -212,21 +212,32 @@ func TestResolve(t *testing.T) {
 	if err != nil || local.Proxy == nil || local.Proxy.RemoteDNS {
 		t.Fatalf("remote_dns false must resolve locally: %+v %v", local, err)
 	}
+	// Password sign-in at the jump host and a SOCKS5 login: the hops carry
+	// no secret, the terminal adds it from the request.
+	pj, err := s.Resolve(ctx, oracleUser, "pw-jump")
+	if err != nil || len(pj.Jumps) != 1 || pj.Jumps[0] != (client.Hop{Host: "b.example", Port: 22, User: "j"}) {
+		t.Fatalf("password jump host: %+v %v", pj, err)
+	}
+	ls, err := s.Resolve(ctx, oracleUser, "login-socks")
+	if err != nil || ls.Proxy == nil || ls.Proxy.Username == "" || ls.Proxy.Password != "" {
+		t.Fatalf("SOCKS5 login: %+v %v", ls, err)
+	}
 	tmux, err := s.Resolve(ctx, oracleUser, "tmux")
 	if err != nil || !tmux.Display.UseTmux || !tmux.Display.StartupCommand || tmux.Hop.Port != 22 {
 		t.Fatalf("display flags: %+v %v", tmux, err)
 	}
 	for id, want := range map[string]fault.Code{
-		"pw-jump": fault.NotAvailableInPreview, "login-socks": fault.NotAvailableInPreview,
-		"umlaut": fault.InvalidValue, "ts": fault.NotAvailableInPreview, "gw": fault.NotAvailableInPreview,
+		"umlaut": fault.ValidationError, "ts": fault.NotAvailableInPreview, "gw": fault.NotAvailableInPreview,
 		"missing": fault.NotFound,
 	} {
 		if _, err := s.Resolve(ctx, oracleUser, id); code(err) != want {
 			t.Errorf("Resolve(%s): %v, want %s", id, err, want)
 		}
 	}
-	if _, err := s.Resolve(ctx, oracleUser, "umlaut"); !errors.Is(err, errHostIDNA) {
-		t.Errorf("umlaut host: %v, want the IDNA refusal", err)
+	// The connect path of the Python release refuses names outside ASCII
+	// with the format error (_validate_ssh_params).
+	if _, err := s.Resolve(ctx, oracleUser, "umlaut"); err == nil || !strings.Contains(err.Error(), "Invalid host format") {
+		t.Errorf("umlaut host: %v, want the format refusal", err)
 	}
 }
 
@@ -333,7 +344,7 @@ func TestImportRefusesInvalidRecords(t *testing.T) {
 			v(`{"id":"u","name":"n","host":"bücher.example","username":"u","auth_type":"password"}`)}}, Limits{ProfileMaxRecords: 0})
 		return err
 	})
-	if err != nil || !slices.Equal(report.IDNAHosts, []string{"u"}) || !slices.Equal(report.OverLimit, []string{"profiles"}) {
+	if err != nil || !slices.Equal(report.OverLimit, []string{"profiles"}) {
 		t.Fatalf("report %+v, %v", report, err)
 	}
 }

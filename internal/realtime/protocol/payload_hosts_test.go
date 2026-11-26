@@ -35,12 +35,14 @@ func TestHostsPayloadMembers(t *testing.T) {
 			"greeting_platform", "command_set_id", "command_id", "parameters_override", "startup_commands",
 			// accepted by upsert_profile beyond the form
 			"favorite", "role_override",
+			// the opt-in for the legacy SSH algorithms (D-01, M2 NW1)
+			"legacy_algorithms",
 		}, "save_profile"},
 		{protocol.HostsProfileRef{}, []string{"profile_id"}, "delete_profile"},
 		{protocol.HostsProfileOrganize{}, []string{"profile_id", "group", "favorite"}, "update_profile_organization"},
 		{protocol.HostsProfileMove{}, []string{"profile_id", "expected_source_group", "target_group", "target_index",
 			"confirm_source_group_removal"}, "move_profile"},
-		{protocol.HostsJumpSave{}, []string{"name", "host", "port", "username", "auth_type", "key_id", "jump_host_id"}, "save_jump_host"},
+		{protocol.HostsJumpSave{}, []string{"name", "host", "port", "username", "auth_type", "key_id", "jump_host_id", "legacy_algorithms"}, "save_jump_host"},
 		{protocol.HostsJumpRef{}, []string{"jump_host_id"}, "delete_jump_host"},
 		{protocol.HostsSOCKSSave{}, []string{"name", "host", "port", "username", "auth_type", "remote_dns", "socks_proxy_id"}, "save_socks_proxy"},
 		{protocol.HostsSOCKSRef{}, []string{"socks_proxy_id"}, "delete_socks_proxy"},

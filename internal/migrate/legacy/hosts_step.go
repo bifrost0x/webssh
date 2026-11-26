@@ -181,9 +181,6 @@ func (s *hostsStep) Report() StepReport {
 		if u.result.DroppedFacts > 0 {
 			r.Notes = append(r.Notes, fmt.Sprintf("user %d: %d stored host facts dropped as the Python release drops them; they are detected again", u.id, u.result.DroppedFacts))
 		}
-		for _, id := range u.result.IDNAHosts {
-			r.Flagged = append(r.Flagged, Flag{UserID: u.id, ID: id, Reason: "host_needs_idna: this preview cannot connect to the host name"})
-		}
 		if len(u.result.OverLimit) > 0 {
 			r.Warnings = append(r.Warnings, Warning{Code: "store_over_limit", UserID: u.id,
 				Message: "kept whole above the current limit, can only shrink: " + strings.Join(u.result.OverLimit, ", ")})

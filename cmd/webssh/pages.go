@@ -106,6 +106,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 	d.SupportLinksEnabled = app.SupportLinksEnabled
 	d.TmuxEnabled = pg.tmux && page.TmuxEnabled
 	d.TmuxDefault = pg.tmux && page.TmuxDefault
+	d.LegacySSHOptIn = page.LegacySSHOptIn
 	return d, &page, nil
 }
 

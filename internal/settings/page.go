@@ -59,6 +59,10 @@ type Page struct {
 	TmuxEnabled         bool
 	TmuxDefault         bool
 	SFTPChmodEnabled    bool
+	// LegacySSHOptIn shows the per-host opt-in for the legacy SSH
+	// algorithms: only while the installation does not offer them to every
+	// host (ssh.legacy_algorithms, D-01).
+	LegacySSHOptIn bool
 }
 
 // PageProvider computes the page values of an account.
@@ -98,6 +102,7 @@ func (pp PageProvider) Page(ctx context.Context, acct Account) (Page, error) {
 		TmuxEnabled:       app.RuntimeFeature("tmux_enabled").Enabled,
 		TmuxDefault:       app.RuntimeFeature("tmux_default").Enabled,
 		SFTPChmodEnabled:  app.RuntimeFeature("sftp_chmod_enabled").Enabled,
+		LegacySSHOptIn:    !app.Policy.LegacySSHAlgorithms,
 	}
 	prefs, err := json.Marshal(map[string]any{"panels": p.OverviewPanels, "dismissed": p.OverviewDismissed})
 	if err != nil {

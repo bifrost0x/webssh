@@ -97,6 +97,8 @@ const (
 	SOCKSProxyUnreachable   Code = "socks_proxy_unreachable"
 	SOCKSTimeout            Code = "socks_timeout"
 	SOCKSAuthRequired       Code = "socks_auth_required"
+	SOCKSAuthRejected       Code = "socks_auth_rejected"
+	SOCKSAuthFailed         Code = "socks_auth_failed"
 )
 
 // HTTP status codes used by the catalog. They are spelled out here so that
@@ -189,6 +191,8 @@ var catalog = map[Code]entry{
 	SOCKSProxyUnreachable:   {statusBadGateway, "The SOCKS5 proxy could not be reached."},
 	SOCKSTimeout:            {statusGatewayTimeout, "The SOCKS5 proxy did not respond in time."},
 	SOCKSAuthRequired:       {statusBadGateway, "The SOCKS5 proxy requires a username and password."},
+	SOCKSAuthRejected:       {statusBadGateway, "The SOCKS5 proxy does not accept username and password login."},
+	SOCKSAuthFailed:         {statusBadGateway, "SOCKS5 proxy login failed. Check the username and password."},
 }
 
 // Codes returns every code of the catalog, for tests and documentation.

@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 )
@@ -43,24 +44,44 @@ func (e *SOCKSError) fault() fault.Code {
 
 func socksFail(code string) error { return &SOCKSError{Code: code} }
 
-// socksConnect runs the CONNECT handshake (RFC 1928, no authentication) on
-// conn. dest is an IP literal or a name, as the network policy decided.
-func socksConnect(ctx context.Context, conn net.Conn, dest string, port int) error {
+// socksConnect runs the CONNECT handshake (RFC 1928) on conn, with the
+// username and password login of RFC 1929 when the proxy has one. dest is
+// an IP literal or a name, as the network policy decided.
+func socksConnect(ctx context.Context, conn net.Conn, proxy *SOCKS, dest string, port int) error {
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
-	err := socksHandshake(conn, dest, port)
+	err := socksHandshake(conn, proxy.Username, proxy.Password, dest, port)
 	if err != nil && ctx.Err() != nil {
 		return ctx.Err()
 	}
 	return err
 }
 
-func socksHandshake(rw io.ReadWriter, dest string, port int) error {
+// Methods of RFC 1928.
+const (
+	methodNone     = 0
+	methodPassword = 2
+	methodRefused  = 0xff
+)
+
+// socksHandshake follows open_socks5_tunnel of app/socks5_client.py: with
+// a login only the password method is offered, and the credentials are
+// checked before anything is sent.
+func socksHandshake(rw io.ReadWriter, username, password, dest string, port int) error {
+	login, err := loginRequest(username, password)
+	if err != nil {
+		return err
+	}
+	defer clear(login)
 	request, err := connectRequest(dest, port)
 	if err != nil {
 		return err
 	}
-	if _, err := rw.Write([]byte{5, 1, 0}); err != nil {
+	method := byte(methodNone)
+	if login != nil {
+		method = methodPassword
+	}
+	if _, err := rw.Write([]byte{5, 1, method}); err != nil {
 		return socksIO(err)
 	}
 	var reply [2]byte
@@ -70,15 +91,64 @@ func socksHandshake(rw io.ReadWriter, dest string, port int) error {
 	switch {
 	case reply[0] != 5:
 		return socksFail("socks_protocol_error")
-	case reply[1] == 0xff:
+	case reply[1] == methodRefused && login == nil:
 		return socksFail("socks_auth_required")
-	case reply[1] != 0:
+	case reply[1] == methodRefused:
+		return socksFail("socks_auth_rejected")
+	case reply[1] != method:
 		return socksFail("socks_protocol_error")
+	}
+	if login != nil {
+		if err := socksLogin(rw, login); err != nil {
+			return err
+		}
 	}
 	if _, err := rw.Write(request); err != nil {
 		return socksIO(err)
 	}
 	return readConnectReply(rw)
+}
+
+// maxCredential bounds username and password in characters and in UTF-8
+// bytes (RFC 1929 has one length byte for each).
+const maxCredential = 255
+
+// loginRequest is the RFC 1929 request, or nil for a proxy without login.
+// Python refuses a username or password outside 1 to 255 characters and
+// 1 to 255 UTF-8 bytes with socks_auth_failed before connecting.
+func loginRequest(username, password string) ([]byte, error) {
+	if username == "" && password == "" {
+		return nil, nil
+	}
+	for _, v := range []string{username, password} {
+		if v == "" || len(v) > maxCredential || !utf8.ValidString(v) {
+			return nil, socksFail("socks_auth_failed")
+		}
+	}
+	req := make([]byte, 0, 3+len(username)+len(password))
+	req = append(req, 1, byte(len(username))) // #nosec G115 -- at most 255, checked above
+	req = append(req, username...)
+	req = append(req, byte(len(password))) // #nosec G115 -- at most 255, checked above
+	return append(req, password...), nil
+}
+
+// socksLogin sends the login and reads the status. Python accepts the
+// version 1 of RFC 1929 and 5, which some proxies answer with.
+func socksLogin(rw io.ReadWriter, login []byte) error {
+	if _, err := rw.Write(login); err != nil {
+		return socksIO(err)
+	}
+	var status [2]byte
+	if _, err := io.ReadFull(rw, status[:]); err != nil {
+		return socksIO(err)
+	}
+	if status[0] != 1 && status[0] != 5 {
+		return socksFail("socks_protocol_error")
+	}
+	if status[1] != 0 {
+		return socksFail("socks_auth_failed")
+	}
+	return nil
 }
 
 func connectRequest(host string, port int) ([]byte, error) {
@@ -132,6 +202,9 @@ func readConnectReply(r io.Reader) error {
 		var n [1]byte
 		if _, err := io.ReadFull(r, n[:]); err != nil {
 			return socksIO(err)
+		}
+		if n[0] == 0 {
+			return socksFail("socks_protocol_error")
 		}
 		skip = int(n[0])
 	default:

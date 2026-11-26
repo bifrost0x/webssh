@@ -114,6 +114,29 @@ test('saved jump hosts and SOCKS proxies open by their id', async () => {
     socket.disconnect();
 });
 
+// A jump host with password sign-in and a SOCKS5 login carry the password
+// typed for this attempt, or ask for the saved one (credential_id).
+test('route passwords and saved passwords reach terminal.open', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', password: 'pw',
+        proxy_jump: {jump_host_id: 'j1', auth_type: 'password', password: 'jp'}, client_request_id: 'req_j'});
+    await tick();
+    assert.deepEqual(ws.lastRequest('terminal.open').p.target,
+        {auth_type: 'password', host: 'h', username: 'u', password: 'pw', jump_host_id: 'j1', jump_password: 'jp'});
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', credential_id: 'c0', profile_id: 'p1',
+        socks_proxy: {socks_proxy_id: 's1', credential_id: 'c1', credential_target_token: 't'}, client_request_id: 'req_s'});
+    await tick();
+    assert.deepEqual(ws.lastRequest('terminal.open').p.target,
+        {auth_type: 'password', profile_id: 'p1', host: 'h', username: 'u', socks_proxy_id: 's1',
+            saved_password: true, socks_saved_password: true});
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', password: 'pw',
+        socks_proxy: {socks_proxy_id: 's2', password: 'sp'}, client_request_id: 'req_t'});
+    await tick();
+    assert.equal(ws.lastRequest('terminal.open').p.target.socks_password, 'sp');
+    socket.disconnect();
+});
+
 test('UTF-8 split across frames is decoded per channel', async () => {
     const window = loadShim();
     const {socket, ws} = await connected(window);

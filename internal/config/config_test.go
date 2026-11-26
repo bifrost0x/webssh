@@ -180,9 +180,11 @@ func TestExplicit(t *testing.T) {
 	}
 }
 
-func TestSOCKSNonASCIIIgnored(t *testing.T) {
-	c, warns := mustLoad(t, map[string]string{"SOCKS_REMOTE_DNS_ALLOWLIST": "bastion.example,café.example"})
-	if fmt.Sprint(c.Network.SOCKSRemoteDNS) != "[bastion.example]" || !hasWarning(warns, WarnNoEffect, "SOCKS_REMOTE_DNS_ALLOWLIST", "ignored") {
+// Python converts the entries with IDNA 2003 (xn--caf-dma is
+// 'café.example'.encode('idna')).
+func TestSOCKSInternationalizedName(t *testing.T) {
+	c, warns := mustLoad(t, map[string]string{"SOCKS_REMOTE_DNS_ALLOWLIST": "bastion.example,Caf\u00e9.example"})
+	if fmt.Sprint(c.Network.SOCKSRemoteDNS) != "[bastion.example xn--caf-dma.example]" || hasWarning(warns, WarnNoEffect, "SOCKS_REMOTE_DNS_ALLOWLIST", "") {
 		t.Errorf("names %v warns %v", c.Network.SOCKSRemoteDNS, warns)
 	}
 }

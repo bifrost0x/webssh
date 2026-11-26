@@ -5,7 +5,9 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"net"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,7 +24,31 @@ const (
 	stallOpen stallMode = iota
 	// stallRequest confirms channels but never answers a channel request.
 	stallRequest
+	// stallClose starts every exec and shell request, then goes silent:
+	// nothing more is sent, so the close of a channel is never confirmed.
+	stallClose
 )
+
+// muteConn discards everything written after the write that follows
+// muteAfterNext, so a reply still goes out and nothing after it.
+type muteConn struct {
+	net.Conn
+	next  atomic.Bool
+	muted atomic.Bool
+}
+
+func (m *muteConn) muteAfterNext() { m.next.Store(true) }
+
+func (m *muteConn) Write(p []byte) (int, error) {
+	if m.muted.Load() {
+		return len(p), nil
+	}
+	n, err := m.Conn.Write(p)
+	if m.next.Load() {
+		m.muted.Store(true)
+	}
+	return n, err
+}
 
 // stallingServer accepts every login and answers keepalives, so the
 // transport looks healthy, but stops answering at mode. It reports how
@@ -75,7 +101,8 @@ func (s *stallingServer) serve(conn net.Conn, cfg *ssh.ServerConfig, mode stallM
 		s.mu.Unlock()
 	}()
 	defer func() { _ = conn.Close() }()
-	sc, chans, reqs, err := ssh.NewServerConn(conn, cfg)
+	mute := &muteConn{Conn: conn}
+	sc, chans, reqs, err := ssh.NewServerConn(mute, cfg)
 	if err != nil {
 		return
 	}
@@ -100,7 +127,14 @@ func (s *stallingServer) serve(conn net.Conn, cfg *ssh.ServerConfig, mode stallM
 		accepted = append(accepted, ch)
 		s.seen <- struct{}{}
 		go func() {
-			for range creqs { // never answered
+			for req := range creqs {
+				if mode != stallClose {
+					continue // never answered
+				}
+				if req.Type == "exec" || req.Type == "shell" {
+					mute.muteAfterNext()
+				}
+				_ = req.Reply(true, nil)
 			}
 		}()
 	}
@@ -227,5 +261,62 @@ func TestChannelGuardEndsAfterSetup(t *testing.T) {
 	}
 	if code, err := c.Exec(t.Context(), "exit 0", nil, nil, nil); err != nil || code != 0 {
 		t.Fatalf("connection closed after the budget: %d %v", code, err)
+	}
+}
+
+// A server that never confirms the close of a channel after the command
+// started must not hold Exec: the setup budget after the end of ctx closes
+// the connection (final review, Exec.Wait).
+func TestExecEndsWhenTheServerIgnoresTheClose(t *testing.T) {
+	s, c := dialStalling(t, stallClose, 300*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := c.Exec(ctx, "sleep 60", nil, nil, nil)
+	if fault.CodeOf(err) != fault.Timeout {
+		t.Fatalf("exec: %v", err)
+	}
+	if took := time.Since(start); took > 3*time.Second {
+		t.Fatalf("Exec returned after %v", took)
+	}
+	select {
+	case <-c.Done():
+	case <-time.After(time.Second):
+		t.Fatal("the connection is still open")
+	}
+	s.waitClosed(t)
+}
+
+// The same for a command shell on a connection that stays open: Close
+// ends Wait even when the server never confirms.
+func TestShellCloseEndsWhenTheServerIgnoresTheClose(t *testing.T) {
+	s, c := dialStalling(t, stallClose, 300*time.Millisecond)
+	sh, err := c.CommandShell(t.Context(), "tmux attach", 24, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- sh.Wait() }()
+	_ = sh.Close()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Wait still blocked after Close")
+	}
+	s.waitClosed(t)
+}
+
+// A server that confirms the close keeps the connection open.
+func TestExecKeepsTheConnectionAfterAConfirmedClose(t *testing.T) {
+	c := dialExec(t)
+	c.setup = 100 * time.Millisecond
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := c.Exec(ctx, "hang", strings.NewReader(""), nil, nil); fault.CodeOf(err) != fault.Timeout {
+		t.Fatalf("hang: %v", err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if code, err := c.Exec(t.Context(), "exit 0", nil, nil, nil); err != nil || code != 0 {
+		t.Fatalf("connection closed after a confirmed close: %d %v", code, err)
 	}
 }

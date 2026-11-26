@@ -14,8 +14,9 @@ import (
 // Profiles resolves saved hosts for terminal.open (provided by
 // internal/hosts). It fails with fault.NotFound for a profile that does not
 // exist or belongs to another user, and with fault.NotAvailableInPreview
-// for a profile that needs something M1 does not build (saved credentials,
-// SOCKS with login, Tailscale, gateway).
+// for a profile that needs something this build does not have (Tailscale,
+// gateway). Hops that sign in with a password carry none; the terminal adds
+// the password of the attempt or the saved one.
 type Profiles interface {
 	Resolve(ctx context.Context, owner int64, profileID string) (client.Target, error)
 }
@@ -26,4 +27,12 @@ type Profiles interface {
 // catalog. Closing the returned shell also closes its connection.
 type Shells interface {
 	OpenShell(ctx context.Context, t client.Target, ix client.Interaction, rows, cols int) (client.Shell, error)
+}
+
+// SavedPasswords returns the saved password assigned to a resource of
+// owner: a saved host "<id>", a jump host "jump:<id>" or a SOCKS5 proxy
+// "socks:<id>" (internal/vault through cmd/webssh). It fails with the
+// vault's codes (credential_missing, credential_target_changed, ...).
+type SavedPasswords interface {
+	Password(ctx context.Context, owner int64, resourceID string) (string, error)
 }

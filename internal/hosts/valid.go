@@ -71,7 +71,7 @@ func validProfile(r *record) bool {
 		!optionalIn(r, "startup_mode", "none", "free_text", "command", "command_set") {
 		return false
 	}
-	for _, field := range []string{"use_tmux", "favorite", "herdr", "use_herdr"} {
+	for _, field := range []string{"use_tmux", "favorite", "herdr", "use_herdr", "legacy_algorithms"} {
 		if !optionalBool(r, field) {
 			return false
 		}

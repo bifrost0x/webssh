@@ -4,27 +4,23 @@ import (
 	"net/netip"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/idna2003"
 )
 
 // Host name refusals. The texts are safe to show.
 var (
 	errHostRequired = fault.New(fault.InvalidValue, "Host is required.")
 	errHostFormat   = fault.New(fault.InvalidValue, "Invalid host format.")
-	errHostIDNA     = fault.New(fault.InvalidValue, "Internationalized host names are not supported in this preview; use the xn-- form.")
 )
 
 // CanonicalHost returns the form used for policy decisions and host-key
 // identity, exactly as app/network_policy.py canonicalize_hostname: the
 // value stripped, one pair of brackets and all trailing dots removed, an
-// IP literal in Python's string form, a name in lower case with RFC 1123
-// labels.
-//
-// Python converts non-ASCII names with the IDNA 2003 codec. Go has no
-// bit-identical implementation, and host keys are stored under the
-// converted name, so such names are refused instead of being guessed.
+// IP literal in Python's string form, a name converted with the IDNA 2003
+// codec (internal/idna2003) and lower-cased, with RFC 1123 labels. Host
+// keys of the Python release are stored under this form.
 func CanonicalHost(raw string) (string, error) {
 	value := pyStrip(raw)
 	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") && len(value) >= 2 {
@@ -37,20 +33,11 @@ func CanonicalHost(raw string) (string, error) {
 	if addr, ok := parsePythonAddr(value); ok {
 		return pythonAddrString(addr), nil
 	}
-	for i := range len(value) {
-		if value[i] >= utf8.RuneSelf {
-			return "", errHostIDNA
-		}
+	encoded, err := idna2003.Encode(value)
+	if err != nil {
+		return "", errHostFormat
 	}
-	// The ASCII path of Python's IDNA codec: every label but the last must
-	// have 1 to 63 bytes, the last fewer than 64.
-	labels := strings.Split(value, ".")
-	for i, label := range labels {
-		if len(label) >= 64 || (len(label) == 0 && i < len(labels)-1) {
-			return "", errHostFormat
-		}
-	}
-	canonical := strings.ToLower(value)
+	canonical := strings.ToLower(encoded)
 	if len(canonical) > 253 {
 		return "", errHostFormat
 	}

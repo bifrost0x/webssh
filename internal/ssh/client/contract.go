@@ -67,10 +67,13 @@ type Auth struct {
 	KeyID    string
 }
 
-// SOCKS is a SOCKS5 proxy. M1 supports proxies without authentication.
+// SOCKS is a SOCKS5 proxy. Username and Password, both set or both
+// empty, are the login of RFC 1929.
 type SOCKS struct {
-	Host string
-	Port int
+	Host     string
+	Port     int
+	Username string
+	Password string
 	// RemoteDNS is the proxy's remote_dns setting: the proxy may resolve
 	// the target name itself where the network policy permits it.
 	RemoteDNS bool
@@ -139,6 +142,33 @@ type BannerPrompt struct {
 type Interaction interface {
 	HostKey(ctx context.Context, q HostKeyPrompt) (bool, error)
 	Banner(ctx context.Context, q BannerPrompt) (bool, error)
+}
+
+// Challenger is an Interaction that can also put the questions of a
+// keyboard-interactive round to the user (one-time codes, a second
+// question, the dialogs of PAM). The terminal implements it with the
+// realtime prompt of NW2. Without it, an attended connection that needs
+// such an answer ends with not_available_in_preview. The answers are sent
+// once; a rejected answer ends the attempt.
+type Challenger interface {
+	Challenge(ctx context.Context, q Challenge) ([]string, error)
+}
+
+// Challenge is one keyboard-interactive round. Name, Instruction and the
+// question texts are remote-supplied, bounded and cleaned like a banner.
+type Challenge struct {
+	Role        Role
+	Host        string
+	Port        int
+	Name        string
+	Instruction string
+	Questions   []Question
+}
+
+// Question is one prompt of a round; Echo false means a secret.
+type Question struct {
+	Text string
+	Echo bool
 }
 
 // NetDialer opens the TCP connection to the first hop or proxy after the

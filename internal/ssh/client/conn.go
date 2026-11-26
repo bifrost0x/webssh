@@ -78,6 +78,23 @@ func (c *Conn) guard(ctx context.Context) (gctx context.Context, disarm func() (
 	}
 }
 
+// closeUnlessDone closes the connection when done is not closed within
+// the setup budget. It blocks until one of both happens.
+func (c *Conn) closeUnlessDone(done <-chan struct{}) {
+	budget := c.setup
+	if budget <= 0 {
+		budget = DefaultHandshakeTimeout
+	}
+	t := time.NewTimer(budget)
+	defer t.Stop()
+	select {
+	case <-done:
+	case <-t.C:
+		_ = c.Close()
+	case <-c.done:
+	}
+}
+
 // setupFail classifies a failed channel setup. A fired guard is reported
 // as cancelled or timed out, not as the transport error it caused; gctx
 // keeps the reason it ended with.
@@ -126,13 +143,17 @@ func (c *Conn) keepalive(client *ssh.Client, interval time.Duration) {
 // PTY limits; the terminal clamps sizes before it asks.
 const maxPTYSize = 10000
 
-// shell is the Shell of one session.
+// shell is the Shell of one session. A goroutine waits for the remote
+// end from the start, so Close can tell whether the server confirmed it.
 type shell struct {
 	session   *ssh.Session
 	stdin     io.WriteCloser
 	stdout    io.Reader
+	conn      *Conn
 	closeConn *Conn
 	once      sync.Once
+	exited    chan struct{}
+	waitErr   error
 }
 
 // Shell starts an interactive login shell with a PTY of rows x cols.
@@ -188,7 +209,12 @@ func (c *Conn) openPTY(ctx context.Context, rows, cols int, command string) (*sh
 		_ = s.Close()
 		return nil, setupFail(ctx, gctx, true, nil)
 	}
-	return &shell{session: s, stdin: stdin, stdout: stdout}, nil
+	sh := &shell{session: s, stdin: stdin, stdout: stdout, conn: c, exited: make(chan struct{})}
+	go func() {
+		sh.waitErr = s.Wait()
+		close(sh.exited)
+	}()
+	return sh, nil
 }
 
 func (s *shell) Read(p []byte) (int, error)  { return s.stdout.Read(p) }
@@ -203,9 +229,15 @@ func (s *shell) Resize(rows, cols int) error {
 }
 
 // Wait returns when the remote shell ends.
-func (s *shell) Wait() error { return s.session.Wait() }
+func (s *shell) Wait() error {
+	<-s.exited
+	return s.waitErr
+}
 
 // Close ends the session and, for a shell from OpenShell, the connection.
+// A shell on a connection that stays open (Shell, CommandShell) closes
+// the connection after the setup budget when the server does not confirm
+// the end of the channel; otherwise Wait would never return.
 func (s *shell) Close() error {
 	var err error
 	s.once.Do(func() {
@@ -215,7 +247,9 @@ func (s *shell) Close() error {
 		}
 		if s.closeConn != nil {
 			err = errors.Join(err, s.closeConn.Close())
+			return
 		}
+		go s.conn.closeUnlessDone(s.exited)
 	})
 	return err
 }

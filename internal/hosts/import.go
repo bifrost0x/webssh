@@ -27,9 +27,6 @@ type ImportReport struct {
 	// DroppedFacts counts identity facts Python itself drops when it loads
 	// the store (_drop_invalid_stored_facts).
 	DroppedFacts int
-	// IDNAHosts are the IDs of saved hosts, jump hosts and SOCKS5 proxies
-	// whose host needs IDNA; they cannot connect in this release.
-	IDNAHosts []string
 	// OverLimit names the stores with more records than the current limit;
 	// they are kept whole and can only shrink.
 	OverLimit []string
@@ -66,13 +63,6 @@ func Import(ctx context.Context, tx *store.Tx, owner int64, in Legacy, limits Li
 			return report, fmt.Errorf("%w: SOCKS proxy IDs are not unique", ErrInvalidLegacy)
 		}
 		seen[id] = true
-	}
-	for _, records := range [][]record{profiles, jumps, socks} {
-		for i := range records {
-			if NeedsIDNA(records[i].text("host")) {
-				report.IDNAHosts = append(report.IDNAHosts, records[i].text("id"))
-			}
-		}
 	}
 	all := stores{"profiles": profiles, "jump_hosts": jumps, "socks_proxies": socks}
 	for _, k := range allKinds {

@@ -36,6 +36,9 @@ type HostsProfileSave struct {
 	GreetingPlatform   jsontext.Value `json:"greeting_platform"`
 	Favorite           jsontext.Value `json:"favorite"`
 	RoleOverride       jsontext.Value `json:"role_override"`
+	// LegacyAlgorithms opts the host in to ssh-rsa, SHA-1 key exchange and
+	// CBC ciphers (D-01); a boolean.
+	LegacyAlgorithms jsontext.Value `json:"legacy_algorithms"`
 }
 
 // HostsProfileRef names one saved host (delete_profile).
@@ -70,6 +73,8 @@ type HostsJumpSave struct {
 	Username   jsontext.Value `json:"username"`
 	AuthType   jsontext.Value `json:"auth_type"`
 	KeyID      jsontext.Value `json:"key_id"`
+	// LegacyAlgorithms is the opt-in of HostsProfileSave for the jump host.
+	LegacyAlgorithms jsontext.Value `json:"legacy_algorithms"`
 }
 
 // HostsJumpRef names one jump host (delete_jump_host).

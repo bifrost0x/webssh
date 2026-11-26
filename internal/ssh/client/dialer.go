@@ -203,7 +203,7 @@ func (d *Dialer) firstConn(ctx context.Context, proxy *SOCKS, hops []hop) (net.C
 		}
 		return nil, fail(tctx, RoleSOCKS, false, err)
 	}
-	if err := socksConnect(tctx, conn, first.dest, first.Port); err != nil {
+	if err := socksConnect(tctx, conn, proxy, first.dest, first.Port); err != nil {
 		_ = conn.Close()
 		return nil, fail(tctx, RoleSOCKS, false, err)
 	}

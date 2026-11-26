@@ -33,6 +33,8 @@ window.i18n.registerLocales({
         "connection.routeClearSocks": "Un host usa una sola ruta: quita el proxy SOCKS5 para elegir un host de salto.",
         "connection.routeTailscale": "Tailscale SSH conecta directamente.",
         "connection.routeConflict": "Elige una sola ruta compatible.",
+        "connection.legacyAlgorithms": "Permitir algoritmos SSH antiguos",
+        "connection.legacyAlgorithmsHint": "Solo para servidores antiguos: ofrece además ssh-rsa con SHA-1, intercambio de claves SHA-1 y cifrados CBC, con la prioridad más baja.",
         "connection.socksProxy": "Proxy SOCKS5",
         "connection.socksProxyNone": "Ninguno",
         "connection.jumpHostManage": "Administrar hosts de salto",

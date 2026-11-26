@@ -4,3 +4,4 @@
 # Every entry needs a reason a reviewer can check, for example a table of
 # official test vectors. Entries for files that shrink below the limit or
 # no longer exist fail the architecture tests and must be removed.
+internal/idna2003/tables.go 2200 generated from CPython by internal/idna2003/testdata/oracle.py (Unicode tables); TestTablesMatchGenerator compares it

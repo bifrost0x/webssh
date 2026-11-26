@@ -1117,6 +1117,15 @@
                             <div class="field-hint" data-i18n="session.persistentTmuxHint">Keeps terminal alive on the remote host even when you close the browser or server restarts. Reattaches to existing tmux session automatically.</div>
                         </div>
                         {{end}}
+                        {{if $.LegacySSHOptIn}}
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="profileEditorLegacyAlgorithms" aria-describedby="profileEditorLegacyAlgorithmsHint">
+                                <span data-i18n="connection.legacyAlgorithms">Allow legacy SSH algorithms</span>
+                            </label>
+                            <div id="profileEditorLegacyAlgorithmsHint" class="field-hint" data-i18n="connection.legacyAlgorithmsHint">For old servers only: also offers ssh-rsa with SHA-1, SHA-1 key exchange and CBC ciphers, with the lowest priority.</div>
+                        </div>
+                        {{end}}
                         <div id="profileEditorHerdrBlock" class="hidden">
                             <p id="profileEditorHerdrDisabled" class="profile-herdr-notice hidden" role="note"><span class="material-icons" aria-hidden="true">block</span><span data-i18n="herdr.profileDisabled">Herdr is turned off for this WebSSH instance. The Herdr settings of this host are kept and apply again once an administrator turns the integration on. Until then no agents are read and the host connects with a standard shell.</span></p>
                             <div class="form-group">
@@ -1440,6 +1449,15 @@
                                 <option value="" data-i18n="connection.selectSSHKey">-- Select SSH Key --</option>
                             </select>
                         </div>
+                        {{if $.LegacySSHOptIn}}
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="jhLegacyAlgorithms" aria-describedby="jhLegacyAlgorithmsHint">
+                                <span data-i18n="connection.legacyAlgorithms">Allow legacy SSH algorithms</span>
+                            </label>
+                            <div id="jhLegacyAlgorithmsHint" class="field-hint" data-i18n="connection.legacyAlgorithmsHint">For old servers only: also offers ssh-rsa with SHA-1, SHA-1 key exchange and CBC ciphers, with the lowest priority.</div>
+                        </div>
+                        {{end}}
                         <p class="field-hint" data-i18n="credentials.jumpHint">Enter a password when connecting, or explicitly save a reusable password.</p>
                         <p id="jhSaveStatus" class="field-hint" role="status" hidden></p>
                         <div class="form-actions"><button type="button" id="cancelJumpHostEdit" class="btn btn-secondary" data-i18n="common.cancel" hidden>Cancel</button><button type="submit" id="saveJumpHostBtn" class="btn btn-primary"><span data-i18n="jumphosts.add">Add Jump Host</span></button></div>

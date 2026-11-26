@@ -30,6 +30,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/netpolicy"
+	"github.com/bifrost0x/webssh/internal/otp"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
 	"github.com/bifrost0x/webssh/internal/ssh/hostkey"
 	"github.com/bifrost0x/webssh/internal/store"
@@ -330,6 +331,21 @@ func TestLabSOCKS(t *testing.T) {
 	if he, _ := errors.AsType[*client.HopError](err); he == nil || he.Role != client.RoleSOCKS || he.Detail != "socks_auth_required" {
 		t.Fatalf("proxy with login: %v", err)
 	}
+	// RFC 1929 login (C-CONN-08).
+	tgt.Proxy.Username, tgt.Proxy.Password = "labproxy", secret(t, "secrets/socks-labproxy")
+	if got := whoami(t, r, tgt); got != "pwuser" {
+		t.Fatalf("through socks-auth with login: %q", got)
+	}
+	tgt.Proxy.Password = "wrong"
+	_, err = r.dialer.Dial(t.Context(), tgt, r.ix)
+	if he, _ := errors.AsType[*client.HopError](err); he == nil || he.Role != client.RoleSOCKS || code(err) != fault.SOCKSAuthFailed {
+		t.Fatalf("wrong proxy password: %v", err)
+	}
+	// The open proxy offers no login method.
+	tgt.Proxy = &client.SOCKS{Host: open.Host, Port: open.Port, RemoteDNS: true, Username: "labproxy", Password: "x"}
+	if _, err := r.dialer.Dial(t.Context(), tgt, r.ix); code(err) != fault.SOCKSAuthRejected {
+		t.Fatalf("login offered to a proxy without login: %v", err)
+	}
 	// A proxy that is down has its own code since the socks_* codes of the
 	// Python release are in the catalog.
 	tgt.Proxy = &client.SOCKS{Host: "127.0.0.1", Port: 1, RemoteDNS: true}
@@ -450,4 +466,139 @@ func TestLabRekey(t *testing.T) {
 	if len(r.ix.seen) != 1 {
 		t.Fatalf("re-key prompted again: %d prompts", len(r.ix.seen))
 	}
+}
+
+// bannerPrompts trusts every host key (the banner server is a throwaway
+// container) and answers banners with accept.
+type bannerPrompts struct {
+	accept bool
+	seen   []client.BannerPrompt
+}
+
+func (*bannerPrompts) HostKey(context.Context, client.HostKeyPrompt) (bool, error) { return true, nil }
+
+func (b *bannerPrompts) Banner(_ context.Context, q client.BannerPrompt) (bool, error) {
+	b.seen = append(b.seen, q)
+	return b.accept, nil
+}
+
+// TestBannerServer runs against the OpenSSH server of testdata/banner-lab.sh:
+// the banner reaches the user cleaned of control characters, accepting it
+// signs in, declining it or connecting unattended ends the attempt.
+func TestBannerServer(t *testing.T) {
+	addr, password := os.Getenv("WEBSSH_BANNER_ADDR"), os.Getenv("WEBSSH_BANNER_PASSWORD")
+	if addr == "" {
+		t.Fatal("run with testdata/banner-lab.sh (WEBSSH_BANNER_ADDR)")
+	}
+	host, portText, _ := strings.Cut(addr, ":")
+	port, _ := strconv.Atoi(portText)
+	policy, err := netpolicy.New(netpolicy.Config{Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &rig{dialer: &client.Dialer{Net: policy, HostKeys: hostkey.New(storetest.Open(t, hostkey.Schema()), nil)}}
+	tgt := client.Target{Owner: 1, Hop: client.Hop{Host: host, Port: port, User: "pwuser", Auth: client.Auth{Password: password}}}
+	ix := &bannerPrompts{accept: true}
+	c, err := r.dialer.Dial(t.Context(), tgt, ix)
+	if err != nil {
+		t.Fatalf("accepted banner: %v", err)
+	}
+	_ = c.Close()
+	if len(ix.seen) != 1 {
+		t.Fatalf("banner prompts: %d", len(ix.seen))
+	}
+	q := ix.seen[0]
+	if q.Role != client.RoleTarget || q.Port != port || !strings.Contains(q.Banner, "Authorized use only.") ||
+		!strings.Contains(q.Banner, "Grüße") || strings.ContainsAny(q.Banner, "\x1b\a") {
+		t.Fatalf("banner prompt %+v, text %+q", q, q.Banner)
+	}
+	t.Logf("banner as shown: %+q", q.Banner)
+	if _, err := r.dialer.Dial(t.Context(), tgt, &bannerPrompts{accept: false}); code(err) != fault.BannerDeclined {
+		t.Fatalf("declined banner: %v", err)
+	}
+	if _, err := r.dialer.Dial(t.Context(), tgt, nil); code(err) != fault.BannerDeclined {
+		t.Fatalf("unattended banner: %v", err)
+	}
+}
+
+// totpPrompts answers the one-time code round of the lab's PAM with a
+// code computed from the account's seed.
+type totpPrompts struct {
+	*labPrompts
+	t      *testing.T
+	seed   []byte
+	rounds []client.Challenge
+}
+
+func (p *totpPrompts) Challenge(_ context.Context, q client.Challenge) ([]string, error) {
+	p.rounds = append(p.rounds, q)
+	code, err := otp.TOTP(p.seed, otp.Step(time.Now(), 30*time.Second))
+	if err != nil {
+		return nil, err
+	}
+	answers := make([]string, len(q.Questions))
+	for i := range answers {
+		answers[i] = code
+	}
+	return answers, nil
+}
+
+// C-CONN-09 and K2: the saved password answers the PAM password prompt,
+// the user the one-time code, for keyboard-interactive only (kiuser) and
+// after a public key (mfauser). The lab's google-authenticator files
+// allow ten attempts per 30 s and account (RATE_LIMIT 10 30); runs in
+// quick succession used to hit that limit, so a refused first attempt is
+// repeated once after the window has passed, with a new code.
+func TestLabKeyboardInteractiveWithTOTP(t *testing.T) {
+	r := newRig(t, netpolicy.Config{})
+	raw, err := os.ReadFile(filepath.Join(lab(t).RuntimeDir, "ssh", "client", "ed25519"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.signer["mfa"] = labSigner(t, raw, nil)
+	for _, user := range []string{"kiuser", "mfauser"} {
+		seed, err := otp.DecodeSecret(secret(t, "secrets/ssh-"+user+"-totp-base32"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		auth := client.Auth{Password: secret(t, "secrets/ssh-"+user)}
+		if user == "mfauser" {
+			auth.KeyID = "mfa"
+		}
+		tgt := client.Target{Owner: 1, Hop: hop(t, "ssh-modern", user, auth)}
+		ix := &totpPrompts{labPrompts: r.ix, t: t, seed: seed}
+		got, err := dialWhoami(t, r, tgt, ix)
+		if code(err) == fault.AuthFailed {
+			t.Logf("%s: first attempt refused, repeating after the rate-limit window", user)
+			time.Sleep(31 * time.Second)
+			got, err = dialWhoami(t, r, tgt, ix)
+		}
+		if err != nil || got != user {
+			t.Fatalf("%s: %q, %v", user, got, err)
+		}
+		if len(ix.rounds) == 0 || ix.rounds[len(ix.rounds)-1].Role != client.RoleTarget {
+			t.Fatalf("%s: rounds %+v", user, ix.rounds)
+		}
+	}
+}
+
+func dialWhoami(t *testing.T, r *rig, tgt client.Target, ix client.Interaction) (string, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	sh, err := r.dialer.OpenShell(ctx, tgt, ix, 24, 80)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = sh.Close() }()
+	if _, err := io.WriteString(sh, "echo WHO=$(id -un)=; exit\n"); err != nil {
+		return "", err
+	}
+	out, _ := io.ReadAll(io.LimitReader(sh, 1<<20))
+	text := string(out)
+	i := strings.LastIndex(text, "WHO=")
+	if i < 0 {
+		return "", errors.New("no answer")
+	}
+	return strings.SplitN(text[i+4:], "=", 2)[0], nil
 }

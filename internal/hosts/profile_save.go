@@ -184,7 +184,7 @@ func mergeProfile(profiles []record, index int, d draft, p payload, now jsontext
 	if v, _ := existing.get("favorite"); !p.has("favorite") && string(v) == "true" {
 		r.set("favorite", jsonTrue)
 	}
-	for _, field := range []string{"use_tmux", "herdr", "use_herdr"} {
+	for _, field := range []string{"use_tmux", "herdr", "use_herdr", "legacy_algorithms"} {
 		if !p.has(field) {
 			copyField(field)
 		}

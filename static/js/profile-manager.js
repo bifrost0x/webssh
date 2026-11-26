@@ -1516,6 +1516,8 @@ const ProfileManager = {
                 : useTmux.dataset.default === 'true';
         }
         this.loadHerdrEditor(profile, useTmux?.dataset.default === 'true');
+        const legacyAlgorithms = document.getElementById('profileEditorLegacyAlgorithms');
+        if (legacyAlgorithms) legacyAlgorithms.checked = profile?.legacy_algorithms === true;
 
         const hasOverride = Object.prototype.hasOwnProperty.call(
             profile || {}, 'parameters_override'
@@ -1723,6 +1725,8 @@ const ProfileManager = {
         const useTmux = document.getElementById('profileEditorUseTmux');
         if (sessionOptions) Object.assign(payload, sessionOptions);
         else if (useTmux) payload.use_tmux = useTmux.checked;
+        const legacyAlgorithms = document.getElementById('profileEditorLegacyAlgorithms');
+        if (legacyAlgorithms) payload.legacy_algorithms = legacyAlgorithms.checked;
         if (this.editingProfileId) payload.id = this.editingProfileId;
         const greeting = this.greetingPlatform;
         if (!this.editingProfileId && greeting && greeting.host === payload.host && greeting.port === payload.port) {

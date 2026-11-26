@@ -39,19 +39,32 @@
         return typeof id === 'string' && id !== '' && !contradicts ? id : null;
     }
 
+    // The password of a saved route typed for this attempt, and whether the
+    // saved password assigned to it is asked for (credential_id).
+    function routeSecrets(route, prefix) {
+        if (!wire.isPlainObject(route)) return {};
+        const out = {};
+        if (typeof route.password === 'string' && route.password !== '') out[prefix + 'password'] = route.password;
+        if (route.credential_id !== undefined && route.credential_id !== null) out[prefix + 'saved_password'] = true;
+        return out;
+    }
+
     // Projects the Socket.IO ssh_connect payload onto terminal.open; inline
-    // routes, stored credentials, Tailscale and Herdr are not part of M1.
-    // use_tmux carries the persistent session to reattach, which the server checks.
+    // routes, Tailscale and Herdr are not projected. use_tmux carries the
+    // persistent session to reattach, which the server checks.
     function openTarget(data) {
         const authType = data.auth_type || (data.key_id ? 'key' : 'password');
         const jump = savedRoute(data.proxy_jump, 'jump_host_id', data.jump_host_id);
         const socks = savedRoute(data.socks_proxy, 'socks_proxy_id', data.socks_proxy_id);
-        if (!['password', 'key'].includes(authType) || data.credential_id || jump === null || socks === null) return null;
+        if (!['password', 'key'].includes(authType) || jump === null || socks === null) return null;
         const target = {auth_type: authType};
         for (const name of TARGET_FIELDS) {
             if (typeof data[name] === 'string' && data[name] !== '') target[name] = data[name];
         }
         Object.assign(target, jump ? {jump_host_id: jump} : {}, socks ? {socks_proxy_id: socks} : {});
+        if (data.credential_id !== undefined && data.credential_id !== null) target.saved_password = true;
+        if (jump) Object.assign(target, routeSecrets(data.proxy_jump, 'jump_'));
+        if (socks) Object.assign(target, routeSecrets(data.socks_proxy, 'socks_'));
         const port = typeof data.port === 'string' && /^\d{1,5}$/.test(data.port) ? Number(data.port) : data.port;
         if (Number.isInteger(port) && port > 0) target.port = port;
         if (data.use_tmux !== true) return target;

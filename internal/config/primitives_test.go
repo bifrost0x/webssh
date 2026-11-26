@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -15,8 +14,7 @@ type primitiveCase struct {
 }
 
 // goPrimitive evaluates fn like testdata/pyprobe.py does in Python. skip
-// is true where Go knowingly answers differently (IDNA for non-ASCII
-// names, see errNonASCIIHost).
+// is true where Go knowingly answers differently.
 func goPrimitive(fn, arg string) (result any, skip bool) {
 	switch fn {
 	case "int":
@@ -54,18 +52,12 @@ func goPrimitive(fn, arg string) (result any, skip bool) {
 		return []any{u.scheme, u.netloc, u.path, u.query, u.fragment, u.hostname(), u.hasCredentials(), port}, false
 	case "tailscale":
 		host, port, err := tailscaleTarget(arg)
-		if errors.Is(err, errNonASCIIHost) {
-			return nil, true
-		}
 		if err != nil {
 			return nil, false
 		}
 		return []any{host, float64(port)}, false
 	case "remote_dns":
-		names, nonASCII, err := remoteDNSAllowlist(arg, "X")
-		if len(nonASCII) > 0 {
-			return nil, true
-		}
+		names, err := remoteDNSAllowlist(arg, "X")
 		if err != nil {
 			return nil, false
 		}

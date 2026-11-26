@@ -75,7 +75,13 @@ const MaxTmuxSessionName = 256
 
 // OpenTarget is the connection the user asked for. A ProfileID makes the
 // server resolve the saved profile; the other fields are then ignored
-// except the password typed for this attempt.
+// except the passwords of this attempt.
+//
+// JumpPassword and SOCKSPassword are typed for this attempt (the password
+// of proxy_jump and socks_proxy in ssh_connect); they are used only for a
+// jump host with password sign-in and a SOCKS5 proxy with a login. The
+// SavedPassword flags ask for the saved password assigned to the host,
+// the jump host or the proxy instead (credential_id in ssh_connect).
 type OpenTarget struct {
 	ProfileID    string `json:"profile_id,omitzero"`
 	Host         string `json:"host,omitzero"`
@@ -91,6 +97,12 @@ type OpenTarget struct {
 	// the name before it reaches a shell command.
 	UseTmux         bool   `json:"use_tmux,omitzero"`
 	TmuxSessionName string `json:"tmux_session_name,omitzero"`
+
+	JumpPassword       string `json:"jump_password,omitzero"`
+	SOCKSPassword      string `json:"socks_password,omitzero"`
+	SavedPassword      bool   `json:"saved_password,omitzero"`
+	JumpSavedPassword  bool   `json:"jump_saved_password,omitzero"`
+	SOCKSSavedPassword bool   `json:"socks_saved_password,omitzero"`
 }
 
 // TerminalOpened is the result of terminal.open.
