@@ -119,7 +119,8 @@ func TestOpenPrefetchAndRanges(t *testing.T) {
 	data := make([]byte, 3<<20+123)
 	_, _ = rand.Read(data)
 	put(t, root+"/blob", data, 0o644)
-	for _, r := range []files.Range{{0, -1}, {0, 10}, {100, 70000}, {int64(len(data)) - 5, -1}, {int64(len(data)) + 9, -1}, {1 << 20, 0}} {
+	for _, r := range []files.Range{{Offset: 0, Length: -1}, {Offset: 0, Length: 10}, {Offset: 100, Length: 70000},
+		{Offset: int64(len(data)) - 5, Length: -1}, {Offset: int64(len(data)) + 9, Length: -1}, {Offset: 1 << 20, Length: 0}} {
 		rd, err := b.Open(ctx(t), root+"/blob", r)
 		if err != nil {
 			t.Fatal(err)

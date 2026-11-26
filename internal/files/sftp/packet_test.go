@@ -29,8 +29,7 @@ func TestAttributeBounds(t *testing.T) {
 		ok   bool
 	}{
 		{"empty", be32(0), true},
-		{"all fields", append(append(be32(attrSize|attrUIDGID|attrPermissions|attrACModTime),
-			make([]byte, 8+8+4+8)...)), true},
+		{"all fields", append(be32(attrSize|attrUIDGID|attrPermissions|attrACModTime), make([]byte, 8+8+4+8)...), true},
 		{"unknown flag", be32(0x10), false},
 		{"truncated size", append(be32(attrSize), 1, 2), false},
 		{"16 extensions", ext(16, 1), true},

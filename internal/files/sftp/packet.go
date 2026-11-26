@@ -110,7 +110,7 @@ func newPacket(typ byte, id uint32) *encoder {
 func (e *encoder) u32(v uint32) *encoder { e.b = binary.BigEndian.AppendUint32(e.b, v); return e }
 
 func (e *encoder) str(s string) *encoder {
-	e.u32(uint32(len(s)))
+	e.u32(uint32(len(s))) // #nosec G115 -- request strings are paths and names of at most a few KiB
 	e.b = append(e.b, s...)
 	return e
 }
@@ -123,7 +123,7 @@ func (e *encoder) noAttrs() *encoder { return e.u32(0) }
 
 // bytes returns the finished packet with its length.
 func (e *encoder) bytes() []byte {
-	binary.BigEndian.PutUint32(e.b, uint32(len(e.b)-4))
+	binary.BigEndian.PutUint32(e.b, uint32(len(e.b)-4)) // #nosec G115 -- a request packet is a few KiB
 	return e.b
 }
 

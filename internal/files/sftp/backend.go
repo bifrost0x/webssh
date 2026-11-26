@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"maps"
 	"path"
 	"sync"
 	"time"
@@ -79,12 +80,12 @@ func Open(ctx context.Context, ch io.ReadWriteCloser, o Options) (*Backend, erro
 		// limits@openssh.com: never ask for more than the server reads or
 		// writes in one request.
 		for _, v := range []uint64{lim.read, lim.write} {
-			if v > 0 && v < uint64(b.chunk) {
-				b.chunk = int(v)
+			if v > 0 && v < uint64(b.chunk) { // #nosec G115 -- chunk is positive (withDefaults)
+				b.chunk = int(v) // #nosec G115 -- v is below chunk, an int
 			}
 		}
 	} else if b.r.cause() != nil {
-		b.Close()
+		_ = b.Close()
 		return nil, b.mapErr(err, false)
 	}
 	b.caps = b.capabilities()
@@ -108,11 +109,7 @@ func (b *Backend) Capabilities() files.Capabilities { return b.caps }
 
 // Extensions returns the extensions the server announced (name to data).
 func (b *Backend) Extensions() map[string]string {
-	out := map[string]string{}
-	for k, v := range b.r.extensions() {
-		out[k] = v
-	}
-	return out
+	return maps.Clone(b.r.extensions())
 }
 
 // Done is closed when the channel ended, by Close or by a failure.
