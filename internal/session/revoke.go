@@ -159,41 +159,56 @@ func deleteWhere(ctx context.Context, tx *store.Tx, reason principal.Reason, whe
 // mfaOff the assurance drops to Basic. It reports whether the session was
 // restricted.
 func (s *Service) ClearRecovery(ctx context.Context, id, replacement string, mfaOff bool) (bool, error) {
-	if replacement != "" && !methodPattern.MatchString(replacement) {
-		return false, fault.New(fault.InvalidRequest, "")
-	}
 	var cleared bool
 	err := s.db.Write(ctx, func(tx *store.Tx) error {
-		sess, err := scanSession(tx.QueryRowContext(ctx, `SELECT `+selectColumns+` FROM session_sessions WHERE id = ?`, id))
-		if errors.Is(err, sql.ErrNoRows) {
-			return errNotEligible
-		}
-		if err != nil {
-			return err
-		}
-		if !sess.Recovery() {
-			return nil
-		}
-		methods := slices.DeleteFunc(slices.Clone(sess.Methods), func(m string) bool { return m == MethodRecovery })
-		if replacement != "" && !slices.Contains(methods, replacement) {
-			methods = append(methods, replacement)
-		}
-		if len(methods) == 0 {
-			return fault.New(fault.Conflict, "")
-		}
-		assurance := sess.Assurance
-		if mfaOff {
-			assurance = Basic
-		}
-		raw, _ := json.Marshal(methods)
-		if _, err := tx.ExecContext(ctx, `UPDATE session_sessions SET methods = ?, assurance = ? WHERE id = ?`, string(raw), string(assurance), id); err != nil {
-			return fmt.Errorf("session: clear recovery: %w", err)
-		}
-		cleared = true
-		return nil
+		var err error
+		cleared, err = clearRecoveryTx(ctx, tx, id, replacement, mfaOff)
+		return err
 	})
 	if err != nil {
 		return false, storageErr(err)
 	}
 	return cleared, nil
+}
+
+// EndRecovery is ClearRecovery inside the caller's write transaction
+// (auth.RecoverySessions): the factor change and the end of the recovery
+// restriction commit together.
+func (s *Service) EndRecovery(ctx context.Context, tx *store.Tx, sessionID, replacement string, basic bool) error {
+	if _, err := clearRecoveryTx(ctx, tx, sessionID, replacement, basic); err != nil {
+		return storageErr(err)
+	}
+	return nil
+}
+
+func clearRecoveryTx(ctx context.Context, tx *store.Tx, id, replacement string, mfaOff bool) (bool, error) {
+	if replacement != "" && !methodPattern.MatchString(replacement) {
+		return false, fault.New(fault.InvalidRequest, "")
+	}
+	sess, err := scanSession(tx.QueryRowContext(ctx, `SELECT `+selectColumns+` FROM session_sessions WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, errNotEligible
+	}
+	if err != nil {
+		return false, err
+	}
+	if !sess.Recovery() {
+		return false, nil
+	}
+	methods := slices.DeleteFunc(slices.Clone(sess.Methods), func(m string) bool { return m == MethodRecovery })
+	if replacement != "" && !slices.Contains(methods, replacement) {
+		methods = append(methods, replacement)
+	}
+	if len(methods) == 0 {
+		return false, fault.New(fault.Conflict, "")
+	}
+	assurance := sess.Assurance
+	if mfaOff {
+		assurance = Basic
+	}
+	raw, _ := json.Marshal(methods)
+	if _, err := tx.ExecContext(ctx, `UPDATE session_sessions SET methods = ?, assurance = ? WHERE id = ?`, string(raw), string(assurance), id); err != nil {
+		return false, fmt.Errorf("session: clear recovery: %w", err)
+	}
+	return true, nil
 }
