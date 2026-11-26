@@ -158,7 +158,9 @@
         host.request(entry.type, payload).then(result => {
             if (!result.ok) {
                 const failed = acks.failure(result.err);
-                if (entry.errorEvent) host.dispatch('error', {success: false, error: failed.error, code: failed.code});
+                // The details Python sent with the event too (usages of a
+                // jump host or SOCKS5 proxy that cannot be deleted).
+                if (entry.errorEvent) host.dispatch('error', {...failed});
                 acks.answer(ack, result);
                 return;
             }

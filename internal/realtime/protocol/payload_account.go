@@ -1,8 +1,9 @@
 package protocol
 
 import (
-	"errors"
 	"unicode/utf8"
+
+	"github.com/bifrost0x/webssh/internal/fault"
 )
 
 // SettingsTheme sets the user's theme (as today: set_theme).
@@ -33,7 +34,7 @@ type NotesSave struct {
 // Validate implements Validator.
 func (r *NotesSave) Validate() error {
 	if utf8.RuneCountInString(r.Text) > MaxNoteRunes {
-		return errors.New("the note is too long")
+		return fault.New(fault.TooLarge, "Notepad content too large (max 100000 characters)")
 	}
 	return nil
 }

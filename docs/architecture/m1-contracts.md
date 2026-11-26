@@ -124,6 +124,7 @@ func DetailsOf(err error) map[string]any
 | `host_key_changed` | 502 | The host key has changed. |
 | `host_key_not_accepted` | 502 | The host key was not accepted. |
 | `host_key_revoked` | 502 | The host key is revoked. |
+| `in_use` | 409 | The item is still in use. |
 | `interaction_required` | 502 | The host asks for input that cannot be answered here. |
 | `internal` | 500 | An internal error occurred. |
 | `invalid_request` | 400 | The request is invalid. |
@@ -135,6 +136,7 @@ func DetailsOf(err error) map[string]any
 | `not_available_in_preview` | 501 | Not available in this preview yet. |
 | `not_found` | 404 | Not found. |
 | `precondition_failed` | 412 | The data has changed. Reload and try again. |
+| `quota_exceeded` | 413 | Connection storage quota exceeded. |
 | `rate_limited` | 429 | Too many attempts. Try again later. |
 | `socks_auth_required` | 502 | The SOCKS5 proxy requires a username and password. |
 | `socks_connection_refused` | 502 | The target refused the connection through the SOCKS5 proxy. |
@@ -160,6 +162,7 @@ func DetailsOf(err error) map[string]any
 | `unavailable` | 503 | The service is unavailable. |
 | `unknown_type` | 400 | Unknown message type. |
 | `unreachable` | 502 | The host could not be reached. |
+| `validation_error` | 400 | The data is invalid. |
 | `version_unsupported` | 400 | Reload the page to use the current version. |
 
 The codes the Python release sends and the frontend matches on
@@ -168,7 +171,9 @@ The codes the Python release sends and the frontend matches on
 `auth_banner_declined`, `ssh_input_too_large`, `ssh_input_backpressure`,
 `busy`, `maintenance`, `unavailable`, `storage_error`, `invalid_request`,
 `invalid_value`, `not_found`, `tailscale_route_restricted` and the
-`socks_*` codes) keep their spelling.
+`socks_*` codes) keep their spelling. The `hosts.*` types keep the codes
+of the Python handlers: `in_use` (with `details.usages`),
+`validation_error` and `quota_exceeded`.
 
 `tailscale_route_restricted` is every refusal by the tailnet rule of the
 network policy (cause `netpolicy.ErrTailnetRestricted`); the page shows its
