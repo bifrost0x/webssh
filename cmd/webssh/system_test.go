@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -27,9 +28,7 @@ func openTestSystem(t *testing.T, extra map[string]string) (*system, *httptest.S
 		"DATA_DIR": filepath.Join(t.TempDir(), "data"), "SECRET_KEY": "system-test-secret-0123456789abcdef",
 		"SESSION_COOKIE_SECURE": "false", "BOOTSTRAP_REGISTRATION_ENABLED": "true", "TMPDIR": t.TempDir(),
 	}
-	for k, v := range extra {
-		env[k] = v
-	}
+	maps.Copy(env, extra)
 	sys, err := openSystem(t.Context(), bootInput{lookup: lookupMap(env), log: slog.New(slog.DiscardHandler),
 		stopping: func() bool { return false }, fastHashing: true})
 	if err != nil {

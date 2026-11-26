@@ -422,13 +422,3 @@ func TestShutdownForcedBySecondSignal(t *testing.T) {
 	}
 	<-status
 }
-
-func anyStrings(v any) []string {
-	list, _ := v.([]any)
-	out := make([]string, 0, len(list))
-	for _, item := range list {
-		s, _ := item.(string)
-		out = append(out, s)
-	}
-	return out
-}

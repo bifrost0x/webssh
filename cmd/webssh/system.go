@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -64,6 +65,7 @@ type optional struct {
 	terminalRoutes terminal.SavedRoutes
 	// passkeyPlaceholder stores a passkey that never authenticates (end-to-
 	// end seed only).
+	//lint:ignore U1000 read by the end-to-end build (e2e.go)
 	passkeyPlaceholder func(ctx context.Context, userID int64, name, credentialID string, transports []string) error
 }
 
@@ -202,8 +204,8 @@ func (s *system) close() error {
 		s.background.Wait()
 	}
 	var errs []error
-	for i := len(s.closers) - 1; i >= 0; i-- {
-		errs = append(errs, s.closers[i]())
+	for _, v := range slices.Backward(s.closers) {
+		errs = append(errs, v())
 	}
 	s.closers = nil
 	return errors.Join(errs...)

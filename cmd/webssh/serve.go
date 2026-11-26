@@ -201,8 +201,9 @@ func serve(ctx context.Context, opts serveOptions, logger *slog.Logger, build bu
 		return fmt.Errorf("listen: %w", err)
 	}
 	srv := &http.Server{
-		Handler:  app.handler,
-		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
+		Handler:           app.handler,
+		ReadHeaderTimeout: 10 * time.Second, // ConfigureServer sets the edge's limits
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
 	httpapi.ConfigureServer(srv)
 	serveErr := make(chan error, 1)

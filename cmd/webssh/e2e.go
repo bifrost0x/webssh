@@ -101,7 +101,7 @@ func wireE2E(ctx context.Context, env e2eseed.Env) (*e2eseed.Backend, error) {
 		Hooks:  e2eseed.Hooks{OutputFlow: sys.terminal, FixtureSessions: sys.terminal},
 		Serve: func(ctx context.Context, ln net.Listener, routes []protocol.Route) error {
 			sys.realtime.Mount(routes...)
-			srv := &http.Server{Handler: sys.handler(), ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn)}
+			srv := &http.Server{Handler: sys.handler(), ReadHeaderTimeout: 10 * time.Second, ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn)}
 			httpapi.ConfigureServer(srv)
 			done := make(chan error, 1)
 			go func() { done <- srv.Serve(ln) }()

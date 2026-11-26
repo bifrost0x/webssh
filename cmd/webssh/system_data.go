@@ -79,8 +79,7 @@ func startMigration(ctx context.Context, cfg config.Config, lookup config.Lookup
 	}
 	st, err := legacy.Start(ctx, o)
 	if err != nil {
-		var stop *legacy.StopError
-		if errors.As(err, &stop) {
+		if stop, ok := errors.AsType[*legacy.StopError](err); ok {
 			log.Error("migration stop", "state", string(stop.State), "code", stop.Code, "entity", stop.Entity,
 				"user_id", stop.UserID, "record", stop.Record, "message", stop.Message)
 		}
