@@ -32,6 +32,9 @@ type testServer struct {
 	forward []string
 	// silent stops answering global requests, like a peer that died.
 	silent chan struct{}
+	// sessionDone receives once per session channel after the server has
+	// handled all of its requests, so tests read resizes only then.
+	sessionDone chan struct{}
 }
 
 func startServer(t *testing.T, cfg *ssh.ServerConfig) *testServer {
@@ -46,7 +49,7 @@ func startServer(t *testing.T, cfg *ssh.ServerConfig) *testServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &testServer{host: "127.0.0.1", port: l.Addr().(*net.TCPAddr).Port, hostKey: signer.PublicKey(), silent: make(chan struct{})}
+	s := &testServer{host: "127.0.0.1", port: l.Addr().(*net.TCPAddr).Port, hostKey: signer.PublicKey(), silent: make(chan struct{}), sessionDone: make(chan struct{}, 64)}
 	var wg sync.WaitGroup
 	t.Cleanup(func() { _ = l.Close(); wg.Wait() })
 	wg.Go(func() {
@@ -136,6 +139,12 @@ func (s *testServer) session(nc ssh.NewChannel) {
 	if err != nil {
 		return
 	}
+	defer func() {
+		select {
+		case s.sessionDone <- struct{}{}:
+		default:
+		}
+	}()
 	defer func() { _ = ch.Close() }()
 	for req := range reqs {
 		switch req.Type {

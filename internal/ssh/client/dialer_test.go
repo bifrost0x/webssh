@@ -411,6 +411,13 @@ func TestShell(t *testing.T) {
 	if err := sh.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
+	// The server handles channel requests apart from the data; wait until
+	// it has seen all of them.
+	select {
+	case <-s.sessionDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("server did not finish the session")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.resizes) != 1 || s.resizes[0] != [2]uint32{132, 43} {
