@@ -10,6 +10,7 @@
     const api = factory(
         root,
         load('WebSSHRealtimeEmitter', './realtime-emitter.js'),
+        load('WebSSHRealtimeAcks', './realtime-acks.js'),
         load('WebSSHRealtimeWire', './realtime-wire.js'),
         load('WebSSHRealtimeCatalog', './realtime-catalog.js'),
         load('WebSSHRealtimeTerminal', './realtime-terminal.js'),
@@ -19,14 +20,16 @@
         root.WebSSHRealtimeShim = api;
         root.io = api.io;
     }
-})(typeof window !== 'undefined' ? window : globalThis, function (root, emitter, wire, catalog, terminal) {
+})(typeof window !== 'undefined' ? window : globalThis, function (root, emitter, acks, wire, catalog, terminal) {
     'use strict';
 
     const {Emitter} = emitter;
     const RESERVED = new Set(['connect', 'connect_error', 'disconnect', 'disconnecting', 'newListener', 'removeListener']);
     const MISMATCH_EVENT = 'socket_protocol_mismatch';
-    const REQUEST_TIMEOUT_MS = 60000;
+    // requestTimeout bounds a request without result; restoreTimeout bounds
+    // how long connected waits for the restores (both shim options).
     const DEFAULTS = {
+        requestTimeout: 60000, restoreTimeout: 3000,
         autoConnect: true, reconnection: true, reconnectionDelay: 1000,
         reconnectionDelayMax: 5000, randomizationFactor: 0.5, timeout: 20000,
     };
@@ -42,6 +45,12 @@
         const base = String(options.path || '/socket.io').replace(/\/socket\.io\/?$/, '').replace(/\/+$/, '');
         const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
         return `${scheme}//${location.host}${base}/ws`;
+    }
+
+    // The page's runtime limits (runtime-limits.js) bound one input frame.
+    function inputLimit() {
+        const configured = Number(root.WEBSSH_SSH_INPUT_LIMITS?.maxEventBytes);
+        return Number.isSafeInteger(configured) && configured > 0 ? Math.min(configured, terminal.MAX_INPUT_BYTES) : terminal.MAX_INPUT_BYTES;
     }
 
     class RealtimeSocket extends Emitter {
@@ -107,22 +116,21 @@
         close() { return this.disconnect(); }
 
         emit(event, ...args) {
-            if (RESERVED.has(event)) throw new Error(`"${event}" is a reserved event name`);
             const flags = this.flags;
             this.flags = {};
+            if (RESERVED.has(event)) throw new Error(`"${event}" is a reserved event name`);
             let ack = typeof args.at(-1) === 'function' ? args.pop() : null;
-            if (ack && Number.isFinite(flags.timeout)) ack = this._withTimeout(ack, flags.timeout);
+            if (ack && Number.isFinite(flags.timeout)) ack = acks.timed(ack, flags.timeout);
             const data = args[0];
             if (!this.connected) {
-                if (ack) this._later(() => ack(catalog.failure({code: 'unavailable', message: 'Not connected to WebSSH.'})));
+                const offline = acks.transportFailure('unavailable', 'Not connected to WebSSH.');
+                this._later(() => acks.answer(ack, offline));
                 return this;
             }
             if (this._terminal.handles(event)) {
                 this._terminal.emit(event, data, ack);
-            } else if (Object.hasOwn(catalog.REQUESTS, event)) {
-                this._mapped(catalog.REQUESTS[event], wire.isPlainObject(data) ? data : {}, ack);
             } else {
-                this._unavailable(event, wire.isPlainObject(data) ? data : {}, ack);
+                catalog.route(this._catalogHost(), event, wire.isPlainObject(data) ? data : {}, ack);
             }
             return this;
         }
@@ -137,59 +145,15 @@
             });
         }
 
-        // Socket.IO calls a timed acknowledgement with (error, ...response).
-        _withTimeout(ack, ms) {
-            let settled = false;
-            const timer = root.setTimeout(() => finish(new Error('operation has timed out')), ms);
-            function finish(error, ...response) {
-                if (settled) return;
-                settled = true;
-                root.clearTimeout(timer);
-                ack(error, ...response);
-            }
-            return (...response) => finish(null, ...response);
-        }
-
         _later(fn) { root.setTimeout(fn, 0); }
 
-        _mapped(entry, data, ack) {
-            const payload = entry.payload ? entry.payload(data) : {...data};
-            this._request(entry.type, payload).then(result => {
-                if (!result.ok) {
-                    const failed = catalog.failure(result.err);
-                    if (entry.errorEvent) this._dispatch('error', {error: failed.error, code: failed.code});
-                    ack?.(failed);
-                    return;
-                }
-                const reply = entry.ack ? entry.ack(result.p, data) : {success: true, ...result.p};
-                for (const [event, build] of entry.push || []) this._dispatch(event, build(reply, data));
-                ack?.(reply);
-                if (entry.refresh) this._refresh(entry.refresh);
-            });
-        }
-
-        _refresh(type) {
-            this._request(type, {}).then(result => {
-                const [event, build] = catalog.REFRESH_PUSH[type];
-                if (result.ok) this._dispatch(event, build(result.p));
-            });
-        }
-
-        _unavailable(event, data, ack) {
-            const failed = catalog.unavailable(root);
-            catalog.notifyUnavailable(root, event);
-            const reply = catalog.UNAVAILABLE_REPLIES[event];
-            const correlation = catalog.correlation(data);
-            this._later(() => {
-                if (reply) {
-                    const [name, payload] = reply(data);
-                    this._dispatch(name, payload);
-                }
-                if (ack) ack(failed);
-                else if (!reply && (correlation.request_id || correlation.source_id)) {
-                    this._dispatch('error', {...failed, ...correlation});
-                }
-            });
+        _catalogHost() {
+            return {
+                root,
+                request: (type, payload) => this._request(type, payload),
+                dispatch: (event, ...args) => this._dispatch(event, ...args),
+                later: fn => this._later(fn),
+            };
         }
 
         // Requests resolve with the v1 result; a lost connection or a
@@ -198,21 +162,21 @@
             return new Promise(resolve => {
                 const ws = this._ws;
                 if (!ws || !this.connected) {
-                    resolve({ok: false, err: {code: 'unavailable', message: 'Not connected to WebSSH.'}});
+                    resolve(acks.transportFailure('unavailable', 'Not connected to WebSSH.'));
                     return;
                 }
                 const id = `c${this._nextRequest++}`;
                 const timer = root.setTimeout(() => {
                     this._pending.delete(id);
-                    resolve({ok: false, err: {code: 'timeout', message: 'The server did not answer in time.'}});
-                }, REQUEST_TIMEOUT_MS);
+                    resolve(acks.transportFailure('timeout', 'The server did not answer in time.'));
+                }, this.opts.requestTimeout);
                 this._pending.set(id, {resolve, timer});
                 try {
                     ws.send(wire.encodeEnvelope(type, payload, id));
                 } catch {
                     root.clearTimeout(timer);
                     this._pending.delete(id);
-                    resolve({ok: false, err: {code: 'invalid_request', message: 'The request could not be sent.'}});
+                    resolve(acks.transportFailure('unavailable', 'The request could not be sent.'));
                 }
             });
         }
@@ -233,6 +197,8 @@
                 dispatch: (event, ...args) => this._dispatch(event, ...args),
                 listenerCount: event => this.listeners(event).length,
                 unavailable: () => catalog.unavailable(root),
+                answer: acks.answer,
+                inputLimit: inputLimit(),
                 delay: ms => new Promise(resolve => root.setTimeout(resolve, ms)),
                 schedule: fn => {
                     let done = false;
@@ -260,6 +226,7 @@
             ws.binaryType = 'arraybuffer';
             this._ws = ws;
             this._helloSeen = false;
+            this._mismatch = false;
             this._connectTimer = root.setTimeout(() => {
                 if (this._ws === ws && !this._helloSeen) ws.close(4000, 'connect timeout');
             }, this.opts.timeout);
@@ -270,6 +237,13 @@
                 if (this._ws === ws) this._closed(event.code, event.reason);
             };
             ws.onerror = () => {};
+            // A server that does not speak v1 completes the upgrade without the
+            // subprotocol; that is the same mismatch as close code 4001.
+            ws.onopen = () => {
+                if (this._ws !== ws || ws.protocol === wire.SUBPROTOCOL) return;
+                this._mismatch = true;
+                ws.close(4000, 'subprotocol');
+            };
         }
 
         _violation(ws) {
@@ -323,7 +297,10 @@
             if (reconnected) this.io._dispatch('reconnect', attempts);
             this._dispatch('connect');
             // Python sent ssh_session_restored before connected{success}.
-            this._terminal.restore(payload.restorable).then(() => {
+            // Bounded, so one slow attach cannot hold back the whole page.
+            const restored = this._terminal.restore(payload.restorable);
+            const bound = new Promise(resolve => root.setTimeout(resolve, this.opts.restoreTimeout));
+            Promise.race([restored, bound]).then(() => {
                 if (this._ws !== ws || !this.connected) return;
                 this._dispatch('connected', {
                     status: 'success',
@@ -346,15 +323,17 @@
             this._pending.clear();
             for (const entry of pending) {
                 root.clearTimeout(entry.timer);
-                entry.resolve({ok: false, err: {code: 'unavailable', message: 'The connection to WebSSH was lost.'}});
+                entry.resolve(acks.transportFailure('unavailable', 'The connection to WebSSH was lost.'));
             }
         }
 
         _closed(code, reason) {
             const wasConnected = this.connected;
+            const mismatch = this._mismatch;
+            this._mismatch = false;
             this._teardown();
             const C = wire.CLOSE;
-            if (code === C.UNSUPPORTED_VERSION) {
+            if (code === C.UNSUPPORTED_VERSION || mismatch) {
                 const data = {status: 'reload_required', code: MISMATCH_EVENT, message: reason || 'Reload the page.'};
                 if (wasConnected) {
                     this._dispatch('disconnect', 'io server disconnect');

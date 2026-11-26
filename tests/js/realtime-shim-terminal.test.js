@@ -207,6 +207,7 @@ test('resync_required re-attaches the stream on a new channel', async () => {
     ws.serverSend('terminal.resync_required', {ch, session_id: 'sess-1', reason: 'backpressure'});
     const attach = ws.lastRequest('terminal.attach');
     assert.notEqual(attach.p.ch, ch);
+    assert.deepEqual(ws.lastRequest('terminal.detach').p, {ch}, 'the old channel is released on the server too');
     ws.output(ch, 9, 'stale');
     ws.output(attach.p.ch, 9, 'screen', 3);
     ws.reply(attach.id, {ch: attach.p.ch, session_id: 'sess-1', seq: 9, full: true});
@@ -333,7 +334,7 @@ test('connect cancellation maps the result onto the acknowledgement of the Pytho
     const window = loadShim();
     const {socket, ws} = await connected(window);
     const acks = [];
-    for (const err of [null, {code: 'not_found'}, {code: 'conflict'}]) {
+    for (const err of [null, {code: 'not_found'}, {code: 'conflict'}, {code: 'rate_limited'}]) {
         socket.emit('ssh_connect_cancel', {client_request_id: 'req_1'}, r => acks.push(r));
         const request = ws.lastRequest('terminal.cancel');
         assert.deepEqual(request.p, {request_id: 'req_1'});
@@ -345,6 +346,65 @@ test('connect cancellation maps the result onto the acknowledgement of the Pytho
         {success: true, cancelled: true},
         {success: false, cancelled: false, reason: 'not_found'},
         {success: false, cancelled: false, reason: 'already_committed'},
+        {success: false, cancelled: false, reason: 'rate_limited'},
     ]);
+    socket.disconnect();
+});
+
+test('a cancellation whose answer is lost is not reported as committed', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window, {reconnection: false});
+    const acks = [];
+    socket.emit('ssh_connect_cancel', {client_request_id: 'req_1'}, r => acks.push(r));
+    ws.serverClose(1006);
+    await tick();
+    assert.deepEqual(plain(acks), [{success: false, cancelled: false, reason: 'unavailable'}]);
+});
+
+test('a failed re-attach ends the session in the page instead of leaving it connected', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const closed = [];
+    socket.on('ssh_disconnected', data => closed.push([data.session_id, data.reason]));
+    const ch = await openTerminal(socket, ws);
+    ws.serverSend('terminal.resync_required', {ch, session_id: 'sess-1', reason: 'backpressure'});
+    ws.fail(ws.lastRequest('terminal.attach').id, {code: 'not_found', message: 'Not found.'});
+    await tick();
+    assert.deepEqual(closed, [['sess-1', 'Not found.']]);
+    const results = [];
+    socket.emit('ssh_input', {session_id: 'sess-1', data: 'x'}, r => results.push(r.code));
+    assert.deepEqual(results, ['not_found']);
+    socket.disconnect();
+});
+
+test('a duplicate rejection cannot rewind input before the rejected frame was resent', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const ch = await openTerminal(socket, ws);
+    const acks = [];
+    for (const data of ['a', 'b', 'c']) socket.emit('ssh_input', {session_id: 'sess-1', data, acknowledge_backpressure: true}, r => acks.push([data, r.success]));
+    ws.serverSend('terminal.input_rejected', {ch, iseq: 2, code: 'ssh_input_backpressure', retry_after_ms: 5});
+    ws.serverSend('terminal.input_rejected', {ch, iseq: 2, code: 'ssh_input_backpressure', retry_after_ms: 5});
+    ws.serverSend('terminal.input_rejected', {ch, iseq: 1, code: 'ssh_input_backpressure', retry_after_ms: 5});
+    socket.emit('ssh_input', {session_id: 'sess-1', data: 'b'}, () => {});
+    socket.emit('ssh_input', {session_id: 'sess-1', data: 'c'}, () => {});
+    assert.deepEqual(ws.frames(KIND_INPUT).map(f => [f.seq, f.data]), [[1, 'a'], [2, 'b'], [3, 'c'], [2, 'b'], [3, 'c']]);
+    assert.deepEqual(acks, [['b', false], ['c', false]]);
+    ws.serverSend('terminal.input_rejected', {ch, iseq: 2, code: 'ssh_input_backpressure', retry_after_ms: 5});
+    socket.emit('ssh_input', {session_id: 'sess-1', data: 'b'}, () => {});
+    assert.deepEqual(ws.frames(KIND_INPUT).at(-1), {kind: KIND_INPUT, flags: 1, channel: ch, seq: 2, data: 'b'},
+        'a rejection of the resent frame is honoured again');
+    socket.disconnect();
+});
+
+test('the input limit follows the runtime limits of the page', async () => {
+    const window = loadShim({WEBSSH_SSH_INPUT_LIMITS: {maxEventBytes: 8}});
+    const {socket, ws} = await connected(window);
+    await openTerminal(socket, ws);
+    const results = [];
+    socket.emit('ssh_input', {session_id: 'sess-1', data: '12345678'}, r => results.push(r.success));
+    socket.emit('ssh_input', {session_id: 'sess-1', data: '123456789'}, r => results.push(r.code));
+    assert.deepEqual(results, ['ssh_input_too_large']);
+    assert.equal(ws.frames(KIND_INPUT).length, 1);
     socket.disconnect();
 });

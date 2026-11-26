@@ -9,6 +9,7 @@ const vm = require('node:vm');
 const ROOT = path.join(__dirname, '../../..');
 const SCRIPTS = [
     'static/js/realtime-emitter.js',
+    'static/js/realtime-acks.js',
     'static/js/realtime-wire.js',
     'static/js/realtime-catalog.js',
     'static/js/realtime-terminal.js',
@@ -38,6 +39,14 @@ class FakeWebSocket {
 
     // Server side ---------------------------------------------------------
 
+    // Completes the upgrade with the negotiated subprotocol ('' for none).
+    accept(protocol = 'webssh.v1') {
+        if (this.opened) return;
+        this.opened = true;
+        this.protocol = protocol;
+        this.onopen?.({});
+    }
+
     serverClose(code, reason = '') {
         this.closed = true;
         this.onclose?.({code, reason});
@@ -52,6 +61,7 @@ class FakeWebSocket {
     }
 
     hello(restorable = [], username = 'alice') {
+        this.accept();
         this.serverSend('hello', {user: {username, is_admin: false}, schema: 1, restorable});
     }
 

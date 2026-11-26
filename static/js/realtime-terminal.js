@@ -7,10 +7,11 @@
  * again for every new connection.
  */
 (function (root, factory) {
-    const api = factory(root.WebSSHRealtimeWire || (typeof require === 'function' ? require('./realtime-wire.js') : null));
+    const load = (name, file) => root[name] || (typeof require === 'function' ? require(file) : null);
+    const api = factory(load('WebSSHRealtimeWire', './realtime-wire.js'), load('WebSSHRealtimeAcks', './realtime-acks.js'));
     if (typeof module === 'object' && module.exports) module.exports = api;
     if (root) root.WebSSHRealtimeTerminal = api;
-})(typeof window !== 'undefined' ? window : globalThis, function (wire) {
+})(typeof window !== 'undefined' ? window : globalThis, function (wire, acks) {
     'use strict';
 
     const MAX_INPUT_BYTES = 128 * 1024;
@@ -29,11 +30,6 @@
         return {...fields, ...extra};
     }
 
-    function failure(err, extra) {
-        const result = {success: false, code: err.code, error: err.message || err.code, ...extra};
-        if (err.retry_after_ms) result.retry_after_ms = err.retry_after_ms;
-        return result;
-    }
 
     // Projects the Socket.IO ssh_connect payload onto terminal.open. Inline
     // jump hosts and SOCKS proxies, stored credentials and Tailscale are not
@@ -63,7 +59,7 @@
         function allocate(state) {
             const channel = {
                 id: nextChannel++, decoder: new TextDecoder('utf-8'), frames: [],
-                ackQueue: [], ackedSeq: 0, sentSeq: 0, nextIseq: 1, pendingInput: new Map(), ...state,
+                ackQueue: [], ackedSeq: 0, sentSeq: 0, nextIseq: 1, awaitingResend: null, pendingInput: new Map(), ...state,
             };
             channels.set(channel.id, channel);
             return channel;
@@ -80,7 +76,7 @@
             channels.delete(channel.id);
             if (sessions.get(channel.sessionId) === channel) sessions.delete(channel.sessionId);
             for (const entry of channel.pendingInput.values()) {
-                entry.ack?.(failure({code: 'unavailable', message: reason}, {session_id: channel.sessionId}));
+                host.answer(entry.ack, acks.transportFailure('unavailable', reason));
             }
             channel.pendingInput.clear();
         }
@@ -162,7 +158,10 @@
                     return true;
                 }
                 if (result.err?.code !== 'backpressure' || attempt >= ATTACH_RETRIES) {
+                    // The page must not keep a tab that looks connected but
+                    // has no stream behind it.
                     release(channel, 'attach failed');
+                    closed(info.session_id, result.err?.message || result.err?.code);
                     return false;
                 }
                 channel.frames = [];
@@ -180,6 +179,7 @@
             if (!channel || channel.mode !== 'live') return;
             const info = {...channel.info, session_id: channel.sessionId};
             release(channel, 'resync');
+            host.send('terminal.detach', {ch: channel.id});
             attach(info);
         }
 
@@ -219,7 +219,7 @@
         function input(data, ack) {
             const channel = sessions.get(data.session_id);
             if (!channel || channel.mode !== 'live') {
-                ack?.(failure({code: 'not_found', message: 'Session not found'}, {session_id: data.session_id}));
+                ack?.(acks.failure({code: 'not_found', message: 'Session not found'}, {session_id: data.session_id}));
                 return;
             }
             const bytes = encoder.encode(String(data.data ?? ''));
@@ -227,13 +227,14 @@
                 ack?.({success: true});
                 return;
             }
-            if (bytes.length > MAX_INPUT_BYTES) {
-                const result = failure({code: 'ssh_input_too_large', message: 'The input is too large.'}, {session_id: data.session_id});
+            if (bytes.length > (host.inputLimit || MAX_INPUT_BYTES)) {
+                const result = acks.failure({code: 'ssh_input_too_large', message: 'The input is too large.'}, {session_id: data.session_id});
                 ack?.(result);
                 host.dispatch('ssh_error', result);
                 return;
             }
             const iseq = channel.nextIseq++;
+            if (iseq === channel.awaitingResend) channel.awaitingResend = null;
             if (ack) channel.pendingInput.set(iseq, {ack, quiet: data.acknowledge_backpressure === true});
             host.sendBinary(wire.encodeInput(channel.id, iseq, bytes, Boolean(ack)));
         }
@@ -253,9 +254,13 @@
         function inputRejected(payload) {
             const channel = channels.get(payload.ch);
             if (!channel || !Number.isSafeInteger(payload.iseq) || payload.iseq >= channel.nextIseq) return;
+            // Until the rejected sequence was sent again, a further rejection
+            // can only be a duplicate or late; honouring it would rewind input.
+            if (channel.awaitingResend != null) return;
             channel.nextIseq = payload.iseq;
+            channel.awaitingResend = payload.iseq;
             const err = {code: payload.code || 'ssh_input_backpressure', message: 'The terminal is not accepting input right now.', retry_after_ms: payload.retry_after_ms};
-            const result = failure(err, {session_id: channel.sessionId});
+            const result = acks.failure(err, {session_id: channel.sessionId});
             const rejected = channel.pendingInput.get(payload.iseq);
             for (const [iseq, entry] of [...channel.pendingInput]) {
                 if (iseq < payload.iseq) continue;
@@ -267,12 +272,19 @@
 
         // Socket.IO events ------------------------------------------------------
 
-        function settle(type, payload, ack, map) {
+        function settle(type, payload, ack, map, mapErr) {
             return host.request(type, payload).then(result => {
-                const reply = result.ok ? map(result.p || {}) : failure(result.err);
-                ack?.(reply);
+                host.answer(ack, result, map, mapErr);
                 return result;
             });
+        }
+
+        // Reasons the cancellation handling of app.js knows; any other code is
+        // passed on and shown as an unconfirmed cancellation.
+        function cancelFailure(err, result) {
+            const reasons = {not_found: 'not_found', conflict: 'already_committed'};
+            const reason = result.transport ? 'unavailable' : (reasons[err.code] || err.code);
+            return {success: false, cancelled: false, reason};
         }
 
         function closed(sessionId, reason) {
@@ -293,9 +305,8 @@
                 if (channel) host.send('terminal.resize', {ch: channel.id, cols: Number(data.cols) || 0, rows: Number(data.rows) || 0});
             },
             save_session_name: data => host.send('terminal.rename', {session_id: data.session_id, name: String(data.display_name ?? '')}),
-            ssh_connect_cancel: (data, ack) => settle('terminal.cancel', {request_id: data.client_request_id}, null, () => ({}))
-                .then(result => ack?.(result.ok ? {success: true, cancelled: true}
-                    : {success: false, cancelled: false, reason: result.err.code === 'not_found' ? 'not_found' : 'already_committed'})),
+            ssh_connect_cancel: (data, ack) => settle('terminal.cancel', {request_id: data.client_request_id}, ack,
+                () => ({success: true, cancelled: true}), cancelFailure),
             ssh_discard_late_connection: (data, ack) => {
                 release(sessions.get(data.session_id), 'discarded');
                 settle('terminal.discard_late', {session_id: data.session_id}, ack, () => ({success: true}));
@@ -303,7 +314,7 @@
             ssh_disconnect: (data, ack) => settle('terminal.close', {session_id: data.session_id}, ack, () => ({success: true}))
                 .then(result => {
                     if (result.ok) closed(data.session_id, 'closed');
-                    else host.dispatch('ssh_error', failure(result.err, {session_id: data.session_id}));
+                    else host.dispatch('ssh_error', acks.failure(result.err, {session_id: data.session_id}));
                 }),
             ssh_host_key_decision: (data, ack) => settle('prompt.answer',
                 {prompt_id: data.prompt_id, kind: 'host_key', accepted: data.accepted === true}, ack, () => ({success: true})),

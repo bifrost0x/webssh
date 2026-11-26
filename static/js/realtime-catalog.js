@@ -7,10 +7,10 @@
  * Terminal events are handled by realtime-terminal.js.
  */
 (function (root, factory) {
-    const api = factory();
+    const api = factory(root.WebSSHRealtimeAcks || (typeof require === 'function' ? require('./realtime-acks.js') : null));
     if (typeof module === 'object' && module.exports) module.exports = api;
     if (root) root.WebSSHRealtimeCatalog = api;
-})(typeof window !== 'undefined' ? window : globalThis, function () {
+})(typeof window !== 'undefined' ? window : globalThis, function (acks) {
     'use strict';
 
     const UNAVAILABLE = 'not_available_in_preview';
@@ -38,22 +38,25 @@
             type: 'hosts.profile.delete',
             ack: (result, data) => ok({profile_id: data.profile_id, ...result}),
             push: [['profile_deleted', a => a]],
+            errorEvent: true,
         },
         update_profile_organization: {type: 'hosts.profile.organize'},
         move_profile: {type: 'hosts.profile.move'},
         list_jump_hosts: {type: 'hosts.jump.list', push: [['jump_hosts_list', a => ({jump_hosts: a.jump_hosts || []})]], errorEvent: true},
-        save_jump_host: {type: 'hosts.jump.save', push: [['jump_host_saved', a => a]]},
+        save_jump_host: {type: 'hosts.jump.save', push: [['jump_host_saved', a => a]], errorEvent: true},
         delete_jump_host: {
             type: 'hosts.jump.delete',
             ack: (result, data) => ok({jump_host_id: data.jump_host_id, ...result}),
             push: [['jump_host_deleted', a => a]],
+            errorEvent: true,
         },
-        list_socks_proxies: {type: 'hosts.socks.list', push: [['socks_proxies_list', a => ({socks_proxies: a.socks_proxies || []})]]},
-        save_socks_proxy: {type: 'hosts.socks.save', push: [['socks_proxy_saved', a => a]]},
+        list_socks_proxies: {type: 'hosts.socks.list', push: [['socks_proxies_list', a => ({socks_proxies: a.socks_proxies || []})]], errorEvent: true},
+        save_socks_proxy: {type: 'hosts.socks.save', push: [['socks_proxy_saved', a => a]], errorEvent: true},
         delete_socks_proxy: {
             type: 'hosts.socks.delete',
             ack: (result, data) => ok({socks_proxy_id: data.socks_proxy_id, ...result}),
             push: [['socks_proxy_deleted', a => a]],
+            errorEvent: true,
         },
         list_keys: {type: 'keys.list', push: [['keys_list', a => ({keys: a.keys || []})]], errorEvent: true},
         upload_key: {type: 'keys.upload', push: [['key_uploaded', a => ({key: a.key})]], errorEvent: true},
@@ -69,12 +72,13 @@
         set_theme: {type: 'settings.theme.set', push: [['theme_updated', (a, data) => ({theme: data.theme})]], errorEvent: true},
         set_confirm_session_close: {
             type: 'settings.confirm_close.set',
-            ack: (result, data) => ok({confirm_session_close: data.enabled, ...result}),
+            // The stored value, never the requested one: app.js shows what it gets.
+            ack: result => ok(typeof result.enabled === 'boolean' ? {confirm_session_close: result.enabled} : {}),
             errorEvent: true,
         },
         set_disconnect_session_action: {
             type: 'settings.disconnect_action.set',
-            ack: (result, data) => ok({disconnect_session_action: data.action, ...result}),
+            ack: result => ok(typeof result.action === 'string' ? {disconnect_session_action: result.action} : {}),
             errorEvent: true,
         },
         get_notepad: {type: 'notes.get', payload: () => ({}), push: [['notepad_data', a => ({notepad: a.text || ''})]], errorEvent: true},
@@ -133,12 +137,6 @@
         return fields;
     }
 
-    function failure(err) {
-        const result = {success: false, code: err.code, error: err.message || err.code};
-        if (err.retry_after_ms) result.retry_after_ms = err.retry_after_ms;
-        return result;
-    }
-
     function unavailable(root) {
         const key = 'previewNotice.notAvailable';
         const text = root.i18n?.t?.(key);
@@ -153,9 +151,55 @@
         }));
     }
 
+    // Routing. host: {root, request(type, payload), dispatch(event, ...args), later(fn)}.
+
+    function mapped(host, entry, data, ack) {
+        const payload = entry.payload ? entry.payload(data) : {...data};
+        host.request(entry.type, payload).then(result => {
+            if (!result.ok) {
+                const failed = acks.failure(result.err);
+                if (entry.errorEvent) host.dispatch('error', {success: false, error: failed.error, code: failed.code});
+                acks.answer(ack, result);
+                return;
+            }
+            const reply = entry.ack ? entry.ack(result.p, data) : {success: true, ...result.p};
+            for (const [event, build] of entry.push || []) host.dispatch(event, build(reply, data));
+            ack?.(reply);
+            if (entry.refresh) refresh(host, entry.refresh);
+        });
+    }
+
+    function refresh(host, type) {
+        host.request(type, {}).then(result => {
+            const [event, build] = REFRESH_PUSH[type];
+            if (result.ok) host.dispatch(event, build(result.p));
+        });
+    }
+
+    function unmapped(host, event, data, ack) {
+        const failed = unavailable(host.root);
+        notifyUnavailable(host.root, event);
+        const reply = Object.hasOwn(UNAVAILABLE_REPLIES, event) ? UNAVAILABLE_REPLIES[event] : null;
+        const fields = correlation(data);
+        host.later(() => {
+            if (reply) {
+                const [name, payload] = reply(data);
+                host.dispatch(name, payload);
+            }
+            if (ack) ack(failed);
+            else if (!reply && (fields.request_id || fields.source_id)) host.dispatch('error', {...failed, ...fields});
+        });
+    }
+
+    // Sends a non-terminal event as its v1 request, or answers it locally.
+    function route(host, event, data, ack) {
+        if (Object.hasOwn(REQUESTS, event)) mapped(host, REQUESTS[event], data, ack);
+        else unmapped(host, event, data, ack);
+    }
+
     return Object.freeze({
         UNAVAILABLE,
-        failure,
+        route,
         unavailable,
         notifyUnavailable,
         REQUESTS,

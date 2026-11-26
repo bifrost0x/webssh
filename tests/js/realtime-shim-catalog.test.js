@@ -47,9 +47,32 @@ test('a failure keeps the code, repeats as error where Python did and pushes not
     ws.fail(request.id, {code: 'step_up_required', message: 'Confirm your identity to continue.'});
     await tick();
     assert.deepEqual(plain(seen), [
-        ['error', {error: 'Confirm your identity to continue.', code: 'step_up_required'}],
+        ['error', {success: false, error: 'Confirm your identity to continue.', code: 'step_up_required'}],
         ['ack', {success: false, code: 'step_up_required', error: 'Confirm your identity to continue.'}],
     ]);
+    socket.disconnect();
+});
+
+test('host mutations repeat their failure as error like the Python release', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const errors = [];
+    socket.on('error', data => errors.push(plain(data)));
+    const cases = [
+        ['delete_profile', 'hosts.profile.delete', {profile_id: 'p'}],
+        ['save_jump_host', 'hosts.jump.save', {name: 'j'}],
+        ['delete_jump_host', 'hosts.jump.delete', {jump_host_id: 'j'}],
+        ['list_socks_proxies', 'hosts.socks.list', {}],
+        ['save_socks_proxy', 'hosts.socks.save', {name: 's'}],
+        ['delete_socks_proxy', 'hosts.socks.delete', {socks_proxy_id: 's'}],
+    ];
+    for (const [event, type, data] of cases) {
+        socket.emit(event, data, () => {});
+        ws.fail(ws.lastRequest(type).id, {code: 'conflict', message: 'In use.'});
+    }
+    await tick();
+    assert.equal(errors.length, cases.length);
+    assert.deepEqual(errors[0], {success: false, error: 'In use.', code: 'conflict'});
     socket.disconnect();
 });
 
@@ -75,7 +98,9 @@ test('settings acknowledgements and the notepad keep their Python shapes', async
     const notes = [];
     socket.on('notepad_data', data => notes.push(data.notepad));
     socket.emit('set_confirm_session_close', {enabled: true}, ack => acks.push(ack));
-    ws.reply(ws.lastRequest('settings.confirm_close.set').id, {});
+    ws.reply(ws.lastRequest('settings.confirm_close.set').id, {enabled: false});
+    socket.emit('set_disconnect_session_action', {action: 'close'}, ack => acks.push(ack));
+    ws.reply(ws.lastRequest('settings.disconnect_action.set').id, {});
     socket.emit('get_notepad');
     const get = ws.lastRequest('notes.get');
     assert.deepEqual(get.p, {});
@@ -83,7 +108,11 @@ test('settings acknowledgements and the notepad keep their Python shapes', async
     socket.emit('save_notepad', {text: 'done'}, ack => acks.push(ack));
     ws.reply(ws.lastRequest('notes.save').id, {text: 'done'});
     await tick();
-    assert.deepEqual(plain(acks), [{success: true, confirm_session_close: true}, {success: true}]);
+    assert.deepEqual(plain(acks), [
+        {success: true, confirm_session_close: false},
+        {success: true},
+        {success: true},
+    ], 'the stored value is reported, never the requested one');
     assert.deepEqual(notes, ['todo']);
     socket.disconnect();
 });
