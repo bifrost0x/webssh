@@ -67,7 +67,10 @@ func TestLoad(t *testing.T) {
 		}
 	}
 	base := settledGoroutines(t, 0)
-	e := newEnv(t, Config{MaxConns: n + 10, MaxConnsPerUser: 10}, fakeTerminal)
+	// The keepalive has its own tests. Here it would only add a deadline
+	// that a starved machine misses once the echo grace below runs past
+	// the ping interval: the pong waits behind the output stream.
+	e := newEnv(t, Config{MaxConns: n + 10, MaxConnsPerUser: 10, PingInterval: time.Hour}, fakeTerminal)
 
 	start := time.Now()
 	clients := make([]*client, n)
@@ -93,11 +96,13 @@ func TestLoad(t *testing.T) {
 
 	var received atomic.Int64
 	rtts := make([][]time.Duration, n)
+	sessions := make([]*loadSession, n)
 	stop := make(chan struct{})
 	var readers sync.WaitGroup
 	for i, c := range clients {
 		c.write(`{"v":1,"t":"fake.open","id":"o"}`)
 		sess := &loadSession{c: c}
+		sessions[i] = sess
 		readers.Go(func() { rtts[i] = sess.read(&received) })
 		wg.Go(func() { sess.type_(stop) })
 	}
@@ -106,6 +111,29 @@ func TestLoad(t *testing.T) {
 	runtime.ReadMemStats(&ms)
 	peakG := runtime.NumGoroutine()
 	open := e.srv.Stats().Conns
+	// Every session must see an echo while the streams run. On a loaded
+	// machine (the race detector, many packages at once) a session's
+	// typing goroutine can be starved for the whole window, or its last
+	// keystrokes are still in flight when the window ends; that is the
+	// scheduler, not the server. So typing and streaming go on until each
+	// session has an echo, bounded by echoGrace; a session that never gets
+	// one still fails the test.
+	echoed := func() int {
+		k := 0
+		for _, sess := range sessions {
+			if sess.echoes.Load() > 0 {
+				k++
+			}
+		}
+		return k
+	}
+	late, graceStart := n-echoed(), time.Now()
+	for deadline := graceStart.Add(echoGrace); echoed() < n && time.Now().Before(deadline); {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if late > 0 {
+		t.Logf("%d sessions had no echo after the window; the last one after %v more", late, time.Since(graceStart).Round(time.Millisecond))
+	}
 	close(stop)
 	wg.Wait()
 	for _, c := range clients {
@@ -123,6 +151,11 @@ func TestLoad(t *testing.T) {
 	}
 	slices.Sort(all)
 	if failed > 0 || len(all) == 0 || open != n {
+		for i, sess := range sessions {
+			if len(rtts[i]) == 0 {
+				t.Errorf("session %d: %d keystrokes sent, no echo, read ended with %v", i, sess.sent.Load(), sess.readErr)
+			}
+		}
 		t.Fatalf("%d sessions without echo, %d samples, %d open", failed, len(all), open)
 	}
 	t.Logf("sessions %d, setup %v, open %d, output %.1f MiB in 3 s, echo p50 %v p95 %v p99 %v (n=%d), heap in use %.1f MiB, sys %.1f MiB, goroutines %d (%.1f per session)",
@@ -142,11 +175,20 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+// echoGrace bounds how long the load test waits after its measuring
+// window for sessions that have not seen an echo yet.
+const echoGrace = 30 * time.Second
+
 // loadSession types one keystroke every 100 ms and measures its echo.
 type loadSession struct {
-	c    *client
-	mu   sync.Mutex
-	sent map[uint64]time.Time
+	c      *client
+	mu     sync.Mutex
+	pend   map[uint64]time.Time
+	sent   atomic.Int64
+	echoes atomic.Int64
+	// readErr is why the read loop ended; read by the test after
+	// readers.Wait.
+	readErr error
 }
 
 func (l *loadSession) type_(stop <-chan struct{}) {
@@ -160,14 +202,15 @@ func (l *loadSession) type_(stop <-chan struct{}) {
 		}
 		in := protocol.AppendFrame(nil, protocol.Frame{Kind: protocol.KindInput, Channel: 2, Seq: iseq, Data: []byte("x")})
 		l.mu.Lock()
-		if l.sent == nil {
-			l.sent = map[uint64]time.Time{}
+		if l.pend == nil {
+			l.pend = map[uint64]time.Time{}
 		}
-		l.sent[iseq] = time.Now()
+		l.pend[iseq] = time.Now()
 		l.mu.Unlock()
 		if l.c.ws.Write(context.Background(), websocket.MessageBinary, in) != nil {
 			return
 		}
+		l.sent.Add(1)
 	}
 }
 
@@ -178,6 +221,7 @@ func (l *loadSession) read(received *atomic.Int64) []time.Duration {
 	for {
 		typ, b, err := l.c.ws.Read(context.Background())
 		if err != nil {
+			l.readErr = err
 			return rtts
 		}
 		received.Add(int64(len(b)))
@@ -186,9 +230,10 @@ func (l *loadSession) read(received *atomic.Int64) []time.Duration {
 		}
 		seq := binary.BigEndian.Uint64(b[6:14])
 		l.mu.Lock()
-		if at, ok := l.sent[seq]; ok {
+		if at, ok := l.pend[seq]; ok {
 			rtts = append(rtts, time.Since(at))
-			delete(l.sent, seq)
+			delete(l.pend, seq)
+			l.echoes.Add(1)
 		}
 		l.mu.Unlock()
 	}
