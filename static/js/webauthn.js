@@ -25,10 +25,13 @@
         if (!response.ok) {
             const described = window.WebSSHSecurityUI
                 ?.describeAuthenticationError?.(data, t);
-            throw new Error(
+            const failure = new Error(
                 described || data.error || t('common.requestFailed', 'Request failed ({status})')
                     .replace('{status}', response.status)
             );
+            failure.status = response.status;
+            failure.code = data.code;
+            throw failure;
         }
         return data;
     }
@@ -304,7 +307,14 @@
                     const impact = await api(`/api/host-keys/${entry.id}/deletion-impact`);
                     if (!window.EffectiveHostTrust || !impact.revision) throw new Error(t('trustFiles.loadFailed', 'Effective trust could not be loaded. Refresh to try again.'));
                     if (!await window.EffectiveHostTrust.confirmDeletion(entry, hostLabel, impact)) return;
-                    await api(`/api/host-keys/${entry.id}`, {method: 'DELETE', headers: {'If-Match': impact.revision}});
+                    const removed = await window.WebSSHSecurityUI.withStepUpRetry(
+                        headers => api(`/api/host-keys/${entry.id}`, {
+                            method: 'DELETE',
+                            headers: Object.assign({'If-Match': impact.revision}, headers)
+                        }),
+                        () => stepUpHeaders('host_key.delete', entry.id)
+                    );
+                    if (removed === null) return;
                     await loadHostKeys();
                 } catch (error) {
                     notify(error.message, 'error');

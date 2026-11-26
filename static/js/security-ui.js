@@ -255,6 +255,21 @@
         });
     }
 
+    // Runs request once without a step-up grant and, only if the server
+    // answers step_up_required, once more with the headers acquireHeaders
+    // returns. A cancelled prompt (null headers) resolves to null. Servers
+    // that never ask for a grant on the route are unaffected.
+    async function withStepUpRetry(request, acquireHeaders) {
+        try {
+            return await request({});
+        } catch (error) {
+            if (!error || error.code !== 'step_up_required') { throw error; }
+            const headers = await acquireHeaders();
+            if (!headers) { return null; }
+            return request(headers);
+        }
+    }
+
     function createRequestCoordinator(options) {
         let generation = 0;
         let sequence = 0;
@@ -410,6 +425,7 @@
         featureStatusReason,
         featureToggleState,
         hostKeyConfirmation,
-        serializeAssertion
+        serializeAssertion,
+        withStepUpRetry
     };
 });
