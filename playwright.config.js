@@ -16,6 +16,8 @@ const timingOutput = process.env.WEBSSH_E2E_TIMING_FILE
 
 module.exports = {
     testDir: './tests/e2e',
+    // The M1 acceptance specs start their own backends (tests/e2e/m1).
+    testIgnore: ['m1/**'],
     // Test-level sharding keeps independent CI servers evenly loaded.
     fullyParallel: true,
     workers: 1,

@@ -14,6 +14,15 @@ async function csrf(page) {
     return page.locator('meta[name="csrf-token"]').getAttribute('content');
 }
 
+// The page embeds the saved layout as JSON; compare the parsed value, not
+// one serializer's spacing.
+async function storedPanels(page) {
+    const html = await (await page.request.get('/')).text();
+    const match = html.match(/<script[^>]+id="overviewPreferences"[^>]*>([^<]+)<\/script>/);
+    expect(match, 'overview preferences are embedded in the page').not.toBeNull();
+    return JSON.parse(match[1]).panels;
+}
+
 async function setReachability(page, mode) {
     const response = await page.request.post('/api/account/preferences', {
         data: {overview_reachability: mode}, headers: {'X-CSRFToken': await csrf(page)},
@@ -347,7 +356,7 @@ test(`the layout can be arranged by keyboard and mouse, survives reload and rese
     await expect(page.locator('#odEditBar')).toBeHidden();
     await expect(page.locator('#overviewCustomize')).toBeFocused();
 
-    await expect.poll(async () => (await (await page.request.get('/')).text()).includes(`"id": "hosts", "w": ${width}`)).toBe(true);
+    await expect.poll(async () => (await storedPanels(page))?.find(panel => panel.id === 'hosts')?.w).toBe(width);
     await page.reload();
     await expect(page.locator('#overviewHostList .od-host:not(.od-skeleton)').first()).toBeVisible();
     expect(await order()).not.toContain('platforms');
@@ -358,7 +367,7 @@ test(`the layout can be arranged by keyboard and mouse, survives reload and rese
     await page.locator('#odLayoutReset').click();
     await page.locator('#odLayoutDone').click();
     expect(await order()).toEqual(defaults);
-    await expect.poll(async () => (await (await page.request.get('/')).text()).includes('"panels": null')).toBe(true);
+    await expect.poll(async () => storedPanels(page)).toBeNull();
     expect(await sshAttempts(page)).toEqual([]);
     expect(errors).toEqual([]);
 });
