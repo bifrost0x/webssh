@@ -155,6 +155,10 @@ func TestAccountAdministrationThroughTheServer(t *testing.T) {
 	if _, err := sys.accounts.Get(t.Context(), 2); err == nil {
 		t.Fatal("account still there")
 	}
+	if status, body := apiCall(t, admin, ts.URL, http.MethodPost, "/login/recovery", map[string]string{"code": "x"}, ""); status != http.StatusBadRequest ||
+		!strings.Contains(body, "Complete the primary sign-in") {
+		t.Fatalf("stand-alone recovery: %d %s", status, body)
+	}
 	// The administrator is still signed in.
 	if resp, _ := get(t, admin, ts.URL+"/api/account/sessions"); resp.StatusCode != http.StatusOK {
 		t.Fatalf("administrator signed out: %d", resp.StatusCode)

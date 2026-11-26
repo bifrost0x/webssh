@@ -52,7 +52,8 @@ func legacyUserDir(dataDir string) accounts.LegacyUserDir {
 }
 
 // wireAccounts hands the account service what it ends and removes, and
-// registers the administration routes.
+// registers the administration routes and the retired stand-alone
+// recovery sign-in.
 func wireAccounts(sys *system) error {
 	a := sys.accounts
 	a.Sessions = sys.sessions
@@ -63,5 +64,6 @@ func wireAccounts(sys *system) error {
 	a.LegacyDir = legacyUserDir(sys.cfg.DataDir)
 	(&accounts.HTTP{Accounts: a, StepUp: sys.stepup, Gates: sys.gates, Enabled: sys.cfg.Accounts.AdminPanelEnabled,
 		Logger: sys.log}).RegisterAdmin(sys.edge.Mux())
+	(&auth.FactorHTTP{MFA: sys.mfa, Logger: sys.log}).RegisterRecoveryCompat(sys.edge.Mux())
 	return nil
 }
