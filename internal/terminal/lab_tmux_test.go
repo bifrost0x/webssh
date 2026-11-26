@@ -5,7 +5,6 @@ package terminal
 import (
 	"context"
 	"log/slog"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,25 +18,6 @@ import (
 	"github.com/bifrost0x/webssh/internal/ssh/remotecmd"
 	"github.com/bifrost0x/webssh/internal/store/storetest"
 )
-
-// The tmux lab test needs tmux on the target. ssh-modern of the lab has
-// none yet; WEBSSH_LAB_TMUX_PORT names a local port of a container of the
-// ssh-modern image with tmux added (same host key and users). Without it
-// the test runs against ssh-modern and fails if tmux is missing there.
-func labTmuxHop(t *testing.T, auth client.Auth) (client.Hop, bool) {
-	t.Helper()
-	hop := labHop(t, "ssh-modern", false, auth)
-	port := os.Getenv("WEBSSH_LAB_TMUX_PORT")
-	if port == "" {
-		return hop, false
-	}
-	n, err := strconv.Atoi(port)
-	if err != nil {
-		t.Fatalf("WEBSSH_LAB_TMUX_PORT: %v", err)
-	}
-	hop.Port = n
-	return hop, true
-}
 
 func newLabTmuxManager(t *testing.T, profiles fakeProfiles) (*Manager, *client.Dialer) {
 	t.Helper()
@@ -89,11 +69,13 @@ func labTmuxOpen(t *testing.T, m *Manager, peer *peerT, ch uint32, name string) 
 	return res
 }
 
+// TestLabTmux needs tmux on ssh-modern (lab image). The fallback for hosts
+// without tmux is covered by TestTmuxMissingFallsBackToLoginShell.
 func TestLabTmux(t *testing.T) {
 	pw := client.Auth{Password: labSecret(t, "secrets/ssh-pwuser")}
-	hop, separate := labTmuxHop(t, pw)
+	hop := labHop(t, "ssh-modern", false, pw)
 	tg := client.Target{Owner: 1, Hop: hop}
-	profiles := fakeProfiles{"tmux": tg, "modern": {Owner: 1, Hop: labHop(t, "ssh-modern", false, pw)}}
+	profiles := fakeProfiles{"tmux": tg}
 	m, dialer := newLabTmuxManager(t, profiles)
 
 	// A new session runs in tmux, with mouse input on for exactly it.
@@ -181,15 +163,5 @@ func TestLabTmux(t *testing.T) {
 	}
 	if st, _ := hostTmux(t, dialer, tg, "tmux has-session -t '="+third.Info.TmuxSessionName+"'"); st == 0 {
 		t.Fatal("tmux still runs after exit")
-	}
-
-	// A host without tmux gets the login shell.
-	if separate {
-		res, _, werr := labOpenTarget(t, m, peer, protocol.TerminalOpen{Ch: 4, RequestID: "plain", Rows: 24, Cols: 80,
-			Target: protocol.OpenTarget{ProfileID: "modern", AuthType: "password", UseTmux: true}})
-		if werr != nil || res.Info.UseTmux {
-			t.Fatalf("fallback: %+v %+v", werr, res.Info)
-		}
-		labRun(t, m, peer, 4, 1, "echo P=$((2+3)) ${TMUX:-plain}\r", "P=5 plain")
 	}
 }

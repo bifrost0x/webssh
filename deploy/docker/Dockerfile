@@ -26,8 +26,8 @@ ARG TARGETARCH
 ARG VERSION=3.4.0-m1
 ARG VCS_REF=unknown
 # The frontend assets are copied from static/ to internal/httpapi/webassets
-# (a build output, ignored by Git and by the build context). The HTTP server
-# embeds that directory once it is wired; until then the copy is unused.
+# (a build output, ignored by Git and by the build context), the same step as
+# scripts/stage-webassets.sh. The binary embeds that directory.
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     mkdir -p internal/httpapi/webassets \
     && cp -a static/. internal/httpapi/webassets/ \
