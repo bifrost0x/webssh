@@ -92,10 +92,7 @@ func unusableReason(k SSHKey) string {
 	if k.State == KeyUnsupported || k.PublicKey == nil {
 		return k.Reason
 	}
-	switch k.PublicKey.Type() {
-	case ssh.KeyAlgoDSA:
-		return "DSA keys are not supported"
-	case ssh.KeyAlgoRSA:
+	if k.PublicKey.Type() == ssh.KeyAlgoRSA {
 		if raw, err := ssh.ParseRawPrivateKey(k.PEM); err == nil {
 			if rk, ok := raw.(*rsa.PrivateKey); ok && rk.N.BitLen() < 1024 {
 				return fmt.Sprintf("RSA key with %d bits: below 1024 bits, which this release cannot sign with; OpenSSH has refused such keys since 7.6", rk.N.BitLen())
