@@ -87,25 +87,26 @@ func (s *stallingServer) serve(conn net.Conn, cfg *ssh.ServerConfig, mode stallM
 			}
 		}
 	}()
-	var held []ssh.NewChannel
+	var accepted []ssh.Channel
 	for nc := range chans {
 		if mode == stallOpen {
-			held = append(held, nc) // neither confirmed nor rejected
-			s.seen <- struct{}{}
+			s.seen <- struct{}{} // neither confirmed nor rejected
 			continue
 		}
 		ch, creqs, err := nc.Accept()
 		if err != nil {
 			continue
 		}
-		defer func() { _ = ch.Close() }()
+		accepted = append(accepted, ch)
 		s.seen <- struct{}{}
 		go func() {
 			for range creqs { // never answered
 			}
 		}()
 	}
-	_ = held
+	for _, ch := range accepted {
+		_ = ch.Close()
+	}
 }
 
 func (s *stallingServer) connections() int {
