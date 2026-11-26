@@ -175,6 +175,15 @@ def test_profile_editor_offers_every_platform():
     assert set(re.findall(r'<option value="([^"]+)"', select)) == c.PLATFORMS | {'auto'}
 
 
+def test_profile_editor_offers_every_role():
+    template = (Path(__file__).parents[1] / 'templates' / 'index.html').read_text(encoding='utf-8')
+    select = re.search(r'<select id="profileEditorRole".*?</select>', template, re.S).group(0)
+    values = re.findall(r'<option value="([^"]+)"', select)
+    assert values[0] == 'auto' and set(values) == c.ROLES | {'auto'} and len(values) == len(set(values))
+    for role in c.ROLES:
+        assert f'<option value="{role}" data-i18n="role.{role}"' in select
+
+
 def test_platform_icons_are_plain_simple_icons_with_provenance():
     directory = Path(__file__).parents[1] / 'static' / 'icons' / 'platforms'
     provenance = json.loads((directory / 'provenance.json').read_text(encoding='utf-8'))

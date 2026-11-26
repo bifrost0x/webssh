@@ -1043,6 +1043,29 @@
                             </select>
                             <small data-i18n="platform.help">Automatic checks platform facts after connecting over SSH. Choose an icon to override detection.</small>
                         </div>
+                        <div class="form-group"><label for="profileEditorRole" data-i18n="role.label">Role</label>
+                            <select id="profileEditorRole" class="form-control">
+                                <option value="auto" data-i18n="role.auto">Automatic</option>
+                                <option value="hypervisor" data-i18n="role.hypervisor">Hypervisor</option>
+                                <option value="backup" data-i18n="role.backup">Backup</option>
+                                <option value="storage" data-i18n="role.storage">Storage</option>
+                                <option value="container" data-i18n="role.container">Containers</option>
+                                <option value="docs" data-i18n="role.docs">Documents</option>
+                                <option value="photos" data-i18n="role.photos">Photos</option>
+                                <option value="media" data-i18n="role.media">Media</option>
+                                <option value="cloud" data-i18n="role.cloud">Cloud</option>
+                                <option value="smarthome" data-i18n="role.smarthome">Smart home</option>
+                                <option value="network" data-i18n="role.network">Network</option>
+                                <option value="monitoring" data-i18n="role.monitoring">Monitoring</option>
+                                <option value="dev" data-i18n="role.dev">Development</option>
+                                <option value="passwords" data-i18n="role.passwords">Passwords</option>
+                                <option value="database" data-i18n="role.database">Database</option>
+                                <option value="web" data-i18n="role.web">Web</option>
+                                <option value="workstation" data-i18n="role.workstation">Workstation</option>
+                                <option value="server" data-i18n="role.server">Server</option>
+                            </select>
+                            <small data-i18n="role.help">Detection keeps running; the role only changes how the host is shown.</small>
+                        </div>
 
                         <fieldset class="connection-route-fields"><legend data-i18n="connection.route">Route</legend>
                         <div class="form-group">
