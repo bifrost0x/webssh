@@ -29,6 +29,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/account/step-up/intents", h.accountIntent)
 	mux.HandleFunc("POST /api/account/step-up/password", h.accountProof(MethodPassword, "password", "password"))
 	mux.HandleFunc("POST /api/account/step-up/totp", h.accountProof(MethodTOTP, "code", "totp"))
+	mux.HandleFunc("POST /api/account/step-up/ldap", h.accountProof(MethodLDAP, "password", "ldap"))
 	mux.HandleFunc("POST /api/account/step-up/passkey/options", h.accountPasskeyOptions)
 	mux.HandleFunc("POST /api/account/step-up/passkey/verify", h.accountProof(MethodPasskey, "", "passkey_verify"))
 	mux.HandleFunc("POST /api/step-up/intents", h.adminIntent)

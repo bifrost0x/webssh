@@ -46,9 +46,11 @@ type Auditor interface {
 // LoginView is what the sign-in page shows.
 type LoginView struct {
 	Flashes     []Flash
-	AuthSource  string // "local" after a submitted form, else ""
+	AuthSource  string // "local" or "ldap" after a submitted form, else ""
 	MFARequired bool
 	MFAMethods  []string
+	// LDAPError is the message under the directory form (ldap_error).
+	LDAPError string
 }
 
 // FormView is what the registration and change-password pages show.

@@ -78,8 +78,9 @@ func usernameKey(name string) string {
 }
 
 // reserveUsername is reserve_login_username_attempt without the
-// known-device exception (C-AUTH-10 is not part of M1).
-func (f *Flow) reserveUsername(ctx context.Context, name, source string) ([]Reservation, bool) {
+// known-device exception (C-AUTH-10 is not part of M1). The buckets
+// belong to one endpoint ("login", "ldap_login"), as in Python.
+func (f *Flow) reserveUsername(ctx context.Context, endpoint, name, source string) ([]Reservation, bool) {
 	if strings.TrimSpace(name) == "" {
 		return nil, true
 	}
@@ -89,7 +90,7 @@ func (f *Flow) reserveUsername(ctx context.Context, name, source string) ([]Rese
 			perSource, global, prefix = a, b, c
 		}
 	}
-	key := "login:username:" + usernameKey(name)
+	key := endpoint + ":username:" + usernameKey(name)
 	src, ok, _ := f.Limiter.Reserve(key+":"+SourceBucket(source, prefix), Rule{Limit: perSource, Window: time.Minute})
 	if !ok {
 		return nil, false
@@ -135,7 +136,7 @@ func (f *Flow) login(w http.ResponseWriter, r *http.Request) {
 	var reservation []Reservation
 	if f.Limits.Enabled {
 		var ok bool
-		if reservation, ok = f.reserveUsername(ctx, username, ip); !ok {
+		if reservation, ok = f.reserveUsername(ctx, "login", username, ip); !ok {
 			limited("login_username", username)
 			return
 		}

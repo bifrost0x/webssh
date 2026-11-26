@@ -31,6 +31,7 @@ const (
 	MethodTOTP     = "totp"
 	MethodPasskey  = "passkey"
 	MethodRecent   = "recent"
+	MethodLDAP     = "ldap"
 )
 
 // SessionAssurance is how and when a browser session was authenticated.
@@ -73,6 +74,15 @@ type Passkeys interface {
 	VerifyAssertion(ctx context.Context, userID int64, binding string, credential jsontext.Value) error
 }
 
+// Directory proves the directory password of an LDAP-managed account
+// again (internal/auth/ldap). StepUpLinked is false when LDAP is off or
+// the account has no LDAP identity; VerifyStepUp is false for a wrong
+// password and fault.Unavailable when the directory gives no verdict.
+type Directory interface {
+	StepUpLinked(ctx context.Context, userID int64) (bool, error)
+	VerifyStepUp(ctx context.Context, userID int64, password string) (bool, error)
+}
+
 // TargetCheck validates a target of one action for p, e.g. that a factor
 // to delete belongs to p's account.
 type TargetCheck func(ctx context.Context, p principal.Principal, target string) error
@@ -89,6 +99,8 @@ type Service struct {
 	// Passkeys is nil until passkeys are built; the method is then never
 	// offered.
 	Passkeys Passkeys
+	// LDAP is nil without LDAP sign-in; the method is then never offered.
+	LDAP Directory
 	// Targets holds the extra target checks per action.
 	Targets map[principal.Action]TargetCheck
 	// RecentWindow is STEP_UP_MAX_AGE_SECONDS: a session authenticated with
@@ -246,7 +258,8 @@ func (s *Service) passkeysEnrolled(ctx context.Context, userID int64) (bool, err
 
 // methods returns the proofs that reach required for p, most preferred
 // first: with MFA on a passkey or TOTP, otherwise the password, or a
-// passkey for accounts without one. A recovery session has none; it may
+// passkey for accounts without one; a session signed in through LDAP proves
+// the directory password instead (_allowed_methods). A recovery session has none; it may
 // only repair its factors, which needs no grant.
 func (s *Service) methods(ctx context.Context, p principal.Principal, sa SessionAssurance, required auth.Assurance) ([]string, error) {
 	if p.Recovery || slices.Contains(sa.Methods, "recovery_code") {
@@ -271,6 +284,13 @@ func (s *Service) methods(ctx context.Context, p principal.Principal, sa Session
 			}
 		}
 		return out, nil
+	}
+	if slices.Contains(sa.Methods, MethodLDAP) && s.LDAP != nil {
+		if ok, err := s.LDAP.StepUpLinked(ctx, p.UserID); err != nil {
+			return nil, err
+		} else if ok {
+			return []string{MethodLDAP}, nil
+		}
 	}
 	if slices.Contains(sa.Methods, "password") && s.Passwords != nil {
 		if ok, err := s.Passwords.HasPassword(ctx, p.UserID); err != nil {
