@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const {localeTable} = require('./i18n-locales.js');
 const id = require('../../static/js/host-identity');
 
@@ -203,4 +204,21 @@ test('placeholders take names verbatim, replacement patterns included', () => {
     assert.equal(id.format('{a} and {a}', {a: "$' $$ $`"}), "$' $$ $` and $' $$ $`");
     assert.equal(id.format('{family}-based', {family: 'Debian'}), 'Debian-based');
     assert.equal(id.format('no {values}'), 'no {values}');
+});
+
+test('without HostPlatform every host is a plain Server with no facts', () => {
+    const context = {};
+    context.window = context;
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../static/js/host-identity.js'), 'utf8'), context);
+    const alone = context.HostIdentity;
+    const profile = {detected_platform: 'proxmox', detected_services: ['immich'], detected_virt: 'vm', detection_state: 'detected'};
+    assert.equal(alone.role(profile).id, 'server');
+    assert.equal(alone.role({role_override: 'backup'}).id, 'backup');
+    const facts = alone.facts(profile);
+    assert.deepEqual([...facts.services], []);
+    assert.equal(facts.platform.id, 'server');
+    assert.equal(facts.virt, 'vm');
+    const described = alone.describe(profile);
+    assert.equal(described.system, '');
+    assert.equal(described.role.id, 'server');
 });

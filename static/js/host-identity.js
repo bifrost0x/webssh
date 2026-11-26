@@ -5,8 +5,12 @@
     const api = factory(platform);
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (root) root.HostIdentity = api;
-})(typeof window !== 'undefined' ? window : globalThis, function(HostPlatform) {
+})(typeof window !== 'undefined' ? window : globalThis, function(loadedPlatform) {
     'use strict';
+    // Without the platform catalog nothing about a host can be checked, so every
+    // host reads as a Server with no platform or services.
+    const NO_PLATFORM = Object.freeze({resolve: () => ({id: 'server', source: 'pending'}), services: () => [], labels: {}});
+    const platformCatalog = () => loadedPlatform || globalThis.HostPlatform || NO_PLATFORM;
     const ROLES = Object.freeze(['hypervisor', 'backup', 'storage', 'container', 'docs', 'photos', 'media', 'cloud',
         'smarthome', 'network', 'monitoring', 'dev', 'passwords', 'database', 'web', 'workstation', 'server']);
     const ROLE_GLYPHS = Object.freeze({
@@ -55,7 +59,7 @@
     const STALE_SECONDS = 7 * 86400;
 
     function trustedPlatform(profile) {
-        const resolved = HostPlatform.resolve(profile);
+        const resolved = platformCatalog().resolve(profile);
         return TRUSTED_PLATFORM.has(resolved.source) && resolved.id !== 'server' ? resolved.id : null;
     }
     function derive(profile, services) {
@@ -76,7 +80,7 @@
     function role(profile) {
         const source = profile && typeof profile === 'object' ? profile : {};
         if (ROLES.includes(source.role_override)) return {id: source.role_override, source: 'manual', basis: null};
-        const derived = derive(source, HostPlatform.services(source));
+        const derived = derive(source, platformCatalog().services(source));
         return derived ? {...derived, source: 'derived'} : {id: 'server', source: 'default', basis: null};
     }
     function stamp(value) {
@@ -90,10 +94,10 @@
     /** Display facts of a host, each validated against the catalog or dropped. */
     function facts(profile, now = Date.now() / 1000) {
         const source = profile && typeof profile === 'object' ? profile : {};
-        const resolved = HostPlatform.resolve(source);
+        const resolved = platformCatalog().resolve(source);
         const translate = (key, fallback) => globalThis.i18n?.t(key) || fallback;
-        const label = resolved.id === 'server' ? translate('platform.server', 'Server') : HostPlatform.labels[resolved.id];
-        const services = HostPlatform.services(source);
+        const label = resolved.id === 'server' ? translate('platform.server', 'Server') : platformCatalog().labels[resolved.id];
+        const services = platformCatalog().services(source);
         const current = role(source);
         const lead = current.source === 'manual'
             ? RULES.find(item => item.role === current.id)?.services.find(id => services.includes(id))
