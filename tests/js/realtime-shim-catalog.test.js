@@ -12,6 +12,7 @@ test('every mapped event targets a type of the v1 catalog', () => {
         'hosts.socks.list', 'hosts.socks.save', 'hosts.socks.delete', 'keys.list', 'keys.upload',
         'keys.rename', 'keys.replace', 'keys.delete', 'settings.theme.set', 'settings.confirm_close.set',
         'settings.disconnect_action.set', 'notes.get', 'notes.save',
+        'smb.share.list', 'smb.share.save', 'smb.share.delete', 'smb.connect', 'smb.connect.cancel',
     ]);
     const mapped = new Set(Object.values(catalog.REQUESTS).map(entry => entry.type));
     assert.deepEqual([...mapped].sort(), [...v1].sort());

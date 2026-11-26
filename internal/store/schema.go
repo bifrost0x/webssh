@@ -37,6 +37,8 @@ var Owners = []string{
 	"totp", "vault", "webauthn",
 	// M2 contracts: identity and operation.
 	"authgithub", "authldap", "authoidc", "backup",
+	// M2: saved SMB share definitions (FS3).
+	"smb",
 }
 
 // ledgerTable records applied migrations. It belongs to the store itself.

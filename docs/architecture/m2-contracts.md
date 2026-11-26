@@ -978,6 +978,58 @@ package only.
 | `gateway` (`prompt.interactive`) | NW2 |
 | `credentials` (if it has socket events) | VA1 |
 
+### Message types (smb)
+
+Defined by FS3 (`internal/realtime/protocol/payload_smb.go`), mapped in
+`static/js/realtime-shim-smb.js`. With `SMB_ENABLED` false no type is
+mounted; the shim answers `unknown_type` with the code `SMB_DISABLED`
+of today. Results are the success payloads of the Python release; the
+shim pushes the events of today from them, and from a failure the error
+event of today (the optional `failure` builders of an area entry in
+`realtime-catalog.js`, additive).
+
+| Type | Direction | Owner | Payload | Socket.IO today |
+|---|---|---|---|---|
+| `smb.share.list` | client | `internal/files/smb` | `Empty` → `SMBShares` | `list_smb_shares` (`smb_shares_list`, `smb_share_error`) |
+| `smb.share.save` | client | `internal/files/smb` | `SMBShareSave` → `SMBShareSaved` | `save_smb_share` (`smb_share_saved`, `smb_shares_list`, `smb_share_error`) |
+| `smb.share.delete` | client | `internal/files/smb` | `SMBShareDelete` → `SMBShareDeleted` | `delete_smb_share` (`smb_share_deleted`, `smb_shares_list`, `smb_share_error`) |
+| `smb.connect` | client | `internal/files/smb` | `SMBConnect` → `SMBConnected` | `smb_quick_connect` (`smb_quick_connect_success`, `smb_quick_connect_error`) |
+| `smb.connect.cancel` | client | `internal/files/smb` | `SMBConnectCancel` → `Empty` | `smb_quick_connect_cancel` |
+
+- Specs: list `RateKey smb_share_list`; save and delete `Mutates`,
+  `RateKey smb_share_mutation`; connect `Async`, `Mutates`, `RateKey
+  smb_connect`, 24 KiB, timeout `SMB_CONNECT_TIMEOUT_SECONDS` plus twice
+  `SMB_IO_IDLE_TIMEOUT_SECONDS` plus 5 s; cancel inline. The buckets take
+  `SMB_SHARE_LIST_RATELIMIT`, `SMB_SHARE_MUTATION_RATELIMIT` and
+  `SMB_CONNECT_RATELIMIT` (cmd/webssh `realtimeLimiter`).
+- A connect failure carries `details.diagnostic_id` (`SMB-` and 12
+  upper-case hex digits); the server log has the same id with the
+  credential-free diagnostic (`diagnostic_phase`, `cause_type`,
+  `nt_status`). Codes outside `_SMB_CONNECT_CODES` become
+  `CONNECTION_FAILED`; saved-password codes pass unchanged. The shim maps
+  `rate_limited`, `invalid_request`, `busy` and `unknown_type` to
+  `RATE_LIMITED`, `INVALID_REQUEST`, `REQUEST_IN_PROGRESS` and
+  `SMB_DISABLED`.
+- Share validation failures are `validation_error` (`not_found` for an
+  unknown id) with the Python text; requests decode strictly, so a
+  member the page never sends (a password among them) is
+  `invalid_request` instead of "Passwords cannot be saved".
+
+Consumer interfaces of `internal/files/smb` (compiled):
+
+```go
+type Sources interface { Add(p principal.Principal, kind files.SourceKind, d files.Descriptor, b files.Backend) (string, error) }
+type Passwords interface { ConnectionPassword(ctx, p principal.Principal, req CredentialRequest) ([]byte, error) }
+type Network interface { Admit(ctx, role netpolicy.Role, host string, port int) (netpolicy.Admitted, error) }
+```
+
+`Sources` is the file source registry (FS1); `Passwords` adapts
+`vault.Service.Password` (VA1) with the resource `smb:<id>` or a
+confirmed target. `(*Service).ResourceTarget` gives the vault the
+current target of a saved share. Store owner `smb` (table `smb_shares`:
+one row per definition with the record as Python stored it, E22) is
+added to `store.Owners`.
+
 ### End-to-end harness for M2
 
 - `tests/e2e/go-suite.json` (formerly `tests/e2e/m1/go-subset.json`) lists
