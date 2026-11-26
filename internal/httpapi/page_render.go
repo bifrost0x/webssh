@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -57,10 +58,31 @@ func (r *Renderer) Render(w io.Writer, page Page, data PageData) error {
 	if !slices.Contains(Pages, page) {
 		return fmt.Errorf("render page %q: unknown page", page)
 	}
+	if err := data.checkJSONBlocks(); err != nil {
+		return fmt.Errorf("render page %q: %w", page, err)
+	}
 	var buf bytes.Buffer
 	if err := r.templates.ExecuteTemplate(&buf, string(page), view{PageData: &data, assets: r.assets}); err != nil {
 		return fmt.Errorf("render page %q: %w", page, err)
 	}
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+// checkJSONBlocks encodes the values that the pages embed as JSON script
+// blocks. html/template replaces a value it cannot encode with a comment
+// and null; a page must instead fail to render, so that the browser never
+// sees a silently emptied inventory or layout.
+func (d *PageData) checkJSONBlocks() error {
+	if d.InitialInventory != nil {
+		if _, err := json.Marshal(d.InitialInventory); err != nil {
+			return fmt.Errorf("initial inventory: %w", err)
+		}
+	}
+	if d.OverviewPreferences != nil {
+		if _, err := json.Marshal(d.OverviewPreferences); err != nil {
+			return fmt.Errorf("overview preferences: %w", err)
+		}
+	}
+	return nil
 }

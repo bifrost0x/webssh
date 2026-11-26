@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"math"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -345,5 +347,30 @@ func TestHelpers(t *testing.T) {
 	}
 	if got := (view{PageData: &PageData{}}).PrimaryMethod(); got != (AuthMethod{}) {
 		t.Errorf("PrimaryMethod of no methods = %+v", got)
+	}
+}
+
+// A JSON block that cannot be encoded stops the page instead of rendering
+// html/template's "/* error */ null" in its place (condition F7).
+func TestRenderFailsClosedOnUnencodableJSONBlocks(t *testing.T) {
+	r := testRenderer(t)
+	cases := map[string]PageData{
+		"inventory": {InitialInventory: map[string]any{"profiles": math.NaN()}},
+		"panels":    {OverviewPreferences: &OverviewPreferences{Panels: json.RawMessage(`[1,`)}},
+	}
+	for name, data := range cases {
+		var buf bytes.Buffer
+		if err := r.Render(&buf, PageWorkspace, data); err == nil || buf.Len() != 0 {
+			t.Errorf("%s: err %v, wrote %d bytes", name, err, buf.Len())
+		}
+	}
+	var buf bytes.Buffer
+	data := PageData{InitialInventory: map[string]any{"profiles": []json.RawMessage{json.RawMessage(`{"id":"a"}`)}},
+		OverviewPreferences: &OverviewPreferences{Panels: json.RawMessage(`null`), Dismissed: []string{}}}
+	if err := r.Render(&buf, PageWorkspace, data); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `{"profiles":[{"id":"a"}]}`) {
+		t.Error("inventory block missing")
 	}
 }
