@@ -89,6 +89,8 @@ type browser struct {
 	answer func(title string, prompts []Prompt) []string
 	onText func(text string) string // keystrokes to send, "" for none
 	noAck  bool
+	// attempt is the attempt begin started for this browser.
+	attempt *Attempt
 
 	mu      sync.Mutex
 	output  bytes.Buffer
@@ -166,6 +168,7 @@ func begin(t *testing.T, ctx context.Context, b *browser, gateway bool) (*Attemp
 		t.Fatal(err)
 	}
 	t.Cleanup(end)
+	b.attempt = a
 	bctx, stop := context.WithCancel(ctx)
 	t.Cleanup(stop)
 	go b.run(bctx, a)
