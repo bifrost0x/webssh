@@ -339,6 +339,20 @@
                 prompt_id: p.prompt_id, client_request_id: p.request_id, context: p.context,
                 host: p.host, port: p.port, banner: p.banner,
             }),
+            // A synthetic load stream of the end-to-end suite: the server binds
+            // a channel the client never allocates (2^31 and above) to a
+            // session name before its first frame; its output is delivered
+            // and acknowledged like a terminal's.
+            'e2e.output_stream': p => {
+                if (!Number.isSafeInteger(p.ch) || p.ch < 2 ** 31 || p.ch > 2 ** 32 - 1 || typeof p.session_id !== 'string') return;
+                if (channels.has(p.ch)) return;
+                const channel = {
+                    id: p.ch, decoder: new TextDecoder('utf-8'), frames: [], ackQueue: [], ackedSeq: 0, sentSeq: 0,
+                    nextIseq: 1, awaitingResend: null, pendingInput: new Map(), mode: 'live',
+                };
+                channels.set(channel.id, channel);
+                bind(channel, p.session_id);
+            },
             // Only host-key prompts have a close event in the existing frontend;
             // a withdrawn banner is followed by ssh_error or ssh_connected.
             'prompt.closed': p => {

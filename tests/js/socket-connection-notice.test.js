@@ -28,3 +28,18 @@ test('connection errors are bounded, sanitized and reset after connection', () =
     assert.equal(mismatch, 1);
     assert.equal(notices.length, 2);
 });
+
+test('a connection limit shows the readable reason of the server', () => {
+    const events = {};
+    const notices = [];
+    const start = source.indexOf('    let connectionErrorNotice');
+    const end = source.indexOf('    window.ModalManager', start);
+    vm.runInNewContext(source.slice(start, end), {
+        socket: {on(event, handler) { events[event] = handler; }},
+        showNotification(value) { notices.push(value); return () => {}; },
+        socketProtocolMismatch: {handleMismatch() {}},
+    });
+    events.connect_error({data: {code: 'connection_limit', scope: 'user', message: 'at most 32 realtime connections per user are open'}});
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0].message, 'Cannot connect to WebSSH: at most 32 realtime connections per user are open');
+});

@@ -421,3 +421,21 @@ test('the input limit follows the runtime limits of the page', async () => {
     assert.equal(ws.frames(KIND_INPUT).length, 1);
     socket.disconnect();
 });
+
+// A synthetic load stream of the test build arrives on a channel above the
+// client range, announced by e2e.output_stream before its first frame.
+test('e2e.output_stream binds a server channel to a session name', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const output = [];
+    socket.on('ssh_output', (data, ack) => { output.push(data); ack?.(); });
+    const ch = 2 ** 31 + 7;
+    ws.output(ch, 1, 'before');
+    ws.serverSend('e2e.output_stream', {ch, session_id: 'load-0'});
+    ws.serverSend('e2e.output_stream', {ch: 5, session_id: 'not-a-server-channel'});
+    ws.output(ch, 1, 'frame-1');
+    await tick(80);
+    assert.deepEqual(plain(output), [{session_id: 'load-0', data: 'frame-1', sequence: 1}]);
+    assert.deepEqual(ws.frames(KIND_ACK).map(f => [f.channel, f.seq]), [[ch, 1]]);
+    socket.disconnect();
+});

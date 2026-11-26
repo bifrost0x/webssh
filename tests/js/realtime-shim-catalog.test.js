@@ -219,3 +219,32 @@ test('volatile emits are dropped offline like any other emit', async () => {
     socket.volatile.emit('smb_quick_connect', {request_id: 'r'});
     assert.deepEqual(plain(socket.flags), {});
 });
+
+// The end-to-end hooks: e2e_<name> is requested as e2e.<name> and
+// acknowledged with the plain result; the server event e2e.<name> arrives
+// as e2e_<name>.
+test('end-to-end hooks map to the reserved e2e namespace', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const acks = [];
+    socket.emit('e2e_workspace_restore', {count: 2}, result => acks.push(result));
+    const restore = ws.lastRequest('e2e.workspace_restore');
+    assert.deepEqual(restore.p, {count: 2});
+    ws.reply(restore.id, {ok: true, session_ids: ['a', 'b']});
+    socket.emit('e2e_output_load', result => acks.push(result));
+    const load = ws.lastRequest('e2e.output_load');
+    assert.deepEqual(load.p, {});
+    ws.fail(load.id, {code: 'unknown_type', message: 'Unknown message type.'});
+    const done = [];
+    socket.on('e2e_output_load_done', data => done.push(data));
+    ws.serverSend('e2e.output_load_done', {counts: [1], peak: 3, elapsed_ms: 10, aborted: false});
+    await tick();
+    assert.deepEqual(plain(acks), [
+        {ok: true, session_ids: ['a', 'b']},
+        {success: false, code: 'unknown_type', error: 'Unknown message type.'},
+    ]);
+    assert.deepEqual(plain(done), [{counts: [1], peak: 3, elapsed_ms: 10, aborted: false}]);
+    assert.equal(catalog.e2eEvent('e2e.Bad'), null);
+    assert.equal(catalog.e2eEvent('hosts.profile.list'), null);
+    socket.disconnect();
+});

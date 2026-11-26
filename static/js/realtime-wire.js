@@ -66,8 +66,15 @@
         return Number.isInteger(channel) && channel >= 1 && channel <= MAX_CHANNEL;
     }
 
+    // Channels the server binds itself (the synthetic streams of the
+    // end-to-end suite) lie above MAX_CHANNEL; output and acks may use the
+    // whole unsigned 32-bit range, input only the client's own channels.
+    function validWireChannel(channel) {
+        return Number.isInteger(channel) && channel >= 1 && channel <= 0xFFFFFFFF;
+    }
+
     function encodeFrame(kind, flags, channel, seq, data) {
-        if (!validChannel(channel)) throw new Error('invalid channel');
+        if (!(kind === KIND.ACK ? validWireChannel(channel) : validChannel(channel))) throw new Error('invalid channel');
         if (!Number.isSafeInteger(seq) || seq < 0) throw new Error('invalid sequence');
         const body = data || new Uint8Array(0);
         const frame = new Uint8Array(HEADER_LEN + body.length);
@@ -101,7 +108,7 @@
         const flags = view.getUint8(1);
         if ((flags & ~(FLAG.RESET | FLAG.REPLAY)) !== 0) return null;
         const channel = view.getUint32(2);
-        if (!validChannel(channel)) return null;
+        if (!validWireChannel(channel)) return null;
         return {kind, flags, channel, seq: Number(seq), data: bytes.subarray(HEADER_LEN)};
     }
 

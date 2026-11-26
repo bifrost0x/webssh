@@ -390,9 +390,14 @@
         }
         if (connectionErrorReported) return;
         connectionErrorReported = true;
+        // The new realtime server closes with 1013 and a readable reason when
+        // a connection limit is reached; Python never sends it.
+        const limit = error?.data?.code === 'connection_limit' ? String(error.data.message || '').trim() : '';
         connectionErrorNotice = showNotification({
-            message: 'Cannot connect to WebSSH. Check your network and sign-in session. '
-                + 'If this continues, check the proxy path, public origin and WebSocket settings.',
+            message: limit
+                ? `Cannot connect to WebSSH: ${limit}`
+                : 'Cannot connect to WebSSH. Check your network and sign-in session. '
+                    + 'If this continues, check the proxy path, public origin and WebSocket settings.',
             type: 'error',
             persistent: true,
         });
