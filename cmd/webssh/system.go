@@ -111,7 +111,7 @@ type system struct {
 // migration state machine, store and keyring, then every capability. On
 // failure everything opened so far is closed again.
 func openSystem(ctx context.Context, in bootInput) (sys *system, err error) {
-	cfg, err := loadConfig(in.lookup, in.log)
+	cfg, err := bootstrapConfig(in.lookup, in.log)
 	if err != nil {
 		return nil, err
 	}

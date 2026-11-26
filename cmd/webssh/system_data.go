@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bifrost0x/webssh/internal/buildinfo"
 	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
@@ -20,10 +19,10 @@ import (
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-// loadConfig resolves the configuration in the order of config.Bootstrap:
+// bootstrapConfig resolves the configuration in the order of config.Bootstrap:
 // DATA_DIR, the prepared data directory, SECRET_KEY, then everything
 // else. The warnings go to the start-up log.
-func loadConfig(lookup config.LookupFunc, log *slog.Logger) (config.Config, error) {
+func bootstrapConfig(lookup config.LookupFunc, log *slog.Logger) (config.Config, error) {
 	cfg, warnings, err := config.Bootstrap(lookup, func(dir string) error {
 		_, err := platform.PrepareDataDir(dir)
 		return err
@@ -74,20 +73,11 @@ func prefixStrings(ps []netip.Prefix) []string {
 // specification (section 5.1). It holds the Go lock until the returned
 // Startup is closed. A state that must not start is a *legacy.StopError.
 func startMigration(ctx context.Context, cfg config.Config, lookup config.LookupFunc, log *slog.Logger) (*legacy.Startup, error) {
-	reg, err := migrationRegistry(cfg, lookup)
+	o, err := migrationOptions(cfg, lookup)
 	if err != nil {
-		return nil, fmt.Errorf("migration registry: %w", err)
+		return nil, err
 	}
-	st, err := legacy.Start(ctx, legacy.Options{
-		DataDir:         cfg.DataDir,
-		Secret:          string(cfg.SecretKey.Bytes()),
-		SecretSource:    string(cfg.SecretSource),
-		BackupTempDir:   cfg.BackupTempDir,
-		Release:         buildinfo.Read().Version,
-		Registry:        reg,
-		Origin:          legacyOrigin(cfg),
-		RequireCoverage: true,
-	})
+	st, err := legacy.Start(ctx, o)
 	if err != nil {
 		var stop *legacy.StopError
 		if errors.As(err, &stop) {

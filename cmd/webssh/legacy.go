@@ -24,6 +24,13 @@ var legacyCommands = []string{
 	"backup",
 }
 
+// legacyRunners run the commands whose usage lines name the program, so
+// that the deprecated form prints "flask" there as the Python release did.
+var legacyRunners = map[string]adminRun{
+	"create-admin":   createAdmin,
+	"reset-password": resetPassword,
+}
+
 // legacyApps are the values of flask --app that select the WebSSH
 // application, as documented ("start:app") and in its short form ("start").
 var legacyApps = []string{"start:app", "start"}
@@ -49,13 +56,17 @@ func runLegacyEntrypoint(ctx context.Context, args []string, s streams) int {
 		write(s.stderr, fmt.Sprintf("Error: No such command '%s'.\n", name))
 		return 2
 	}
-	c, ok := lookup(name)
+	run, ok := legacyRunners[name]
 	if !ok {
-		write(s.stderr, fmt.Sprintf("webssh: the command %q is not available in this version.\n", name))
-		return 1
+		c, found := lookup(name)
+		if !found {
+			write(s.stderr, fmt.Sprintf("webssh: the command %q is not available in this version.\n", name))
+			return 1
+		}
+		run = func(ctx context.Context, _ string, args []string, s streams) int { return c.run(ctx, args, s) }
 	}
 	write(s.stderr, fmt.Sprintf("webssh: the form \"/app/entrypoint.sh flask --app start:app %s\" is deprecated and will be removed in the next major release; use \"/app/webssh %s\".\n", name, name))
-	return c.run(ctx, rest, s)
+	return run(ctx, "flask", rest, s)
 }
 
 const legacyUsage = `Usage:

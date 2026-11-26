@@ -15,8 +15,8 @@ func TestLegacyEntrypoint(t *testing.T) {
 		wantCode   int
 		wantStderr string
 	}{
-		{name: "known command not built yet", argv: []string{ep, "flask", "--app", "start:app", "create-admin", "--username", "a"}, wantCode: 1, wantStderr: `"create-admin" is not available`},
-		{name: "short app form", argv: []string{ep, "flask", "--app", "start", "reset-password"}, wantCode: 1, wantStderr: "not available"},
+		{name: "known command not built yet", argv: []string{ep, "flask", "--app", "start:app", "backup", "create"}, wantCode: 1, wantStderr: `"backup" is not available`},
+		{name: "short app form", argv: []string{ep, "flask", "--app", "start", "connection-store"}, wantCode: 1, wantStderr: "not available"},
 		{name: "equals form", argv: []string{ep, "flask", "--app=start:app", "rotate-secret-key"}, wantCode: 1, wantStderr: "not available"},
 		{name: "unknown flask command", argv: []string{ep, "flask", "--app", "start:app", "shell"}, wantCode: 2, wantStderr: "Error: No such command 'shell'."},
 		{name: "webssh subcommand is not a flask command", argv: []string{ep, "flask", "--app", "start:app", "serve"}, wantCode: 2, wantStderr: "No such command 'serve'"},

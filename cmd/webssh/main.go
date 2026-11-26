@@ -40,6 +40,11 @@ func commands() []command {
 	return []command{
 		{name: "serve", summary: "run the server until SIGTERM or SIGINT", run: runServe},
 		{name: "healthcheck", summary: "exit 0 when /ready on the local port answers", run: runHealthcheck},
+		{name: "create-admin", summary: "create an administrator or promote an account", run: runCreateAdmin},
+		{name: "reset-password", summary: "set a new password for a local account", run: runResetPassword},
+		{name: "ldap-secret", summary: "manage the LDAP secret volume", run: runLDAPSecret},
+		{name: "migrate", summary: "--dry-run or --replace the migration of the Python data", run: runMigrate},
+		{name: "legacy", summary: "purge: remove the Python data after the migration", run: runLegacy},
 		{name: "version", summary: "print the version and source revision", run: runVersion},
 		{name: "help", summary: "show this help", run: runHelp},
 	}
@@ -58,7 +63,7 @@ func usage() string {
 	var b strings.Builder
 	b.WriteString("Usage:\n  webssh <command> [options]\n\nCommands:\n")
 	for _, c := range commands() {
-		fmt.Fprintf(&b, "  %-12s %s\n", c.name, c.summary)
+		fmt.Fprintf(&b, "  %-15s %s\n", c.name, c.summary)
 	}
 	return b.String()
 }
@@ -74,6 +79,9 @@ func main() {
 func dispatch(ctx context.Context, argv []string, s streams) int {
 	if len(argv) > 0 && isLegacyEntrypoint(argv[0]) {
 		return runLegacyEntrypoint(ctx, argv[1:], s)
+	}
+	if len(argv) > 0 && isPythonShim(argv[0]) {
+		return runPythonShim(argv[1:], s)
 	}
 	var args []string
 	if len(argv) > 1 {

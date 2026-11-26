@@ -410,3 +410,33 @@ func TestAdminHTTP(t *testing.T) {
 		t.Fatalf("validation %d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestPromote(t *testing.T) {
+	t.Parallel()
+	s, _ := newService(t)
+	insertLegacy(t, s, 1, "admin", true, false, ManagedLocal, "2026-01-01T00:00:00")
+	insertLegacy(t, s, 2, "user", false, true, ManagedLocal, "2026-01-01T00:00:00")
+	insertLegacy(t, s, 3, "dir", false, false, ManagedLDAP, "2026-01-01T00:00:00")
+	insertLegacy(t, s, 4, "gh", false, false, ManagedGitHub, "2026-01-01T00:00:00")
+	if changed, err := s.Promote(t.Context(), 1); changed || err != nil {
+		t.Errorf("already admin: %v, %v", changed, err)
+	}
+	if changed, err := s.Promote(t.Context(), 2); !changed || err != nil {
+		t.Errorf("promote: %v, %v", changed, err)
+	}
+	if a, _ := s.Get(t.Context(), 2); !a.IsAdmin {
+		t.Error("not promoted")
+	}
+	if _, err := s.Promote(t.Context(), 3); err != ErrPromoteLDAP {
+		t.Errorf("ldap: %v", err)
+	}
+	if _, err := s.Promote(t.Context(), 4); err != ErrPromoteGitHub {
+		t.Errorf("github: %v", err)
+	}
+	if _, err := s.Promote(t.Context(), 9); code(err) != fault.NotFound {
+		t.Errorf("missing: %v", err)
+	}
+	if a, _ := s.Get(t.Context(), 3); a.IsAdmin {
+		t.Error("ldap account promoted")
+	}
+}
