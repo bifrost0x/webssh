@@ -13,6 +13,10 @@ type Hello struct {
 	User       HelloUser     `json:"user"`
 	Schema     int           `json:"schema"`
 	Restorable []SessionInfo `json:"restorable"`
+	// Persistent are the account's persistent (tmux) sessions that no
+	// terminal is attached to; the page offers to reconnect them
+	// (persistent_session_available).
+	Persistent []SessionInfo `json:"persistent"`
 }
 
 // HelloUser is the signed-in user as the page may show it.

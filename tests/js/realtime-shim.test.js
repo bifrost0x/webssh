@@ -407,3 +407,31 @@ test('a session ended before hello checks the status at once', async () => {
     assert.equal(calls.length, 1);
     assert.deepEqual(navigation.assigned, ['/login']);
 });
+
+// Detached persistent (tmux) sessions in hello become the Python event
+// persistent_session_available before connected.
+test('hello.persistent offers detached sessions before connected', async () => {
+    const window = loadShim();
+    const socket = window.io({path: '/socket.io', autoConnect: false});
+    const order = [];
+    socket.on('persistent_session_available', data => order.push(['persistent', data]));
+    socket.on('connected', () => order.push(['connected']));
+    socket.connect();
+    const ws = FakeWebSocket.instances.at(-1);
+    ws.accept();
+    ws.serverSend('hello', {user: {username: 'alice', is_admin: false}, schema: 1, restorable: [], persistent: [{
+        session_id: 'p1', host: 'h.test', port: 22, username: 'u', auth_type: 'key', key_id: 'k1', profile_id: '',
+        via_jump: '', jump_host_id: '', socks_proxy_id: '', via_socks: false, reconnect_route_known: true,
+        use_tmux: true, tmux_session_name: 'webssh_1', display_name: '', detected_platform: '', last_seq: 0,
+    }]});
+    await tick(20);
+    assert.deepEqual(JSON.parse(JSON.stringify(order)), [
+        ['persistent', {
+            session_id: 'p1', host: 'h.test', port: 22, username: 'u', key_id: 'k1', auth_type: 'key',
+            jump_host_id: null, socks_proxy_id: null, via_socks: false, profile_id: null, via_jump: null,
+            reconnect_route_known: true, tmux_session_name: 'webssh_1', display_name: null,
+        }],
+        ['connected'],
+    ]);
+    socket.disconnect();
+});

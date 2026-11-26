@@ -166,9 +166,27 @@ type legacyAlgorithmShells struct {
 }
 
 func (l legacyAlgorithmShells) OpenShell(ctx context.Context, t client.Target, ix client.Interaction, rows, cols int) (client.Shell, error) {
+	t, err := l.target(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	return l.dialer.OpenShell(ctx, t, ix, rows, cols)
+}
+
+// Dial is the connection of a persistent (tmux) session
+// (terminal.Connections), with the same algorithm rule.
+func (l legacyAlgorithmShells) Dial(ctx context.Context, t client.Target, ix client.Interaction) (*client.Conn, error) {
+	t, err := l.target(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	return l.dialer.Dial(ctx, t, ix)
+}
+
+func (l legacyAlgorithmShells) target(ctx context.Context, t client.Target) (client.Target, error) {
 	app, err := l.settings.App(ctx)
 	if err != nil {
-		return nil, fault.Wrap(fault.Unavailable, err, "")
+		return t, fault.Wrap(fault.Unavailable, err, "")
 	}
 	if app.Policy.LegacySSHAlgorithms {
 		t.Hop.Legacy = true
@@ -177,7 +195,7 @@ func (l legacyAlgorithmShells) OpenShell(ctx context.Context, t client.Target, i
 			t.Jumps[i].Legacy = true
 		}
 	}
-	return l.dialer.OpenShell(ctx, t, ix, rows, cols)
+	return t, nil
 }
 
 // dbPinger adapts the store to httpapi.Pinger.

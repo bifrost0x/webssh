@@ -14,6 +14,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/ssh/hostkey"
 	"github.com/bifrost0x/webssh/internal/store"
+	"github.com/bifrost0x/webssh/internal/terminal"
 	"github.com/bifrost0x/webssh/internal/vault"
 )
 
@@ -22,6 +23,7 @@ func capabilitySchemas() []store.Schema {
 	return []store.Schema{
 		accounts.Schema(), local.Schema(), auth.Schema(), session.Schema(), stepup.Schema(), totp.Schema(),
 		operations.Schema(), settings.Schema(), hosts.Schema(), hostops.Schema(), vault.Schema(), hostkey.Schema(),
+		terminal.Schema(),
 	}
 }
 

@@ -104,6 +104,9 @@ func TestHello(t *testing.T) {
 	if len(h.Restorable) != 1 || h.Restorable[0].SessionID != "t1" || h.Restorable[0].LastSeq != 7 {
 		t.Fatalf("restorable = %+v", h.Restorable)
 	}
+	if len(h.Persistent) != 1 || h.Persistent[0].SessionID != "p1" || h.Persistent[0].TmuxSessionName != "webssh_p1" {
+		t.Fatalf("persistent = %+v", h.Persistent)
+	}
 	if got := c.ws.Subprotocol(); got != "webssh.v1" {
 		t.Fatalf("subprotocol %q", got)
 	}
@@ -113,6 +116,11 @@ type restorerFunc func(context.Context, principal.Principal) ([]protocol.Session
 
 func (f restorerFunc) Restorable(ctx context.Context, p principal.Principal) ([]protocol.SessionInfo, error) {
 	return f(ctx, p)
+}
+
+// Persistent lists one detached tmux session for every connection.
+func (restorerFunc) Persistent(context.Context, principal.Principal) ([]protocol.SessionInfo, error) {
+	return []protocol.SessionInfo{{SessionID: "p1", Host: "h", Port: 22, TmuxSessionName: "webssh_p1"}}, nil
 }
 
 func TestHelloWithoutRestorerHasEmptyList(t *testing.T) {
@@ -128,7 +136,7 @@ func TestHelloWithoutRestorerHasEmptyList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), `"restorable":[]`) {
+	if !strings.Contains(string(b), `"restorable":[]`) || !strings.Contains(string(b), `"persistent":[]`) {
 		t.Fatalf("hello %s", b)
 	}
 }

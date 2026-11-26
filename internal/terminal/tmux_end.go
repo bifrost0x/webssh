@@ -68,8 +68,7 @@ func (m *Manager) endTmux(id string, owner int64, tm *tmuxBinding, end endMode) 
 		if !m.killTmux(ctx, tm) && end == endRevoke {
 			// The transport was gone or the kill did not finish, so the
 			// tmux session may still run (Python: TMUX_SESSION_NOT_ENDED).
-			m.log.Warn("tmux session not ended", "event", "TMUX_SESSION_NOT_ENDED", "reason", "kill_unconfirmed",
-				"user_id", owner, "tmux_session", tm.name)
+			m.tmuxNotEnded("user_id", owner, "reason", "kill_unconfirmed", "tmux_session", tm.name)
 		}
 	case endDiscard:
 		if !tm.reattach {
@@ -227,8 +226,18 @@ func (m *Manager) forgetUser(owner int64, live []string) {
 	}
 	for _, r := range rows {
 		if !slices.Contains(live, r.SessionID) {
-			m.log.Warn("tmux session not ended", "event", "TMUX_SESSION_NOT_ENDED", "reason", "detached",
-				"user_id", owner, "host", r.Host, "port", r.Port, "ssh_user", r.Username, "tmux_session", r.TmuxSessionName)
+			m.tmuxNotEnded("user_id", owner, "reason", "detached", "host", r.Host, "port", r.Port, "ssh_user", r.Username,
+				"tmux_session", r.TmuxSessionName)
 		}
+	}
+}
+
+// tmuxNotEnded reports a tmux session whose end was asked for but not
+// confirmed (Python: TMUX_SESSION_NOT_ENDED), in the log and, when wired,
+// in the security audit log.
+func (m *Manager) tmuxNotEnded(kv ...any) {
+	m.log.Warn("tmux session not ended", append([]any{"event", "TMUX_SESSION_NOT_ENDED"}, kv...)...)
+	if m.audit != nil {
+		m.audit.SecurityWarning("TMUX_SESSION_NOT_ENDED", kv...)
 	}
 }

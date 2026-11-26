@@ -362,10 +362,12 @@ func (s *Server) OnClose(f func(protocol.Peer))
 func (s *Server) Shutdown(ctx context.Context) error // closes with 4503
 type Restorer interface {
 	Restorable(ctx context.Context, p principal.Principal) ([]protocol.SessionInfo, error)
+	Persistent(ctx context.Context, p principal.Principal) ([]protocol.SessionInfo, error)
 }
 ```
 
-`Restorer` is the source of `hello.restorable` (`internal/terminal`).
+`Restorer` is the source of `hello.restorable` and `hello.persistent`
+(`internal/terminal`).
 `session.keepalive` is registered by the endpoint itself; it calls the
 `OnKeepalive` hooks (the terminal updates `last_activity`). `OnClose` runs
 once per connection after it ended and all its handlers returned.
@@ -374,7 +376,10 @@ do routes without `Async`. All registrations happen before the first
 request; a later one panics.
 
 **hello.** First message of every connection:
-`{"user":{"username","is_admin"},"schema":1,"restorable":[SessionInfo…]}`.
+`{"user":{"username","is_admin"},"schema":1,"restorable":[SessionInfo…],"persistent":[SessionInfo…]}`.
+`persistent` lists the account's detached persistent (tmux) sessions; the
+shim sends one `persistent_session_available` per entry, with the fields
+of the Python event, before `connected`.
 
 ### Message types
 
@@ -953,7 +958,11 @@ Deps{Shells, Profiles, Routes, Log})`, `Mount(m.Routes()…)`,
 `HandleBinary(m.HandleBinary)`, `SetRestorer(m)`,
 `OnKeepalive(m.Keepalive)`, `OnClose(m.PeerClosed)` and
 `sessions.Subscribe(m.Revoked)`; at shutdown the realtime server stops
-first, then the terminal.
+first, then the terminal. Persistent tmux sessions (D6) need
+`Deps{Connections, DB, TmuxEnabled}` and `Config.TmuxPrefix`;
+`Deps.Audit` (`SecurityWarning`, from `*audit.Logger`) receives
+`TMUX_SESSION_NOT_ENDED`, and `*terminal.Manager` is the
+`hosts.PersistentSessions` of `internal/hosts`.
 
 `internal/ssh/hostkey` declares
 `Targets.SSHTargets(ctx, owner) ([]hostkey.Target, error)` for the

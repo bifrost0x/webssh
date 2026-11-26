@@ -37,13 +37,16 @@ var (
 	_ auth.StepUp       = (*stepup.Service)(nil)
 	_ totp.StepUp       = (*stepup.Service)(nil)
 
-	_ terminal.Profiles    = (*hosts.Service)(nil)
-	_ terminal.SavedRoutes = (*hosts.Service)(nil)
-	_ hosts.Keys           = (*vault.Service)(nil)
-	_ client.KeySource     = (*vault.Service)(nil)
-	_ client.HostKeys      = (*hostkey.Store)(nil)
-	_ client.Network       = (*netpolicy.Policy)(nil)
-	_ auth.Auditor         = (*audit.Logger)(nil)
+	_ terminal.Profiles        = (*hosts.Service)(nil)
+	_ terminal.SavedRoutes     = (*hosts.Service)(nil)
+	_ terminal.Connections     = legacyAlgorithmShells{}
+	_ terminal.Auditor         = (*audit.Logger)(nil)
+	_ hosts.PersistentSessions = (*terminal.Manager)(nil)
+	_ hosts.Keys               = (*vault.Service)(nil)
+	_ client.KeySource         = (*vault.Service)(nil)
+	_ client.HostKeys          = (*hostkey.Store)(nil)
+	_ client.Network           = (*netpolicy.Policy)(nil)
+	_ auth.Auditor             = (*audit.Logger)(nil)
 )
 
 // buildCapabilities wires the factors, step-up, sign-in flow, saved hosts,
@@ -104,10 +107,19 @@ func (s *system) buildCapabilities(in bootInput) error {
 	if opt.terminalRoutes != nil {
 		routes = opt.terminalRoutes
 	}
-	s.terminal, err = terminal.New(terminal.FromConfig(cfg.Terminal), terminal.Deps{
-		Shells: legacyAlgorithmShells{dialer: dialer, settings: s.settings}, Profiles: s.hosts, Routes: routes, Log: s.log})
+	shells := legacyAlgorithmShells{dialer: dialer, settings: s.settings}
+	termCfg := terminal.FromConfig(cfg.Terminal)
+	termCfg.TmuxPrefix = cfg.Features.TmuxSessionPrefix
+	s.terminal, err = terminal.New(termCfg, terminal.Deps{
+		Shells: shells, Profiles: s.hosts, Routes: routes, Log: s.log,
+		Connections: shells, DB: s.db, TmuxEnabled: s.tmuxEnabled, Audit: s.audit})
 	if err != nil {
 		return fmt.Errorf("terminal: %w", err)
+	}
+	// A SOCKS5 proxy that a persistent session still needs cannot be
+	// deleted (D6); an extension may provide another source.
+	if s.hosts.Persistent == nil {
+		s.hosts.Persistent = s.terminal
 	}
 	s.closers = append(s.closers, func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -147,6 +159,17 @@ func (s *system) tailnetRestricted() bool {
 	return app.TailnetRouteRestricted
 }
 
+// tmuxEnabled is the runtime switch tmux_enabled; a failure to read it
+// opens the login shell instead of tmux.
+func (s *system) tmuxEnabled(ctx context.Context) bool {
+	app, err := s.settings.App(ctx)
+	if err != nil {
+		s.log.Warn("tmux setting unreadable; sessions open without tmux", "err", err)
+		return false
+	}
+	return app.RuntimeFeature("tmux_enabled").Enabled
+}
+
 // registerHTTP adds the routes of every capability to the edge's mux.
 func (s *system) registerHTTP(mux *http.ServeMux) {
 	cfg := s.cfg
@@ -164,7 +187,7 @@ func (s *system) registerHTTP(mux *http.ServeMux) {
 	(&accounts.HTTP{Accounts: s.accounts, StepUp: s.stepup, Enabled: cfg.Accounts.AdminPanelEnabled, Logger: s.log}).Register(mux)
 	(&operations.HTTP{Gates: s.gates, Inventory: securityInventory{db: s.db, accounts: s.accounts, totp: s.totp, passkeys: s.optional.passkeyList},
 		StepUp: s.stepup, MAC: s.ring, Enabled: cfg.Accounts.AdminPanelEnabled, Logger: s.log}).Register(mux)
-	(&settings.HTTP{Settings: s.settings, Gates: featureGates{s.gates}, Tour: tourDeployment(cfg, s.optional.tmux),
+	(&settings.HTTP{Settings: s.settings, Gates: featureGates{s.gates}, Tour: tourDeployment(cfg, true),
 		BasePath: cfg.ApplicationRoot, Logger: s.log}).Register(mux)
 	(&hosts.HTTP{Service: s.hosts, Logger: s.log}).Register(mux)
 	(&hostops.OverviewHTTP{Inventory: overviewInventory{hosts: s.hosts, vault: s.vault}, Trust: hostTrust{s.hostkeys}, Logger: s.log}).Register(mux)

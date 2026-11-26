@@ -70,6 +70,16 @@
         return Number.isSafeInteger(configured) && configured > 0 ? Math.min(configured, terminal.MAX_INPUT_BYTES) : terminal.MAX_INPUT_BYTES;
     }
 
+    // The fields of persistent_session_available as the Python release sent
+    // them for a detached tmux session; "" stands for null as in hello.
+    const PERSISTENT_FIELDS = ['session_id', 'host', 'port', 'username', 'key_id', 'auth_type', 'jump_host_id',
+        'socks_proxy_id', 'via_socks', 'profile_id', 'via_jump', 'reconnect_route_known', 'tmux_session_name', 'display_name'];
+
+    function persistentEvent(info) {
+        const fields = terminal.sessionEvent(info);
+        return Object.fromEntries(PERSISTENT_FIELDS.map(name => [name, fields[name] ?? null]));
+    }
+
     class RealtimeSocket extends Emitter {
         constructor(options = {}) {
             super();
@@ -323,6 +333,9 @@
             const bound = new Promise(resolve => root.setTimeout(resolve, this.opts.restoreTimeout));
             Promise.race([restored, bound]).then(() => {
                 if (this._ws !== ws || !this.connected) return;
+                for (const info of Array.isArray(payload.persistent) ? payload.persistent : []) {
+                    if (typeof info?.session_id === 'string') this._dispatch('persistent_session_available', persistentEvent(info));
+                }
                 this._dispatch('connected', {
                     status: 'success',
                     username: payload.user?.username,

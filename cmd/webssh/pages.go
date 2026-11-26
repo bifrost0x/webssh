@@ -31,8 +31,8 @@ type pages struct {
 	flow     *auth.Flow
 	inv      inventorySource
 	sessions sessionLookup
-	// tmux says whether a tmux capability is wired (D6); until then the
-	// preview hides every tmux switch.
+	// tmux says whether the terminal runs persistent tmux sessions; the
+	// tmux switches of the pages follow the runtime setting only then.
 	tmux bool
 	log  *slog.Logger
 	now  func() time.Time

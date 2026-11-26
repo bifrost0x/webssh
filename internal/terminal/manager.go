@@ -32,6 +32,16 @@ type Deps struct {
 	Connections Connections
 	DB          *store.DB
 	TmuxEnabled func(context.Context) bool
+	// Audit records security events of the terminal in the audit log, such
+	// as a tmux session that may still run after its end was asked for.
+	// Optional: without it they go to Log only.
+	Audit Auditor
+}
+
+// Auditor writes warning-level security events (provided by
+// internal/audit).
+type Auditor interface {
+	SecurityWarning(event string, kv ...any)
 }
 
 // Manager owns every terminal session of the process. The composition
@@ -49,6 +59,7 @@ type Manager struct {
 	store       persistent
 	dialHost    func(ctx context.Context, t client.Target, ix client.Interaction) (remoteHost, error)
 	tmuxEnabled func(context.Context) bool
+	audit       Auditor
 
 	flow    *ledger
 	input   *inputBudget
@@ -82,7 +93,7 @@ func New(cfg Config, deps Deps) (*Manager, error) {
 		prompts:  newPrompts(cfg.MaxPrompts),
 		sessions: map[string]*Session{}, peers: map[uint64]*peerState{}, attempts: map[attemptKey]*attempt{}, revoked: map[int64]uint64{},
 		stop:  make(chan struct{}),
-		store: persistent{db: deps.DB}, tmuxEnabled: deps.TmuxEnabled,
+		store: persistent{db: deps.DB}, tmuxEnabled: deps.TmuxEnabled, audit: deps.Audit,
 	}
 	if deps.Connections != nil {
 		m.dialHost = func(ctx context.Context, t client.Target, ix client.Interaction) (remoteHost, error) {

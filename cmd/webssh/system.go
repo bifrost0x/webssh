@@ -60,7 +60,6 @@ type optional struct {
 	passkeyTarget  stepup.TargetCheck
 	passkeyList    func(ctx context.Context, userID int64) ([]operations.Credential, error)
 	persistent     hosts.PersistentSessions
-	tmux           bool
 	featureReady   map[string]operations.Readiness
 	terminalRoutes terminal.SavedRoutes
 	// passkeyPlaceholder stores a passkey that never authenticates (end-to-
