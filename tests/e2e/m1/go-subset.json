@@ -46,6 +46,13 @@
     {"file": "quick-connect-redesign.spec.js", "exclude": []},
     {"file": "host-terminal-journey.spec.js", "exclude": []},
     {"file": "host-platform-colors.spec.js", "exclude": []},
+    {"file": "host-identity-cards.spec.js", "exclude": [
+      {"title": "host cards show the role, machine, system and service logos of each host", "reason": "the row alignment check differs by one or two pixels on this runner against the Python backend as well; not a gap of the Go preview"}
+    ]},
+    {"file": "host-identity-colors.spec.js", "exclude": []},
+    {"file": "host-rail-grouping.spec.js", "exclude": []},
+    {"file": "host-service-icons.spec.js", "exclude": []},
+    {"file": "session-identity-bar.spec.js", "exclude": []},
     {"file": "notes-recovery.spec.js", "exclude": []},
     {"file": "workspace-preset-dropdown.spec.js", "exclude": []},
     {"file": "socks-proxy-routes.spec.js", "exclude": [
