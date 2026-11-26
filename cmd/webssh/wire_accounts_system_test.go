@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -162,6 +163,10 @@ func TestAccountAdministrationThroughTheServer(t *testing.T) {
 	}
 	if _, err := sys.accounts.Get(t.Context(), 2); err == nil {
 		t.Fatal("account still there")
+	}
+	copies, _ := filepath.Glob(filepath.Join(sys.cfg.DataDir, "go", "deleted_users", "2-*"))
+	if len(copies) != 1 || accounts.VerifyRetained(copies[0], 2) != nil {
+		t.Fatalf("retained copy %v", copies)
 	}
 	if status, body := apiCall(t, admin, ts.URL, http.MethodPost, "/login/recovery", map[string]string{"code": "x"}, ""); status != http.StatusBadRequest ||
 		!strings.Contains(body, "Complete the primary sign-in") {

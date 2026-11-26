@@ -60,7 +60,10 @@ func RequireAdmin(ctx context.Context) (Principal, error)
 - `principal.Revocation{SessionID, UserID, Reason}` announces an ended
   session. Reasons are stable strings (`logout`, `revoked_by_user`,
   `password_changed`, `factor_changed`, `account_locked`, `role_changed`,
-  `expired`, `recovery_ended`).
+  `expired`, `recovery_ended`). An empty `SessionID` is an account-wide
+  revocation (M2, ID4): a lock, deletion or MFA reset of an account
+  without a session left; it names no connection, and the terminal ends
+  the account's terminals and persistent tmux sessions by the reason.
 
 ## Errors
 
@@ -812,6 +815,7 @@ func (s *Service) Revoke(ctx, id string, reason principal.Reason) error
 func (s *Service) RevokeUser(ctx, userID int64, reason principal.Reason, except string) (int, error)
 func (s *Service) RevokeUserTx(ctx, tx, userID, reason, except) ([]principal.Revocation, error) // then Publish
 func (s *Service) RevokeSessionsTx(ctx, tx, userID int64, ids []string, …) ([]principal.Revocation, error)
+func (s *Service) RevokeAccountTx(ctx, tx, userID int64, reason) ([]principal.Revocation, error) // sessions, or one account-wide entry
 func (s *Service) RevokeAll(ctx, reason principal.Reason) (int, error) // revoke-all epoch
 func (s *Service) Publish(revs []principal.Revocation)
 func (s *Service) ClearRecovery(ctx, id, replacement string, mfaOff bool) (bool, error)
@@ -827,7 +831,8 @@ A token is 32 random bytes; only `MAC(session_token,
 "webssh-session-v1\0"+token)` is stored. A session is bound to the
 account's `auth_generation` and to the installation's revoke-all epoch.
 Revocations are published after the commit and before the revoking call
-returns. Every ended session is also written to the revocation journal
+returns. Every ended session, and every account-wide revocation (empty
+`session_id`), is also written to the revocation journal
 `session_revocations` in the same transaction, tagged with the writing
 service; the server calls `FollowRevocations` every second and publishes
 the entries other processes wrote (an administrator command such as

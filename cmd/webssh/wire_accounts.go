@@ -8,10 +8,9 @@ import (
 	"github.com/bifrost0x/webssh/internal/accounts"
 	"github.com/bifrost0x/webssh/internal/audit"
 	"github.com/bifrost0x/webssh/internal/auth"
+	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/operations"
-	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/session"
-	"github.com/bifrost0x/webssh/internal/terminal"
 )
 
 // accountsArea wires the area "accounts" (ID4): account administration (internal/accounts, internal/auth, internal/session).
@@ -26,19 +25,7 @@ var (
 	_ accounts.RecoveryCodes = (*auth.Recovery)(nil)
 	_ accounts.Warner        = (*audit.Logger)(nil)
 	_ accounts.Gates         = (*operations.Gates)(nil)
-	_ accounts.LiveAccess    = terminalAccess{}
 )
-
-// terminalAccess ends the terminals and persistent tmux sessions of an
-// account that has no browser session left. The terminal reacts to an
-// account-wide revocation as to the end of the account's last session.
-type terminalAccess struct{ m *terminal.Manager }
-
-func (t terminalAccess) EndAccount(userID int64, reason principal.Reason) {
-	if t.m != nil {
-		t.m.Revoked(principal.Revocation{UserID: userID, Reason: reason})
-	}
-}
 
 // legacyUserDir reports the Python data directory of a user id in
 // DATA_DIR, which a deletion records in the quarantine index and never
@@ -58,8 +45,8 @@ func legacyUserDir(dataDir string) accounts.LegacyUserDir {
 func wireAccounts(sys *system) error {
 	a := sys.accounts
 	a.Sessions = sys.sessions
-	a.Live = terminalAccess{sys.terminal}
 	a.Data = accounts.TableSweep{Keep: accounts.DefaultKeep}
+	a.Retain = accounts.RetainDir{Root: filepath.Join(sys.cfg.DataDir, keyring.GoDirName, "deleted_users")}
 	a.Factors = accounts.TableReset{Tables: accounts.FactorTables}
 	a.Recovery = sys.recovery
 	a.LegacyDir = legacyUserDir(sys.cfg.DataDir)

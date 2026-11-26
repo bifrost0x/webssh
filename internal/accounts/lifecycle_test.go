@@ -3,6 +3,7 @@ package accounts
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -35,11 +36,21 @@ type fakeSessions struct {
 	fail      error
 }
 
-func (f *fakeSessions) RevokeUserTx(ctx context.Context, tx *store.Tx, userID int64, reason principal.Reason, except string) ([]principal.Revocation, error) {
+// RevokeAccountTx returns one account-wide revocation when no session
+// ended, like internal/session.
+func (f *fakeSessions) RevokeAccountTx(ctx context.Context, tx *store.Tx, userID int64, reason principal.Reason) ([]principal.Revocation, error) {
+	revs, err := f.revokeUser(ctx, tx, userID, reason)
+	if err == nil && len(revs) == 0 {
+		revs = []principal.Revocation{{UserID: userID, Reason: reason}}
+	}
+	return revs, err
+}
+
+func (f *fakeSessions) revokeUser(ctx context.Context, tx *store.Tx, userID int64, reason principal.Reason) ([]principal.Revocation, error) {
 	if f.fail != nil {
 		return nil, f.fail
 	}
-	rows, err := tx.QueryContext(ctx, `DELETE FROM session_sessions WHERE user_id = ? AND id <> ? RETURNING id`, userID, except)
+	rows, err := tx.QueryContext(ctx, `DELETE FROM session_sessions WHERE user_id = ? RETURNING id`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -67,23 +78,6 @@ func (f *fakeSessions) list() []principal.Revocation {
 	return append([]principal.Revocation(nil), f.published...)
 }
 
-type fakeLive struct {
-	mu    sync.Mutex
-	ended []principal.Revocation
-}
-
-func (f *fakeLive) EndAccount(id int64, reason principal.Reason) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.ended = append(f.ended, principal.Revocation{UserID: id, Reason: reason})
-}
-
-func (f *fakeLive) list() []principal.Revocation {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]principal.Revocation(nil), f.ended...)
-}
-
 type warningAudit struct {
 	recordingAudit
 	warnings []string
@@ -98,18 +92,18 @@ func (a *warningAudit) SecurityWarning(event string, _ ...any) {
 type lifecycle struct {
 	s        *Service
 	sessions *fakeSessions
-	live     *fakeLive
+	retained string
 	audit    *warningAudit
 }
 
 func newLifecycle(t *testing.T, admins ...string) lifecycle {
 	t.Helper()
-	l := lifecycle{sessions: &fakeSessions{}, live: &fakeLive{}, audit: &warningAudit{}}
+	l := lifecycle{sessions: &fakeSessions{}, audit: &warningAudit{}, retained: filepath.Join(t.TempDir(), "go", "deleted_users")}
 	l.s, _ = newService(t, admins...)
 	l.s.DB = storetest.Open(t, Schema(), ownedSchema(), sessionLikeSchema())
 	l.s.Audit = l.audit
 	l.s.Sessions = l.sessions
-	l.s.Live = l.live
+	l.s.Retain = RetainDir{Root: l.retained, Now: l.s.Now}
 	l.s.Data = TableSweep{Keep: DefaultKeep}
 	return l
 }
@@ -169,16 +163,16 @@ func TestLockEndsSessionsAndLiveAccess(t *testing.T) {
 	if n := l.count(t, `SELECT count(*) FROM session_sessions WHERE user_id = 1`); n != 1 {
 		t.Fatal("the administrator's session ended")
 	}
-	if len(l.live.list()) != 0 {
-		t.Fatal("live access ended twice: the published sessions already reach the terminals")
+	if len(l.sessions.list()) != 2 {
+		t.Fatal("an account-wide revocation was added beside the ended sessions")
 	}
 	// An account without a session still gets its live resources ended
 	// (terminals of an expired session, detached tmux sessions).
 	if _, err := l.s.Manage(t.Context(), admin, 3, ActionLock); err != nil {
 		t.Fatal(err)
 	}
-	if got := l.live.list(); len(got) != 1 || got[0].UserID != 3 || got[0].Reason != principal.ReasonAccountLocked {
-		t.Fatalf("live %+v", got)
+	if got := l.sessions.list()[2:]; len(got) != 1 || got[0].UserID != 3 || got[0].SessionID != "" || got[0].Reason != principal.ReasonAccountLocked {
+		t.Fatalf("account-wide revocation %+v", got)
 	}
 	if st, _ := l.s.Standing(t.Context(), 2); !st.Locked {
 		t.Fatal("standing not locked")
@@ -233,7 +227,7 @@ func TestManageRules(t *testing.T) {
 	}
 	// Python keeps a demoted account signed in; it loses the rights at its
 	// next request (session.Check compares the recorded rights).
-	if len(l.sessions.list()) != 0 || len(l.live.list()) != 0 {
+	if len(l.sessions.list()) != 0 {
 		t.Fatal("promote or demote ended sessions")
 	}
 }

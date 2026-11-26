@@ -24,6 +24,11 @@ const (
 // publishes one Revocation per ended session after the change is
 // committed and before the call that ended it returns; consumers such as
 // the realtime endpoint close every connection of SessionID at once.
+//
+// An empty SessionID is an account-wide revocation: a lock, deletion or
+// MFA reset of an account that had no session left. It names no
+// connection; consumers that keep account resources beyond a session
+// (terminals, persistent tmux sessions) end them by the reason's rules.
 type Revocation struct {
 	SessionID string
 	UserID    int64

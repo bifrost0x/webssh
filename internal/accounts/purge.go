@@ -11,8 +11,10 @@ import (
 
 // UserData removes every row a deleted account owns outside
 // accounts_users and its browser sessions, inside the deletion's write
-// transaction, and returns the number of rows removed per table.
+// transaction, and returns the number of rows removed per table. TablesTx
+// lists the tables DeleteUserTx empties, for the retained copy.
 type UserData interface {
+	TablesTx(ctx context.Context, tx *store.Tx) ([]string, error)
 	DeleteUserTx(ctx context.Context, tx *store.Tx, userID int64) (map[string]int64, error)
 }
 
@@ -64,16 +66,13 @@ func OwnedTablesTx(ctx context.Context, tx *store.Tx) ([]string, error) {
 	return out, nil
 }
 
-// DeleteUserTx implements UserData.
-func (t TableSweep) DeleteUserTx(ctx context.Context, tx *store.Tx, userID int64) (map[string]int64, error) {
-	if userID <= 0 {
-		return nil, fmt.Errorf("accounts: sweep: invalid user id %d", userID)
-	}
+// TablesTx implements UserData: the owned tables not in Keep.
+func (t TableSweep) TablesTx(ctx context.Context, tx *store.Tx) ([]string, error) {
 	tables, err := OwnedTablesTx(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]int64{}
+	var out []string
 	for _, name := range tables {
 		if _, keep := t.Keep[name]; keep {
 			continue
@@ -83,6 +82,22 @@ func (t TableSweep) DeleteUserTx(ctx context.Context, tx *store.Tx, userID int64
 			// not one of ours and must not stay behind silently.
 			return nil, fmt.Errorf("accounts: sweep: unexpected table name %q", name)
 		}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
+// DeleteUserTx implements UserData.
+func (t TableSweep) DeleteUserTx(ctx context.Context, tx *store.Tx, userID int64) (map[string]int64, error) {
+	if userID <= 0 {
+		return nil, fmt.Errorf("accounts: sweep: invalid user id %d", userID)
+	}
+	tables, err := t.TablesTx(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]int64{}
+	for _, name := range tables {
 		// #nosec G202 -- the name comes from sqlite_schema and matches tableName.
 		res, err := tx.ExecContext(ctx, `DELETE FROM "`+name+`" WHERE `+OwnerColumn+` = ?`, userID)
 		if err != nil {

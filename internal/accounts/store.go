@@ -57,12 +57,12 @@ type Service struct {
 	Credentials Credentials
 	Admins      Admins
 	Audit       Auditor
-	// Sessions and Live end the sessions and live resources of an account
-	// that is locked, reset or deleted; Data removes a deleted account's
-	// rows. They are set by the composition root.
+	// Sessions ends the sessions and live resources of an account that is
+	// locked, reset or deleted; Data removes a deleted account's rows after
+	// Retain received their copy. They are set by the composition root.
 	Sessions  Sessions
-	Live      LiveAccess
 	Data      UserData
+	Retain    Retainer
 	Factors   Factors
 	Recovery  RecoveryCodes
 	LegacyDir LegacyUserDir

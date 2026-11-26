@@ -64,7 +64,7 @@ func (s *Service) ResetMFA(ctx context.Context, actor principal.Principal, targe
 	if err != nil {
 		return storage(err)
 	}
-	s.announce(acc.ID, principal.ReasonFactorChanged, revs)
+	s.announce(revs)
 	s.logger().Warn("Admin reset user MFA", "admin", actor.Username, "user", acc.Username)
 	s.warn("ADMIN_USER_MFA_RESET", "admin", actor.Username, "user", acc.Username)
 	return nil

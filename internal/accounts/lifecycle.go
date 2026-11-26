@@ -11,20 +11,14 @@ import (
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-// Sessions ends browser sessions inside the caller's write transaction
-// and announces their end after the commit (provided by internal/session).
+// Sessions ends the browser sessions of an account inside the caller's
+// write transaction and announces their end after the commit (provided by
+// internal/session). Without a session left it records an account-wide
+// revocation, which ends the account's terminals and persistent tmux
+// sessions in every process that follows the revocation journal.
 type Sessions interface {
-	RevokeUserTx(ctx context.Context, tx *store.Tx, userID int64, reason principal.Reason, except string) ([]principal.Revocation, error)
+	RevokeAccountTx(ctx context.Context, tx *store.Tx, userID int64, reason principal.Reason) ([]principal.Revocation, error)
 	Publish(revs []principal.Revocation)
-}
-
-// LiveAccess ends what an account still runs without a browser session:
-// terminals whose session expired and persistent tmux sessions left after
-// a sign-out (provided by cmd/webssh over internal/terminal). Every
-// lifecycle change that ends sessions calls it when no session ended, so
-// the revocation reaches those resources as well. It must not block.
-type LiveAccess interface {
-	EndAccount(userID int64, reason principal.Reason)
 }
 
 // Warner is the warning level of the audit log (internal/audit). An
@@ -79,8 +73,8 @@ func adminCountTx(ctx context.Context, tx *store.Tx) (int, error) {
 
 // invalidateTx raises the account's auth_generation, which ends every
 // credential issued before (sessions, pending sign-ins, step-up grants,
-// known-device cookies), and ends its sessions for reason. It is
-// invalidate_user_authentication of the Python release.
+// known-device cookies), and ends its sessions and live resources for
+// reason (invalidate_user_authentication and revoke_user_access).
 func (s *Service) invalidateTx(ctx context.Context, tx *store.Tx, id int64, reason principal.Reason) ([]principal.Revocation, error) {
 	if _, err := tx.ExecContext(ctx, `UPDATE accounts_users SET auth_generation = auth_generation + 1 WHERE id = ?`, id); err != nil {
 		return nil, fmt.Errorf("accounts: raise generation: %w", err)
@@ -88,17 +82,13 @@ func (s *Service) invalidateTx(ctx context.Context, tx *store.Tx, id int64, reas
 	if s.Sessions == nil {
 		return nil, nil
 	}
-	return s.Sessions.RevokeUserTx(ctx, tx, id, reason, "")
+	return s.Sessions.RevokeAccountTx(ctx, tx, id, reason)
 }
 
-// announce publishes committed revocations and reaches the live resources
-// of an account that had no session left (revoke_user_access).
-func (s *Service) announce(id int64, reason principal.Reason, revs []principal.Revocation) {
+// announce publishes committed revocations.
+func (s *Service) announce(revs []principal.Revocation) {
 	if s.Sessions != nil && len(revs) > 0 {
 		s.Sessions.Publish(revs)
-	}
-	if len(revs) == 0 && s.Live != nil {
-		s.Live.EndAccount(id, reason)
 	}
 }
 
@@ -170,7 +160,7 @@ func (s *Service) Manage(ctx context.Context, actor principal.Principal, targetI
 		return Account{}, storage(err)
 	}
 	if changed {
-		s.announce(acc.ID, principal.ReasonAccountLocked, revs)
+		s.announce(revs)
 	}
 	s.logger().Info("Admin user action", "admin", actor.Username, "user", acc.Username, "action", action)
 	s.warn("ADMIN_USER_CHANGED", "admin", actor.Username, "user", acc.Username, "action", action)

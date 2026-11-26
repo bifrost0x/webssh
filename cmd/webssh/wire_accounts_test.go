@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/accounts"
-	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/store"
 	"github.com/bifrost0x/webssh/internal/store/storetest"
 )
@@ -84,9 +83,4 @@ func TestLegacyUserDir(t *testing.T) {
 			t.Errorf("user %d reported", id)
 		}
 	}
-}
-
-func TestTerminalAccessWithoutTerminal(t *testing.T) {
-	t.Parallel()
-	terminalAccess{}.EndAccount(3, principal.ReasonAccountLocked) // must not panic
 }

@@ -76,6 +76,10 @@ func TestDeleteLastAdministrator(t *testing.T) {
 
 type failingData struct{}
 
+func (failingData) TablesTx(context.Context, *store.Tx) ([]string, error) {
+	return []string{"hostops_rows"}, nil
+}
+
 func (failingData) DeleteUserTx(context.Context, *store.Tx, int64) (map[string]int64, error) {
 	return nil, errors.New("disk on fire")
 }
@@ -166,8 +170,8 @@ func TestResetMFA(t *testing.T) {
 	if a.MFARequired || a.AuthGeneration != 1 || !slices.Equal(factors.reset, []int64{2}) {
 		t.Fatalf("%+v %v", a, factors.reset)
 	}
-	if got := l.live.list(); len(got) != 1 || got[0].Reason != principal.ReasonFactorChanged {
-		t.Fatalf("live %+v", got)
+	if got := l.sessions.list(); len(got) != 1 || got[0].SessionID != "" || got[0].Reason != principal.ReasonFactorChanged {
+		t.Fatalf("revocations %+v", got)
 	}
 	l.s.Factors = nil
 	if err := l.s.ResetMFA(t.Context(), admin, 2, "bob"); code(err) != fault.Unavailable {

@@ -87,3 +87,52 @@ func TestJournalSequenceKeepsIncreasing(t *testing.T) {
 		t.Fatalf("seq %d after %d, %d entries kept", last, first, count)
 	}
 }
+
+// An account-wide revocation of an account without a session reaches the
+// other process through the journal; with sessions, only the sessions are
+// journaled.
+func TestAccountRevocationReachesAnotherProcess(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, nil)
+	other := New(f.svc.db, testRing(t), f.accounts, nil)
+	server := f.svc
+	var mu sync.Mutex
+	var got []principal.Revocation
+	server.Subscribe(func(r principal.Revocation) { mu.Lock(); got = append(got, r); mu.Unlock() })
+	if _, err := server.FollowRevocations(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	revoke := func(user int64) []principal.Revocation {
+		var revs []principal.Revocation
+		if err := other.db.Write(t.Context(), func(tx *store.Tx) error {
+			var err error
+			revs, err = other.RevokeAccountTx(t.Context(), tx, user, principal.ReasonAccountLocked)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		other.Publish(revs)
+		return revs
+	}
+	if revs := revoke(3); len(revs) != 1 || revs[0].SessionID != "" || revs[0].UserID != 3 {
+		t.Fatalf("without sessions: %+v", revs)
+	}
+	s, _ := f.issue(t, 2, false)
+	if revs := revoke(2); len(revs) != 1 || revs[0].SessionID != s.ID {
+		t.Fatalf("with a session: %+v", revs)
+	}
+	if n, err := server.FollowRevocations(t.Context()); err != nil || n != 2 {
+		t.Fatalf("followed %d, %v", n, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 2 || got[0].SessionID != "" || got[0].UserID != 3 || got[0].Reason != principal.ReasonAccountLocked || got[1].SessionID != s.ID {
+		t.Fatalf("published %+v", got)
+	}
+	if err := other.db.Write(t.Context(), func(tx *store.Tx) error {
+		_, err := other.RevokeAccountTx(t.Context(), tx, 0, principal.ReasonAccountLocked)
+		return err
+	}); err == nil {
+		t.Fatal("user id 0 accepted")
+	}
+}
