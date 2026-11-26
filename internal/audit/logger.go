@@ -281,3 +281,23 @@ func (l *Logger) Close() error {
 	}
 	return errors.Join(l.lastErr, err)
 }
+
+// Security writes an INFO security event from alternating keys and
+// values. Its signature uses only standard types, so capabilities declare
+// it in their own interfaces without importing this package.
+func (l *Logger) Security(event string, kv ...any) { l.Event(Info, event, pairs(kv)...) }
+
+// SecurityWarning is Security at level WARNING.
+func (l *Logger) SecurityWarning(event string, kv ...any) { l.Event(Warning, event, pairs(kv)...) }
+
+func pairs(kv []any) []Field {
+	fields := make([]Field, 0, len(kv)/2)
+	for i := 0; i+1 < len(kv); i += 2 {
+		key, ok := kv[i].(string)
+		if !ok {
+			key = "[INVALID_KEY]"
+		}
+		fields = append(fields, F(key, kv[i+1]))
+	}
+	return fields
+}

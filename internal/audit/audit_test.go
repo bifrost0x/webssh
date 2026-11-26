@@ -280,3 +280,20 @@ func FuzzEventMessage(f *testing.F) {
 		}
 	})
 }
+
+func TestSecurityPairs(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	l, err := Open(dir, Options{BackupCount: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Security("BROWSER_LOGINS_REVOKED", "user", "a", "count", 2)
+	l.SecurityWarning("X", "odd")
+	_ = l.Close()
+	raw, _ := os.ReadFile(filepath.Join(dir, FileName))
+	if !strings.Contains(string(raw), `"INFO", "logger": "security_audit", "message": "BROWSER_LOGINS_REVOKED | count=2 | user=a"`) ||
+		!strings.Contains(string(raw), `"WARNING", "logger": "security_audit", "message": "X"`) {
+		t.Fatalf("%s", raw)
+	}
+}
