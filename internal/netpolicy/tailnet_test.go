@@ -118,6 +118,53 @@ func TestTailnetRuleIndependentOfFeatureSwitch(t *testing.T) {
 	}
 }
 
+// TestUpgradedInstallationFollowsTheSwitch is D-28 under D-01: an
+// installation upgraded from the Python release keeps its behaviour (the
+// rule only with Tailscale SSH on) and is warned while the tailnet
+// interface exists; without the derived setting the rule applies.
+func TestUpgradedInstallationFollowsTheSwitch(t *testing.T) {
+	addr := netip.MustParseAddr("100.100.100.10")
+	follows := true
+	legacy := Tailnet{Interface: "tailscale0", Lookup: labRoutes.lookup, InterfacePresent: func(string) bool { return true },
+		FollowsSwitch: func() bool { return follows }}
+	if legacy.targetRestricted(t.Context(), addr) || legacy.relayRestricted(t.Context(), netip.MustParseAddr("127.0.0.1")) {
+		t.Fatal("upgraded installation with Tailscale SSH off: ordinary SSH to the node must stay possible")
+	}
+	if !legacy.LegacyGap() {
+		t.Fatal("the gap is not reported for the warning")
+	}
+	configured := legacy
+	configured.InterfacePresent = func(string) bool { return false }
+	configured.InterfaceConfigured = true
+	if configured.targetRestricted(t.Context(), addr) || !configured.LegacyGap() {
+		t.Fatal("an explicitly configured interface follows the switch as well")
+	}
+	on := legacy
+	on.FeatureEnabled = true
+	if !on.targetRestricted(t.Context(), addr) || on.LegacyGap() {
+		t.Fatal("with Tailscale SSH on the rule applies, as in Python")
+	}
+	noNode := legacy
+	noNode.InterfacePresent = func(string) bool { return false }
+	if noNode.LegacyGap() {
+		t.Fatal("no interface, no gap")
+	}
+	lifted := legacy
+	lifted.Restricted = func() bool { return false }
+	if lifted.LegacyGap() {
+		t.Fatal("the administrator lifted the rule on purpose; no warning")
+	}
+	follows = false
+	if !legacy.targetRestricted(t.Context(), addr) || legacy.LegacyGap() {
+		t.Fatal("after the administrator turns the derived setting off the rule applies")
+	}
+	fresh := legacy
+	fresh.FollowsSwitch = nil
+	if !fresh.targetRestricted(t.Context(), addr) || fresh.LegacyGap() {
+		t.Fatal("a new installation has the rule")
+	}
+}
+
 func TestUnsupportedPlatform(t *testing.T) {
 	unsupported := func(context.Context, netip.Addr) (Route, error) { return Route{}, ErrRouteUnsupported }
 	addr := netip.MustParseAddr("100.100.100.10")

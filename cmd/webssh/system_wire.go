@@ -138,6 +138,7 @@ func (s *system) networkPolicy() (*netpolicy.Policy, error) {
 			Interface:           n.TailscaleInterface,
 			FeatureEnabled:      n.TailscaleSSHEnabled,
 			InterfaceConfigured: s.cfg.Explicit("TAILSCALE_SSH_INTERFACE"),
+			FollowsSwitch:       s.tailnetFollowsSwitch,
 		},
 		Logger: s.log,
 	})
@@ -154,6 +155,20 @@ func (s *system) tailnetRestricted() bool {
 		return true
 	}
 	return app.TailnetRouteRestricted
+}
+
+// tailnetFollowsSwitch is the derived setting netpolicy.tailnet_follows_switch
+// of an upgraded installation (D-28 under D-01); a failure to read it
+// keeps the rule independent of the switch (fail closed).
+func (s *system) tailnetFollowsSwitch() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	app, err := s.settings.App(ctx)
+	if err != nil {
+		s.log.Warn("tailnet setting unreadable; the restriction applies", "err", err)
+		return false
+	}
+	return app.Policy.TailnetFollowsSwitch
 }
 
 // tmuxEnabled is the runtime switch tmux_enabled; a failure to read it

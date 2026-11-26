@@ -50,7 +50,9 @@ func NodeAddress(addr netip.Addr) (netip.Addr, bool) {
 // Unlike the Python release the rule does not depend on the Tailscale SSH
 // switch (D-28): it applies whenever this host is a tailnet node, which is
 // the case when the tailnet interface exists, and always while the
-// Tailscale SSH feature is on (as before).
+// Tailscale SSH feature is on (as before). An installation upgraded from
+// the Python release keeps the old behaviour through FollowsSwitch (D-01)
+// until the administrator turns it off.
 type Tailnet struct {
 	// Restricted reports the admin setting
 	// tailscale_ssh_restrict_tailnet_routes. Nil means restricted.
@@ -60,6 +62,10 @@ type Tailnet struct {
 	Interface string
 	// FeatureEnabled is TAILSCALE_SSH_ENABLED.
 	FeatureEnabled bool
+	// FollowsSwitch reports the derived setting
+	// netpolicy.tailnet_follows_switch: true applies the rule only while
+	// FeatureEnabled, as the Python release did. Nil means false.
+	FollowsSwitch func() bool
 	// InterfaceConfigured says TAILSCALE_SSH_INTERFACE was set explicitly.
 	// The rule then applies even without the device: tailscaled in
 	// userspace networking has no interface, but its local SOCKS5 and
@@ -90,7 +96,13 @@ func (t Tailnet) active() bool {
 	if name == "" {
 		return false
 	}
-	return t.FeatureEnabled || t.InterfaceConfigured || t.present(name)
+	if t.FeatureEnabled {
+		return true
+	}
+	if t.FollowsSwitch != nil && t.FollowsSwitch() {
+		return false
+	}
+	return t.InterfaceConfigured || t.present(name)
 }
 
 func (t Tailnet) lookup(ctx context.Context, addr netip.Addr) (Route, error) {
@@ -172,3 +184,21 @@ func (t Tailnet) remoteNameRestricted(ctx context.Context, canonical string, res
 	}
 	return false
 }
+
+// LegacyGap reports the state the Python release warned about: the
+// tailnet interface exists, Tailscale SSH is off and the rule follows the
+// switch, so ordinary SSH reaches tailnet nodes under the node identity.
+// The administrator is warned while it holds.
+func (t Tailnet) LegacyGap() bool {
+	name := t.iface()
+	if name == "" || t.FeatureEnabled || t.FollowsSwitch == nil || !t.FollowsSwitch() {
+		return false
+	}
+	if t.Restricted != nil && !t.Restricted() {
+		return false
+	}
+	return t.InterfaceConfigured || t.present(name)
+}
+
+// TailnetLegacyGap is Tailnet.LegacyGap of the policy's tailnet rule.
+func (p *Policy) TailnetLegacyGap() bool { return p.cfg.Tailnet.LegacyGap() }

@@ -32,21 +32,28 @@ const (
 	// priority, as paramiko did (K2, D-01). Default false: new
 	// installations enable them per host.
 	PolicyLegacySSHAlgorithms = "ssh.legacy_algorithms"
+	// PolicyTailnetFollowsSwitch applies the tailnet rule of the network
+	// policy only while TAILSCALE_SSH_ENABLED is on, as the Python release
+	// did (D-28 under D-01). Default false: a host on the tailnet refuses
+	// ordinary SSH to tailnet nodes whether or not the switch is on.
+	PolicyTailnetFollowsSwitch = "netpolicy.tailnet_follows_switch"
 )
 
 // RoleUser is the role of every account that is not an administrator.
 const RoleUser = "user"
 
-var policyKeys = []string{PolicyDiscovery, PolicyReachability, PolicyOriginIgnoreScheme, PolicyLegacySSHAlgorithms}
+var policyKeys = []string{PolicyDiscovery, PolicyReachability, PolicyOriginIgnoreScheme, PolicyLegacySSHAlgorithms, PolicyTailnetFollowsSwitch}
 
 // Policy is the effective state of the derived settings.
 type Policy struct {
 	// Discovery and Reachability are the roles granted the permission.
 	Discovery    []string
 	Reachability []string
-	// OriginIgnoreScheme and LegacySSHAlgorithms are the switches above.
-	OriginIgnoreScheme  bool
-	LegacySSHAlgorithms bool
+	// OriginIgnoreScheme, LegacySSHAlgorithms and TailnetFollowsSwitch are
+	// the switches above.
+	OriginIgnoreScheme   bool
+	LegacySSHAlgorithms  bool
+	TailnetFollowsSwitch bool
 }
 
 // Granted reports whether role holds a permission of roles; an
@@ -80,10 +87,11 @@ func policyOf(rows map[string]appRow) Policy {
 		return v
 	}
 	return Policy{
-		Discovery:           roles(PolicyDiscovery),
-		Reachability:        roles(PolicyReachability),
-		OriginIgnoreScheme:  flag(PolicyOriginIgnoreScheme),
-		LegacySSHAlgorithms: flag(PolicyLegacySSHAlgorithms),
+		Discovery:            roles(PolicyDiscovery),
+		Reachability:         roles(PolicyReachability),
+		OriginIgnoreScheme:   flag(PolicyOriginIgnoreScheme),
+		LegacySSHAlgorithms:  flag(PolicyLegacySSHAlgorithms),
+		TailnetFollowsSwitch: flag(PolicyTailnetFollowsSwitch),
 	}
 }
 
@@ -110,8 +118,9 @@ type Materialised struct {
 // report. It is not called for a new installation.
 //
 // Discovery and the reachability check were open to every signed-in
-// account, and paramiko offered the old SSH algorithms to every host, so
-// those are always written. The origin rule is written only where the
+// account, paramiko offered the old SSH algorithms to every host and the
+// tailnet rule depended on the Tailscale SSH switch, so those are always
+// written. The origin rule is written only where the
 // legacy configuration needed it.
 func MaterialisePolicies(ctx context.Context, tx *store.Tx, l Legacy, nowUS int64) ([]Materialised, error) {
 	items := []struct {
@@ -128,6 +137,8 @@ func MaterialisePolicies(ctx context.Context, tx *store.Tx, l Legacy, nowUS int6
 			jsontext.Value("true"), "enabled for every host", true},
 		{PolicyOriginIgnoreScheme, "D-01/K6-A1", "CORS_ORIGINS=* without trusted proxies compared only host and port",
 			jsontext.Value("true"), "scheme not compared", l.KeepLegacyScheme},
+		{PolicyTailnetFollowsSwitch, "D-01/D-28", "the Python release blocked ordinary SSH to tailnet nodes only while TAILSCALE_SSH_ENABLED was true",
+			jsontext.Value("true"), "tailnet rule only with Tailscale SSH enabled", true},
 	}
 	var out []Materialised
 	for _, it := range items {
