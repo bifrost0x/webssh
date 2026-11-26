@@ -31,6 +31,10 @@ test('an unsaved role choice asks before it is discarded and a saved one shows o
  await page.locator('#profileAdvancedSettingsCard > summary').click();
  const role=page.locator('#profileEditorRole');
  await expect(role).toHaveValue('auto');
+ // Both selects carry their help text as their description.
+ await expect(role).toHaveAccessibleDescription('Detection keeps running; the role only changes how the host is shown.');
+ await expect(page.locator('#profileEditorPlatformIcon')).toHaveAccessibleDescription(
+  'Automatic checks platform facts after connecting over SSH. Choose an icon to override detection.');
  await role.selectOption('backup');
  await page.locator('#cancelProfileEditorBtn').click();
  const dialog=page.locator('.command-set-confirm-dialog');

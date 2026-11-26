@@ -999,7 +999,7 @@
                                         </div>
                                         <span class="material-icons profile-advanced-chevron" aria-hidden="true">expand_more</span>
                                     </summary>                        <div class="form-group"><label for="profileEditorPlatformIcon" data-i18n="platform.label">Platform icon</label>
-                            <select id="profileEditorPlatformIcon" class="form-control">
+                            <select id="profileEditorPlatformIcon" class="form-control" aria-describedby="profileEditorPlatformIconHelp">
                                 <option value="auto" data-i18n="platform.auto">Automatic</option>
                                 <option value="server" data-i18n="platform.neutral">Neutral server</option>
                                 <option value="docker">Docker</option>
@@ -1041,10 +1041,10 @@
                                 <option value="ubiquiti">Ubiquiti</option>
                                 <option value="embedded">Embedded / BusyBox</option>
                             </select>
-                            <small data-i18n="platform.help">Automatic checks platform facts after connecting over SSH. Choose an icon to override detection.</small>
+                            <small id="profileEditorPlatformIconHelp" data-i18n="platform.help">Automatic checks platform facts after connecting over SSH. Choose an icon to override detection.</small>
                         </div>
                         <div class="form-group"><label for="profileEditorRole" data-i18n="role.label">Role</label>
-                            <select id="profileEditorRole" class="form-control">
+                            <select id="profileEditorRole" class="form-control" aria-describedby="profileEditorRoleHelp">
                                 <option value="auto" data-i18n="role.auto">Automatic</option>
                                 <option value="hypervisor" data-i18n="role.hypervisor">Hypervisor</option>
                                 <option value="backup" data-i18n="role.backup">Backup</option>
@@ -1064,7 +1064,7 @@
                                 <option value="workstation" data-i18n="role.workstation">Workstation</option>
                                 <option value="server" data-i18n="role.server">Server</option>
                             </select>
-                            <small data-i18n="role.help">Detection keeps running; the role only changes how the host is shown.</small>
+                            <small id="profileEditorRoleHelp" data-i18n="role.help">Detection keeps running; the role only changes how the host is shown.</small>
                         </div>
 
                         <fieldset class="connection-route-fields"><legend data-i18n="connection.route">Route</legend>
