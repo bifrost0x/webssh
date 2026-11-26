@@ -46,6 +46,7 @@ const (
 	CodeActivation      = "activation_failed"
 	CodeReplaceDamaged  = "replace_refused_damaged_database"
 	CodeReplaceNoLegacy = "replace_without_legacy_source"
+	CodeIncompleteBuild = "migration_incomplete_build"
 )
 
 // ErrLocked reports that another Go process holds the Go lock.

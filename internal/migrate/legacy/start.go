@@ -3,6 +3,7 @@ package legacy
 import (
 	"context"
 	"errors"
+	"strings"
 )
 
 // Startup is the outcome of Start for a data directory Go may serve. It
@@ -66,6 +67,9 @@ func start(ctx context.Context, o Options, l layout, warnings []Warning) (*Start
 		return nil, ev.stop
 	case ev.stop != nil:
 		return nil, ev.stop
+	case ev.state == S1 && o.RequireCoverage && len(o.Registry.Uncovered()) > 0:
+		return nil, stop(S1, CodeIncompleteBuild, "this build does not migrate every kind of legacy data ("+
+			strings.Join(o.Registry.Uncovered(), ", ")+"); nothing was changed. Start a release that migrates them", nil)
 	case ev.state == S1:
 		r := &run{o: o, l: l}
 		if err := r.migrate(ctx); err != nil {

@@ -31,6 +31,12 @@ type Options struct {
 	Origin OriginRule
 	// Now returns the current time; nil means time.Now.
 	Now func() time.Time
+	// RequireCoverage refuses to migrate (state S1) while Registry leaves
+	// entities of the specification neither migrated nor kept in place:
+	// such a build would activate a Go database without that data and
+	// never migrate it again. The server sets it; tests of single steps
+	// leave it off.
+	RequireCoverage bool
 
 	// checkpoint is called at every state transition of a run; tests use
 	// it to inject crashes. Nil in production.

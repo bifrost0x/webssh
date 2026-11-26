@@ -1065,7 +1065,7 @@ their versions) and `pending` (entities kept in place with their phase and
 count).
 
 ```go
-type Options struct { DataDir, Secret, SecretSource, BackupTempDir, Release string; Registry *Registry; Origin OriginRule; Now func() time.Time }
+type Options struct { DataDir, Secret, SecretSource, BackupTempDir, Release string; Registry *Registry; Origin OriginRule; Now func() time.Time; RequireCoverage bool }
 func Start(ctx, Options) (*Startup, error)      // sections 5.1 and 5.2; holds the Go lock until Close
 func DryRun(ctx, Options) (*Report, error)      // steps 2 to 9 into staging, no activation
 func Replace(ctx, Options) (*Replaced, error)   // section 5.4
@@ -1092,6 +1092,10 @@ type StepError struct { UserID int64; Record string; Err error }
   `keyring_material`, `legacy_in_use`, `python_restore_unfinished`,
   `not_enough_space`, `secret_key_mismatch`, …); every message names the
   way out and never a secret value.
+- With `RequireCoverage` (set by the server) `Start` refuses to migrate in
+  S1 with `migration_incomplete_build` while the registry leaves entities
+  uncovered, so a build without every step never activates a database
+  that S2 would not migrate again.
 - The periodic re-check of 5.7 is `SourceWatch`; D4 calls `Changed` every
   60 seconds and treats an error as a change (maintenance, not ready,
   audit event).

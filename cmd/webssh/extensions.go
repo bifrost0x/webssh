@@ -6,6 +6,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/auth/local"
 	"github.com/bifrost0x/webssh/internal/auth/stepup"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
+	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/hostops"
 	"github.com/bifrost0x/webssh/internal/hosts"
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
@@ -60,26 +61,23 @@ func register(e extension) {
 	extensions = append(extensions, e)
 }
 
-// migrationSteps add the migration steps of the entities this build
-// migrates; the steps of later builds register here with
-// registerMigrationSteps from their own files.
-var migrationSteps = []func(*legacy.Registry) error{legacy.AddSingleUserStores}
-
-// registerMigrationSteps adds a registration function for migration
-// steps; it is called from init functions.
-func registerMigrationSteps(add func(*legacy.Registry) error) {
-	migrationSteps = append(migrationSteps, add)
+// migrationRegistrar registers the migration steps of this build. The
+// migration steps of a release replace it from their own file (init), so
+// that they plug in without changes here. Until every entity of the
+// specification is covered, the server refuses to migrate legacy data
+// (legacy.Options.RequireCoverage) instead of activating a database
+// without it.
+var migrationRegistrar = func(r *legacy.Registry, _ config.Config, _ config.LookupFunc) error {
+	return legacy.AddSingleUserStores(r)
 }
 
 // migrationRegistry builds the registry of this build's migration steps.
 // The staging database gets every schema the steps may write to.
-func migrationRegistry() (*legacy.Registry, error) {
+func migrationRegistry(cfg config.Config, lookup config.LookupFunc) (*legacy.Registry, error) {
 	r := legacy.NewRegistry()
 	r.Schemas(schemas()...)
-	for _, add := range migrationSteps {
-		if err := add(r); err != nil {
-			return nil, err
-		}
+	if err := migrationRegistrar(r, cfg, lookup); err != nil {
+		return nil, err
 	}
 	return r, nil
 }

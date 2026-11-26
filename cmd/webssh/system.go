@@ -122,7 +122,7 @@ func openSystem(ctx context.Context, in bootInput) (sys *system, err error) {
 			sys = nil
 		}
 	}()
-	if sys.startup, err = startMigration(ctx, cfg, in.log); err != nil {
+	if sys.startup, err = startMigration(ctx, cfg, in.lookup, in.log); err != nil {
 		return sys, err
 	}
 	sys.closers = append(sys.closers, sys.startup.Close)

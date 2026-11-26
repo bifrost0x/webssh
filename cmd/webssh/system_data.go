@@ -73,19 +73,20 @@ func prefixStrings(ps []netip.Prefix) []string {
 // startMigration runs the start-up state machine of the migration
 // specification (section 5.1). It holds the Go lock until the returned
 // Startup is closed. A state that must not start is a *legacy.StopError.
-func startMigration(ctx context.Context, cfg config.Config, log *slog.Logger) (*legacy.Startup, error) {
-	reg, err := migrationRegistry()
+func startMigration(ctx context.Context, cfg config.Config, lookup config.LookupFunc, log *slog.Logger) (*legacy.Startup, error) {
+	reg, err := migrationRegistry(cfg, lookup)
 	if err != nil {
 		return nil, fmt.Errorf("migration registry: %w", err)
 	}
 	st, err := legacy.Start(ctx, legacy.Options{
-		DataDir:       cfg.DataDir,
-		Secret:        string(cfg.SecretKey.Bytes()),
-		SecretSource:  string(cfg.SecretSource),
-		BackupTempDir: cfg.BackupTempDir,
-		Release:       buildinfo.Read().Version,
-		Registry:      reg,
-		Origin:        legacyOrigin(cfg),
+		DataDir:         cfg.DataDir,
+		Secret:          string(cfg.SecretKey.Bytes()),
+		SecretSource:    string(cfg.SecretSource),
+		BackupTempDir:   cfg.BackupTempDir,
+		Release:         buildinfo.Read().Version,
+		Registry:        reg,
+		Origin:          legacyOrigin(cfg),
+		RequireCoverage: true,
 	})
 	if err != nil {
 		var stop *legacy.StopError
