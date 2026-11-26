@@ -25,12 +25,12 @@ func pendingEntities(backupTempDir string) []m1Pending {
 			return countTable(ctx, src, "automation_schedules")
 		}},
 		{"E22", "B4", storeItems("smb_shares")},
-		{"E26", "B5", storeItems("commands")},
-		{"E27", "B5", storeItems("command_sets")},
+		{"E26", "B6", storeItems("commands")},
+		{"E27", "B6", storeItems("command_sets")},
 		{"E29", "B6", storeItems("automation")},
-		{"E30", "B6", storeFiles("automation_vault")},
+		{"E30", "B5", storeFiles("automation_vault")},
 		{"E31", "B6", storeItems("automation_runs")},
-		{"E32", "B6", storeItems("credentials")},
+		{"E32", "B5", storeItems("credentials")},
 		{"E37", "B2", func(_ context.Context, src *Source) (int, error) {
 			return countRuntimeFiles(src, ".ldap-revocation-fences"), nil
 		}},

@@ -24,7 +24,7 @@ func TestM1HostContextPartlyPending(t *testing.T) {
 			found = &m.report.Pending[i]
 		}
 	}
-	if found == nil || found.Phase != "B5" || found.Count != 1 {
+	if found == nil || found.Phase != "B6" || found.Count != 1 {
 		t.Fatalf("E28 pending: %+v", found)
 	}
 	if e := m.entity(t, "E28"); e.Written != 1 {
