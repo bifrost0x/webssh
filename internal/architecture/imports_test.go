@@ -24,6 +24,12 @@ var syscallAllowed = map[string]bool{
 	"cmd/webssh/signal.go": true,
 	// Netlink route lookup for the tailnet rule (ADR 0010).
 	"internal/netpolicy/route_linux.go": true,
+	// The Go lock (flock), the read-only probes of Python's SQLite and
+	// backup operation locks (F_GETLK, flock), free space (statfs) and the
+	// inode for the legacy digest (migration specification 5.2, 5.3).
+	"internal/migrate/legacy/host_unix.go": true,
+	// The Go lock as a file opened without sharing (CreateFile).
+	"internal/migrate/legacy/host_windows.go": true,
 }
 
 // exceptions are the reviewed exception lists the import rules consult.
