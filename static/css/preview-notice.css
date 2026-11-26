@@ -1,8 +1,8 @@
 /* Preview notice of the Go server (static/js/preview-notice.js).
  *
- * A floating card, so the pages keep their layout (the sign-in pages fit
- * the viewport, the workspace keeps its height). Clicks pass through the
- * card to the page; only the dismiss button takes them. */
+ * On wide screens a floating card, so the pages keep their layout (the
+ * sign-in pages fit the viewport, the workspace keeps its height); clicks
+ * pass through the card to the page, only the dismiss button takes them. */
 .preview-notice {
     display: flex;
     flex-wrap: wrap;
@@ -63,10 +63,17 @@
     outline-offset: 2px;
 }
 
+/* On narrow screens a floating card would cover the controls at the
+ * bottom of the dialogs; there it stays a bar at the top of the page. */
 @media (max-width: 600px) {
     .preview-notice {
-        right: 8px;
-        bottom: 8px;
+        position: relative;
+        right: auto;
+        bottom: auto;
+        max-width: none;
+        border-radius: 0;
+        box-shadow: none;
         padding-left: 12px;
+        pointer-events: auto;
     }
 }
