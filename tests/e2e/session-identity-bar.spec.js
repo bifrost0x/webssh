@@ -272,6 +272,23 @@ test('floating windows carry the identity in their title bar, not in a second li
     await expect(bar(page, 'paper')).toHaveAttribute('data-role', 'media');
 });
 
+test('a focused window keeps its focus tint under the role tint', async ({ page }) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await simulateSessions(page);
+    await setLayout(page, 'windows');
+    await connect(page, 'paper');
+    await connect(page, 'pve');
+    const frame = id => page.locator('#terminalGrid > .ws-window').filter({has: page.locator(`#terminal-idbar-${id}`)});
+    const surface = id => frame(id).locator('.ws-window-titlebar').evaluate(element => getComputedStyle(element).backgroundColor);
+    await expect(frame('paper')).toHaveAttribute('data-role', 'docs');
+    await expect(frame('pve')).toHaveAttribute('data-role', 'hypervisor');
+    await frame('paper').locator('.ws-window-titlebar').click({position: {x: 40, y: 18}});
+    await expect(frame('paper')).toHaveClass(/is-focused/);
+    await expect(frame('pve')).not.toHaveClass(/is-focused/);
+    expect(await surface('paper')).not.toBe(await surface('pve'));
+});
+
 const THEMES = ['glass', 'werkbank', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'];
 
 test('the identity line stays legible for every role in every theme', async ({ page }) => {

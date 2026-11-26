@@ -496,11 +496,17 @@ body.webssh-ui .context-workspace .session-command-popover-footer > .btn { flex:
         linear-gradient(90deg, color-mix(in srgb, var(--role) 14%, transparent), transparent 60%),
         color-mix(in srgb, var(--ws2-surface) 94%, transparent);
 }
+.ws-window.is-focused[data-role] > .ws-window-titlebar {
+    background:
+        linear-gradient(90deg, color-mix(in srgb, var(--role) 14%, transparent), transparent 60%),
+        color-mix(in srgb, var(--ws2-accent) 4%, var(--ws2-surface));
+}
 .ws-window[data-role] .ws-window-services { --service-icon-size: 11px; }
 .ws-window[data-role] .session-identity-service { width: 18px; height: 18px; border-radius: 4px; }
 @media (forced-colors: active) {
     .session-identity-bar { border-color: CanvasText; background: Canvas; color: CanvasText; }
     .session-identity-role, .session-identity-name { color: CanvasText; }
     .session-identity-service { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
-    .ws-window[data-role] > .ws-window-titlebar { background: Canvas; }
+    .ws-window[data-role] > .ws-window-titlebar,
+    .ws-window.is-focused[data-role] > .ws-window-titlebar { background: Canvas; }
 }

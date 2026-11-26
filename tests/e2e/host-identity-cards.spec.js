@@ -312,3 +312,27 @@ test('the overview search finds hosts by role, platform and service', async ({pa
     expect(await sshAttempts(page)).toEqual([]);
     await assertNoExternalRequests(page);
 });
+
+test('the role tint leaves the live border and the hover and focus accents visible', async ({page}) => {
+    await openOverview(page);
+    await seed(page, [PAPERLESS, PAPERLESS]);
+    const [first, second] = [card(page, 0), card(page, 1)];
+    await expect(first).toHaveAttribute('data-role', 'docs');
+    const border = item => item.evaluate(element => getComputedStyle(element).borderTopColor);
+    await page.mouse.move(0, 0);
+    const rest = await border(first);
+    expect(await border(second)).toBe(rest);
+
+    await second.evaluate(element => { element.dataset.state = 'live'; });
+    expect(await border(second), 'live card').not.toBe(rest);
+    expect(await border(first), 'idle card').toBe(rest);
+    await second.evaluate(element => { element.dataset.state = 'ready'; });
+
+    await first.hover();
+    await expect.poll(() => border(first), {message: 'hover'}).not.toBe(rest);
+    await page.mouse.move(0, 0);
+    await expect.poll(() => border(first)).toBe(rest);
+
+    await first.locator('button, a, summary').first().focus();
+    await expect.poll(() => border(first), {message: 'focus-within'}).not.toBe(rest);
+});

@@ -359,7 +359,7 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-host[data-state="live"] { border-color: color-mix(in srgb, var(--od-live) 60%, var(--ws2-border)); }
 /* The role tints the card, its platform tile and its service tiles; icons on
    them are drawn in the role ink. host-identity.css defines both colours. */
-.od-host[data-role] {
+.od-host:where([data-role]) {
     border-color: color-mix(in srgb, var(--role) 24%, var(--ws2-border));
     background-image: linear-gradient(160deg, color-mix(in srgb, var(--role) 9%, transparent), transparent 60%);
 }
