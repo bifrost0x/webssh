@@ -1370,6 +1370,11 @@ window.i18n.registerLocales({
         'keys.replaceConfirm': '替换已保存的密钥',
         'keys.replacing': '正在替换密钥…',
         'keys.replaceFailed': '无法替换密钥',
+        'keys.loadFailed': '无法加载 SSH 密钥。WebSSH 将很快重试。',
+        'keys.loadRetry': '重试',
+        'keys.changeCancelled': 'SSH 密钥未更改。',
+        'keys.passphraseTitle': '密钥口令',
+        'keys.passphrase': '私钥的口令',
         'keys.replacementRequired': '请输入替换私钥。',
         'keys.replacedSuccess': 'SSH 密钥替换成功',
 

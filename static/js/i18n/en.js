@@ -1375,6 +1375,11 @@ window.i18n.registerLocales({
         'keys.replaceConfirm': 'Replace stored key',
         'keys.replacing': 'Replacing key...',
         'keys.replaceFailed': 'Failed to replace key',
+        'keys.loadFailed': 'SSH keys could not be loaded. WebSSH tries again shortly.',
+        'keys.loadRetry': 'Try again',
+        'keys.changeCancelled': 'The SSH key was not changed.',
+        'keys.passphraseTitle': 'Key passphrase',
+        'keys.passphrase': 'Passphrase of the private key',
         'keys.replacementRequired': 'Enter the replacement private key.',
         'keys.replacedSuccess': 'SSH key replaced successfully',
 

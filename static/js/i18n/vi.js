@@ -1370,6 +1370,11 @@ window.i18n.registerLocales({
         'keys.replaceConfirm': 'Thay thế khóa đã lưu',
         'keys.replacing': 'Đang thay thế khóa...',
         'keys.replaceFailed': 'Không thể thay thế khóa',
+        'keys.loadFailed': 'Không thể tải khóa SSH. WebSSH sẽ thử lại ngay.',
+        'keys.loadRetry': 'Thử lại',
+        'keys.changeCancelled': 'Khóa SSH không được thay đổi.',
+        'keys.passphraseTitle': 'Cụm mật khẩu của khóa',
+        'keys.passphrase': 'Cụm mật khẩu của khóa riêng tư',
         'keys.replacementRequired': 'Nhập khóa riêng tư thay thế.',
         'keys.replacedSuccess': 'Đã thay thế khóa SSH',
 

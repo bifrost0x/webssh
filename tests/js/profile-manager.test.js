@@ -113,7 +113,7 @@ test('profile refresh updates existing session icons through the lexical session
     assert.equal(refreshed.profiles[0].platform_icon, 'debian');
 });
 
-test('failed key replacement preserves private-key draft for retry', () => {
+test('failed key replacement preserves private-key draft for retry', async () => {
     const manager = loadProfileManager();
     manager.keys = [{
         id: 'key-1',
@@ -133,6 +133,7 @@ test('failed key replacement preserves private-key draft for retry', () => {
     };
 
     manager.submitKeyReplacement('key-1', 'private-key-draft');
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(emitted.event, 'replace_key');
     assert.equal(emitted.payload.key_id, 'key-1');
@@ -142,7 +143,7 @@ test('failed key replacement preserves private-key draft for retry', () => {
     assert.equal(manager.keyReplacePending, false);
 });
 
-test('successful key replacement clears draft and merges safe summary', () => {
+test('successful key replacement clears draft and merges safe summary', async () => {
     const manager = loadProfileManager();
     manager.keys = [{
         id: 'key-1',
@@ -168,6 +169,7 @@ test('successful key replacement clears draft and merges safe summary', () => {
     };
 
     manager.submitKeyReplacement('key-1', 'replacement-private-key');
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(manager.replacingKeyId, null);
     assert.equal(manager.replacementKeyContent, '');

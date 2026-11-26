@@ -1,7 +1,19 @@
+// Automatic retries of a refused key list; the rate limit window of the
+// list is one minute, so the last retries fall into a fresh window.
+const KEY_LIST_MAX_RETRIES = 6;
+const KEY_LIST_RETRY_MAX_MS = 60000;
+// Sends of one key change: the request, a step-up, up to three passphrases.
+const KEY_CHANGE_MAX_ATTEMPTS = 5;
+
 const ProfileManager = {
     profiles: [],
     keys: [],
     keysLoaded: false,
+    // A refused key list (rate limit, storage) is shown and retried, so the
+    // views that wait for the inventory do not wait forever.
+    keysLoadFailed: false,
+    keyLoadAttempts: 0,
+    keyLoadTimer: null,
     profilesLoaded: false,
     selectedProfileId: null,
     editingProfileId: null,
@@ -262,9 +274,33 @@ const ProfileManager = {
     },
 
     loadKeys() {
-        if (window.socket) {
-            window.socket.emit('list_keys');
+        this.keyLoadAttempts = 0;
+        this.requestKeys();
+    },
+
+    requestKeys() {
+        clearTimeout(this.keyLoadTimer);
+        this.keyLoadTimer = null;
+        if (!window.socket) return;
+        // The list itself arrives as keys_list; the acknowledgement only
+        // reports a refusal.
+        window.socket.emit('list_keys', acknowledgement => {
+            if (acknowledgement?.success === false) this.keyListFailed(acknowledgement);
+        });
+    },
+
+    keyListFailed(acknowledgement) {
+        this.keysLoadFailed = true;
+        this.keyLoadAttempts += 1;
+        if (this.keyLoadAttempts <= KEY_LIST_MAX_RETRIES) {
+            const hinted = Number(acknowledgement?.retry_after_ms);
+            const backoff = Math.min(KEY_LIST_RETRY_MAX_MS, 2000 * 2 ** (this.keyLoadAttempts - 1));
+            const delay = Number.isFinite(hinted) && hinted > 0 ? Math.min(hinted + 250, KEY_LIST_RETRY_MAX_MS) : backoff;
+            this.keyLoadTimer = setTimeout(() => this.requestKeys(), delay);
         }
+        this.renderKeysList();
+        this.renderEditorSelects();
+        this.refreshEmptyPanes();
     },
 
     setProfiles(profiles) {
@@ -299,6 +335,10 @@ const ProfileManager = {
 
     setKeys(keys) {
         this.keysLoaded = true;
+        this.keysLoadFailed = false;
+        this.keyLoadAttempts = 0;
+        clearTimeout(this.keyLoadTimer);
+        this.keyLoadTimer = null;
         this.keys = Array.isArray(keys) ? keys : [];
         this.renderKeySelect();
         this.renderKeysList();
@@ -430,7 +470,7 @@ const ProfileManager = {
 
                 const readiness = ProfileLauncherUtils.getProfileReadiness(profile, {
                     keys: this.keys,
-                    keysLoaded: this.keysLoaded,
+                    keysLoaded: this.keysLoaded || this.keysLoadFailed,
                     jumpHostsLoaded: window.JumpHostManager?.loaded,
                     jumpHosts: window.JumpHostManager?.jumpHosts || [],
             socksProxies: window.SocksProxyManager?.socksProxies || [],
@@ -569,6 +609,20 @@ const ProfileManager = {
     renderKeysList() {
         const container = document.getElementById('keysList');
         if (!container) return;
+
+        if (this.keys.length === 0 && this.keysLoadFailed && !this.keysLoaded) {
+            const notice = document.createElement('p');
+            notice.className = 'no-items';
+            notice.setAttribute('role', 'status');
+            notice.textContent = this.t('keys.loadFailed', 'SSH keys could not be loaded. WebSSH tries again shortly.');
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'btn btn-sm btn-secondary';
+            retry.textContent = this.t('keys.loadRetry', 'Try again');
+            retry.addEventListener('click', () => this.loadKeys());
+            container.replaceChildren(notice, retry);
+            return;
+        }
 
         if (this.keys.length === 0) {
             const empty = document.createElement('p');
@@ -1344,7 +1398,9 @@ const ProfileManager = {
             option.value = keyId;
             option.textContent = this.keysLoaded
                 ? this.t('connection.readinessKey', 'Key missing or unavailable')
-                : this.t('operations.loading', 'Loading…');
+                : this.keysLoadFailed
+                    ? this.t('keys.loadFailed', 'SSH keys could not be loaded. WebSSH tries again shortly.')
+                    : this.t('operations.loading', 'Loading…');
             select.appendChild(option);
         }
         select.value = keyId || '';
@@ -1989,10 +2045,192 @@ const ProfileManager = {
             callback?.({success: false, error: 'Connection unavailable'});
             return;
         }
-        window.socket.emit('upload_key', {
+        this.sendKeyChange('upload_key', {
             name: name,
             key_content: keyContent
-        }, acknowledgement => callback?.(acknowledgement));
+        }, {action: 'key.upload'}).then(acknowledgement => {
+            if (callback) callback(acknowledgement);
+            else this.reportKeyChangeFailure(acknowledgement);
+        });
+    },
+
+    // Key changes that the server guards: the Go backend asks for a step-up
+    // (step_up_required) and for the passphrase of a protected key
+    // (passphrase_required in the acknowledgement). Each is answered once
+    // and the request is sent again. The Python release sends neither, so
+    // there the first acknowledgement is the answer.
+    async sendKeyChange(event, payload, {action, target} = {}) {
+        const extra = {};
+        let acknowledgement = null;
+        for (let attempt = 0; attempt < KEY_CHANGE_MAX_ATTEMPTS; attempt += 1) {
+            acknowledgement = await new Promise(resolve => {
+                window.socket.emit(event, {...payload, ...extra}, resolve);
+            });
+            if (acknowledgement?.success !== false) return acknowledgement;
+            if (acknowledgement.code === 'step_up_required' && action && !extra.step_up) {
+                const grant = await this.authorizeKeyChange(action, target);
+                if (!grant) return this.keyChangeCancelled();
+                extra.step_up = grant;
+                continue;
+            }
+            if (acknowledgement.passphrase_required === true && 'key_content' in payload) {
+                const passphrase = await this.requestKeyPassphrase(acknowledgement.error);
+                if (passphrase === null) return this.keyChangeCancelled();
+                extra.passphrase = passphrase;
+                continue;
+            }
+            return acknowledgement;
+        }
+        return acknowledgement;
+    },
+
+    keyChangeCancelled() {
+        return {success: false, cancelled: true, error: this.t('keys.changeCancelled', 'The SSH key was not changed.')};
+    },
+
+    // Failures the realtime client leaves to this page are not shown as a
+    // general error; without a caller that shows them, they are shown here.
+    reportKeyChangeFailure(acknowledgement) {
+        if (acknowledgement?.success !== false) return;
+        if (acknowledgement.cancelled || acknowledgement.code === 'step_up_required' || acknowledgement.passphrase_required === true) {
+            window.showNotification?.(acknowledgement.error, 'error');
+        }
+    },
+
+    async authorizeKeyChange(action, target) {
+        const security = window.WebSSHSecurityUI;
+        if (!security?.createAccountStepUpClient) return null;
+        const methodLabels = {
+            password: ['security.methodPassword', 'WebSSH password'],
+            ldap: ['security.methodLdap', 'Directory password'],
+            totp: ['security.methodTotp', 'Authenticator app'],
+            passkey: ['security.methodPasskey', 'Passkey'],
+            bootstrap: ['security.methodBootstrap', 'Enrollment code'],
+        };
+        const heading = this.t('credentials.confirmIdentity', 'Confirm your identity');
+        const client = security.createAccountStepUpClient({
+            api: (path, options) => this.stepUpRequest(path, options),
+            chooseMethod: methods => this.keyQuestion(heading, {
+                choices: methods.map(method => ({value: method, label: this.t(...(methodLabels[method] || [method, method]))})),
+            }),
+            requestSecret: method => this.keyQuestion(heading, {
+                label: method === 'totp' || method === 'bootstrap'
+                    ? this.t('credentials.accountCode', 'Account verification code')
+                    : this.t('credentials.accountPassword', 'WebSSH account password'),
+                secret: true,
+                autocomplete: method === 'totp' ? 'one-time-code' : 'current-password',
+            }),
+            getPasskeyAssertion: options => navigator.credentials.get({publicKey: security.decodeAssertionOptions(options)}),
+        });
+        try {
+            return await client.authorize(action, target) || null;
+        } catch (error) {
+            if (error?.name !== 'AbortError') {
+                window.showNotification?.(error?.message || this.t('credentials.identityFailed', 'Identity verification failed.'), 'error');
+            }
+            return null;
+        }
+    },
+
+    async stepUpRequest(path, options = {}) {
+        const root = (document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
+        const response = await fetch(root + path, {
+            method: options.method || 'GET',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
+            },
+            body: options.body ? JSON.stringify(options.body) : undefined,
+        });
+        let data = null;
+        try { data = await response.json(); } catch { /* Reported below. */ }
+        if (!response.ok || !data || typeof data !== 'object') {
+            const error = new Error(data?.error || this.t('credentials.identityFailed', 'Identity verification failed.'));
+            error.code = data?.code;
+            throw error;
+        }
+        return data;
+    },
+
+    requestKeyPassphrase(message) {
+        return this.keyQuestion(this.t('keys.passphraseTitle', 'Key passphrase'), {
+            description: message || '',
+            label: this.t('keys.passphrase', 'Passphrase of the private key'),
+            secret: true,
+            // Keeps password managers from offering the account login here.
+            autocomplete: 'new-password',
+            name: 'ssh-key-passphrase',
+            maxLength: 1024,
+        });
+    },
+
+    // A small modal question; resolves to the answer or null when cancelled.
+    keyQuestion(heading, {label = heading, description = '', choices = null, secret = false, autocomplete = 'off', name = '', maxLength = 4096} = {}) {
+        return new Promise(resolve => {
+            const opener = document.activeElement;
+            const dialog = document.createElement('dialog');
+            dialog.className = 'credential-picker-dialog credential-question';
+            const form = document.createElement('form');
+            form.method = 'dialog';
+            const title = document.createElement('h2');
+            title.textContent = heading;
+            title.id = `key-question-${Date.now()}`;
+            dialog.setAttribute('aria-labelledby', title.id);
+            form.append(title);
+            if (description) {
+                const detail = document.createElement('p');
+                detail.className = 'credential-hint';
+                detail.textContent = description;
+                form.append(detail);
+            }
+            const field = document.createElement('label');
+            field.textContent = label;
+            const input = document.createElement(choices ? 'select' : 'input');
+            input.className = 'form-control';
+            if (choices) {
+                for (const choice of choices) {
+                    const option = document.createElement('option');
+                    option.value = choice.value;
+                    option.textContent = choice.label;
+                    input.append(option);
+                }
+            } else {
+                input.type = secret ? 'password' : 'text';
+                input.autocomplete = autocomplete;
+                input.maxLength = maxLength;
+                if (name) input.name = name;
+            }
+            field.append(input);
+            const controls = document.createElement('div');
+            controls.className = 'credential-picker-controls';
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'btn btn-secondary';
+            cancel.textContent = this.t('common.cancel', 'Cancel');
+            const accept = document.createElement('button');
+            accept.type = 'submit';
+            accept.className = 'btn btn-primary';
+            accept.textContent = this.t('common.confirm', 'Confirm');
+            controls.append(cancel, accept);
+            form.append(field, controls);
+            dialog.append(form);
+            let answer = null;
+            cancel.addEventListener('click', () => dialog.close());
+            // An empty answer counts as cancel; it would only spend an attempt.
+            form.addEventListener('submit', () => { answer = input.value || null; });
+            dialog.addEventListener('close', () => {
+                input.value = '';
+                dialog.remove();
+                opener?.focus?.();
+                resolve(answer);
+            }, {once: true});
+            document.body.append(dialog);
+            dialog.showModal();
+            input.focus();
+        });
     },
 
     beginKeyRename(keyId) {
@@ -2078,10 +2316,10 @@ const ProfileManager = {
         this.keyReplacePending = true;
         this.keyReplaceError = null;
         this.renderKeysList();
-        window.socket.emit('replace_key', {
+        this.sendKeyChange('replace_key', {
             key_id: keyId,
             key_content: keyContent,
-        }, acknowledgement => {
+        }, {action: 'key.replace', target: keyId}).then(acknowledgement => {
             this.keyReplacePending = false;
             if (!acknowledgement?.success || !acknowledgement.key) {
                 this.keyReplaceError = acknowledgement?.error || this.t(
@@ -2100,7 +2338,8 @@ const ProfileManager = {
     deleteKey(keyId) {
         if (confirm((window.i18n ? window.i18n.t('toast.confirmDeleteKey') : 'Are you sure you want to delete this SSH key?'))) {
             if (window.socket) {
-                window.socket.emit('delete_key', { key_id: keyId });
+                this.sendKeyChange('delete_key', { key_id: keyId }, {action: 'key.delete', target: keyId})
+                    .then(acknowledgement => this.reportKeyChangeFailure(acknowledgement));
             }
         }
     }
