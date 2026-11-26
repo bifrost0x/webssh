@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -34,9 +35,13 @@ func (b CABundle) CertPool() (*x509.CertPool, error) {
 			return nil, fmt.Errorf("config: %s: %w", b.Variable, err)
 		}
 		files = files[:0]
+		// Hashed CApath directories (c_rehash) hold links, so links are
+		// followed. Unlike OpenSSL, every regular file counts, not only
+		// the hashed names.
 		for _, e := range entries {
-			if e.Type().IsRegular() {
-				files = append(files, filepath.Join(b.Path, e.Name()))
+			p := filepath.Join(b.Path, e.Name())
+			if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+				files = append(files, p)
 			}
 		}
 	}
@@ -56,15 +61,33 @@ func (b CABundle) CertPool() (*x509.CertPool, error) {
 	return pool, nil
 }
 
-var errTooLarge = errors.New("file too large")
+var (
+	errTooLarge   = errors.New("file too large")
+	errNotRegular = errors.New("not a regular file")
+)
 
-func readBounded(name string, limit int64) ([]byte, error) {
-	info, err := os.Stat(name)
+// readBounded reads a regular file of at most limit bytes. The checks run
+// on the open descriptor, so a device, a FIFO or a file swapped in after
+// the check is never read without bound.
+func readBounded(name string, limit int64) (data []byte, err error) {
+	f, err := os.Open(name) // #nosec G304 -- paths the operator names: trust anchors, the TZ zone file, DATA_DIR/secret_key
 	if err != nil {
 		return nil, err
 	}
-	if info.Size() > limit {
+	defer func() { err = errors.Join(err, f.Close()) }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s: %w", name, errNotRegular)
+	}
+	data, err = io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
 		return nil, fmt.Errorf("%s: %w", name, errTooLarge)
 	}
-	return os.ReadFile(name) // #nosec G304 -- the trust anchors the operator names in REQUESTS_CA_BUNDLE or CURL_CA_BUNDLE
+	return data, nil
 }

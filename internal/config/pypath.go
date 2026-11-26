@@ -109,9 +109,11 @@ type osFS struct{}
 func (osFS) Lstat(name string) (fs.FileInfo, error) { return os.Lstat(name) }
 func (osFS) Stat(name string) (fs.FileInfo, error)  { return os.Stat(name) }
 func (osFS) Readlink(name string) (string, error)   { return os.Readlink(name) }
-func (osFS) ReadFile(name string) ([]byte, error) {
-	return os.ReadFile(name) // #nosec G304 -- the secret file below the operator's DATA_DIR
-}
+
+// maxSecretFile bounds the secret files read at startup.
+const maxSecretFile = 1 << 20
+
+func (osFS) ReadFile(name string) ([]byte, error) { return readBounded(name, maxSecretFile) }
 
 // pyRealpath is os.path.realpath(path) of Python 3.15 (strict=False) for
 // an absolute path: symbolic links are resolved where they exist, a

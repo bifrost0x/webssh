@@ -1,6 +1,10 @@
 package config
 
-import "log/slog"
+import (
+	"fmt"
+	"io"
+	"log/slog"
+)
 
 // Secret holds the application secret. It never prints its value, so a
 // Config can be logged or wrapped in errors safely.
@@ -16,6 +20,10 @@ func (s Secret) Bytes() []byte { return append([]byte(nil), s.value...) }
 
 // Empty reports whether no secret is set.
 func (s Secret) Empty() bool { return len(s.value) == 0 }
+
+// Format writes "[redacted]" for every verb, so no fmt verb (%d, %x on
+// the bytes, ...) reveals the value.
+func (s Secret) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, "[redacted]") }
 
 func (s Secret) String() string               { return "[redacted]" }
 func (s Secret) GoString() string             { return "config.Secret{[redacted]}" }

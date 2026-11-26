@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/big"
 	"net/netip"
-	"os"
 	"strings"
 	"time"
 )
@@ -22,6 +21,11 @@ func previewChecks(p *parser, c *Config, lookup LookupFunc) {
 		return
 	}
 	c.Proxies.CIDRs = cidrs
+	for _, cidr := range cidrs {
+		if cidr.Bits() == 0 {
+			p.warn(WarnProxy, "TRUSTED_PROXY_CIDRS", "%s trusts forwarding headers from every address", cidr)
+		}
+	}
 	switch {
 	case c.Proxies.Hops > 0 && len(cidrs) == 0:
 		p.warn(WarnProxy, "TRUSTED_PROXIES", "forwarding headers are trusted from every client that reaches the port directly, so a client can choose the address used for sign-in limits and audit; set TRUSTED_PROXY_CIDRS to the addresses of the proxy")
@@ -123,10 +127,13 @@ func caBundle(lookup LookupFunc) CABundle {
 	return CABundle{}
 }
 
+// maxZoneFile bounds a zone file named in TZ.
+const maxZoneFile = 4 << 20
+
 // loadZone is the time zone lookup of the Go runtime for TZ.
 func loadZone(name string) error {
 	if strings.HasPrefix(name, "/") {
-		data, err := os.ReadFile(name) // #nosec G304 -- the zone file the operator names in TZ
+		data, err := readBounded(name, maxZoneFile)
 		if err != nil {
 			return err
 		}

@@ -146,25 +146,44 @@ func existingData(fsys fileSystem, dataDir string) string {
 	return ""
 }
 
-// createSecretFile writes a new secret file with mode 0600. Unlike the
-// shell redirection it never follows a link or replaces an existing file.
-func createSecretFile(path string, data []byte) (err error) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- DATA_DIR/secret_key, created exclusively
+// createSecretFile publishes a new secret file with mode 0600. The
+// content is written and synced under a temporary name first and then
+// linked to path, so no process ever reads a partial secret; the link
+// fails if path exists in any form, so nothing is replaced and no link is
+// followed (the shell redirection of entrypoint.sh did both).
+func createSecretFile(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".secret_key-*")
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if cerr := f.Close(); err == nil {
-			err = cerr
-		}
-		if err != nil {
-			err = errors.Join(err, os.Remove(path))
-		}
-	}()
-	if _, err = io.Copy(f, bytes.NewReader(data)); err != nil {
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(0o600); err != nil {
+		return errors.Join(err, tmp.Close())
+	}
+	if _, err := io.Copy(tmp, bytes.NewReader(data)); err != nil {
+		return errors.Join(err, tmp.Close())
+	}
+	if err := tmp.Sync(); err != nil {
+		return errors.Join(err, tmp.Close())
+	}
+	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return f.Sync()
+	if err := os.Link(tmpName, path); err != nil {
+		return err
+	}
+	return syncDir(dir)
+}
+
+func syncDir(dir string) (err error) {
+	d, err := os.Open(dir) // #nosec G304 -- DATA_DIR
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, d.Close()) }()
+	return d.Sync()
 }
 
 // Overlay returns the environment as entrypoint.sh hands it to the Python

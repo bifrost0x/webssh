@@ -59,6 +59,8 @@ var variables = map[string]usage{
 	"LDAP_BIND_PASSWORD_FILE": inert, "LDAP_CA_FILE": inert, "LDAP_USER_FILTER": inert,
 	"LDAP_UNIQUE_ID_ATTRIBUTE": inert, "LDAP_LOGIN_RATE_LIMIT": inert, "LDAP_CONNECT_TIMEOUT": inert,
 	"LDAP_OPERATION_TIMEOUT": inert, "LDAP_SESSION_REVALIDATION_SECONDS": inert,
+	// No TLS client in this preview; mark used once OIDC or GitHub sign-in
+	// calls CABundle.CertPool.
 	"REQUESTS_CA_BUNDLE": inert, "CURL_CA_BUNDLE": inert,
 
 	// Rate limits.
