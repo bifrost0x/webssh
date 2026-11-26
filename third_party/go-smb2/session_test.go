@@ -1,0 +1,1789 @@
+package smb2
+
+import (
+	"context"
+	"encoding/asn1"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"github.com/hirochachacha/go-smb2/v2/auth"
+	"io"
+	"net"
+	"os"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"testing/synctest"
+	"time"
+
+	"github.com/hirochachacha/go-smb2/v2/internal/erref"
+	"github.com/hirochachacha/go-smb2/v2/internal/msrpc"
+	pathpkg "github.com/hirochachacha/go-smb2/v2/internal/path"
+	"github.com/hirochachacha/go-smb2/v2/internal/spnego"
+	"github.com/hirochachacha/go-smb2/v2/internal/utf16le"
+	"github.com/hirochachacha/go-smb2/v2/x/protocol"
+	"github.com/hirochachacha/go-smb2/v2/x/wire"
+	"github.com/stretchr/testify/require"
+)
+
+func TestBindChannelKeepsAuthenticationName(t *testing.T) {
+	t.Parallel()
+	wantErr := errors.New("dial stopped")
+	s := &Session{s: &protocol.Session{}, addr: "files.example.test", credentials: testCredentialsFunc(func(_ context.Context, name string) (auth.Initiator, error) {
+		require.Equal(t, "files.example.test", name)
+		return &singleRoundInitiator{}, nil
+	}), transportDialer: transportDialerFunc(func(_ context.Context, address string) (Transport, error) {
+		require.Equal(t, "192.0.2.9:445", address)
+		return nil, wantErr
+	})}
+	require.ErrorIs(t, s.BindChannel(context.Background(), "192.0.2.9:445"), wantErr)
+	require.ErrorIs(t, s.BindChannel(context.Background(), ""), os.ErrInvalid)
+}
+
+func TestBindChannelCancellationStopsTransportDial(t *testing.T) {
+	t.Parallel()
+	entered := make(chan struct{})
+	s := &Session{s: &protocol.Session{}, addr: "files.example.test", credentials: testCredentialsFunc(func(context.Context, string) (auth.Initiator, error) { return &singleRoundInitiator{}, nil }), transportDialer: transportDialerFunc(func(ctx context.Context, _ string) (Transport, error) {
+		close(entered)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})}
+	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { done <- s.BindChannel(ctx, "192.0.2.9:445") }()
+	<-entered
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
+	_ = s.Abort()
+}
+
+func acceptedBindAck(callId uint32) []byte {
+	ack := []byte{
+		5, 0, 12, 3, 0x10, 0, 0, 0,
+		56, 0, 0, 0, 0, 0, 0, 0,
+		0xb8, 0x10, 0xb8, 0x10, 0, 0, 0, 0,
+		0, 0, 0, 0, 1, 0, 0, 0,
+		0, 0, 0, 0,
+		0x04, 0x5d, 0x88, 0x8a, 0xeb, 0x1c, 0xc9, 0x11,
+		0x9f, 0xe8, 0x08, 0x00, 0x2b, 0x10, 0x48, 0x60,
+		2, 0, 0, 0,
+	}
+	le.PutUint32(ack[12:16], callId)
+	return ack
+}
+
+// startFakeIPCServer serves the TREE_CONNECT, CREATE, CLOSE, and
+// TREE_DISCONNECT skeleton shared by the ListShareNames fixtures. IOCTL and
+// READ sub-requests are delegated to the supplied handlers, which return the
+// response packet and status; a nil packet sends no response.
+func startFakeIPCServer(serverConn net.Conn, onIoctl, onRead func(p wire.PacketCodec, reqBuf []byte, dt net.Conn) (wire.Packet, uint32)) {
+	go func() {
+		dt := serverConn
+		for {
+			reqBuf, err := readMsg(dt)
+			if err != nil {
+				return
+			}
+			var responseBufs [][]byte
+			currBuf := reqBuf
+			for {
+				p := wire.PacketCodec(currBuf)
+				var (
+					response wire.Packet
+					status   uint32
+				)
+				switch p.Command() {
+				case wire.SMB2_TREE_CONNECT:
+					response = &wire.TreeConnectResponse{ShareType: wire.SMB2_SHARE_TYPE_PIPE}
+				case wire.SMB2_CREATE:
+					response = &wire.CreateResponse{
+						CreationTime:   wire.Filetime{},
+						LastAccessTime: wire.Filetime{},
+						LastWriteTime:  wire.Filetime{},
+						ChangeTime:     wire.Filetime{},
+						FileId:         wire.FileId{Persistent: [8]byte{1}, Volatile: [8]byte{1}},
+					}
+				case wire.SMB2_CLOSE:
+					response = &wire.CloseResponse{
+						CreationTime:   wire.Filetime{},
+						LastAccessTime: wire.Filetime{},
+						LastWriteTime:  wire.Filetime{},
+						ChangeTime:     wire.Filetime{},
+					}
+				case wire.SMB2_TREE_DISCONNECT:
+					response = &wire.TreeDisconnectResponse{}
+				case wire.SMB2_IOCTL:
+					if onIoctl != nil {
+						response, status = onIoctl(p, currBuf, dt)
+					}
+				case wire.SMB2_READ:
+					if onRead != nil {
+						response, status = onRead(p, currBuf, dt)
+					}
+				}
+				if response != nil {
+					resBuf := make([]byte, response.Size())
+					response.Encode(resBuf)
+					rp := wire.PacketCodec(resBuf)
+					rp.SetMessageId(p.MessageId())
+					rp.SetSessionId(p.SessionId())
+					rp.SetTreeId(p.TreeId())
+					rp.SetStatus(status)
+					rp.SetCreditResponse(1)
+					rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+					responseBufs = append(responseBufs, resBuf)
+				}
+				if p.NextCommand() == 0 {
+					break
+				}
+				currBuf = currBuf[p.NextCommand():]
+			}
+			if len(responseBufs) > 0 {
+				_ = writeCompoundPackets(dt, responseBufs)
+			}
+		}
+	}()
+}
+
+func TestMountAAPLServerQuery(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name           string
+		respond        bool
+		wantServerCaps uint64
+	}{
+		{name: "supported", respond: true, wantServerCaps: 0x10},
+		{name: "unsupported"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s, serverConn := newProtocolTestSession(t, testServerOptions{credits: 100})
+			requests := make(chan []byte, 1)
+			startFullFakeServer(serverConn, nil, nil, nil, func(req wire.CreateRequestDecoder, response *wire.CreateResponse) {
+				if !req.IsInvalid() && req.CreateContextsLength() != 0 {
+					requests <- append([]byte(nil), req.Contexts().Contexts()[0]...)
+				}
+				if tt.respond {
+					ctx := make([]byte, 48)
+					le.PutUint16(ctx[4:6], 16)
+					le.PutUint16(ctx[6:8], 4)
+					le.PutUint16(ctx[10:12], 24)
+					le.PutUint32(ctx[12:16], 24)
+					copy(ctx[16:20], "AAPL")
+					le.PutUint32(ctx[24:28], 1)
+					le.PutUint64(ctx[32:40], 1)
+					le.PutUint64(ctx[40:48], tt.wantServerCaps)
+					response.Contexts = wire.CreateContexts{rawEncoder(ctx)}
+				}
+			})
+
+			fs, err := s.Mount(context.Background(), "share")
+			require.NoError(t, err)
+			require.Equal(t, tt.wantServerCaps, fs.aaplCapabilities)
+			require.Len(t, requests, 1)
+			ctx := <-requests
+			require.Equal(t, "AAPL", string(ctx[16:20]))
+			require.Equal(t, uint32(1), le.Uint32(ctx[24:28]))
+			require.Equal(t, uint64(1), le.Uint64(ctx[32:40]))
+			require.Equal(t, uint64(protocol.AAPL_SUPPORTS_NFS_ACE), le.Uint64(ctx[40:48]))
+			require.NoError(t, fs.Unmount(context.Background()))
+		})
+	}
+}
+
+func TestMountAAPLQueryCanceled(t *testing.T) {
+	t.Parallel()
+	s, serverConn := newProtocolTestSession(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startFullFakeServer(serverConn, nil, nil, nil, func(_ wire.CreateRequestDecoder, _ *wire.CreateResponse) {
+		cancel()
+	})
+
+	fs, err := s.Mount(ctx, "share")
+	require.Nil(t, fs)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestMountAAPLProbeTransportFailure(t *testing.T) {
+	t.Parallel()
+	for _, credits := range []uint16{1, 100} {
+		for _, phase := range []string{"create", "close"} {
+			t.Run(fmt.Sprintf("credits%d/%s", credits, phase), func(t *testing.T) {
+				s, server := newProtocolTestSession(t, testServerOptions{credits: credits})
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					defer server.Close()
+					req, err := readMsg(server)
+					require.NoError(t, err)
+					p := wire.PacketCodec(req)
+					require.False(t, p.IsInvalid())
+					require.Equal(t, wire.SMB2_TREE_CONNECT, p.Command())
+					require.NoError(t, testWriteResponse(server, req, &wire.TreeConnectResponse{ShareType: wire.SMB2_SHARE_TYPE_DISK}, 0, p.SessionId(), 0x200))
+					req, err = readMsg(server)
+					require.NoError(t, err)
+					p = wire.PacketCodec(req)
+					require.False(t, p.IsInvalid())
+					require.Equal(t, wire.SMB2_CREATE, p.Command())
+					if phase == "close" {
+						require.NoError(t, testWriteResponse(server, req, &wire.CreateResponse{FileId: wire.FileId{Persistent: [8]byte{1}}}, 0, p.SessionId(), p.TreeId()))
+						if credits == 1 {
+							req, err = readMsg(server)
+							require.NoError(t, err)
+							p = wire.PacketCodec(req)
+							require.False(t, p.IsInvalid())
+							require.Equal(t, wire.SMB2_CLOSE, p.Command())
+						} else {
+							require.NotZero(t, p.NextCommand())
+						}
+					}
+				}()
+				fs, err := s.Mount(context.Background(), "share")
+				require.Error(t, err)
+				require.Nil(t, fs)
+				var pe *os.PathError
+				require.ErrorAs(t, err, &pe)
+				require.Equal(t, "mount", pe.Op)
+				require.Equal(t, `\\server\share`, pe.Path)
+				var transport *protocol.TransportError
+				require.ErrorAs(t, err, &transport)
+				if credits == 1 {
+					var compound *protocol.CompoundResponseError
+					require.ErrorAs(t, err, &compound)
+				}
+				require.ErrorIs(t, err, io.EOF)
+				<-done
+			})
+		}
+	}
+}
+
+func TestMountAAPLOptionalProbeErrors(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"create-error", "close-error", "disabled", "canceled"} {
+		t.Run(mode, func(t *testing.T) {
+			s, server := newProtocolTestSession(t)
+			s.disableAAPLExtension = mode == "disabled"
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var creates, closes, disconnects atomic.Int32
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				for {
+					req, err := readMsg(server)
+					if err != nil {
+						return
+					}
+					var responses []compoundResponse
+					for offset := 0; ; {
+						p := wire.PacketCodec(req[offset:])
+						require.False(t, p.IsInvalid())
+						var response wire.Packet
+						var status erref.NtStatus
+						switch p.Command() {
+						case wire.SMB2_TREE_CONNECT:
+							response = &wire.TreeConnectResponse{ShareType: wire.SMB2_SHARE_TYPE_DISK}
+						case wire.SMB2_CREATE:
+							creates.Add(1)
+							response = &wire.CreateResponse{FileId: wire.FileId{Persistent: [8]byte{1}}}
+							if mode == "create-error" {
+								response = &wire.ErrorResponse{CommandCode: wire.SMB2_CREATE}
+								status = erref.STATUS_NOT_SUPPORTED
+							} else if mode == "canceled" {
+								cancel()
+							}
+						case wire.SMB2_CLOSE:
+							n := closes.Add(1)
+							response = &wire.CloseResponse{}
+							if mode == "create-error" || mode == "close-error" && n == 1 {
+								response = &wire.ErrorResponse{CommandCode: wire.SMB2_CLOSE}
+								status = erref.STATUS_INVALID_HANDLE
+							}
+						case wire.SMB2_CANCEL:
+							// CANCEL has no response.
+						case wire.SMB2_ECHO:
+							response = &wire.EchoResponse{}
+						case wire.SMB2_TREE_DISCONNECT:
+							disconnects.Add(1)
+							response = &wire.TreeDisconnectResponse{}
+						default:
+							t.Errorf("unexpected command: %v", p.Command())
+							return
+						}
+						if response != nil {
+							responses = append(responses, compoundResponse{packet: response, status: status})
+						}
+						if p.NextCommand() == 0 {
+							break
+						}
+						next := int(p.NextCommand())
+						require.GreaterOrEqual(t, next, 64)
+						require.Less(t, next, len(req)-offset)
+						offset += next
+					}
+					if len(responses) != 0 {
+						require.NoError(t, sendCompoundResponse(server, req, responses))
+					}
+				}
+			}()
+			fs, err := s.Mount(ctx, "share")
+			if mode == "canceled" {
+				require.Nil(t, fs)
+				require.ErrorIs(t, err, context.Canceled)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, fs)
+				require.Zero(t, fs.aaplCapabilities)
+				require.NoError(t, fs.Unmount(context.Background()))
+			}
+			require.NoError(t, s.Echo(context.Background()))
+			require.EqualValues(t, 1, disconnects.Load())
+			if mode == "disabled" {
+				require.Zero(t, creates.Load())
+				require.Zero(t, closes.Load())
+			} else {
+				require.EqualValues(t, 1, creates.Load())
+				expectedCloses := int32(1)
+				if mode == "close-error" {
+					expectedCloses = 2 // Request cleans up the handle after failed CLOSE.
+				}
+				require.Equal(t, expectedCloses, closes.Load())
+			}
+			require.NoError(t, server.Close())
+			<-done
+		})
+	}
+}
+
+func TestMountAAPLProbeContextPriority(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"canceled", "deadline"} {
+		t.Run(kind, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				s, server := newProtocolTestSession(t)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					defer server.Close()
+					req, err := readMsg(server)
+					require.NoError(t, err)
+					p := wire.PacketCodec(req)
+					require.False(t, p.IsInvalid())
+					require.Equal(t, wire.SMB2_TREE_CONNECT, p.Command())
+					require.NoError(t, testWriteResponse(server, req, &wire.TreeConnectResponse{ShareType: wire.SMB2_SHARE_TYPE_DISK}, 0, p.SessionId(), 0x200))
+					req, err = readMsg(server)
+					require.NoError(t, err)
+					p = wire.PacketCodec(req)
+					require.False(t, p.IsInvalid())
+					require.Equal(t, wire.SMB2_CREATE, p.Command())
+					if kind == "canceled" {
+						cancel()
+					} else {
+						<-ctx.Done()
+					}
+				}()
+				fs, err := s.Mount(ctx, "share")
+				require.Nil(t, fs)
+				if kind == "canceled" {
+					require.ErrorIs(t, err, context.Canceled)
+				} else {
+					require.ErrorIs(t, err, context.DeadlineExceeded)
+				}
+				<-done
+			})
+		})
+	}
+}
+
+func TestListShareNames_BindAck(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name      string
+		modify    func([]byte) []byte
+		wantError string
+	}{
+		{name: "accepted"},
+		{name: "header only", modify: func(b []byte) []byte { b[8] = 24; return b[:24] }, wantError: "broken bind ack response format"},
+		{name: "length mismatch", modify: func(b []byte) []byte { b[8]--; return b }, wantError: "broken bind ack response format"},
+		{name: "secondary address out of bounds", modify: func(b []byte) []byte { le.PutUint16(b[24:26], 0xffff); return b }, wantError: "broken bind ack response format"},
+		{name: "incomplete results", modify: func(b []byte) []byte { b[8]--; return b[:55] }, wantError: "broken bind ack response format"},
+		{name: "wrong call ID", modify: func(b []byte) []byte { le.PutUint32(b[12:16], le.Uint32(b[12:16])+1); return b }, wantError: "broken bind ack response format"},
+		{name: "user rejection", modify: func(b []byte) []byte { b[32] = 1; return b }, wantError: "bind ack did not accept NDR v2"},
+		{name: "provider rejection", modify: func(b []byte) []byte { b[32] = 2; b[34] = 2; return b }, wantError: "bind ack did not accept NDR v2"},
+		{name: "zero results", modify: func(b []byte) []byte { b[28] = 0; b[8] = 32; return b[:32] }, wantError: "bind ack did not accept NDR v2"},
+		{name: "two results", modify: func(b []byte) []byte { b[28] = 2; b[8] = 80; return append(b, b[32:56]...) }, wantError: "bind ack did not accept NDR v2"},
+		{name: "different UUID", modify: func(b []byte) []byte { b[36]++; return b }, wantError: "bind ack did not accept NDR v2"},
+		{name: "different version", modify: func(b []byte) []byte { b[52]++; return b }, wantError: "bind ack did not accept NDR v2"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+
+			var ioctlCount atomic.Int32
+			var bindCallId uint32
+			startFullFakeServer(serverConn, nil, func(_ *uint32, _ uint64, reqBuf []byte, dt net.Conn) bool {
+				ioctlCount.Add(1)
+				req := wire.IoctlRequestDecoder(reqBuf[64:])
+				input := reqBuf[req.InputOffset() : req.InputOffset()+req.InputCount()]
+				var output []byte
+				if input[2] == msrpc.RPC_TYPE_BIND {
+					bindCallId = le.Uint32(input[12:16])
+					output = acceptedBindAck(bindCallId)
+					if tt.modify != nil {
+						output = tt.modify(output)
+					}
+				} else {
+					// A complete successful level 1 response with no shares.
+					output = make([]byte, 56)
+					output[0] = msrpc.RPC_VERSION
+					output[2] = msrpc.RPC_TYPE_RESPONSE
+					output[3] = msrpc.RPC_PACKET_FLAG_FIRST | msrpc.RPC_PACKET_FLAG_LAST
+					output[4] = 0x10
+					output[4] = 0x10
+					le.PutUint16(output[8:10], uint16(len(output)))
+					le.PutUint32(output[12:16], bindCallId+1)
+					le.PutUint32(output[24:28], 1)       // level
+					le.PutUint32(output[28:32], 1)       // switch
+					le.PutUint32(output[32:36], 0x20004) // container pointer
+				}
+				sendTestResponse(dt, reqBuf, &wire.IoctlResponse{
+					CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+					Output:  rawEncoder(output),
+				}, 0)
+				return true
+			}, nil)
+
+			names, err := s.listShareNames(context.Background(), clientMaxShareResponseSize)
+			if tt.wantError == "" {
+				require.NoError(t, err)
+				require.Empty(t, names)
+				require.Equal(t, int32(2), ioctlCount.Load())
+			} else {
+				var pathErr *os.PathError
+				require.ErrorAs(t, err, &pathErr)
+				require.Equal(t, "listsharenames", pathErr.Op)
+				require.Equal(t, "srvsvc", pathErr.Path)
+				var invalidRespErr *msrpc.InvalidResponseError
+				require.ErrorAs(t, pathErr.Err, &invalidRespErr)
+				require.Equal(t, tt.wantError, invalidRespErr.Error())
+				require.Equal(t, int32(1), ioctlCount.Load())
+			}
+			// Deferred CLOSE and tree teardown have completed; the shared connection
+			// must still service a new request after either bind outcome.
+			fs, err := s.Mount(context.Background(), "IPC$")
+			require.NoError(t, err)
+			require.NoError(t, fs.Unmount(context.Background()))
+		})
+	}
+}
+
+func TestListShareNames_RejectsExcessiveResponseSize(t *testing.T) {
+	t.Parallel()
+	s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+
+	var rpcCallId uint32
+	var readCount int
+	const maxReads = 300 // 300 * ~4KB > 1MB
+
+	startFakeIPCServer(serverConn, func(_ wire.PacketCodec, reqBuf []byte, _ net.Conn) (wire.Packet, uint32) {
+		ireq := wire.IoctlRequestDecoder(reqBuf[64:])
+		in := reqBuf[ireq.InputOffset() : ireq.InputOffset()+ireq.InputCount()]
+		rpcCallId = le.Uint32(in[12:16])
+		if len(in) >= 16 && in[2] == 11 { // Bind request
+			return &wire.IoctlResponse{
+				CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+				Output:  rawEncoder(acceptedBindAck(rpcCallId)),
+			}, 0
+		}
+		// NetShareEnumAllRequest returns STATUS_BUFFER_OVERFLOW
+		return &wire.IoctlResponse{CtlCode: wire.FSCTL_PIPE_TRANSCEIVE}, 0x80000005
+	}, func(_ wire.PacketCodec, _ []byte, dt net.Conn) (wire.Packet, uint32) {
+		readCount++
+		var frag []byte
+		if readCount == 1 {
+			// First fragment read: level 1, large count (incomplete)
+			frag = make([]byte, 4280)
+			frag[0] = 5 // RPC_VERSION
+			frag[1] = 0 // RPC_VERSION_MINOR
+			frag[2] = 2 // RPC_TYPE_RESPONSE
+			le.PutUint16(frag[8:10], 4280)
+			le.PutUint32(frag[12:16], rpcCallId)
+			le.PutUint32(frag[24:28], 1)      // level 1
+			le.PutUint32(frag[36:40], 100000) // large count makes it incomplete
+		} else {
+			if readCount > maxReads {
+				dt.Close()
+				return nil, 0
+			}
+			// Subsequent incomplete fragments
+			frag = make([]byte, 4000)
+			frag[0] = 5 // RPC_VERSION
+			frag[1] = 0 // RPC_VERSION_MINOR
+			frag[2] = 2 // RPC_TYPE_RESPONSE
+			le.PutUint16(frag[8:10], 4000)
+			le.PutUint32(frag[12:16], rpcCallId)
+		}
+		return &wire.ReadResponse{Data: frag}, 0
+	})
+
+	_, err := s.listShareNames(context.Background(), clientMaxShareResponseSize)
+	require.Error(t, err)
+	var pathErr *os.PathError
+	require.True(t, errors.As(err, &pathErr))
+	var invalidRespErr *msrpc.InvalidResponseError
+	require.True(t, errors.As(pathErr.Err, &invalidRespErr))
+	require.Less(t, readCount, maxReads)
+}
+
+func TestListShareNames_MaxShareResponseSize(t *testing.T) {
+	t.Parallel()
+	s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+
+	var rpcCallId uint32
+	var readCount int
+
+	startFakeIPCServer(serverConn, func(_ wire.PacketCodec, reqBuf []byte, _ net.Conn) (wire.Packet, uint32) {
+		ireq := wire.IoctlRequestDecoder(reqBuf[64:])
+		in := reqBuf[ireq.InputOffset() : ireq.InputOffset()+ireq.InputCount()]
+		rpcCallId = le.Uint32(in[12:16])
+		if len(in) >= 16 && in[2] == 11 { // Bind request
+			return &wire.IoctlResponse{
+				CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+				Output:  rawEncoder(acceptedBindAck(rpcCallId)),
+			}, 0
+		}
+		// NetShareEnumAllRequest returns STATUS_BUFFER_OVERFLOW
+		return &wire.IoctlResponse{CtlCode: wire.FSCTL_PIPE_TRANSCEIVE}, 0x80000005
+	}, func(_ wire.PacketCodec, _ []byte, dt net.Conn) (wire.Packet, uint32) {
+		readCount++
+		var frag []byte
+		if readCount == 1 {
+			// First fragment: PFC_FIRST_FRAG (0x01)
+			// Its 65-byte stub already exceeds the 64-byte limit.
+			frag = make([]byte, 89)
+			frag[0] = 5 // RPC_VERSION
+			frag[1] = 0 // RPC_VERSION_MINOR
+			frag[2] = 2 // RPC_TYPE_RESPONSE
+			frag[3] = 1 // PFC_FIRST_FRAG
+			frag[4] = 0x10
+			le.PutUint16(frag[8:10], 89)
+			le.PutUint32(frag[12:16], rpcCallId)
+		} else if readCount == 2 {
+			// Second fragment: PFC_LAST_FRAG (0x02)
+			frag = make([]byte, 128)
+			frag[0] = 5 // RPC_VERSION
+			frag[1] = 0 // RPC_VERSION_MINOR
+			frag[2] = 2 // RPC_TYPE_RESPONSE
+			frag[3] = 2 // PFC_LAST_FRAG
+			le.PutUint16(frag[8:10], 128)
+			le.PutUint32(frag[12:16], rpcCallId)
+		} else {
+			dt.Close()
+			return nil, 0
+		}
+		return &wire.ReadResponse{Data: frag}, 0
+	})
+
+	// The first fragment's 65-byte Stub exceeds the low limit and must be
+	// rejected before the client reads another RPC fragment.
+	_, err := s.listShareNames(context.Background(), 64)
+	require.Error(t, err)
+	var pathErr *os.PathError
+	require.True(t, errors.As(err, &pathErr))
+	var invalidRespErr *msrpc.InvalidResponseError
+	require.True(t, errors.As(pathErr.Err, &invalidRespErr))
+	require.Equal(t, "net share enum response exceeds maximum size", invalidRespErr.Error())
+	require.Equal(t, 1, readCount)
+}
+
+func TestListShareNames_MaxShareResponseSizeBoundaries(t *testing.T) {
+	t.Parallel()
+	enc := msrpc.NewEncoder()
+	// Level 1, one container entry, and one disk share with no remark.
+	for _, v := range []uint32{
+		1, 1, 1, // Level, discriminant, container pointer.
+		1, 1, 1, // EntriesRead, buffer pointer, array count.
+		1, 0, 0, // Name pointer, share type, remark pointer.
+	} {
+		enc.WriteUint32(v)
+	}
+	enc.WriteConformantVaryingString("SHARE1")
+	for _, v := range []uint32{1, 0, 0} { // TotalEntries, NULL ResumeHandle, success.
+		enc.WriteUint32(v)
+	}
+	stub := enc.Bytes()
+	names, err := msrpc.DecodeNetShareEnumAllShareNames(stub)
+	require.NoError(t, err)
+	require.Equal(t, []string{"SHARE1"}, names)
+
+	for _, tt := range []struct {
+		name       string
+		overflow   bool
+		split      bool
+		invalidNDR bool
+		limit      int
+		wantError  bool
+	}{
+		{name: "single exceeds", limit: len(stub) - 1, wantError: true},
+		{name: "single equals", limit: len(stub)},
+		{name: "unlimited", limit: -1},
+		{name: "single invalid NDR exceeds", invalidNDR: true, limit: len(stub) - 1, wantError: true},
+		{name: "overflow first last exceeds", overflow: true, limit: len(stub) - 1, wantError: true},
+		{name: "overflow first last equals", overflow: true, limit: len(stub)},
+		{name: "multiple equals", overflow: true, split: true, limit: len(stub)},
+		{name: "multiple cumulative exceeds", overflow: true, split: true, limit: len(stub) - 1, wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+
+			startFullFakeServer(serverConn, nil, func(_ *uint32, _ uint64, reqBuf []byte, dt net.Conn) bool {
+				iReq := wire.IoctlRequestDecoder(reqBuf[64:])
+				input := reqBuf[iReq.InputOffset() : iReq.InputOffset()+iReq.InputCount()]
+
+				if input[2] == msrpc.RPC_TYPE_BIND {
+					bindAck := acceptedBindAck(le.Uint32(input[12:16]))
+					sendTestResponse(dt, reqBuf, &wire.IoctlResponse{
+						CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+						Output:  rawEncoder(bindAck),
+					}, 0)
+					return true
+				}
+
+				responseStub := append([]byte(nil), stub...)
+				if tt.invalidNDR {
+					le.PutUint32(responseStub, 99) // Unsupported NDR level.
+				}
+				chunks := [][]byte{responseStub}
+				if tt.split {
+					chunks = [][]byte{responseStub[:len(stub)/2], responseStub[len(stub)/2:]}
+				}
+				var response []byte
+				for i, chunk := range chunks {
+					fragment := make([]byte, msrpc.HeaderSize+len(chunk))
+					fragment[0] = msrpc.RPC_VERSION
+					fragment[2] = msrpc.RPC_TYPE_RESPONSE
+					fragment[4] = 0x10
+					if i == 0 {
+						fragment[3] |= msrpc.RPC_PACKET_FLAG_FIRST
+					}
+					if i == len(chunks)-1 {
+						fragment[3] |= msrpc.RPC_PACKET_FLAG_LAST
+					}
+					le.PutUint16(fragment[8:10], uint16(len(fragment)))
+					copy(fragment[12:16], input[12:16])
+					copy(fragment[msrpc.HeaderSize:], chunk)
+					response = append(response, fragment...)
+				}
+				var status uint32
+				if tt.overflow {
+					status = uint32(erref.STATUS_BUFFER_OVERFLOW)
+				}
+				sendTestResponse(dt, reqBuf, &wire.IoctlResponse{
+					CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+					Output:  rawEncoder(response),
+				}, status)
+				return true
+			}, nil)
+
+			names, err := s.listShareNames(context.Background(), tt.limit)
+			if !tt.wantError {
+				require.NoError(t, err)
+				require.Equal(t, []string{"SHARE1"}, names)
+				return
+			}
+			require.Error(t, err)
+			var pathErr *os.PathError
+			require.ErrorAs(t, err, &pathErr)
+			var invalidRespErr *msrpc.InvalidResponseError
+			require.ErrorAs(t, pathErr.Err, &invalidRespErr)
+			require.Equal(t, "net share enum response exceeds maximum size", invalidRespErr.Error())
+		})
+	}
+}
+
+func TestListShareNames_RejectsEmptyFragment(t *testing.T) {
+	t.Parallel()
+	s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+
+	var rpcCallId uint32
+	var readCount int
+	const maxReads = 10
+
+	startFakeIPCServer(serverConn, func(_ wire.PacketCodec, reqBuf []byte, _ net.Conn) (wire.Packet, uint32) {
+		ireq := wire.IoctlRequestDecoder(reqBuf[64:])
+		in := reqBuf[ireq.InputOffset() : ireq.InputOffset()+ireq.InputCount()]
+		rpcCallId = le.Uint32(in[12:16])
+		if len(in) >= 16 && in[2] == 11 { // Bind request
+			return &wire.IoctlResponse{
+				CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+				Output:  rawEncoder(acceptedBindAck(rpcCallId)),
+			}, 0
+		}
+		// NetShareEnumAllRequest returns STATUS_BUFFER_OVERFLOW
+		return &wire.IoctlResponse{CtlCode: wire.FSCTL_PIPE_TRANSCEIVE}, 0x80000005
+	}, func(_ wire.PacketCodec, _ []byte, dt net.Conn) (wire.Packet, uint32) {
+		readCount++
+		var frag []byte
+		if readCount == 1 {
+			frag = make([]byte, 4280)
+			frag[0] = 5 // RPC_VERSION
+			frag[1] = 0 // RPC_VERSION_MINOR
+			frag[2] = 2 // RPC_TYPE_RESPONSE
+			frag[4] = 0x10
+			frag[3] = msrpc.RPC_PACKET_FLAG_FIRST
+			le.PutUint16(frag[8:10], 4280)
+			le.PutUint32(frag[12:16], rpcCallId)
+			le.PutUint32(frag[24:28], 1)      // level 1
+			le.PutUint32(frag[36:40], 100000) // large count makes it incomplete
+		} else {
+			if readCount > maxReads {
+				dt.Close()
+				return nil, 0
+			}
+			// Return empty fragment (header only: 24 bytes, Buffer() is 0 bytes)
+			frag = make([]byte, 24)
+			frag[0] = 5 // RPC_VERSION
+			frag[1] = 0 // RPC_VERSION_MINOR
+			frag[2] = 2 // RPC_TYPE_RESPONSE
+			frag[4] = 0x10
+			le.PutUint16(frag[8:10], 24)
+			le.PutUint32(frag[12:16], rpcCallId)
+		}
+		return &wire.ReadResponse{Data: frag}, 0
+	})
+
+	_, err := s.listShareNames(context.Background(), clientMaxShareResponseSize)
+	require.Error(t, err)
+	var pathErr *os.PathError
+	require.True(t, errors.As(err, &pathErr))
+	var invalidRespErr *msrpc.InvalidResponseError
+	require.True(t, errors.As(pathErr.Err, &invalidRespErr))
+	require.Equal(t, 2, readCount)
+}
+
+func TestListShareNames_TerminatesOnLastFrag(t *testing.T) {
+	t.Parallel()
+	s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+
+	var rpcCallId uint32
+	var readCount int
+
+	startFakeIPCServer(serverConn, func(_ wire.PacketCodec, reqBuf []byte, _ net.Conn) (wire.Packet, uint32) {
+		ireq := wire.IoctlRequestDecoder(reqBuf[64:])
+		in := reqBuf[ireq.InputOffset() : ireq.InputOffset()+ireq.InputCount()]
+		rpcCallId = le.Uint32(in[12:16])
+		if len(in) >= 16 && in[2] == 11 { // Bind request
+			return &wire.IoctlResponse{
+				CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+				Output:  rawEncoder(acceptedBindAck(rpcCallId)),
+			}, 0
+		}
+		// NetShareEnumAllRequest returns STATUS_BUFFER_OVERFLOW
+		return &wire.IoctlResponse{CtlCode: wire.FSCTL_PIPE_TRANSCEIVE}, 0x80000005
+	}, func(_ wire.PacketCodec, _ []byte, dt net.Conn) (wire.Packet, uint32) {
+		readCount++
+		var frag []byte
+		if readCount == 1 {
+			// First fragment: PFC_FIRST_FRAG (0x01)
+			frag = make([]byte, 60)
+			frag[0] = 5 // RPC_VERSION
+			frag[1] = 0 // RPC_VERSION_MINOR
+			frag[2] = 2 // RPC_TYPE_RESPONSE
+			frag[4] = 0x10
+			frag[3] = 1 // PFC_FIRST_FRAG
+			le.PutUint16(frag[8:10], 60)
+			le.PutUint32(frag[12:16], rpcCallId)
+			le.PutUint32(frag[24:28], 1)       // level 1
+			le.PutUint32(frag[28:32], 1)       // CTR pointer
+			le.PutUint32(frag[32:36], 0x20004) // Referent ID
+			le.PutUint32(frag[36:40], 1)       // Count = 1
+			le.PutUint32(frag[40:44], 0x20008) // Array pointer
+			le.PutUint32(frag[44:48], 1)       // Array MaxCount = 1
+			le.PutUint32(frag[48:52], 0x2000c) // Name pointer
+			le.PutUint32(frag[52:56], 0)       // Type
+			le.PutUint32(frag[56:60], 0x20010) // Comment pointer
+		} else if readCount == 2 {
+			// Second fragment: PFC_LAST_FRAG (0x02) containing deferred name
+			nameBytes := utf16le.EncodeStringToBytes("SHARE1")
+			nameCount := uint32(len(nameBytes)/2 + 1)
+			commentBytes := utf16le.EncodeStringToBytes("")
+			commentCount := uint32(1)
+
+			frag = make([]byte, 128)
+			frag[0] = 5 // RPC_VERSION
+			frag[1] = 0 // RPC_VERSION_MINOR
+			frag[2] = 2 // RPC_TYPE_RESPONSE
+			frag[4] = 0x10
+			frag[3] = 2 // PFC_LAST_FRAG
+			le.PutUint32(frag[12:16], rpcCallId)
+
+			off := 24
+			// Name deferred
+			le.PutUint32(frag[off:off+4], nameCount)
+			le.PutUint32(frag[off+4:off+8], 0)
+			le.PutUint32(frag[off+8:off+12], nameCount)
+			copy(frag[off+12:], nameBytes)
+			off = (off + 12 + int(nameCount*2) + 3) &^ 3
+
+			// Comment deferred
+			le.PutUint32(frag[off:off+4], commentCount)
+			le.PutUint32(frag[off+4:off+8], 0)
+			le.PutUint32(frag[off+8:off+12], commentCount)
+			copy(frag[off+12:], commentBytes)
+			off = (off + 12 + int(commentCount*2) + 3) &^ 3
+			le.PutUint32(frag[off:off+4], 1) // TotalEntries
+			off += 4
+			le.PutUint32(frag[off:off+4], 0) // ResumeHandle (NULL)
+			off += 4
+			le.PutUint32(frag[off:off+4], 0) // ReturnStatus (NERR_Success)
+			off += 4
+
+			frag = frag[:off]
+			le.PutUint16(frag[8:10], uint16(off))
+		} else {
+			// Should not reach here if PFC_LAST_FRAG terminates
+			dt.Close()
+			return nil, 0
+		}
+		return &wire.ReadResponse{Data: frag}, 0
+	})
+
+	names, err := s.listShareNames(context.Background(), clientMaxShareResponseSize)
+	require.NoError(t, err)
+	require.Equal(t, []string{"SHARE1"}, names)
+	require.Equal(t, 2, readCount)
+}
+
+func TestListShareNames_StatusSuccessFirstFragment(t *testing.T) {
+	t.Parallel()
+	enc := msrpc.NewEncoder()
+	for _, v := range []uint32{
+		1, 1, 1, // Level, discriminant, container pointer.
+		1, 1, 1, // EntriesRead, buffer pointer, array count.
+		1, 0, 0, // Name pointer, share type, remark pointer.
+	} {
+		enc.WriteUint32(v)
+	}
+	enc.WriteConformantVaryingString("SHARE1")
+	for _, v := range []uint32{1, 0, 0} { // TotalEntries, NULL ResumeHandle, success.
+		enc.WriteUint32(v)
+	}
+	stub := enc.Bytes()
+
+	makeFragment := func(flags uint8, chunk []byte) []byte {
+		fragment := make([]byte, msrpc.HeaderSize+len(chunk))
+		fragment[0] = msrpc.RPC_VERSION
+		fragment[2] = msrpc.RPC_TYPE_RESPONSE
+		fragment[4] = 0x10
+		fragment[3] = flags
+		le.PutUint16(fragment[8:10], uint16(len(fragment)))
+		copy(fragment[msrpc.HeaderSize:], chunk)
+		return fragment
+	}
+
+	for _, tt := range []struct {
+		name      string
+		first     []byte
+		readFrags [][]byte
+		readCount int
+	}{
+		{
+			name:      "single fragment",
+			first:     makeFragment(msrpc.RPC_PACKET_FLAG_FIRST|msrpc.RPC_PACKET_FLAG_LAST, stub),
+			readCount: 0,
+		},
+		{
+			name:      "success first fragment followed by read",
+			first:     makeFragment(msrpc.RPC_PACKET_FLAG_FIRST, stub[:len(stub)/2]),
+			readFrags: [][]byte{makeFragment(msrpc.RPC_PACKET_FLAG_LAST, stub[len(stub)/2:])},
+			readCount: 1,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+			var readCount int
+			var callID uint32
+			startFakeIPCServer(serverConn, func(_ wire.PacketCodec, reqBuf []byte, _ net.Conn) (wire.Packet, uint32) {
+				iReq := wire.IoctlRequestDecoder(reqBuf[64:])
+				input := reqBuf[int(iReq.InputOffset()):int(iReq.InputOffset()+iReq.InputCount())]
+				callID = le.Uint32(input[12:16])
+				if input[2] == msrpc.RPC_TYPE_BIND {
+					return &wire.IoctlResponse{
+						CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+						Output:  rawEncoder(acceptedBindAck(callID)),
+					}, 0
+				}
+				first := append([]byte(nil), tt.first...)
+				le.PutUint32(first[12:16], callID)
+				return &wire.IoctlResponse{
+					CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+					Output:  rawEncoder(first),
+				}, 0
+			}, func(_ wire.PacketCodec, _ []byte, dt net.Conn) (wire.Packet, uint32) {
+				if readCount >= len(tt.readFrags) {
+					dt.Close()
+					return nil, 0
+				}
+				fragment := append([]byte(nil), tt.readFrags[readCount]...)
+				readCount++
+				le.PutUint32(fragment[12:16], callID)
+				return &wire.ReadResponse{Data: fragment}, 0
+			})
+
+			names, err := s.listShareNames(context.Background(), clientMaxShareResponseSize)
+			require.NoError(t, err)
+			require.Equal(t, []string{"SHARE1"}, names)
+			require.Equal(t, tt.readCount, readCount)
+		})
+	}
+}
+
+func TestListShareNames_HandlesShortRead(t *testing.T) {
+	t.Parallel()
+	s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+
+	var rpcCallId uint32
+	var readCount int
+
+	startFakeIPCServer(serverConn, func(_ wire.PacketCodec, reqBuf []byte, _ net.Conn) (wire.Packet, uint32) {
+		ireq := wire.IoctlRequestDecoder(reqBuf[64:])
+		in := reqBuf[ireq.InputOffset() : ireq.InputOffset()+ireq.InputCount()]
+		rpcCallId = le.Uint32(in[12:16])
+		if len(in) >= 16 && in[2] == 11 { // Bind request
+			return &wire.IoctlResponse{
+				CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+				Output:  rawEncoder(acceptedBindAck(rpcCallId)),
+			}, 0
+		}
+		// NetShareEnumAllRequest returns STATUS_BUFFER_OVERFLOW
+		return &wire.IoctlResponse{CtlCode: wire.FSCTL_PIPE_TRANSCEIVE}, 0x80000005
+	}, func(_ wire.PacketCodec, _ []byte, dt net.Conn) (wire.Packet, uint32) {
+		readCount++
+		// Build PDU 1 (60 bytes)
+		pdu1 := make([]byte, 60)
+		pdu1[0] = 5 // RPC_VERSION
+		pdu1[1] = 0 // RPC_VERSION_MINOR
+		pdu1[2] = 2 // RPC_TYPE_RESPONSE
+		pdu1[4] = 0x10
+		pdu1[3] = 1                  // PFC_FIRST_FRAG
+		le.PutUint16(pdu1[8:10], 60) // FragLength = 60
+		le.PutUint32(pdu1[12:16], rpcCallId)
+		le.PutUint32(pdu1[24:28], 1)       // level 1
+		le.PutUint32(pdu1[28:32], 1)       // CTR pointer
+		le.PutUint32(pdu1[32:36], 0x20004) // Referent ID
+		le.PutUint32(pdu1[36:40], 1)       // Count = 1
+		le.PutUint32(pdu1[40:44], 0x20008) // Array pointer
+		le.PutUint32(pdu1[44:48], 1)       // Array MaxCount = 1
+		le.PutUint32(pdu1[48:52], 0x2000c) // Name pointer
+		le.PutUint32(pdu1[52:56], 0)       // Type
+		le.PutUint32(pdu1[56:60], 0x20010) // Comment pointer
+
+		// Build PDU 2 (72 bytes)
+		nameBytes := utf16le.EncodeStringToBytes("SHARE1")
+		nameCount := uint32(len(nameBytes)/2 + 1)
+		commentBytes := utf16le.EncodeStringToBytes("")
+		commentCount := uint32(1)
+
+		pdu2 := make([]byte, 128)
+		pdu2[0] = 5 // RPC_VERSION
+		pdu2[1] = 0 // RPC_VERSION_MINOR
+		pdu2[2] = 2 // RPC_TYPE_RESPONSE
+		pdu2[4] = 0x10
+		pdu2[3] = 2 // PFC_LAST_FRAG
+		le.PutUint32(pdu2[12:16], rpcCallId)
+
+		off := 24
+		le.PutUint32(pdu2[off:off+4], nameCount)
+		le.PutUint32(pdu2[off+4:off+8], 0)
+		le.PutUint32(pdu2[off+8:off+12], nameCount)
+		copy(pdu2[off+12:], nameBytes)
+		off = (off + 12 + int(nameCount*2) + 3) &^ 3
+
+		le.PutUint32(pdu2[off:off+4], commentCount)
+		le.PutUint32(pdu2[off+4:off+8], 0)
+		le.PutUint32(pdu2[off+8:off+12], commentCount)
+		copy(pdu2[off+12:], commentBytes)
+		off = (off + 12 + int(commentCount*2) + 3) &^ 3
+		le.PutUint32(pdu2[off:off+4], 1) // TotalEntries
+		off += 4
+		le.PutUint32(pdu2[off:off+4], 0) // ResumeHandle (NULL)
+		off += 4
+		le.PutUint32(pdu2[off:off+4], 0) // ReturnStatus (NERR_Success)
+		off += 4
+		pdu2 = pdu2[:off]
+		le.PutUint16(pdu2[8:10], uint16(len(pdu2))) // FragLength
+
+		stream := append(pdu1, pdu2...)
+		// Chunks to serve: 20, 4 (completes pdu1 header), 36 (completes pdu1 stub), 24 (pdu2 header), 48 (pdu2 stub)
+		chunkSizes := []int{20, 4, 36, 24, len(pdu2) - 24}
+		if readCount > len(chunkSizes) {
+			dt.Close()
+			return nil, 0
+		}
+
+		chunkOffset := 0
+		for i := 0; i < readCount-1; i++ {
+			chunkOffset += chunkSizes[i]
+		}
+		fragData := stream[chunkOffset : chunkOffset+chunkSizes[readCount-1]]
+		return &wire.ReadResponse{Data: fragData}, 0
+	})
+
+	names, err := s.listShareNames(context.Background(), clientMaxShareResponseSize)
+	require.NoError(t, err)
+	require.Equal(t, []string{"SHARE1"}, names)
+	require.Equal(t, 5, readCount)
+}
+
+func TestListShareNames_HandlesResidualData(t *testing.T) {
+	t.Parallel()
+	s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+
+	var rpcCallId uint32
+	var readCount int
+	var frag1, frag2 []byte
+
+	startFakeIPCServer(serverConn, func(_ wire.PacketCodec, reqBuf []byte, _ net.Conn) (wire.Packet, uint32) {
+		ireq := wire.IoctlRequestDecoder(reqBuf[64:])
+		in := reqBuf[ireq.InputOffset() : ireq.InputOffset()+ireq.InputCount()]
+		rpcCallId = le.Uint32(in[12:16])
+		if len(in) >= 16 && in[2] == 11 { // Bind request
+			return &wire.IoctlResponse{
+				CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+				Output:  rawEncoder(acceptedBindAck(rpcCallId)),
+			}, 0
+		}
+		// NetShareEnumAllRequest returns STATUS_BUFFER_OVERFLOW
+		// Prepare frag1 and frag2
+		frag1 = make([]byte, 60)
+		frag1[0] = 5 // RPC_VERSION
+		frag1[1] = 0 // RPC_VERSION_MINOR
+		frag1[2] = 2 // RPC_TYPE_RESPONSE
+		frag1[4] = 0x10
+		frag1[3] = 1 // PFC_FIRST_FRAG
+		le.PutUint16(frag1[8:10], 60)
+		le.PutUint32(frag1[12:16], rpcCallId)
+		le.PutUint32(frag1[24:28], 1)       // level 1
+		le.PutUint32(frag1[28:32], 1)       // CTR pointer
+		le.PutUint32(frag1[32:36], 0x20004) // Referent ID
+		le.PutUint32(frag1[36:40], 1)       // Count = 1
+		le.PutUint32(frag1[40:44], 0x20008) // Array pointer
+		le.PutUint32(frag1[44:48], 1)       // Array MaxCount = 1
+		le.PutUint32(frag1[48:52], 0x2000c) // Name pointer
+		le.PutUint32(frag1[52:56], 0)       // Type
+		le.PutUint32(frag1[56:60], 0x20010) // Comment pointer
+
+		nameBytes := utf16le.EncodeStringToBytes("SHARE1")
+		nameCount := uint32(len(nameBytes)/2 + 1)
+		commentBytes := utf16le.EncodeStringToBytes("")
+		commentCount := uint32(1)
+
+		frag2 = make([]byte, 128)
+		frag2[0] = 5 // RPC_VERSION
+		frag2[1] = 0 // RPC_VERSION_MINOR
+		frag2[2] = 2 // RPC_TYPE_RESPONSE
+		frag2[4] = 0x10
+		frag2[3] = 2 // PFC_LAST_FRAG
+		le.PutUint32(frag2[12:16], rpcCallId)
+
+		off := 24
+		le.PutUint32(frag2[off:off+4], nameCount)
+		le.PutUint32(frag2[off+4:off+8], 0)
+		le.PutUint32(frag2[off+8:off+12], nameCount)
+		copy(frag2[off+12:], nameBytes)
+		off = (off + 12 + int(nameCount*2) + 3) &^ 3
+
+		le.PutUint32(frag2[off:off+4], commentCount)
+		le.PutUint32(frag2[off+4:off+8], 0)
+		le.PutUint32(frag2[off+8:off+12], commentCount)
+		copy(frag2[off+12:], commentBytes)
+		off = (off + 12 + int(commentCount*2) + 3) &^ 3
+		le.PutUint32(frag2[off:off+4], 1) // TotalEntries
+		off += 4
+		le.PutUint32(frag2[off:off+4], 0) // ResumeHandle (NULL)
+		off += 4
+		le.PutUint32(frag2[off:off+4], 0) // ReturnStatus (NERR_Success)
+		off += 4
+
+		frag2 = frag2[:off]
+		le.PutUint16(frag2[8:10], uint16(off))
+		return &wire.IoctlResponse{CtlCode: wire.FSCTL_PIPE_TRANSCEIVE}, 0x80000005
+	}, func(_ wire.PacketCodec, _ []byte, _ net.Conn) (wire.Packet, uint32) {
+		readCount++
+		var fragData []byte
+		if readCount == 1 {
+			// Return frag1 + first 30 bytes of frag2 (overflowing frag1)
+			fragData = append(append([]byte(nil), frag1...), frag2[:30]...)
+		} else if readCount == 2 {
+			// Return remainder of frag2
+			fragData = frag2[30:]
+		}
+		return &wire.ReadResponse{Data: fragData}, 0
+	})
+
+	names, err := s.listShareNames(context.Background(), clientMaxShareResponseSize)
+	require.NoError(t, err)
+	require.Equal(t, []string{"SHARE1"}, names)
+	require.Equal(t, 2, readCount)
+}
+
+func TestListShareNames_IncompleteResponse(t *testing.T) {
+	t.Parallel()
+	// Craft a level 1 NetShareEnumAll response that advertises one share
+	// entry but truncates the buffer before the share name data:
+	// IsInvalid() is false, but ShareNames() fails.
+	frag := make([]byte, 84)
+	frag[0] = msrpc.RPC_VERSION
+	frag[1] = msrpc.RPC_VERSION_MINOR
+	frag[2] = msrpc.RPC_TYPE_RESPONSE
+	frag[3] = msrpc.RPC_PACKET_FLAG_FIRST | msrpc.RPC_PACKET_FLAG_LAST
+	frag[4] = 0x10
+	le.PutUint16(frag[8:10], 84)   // frag length
+	le.PutUint32(frag[12:16], 123) // call id (patched later)
+	le.PutUint32(frag[24:28], 1)   // level 1
+	le.PutUint32(frag[36:40], 1)   // count = 1
+	le.PutUint32(frag[48:52], 1)   // name ptr
+	le.PutUint32(frag[64:68], 0)   // name offset
+	le.PutUint32(frag[68:72], 10)  // name max count (10 -> 20 bytes)
+
+	enumResp := frag[msrpc.HeaderSize:]
+	require.False(t, msrpc.ResponseFragmentDecoder(frag).IsInvalid(), "fixture must be a valid response PDU")
+	_, decodeErr := msrpc.DecodeNetShareEnumAllShareNames(enumResp)
+	require.Error(t, decodeErr, "fixture must fail to decode incomplete response PDU")
+
+	s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+
+	startFakeIPCServer(serverConn, func(_ wire.PacketCodec, reqBuf []byte, _ net.Conn) (wire.Packet, uint32) {
+		ireq := wire.IoctlRequestDecoder(reqBuf[64:])
+		in := reqBuf[ireq.InputOffset() : ireq.InputOffset()+ireq.InputCount()]
+		callID := le.Uint32(in[12:16])
+		if len(in) >= 16 && in[2] == 11 { // Bind request
+			return &wire.IoctlResponse{
+				CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+				Output:  rawEncoder(acceptedBindAck(callID)),
+			}, 0
+		}
+		// NetShareEnumAllRequest returns a complete (LAST flag set)
+		// response whose buffer is truncated mid share entry.
+		le.PutUint32(frag[12:16], callID)
+		return &wire.IoctlResponse{
+			CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+			Output:  rawEncoder(frag),
+		}, 0
+	}, nil)
+
+	_, err := s.listShareNames(context.Background(), clientMaxShareResponseSize)
+	require.Error(t, err)
+	var pathErr *os.PathError
+	require.True(t, errors.As(err, &pathErr))
+	var invalidRespErr *msrpc.InvalidResponseError
+	require.True(t, errors.As(pathErr.Err, &invalidRespErr))
+	require.Contains(t, invalidRespErr.Error(), "broken net share enum response format")
+}
+
+func TestListShareNames_RejectsDataOutsideFragment(t *testing.T) {
+	t.Parallel()
+	s, serverConn := newProtocolTestSession(t, testServerOptions{maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+	startFullFakeServer(serverConn, nil, func(_ *uint32, msgId uint64, reqBuf []byte, dt net.Conn) bool {
+		p := wire.PacketCodec(reqBuf)
+		reqData := reqBuf[64:]
+		if wire.IoctlRequestDecoder(reqData).CtlCode() != wire.FSCTL_PIPE_TRANSCEIVE {
+			return false
+		}
+		in := reqBuf[wire.IoctlRequestDecoder(reqData).InputOffset():]
+		if len(in) < 16 {
+			return false
+		}
+		callId := le.Uint32(in[12:16])
+
+		var output []byte
+		if in[2] == msrpc.RPC_TYPE_BIND {
+			output = acceptedBindAck(callId)
+		} else {
+			// The declared fragment ends after TotalEntries. ResumeHandle and
+			// ReturnStatus are outside the fragment boundary.
+			output = make([]byte, 56)
+			output[0] = msrpc.RPC_VERSION
+			output[1] = msrpc.RPC_VERSION_MINOR
+			output[2] = msrpc.RPC_TYPE_RESPONSE
+			output[3] = msrpc.RPC_PACKET_FLAG_FIRST | msrpc.RPC_PACKET_FLAG_LAST
+			output[4] = 0x10
+			le.PutUint16(output[8:10], 48)
+			le.PutUint32(output[12:16], callId)
+			le.PutUint32(output[24:28], 1)       // Level
+			le.PutUint32(output[28:32], 1)       // switch
+			le.PutUint32(output[32:36], 0x20004) // container pointer
+			le.PutUint32(output[36:40], 0)       // EntriesRead
+			le.PutUint32(output[40:44], 0)       // Buffer (NULL)
+			le.PutUint32(output[44:48], 0)       // TotalEntries
+			le.PutUint32(output[48:52], 0)       // ResumeHandle (outside fragment)
+			le.PutUint32(output[52:56], 0)       // ReturnStatus (outside fragment)
+		}
+
+		iores := &wire.IoctlResponse{
+			CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+			Output:  rawEncoder(output),
+		}
+		resBuf := make([]byte, iores.Size())
+		iores.Encode(resBuf)
+		rp := wire.PacketCodec(resBuf)
+		rp.SetMessageId(msgId)
+		rp.SetSessionId(p.SessionId())
+		rp.SetTreeId(p.TreeId())
+		rp.SetCreditResponse(1)
+		rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+		testWritePacket(dt, resBuf)
+		if in[2] != msrpc.RPC_TYPE_BIND {
+			// The malformed response is expected to make ListShareNames return
+			// before the fake server needs to service the deferred unmount.
+			serverConn.Close()
+		}
+		return true
+	}, nil)
+
+	_, err := s.listShareNames(context.Background(), clientMaxShareResponseSize)
+	require.Error(t, err)
+	var pathErr *os.PathError
+	require.True(t, errors.As(err, &pathErr))
+	var invalidRespErr *msrpc.InvalidResponseError
+	require.True(t, errors.As(pathErr.Err, &invalidRespErr))
+}
+
+func TestListShareNames_OversizedServerName(t *testing.T) {
+	t.Parallel()
+	oversizedHostname := strings.Repeat("a", 32760)
+	s, serverConn := newProtocolTestSession(t, testServerOptions{serverName: oversizedHostname, maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+	startFakeIPCServer(serverConn, func(_ wire.PacketCodec, reqBuf []byte, _ net.Conn) (wire.Packet, uint32) {
+		ireq := wire.IoctlRequestDecoder(reqBuf[64:])
+		in := reqBuf[ireq.InputOffset() : ireq.InputOffset()+ireq.InputCount()]
+		if len(in) >= 16 && in[2] == 11 { // Bind request
+			return &wire.IoctlResponse{
+				CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+				Output:  rawEncoder(acceptedBindAck(le.Uint32(in[12:16]))),
+			}, 0
+		}
+		return nil, 0
+	}, nil)
+
+	_, err := s.ListShareNames(context.Background())
+	require.Error(t, err)
+	var pathErr *os.PathError
+	require.ErrorAs(t, err, &pathErr)
+	require.NotErrorIs(t, pathErr.Err, os.ErrInvalid)
+	require.ErrorContains(t, pathErr.Err, "server name exceeds max MSRPC fragment size")
+}
+
+func TestValidReferralPathForms(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{
+		"",
+		`\dc-one`,
+		`\\dc-two`,
+		`\\server\share`,
+		`\\server\share\root\link`,
+	} {
+		t.Run(path, func(t *testing.T) {
+			if !pathpkg.ValidReferralPath(path) {
+				t.Fatalf("pathpkg.ValidReferralPath(%q) = false", path)
+			}
+		})
+	}
+}
+
+func TestSessionIPCRejectsNilSession(t *testing.T) {
+	t.Parallel()
+	var session *Session
+	_, err := session.IPC(context.Background())
+	if !errors.Is(err, errInvalidSession) {
+		t.Fatalf("IPC error = %v, want errInvalidSession", err)
+	}
+}
+
+func TestSessionIPCCanceledCachedShare(t *testing.T) {
+	t.Parallel()
+	session := &Session{s: &protocol.Session{}, ipc: &Share{}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	share, err := session.IPC(ctx)
+	require.Nil(t, share)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestSessionIPCCancelWhileMounting(t *testing.T) {
+	t.Parallel()
+	session, peer := newProtocolTestSession(t)
+	type outcome struct {
+		share *Share
+		err   error
+	}
+	first := make(chan outcome, 1)
+	go func() { share, err := session.IPC(context.Background()); first <- outcome{share, err} }()
+	req, err := readMsg(peer)
+	require.NoError(t, err)
+	require.Equal(t, wire.SMB2_TREE_CONNECT, wire.PacketCodec(req).Command())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	waiter := make(chan error, 1)
+	go func() { _, err := session.IPC(ctx); waiter <- err }()
+	select {
+	case err := <-waiter:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(time.Second):
+		t.Fatal("IPC waiter could not cancel during another mount")
+	}
+	// Canceling the waiter must leave the first mount and connection usable.
+	p := wire.PacketCodec(req)
+	require.NoError(t, testWriteResponse(peer, req, &wire.TreeConnectResponse{ShareType: wire.SMB2_SHARE_TYPE_PIPE}, erref.STATUS_SUCCESS, p.SessionId(), 0x200))
+	var mounted outcome
+	select {
+	case mounted = <-first:
+	case <-time.After(time.Second):
+		t.Fatal("first IPC mount did not finish")
+	}
+	require.NoError(t, mounted.err)
+	cached, err := session.IPC(context.Background())
+	require.NoError(t, err)
+	require.Same(t, mounted.share, cached)
+	session.closing.Store(true)
+	_, err = session.IPC(context.Background())
+	require.ErrorIs(t, err, net.ErrClosed)
+}
+
+func TestListShareNames_CanceledContextClosesPipe(t *testing.T) {
+	t.Parallel()
+	s, serverConn := newProtocolTestSession(t, testServerOptions{serverName: "server", maxReadSize: 64 * 1024, maxWriteSize: 64 * 1024, maxTransactSize: 64 * 1024, credits: 100})
+	ctx, cancel := context.WithCancel(context.Background())
+	var pipeClosed atomic.Bool
+	startFakeIPCServer(serverConn, func(_ wire.PacketCodec, reqBuf []byte, _ net.Conn) (wire.Packet, uint32) {
+		ireq := wire.IoctlRequestDecoder(reqBuf[64:])
+		in := reqBuf[ireq.InputOffset() : ireq.InputOffset()+ireq.InputCount()]
+		if len(in) >= 16 && in[2] == 11 { // Bind request
+			cancel() // cancel context right after bind
+			return &wire.IoctlResponse{
+				CtlCode: wire.FSCTL_PIPE_TRANSCEIVE,
+				Output:  rawEncoder(acceptedBindAck(le.Uint32(in[12:16]))),
+			}, 0
+		}
+		return nil, 0
+	}, nil)
+
+	_, err := s.listShareNames(ctx, clientMaxShareResponseSize)
+	require.Error(t, err)
+
+	fs, err := s.Mount(context.Background(), "IPC$")
+	require.NoError(t, err)
+	_ = pipeClosed.Load()
+	require.NoError(t, fs.Unmount(context.Background()))
+}
+
+func TestIPCWaiterCancellationDoesNotBlockOnMount(t *testing.T) {
+	t.Parallel()
+	s, peer := newProtocolTestSession(t)
+	s.disableAAPLExtension = true
+	first := make(chan *Share, 1)
+	go func() {
+		share, err := s.IPC(context.Background())
+		if err != nil {
+			share = nil
+		}
+		first <- share
+	}()
+	request, err := readMsg(peer)
+	require.NoError(t, err)
+	require.Equal(t, wire.SMB2_TREE_CONNECT, wire.PacketCodec(request).Command())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	waiting := make(chan error, 1)
+	go func() { _, err := s.IPC(ctx); waiting <- err }()
+	cancel()
+	select {
+	case err := <-waiting:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("canceled IPC waiter remained blocked on the first mount")
+	}
+	coalesced := make(chan *Share, 1)
+	go func() {
+		share, err := s.IPC(context.Background())
+		if err != nil {
+			share = nil
+		}
+		coalesced <- share
+	}()
+	sendTestResponse(peer, request, &wire.TreeConnectResponse{ShareType: wire.SMB2_SHARE_TYPE_PIPE}, 0)
+	share := <-first
+	require.NotNil(t, share)
+	require.Same(t, share, <-coalesced)
+	again, err := s.IPC(context.Background())
+	require.NoError(t, err)
+	require.Same(t, share, again)
+	done := make(chan error, 1)
+	go func() { done <- s.Echo(context.Background()) }()
+	echo, err := readMsg(peer)
+	require.NoError(t, err)
+	require.Equal(t, wire.SMB2_ECHO, wire.PacketCodec(echo).Command())
+	sendTestResponse(peer, echo, &wire.EchoResponse{}, 0)
+	require.NoError(t, <-done)
+}
+
+func TestIPCWaiterRetriesFailedMount(t *testing.T) {
+	t.Parallel()
+	s, peer := newProtocolTestSession(t)
+	s.disableAAPLExtension = true
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	first := make(chan error, 1)
+	go func() { _, err := s.IPC(ctx); first <- err }()
+	request, err := readMsg(peer)
+	require.NoError(t, err)
+	require.Equal(t, wire.SMB2_TREE_CONNECT, wire.PacketCodec(request).Command())
+	type result struct {
+		share *Share
+		err   error
+	}
+	second := make(chan result, 1)
+	go func() { share, err := s.IPC(ctx); second <- result{share, err} }()
+	sendTestResponse(peer, request, &wire.ErrorResponse{CommandCode: wire.SMB2_TREE_CONNECT}, uint32(erref.STATUS_ACCESS_DENIED))
+	require.ErrorIs(t, <-first, os.ErrPermission)
+	request, err = readMsg(peer)
+	require.NoError(t, err)
+	require.Equal(t, wire.SMB2_TREE_CONNECT, wire.PacketCodec(request).Command())
+	sendTestResponse(peer, request, &wire.TreeConnectResponse{ShareType: wire.SMB2_SHARE_TYPE_PIPE}, 0)
+	r := <-second
+	require.NoError(t, r.err)
+	again, err := s.IPC(ctx)
+	require.NoError(t, err)
+	require.Same(t, r.share, again)
+}
+
+// testInitiator and testHandshake establish the smallest authenticated SMB
+// session needed by the parent-package API tests. Requests after TREE_CONNECT
+// remain on the raw peer so each test can provide its own server behavior.
+type testInitiator struct{ complete bool }
+
+var testMechanismOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 2, 2, 10}
+
+func (*testInitiator) OID() asn1.ObjectIdentifier { return testMechanismOID }
+
+func (i *testInitiator) InitSecContext() ([]byte, error) {
+	i.complete = false
+	return []byte{1}, nil
+}
+
+func (i *testInitiator) AcceptSecContext([]byte) ([]byte, error) {
+	i.complete = true
+	return nil, nil
+}
+
+func (*testInitiator) GetMIC([]byte) ([]byte, error) { return nil, nil }
+
+func (*testInitiator) VerifyMIC([]byte, []byte) error { return nil }
+
+func (i *testInitiator) Complete() bool { return i.complete }
+
+func (*testInitiator) SessionKey() []byte { return nil }
+
+type testServerOptions struct {
+	sessionID                                  uint64
+	treeID                                     uint32
+	wrapClient                                 func(net.Conn) net.Conn
+	dialect                                    uint16
+	capabilities                               uint32
+	singleCredit                               bool
+	maxReadSize, maxWriteSize, maxTransactSize uint32
+	credits                                    uint16
+	ioPipelineDepth                            uint
+	sessionFlags                               uint16
+	shareFlags                                 uint32
+	shareType                                  uint8
+	isDFSShare                                 bool
+	serverName, shareName                      string
+}
+
+func testServerDefaults(options []testServerOptions) testServerOptions {
+	var o testServerOptions
+	if len(options) != 0 {
+		o = options[0]
+	}
+	if o.sessionID == 0 {
+		o.sessionID = 0x100
+	}
+	if o.treeID == 0 {
+		o.treeID = 0x200
+	}
+	if o.dialect == 0 {
+		o.dialect = wire.SMB302
+	}
+	if o.capabilities == 0 && !o.singleCredit {
+		o.capabilities = wire.SMB2_GLOBAL_CAP_LARGE_MTU
+	}
+	if o.maxReadSize == 0 {
+		o.maxReadSize = 1 << 20
+	}
+	if o.maxWriteSize == 0 {
+		o.maxWriteSize = 1 << 20
+	}
+	if o.maxTransactSize == 0 {
+		o.maxTransactSize = 1 << 20
+	}
+	if o.credits == 0 {
+		o.credits = 512
+	}
+	if o.sessionFlags == 0 {
+		o.sessionFlags = wire.SMB2_SESSION_FLAG_IS_GUEST
+	}
+	if o.shareType == 0 {
+		o.shareType = wire.SMB2_SHARE_TYPE_DISK
+	}
+	if o.serverName == "" {
+		o.serverName = "server"
+	}
+	if o.shareName == "" {
+		o.shareName = "share"
+	}
+	return o
+}
+
+func newProtocolTestSession(t testing.TB, options ...testServerOptions) (*Session, net.Conn) {
+	t.Helper()
+	o := testServerDefaults(options)
+	client, server := net.Pipe()
+	done := make(chan error, 1)
+	go func() { done <- testSessionHandshake(server, o) }()
+	t.Cleanup(func() { _ = server.Close(); _ = client.Close() })
+	dialer := protocol.Dialer{SpecifiedDialects: []wire.Dialect{wire.Dialect(o.dialect)}, MaxCreditBalance: o.credits, IOPipelineDepth: o.ioPipelineDepth}
+	transportConn := net.Conn(client)
+	if o.wrapClient != nil {
+		transportConn = o.wrapClient(client)
+	}
+	session, err := dialer.Dial(context.Background(), &testInitiator{}, protocol.NewTransport(transportConn))
+	if err != nil {
+		t.Fatalf("connect test session: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("test handshake: %v", err)
+	}
+	return &Session{s: session, addr: o.serverName}, server
+}
+
+func newProtocolTestShare(t testing.TB, options ...testServerOptions) (*Share, net.Conn) {
+	t.Helper()
+	o := testServerDefaults(options)
+	session, server := newProtocolTestSession(t, o)
+	done := make(chan error, 1)
+	go func() {
+		req, err := testReadPacket(server)
+		if err != nil {
+			done <- err
+			return
+		}
+		if wire.PacketCodec(req).Command() != wire.SMB2_TREE_CONNECT {
+			done <- fmt.Errorf("expected TREE_CONNECT")
+			return
+		}
+		caps := uint32(0)
+		if o.isDFSShare {
+			caps = wire.SMB2_SHARE_CAP_DFS
+		}
+		if err := testWriteResponse(server, req, &wire.TreeConnectResponse{ShareType: o.shareType, ShareFlags: o.shareFlags, Capabilities: caps}, erref.STATUS_SUCCESS, o.sessionID, o.treeID); err != nil {
+			done <- err
+			return
+		}
+		if o.shareType == wire.SMB2_SHARE_TYPE_DISK {
+			req, err = testReadPacket(server)
+			if err != nil {
+				done <- err
+				return
+			}
+			if wire.PacketCodec(req).Command() != wire.SMB2_CREATE {
+				done <- fmt.Errorf("expected AAPL CREATE")
+				return
+			}
+			if wire.PacketCodec(req).NextCommand() == 0 {
+				if err := testWriteResponse(server, req, &wire.CreateResponse{FileId: wire.FileId{Persistent: [8]byte{1}}}, erref.STATUS_SUCCESS, o.sessionID, o.treeID); err != nil {
+					done <- err
+					return
+				}
+				req, err = testReadPacket(server)
+				if err != nil {
+					done <- err
+					return
+				}
+				if wire.PacketCodec(req).Command() != wire.SMB2_CLOSE {
+					done <- fmt.Errorf("expected AAPL CLOSE")
+					return
+				}
+				done <- testWriteResponse(server, req, &wire.CloseResponse{}, erref.STATUS_SUCCESS, o.sessionID, o.treeID)
+				return
+			}
+			done <- sendCompoundResponse(server, req, []compoundResponse{
+				{packet: &wire.CreateResponse{FileId: wire.FileId{Persistent: [8]byte{1}}}},
+				{packet: &wire.CloseResponse{}},
+			})
+			return
+		}
+		done <- nil
+	}()
+	share, err := session.Mount(context.Background(), o.shareName)
+	if err != nil {
+		t.Fatalf("connect test tree: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("mount handshake: %v", err)
+	}
+	return share, server
+}
+
+func testSessionHandshake(conn net.Conn, o testServerOptions) error {
+	req, err := testReadPacket(conn)
+	if err != nil {
+		return err
+	}
+	if wire.PacketCodec(req).Command() != wire.SMB2_NEGOTIATE {
+		return fmt.Errorf("expected NEGOTIATE")
+	}
+	neg := &wire.NegotiateResponse{
+		Flags:           wire.SMB2_FLAGS_SERVER_TO_REDIR,
+		SecurityMode:    wire.SMB2_NEGOTIATE_SIGNING_ENABLED,
+		DialectRevision: o.dialect,
+		Capabilities:    o.capabilities,
+		MaxTransactSize: o.maxTransactSize, MaxReadSize: o.maxReadSize, MaxWriteSize: o.maxWriteSize,
+		SystemTime: wire.Filetime{}, ServerStartTime: wire.Filetime{},
+	}
+	if err := testWriteResponse(conn, req, neg, erref.STATUS_SUCCESS, 0, 0); err != nil {
+		return err
+	}
+	req, err = testReadPacket(conn)
+	if err != nil {
+		return err
+	}
+	if wire.PacketCodec(req).Command() != wire.SMB2_SESSION_SETUP {
+		return fmt.Errorf("expected SESSION_SETUP")
+	}
+	token, err := spnego.EncodeNegTokenResp(0, testMechanismOID, []byte{2}, nil)
+	if err != nil {
+		return err
+	}
+	setup := &wire.SessionSetupResponse{SessionFlags: o.sessionFlags, SecurityBuffer: token}
+	return testWriteResponse(conn, req, setup, erref.STATUS_SUCCESS, o.sessionID, 0)
+}
+
+func testReadPacket(conn net.Conn) ([]byte, error) {
+	var header [4]byte
+	if _, err := io.ReadFull(conn, header[:]); err != nil {
+		return nil, err
+	}
+	n := binary.BigEndian.Uint32(header[:])
+	if n < 64 || n > 4<<20 {
+		return nil, fmt.Errorf("invalid packet length %d", n)
+	}
+	pkt := make([]byte, n)
+	_, err := io.ReadFull(conn, pkt)
+	return pkt, err
+}
+
+// readMsg is retained as a small raw Direct TCP framing helper for the
+// high-level tests. The server side deliberately uses net.Conn directly;
+// protocol.Transport is sealed and is only used by the client under test.
+func readMsg(conn net.Conn) ([]byte, error) { return testReadPacket(conn) }
+
+func testWritePacket(conn net.Conn, pkt []byte) (int, error) {
+	var header [4]byte
+	binary.BigEndian.PutUint32(header[:], uint32(len(pkt)))
+	if _, err := conn.Write(header[:]); err != nil {
+		return 0, err
+	}
+	n, err := conn.Write(pkt)
+	return 4 + n, err
+}
+
+func testWriteResponse(conn net.Conn, req []byte, response wire.Packet, status erref.NtStatus, sessionID uint64, treeID uint32) error {
+	buf := make([]byte, response.Size())
+	response.Encode(buf)
+	reqPacket := wire.PacketCodec(req)
+	p := wire.PacketCodec(buf)
+	p.SetMessageId(reqPacket.MessageId())
+	p.SetSessionId(sessionID)
+	p.SetTreeId(treeID)
+	p.SetStatus(uint32(status))
+	p.SetCreditResponse(reqPacket.CreditRequest())
+	p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+	_, err := testWritePacket(conn, buf)
+	return err
+}
+
+type compoundResponse struct {
+	packet wire.Packet
+	status erref.NtStatus
+}
+
+func sendCompoundResponse(conn net.Conn, request []byte, responses []compoundResponse) error {
+	if len(responses) == 0 {
+		return fmt.Errorf("empty compound response")
+	}
+	var bufs [][]byte
+	offset := 0
+	for i, response := range responses {
+		req := wire.PacketCodec(request[offset:])
+		buf := make([]byte, wire.Roundup(response.packet.Size(), 8))
+		response.packet.Encode(buf)
+		p := wire.PacketCodec(buf)
+		p.SetMessageId(req.MessageId())
+		p.SetSessionId(req.SessionId())
+		p.SetTreeId(req.TreeId())
+		p.SetStatus(uint32(response.status))
+		p.SetCreditResponse(req.CreditRequest())
+		flags := uint32(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+		if i > 0 {
+			flags |= wire.SMB2_FLAGS_RELATED_OPERATIONS
+		}
+		p.SetFlags(flags)
+		bufs = append(bufs, buf)
+		if next := req.NextCommand(); next != 0 {
+			offset += int(next)
+		} else {
+			offset = len(request)
+		}
+	}
+	return writeCompoundPackets(conn, bufs)
+}
+
+// writeCompoundPackets writes packets as one SMB2 compound response, padding
+// every non-final packet and linking it to the next with NextCommand.
+func writeCompoundPackets(conn net.Conn, packets [][]byte) error {
+	var out []byte
+	for i, pkt := range packets {
+		if i < len(packets)-1 {
+			span := wire.Roundup(len(pkt), 8)
+			padded := make([]byte, span)
+			copy(padded, pkt)
+			wire.PacketCodec(padded).SetNextCommand(uint32(span))
+			out = append(out, padded...)
+		} else {
+			out = append(out, pkt...)
+		}
+	}
+	_, err := testWritePacket(conn, out)
+	return err
+}
+
+func TestSessionServername(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		addr, want string
+	}{
+		{"192.0.2.10:445", "192.0.2.10"},
+		{"[2001:db8::10]:445", "2001:db8::10"},
+		{"server", "server"},
+	} {
+		t.Run(test.addr, func(t *testing.T) {
+			s := &Session{addr: test.addr}
+			if got := s.serverName(); got != test.want {
+				t.Fatalf("serverName = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

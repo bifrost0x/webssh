@@ -31,7 +31,7 @@ type goMod struct {
 		Path     string
 		Indirect bool
 	}
-	Replace []json.RawMessage
+	Replace []goModReplace
 	Tool    []json.RawMessage
 }
 
@@ -189,8 +189,8 @@ func TestGoModDirectives(t *testing.T) {
 	if mod.Module.Path != modulePath {
 		t.Errorf("module path = %q, want %q", mod.Module.Path, modulePath)
 	}
-	if len(mod.Replace) > 0 {
-		t.Error("go.mod must not contain replace directives; forks are allowlisted under their own path")
+	for _, problem := range replaceViolations(mod.Replace, forks) {
+		t.Error(problem)
 	}
 	if len(mod.Tool) > 0 {
 		t.Error("go.mod must not contain tool directives; CI installs pinned tools outside the module")

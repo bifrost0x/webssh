@@ -1,0 +1,538 @@
+package smb2
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	iofs "io/fs"
+	"net"
+	"os"
+	"path"
+	"reflect"
+	"regexp"
+	"strings"
+	"sync"
+	"testing"
+	"testing/fstest"
+	"time"
+
+	"github.com/hirochachacha/go-smb2/v2/internal/erref"
+	"github.com/hirochachacha/go-smb2/v2/internal/utf16le"
+	"github.com/hirochachacha/go-smb2/v2/x/wire"
+)
+
+func TestContextShareGlobCancellation(t *testing.T) {
+	t.Parallel()
+	for _, deadline := range []bool{false, true} {
+		for _, pattern := range []string{"file.txt", "*.txt"} {
+			share, _ := newTestShare(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			want := context.Canceled
+			cancel()
+			if deadline {
+				ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				defer cancel()
+				want = context.DeadlineExceeded
+			}
+			matches, err := share.WithContext(ctx).Glob(pattern)
+			if !errors.Is(err, want) || matches != nil {
+				t.Fatalf("Glob(%q) = %v, %v; want nil, %v", pattern, matches, err, want)
+			}
+			var pathErr *os.PathError
+			if !errors.As(err, &pathErr) || (pattern == "*.txt" && pathErr.Op != "glob") {
+				t.Fatalf("Glob(%q) did not identify the canceled operation: %v", pattern, err)
+			}
+		}
+	}
+}
+
+func contextSubShare(share *Share, root string) iofs.FS {
+	bound := share.WithContext(context.Background())
+	fs, err := iofs.Sub(bound, root)
+	if err != nil {
+		panic(err)
+	}
+	return fs
+}
+
+func TestContextShare(t *testing.T) {
+	t.Parallel()
+	share := &Share{}
+
+	fs := contextSubShare(share, `dir`).(*boundShare)
+	if got, want := fs.root, `dir`; got != want {
+		t.Errorf("root = %q, want %q", got, want)
+	}
+	if got, want := fs.path(`file.txt`), `dir\file.txt`; got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+
+	fs = contextSubShare(share, `.`).(*boundShare)
+	if got, want := fs.root, ``; got != want {
+		t.Errorf("root = %q, want %q", got, want)
+	}
+
+	for _, root := range []string{`dir/`, `dir\`, `/`} {
+		if _, err := iofs.Sub(share.WithContext(context.Background()), root); !errors.Is(err, os.ErrInvalid) {
+			t.Errorf("Sub(%q) err = %v, want %v", root, err, os.ErrInvalid)
+		}
+	}
+}
+
+func TestContextShareRejectsBackslashPath(t *testing.T) {
+	t.Parallel()
+	share := &Share{}
+
+	for _, root := range []string{`dir`, `.`} {
+		fs := contextSubShare(share, root)
+
+		for _, name := range []string{`sub\..\secret`, `sub\secret`} {
+			if _, err := fs.Open(name); !errors.Is(err, os.ErrInvalid) {
+				t.Errorf("Open(%q) err = %v, want %v", name, err, os.ErrInvalid)
+			}
+			if rfs, ok := fs.(iofs.ReadDirFS); ok {
+				if _, err := rfs.ReadDir(name); !errors.Is(err, os.ErrInvalid) {
+					t.Errorf("ReadDir(%q) err = %v, want %v", name, err, os.ErrInvalid)
+				}
+			} else {
+				t.Error("ContextShare does not implement iofs.ReadDirFS")
+			}
+			if rfs, ok := fs.(iofs.ReadFileFS); ok {
+				if _, err := rfs.ReadFile(name); !errors.Is(err, os.ErrInvalid) {
+					t.Errorf("ReadFile(%q) err = %v, want %v", name, err, os.ErrInvalid)
+				}
+			} else {
+				t.Error("ContextShare does not implement iofs.ReadFileFS")
+			}
+			if rfs, ok := fs.(iofs.ReadLinkFS); ok {
+				if _, err := rfs.ReadLink(name); !errors.Is(err, os.ErrInvalid) {
+					t.Errorf("ReadLink(%q) err = %v, want %v", name, err, os.ErrInvalid)
+				}
+			} else {
+				t.Error("ContextShare does not implement iofs.ReadLinkFS")
+			}
+			if sfs, ok := fs.(iofs.StatFS); ok {
+				if _, err := sfs.Stat(name); !errors.Is(err, os.ErrInvalid) {
+					t.Errorf("Stat(%q) err = %v, want %v", name, err, os.ErrInvalid)
+				}
+			} else {
+				t.Error("ContextShare does not implement iofs.StatFS")
+			}
+
+		}
+	}
+}
+
+func TestContextShareGlobResultsOpen(t *testing.T) {
+	t.Parallel()
+	share, serverConn := newTestShare(t)
+	queryCount := 0
+
+	onQueryDir := func(msgID uint64, reqBuf []byte, dt net.Conn) bool {
+		queryCount++
+		p := wire.PacketCodec(reqBuf)
+		if queryCount%2 == 1 {
+			query := &wire.QueryDirectoryResponse{
+				Output: rawEncoder(encodeFileIdBothDirectoryInformation("file.txt")),
+			}
+			buf := make([]byte, query.Size())
+			query.Encode(buf)
+			rp := wire.PacketCodec(buf)
+			rp.SetMessageId(msgID)
+			rp.SetSessionId(p.SessionId())
+			rp.SetTreeId(p.TreeId())
+			rp.SetCreditResponse(1)
+			rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+			_, _ = testWritePacket(dt, buf)
+			return true
+		}
+
+		errRes := &wire.ErrorResponse{CommandCode: wire.SMB2_QUERY_DIRECTORY}
+		buf := make([]byte, errRes.Size())
+		errRes.Encode(buf)
+		rp := wire.PacketCodec(buf)
+		rp.SetMessageId(msgID)
+		rp.SetSessionId(p.SessionId())
+		rp.SetTreeId(p.TreeId())
+		rp.SetStatus(uint32(erref.STATUS_NO_MORE_FILES))
+		rp.SetCreditResponse(1)
+		rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+		_, _ = testWritePacket(dt, buf)
+		return true
+	}
+
+	onQueryInfo := func(msgID uint64, reqBuf []byte) []byte {
+		info := make([]byte, 104)
+		le.PutUint32(info[32:36], wire.FILE_ATTRIBUTE_DIRECTORY)
+		if wire.QueryInfoRequestDecoder(reqBuf[64:]).FileInfoClass() == wire.FileAttributeTagInformation {
+			info = make([]byte, 8)
+			le.PutUint32(info, wire.FILE_ATTRIBUTE_DIRECTORY)
+		}
+		query := &wire.QueryInfoResponse{Output: rawEncoder(info)}
+		buf := make([]byte, query.Size())
+		query.Encode(buf)
+		return buf
+	}
+	startFullFakeServer(serverConn, onQueryDir, nil, onQueryInfo)
+
+	for _, root := range []string{".", "root"} {
+		dirFS := contextSubShare(share, root)
+		for _, pattern := range []string{"sub/file.txt", "sub/*", `sub/f\ile.txt`, `sub/[\f]ile.txt`, `sub/[\f-\f]ile.txt`} {
+			matches, err := iofs.Glob(dirFS, pattern)
+			if err != nil {
+				t.Fatalf("ContextShare(%q).Glob(%q): %v", root, pattern, err)
+			}
+			want := []string{"sub/file.txt"}
+			if len(matches) != 1 || matches[0] != want[0] {
+				t.Fatalf("ContextShare(%q).Glob(%q) = %v, want %v", root, pattern, matches, want)
+			}
+			file, err := dirFS.Open(matches[0])
+			if err != nil {
+				t.Fatalf("ContextShare(%q).Open(%q): %v", root, matches[0], err)
+			}
+			if err := file.Close(); err != nil {
+				t.Fatalf("ContextShare(%q).Open(%q).Close(): %v", root, matches[0], err)
+			}
+		}
+	}
+}
+
+// serverSearchMatch models only the '*' and '?' wildcards used by this test,
+// not the DOS wildcards also defined in [MS-FSA] 2.1.4.4. Brackets are literal;
+// it must not delegate to the client's character-class-aware Match.
+func serverSearchMatch(pattern, name string) bool {
+	var b strings.Builder
+	b.WriteString(`\A`)
+	for _, r := range pattern {
+		switch r {
+		case '*':
+			b.WriteString(`.*`)
+		case '?':
+			b.WriteString(`.`)
+		default:
+			b.WriteString(regexp.QuoteMeta(string(r)))
+		}
+	}
+	b.WriteString(`\z`)
+	return regexp.MustCompile(b.String()).MatchString(name)
+}
+
+// TestContextShareGlobBracketInRoot is a regression test for a root directory whose
+// name contains '['. ContextShare escapes the root to "dir[[]1]\*", and the parent
+// search must be widened to "dir?1]" because the server treats '[' literally
+// ([MS-FSA] 2.1.4.4). The returned names are still filtered with the original
+// bracket class, so a sibling such as "dirX1]" is excluded.
+func TestContextShareGlobBracketInRoot(t *testing.T) {
+	t.Parallel()
+	share, serverConn := newTestShare(t)
+
+	// Contents are keyed by directory, independently of the search pattern.
+	dirContents := map[string][]string{
+		``:       {`dir[1]`, `dirX1]`, `dir1`},
+		`dir[1]`: {`file.txt`},
+		`dirX1]`: {`wrong.txt`},
+		`dir1`:   {`other.txt`},
+	}
+
+	var mu sync.Mutex
+	var sentPatterns []string
+	queries := make(map[string]int)
+	openedPaths := make(map[string]int)
+	handlePaths := make(map[wire.FileId]string)
+
+	onQueryDir := func(msgID uint64, reqBuf []byte, dt net.Conn) bool {
+		p := wire.PacketCodec(reqBuf)
+		qreq := wire.QueryDirectoryRequestDecoder(reqBuf[64:])
+		if qreq.IsInvalid() {
+			t.Error("invalid QUERY_DIRECTORY request")
+			sendTestResponse(dt, reqBuf, &wire.ErrorResponse{CommandCode: wire.SMB2_QUERY_DIRECTORY}, uint32(erref.STATUS_INVALID_PARAMETER))
+			return true
+		}
+		currentPath, ok := handlePaths[qreq.FileId().Decode()]
+		if !ok {
+			t.Error("QUERY_DIRECTORY used an unknown handle")
+			sendTestResponse(dt, reqBuf, &wire.ErrorResponse{CommandCode: wire.SMB2_QUERY_DIRECTORY}, uint32(erref.STATUS_INVALID_PARAMETER))
+			return true
+		}
+		fno, fnl := qreq.FileNameOffset(), qreq.FileNameLength()
+		pattern := utf16le.DecodeToString(reqBuf[int(fno) : int(fno)+int(fnl)])
+
+		mu.Lock()
+		sentPatterns = append(sentPatterns, pattern)
+		queryKey := currentPath + `\` + pattern
+		queries[queryKey]++
+		n := queries[queryKey]
+		mu.Unlock()
+
+		writeEntries := func(names []string) {
+			res := &wire.QueryDirectoryResponse{Output: rawEncoder(encodeFileIdBothDirectoryInformations(names))}
+			buf := make([]byte, res.Size())
+			res.Encode(buf)
+			rp := wire.PacketCodec(buf)
+			rp.SetMessageId(msgID)
+			rp.SetSessionId(p.SessionId())
+			rp.SetTreeId(p.TreeId())
+			rp.SetCreditResponse(1)
+			rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+			testWritePacket(dt, buf)
+		}
+		writeError := func(status uint32) {
+			res := &wire.ErrorResponse{CommandCode: wire.SMB2_QUERY_DIRECTORY}
+			buf := make([]byte, res.Size())
+			res.Encode(buf)
+			rp := wire.PacketCodec(buf)
+			rp.SetMessageId(msgID)
+			rp.SetSessionId(p.SessionId())
+			rp.SetTreeId(p.TreeId())
+			rp.SetStatus(status)
+			rp.SetCreditResponse(1)
+			rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+			testWritePacket(dt, buf)
+		}
+
+		if n > 1 {
+			writeError(uint32(erref.STATUS_NO_MORE_FILES))
+			return true
+		}
+
+		var matched []string
+		for _, name := range dirContents[currentPath] {
+			if serverSearchMatch(pattern, name) {
+				matched = append(matched, name)
+			}
+		}
+		if len(matched) == 0 {
+			writeError(uint32(erref.STATUS_NO_SUCH_FILE))
+			return true
+		}
+		writeEntries(matched)
+		return true
+	}
+
+	onQueryInfo := func(msgID uint64, reqBuf []byte) []byte {
+		info := make([]byte, 104)
+		le.PutUint32(info[32:36], wire.FILE_ATTRIBUTE_DIRECTORY)
+		if wire.QueryInfoRequestDecoder(reqBuf[64:]).FileInfoClass() == wire.FileAttributeTagInformation {
+			info = make([]byte, 8)
+			le.PutUint32(info, wire.FILE_ATTRIBUTE_DIRECTORY)
+		}
+		res := &wire.QueryInfoResponse{Output: rawEncoder(info)}
+		buf := make([]byte, res.Size())
+		res.Encode(buf)
+		return buf
+	}
+
+	go func() {
+		dt := serverConn
+		var nextID uint64
+		for {
+			packet, err := readMsg(dt)
+			if err != nil {
+				return
+			}
+			for len(packet) > 0 {
+				p := wire.PacketCodec(packet)
+				if p.IsInvalid() {
+					t.Error("invalid directory test request header")
+					return
+				}
+				next := uint64(p.NextCommand())
+				if next != 0 && (next < 64 || next > uint64(len(packet)) || next%8 != 0) {
+					t.Error("invalid compound request boundary")
+					return
+				}
+				reqBuf := packet
+				if next != 0 {
+					reqBuf = packet[:int(next)]
+				}
+				switch p.Command() {
+				case wire.SMB2_CREATE:
+					req := wire.CreateRequestDecoder(reqBuf[64:])
+					if req.IsInvalid() {
+						t.Error("invalid CREATE request")
+						return
+					}
+					off, size := int(req.NameOffset()), int(req.NameLength())
+					name := utf16le.DecodeToString(reqBuf[off : off+size])
+					_, isDir := dirContents[name]
+					if !isDir && name != `dir[1]\file.txt` {
+						sendTestResponse(dt, reqBuf, &wire.ErrorResponse{CommandCode: wire.SMB2_CREATE}, uint32(erref.STATUS_OBJECT_NAME_NOT_FOUND))
+						break
+					}
+					nextID++
+					id := wire.FileId{}
+					le.PutUint64(id.Persistent[:], nextID)
+					handlePaths[id] = name
+					mu.Lock()
+					openedPaths[name]++
+					mu.Unlock()
+					attrs := uint32(wire.FILE_ATTRIBUTE_NORMAL)
+					if isDir {
+						attrs = wire.FILE_ATTRIBUTE_DIRECTORY
+					}
+					sendTestResponse(dt, reqBuf, &wire.CreateResponse{
+						CreationTime: wire.Filetime{}, LastAccessTime: wire.Filetime{},
+						LastWriteTime: wire.Filetime{}, ChangeTime: wire.Filetime{},
+						FileId: id, FileAttributes: attrs,
+					}, 0)
+				case wire.SMB2_QUERY_DIRECTORY:
+					onQueryDir(p.MessageId(), reqBuf, dt)
+				case wire.SMB2_QUERY_INFO:
+					buf := onQueryInfo(p.MessageId(), reqBuf)
+					rp := wire.PacketCodec(buf)
+					rp.SetMessageId(p.MessageId())
+					rp.SetSessionId(p.SessionId())
+					rp.SetTreeId(p.TreeId())
+					rp.SetCreditResponse(1)
+					rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+					testWritePacket(dt, buf)
+				case wire.SMB2_CLOSE:
+					sendTestResponse(dt, reqBuf, &wire.CloseResponse{
+						CreationTime: wire.Filetime{}, LastAccessTime: wire.Filetime{},
+						LastWriteTime: wire.Filetime{}, ChangeTime: wire.Filetime{},
+					}, 0)
+				default:
+					t.Errorf("unexpected directory test command: %d", p.Command())
+					return
+				}
+				if next == 0 {
+					break
+				}
+				packet = packet[int(next):]
+			}
+		}
+	}()
+
+	dirFS := contextSubShare(share, `dir[1]`)
+	matches, err := iofs.Glob(dirFS, `*`)
+	if err != nil {
+		t.Fatalf("ContextShare(`dir[1]`).Glob(`*`) returned error: %v", err)
+	}
+	if len(matches) != 1 || matches[0] != "file.txt" {
+		t.Fatalf("ContextShare(`dir[1]`).Glob(`*`) = %v, want [file.txt]", matches)
+	}
+
+	file, err := dirFS.Open(matches[0])
+	if err != nil {
+		t.Fatalf("ContextShare(`dir[1]`).Open(%q): %v", matches[0], err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("ContextShare(`dir[1]`).Open(%q).Close(): %v", matches[0], err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if openedPaths[`dirX1]`] != 0 || openedPaths[`dir1`] != 0 {
+		t.Errorf("unmatched siblings were opened: %v", openedPaths)
+	}
+	if openedPaths[`dir[1]\file.txt`] != 1 {
+		t.Errorf("Glob result did not open the expected file: %v", openedPaths)
+	}
+	for _, pattern := range sentPatterns {
+		if pattern != "*" {
+			t.Errorf("literal root must not be glob-expanded: search pattern %q", pattern)
+		}
+	}
+
+}
+
+func TestSourceCandidateGlobDotPattern(t *testing.T) {
+	t.Parallel()
+	oracle := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("abc")}}
+	got, err := iofs.Glob(struct{ iofs.FS }{oracle}, "./*.txt")
+	if err != nil || !reflect.DeepEqual(got, []string{"hello.txt"}) {
+		t.Fatalf("MapFS oracle=%q,%v", got, err)
+	}
+	for _, sub := range []bool{false, true} {
+		for _, fallback := range []bool{false, true} {
+			for _, pattern := range []string{"./*.txt", "*.txt", "[", "./hello.txt", "*.absent"} {
+				t.Run(fmt.Sprintf("sub=%t/fallback=%t/%s", sub, fallback, pattern), func(t *testing.T) {
+					share := candidatePeer(t, "", []string{"hello.txt"})
+					var adapter iofs.FS = share.WithContext(context.Background())
+					if sub {
+						var err error
+						adapter, err = iofs.Sub(adapter, "sub")
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+					if fallback {
+						adapter = struct{ iofs.FS }{adapter}
+					}
+					got, err := iofs.Glob(adapter, pattern)
+					t.Logf("Glob=%q,%v", got, err)
+					var want []string
+
+					switch pattern {
+					case "./*.txt", "*.txt":
+						want = []string{"hello.txt"}
+					case "[":
+					}
+					if pattern == "[" {
+						if !errors.Is(err, path.ErrBadPattern) {
+							t.Errorf("malformed error=%v", err)
+						}
+						return
+					}
+
+					if err != nil || !reflect.DeepEqual(got, want) {
+						t.Errorf("Glob=%q,%v; want %q,nil", got, err, want)
+					}
+				})
+			}
+		}
+	}
+	for _, fallback := range []bool{false, true} {
+		t.Run(fmt.Sprintf("canceled/fallback=%t", fallback), func(t *testing.T) {
+			share := candidatePeer(t, "", []string{"hello.txt"})
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			var adapter iofs.FS = share.WithContext(ctx)
+			if fallback {
+				adapter = struct{ iofs.FS }{adapter}
+			}
+			got, err := iofs.Glob(adapter, "*.txt")
+			t.Logf("canceled Glob=%q,%v", got, err)
+			if !fallback && !errors.Is(err, context.Canceled) {
+				t.Error("optimized cancellation lost")
+			}
+			if fallback && (err != nil || len(got) != 0) {
+				t.Error("generic Glob should ignore directory open failure")
+			}
+		})
+	}
+}
+
+func TestContextPathError(t *testing.T) {
+	t.Parallel()
+	if err := contextPathError("open", "file", nil); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+
+	rawErr := errors.New("underlying")
+	nested := &os.PathError{Op: "read", Path: "sub", Err: rawErr}
+	doubleNested := &os.PathError{Op: "outer", Path: "top", Err: nested}
+
+	res := contextPathError("open", "foo.txt", doubleNested)
+	var pe *os.PathError
+	if !errors.As(res, &pe) {
+		t.Fatalf("expected *os.PathError, got %T", res)
+	}
+	if pe.Op != "open" || pe.Path != "foo.txt" || pe.Err != rawErr {
+		t.Fatalf("unexpected PathError content: %+v", pe)
+	}
+
+	linkErr := &os.LinkError{Op: "symlink", Old: "a", New: "b", Err: rawErr}
+	res = contextPathError("readlink", "bar.txt", linkErr)
+	if !errors.As(res, &pe) {
+		t.Fatalf("expected *os.PathError, got %T", res)
+	}
+	if pe.Op != "readlink" || pe.Path != "bar.txt" || pe.Err != rawErr {
+		t.Fatalf("unexpected PathError content from LinkError: %+v", pe)
+	}
+
+	otherErr := os.ErrInvalid
+	if got := contextPathError("open", "baz.txt", otherErr); got != otherErr {
+		t.Fatalf("expected original error preserved, got %v", got)
+	}
+}

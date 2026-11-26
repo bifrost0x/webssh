@@ -1,0 +1,175 @@
+package protocol
+
+import (
+	"errors"
+	"os"
+	"testing"
+
+	"github.com/hirochachacha/go-smb2/v2/internal/erref"
+	"github.com/stretchr/testify/require"
+)
+
+func TestResponseErrorIs(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		code     uint32
+		target   error
+		expected bool
+	}{
+		{0xC0000034, os.ErrNotExist, true},   // STATUS_OBJECT_NAME_NOT_FOUND
+		{0xC000003A, os.ErrNotExist, true},   // STATUS_OBJECT_PATH_NOT_FOUND
+		{0xC0000035, os.ErrExist, true},      // STATUS_OBJECT_NAME_COLLISION
+		{0xC0000022, os.ErrPermission, true}, // STATUS_ACCESS_DENIED
+		{0xC0000121, os.ErrPermission, true}, // STATUS_CANNOT_DELETE
+		{0xC0000128, os.ErrClosed, true},     // STATUS_FILE_CLOSED
+		{uint32(erref.STATUS_CONNECTION_DISCONNECTED), os.ErrClosed, false},
+		{0xC0000034, os.ErrPermission, false},
+		{0xC0000034, os.ErrExist, false},
+		{uint32(erref.STATUS_OBJECT_NAME_NOT_FOUND), erref.STATUS_OBJECT_NAME_NOT_FOUND, true},
+		{uint32(erref.STATUS_ACCESS_DENIED), erref.STATUS_ACCESS_DENIED, true},
+		{uint32(erref.STATUS_ACCESS_DENIED), erref.STATUS_BUFFER_OVERFLOW, false},
+	}
+
+	for _, tc := range tests {
+		err := &ResponseError{Code: tc.code}
+		pathErr := &os.PathError{Op: "open", Path: "test", Err: err}
+
+		if errors.Is(err, tc.target) != tc.expected {
+			t.Errorf("ResponseError{Code: 0x%X}.Is(%v) = %v, expected %v", tc.code, tc.target, !tc.expected, tc.expected)
+		}
+		if errors.Is(pathErr, tc.target) != tc.expected {
+			t.Errorf("PathError wrapping ResponseError{Code: 0x%X}.Is(%v) = %v, expected %v", tc.code, tc.target, !tc.expected, tc.expected)
+		}
+	}
+}
+
+func TestResponseErrorAsNtStatus(t *testing.T) {
+	t.Parallel()
+	err := &ResponseError{Code: uint32(erref.STATUS_ACCESS_DENIED)}
+	pathErr := &os.PathError{Op: "open", Path: "test", Err: err}
+
+	var status erref.NtStatus
+	require.True(t, errors.As(err, &status))
+	require.Equal(t, erref.STATUS_ACCESS_DENIED, status)
+
+	var statusFromPathErr erref.NtStatus
+	require.True(t, errors.As(pathErr, &statusFromPathErr))
+	require.Equal(t, erref.STATUS_ACCESS_DENIED, statusFromPathErr)
+
+	// Verify coexistence of NtStatus and standard errors
+	require.True(t, errors.Is(err, erref.STATUS_ACCESS_DENIED))
+	require.True(t, errors.Is(err, os.ErrPermission))
+	require.True(t, errors.Is(pathErr, erref.STATUS_ACCESS_DENIED))
+	require.True(t, errors.Is(pathErr, os.ErrPermission))
+}
+
+func TestSingleResponseErrorIndex(t *testing.T) {
+	t.Parallel()
+	err := &ResponseError{Code: uint32(erref.STATUS_BUFFER_TOO_SMALL), requiredBufferLength: 4096}
+	if got := ResponseErrorAt(err, 1); got != nil {
+		t.Fatalf("ResponseErrorAt index 1 = %v, want nil", got)
+	}
+	if _, ok := RequiredBufferLength(err, 1); ok {
+		t.Fatal("RequiredBufferLength accepted index 1 for a single response")
+	}
+	if got := ResponseErrorAt(err, 0); got != err {
+		t.Fatalf("ResponseErrorAt index 0 = %v, want original error", got)
+	}
+	if n, ok := RequiredBufferLength(err, 0); !ok || n != 4096 {
+		t.Fatalf("RequiredBufferLength index 0 = %d, %v", n, ok)
+	}
+}
+
+func TestCompoundResponseError(t *testing.T) {
+	t.Parallel()
+	err0 := &ResponseError{Code: uint32(erref.STATUS_OBJECT_NAME_COLLISION)}
+	err1 := &ResponseError{Code: uint32(erref.STATUS_ACCESS_DENIED)}
+	cerr := &CompoundResponseError{Errors: []error{err0, nil, err1}}
+
+	require.Equal(t, err0, cerr.OpError(0))
+	require.Nil(t, cerr.OpError(1))
+	require.Equal(t, err1, cerr.OpError(2))
+	require.Nil(t, cerr.OpError(3))
+	require.Nil(t, cerr.OpError(-1))
+
+	// Traversal omits successful operations; Errors and OpError retain indexes.
+	unwrapped := cerr.Unwrap()
+	require.Equal(t, []error{err0, err1}, unwrapped)
+
+	for _, tc := range []struct {
+		name                 string
+		operations, children []error
+	}{
+		{name: "empty"},
+		{name: "all successful", operations: []error{nil, nil}},
+		{name: "mixed", operations: []error{nil, err0, nil, err1, nil}, children: []error{err0, err1}},
+		{name: "multiple causes", operations: []error{err0, err1, err0}, children: []error{err0, err1, err0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := &CompoundResponseError{Errors: tc.operations}
+			require.Equal(t, tc.children, err.Unwrap())
+			require.Equal(t, tc.operations, err.Errors)
+			for i, cause := range tc.operations {
+				require.Equal(t, cause, err.OpError(i))
+				if cause != nil {
+					require.True(t, errors.Is(err, cause))
+				}
+			}
+			if len(tc.children) > 0 {
+				var first *ResponseError
+				require.True(t, errors.As(err, &first))
+				require.Same(t, tc.children[0], first)
+			}
+		})
+	}
+
+	// errors.Is
+	require.True(t, errors.Is(cerr, os.ErrExist))
+	require.True(t, errors.Is(cerr, os.ErrPermission))
+	require.True(t, errors.Is(cerr, erref.STATUS_OBJECT_NAME_COLLISION))
+	require.True(t, errors.Is(cerr, erref.STATUS_ACCESS_DENIED))
+	require.False(t, errors.Is(cerr, os.ErrNotExist))
+
+	// errors.As
+	var rerr *ResponseError
+	require.True(t, errors.As(cerr, &rerr))
+	require.Equal(t, err0, rerr)
+
+	var status erref.NtStatus
+	require.True(t, errors.As(cerr, &status))
+	require.Equal(t, erref.STATUS_OBJECT_NAME_COLLISION, status)
+}
+
+func TestErrorTypesNilReceiverSafety(t *testing.T) {
+	t.Parallel()
+	var (
+		cserr *CrossShareSymlinkError
+		dferr *DFSReferralRequiredError
+		terr  *TransportError
+		irerr *InvalidResponseError
+		cperr *CompoundResponseError
+	)
+
+	require.Equal(t, "empty error", cserr.Error())
+	require.Nil(t, cserr.Unwrap())
+
+	require.Equal(t, "empty error", dferr.Error())
+	require.Nil(t, dferr.Unwrap())
+
+	require.Equal(t, "empty error", terr.Error())
+	require.Nil(t, terr.Unwrap())
+
+	require.Equal(t, "empty error", irerr.Error())
+
+	require.Equal(t, "empty error", cperr.Error())
+	require.Nil(t, cperr.Unwrap())
+	require.Nil(t, cperr.OpError(0))
+}
+
+func TestBufferOverflowDataTypedNil(t *testing.T) {
+	t.Parallel()
+	var err *ResponseError
+	if b, ok := BufferOverflowData(err); ok || b != nil {
+		t.Fatalf("BufferOverflowData = %v, %v", b, ok)
+	}
+}

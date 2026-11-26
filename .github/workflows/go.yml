@@ -167,6 +167,61 @@ jobs:
       - name: Gosec
         run: gosec -quiet $GO_PACKAGES
 
+  # third_party/go-smb2 is a patched fork of go-smb2 v2 in its own module
+  # (third_party/README.md). Its packages are outside GO_PACKAGES, so its
+  # own suite runs here, including the tests of the local patch. The
+  # integration tests skip without client_conf.json. Vulnerabilities in the
+  # v2 module path are also tracked by hand: the vulnerability database
+  # lists GO-2026-5051 for the v1 path only.
+  smb-fork:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: third_party/go-smb2
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify go.mod and go.sum are tidy
+        run: |
+          go mod tidy -diff
+          go mod verify
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Install pinned analyzers
+        run: |
+          go install "honnef.co/go/tools/cmd/staticcheck@$STATICCHECK_VERSION"
+          go install "golang.org/x/vuln/cmd/govulncheck@$GOVULNCHECK_VERSION"
+
+      - name: Staticcheck
+        run: staticcheck ./...
+
+      - name: Govulncheck
+        run: govulncheck ./...
+
+      - name: Test with race detector
+        run: go test -race -count=1 ./...
+
   # The Go page templates are a port of templates/*.html. The Go test
   # renders the shared cases, the Python test renders them with Jinja and
   # compares both; a template change on either side without the other fails.

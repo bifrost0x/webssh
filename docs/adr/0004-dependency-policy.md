@@ -52,9 +52,12 @@ Release builds set version and revision with `-ldflags -X` in
 `internal/buildinfo`; the module path keeps no major-version suffix. The
 output follows the Python format, for example `3.4.0 (abc1234)`.
 
-**go.mod.** No `replace` directives (a fork is allowlisted under its own
-path) and no `tool` directives. The `go` directive follows the installed
-toolchain release.
+**go.mod.** No `tool` directives, and no `replace` directives except one
+per patched fork under `third_party/` that binds the upstream module path to
+the fork's directory. The fork stays its own module, so import paths and the
+patch stay as upstream has them (M2: the go-smb2 fork, see
+`third_party/README.md`). The architecture tests accept only that form. The
+`go` directive follows the installed toolchain release.
 
 **Tools stay out of the module.** staticcheck, govulncheck and gosec are
 installed in CI with `go install <tool>@<exact version>`, verified by the Go
@@ -84,6 +87,12 @@ the binary ships in it.
   list on every update of the driver modules and before every release; the
   release checklist names the check. Driver updates are pinned and reviewed
   by hand (v0.x API, single maintainer).
+
+- **Forks are tracked by hand.** A fork under `third_party/` keeps its
+  upstream module path, but advisories filed for another major version of
+  that path do not reach it; for go-smb2 the vulnerability database lists
+  GO-2026-5051 for v1 only. `third_party/README.md` records the check for
+  each advisory, and the fork's own test suite runs in CI.
 
 - Tier C code is security-critical and gets the strictest review: test
   vectors from the specification, fuzz targets, and round-trip tests against
