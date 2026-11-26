@@ -1,6 +1,6 @@
 #!/bin/sh
 # Starts a throwaway OpenSSH server from the lab image webssh-lab/ssh:local
-# with a pre-authentication banner and runs TestLabBanner against it. The
+# with a pre-authentication banner and runs TestBannerServer against it. The
 # shared lab (tests/lab) has no banner and is not touched.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -33,4 +33,4 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
 done
 cd "$root"
 WEBSSH_BANNER_ADDR="127.0.0.1:$port" WEBSSH_BANNER_PASSWORD="$password" \
-	go test -tags lab -count=1 -v -run TestLabBanner ./internal/ssh/client
+	go test -tags lab -count=1 -v -run TestBannerServer ./internal/ssh/client

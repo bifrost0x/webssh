@@ -37,6 +37,11 @@ func (d *Dialer) handshake(ctx context.Context, conn net.Conn, owner int64, h ho
 	}
 	var banner strings.Builder
 	plan := &authPlan{ctx: hctx, password: h.Auth.Password, signer: h.signer, legacy: h.Legacy, attended: ix != nil}
+	if ch, ok := ix.(Challenger); ok {
+		plan.ask = func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+			return askUser(hctx, wd, ch, h, name, instruction, questions, echos)
+		}
+	}
 	cfg := &ssh.ClientConfig{
 		KeyExchanges: algos.KeyExchanges, Ciphers: algos.Ciphers, MACs: algos.MACs,
 		RekeyThreshold:    d.RekeyThreshold,

@@ -78,7 +78,7 @@ func classify(ctx context.Context, timedOut bool, err error) (fault.Code, string
 		return fault.NotAvailableInPreview, "The host asks for further input (for example a one-time code). Interactive sign-in is not available in this preview.", ""
 	case errors.Is(err, errInteraction):
 		return fault.InteractionRequired, "", ""
-	case errors.Is(err, errAuthExhausted):
+	case errors.Is(err, errAuthExhausted), errors.Is(err, errChallengeDeclined):
 		return fault.AuthFailed, "", ""
 	}
 	if _, ok := errors.AsType[*ssh.AlgorithmNegotiationError](err); ok {

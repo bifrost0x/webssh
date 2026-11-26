@@ -30,6 +30,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/netpolicy"
+	"github.com/bifrost0x/webssh/internal/otp"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
 	"github.com/bifrost0x/webssh/internal/ssh/hostkey"
 	"github.com/bifrost0x/webssh/internal/store"
@@ -481,10 +482,10 @@ func (b *bannerPrompts) Banner(_ context.Context, q client.BannerPrompt) (bool, 
 	return b.accept, nil
 }
 
-// TestLabBanner runs against the OpenSSH server of testdata/banner-lab.sh:
+// TestBannerServer runs against the OpenSSH server of testdata/banner-lab.sh:
 // the banner reaches the user cleaned of control characters, accepting it
 // signs in, declining it or connecting unattended ends the attempt.
-func TestLabBanner(t *testing.T) {
+func TestBannerServer(t *testing.T) {
 	addr, password := os.Getenv("WEBSSH_BANNER_ADDR"), os.Getenv("WEBSSH_BANNER_PASSWORD")
 	if addr == "" {
 		t.Fatal("run with testdata/banner-lab.sh (WEBSSH_BANNER_ADDR)")
@@ -518,4 +519,86 @@ func TestLabBanner(t *testing.T) {
 	if _, err := r.dialer.Dial(t.Context(), tgt, nil); code(err) != fault.BannerDeclined {
 		t.Fatalf("unattended banner: %v", err)
 	}
+}
+
+// totpPrompts answers the one-time code round of the lab's PAM with a
+// code computed from the account's seed.
+type totpPrompts struct {
+	*labPrompts
+	t      *testing.T
+	seed   []byte
+	rounds []client.Challenge
+}
+
+func (p *totpPrompts) Challenge(_ context.Context, q client.Challenge) ([]string, error) {
+	p.rounds = append(p.rounds, q)
+	code, err := otp.TOTP(p.seed, otp.Step(time.Now(), 30*time.Second))
+	if err != nil {
+		return nil, err
+	}
+	answers := make([]string, len(q.Questions))
+	for i := range answers {
+		answers[i] = code
+	}
+	return answers, nil
+}
+
+// C-CONN-09 and K2: the saved password answers the PAM password prompt,
+// the user the one-time code, for keyboard-interactive only (kiuser) and
+// after a public key (mfauser). The lab's google-authenticator files
+// allow ten attempts per 30 s and account (RATE_LIMIT 10 30); runs in
+// quick succession used to hit that limit, so a refused first attempt is
+// repeated once after the window has passed, with a new code.
+func TestLabKeyboardInteractiveWithTOTP(t *testing.T) {
+	r := newRig(t, netpolicy.Config{})
+	raw, err := os.ReadFile(filepath.Join(lab(t).RuntimeDir, "ssh", "client", "ed25519"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.signer["mfa"] = labSigner(t, raw, nil)
+	for _, user := range []string{"kiuser", "mfauser"} {
+		seed, err := otp.DecodeSecret(secret(t, "secrets/ssh-"+user+"-totp-base32"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		auth := client.Auth{Password: secret(t, "secrets/ssh-"+user)}
+		if user == "mfauser" {
+			auth.KeyID = "mfa"
+		}
+		tgt := client.Target{Owner: 1, Hop: hop(t, "ssh-modern", user, auth)}
+		ix := &totpPrompts{labPrompts: r.ix, t: t, seed: seed}
+		got, err := dialWhoami(t, r, tgt, ix)
+		if code(err) == fault.AuthFailed {
+			t.Logf("%s: first attempt refused, repeating after the rate-limit window", user)
+			time.Sleep(31 * time.Second)
+			got, err = dialWhoami(t, r, tgt, ix)
+		}
+		if err != nil || got != user {
+			t.Fatalf("%s: %q, %v", user, got, err)
+		}
+		if len(ix.rounds) == 0 || ix.rounds[len(ix.rounds)-1].Role != client.RoleTarget {
+			t.Fatalf("%s: rounds %+v", user, ix.rounds)
+		}
+	}
+}
+
+func dialWhoami(t *testing.T, r *rig, tgt client.Target, ix client.Interaction) (string, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	sh, err := r.dialer.OpenShell(ctx, tgt, ix, 24, 80)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = sh.Close() }()
+	if _, err := io.WriteString(sh, "echo WHO=$(id -un)=; exit\n"); err != nil {
+		return "", err
+	}
+	out, _ := io.ReadAll(io.LimitReader(sh, 1<<20))
+	text := string(out)
+	i := strings.LastIndex(text, "WHO=")
+	if i < 0 {
+		return "", errors.New("no answer")
+	}
+	return strings.SplitN(text[i+4:], "=", 2)[0], nil
 }

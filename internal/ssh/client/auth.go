@@ -21,15 +21,18 @@ const maxPromptRounds = 8
 // server that already asked for and rejected it (servers such as Warpgate
 // drop keyboard-interactive from the list after a rejected answer).
 //
-// Any further prompt (a one-time code, a second question) needs the user.
-// The M1 contract has no prompt for it: an attended connection ends with
-// not_available_in_preview, an unattended one with interaction_required.
+// Any further prompt (a one-time code, a second question) needs the user:
+// an Interaction that is a Challenger gets the round, also for jump hosts;
+// an attended connection without one ends with not_available_in_preview,
+// an unattended one with interaction_required.
 type authPlan struct {
 	ctx      context.Context
 	password string
 	signer   ssh.Signer
 	legacy   bool
 	attended bool
+	// ask puts a round to the user; nil without a Challenger.
+	ask func(name, instruction string, questions []string, echos []bool) ([]string, error)
 
 	rounds   int
 	answered bool
@@ -70,6 +73,10 @@ func (a *authPlan) next(c *ssh.ClientAuthContext) (ssh.AuthMethod, error) {
 		return ssh.Password(a.password), nil
 	case a.password != "" && allowed("keyboard-interactive"):
 		return ssh.KeyboardInteractive(a.challenge), nil
+	case a.ask != nil && !a.answered && allowed("keyboard-interactive"):
+		// No password, or another factor after one succeeded: the user
+		// answers the rounds.
+		return ssh.KeyboardInteractive(a.challenge), nil
 	case len(c.PartialSuccessMethods) > 0 && (allowed("password") || allowed("keyboard-interactive")):
 		// A factor succeeded and the server wants another one.
 		return nil, a.needsUser()
@@ -84,7 +91,7 @@ func (a *authPlan) needsUser() error {
 	return errInteraction
 }
 
-func (a *authPlan) challenge(_, _ string, questions []string, echos []bool) ([]string, error) {
+func (a *authPlan) challenge(name, instruction string, questions []string, echos []bool) ([]string, error) {
 	a.rounds++
 	switch {
 	case a.rounds > maxPromptRounds:
@@ -95,9 +102,18 @@ func (a *authPlan) challenge(_, _ string, questions []string, echos []bool) ([]s
 		// Servers send empty rounds (PAM info messages); they need no
 		// answer.
 		return []string{}, nil
-	case !a.answered && len(questions) == 1 && !echos[0]:
+	case !a.answered && a.password != "" && len(questions) == 1 && !echos[0]:
+		// The stored password answers the first single hidden prompt.
 		a.answered = true
 		return []string{a.password}, nil
+	case a.ask != nil:
+		a.answered = true
+		answers, err := a.ask(name, instruction, questions, echos)
+		if err != nil {
+			a.abort = err
+			return nil, err
+		}
+		return answers, nil
 	default:
 		a.abort = a.needsUser()
 	}
