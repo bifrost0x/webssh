@@ -166,3 +166,34 @@ test('describe gives the system and machine texts shared by cards and terminals'
         {system: '', virt: '', role: 'server'});
     assert.equal(id.describe({detected_virt: 'bogus'}).virt, '');
 });
+
+test('VPN overlays say how a host is reached, not what it is', () => {
+    const derived = services => id.role({detected_services: services});
+    assert.equal(derived(['grafana', 'tailscale']).id, 'monitoring');
+    assert.equal(derived(['gitea', 'tailscale']).id, 'dev');
+    assert.equal(derived(['vaultwarden', 'wireguard']).id, 'passwords');
+    assert.deepEqual(derived(['tailscale', 'docker']), {id: 'container', source: 'derived', basis: 'docker'});
+    assert.equal(derived(['postgresql', 'tailscale']).id, 'database');
+    assert.equal(derived(['docker', 'zerotier']).id, 'container');
+    assert.equal(derived(['nginx', 'zerotier']).id, 'web');
+    assert.equal(derived(['openvpn', 'nginx', 'docker']).id, 'web');
+    // Only overlays: the host exists to route traffic.
+    assert.deepEqual(derived(['wireguard']), {id: 'network', source: 'derived', basis: 'wireguard'});
+    assert.deepEqual(derived(['zerotier', 'tailscale']), {id: 'network', source: 'derived', basis: 'tailscale'});
+    assert.deepEqual(id.role({detected_platform: 'opnsense', detected_services: ['tailscale']}),
+        {id: 'network', source: 'derived', basis: 'opnsense'});
+    assert.deepEqual(derived(['pihole', 'tailscale']), {id: 'network', source: 'derived', basis: 'pihole'});
+    // An overlay counts as nothing next to another application.
+    assert.equal(derived(['tailscale', 'syncthing']).id, 'server');
+    // The overlay-only rule comes before the graphical fallback.
+    assert.equal(id.role({detected_services: ['tailscale'], detected_graphical: true}).id, 'network');
+});
+
+test('VPN overlays are listed after every other service', () => {
+    assert.deepEqual(id.facts({detected_services: ['tailscale', 'bazarr', 'grafana', 'wireguard']}).services,
+        ['grafana', 'bazarr', 'tailscale', 'wireguard']);
+    assert.deepEqual(id.facts({detected_services: ['zerotier', 'docker']}).services, ['docker', 'zerotier']);
+    assert.deepEqual(id.facts({role_override: 'network', detected_services: ['openvpn', 'samba']}).services, ['samba', 'openvpn']);
+    assert.deepEqual(id.facts({detected_services: ['wireguard']}).services, ['wireguard']);
+    for (const service of id.VPN) assert.ok(catalog.services.includes(service), service);
+});

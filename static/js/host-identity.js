@@ -19,6 +19,9 @@
     const WEB = ['nginx', 'apache', 'caddy', 'traefik', 'nginxproxymanager', 'haproxy'];
     // Runtimes first, then the tools that only manage or watch their containers.
     const CONTAINER = ['docker', 'podman', 'portainer', 'k3s', 'watchtower', 'dozzle'];
+    // VPN and overlay networks say how a host is reached, not what it is: rules
+    // ignore them, and a host that runs nothing else is a Network host.
+    const VPN = Object.freeze(['wireguard', 'tailscale', 'zerotier', 'openvpn']);
     const rule = (role, platforms, services, only = null) => Object.freeze({
         role, platforms: Object.freeze(platforms), services: Object.freeze(services), only: only && Object.freeze(only),
     });
@@ -34,8 +37,7 @@
         rule('cloud', [], ['nextcloud', 'owncloud', 'seafile']),
         rule('media', [], ['jellyfin', 'plex', 'emby']),
         rule('smarthome', ['homeassistant'], ['homeassistant']),
-        rule('network', ['opnsense', 'pfsense', 'openwrt', 'mikrotik', 'cisco', 'ubiquiti'],
-            ['wireguard', 'tailscale', 'pihole', 'adguard', 'openvpn']),
+        rule('network', ['opnsense', 'pfsense', 'openwrt', 'mikrotik', 'cisco', 'ubiquiti'], ['pihole', 'adguard']),
         rule('monitoring', [], ['grafana', 'prometheus', 'uptimekuma', 'zabbix', 'netdata']),
         rule('dev', [], ['gitea', 'gitlab']),
         rule('passwords', [], ['vaultwarden']),
@@ -58,13 +60,15 @@
     }
     function derive(profile, services) {
         const platform = trustedPlatform(profile);
+        const apps = services.filter(id => !VPN.includes(id));
         for (const item of RULES) {
             if (platform && item.platforms.includes(platform)) return {id: item.role, basis: platform};
-            const basis = item.services.find(id => services.includes(id));
+            const basis = item.services.find(id => apps.includes(id));
             if (!basis) continue;
-            if (item.only && !services.every(id => item.only.includes(id))) continue;
+            if (item.only && !apps.every(id => item.only.includes(id))) continue;
             return {id: item.role, basis};
         }
+        if (services.length && !apps.length) return {id: 'network', basis: VPN.find(id => services.includes(id))};
         if (profile.detected_graphical === true) return {id: 'workstation', basis: null};
         return null;
     }
@@ -79,7 +83,8 @@
         return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
     }
     function ordered(services, lead) {
-        const rank = id => (id === lead ? -1 : PRIORITY.includes(id) ? PRIORITY.indexOf(id) : PRIORITY.length);
+        const rank = id => (id === lead ? -1 : PRIORITY.includes(id) ? PRIORITY.indexOf(id)
+            : VPN.includes(id) ? PRIORITY.length + 1 : PRIORITY.length);
         return [...services].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
     }
     /** Display facts of a host, each validated against the catalog or dropped. */
@@ -141,5 +146,5 @@
         const virt = details.virt ? translate(`overviewWorkspace.${VIRT_LABELS[details.virt][0]}`, VIRT_LABELS[details.virt][1]) : '';
         return {role: current, facts: details, system, virt};
     }
-    return {ROLES, ROLE_GLYPHS, RULES, PRIORITY, role, facts, describe};
+    return {ROLES, ROLE_GLYPHS, RULES, PRIORITY, VPN, role, facts, describe};
 });

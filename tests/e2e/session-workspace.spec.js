@@ -3839,7 +3839,7 @@ test('workspace tabs carry the role and main services of their saved host', asyn
     await seedIdentityTabs(page);
     const tab = id => page.locator(`#tab-identity-${id}`);
     const expected = {pve: ['hypervisor', []], paper: ['docs', ['paperless', 'docker']], cloud: ['cloud', ['nextcloud', 'apache']],
-        fw: ['network', ['wireguard', 'unbound']]};
+        fw: ['network', ['unbound', 'wireguard']]};
     for (const [id, [role, services]] of Object.entries(expected)) {
         await expect(tab(id)).toHaveAttribute('data-role', role);
         await expect(tab(id).locator('.tab-service')).toHaveCount(services.length);

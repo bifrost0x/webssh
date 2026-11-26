@@ -180,7 +180,7 @@ on the platform or on a service:
 7. Media: Jellyfin, Plex, Emby.
 8. Smart home: Home Assistant.
 9. Network: OPNsense, pfSense, OpenWrt, MikroTik, Cisco, Ubiquiti, or
-   WireGuard, Tailscale, Pi-hole, AdGuard, OpenVPN.
+   Pi-hole, AdGuard.
 10. Monitoring: Grafana, Prometheus, Uptime Kuma, Zabbix, Netdata.
 11. Development: Gitea, GitLab.
 12. Passwords: Vaultwarden.
@@ -188,14 +188,18 @@ on the platform or on a service:
 14. Web: nginx, Apache, Caddy, Traefik, Nginx Proxy Manager, HAProxy.
 15. Containers: the Docker platform, or Docker, Podman, Portainer, k3s,
     Watchtower, Dozzle as the only services.
+16. Network: WireGuard, Tailscale, ZeroTier, OpenVPN as the only services.
 
 Because a service rule can rank above a platform rule, a router platform that
-also runs Jellyfin is a Media host, not a Network host. The last three rules
+also runs Jellyfin is a Media host, not a Network host. Rules 13 to 15
 describe hosts that run nothing but infrastructure: Database allows only
 databases, web servers and container tools, Web only web servers and container
 tools, and Containers only container tools. One more application and the host
-does not match them. A host that boots into a graphical target and matched
-nothing is a Workstation; anything else is a Server.
+does not match them. VPN and overlay networks (WireGuard, Tailscale, ZeroTier,
+OpenVPN) say how a host is reached, not what it is: the other rules ignore
+them, a host that runs nothing else is a Network host (rule 16), and their
+logos come after all other services. A host that boots into a graphical
+target and matched nothing is a Workstation; anything else is a Server.
 
 Only a chosen platform, a detected one or a distribution family derived from
 detection (for example Debian-based) can name a role through the platform. A
