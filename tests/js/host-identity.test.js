@@ -12,9 +12,11 @@ const DAY = 86400;
 test('manual role wins, rules derive, default is server', () => {
     assert.deepEqual(id.role({role_override: 'backup', detected_services: ['immich']}), {id: 'backup', source: 'manual', basis: null});
     assert.deepEqual(id.role({detected_platform: 'proxmox'}), {id: 'hypervisor', source: 'derived', basis: 'proxmox'});
-    assert.deepEqual(id.role({detected_services: ['docker', 'paperless', 'postgresql']}), {id: 'docs', source: 'derived', basis: 'paperless'});
+    assert.deepEqual(id.role({detected_services: ['docker', 'paperless', 'postgresql']}), {id: 'container', source: 'derived', basis: 'docker'});
+    assert.deepEqual(id.role({detected_services: ['paperless']}), {id: 'docs', source: 'derived', basis: 'paperless'});
     assert.deepEqual(id.role({detected_services: ['docker', 'portainer']}), {id: 'container', source: 'derived', basis: 'docker'});
-    assert.deepEqual(id.role({detected_services: ['postgresql', 'docker']}).id, 'database');
+    assert.deepEqual(id.role({detected_services: ['postgresql', 'docker']}).id, 'container');
+    assert.deepEqual(id.role({detected_services: ['postgresql']}).id, 'database');
     assert.deepEqual(id.role({}), {id: 'server', source: 'default', basis: null});
     assert.deepEqual(id.role({role_override: 'bogus', detected_platform: 'future-os', detected_services: ['future']}), {id: 'server', source: 'default', basis: null});
 });
@@ -35,27 +37,57 @@ test('rules apply in their documented order', () => {
     assert.deepEqual(derived({detected_services: ['grafana', 'pihole']}), {id: 'network', source: 'derived', basis: 'pihole'});
     assert.deepEqual(derived({detected_services: ['gitea', 'uptimekuma']}), {id: 'monitoring', source: 'derived', basis: 'uptimekuma'});
     assert.deepEqual(derived({detected_services: ['vaultwarden', 'gitlab']}), {id: 'dev', source: 'derived', basis: 'gitlab'});
-    assert.deepEqual(derived({detected_services: ['vaultwarden', 'docker', 'caddy']}), {id: 'passwords', source: 'derived', basis: 'vaultwarden'});
-    assert.deepEqual(derived({detected_services: ['nginx', 'docker', 'redis', 'influxdb']}), {id: 'database', source: 'derived', basis: 'redis'});
-    assert.deepEqual(derived({detected_services: ['docker', 'traefik', 'nginxproxymanager']}), {id: 'web', source: 'derived', basis: 'traefik'});
+    assert.deepEqual(derived({detected_services: ['vaultwarden', 'caddy']}), {id: 'passwords', source: 'derived', basis: 'vaultwarden'});
+    assert.deepEqual(derived({detected_services: ['nginx', 'redis', 'influxdb']}), {id: 'database', source: 'derived', basis: 'redis'});
+    assert.deepEqual(derived({detected_services: ['traefik', 'nginxproxymanager']}), {id: 'web', source: 'derived', basis: 'traefik'});
     assert.deepEqual(derived({detected_services: ['k3s']}), {id: 'container', source: 'derived', basis: 'k3s'});
     assert.deepEqual(derived({detected_services: ['watchtower', 'docker']}), {id: 'container', source: 'derived', basis: 'docker'});
     assert.deepEqual(derived({detected_services: ['dozzle']}), {id: 'container', source: 'derived', basis: 'dozzle'});
     assert.deepEqual(derived({detected_platform: 'docker'}), {id: 'container', source: 'derived', basis: 'docker'});
     assert.deepEqual(derived({platform_icon: 'docker'}), {id: 'container', source: 'derived', basis: 'docker'});
-    assert.deepEqual(derived({detected_services: ['docker', 'watchtower', 'paperless']}), {id: 'docs', source: 'derived', basis: 'paperless'});
-    assert.deepEqual(derived({detected_platform: 'docker', detected_services: ['paperless']}), {id: 'docs', source: 'derived', basis: 'paperless'});
-    assert.deepEqual(derived({detected_services: ['postgresql', 'watchtower']}), {id: 'database', source: 'derived', basis: 'postgresql'});
+    assert.deepEqual(derived({detected_services: ['docker', 'watchtower', 'paperless']}), {id: 'container', source: 'derived', basis: 'docker'});
+    assert.deepEqual(derived({detected_platform: 'docker', detected_services: ['paperless']}), {id: 'container', source: 'derived', basis: 'docker'});
+    assert.deepEqual(derived({detected_services: ['postgresql', 'watchtower']}), {id: 'container', source: 'derived', basis: 'watchtower'});
+    assert.deepEqual(derived({detected_services: ['postgresql', 'nginx']}), {id: 'database', source: 'derived', basis: 'postgresql'});
     assert.deepEqual(derived({detected_services: ['docker'], detected_graphical: true}), {id: 'container', source: 'derived', basis: 'docker'});
     assert.deepEqual(derived({detected_graphical: true}), {id: 'workstation', source: 'derived', basis: null});
     assert.deepEqual(derived({detected_graphical: 'true'}), {id: 'server', source: 'default', basis: null});
+});
+
+test('a container runtime names the role unless the platform does', () => {
+    const derived = profile => id.role(profile);
+    const container = {id: 'container', source: 'derived', basis: 'docker'};
+    assert.deepEqual(derived({detected_services: ['paperless', 'docker', 'postgresql', 'redis']}), container);
+    assert.deepEqual(derived({detected_services: ['immich', 'docker']}), container);
+    assert.deepEqual(derived({detected_services: ['podman', 'jellyfin']}), {id: 'container', source: 'derived', basis: 'podman'});
+    assert.deepEqual(derived({detected_services: ['paperless']}), {id: 'docs', source: 'derived', basis: 'paperless'});
+    assert.deepEqual(derived({detected_platform: 'truenas', detected_services: ['docker']}), {id: 'storage', source: 'derived', basis: 'truenas'});
+    assert.deepEqual(derived({detected_platform: 'proxmox', detected_services: ['docker', 'immich']}), {id: 'hypervisor', source: 'derived', basis: 'proxmox'});
+    assert.deepEqual(derived({detected_platform: 'proxmoxbackup', detected_services: ['docker']}), {id: 'backup', source: 'derived', basis: 'proxmoxbackup'});
+    assert.deepEqual(derived({detected_platform: 'opnsense', detected_services: ['docker']}), {id: 'network', source: 'derived', basis: 'opnsense'});
+    assert.deepEqual(derived({detected_platform: 'opnsense', detected_services: ['jellyfin']}), {id: 'network', source: 'derived', basis: 'opnsense'});
+    assert.deepEqual(derived({detected_platform: 'homeassistant', detected_services: ['docker']}), {id: 'smarthome', source: 'derived', basis: 'homeassistant'});
+    assert.deepEqual(derived({detected_services: ['homeassistant', 'docker']}), container);
+    assert.deepEqual(derived({detected_services: ['docker'], detected_graphical: true}), container);
+    assert.equal(derived({role_override: 'docs', detected_services: ['docker']}).id, 'docs');
+    assert.equal(derived({role_override: 'docs', detected_services: ['docker']}).source, 'manual');
+});
+
+test('apps lead the service logos on a container host, the runtime follows them', () => {
+    const lead = profile => id.facts(profile).services;
+    assert.deepEqual(lead({detected_services: ['docker', 'paperless', 'postgresql', 'redis']}), ['paperless', 'postgresql', 'redis', 'docker']);
+    assert.deepEqual(lead({detected_services: ['docker', 'immich']}), ['immich', 'docker']);
+    assert.deepEqual(lead({role_override: 'container', detected_services: ['docker', 'grafana']}), ['grafana', 'docker']);
+    assert.deepEqual(lead({detected_services: ['docker', 'zerotier', 'bazarr']}), ['bazarr', 'docker', 'zerotier']);
+    assert.deepEqual(lead({detected_services: ['docker']}), ['docker']);
 });
 
 test('infrastructure roles need infrastructure only', () => {
     // Any other application means the host is more than its database, proxy or runtime.
     assert.equal(id.role({detected_services: ['postgresql', 'sonarr']}).id, 'server');
     assert.equal(id.role({detected_services: ['nginx', 'samba']}).id, 'server');
-    assert.equal(id.role({detected_services: ['docker', 'syncthing']}).id, 'server');
+    assert.equal(id.role({detected_services: ['docker', 'syncthing']}).id, 'container');
+    assert.equal(id.role({detected_services: ['nginx', 'postgresql', 'syncthing']}).id, 'server');
     // Unknown ids are ignored, not counted as applications.
     assert.equal(id.role({detected_services: ['docker', 'future-app']}).id, 'container');
 });
@@ -89,7 +121,7 @@ test('facts validate every field and keep only catalog values', () => {
     assert.equal(f.virt, 'vm');
     assert.equal(f.guests, 0);
     assert.equal(f.containerAccess, 'denied');
-    assert.deepEqual(f.services, ['immich', 'apache', 'docker', 'sonarr']);
+    assert.deepEqual(f.services, ['immich', 'apache', 'sonarr', 'docker']);
     assert.equal(f.checkedAt, now - DAY);
     assert.equal(f.stale, false);
     assert.equal(f.state, 'detected');
@@ -106,7 +138,7 @@ test('facts validate every field and keep only catalog values', () => {
 });
 
 test('services list the role basis first, then the other role services, then the rest alphabetically', () => {
-    assert.deepEqual(id.facts({detected_services: ['redis', 'docker', 'caddy', 'postgresql']}).services, ['postgresql', 'caddy', 'docker', 'redis']);
+    assert.deepEqual(id.facts({detected_services: ['redis', 'caddy', 'postgresql']}).services, ['postgresql', 'caddy', 'redis']);
     assert.deepEqual(id.facts({detected_services: ['vaultwarden', 'grafana', 'bazarr']}).services, ['grafana', 'vaultwarden', 'bazarr']);
     // A manual role leads with the service that role is named after.
     assert.deepEqual(id.facts({role_override: 'passwords', detected_services: ['grafana', 'vaultwarden']}).services, ['vaultwarden', 'grafana']);
@@ -177,7 +209,8 @@ test('VPN overlays say how a host is reached, not what it is', () => {
     assert.equal(derived(['postgresql', 'tailscale']).id, 'database');
     assert.equal(derived(['docker', 'zerotier']).id, 'container');
     assert.equal(derived(['nginx', 'zerotier']).id, 'web');
-    assert.equal(derived(['openvpn', 'nginx', 'docker']).id, 'web');
+    assert.equal(derived(['openvpn', 'nginx', 'caddy']).id, 'web');
+    assert.equal(derived(['openvpn', 'nginx', 'docker']).id, 'container');
     // Only overlays: the host exists to route traffic.
     assert.deepEqual(derived(['wireguard']), {id: 'network', source: 'derived', basis: 'wireguard'});
     assert.deepEqual(derived(['zerotier', 'tailscale']), {id: 'network', source: 'derived', basis: 'tailscale'});

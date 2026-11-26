@@ -91,7 +91,7 @@ function setup(profiles, extras = {}) {
 const PAPERLESS = {
     id: 'paper', name: 'Paper', host: 'paper.example.test', username: 'ops', port: 22,
     detected_platform: 'ubuntu', detection_state: 'detected',
-    detected_services: ['docker', 'postgresql', 'redis', 'paperless', 'not-a-service'],
+    detected_services: ['postgresql', 'redis', 'paperless', 'not-a-service'],
 };
 const session = (overrides = {}) => ({host: 'paper.example.test', username: 'ops', port: 22, profileId: 'paper', ...overrides});
 const tabOf = (tabs, id) => tabs.children.find(child => child.id === `tab-${id}`);
@@ -103,7 +103,7 @@ test('a tab of a Paperless host carries the docs role and its two main services 
     manager.createSessionTab('s1');
     const tab = tabOf(tabs, 's1');
     assert.equal(tab.dataset.role, 'docs');
-    assert.deepEqual(services(tab), ['paperless', 'docker']);
+    assert.deepEqual(services(tab), ['paperless', 'postgresql']);
     const holder = tab.querySelector('.tab-services');
     assert.equal(tab.querySelector('.tab-label').nextElementSibling, holder);
     // The role is named for assistive technology, never as markup.
@@ -113,12 +113,21 @@ test('a tab of a Paperless host carries the docs role and its two main services 
     assert.match(role.className, /\bsr-only\b/);
     // Each tile carries the service name; the logo inside is decoration.
     assert.deepEqual(holder.children.map(tile => [tile.className, tile.attributes.role, tile.attributes['aria-label'], tile.title]),
-        [['tab-service', 'img', 'Paperless', 'Paperless'], ['tab-service', 'img', 'Docker', 'Docker']]);
+        [['tab-service', 'img', 'Paperless', 'Paperless'], ['tab-service', 'img', 'PostgreSQL', 'PostgreSQL']]);
     for (const tile of holder.children) {
         assert.equal(tile.children[0].className, 'host-service-icon');
         assert.equal(tile.children[0].attributes['aria-hidden'], 'true');
         assert.equal(tile.children[0].attributes.role, undefined);
     }
+});
+
+test('a tab of a host with a container runtime carries the container role, apps first', () => {
+    const {manager, tabs} = setup([{...PAPERLESS, detected_services: ['docker', 'postgresql', 'paperless']}]);
+    manager.sessions.s1 = session();
+    manager.createSessionTab('s1');
+    const tab = tabOf(tabs, 's1');
+    assert.equal(tab.dataset.role, 'container');
+    assert.deepEqual(services(tab), ['paperless', 'postgresql']);
 });
 
 test('a tab whose endpoint differs from the saved host shows neither role nor services', () => {
@@ -142,12 +151,12 @@ test('a profile update changes role and services in place without rebuilding the
     const label = tab.querySelector('.tab-label');
     const icon = tab.querySelector('.session-platform-icon');
 
-    HostPlatform.refreshSessionIcons(manager, [{...PAPERLESS, detected_services: ['jellyfin', 'docker', 'nginx']}], document);
+    HostPlatform.refreshSessionIcons(manager, [{...PAPERLESS, detected_services: ['jellyfin', 'plex', 'nginx']}], document);
     assert.equal(tabOf(tabs, 's1'), tab);
     assert.equal(tab.querySelector('.tab-label'), label);
     assert.equal(tab.querySelector('.session-platform-icon'), icon);
     assert.equal(tab.dataset.role, 'media');
-    assert.deepEqual(services(tab), ['jellyfin', 'docker']);
+    assert.deepEqual(services(tab), ['jellyfin', 'plex']);
     assert.equal(tab.querySelectorAll('.tab-services').length, 1);
     assert.equal(tab.querySelectorAll('.tab-role').length, 1);
 
@@ -191,7 +200,7 @@ test('unchanged role and services keep their nodes on refresh', () => {
     const tab = tabOf(tabs, 's1');
     const role = tab.querySelector('.tab-role');
     const holder = tab.querySelector('.tab-services');
-    HostPlatform.refreshSessionIcons(manager, [{...PAPERLESS, name: 'Renamed', detected_services: ['paperless', 'docker', 'redis']}], document);
+    HostPlatform.refreshSessionIcons(manager, [{...PAPERLESS, name: 'Renamed', detected_services: ['paperless', 'postgresql', 'redis']}], document);
     assert.equal(tab.querySelector('.tab-role'), role);
     assert.equal(tab.querySelector('.tab-services'), holder);
 });

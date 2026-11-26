@@ -19,7 +19,7 @@ async function simulateSessions(page) {
             group: null, jump_host_id: null, socks_proxy_id: null, detection_state: 'detected', ...facts});
         ProfileManager.setProfiles([
             host('paper', 'Paperless', {detected_platform: 'ubuntu', detected_os_version: '24.04', detected_virt: 'vm',
-                detected_services: ['docker', 'postgresql', 'redis', 'paperless', 'nginx']}),
+                detected_services: ['postgresql', 'redis', 'paperless', 'nginx']}),
             host('pve', 'pve1', {detected_platform: 'proxmox', detected_os_version: '9.1', detected_virt: 'bare-metal'}),
             host('cloud', 'Nextcloud', {detected_platform: 'debian', detected_services: ['apache', 'mariadb', 'nextcloud']}),
             host('fw', 'opnsense', {detected_platform: 'opnsense', detected_services: ['wireguard', 'unbound']}),
@@ -81,7 +81,7 @@ test('a pane with a session names its host above the terminal', async ({ page })
     await expect(identity).toHaveCount(1);
     await expect(identity).toHaveAttribute('data-role', 'docs');
     await expect(identity).toHaveAttribute('role', 'note');
-    await expect(identity).toHaveAttribute('aria-label', 'Documents · Paperless · Ubuntu 24.04 · VM · Paperless, Docker, nginx, PostgreSQL');
+    await expect(identity).toHaveAttribute('aria-label', 'Documents · Paperless · Ubuntu 24.04 · VM · Paperless, nginx, PostgreSQL, Redis');
     await expect(identity.locator('.session-identity-role')).toHaveText('Documents');
     await expect(identity.locator('.session-identity-name')).toHaveText('Paperless');
     await expect(identity.locator('.session-identity-system')).toHaveText('Ubuntu 24.04');
@@ -184,7 +184,7 @@ test('the bar follows profile updates and the session a pane shows', async ({ pa
     const pane = page.locator('.terminal-pane').first();
     await expect(pane.locator('.session-identity-bar')).toHaveAttribute('data-role', 'docs');
     await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'paper'
-        ? {...profile, detected_services: ['jellyfin', 'docker']} : profile))));
+        ? {...profile, detected_services: ['jellyfin', 'plex']} : profile))));
     await expect(pane.locator('.session-identity-bar')).toHaveAttribute('data-role', 'media');
     await expect(pane.locator('.session-identity-service')).toHaveCount(2);
     await page.locator('#tab-idbar-pve .tab-label').click();

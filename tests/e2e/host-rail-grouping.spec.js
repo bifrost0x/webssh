@@ -7,7 +7,7 @@ const profiles = [
     {id: 'p2', name: 'nas-one', group: 'Lab', role_override: 'storage'},
     {id: 'p3', name: 'pve-two', group: 'Edge', role_override: 'hypervisor'},
     {id: 'p4', name: 'plain', group: 'Edge', favorite: true,
-        detected_services: ['docker', 'grafana', 'prometheus', 'nginx', 'redis', 'loki']},
+        detected_services: ['grafana', 'prometheus', 'nginx', 'redis', 'loki']},
     {id: 'p5', name: 'a-rather-long-host-name-for-a-narrow-rail', group: 'Edge', role_override: 'media',
         detected_services: ['jellyfin', 'sonarr', 'radarr', 'prowlarr']},
 ].map(profile => ({host: `${profile.id}.example.invalid`, port: 22, username: 'demo', auth_type: 'password', ...profile}));

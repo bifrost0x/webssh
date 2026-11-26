@@ -21,7 +21,7 @@
     });
     const DATABASE = ['mariadb', 'postgresql', 'redis', 'mongodb', 'influxdb'];
     const WEB = ['nginx', 'apache', 'caddy', 'traefik', 'nginxproxymanager', 'haproxy'];
-    // Runtimes first, then the tools that only manage or watch their containers.
+    // Runtimes first, then the tools that manage or watch their containers.
     const CONTAINER = ['docker', 'podman', 'portainer', 'k3s', 'watchtower', 'dozzle'];
     // VPN and overlay networks say how a host is reached, not what it is: rules
     // ignore them, and a host that runs nothing else is a Network host.
@@ -29,8 +29,11 @@
     const rule = (role, platforms, services, only = null) => Object.freeze({
         role, platforms: Object.freeze(platforms), services: Object.freeze(services), only: only && Object.freeze(only),
     });
-    // The first matching rule names the role. `only` rules describe hosts that run
-    // nothing but infrastructure: one more application and the host is more than that.
+    // The platform comes first: the first rule that matches it names the role. A
+    // container runtime or its tooling is next and wins over every application
+    // it runs. Then the first service rule names the role. `only` rules describe
+    // hosts that run nothing but infrastructure: one more application and the
+    // host is more than that.
     // NetBird, Headscale and Forgejo are not in the catalog; Forgejo reports as gitea.
     const RULES = Object.freeze([
         rule('hypervisor', ['proxmox'], []),
@@ -45,12 +48,14 @@
         rule('monitoring', [], ['grafana', 'prometheus', 'uptimekuma', 'zabbix', 'netdata']),
         rule('dev', [], ['gitea', 'gitlab']),
         rule('passwords', [], ['vaultwarden']),
-        rule('database', [], DATABASE, [...DATABASE, ...WEB, ...CONTAINER]),
-        rule('web', [], WEB, [...WEB, ...CONTAINER]),
-        rule('container', ['docker'], CONTAINER, CONTAINER),
+        rule('database', [], DATABASE, [...DATABASE, ...WEB]),
+        rule('web', [], WEB, WEB),
+        rule('container', ['docker'], CONTAINER),
     ]);
+    const RUNTIME = RULES.find(item => item.role === 'container');
     // Services that name a role, in rule order; shown before everything else.
-    const PRIORITY = Object.freeze(RULES.filter(item => !item.only).flatMap(item => item.services)
+    // The container runtime does not lead the applications it runs.
+    const PRIORITY = Object.freeze(RULES.filter(item => !item.only && item !== RUNTIME).flatMap(item => item.services)
         .filter((id, index, list) => list.indexOf(id) === index));
     // Only a verified or chosen platform names a role; a greeting or name hint does not.
     const TRUSTED_PLATFORM = new Set(['manual', 'detected', 'family']);
@@ -65,8 +70,11 @@
     function derive(profile, services) {
         const platform = trustedPlatform(profile);
         const apps = services.filter(id => !VPN.includes(id));
+        const named = platform && RULES.find(item => item.platforms.includes(platform));
+        if (named) return {id: named.role, basis: platform};
+        const runtime = RUNTIME.services.find(id => apps.includes(id));
+        if (runtime) return {id: RUNTIME.role, basis: runtime};
         for (const item of RULES) {
-            if (platform && item.platforms.includes(platform)) return {id: item.role, basis: platform};
             const basis = item.services.find(id => apps.includes(id));
             if (!basis) continue;
             if (item.only && !apps.every(id => item.only.includes(id))) continue;
@@ -88,7 +96,7 @@
     }
     function ordered(services, lead) {
         const rank = id => (id === lead ? -1 : PRIORITY.includes(id) ? PRIORITY.indexOf(id)
-            : VPN.includes(id) ? PRIORITY.length + 1 : PRIORITY.length);
+            : RUNTIME.services.includes(id) ? PRIORITY.length + 1 : VPN.includes(id) ? PRIORITY.length + 2 : PRIORITY.length);
         return [...services].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
     }
     /** Display facts of a host, each validated against the catalog or dropped. */
@@ -99,7 +107,7 @@
         const label = resolved.id === 'server' ? translate('platform.server', 'Server') : platformCatalog().labels[resolved.id];
         const services = platformCatalog().services(source);
         const current = role(source);
-        const lead = current.source === 'manual'
+        const lead = current.id === RUNTIME.role ? null : current.source === 'manual'
             ? RULES.find(item => item.role === current.id)?.services.find(id => services.includes(id))
             : current.basis;
         const guests = source.detected_guests;

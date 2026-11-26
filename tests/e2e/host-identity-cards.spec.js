@@ -34,7 +34,7 @@ async function seed(page, patches) {
 const PROXMOX = {detected_platform: 'proxmox', detected_os_version: '8.2', detected_virt: 'bare-metal', detected_guests: 7,
     detection_state: 'detected', platform_checked_at: 'NOW'};
 const PAPERLESS = {detected_platform: 'ubuntu', detected_os_version: '24.04', detected_virt: 'vm',
-    detected_services: ['docker', 'postgresql', 'redis', 'paperless'], detection_state: 'detected', platform_checked_at: 'NOW'};
+    detected_services: ['postgresql', 'redis', 'paperless'], detection_state: 'detected', platform_checked_at: 'NOW'};
 const card = (page, index) => page.locator(`#overviewHostList .od-host[data-host-id="identity-${index}"]`);
 
 test('host cards show the role, machine, system and service logos of each host', async ({page}) => {
@@ -56,10 +56,10 @@ test('host cards show the role, machine, system and service logos of each host',
     await expect(paperless.locator('.od-virt')).toHaveText('VM');
     await expect(paperless.locator('.od-host-os')).toHaveText('Ubuntu 24.04');
     const chips = paperless.locator('.od-service-chip');
-    await expect(chips).toHaveCount(4);
+    await expect(chips).toHaveCount(3);
     // The service that names the role leads.
     expect(await chips.evaluateAll(nodes => nodes.map(node => [node.dataset.service, node.getAttribute('aria-label')])))
-        .toEqual([['paperless', 'Paperless'], ['docker', 'Docker'], ['postgresql', 'PostgreSQL'], ['redis', 'Redis']]);
+        .toEqual([['paperless', 'Paperless'], ['postgresql', 'PostgreSQL'], ['redis', 'Redis']]);
     await expect(chips.first().locator('.host-service-icon[aria-hidden="true"]')).toHaveCount(1);
     await expect(paperless.getByRole('img', {name: 'Paperless', exact: true})).toHaveCount(1);
     await expect(chips.first()).toHaveAttribute('title', /Paperless/);
@@ -124,7 +124,7 @@ test('the host profile explains the role and the detection, and stays open acros
     await expect(profile.locator('dt')).toHaveText(['System', 'Machine', 'Services', 'Role', 'Detection']);
     await expect(profile.locator('dd').nth(0)).toHaveText('Ubuntu 24.04');
     await expect(profile.locator('dd').nth(1)).toHaveText('VM');
-    await expect(profile.locator('dd').nth(2)).toHaveText('Paperless, Docker, PostgreSQL, Redis');
+    await expect(profile.locator('dd').nth(2)).toHaveText('Paperless, PostgreSQL, Redis');
     await expect(profile.locator('dd').nth(3)).toHaveText(/Documents.*derived from Paperless/);
     await expect(profile.locator('dd').nth(4)).toContainText('Detected after SSH connection');
     await expect(profile.locator('dd').nth(4)).toContainText('next check not before');
@@ -136,7 +136,7 @@ test('the host profile explains the role and the detection, and stays open acros
         ProfileManager.setProfiles(ProfileManager.profiles.map(item => item.id === 'identity-0'
             ? {...item, detected_services: [...item.detected_services, 'grafana']} : item));
     });
-    await expect(derived.locator('.od-service-chip')).toHaveCount(5);
+    await expect(derived.locator('.od-service-chip')).toHaveCount(4);
     await expect(derived.locator('.od-host-profile')).toHaveAttribute('open', '');
     await expect(derived.locator('.od-host-profile > summary')).toBeFocused();
 
