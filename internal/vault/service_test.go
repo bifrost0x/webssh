@@ -419,3 +419,36 @@ func TestNewRequiresOptions(t *testing.T) {
 		}
 	}
 }
+
+// racingStepUp lets another upload land between the pre-check and the
+// write, as a concurrent request of the same user would.
+type racingStepUp struct {
+	race func()
+}
+
+func (s *racingStepUp) Consume(context.Context, principal.Principal, principal.Action, string, string) error {
+	if s.race != nil {
+		race := s.race
+		s.race = nil
+		race()
+	}
+	return nil
+}
+
+// The limits are checked again in the write transaction.
+func TestLimitsRecheckedInWrite(t *testing.T) {
+	r := newRig(t, Limits{MaxRecords: 1, MaxStoreBytes: 1 << 20})
+	alice := principaltest.User(1)
+	racing := &racingStepUp{}
+	r.svc.stepUp = racing
+	racing.race = func() {
+		if _, err := r.svc.Upload(as(alice), Upload{Name: "first", Content: string(newEd25519PEM(t))}); err != nil {
+			t.Errorf("racing upload: %v", err)
+		}
+	}
+	_, err := r.svc.Upload(as(alice), Upload{Name: "second", Content: string(newEd25519PEM(t))})
+	wantCode(t, err, fault.Conflict)
+	if list, _ := r.svc.List(as(alice)); len(list) != 1 {
+		t.Fatalf("keys: %d, want 1", len(list))
+	}
+}
