@@ -99,6 +99,13 @@ func loadQuotas(p *parser, c *Config) {
 		return
 	}
 	c.Terminal.SessionsGlobal, c.Terminal.SessionsPerUser = int(saturate(sshGlobal)), int(saturate(sshUser))
+	c.Quotas = map[string]QuotaLimit{
+		"ssh_session":      quotaLimit(sshGlobal, sshUser),
+		"quick_connection": quotaLimit(quickGlobal, quickUser),
+		"transfer":         quotaLimit(transferGlobal, transferUser),
+		"temp_bytes":       quotaLimit(tempGlobal, tempUser),
+		"background_job":   quotaLimit(jobGlobal, jobUser),
+	}
 	p.record("MAX_SESSIONS", sshGlobal.String())
 
 	cleanup := int64(8)
@@ -140,6 +147,16 @@ func loadQuotas(p *parser, c *Config) {
 }
 
 func mul(v *big.Int, n int64) *big.Int { return new(big.Int).Mul(v, big.NewInt(n)) }
+
+// quotaLimit saturates a validated pair; a per-user limit below the
+// global one stays below it when both exceed int64.
+func quotaLimit(global, perUser *big.Int) QuotaLimit {
+	l := QuotaLimit{Global: saturate(global), PerUser: saturate(perUser)}
+	if l.PerUser == l.Global && perUser.Cmp(global) < 0 {
+		l.PerUser--
+	}
+	return l
+}
 
 func quotaPair(p *parser, kind string, global, perUser *big.Int, fair bool) {
 	if p.failed() {

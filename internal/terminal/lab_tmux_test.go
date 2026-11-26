@@ -29,6 +29,7 @@ func newLabTmuxManager(t *testing.T, profiles fakeProfiles) (*Manager, *client.D
 	db := storetest.Open(t, hostkey.Schema(), Schema())
 	dialer := &client.Dialer{Net: policy, HostKeys: hostkey.New(db, log)}
 	m, err := New(Config{TmuxPrefix: "webssh"}, Deps{
+		Quotas: testQuotas(t, 10, 5),
 		Shells: dialer, Connections: dialer, Profiles: profiles, Log: log,
 		DB: db, TmuxEnabled: func(context.Context) bool { return true },
 	})

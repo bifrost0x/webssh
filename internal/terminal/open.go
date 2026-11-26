@@ -115,7 +115,9 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	if err != nil {
 		return protocol.TerminalOpened{}, err
 	}
-	release, err := m.quota.reserve(p.UserID)
+	// The reservation does not end with the attempt; a cancelled attempt
+	// gives it back below, as before the quota moved to the policy.
+	release, err := m.quota.reserve(context.WithoutCancel(actx), p.UserID)
 	if err != nil {
 		return protocol.TerminalOpened{}, err
 	}

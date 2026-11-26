@@ -151,7 +151,7 @@ func (h hangingShells) OpenShell(context.Context, client.Target, client.Interact
 // (review 4).
 func TestShutdownHonoursContext(t *testing.T) {
 	release := make(chan struct{})
-	m, err := New(Config{}, Deps{Shells: hangingShells{release}, Log: newManager(t, Config{}, &fakeShells{}).log})
+	m, err := New(Config{}, Deps{Quotas: testQuotas(t, 10, 5), Shells: hangingShells{release}, Log: newManager(t, Config{}, &fakeShells{}).log})
 	if err != nil {
 		t.Fatal(err)
 	}

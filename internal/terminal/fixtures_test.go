@@ -11,7 +11,7 @@ import (
 )
 
 func TestFixtureSessions(t *testing.T) {
-	m := newManager(t, Config{SessionsGlobal: 1, SessionsPerUser: 1}, &fakeShells{})
+	m := newLimited(t, 2, 1, Config{}, &fakeShells{})
 	peer := user(t, 1)
 	real := open(t, m, peer, 1)
 	ids, err := m.ReplaceFixtureSessions(t.Context(), peer, 1, 3)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -20,6 +21,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/principal/principaltest"
+	"github.com/bifrost0x/webssh/internal/quota"
 	"github.com/bifrost0x/webssh/internal/realtime"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
@@ -103,9 +105,21 @@ type rig struct {
 
 func newRig(t *testing.T, cfg terminal.Config) *rig {
 	t.Helper()
+	return newRigLimited(t, cfg, 10, 5)
+}
+
+// newRigLimited is newRig with the session limits global and perUser.
+func newRigLimited(t *testing.T, cfg terminal.Config, global, perUser int64) *rig {
+	t.Helper()
+	limits := maps.Clone(quota.DefaultLimits)
+	limits[quota.SSHSession] = quota.Limit{Global: global, PerUser: perUser}
+	quotas, err := quota.New(limits)
+	if err != nil {
+		t.Fatal(err)
+	}
 	r := &rig{t: t, shells: &echoShells{}, sess: &sessions{revoked: map[string]bool{}}}
 	log := slog.New(slog.DiscardHandler)
-	m, err := terminal.New(cfg, terminal.Deps{Shells: r.shells, Log: log})
+	m, err := terminal.New(cfg, terminal.Deps{Shells: r.shells, Log: log, Quotas: quotas})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +396,7 @@ func TestWebSocketHundredSessions(t *testing.T) {
 			t.Errorf("%d goroutines after shutdown, %d before:\n%s", n, base, buf[:runtime.Stack(buf, true)])
 		}
 	})
-	r := newRig(t, terminal.Config{SessionsGlobal: 200, SessionsPerUser: 150})
+	r := newRigLimited(t, terminal.Config{}, 200, 150)
 	conns := make([]*conn, 10)
 	for i := range conns {
 		conns[i] = r.dial(1, fmt.Sprint("s", i))

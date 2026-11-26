@@ -61,8 +61,12 @@ type Config struct {
 	RateLimits   RateLimits
 	Network      Network
 	Terminal     Terminal
-	Stores       Stores
-	Audit        Audit
+	// Quotas are the runtime quota limits by kind (ssh_session,
+	// quick_connection, transfer, temp_bytes, background_job), from
+	// QUOTA_<KIND>_GLOBAL and QUOTA_<KIND>_PER_USER.
+	Quotas map[string]QuotaLimit
+	Stores Stores
+	Audit  Audit
 	// ShutdownGrace is RUNTIME_SHUTDOWN_GRACE_SECONDS.
 	ShutdownGrace time.Duration
 	// CABundle is the extra trust anchor file or directory from
@@ -182,6 +186,13 @@ type Network struct {
 	// applies its tailnet rule with them.
 	TailscaleSSHEnabled bool
 	TailscaleInterface  string
+}
+
+// QuotaLimit is the global and per-user limit of one quota kind. Values
+// beyond int64 saturate; a per-user limit below the global one stays
+// below it.
+type QuotaLimit struct {
+	Global, PerUser int64
 }
 
 // Terminal holds the limits of interactive sessions.

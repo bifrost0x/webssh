@@ -83,7 +83,7 @@ func newHolderManager(t *testing.T, addr *net.TCPAddr, key ssh.PublicKey, budget
 	}
 	dialer := &client.Dialer{Net: policy, HostKeys: keys, HandshakeTimeout: budget}
 	profiles := fakeProfiles{"evil": {Owner: 1, Hop: client.Hop{Host: addr.IP.String(), Port: addr.Port, User: "u", Auth: client.Auth{Password: "pw"}}}}
-	m, err := New(Config{SessionsGlobal: 2, SessionsPerUser: 2}, Deps{Shells: dialer, Profiles: profiles, Log: log})
+	m, err := New(Config{}, Deps{Quotas: testQuotas(t, 3, 2), Shells: dialer, Profiles: profiles, Log: log})
 	if err != nil {
 		t.Fatal(err)
 	}
