@@ -5,7 +5,8 @@
 // This file is the contract with the packages around the dialer. The
 // interfaces are declared here, by the consumer: internal/vault provides
 // KeySource, internal/ssh/hostkey provides HostKeys, internal/terminal
-// provides Interaction and internal/netpolicy provides NetDialer.
+// provides Interaction and internal/netpolicy provides NetDialer and
+// Network.
 // Implementations use only standard library, foundation and x/crypto/ssh
 // types, so none of them imports this package.
 package client
@@ -70,6 +71,9 @@ type Auth struct {
 type SOCKS struct {
 	Host string
 	Port int
+	// RemoteDNS is the proxy's remote_dns setting: the proxy may resolve
+	// the target name itself where the network policy permits it.
+	RemoteDNS bool
 }
 
 // Display carries what the terminal shows for a session. It travels with
@@ -142,6 +146,21 @@ type Interaction interface {
 // carry fault.TargetBlocked.
 type NetDialer interface {
 	DialContext(ctx context.Context, role netpolicy.Role, network, addr string) (net.Conn, error)
+}
+
+// Network is the network policy as the dialer uses it: every TCP
+// connection and every destination a relay is asked to reach passes it
+// (ADR 0010). Provided by *netpolicy.Policy.
+type Network interface {
+	NetDialer
+	// DialRelay connects to a jump host or SOCKS5 proxy; the tailnet relay
+	// rule applies in addition.
+	DialRelay(ctx context.Context, role netpolicy.Role, network, addr string) (net.Conn, error)
+	// JumpDestination returns what a jump host is asked to connect to: an
+	// admitted address or, where permitted, the name.
+	JumpDestination(ctx context.Context, host string, port int) (string, error)
+	// SOCKSDestination returns what a SOCKS5 proxy is asked to connect to.
+	SOCKSDestination(ctx context.Context, host string, port int, remoteDNS bool) (string, error)
 }
 
 // Shell is an interactive session on the target, returned by
