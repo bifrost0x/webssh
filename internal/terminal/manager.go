@@ -36,6 +36,9 @@ type Deps struct {
 	// as a tmux session that may still run after its end was asked for.
 	// Optional: without it they go to Log only.
 	Audit Auditor
+	// Variants connects SSH gateway selectors and Tailscale SSH hosts;
+	// without it they answer not_available_in_preview.
+	Variants Variants
 }
 
 // Auditor writes warning-level security events (provided by
@@ -53,6 +56,7 @@ type Manager struct {
 	shells   Shells
 	profiles Profiles
 	routes   SavedRoutes
+	variants Variants
 	log      *slog.Logger
 	now      func() time.Time
 
@@ -87,7 +91,7 @@ func New(cfg Config, deps Deps) (*Manager, error) {
 	}
 	cfg.defaults()
 	m := &Manager{
-		cfg: cfg, shells: deps.Shells, profiles: deps.Profiles, routes: deps.Routes, log: deps.Log, now: time.Now,
+		cfg: cfg, shells: deps.Shells, profiles: deps.Profiles, routes: deps.Routes, variants: deps.Variants, log: deps.Log, now: time.Now,
 		flow: newLedger(cfg.Flow), input: newInputBudget(cfg.Input),
 		quota:    newQuota(cfg.SessionsGlobal, cfg.SessionsPerUser),
 		prompts:  newPrompts(cfg.MaxPrompts),

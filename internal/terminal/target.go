@@ -61,25 +61,32 @@ func (m *Manager) resolve(ctx context.Context, owner int64, req protocol.OpenTar
 		return client.Target{}, invalid("Host is required.")
 	case len(host) > maxHostLen:
 		return client.Target{}, invalid("Invalid host format.")
-	case strings.Contains(user, ":"):
-		// user:selector is the SSH gateway, which M1 does not build.
-		return client.Target{}, fault.New(fault.NotAvailableInPreview, "")
-	case user == "":
-		return client.Target{}, invalid("Username is required.")
-	case !usernamePattern.MatchString(user):
-		return client.Target{}, invalid("Invalid username format.")
-	case req.AuthType == protocol.AuthPassword && req.Password == "":
-		return client.Target{}, invalid("Password required.")
-	case req.AuthType == protocol.AuthKey && req.KeyID == "":
-		return client.Target{}, invalid("Password or SSH key required.")
 	case req.JumpHostID != "" && req.SOCKSProxyID != "":
 		return client.Target{}, invalid("A host can use either a jump host or a SOCKS5 proxy, not both.")
 	}
-	t := client.Target{Owner: owner, Hop: client.Hop{Host: host, Port: port, User: user}}
-	if req.AuthType == protocol.AuthKey {
-		t.Hop.Auth.KeyID = req.KeyID
-	} else {
-		t.Hop.Auth.Password = req.Password
+	// A user:target selector (SSH gateway) or Tailscale SSH needs the
+	// variant provider; the selector itself is checked there.
+	t, variant, err := m.typedVariant(req, host, user, port, owner)
+	if err != nil {
+		return client.Target{}, err
+	}
+	if !variant {
+		switch {
+		case user == "":
+			return client.Target{}, invalid("Username is required.")
+		case !usernamePattern.MatchString(user):
+			return client.Target{}, invalid("Invalid username format.")
+		case req.AuthType == protocol.AuthPassword && req.Password == "":
+			return client.Target{}, invalid("Password required.")
+		case req.AuthType == protocol.AuthKey && req.KeyID == "":
+			return client.Target{}, invalid("Password or SSH key required.")
+		}
+		t = client.Target{Owner: owner, Hop: client.Hop{Host: host, Port: port, User: user}}
+		if req.AuthType == protocol.AuthKey {
+			t.Hop.Auth.KeyID = req.KeyID
+		} else {
+			t.Hop.Auth.Password = req.Password
+		}
 	}
 	if req.JumpHostID == "" && req.SOCKSProxyID == "" {
 		return t, nil
@@ -113,7 +120,10 @@ func sessionInfo(t client.Target) protocol.SessionInfo {
 		JumpHostID: t.Display.JumpHostID, SOCKSProxyID: t.Display.SOCKSProxyID,
 		ViaSOCKS: t.Proxy != nil, ReconnectRouteKnown: true,
 	}
-	if t.Hop.Auth.KeyID != "" {
+	switch {
+	case t.Display.Tailscale:
+		info.AuthType = protocol.AuthTailscale
+	case t.Hop.Auth.KeyID != "":
 		info.AuthType = protocol.AuthKey
 	}
 	if len(t.Jumps) > 0 {

@@ -111,6 +111,12 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	if err != nil {
 		return protocol.TerminalOpened{}, err
 	}
+	target, vctx, endVariant, err := m.prepareVariant(actx, peer, p, req, target)
+	if err != nil {
+		return protocol.TerminalOpened{}, err
+	}
+	defer endVariant()
+	actx = vctx
 	plan, err := m.planTmux(actx, p.UserID, req.Target, target)
 	if err != nil {
 		return protocol.TerminalOpened{}, err
