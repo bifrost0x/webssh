@@ -48,6 +48,8 @@ func Replace(ctx context.Context, o Options) (*Replaced, error) {
 		return nil, err
 	}
 	switch {
+	case ev.state == S10:
+		return nil, purgeInProgress()
 	case ev.legacy != legacyComplete:
 		return nil, stop(ev.state, CodeReplaceNoLegacy, "there is no complete legacy source to migrate from", nil)
 	case ev.state == S7:

@@ -41,6 +41,8 @@ func TestCrashHelper(t *testing.T) {
 		_, err = startClosed(o)
 	case "replace":
 		_, err = Replace(context.Background(), o)
+	case "purge":
+		_, err = Purge(context.Background(), PurgeOptions{Options: o, SkipBackup: true})
 	}
 	t.Fatalf("no crash at %s: %v", parts[1], err)
 }

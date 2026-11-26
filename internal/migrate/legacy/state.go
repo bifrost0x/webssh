@@ -90,6 +90,7 @@ type evaluation struct {
 	dbExists bool
 	record   *Record
 	keyID    string
+	purge    *purgeEntry
 	marker   *Marker
 	// stop is set for the states that do not start (S1a, S3, S7, S9).
 	stop     *StopError
@@ -116,7 +117,7 @@ func evaluate(ctx context.Context, l layout, secret string) (evaluation, error) 
 		return ev, err
 	}
 	if ev.dbExists {
-		if ev.record, ev.keyID, err = inspectDatabase(ctx, l.database); err != nil {
+		if ev.record, ev.keyID, ev.purge, err = inspectDatabase(ctx, l.database); err != nil {
 			ev.state, ev.stop = S7, stop(S7, CodeGoDatabase, "the Go database "+l.database+
 				" does not open or fails its integrity check; it is never replaced automatically. Restore it from a backup", err)
 			return ev, nil
@@ -145,6 +146,14 @@ func evaluate(ctx context.Context, l layout, secret string) (evaluation, error) 
 			"Go database nor legacy data is present; restore the data directory from a backup", nil)
 	case !ev.dbExists:
 		ev.state = S0
+	case ev.purge != nil && ev.purge.InProgress:
+		ev.state = S10 // resumed from the stored list; the legacy source is not evaluated
+	case ev.purge != nil && ev.legacy == legacyNone:
+		ev.state = S4
+	case ev.purge != nil:
+		ev.state, ev.stop = S7, stop(S7, CodeLegacyAfterPurge, "legacy data appeared in the data directory after "+
+			"`webssh legacy purge`; Go never migrates it. Move it out of the data directory, or restore the backup the "+
+			"purge wrote", nil)
 	case ev.record == nil && ev.legacy != legacyNone:
 		ev.state, ev.stop = S7, stop(S7, CodeGoDatabase, "the Go database has no completed migration record, but legacy "+
 			"data is present; this is not the result of an interrupted migration", nil)
@@ -223,45 +232,53 @@ func (ev *evaluation) checkMaterial(l layout, secret string) *StopError {
 // A database Go closed cleanly is in rollback-journal mode and is opened
 // read-only; one left in WAL mode by a crash is opened normally, so that
 // SQLite recovers its own WAL.
-func inspectDatabase(ctx context.Context, path string) (*Record, string, error) {
+func inspectDatabase(ctx context.Context, path string) (*Record, string, *purgeEntry, error) {
 	wal, err := walMode(path)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	if wal {
 		db, err := store.Open(ctx, path, store.Options{})
 		if err != nil {
-			return nil, "", err
+			return nil, "", nil, err
 		}
 		var rec *Record
 		var keyID string
+		var purge *purgeEntry
 		err = db.QuickCheck(ctx)
 		if err == nil {
 			err = db.Read(ctx, func(tx *store.Tx) error {
 				var err error
-				if rec, err = readRecord(ctx, tx); err == nil {
-					keyID, err = readKeyID(ctx, tx)
-				}
+				rec, keyID, purge, err = readState(ctx, tx)
 				return err
 			})
 		}
-		return rec, keyID, errors.Join(err, db.Close())
+		return rec, keyID, purge, errors.Join(err, db.Close())
 	}
 	db, err := store.OpenReadOnly(ctx, path, store.Shared)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	defer db.Close()
 	var result string
 	if err := db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&result); err != nil || result != "ok" {
-		return nil, "", errors.Join(store.ErrCorrupt, err)
+		return nil, "", nil, errors.Join(store.ErrCorrupt, err)
 	}
-	rec, err := readRecord(ctx, db)
+	return readState(ctx, db)
+}
+
+// readState reads the record, the key identifier and the purge entry.
+func readState(ctx context.Context, q queryer) (*Record, string, *purgeEntry, error) {
+	rec, err := readRecord(ctx, q)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
-	keyID, err := readKeyID(ctx, db)
-	return rec, keyID, err
+	keyID, err := readKeyID(ctx, q)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	purge, err := readPurge(ctx, q)
+	return rec, keyID, purge, err
 }
 
 // walMode reports whether the database header says WAL. A file that is
