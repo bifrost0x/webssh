@@ -108,11 +108,12 @@ type Stores struct {
 	Factors      Factors
 	Keys         Keys
 	Hosts        Hosts
+	Identities   Identities
 }
 
 func (s Stores) complete() error {
 	if s.Accounts == nil || s.AppSettings == nil || s.UserSettings == nil || s.FeatureGates == nil ||
-		s.Factors == nil || s.Keys == nil || s.Hosts == nil {
+		s.Factors == nil || s.Keys == nil || s.Hosts == nil || s.Identities == nil {
 		return errors.New("e2e seed: a store is not wired")
 	}
 	return nil
@@ -147,6 +148,7 @@ func Apply(ctx context.Context, s *Seed, st Stores, log *slog.Logger) (Applied, 
 		func() error { return applyAdminSettings(ctx, s.AdminSettings, st.AppSettings) },
 		func() error { return applyAccounts(ctx, s, st, a.Users) },
 		func() error { return applyFactors(ctx, s, st, a.Users) },
+		func() error { return applyIdentities(ctx, s, st, a.Users) },
 		func() error { return applyConnections(ctx, s, st, a.Users) },
 	}
 	for _, step := range steps {
@@ -166,7 +168,7 @@ func (s *Seed) skipped() []string {
 		}
 	}
 	add(s.AdminSettings.AutomationEnabled != nil, "admin_settings.automation_enabled")
-	add(len(s.ExternalIdentities) > 0, "external_identities")
+	add(s.unappliedIdentities(), "external_identities")
 	add(len(s.Commands) > 0, "commands")
 	add(len(s.CommandSets) > 0, "command_sets")
 	for _, h := range s.TestHooks {

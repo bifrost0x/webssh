@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/accounts"
+	"github.com/bifrost0x/webssh/internal/auth"
+	"github.com/bifrost0x/webssh/internal/auth/oidc"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
 	"github.com/bifrost0x/webssh/internal/e2eseed"
 	"github.com/bifrost0x/webssh/internal/hosts"
@@ -144,8 +146,13 @@ type e2eStores struct{ sys *system }
 func (e e2eStores) stores() e2eseed.Stores {
 	return e2eseed.Stores{
 		Accounts: e, AppSettings: e.sys.settings, UserSettings: e.sys.settings,
-		FeatureGates: e, Factors: e, Keys: e, Hosts: e,
+		FeatureGates: e, Factors: e, Keys: e, Hosts: e, Identities: e,
 	}
+}
+
+func (e e2eStores) LinkOIDC(ctx context.Context, userID int64, issuer, subject string) error {
+	_, err := (&oidc.Links{DB: e.sys.db}).Link(ctx, userID, auth.Identity{Provider: auth.ProviderOIDC, Issuer: issuer, Subject: subject})
+	return err
 }
 
 func (e e2eStores) CreateLocal(ctx context.Context, username, password string, admin bool) (int64, error) {

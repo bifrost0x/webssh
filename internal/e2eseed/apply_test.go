@@ -57,6 +57,10 @@ func TestApplyCheckedInSeed(t *testing.T) {
 		}
 		last = i
 	}
+	// The OIDC identity is applied; the GitHub one keeps the part skipped.
+	if !slices.Contains(f.calls, "oidc:e2e_user:https://issuer.example:existing-e2e-subject") || countPrefix(f.calls, "oidc:") != 1 {
+		t.Errorf("OIDC identities: %q", f.calls)
+	}
 	if n := countPrefix(f.calls, "onboarding "); n != 7 {
 		t.Errorf("onboarding for %d accounts, want 7", n)
 	}

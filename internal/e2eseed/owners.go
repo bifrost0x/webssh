@@ -6,7 +6,7 @@ package e2eseed
 // capability, and leaves this table.
 var skippedOwners = map[string]string{
 	"admin_settings.automation_enabled":     "AU1",
-	"external_identities":                   "ID1, ID2, ID3",
+	"external_identities":                   "ID1, ID3",
 	"commands":                              "CM1",
 	"command_sets":                          "CM1",
 	"test_hooks." + HookAutomationSSHPeer:   "AU1",

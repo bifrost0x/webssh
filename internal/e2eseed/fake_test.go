@@ -32,7 +32,7 @@ func newFakeStores() *fakeStores {
 }
 
 func (f *fakeStores) stores() Stores {
-	return Stores{Accounts: f, AppSettings: f, UserSettings: f, FeatureGates: f, Factors: f, Keys: f, Hosts: f}
+	return Stores{Accounts: f, AppSettings: f, UserSettings: f, FeatureGates: f, Factors: f, Keys: f, Hosts: f, Identities: f}
 }
 
 func (f *fakeStores) record(call string) error {
@@ -112,4 +112,10 @@ func (f *fakeStores) AddSOCKSProxy(_ context.Context, owner int64, p SOCKSProxyR
 func (f *fakeStores) SaveProfiles(_ context.Context, owner int64, profiles []ProfileRecord) error {
 	f.profiles[owner] = profiles
 	return f.record(fmt.Sprintf("profiles %d %d", owner, len(profiles)))
+}
+
+func (f *fakeStores) LinkOIDC(_ context.Context, userID int64, issuer, subject string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.record(fmt.Sprintf("oidc:%s:%s:%s", f.users[userID], issuer, subject))
 }
