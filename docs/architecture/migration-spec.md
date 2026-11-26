@@ -831,6 +831,12 @@ backup by reading it back (manifest, hashes, database integrity, one sealed
 record decrypted), prints its path, and aborts without removing anything if
 any step fails. Only an explicit `--skip-backup` skips this.
 
+The backup file is created with mode 0600 and is not encrypted, like the
+backups of the Python release: it holds the database, `SECRET_KEY` and the
+keyring material in plain form, so whoever can read it can read every
+sealed secret. Keep it off the host, or at least out of any shared or
+world-readable directory.
+
 The purge is refused while the migration record lists a pending entity
 with a count above zero (KEEP-IN-PLACE for a later release): removing it
 would lose it. A pending entity with count 0 does not block. Every path of
