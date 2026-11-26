@@ -95,7 +95,7 @@ func TestRunServesAfterTheSeed(t *testing.T) {
 		t.Fatalf("listening on %s", addr)
 	}
 	// Everything was seeded before the port opened.
-	if len(f.stores.users) != 4 || len(f.stores.profiles) != 2 || len(f.routes) != 2 {
+	if len(f.stores.users) != 7 || len(f.stores.profiles) != 2 || len(f.routes) != 2 {
 		t.Fatalf("users=%d profiles=%d routes=%d", len(f.stores.users), len(f.stores.profiles), len(f.routes))
 	}
 	resp, err := http.Get("http://" + addr + "/login")

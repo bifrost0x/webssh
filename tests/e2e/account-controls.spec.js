@@ -1,14 +1,19 @@
 const {test, expect} = require('playwright/test');
 const {login} = require('./helpers');
 
+// The login inventory runs share e2e_sessions; they run one after the other.
+test.describe.configure({mode: 'default'});
+
 for (const width of [1536, 390]) {
+    // Revoking the other logins of e2e_admin would sign out every parallel
+    // worker; the account e2e_sessions exists for this test alone.
     test(`login inventory revokes another browser and preserves this login at ${width}px`, async ({page, browser}) => {
         await page.setViewportSize({width, height:960});
-        await login(page);
+        await login(page, 'e2e_sessions');
         const otherContext = await browser.newContext({baseURL:test.info().project.use.baseURL});
         try {
             const other = await otherContext.newPage();
-            await login(other);
+            await login(other, 'e2e_sessions');
             const selected = (await (await other.request.get('/api/account/sessions')).json()).sessions.find(row => row.current);
             await page.goto('/settings#security-overview');
             const list = page.locator('#accountLoginList');

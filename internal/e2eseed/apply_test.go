@@ -28,7 +28,7 @@ func TestApplyCheckedInSeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	admin, user, mixed := a.Users["admin"], a.Users["user"], a.Users["mixed_mfa"]
-	if len(a.Users) != 4 || !f.admins[admin] || f.admins[user] {
+	if len(a.Users) != 7 || !f.admins[admin] || f.admins[user] {
 		t.Fatalf("users = %v, admins = %v", a.Users, f.admins)
 	}
 	if !f.mfa[mixed] || len(f.mfa) != 1 {
@@ -57,8 +57,8 @@ func TestApplyCheckedInSeed(t *testing.T) {
 		}
 		last = i
 	}
-	if n := countPrefix(f.calls, "onboarding "); n != 4 {
-		t.Errorf("onboarding for %d accounts, want 4", n)
+	if n := countPrefix(f.calls, "onboarding "); n != 7 {
+		t.Errorf("onboarding for %d accounts, want 7", n)
 	}
 
 	var keyID string

@@ -1,6 +1,9 @@
 const {test, expect} = require('playwright/test');
 const {login, openWorkspace, installSshConnectTrap, assertNoExternalRequests} = require('./helpers');
 
+// Every test rewrites the presets of e2e_admin; they run one after the other.
+test.describe.configure({mode: 'default'});
+
 test.afterEach(async ({page}) => assertNoExternalRequests(page));
 
 async function savePresets(page, presets) {

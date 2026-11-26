@@ -1,8 +1,10 @@
 const { test, expect } = require('playwright/test');
 const { login, openProfileManagement } = require('./helpers');
 
+// A logout ends the realtime connections of every login of the account,
+// so it uses an account no other test signs in with.
 test('logout confirmation cancels safely and submits the existing protected logout', async ({ page }) => {
-    await login(page);
+    await login(page, 'e2e_logout');
     const logoutRequests = [];
     page.on('request', request => {
         if (new URL(request.url()).pathname === '/logout') logoutRequests.push(request);

@@ -40,7 +40,10 @@
     {"ref": "admin", "username": "e2e_admin", "password": "browser-password", "admin": true},
     {"ref": "user", "username": "e2e_user", "password": "browser-password", "admin": false},
     {"ref": "mfa", "username": "e2e_mfa", "password": "browser-password", "admin": false},
-    {"ref": "mixed_mfa", "username": "e2e_mixed_mfa", "password": "browser-password", "admin": false, "mfa_enabled": true}
+    {"ref": "mixed_mfa", "username": "e2e_mixed_mfa", "password": "browser-password", "admin": false, "mfa_enabled": true},
+    {"ref": "sessions", "username": "e2e_sessions", "password": "browser-password", "admin": false},
+    {"ref": "logout", "username": "e2e_logout", "password": "browser-password", "admin": false},
+    {"ref": "theme", "username": "e2e_theme", "password": "browser-password", "admin": false}
   ],
   "account_settings": {
     "intro_tour": "completed",

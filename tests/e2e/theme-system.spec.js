@@ -266,8 +266,10 @@ test('professional themes use restrained local backgrounds', async ({ page }) =>
     await assertNoExternalRequests(page);
 });
 
+// The theme is an account setting and the test signs out; e2e_theme keeps
+// both away from the accounts that parallel workers use.
 test('the last selected theme styles the next login screen', async ({ page }) => {
-    await login(page);
+    await login(page, 'e2e_theme');
     await openThemeSettings(page);
     await selectTheme(
         page,

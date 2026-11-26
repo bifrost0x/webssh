@@ -47,7 +47,7 @@ func TestCheckedInSeedDecodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Accounts) != 4 || len(s.Profiles) != 24 || len(s.TestHooks) != 5 {
+	if len(s.Accounts) != 7 || len(s.Profiles) != 24 || len(s.TestHooks) != 5 {
 		t.Fatalf("accounts=%d profiles=%d hooks=%d", len(s.Accounts), len(s.Profiles), len(s.TestHooks))
 	}
 	if g := s.Guard(); g == nil || g.message != "E2E network guard reached" {
