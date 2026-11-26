@@ -190,6 +190,7 @@ type conn struct {
 	supportsChainedCompression bool
 	ioPipelineDepth            uint
 	requireSigning             bool
+	requireEncryption          bool
 	capabilities               uint32
 	preauthIntegrityHashId     uint16
 	preauthIntegrityHashValue  [64]byte

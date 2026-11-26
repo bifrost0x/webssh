@@ -59,6 +59,10 @@ type Dialer struct {
 	// place of SMB encryption. SMB encryption is skipped only if the server
 	// accepts the offer; this option has no effect on other transports.
 	DisableEncryptionOverSecureTransport bool
+	// RequireEncryption encrypts every request after session setup, even when
+	// neither the session nor the share demands it, and rejects unencrypted
+	// responses. Session setup fails when no cipher was negotiated.
+	RequireEncryption bool
 }
 
 // Dial negotiates and authenticates on t, transferring ownership of t to
@@ -100,6 +104,10 @@ func (d *Dialer) Dial(ctx context.Context, initiator Initiator, t Transport) (*S
 			_ = t.Close()
 			panic("protocol: unsupported cipher specified")
 		}
+	}
+	if d.RequireEncryption && isAnonymousInitiator(initiator) {
+		_ = t.Close()
+		return nil, ErrCredentialsRequired
 	}
 	// At least one credit is needed per outstanding request. The account
 	// uses uint16 balances, so a deeper pipeline cannot increase concurrency.
@@ -251,6 +259,7 @@ func (d *Dialer) negotiateConnection(ctx context.Context, conn *conn) (c *conn, 
 	}
 
 	conn.requireSigning = d.RequireMessageSigning || r.SecurityMode()&wire.SMB2_NEGOTIATE_SIGNING_REQUIRED != 0
+	conn.requireEncryption = d.RequireEncryption
 	conn.capabilities = r.Capabilities()
 	conn.serverGuid = r.ServerGuid()
 	conn.securityMode = r.SecurityMode()

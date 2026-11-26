@@ -233,6 +233,12 @@ func (conn *conn) sessionSetupBinding(ctx context.Context, i Initiator, existing
 			return nil, err
 		}
 		if complete {
+			if conn.requireEncryption && existing == nil {
+				if s.encrypter == nil || s.decrypter == nil || s.signingDisabled() {
+					return nil, ErrEncryptionUnavailable
+				}
+				s.sessionFlags |= wire.SMB2_SESSION_FLAG_ENCRYPT_DATA
+			}
 			conn.session = s
 			s.enableSession()
 			return s, nil

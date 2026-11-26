@@ -65,6 +65,9 @@ type Dialer struct {
 	// macOS SMBX. Disable it if you do not connect to macOS SMBX or do not need
 	// to manage security descriptors there.
 	DisableAAPLExtension bool
+	// RequireEncryption encrypts all traffic after session setup regardless of
+	// server or share policy and fails Dial when encryption is unavailable.
+	RequireEncryption bool
 }
 
 // Dial establishes a new authenticated session and transfers ownership of its
@@ -89,6 +92,9 @@ func (d *Dialer) Dial(ctx context.Context, serverName string) (*Session, error) 
 	if initiator == nil {
 		panic("smb2: Credentials returned a nil Initiator")
 	}
+	if a, ok := initiator.(interface{ IsAnonymous() bool }); ok && d.RequireEncryption && a.IsAnonymous() {
+		return nil, ErrCredentialsRequired
+	}
 	td := d.TransportDialer
 	if td == nil {
 		td = TCPDialer{}
@@ -108,6 +114,7 @@ func (d *Dialer) Dial(ctx context.Context, serverName string) (*Session, error) 
 		SpecifiedDialects:                    d.SpecifiedDialects,
 		Ciphers:                              d.Ciphers,
 		DisableEncryptionOverSecureTransport: d.DisableEncryptionOverSecureTransport,
+		RequireEncryption:                    d.RequireEncryption,
 	}
 	session, err := dialer.Dial(ctx, initiator, transport)
 	if err != nil {

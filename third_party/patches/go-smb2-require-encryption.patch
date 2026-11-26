@@ -1,0 +1,698 @@
+diff --git a/dialer.go b/dialer.go
+index 8c2228c..17e091f 100644
+--- a/dialer.go
++++ b/dialer.go
+@@ -65,6 +65,9 @@ type Dialer struct {
+ 	// macOS SMBX. Disable it if you do not connect to macOS SMBX or do not need
+ 	// to manage security descriptors there.
+ 	DisableAAPLExtension bool
++	// RequireEncryption encrypts all traffic after session setup regardless of
++	// server or share policy and fails Dial when encryption is unavailable.
++	RequireEncryption bool
+ }
+ 
+ // Dial establishes a new authenticated session and transfers ownership of its
+@@ -89,6 +92,9 @@ func (d *Dialer) Dial(ctx context.Context, serverName string) (*Session, error)
+ 	if initiator == nil {
+ 		panic("smb2: Credentials returned a nil Initiator")
+ 	}
++	if a, ok := initiator.(interface{ IsAnonymous() bool }); ok && d.RequireEncryption && a.IsAnonymous() {
++		return nil, ErrCredentialsRequired
++	}
+ 	td := d.TransportDialer
+ 	if td == nil {
+ 		td = TCPDialer{}
+@@ -108,6 +114,7 @@ func (d *Dialer) Dial(ctx context.Context, serverName string) (*Session, error)
+ 		SpecifiedDialects:                    d.SpecifiedDialects,
+ 		Ciphers:                              d.Ciphers,
+ 		DisableEncryptionOverSecureTransport: d.DisableEncryptionOverSecureTransport,
++		RequireEncryption:                    d.RequireEncryption,
+ 	}
+ 	session, err := dialer.Dial(ctx, initiator, transport)
+ 	if err != nil {
+diff --git a/security_info.go b/security_info.go
+new file mode 100644
+index 0000000..2e76c31
+--- /dev/null
++++ b/security_info.go
+@@ -0,0 +1,96 @@
++package smb2
++
++import (
++	"context"
++	"os"
++
++	pathpkg "github.com/hirochachacha/go-smb2/v2/internal/path"
++	"github.com/hirochachacha/go-smb2/v2/x/protocol"
++	"github.com/hirochachacha/go-smb2/v2/x/wire"
++)
++
++// SecurityInfo describes the negotiated security of a session.
++type SecurityInfo = protocol.SecurityInfo
++
++// ErrEncryptionUnavailable is returned by Dial when RequireEncryption is set
++// and the server did not negotiate a cipher.
++var ErrEncryptionUnavailable = protocol.ErrEncryptionUnavailable
++
++// ErrCredentialsRequired is returned by Dial when RequireEncryption is set
++// and the credentials authenticate anonymously, for example an
++// auth.NTLMCredential with empty User, Password and Hash. No connection is
++// opened.
++var ErrCredentialsRequired = protocol.ErrCredentialsRequired
++
++// SecurityInfo returns the negotiated dialect, cipher and session flags.
++func (c *Session) SecurityInfo() SecurityInfo {
++	if c == nil {
++		return SecurityInfo{}
++	}
++	return c.s.SecurityInfo()
++}
++
++// ShareInfo describes a mounted tree.
++type ShareInfo struct {
++	ShareType  uint8
++	ShareFlags uint32
++	DFS        bool
++	Encrypted  bool
++}
++
++// Info returns the TREE_CONNECT properties of the share.
++func (fs *Share) Info() ShareInfo {
++	if fs == nil || fs.treeConn == nil {
++		return ShareInfo{}
++	}
++	tc := fs.treeConn
++	return ShareInfo{ShareType: tc.ShareType(), ShareFlags: tc.ShareFlags(), DFS: tc.IsDFS(), Encrypted: tc.Encrypted()}
++}
++
++// OpenSpec selects exact CREATE parameters for OpenWith.
++type OpenSpec struct {
++	DesiredAccess     uint32
++	ShareAccess       uint32
++	CreateDisposition uint32
++	CreateOptions     uint32
++	FileAttributes    uint32
++}
++
++// OpenWith issues one CREATE with the given parameters and never follows
++// symbolic links, in any path component.
++func (fs *Share) OpenWith(ctx context.Context, name string, spec OpenSpec) (*File, error) {
++	if ctx == nil {
++		panic("nil context")
++	}
++	if fs == nil {
++		return nil, os.ErrInvalid
++	}
++	var err error
++	name, err = pathpkg.NormalizeRelPath(pathpkg.ToSMBPath(name))
++	if err != nil {
++		return nil, err
++	}
++	req := fs.Request().WithFollowSymlinks(false).Append(&wire.CreateRequest{
++		RequestedOplockLevel: wire.SMB2_OPLOCK_LEVEL_NONE,
++		ImpersonationLevel:   wire.Impersonation,
++		DesiredAccess:        spec.DesiredAccess,
++		FileAttributes:       spec.FileAttributes,
++		ShareAccess:          spec.ShareAccess,
++		CreateDisposition:    spec.CreateDisposition,
++		CreateOptions:        spec.CreateOptions,
++		Name:                 name,
++		Contexts:             []wire.Encoder{wire.QueryOnDiskIDRequest{}},
++	})
++	res, err := req.Do(ctx)
++	if err != nil {
++		return nil, &os.PathError{Op: "open", Path: name, Err: err}
++	}
++	defer res.Close()
++	r, err := res.Create(0)
++	if err != nil {
++		return nil, &os.PathError{Op: "open", Path: name, Err: err}
++	}
++	f := fs.newFile(r, name)
++	f.readAccess = spec.DesiredAccess&(wire.FILE_READ_DATA|wire.GENERIC_READ|wire.GENERIC_ALL) != 0
++	return f, nil
++}
+diff --git a/security_info_test.go b/security_info_test.go
+new file mode 100644
+index 0000000..ae97672
+--- /dev/null
++++ b/security_info_test.go
+@@ -0,0 +1,221 @@
++package smb2
++
++import (
++	"context"
++	"errors"
++	"net"
++	"testing"
++
++	"github.com/hirochachacha/go-smb2/v2/auth"
++	"github.com/hirochachacha/go-smb2/v2/internal/erref"
++	"github.com/hirochachacha/go-smb2/v2/internal/utf16le"
++	"github.com/hirochachacha/go-smb2/v2/x/wire"
++	"github.com/stretchr/testify/require"
++)
++
++// refusingTransportDialer fails the test when Dial opens a transport.
++type refusingTransportDialer struct{ t *testing.T }
++
++func (d refusingTransportDialer) Dial(context.Context, string) (Transport, error) {
++	d.t.Error("Dial opened a transport")
++	return nil, errors.New("unexpected transport dial")
++}
++
++func TestDialRequireEncryptionRefusesEmptyCredentials(t *testing.T) {
++	t.Parallel()
++	d := &Dialer{
++		Credentials:       auth.NTLMCredential{},
++		TransportDialer:   refusingTransportDialer{t: t},
++		RequireEncryption: true,
++	}
++	session, err := d.Dial(context.Background(), "server.example")
++	require.ErrorIs(t, err, ErrCredentialsRequired)
++	require.Nil(t, session)
++}
++
++// TestDialRequireEncryptionFailsWithoutCipher dials a server that offers no
++// encryption (SMB 2.1, guest). Without RequireEncryption the same exchange
++// succeeds (TestDialReturnsIndependentSessions); with it Dial must fail.
++func TestDialRequireEncryptionFailsWithoutCipher(t *testing.T) {
++	t.Parallel()
++	for _, required := range []bool{false, true} {
++		dialer := &Dialer{
++			Credentials: testCredentialsFunc(func(context.Context, string) (auth.Initiator, error) {
++				return &singleRoundInitiator{key: []byte("0123456789abcdef")}, nil
++			}),
++			SpecifiedDialects: []Dialect{SMB210},
++			TransportDialer: transportDialerFunc(func(context.Context, string) (Transport, error) {
++				client, server := net.Pipe()
++				t.Cleanup(func() { _ = server.Close() })
++				go serveDialTestSession(server, nil)
++				return NewTransport(client), nil
++			}),
++			RequireEncryption: required,
++		}
++		session, err := dialer.Dial(context.Background(), "server")
++		if !required {
++			require.NoError(t, err)
++			require.False(t, session.SecurityInfo().EncryptData)
++			_ = session.Close()
++			continue
++		}
++		require.ErrorIs(t, err, ErrEncryptionUnavailable)
++		require.Nil(t, session)
++	}
++}
++
++// TestShareInfo covers the TREE_CONNECT properties of unencrypted trees; the
++// encryption flags are covered by TestTreeSecurityFlags in x/protocol, since
++// the fake server here cannot encrypt.
++func TestShareInfo(t *testing.T) {
++	t.Parallel()
++	var nilShare *Share
++	require.Equal(t, ShareInfo{}, nilShare.Info())
++
++	tests := []struct {
++		name    string
++		options testServerOptions
++		want    ShareInfo
++	}{
++		{
++			name:    "plain disk share",
++			options: testServerOptions{shareType: wire.SMB2_SHARE_TYPE_DISK},
++			want:    ShareInfo{ShareType: wire.SMB2_SHARE_TYPE_DISK},
++		},
++		{
++			name:    "DFS share",
++			options: testServerOptions{shareType: wire.SMB2_SHARE_TYPE_DISK, shareFlags: wire.SMB2_SHAREFLAG_DFS, isDFSShare: true},
++			want:    ShareInfo{ShareType: wire.SMB2_SHARE_TYPE_DISK, ShareFlags: wire.SMB2_SHAREFLAG_DFS, DFS: true},
++		},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			t.Parallel()
++			fs, _ := newProtocolTestShare(t, tt.options)
++			require.Equal(t, tt.want, fs.Info())
++		})
++	}
++}
++
++// createRequestName decodes the name of the CREATE request in reqBuf.
++func createRequestName(reqBuf []byte) string {
++	req := wire.CreateRequestDecoder(reqBuf[64:])
++	off, size := int(req.NameOffset()), int(req.NameLength())
++	return utf16le.DecodeToString(reqBuf[off : off+size])
++}
++
++func TestShareOpenWithSendsExactCreate(t *testing.T) {
++	t.Parallel()
++	fs, serverConn := newProtocolTestShare(t)
++	spec := OpenSpec{
++		DesiredAccess:     wire.FILE_READ_ATTRIBUTES | wire.FILE_ADD_FILE | wire.FILE_ADD_SUBDIRECTORY | wire.FILE_DELETE_CHILD,
++		ShareAccess:       wire.FILE_SHARE_READ,
++		CreateDisposition: wire.FILE_OPEN,
++		CreateOptions:     wire.FILE_DIRECTORY_FILE | wire.FILE_OPEN_REPARSE_POINT,
++		FileAttributes:    wire.FILE_ATTRIBUTE_DIRECTORY,
++	}
++
++	type seen struct {
++		name                                string
++		access, share, disposition, options uint32
++		attributes                          uint32
++		oplock                              uint8
++	}
++	observed := make(chan seen, 1)
++	go func() {
++		reqBuf, err := readMsg(serverConn)
++		if err != nil || wire.PacketCodec(reqBuf).Command() != wire.SMB2_CREATE {
++			close(observed)
++			return
++		}
++		req := wire.CreateRequestDecoder(reqBuf[64:])
++		observed <- seen{
++			name: createRequestName(reqBuf), access: req.DesiredAccess(), share: req.ShareAccess(),
++			disposition: req.CreateDisposition(), options: req.CreateOptions(), attributes: req.FileAttributes(),
++			oplock: req.RequestedOplockLevel(),
++		}
++		sendTestResponse(serverConn, reqBuf, &wire.CreateResponse{FileId: wire.FileId{Persistent: [8]byte{7}}, FileAttributes: wire.FILE_ATTRIBUTE_DIRECTORY}, 0)
++		if reqBuf, err := readMsg(serverConn); err == nil && wire.PacketCodec(reqBuf).Command() == wire.SMB2_CLOSE {
++			sendTestCloseResponse(serverConn, reqBuf)
++		}
++	}()
++
++	f, err := fs.OpenWith(context.Background(), "dir/sub", spec)
++	require.NoError(t, err)
++	require.False(t, f.readAccess, "a directory opened without read access must not allow reads")
++	require.NoError(t, f.Close(context.Background()))
++
++	got, ok := <-observed
++	require.True(t, ok, "server did not receive a CREATE")
++	require.Equal(t, seen{
++		name: `dir\sub`, access: spec.DesiredAccess, share: spec.ShareAccess,
++		disposition: spec.CreateDisposition, options: spec.CreateOptions, attributes: spec.FileAttributes,
++		oplock: wire.SMB2_OPLOCK_LEVEL_NONE,
++	}, got)
++}
++
++func TestShareOpenWithReadAccess(t *testing.T) {
++	t.Parallel()
++	for _, access := range []uint32{wire.FILE_READ_DATA, wire.GENERIC_READ, wire.GENERIC_ALL} {
++		fs, serverConn := newProtocolTestShare(t)
++		go func() {
++			reqBuf, err := readMsg(serverConn)
++			if err != nil {
++				return
++			}
++			sendTestResponse(serverConn, reqBuf, &wire.CreateResponse{FileId: wire.FileId{Persistent: [8]byte{8}}}, 0)
++			if reqBuf, err := readMsg(serverConn); err == nil {
++				sendTestCloseResponse(serverConn, reqBuf)
++			}
++		}()
++		f, err := fs.OpenWith(context.Background(), "file.txt", OpenSpec{DesiredAccess: access, CreateDisposition: wire.FILE_OPEN})
++		require.NoError(t, err)
++		require.True(t, f.readAccess, "access %#x", access)
++		require.NoError(t, f.Close(context.Background()))
++	}
++}
++
++// TestShareOpenWithDoesNotFollowSymlinks answers the CREATE with a valid
++// symbolic-link error. OpenFile would retry against the link target; OpenWith
++// must fail and send nothing more.
++func TestShareOpenWithDoesNotFollowSymlinks(t *testing.T) {
++	t.Parallel()
++	fs, serverConn := newProtocolTestShare(t)
++	names := make(chan string, 1)
++	go func() {
++		reqBuf, err := readMsg(serverConn)
++		if err != nil {
++			close(names)
++			return
++		}
++		names <- createRequestName(reqBuf)
++		sendTestResponse(serverConn, reqBuf, &wire.ErrorResponse{
++			CommandCode: wire.SMB2_CREATE,
++			ErrorData: &wire.SymbolicLinkErrorResponse{
++				Flags:          wire.SYMLINK_FLAG_RELATIVE,
++				SubstituteName: `target.txt`,
++				PrintName:      `target.txt`,
++			},
++		}, uint32(erref.STATUS_STOPPED_ON_SYMLINK))
++	}()
++
++	f, err := fs.OpenWith(context.Background(), `dir\link\file.txt`, OpenSpec{DesiredAccess: wire.FILE_READ_ATTRIBUTES, CreateDisposition: wire.FILE_OPEN})
++	require.Error(t, err)
++	require.Nil(t, f)
++	require.Equal(t, `dir\link\file.txt`, <-names)
++	requireNoRequest(t, serverConn)
++}
++
++func TestShareOpenWithRejectsInvalidInput(t *testing.T) {
++	t.Parallel()
++	var nilShare *Share
++	_, err := nilShare.OpenWith(context.Background(), "a", OpenSpec{})
++	require.Error(t, err)
++
++	fs, serverConn := newProtocolTestShare(t)
++	for _, name := range []string{"../escape", `a\..\..\b`, "a/./b"} {
++		_, err := fs.OpenWith(context.Background(), name, OpenSpec{DesiredAccess: wire.FILE_READ_ATTRIBUTES, CreateDisposition: wire.FILE_OPEN})
++		require.Error(t, err, name)
++	}
++	requireNoRequest(t, serverConn)
++}
+diff --git a/x/protocol/conn.go b/x/protocol/conn.go
+index 05cd4d9..53a90ce 100644
+--- a/x/protocol/conn.go
++++ b/x/protocol/conn.go
+@@ -190,6 +190,7 @@ type conn struct {
+ 	supportsChainedCompression bool
+ 	ioPipelineDepth            uint
+ 	requireSigning             bool
++	requireEncryption          bool
+ 	capabilities               uint32
+ 	preauthIntegrityHashId     uint16
+ 	preauthIntegrityHashValue  [64]byte
+diff --git a/x/protocol/dialer.go b/x/protocol/dialer.go
+index d158ec9..d561524 100644
+--- a/x/protocol/dialer.go
++++ b/x/protocol/dialer.go
+@@ -59,6 +59,10 @@ type Dialer struct {
+ 	// place of SMB encryption. SMB encryption is skipped only if the server
+ 	// accepts the offer; this option has no effect on other transports.
+ 	DisableEncryptionOverSecureTransport bool
++	// RequireEncryption encrypts every request after session setup, even when
++	// neither the session nor the share demands it, and rejects unencrypted
++	// responses. Session setup fails when no cipher was negotiated.
++	RequireEncryption bool
+ }
+ 
+ // Dial negotiates and authenticates on t, transferring ownership of t to
+@@ -101,6 +105,10 @@ func (d *Dialer) Dial(ctx context.Context, initiator Initiator, t Transport) (*S
+ 			panic("protocol: unsupported cipher specified")
+ 		}
+ 	}
++	if d.RequireEncryption && isAnonymousInitiator(initiator) {
++		_ = t.Close()
++		return nil, ErrCredentialsRequired
++	}
+ 	// At least one credit is needed per outstanding request. The account
+ 	// uses uint16 balances, so a deeper pipeline cannot increase concurrency.
+ 	if d.IOPipelineDepth > math.MaxUint16 {
+@@ -251,6 +259,7 @@ func (d *Dialer) negotiateConnection(ctx context.Context, conn *conn) (c *conn,
+ 	}
+ 
+ 	conn.requireSigning = d.RequireMessageSigning || r.SecurityMode()&wire.SMB2_NEGOTIATE_SIGNING_REQUIRED != 0
++	conn.requireEncryption = d.RequireEncryption
+ 	conn.capabilities = r.Capabilities()
+ 	conn.serverGuid = r.ServerGuid()
+ 	conn.securityMode = r.SecurityMode()
+diff --git a/x/protocol/require_encryption_test.go b/x/protocol/require_encryption_test.go
+new file mode 100644
+index 0000000..a2de6fe
+--- /dev/null
++++ b/x/protocol/require_encryption_test.go
+@@ -0,0 +1,200 @@
++package protocol
++
++import (
++	"context"
++	"net"
++	"testing"
++	"time"
++
++	"github.com/hirochachacha/go-smb2/v2/internal/erref"
++	"github.com/hirochachacha/go-smb2/v2/internal/ntlm"
++	"github.com/hirochachacha/go-smb2/v2/x/wire"
++	"github.com/stretchr/testify/require"
++)
++
++// recordingTransport hands every packet the fake server reads to reads, so
++// a test can see the request that ended the fake session-setup exchange.
++type recordingTransport struct {
++	Transport
++	reads chan []byte
++}
++
++func (r *recordingTransport) readPacket(findSink ...directSinkFinder) (*recvPacket, error) {
++	rp, err := r.Transport.readPacket(findSink...)
++	if err == nil {
++		select {
++		case r.reads <- append([]byte(nil), rp.bytes()...):
++		default:
++		}
++	}
++	return rp, err
++}
++
++// setupRequireEncryption runs a complete NTLM session setup against the fake
++// server on a SMB 3.0.2 connection with the given cipher.
++func setupRequireEncryption(t *testing.T, cipherId uint16, requireEncryption bool) (*session, *recordingTransport, <-chan struct{}, error) {
++	t.Helper()
++	clientConn, serverConn := net.Pipe()
++	t.Cleanup(func() {
++		clientConn.Close()
++		serverConn.Close()
++	})
++	st := &recordingTransport{Transport: NewTransport(serverConn), reads: make(chan []byte, 8)}
++	ntlmServer := ntlm.NewServer("test-server")
++	ntlmServer.AddAccount("user", "password")
++	serverDone := make(chan struct{})
++	go func() {
++		defer close(serverDone)
++		runFakeSessionSetupServer(st, sessionSetupServerSuccess, ntlmServer)
++	}()
++
++	c, cleanup := newBenchConn(clientConn)
++	t.Cleanup(cleanup)
++	c.cipherId = cipherId
++	c.requireEncryption = requireEncryption
++	s, err := c.sessionSetup(context.Background(), &testNTLMInitiator{User: "user", Password: "password"})
++	return s, st, serverDone, err
++}
++
++func TestSessionSetupRequireEncryption(t *testing.T) {
++	t.Parallel()
++	tests := []struct {
++		name              string
++		cipherId          uint16
++		requireEncryption bool
++		wantErr           error
++		wantEncrypt       bool
++	}{
++		{name: "cipher negotiated", cipherId: wire.AES128CCM, requireEncryption: true, wantEncrypt: true},
++		{name: "no cipher negotiated", cipherId: 0, requireEncryption: true, wantErr: ErrEncryptionUnavailable},
++		{name: "not required, cipher negotiated", cipherId: wire.AES128CCM},
++		{name: "not required, no cipher", cipherId: 0},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			t.Parallel()
++			s, _, _, err := setupRequireEncryption(t, tt.cipherId, tt.requireEncryption)
++			if tt.wantErr != nil {
++				require.ErrorIs(t, err, tt.wantErr)
++				require.Nil(t, s)
++				return
++			}
++			require.NoError(t, err)
++			require.NotNil(t, s)
++			info := (&Session{s: s}).SecurityInfo()
++			require.Equal(t, tt.wantEncrypt, info.EncryptData)
++			require.Equal(t, tt.wantEncrypt, s.sessionFlags&wire.SMB2_SESSION_FLAG_ENCRYPT_DATA != 0)
++			require.Equal(t, Cipher(tt.cipherId), info.Cipher)
++			require.Equal(t, Dialect(wire.SMB302), info.Dialect)
++			require.False(t, info.Guest)
++			require.False(t, info.Null)
++		})
++	}
++}
++
++// TestRequireEncryptionRejectsPlaintextResponse checks both directions after
++// session setup: requests leave as transform packets, and a plaintext
++// response to them is refused.
++func TestRequireEncryptionRejectsPlaintextResponse(t *testing.T) {
++	t.Parallel()
++	s, st, serverDone, err := setupRequireEncryption(t, wire.AES128CCM, true)
++	require.NoError(t, err)
++
++	echoErr := make(chan error, 1)
++	go func() { echoErr <- s.echo(context.Background()) }()
++
++	// The fake server stops at the first request after session setup.
++	select {
++	case <-serverDone:
++	case <-time.After(10 * time.Second):
++		t.Fatal("fake server did not read the request after session setup")
++	}
++	var req []byte
++	for len(st.reads) > 0 {
++		req = <-st.reads
++	}
++	require.GreaterOrEqual(t, len(req), 4)
++	require.Equal(t, []byte(wire.MAGIC2), req[:4], "request after session setup is not encrypted")
++
++	// The client's encryption key is the server's decryption key.
++	plain, err := (&session{decrypter: s.encrypter}).decrypt(req)
++	require.NoError(t, err)
++	require.Equal(t, wire.SMB2_ECHO, wire.PacketCodec(plain).Command())
++
++	sendTestResponse(st, plain, &wire.EchoResponse{}, uint32(erref.STATUS_SUCCESS))
++	select {
++	case err := <-echoErr:
++		var ierr *InvalidResponseError
++		require.ErrorAs(t, err, &ierr)
++		require.ErrorContains(t, err, "encrypted response required")
++	case <-time.After(10 * time.Second):
++		t.Fatal("plaintext response was not rejected")
++	}
++}
++
++func TestDialRequireEncryptionRejectsAnonymousInitiator(t *testing.T) {
++	t.Parallel()
++	clientConn, serverConn := net.Pipe()
++	defer clientConn.Close()
++	defer serverConn.Close()
++
++	received := make(chan struct{})
++	go func() {
++		buf := make([]byte, 1)
++		if _, err := serverConn.Read(buf); err == nil {
++			close(received)
++		}
++	}()
++
++	_, err := (&Dialer{RequireEncryption: true}).Dial(context.Background(), &singleRoundInitiator{anonymous: true}, NewTransport(clientConn))
++	require.ErrorIs(t, err, ErrCredentialsRequired)
++
++	buf := make([]byte, 1)
++	_, readErr := clientConn.Read(buf)
++	require.Error(t, readErr, "Dial left the transport open")
++	select {
++	case <-received:
++		t.Fatal("Dial sent data for an anonymous initiator")
++	default:
++	}
++}
++
++func TestSecurityInfoZeroValues(t *testing.T) {
++	t.Parallel()
++	var nilSession *Session
++	require.Equal(t, SecurityInfo{}, nilSession.SecurityInfo())
++	require.Equal(t, SecurityInfo{}, (&Session{}).SecurityInfo())
++
++	var nilTree *Tree
++	require.Zero(t, nilTree.ShareFlags())
++	require.False(t, nilTree.IsDFS())
++	require.False(t, nilTree.Encrypted())
++}
++
++func TestTreeSecurityFlags(t *testing.T) {
++	t.Parallel()
++	tests := []struct {
++		name          string
++		sessionFlags  uint16
++		shareFlags    uint32
++		isDFSShare    bool
++		wantDFS       bool
++		wantEncrypted bool
++	}{
++		{name: "plain"},
++		{name: "session encrypts", sessionFlags: wire.SMB2_SESSION_FLAG_ENCRYPT_DATA, wantEncrypted: true},
++		{name: "share encrypts", shareFlags: wire.SMB2_SHAREFLAG_ENCRYPT_DATA, wantEncrypted: true},
++		{name: "DFS share flag", shareFlags: wire.SMB2_SHAREFLAG_DFS, wantDFS: true},
++		{name: "DFS root flag", shareFlags: wire.SMB2_SHAREFLAG_DFS_ROOT, wantDFS: true},
++		{name: "DFS capability", isDFSShare: true, wantDFS: true},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			t.Parallel()
++			tc := &Tree{session: &session{sessionFlags: tt.sessionFlags}, shareFlags: tt.shareFlags, isDFSShare: tt.isDFSShare}
++			require.Equal(t, tt.shareFlags, tc.ShareFlags())
++			require.Equal(t, tt.wantDFS, tc.IsDFS())
++			require.Equal(t, tt.wantEncrypted, tc.Encrypted())
++		})
++	}
++}
+diff --git a/x/protocol/security_info.go b/x/protocol/security_info.go
+new file mode 100644
+index 0000000..bce8426
+--- /dev/null
++++ b/x/protocol/security_info.go
+@@ -0,0 +1,62 @@
++package protocol
++
++import (
++	"errors"
++
++	"github.com/hirochachacha/go-smb2/v2/x/wire"
++)
++
++// ErrEncryptionUnavailable reports that RequireEncryption was set but the
++// connection negotiated no cipher or the session cannot derive keys.
++var ErrEncryptionUnavailable = errors.New("protocol: encryption required but unavailable")
++
++// ErrCredentialsRequired reports that RequireEncryption was set for an
++// anonymous initiator. An anonymous session derives no keys, so Dial refuses
++// it before sending anything.
++var ErrCredentialsRequired = errors.New("protocol: encryption required but the initiator has no credentials")
++
++// SecurityInfo describes the negotiated security of an established session.
++type SecurityInfo struct {
++	Dialect          Dialect
++	Cipher           Cipher
++	SigningAlgorithm wire.SigningAlgorithm
++	SigningRequired  bool
++	EncryptData      bool
++	Guest            bool
++	Null             bool
++}
++
++// SecurityInfo returns the negotiated dialect, cipher and session flags.
++func (c *Session) SecurityInfo() SecurityInfo {
++	if c == nil || c.s == nil {
++		return SecurityInfo{}
++	}
++	s := c.s
++	return SecurityInfo{
++		Dialect:          Dialect(s.dialect),
++		Cipher:           Cipher(s.cipherId),
++		SigningAlgorithm: s.signingAlgorithm,
++		SigningRequired:  s.requireSigning,
++		EncryptData:      s.sessionFlags&wire.SMB2_SESSION_FLAG_ENCRYPT_DATA != 0,
++		Guest:            s.sessionFlags&wire.SMB2_SESSION_FLAG_IS_GUEST != 0,
++		Null:             s.sessionFlags&wire.SMB2_SESSION_FLAG_IS_NULL != 0 || s.anonymous,
++	}
++}
++
++// ShareFlags returns the SMB2 TREE_CONNECT ShareFlags.
++func (tc *Tree) ShareFlags() uint32 {
++	if tc == nil {
++		return 0
++	}
++	return tc.shareFlags
++}
++
++// IsDFS reports whether the server marked the tree as a DFS share.
++func (tc *Tree) IsDFS() bool {
++	return tc != nil && (tc.isDFSShare || tc.shareFlags&(wire.SMB2_SHAREFLAG_DFS|wire.SMB2_SHAREFLAG_DFS_ROOT) != 0)
++}
++
++// Encrypted reports whether requests on this tree are encrypted.
++func (tc *Tree) Encrypted() bool {
++	return tc != nil && (tc.session.sessionFlags&wire.SMB2_SESSION_FLAG_ENCRYPT_DATA != 0 || tc.shareFlags&wire.SMB2_SHAREFLAG_ENCRYPT_DATA != 0)
++}
+diff --git a/x/protocol/session.go b/x/protocol/session.go
+index 0d89c51..13a3567 100644
+--- a/x/protocol/session.go
++++ b/x/protocol/session.go
+@@ -233,6 +233,12 @@ func (conn *conn) sessionSetupBinding(ctx context.Context, i Initiator, existing
+ 			return nil, err
+ 		}
+ 		if complete {
++			if conn.requireEncryption && existing == nil {
++				if s.encrypter == nil || s.decrypter == nil || s.signingDisabled() {
++					return nil, ErrEncryptionUnavailable
++				}
++				s.sessionFlags |= wire.SMB2_SESSION_FLAG_ENCRYPT_DATA
++			}
+ 			conn.session = s
+ 			s.enableSession()
+ 			return s, nil
