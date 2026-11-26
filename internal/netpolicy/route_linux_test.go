@@ -5,6 +5,7 @@ package netpolicy
 import (
 	"context"
 	"errors"
+	"net"
 	"net/netip"
 	"os"
 	"testing"
@@ -143,4 +144,50 @@ func TestCraftedNamespace(t *testing.T) {
 		{addr: "192.0.2.10", iface: "lan0", table: 254},
 		{addr: "198.51.100.1", iface: "", relayDeny: true}, // no route at all
 	})
+}
+
+// TestDialInterfacePinsTheSocket binds to lo and reaches a loopback
+// listener; bound to another interface the same address is unreachable,
+// which IP_UNICAST_IF (the Python release) would not enforce for TCP.
+func TestDialInterfacePinsTheSocket(t *testing.T) {
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	addr := netip.MustParseAddrPort(ln.Addr().String())
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	c, err := DialInterface(ctx, "lo", addr)
+	if err != nil {
+		t.Fatalf("bound to lo: %v", err)
+	}
+	_ = c.Close()
+	if _, err := DialInterface(ctx, "webssh-no-such-if", addr); err == nil {
+		t.Fatal("unknown interface accepted")
+	}
+	ifaces, _ := net.Interfaces()
+	for _, i := range ifaces {
+		if i.Flags&net.FlagLoopback != 0 || i.Flags&net.FlagUp == 0 {
+			continue
+		}
+		short, stop := context.WithTimeout(t.Context(), time.Second)
+		c, err := DialInterface(short, i.Name, addr)
+		stop()
+		if err == nil {
+			_ = c.Close()
+			t.Fatalf("bound to %s, the loopback listener was reached", i.Name)
+		}
+		return
+	}
+	t.Log("no other interface is up; only the lo case ran")
 }
