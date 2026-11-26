@@ -33,6 +33,8 @@ window.i18n.registerLocales({
         "connection.routeClearSocks": "一台主机只能使用一条路由：清除 SOCKS5 代理后才能选择跳板机。",
         "connection.routeTailscale": "Tailscale SSH 直接连接。",
         "connection.routeConflict": "请选择一条兼容的连接路由。",
+        "connection.legacyAlgorithms": "允许旧版 SSH 算法",
+        "connection.legacyAlgorithmsHint": "仅用于旧服务器：额外以最低优先级提供 ssh-rsa（SHA-1）、SHA-1 密钥交换和 CBC 加密。",
         "connection.socksProxy": "SOCKS5 代理",
         "connection.socksProxyNone": "无",
         "connection.jumpHostManage": "管理跳板机",

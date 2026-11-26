@@ -16,7 +16,7 @@ window.JumpHostManager = {
     draft() {
         const form = document.getElementById('jumpHostForm');
         return JSON.stringify(Array.from(form?.querySelectorAll('input, select') || [])
-            .map(input => input.type === 'radio' ? input.checked : input.value));
+            .map(input => input.type === 'radio' || input.type === 'checkbox' ? input.checked : input.value));
     },
 
     isDirty() { return this.baseline !== null && this.draft() !== this.baseline; },
@@ -66,6 +66,8 @@ window.JumpHostManager = {
             document.getElementById(field).value = value;
         }
         document.querySelectorAll('input[name="jhAuthType"]').forEach(input => { input.checked = input.value === host.auth_type; });
+        const legacy = document.getElementById('jhLegacyAlgorithms');
+        if (legacy) legacy.checked = host.legacy_algorithms === true;
         document.getElementById('jhKeyGroup').classList.toggle('hidden', host.auth_type !== 'key');
         window.NativeCredentials?.refreshInline?.('jhCredential','jump:'+id);
         this.baseline = this.draft();
@@ -215,6 +217,8 @@ window.JumpHostManager = {
         const payload = {name, host, port: Number(port), username, auth_type: authType,
             key_id: authType === 'key' ? keyId : null};
         if (this.editingId) payload.jump_host_id = this.editingId;
+        const legacyAlgorithms = document.getElementById('jhLegacyAlgorithms');
+        if (legacyAlgorithms) payload.legacy_algorithms = legacyAlgorithms.checked;
         let credential;
         try { credential = authType === 'password' ? window.NativeCredentials?.inlineDraft('jhCredential') : null; }
         catch (error) { window.showNotification?.(error.message, 'error'); return; }

@@ -33,6 +33,8 @@ window.i18n.registerLocales({
         "connection.routeClearSocks": "Máy chủ chỉ dùng một tuyến: bỏ proxy SOCKS5 để chọn máy chủ trung chuyển.",
         "connection.routeTailscale": "Tailscale SSH kết nối trực tiếp.",
         "connection.routeConflict": "Chọn một tuyến kết nối tương thích.",
+        "connection.legacyAlgorithms": "Cho phép thuật toán SSH cũ",
+        "connection.legacyAlgorithmsHint": "Chỉ dành cho máy chủ cũ: cung cấp thêm ssh-rsa với SHA-1, trao đổi khóa SHA-1 và mã hóa CBC, với mức ưu tiên thấp nhất.",
         "connection.socksProxy": "Proxy SOCKS5",
         "connection.socksProxyNone": "Không có",
         "connection.jumpHostManage": "Quản lý máy chủ trung chuyển",

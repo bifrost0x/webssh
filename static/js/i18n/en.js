@@ -33,6 +33,8 @@ window.i18n.registerLocales({
         "connection.routeClearSocks": "A host uses one route: clear the SOCKS5 proxy to choose a jump host.",
         "connection.routeTailscale": "Tailscale SSH connects directly.",
         "connection.routeConflict": "Choose one compatible route.",
+        "connection.legacyAlgorithms": "Allow legacy SSH algorithms",
+        "connection.legacyAlgorithmsHint": "For old servers only: also offers ssh-rsa with SHA-1, SHA-1 key exchange and CBC ciphers, with the lowest priority.",
         "connection.socksProxy": "SOCKS5 Proxy",
         "connection.socksProxyNone": "None",
         "connection.jumpHostManage": "Manage jump hosts",

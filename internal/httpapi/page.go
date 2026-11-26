@@ -34,6 +34,7 @@ type PageData struct {
 	HerdrEnabled             bool   `json:"herdr_enabled"`
 	TmuxEnabled              bool   `json:"tmux_enabled"`
 	TmuxDefault              bool   `json:"tmux_default"`
+	LegacySSHOptIn           bool   `json:"legacy_ssh_opt_in"`
 	WebAuthnEnabled          bool   `json:"webauthn_enabled"`
 	WebAuthnOrigin           string `json:"webauthn_origin"`
 	WebAuthnRPID             string `json:"webauthn_rp_id"`
