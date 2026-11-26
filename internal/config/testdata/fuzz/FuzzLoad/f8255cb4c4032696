@@ -1,0 +1,2 @@
+go test fuzz v1
+string("LDAP_ENABLED=0\xf8\xf8\xf8\xf8\xf8\xf8\xf8\xf800")
