@@ -89,6 +89,9 @@ type Service struct {
 	// Passkeys is nil until passkeys are built; the method is then never
 	// offered.
 	Passkeys Passkeys
+	// External are the proofs at identity providers in their order of
+	// preference (OIDC); none are offered while it is empty.
+	External []ExternalMethod
 	// Targets holds the extra target checks per action.
 	Targets map[principal.Action]TargetCheck
 	// RecentWindow is STEP_UP_MAX_AGE_SECONDS: a session authenticated with
@@ -97,6 +100,8 @@ type Service struct {
 	Now          func() time.Time
 	Audit        auth.Audit
 	Logger       *slog.Logger
+
+	approved approvedGrants
 }
 
 func (s *Service) now() time.Time {
@@ -245,7 +250,8 @@ func (s *Service) passkeysEnrolled(ctx context.Context, userID int64) (bool, err
 }
 
 // methods returns the proofs that reach required for p, most preferred
-// first: with MFA on a passkey or TOTP, otherwise the password, or a
+// first: with MFA a provider that can answer with MFA, a passkey or TOTP;
+// otherwise the provider the session signed in with, the password, or a
 // passkey for accounts without one. A recovery session has none; it may
 // only repair its factors, which needs no grant.
 func (s *Service) methods(ctx context.Context, p principal.Principal, sa SessionAssurance, required auth.Assurance) ([]string, error) {
@@ -257,7 +263,10 @@ func (s *Service) methods(ctx context.Context, p principal.Principal, sa Session
 		return nil, err
 	}
 	if required == auth.AssuranceMFA {
-		var out []string
+		out, err := s.externalMethods(ctx, p, sa, true)
+		if err != nil {
+			return nil, err
+		}
 		if passkey {
 			out = append(out, MethodPasskey)
 		}
@@ -271,6 +280,10 @@ func (s *Service) methods(ctx context.Context, p principal.Principal, sa Session
 			}
 		}
 		return out, nil
+	}
+	// A provider sign-in is proven at the provider, before a password.
+	if ext, err := s.externalMethods(ctx, p, sa, false); err != nil || len(ext) > 0 {
+		return ext[:min(len(ext), 1)], err
 	}
 	if slices.Contains(sa.Methods, "password") && s.Passwords != nil {
 		if ok, err := s.Passwords.HasPassword(ctx, p.UserID); err != nil {
