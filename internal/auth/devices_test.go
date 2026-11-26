@@ -90,7 +90,7 @@ func TestKnownDeviceSkipsTheNameCeiling(t *testing.T) {
 	thief := e.browser()
 	thief.cookies["session_device"] = owner.cookies["session_device"]
 	for i := range DeviceFailureBudget {
-		thief.from(40 + i).do("POST", "/login", creds("owner", "wrong"))
+		thief.from(40+i).do("POST", "/login", creds("owner", "wrong"))
 		if limited(e) {
 			t.Fatalf("failure %d within the budget limited", i)
 		}

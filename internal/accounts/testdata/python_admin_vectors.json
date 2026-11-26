@@ -1,0 +1,2651 @@
+[
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "lock-self",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": [
+   "user.manage",
+   "{id}:lock"
+  ],
+  "target": "actor",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "You cannot lock your own account",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "lock-user",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": [
+   "user.manage",
+   "{id}:lock"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": true,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "lock-admin",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": [
+   "user.manage",
+   "{id}:lock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": true,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    true,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "lock-locked",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": [
+   "user.manage",
+   "{id}:lock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": true,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "ldap"
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "lock-ldap",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": [
+   "user.manage",
+   "{id}:lock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": true,
+    "ldap_managed": true
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "github"
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "lock-github",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": [
+   "user.manage",
+   "{id}:lock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": true,
+    "is_admin": false,
+    "is_locked": true,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "lock-listed",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": [
+   "user.manage",
+   "{id}:lock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": true,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": true,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    true,
+    ""
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "lock-listed_locked",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": [
+   "user.manage",
+   "{id}:lock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": true,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": true,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "ldap"
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "lock-listed_ldap",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": [
+   "user.manage",
+   "{id}:lock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": true,
+    "ldap_managed": true
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "unlock-self",
+  "path": "/admin/api/users/{id}/unlock",
+  "step_up": [
+   "user.manage",
+   "{id}:unlock"
+  ],
+  "target": "actor",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "unlock-user",
+  "path": "/admin/api/users/{id}/unlock",
+  "step_up": [
+   "user.manage",
+   "{id}:unlock"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "unlock-admin",
+  "path": "/admin/api/users/{id}/unlock",
+  "step_up": [
+   "user.manage",
+   "{id}:unlock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    true,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "unlock-locked",
+  "path": "/admin/api/users/{id}/unlock",
+  "step_up": [
+   "user.manage",
+   "{id}:unlock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "ldap"
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "unlock-ldap",
+  "path": "/admin/api/users/{id}/unlock",
+  "step_up": [
+   "user.manage",
+   "{id}:unlock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": false,
+    "ldap_managed": true
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "github"
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "unlock-github",
+  "path": "/admin/api/users/{id}/unlock",
+  "step_up": [
+   "user.manage",
+   "{id}:unlock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": true,
+    "is_admin": false,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "unlock-listed",
+  "path": "/admin/api/users/{id}/unlock",
+  "step_up": [
+   "user.manage",
+   "{id}:unlock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": true,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    true,
+    ""
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "unlock-listed_locked",
+  "path": "/admin/api/users/{id}/unlock",
+  "step_up": [
+   "user.manage",
+   "{id}:unlock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": true,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "ldap"
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "unlock-listed_ldap",
+  "path": "/admin/api/users/{id}/unlock",
+  "step_up": [
+   "user.manage",
+   "{id}:unlock"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": false,
+    "ldap_managed": true
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "promote-self",
+  "path": "/admin/api/users/{id}/promote",
+  "step_up": [
+   "user.manage",
+   "{id}:promote"
+  ],
+  "target": "actor",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "promote-user",
+  "path": "/admin/api/users/{id}/promote",
+  "step_up": [
+   "user.manage",
+   "{id}:promote"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "promote-admin",
+  "path": "/admin/api/users/{id}/promote",
+  "step_up": [
+   "user.manage",
+   "{id}:promote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    true,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "promote-locked",
+  "path": "/admin/api/users/{id}/promote",
+  "step_up": [
+   "user.manage",
+   "{id}:promote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": true,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "ldap"
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "promote-ldap",
+  "path": "/admin/api/users/{id}/promote",
+  "step_up": [
+   "user.manage",
+   "{id}:promote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "LDAP accounts cannot be administrators; keep a local break-glass administrator",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "github"
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "promote-github",
+  "path": "/admin/api/users/{id}/promote",
+  "step_up": [
+   "user.manage",
+   "{id}:promote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "GitHub-managed accounts cannot be administrators; keep a local break-glass administrator",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "promote-listed",
+  "path": "/admin/api/users/{id}/promote",
+  "step_up": [
+   "user.manage",
+   "{id}:promote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": true,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    true,
+    ""
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "promote-listed_locked",
+  "path": "/admin/api/users/{id}/promote",
+  "step_up": [
+   "user.manage",
+   "{id}:promote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": true,
+    "github_managed": false,
+    "is_admin": true,
+    "is_locked": true,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "ldap"
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "promote-listed_ldap",
+  "path": "/admin/api/users/{id}/promote",
+  "step_up": [
+   "user.manage",
+   "{id}:promote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "LDAP accounts cannot be administrators; keep a local break-glass administrator",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "demote-self",
+  "path": "/admin/api/users/{id}/demote",
+  "step_up": [
+   "user.manage",
+   "{id}:demote"
+  ],
+  "target": "actor",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "You cannot remove your own admin rights",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "demote-user",
+  "path": "/admin/api/users/{id}/demote",
+  "step_up": [
+   "user.manage",
+   "{id}:demote"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "demote-admin",
+  "path": "/admin/api/users/{id}/demote",
+  "step_up": [
+   "user.manage",
+   "{id}:demote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    true,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "demote-locked",
+  "path": "/admin/api/users/{id}/demote",
+  "step_up": [
+   "user.manage",
+   "{id}:demote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": true,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "ldap"
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "demote-ldap",
+  "path": "/admin/api/users/{id}/demote",
+  "step_up": [
+   "user.manage",
+   "{id}:demote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": false,
+    "ldap_managed": true
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "github"
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "demote-github",
+  "path": "/admin/api/users/{id}/demote",
+  "step_up": [
+   "user.manage",
+   "{id}:demote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": true,
+    "is_admin": false,
+    "is_locked": false,
+    "ldap_managed": false
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "demote-listed",
+  "path": "/admin/api/users/{id}/demote",
+  "step_up": [
+   "user.manage",
+   "{id}:demote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "This account is an administrator through the ADMIN_USERS setting; remove it from ADMIN_USERS and restart before demoting it",
+   "status": 409
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    true,
+    ""
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "demote-listed_locked",
+  "path": "/admin/api/users/{id}/demote",
+  "step_up": [
+   "user.manage",
+   "{id}:demote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": true,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "This account is an administrator through the ADMIN_USERS setting; remove it from ADMIN_USERS and restart before demoting it",
+   "status": 409
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "ldap"
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "demote-listed_ldap",
+  "path": "/admin/api/users/{id}/demote",
+  "step_up": [
+   "user.manage",
+   "{id}:demote"
+  ],
+  "target": "carol",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200,
+   "user": {
+    "admin_managed_by_config": false,
+    "github_managed": false,
+    "is_admin": false,
+    "is_locked": false,
+    "ldap_managed": true
+   }
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "delete-self",
+  "path": "/admin/api/users/{id}/delete",
+  "step_up": [
+   "user.manage",
+   "{id}:delete"
+  ],
+  "target": "actor",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "You cannot delete your own account",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "delete-user",
+  "path": "/admin/api/users/{id}/delete",
+  "step_up": [
+   "user.manage",
+   "{id}:delete"
+  ],
+  "target": "bob",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "delete-admin",
+  "path": "/admin/api/users/{id}/delete",
+  "step_up": [
+   "user.manage",
+   "{id}:delete"
+  ],
+  "target": "carol",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    true,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "delete-locked",
+  "path": "/admin/api/users/{id}/delete",
+  "step_up": [
+   "user.manage",
+   "{id}:delete"
+  ],
+  "target": "carol",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "ldap"
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "delete-ldap",
+  "path": "/admin/api/users/{id}/delete",
+  "step_up": [
+   "user.manage",
+   "{id}:delete"
+  ],
+  "target": "carol",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "github"
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "delete-github",
+  "path": "/admin/api/users/{id}/delete",
+  "step_up": [
+   "user.manage",
+   "{id}:delete"
+  ],
+  "target": "carol",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "delete-listed",
+  "path": "/admin/api/users/{id}/delete",
+  "step_up": [
+   "user.manage",
+   "{id}:delete"
+  ],
+  "target": "carol",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    true,
+    true,
+    ""
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "delete-listed_locked",
+  "path": "/admin/api/users/{id}/delete",
+  "step_up": [
+   "user.manage",
+   "{id}:delete"
+  ],
+  "target": "carol",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ],
+   [
+    "carol",
+    false,
+    false,
+    "ldap"
+   ]
+  ],
+  "admin_users": [
+   "carol"
+  ],
+  "body": null,
+  "method": "post",
+  "name": "delete-listed_ldap",
+  "path": "/admin/api/users/{id}/delete",
+  "step_up": [
+   "user.manage",
+   "{id}:delete"
+  ],
+  "target": "carol",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "unknown-action",
+  "path": "/admin/api/users/{id}/explode",
+  "step_up": [
+   "user.manage",
+   "{id}:explode"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Unknown action",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "missing-user",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": [
+   "user.manage",
+   "{id}:lock"
+  ],
+  "target": "nobody",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": "User not found",
+   "status": 404
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": null,
+  "method": "post",
+  "name": "no-grant",
+  "path": "/admin/api/users/{id}/lock",
+  "step_up": null,
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Additional authentication is required",
+   "status": 403
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {
+   "confirm_username": "bob"
+  },
+  "method": "delete",
+  "name": "mfa-ok",
+  "path": "/admin/api/users/{id}/mfa",
+  "step_up": [
+   "user.mfa_reset",
+   "{id}"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {
+   "confirm_username": "bob"
+  },
+  "method": "post",
+  "name": "recovery-ok",
+  "path": "/admin/api/users/{id}/recovery",
+  "step_up": [
+   "recovery.reset",
+   "{id}"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 10,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {
+   "confirm_username": "Bob"
+  },
+  "method": "delete",
+  "name": "mfa-case",
+  "path": "/admin/api/users/{id}/mfa",
+  "step_up": [
+   "user.mfa_reset",
+   "{id}"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Target confirmation does not match",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {
+   "confirm_username": "Bob"
+  },
+  "method": "post",
+  "name": "recovery-case",
+  "path": "/admin/api/users/{id}/recovery",
+  "step_up": [
+   "recovery.reset",
+   "{id}"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Target confirmation does not match",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {},
+  "method": "delete",
+  "name": "mfa-missing",
+  "path": "/admin/api/users/{id}/mfa",
+  "step_up": [
+   "user.mfa_reset",
+   "{id}"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Target confirmation does not match",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {},
+  "method": "post",
+  "name": "recovery-missing",
+  "path": "/admin/api/users/{id}/recovery",
+  "step_up": [
+   "recovery.reset",
+   "{id}"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Target confirmation does not match",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": [
+   "bob"
+  ],
+  "method": "delete",
+  "name": "mfa-list",
+  "path": "/admin/api/users/{id}/mfa",
+  "step_up": [
+   "user.mfa_reset",
+   "{id}"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Invalid request",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": [
+   "bob"
+  ],
+  "method": "post",
+  "name": "recovery-list",
+  "path": "/admin/api/users/{id}/recovery",
+  "step_up": [
+   "recovery.reset",
+   "{id}"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Target confirmation does not match",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {
+   "confirm_username": 5
+  },
+  "method": "delete",
+  "name": "mfa-number",
+  "path": "/admin/api/users/{id}/mfa",
+  "step_up": [
+   "user.mfa_reset",
+   "{id}"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Target confirmation does not match",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {
+   "confirm_username": 5
+  },
+  "method": "post",
+  "name": "recovery-number",
+  "path": "/admin/api/users/{id}/recovery",
+  "step_up": [
+   "recovery.reset",
+   "{id}"
+  ],
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Target confirmation does not match",
+   "status": 400
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {
+   "confirm_username": "actor"
+  },
+  "method": "delete",
+  "name": "mfa-self",
+  "path": "/admin/api/users/{id}/mfa",
+  "step_up": [
+   "user.mfa_reset",
+   "{id}"
+  ],
+  "target": "actor",
+  "want": {
+   "after": {
+    "is_admin": true,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": null,
+   "status": 200
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {
+   "confirm_username": "x"
+  },
+  "method": "delete",
+  "name": "mfa-missing-user",
+  "path": "/admin/api/users/{id}/mfa",
+  "step_up": [
+   "user.mfa_reset",
+   "{id}"
+  ],
+  "target": "nobody",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": "User not found",
+   "status": 404
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {
+   "confirm_username": "bob"
+  },
+  "method": "delete",
+  "name": "mfa-no-grant",
+  "path": "/admin/api/users/{id}/mfa",
+  "step_up": null,
+  "target": "bob",
+  "want": {
+   "after": {
+    "is_admin": false,
+    "is_locked": false,
+    "mfa_enabled": false
+   },
+   "codes": 0,
+   "error": "Additional authentication is required",
+   "status": 403
+  }
+ },
+ {
+  "accounts": [
+   [
+    "actor",
+    true,
+    false,
+    ""
+   ],
+   [
+    "bob",
+    false,
+    false,
+    ""
+   ]
+  ],
+  "admin_users": [],
+  "body": {
+   "confirm_username": "x"
+  },
+  "method": "post",
+  "name": "recovery-missing-user",
+  "path": "/admin/api/users/{id}/recovery",
+  "step_up": [
+   "recovery.reset",
+   "{id}"
+  ],
+  "target": "nobody",
+  "want": {
+   "after": null,
+   "codes": 0,
+   "error": "User not found",
+   "status": 404
+  }
+ }
+]

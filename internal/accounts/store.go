@@ -60,8 +60,8 @@ type Service struct {
 	// Sessions and Live end the sessions and live resources of an account
 	// that is locked, reset or deleted; Data removes a deleted account's
 	// rows. They are set by the composition root.
-	Sessions Sessions
-	Live     LiveAccess
+	Sessions  Sessions
+	Live      LiveAccess
 	Data      UserData
 	Factors   Factors
 	Recovery  RecoveryCodes
