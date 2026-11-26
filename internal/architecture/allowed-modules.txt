@@ -1,0 +1,15 @@
+# External Go modules allowed in the build list (ADR 0004).
+#
+# Format: <module> <tier> <importers|-> <reason>
+#   tier       A for golang.org/x modules, B for small reviewed libraries.
+#              Tier C (own implementations) needs no entry.
+#   importers  comma-separated module-relative packages that may import the
+#              module directly; a trailing "/" allows a subtree. "-" means
+#              the module may only appear as an indirect dependency.
+#   reason     why the module is needed and why not the standard library.
+#
+# Every module linked into a non-test package (go list -deps, all release
+# platforms) and every direct requirement in go.mod needs an entry. A new
+# entry needs a license check against Apache-2.0 and a maintenance check in
+# the pull request that adds it.
+

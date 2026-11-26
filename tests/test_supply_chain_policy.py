@@ -23,6 +23,10 @@ PINNED_ACTIONS = {
         '368f82528645a54fb793d4d04e342629a3f51346',
         'v5',
     ),
+    'actions/setup-go': (
+        'd8cbb8045d7f43706b9177cceb36c1f91a6644d5',
+        'v7.1.0',
+    ),
     'actions/setup-node': (
         '949feb2413d6458794dcd2491c4babbbce0c15c1',
         'v7.1.0',

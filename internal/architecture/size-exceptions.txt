@@ -1,0 +1,6 @@
+# Production Go files allowed to exceed 400 lines (ADR 0003).
+#
+# Format: <module-relative path> <max-lines> <reason>
+# Every entry needs a reason a reviewer can check, for example a table of
+# official test vectors. Entries for files that shrink below the limit or
+# no longer exist fail the architecture tests and must be removed.

@@ -2,7 +2,7 @@ name: Tests
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, go]
   workflow_call:
     inputs:
       expected_sha:

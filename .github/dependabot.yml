@@ -133,6 +133,33 @@ updates:
     commit-message:
       prefix: "deps(docker)"
 
+  # Go modules of the Go backend, which lives on the integration branch
+  - package-ecosystem: "gomod"
+    directory: "/"
+    target-branch: "go"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:30"
+      timezone: "Europe/Berlin"
+
+    open-pull-requests-limit: 5
+
+    labels:
+      - "dependencies"
+      - "go"
+
+    commit-message:
+      prefix: "deps(go)"
+
+    groups:
+      go-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"

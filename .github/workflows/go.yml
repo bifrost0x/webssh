@@ -1,0 +1,152 @@
+name: Go
+
+# Gates for the Go backend, built on the long-lived integration branch `go`
+# (ADR 0002). Pull requests into `go` and the cut-over pull request into
+# main are checked, and every push to `go` after a merge.
+on:
+  pull_request:
+    branches: [main, go]
+  push:
+    branches: [go]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Pull request runs supersede each other; every commit on `go` is checked.
+concurrency:
+  group: go-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The patterns cover the whole module. "./..." is not used because a local
+# npm install places third-party Go files under node_modules; the
+# architecture tests reject Go code outside cmd/ and internal/.
+env:
+  GO_PACKAGES: ./cmd/... ./internal/...
+  STATICCHECK_VERSION: 2026.2.2
+  GOVULNCHECK_VERSION: v1.10.0
+  GOSEC_VERSION: v2.30.0
+  GOTOOLCHAIN: local
+  GOFLAGS: -mod=readonly
+
+jobs:
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/webssh-$GOOS-$GOARCH" ./cmd/webssh
+          go vet $GO_PACKAGES
+
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify go.mod and go.sum are tidy
+        run: |
+          go mod tidy -diff
+          go mod verify
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l cmd internal)"
+          if [ -n "$unformatted" ]; then
+            echo "Files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet $GO_PACKAGES
+
+      - name: Check for pending go fix rewrites
+        run: go fix -diff $GO_PACKAGES
+
+      - name: Install staticcheck
+        run: go install "honnef.co/go/tools/cmd/staticcheck@$STATICCHECK_VERSION"
+
+      - name: Staticcheck
+        run: staticcheck $GO_PACKAGES
+
+      # Includes the architecture tests: package map, import rules, file
+      # sizes, package names and the module allowlist.
+      - name: Test with race detector
+        run: go test -race -count=1 $GO_PACKAGES
+
+      # Release builds set the version with the linker (ADR 0004); this
+      # keeps the variable names and the output format from drifting.
+      - name: Check linker-set version
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/webssh" -ldflags "-X github.com/bifrost0x/webssh/internal/buildinfo.version=3.4.0 -X github.com/bifrost0x/webssh/internal/buildinfo.revision=$GITHUB_SHA" ./cmd/webssh
+          test "$("$RUNNER_TEMP/webssh" version)" = "3.4.0 (${GITHUB_SHA:0:7})"
+
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # Tools are installed by exact version through the Go checksum
+      # database and never enter go.mod (ADR 0004).
+      - name: Install pinned security scanners
+        run: |
+          go install "golang.org/x/vuln/cmd/govulncheck@$GOVULNCHECK_VERSION"
+          go install "github.com/securego/gosec/v2/cmd/gosec@$GOSEC_VERSION"
+
+      # Platform-specific code (Windows service, ACLs) is only reachable
+      # for its own target.
+      - name: Govulncheck
+        run: |
+          for target in linux/amd64 windows/amd64 darwin/arm64; do
+            echo "govulncheck for $target"
+            GOOS="${target%/*}" GOARCH="${target#*/}" govulncheck $GO_PACKAGES
+          done
+
+      - name: Gosec
+        run: gosec -quiet $GO_PACKAGES
