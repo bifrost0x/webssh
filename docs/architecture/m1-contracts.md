@@ -238,7 +238,9 @@ ch u32 | seq u64 | data`. Kinds: 1 output (server to client), 2 input
 (client to server, Go-Back-N by `seq`), 3 cumulative ack (no data, no
 flags). Output flags: 1 reset, 2 replay. Input flag: 1 want ack, answered
 with `terminal.input_ack`. Channels `1 … 2^31-1` are allocated by the
-client.
+client. Channels from `2^31` on belong to the server: only the end-to-end
+build opens them, for the synthetic output streams of `e2e.output_stream`;
+the shim binds them and accepts output and ack frames on them.
 
 Input sequences start at 1 per channel and attachment. The server accepts
 input frame `s` only if `s` equals the next expected sequence `e`; any
@@ -724,9 +726,12 @@ func (c Config) Explicit(name string) bool
 - `netpolicy.Tailnet.InterfaceConfigured` is
   `cfg.Explicit("TAILSCALE_SSH_INTERFACE")`; D4 sets it when it builds
   the network policy.
-- `BACKUP_TEMP_DIR` is registered as inert today; `Config` offers its
-  resolved value with D4, which passes it to `legacy.Options.BackupTempDir`
-  (restore-state probes of the migration).
+- `Config.BackupTempDir` is the resolved `BACKUP_TEMP_DIR`; D4 passes it
+  to `legacy.Options.BackupTempDir` (restore-state probes of the
+  migration, purge backup fallback) and to `legacy.M1.BackupTempDir`.
+- `Config.Network.TailscaleSSHEnabled` and `TailscaleInterface` carry
+  `TAILSCALE_SSH_ENABLED` and `TAILSCALE_SSH_INTERFACE` for the network
+  policy.
 
 ## HTTP edge
 
@@ -899,7 +904,38 @@ state digest for five minutes.
 
 D4 wires `Accounts.Normalize` before serving, `Sessions.Sweep`
 periodically, and `audit.Open(DATA_DIR/logs, …)` with
-`AUDIT_LOG_MAX_BYTES` and `audit_backup_count`.
+`AUDIT_LOG_MAX_BYTES` and `audit_backup_count`. Go appends to the same
+`logs/security_audit.log` as the Python release, in its format (I-10); after
+a way back to Python that file also holds the lines Go wrote. The
+migration notice says so.
+
+Additions of the third wave (D1, D4):
+
+```go
+func (f *Flow) SignIn() PendingSignIn // auth.Flow as auth.PendingSignIn
+func (f *Flow) SignInDirect(w, r, userID int64, method string, assurance Assurance) error // sign-in without a password (passkeys)
+func (s *accounts.Service) MFARequiredTx(ctx, tx, id int64) (bool, error)
+func (s *accounts.Service) Promote(ctx, id int64) (changed bool, err error) // webssh create-admin on an existing account
+```
+
+`SignInDirect` discards a pending sign-in of the browser and opens the
+session like `CompletePending`; `webauthn.DirectSignIn` is satisfied by
+`*auth.Flow`.
+
+`internal/auth/webauthn` (D1) is the passkey capability: owner `webauthn`,
+table `webauthn_credentials`, its own verification of registrations and
+assertions (attestation `none` and `packed`; `crossOrigin`, `topOrigin`
+and a user handle that does not match are refused). `*webauthn.Service`
+is `stepup.Passkeys`, `auth.DurableFactor` (`Count`) and the step-up
+target check of `passkey.delete` (`OwnsTarget`); `webauthn.Factor` is
+the `auth.Factor` of kind `passkey`; `webauthn.HTTP` serves
+`/api/webauthn/*` behind the gate `passkey` (`WEBAUTHN_ENABLED` is its
+upper bound). The composition root wires it as the extension `passkeys`
+(`cmd/webssh/passkeys.go`): `prepare` sets the optional dependencies of
+MFA, step-up, sign-in and the security inventory and marks the feature
+ready; `wire` hands the service the MFA and recovery services and
+registers the routes. Account deletion, once it exists, removes the
+account's passkeys with it (there is no foreign key across owners).
 
 ## SSH
 
@@ -1112,7 +1148,66 @@ type StepError struct { UserID int64; Record string; Err error }
   both. On Windows the Go lock is real; the SQLite and flock probes and
   the free-space check still only warn and must become real checks before
   the Windows release (decision C7, open).
-- `--replace` moves to `internal/backup` once that exists (B8/B7).
+- `--replace` moves to `internal/backup` (B7).
+
+The steps of M1 (D2) register through one entry point:
+
+```go
+type M1 struct { AdminUsers []string; Environment settings.Environment; HostLimits hosts.Limits; BackupTempDir string; Persistent PersistentSessionStore }
+func RegisterM1(r *Registry, m M1) error // every entity a step or pending; fails while one is uncovered
+type PersistentSessionStore interface {
+	Schema() store.Schema
+	ImportPersistentTx(ctx, tx *store.Tx, p PersistentSession) error
+	PersistentTx(ctx, tx *store.Tx) ([]PersistentSession, error) // ordered by RowID
+}
+func (r *Registry) PartlyPending(entity, phase string, count func(ctx, *Source) (int, error)) error
+```
+
+- `M1.Environment` is the same `settings.Environment` the server gives
+  `settings.New`. The composition root registers the steps in
+  `cmd/webssh/migration_m1.go` and passes an adapter of `internal/terminal`
+  as `Persistent`: `terminal.ImportPersistentAt(ctx, tx, id, row)` keeps
+  the legacy row id, `terminal.ImportedPersistentTx` reads the rows back.
+- Each step writes through additive import functions of its capability and
+  verifies through their read-back functions in the same staging
+  transaction: `accounts.ImportTx`, `GetTx`, `IDFloorTx`,
+  `ImportQuarantineTx`, `QuarantineTx`; `local.ImportTx`, `StoredTx`;
+  `auth.RecoveryHashesTx`, `ThrottleTx`; `(*totp.Service).ExportTx`;
+  `operations.ImportGate`, `ImportGateTx`, `StoredTx`; `hostops.NoteTx`;
+  `hostkey.FileTx`; `vault.ExportKeysTx`; `webauthn.ImportedTx` and
+  `(*webauthn.Service).ImportTx`; `settings.VerifyRecoveryCheck`. The
+  migration never writes another owner's table directly.
+- Every SSH key the migration sealed from a plain-text legacy file is a
+  report warning `plaintext_key_sealed`; after activation the server
+  writes one audit event `MIGRATION_PLAINTEXT_KEY_SEALED` per warning
+  (the migration itself writes nothing to `logs/`).
+
+`webssh legacy purge` (section 5.9 of the specification, D3):
+
+```go
+type PurgeOptions struct { Options; BackupDir string; SkipBackup bool; Backup func(ctx, BackupRequest) (string, error); Confirm func(PurgePlan) bool }
+type BackupRequest struct { Dir, Database string; Secret, Material []byte; KeyID, Release string; Now time.Time; DataDir string; Legacy []string }
+type PurgePlan struct { Files int; Kept []KeptPath; KeptFiles []string; SkipBackup bool }
+type Purged struct { State State; Backup string; Removed int; Warnings []Warning }
+func Purge(ctx, PurgeOptions) (*Purged, error)
+var ErrPurgeAborted error
+```
+
+- `RecordSchema` version 2 adds `migrate_purge` (in-progress flag, file
+  list, backup path, times). Checkpoints `PointPurgeBackup`,
+  `PointPurgeStarted`, `PointPurgeRemoved`, `PointPurgeRecorded`,
+  `PointPurgeMaterial`; stop codes `purge_in_progress`, `purge_refused`,
+  `purge_backup_failed`, `purge_failed`, `legacy_after_purge` (S7).
+- The purge refuses while a pending entity has a count above zero;
+  `secret_key` is never removed. The paths of `kept_in_place` whose files
+  it removes are shown through `Confirm` and go into the backup
+  (`BackupRequest.Legacy`); `--skip-backup` is refused while there are
+  any.
+- `internal/backup` writes and verifies the archive (format
+  `webssh-go-backup` version 1: manifest, `data/go/webssh.db`,
+  `data/secret_key`, `data/go/keyring-material`, then the kept legacy
+  files as `data/<path>`). `Verify` reads it back with the probes
+  `vault.ProbeSealed` and `totp.ProbeSealed`, which open one sealed record.
 
 ## End-to-end harness
 

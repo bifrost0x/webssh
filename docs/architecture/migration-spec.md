@@ -225,7 +225,7 @@ Common rules for every row:
 | E07 | Security feature gate | `security_feature_states` (`passkey`, `totp`, `oidc`, `ldap`, `recovery`) | `internal/operations`: `operations_feature_gates(feature, enabled, updated_by, updated_at)` | Verbatim; absent rows stay absent (the environment ceiling still applies at run time). | keep | Effective state per feature equal for the fixture environment. | STOP on unknown feature name |
 | E08 | TOTP authenticator | `totp_authenticators`: `encrypted_secret` (Fernet), `label`, `active`, `last_accepted_step`, timestamps | `internal/auth/totp`: `totp_authenticators(id, user_id, label, sealed_secret, active, last_accepted_step, created_at, activated_at, last_used_at)` (owner `totp`, times in microseconds) | Fernet decrypt (per-user derivation), seal with the keyring, store with `(*totp.Service).ImportTx`; the legacy id is kept. `last_accepted_step` kept (replay protection). | keep | Decrypted secret equals the manifest; the code for the manifest time verifies; the same step is rejected as a replay; a step at or below `last_accepted_step` is rejected. | STOP on decrypt failure |
 | E09 | TOTP enrollment (unfinished) | `totp_enrollments` | none | Not imported. Counted per user in the report so the user can restart enrolment. | decided (D-02) | Report lists the count; no row in the Go database. | DISCARD |
-| E10 | Passkey | `webauthn_credentials`: `credential_id` (raw), `public_key` (COSE), `sign_count`, `transports` (JSON), `name`, timestamps | `internal/auth/webauthn`: `auth_webauthn_credentials` | Verbatim bytes; COSE key parsed once to validate algorithm (ES256, RS256, EdDSA) and curve. User handle stays the ASCII decimal user id (I-02). | keep | Every assertion vector in `values.webauthn_vectors` verifies against the migrated record with the configured RP ID and origin; the counter rule holds (synced passkey with counter 0 accepted with 0; non-zero counter must increase); an assertion signed by a different key fails. | STOP on unparseable COSE key or unsupported algorithm |
+| E10 | Passkey | `webauthn_credentials`: `credential_id` (raw), `public_key` (COSE), `sign_count`, `transports` (JSON), `name`, timestamps | `internal/auth/webauthn` (owner `webauthn`): `webauthn_credentials(id, user_id, credential_id, public_key, sign_count, transports, name, created_at, last_used_at)` with the legacy id; written with `(*webauthn.Service).ImportTx`, read back with `webauthn.ImportedTx`; the COSE key is checked with `webauthn.ParseCOSEKey` (the migration has no parser of its own) | Verbatim bytes; COSE key parsed once to validate algorithm (ES256, RS256, EdDSA) and curve. User handle stays the ASCII decimal user id (I-02). | keep | Every assertion vector in `values.webauthn_vectors` verifies against the migrated record with the configured RP ID and origin; the counter rule holds (synced passkey with counter 0 accepted with 0; non-zero counter must increase); an assertion signed by a different key fails. | STOP on unparseable COSE key or unsupported algorithm |
 | E11 | Recovery codes | `recovery_codes.code_hash` (SHA-256 with domain prefix) | `internal/auth`: `auth_recovery_codes(id, user_id, algorithm='sha256-webssh-v1', hash, created_at)` | Hash copied with `(*auth.Recovery).ImportTx`; the normalisation rule (upper case, whitespace removed) is part of the algorithm tag. Consumed codes are already deleted in Python. | keep | Each remaining manifest code is accepted once and then rejected; the consumed code is rejected. | STOP on hash length other than 32 bytes |
 | E12 | Browser login (sessions, cookies) | `authentication_sessions`, cookies `session`, remember cookie, `<name>_device` | none | Not imported; every user signs in once. Count of live sessions per user in the report. | decided (D-02) | No Go session exists after migration; every manifest cookie is rejected by Go. | DISCARD |
 | E13 | Transient auth state | `pending_authentications`, `step_up_grants`, `step_up_intents`, `factor_bootstrap_tokens`, `github_oauth_states`, `oidc_login_states`, `webauthn_challenges` | none | Not imported. Unexpired factor bootstrap codes are listed per user (username and action, no token) so admins can reissue them. | decided (D-02) | Report lists open bootstrap codes and step-up grants. | DISCARD |
@@ -292,7 +292,7 @@ Common rules for every row:
 
 | # | Entity | Legacy source | Go target (draft) | Conversion | Class | Verification | On failure |
 |---|---|---|---|---|---|---|---|
-| A01 | Persistent tmux session and its display name | `ssh_sessions` rows with `is_persistent=1` and a `tmux_session_name`: `session_id`, `user_id`, `host`, `port`, `username`, `key_id`, `auth_type`, `display_name`, `jump_host_id`, `socks_proxy_id`, `via_socks`, `profile_id`, `via_jump`, `reconnect_route_known`, `created_at`, `last_activity` | `internal/terminal`: `terminal_persistent_sessions(...)` with the same fields, `connected=false` | Names are copied byte for byte; they contain a random part (`{prefix}_{user}_{host}_{port}_{uuid4.hex[:8]}`, `app/ssh_manager.py:640-647`; gateway `{prefix}_wg_{sha256[:16]}_{uuid4.hex}`, `app/ssh_gateway.py:25-30`) and cannot be re-derived. New names follow the same scheme. Non-persistent rows are discarded. Not applied when restoring a Python backup: Python's restore empties `ssh_sessions` (`app/restore_sanitizer.py:9-21`). | decided (D-09) | After migration the reconnect offer lists each row; reattaching in the lab finds the running tmux session (K2); a renamed session keeps its name. | STOP |
+| A01 | Persistent tmux session and its display name | `ssh_sessions` rows with `is_persistent=1` and a `tmux_session_name`: `session_id`, `user_id`, `host`, `port`, `username`, `key_id`, `auth_type`, `display_name`, `jump_host_id`, `socks_proxy_id`, `via_socks`, `profile_id`, `via_jump`, `reconnect_route_known`, `created_at`, `last_activity` | `internal/terminal`: `terminal_persistent_sessions(...)` with the same fields and the legacy row id (`ssh_sessions.id`), `connected=false`; written with `terminal.ImportPersistentAt`, read back with `terminal.ImportedPersistentTx` through the `legacy.PersistentSessionStore` adapter of the composition root | Names are copied byte for byte; they contain a random part (`{prefix}_{user}_{host}_{port}_{uuid4.hex[:8]}`, `app/ssh_manager.py:640-647`; gateway `{prefix}_wg_{sha256[:16]}_{uuid4.hex}`, `app/ssh_gateway.py:25-30`) and cannot be re-derived. New names follow the same scheme. Non-persistent rows are discarded. Not applied when restoring a Python backup: Python's restore empties `ssh_sessions` (`app/restore_sanitizer.py:9-21`). | decided (D-09) | After migration the reconnect offer lists each row; reattaching in the lab finds the running tmux session (K2); a renamed session keeps its name. | STOP |
 | A02 | Application secret | `DATA_DIR/secret_key` or `SECRET_KEY` | none (read only) | Resolved like `entrypoint.sh:37-87` (rules in I-08). Before any write the migration decrypts one existing secret to prove the key matches; with no encrypted data this check is skipped and reported. | keep (invariant I-08) | A wrong `SECRET_KEY` stops with "SECRET_KEY does not match the stored data" before anything is written. | STOP |
 | A03 | Login devices | cookie `<SESSION_COOKIE_NAME>_device` | none | Not imported; known devices lose their rate-limit exemption once. | decided (D-02) | – | DISCARD |
 | A04 | Connection history namespace (browser storage) | derived: HMAC over user id, username and incarnation (`app/browser_identity.py`) | `accounts_users.history_generation` | Frozen input (section 4.2), so the browser keeps its recent connections, scrollback setting, favourites and topology layout (D-10). | decided (D-10) | Scope computed by Go equals `values.users[*].connection_history_scope` bit for bit, also for an account with `created_at` NULL. | STOP |
@@ -322,8 +322,14 @@ to `deleted_users/user_12_<hex>/`, and a later account received id 12 again.
   whose incarnation differs from the current account's incarnation are
   KEEP-IN-PLACE and reported.
 - The Go id sequence starts above the maximum of the legacy user ids and of
-  every id parsed from `deleted_users/user_<id>_*`. Go never reuses an id
-  (`fix`: the Python reuse is an accident of SQLite, not a rule).
+  every id parsed from `deleted_users/user_<id>_*` and from `users/user_<id>`
+  directories without an account. Go never reuses an id (`fix`: the Python
+  reuse is an accident of SQLite, not a rule).
+- An id parsed from a directory name above 2^31-1 is not one Python handed
+  out. It does not raise the floor (that would leave no ids for new
+  accounts, or overflow); the directory stays in place, a `deleted_users/`
+  entry gets no quarantine index entry (reason `implausible_account_id`),
+  and the report names the path.
 
 ### 4.2 `users.created_at` in cryptographic contexts
 
@@ -823,10 +829,21 @@ given with `--backup-to`, or by default next to `DATA_DIR` when its parent
 is writable, otherwise `BACKUP_TEMP_DIR`; never into `go/`. It verifies the
 backup by reading it back (manifest, hashes, database integrity, one sealed
 record decrypted), prints its path, and aborts without removing anything if
-any step fails. Only an explicit `--skip-backup` skips this. Then:
+any step fails. Only an explicit `--skip-backup` skips this.
+
+The purge is refused while the migration record lists a pending entity
+with a count above zero (KEEP-IN-PLACE for a later release): removing it
+would lose it. A pending entity with count 0 does not block. Every path of
+the report's `kept_in_place` whose files the purge removes (directories of
+accounts that no longer exist, `deleted_users/`, key files not listed in
+`keys.json`, legacy single-user stores) is listed with its reason and file
+count before the confirmation, and its files go into the verified backup
+as `data/<path>`; `--skip-backup` is refused while there are any, because
+Go has no copy of them. `secret_key` is never removed: it holds
+`SECRET_KEY` for Go as well (I-08), and the backup carries a copy. Then:
 
 1. write a "purge in progress" entry with the list of legacy files to remove
-   (taken from the migration record; never `logs/`, `go/` or files not in
+   (taken from the migration record; never `secret_key`, `logs/`, `go/` or files not in
    the record) and the backup path, in one committed and synced transaction
    (state S10);
 2. remove the listed files one by one; a file that is already gone counts as
