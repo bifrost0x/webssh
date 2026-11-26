@@ -22,14 +22,14 @@ const (
 // It compares Lstat with the opened file, so a file swapped for a link
 // between the check and the open is refused as well.
 func openRegular(path string, limit int64) ([]byte, os.FileInfo, error) {
-	info, err := os.Lstat(path)
+	info, err := os.Lstat(path) // #nosec G703 -- LDAP_BIND_PASSWORD_FILE or LDAP_CA_FILE of the operator, not request data
 	if err != nil {
 		return nil, nil, err
 	}
 	if !info.Mode().IsRegular() {
 		return nil, nil, errors.New("not a regular file")
 	}
-	f, err := os.Open(path) // #nosec G304 -- LDAP_BIND_PASSWORD_FILE or LDAP_CA_FILE of the operator
+	f, err := os.Open(path) // #nosec G304 G703 -- LDAP_BIND_PASSWORD_FILE or LDAP_CA_FILE of the operator, not request data
 	if err != nil {
 		return nil, nil, err
 	}
