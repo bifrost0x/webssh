@@ -67,9 +67,14 @@ type pendingEntity struct {
 func NewRegistry() *Registry { return &Registry{} }
 
 // Add registers a step. newStep is called once per run. An entity can be
-// registered only once, as a step or as pending.
+// registered only once as a step. A step for an entity the release keeps
+// in place (KeepInPlace) takes it over: the area of a later phase that
+// migrates the entity registers after the release.
 func (r *Registry) Add(g Group, newStep func() Step) error {
 	s := newStep()
+	r.pending = slices.DeleteFunc(r.pending, func(p pendingEntity) bool {
+		return p.entity == s.Entity() && !slices.ContainsFunc(r.steps, func(st registered) bool { return st.entity == p.entity })
+	})
 	if err := r.claim(s.Entity()); err != nil {
 		return err
 	}

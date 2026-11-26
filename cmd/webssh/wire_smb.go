@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/files/smb"
+	"github.com/bifrost0x/webssh/internal/migrate/legacy"
 	"github.com/bifrost0x/webssh/internal/netpolicy"
 	"github.com/bifrost0x/webssh/internal/store"
 )
@@ -10,7 +11,8 @@ import (
 var _ smb.Network = (*netpolicy.Policy)(nil)
 
 // smbArea wires the area "smb" (FS3): the SMB file backend
-// (internal/files/smb) and the saved share definitions. FS3 fills in the hooks; no other package edits this file.
+// (internal/files/smb), the saved share definitions and their migration
+// (E22). FS3 fills in the hooks; no other package edits this file.
 //
 // With SMB_ENABLED false no smb.* type is mounted: the shim answers the
 // page with SMB_DISABLED, as the Python handlers did. The saved
@@ -33,6 +35,9 @@ func smbArea() extension {
 			}
 			sys.realtime.Mount(svc.Routes()...)
 			return nil
+		},
+		migrate: func(r *legacy.Registry, _ config.Config, _ config.LookupFunc) error {
+			return legacy.AddSMB(r)
 		},
 	}
 }
