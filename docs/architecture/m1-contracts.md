@@ -590,6 +590,7 @@ func (db *DB) Apply(ctx context.Context, owner string, ms []Migration) error
 func (db *DB) ApplyAll(ctx context.Context, schemas ...Schema) error
 func (db *DB) CloseForActivation(ctx context.Context) error
 func (db *DB) Close() error
+func (db *DB) CloseShared() error // a second process beside the owner: no checkpoint or journal switch
 func (db *DB) QuickCheck(ctx context.Context) error
 func (db *DB) IntegrityCheck(ctx context.Context) error
 func (db *DB) Path() string
@@ -810,6 +811,8 @@ func (s *Service) Publish(revs []principal.Revocation)
 func (s *Service) ClearRecovery(ctx, id, replacement string, mfaOff bool) (bool, error)
 func (s *Service) Subscribe(fn func(principal.Revocation)) (cancel func())
 func (s *Service) Sweep(ctx) (int, error)
+func (s *Service) FollowRevocations(ctx) (int, error) // revocations of other processes
+func (s *Service) EndRecovery(ctx, tx, sessionID, replacement string, basic bool) error // auth.RecoverySessions
 type Accounts interface { Standing(ctx, userID int64) (Standing, error) }       // internal/accounts
 type Durations interface { SessionMinutes(ctx, userID int64) (int, error) }     // internal/settings
 ```
@@ -818,7 +821,12 @@ A token is 32 random bytes; only `MAC(session_token,
 "webssh-session-v1\0"+token)` is stored. A session is bound to the
 account's `auth_generation` and to the installation's revoke-all epoch.
 Revocations are published after the commit and before the revoking call
-returns. HTTP: `GET /api/account/sessions`, `POST
+returns. Every ended session is also written to the revocation journal
+`session_revocations` in the same transaction, tagged with the writing
+service; the server calls `FollowRevocations` every second and publishes
+the entries other processes wrote (an administrator command such as
+`webssh reset-password`), so they take effect within two seconds like a
+revocation of the server itself. HTTP: `GET /api/account/sessions`, `POST
 /api/account/sessions/revoke`.
 
 `internal/auth` declares the registries:

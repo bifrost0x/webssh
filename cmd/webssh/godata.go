@@ -77,7 +77,12 @@ func (g *goData) Close() error {
 	if g.audit != nil {
 		errs = append(errs, g.audit.Close())
 	}
-	if g.db != nil {
+	switch {
+	case g.db == nil:
+	case g.startup == nil:
+		// The running server owns the database (it holds the Go lock).
+		errs = append(errs, g.db.CloseShared())
+	default:
 		errs = append(errs, g.db.Close())
 	}
 	if g.startup != nil {

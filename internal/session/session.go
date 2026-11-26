@@ -123,7 +123,16 @@ CREATE TABLE session_epoch (
 	singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
 	value     TEXT NOT NULL
 ) STRICT;
-INSERT INTO session_epoch (singleton, value) VALUES (1, lower(hex(randomblob(32))));`}}}
+INSERT INTO session_epoch (singleton, value) VALUES (1, lower(hex(randomblob(32))));`}, {Version: 2, SQL: `
+CREATE TABLE session_revocations (
+	seq        INTEGER PRIMARY KEY,
+	session_id TEXT NOT NULL,
+	user_id    INTEGER NOT NULL,
+	reason     TEXT NOT NULL,
+	origin     TEXT NOT NULL,
+	at_us      INTEGER NOT NULL
+) STRICT;
+CREATE INDEX session_revocations_at ON session_revocations (at_us);`}}}
 }
 
 func randomText(n int) string {

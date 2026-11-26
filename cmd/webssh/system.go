@@ -172,6 +172,11 @@ func (s *system) buildCore(ctx context.Context, in bootInput) error {
 	s.accounts.Credentials = s.local
 	s.settings = settings.New(s.db, settingsEnvironment(cfg, in.lookup))
 	s.sessions = session.New(s.db, s.ring, s.accounts, sessionDurations{s.settings})
+	// The first call notes the journal position; later revocations of
+	// other processes are followed from here on (background.go).
+	if _, err := s.sessions.FollowRevocations(ctx); err != nil {
+		return fmt.Errorf("session revocation journal: %w", err)
+	}
 	if err := s.accounts.Normalize(ctx); err != nil {
 		return fmt.Errorf("account start-up rules: %w", err)
 	}

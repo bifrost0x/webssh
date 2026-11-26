@@ -14,6 +14,10 @@ const (
 	// sourceWatchInterval is the re-check of the legacy source while Go
 	// serves (migration specification, section 5.7).
 	sourceWatchInterval = 60 * time.Second
+	// revocationFollowInterval is how often revocations committed by
+	// another process (an administrator command such as reset-password)
+	// are picked up; they then take effect like those of this process.
+	revocationFollowInterval = time.Second
 )
 
 // startBackground runs the periodic work of the server until close.
@@ -21,6 +25,7 @@ func (s *system) startBackground(ctx context.Context) {
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	s.stopBackground = cancel
 	s.background.Go(func() { s.every(ctx, sweepInterval, s.sweepSessions) })
+	s.background.Go(func() { s.every(ctx, revocationFollowInterval, s.followRevocations) })
 	watch, err := legacy.NewSourceWatch(ctx, s.db, s.cfg.DataDir)
 	switch {
 	case err != nil:
@@ -53,6 +58,15 @@ func (s *system) every(ctx context.Context, interval time.Duration, fn func(cont
 			}
 		}
 	}
+}
+
+func (s *system) followRevocations(ctx context.Context) bool {
+	if n, err := s.sessions.FollowRevocations(ctx); err != nil {
+		s.log.Warn("revocations of other processes not read", "err", err)
+	} else if n > 0 {
+		s.log.Info("sessions ended by another process", "count", n)
+	}
+	return true
 }
 
 func (s *system) sweepSessions(ctx context.Context) bool {

@@ -209,12 +209,11 @@ func (a *Admin) resetPassword(ctx context.Context, p parsed, o IO) error {
 		return fmt.Errorf("the password was not changed: %w", err)
 	}
 	a.audit("PASSWORD_RESET_CLI", "user", acc.Username)
-	// The running server learns of the revocation only through its
-	// periodic session check, which closes the browser connections; its
-	// SSH sessions end with a restart (a request queue between the
-	// processes, as in the Python release, is not built yet).
+	// The running server follows the session revocation journal and ends
+	// the browser connections, terminals and SSH sessions of the account
+	// within a few seconds, as the Python release did.
 	writeLine(o.Stdout, "Password reset for "+acc.Username+". Its sign-ins are invalid. If WebSSH is running, "+
-		"its open browser connections end within 30 seconds; restart WebSSH to end its SSH sessions at once.")
+		"its open connections, SSH sessions and persistent tmux sessions end within a few seconds.")
 	if acc.IsLocked {
 		writeLine(o.Stdout, "The account is still locked; an administrator can unlock it.")
 	}
