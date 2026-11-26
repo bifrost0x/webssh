@@ -15,7 +15,7 @@ cd "$(dirname "$0")/../.."
 IMG=${IMG:-webssh-go:m1}
 DEBUG_IMG=${DEBUG_IMG:-webssh-go:m1-debug}
 BUSYBOX=busybox:1.37-musl@sha256:f6a95d611e0a8780fabdb2aec43e31275b2720dfefa3e41b16835bfc42454478
-TRIVY_IMG=aquasec/trivy:0.76.1
+TRIVY_IMG=aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
 P=webssh-go-check
 HARD=(--read-only --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 512 --memory 2g
       --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777)
@@ -27,7 +27,7 @@ bad()   { echo "FAIL $*"; fail=$((fail + 1)); }
 check() { local name=$1; shift; if "$@"; then ok "$name"; else bad "$name"; fi; }
 
 cleanup() {
-  docker rm -f "$P-run" "$P-u99" "$P-u99b" "$P-tz" >/dev/null 2>&1
+  docker rm -f "$P-run" "$P-port" "$P-u99" "$P-u99b" "$P-tz" >/dev/null 2>&1
   docker volume rm -f "$P-data" "$P-data99" >/dev/null 2>&1
   if [ -n "$BIND" ] && [ -d "$BIND" ]; then
     # The bind directory belongs to 99:100 inside the user namespace; remove
@@ -67,10 +67,21 @@ check "user 1000:1000, exec-form healthcheck, serve on 0.0.0.0:5000" \
 check "release image has no shell" bash -c "! docker run --rm --entrypoint /bin/sh '$IMG' -c true >/dev/null 2>&1"
 
 echo "== 2 default user, hardened, named volume"
-docker run -d --name "$P-run" "${HARD[@]}" --health-interval 1s -v "$P-data:/app/data" -p 127.0.0.1::5000 "$IMG" >/dev/null
+docker run -d --name "$P-run" "${HARD[@]}" --health-interval 1s -v "$P-data:/app/data" "$IMG" >/dev/null
 check "healthy via 'webssh healthcheck' without a shell" wait_healthy "$P-run"
-hostport=$(docker port "$P-run" 5000/tcp | head -1)
-check "/ready answers 200 from the host" curl -sf -o /dev/null "http://$hostport/ready"
+# A separate container publishes the port: with rootless Docker, restarting
+# a container with an ephemeral host port can fail in RootlessKit's port
+# allocation ("address already in use"), which says nothing about the image.
+hostport=""
+for _ in 1 2 3; do
+  docker rm -f "$P-port" >/dev/null 2>&1
+  if docker run -d --name "$P-port" "${HARD[@]}" -p 127.0.0.1::5000 "$IMG" >/dev/null; then
+    hostport=$(docker port "$P-port" 5000/tcp | head -1)
+    break
+  fi
+done
+check "/ready answers 200 from the host" bash -c "wait_() { for _ in \$(seq 40); do curl -sf -o /dev/null 'http://$hostport/ready' && return 0; sleep 0.25; done; return 1; }; wait_"
+docker rm -f "$P-port" >/dev/null
 pid=$(docker inspect -f '{{.State.Pid}}' "$P-run")
 grep -E '^(Uid|Gid|CapEff|CapBnd|NoNewPrivs)' "/proc/$pid/status"
 check "PID 1 is the binary, no capabilities, no_new_privs" bash -c "
@@ -95,7 +106,7 @@ code=$(docker inspect -f '{{.State.ExitCode}}' "$P-run")
 echo "docker stop took ${ms} ms, exit code $code"
 check "SIGTERM stops within 2 s with exit 0 and logs shutdown complete" bash -c \
   "[ $ms -lt 2000 ] && [ $code -eq 0 ] && docker logs '$P-run' 2>&1 | grep -q 'shutdown complete'"
-docker start "$P-run" >/dev/null
+docker start "$P-run" >/dev/null || docker inspect -f '{{.State.Error}}' "$P-run"
 check "restart on the same volume becomes healthy" wait_healthy "$P-run"
 docker kill -s INT "$P-run" >/dev/null
 for _ in $(seq 20); do [ "$(docker inspect -f '{{.State.Running}}' "$P-run")" = false ] && break; sleep 0.25; done
