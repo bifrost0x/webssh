@@ -154,7 +154,9 @@ func (h *HTTP) login(w http.ResponseWriter, r *http.Request) {
 		writeStartError(w, err, msgUnavailable)
 		return
 	}
-	http.Redirect(w, r, u, http.StatusFound)
+	// u is the authorization endpoint of the configured issuer's discovery
+	// document (https, checked in discover); "next" only reaches the flight.
+	http.Redirect(w, r, u, http.StatusFound) // #nosec G710 -- the target is the provider's checked endpoint, not request input
 }
 
 // principalOf returns the signed-in principal of the request, if any.
