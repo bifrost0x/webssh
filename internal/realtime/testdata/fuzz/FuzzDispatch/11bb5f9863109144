@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"v\":1,\"t\":\"1,\"t\":test.fail\",\"id\":\"c\"}")
