@@ -322,3 +322,17 @@ func (s *Service) Signer(ctx context.Context, owner int64, keyID string) (ssh.Si
 	}
 	return signer, nil
 }
+
+// HasKey implements hosts.Keys: it reports whether owner has a stored key
+// with this ID, usable or not, so a saved host can refer to it as the
+// Python release allowed.
+func (s *Service) HasKey(ctx context.Context, owner int64, keyID string) (bool, error) {
+	var found bool
+	if err := s.db.Read(ctx, func(tx *store.Tx) (err error) {
+		_, found, err = getRow(ctx, tx, owner, keyID)
+		return err
+	}); err != nil {
+		return false, storage(err)
+	}
+	return found, nil
+}

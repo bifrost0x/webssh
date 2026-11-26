@@ -452,3 +452,20 @@ func TestLimitsRecheckedInWrite(t *testing.T) {
 		t.Fatalf("keys: %d, want 1", len(list))
 	}
 }
+
+// HasKey answers for the owner only, whatever the state of the key.
+func TestHasKey(t *testing.T) {
+	r := newRig(t, Limits{})
+	alice, bob := principaltest.User(1), principaltest.User(2)
+	s := r.upload(t, alice, "a", newEd25519PEM(t))
+	for _, c := range []struct {
+		owner int64
+		id    string
+		want  bool
+	}{{alice.UserID, s.ID, true}, {bob.UserID, s.ID, false}, {alice.UserID, "missing", false}} {
+		got, err := r.svc.HasKey(context.Background(), c.owner, c.id)
+		if err != nil || got != c.want {
+			t.Errorf("HasKey(%d, %q) = %v, %v; want %v", c.owner, c.id, got, err, c.want)
+		}
+	}
+}
