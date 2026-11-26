@@ -1,8 +1,11 @@
 package store_test
 
 import (
+	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/accounts"
@@ -10,10 +13,15 @@ import (
 	"github.com/bifrost0x/webssh/internal/auth/local"
 	"github.com/bifrost0x/webssh/internal/auth/stepup"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
+	"github.com/bifrost0x/webssh/internal/hostops"
+	"github.com/bifrost0x/webssh/internal/hosts"
+	"github.com/bifrost0x/webssh/internal/migrate/legacy"
 	"github.com/bifrost0x/webssh/internal/operations"
 	"github.com/bifrost0x/webssh/internal/session"
+	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/ssh/hostkey"
 	"github.com/bifrost0x/webssh/internal/store"
+	"github.com/bifrost0x/webssh/internal/vault"
 )
 
 // productionSchemas lists the schema of every capability that has one.
@@ -28,6 +36,11 @@ func productionSchemas() []store.Schema {
 		operations.Schema(),
 		session.Schema(),
 		hostkey.Schema(),
+		hosts.Schema(),
+		hostops.Schema(),
+		vault.Schema(),
+		settings.Schema(),
+		legacy.RecordSchema(),
 	}
 }
 
@@ -95,5 +108,34 @@ func TestAuthSchemaIsOneOrderedList(t *testing.T) {
 	split.Migrations = []store.Migration{{Version: 1, SQL: split.Migrations[0].SQL}}
 	if err := db.ApplyAll(t.Context(), split); err == nil {
 		t.Fatal("a second auth list was applied")
+	}
+}
+
+// productionSchemas misses no schema: every non-test source file that
+// declares one is counted.
+func TestProductionSchemasAreComplete(t *testing.T) {
+	declared := 0
+	err := filepath.WalkDir("..", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && d.Name() == "testdata" {
+			return filepath.SkipDir
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		declared += strings.Count(string(src), "store.Schema{Owner:")
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(productionSchemas()); got != declared {
+		t.Fatalf("productionSchemas lists %d schemas, the sources declare %d", got, declared)
 	}
 }
