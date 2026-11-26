@@ -6,6 +6,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
+	"github.com/bifrost0x/webssh/internal/ssh/client"
 )
 
 // attemptKey names a connection attempt: the request_id is chosen by the
@@ -111,6 +112,12 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	if err != nil {
 		return protocol.TerminalOpened{}, err
 	}
+	target, vctx, endVariant, challenger, err := m.prepareVariant(actx, peer, p, req, target)
+	if err != nil {
+		return protocol.TerminalOpened{}, err
+	}
+	defer endVariant()
+	actx = vctx
 	plan, err := m.planTmux(actx, p.UserID, req.Target, target)
 	if err != nil {
 		return protocol.TerminalOpened{}, err
@@ -121,7 +128,10 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	if err != nil {
 		return protocol.TerminalOpened{}, err
 	}
-	ix := &interaction{m: m, peer: peer, owner: p.UserID, requestID: req.RequestID}
+	var ix client.Interaction = &interaction{m: m, peer: peer, owner: p.UserID, requestID: req.RequestID}
+	if challenger != nil {
+		ix = challengingInteraction{ix, challenger}
+	}
 	sh, tm, err := m.openShell(actx, target, ix, req.Rows, req.Cols, plan)
 	if err != nil {
 		release()

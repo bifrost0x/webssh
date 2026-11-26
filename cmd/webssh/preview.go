@@ -10,7 +10,7 @@ import "github.com/bifrost0x/webssh/internal/httpapi"
 // pages before sign-in carry no notice.
 var previewWorkspaceAreas = []string{
 	"files", "smb", "automation", "credentials", "discovery", "commands",
-	"herdr", "gateway", "tailscale", "serverOps",
+	"herdr", "serverOps",
 }
 
 const previewWorkspaceMessage = "Preview: some areas are not available yet."

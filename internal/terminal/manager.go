@@ -41,6 +41,9 @@ type Deps struct {
 	Audit Auditor
 	// Quotas bounds the SSH sessions (QUOTA_SSH_SESSION_*); required.
 	Quotas Quotas
+	// Variants connects SSH gateway selectors and Tailscale SSH hosts;
+	// without it they answer not_available_in_preview.
+	Variants Variants
 }
 
 // Auditor writes warning-level security events (provided by
@@ -59,6 +62,7 @@ type Manager struct {
 	profiles Profiles
 	routes   SavedRoutes
 	saved    SavedPasswords
+	variants Variants
 	log      *slog.Logger
 	now      func() time.Time
 
@@ -93,7 +97,7 @@ func New(cfg Config, deps Deps) (*Manager, error) {
 	}
 	cfg.defaults()
 	m := &Manager{
-		cfg: cfg, shells: deps.Shells, profiles: deps.Profiles, routes: deps.Routes, saved: deps.Passwords, log: deps.Log, now: time.Now,
+		cfg: cfg, shells: deps.Shells, profiles: deps.Profiles, routes: deps.Routes, saved: deps.Passwords, variants: deps.Variants, log: deps.Log, now: time.Now,
 		flow: newLedger(cfg.Flow), input: newInputBudget(cfg.Input),
 		quota:    &sessionQuota{policy: deps.Quotas},
 		prompts:  newPrompts(cfg.MaxPrompts),

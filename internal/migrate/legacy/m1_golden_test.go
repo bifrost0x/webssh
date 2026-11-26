@@ -122,7 +122,7 @@ func TestM1MigratesGolden(t *testing.T) {
 	for _, s := range m.report.MaterialisedSettings {
 		settingsSeen[s.Setting] = true
 	}
-	for _, want := range []string{"permission.hosts.discovery", "permission.hosts.reachability", "ssh.legacy_algorithms"} {
+	for _, want := range []string{"permission.hosts.discovery", "permission.hosts.reachability", "ssh.legacy_algorithms", "netpolicy.tailnet_follows_switch"} {
 		if !settingsSeen[want] {
 			t.Errorf("D-01 setting %s not materialised: %+v", want, m.report.MaterialisedSettings)
 		}

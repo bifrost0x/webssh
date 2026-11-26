@@ -175,3 +175,41 @@ func TestChallengeBounds(t *testing.T) {
 		t.Fatalf("not bounded: %d %d", len([]rune(q.Name)), len([]rune(q.Questions[0].Text)))
 	}
 }
+
+// A password the server accepted as the first factor is never sent again
+// as the answer of the following one-time-code prompt; the user answers
+// it (password, then keyboard-interactive as partial success).
+func TestSpentPasswordDoesNotAnswerTheNextFactor(t *testing.T) {
+	var answered []string
+	cfg := &ssh.ServerConfig{
+		PasswordCallback: func(_ ssh.ConnMetadata, pw []byte) (*ssh.Permissions, error) {
+			if string(pw) != "pw" {
+				return nil, errors.New("no")
+			}
+			return nil, &ssh.PartialSuccessError{Next: ssh.ServerAuthCallbacks{
+				KeyboardInteractiveCallback: func(_ ssh.ConnMetadata, ch ssh.KeyboardInteractiveChallenge) (*ssh.Permissions, error) {
+					a, err := ch("", "", []string{"OTP: "}, []bool{false})
+					if err != nil {
+						return nil, err
+					}
+					answered = append(answered, a...)
+					if len(a) != 1 || a[0] != "424242" {
+						return nil, errors.New("bad code")
+					}
+					return nil, nil
+				},
+			}}
+		},
+	}
+	s := startServer(t, cfg)
+	d, _ := newDialer(trusting(s), nil)
+	ix := &challenger{answers: [][]string{{"424242"}}}
+	c, err := d.Dial(t.Context(), target(s, "u", Auth{Password: "pw"}), ix)
+	if err != nil {
+		t.Fatalf("dial: %v (answers %q)", err, answered)
+	}
+	_ = c.Close()
+	if len(ix.rounds) != 1 || len(answered) != 1 || answered[0] != "424242" {
+		t.Fatalf("rounds %+v, server got %q", ix.rounds, answered)
+	}
+}

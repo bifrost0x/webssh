@@ -85,7 +85,7 @@ func (d *Dialer) Dial(ctx context.Context, t Target, ix Interaction) (*Conn, err
 	if err != nil {
 		return nil, err
 	}
-	conn, err := cfg.firstConn(ctx, t.Proxy, hops)
+	conn, err := cfg.firstConn(ctx, t, hops)
 	if err != nil {
 		return nil, err
 	}
@@ -102,14 +102,21 @@ func (d *Dialer) Dial(ctx context.Context, t Target, ix Interaction) (*Conn, err
 				return nil, err
 			}
 		}
-		client, err := cfg.handshake(ctx, conn, t.Owner, h, ix)
+		client, err := cfg.handshake(ctx, conn, t.Owner, h, ix, t.authVariant())
 		if err != nil {
 			closeChain()
 			return nil, err
 		}
 		chain = append(chain, client)
 	}
-	return newConn(chain, cfg.Keepalive, cfg.HandshakeTimeout), nil
+	c := newConn(chain, cfg.Keepalive, cfg.HandshakeTimeout)
+	if t.Variant != nil && t.Variant.Ready != nil {
+		if err := t.Variant.Ready(ctx, chain[len(chain)-1]); err != nil {
+			_ = c.Close()
+			return nil, fail(ctx, RoleTarget, false, err)
+		}
+	}
+	return c, nil
 }
 
 // prepare validates t, canonicalizes every host, asks the network policy
@@ -127,6 +134,8 @@ func (d *Dialer) prepare(ctx context.Context, t Target) ([]hop, error) {
 		return nil, invalid("A host can use either a jump host or a SOCKS5 proxy, not both.")
 	case len(t.Jumps) > d.MaxJumps:
 		return nil, invalid("Too many jump hosts.")
+	case t.dialVariant() != nil && (t.Proxy != nil || len(t.Jumps) > 0):
+		return nil, invalid("This connection cannot use a jump host or a SOCKS5 proxy.")
 	}
 	hops := make([]hop, 0, len(t.Jumps)+1)
 	for _, j := range t.Jumps {
@@ -145,7 +154,7 @@ func (d *Dialer) prepare(ctx context.Context, t Target) ([]hop, error) {
 			return nil, fail(ctx, h.role, false, fault.New(fault.InvalidValue, "Port must be between 1 and 65535."))
 		case h.User == "":
 			return nil, fail(ctx, h.role, false, fault.New(fault.InvalidValue, "Username is required."))
-		case h.Auth.Password == "" && h.Auth.KeyID == "":
+		case h.Auth.Password == "" && h.Auth.KeyID == "" && (h.role != RoleTarget || t.authVariant() == nil):
 			return nil, fail(ctx, h.role, false, fault.New(fault.InvalidValue, "No authentication method provided."))
 		}
 	}
@@ -153,6 +162,8 @@ func (d *Dialer) prepare(ctx context.Context, t Target) ([]hop, error) {
 		h := &hops[i]
 		var err error
 		switch {
+		case t.dialVariant() != nil:
+			// The variant reaches the target itself.
 		case i > 0:
 			h.dest, err = d.Net.JumpDestination(ctx, h.Host, h.Port, i < len(hops)-1)
 		case t.Proxy != nil:
@@ -181,10 +192,18 @@ func (d *Dialer) prepare(ctx context.Context, t Target) ([]hop, error) {
 
 // firstConn opens the TCP connection to the first hop, or to the SOCKS5
 // proxy and through it to the first hop.
-func (d *Dialer) firstConn(ctx context.Context, proxy *SOCKS, hops []hop) (net.Conn, error) {
+func (d *Dialer) firstConn(ctx context.Context, t Target, hops []hop) (net.Conn, error) {
 	tctx, cancel := context.WithTimeout(ctx, d.HandshakeTimeout)
 	defer cancel()
 	first := hops[0]
+	proxy := t.Proxy
+	if dial := t.dialVariant(); dial != nil {
+		conn, err := dial(tctx, first.Hop)
+		if err != nil {
+			return nil, fail(tctx, first.role, false, err)
+		}
+		return conn, nil
+	}
 	if proxy == nil {
 		dial := d.Net.DialContext
 		if len(hops) > 1 {

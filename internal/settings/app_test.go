@@ -124,7 +124,7 @@ func TestMaterialisePolicies(t *testing.T) {
 			t.Errorf("incomplete report entry %+v", m)
 		}
 	}
-	if !slices.Equal(keys, []string{PolicyDiscovery, PolicyReachability, PolicyLegacySSHAlgorithms, PolicyOriginIgnoreScheme}) {
+	if !slices.Equal(keys, []string{PolicyDiscovery, PolicyReachability, PolicyLegacySSHAlgorithms, PolicyOriginIgnoreScheme, PolicyTailnetFollowsSwitch}) {
 		t.Errorf("materialised %v", keys)
 	}
 	a, err := s.App(t.Context())
@@ -133,13 +133,13 @@ func TestMaterialisePolicies(t *testing.T) {
 	}
 	p := a.Policy
 	if !slices.Equal(p.Discovery, []string{RoleUser}) || !slices.Equal(p.Reachability, []string{RoleUser}) ||
-		!p.OriginIgnoreScheme || !p.LegacySSHAlgorithms {
+		!p.OriginIgnoreScheme || !p.LegacySSHAlgorithms || !p.TailnetFollowsSwitch {
 		t.Errorf("policy %+v", p)
 	}
 	if !Granted(p.Discovery, RoleUser, false) || Granted(nil, RoleUser, false) || !Granted(nil, RoleUser, true) {
 		t.Error("Granted")
 	}
-	if len(a.MaterialisedSettings()) != 4 {
+	if len(a.MaterialisedSettings()) != 5 {
 		t.Errorf("listed %v", a.MaterialisedSettings())
 	}
 	// Without the legacy origin rule the scheme stays compared.
@@ -148,7 +148,13 @@ func TestMaterialisePolicies(t *testing.T) {
 		_, err := MaterialisePolicies(t.Context(), tx, Legacy{}, 1)
 		return err
 	})
-	if a, _ := s2.App(t.Context()); a.Policy.OriginIgnoreScheme || !a.Policy.LegacySSHAlgorithms {
+	if a, _ := s2.App(t.Context()); a.Policy.OriginIgnoreScheme || !a.Policy.LegacySSHAlgorithms || !a.Policy.TailnetFollowsSwitch {
 		t.Errorf("policy %+v", a.Policy)
+	}
+	// A new installation has no row: the tailnet rule does not follow the
+	// switch (D-28).
+	s3, _ := newService(t, Environment{})
+	if a, _ := s3.App(t.Context()); a.Policy.TailnetFollowsSwitch {
+		t.Error("new installation follows the Tailscale SSH switch")
 	}
 }

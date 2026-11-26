@@ -39,7 +39,7 @@ test('ssh_connect becomes terminal.open and early output follows ssh_connected',
     const open = ws.lastRequest('terminal.open');
     assert.deepEqual(open.p, {
         ch: 1, request_id: 'req_1', cols: 80, rows: 24,
-        target: {auth_type: 'password', host: 'h.test', username: 'u', password: 'pw', port: 2222, use_tmux: true},
+        target: {auth_type: 'password', interactive: true, host: 'h.test', username: 'u', password: 'pw', port: 2222, use_tmux: true},
     });
     ws.output(1, 1, 'motd\r\n');
     ws.reply(open.id, {session_id: 'sess-1', info: INFO});
@@ -81,7 +81,7 @@ test('a failed open and an unsupported target become ssh_error with the request 
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', client_request_id: 'req_a'});
     ws.fail(ws.lastRequest('terminal.open').id, {code: 'unreachable', message: 'The host could not be reached.'});
     const sent = ws.sent.length;
-    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'tailscale', client_request_id: 'req_b'});
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'agent', client_request_id: 'req_b'});
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', proxy_jump: {host: 'j'}, client_request_id: 'req_c'});
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'key', key_id: 'k', jump_host_id: 'j1',
         proxy_jump: {jump_host_id: 'j2', host: 'j'}, client_request_id: 'req_d'});
@@ -134,6 +134,25 @@ test('route passwords and saved passwords reach terminal.open', async () => {
         socks_proxy: {socks_proxy_id: 's2', password: 'sp'}, client_request_id: 'req_t'});
     await tick();
     assert.equal(ws.lastRequest('terminal.open').p.target.socks_password, 'sp');
+    socket.disconnect();
+});
+
+// A page that answers prompts says so for a gateway selector and for an
+// ordinary host alike (gateway_interaction, ssh_interaction).
+test('interactive pages mark terminal.open as interactive', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', password: 'pw',
+        ssh_interaction: 1, client_request_id: 'gateway_a'});
+    await tick();
+    assert.equal(ws.lastRequest('terminal.open').p.target.interactive, true);
+    socket.emit('ssh_connect', {host: 'h', username: 'u:prod', auth_type: 'password',
+        gateway_interaction: 1, client_request_id: 'gateway_b'});
+    await tick();
+    assert.equal(ws.lastRequest('terminal.open').p.target.interactive, true);
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', password: 'pw', client_request_id: 'req_c'});
+    await tick();
+    assert.equal(ws.lastRequest('terminal.open').p.target.interactive, undefined);
     socket.disconnect();
 });
 

@@ -50,14 +50,16 @@
     }
 
     // Projects the Socket.IO ssh_connect payload onto terminal.open; inline
-    // routes, Tailscale and Herdr are not projected. use_tmux carries the
-    // persistent session to reattach, which the server checks.
+    // routes and Herdr are not projected. use_tmux carries the persistent
+    // session to reattach, which the server checks. gateway_interaction and
+    // ssh_interaction say the page answers prompt.interactive.
     function openTarget(data) {
         const authType = data.auth_type || (data.key_id ? 'key' : 'password');
         const jump = savedRoute(data.proxy_jump, 'jump_host_id', data.jump_host_id);
         const socks = savedRoute(data.socks_proxy, 'socks_proxy_id', data.socks_proxy_id);
-        if (!['password', 'key'].includes(authType) || jump === null || socks === null) return null;
+        if (!['password', 'key', 'tailscale'].includes(authType) || jump === null || socks === null) return null;
         const target = {auth_type: authType};
+        if (data.gateway_interaction === 1 || data.ssh_interaction === 1) target.interactive = true;
         for (const name of TARGET_FIELDS) {
             if (typeof data[name] === 'string' && data[name] !== '') target[name] = data[name];
         }

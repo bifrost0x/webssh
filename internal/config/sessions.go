@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"slices"
 )
 
 // secretPlaceholders are the values config.py treats as "no secret" after
@@ -31,11 +32,20 @@ func loadSessions(p *parser, c *Config, in *pending) {
 	c.Accounts.AdminPanelEnabled = p.flag("ADMIN_PANEL_ENABLED", "ADMIN_PANEL_ENABLED", "true")
 
 	in.tailscaleEnabled = p.flag("TAILSCALE_SSH_ENABLED", "TAILSCALE_SSH_ENABLED", "false")
-	p.csvSet("TAILSCALE_SSH_ALLOWED_WEBSSH_USERS", "TAILSCALE_SSH_ALLOWED_WEBSSH_USERS", nil)
+	ts := &c.Network.Tailscale
+	ts.AllowedWebSSHUsers = p.csvSet("TAILSCALE_SSH_ALLOWED_WEBSSH_USERS", "TAILSCALE_SSH_ALLOWED_WEBSSH_USERS", nil)
 	in.tailscaleTargets = p.csvSet("TAILSCALE_SSH_ALLOWED_TARGETS", "TAILSCALE_SSH_ALLOWED_TARGETS", nil)
-	p.csvSet("TAILSCALE_SSH_ALLOWED_REMOTE_USERS", "TAILSCALE_SSH_ALLOWED_REMOTE_USERS", nil)
+	ts.AllowedRemoteUsers = p.csvSet("TAILSCALE_SSH_ALLOWED_REMOTE_USERS", "TAILSCALE_SSH_ALLOWED_REMOTE_USERS", nil)
 	in.tailscaleInterface = p.str("TAILSCALE_SSH_INTERFACE", "TAILSCALE_SSH_INTERFACE", "tailscale0", true)
 	c.Network.TailscaleSSHEnabled, c.Network.TailscaleInterface = in.tailscaleEnabled, in.tailscaleInterface
+	for _, raw := range in.tailscaleTargets {
+		if host, port, err := tailscaleTarget(raw); err == nil {
+			hp := HostPort{Host: host, Port: port}
+			if !slices.Contains(ts.AllowedTargets, hp) {
+				ts.AllowedTargets = append(ts.AllowedTargets, hp)
+			}
+		}
+	}
 
 	c.Debug = p.flag("DEBUG", "DEBUG", "False")
 	loadSecret(p, c)

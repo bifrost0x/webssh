@@ -16,7 +16,8 @@ const maxPromptRounds = 8
 // paramiko did for WebSSH: publickey with a stored key; the password
 // method with a password; keyboard-interactive when the server does not
 // accept the password method, where the password answers the first single
-// hidden prompt. No method runs twice. After a failed password or a
+// hidden prompt, unless the password method already succeeded as one
+// factor. No method runs twice. After a failed password or a
 // rejected answer nothing else is tried, so a password is never sent to a
 // server that already asked for and rejected it (servers such as Warpgate
 // drop keyboard-interactive from the list after a rejected answer).
@@ -48,6 +49,11 @@ func (a *authPlan) next(c *ssh.ClientAuthContext) (ssh.AuthMethod, error) {
 		return nil, err
 	}
 	tried := func(m string) bool { return slices.Contains(c.TriedMethods, m) }
+	// A password the server accepted as one factor is spent: it never
+	// answers a later prompt, which asks for something else.
+	if slices.Contains(c.PartialSuccessMethods, "password") {
+		a.password = ""
+	}
 	done := func(m string) bool { return tried(m) || slices.Contains(c.PartialSuccessMethods, m) }
 	allowed := func(m string) bool { return slices.Contains(c.AllowedMethods, m) && !done(m) }
 	switch {

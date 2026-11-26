@@ -75,6 +75,11 @@ type optional struct {
 	// an account's GitHub identity (area "github"). Nil: none.
 	githubActive   func(ctx context.Context) bool
 	githubIdentity func(ctx context.Context, userID int64) (*operations.Credential, error)
+	// terminalVariants, hostVariants and tailscaleAllowed come from the
+	// gateway area (wire_gateway.go).
+	terminalVariants terminal.Variants
+	hostVariants     hosts.Variants
+	tailscaleAllowed func(principal.Principal) bool
 	// passkeyPlaceholder stores a passkey that never authenticates (end-to-
 	// end seed only).
 	//lint:ignore U1000 read by the end-to-end build (e2e.go)

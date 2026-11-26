@@ -3,11 +3,16 @@ package netpolicy
 import (
 	"context"
 	"errors"
+	"net"
 	"net/netip"
 )
 
 // ErrRouteUnsupported reports a platform without a kernel route lookup.
 var ErrRouteUnsupported = errors.New("netpolicy: route lookup is not supported on this platform")
+
+// ErrInterfaceUnsupported reports a platform that cannot bind a socket to
+// one interface.
+var ErrInterfaceUnsupported = errors.New("netpolicy: interface pinning is not supported on this platform")
 
 // Route is the kernel's answer to "which interface would this address use".
 type Route struct {
@@ -28,4 +33,20 @@ func LookupRoute(ctx context.Context, addr netip.Addr) (Route, error) {
 		return Route{}, err
 	}
 	return lookupRoute(ctx, addr)
+}
+
+// DialInterface connects to addr with the socket bound to the interface
+// name (SO_BINDTODEVICE on Linux; ErrInterfaceUnsupported elsewhere). It
+// is the connection of Tailscale SSH, whose address the tailscale policy
+// pinned after the route check; the outbound policy does not apply.
+func DialInterface(ctx context.Context, name string, addr netip.AddrPort) (net.Conn, error) {
+	d, err := interfaceDialer(name, 0)
+	if err != nil {
+		return nil, err
+	}
+	network := "tcp4"
+	if addr.Addr().Is6() {
+		network = "tcp6"
+	}
+	return d.DialContext(ctx, network, addr.String())
 }

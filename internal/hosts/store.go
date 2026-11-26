@@ -59,6 +59,9 @@ type Service struct {
 	Limits Limits
 	// Persistent is optional; without it no session blocks a deletion.
 	Persistent PersistentSessions
+	// Variants is optional; without it gateway selectors and Tailscale
+	// SSH hosts are refused.
+	Variants Variants
 	// Now and NewID default to the clock and random UUIDs (tests set them).
 	Now   func() time.Time
 	NewID func() string

@@ -89,7 +89,7 @@ func (s *system) buildCapabilities(in bootInput) error {
 	if err != nil {
 		return fmt.Errorf("key vault: %w", err)
 	}
-	s.hosts = &hosts.Service{DB: s.db, Keys: s.vault, Persistent: opt.persistent, Limits: hostLimits(cfg)}
+	s.hosts = &hosts.Service{DB: s.db, Keys: s.vault, Persistent: opt.persistent, Variants: opt.hostVariants, Limits: hostLimits(cfg)}
 	s.notes = &hostops.Notes{DB: s.db}
 	s.hostkeys = hostkey.New(s.db, s.log)
 	if s.policy, err = s.networkPolicy(); err != nil {
@@ -109,7 +109,8 @@ func (s *system) buildCapabilities(in bootInput) error {
 	termCfg.TmuxPrefix = cfg.Features.TmuxSessionPrefix
 	s.terminal, err = terminal.New(termCfg, terminal.Deps{
 		Shells: shells, Profiles: s.hosts, Routes: routes, Log: s.log,
-		Connections: shells, DB: s.db, TmuxEnabled: s.tmuxEnabled, Audit: s.audit, Quotas: s.quotas})
+		Connections: shells, DB: s.db, TmuxEnabled: s.tmuxEnabled, Audit: s.audit, Quotas: s.quotas,
+		Variants: opt.terminalVariants})
 	if err != nil {
 		return fmt.Errorf("terminal: %w", err)
 	}
@@ -138,6 +139,7 @@ func (s *system) networkPolicy() (*netpolicy.Policy, error) {
 			Interface:           n.TailscaleInterface,
 			FeatureEnabled:      n.TailscaleSSHEnabled,
 			InterfaceConfigured: s.cfg.Explicit("TAILSCALE_SSH_INTERFACE"),
+			FollowsSwitch:       s.tailnetFollowsSwitch,
 		},
 		Logger: s.log,
 	})
@@ -154,6 +156,20 @@ func (s *system) tailnetRestricted() bool {
 		return true
 	}
 	return app.TailnetRouteRestricted
+}
+
+// tailnetFollowsSwitch is the derived setting netpolicy.tailnet_follows_switch
+// of an upgraded installation (D-28 under D-01); a failure to read it
+// keeps the rule independent of the switch (fail closed).
+func (s *system) tailnetFollowsSwitch() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	app, err := s.settings.App(ctx)
+	if err != nil {
+		s.log.Warn("tailnet setting unreadable; the restriction applies", "err", err)
+		return false
+	}
+	return app.Policy.TailnetFollowsSwitch
 }
 
 // tmuxEnabled is the runtime switch tmux_enabled; a failure to read it

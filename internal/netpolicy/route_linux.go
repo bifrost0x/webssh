@@ -15,8 +15,9 @@ import (
 
 // This is the only file of internal/netpolicy that imports syscall; the
 // architecture test lists every allowed importer (ADR 0010).
-// It opens no process and needs no capability: RTM_GETROUTE is available
-// to unprivileged sockets.
+// It opens no process and needs no capability: RTM_GETROUTE and
+// SO_BINDTODEVICE (Linux 5.7 and later) are available to unprivileged
+// sockets.
 
 const (
 	routeQueryTimeout = time.Second
@@ -108,4 +109,33 @@ func routeFromReply(reply routeReply) (Route, error) {
 		return Route{}, fmt.Errorf("netpolicy: route interface %d: %w", reply.oif, err)
 	}
 	return Route{Interface: iface.Name, Local: reply.kind == rtnLocal, Table: reply.table}, nil
+}
+
+// interfaceDialer returns a dialer whose sockets are bound to one interface
+// with SO_BINDTODEVICE, so a route change cannot move an admitted
+// connection to another interface.
+//
+// The Python release sets IP_UNICAST_IF, which the kernel honours only for
+// UDP and raw sockets; for its TCP connections it has no effect (K8 report,
+// TestLabInterfacePinning).
+func interfaceDialer(name string, timeout time.Duration) (*net.Dialer, error) {
+	if _, err := net.InterfaceByName(name); err != nil {
+		return nil, fmt.Errorf("netpolicy: interface %q: %w", name, err)
+	}
+	control := func(network, _ string, raw syscall.RawConn) error {
+		if network != "tcp4" && network != "tcp6" {
+			return fmt.Errorf("netpolicy: interface pinning needs tcp4 or tcp6, got %q", network)
+		}
+		var sockErr error
+		if err := raw.Control(func(fd uintptr) {
+			sockErr = syscall.SetsockoptString(int(fd), syscall.SOL_SOCKET, syscall.SO_BINDTODEVICE, name)
+		}); err != nil {
+			return err
+		}
+		if sockErr != nil {
+			return fmt.Errorf("netpolicy: pin socket to %q: %w", name, sockErr)
+		}
+		return nil
+	}
+	return &net.Dialer{Timeout: timeout, Control: control}, nil
 }

@@ -116,6 +116,14 @@ var v1 = []MessageType{
 	{TypeSettingsTheme, ClientRequest, "internal/settings"},
 	{TypeSettingsConfirmClose, ClientRequest, "internal/settings"},
 	{TypeSettingsDisconnect, ClientRequest, "internal/settings"},
+
+	// Area "gateway" (NW2, payload_gateway.go).
+	{TypePromptInteractive, ServerEvent, "internal/ssh/gateway"},
+	{TypePromptRespond, ClientRequest, "internal/ssh/gateway"},
+	{TypeGatewaySetup, ServerEvent, "internal/ssh/gateway"},
+	{TypeGatewayOutput, ServerEvent, "internal/ssh/gateway"},
+	{TypeGatewayInput, ClientRequest, "internal/ssh/gateway"},
+	{TypeGatewayAck, ClientRequest, "internal/ssh/gateway"},
 }
 
 // V1 returns the catalog of schema v1.

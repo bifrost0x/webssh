@@ -36,8 +36,11 @@ type pages struct {
 	tmux bool
 	// github is the area "github" (sys.optional); nil: not in the build.
 	github *optional
-	log    *slog.Logger
-	now    func() time.Time
+	// tailscaleAllowed is user_can_use_tailscale_ssh; nil offers no
+	// Tailscale SSH.
+	tailscaleAllowed func(principal.Principal) bool
+	log              *slog.Logger
+	now              func() time.Time
 }
 
 // signedIn is the account behind a request's principal.
@@ -89,6 +92,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 		LDAPEnabled:              pg.active(ctx, "ldap"),
 		LDAPProviderID:           pg.cfg.LDAP.ProviderID,
 		GitHubAuthEnabled:        pg.github != nil && pg.github.githubActive != nil && pg.github.githubActive(ctx),
+		SSHGatewayEnabled:        app.SSHGatewayEnabled,
 		Preview:                  previewNotice(u == nil),
 	}
 	if u == nil {
@@ -104,6 +108,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 	d.BackgroundScope = page.ConnectionHistoryScope
 	d.WebSSHVersion = buildinfo.Read().Version
 	d.SupportLinksEnabled = app.SupportLinksEnabled
+	d.TailscaleSSHAllowed = pg.tailscaleAllowed != nil && pg.tailscaleAllowed(u.p)
 	d.TmuxEnabled = pg.tmux && page.TmuxEnabled
 	d.TmuxDefault = pg.tmux && page.TmuxDefault
 	d.LegacySSHOptIn = page.LegacySSHOptIn

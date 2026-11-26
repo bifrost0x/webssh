@@ -910,6 +910,7 @@ no copy of its own.
 | `origin.ignore_scheme` | only when `realtime.KeepLegacySchemeRule` holds for the configuration at migration time; it takes effect only while the rule still holds for the current configuration | `true` | D-01, D-20 (K6 A1) |
 | `settings_user.confirm_session_close` | account with `settings_default_generation < 1` and no stored value | true | D-01 (preserves the Python default for old accounts) |
 | `tailscale_ssh_restrict_tailnet_routes` | value stored in `app_settings.json` | copied (`settings.ImportApp`), not materialised | D-28 (when absent, Go enforces the restriction; stored profiles on `100.64.0.0/10` are listed as possibly affected) |
+| `netpolicy.tailnet_follows_switch` | always for an existing installation (the Python release applied the tailnet rule only while `TAILSCALE_SSH_ENABLED` was true) | `true`: the rule keeps following the switch; while the tailnet interface exists and the switch is off the server warns the administrator at every start; new installations have the rule whenever this host is a tailnet node | D-01, D-28 |
 
 The discovery and reachability rights stay settings until the role model
 of B2/B3 exists; it then takes these values as its start values.

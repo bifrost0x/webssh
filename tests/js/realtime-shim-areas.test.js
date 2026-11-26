@@ -15,19 +15,21 @@ const M1_REQUESTS = ['list_profiles', 'save_profile', 'delete_profile', 'update_
     'save_socks_proxy', 'delete_socks_proxy', 'list_keys', 'upload_key', 'rename_key', 'replace_key',
     'delete_key', 'set_theme', 'set_confirm_session_close', 'set_disconnect_session_action', 'get_notepad',
     'save_notepad'];
+// Built by M2 packages since the split.
+const M2_REQUESTS = ['ssh_gateway_answer', 'ssh_gateway_input', 'ssh_gateway_ack'];
 const M1_UNAVAILABLE = ['list_commands', 'list_command_sets', 'list_smb_shares', 'probe_session_sftp',
     'request_session_insights', 'request_session_runtime_inventory'];
 const M1_FEATURES = ['files', 'smb', 'commands', 'commandSets', 'insights', 'terminalTools'];
 
 test('the split table equals the table of M1', () => {
-    assert.deepEqual(Object.keys(catalog.REQUESTS).sort(), [...M1_REQUESTS].sort());
+    assert.deepEqual(Object.keys(catalog.REQUESTS).sort(), [...M1_REQUESTS, ...M2_REQUESTS].sort());
     assert.deepEqual(Object.keys(catalog.UNAVAILABLE_REPLIES).sort(), [...M1_UNAVAILABLE].sort());
     assert.deepEqual(Object.keys(catalog.REFRESH_PUSH), ['keys.list']);
     assert.equal(catalog.featureOf('delete_command_set'), 'commandSets');
     assert.equal(catalog.featureOf('delete_command'), 'commands');
     assert.equal(catalog.featureOf('smb_list'), 'smb');
     assert.equal(catalog.featureOf('quick_sftp_open'), 'files');
-    assert.equal(catalog.featureOf('ssh_gateway_answer'), 'terminalTools');
+    assert.equal(catalog.featureOf('ssh_gateway_quick_cancel'), 'terminalTools');
     assert.equal(catalog.featureOf('list_profiles'), 'other');
     const features = new Set(M1_FEATURES);
     for (const event of ['list_directory', 'smb_x', 'list_commands', 'save_command_set', 'request_session_insights', 'request_herdr_snapshot']) {

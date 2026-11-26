@@ -38,7 +38,7 @@ Existing installations are carried over once, automatically, by
 | Secrets: credentials, keys, automation vault, encryption at rest | `internal/vault`, `internal/keyring` |
 | Commands and settings | `internal/commands`, `internal/settings` |
 | Automation: scheduled and permission jobs | `internal/automation`, `internal/cron`, `internal/jobs` |
-| SSH access into WebSSH: gateway, Tailscale SSH | `internal/ssh/gateway`, `internal/ssh/tailscale` |
+| SSH gateway (WebSSH is the client) and Tailscale SSH | `internal/ssh/gateway`, `internal/ssh/tailscale` |
 | Operation: backup, restore, secret rotation, maintenance, diagnostics, feature gates, admin CLI | `internal/backup`, `internal/operations`, `internal/admincli` |
 | Audit | `internal/audit` |
 | Limits: connection and storage quotas | `internal/quota` |
@@ -96,8 +96,8 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/terminal` | capability | Interactive shells: output flow, input budget, startup and post-connect commands, persistent tmux session names | `internal/ssh/client`, `internal/ssh/hostkey`, `internal/ssh/remotecmd` | B3 |
 | `internal/hosts` | capability | Saved hosts and profiles, host catalog and identity, platform facts, profile exchange, workspace presets | `internal/ssh/client`, `internal/ssh/remotecmd` | B3 |
 | `internal/hostops` | capability | Server operations, discovery and reachability check behind their permission, runtime inventory, host context, notes (one model: saved host or none), session insights (M1: the note without a host and the minimal overview status) | `internal/ssh/client`, `internal/ssh/remotecmd` | B3 |
-| `internal/ssh/gateway` | capability | SSH gateway into WebSSH sessions, built on the shared dialer | `internal/ssh/client`, `internal/ssh/hostkey` | B3 |
-| `internal/ssh/tailscale` | capability | Tailscale SSH targets and shared-identity policy | `internal/ssh/client` | B3 |
+| `internal/ssh/gateway` | capability | Connections through an SSH gateway such as Warpgate (WebSSH is the client): selector, authentication strategy, browser prompts and readiness probe as a variant of the shared dialer | `internal/ssh/client`, `internal/ssh/hostkey` | B3 |
+| `internal/ssh/tailscale` | capability | Tailscale SSH targets and shared-identity policy | `internal/ssh/client`, `internal/netpolicy` | B3 |
 | `internal/files` | capability | Protocol-neutral file workspace, editor, backend registry, one preview path with the editor's decoding rule for SFTP and SMB | – | B4 |
 | `internal/files/sftp` | capability | SFTP file backend | `internal/ssh/client` | B4 |
 | `internal/files/smb` | capability | SMB file backend, pool and diagnostics | `internal/netpolicy` | B4 |

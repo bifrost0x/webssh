@@ -12,6 +12,7 @@ test('every mapped event targets a type of the v1 catalog', () => {
         'hosts.socks.list', 'hosts.socks.save', 'hosts.socks.delete', 'keys.list', 'keys.upload',
         'keys.rename', 'keys.replace', 'keys.delete', 'settings.theme.set', 'settings.confirm_close.set',
         'settings.disconnect_action.set', 'notes.get', 'notes.save',
+        'prompt.respond', 'gateway.input', 'gateway.ack',
     ]);
     const mapped = new Set(Object.values(catalog.REQUESTS).map(entry => entry.type));
     assert.deepEqual([...mapped].sort(), [...v1].sort());
@@ -246,5 +247,43 @@ test('end-to-end hooks map to the reserved e2e namespace', async () => {
     assert.deepEqual(plain(done), [{counts: [1], peak: 3, elapsed_ms: 10, aborted: false}]);
     assert.equal(catalog.e2eEvent('e2e.Bad'), null);
     assert.equal(catalog.e2eEvent('hosts.profile.list'), null);
+    socket.disconnect();
+});
+
+test('gateway prompts, setup and output arrive as the Socket.IO events of today', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const seen = [];
+    for (const name of ['ssh_gateway_challenge', 'ssh_gateway_progress', 'ssh_gateway_output']) {
+        socket.on(name, data => seen.push([name, plain(data)]));
+    }
+    ws.serverSend('prompt.interactive', {prompt_id: 'p1', request_id: 'gateway_1', context: 'target', title: 'Warpgate',
+        instructions: 'Code', prompts: [{label: 'OTP: ', echo: true}], expires_in: 120});
+    ws.serverSend('gateway.setup', {request_id: 'gateway_1', phase: 'setup'});
+    ws.serverSend('gateway.output', {request_id: 'gateway_1', sequence: 1, data: 'Trust? '});
+    await tick();
+    assert.deepEqual(seen, [
+        ['ssh_gateway_challenge', {client_request_id: 'gateway_1', challenge_id: 'p1', context: 'target', title: 'Warpgate',
+            instructions: 'Code', prompts: [{label: 'OTP: ', echo: true}]}],
+        ['ssh_gateway_progress', {client_request_id: 'gateway_1', phase: 'setup'}],
+        ['ssh_gateway_output', {client_request_id: 'gateway_1', sequence: 1, data: 'Trust? '}],
+    ]);
+    socket.disconnect();
+});
+
+test('gateway answers, input and acks become v1 requests', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const acks = [];
+    socket.emit('ssh_gateway_answer', {client_request_id: 'gateway_1', challenge_id: 'p1', answers: ['123456']}, a => acks.push(a));
+    const answer = ws.lastRequest('prompt.respond');
+    assert.deepEqual(answer.p, {request_id: 'gateway_1', prompt_id: 'p1', answers: ['123456']});
+    ws.reply(answer.id, {});
+    socket.emit('ssh_gateway_input', {client_request_id: 'gateway_1', data: 'y'});
+    assert.deepEqual(ws.lastRequest('gateway.input').p, {request_id: 'gateway_1', data: 'y'});
+    socket.emit('ssh_gateway_ack', {client_request_id: 'gateway_1', sequence: 3});
+    assert.deepEqual(ws.lastRequest('gateway.ack').p, {request_id: 'gateway_1', sequence: 3});
+    await tick();
+    assert.deepEqual(plain(acks), [{success: true}]);
     socket.disconnect();
 });

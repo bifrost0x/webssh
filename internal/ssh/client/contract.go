@@ -44,6 +44,9 @@ type Target struct {
 	Proxy *SOCKS
 	// Display is how the session is presented; the dialer ignores it.
 	Display Display
+	// Variant is the SSH gateway or Tailscale SSH form of the connection
+	// (variant.go); nil for an ordinary one.
+	Variant *Variant
 }
 
 // Hop is one SSH server on the way to the target.
@@ -91,6 +94,10 @@ type Display struct {
 	UseTmux        bool
 	UseHerdr       bool
 	StartupCommand bool
+	// Tailscale marks a host that signs in with the WebSSH node's
+	// Tailscale identity (auth type "tailscale"): Hop.User is the remote
+	// user and the hop has no password or key.
+	Tailscale bool
 }
 
 // KeySource returns the signer of a stored SSH key of a user. Provided by
@@ -146,8 +153,10 @@ type Interaction interface {
 
 // Challenger is an Interaction that can also put the questions of a
 // keyboard-interactive round to the user (one-time codes, a second
-// question, the dialogs of PAM). The terminal implements it with the
-// realtime prompt of NW2. Without it, an attended connection that needs
+// question, the dialogs of PAM). The terminal adds it for a page that
+// answers prompts, backed by prompt.interactive of an attempt of
+// internal/ssh/gateway (gateway.Attempt.Challenger). Without it, an
+// attended connection that needs
 // such an answer ends with not_available_in_preview. The answers are sent
 // once; a rejected answer ends the attempt.
 type Challenger interface {

@@ -189,6 +189,26 @@ type Network struct {
 	// applies its tailnet rule with them.
 	TailscaleSSHEnabled bool
 	TailscaleInterface  string
+	// Tailscale holds the allowlists of the shared-identity mode.
+	Tailscale TailscaleSSH
+}
+
+// TailscaleSSH are the allowlists of Tailscale SSH (TAILSCALE_SSH_*). Names
+// match exactly, with case.
+type TailscaleSSH struct {
+	AllowedWebSSHUsers []string
+	AllowedRemoteUsers []string
+	// AllowedTargets are the valid entries of TAILSCALE_SSH_ALLOWED_TARGETS
+	// in canonical form. A malformed entry grants nothing (homelab) or
+	// stops the start (production); an entry with a non-ASCII name, which
+	// this build cannot canonicalize yet, grants nothing either.
+	AllowedTargets []HostPort
+}
+
+// HostPort is one canonical host and port.
+type HostPort struct {
+	Host string
+	Port int
 }
 
 // QuotaLimit is the global and per-user limit of one quota kind. Values
