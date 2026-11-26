@@ -12,13 +12,15 @@ const repoRoot = path.resolve(__dirname, '../../..');
 const python = process.env.PYTHON || 'python';
 const launcher = path.join('tests', 'e2e', 'm1', 'python_backend.py');
 
-const serverCommand = process.env.WEBSSH_E2E_SERVER_COMMAND || `"${python}" ${launcher} serve`;
-const adminCommand = process.env.WEBSSH_E2E_ADMIN_COMMAND
-    || (process.env.WEBSSH_E2E_SERVER_COMMAND ? null : `"${python}" ${launcher} cli`);
+// Own names, so WEBSSH_E2E_SERVER_COMMAND keeps meaning the seeded e2e
+// backend of the main suite.
+const serverCommand = process.env.WEBSSH_E2E_M1_SERVER_COMMAND || `"${python}" ${launcher} serve`;
+const adminCommand = process.env.WEBSSH_E2E_M1_ADMIN_COMMAND
+    || (process.env.WEBSSH_E2E_M1_SERVER_COMMAND ? null : `"${python}" ${launcher} cli`);
 
 // The suite runs against Python unless a server command is given; that is
 // how the Go server is started (tests/e2e/README.md).
-const kind = process.env.WEBSSH_E2E_SERVER_COMMAND ? 'go' : 'python';
+const kind = process.env.WEBSSH_E2E_M1_SERVER_COMMAND ? 'go' : 'python';
 
 // Configuration both servers document. It makes the loopback fixture work
 // (plain HTTP, lab targets on 127.0.0.1) and lets one spec sign in often.
@@ -43,7 +45,7 @@ function baseEnvironment(port, root) {
 }
 
 // Variables of the calling shell that would change the server under test.
-const inheritedBlocklist = /^(SECRET_KEY|DATA_DIR|DEPLOYMENT_PROFILE|ADMIN_USERS|REGISTRATION_ENABLED|BOOTSTRAP_REGISTRATION_ENABLED|WEBSSH_E2E_SEED|WEBSSH_E2E_FAST_HASHING)$/;
+const inheritedBlocklist = /^(SECRET_KEY|DATA_DIR|DEPLOYMENT_PROFILE|ADMIN_USERS|REGISTRATION_ENABLED|BOOTSTRAP_REGISTRATION_ENABLED|WEBSSH_E2E_SEED|WEBSSH_E2E_FAST_HASHING|WEBSSH_E2E_SERVER_COMMAND)$/;
 
 function cleanEnvironment() {
     return Object.fromEntries(Object.entries(process.env).filter(([name]) => !inheritedBlocklist.test(name)));
@@ -167,7 +169,7 @@ class Backend {
     // Runs "<admin command> <args>" against this data directory.
     async admin(args) {
         if (!this.adminCommand) {
-            throw new Error('WEBSSH_E2E_ADMIN_COMMAND is required when WEBSSH_E2E_SERVER_COMMAND is set');
+            throw new Error('WEBSSH_E2E_M1_ADMIN_COMMAND is required when WEBSSH_E2E_M1_SERVER_COMMAND is set');
         }
         this.port ??= await freePort();
         return run(this.adminCommand, args, this.environment());

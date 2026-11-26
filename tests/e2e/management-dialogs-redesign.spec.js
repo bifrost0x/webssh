@@ -1,5 +1,4 @@
 const { test, expect } = require('playwright/test');
-const path = require('node:path');
 const {
     assertNoExternalRequests,
     login,
@@ -25,7 +24,7 @@ test('host reference capture retains fixture identity and separate resource colu
     await expect(page.locator('.profile-management-columns > span')).toHaveCount(6);
     await expect(page.locator('#profileEditorUsername')).toHaveValue('keyuser');
     await page.locator('#profileConnectionDetailsTitle').click();
-    await page.screenshot({path: path.join(process.cwd(), 'plans/hosts-reference-render.png')});
+    await page.screenshot({path: test.info().outputPath('hosts-reference-render.png')});
     await page.locator('.profile-inspector-close').click();
     await expect(page.locator('#profileEditorView')).not.toBeVisible();
     await expect(page.locator('#profileSearchInput')).toBeVisible();

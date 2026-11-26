@@ -160,16 +160,14 @@ for (const viewport of [{width:1440, height:960}, {width:390, height:844}]) {
         const labels = await dialog.locator('.terminal-recipient').allTextContents();
         expect(labels[0]).toContain('safe-one');
         expect(labels[1]).toContain('safe-two');
-        const fs = require('node:fs');
-        fs.mkdirSync('plans/terminal-controls', {recursive:true});
-        await page.screenshot({path:`plans/terminal-controls/broadcast-${viewport.width}.png`, animations:'disabled'});
+        await page.screenshot({path:test.info().outputPath(`broadcast-${viewport.width}.png`), animations:'disabled'});
         let rect = await dialog.boundingBox();
         expect(rect.x).toBeGreaterThanOrEqual(0);
         expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width);
         await page.locator('#broadcastRecipientCancel').click();
         await nativePaste(page, 'printf "Example output"\nwhoami\u001b[31m\n');
         await expect(page.locator('#terminalPasteDialog')).toBeVisible();
-        await page.screenshot({path:`plans/terminal-controls/paste-${viewport.width}.png`, animations:'disabled'});
+        await page.screenshot({path:test.info().outputPath(`paste-${viewport.width}.png`), animations:'disabled'});
         rect = await page.locator('#terminalPasteDialog').boundingBox();
         expect(rect.x).toBeGreaterThanOrEqual(0);
         expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width);

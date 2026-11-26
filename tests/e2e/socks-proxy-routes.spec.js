@@ -44,7 +44,7 @@ for (const width of [390, 1536]) {
         await openProxies(page);
         await expect(row).toContainText('edited.example:1080');
         expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
-        await page.screenshot({path:`plans/socks-ui-review/proxies-${width}.png`,fullPage:true});
+        await page.screenshot({path:test.info().outputPath(`proxies-${width}.png`),fullPage:true});
         page.once('dialog', dialog => dialog.accept());
         await row.getByRole('button', {name:'Delete',exact:true}).click();
         await expect(row).toHaveCount(0);
@@ -227,7 +227,7 @@ test('SOCKS overview and route map identify the proxy and missing references', a
     const proxy=page.locator('.ssh-route-source').filter({hasText:'E2E none SOCKS proxy'});
     await expect(proxy).toContainText('SOCKS5 Proxy');
     await expect(proxy.locator(':scope > .material-icons')).toHaveText('lan');
-    await page.screenshot({path:'plans/socks-ui-review/route-map.png',fullPage:true});
+    await page.screenshot({path:test.info().outputPath('route-map.png'),fullPage:true});
     expect(errors).toEqual([]);
 });
 
