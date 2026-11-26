@@ -84,3 +84,94 @@ test('every role keeps its accent and pill text readable on every theme surface'
     }));
     for (const {role, values} of forced) expect(values, role).toEqual(['CanvasText', 'CanvasText']);
 });
+
+test('role tiles, identity lines, virtualization badges and platform icons stay readable in the real components', async ({page}) => {
+    const root = path.resolve(__dirname, '../..');
+    const template = fs.readFileSync(path.join(root, 'templates/index.html'), 'utf8');
+    const sheets = [...template.matchAll(/filename='(css\/[^']+\.css)'/g)].map(match => match[1]);
+    await page.setContent('<body class="webssh-ui webssh-shell"></body>');
+    for (const sheet of sheets) await page.addStyleTag({path: path.join(root, 'static', sheet)});
+    await page.addScriptTag({path: path.join(root, 'static/js/host-platform.js')});
+    await page.addScriptTag({path: path.join(root, 'static/js/host-identity.js')});
+    for (const theme of THEMES) {
+        const results = await page.evaluate(theme => {
+            document.body.dataset.theme = theme;
+            const parse = value => {
+                const numbers = value.match(/[\d.]+/g).map(Number);
+                const srgb = value.startsWith('color(');
+                const channels = numbers.slice(0, 3).map(v => (srgb ? v * 255 : v));
+                const alpha = value.includes('/') || value.startsWith('rgba') ? numbers[3] : 1;
+                return {channels, alpha: alpha ?? 1};
+            };
+            const over = (top, bottom) => top.channels.map((v, i) => v * top.alpha + bottom[i] * (1 - top.alpha));
+            const luminance = channels => channels.map(v => v / 255)
+                .map(v => (v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4))
+                .reduce((sum, value, i) => sum + value * [.2126, .7152, .0722][i], 0);
+            const ratio = (a, b) => {
+                const [x, y] = [luminance(a), luminance(b)];
+                return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
+            };
+            // Flattens the background colours behind the element, up to the page.
+            const backdrop = element => {
+                const layers = [];
+                for (let node = element.parentElement; node; node = node.parentElement) layers.push(parse(getComputedStyle(node).backgroundColor));
+                const base = parse(getComputedStyle(document.body).backgroundColor);
+                let result = base.alpha ? base.channels : [255, 255, 255];
+                for (const layer of layers.reverse()) if (layer.alpha) result = over(layer, result);
+                return result;
+            };
+            const ink = element => parse(getComputedStyle(element).color).channels;
+            const results = [];
+            const mount = html => {
+                const holder = document.createElement('div');
+                holder.innerHTML = html;
+                document.body.append(holder);
+                return holder;
+            };
+            for (const role of HostIdentity.ROLES) {
+                const card = mount(`<div class="od-host" data-role="${role}"><div class="od-host-logo"><span class="od-virt">KVM</span></div><span class="od-service-chip"></span></div>`);
+                const logo = card.querySelector('.od-host-logo');
+                const icon = HostPlatform.render({platform_icon: 'debian'});
+                logo.prepend(icon);
+                results.push({what: `${role} platform icon on the role tile`, min: 3, value: ratio(ink(icon), backdrop(icon))});
+                const chip = card.querySelector('.od-service-chip');
+                results.push({what: `${role} service logo on its tile`, min: 3, value: ratio(ink(chip), backdrop(chip.firstElementChild || chip))});
+                card.remove();
+                const bar = mount(`<div class="session-identity" data-role="${role}"><span class="session-identity-role">x</span><span class="session-identity-service"></span></div>`);
+                const identity = bar.firstElementChild;
+                const role_text = identity.querySelector('.session-identity-role');
+                const service = identity.querySelector('.session-identity-service');
+                // The line fades from 16% of the role colour on the left; test that end.
+                const swatch = document.createElement('span');
+                swatch.style.color = 'var(--role)';
+                identity.append(swatch);
+                const accent = parse(getComputedStyle(swatch).color).channels;
+                const surface = backdrop(role_text);
+                const tinted = over({channels: accent, alpha: .16}, surface);
+                results.push({what: `${role} identity role text`, min: 4.5, value: ratio(ink(role_text), tinted)});
+                results.push({what: `${role} identity service logo`, min: 3, value: ratio(ink(service), over({channels: accent, alpha: .18}, tinted))});
+                bar.remove();
+            }
+            for (const platform of Object.keys(HostPlatform.labels)) {
+                const modern = mount('<div class="od-host"><div class="od-host-logo"><span class="od-virt">KVM</span></div></div>');
+                const icon = HostPlatform.render({platform_icon: platform});
+                modern.querySelector('.od-host-logo').prepend(icon);
+                results.push({what: `${platform} platform icon on the plain tile`, min: 3, value: ratio(ink(icon), backdrop(icon))});
+                const virt = modern.querySelector('.od-virt');
+                results.push({what: 'overview card virtualization badge', min: 4.5, value: ratio(ink(virt), backdrop(virt))});
+                modern.remove();
+                const classic = mount('<div id="connectionOverview"><div class="overview-host-entry"><div class="overview-row"><span class="overview-row-virt">KVM</span></div></div></div>');
+                const row = classic.querySelector('.overview-row');
+                const classicIcon = HostPlatform.render({platform_icon: platform});
+                row.prepend(classicIcon);
+                results.push({what: `${platform} classic platform icon`, min: 3, value: ratio(ink(classicIcon), backdrop(classicIcon))});
+                const badge = row.querySelector('.overview-row-virt');
+                results.push({what: 'classic virtualization badge', min: 4.5, value: ratio(ink(badge), backdrop(badge))});
+                classic.remove();
+            }
+            return results;
+        }, theme);
+        expect(results.length).toBeGreaterThan(17 * 4);
+        for (const result of results) expect.soft(result.value, `${theme} ${result.what}`).toBeGreaterThanOrEqual(result.min);
+    }
+});
