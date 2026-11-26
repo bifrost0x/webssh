@@ -34,6 +34,11 @@ test('the rail groups by group until the role mode is chosen, and remembers the 
     const radios = page.locator('.shell-grouping [role="radio"]');
     await expect(page.locator('.shell-grouping')).toHaveAttribute('role', 'radiogroup');
     await expect(radios).toHaveCount(2);
+    // Targets of at least 24 by 24 CSS pixels (WCAG 2.5.8).
+    for (const box of await radios.evaluateAll(items => items.map(item => item.getBoundingClientRect()))) {
+        expect(box.height).toBeGreaterThanOrEqual(24);
+        expect(box.width).toBeGreaterThanOrEqual(24);
+    }
     await expect(radios.nth(0)).toHaveAttribute('aria-checked', 'true');
     expect(await headings(page)).toEqual(['Edge', 'Lab']);
     expect(await hosts(page)).toEqual(['a-rather-long-host-name-for-a-narrow-rail', 'plain', 'pve-two', 'nas-one', 'pve-one']);

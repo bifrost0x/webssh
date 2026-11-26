@@ -36,7 +36,7 @@ body.webssh-shell {
 .shell-groups-heading { display: flex; flex-wrap: wrap; row-gap: 6px; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 0 12px; color: var(--ws2-text-muted); font-size: 11px; }
 .shell-groups-heading > span { min-width: 0; overflow-wrap: anywhere; }
 .shell-grouping { display: inline-flex; flex: 0 0 auto; padding: 2px; border: 1px solid var(--ws2-border); border-radius: 6px; }
-.shell-grouping button { min-height: 22px; padding: 2px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ws2-text-secondary); font: inherit; cursor: pointer; }
+.shell-grouping button { min-height: 24px; padding: 2px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ws2-text-secondary); font: inherit; cursor: pointer; }
 .shell-grouping button[aria-checked="true"] { background: var(--overview-tint); color: var(--ws2-accent); }
 .shell-grouping button:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 1px; }
 .shell-host-group summary { list-style: none; }
