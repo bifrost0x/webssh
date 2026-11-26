@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/bifrost0x/webssh/internal/store"
 	"github.com/bifrost0x/webssh/internal/store/storetest"
@@ -295,5 +296,60 @@ func TestCheckFindsDamage(t *testing.T) {
 	defer damaged.Close()
 	if err := damaged.QuickCheck(t.Context()); !errors.Is(err, store.ErrCorrupt) {
 		t.Fatalf("QuickCheck on a damaged file: %v", err)
+	}
+}
+
+// TestCloseWaitsForReaders holds a read transaction open across Close:
+// Close waits for it, refuses new reads, and still leaves one file.
+func TestCloseWaitsForReaders(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "webssh.db")
+	db := openHosts(t, path)
+	insertProfile(t, db, "a")
+	inRead, release := make(chan struct{}), make(chan struct{})
+	readDone := make(chan error, 1)
+	go func() {
+		readDone <- db.Read(t.Context(), func(tx *store.Tx) error {
+			var n int
+			if err := tx.QueryRowContext(t.Context(), `SELECT count(*) FROM hosts_profiles`).Scan(&n); err != nil {
+				return err
+			}
+			close(inRead)
+			<-release
+			return nil
+		})
+	}()
+	<-inRead
+	closed := make(chan error, 1)
+	go func() { closed <- db.Close() }()
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned during a running read: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	if err := <-readDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-closed; err != nil {
+		t.Fatal(err)
+	}
+	if left := sideFiles(t, path); len(left) != 0 {
+		t.Fatalf("side files: %v", left)
+	}
+	if err := db.Read(t.Context(), func(*store.Tx) error { return nil }); err == nil {
+		t.Fatal("Read after Close succeeded")
+	}
+}
+
+func TestOpenRefusesNonRegularSideFiles(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "webssh.db")
+	if err := os.Mkdir(path+"-wal", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Open(t.Context(), path, store.Options{}); !errors.Is(err, store.ErrNotRegular) {
+		t.Fatalf("directory as WAL: %v", err)
 	}
 }

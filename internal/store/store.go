@@ -33,9 +33,13 @@ type DB struct {
 	reader *sql.DB
 	// writeMu serializes write transactions inside the process, so a
 	// writer never waits on SQLite's busy handler for another goroutine.
-	// It also guards closed.
 	writeMu sync.Mutex
-	closed  bool
+	// readMu is held shared by every running Read and exclusively by
+	// Close, so Close waits for running reads before it checkpoints.
+	readMu sync.RWMutex
+	// closed is set with writeMu and readMu held, so either suffices to
+	// read it.
+	closed bool
 }
 
 // Tx is a transaction handed to Read and Write callbacks. It is valid only
@@ -119,7 +123,8 @@ func Open(ctx context.Context, path string, o Options) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: resolve %q: %w", path, err)
 	}
-	if err := createRegular(abs); err != nil {
+	before, err := createRegular(abs)
+	if err != nil {
 		return nil, err
 	}
 	dsn := func(mode string) string {
@@ -143,6 +148,10 @@ func Open(ctx context.Context, path string, o Options) (*DB, error) {
 	db.reader = reader
 	if err := reader.PingContext(ctx); err != nil {
 		return nil, errors.Join(fmt.Errorf("store: open database: %w", err), db.Close())
+	}
+	// SQLite follows symlinks: make sure it opened the file checked above.
+	if err := sameRegular(abs, before); err != nil {
+		return nil, errors.Join(err, db.Close())
 	}
 	return db, nil
 }
@@ -175,6 +184,11 @@ func (db *DB) Write(ctx context.Context, fn func(*Tx) error) error {
 
 // Read runs fn in a read-only transaction with a consistent snapshot.
 func (db *DB) Read(ctx context.Context, fn func(*Tx) error) error {
+	db.readMu.RLock()
+	defer db.readMu.RUnlock()
+	if db.closed {
+		return errClosed
+	}
 	return run(ctx, db.reader, &sql.TxOptions{ReadOnly: true}, fn)
 }
 
@@ -199,7 +213,7 @@ func run(ctx context.Context, pool *sql.DB, opts *sql.TxOptions, fn func(*Tx) er
 // connections, so that a stopped Go leaves only the database file: a copy
 // that Python 3.3.x or an operator takes of the Go directory then is a
 // complete database (migration specification, 2.1). It waits for a
-// running write. If the switch fails the connections are still closed and
+// running write and for running reads. If the switch fails the connections are still closed and
 // the error is returned; SQLite recovers the WAL at the next Open.
 func (db *DB) Close() error {
 	db.writeMu.Lock()
@@ -208,6 +222,8 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) closeLocked(ctx context.Context) error {
+	db.readMu.Lock()
+	defer db.readMu.Unlock()
 	if db.closed {
 		return nil
 	}
@@ -220,8 +236,8 @@ func (db *DB) closeLocked(ctx context.Context) error {
 	}
 	if len(errs) == 0 {
 		// The checkpoint and the mode switch need the readers closed.
-		if _, err := db.writer.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
-			errs = append(errs, fmt.Errorf("store: checkpoint: %w", err))
+		if err := db.checkpoint(ctx); err != nil {
+			errs = append(errs, err)
 		} else if err := db.setJournalMode(ctx, "delete"); err != nil {
 			errs = append(errs, err)
 		}
@@ -239,7 +255,10 @@ func (db *DB) closeLocked(ctx context.Context) error {
 func (db *DB) CloseForActivation(ctx context.Context) error {
 	db.writeMu.Lock()
 	defer db.writeMu.Unlock()
-	if db.closed {
+	db.readMu.RLock()
+	closed := db.closed
+	db.readMu.RUnlock()
+	if closed {
 		return errClosed
 	}
 	if err := db.closeLocked(ctx); err != nil {
@@ -251,4 +270,17 @@ func (db *DB) CloseForActivation(ctx context.Context) error {
 		}
 	}
 	return syncFile(db.path)
+}
+
+// checkpoint copies the WAL into the database and truncates it. A
+// checkpoint that a reader or writer blocked reports busy.
+func (db *DB) checkpoint(ctx context.Context) error {
+	var busy, logFrames, done int64
+	if err := db.writer.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &done); err != nil {
+		return fmt.Errorf("store: checkpoint: %w", err)
+	}
+	if busy != 0 {
+		return fmt.Errorf("store: checkpoint blocked (%d of %d frames copied)", done, logFrames)
+	}
+	return nil
 }
