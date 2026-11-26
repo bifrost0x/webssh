@@ -210,7 +210,7 @@ func (f *Flow) factor(kind string) Factor {
 func (f *Flow) finalize(ctx context.Context, w http.ResponseWriter, p Pending, methods []string) error {
 	sess, token, err := f.Sessions.Issue(ctx, session.IssueRequest{
 		UserID: p.UserID, Generation: p.Generation, PrimaryMethod: p.PrimaryMethod, Methods: methods,
-		Assurance: p.Assurance, Remember: p.Remember,
+		Assurance: p.Assurance, Remember: p.Remember, StrongAt: p.StrongAt,
 	})
 	if err != nil {
 		return err
