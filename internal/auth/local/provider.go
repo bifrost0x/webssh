@@ -203,3 +203,7 @@ func ValidateNew(password string) string {
 	}
 	return ""
 }
+
+// ValidateNew is the package function as a method, for consumers that
+// declare it in an interface (internal/accounts).
+func (*Provider) ValidateNew(password string) string { return ValidateNew(password) }
