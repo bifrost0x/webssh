@@ -75,7 +75,7 @@ var packageMap = map[string]role{
 	"internal/files/smb":                      {kind: capability, uses: []string{"internal/netpolicy"}},
 	"internal/transfer":                       {kind: capability, uses: []string{"internal/files"}},
 	"internal/ssh/gateway":                    {kind: capability, uses: []string{"internal/ssh/client", "internal/ssh/hostkey"}},
-	"internal/ssh/tailscale":                  {kind: capability, uses: []string{"internal/ssh/client"}},
+	"internal/ssh/tailscale":                  {kind: capability, uses: []string{"internal/ssh/client", "internal/netpolicy"}},
 	"internal/vault":                          {kind: capability},
 	"internal/commands":                       {kind: capability},
 	"internal/settings":                       {kind: capability},
