@@ -211,3 +211,71 @@ jobs:
 
       - name: Compare with the Jinja templates
         run: WEBSSH_PAGE_PARITY_DIR="$RUNNER_TEMP/pages" python -m pytest tests/test_go_page_parity.py -q -p no:cacheprovider
+
+  # The differential oracles: every recorded Python answer is recorded
+  # again from the unchanged Python modules and must match, and the Go
+  # tests run against the fresh recordings and the live interpreter
+  # (scripts/check-python-oracles.sh).
+  python-oracles:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Stage static assets for embedding
+        run: scripts/stage-webassets.sh
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.15'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: uv.toml
+
+      - name: Install LDAP build dependencies
+        run: bash scripts/install_ci_test_system_deps.sh
+
+      - name: Install Python dependencies
+        run: uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt
+
+      - name: Record and compare the Python oracles
+        run: PYTHON="$(command -v python)" scripts/check-python-oracles.sh
+
+  # The kernel-facing route tests of internal/netpolicy in an own network
+  # namespace (tailnet routes, blackhole and prohibit routes, rule 5270),
+  # as an unprivileged user; the lab variant needs the test lab and runs
+  # there.
+  netns:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build an image with iproute2
+        run: printf 'FROM alpine:3\nRUN apk add --no-cache iproute2\n' | docker build -t webssh-netns-tools -
+
+      - name: Route tests in a crafted namespace
+        env:
+          NETNS_TOOLS_IMAGE: webssh-netns-tools
+        run: internal/netpolicy/testdata/netns-test.sh crafted

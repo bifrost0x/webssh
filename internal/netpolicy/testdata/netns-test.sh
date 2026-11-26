@@ -4,7 +4,8 @@
 #   lab      joins lab-ts-node, the Tailscale stand-in of the test lab
 #            (tests/lab); nothing in the lab is changed
 #   crafted  an own namespace built by netns-crafted.sh in a throwaway
-#            holder container
+#            holder container; NETNS_TOOLS_IMAGE names an image with
+#            iproute2 (default: the lab's webssh-lab/tools:local)
 set -eu
 mode=${1:?usage: netns-test.sh lab|crafted}
 here=$(cd "$(dirname "$0")" && pwd)
@@ -32,7 +33,7 @@ crafted)
 	holder="webssh-netns-$$"
 	docker run -d --name "$holder" --network none --cap-drop ALL --cap-add NET_ADMIN --read-only \
 		--sysctl net.ipv6.conf.all.disable_ipv6=0 --sysctl net.ipv6.conf.default.disable_ipv6=0 \
-		-v "$here:/s:ro" --entrypoint /s/netns-crafted.sh webssh-lab/tools:local sleep 600 >/dev/null
+		-v "$here:/s:ro" --entrypoint /s/netns-crafted.sh "${NETNS_TOOLS_IMAGE:-webssh-lab/tools:local}" sleep 600 >/dev/null
 	for _ in 1 2 3 4 5 6 7 8 9 10; do
 		docker exec "$holder" ip rule show 2>/dev/null | grep -q 'lookup 52' && break
 		sleep 0.5
