@@ -13,8 +13,8 @@
     "workspace_.*"
    ],
    "side": "go",
-   "line": "<script src=\"(/webssh)?/static/js/realtime-(emitter|acks|wire|catalog|terminal|shim)\\.js\\?v=VERSION\">",
-   "reason": "The realtime client (emitter, acknowledgements, wire format, event catalog, terminal streams, shim) replaces socket.io.min.js at the same position, in this order."
+   "line": "<script src=\"(/webssh)?/static/js/realtime-(emitter|acks|wire|shim-[a-z-]+|catalog|terminal|shim)\\.js\\?v=VERSION\">",
+   "reason": "The realtime client (emitter, acknowledgements, wire format, the shim name tables by area, event catalog, terminal streams, shim) replaces socket.io.min.js at the same position, in this order."
   },
   {
    "cases": [
