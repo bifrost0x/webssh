@@ -12,3 +12,7 @@
 
 {{define "preview_notice"}}{{if .Preview.Enabled}}<script id="websshPreview" type="application/json">{{.Preview}}</script>
     <script src="{{.Asset "js/preview-notice.js"}}"></script>{{end}}{{end}}
+
+{{define "preview_notice_style"}}{{if .Preview.Enabled}}<link rel="stylesheet" href="{{.Asset "css/preview-notice.css"}}">{{end}}{{end}}
+
+{{define "preview_notice_i18n"}}{{if .Preview.Enabled}}<script src="{{.Asset "js/preview-notice-i18n.js"}}"></script>{{end}}{{end}}

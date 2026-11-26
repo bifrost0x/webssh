@@ -12,18 +12,13 @@ import (
 	"testing/fstest"
 )
 
-// previewAssets are delivered by the realtime shim package. Until they
-// are part of static/, the tests stand in empty files so the pages that
-// load them render.
-var previewAssets = []string{"js/realtime-shim.js", "js/preview-notice.js"}
-
 var (
 	testAssetsOnce sync.Once
 	testAssetsVal  *Assets
 	testAssetsErr  error
 )
 
-// testAssets indexes the staged static/ plus the preview stand-ins.
+// testAssets indexes the staged static/ once for all tests.
 func testAssets(t testing.TB) *Assets {
 	t.Helper()
 	testAssetsOnce.Do(func() {
@@ -45,11 +40,6 @@ func testAssets(t testing.TB) *Assets {
 		if err != nil {
 			testAssetsErr = err
 			return
-		}
-		for _, name := range previewAssets {
-			if _, ok := files[name]; !ok {
-				files[name] = &fstest.MapFile{Data: []byte("// stand-in\n")}
-			}
 		}
 		testAssetsVal, testAssetsErr = NewAssets(files)
 	})
