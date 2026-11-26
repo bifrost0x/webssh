@@ -1,0 +1,71 @@
+# WebSSH Go preview (M1) for a trusted LAN. This is a preview, not a release:
+# it runs next to an existing Python instance and never uses its volumes.
+#
+# Start from the repository root:
+#   docker compose -f deploy/docker/compose.m1.yml up -d --build
+#   docker compose -f deploy/docker/compose.m1.yml exec webssh-go /app/webssh create-admin --username <name>
+#   Browser: http://<LAN-IP>:5001
+#
+# The host port defaults to 5001 (WEBSSH_GO_PORT is read by Compose only),
+# so a Python instance can keep 5000; inside the container WebSSH listens
+# on 5000. The data volumes are separate from the Python volumes
+# (webssh_data, webssh_recovery). To try existing data, copy the Python
+# volume into webssh_go_data first; the preview writes to its volume.
+#
+# Passkeys and secure cookies need HTTPS. Over http://<LAN-IP> passkeys do
+# not work (over http://localhost they do). For HTTPS in the LAN add the
+# TLS overlay, which puts Caddy with an internal CA in front:
+#   WEBSSH_GO_TLS_HOST=webssh.lan docker compose \
+#     -f deploy/docker/compose.m1.yml -f deploy/docker/compose.m1.tls.yml up -d --build
+
+name: webssh-go-m1
+
+services:
+  webssh-go:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      target: release
+      args:
+        VCS_REF: ${WEBSSH_GO_VCS_REF:-unknown}
+    image: webssh-go:m1
+    container_name: webssh-go
+    restart: unless-stopped
+    # Allows the bounded shutdown (maximum 30s) to finish.
+    stop_grace_period: 40s
+    ports:
+      - "${WEBSSH_GO_PORT:-5001}:5000"
+    environment:
+      # Homelab settings as in docker-compose.yml.
+      - DEPLOYMENT_PROFILE=homelab
+      - CORS_ORIGINS=*
+      - ALLOW_CORS_WILDCARD=true
+      - TRUSTED_PROXIES=0
+      - SESSION_COOKIE_SECURE=false
+      # The first administrator is created with the CLI (see above), not by
+      # the first visitor of the registration page.
+      - BOOTSTRAP_REGISTRATION_ENABLED=false
+      - BACKUP_TEMP_DIR=/app/recovery
+      - BACKUP_RECOVERY_DURABLE=true
+      # Passed through from the host when set, for example TZ=Europe/Berlin.
+      - TZ
+    volumes:
+      - webssh_go_data:/app/data
+      - webssh_go_recovery:/app/recovery
+    # Restrictions as in docker-compose.hardened.yml. The image needs no
+    # capabilities and writes only to /app/data, /app/recovery and /tmp.
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 2g
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777
+    # The health check of the image runs "/app/webssh healthcheck" without a
+    # shell; no override is needed.
+
+volumes:
+  webssh_go_data:
+  webssh_go_recovery:

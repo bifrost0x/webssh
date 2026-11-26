@@ -1,0 +1,76 @@
+# HTTPS for the M1 preview in the LAN, as an overlay of compose.m1.yml:
+#
+#   WEBSSH_GO_TLS_HOST=webssh.lan docker compose \
+#     -f deploy/docker/compose.m1.yml -f deploy/docker/compose.m1.tls.yml up -d --build
+#   Browser: https://webssh.lan:5443
+#
+# WEBSSH_GO_TLS_HOST is read by Compose only: the LAN name the browser uses.
+# It must resolve to this host (DNS or the hosts file of each client) and be
+# a name, not an IP address, because passkeys need a domain as relying party.
+# Caddy issues the certificate from its own CA ("tls internal"). Browsers
+# trust it only after its root certificate is installed on the client:
+#   docker compose -f deploy/docker/compose.m1.yml -f deploy/docker/compose.m1.tls.yml \
+#     cp caddy:/data/caddy/pki/authorities/local/root.crt ./webssh-go-m1-root.crt
+#
+# Passkeys migrated from the Python instance work only under the relying
+# party ID they were registered with; use the same name as there.
+#
+# Compose profiles cannot change the settings of another service, so the
+# HTTPS variant is this overlay. It removes the plain HTTP port: with
+# TRUSTED_PROXIES=1 a client that reaches WebSSH directly could choose its
+# own address for sign-in limits and audit.
+
+services:
+  webssh-go:
+    ports: !reset []
+    environment:
+      - TRUSTED_PROXIES=1
+      # Only Caddy's fixed address may set forwarded headers.
+      - TRUSTED_PROXY_CIDRS=172.31.250.10/32
+      - SESSION_COOKIE_SECURE=true
+      - WEBAUTHN_ENABLED=true
+      - WEBAUTHN_RP_ID=${WEBSSH_GO_TLS_HOST:?set WEBSSH_GO_TLS_HOST to the LAN name of this host}
+      - WEBAUTHN_ORIGIN=https://${WEBSSH_GO_TLS_HOST}:5443
+    networks:
+      - webssh_go_proxy
+
+  caddy:
+    image: caddy:2.11.9@sha256:4851e54a46b206517c574821bb5cc67f170d2156041e9fbc4c9193b45e84a75b
+    container_name: webssh-go-caddy
+    restart: unless-stopped
+    depends_on:
+      - webssh-go
+    ports:
+      - "5443:5443"
+    environment:
+      - WEBSSH_GO_TLS_HOST=${WEBSSH_GO_TLS_HOST:?set WEBSSH_GO_TLS_HOST to the LAN name of this host}
+    volumes:
+      - ./Caddyfile.m1:/etc/caddy/Caddyfile:ro
+      # Keeps the internal CA, so clients trust the certificate after a
+      # restart too.
+      - webssh_go_caddy_data:/data
+      - webssh_go_caddy_config:/config
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    networks:
+      webssh_go_proxy:
+        ipv4_address: 172.31.250.10
+
+networks:
+  # A fixed subnet, so TRUSTED_PROXY_CIDRS can name Caddy exactly. Change
+  # both addresses if the subnet is in use on this host.
+  webssh_go_proxy:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24
+
+volumes:
+  webssh_go_caddy_data:
+  webssh_go_caddy_config:
