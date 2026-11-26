@@ -126,3 +126,38 @@ test('role grouping follows the catalog order, skips empty roles and ignores unk
     assert.deepEqual(groups.map(([role, items]) => [role, items.map(host => host.id)]),
         [['hypervisor', ['b']], ['media', ['d']], ['server', ['a', 'c']]]);
 });
+
+const Classic = require('../../static/js/connection-overview-classic');
+
+test('classic rows carry only platform, role, virtualization label and catalog service ids', () => {
+    globalThis.HostPlatform = HostPlatform;
+    globalThis.HostIdentity = HostIdentity;
+    try {
+        const model = Classic.buildAccessModel([{
+            id: 'one', name: 'Shelf', group: 'Lab', host: 'private-address', username: 'secret-user', password: 'secret-password',
+            detected_platform: 'proxmox', detected_virt: 'bare-metal', detected_services: ['immich', 'not-a-service', 'docker'],
+        }, {id: 'two', name: 'Plain', group: 'Lab'}]);
+        const one = model.find(host => host.id === 'one');
+        const two = model.find(host => host.id === 'two');
+        assert.equal(one.platform.id, 'proxmox');
+        assert.deepEqual(one.role, {id: 'hypervisor', source: 'derived'});
+        assert.equal(one.virt, 'Bare Metal');
+        assert.deepEqual(one.services, HostIdentity.facts({detected_services: ['immich', 'docker']}).services);
+        assert.deepEqual(two.role, {id: 'server', source: 'default'});
+        assert.equal(two.platform.id, 'server');
+        assert.equal(two.virt, '');
+        assert.deepEqual(two.services, []);
+        assert.deepEqual(Object.keys(one).sort(), ['favorite', 'group', 'id', 'jump', 'name', 'order', 'platform', 'role', 'route', 'services', 'virt']);
+        assert.doesNotMatch(JSON.stringify(model), /secret|private-/);
+    } finally {
+        delete globalThis.HostPlatform;
+        delete globalThis.HostIdentity;
+    }
+});
+
+test('classic rows still build when the identity catalog is not loaded', () => {
+    const [host] = Classic.buildAccessModel([{id: 'one', name: 'One', detected_services: ['docker']}]);
+    assert.deepEqual(host.role, {id: 'server', source: 'pending'});
+    assert.deepEqual(host.services, []);
+    assert.equal(host.virt, '');
+});

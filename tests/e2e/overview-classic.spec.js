@@ -37,3 +37,25 @@ test('account can switch classic overview and dashboard without losing layout',a
  await page.goto('/');await expect(page.locator('#connectionOverview[data-overview-workspace]')).toBeVisible();await expect(page.locator('#overviewSearch')).toBeVisible();await expect(page.locator('#overviewQuickConnect')).toHaveCount(0);await expect(page.locator('body')).toHaveAttribute('data-theme',theme);
  expect(await page.locator('.global-navigation').evaluate(e=>getComputedStyle(e).flexDirection)).toBe(navDirection);expect(errors).toEqual([]);
 });
+test('classic host rows show platform, virtualization, role and up to three service logos',async({page})=>{
+ await login(page,'e2e_admin',{workspace:false});
+ await page.goto('/settings#preferences');await page.locator('#settingsOverviewLayout').selectOption('classic');
+ await expect(page.locator('#settingsOverviewLayout')).toHaveAttribute('data-saved','classic');
+ await page.goto('/');await page.waitForFunction(()=>ProfileManager.profilesLoaded);await installSshConnectTrap(page);
+ const base={host:'x.example.invalid',port:22,username:'demo',auth_type:'password',group:'Lab'};
+ await page.evaluate(items=>ProfileManager.setProfiles(items),[
+  {...base,id:'pve',name:'pve-one',detected_platform:'proxmox',detected_virt:'bare-metal',detected_services:['docker','grafana','prometheus','nginx','redis']},
+  {...base,id:'plain',name:'plain'},
+ ]);
+ const row=id=>page.locator(`#overviewHosts .overview-row[data-host-id="${id}"]`);
+ await expect(row('pve')).toBeVisible();
+ await expect(row('pve').locator('.host-platform-icon')).toHaveAttribute('data-platform','proxmox');
+ await expect(row('pve').locator('.overview-row-virt')).toHaveText('Bare Metal');
+ await expect(row('pve').locator('.overview-role')).toContainText('Hypervisor');
+ expect(await row('pve').locator('.shell-host-service').count()).toBeLessThanOrEqual(3);
+ await expect(row('pve').locator('.overview-row-title')).toHaveText('pve-one');
+ await expect(row('plain').locator('.overview-role')).toContainText('Server');
+ await expect(row('plain').locator('.overview-row-virt')).toHaveCount(0);
+ await expect(row('plain').locator('.shell-host-service')).toHaveCount(0);
+ expect(await sshAttempts(page)).toEqual([]);
+});

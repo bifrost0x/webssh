@@ -6,6 +6,8 @@
 })(typeof window !== 'undefined' ? window : globalThis, function() {
     'use strict';
 
+    const VISIBLE_SERVICES = 3;
+
     // Deliberately whitelist display fields. Addresses, users, credentials and
     // arbitrary graph relationships never enter this presentation model.
     function buildAccessModel(profiles = [], jumpHosts = [], jumpsLoaded = false, socksProxies = [], socksLoaded = false) {
@@ -21,11 +23,17 @@
             const jump = jumpsLoaded && profile.jump_host_id
                 ? jumps.get(profile.jump_host_id) : null;
             const proxy = socksLoaded && profile.socks_proxy_id ? socks.get(profile.socks_proxy_id) : null;
+            const identity = globalThis.HostIdentity;
+            const described = identity?.describe(profile);
             return {
                 id: profile.id,
                 name: String(profile.name || ''),
                 group: String(profile.group || ''),
                 favorite: profile.favorite === true,
+                platform: globalThis.HostPlatform?.resolve(profile) || {id: 'server', source: 'pending'},
+                role: described ? {id: described.role.id, source: described.role.source} : {id: 'server', source: 'pending'},
+                virt: described ? described.virt : '',
+                services: identity ? identity.facts(profile).services : [],
                 order: Number(profile.sort_order) || 0,
                 route: profile.socks_proxy_id ? (proxy ? 'configured' : (socksLoaded ? 'unavailable' : 'loading')) : profile.jump_host_id ? (jump ? 'configured' : (jumpsLoaded ? 'unavailable' : 'loading')) : 'none',
                 jump: jump || null,
@@ -320,7 +328,27 @@
                 doc.querySelectorAll('.host-drop-active').forEach(item => item.classList.remove('host-drop-active'));
             });
             target.dataset.tone = groupTone(host.group);
-            target.append(icon('dns'), node('span', 'overview-row-title', host.name));
+            target.dataset.role = host.role.id;
+            const name = node('span', 'overview-row-title', host.name);
+            target.append(win.HostPlatform?.render(host.platform, doc) || icon('dns'), name);
+            // One line of identity under the name: virtualization, role, main services.
+            const meta = node('span', 'overview-row-meta');
+            if (host.virt) meta.append(node('span', 'overview-row-virt', host.virt));
+            if (win.HostIdentity) {
+                const pill = node('span', 'overview-role host-role-pill');
+                pill.append(icon(win.HostIdentity.ROLE_GLYPHS[host.role.id] || 'dns'), node('span', '', t(`role.${host.role.id}`, host.role.id)));
+                meta.append(pill);
+            }
+            const tiles = win.HostPlatform?.serviceTiles?.(host.services.slice(0, VISIBLE_SERVICES), 'shell-host-service', doc) || [];
+            if (tiles.length) {
+                const holder = node('span', 'shell-host-services');
+                holder.setAttribute('aria-hidden', 'true');
+                holder.append(...tiles);
+                meta.append(holder);
+                // Measured once attached; logos give way before the name is cut.
+                win.HostPlatform.keepTilesFitting(holder, name);
+            }
+            if (meta.childElementCount) target.append(meta);
             if (host.favorite) {
                 const favorite = icon('star');
                 favorite.classList.add('overview-favorite');
@@ -517,7 +545,8 @@
                     items.forEach(host => {
                         const item = button(host.name, () => launch(host.id), 'shell-host');
                         item.dataset.overviewKey = `host:${host.id}`;
-                        item.append(icon('dns'), node('span', '', host.name));
+                        item.dataset.role = host.role.id;
+                        item.append(win.HostPlatform?.render(host.platform, doc) || icon('dns'), node('span', 'shell-host-name', host.name));
                         section.append(item);
                     });
                     section.addEventListener('toggle', () => {
