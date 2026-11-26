@@ -3,6 +3,8 @@ package legacy
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/keyring"
@@ -91,4 +93,46 @@ func TestPreparedDataDirIsNoLegacySource(t *testing.T) {
 			t.Fatalf("a file under users/ without app.db: %v", err)
 		}
 	})
+}
+
+// L1: an existing go/ with wider modes is restricted to 0700.
+func TestGoDirIsRestricted(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("no Unix modes")
+	}
+	dir := copyGolden(t)
+	if err := os.Mkdir(filepath.Join(dir, "go"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(dir, "go"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := startClosed(testOptions(t, dir)); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"go", "logs/.webssh-go"} {
+		if info, err := os.Stat(filepath.Join(dir, d)); err != nil || info.Mode().Perm() != 0o700 {
+			t.Errorf("%s: %v, %v", d, info.Mode().Perm(), err)
+		}
+	}
+}
+
+// L2: a legacy file the process cannot read is reported as a permission
+// problem with the user Go runs as, not as an unsafe path.
+func TestUnreadableLegacyFile(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs Unix modes and a user that is not root")
+	}
+	dir := copyGolden(t)
+	path := filepath.Join(dir, "known_hosts")
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+	_, err := startClosed(testOptions(t, dir))
+	if stopCode(err) != CodeUnreadable || !strings.Contains(err.Error(), "99:100") {
+		t.Fatalf("err = %v", err)
+	}
 }

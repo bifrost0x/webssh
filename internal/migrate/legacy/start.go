@@ -59,6 +59,11 @@ func start(ctx context.Context, o Options, l layout, warnings []Warning) (*Start
 	}
 	st := &Startup{State: ev.state, Warnings: append(warnings, ev.warnings...)}
 	switch {
+	case ev.stop != nil && ev.state == S9 && ev.legacy == legacyComplete:
+		if se := legacySecretStop(ctx, l.dataDir, o.Secret); se != nil {
+			return nil, se
+		}
+		return nil, ev.stop
 	case ev.stop != nil:
 		return nil, ev.stop
 	case ev.state == S1:
@@ -69,6 +74,7 @@ func start(ctx context.Context, o Options, l layout, warnings []Warning) (*Start
 		}
 		path, more, err := r.activate(ctx)
 		if err != nil {
+			r.writeFailure(err)
 			return nil, err
 		}
 		st.State, st.Migrated, st.Report, st.ReportPath = S2, true, &r.report, path
@@ -81,6 +87,24 @@ func start(ctx context.Context, o Options, l layout, warnings []Warning) (*Start
 		}
 	}
 	return st, nil
+}
+
+// legacySecretStop tells a wrong SECRET_KEY apart from lost material in
+// S9: when the legacy data does not decrypt with it either, the secret is
+// wrong, and `--replace` is not the way out.
+func legacySecretStop(ctx context.Context, dataDir, secret string) *StopError {
+	src, err := Open(ctx, dataDir, secret)
+	if err != nil {
+		return nil
+	}
+	defer src.Close()
+	check, err := src.CheckSecret(ctx)
+	if err == nil {
+		return nil
+	}
+	return &StopError{State: S9, Code: CodeSecretMismatch, Entity: check.Entity, UserID: check.UserID,
+		Message: "SECRET_KEY matches neither the Go database nor the legacy data; start with the SECRET_KEY the Python " +
+			"release used", Err: err}
 }
 
 // lockAndClean is section 5.2 step 1 and state S6: the Go lock, then the

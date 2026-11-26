@@ -34,6 +34,7 @@ func RecordSchema() store.Schema {
 	completed_at TEXT NOT NULL,
 	source_digest TEXT NOT NULL,
 	listing TEXT NOT NULL,
+	scanned_at INTEGER NOT NULL,
 	schema_shape TEXT NOT NULL,
 	coverage TEXT NOT NULL,
 	pending TEXT NOT NULL,
@@ -66,6 +67,7 @@ type Record struct {
 	CompletedAt      string
 	SourceDigest     string
 	Listing          []FileStat
+	ScannedAt        int64 // start of the scan that made Listing, Unix nanoseconds
 	SchemaShape      SchemaShape
 	Coverage         []Coverage
 	Pending          []Pending
@@ -83,9 +85,9 @@ func writeRecord(ctx context.Context, tx *store.Tx, r Record) error {
 		return fmt.Errorf("legacy: encode the migration record: %w", err)
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO migrate_record (id, format, database_id, go_release, started_at,
-completed_at, source_digest, listing, schema_shape, coverage, pending, report, replaced_database)
-VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, recordFormat, r.DatabaseID, r.GoRelease, r.StartedAt,
-		r.CompletedAt, r.SourceDigest, string(listing), string(shape), string(coverage), string(pending),
+completed_at, source_digest, listing, scanned_at, schema_shape, coverage, pending, report, replaced_database)
+VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, recordFormat, r.DatabaseID, r.GoRelease, r.StartedAt,
+		r.CompletedAt, r.SourceDigest, string(listing), r.ScannedAt, string(shape), string(coverage), string(pending),
 		string(report), r.ReplacedDatabase)
 	if err != nil {
 		return fmt.Errorf("legacy: write the migration record: %w", err)
@@ -113,9 +115,9 @@ func readRecord(ctx context.Context, q queryer) (*Record, error) {
 	var r Record
 	var listing, shape, coverage, pending, report string
 	err := q.QueryRowContext(ctx, `SELECT format, database_id, go_release, started_at, completed_at, source_digest,
-listing, schema_shape, coverage, pending, report, replaced_database FROM migrate_record WHERE id = 1`).Scan(
+listing, scanned_at, schema_shape, coverage, pending, report, replaced_database FROM migrate_record WHERE id = 1`).Scan(
 		&r.Format, &r.DatabaseID, &r.GoRelease, &r.StartedAt, &r.CompletedAt, &r.SourceDigest,
-		&listing, &shape, &coverage, &pending, &report, &r.ReplacedDatabase)
+		&listing, &r.ScannedAt, &shape, &coverage, &pending, &report, &r.ReplacedDatabase)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

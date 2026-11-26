@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 )
 
 // FileStat is one regular file of the legacy source as the migration
@@ -23,7 +24,10 @@ type FileStat struct {
 
 // Listing is the legacy source in byte order of the relative POSIX path.
 type Listing struct {
-	Files []FileStat
+	// ScannedAt is the time the scan started, in Unix nanoseconds; the
+	// next scan needs it for the racy-clean rule.
+	ScannedAt int64
+	Files     []FileStat
 	// Unsafe lists symbolic links and special files. During a migration
 	// they are STOP; after activation they count as a change.
 	Unsafe []string
@@ -64,12 +68,23 @@ func (l Listing) size(path string) int64 {
 	return 0
 }
 
+// racyWindow is the margin of the racy-clean rule: a file modified less
+// than this before the previous scan may have changed again within the
+// same timestamp tick, so its stat values prove nothing. File systems
+// update mtime with a coarse clock (kernel ticks, NFS and SMB seconds).
+const racyWindow = 2 * time.Second
+
 // scanSource lists every regular file of the legacy source in dataDir:
 // everything below DATA_DIR except the runtime paths, logs/ and go/. The
-// walk never follows links. A file whose size, modification time and
-// inode equal its entry in previous keeps that entry's hash; every other
-// file is hashed. Files are opened read-only and only read.
-func scanSource(dataDir string, previous []FileStat) (Listing, error) {
+// walk never follows links. Files are opened read-only and only read.
+//
+// previous is the listing of an earlier scan that started at scannedAt
+// (Unix nanoseconds). A file whose size, modification time and inode equal
+// its entry there keeps that entry's hash, unless it is app.db, which
+// SQLite rewrites in place with the same size, or its modification time is
+// within racyWindow before scannedAt (the racy-clean rule of git). Every
+// other file is hashed.
+func scanSource(dataDir string, previous []FileStat, scannedAt int64) (Listing, error) {
 	root, err := os.OpenRoot(dataDir)
 	if err != nil {
 		return Listing{}, fmt.Errorf("legacy: open data directory: %w", err)
@@ -79,7 +94,8 @@ func scanSource(dataDir string, previous []FileStat) (Listing, error) {
 	for _, f := range previous {
 		known[f.Path] = f
 	}
-	var l Listing
+	l := Listing{ScannedAt: time.Now().UnixNano()}
+	racyFrom := scannedAt - racyWindow.Nanoseconds()
 	err = fs.WalkDir(root.FS(), ".", func(name string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("legacy: inspect %q: %w", name, err)
@@ -106,7 +122,8 @@ func scanSource(dataDir string, previous []FileStat) (Listing, error) {
 			return fmt.Errorf("legacy: inspect %q: %w", name, err)
 		}
 		f := FileStat{Path: name, Size: info.Size(), MtimeNS: info.ModTime().UnixNano(), Inode: fileIdentity(info)}
-		if old, ok := known[name]; ok && old.Size == f.Size && old.MtimeNS == f.MtimeNS && old.Inode == f.Inode {
+		if old, ok := known[name]; ok && name != "app.db" && old.MtimeNS < racyFrom &&
+			old.Size == f.Size && old.MtimeNS == f.MtimeNS && old.Inode == f.Inode {
 			f.SHA256 = old.SHA256
 		} else if f.SHA256, err = hashFile(root, name, info); err != nil {
 			return err
@@ -122,14 +139,18 @@ func scanSource(dataDir string, previous []FileStat) (Listing, error) {
 	return l, nil
 }
 
+// hashFile hashes a file the walk saw as regular. It opens without
+// blocking, so that a FIFO swapped in after the walk cannot stall the
+// start, and checks on the open handle that it is still the same regular
+// file.
 func hashFile(root *os.Root, name string, info fs.FileInfo) (string, error) {
-	f, err := root.Open(name)
+	f, err := root.OpenFile(name, os.O_RDONLY|openNonblock, 0)
 	if err != nil {
 		return "", fmt.Errorf("legacy: open %q: %w", name, err)
 	}
 	defer f.Close()
 	opened, err := f.Stat()
-	if err != nil || !os.SameFile(info, opened) {
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
 		return "", fmt.Errorf("%w: %q changed while it was read", ErrUnsafePath, name)
 	}
 	h := sha256.New()

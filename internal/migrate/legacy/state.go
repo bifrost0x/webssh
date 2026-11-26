@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/store"
@@ -127,9 +128,13 @@ func evaluate(ctx context.Context, l layout, secret string) (evaluation, error) 
 	}
 	switch {
 	case !ev.dbExists && ev.legacy == legacyComplete && ev.marker != nil:
-		ev.state, ev.stop = S1a, stop(S1a, CodeGoDataMissing, fmt.Sprintf("Go data existed (database %s, migrated %s) and is missing, "+
-			"for example after a Python restore or a move of the data directory; run `webssh migrate --replace` "+
-			"to migrate again from the legacy data", ev.marker.DatabaseID, ev.marker.MigratedAt), nil)
+		msg := fmt.Sprintf("Go data existed (database %s, migrated %s) and is missing, for example after a Python "+
+			"restore or a move of the data directory; run `webssh migrate --replace` to migrate again from the legacy "+
+			"data", ev.marker.DatabaseID, ev.marker.MigratedAt)
+		if kept := l.replacedDatabases(); len(kept) > 0 {
+			msg += "; databases kept by an earlier replacement: " + strings.Join(kept, ", ")
+		}
+		ev.state, ev.stop = S1a, stop(S1a, CodeGoDataMissing, msg, nil)
 	case !ev.dbExists && ev.legacy == legacyComplete:
 		ev.state = S1
 	case !ev.dbExists && ev.legacy == legacyPartial:
@@ -161,7 +166,7 @@ func evaluate(ctx context.Context, l layout, secret string) (evaluation, error) 
 // compareSource is the validity rule: S2 when the digest of the legacy
 // source equals the recorded one, S3 otherwise.
 func (ev *evaluation) compareSource(l layout) (State, error) {
-	listing, err := scanSource(l.dataDir, ev.record.Listing)
+	listing, err := scanSource(l.dataDir, ev.record.Listing, ev.record.ScannedAt)
 	if err != nil {
 		return "", stop(S3, CodeLegacyChanged, "the legacy source could not be read", err)
 	}

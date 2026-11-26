@@ -9,6 +9,10 @@ import (
 	"syscall"
 )
 
+// openNonblock is not needed on Windows, where opening a named pipe
+// through the file system does not wait for a writer.
+const openNonblock = 0
+
 // syncDir is a no-op on Windows: directories cannot be opened for fsync
 // there, and NTFS journals renames and deletions itself.
 func syncDir(string) error { return nil }

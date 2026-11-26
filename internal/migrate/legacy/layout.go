@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -76,16 +77,35 @@ func (l layout) databasePresent() (bool, error) {
 	return found, nil
 }
 
-// ensureGoDir creates the Go directory with mode 0700 and checks that it is
-// a plain directory.
-func (l layout) ensureGoDir() error { return ensurePlainDir(l.goDir) }
+// ensureGoDir creates the Go directory, checks that it is a plain
+// directory and restricts it to mode 0700, also when a Python restore or
+// an operator created it with other modes (section 2).
+func (l layout) ensureGoDir() error { return ensurePrivateDir(l.goDir) }
 
-// ensureStateDir creates logs/ and logs/.webssh-go/ with mode 0700.
+// ensureStateDir creates logs/ and logs/.webssh-go/ with mode 0700 and
+// restricts the state directory to 0700.
 func (l layout) ensureStateDir() error {
 	if err := ensurePlainDir(filepath.Dir(l.stateDir)); err != nil {
 		return err
 	}
-	return ensurePlainDir(l.stateDir)
+	return ensurePrivateDir(l.stateDir)
+}
+
+func ensurePrivateDir(dir string) error {
+	if err := ensurePlainDir(dir); err != nil {
+		return err
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return fmt.Errorf("legacy: inspect %s: %w", dir, err)
+	}
+	if runtime.GOOS == "windows" || info.Mode().Perm() == 0o700 {
+		return nil
+	}
+	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- a directory needs the search bit; 0700 is owner-only
+		return fmt.Errorf("legacy: restrict %s to its owner: %w", dir, err)
+	}
+	return nil
 }
 
 func ensurePlainDir(dir string) error {
@@ -166,4 +186,24 @@ func (l layout) replacedDir(now time.Time) (string, error) {
 		return "", fmt.Errorf("legacy: create %s: %w", dir, err)
 	}
 	return dir, nil
+}
+
+// stateReplacedDir creates logs/.webssh-go/replaced-<UTC>/ for keyring
+// material --replace sets aside: like the material itself it must stay out
+// of go/, which Python exports.
+func (l layout) stateReplacedDir(now time.Time) (string, error) {
+	if err := l.ensureStateDir(); err != nil {
+		return "", err
+	}
+	dir := filepath.Join(l.stateDir, replacedPrefx+now.UTC().Format(utcStamp))
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		return "", fmt.Errorf("legacy: create %s: %w", dir, err)
+	}
+	return dir, nil
+}
+
+// replacedDatabases lists the databases --replace kept in go/replaced-*/.
+func (l layout) replacedDatabases() []string {
+	found, _ := filepath.Glob(filepath.Join(l.goDir, replacedPrefx+"*", keyring.DatabaseName))
+	return found
 }

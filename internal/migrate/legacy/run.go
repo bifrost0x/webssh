@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -33,32 +34,54 @@ type run struct {
 	db       *store.DB
 	dbID     string
 	replaced string // path of the database this run replaces, for the record
+	// extraSpace is what --replace needs beside the migration: the copy
+	// of the database it keeps.
+	extraSpace int64
 }
 
 // migrate runs steps 2 to 9. On error it has released everything and
 // removed the staging directory; the legacy data and an active Go
 // database are unchanged.
 func (r *run) migrate(ctx context.Context) error {
+	if err := r.preflight(ctx); err != nil {
+		return err
+	}
+	return r.build(ctx)
+}
+
+// preflight is every check of steps 2 to 5 and the reading of the legacy
+// data, before anything is written: a running Python, the source digest
+// and its links, the space, SECRET_KEY and every step's Read. --replace
+// runs it before it sets the old database aside. On error it has released
+// the source.
+func (r *run) preflight(ctx context.Context) error {
 	r.report = newReport(r.o.Release, r.o.now(), r.l.dataDir)
 	r.report.Source.SecretKeySource = r.o.SecretSource
-	err := r.migrateSteps(ctx)
-	if err != nil {
+	if err := r.checkBeforeWriting(ctx); err != nil {
 		return errors.Join(err, r.discard())
 	}
 	return nil
 }
 
-func (r *run) migrateSteps(ctx context.Context) error {
+// build is steps 7 to 9 after a successful preflight.
+func (r *run) build(ctx context.Context) error {
+	if err := r.buildStaging(ctx); err != nil {
+		return errors.Join(err, r.discard())
+	}
+	return nil
+}
+
+func (r *run) checkBeforeWriting(ctx context.Context) error {
 	warnings, err := pythonIdle(r.l.dataDir, r.o.BackupTempDir)
 	if err != nil {
 		return err
 	}
 	r.report.Warnings = append(r.report.Warnings, warnings...)
-	if r.listing, err = scanSource(r.l.dataDir, nil); err == nil {
+	if r.listing, err = scanSource(r.l.dataDir, nil, 0); err == nil {
 		err = strictListing(r.listing)
 	}
 	if err != nil {
-		return stop("", CodeUnsafeSource, "the legacy source contains a symbolic link or a special file, or cannot be read", err)
+		return sourceStop(err)
 	}
 	r.report.Source.Digest, r.report.Source.Files = r.listing.Digest(), len(r.listing.Files)
 	if err := r.checkSpace(); err != nil {
@@ -68,6 +91,10 @@ func (r *run) migrateSteps(ctx context.Context) error {
 		return err
 	}
 	r.o.at(PointRead)
+	return nil
+}
+
+func (r *run) buildStaging(ctx context.Context) error {
 	if err := r.prepareKeyring(); err != nil {
 		return err
 	}
@@ -89,7 +116,7 @@ func (r *run) migrateSteps(ctx context.Context) error {
 // checkSpace is step 5: three times app.db plus the per-user stores plus
 // a margin must be free on the file system of the Go directory.
 func (r *run) checkSpace() error {
-	need := uint64(3*r.listing.size("app.db")+r.listing.bytesBelow("users")) + spaceMargin // #nosec G115 -- sizes are not negative
+	need := uint64(3*r.listing.size("app.db")+r.listing.bytesBelow("users")+r.extraSpace) + spaceMargin // #nosec G115 -- sizes are not negative
 	dir := r.l.goDir
 	if _, err := os.Lstat(dir); err != nil {
 		dir = r.l.dataDir
@@ -118,6 +145,8 @@ func (r *run) checkSpace() error {
 func (r *run) read(ctx context.Context) error {
 	src, err := Open(ctx, r.l.dataDir, r.o.Secret)
 	switch {
+	case errors.Is(err, fs.ErrPermission):
+		return sourceStop(err)
 	case errors.Is(err, ErrJournal):
 		return stop("", CodeLegacyInUse, "app.db has an unfinished transaction; start and stop the Python release once so "+
 			"that it recovers its own transaction, then start again", err)
@@ -252,7 +281,7 @@ func (r *run) recordSettings(ctx context.Context, tx *store.Tx) error {
 
 // recheckAndRecord is step 9 and step 10.1.
 func (r *run) recheckAndRecord(ctx context.Context, tx *store.Tx) error {
-	after, err := scanSource(r.l.dataDir, nil)
+	after, err := scanSource(r.l.dataDir, nil, 0)
 	if err == nil {
 		err = strictListing(after)
 	}
@@ -271,7 +300,7 @@ func (r *run) recheckAndRecord(ctx context.Context, tx *store.Tx) error {
 	r.report.FinishedAt = utcText(r.o.now())
 	return writeRecord(ctx, tx, Record{
 		DatabaseID: r.dbID, GoRelease: r.o.Release, StartedAt: r.report.StartedAt, CompletedAt: r.report.FinishedAt,
-		SourceDigest: after.Digest(), Listing: after.Files, SchemaShape: r.report.Source.SchemaShape,
+		SourceDigest: after.Digest(), Listing: after.Files, ScannedAt: after.ScannedAt, SchemaShape: r.report.Source.SchemaShape,
 		Coverage: r.report.Coverage, Pending: r.pending, Report: r.report, ReplacedDatabase: r.replaced,
 	})
 }
@@ -305,6 +334,18 @@ func (r *run) writeFailure(err error) {
 	r.report.fail(se)
 	r.report.FinishedAt = utcText(r.o.now())
 	_, _ = writeReportFile(r.l.goDir, r.report, r.o.now())
+}
+
+// sourceStop names why the legacy source cannot be read. A permission
+// error is reported as such: the usual cause is a data directory owned by
+// another user than the one Go runs as (for example 99:100 on Unraid).
+func sourceStop(err error) *StopError {
+	if errors.Is(err, fs.ErrPermission) {
+		return stop("", CodeUnreadable, fmt.Sprintf("a legacy file cannot be read by the user Go runs as (uid %d); "+
+			"the data directory and its files must belong to that user, for example 99:100 on Unraid; correct the owner "+
+			"and start again", os.Getuid()), err)
+	}
+	return stop("", CodeUnsafeSource, "the legacy source contains a symbolic link or a special file, or cannot be read", err)
 }
 
 func stepStop(entity, message string, err error) *StopError {

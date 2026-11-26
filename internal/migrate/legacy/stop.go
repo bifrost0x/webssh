@@ -40,6 +40,7 @@ const (
 	CodeSecretMismatch  = "secret_key_mismatch"
 	CodeChangedDuring   = "legacy_changed_during_migration"
 	CodeUnsafeSource    = "legacy_unsafe_path"
+	CodeUnreadable      = "legacy_unreadable"
 	CodeStepFailed      = "migration_step_failed"
 	CodeVerifyFailed    = "migration_verification_failed"
 	CodeActivation      = "activation_failed"

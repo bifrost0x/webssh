@@ -45,3 +45,36 @@ func TestReadLimitedRefusesFIFO(t *testing.T) {
 		t.Fatalf("err = %v, want ErrUnsafePath", err)
 	}
 }
+
+// L3: hashFile checks the opened handle: a FIFO in place of a regular file
+// neither blocks nor is read.
+func TestHashFileRefusesFIFOOnTheHandle(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "f")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Lstat(path)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		t.Skipf("mkfifo: %v", err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	done := make(chan error, 1)
+	go func() { _, err := hashFile(root, "f", info); done <- err }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a FIFO was hashed")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("hashFile blocked on a FIFO")
+	}
+}

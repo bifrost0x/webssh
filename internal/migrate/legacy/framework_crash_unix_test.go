@@ -7,10 +7,13 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/bifrost0x/webssh/internal/store"
 )
 
 // crashEnv tells the helper process where to kill itself:
@@ -161,5 +164,63 @@ func TestCrashDuringReplace(t *testing.T) {
 			}
 			assertUntouched(t, dir, before)
 		})
+	}
+}
+
+// walEnv makes TestWALHelper write one row into the Go database and die
+// with SIGKILL, as a server killed while it runs leaves its WAL.
+const walEnv = "WEBSSH_MIGRATION_WAL_DB"
+
+func TestWALHelper(t *testing.T) {
+	path := os.Getenv(walEnv)
+	if path == "" {
+		t.Skip("helper process for the WAL test")
+	}
+	db, err := store.Open(context.Background(), path, store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Write(context.Background(), func(tx *store.Tx) error {
+		_, err := tx.ExecContext(context.Background(), `INSERT INTO hostops_c7_keys VALUES ('wal-row', 0, x'00')`)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
+}
+
+// M3: --replace on a database a crash left in WAL state keeps a copy that
+// holds the committed rows of the WAL.
+func TestReplaceKeepsWALContent(t *testing.T) {
+	t.Parallel()
+	dir := copyGolden(t)
+	o := testOptions(t, dir)
+	if _, err := startClosed(o); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(dir, "go", "webssh.db")
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestWALHelper$", "-test.count=1")
+	cmd.Env = append(os.Environ(), walEnv+"="+dbPath)
+	_ = cmd.Run()
+	if info, err := os.Stat(dbPath + "-wal"); err != nil || info.Size() == 0 {
+		t.Fatalf("no WAL left by the killed server: %v", err)
+	}
+	touchLegacy(t, dir)
+	res, err := Replace(t.Context(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if side, _ := filepath.Glob(filepath.Join(filepath.Dir(res.Database), "webssh.db-*")); len(side) != 0 {
+		t.Errorf("side files beside the kept copy: %v", side)
+	}
+	kept, err := store.OpenReadOnly(t.Context(), res.Database, store.Shared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kept.Close()
+	var n int
+	if err := kept.QueryRowContext(t.Context(), `SELECT count(*) FROM hostops_c7_keys WHERE id = 'wal-row'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("the kept copy lacks the WAL row: %d, %v", n, err)
 	}
 }

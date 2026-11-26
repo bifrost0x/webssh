@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+// openNonblock makes opening a FIFO return at once instead of waiting
+// for a writer.
+const openNonblock = syscall.O_NONBLOCK
+
 // syncDir fsyncs a directory so that a created, renamed or removed entry
 // survives a crash.
 func syncDir(dir string) error {

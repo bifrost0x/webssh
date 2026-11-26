@@ -279,8 +279,12 @@ func TestKeyMaterialMissing(t *testing.T) {
 	if err != nil || string(moved) != string(dbBefore) {
 		t.Fatalf("the old database was not moved byte for byte: %v", err)
 	}
-	if got, _ := os.ReadFile(filepath.Join(filepath.Dir(res.Database), "keyring-material-logs")); string(got) != string(foreign) {
-		t.Error("the foreign material was not moved aside")
+	aside, _ := filepath.Glob(filepath.Join(dir, "logs", ".webssh-go", "replaced-*", "keyring-material-logs"))
+	if len(aside) != 1 {
+		t.Fatalf("the foreign material was not moved aside: %v", aside)
+	}
+	if got, _ := os.ReadFile(aside[0]); string(got) != string(foreign) {
+		t.Error("the moved material changed")
 	}
 	if fresh, _ := os.ReadFile(material); len(fresh) != keyring.MaterialSize || string(fresh) == string(foreign) {
 		t.Error("no new material after --replace in S9")
