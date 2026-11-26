@@ -135,12 +135,19 @@ test('detected services show on host cards and filter the overview from the plat
     const {ids} = await openWithReadiness(page);
     await page.evaluate(([first, second]) => {
         ProfileManager.setProfiles(ProfileManager.profiles.map(profile => profile.id === first
-            ? {...profile, detected_services: ['docker', 'nextcloud', 'nginx', 'postgresql', 'grafana']}
+            ? {...profile, detected_services: ['docker', 'nextcloud', 'nginx', 'postgresql', 'grafana', 'redis', 'mariadb']}
             : profile.id === second ? {...profile, detected_services: ['docker']} : profile));
     }, ids);
     const card = page.locator(`#overviewHostList .od-host[data-host-id="${ids[0]}"]`);
-    await expect(card.locator('.od-service-chip')).toHaveText(['Docker', 'Nextcloud', 'nginx', '+2']);
-    await expect(card.locator('.od-service-chip').last()).toHaveAttribute('title', 'PostgreSQL, Grafana');
+    // Logos, not text: the service that names the role leads, five at most, the rest counted.
+    const chips = card.locator('.od-service-chip');
+    await expect(chips).toHaveCount(6);
+    expect(await chips.evaluateAll(nodes => nodes.slice(0, 5).map(node => [node.dataset.service, node.getAttribute('aria-label')])))
+        .toEqual([['nextcloud', 'Nextcloud'], ['grafana', 'Grafana'], ['docker', 'Docker'], ['mariadb', 'MariaDB'], ['nginx', 'nginx']]);
+    await expect(chips.first()).toHaveAttribute('title', /^Nextcloud · Detected when connecting$/);
+    await expect(chips.first().locator('.host-service-icon')).toHaveCount(1);
+    await expect(chips.last()).toHaveText('+2');
+    await expect(chips.last()).toHaveAttribute('title', 'PostgreSQL, Redis');
     const docker = page.locator('#odPlatforms .od-service[data-service="docker"]');
     await expect(docker.locator('.od-count')).toHaveText('2');
     await docker.click();

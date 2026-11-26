@@ -346,7 +346,8 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-attention[data-clear="true"] { border-color: var(--ws2-border); background: linear-gradient(180deg, color-mix(in srgb, var(--od-success) 6%, var(--ws2-surface)), var(--ws2-surface) 120px); }
 .od-host-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
 .od-host {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 12px;
     padding: 14px;
     border: 1px solid var(--ws2-border);
@@ -356,10 +357,33 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 }
 .od-host:hover, .od-host:focus-within { transform: translateY(-2px); border-color: color-mix(in srgb, var(--ws2-accent) 55%, var(--ws2-border)); box-shadow: 0 10px 28px color-mix(in srgb, #000 22%, transparent); }
 .od-host[data-state="live"] { border-color: color-mix(in srgb, var(--od-live) 60%, var(--ws2-border)); }
-.od-host-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.od-host-logo { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 40px; border-radius: 11px; background: var(--ws2-surface); border: 1px solid var(--ws2-border); }
+/* The role tints the card, its platform tile and its service tiles; icons on
+   them are drawn in the role ink. host-identity.css defines both colours. */
+.od-host[data-role] {
+    border-color: color-mix(in srgb, var(--role) 24%, var(--ws2-border));
+    background-image: linear-gradient(160deg, color-mix(in srgb, var(--role) 9%, transparent), transparent 60%);
+}
+.od-host-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px 12px; min-width: 0; }
+.od-role { grid-column: 1 / -1; justify-self: start; font-weight: 600; }
+.od-role .material-icons { font-size: 14px; }
+.od-host-logo { position: relative; display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; border-radius: 12px; background: var(--ws2-surface); border: 1px solid var(--ws2-border); }
+.od-host[data-role] .od-host-logo {
+    background: color-mix(in srgb, var(--role) 16%, var(--ws2-canvas));
+    border-color: color-mix(in srgb, var(--role) 40%, var(--ws2-border));
+    box-shadow: 0 0 18px -8px var(--role);
+}
 .od-host-logo .host-platform-icon { width: 24px; height: 24px; font-size: 22px; }
+.od-host[data-role] .od-host-logo .host-platform-icon { color: var(--role-ink); }
+.od-host-logo:has(.od-virt) { margin-bottom: 6px; }
+.od-virt {
+    position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
+    padding: 0 5px; border: 1px solid var(--ws2-border-strong, var(--ws2-border)); border-radius: 6px;
+    background: var(--ws2-canvas); color: var(--ws2-text-secondary);
+    font-size: 10px; font-weight: 700; letter-spacing: .02em; line-height: 14px; white-space: nowrap;
+}
 .od-host-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.od-host-os { font-size: 12px; color: var(--ws2-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od-host-services { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .od-host-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .od-host-destination { font: 12px/1.3 var(--od-mono); color: var(--od-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .od-host-meta { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
@@ -368,7 +392,8 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-chip .material-icons { font-size: 14px; }
 .od-chip[data-route="jump"] { color: var(--ws2-text); border-color: color-mix(in srgb, var(--ws2-accent) 40%, var(--ws2-border)); }
 .od-chip[data-route="missing"] { color: var(--ws2-text); border-color: color-mix(in srgb, var(--od-danger) 55%, var(--ws2-border)); }
-.od-host-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* Cards in a row share their height; the actions stay at the bottom edge. */
+.od-host-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: auto; }
 .od-state { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; font-size: 12px; color: var(--od-muted); }
 .od-state > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .od-state-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--od-state-color, var(--ws2-border-strong)); }
@@ -447,7 +472,21 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-chart-legend [data-kind="other"] .od-legend-swatch { background: var(--od-action); }
 .od-chart-axis { display: flex; justify-content: space-between; margin-top: 8px; color: var(--od-muted); font-size: 12px; }
 
-.od-service-chip { color: var(--ws2-text); border-color: color-mix(in srgb, var(--ws2-accent) 35%, var(--ws2-border)); }
+.od-service-chip {
+    justify-content: center; min-width: 28px; height: 28px; padding: 0 6px; border-radius: 8px;
+    --service-icon-size: 16px;
+    color: var(--ws2-text); border-color: color-mix(in srgb, var(--ws2-accent) 35%, var(--ws2-border));
+}
+.od-host[data-role] .od-service-chip:not(.od-service-more) {
+    color: var(--role-ink);
+    background: color-mix(in srgb, var(--role) 10%, var(--ws2-canvas));
+    border-color: color-mix(in srgb, var(--role) 30%, var(--ws2-border));
+}
+.od-service-chip:not(.od-service-more) { width: 28px; padding: 0; }
+.od-service-more { color: var(--ws2-text-secondary); font-size: 12px; font-weight: 600; }
+.od-fact-chip { color: var(--ws2-text); }
+.od-hint-chip { color: var(--ws2-text); border-color: color-mix(in srgb, var(--od-action) 45%, var(--ws2-border)); cursor: help; }
+.od-hint-chip .material-icons { color: var(--od-action); }
 .od-maintenance-chip { color: var(--ws2-text); border-color: color-mix(in srgb, var(--od-action) 45%, var(--ws2-border)); }
 .od-maintenance-chip .material-icons { font-size: 14px; color: var(--od-action); }
 .od-maintenance-chip[data-kind="updates"] { border-color: var(--ws2-border); }
@@ -570,6 +609,21 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-setup-step[data-complete="true"] > .material-icons { color: var(--ws2-success); }
 .od-host-context { margin: .2rem .9rem .75rem; font-size: .72rem; color: var(--ws2-text-secondary); line-height: 1.45; }
 .od-host-context summary { cursor: pointer; }
+.od-host-profile { min-width: 0; margin: 0 .9rem; font-size: .75rem; color: var(--ws2-text-secondary); line-height: 1.45; }
+.od-host-profile summary { cursor: pointer; }
+.od-host-profile + .od-host-context { margin-top: -6px; }
+.od-host-profile dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 8px 0 6px; padding: 8px 10px; border: 1px solid var(--ws2-border); border-radius: 10px; background: var(--ws2-canvas); }
+.od-host-profile dt { color: var(--ws2-text-secondary); }
+.od-host-profile dd { margin: 0; min-width: 0; color: var(--ws2-text); overflow-wrap: anywhere; }
+.od-host-profile dd small { display: block; color: var(--ws2-text-secondary); font-size: inherit; }
+.od-host-profile.od-stale dd:last-of-type small { color: var(--ws2-text); font-weight: 600; }
+.od-host-profile-note { display: block; font-size: inherit; }
+:is(.od-host-profile, .od-host-context) summary:focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 2px; border-radius: 4px; }
+@media (forced-colors: active) {
+    .od-host[data-role] { background-image: none; border-color: CanvasText; }
+    .od-host[data-role] :is(.od-host-logo, .od-service-chip) { background: Canvas; border-color: CanvasText; box-shadow: none; }
+    .od-virt { background: Canvas; color: CanvasText; border-color: CanvasText; }
+}
 .od-host-context small { display: block; font-size: inherit; }
 .od-work-first a { color: var(--ws2-accent); text-decoration: underline; text-underline-offset: .2em; border-radius: 3px; }
 .od-work-first a:hover { color: var(--ws2-text); text-decoration-thickness: 2px; }
