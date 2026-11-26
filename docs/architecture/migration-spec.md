@@ -59,7 +59,7 @@ are authoritative:
 | Legacy source | The Python state in `DATA_DIR`: `app.db`, `app_settings.json`, `secret_key`, `session_epoch`, `known_hosts`, `recovery-check.json`, `users/**`, `deleted_users/**`, legacy single-user paths (`profiles.json`, `keys/`, `commands/`). Runtime paths are not part of it: `logs/`, `tmp/`, `.access-revocations/`, `.ldap-revocation-fences/`, `.webssh-ready-*`. |
 | Go directory | `DATA_DIR/go/` (mode 0700, section 2.1). It holds only regular files and directories: no symlinks, sockets or FIFOs, because Python 3.3.x aborts a backup or restore on such entries. |
 | Go database | `<Go directory>/webssh.db`. Go runs it in WAL mode; before every activation and replacement it is closed in `journal_mode=DELETE` so that no `-wal` or `-shm` file is left beside it (5.2 step 10, 5.4). |
-| Go-owned paths | The Go directory with the database, staging (`.migration-*/`), reports (`migration-report-*.json`), replaced databases (`replaced-<UTC>/`) and the lock file, plus the Go state directory `logs/.webssh-go/`. Go also writes the shared log files of E34 and, on a new installation only, `DATA_DIR/secret_key` (I-08); like the entrypoint it creates `DATA_DIR`, `logs/` and `keys/` with mode 0700. Nothing else. |
+| Go-owned paths | The Go directory with the database, staging (`.migration-*/`), reports (`migration-report-*.json`), replaced databases (`replaced-<UTC>/`) and the lock file `webssh.lock`, plus the Go state directory `logs/.webssh-go/` with keyring material that `--replace` set aside (`logs/.webssh-go/replaced-<UTC>/`, 5.4). Go also writes the shared log files of E34 and, on a new installation only, `DATA_DIR/secret_key` (I-08); like the entrypoint it creates `DATA_DIR`, `logs/` and `keys/` with mode 0700. Nothing else. |
 | Incarnation | Normative rule: `datetime.fromisoformat(text).isoformat()` applied to the stored `users.created_at` text, as SQLAlchemy 2.1.6 (pinned in `requirements.txt` of 3.3.x) returns it. Verified vectors: `2026-11-02 09:00:00.000000` → `2026-11-02T09:00:00`; `…09:00:00.250000+00:00` → `…T09:00:00.250000+00:00`; `2026-11-02` → `2026-11-02T00:00:00`; `2026-11-02 09:00` → `2026-11-02T09:00:00`; `2026-11-02T09:00:01.5` → `2026-11-02T09:00:01.500000`. |
 | Source digest | SHA-256 over the canonical listing of the legacy source (section 5.3). |
 | Go state directory | `DATA_DIR/logs/.webssh-go/` (mode 0700), only while legacy data exists: the keyring material file `keyring-material` (32 random bytes, mode 0600) and the marker `migrated` (database identity). After `legacy purge` the material lives in `go/keyring-material` and this directory is removed; installations without legacy data never have it. Section 2.2. |
@@ -471,6 +471,17 @@ The Go database and its migration record appear together (5.2 step 10), so
 a Go database with a legacy source but without a completed record cannot be
 the result of an interrupted activation; it is S7.
 
+A legacy path counts as present only when it holds a file or a link:
+empty directories are no legacy data, because the entrypoint and Go create
+`logs/` and `keys/` on every start. An empty `keys/` beside a new
+installation is therefore S0, beside a Go-native database S2, and beside a
+migrated database whose legacy data is gone S5.
+
+In S9 with a legacy source Go also tries `SECRET_KEY` on the legacy data
+(A02). When that fails too, the secret is wrong rather than the material
+lost: Go stops with "SECRET_KEY does not match" and does not offer
+`--replace`.
+
 A missing Go directory with a legacy source present is S1a when the marker
 exists and S1 only when it does not (marker removed with an emptied `logs/`,
 or never written). The marker is a hint, not a validity criterion; validity
@@ -589,9 +600,15 @@ lines. Directories, modes and timestamps are not included. Runtime paths,
 Python backup or restore that carries `go/` along never changes the digest
 by itself. `secret_key` is included; Go never
 writes it while a legacy source exists (4.9). To keep the start-up cost low,
-the record stores `(path, size, mtime_ns, inode, sha256)`; Go rehashes only
-files whose stat values differ, and always treats new or removed files as a
-change.
+the record stores `(path, size, mtime_ns, inode, sha256)` and the start time
+of the scan; Go rehashes files whose stat values differ, and always treats
+new or removed files as a change. Two exceptions keep the fast path safe
+(decided by the maintainer): `app.db` is always hashed in full, because
+SQLite rewrites it in place with the same size; and any file modified less
+than 2 seconds before the recorded scan started is hashed again whatever
+its stat values (the racy-clean rule of git), because file systems set
+mtime with a coarse clock. The second digest of a migration (5.2 step 9)
+hashes every file.
 
 Symlinks anywhere in the legacy source are STOP during migration, because
 Python's stores reject them as well and following them could read outside
@@ -601,11 +618,19 @@ Python's stores reject them as well and following them could read outside
 
 Run with the service stopped, explicitly by an administrator:
 
-1. Acquire the Go lock; refuse while Go serves.
+1. Acquire the Go lock; refuse while Go serves. Refuse without a complete
+   legacy source and for a damaged Go database (S7).
+   Before anything is set aside, run every check of 5.2 steps 2 to 5 and the
+   reading of the legacy data: a running Python, digest and links, free
+   space (which includes the copy of the current database), `SECRET_KEY`
+   against the legacy data and every step's read. A refusal leaves the
+   current database and its material where they are.
 2. Close the current Go database after switching it to
    `journal_mode=DELETE`, so that no `-wal` or `-shm` file belongs to it.
 3. Write a Go-format backup of it (`internal/backup`, D-03) into the Go
-   directory and verify it.
+   directory and verify it. Until `internal/backup` exists (M1), a verified
+   byte copy of the cleanly closed database in `go/replaced-<UTC>/` takes its
+   place.
 4. Run 5.2 steps 2 to 9 against the current legacy source.
 5. Activate with 5.2 step 10: stale side files are moved into
    `replaced-<UTC>/`, and the rename replaces the old database atomically.
@@ -623,7 +648,14 @@ in progress (S10).
 be read, so step 3 cannot produce a verified Go backup. In S9 the command
 therefore replaces steps 2 and 3 by: move the current database and its side
 files byte for byte into `go/replaced-<UTC>/`, and move any material file
-that does not match it there too (never overwrite or delete one). From then
+that does not match it into `logs/.webssh-go/replaced-<UTC>/` (never
+overwrite or delete one; a copy that matches the database stays in place).
+Material never goes into `go/`: `go/` is part of every Python export next to
+`secret_key`, and the export would then hold decryptable Go secrets (I-22).
+A crash after the database was moved and before the new one is renamed into
+place leaves no Go database with the marker present: S1a, resolved by
+running the command again; the moved database stays in `go/replaced-<UTC>/`,
+and the S1a message names it. From then
 on no Go database exists, and the command continues like a first migration
 (5.2 steps 2 to 10), which creates new material in `logs/.webssh-go/`. Go
 thus never creates material while a Go database exists. The report names the
@@ -869,7 +901,7 @@ rate-limit storage) are not data and are handled by `internal/config`
 | I-23 | Loss or mismatch of the keyring material never leads silently to unreadable or lost data | section 2.2, S9 | Remove or replace `keyring-material`: Go stops in S9 with the message, nothing is changed; restoring the file starts normally; `--replace` and the purge backup recover as described |
 | I-24 | No Python 3.3.x path deletes Go data without Go noticing | 5.1 S1a, section 2.2 | Python export restore without `go/`: next start S1a; with the marker removed as well: S1 |
 | I-26 | An interrupted `legacy purge` is always completed and never leads to a migration from a partial legacy source | 5.9, S10 | Crash injection after each single file removal: the next start is S10, resumes the removal and ends in S4; `--replace`, `--dry-run` and migration are refused while S10 lasts |
-| I-27 | `--replace` in S9 creates no material while a Go database exists and never loses the old database | 5.4 | In S9: the old database and any non-matching material are moved byte for byte into `go/replaced-<UTC>/`, only then is new material created; with the original material restored, the moved database opens and decrypts |
+| I-27 | `--replace` in S9 creates no material while a Go database exists and never loses the old database | 5.4 | In S9: the old database is moved byte for byte into `go/replaced-<UTC>/` and any non-matching material into `logs/.webssh-go/replaced-<UTC>/`, never into `go/`; only then is new material created; with the original material restored, the moved database opens and decrypts; every refusal (wrong `SECRET_KEY`, no space, Python running, no legacy source) moves nothing |
 | I-25 | The keyring material exists in at least one verified copy at every moment of the move after `legacy purge`, and after it only in `go/` | 5.9 | Crash injection after each step of the move: the next start resolves to exactly one copy in the right place and starts; differing copies give S9; a fresh installation never creates `logs/.webssh-go/` |
 | I-19 | Go writes nothing outside the Go-owned paths of section 2 | section 2 | File listing diff of `DATA_DIR` and `BACKUP_TEMP_DIR` before and after every scenario, in addition to I-01 |
 | I-20 | Secret rotation refused while legacy data exists | 4.9 | `rotate-secret-key` in S2, S3 and S5 is refused with the explanation; after `legacy purge` it runs; then restart, Python backup restore with `data/secret_key` works |

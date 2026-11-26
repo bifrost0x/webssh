@@ -8,10 +8,36 @@ import (
 	"testing"
 )
 
+// plain turns the Number values of a decoded store into float64, the
+// type the manifest's values decode to, so that both compare.
+func plain(v any) any {
+	switch v := v.(type) {
+	case Number:
+		f, err := v.Float64()
+		if err != nil {
+			return v
+		}
+		return f
+	case []any:
+		out := make([]any, len(v))
+		for i, e := range v {
+			out[i] = plain(e)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for k, e := range v {
+			out[k] = plain(e)
+		}
+		return out
+	}
+	return v
+}
+
 // findItem returns the item of a list with the given field value.
 func findItem(items []any, field string, value any) map[string]any {
 	for _, it := range items {
-		if m, ok := it.(map[string]any); ok && reflect.DeepEqual(m[field], value) {
+		if m, ok := it.(map[string]any); ok && reflect.DeepEqual(plain(m[field]), value) {
 			return m
 		}
 	}
@@ -26,7 +52,7 @@ func assertSubset(t *testing.T, what string, got map[string]any, want map[string
 		return
 	}
 	for k, v := range want {
-		if !reflect.DeepEqual(got[k], v) {
+		if !reflect.DeepEqual(plain(got[k]), v) {
 			t.Errorf("%s: %s = %#v, want %#v", what, k, got[k], v)
 		}
 	}

@@ -264,12 +264,23 @@ func (db *DB) CloseForActivation(ctx context.Context) error {
 	if err := db.closeLocked(ctx); err != nil {
 		return err
 	}
+	if err := onlyDatabaseFile(db.path); err != nil {
+		return err
+	}
+	return syncFile(db.path)
+}
+
+// onlyDatabaseFile fails when a -wal, -shm or -journal entry exists beside
+// the database. SQLite removes its own on a clean close in
+// journal_mode=DELETE; one that is still there belongs to another writer
+// or a crash and would be moved together with the database.
+func onlyDatabaseFile(path string) error {
 	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
-		if _, err := os.Lstat(db.path + suffix); !errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Lstat(path + suffix); !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("store: %s still present after activation close (%v)", suffix, err)
 		}
 	}
-	return syncFile(db.path)
+	return nil
 }
 
 // checkpoint copies the WAL into the database and truncates it. A

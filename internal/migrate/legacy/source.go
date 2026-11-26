@@ -37,12 +37,17 @@ type Source struct {
 
 	mu   sync.Mutex
 	keys map[string][]byte // derived key material by purpose; see kdf.go
+
+	restored *restoreState // set by Restored
 }
 
 // Option configures Open.
 type Option func(*options)
 
-type options struct{ private bool }
+type options struct {
+	private  bool
+	restored *restoreState
+}
 
 // PrivateCopy marks dir as a private copy owned by the caller, such as a
 // directory extracted from a backup: app.db is then opened as immutable
@@ -69,7 +74,7 @@ func Open(ctx context.Context, dir, secret string, opts ...Option) (*Source, err
 	if err != nil {
 		return nil, fmt.Errorf("legacy: open data directory: %w", err)
 	}
-	s := &Source{root: root, secret: secret, keys: map[string][]byte{}}
+	s := &Source{root: root, secret: secret, keys: map[string][]byte{}, restored: o.restored}
 	if err := s.open(ctx, o); err != nil {
 		return nil, errors.Join(err, root.Close())
 	}

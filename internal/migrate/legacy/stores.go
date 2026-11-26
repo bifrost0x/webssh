@@ -20,7 +20,20 @@ type storeSpec struct {
 	versions   []int  // accepted versions
 	listKey    string // key of the item list or map, if any
 	topList    bool   // the document is a bare JSON array (commands.json)
+	// maxBytes is the file size above which Python refuses to read the
+	// store; 0 means Python has no limit and maxFileBytes applies.
+	maxBytes int64
 }
+
+// Size limits Python checks before it reads a store (MAX_STORE_BYTES in
+// app/automation_store.py and app/host_context.py; automation-runs.json is
+// read with twice the limit in app/automation_service.py). A larger file is
+// a store Python cannot read: STOP, as for any store Python rejects.
+const (
+	automationStoreBytes  = 1 << 20
+	automationRunsBytes   = 2 * automationStoreBytes
+	hostContextStoreBytes = 4 << 20
+)
 
 // userStores are the per-user JSON stores. Versions follow
 // CURRENT_STORAGE_VERSIONS (app/storage_migrations.py): every version from
@@ -36,11 +49,11 @@ var userStores = []storeSpec{
 	{name: "settings", file: "settings.json", versionKey: "schema_version", versions: upTo(2)},
 	keysStore,
 	{name: "commands", file: "commands.json", topList: true},
-	{name: "host_context", file: "host_context.json", versionKey: "version", versions: []int{1}, listKey: "hosts"},
-	{name: "automation", file: "automation.json", versionKey: "version", versions: []int{1}, listKey: "runbooks"},
-	{name: "automation_runs", file: "automation-runs.json", versionKey: "version", versions: []int{1}, listKey: "runs"},
-	{name: "credentials", file: "credentials.json", versionKey: "version", versions: []int{1}, listKey: "credentials"},
-	{name: "automation_vault", file: "automation-vault.json", versionKey: "version", versions: []int{1, 2}},
+	{name: "host_context", file: "host_context.json", versionKey: "version", versions: []int{1}, listKey: "hosts", maxBytes: hostContextStoreBytes},
+	{name: "automation", file: "automation.json", versionKey: "version", versions: []int{1}, listKey: "runbooks", maxBytes: automationStoreBytes},
+	{name: "automation_runs", file: "automation-runs.json", versionKey: "version", versions: []int{1}, listKey: "runs", maxBytes: automationRunsBytes},
+	{name: "credentials", file: "credentials.json", versionKey: "version", versions: []int{1}, listKey: "credentials", maxBytes: automationStoreBytes},
+	{name: "automation_vault", file: "automation-vault.json", versionKey: "version", versions: []int{1, 2}, maxBytes: automationStoreBytes},
 }
 
 var keysStore = storeSpec{name: "keys", file: "keys/keys.json", versionKey: "schema_version", versions: upTo(2), listKey: "keys"}
@@ -55,8 +68,9 @@ func upTo(n int) []int {
 	return v
 }
 
-// Document is one decoded JSON store. Numbers decode as float64, as with
-// encoding/json; the reader keeps the document as data and leaves its
+// Document is one decoded JSON store. Numbers decode as Number, the
+// literal as written, so that integers above 2^53 survive as Python keeps
+// them; the reader keeps the document as data and leaves its
 // interpretation to the migration step of the entity.
 type Document struct {
 	Store   string
@@ -96,8 +110,27 @@ func (s *Source) AppSettings() (Document, error) {
 	return s.readStore(appSettingsStore.file, appSettingsStore)
 }
 
+// readStoreBytes reads the file of the user store named store with the
+// size limit Python applies to it.
+func (s *Source) readStoreBytes(name, store string) ([]byte, error) {
+	for _, spec := range userStores {
+		if spec.name == store {
+			return s.readStoreFile(name, spec)
+		}
+	}
+	return nil, fmt.Errorf("legacy: unknown store %q", store)
+}
+
+func (s *Source) readStoreFile(name string, spec storeSpec) ([]byte, error) {
+	limit := int64(maxFileBytes)
+	if spec.maxBytes > 0 {
+		limit = spec.maxBytes
+	}
+	return readLimited(s.root, name, limit)
+}
+
 func (s *Source) readStore(name string, spec storeSpec) (Document, error) {
-	data, err := s.readFile(name)
+	data, err := s.readStoreFile(name, spec)
 	if err != nil {
 		return Document{}, err
 	}
@@ -118,10 +151,10 @@ func decodeStore(data []byte, spec storeSpec) (Document, error) {
 	}
 	doc := Document{Store: spec.name}
 	var top any
-	if err := json.Unmarshal(data, &top); err != nil {
+	if err := json.Unmarshal(data, &top, numbersAsText); err != nil {
 		// The bytes are valid UTF-8, so a decoding that only fails strictly
 		// failed on an escaped lone surrogate.
-		if json.Unmarshal(data, &top, jsontext.AllowInvalidUTF8(true)) != nil {
+		if json.Unmarshal(data, &top, numbersAsText, jsontext.AllowInvalidUTF8(true)) != nil {
 			return Document{}, fmt.Errorf("invalid JSON: %w", err)
 		}
 		doc.LoneSurrogates = true
@@ -209,7 +242,7 @@ func liftProfiles(object map[string]any, version int) {
 		}
 		delete(profile, "tailscale_authorized")
 	}
-	object["schema_version"] = float64(3)
+	object["schema_version"] = Number("3")
 }
 
 // truthy is Python's truth value for decoded JSON.
@@ -219,8 +252,8 @@ func truthy(v any) bool {
 		return false
 	case bool:
 		return v
-	case float64:
-		return v != 0
+	case Number:
+		return !v.isZero()
 	case string:
 		return v != ""
 	case []any:

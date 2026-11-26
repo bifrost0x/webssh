@@ -36,7 +36,7 @@ func openExtracted(t *testing.T, archive string) (*Backup, *Source) {
 	}
 	t.Cleanup(func() { b.Close() })
 	dest := t.TempDir()
-	if _, err := ExtractBackup(b, dest, DefaultBackupLimits); err != nil {
+	if _, err := ExtractBackup(b, dest, DefaultBackupLimits, RestoreRecoverySnapshot); err != nil {
 		t.Fatal(err)
 	}
 	src, err := Open(t.Context(), dest, golden.manifest.SecretKey.Value, PrivateCopy())
@@ -267,7 +267,7 @@ func TestExtractBackupNeedsEmptyDirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dest, "present"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ExtractBackup(b, dest, DefaultBackupLimits); err == nil {
+	if _, err := ExtractBackup(b, dest, DefaultBackupLimits, RestoreRecoverySnapshot); err == nil {
 		t.Fatal("extracted into a non-empty directory")
 	}
 }

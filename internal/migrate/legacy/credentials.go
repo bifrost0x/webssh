@@ -40,7 +40,7 @@ type CredentialAssignment struct {
 // info = context) and the context is also the AES-GCM additional data.
 func (s *Source) NamedCredentials(ctx context.Context, userID int64) ([]NamedCredential, map[string]CredentialAssignment, error) {
 	name := userDir(userID) + "/credentials.json"
-	data, err := s.readFile(name)
+	data, err := s.readStoreBytes(name, "credentials")
 	if errors.Is(err, ErrNotFound) {
 		return nil, nil, nil
 	}

@@ -1,0 +1,138 @@
+package legacy
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/bifrost0x/webssh/internal/keyring"
+	"github.com/bifrost0x/webssh/internal/platform"
+	"github.com/bifrost0x/webssh/internal/store"
+)
+
+// H1: the data directory as the entrypoint and platform.PrepareDataDir
+// leave it (empty logs/ and keys/) is no legacy source: a new installation
+// is S0, a Go-native database beside it S2, and legacy data removed after
+// a migration S5.
+func TestPreparedDataDirIsNoLegacySource(t *testing.T) {
+	t.Parallel()
+	prepare := func(t *testing.T, dir string) {
+		t.Helper()
+		if _, err := platform.PrepareDataDir(dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("fresh", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		prepare(t, dir)
+		if st, err := startClosed(testOptions(t, dir)); err != nil || st.State != S0 {
+			t.Fatalf("%+v, %v", st, err)
+		}
+	})
+	t.Run("go-native database", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		prepare(t, dir)
+		material, err := keyring.LoadOrCreateMaterial(dir, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ring, err := keyring.Open([]byte(golden.manifest.SecretKey.Value), material)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db, err := store.Open(t.Context(), filepath.Join(dir, "go", "webssh.db"), store.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.ApplyAll(t.Context(), RecordSchema()); err != nil {
+			t.Fatal(err)
+		}
+		if err := RecordKeyID(t.Context(), db, ring.KeyID()); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if st, err := startClosed(testOptions(t, dir)); err != nil || st.State != S2 {
+			t.Fatalf("%+v, %v", st, err)
+		}
+	})
+	t.Run("legacy removed", func(t *testing.T) {
+		t.Parallel()
+		dir := copyGolden(t)
+		o := testOptions(t, dir)
+		if _, err := startClosed(o); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range append(legacyIndicators, "app.db", "secret_key") {
+			_ = os.RemoveAll(filepath.Join(dir, name))
+		}
+		prepare(t, dir)
+		if st, err := startClosed(o); err != nil || st.State != S5 {
+			t.Fatalf("%+v, %v", st, err)
+		}
+	})
+	t.Run("empty user directories", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		prepare(t, dir)
+		if err := os.MkdirAll(filepath.Join(dir, "users", "user_1", "keys"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if st, err := startClosed(testOptions(t, dir)); err != nil || st.State != S0 {
+			t.Fatalf("%+v, %v", st, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "users", "user_1", "keys", "keys.json"), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := startClosed(testOptions(t, dir)); stopCode(err) != CodeLegacyUnknown {
+			t.Fatalf("a file under users/ without app.db: %v", err)
+		}
+	})
+}
+
+// L1: an existing go/ with wider modes is restricted to 0700.
+func TestGoDirIsRestricted(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("no Unix modes")
+	}
+	dir := copyGolden(t)
+	if err := os.Mkdir(filepath.Join(dir, "go"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(dir, "go"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := startClosed(testOptions(t, dir)); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"go", "logs/.webssh-go"} {
+		if info, err := os.Stat(filepath.Join(dir, d)); err != nil || info.Mode().Perm() != 0o700 {
+			t.Errorf("%s: %v, %v", d, info.Mode().Perm(), err)
+		}
+	}
+}
+
+// L2: a legacy file the process cannot read is reported as a permission
+// problem with the user Go runs as, not as an unsafe path.
+func TestUnreadableLegacyFile(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs Unix modes and a user that is not root")
+	}
+	dir := copyGolden(t)
+	path := filepath.Join(dir, "known_hosts")
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+	_, err := startClosed(testOptions(t, dir))
+	if stopCode(err) != CodeUnreadable || !strings.Contains(err.Error(), "99:100") {
+		t.Fatalf("err = %v", err)
+	}
+}

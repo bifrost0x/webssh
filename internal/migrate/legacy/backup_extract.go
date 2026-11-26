@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -18,15 +19,23 @@ type ExtractResult struct {
 	// LogMembers are files under data/logs/, which Python's restore
 	// ignores as well.
 	LogMembers int
+	// RuntimeMembers are files under data/tmp/, data/.access-revocations/
+	// and data/.ldap-revocation-fences/, which Python's restore drops.
+	RuntimeMembers int
+	// CredentialMembers are remote credentials an export restore drops:
+	// keys/, deleted_users/, credentials.json* and automation-vault.json*
+	// (app/backup_manager.py _excluded_remote_credential_path).
+	CredentialMembers int
 }
 
-// ExtractBackup writes the verified files of b below dest, which must be
-// an existing, empty directory owned by the caller, except data/go/ and
-// data/logs/. Every file is re-hashed while it is written, so a change of
-// the archive after OpenBackup is detected. Files get mode 0600 and
-// directories 0700; paths are normalised as Python normalises them. The
-// result is a legacy DATA_DIR that Open reads with PrivateCopy.
-func ExtractBackup(b *Backup, dest string, limits BackupLimits) (ExtractResult, error) {
+// ExtractBackup writes the files of b that Python's restore in mode would
+// restore below dest, which must be an existing, empty directory owned by
+// the caller. data/go/ is never written. Every file is re-hashed while it
+// is written, so a change of the archive after OpenBackup is detected.
+// Files get mode 0600 and directories 0700; paths are normalised as Python
+// normalises them. The result is a legacy DATA_DIR that Open reads with
+// PrivateCopy and Restored(mode, ...).
+func ExtractBackup(b *Backup, dest string, limits BackupLimits, mode RestoreMode) (ExtractResult, error) {
 	var res ExtractResult
 	root, err := os.OpenRoot(dest)
 	if err != nil {
@@ -42,13 +51,8 @@ func ExtractBackup(b *Backup, dest string, limits BackupLimits) (ExtractResult, 
 	}
 	for _, entry := range b.Manifest.Files {
 		target, _ := normalizeBackupPath(entry.Path) // validated by parseBackupManifest
-		top, _, _ := strings.Cut(target, "/")
-		switch top {
-		case "go":
-			res.GoMembers++
-			continue
-		case "logs":
-			res.LogMembers++
+		if counter := restoreSkip(&res, target, mode); counter != nil {
+			*counter++
 			continue
 		}
 		if dir := path.Dir(target); dir != "." {
@@ -61,6 +65,44 @@ func ExtractBackup(b *Backup, dest string, limits BackupLimits) (ExtractResult, 
 		}
 	}
 	return res, nil
+}
+
+// restoreSkip returns the counter of res for a member Python's restore
+// drops, or nil for a member it restores. The top-level directory is compared after
+// case folding and without trailing dots and spaces, as Python does,
+// because Windows and macOS file systems map "LOGS." onto "logs"; the same
+// applies to go/, so data/GO/ never reaches a Go data directory.
+func restoreSkip(res *ExtractResult, target string, mode RestoreMode) *int {
+	top, _, _ := strings.Cut(target, "/")
+	switch strings.TrimRight(foldName(top), " .") {
+	case "go":
+		return &res.GoMembers
+	case "logs":
+		return &res.LogMembers
+	case "tmp", ".access-revocations", ".ldap-revocation-fences":
+		return &res.RuntimeMembers
+	}
+	if mode == RestoreExport && remoteCredentialPath(target) {
+		return &res.CredentialMembers
+	}
+	return nil
+}
+
+// remoteCredentialPath is app/backup_manager.py
+// _excluded_remote_credential_path: exports never restore reusable remote
+// authentication material. Python compares these names exactly.
+func remoteCredentialPath(p string) bool {
+	parts := strings.Split(p, "/")
+	if slices.Contains(parts, "keys") || parts[0] == "deleted_users" {
+		return true
+	}
+	name := strings.TrimLeft(parts[len(parts)-1], ".")
+	for _, base := range []string{"credentials.json", "automation-vault.json"} {
+		if name == base || strings.HasPrefix(name, base+".") {
+			return true
+		}
+	}
+	return false
 }
 
 func extractOne(root *os.Root, b *Backup, entry BackupFile, target string, limits BackupLimits) error {

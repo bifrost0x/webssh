@@ -30,7 +30,8 @@ type Step interface {
 	Report() StepReport
 }
 
-// StepReport is one entry of the migration report.
+// StepReport is one entry of the migration report. It never holds a
+// secret value, a plaintext, a hash or a token (section 5.5).
 type StepReport struct {
 	Entity  string `json:"entity"`
 	Version int    `json:"version"`
@@ -39,6 +40,58 @@ type StepReport struct {
 	// Notes are safe, user-facing remarks (for example a profile field
 	// kept verbatim in legacy_extra).
 	Notes []string `json:"notes,omitzero"`
+	// Flagged are records migrated with a mark (FLAG).
+	Flagged []Flag `json:"flagged,omitzero"`
+	// KeptInPlace are legacy paths left where they are (KEEP-IN-PLACE).
+	KeptInPlace []KeptPath `json:"kept_in_place,omitzero"`
+	// Discarded counts runtime records not imported (DISCARD).
+	Discarded int `json:"discarded,omitzero"`
+	// Settings are settings written from the previous behaviour (D-01).
+	Settings []MaterialisedSetting `json:"materialised_settings,omitzero"`
+	// Warnings are shown to administrators after the upgrade.
+	Warnings []Warning `json:"warnings,omitzero"`
+	// UserActions are things users must do themselves, such as importing
+	// the legacy automation vault.
+	UserActions []UserAction `json:"pending_user_actions,omitzero"`
+}
+
+// Flag marks one migrated record.
+type Flag struct {
+	UserID int64  `json:"user_id,omitzero"`
+	ID     string `json:"id,omitzero"`
+	Reason string `json:"reason"`
+}
+
+// KeptPath is a legacy path the migration leaves in place, relative to
+// DATA_DIR.
+type KeptPath struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+	Files  int    `json:"files,omitzero"`
+	Bytes  int64  `json:"bytes,omitzero"`
+}
+
+// MaterialisedSetting is a setting written from the previous behaviour
+// (section 6).
+type MaterialisedSetting struct {
+	Setting  string `json:"setting"`
+	Value    string `json:"value"`
+	Rule     string `json:"rule"`
+	Evidence string `json:"evidence"`
+}
+
+// Warning is a notice for administrators.
+type Warning struct {
+	Code    string `json:"code"`
+	UserID  int64  `json:"user_id,omitzero"`
+	Count   int    `json:"count,omitzero"`
+	Message string `json:"message"`
+}
+
+// UserAction is something one user must do after the upgrade.
+type UserAction struct {
+	UserID int64  `json:"user_id"`
+	Action string `json:"action"`
 }
 
 // Pending is an entity M1 leaves in place (KEEP-IN-PLACE), with the build
