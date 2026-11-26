@@ -1,0 +1,156 @@
+// Package client is the only SSH dialer of WebSSH: direct, through a
+// jump-host chain or through SOCKS5, with host-key checks and all supported
+// authentication methods.
+//
+// This file is the contract with the packages around the dialer. The
+// interfaces are declared here, by the consumer: internal/vault provides
+// KeySource, internal/ssh/hostkey provides HostKeys, internal/terminal
+// provides Interaction and internal/netpolicy provides NetDialer.
+// Implementations use only standard library, foundation and x/crypto/ssh
+// types, so none of them imports this package.
+package client
+
+import (
+	"context"
+	"io"
+	"net"
+
+	"golang.org/x/crypto/ssh"
+
+	"github.com/bifrost0x/webssh/internal/netpolicy"
+)
+
+// Role names the hop a prompt or failure belongs to. The values are the
+// prompt contexts of the realtime protocol.
+type Role string
+
+// Roles of a hop.
+const (
+	RoleTarget Role = "target"
+	RoleJump   Role = "jump_host"
+	RoleSOCKS  Role = "socks_proxy"
+)
+
+// Target is one connection request: the target hop, the jump-host chain
+// (outermost first) and an optional SOCKS5 proxy in front of the first hop.
+// Jumps and Proxy are exclusive.
+type Target struct {
+	// Owner is the user on whose behalf the connection is made; host keys
+	// and SSH keys are looked up for this user.
+	Owner int64
+	Hop   Hop
+	Jumps []Hop
+	Proxy *SOCKS
+	// Display is how the session is presented; the dialer ignores it.
+	Display Display
+}
+
+// Hop is one SSH server on the way to the target.
+type Hop struct {
+	// Host is the name the user configured; host keys are stored under it.
+	Host string
+	Port int
+	User string
+	Auth Auth
+	// Legacy enables ssh-rsa and SHA-1 key exchange for this hop only
+	// (opt-in per host, or the setting written for existing installations
+	// under D-01).
+	Legacy bool
+}
+
+// Auth is how a hop authenticates. Password answers the password method
+// and the first hidden keyboard-interactive prompt; KeyID selects a stored
+// key through KeySource. Both may be set.
+type Auth struct {
+	Password string
+	KeyID    string
+}
+
+// SOCKS is a SOCKS5 proxy. M1 supports proxies without authentication.
+type SOCKS struct {
+	Host string
+	Port int
+}
+
+// Display carries what the terminal shows for a session. It travels with
+// the target so that the resolver of saved profiles (internal/hosts)
+// and the terminal share one type without importing each other.
+type Display struct {
+	ProfileID    string
+	Name         string
+	JumpHostID   string
+	SOCKSProxyID string
+	// Startup features that M1 does not run; the terminal shows a notice.
+	UseTmux        bool
+	UseHerdr       bool
+	StartupCommand bool
+}
+
+// KeySource returns the signer of a stored SSH key of a user. Provided by
+// internal/vault; the key never leaves the vault in another form.
+type KeySource interface {
+	Signer(ctx context.Context, owner int64, keyID string) (ssh.Signer, error)
+}
+
+// HostKeys is the store of trusted host keys (internal/ssh/hostkey).
+type HostKeys interface {
+	// Known reports whether key is trusted for host:port and owner. It
+	// returns false and nil for a host without trust (the user is asked),
+	// and an error with fault.HostKeyChanged or fault.HostKeyRevoked when
+	// trust exists but not for this key (the connection is refused, no
+	// prompt).
+	Known(ctx context.Context, owner int64, host string, port int, key ssh.PublicKey) (bool, error)
+	// Record trusts key after the user accepted it. It re-checks under its
+	// own lock and fails with fault.HostKeyChanged if another session
+	// recorded a different key meanwhile.
+	Record(ctx context.Context, owner int64, host string, port int, key ssh.PublicKey) error
+	// Preferred orders the allowed host-key algorithms with the trusted
+	// key types first, so the server presents a key that can be verified.
+	Preferred(ctx context.Context, owner int64, host string, port int, allowed []string) ([]string, error)
+}
+
+// HostKeyPrompt asks the user to trust a host key seen for the first time.
+type HostKeyPrompt struct {
+	Role        Role
+	Host        string
+	Port        int
+	KeyType     string
+	Fingerprint string // SHA256:… as ssh-keygen prints it
+}
+
+// BannerPrompt asks the user to accept a pre-authentication banner. Banner
+// is remote-supplied text, bounded and sanitized by the dialer.
+type BannerPrompt struct {
+	Role   Role
+	Host   string
+	Port   int
+	Banner string
+}
+
+// Interaction asks the user during a connection attempt (provided by
+// internal/terminal per attempt). Both methods block until the user
+// answers, ctx ends or the prompt expires; false or an error aborts the
+// connection. A nil Interaction means unattended: unknown host keys and
+// banners are refused.
+type Interaction interface {
+	HostKey(ctx context.Context, q HostKeyPrompt) (bool, error)
+	Banner(ctx context.Context, q BannerPrompt) (bool, error)
+}
+
+// NetDialer opens the TCP connection to the first hop or proxy after the
+// network policy admitted it (provided by internal/netpolicy). Refusals
+// carry fault.TargetBlocked.
+type NetDialer interface {
+	DialContext(ctx context.Context, role netpolicy.Role, network, addr string) (net.Conn, error)
+}
+
+// Shell is an interactive session on the target, returned by
+// (*Dialer).OpenShell(ctx, t, ix, rows, cols). Close ends the shell and
+// the connection to the target, jump hosts included.
+type Shell interface {
+	io.ReadWriteCloser
+	// Resize changes the terminal size.
+	Resize(rows, cols int) error
+	// Wait returns when the remote shell ends.
+	Wait() error
+}
