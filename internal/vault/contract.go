@@ -6,6 +6,7 @@ package vault
 import (
 	"context"
 
+	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/principal"
 )
 
@@ -15,4 +16,12 @@ import (
 // session, action or target; the caller then refuses the operation.
 type StepUp interface {
 	Consume(ctx context.Context, p principal.Principal, action principal.Action, target, grant string) error
+}
+
+// Sealer seals and opens private keys at rest (provided by
+// *keyring.Ring). Keys are sealed with keyring.SSHKey and bound to their
+// row, so a sealed key copied to another row or user does not open.
+type Sealer interface {
+	Seal(p keyring.Purpose, ad keyring.AAD, plain []byte) ([]byte, error)
+	Open(p keyring.Purpose, ad keyring.AAD, sealed []byte) ([]byte, error)
 }
