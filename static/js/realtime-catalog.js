@@ -47,7 +47,10 @@
     // push builders get the acknowledgement and the request data. errorEvent
     // repeats a failure as the generic 'error' event, as Python did for that
     // event, except for failures the page answers itself (answeredByPage);
-    // refresh names a list request whose result is pushed afterwards.
+    // an event name instead of true repeats it as that event. failure(failed,
+    // data) rebuilds the failure for the acknowledgement and the event (the
+    // correlation members Python sent with it). refresh names a list request
+    // whose result is pushed afterwards.
     // Events without a v1 type are answered locally with not_available_in_preview.
     const REQUESTS = join('requests');
     const REFRESH_PUSH = join('refresh');
@@ -97,12 +100,14 @@
         const payload = entry.payload ? entry.payload(data) : {...data};
         host.request(entry.type, payload).then(result => {
             if (!result.ok) {
-                const failed = acks.failure(result.err);
+                const failed = entry.failure ? entry.failure(acks.failure(result.err), data) : acks.failure(result.err);
                 // The details Python sent with the event too (usages of a
                 // jump host or SOCKS5 proxy that cannot be deleted), unless
                 // the page answers the failure itself.
-                if (entry.errorEvent && !entry.answeredByPage?.(failed)) host.dispatch('error', {...failed});
-                acks.answer(ack, result);
+                if (entry.errorEvent && !entry.answeredByPage?.(failed)) {
+                    host.dispatch(entry.errorEvent === true ? 'error' : entry.errorEvent, {...failed});
+                }
+                acks.answer(ack, result, null, entry.failure ? () => failed : undefined);
                 return;
             }
             const reply = entry.ack ? entry.ack(result.p, data) : {success: true, ...result.p};

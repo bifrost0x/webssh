@@ -108,21 +108,23 @@ type FilesPreviewData struct {
 }
 
 // FilesImage reads a whole file for the image preview
-// (download_file_binary with for_preview).
+// (download_file_binary); ForPreview must be true, as in Python.
 type FilesImage struct {
 	FileRef
 	RemotePath string `json:"remote_path"`
+	ForPreview bool   `json:"for_preview"`
 }
 
 // FilesImageData is the result of files.preview.image
 // (file_download_ready_binary).
 type FilesImageData struct {
 	FileRef
-	Path     string `json:"path"`
-	Filename string `json:"filename"`
-	FileData string `json:"file_data"` // base64
-	Size     int64  `json:"size"`
-	Encoding string `json:"encoding"` // "base64"
+	Path       string `json:"path"`
+	Filename   string `json:"filename"`
+	FileData   string `json:"file_data"` // base64
+	Size       int64  `json:"size"`
+	ForPreview bool   `json:"for_preview"`
+	Encoding   string `json:"encoding"` // "base64"
 }
 
 // FilesEditOpen loads a file for the editor (open_file_for_edit).

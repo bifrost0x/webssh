@@ -22,7 +22,9 @@ func (s *Service) Routes() []protocol.Route {
 		return protocol.Spec{Async: true, Timeout: timeout, Mutates: mutates, MaxPayload: maxControlPayload}
 	}
 	save := spec(120*time.Second, true)
-	save.MaxPayload = int(6*s.opts.MaxEditorBytes + 64<<10)
+	// The editor text, JSON-escaped; an editor limit beyond 128 MiB is not
+	// carried by one realtime message.
+	save.MaxPayload = int(6*min(s.opts.MaxEditorBytes, 128<<20) + 64<<10)
 	return []protocol.Route{
 		route(s, protocol.TypeFilesList, spec(60*time.Second, false), s.listRoute),
 		route(s, protocol.TypeFilesListCancel, spec(30*time.Second, false), s.cancelRoute),
@@ -132,13 +134,16 @@ func (s *Service) imageRoute(ctx context.Context, c Caller, rq protocol.FilesIma
 	if err := requireRef(rq.FileRef); err != nil {
 		return nil, err
 	}
+	if !rq.ForPreview {
+		return nil, fault.New(fault.InvalidRequest, "Missing required fields for binary download.")
+	}
 	data, err := s.Image(ctx, c, rq.SourceID, rq.RemotePath)
 	if err != nil {
 		return nil, err
 	}
 	return &protocol.FilesImageData{
 		FileRef: rq.FileRef, Path: rq.RemotePath, Filename: path.Base(rq.RemotePath),
-		FileData: base64.StdEncoding.EncodeToString(data), Size: int64(len(data)), Encoding: "base64",
+		FileData: base64.StdEncoding.EncodeToString(data), Size: int64(len(data)), ForPreview: true, Encoding: "base64",
 	}, nil
 }
 
