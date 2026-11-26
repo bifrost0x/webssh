@@ -14,12 +14,43 @@ import (
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 )
 
-// contractsDoc is the human-readable M1 contract. Its catalog tables are
-// checked against the code, so the document cannot drift.
+// contractsDoc is the human-readable M1 contract and contractDocs every
+// contract document. Their catalog tables are checked against the code, so
+// the documents cannot drift. A catalog may be split over several tables:
+// every heading that starts with the catalog's heading counts (for example
+// "### Step-up actions (operation)" in m2-contracts.md).
 const contractsDoc = "docs/architecture/m1-contracts.md"
 
+var contractDocs = []string{contractsDoc, "docs/architecture/m2-contracts.md"}
+
+// catalogRows joins the tables of one catalog over every contract document;
+// a row in two tables is an error.
+func catalogRows(t *testing.T, heading string) map[string]string {
+	t.Helper()
+	root := moduleRoot(t)
+	all := map[string]string{}
+	for _, doc := range contractDocs {
+		rows, err := docColumn(readRepoFile(t, root, doc), heading)
+		if err != nil {
+			if doc == contractsDoc {
+				t.Fatalf("%s: %v", doc, err)
+			}
+			continue // a later document need not extend every catalog
+		}
+		for k, v := range rows {
+			if _, dup := all[k]; dup {
+				t.Errorf("%s: row %s is documented twice", doc, k)
+			}
+			all[k] = v
+		}
+	}
+	return all
+}
+
 // docColumn returns the first cell (without backticks) of every table row
-// under the heading, and the second cell keyed by the first.
+// under the heading (or a heading that extends it: "### Error codes" also
+// takes "### Error codes (operation)"), and the second cell keyed by the
+// first.
 func docColumn(data []byte, heading string) (map[string]string, error) {
 	rows := map[string]string{}
 	inSection := false
@@ -27,7 +58,7 @@ func docColumn(data []byte, heading string) (map[string]string, error) {
 	for n := 1; scanner.Scan(); n++ {
 		line := strings.TrimSpace(scanner.Text())
 		if strings.HasPrefix(line, "#") {
-			inSection = line == heading
+			inSection = line == heading || strings.HasPrefix(line, heading+" (")
 			continue
 		}
 		if !inSection || !strings.HasPrefix(line, "| `") {
@@ -54,12 +85,12 @@ func setDiff(what string, doc map[string]string, code []string) []string {
 	var problems []string
 	for _, name := range code {
 		if _, ok := doc[name]; !ok {
-			problems = append(problems, fmt.Sprintf("%s %q is in the code but not in %s", what, name, contractsDoc))
+			problems = append(problems, fmt.Sprintf("%s %q is in the code but not in the contract documents", what, name))
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(doc)) {
 		if !slices.Contains(code, name) {
-			problems = append(problems, fmt.Sprintf("%s %q is in %s but not in the code", what, name, contractsDoc))
+			problems = append(problems, fmt.Sprintf("%s %q is in the contract documents but not in the code", what, name))
 		}
 	}
 	return problems
@@ -67,12 +98,7 @@ func setDiff(what string, doc map[string]string, code []string) []string {
 
 func TestContractDocumentation(t *testing.T) {
 	t.Parallel()
-	data := readRepoFile(t, moduleRoot(t), contractsDoc)
-
-	codes, err := docColumn(data, "### Error codes")
-	if err != nil {
-		t.Fatal(err)
-	}
+	codes := catalogRows(t, "### Error codes")
 	var codeNames []string
 	for _, c := range fault.Codes() {
 		codeNames = append(codeNames, string(c))
@@ -84,10 +110,7 @@ func TestContractDocumentation(t *testing.T) {
 		t.Error(p)
 	}
 
-	types, err := docColumn(data, "### Message types")
-	if err != nil {
-		t.Fatal(err)
-	}
+	types := catalogRows(t, "### Message types")
 	var typeNames []string
 	for _, m := range protocol.V1() {
 		typeNames = append(typeNames, m.Name)
@@ -102,10 +125,7 @@ func TestContractDocumentation(t *testing.T) {
 		t.Error(p)
 	}
 
-	actions, err := docColumn(data, "### Step-up actions")
-	if err != nil {
-		t.Fatal(err)
-	}
+	actions := catalogRows(t, "### Step-up actions")
 	var actionNames []string
 	for _, a := range principal.Actions() {
 		actionNames = append(actionNames, string(a))
@@ -125,9 +145,9 @@ func TestReleaseBuildExcludesE2E(t *testing.T) {
 
 func TestDocColumn(t *testing.T) {
 	t.Parallel()
-	doc := []byte("# C\n\n### Error codes\n\n| Code | Status |\n|---|---|\n| `a` | 400 |\n| `b` | 500 |\n\n### Other\n\n| `c` | x |\n")
+	doc := []byte("# C\n\n### Error codes\n\n| Code | Status |\n|---|---|\n| `a` | 400 |\n| `b` | 500 |\n\n### Other\n\n| `c` | x |\n\n### Error codes (more)\n\n| `d` | 409 |\n\n### Error codesX\n\n| `e` | 1 |\n")
 	got, err := docColumn(doc, "### Error codes")
-	if err != nil || len(got) != 2 || got["a"] != "400" {
+	if err != nil || len(got) != 3 || got["a"] != "400" || got["d"] != "409" {
 		t.Fatalf("docColumn = %v, %v", got, err)
 	}
 	if _, err := docColumn([]byte("| `a` | 1 |\n| `a` | 2 |\n"), "### X"); err == nil {

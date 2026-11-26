@@ -15,6 +15,9 @@ const (
 	ReasonRoleChanged     Reason = "role_changed"     // administrator rights were removed
 	ReasonExpired         Reason = "expired"          // idle or absolute lifetime reached
 	ReasonRecoveryEnded   Reason = "recovery_ended"   // the factor repair of a recovery session finished
+	// ReasonDirectoryRefused: the directory check of an LDAP account failed
+	// or the directory could not be reached (auth.Revalidator, fail closed).
+	ReasonDirectoryRefused Reason = "directory_refused"
 )
 
 // Revocation announces that a session has ended. The session package

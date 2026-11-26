@@ -25,12 +25,16 @@ const (
 	ActionUserCreate            Action = "user.create"
 )
 
-var actions = []Action{
+// m1Actions are the actions of M1; the catalog is m1Actions followed by
+// the lists of the M2 contracts (action_*.go).
+var m1Actions = []Action{
 	ActionKeyUpload, ActionKeyReplace, ActionKeyDelete, ActionHostKeyDelete,
 	ActionTOTPEnroll, ActionTOTPDelete, ActionPasskeyEnroll, ActionPasskeyDelete,
 	ActionMFAEnable, ActionMFADisable, ActionRecoveryRotate,
 	ActionSecurityFeatureUpdate, ActionUserCreate,
 }
+
+var actions = slices.Concat(m1Actions, identityActions, operationActions)
 
 // Actions returns the catalog.
 func Actions() []Action {

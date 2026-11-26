@@ -35,6 +35,8 @@ var Owners = []string{
 	"accounts", "audit", "auth", "authlocal", "hostkey", "hostops", "hosts",
 	"migrate", "operations", "session", "settings", "stepup", "terminal",
 	"totp", "vault", "webauthn",
+	// M2 contracts: identity and operation.
+	"authgithub", "authldap", "authoidc", "backup",
 }
 
 // ledgerTable records applied migrations. It belongs to the store itself.

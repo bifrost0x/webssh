@@ -2,6 +2,7 @@ package principal_test
 
 import (
 	"context"
+	"regexp"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/fault"
@@ -45,6 +46,8 @@ func TestRequire(t *testing.T) {
 	}
 }
 
+var actionForm = regexp.MustCompile(`^[a-z0-9][a-z0-9_.:-]{0,95}$`)
+
 func TestActions(t *testing.T) {
 	t.Parallel()
 	seen := map[principal.Action]bool{}
@@ -52,9 +55,13 @@ func TestActions(t *testing.T) {
 		if seen[a] || !a.Known() {
 			t.Errorf("action %q duplicate or unknown", a)
 		}
+		// The Python release accepts only this form (step_up.normalize_action).
+		if !actionForm.MatchString(string(a)) {
+			t.Errorf("action %q does not have the form of a step-up action", a)
+		}
 		seen[a] = true
 	}
-	if len(seen) != 13 || principal.Action("key.upload ").Known() {
+	if len(seen) == 0 || principal.Action("key.upload ").Known() {
 		t.Errorf("catalog has %d actions or accepts a near miss", len(seen))
 	}
 	principal.Actions()[0] = "mutated"
