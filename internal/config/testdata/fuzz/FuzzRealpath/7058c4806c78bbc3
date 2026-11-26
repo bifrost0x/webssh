@@ -1,0 +1,6 @@
+go test fuzz v1
+string("a/a/a/a/a/a/a/a/a")
+string("/a")
+string(".")
+string("0")
+string("0")
