@@ -13,7 +13,8 @@ import (
 	"time"
 )
 
-// This is the only file that imports syscall (ADR 0010, architecture test).
+// This is the only file of internal/netpolicy that imports syscall; the
+// architecture test lists every allowed importer (ADR 0010).
 // It opens no process and needs no capability: RTM_GETROUTE is available
 // to unprivileged sockets.
 
