@@ -42,6 +42,9 @@ module.exports = {
         env: { WEBSSH_E2E_PORT: e2ePort },
         url: `${e2eBaseUrl}/login`,
         reuseExistingServer: false,
+        // Without it Playwright kills the server with SIGKILL and the
+        // backend's scratch data directory stays behind in the temp dir.
+        gracefulShutdown: { signal: 'SIGINT', timeout: 5000 },
         timeout: Number(process.env.WEBSSH_E2E_SERVER_TIMEOUT_MS || 120_000),
         stdout: 'pipe',
         stderr: 'pipe',
