@@ -9,10 +9,16 @@ import (
 	"github.com/bifrost0x/webssh/internal/fault"
 )
 
-// openFile opens the regular file at p for reading. A symbolic link to a
-// regular file is read through, as the Python release did for preview
-// and editor; it returns the path that was opened.
-func openFile(ctx context.Context, b Backend, p string, r Range) (Reader, string, error) {
+// OpenFollow opens the regular file at p for reading and follows a
+// symbolic link to a regular file, as the Python release did when it
+// showed, edited or downloaded a file such as sites-enabled/*. Every read
+// of the workspace goes through it (preview, editor, image; transfers use
+// it for downloads). Backend.Open itself never follows a link; the target
+// comes from Stat with follow, whose Entry.Path is the canonical path of
+// the final target. A link to a directory, a dangling link or a target
+// the backend refuses (SMB reparse points) is not opened. It returns the
+// path that was opened.
+func OpenFollow(ctx context.Context, b Backend, p string, r Range) (Reader, string, error) {
 	rd, err := b.Open(ctx, p, r)
 	if err == nil || !fault.Is(err, fault.UnsupportedOperation) {
 		return rd, p, err
@@ -122,7 +128,7 @@ func (s *Service) Preview(ctx context.Context, c Caller, q PreviewRequest) (Prev
 		}
 		start = max(0, e.Size-maxBytes)
 	}
-	rd, _, err := openFile(ctx, r.b, p, Range{Offset: start, Length: maxBytes})
+	rd, _, err := OpenFollow(ctx, r.b, p, Range{Offset: start, Length: maxBytes})
 	if err != nil {
 		return Preview{}, err
 	}
@@ -169,7 +175,7 @@ func (s *Service) Image(ctx context.Context, c Caller, sourceID, path string) ([
 
 // readWhole reads a regular file of at most MaxEditorBytes.
 func (s *Service) readWhole(ctx context.Context, r resolved, p, tooLarge string) ([]byte, error) {
-	rd, _, err := openFile(ctx, r.b, p, Range{Length: -1})
+	rd, _, err := OpenFollow(ctx, r.b, p, Range{Length: -1})
 	if err != nil {
 		return nil, err
 	}

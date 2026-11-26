@@ -115,8 +115,18 @@ type AccessProber interface { Access(ctx, path string) (Access, error) } // opti
   the admin switch `sftp_chmod_enabled` is on and the server offers the
   extension; SMB never sets it. The mode read back must match
   (`MODE_MISMATCH`); an unverifiable result is `OUTCOME_UNKNOWN`.
-- `Stat` with `follow` describes a link target; SMB refuses
+- `Stat` with `follow` describes a link target, with the canonical path
+  of the final target in `Entry.Path` (SFTP `realpath`); SMB refuses
   (`REPARSE_POINT_REJECTED`). `Open` refuses directories and links.
+- Links (decision of the main chat on the FS2 report): reads follow links
+  as in Python (preview, editor load, image preview, downloads), so a file
+  such as `sites-enabled/*` can still be shown, edited and downloaded.
+  They do so through `files.OpenFollow` in the file layer, which resolves
+  the link with `Stat(follow)` and opens the target; `Backend.Open` keeps
+  refusing links. An editor save follows the link as Python did
+  (`WriteOptions.FollowSymlink`, the link stays). Every other change
+  (rename, delete, chmod, create, upload without the editor) never
+  follows a link and acts on the link itself.
 - `Entry.Mode` is the POSIX `st_mode` with type bits as the page shows it;
   SMB synthesises it (directory `0o040111`, file `0o100444` read-only or
   `0o100666`). `Owner` is numeric (uid, gid) and only for SFTP.
