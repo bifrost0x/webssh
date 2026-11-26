@@ -7,6 +7,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/accounts"
 	"github.com/bifrost0x/webssh/internal/auth"
+	"github.com/bifrost0x/webssh/internal/auth/github"
 	"github.com/bifrost0x/webssh/internal/auth/local"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
 	"github.com/bifrost0x/webssh/internal/auth/webauthn"
@@ -49,7 +50,7 @@ func RegisterM1(r *Registry, m M1) error {
 		m.HostLimits = hosts.DefaultLimits
 	}
 	r.Schemas(accounts.Schema(), local.Schema(), auth.Schema(), totp.Schema(), webauthn.Schema(), operations.Schema(), settings.Schema(),
-		vault.Schema(), hosts.Schema(), hostops.Schema(), hostkey.Schema())
+		vault.Schema(), hosts.Schema(), hostops.Schema(), hostkey.Schema(), github.Schema())
 	add := func(g Group, newStep func() Step) error {
 		if m.wrap == nil {
 			return r.Add(g, newStep)
@@ -64,6 +65,7 @@ func RegisterM1(r *Registry, m M1) error {
 		{GroupAccounts, func() Step { return &passwordsStep{} }},
 		{GroupAccounts, func() Step { return &historyScopeStep{} }},
 		{GroupAccounts, func() Step { return &quarantineStep{} }},
+		{GroupAccounts, func() Step { return &githubIdentitiesStep{} }},
 		{GroupFactors, func() Step { return &featureGatesStep{} }},
 		{GroupFactors, func() Step { return &totpStep{} }},
 		{GroupFactors, func() Step { return &passkeysStep{} }},
@@ -73,6 +75,7 @@ func RegisterM1(r *Registry, m M1) error {
 		{GroupSettings, func() Step { return &appSettingsStep{env: m.Environment} }},
 		{GroupSettings, func() Step { return &userSettingsStep{} }},
 		{GroupSettings, func() Step { return &recoveryCheckStep{} }},
+		{GroupSettings, func() Step { return &githubConfigStep{} }},
 		{GroupKeys, func() Step { return &sshKeysStep{} }},
 		{GroupHosts, func() Step { return &hostsStep{limits: m.HostLimits} }},
 		{GroupHostTrust, func() Step { return &hostKeysStep{entity: "E17"} }},

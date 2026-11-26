@@ -71,6 +71,7 @@ const resetDeviation = "the running server ends SSH sessions only at a restart u
 
 func cliCases() []cliCase {
 	pw := func(args ...string) []string { return append([]string{"create-admin"}, args...) }
+	fb := func(args ...string) []string { return append([]string{"issue-factor-bootstrap"}, args...) }
 	return []cliCase{
 		{Name: "missing username", Tool: "flask", Steps: []cliStep{{Args: pw()}}},
 		{Name: "unknown option", Tool: "flask", Steps: []cliStep{{Args: pw("--foo")}}},
@@ -103,6 +104,15 @@ func cliCases() []cliCase {
 		{Name: "prompt end of input", Tool: "flask", Steps: []cliStep{{Args: pw("--username", "admin2"), Stdin: "password1\n"}}},
 		{Name: "prompt nothing", Tool: "flask", Steps: []cliStep{{Args: pw("--username", "admin2")}}},
 		{Name: "prompt short", Tool: "flask", Steps: []cliStep{{Args: pw("--username", "admin2"), Stdin: "short\nshort\n"}}},
+		{Name: "bootstrap help", Tool: "flask", Steps: []cliStep{{Args: fb("--help")}}},
+		{Name: "bootstrap missing options", Tool: "flask", Steps: []cliStep{{Args: fb()}, {Args: fb("--username", "x")}}},
+		{Name: "bootstrap invalid action", Tool: "flask", Steps: []cliStep{{Args: fb("--action", "bad")}, {Args: fb("--username", "x", "--action", "bad")},
+			{Args: fb("--action=bad", "--username")}}},
+		{Name: "bootstrap unknown account", Tool: "flask", Steps: []cliStep{{Args: fb("--username", "nobody", "--action", "totp.enroll")}}},
+		{Name: "bootstrap local account", Tool: "flask", Files: []string{"good"}, Steps: []cliStep{
+			{Args: pw("--username", "admin1", "--password-file", "{tmp}/good")},
+			{Args: fb("--username", "admin1", "--action", "passkey.enroll")},
+		}},
 		{Name: "reset unknown", Tool: "flask", Steps: []cliStep{{Args: []string{"reset-password", "--username", "nobody"}}}},
 		{Name: "reset", Tool: "flask", Files: []string{"good", "other", "short"}, Steps: []cliStep{
 			{Args: pw("--username", "admin1", "--password-file", "{tmp}/good")},

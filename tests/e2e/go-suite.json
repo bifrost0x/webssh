@@ -29,6 +29,8 @@
       {"title": "registration control is locked during authentication and restored after cancellation", "reason": "saves through POST /admin/api/settings, which belongs to the operations area", "package": "OP3"}
     ]},
     {"file": "presets-recovery-refinement.spec.js", "exclude": []},
+    {"file": "admin-config-draft.spec.js", "exclude": []},
+    {"file": "form-journey.spec.js", "exclude": []},
 
     {"file": "overview-workspace.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-default-content.spec.js", "serial": "e2e_admin", "exclude": []},

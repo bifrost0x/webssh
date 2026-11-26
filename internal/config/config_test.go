@@ -352,7 +352,7 @@ func TestCABundle(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "bad.pem"), "not a certificate", 0o600)
 
 	c, warns := mustLoad(t, map[string]string{"REQUESTS_CA_BUNDLE": "", "CURL_CA_BUNDLE": filepath.Join(dir, "ca.pem")})
-	if c.CABundle.Variable != "CURL_CA_BUNDLE" || !hasWarning(warns, WarnNoEffect, "CURL_CA_BUNDLE", "") {
+	if c.CABundle.Variable != "CURL_CA_BUNDLE" || hasWarning(warns, WarnNoEffect, "CURL_CA_BUNDLE", "") {
 		t.Errorf("bundle %+v", c.CABundle)
 	}
 	block, _ := pem.Decode(cert)

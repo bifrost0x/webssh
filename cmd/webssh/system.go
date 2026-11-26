@@ -71,6 +71,10 @@ type optional struct {
 	// revalidation). Both come from the area "ldap".
 	ldapStepUp  stepup.Directory
 	sessionGate func(ctx context.Context, p principal.Principal) error
+	// githubActive reports active GitHub sign-in; githubIdentity returns
+	// an account's GitHub identity (area "github"). Nil: none.
+	githubActive   func(ctx context.Context) bool
+	githubIdentity func(ctx context.Context, userID int64) (*operations.Credential, error)
 	// passkeyPlaceholder stores a passkey that never authenticates (end-to-
 	// end seed only).
 	//lint:ignore U1000 read by the end-to-end build (e2e.go)

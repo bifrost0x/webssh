@@ -72,7 +72,7 @@ func ldapArea() extension {
 
 func newLDAPService(sys *system) *ldap.Service {
 	cfg := sys.cfg.LDAP
-	svc := &ldap.Service{DB: sys.db, Accounts: ldapAccounts{a: sys.accounts, l: sys.local}, Sessions: sys.sessions,
+	svc := &ldap.Service{DB: sys.db, Accounts: ldapAccounts{a: sys.accounts}, Sessions: sys.sessions,
 		Passwords: sys.local, Audit: sys.audit, Admins: accounts.Admins(sys.cfg.Accounts.AdminUsers).Reserves,
 		Enabled: cfg.Enabled, Provider: cfg.ProviderID, AutoProvision: cfg.AutoProvision, Revalidation: cfg.Revalidation,
 		Logger: sys.log}
@@ -118,11 +118,9 @@ func ldapActive(ctx context.Context, sys *system, svc *ldap.Service) bool {
 	return err == nil && on
 }
 
-// ldapAccounts adapts the accounts and the local passwords to
-// ldap.Accounts.
+// ldapAccounts adapts the accounts to ldap.Accounts.
 type ldapAccounts struct {
 	a *accounts.Service
-	l *local.Provider
 }
 
 func (x ldapAccounts) GetTx(ctx context.Context, tx *store.Tx, userID int64) (ldap.Account, error) {
@@ -138,11 +136,14 @@ func (x ldapAccounts) ProvisionTx(ctx context.Context, tx *store.Tx, username, m
 	return x.a.ProvisionTx(ctx, tx, username, manager)
 }
 
+// ReleaseTx makes the account local with the new password and raises its
+// generation, as unlink_ldap_identity does.
 func (x ldapAccounts) ReleaseTx(ctx context.Context, tx *store.Tx, userID int64, passwordHash string) error {
-	if err := x.a.SetManagerTx(ctx, tx, userID, accounts.ManagedLocal); err != nil {
+	if err := x.a.ReleaseTx(ctx, tx, userID, passwordHash); err != nil {
 		return err
 	}
-	return x.l.StoreTx(ctx, tx, userID, passwordHash)
+	_, err := x.a.RaiseGenerationTx(ctx, tx, userID)
+	return err
 }
 
 func (x ldapAccounts) AdoptTx(ctx context.Context, tx *store.Tx, userID int64, manager string) error {
@@ -153,7 +154,8 @@ func (x ldapAccounts) AdoptTx(ctx context.Context, tx *store.Tx, userID int64, m
 }
 
 func (x ldapAccounts) RaiseGenerationTx(ctx context.Context, tx *store.Tx, userID int64) error {
-	return x.a.RaiseGenerationTx(ctx, tx, userID)
+	_, err := x.a.RaiseGenerationTx(ctx, tx, userID)
+	return err
 }
 
 func (x ldapAccounts) BreakGlassAdminTx(ctx context.Context, tx *store.Tx) (bool, error) {

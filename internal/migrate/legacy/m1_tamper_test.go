@@ -127,6 +127,11 @@ func TestM1VerificationDetectsTampering(t *testing.T) {
 		{"user known_hosts", "E24", "E24", execTx(`UPDATE hostkey_files SET raw = CAST(raw || char(10) AS BLOB) WHERE scope = 'user'`)},
 		{"host note", "E28", "E28", execTx(`UPDATE hostops_notes SET body = body || 'x' WHERE profile_id IS NOT NULL`)},
 		{"notepad", "A05", "A05", execTx(`UPDATE hostops_notes SET revision = revision + 1 WHERE profile_id IS NULL`)},
+		{"GitHub identity owner", "E04", "E04", execTx(`UPDATE authgithub_identities SET user_id = user_id + 1000 WHERE id = (SELECT min(id) FROM authgithub_identities)`)},
+		{"GitHub provisioned flag", "E04", "E04", execTx(`UPDATE authgithub_identities SET provisioned = 1 - provisioned`)},
+		{"GitHub redirect URI", "E06", "E06", execTx(`UPDATE authgithub_config SET redirect_uri = redirect_uri || '/'`)},
+		{"GitHub client secret", "E06", "E06", reseal("authgithub_config", "client_secret", "singleton", "singleton = 1", keyring.GitHubClientSecret,
+			func(string) string { return "1" }, appendNewline)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -27,8 +27,9 @@ var legacyCommands = []string{
 // legacyRunners run the commands whose usage lines name the program, so
 // that the deprecated form prints "flask" there as the Python release did.
 var legacyRunners = map[string]adminRun{
-	"create-admin":   createAdmin,
-	"reset-password": resetPassword,
+	"create-admin":           createAdmin,
+	"reset-password":         resetPassword,
+	"issue-factor-bootstrap": issueFactorBootstrap,
 }
 
 // legacyApps are the values of flask --app that select the WebSSH

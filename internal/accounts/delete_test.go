@@ -243,7 +243,7 @@ func TestProvisionTx(t *testing.T) {
 	if _, standing, _ := l.s.SignInStanding(t.Context(), "listed"); standing {
 		t.Fatal("a managed account signs in with a local password")
 	}
-	if id, err := provision("Jörg", "github"); err != nil || id != 9 {
+	if id, err := provision("Jörg", "ldap"); err != nil || id != 9 {
 		t.Fatalf("unicode name: %d %v", id, err)
 	}
 }

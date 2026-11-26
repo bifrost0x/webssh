@@ -113,7 +113,7 @@ func TestM1MigratesGolden(t *testing.T) {
 	for _, p := range m.report.Pending {
 		pending[p.Entity] = p
 	}
-	for entity, count := range map[string]int{"E15": 2, "E22": 2, "E26": 2, "E27": 3, "E29": 2, "E30": 1, "E31": 1, "E32": 2, "E04": 2} {
+	for entity, count := range map[string]int{"E15": 2, "E22": 2, "E26": 2, "E27": 3, "E29": 2, "E30": 1, "E31": 1, "E32": 2} {
 		if pending[entity].Count != count || pending[entity].Phase == "" {
 			t.Errorf("pending %s: %+v, want count %d", entity, pending[entity], count)
 		}

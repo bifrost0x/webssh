@@ -34,8 +34,10 @@ type pages struct {
 	// tmux says whether the terminal runs persistent tmux sessions; the
 	// tmux switches of the pages follow the runtime setting only then.
 	tmux bool
-	log  *slog.Logger
-	now  func() time.Time
+	// github is the area "github" (sys.optional); nil: not in the build.
+	github *optional
+	log    *slog.Logger
+	now    func() time.Time
 }
 
 // signedIn is the account behind a request's principal.
@@ -85,6 +87,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 		HostKeyManagementEnabled: pg.cfg.Features.HostKeyManagement,
 		LDAPEnabled:              pg.active(ctx, "ldap"),
 		LDAPProviderID:           pg.cfg.LDAP.ProviderID,
+		GitHubAuthEnabled:        pg.github != nil && pg.github.githubActive != nil && pg.github.githubActive(ctx),
 		Preview:                  previewNotice(u == nil),
 	}
 	if u == nil {

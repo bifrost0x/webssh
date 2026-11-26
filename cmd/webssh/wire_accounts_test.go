@@ -17,7 +17,8 @@ import (
 // that names an account must be added here or renamed, so an account's
 // rows cannot survive its deletion unnoticed.
 var accountColumns = map[string]string{
-	"accounts_quarantine.former_user_id": "index of a deleted account's legacy directory",
+	"accounts_quarantine.former_user_id":   "index of a deleted account's legacy directory",
+	"authgithub_identities.github_user_id": "numeric GitHub account id, not a WebSSH account",
 }
 
 // Every store of the build is covered by the account deletion: per-account

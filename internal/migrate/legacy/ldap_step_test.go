@@ -94,7 +94,8 @@ func (m migratedAccounts) ProvisionTx(ctx context.Context, tx *store.Tx, name, m
 func (migratedAccounts) ReleaseTx(context.Context, *store.Tx, int64, string) error { return nil }
 func (migratedAccounts) AdoptTx(context.Context, *store.Tx, int64, string) error   { return nil }
 func (m migratedAccounts) RaiseGenerationTx(ctx context.Context, tx *store.Tx, id int64) error {
-	return m.a.RaiseGenerationTx(ctx, tx, id)
+	_, err := m.a.RaiseGenerationTx(ctx, tx, id)
+	return err
 }
 func (m migratedAccounts) BreakGlassAdminTx(ctx context.Context, tx *store.Tx) (bool, error) {
 	return m.a.BreakGlassAdminTx(ctx, tx)

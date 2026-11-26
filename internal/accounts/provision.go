@@ -30,7 +30,8 @@ var (
 // and is not locked. A name that equals an existing one under case
 // folding is ErrProvisionTaken. A name listed in ADMIN_USERS may be
 // provisioned: the start-up rule never promotes a managed account, and
-// converting it to a local one is refused (CheckLocalConversion).
+// converting it to a local one is refused (CheckLocalConversion). A
+// GitHub name must also satisfy the rules of new accounts.
 func (s *Service) ProvisionTx(ctx context.Context, tx *store.Tx, username, manager string) (int64, error) {
 	m := Manager(manager)
 	if m != ManagedLDAP && m != ManagedGitHub {
@@ -42,6 +43,14 @@ func (s *Service) ProvisionTx(ctx context.Context, tx *store.Tx, username, manag
 	for _, r := range username {
 		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Co, r) || unicode.Is(unicode.Cs, r) {
 			return 0, ErrProvisionName
+		}
+	}
+	// GitHub names follow the rules of new accounts (validate_new_user in
+	// _auto_provision); the provider then tries its next candidate. LDAP
+	// keeps the directory name, as in Python.
+	if m == ManagedGitHub {
+		if msg := validateNewName(username); msg != "" {
+			return 0, invalid(msg)
 		}
 	}
 	_, names, err := existing(ctx, tx)
