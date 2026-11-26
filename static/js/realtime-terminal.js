@@ -30,28 +30,34 @@
         return {...fields, ...extra};
     }
 
+    // The id of a saved route passed as an object; the server reads the route
+    // by id. null: an inline route (not in M1) or a contradicting id field.
+    function savedRoute(route, idField, explicit) {
+        if (route === undefined || route === null) return undefined;
+        const id = wire.isPlainObject(route) ? route[idField] : null;
+        const contradicts = typeof explicit === 'string' && explicit !== '' && explicit !== id;
+        return typeof id === 'string' && id !== '' && !contradicts ? id : null;
+    }
 
-    // Projects the Socket.IO ssh_connect payload onto terminal.open. Inline
-    // jump hosts and SOCKS proxies, stored credentials and Tailscale are not
-    // part of M1. use_tmux is sent with the name of a persistent session to
-    // reattach (reconnect_tmux_name); the server checks the name and takes
-    // the display name from its own record. Herdr is not sent.
+    // Projects the Socket.IO ssh_connect payload onto terminal.open; inline
+    // routes, stored credentials, Tailscale and Herdr are not part of M1.
+    // use_tmux carries the persistent session to reattach, which the server checks.
     function openTarget(data) {
         const authType = data.auth_type || (data.key_id ? 'key' : 'password');
-        if (!['password', 'key'].includes(authType)) return null;
-        if (data.credential_id || wire.isPlainObject(data.proxy_jump) || wire.isPlainObject(data.socks_proxy)) return null;
+        const jump = savedRoute(data.proxy_jump, 'jump_host_id', data.jump_host_id);
+        const socks = savedRoute(data.socks_proxy, 'socks_proxy_id', data.socks_proxy_id);
+        if (!['password', 'key'].includes(authType) || data.credential_id || jump === null || socks === null) return null;
         const target = {auth_type: authType};
         for (const name of TARGET_FIELDS) {
             if (typeof data[name] === 'string' && data[name] !== '') target[name] = data[name];
         }
+        Object.assign(target, jump ? {jump_host_id: jump} : {}, socks ? {socks_proxy_id: socks} : {});
         const port = typeof data.port === 'string' && /^\d{1,5}$/.test(data.port) ? Number(data.port) : data.port;
         if (Number.isInteger(port) && port > 0) target.port = port;
-        if (data.use_tmux === true) {
-            target.use_tmux = true;
-            if (typeof data.reconnect_tmux_name === 'string' && data.reconnect_tmux_name !== '') {
-                target.tmux_session_name = data.reconnect_tmux_name;
-            }
-        }
+        if (data.use_tmux !== true) return target;
+        target.use_tmux = true;
+        const reattach = data.reconnect_tmux_name;
+        if (typeof reattach === 'string' && reattach !== '') target.tmux_session_name = reattach;
         return target;
     }
 

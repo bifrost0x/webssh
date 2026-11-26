@@ -83,14 +83,34 @@ test('a failed open and an unsupported target become ssh_error with the request 
     const sent = ws.sent.length;
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'tailscale', client_request_id: 'req_b'});
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', proxy_jump: {host: 'j'}, client_request_id: 'req_c'});
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'key', key_id: 'k', jump_host_id: 'j1',
+        proxy_jump: {jump_host_id: 'j2', host: 'j'}, client_request_id: 'req_d'});
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'key', key_id: 'k', socks_proxy: 'p', client_request_id: 'req_e'});
     await tick();
     assert.equal(ws.sent.length, sent, 'unsupported targets never reach the server');
     assert.deepEqual(errors.map(e => [e.client_request_id, e.code]), [
         ['req_b', 'not_available_in_preview'],
         ['req_c', 'not_available_in_preview'],
+        ['req_d', 'not_available_in_preview'],
+        ['req_e', 'not_available_in_preview'],
         ['req_a', 'unreachable'],
     ]);
-    assert.equal(errors[2].error, 'The host could not be reached.');
+    assert.equal(errors[4].error, 'The host could not be reached.');
+    socket.disconnect();
+});
+
+// The page passes saved routes as objects; only their ids reach the
+// server, which reads the route from its own store.
+test('saved jump hosts and SOCKS proxies open by their id', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'key', key_id: 'k', profile_id: 'p1',
+        proxy_jump: {jump_host_id: 'j1', host: 'bastion', port: 22, username: 'x', auth_type: 'key', key_id: 'k'},
+        socks_proxy: {socks_proxy_id: 's1'}, client_request_id: 'req_r'});
+    await tick();
+    const target = ws.lastRequest('terminal.open').p.target;
+    assert.deepEqual(target, {auth_type: 'key', profile_id: 'p1', host: 'h', username: 'u', key_id: 'k',
+        jump_host_id: 'j1', socks_proxy_id: 's1'});
     socket.disconnect();
 });
 
