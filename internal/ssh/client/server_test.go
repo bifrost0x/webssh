@@ -175,6 +175,9 @@ func (s *testServer) session(nc ssh.NewChannel) {
 					}
 				}
 			}()
+		case "exec":
+			_ = req.Reply(true, nil)
+			go s.exec(ch, req.Payload)
 		default:
 			_ = req.Reply(false, nil)
 		}
