@@ -126,9 +126,20 @@ type TerminalCancel struct {
 }
 
 // SessionRef names a terminal session (terminal.discard_late,
-// terminal.close).
+// terminal.close). RequestID is the request_id of the terminal.open that
+// created the session; terminal.discard_late discards only a session whose
+// attempt carried it, as the Python release matched client_request_id.
 type SessionRef struct {
 	SessionID string `json:"session_id"`
+	RequestID string `json:"request_id,omitzero"`
+}
+
+// Validate implements Validator.
+func (r *SessionRef) Validate() error {
+	if r.RequestID != "" && !validToken(r.RequestID, MaxIDLen, false) {
+		return errors.New("request_id is invalid")
+	}
+	return nil
 }
 
 // TerminalAttach binds an existing session to channel Ch and replays the

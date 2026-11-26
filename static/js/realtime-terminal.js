@@ -309,7 +309,7 @@
                 () => ({success: true, cancelled: true}), cancelFailure),
             ssh_discard_late_connection: (data, ack) => {
                 release(sessions.get(data.session_id), 'discarded');
-                settle('terminal.discard_late', {session_id: data.session_id}, ack, () => ({success: true}));
+                settle('terminal.discard_late', {session_id: data.session_id, request_id: data.client_request_id}, ack, () => ({success: true}));
             },
             ssh_disconnect: (data, ack) => settle('terminal.close', {session_id: data.session_id}, ack, () => ({success: true}))
                 .then(result => {

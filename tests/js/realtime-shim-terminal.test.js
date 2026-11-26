@@ -361,6 +361,19 @@ test('a cancellation whose answer is lost is not reported as committed', async (
     assert.deepEqual(plain(acks), [{success: false, cancelled: false, reason: 'unavailable'}]);
 });
 
+test('a late connection is discarded with the request id of its attempt', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const acks = [];
+    socket.emit('ssh_discard_late_connection', {session_id: 'sess-9', client_request_id: 'req_9'}, r => acks.push(r));
+    const request = ws.lastRequest('terminal.discard_late');
+    assert.deepEqual(request.p, {session_id: 'sess-9', request_id: 'req_9'});
+    ws.reply(request.id, {});
+    await tick();
+    assert.deepEqual(plain(acks), [{success: true}]);
+    socket.disconnect();
+});
+
 test('a failed re-attach ends the session in the page instead of leaving it connected', async () => {
     const window = loadShim();
     const {socket, ws} = await connected(window);

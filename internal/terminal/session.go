@@ -35,6 +35,7 @@ type Session struct {
 	//lint:ignore U1000 set and read by the e2e hooks (fixtures.go)
 	fixture bool
 	opener  uint64 // the connection whose terminal.open created it
+	request string // the request_id of that terminal.open
 	release func() // quota slot
 
 	mu       sync.Mutex

@@ -245,7 +245,7 @@ func TestCloseNotifies(t *testing.T) {
 		}
 	}
 	res = open(t, m, a, 2)
-	if werr := call(t, m, a, protocol.TypeTerminalDiscardLate, protocol.SessionRef{SessionID: res.SessionID}, nil); werr != nil {
+	if werr := call(t, m, a, protocol.TypeTerminalDiscardLate, protocol.SessionRef{SessionID: res.SessionID, RequestID: "rc"}, nil); werr != nil {
 		t.Fatal(werr)
 	}
 	if ev := a.Events(protocol.TypeTerminalClosed); len(ev) != 2 || decode[protocol.TerminalClosed](t, ev[1]).Reason != reasonDiscarded {

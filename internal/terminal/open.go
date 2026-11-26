@@ -130,7 +130,7 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 		return protocol.TerminalOpened{}, errCancelled
 	}
 	s := m.newSession(p.UserID, sh, sessionInfo(target), release)
-	s.opener = peer.ID()
+	s.opener, s.request = peer.ID(), req.RequestID
 	if err := m.register(s, att.gen); err != nil {
 		release()
 		m.spawn(func() { _ = sh.Close() })

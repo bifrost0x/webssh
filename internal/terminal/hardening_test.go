@@ -260,16 +260,23 @@ func TestLedgerForgetsUsers(t *testing.T) {
 	}
 }
 
-// Only the connection that started an attempt discards its late session
-// (review 8; Python matched the request id of the attempt).
+// Only the connection that started an attempt discards its late session,
+// and only with the attempt's request id (review 8; Python matched the
+// client_request_id of the attempt). open uses request id "rb" for
+// channel 1.
 func TestDiscardLateOnlyByOpener(t *testing.T) {
 	m := newManager(t, Config{}, &fakeShells{})
 	opener := user(t, 1)
 	res := open(t, m, opener, 1)
-	if werr := call(t, m, user(t, 1), protocol.TypeTerminalDiscardLate, protocol.SessionRef{SessionID: res.SessionID}, nil); werr == nil || werr.Code != fault.NotFound {
+	if werr := call(t, m, user(t, 1), protocol.TypeTerminalDiscardLate, protocol.SessionRef{SessionID: res.SessionID, RequestID: "rb"}, nil); werr == nil || werr.Code != fault.NotFound {
 		t.Fatalf("discard from another connection: %+v", werr)
 	}
-	if werr := call(t, m, opener, protocol.TypeTerminalDiscardLate, protocol.SessionRef{SessionID: res.SessionID}, nil); werr != nil {
+	for _, id := range []string{"", "other"} {
+		if werr := call(t, m, opener, protocol.TypeTerminalDiscardLate, protocol.SessionRef{SessionID: res.SessionID, RequestID: id}, nil); werr == nil || werr.Code != fault.NotFound {
+			t.Fatalf("discard with request id %q: %+v", id, werr)
+		}
+	}
+	if werr := call(t, m, opener, protocol.TypeTerminalDiscardLate, protocol.SessionRef{SessionID: res.SessionID, RequestID: "rb"}, nil); werr != nil {
 		t.Fatal(werr)
 	}
 }

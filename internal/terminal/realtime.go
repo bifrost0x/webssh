@@ -80,9 +80,9 @@ func (m *Manager) discardLate(ctx context.Context, peer protocol.Peer, req proto
 	if err != nil {
 		return nil, err
 	}
-	// Only the connection that started the attempt can discard it, as the
-	// Python release required the attempt's request id.
-	if s.opener != peer.ID() {
+	// Only the connection that started the attempt can discard it, and
+	// only with the attempt's request id, as the Python release required.
+	if s.opener != peer.ID() || req.RequestID == "" || s.request != req.RequestID {
 		return nil, fault.New(fault.NotFound, "Session not found.")
 	}
 	s.terminate(reasonDiscarded, peer)
