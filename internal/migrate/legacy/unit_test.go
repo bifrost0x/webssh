@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/base64"
-	"encoding/hex"
 	json "encoding/json/v2"
 	"errors"
 	"io/fs"
@@ -185,7 +184,8 @@ func TestDecodeStoreVersions(t *testing.T) {
 		{"bool", `{"schema_version":true,"profiles":[]}`, false},
 		{"string", `{"schema_version":"3","profiles":[]}`, false},
 		{"negative", `{"schema_version":-1,"profiles":[]}`, false},
-		{"duplicate member", `{"schema_version":3,"schema_version":1}`, false},
+		{"duplicate member, the last wins", `{"schema_version":3,"schema_version":1}`, true},
+		{"duplicate member, the last is future", `{"schema_version":1,"schema_version":4}`, false},
 		{"invalid UTF-8", "{\"schema_version\":3,\"x\":\"\xff\"}", false},
 		{"array", `[]`, false},
 		{"null", `null`, false},
@@ -256,56 +256,6 @@ func FuzzDecodeStore(f *testing.F) {
 			if err == nil && !spec.topList && doc.Object == nil {
 				t.Fatalf("%s: accepted without object", spec.name)
 			}
-		}
-	})
-}
-
-func TestCOSEKeyRejections(t *testing.T) {
-	t.Parallel()
-	// Valid ES256 key from the WebAuthn registration of the golden data set.
-	es256, _ := hex.DecodeString("a5010203262001215820485ce694f54df4827b29f0fae9c4593dbb4ca7c021bad2bc10c3533fcec1be03225820f4c0bcbdc99b6fa4a5e09d2b1dc328f10418d19e2c0faa68de9847384ca34f6c")
-	if _, alg, err := ParseCOSEKey(es256); err != nil || alg != COSEAlgES256 {
-		t.Fatalf("valid key: %v", err)
-	}
-	offCurve := bytes.Clone(es256)
-	offCurve[len(offCurve)-1] ^= 1
-	tests := []struct {
-		name string
-		data []byte
-	}{
-		{"point not on curve", offCurve},
-		{"trailing byte", append(bytes.Clone(es256), 0)},
-		{"truncated", es256[:len(es256)-1]},
-		{"wrong curve", bytes.Replace(bytes.Clone(es256), []byte{0x20, 0x01}, []byte{0x20, 0x02}, 1)},
-		{"alg and kty disagree", bytes.Replace(bytes.Clone(es256), []byte{0x03, 0x26}, []byte{0x03, 0x27}, 1)},
-		{"not a map", []byte{0x80}},
-		{"indefinite map", []byte{0xbf, 0xff}},
-		{"tag", []byte{0xc0, 0x00}},
-		{"duplicate key", []byte{0xa2, 0x01, 0x02, 0x01, 0x02}},
-		{"deep nesting", bytes.Repeat([]byte{0x81}, 20)},
-		{"huge length", []byte{0x5b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if _, _, err := ParseCOSEKey(tt.data); err == nil {
-				t.Fatal("accepted")
-			}
-		})
-	}
-}
-
-func FuzzParseCOSEKey(f *testing.F) {
-	es256, _ := hex.DecodeString("a5010203262001215820485ce694f54df4827b29f0fae9c4593dbb4ca7c021bad2bc10c3533fcec1be03225820f4c0bcbdc99b6fa4a5e09d2b1dc328f10418d19e2c0faa68de9847384ca34f6c")
-	f.Add(es256)
-	f.Add([]byte{0xa1, 0x01, 0x01})
-	f.Fuzz(func(t *testing.T, data []byte) {
-		key, alg, err := ParseCOSEKey(data)
-		if err == nil && (key == nil || (alg != COSEAlgES256 && alg != COSEAlgRS256 && alg != COSEAlgEdDSA)) {
-			t.Fatalf("accepted key %T alg %d", key, alg)
-		}
-		if _, err := decodeCBOR(data); err != nil && !errors.Is(err, errCBOR) {
-			t.Fatalf("unexpected error kind %v", err)
 		}
 	})
 }

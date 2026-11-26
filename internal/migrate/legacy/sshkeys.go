@@ -3,7 +3,6 @@ package legacy
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -68,6 +67,9 @@ type SSHKeyStore struct {
 	// LoneSurrogates reports that keys.json holds a string with an escaped
 	// unpaired surrogate, read as U+FFFD (FLAG in the report).
 	LoneSurrogates bool
+	// DuplicateNames reports a repeated member name in keys.json; the last
+	// value was used, as in Python (FLAG in the report).
+	DuplicateNames bool
 }
 
 type keyMetadata struct {
@@ -108,9 +110,10 @@ func (s *Source) SSHKeys(userID int64) (SSHKeyStore, error) {
 	// Python accepts a key name with an escaped lone surrogate ("\ud800"):
 	// save_key and rename_key check only type, emptiness and length. Such
 	// a name is read with U+FFFD in its place and the store is flagged.
-	out.LoneSurrogates = checked.LoneSurrogates
+	// checked.Raw is that reading, with a repeated member's last value.
+	out.LoneSurrogates, out.DuplicateNames = checked.LoneSurrogates, checked.DuplicateNames
 	var doc keyDocument
-	if err := json.Unmarshal(data, &doc, jsontext.AllowInvalidUTF8(checked.LoneSurrogates)); err != nil {
+	if err := json.Unmarshal(checked.Raw, &doc); err != nil {
 		return out, fmt.Errorf("legacy: %s/keys.json: %w", dir, err)
 	}
 	entries, err := s.listDir(dir)

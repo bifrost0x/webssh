@@ -36,8 +36,23 @@ func (s *Source) TOTPSecrets(ctx context.Context) ([]TOTPSecret, error) {
 	if !s.schema.HasTable("totp_authenticators") || !s.schema.HasTable("totp_enrollments") {
 		return nil, errors.New("legacy: only one of the TOTP tables exists")
 	}
-	const query = `SELECT id, user_id, label, active, last_accepted_step, encrypted_secret, 0 FROM totp_authenticators
-		UNION ALL SELECT id, user_id, label, 0, NULL, encrypted_secret, 1 FROM totp_enrollments ORDER BY 7, 1`
+	return s.totpSecrets(ctx, `SELECT id, user_id, label, active, last_accepted_step, encrypted_secret, 0 FROM totp_authenticators
+		UNION ALL SELECT id, user_id, label, 0, NULL, encrypted_secret, 1 FROM totp_enrollments ORDER BY 7, 1`)
+}
+
+// TOTPAuthenticators decrypts the secrets of totp_authenticators only.
+// Unfinished enrolments are discarded by the migration (E09, D-02), so a
+// damaged one must not stop it.
+func (s *Source) TOTPAuthenticators(ctx context.Context) ([]TOTPSecret, error) {
+	if !s.schema.HasTable("totp_authenticators") {
+		return nil, nil
+	}
+	return s.totpSecrets(ctx, `SELECT id, user_id, label, active, last_accepted_step, encrypted_secret, 0 FROM totp_authenticators ORDER BY id`)
+}
+
+// totpSecrets runs one of the constant queries above and decrypts each
+// row.
+func (s *Source) totpSecrets(ctx context.Context, query string) ([]TOTPSecret, error) {
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("legacy: read TOTP secrets: %w", err)

@@ -92,6 +92,24 @@ func (r *Registry) KeepInPlace(entity, phase string, count func(ctx context.Cont
 	return nil
 }
 
+// PartlyPending registers the part of a step's entity that this build
+// leaves in place for phase. The entity must already be a step; it is
+// then both in the coverage list and in the pending list, so whatever
+// guards on pending entities (the legacy purge) also guards this part.
+func (r *Registry) PartlyPending(entity, phase string, count func(ctx context.Context, src *Source) (int, error)) error {
+	if phase == "" || count == nil {
+		return fmt.Errorf("legacy: pending entity %s needs a phase and a count", entity)
+	}
+	if !slices.ContainsFunc(r.steps, func(s registered) bool { return s.entity == entity }) {
+		return fmt.Errorf("legacy: %s is not a step, so it cannot be partly pending", entity)
+	}
+	if slices.ContainsFunc(r.pending, func(p pendingEntity) bool { return p.entity == entity }) {
+		return fmt.Errorf("legacy: entity %s is pending twice", entity)
+	}
+	r.pending = append(r.pending, pendingEntity{entity: entity, phase: phase, count: count})
+	return nil
+}
+
 func (r *Registry) claim(entity string) error {
 	if !slices.Contains(Entities, entity) {
 		return fmt.Errorf("legacy: %q is not an entity of the migration specification", entity)

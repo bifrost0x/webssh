@@ -75,6 +75,7 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/store/storetest` | foundation | Throw-away databases for store tests; imported by test files only | – | M1 |
 | `internal/cron` | foundation | Cron expressions and schedules (tier C) | – | B6 |
 | `internal/platform` | foundation | Windows service, systemd notification, data directory owner, mode and ACLs | – | B8 |
+| `internal/pyjson` | foundation | JSON text as the Python release reads and writes it: duplicate member names (last wins), escaped lone surrogates, exact number texts, `ensure_ascii` strings; shared by the legacy migration and the settings import | – | M1 |
 | `internal/session` | capability | Browser sessions: issue, validate, expire, revoke | – | B2 |
 | `internal/accounts` | capability | Users, administrators (`ADMIN_USERS`), roles and permissions (including host discovery), account lifecycle | `internal/session` | B2 |
 | `internal/auth` | capability | Sign-in flow, provider and factor registries, known devices, assurance, recovery, in-process rate limits, one way to turn off a second factor | `internal/session`, `internal/accounts` | B2 |
