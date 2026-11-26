@@ -21,6 +21,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/ssh/hostkey"
 	"github.com/bifrost0x/webssh/internal/store"
+	"github.com/bifrost0x/webssh/internal/terminal"
 	"github.com/bifrost0x/webssh/internal/vault"
 )
 
@@ -41,6 +42,7 @@ func productionSchemas() []store.Schema {
 		vault.Schema(),
 		settings.Schema(),
 		legacy.RecordSchema(),
+		terminal.Schema(),
 	}
 }
 
