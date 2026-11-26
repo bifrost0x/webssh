@@ -11,6 +11,7 @@ import (
 func TestSavedRoutes(t *testing.T) {
 	s := seeded(t, Legacy{JumpHosts: []jsontext.Value{
 		v(`{"id":"jump-pw","name":"pw","host":"pw-jump.example","port":2200,"username":"u","auth_type":"password","key_id":null}`),
+		v(`{"id":"jump-pw-key","name":"pk","host":"pk-jump.example","port":22,"username":"u","auth_type":"password","key_id":"k-1"}`),
 	}})
 	hop, err := s.JumpHost(t.Context(), oracleUser, "2735737b-d93a-4e54-acd5-85b740b63526")
 	want := client.Hop{Host: "bastion.golden.test", Port: 22, User: "jumper", Auth: client.Auth{KeyID: "d12ad3cd-eb07-4418-8967-a3169ba3de68"}}
@@ -19,6 +20,10 @@ func TestSavedRoutes(t *testing.T) {
 	}
 	if hop, err := s.JumpHost(t.Context(), oracleUser, "jump-pw"); err != nil || hop != (client.Hop{Host: "pw-jump.example", Port: 2200, User: "u"}) {
 		t.Fatalf("password jump host: %+v %v", hop, err)
+	}
+	// handle_ssh_connect reads key_id whatever auth_type says; the key wins.
+	if hop, err := s.JumpHost(t.Context(), oracleUser, "jump-pw-key"); err != nil || hop.Auth.KeyID != "k-1" {
+		t.Fatalf("password jump host with key_id: %+v %v", hop, err)
 	}
 	if _, err := s.JumpHost(t.Context(), 4, "2735737b-d93a-4e54-acd5-85b740b63526"); code(err) != fault.NotFound {
 		t.Fatalf("another user's jump host: %v", err)

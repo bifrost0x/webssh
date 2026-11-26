@@ -23,7 +23,7 @@ func (s *Service) JumpHost(ctx context.Context, owner int64, jumpHostID string) 
 		if i < 0 {
 			return errJumpNotFound
 		}
-		hop, err = hopOf(&jumps[i])
+		hop, err = jumpHopOf(&jumps[i])
 		return err
 	})
 	if err != nil {

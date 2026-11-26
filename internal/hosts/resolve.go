@@ -76,7 +76,7 @@ func resolve(all stores, owner int64, profileID string) (client.Target, error) {
 		if j < 0 {
 			return client.Target{}, errJumpNotFound
 		}
-		jump, err := hopOf(&jumps[j])
+		jump, err := jumpHopOf(&jumps[j])
 		if err != nil {
 			return client.Target{}, err
 		}
@@ -134,6 +134,17 @@ func hopOf(r *record) (client.Hop, error) {
 		}
 	}
 	return hop, nil
+}
+
+// jumpHopOf is the hop of a saved jump host. Like handle_ssh_connect it
+// reads key_id whatever auth_type says, and a key wins over a password: a
+// record with auth_type "password" and a key_id signs in with the key.
+func jumpHopOf(r *record) (client.Hop, error) {
+	hop, err := hopOf(r)
+	if err == nil && hop.Auth.KeyID == "" {
+		hop.Auth.KeyID = r.text("key_id")
+	}
+	return hop, err
 }
 
 func address(r *record) (string, int, error) {
