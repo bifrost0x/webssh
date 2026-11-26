@@ -40,7 +40,6 @@ Thumbs.db
 
 # Logs
 *.log
-!internal/audit/testdata/*.log
 
 # Database
 *.db

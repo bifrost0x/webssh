@@ -75,7 +75,7 @@ func TestEventMatchesPython(t *testing.T) {
 // byte for byte from their timestamp and message.
 func TestGoldenLinesRoundTrip(t *testing.T) {
 	t.Parallel()
-	f, err := os.Open("testdata/python_security_audit.log")
+	f, err := os.Open("testdata/python_security_audit.jsonl")
 	if err != nil {
 		t.Fatal(err)
 	}
