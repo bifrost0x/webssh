@@ -22,9 +22,15 @@ type ImportedCredential struct {
 	Password  []byte
 }
 
+// Sealing seals a value (*keyring.Ring); the migration has no opener while
+// it writes.
+type Sealing interface {
+	Seal(p keyring.Purpose, ad keyring.AAD, plain []byte) ([]byte, error)
+}
+
 // ImportCredentialTx stores a migrated password after the user's other
 // passwords, sealed for its row.
-func ImportCredentialTx(ctx context.Context, tx *store.Tx, sealer Sealer, c ImportedCredential) error {
+func ImportCredentialTx(ctx context.Context, tx *store.Tx, sealer Sealing, c ImportedCredential) error {
 	defer clear(c.Password)
 	if c.UserID <= 0 || c.ID == "" {
 		return errors.New("vault: imported credential without owner or id")
