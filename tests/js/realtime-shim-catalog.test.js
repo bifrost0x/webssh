@@ -66,6 +66,27 @@ test('err.details reach the acknowledgement without replacing its own members', 
     socket.disconnect();
 });
 
+test('the error event of a refused deletion carries the usages like the Python release', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const errors = [];
+    socket.on('error', data => errors.push(plain(data)));
+    socket.emit('delete_socks_proxy', {socks_proxy_id: 's'}, () => {});
+    ws.fail(ws.lastRequest('hosts.socks.delete').id, {
+        code: 'conflict', message: 'SOCKS proxy is used by 2 profiles', details: {usages: ['web-01', 'db']},
+    });
+    socket.emit('delete_jump_host', {jump_host_id: 'j'});
+    ws.fail(ws.lastRequest('hosts.jump.delete').id, {
+        code: 'conflict', message: 'Jump host is used by 1 profile', details: {usages: ['web-01']},
+    });
+    await tick();
+    assert.deepEqual(errors, [
+        {usages: ['web-01', 'db'], success: false, code: 'conflict', error: 'SOCKS proxy is used by 2 profiles'},
+        {usages: ['web-01'], success: false, code: 'conflict', error: 'Jump host is used by 1 profile'},
+    ]);
+    socket.disconnect();
+});
+
 test('host mutations repeat their failure as error like the Python release', async () => {
     const window = loadShim();
     const {socket, ws} = await connected(window);
