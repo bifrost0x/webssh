@@ -1093,8 +1093,9 @@ worktree.
 
 The workspace loads the realtime client where the Python page loads
 `socket.io.min.js`, in this order: `js/realtime-emitter.js`,
-`js/realtime-acks.js`, `js/realtime-wire.js`, `js/realtime-catalog.js`,
-`js/realtime-terminal.js`, `js/realtime-shim.js`. A preview page adds
+`js/realtime-acks.js`, `js/realtime-wire.js`, the area files of the name
+table (`js/realtime-shim-<area>.js`, [M2 contracts](m2-contracts.md)),
+`js/realtime-catalog.js`, `js/realtime-terminal.js`, `js/realtime-shim.js`. A preview page adds
 `css/preview-notice.css` in the head and `js/preview-notice.js` at the end;
 the workspace and the settings page load `js/preview-notice-i18n.js`
 after `js/i18n.js` and before it. The sign-in page has no `i18n.js`; the notice uses its built-in

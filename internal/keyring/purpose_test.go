@@ -32,7 +32,7 @@ func TestAADBytes(t *testing.T) {
 			t.Errorf("%s: err %v", name, err)
 		}
 	}
-	if len(Purposes()) != 9 || !CSRF.Known() {
+	if len(Purposes()) != 12 || !CSRF.Known() {
 		t.Error("purpose list changed")
 	}
 }

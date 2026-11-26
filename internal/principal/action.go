@@ -25,7 +25,7 @@ const (
 	ActionUserCreate            Action = "user.create"
 )
 
-// Step-up actions of M2 (docs/architecture/m2-contracts.md).
+// Step-up actions of the data part of the M2 contracts.
 const (
 	// ActionCredentialsVault binds a saved-password change to its intent:
 	// the target is the intent token, and the intent holds the operation
@@ -34,13 +34,18 @@ const (
 	ActionCredentialsVault Action = "credentials.vault"
 )
 
-var actions = []Action{
+var dataActions = []Action{ActionCredentialsVault}
+
+// m1Actions are the actions of M1; the catalog is m1Actions followed by
+// the lists of the M2 contracts.
+var m1Actions = []Action{
 	ActionKeyUpload, ActionKeyReplace, ActionKeyDelete, ActionHostKeyDelete,
 	ActionTOTPEnroll, ActionTOTPDelete, ActionPasskeyEnroll, ActionPasskeyDelete,
 	ActionMFAEnable, ActionMFADisable, ActionRecoveryRotate,
 	ActionSecurityFeatureUpdate, ActionUserCreate,
-	ActionCredentialsVault,
 }
+
+var actions = slices.Concat(m1Actions, dataActions, identityActions, operationActions)
 
 // Actions returns the catalog.
 func Actions() []Action {

@@ -71,6 +71,8 @@ var keepReasons = map[principal.Reason]bool{
 	principal.ReasonRoleChanged:     false,
 	principal.ReasonExpired:         true,
 	principal.ReasonRecoveryEnded:   true,
+	// A refused directory check ends access everywhere, like a lock.
+	principal.ReasonDirectoryRefused: false,
 }
 
 func TestEveryReasonClassified(t *testing.T) {

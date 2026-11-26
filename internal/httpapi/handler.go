@@ -85,15 +85,15 @@ func New(o Options) (*Handler, error) {
 		session: cookieJar{name: cfg.Cookies.SessionName, path: path, secure: cfg.Cookies.Secure},
 		binding: cookieJar{name: bindingCookie, path: path, secure: cfg.Cookies.Secure},
 		mux:     http.NewServeMux(),
-		access:  make(map[string]Access, len(m1Routes)+len(previewRoutes)),
+		access:  map[string]Access{},
 	}
 	if h.session.name == "" {
 		return nil, errors.New("httpapi: the session cookie name is empty")
 	}
-	for _, rt := range m1Routes {
+	for _, rt := range catalogRoutes() {
 		h.access[patternKey(rt.pattern)] = rt.access
 	}
-	for _, p := range previewRoutes {
+	for _, p := range previewRoutes() {
 		h.access[patternKey(p)] = AccessPreview
 		h.mux.Handle(p, http.HandlerFunc(h.notAvailable))
 	}
@@ -131,7 +131,7 @@ func (h *Handler) Finish() (filled []string, err error) {
 				h.finishErr = fmt.Errorf("httpapi: complete the route catalog: %v", v)
 			}
 		}()
-		for _, rt := range m1Routes {
+		for _, rt := range catalogRoutes() {
 			if h.registered(rt.pattern) {
 				continue
 			}

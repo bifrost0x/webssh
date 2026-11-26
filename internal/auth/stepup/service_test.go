@@ -171,7 +171,7 @@ func TestTargetRules(t *testing.T) {
 			t.Errorf("%s: %v, want invalid_request", name, err)
 		}
 	}
-	refused("unknown action", "server.operation", "x")
+	refused("unknown action", "server.unknown", "x")
 	refused("admin action", principal.ActionUserCreate, "bob")
 	refused("other account", principal.ActionTOTPEnroll, "6")
 	refused("empty target", principal.ActionKeyDelete, "")

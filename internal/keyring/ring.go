@@ -100,8 +100,8 @@ func newAEAD(key []byte) (cipher.AEAD, error) {
 // names the separate browser-local namespace derivation and has no keyring
 // key.
 var (
-	sealPurposes = []Purpose{SSHKey, TOTP, WebAuthnChallenge, Credential}
-	macPurposes  = []Purpose{SessionToken, CSRF, StepUpGrant, FeatureApproval}
+	sealPurposes = []Purpose{SSHKey, TOTP, WebAuthnChallenge, Credential, GitHubClientSecret}
+	macPurposes  = []Purpose{SessionToken, CSRF, StepUpGrant, FeatureApproval, FactorBootstrap, BackupDownload}
 )
 
 // Open derives the ring from SECRET_KEY (as the bytes of the configured

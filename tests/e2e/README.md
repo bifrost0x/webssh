@@ -57,13 +57,18 @@ scripts/stage-webassets.sh
 go build -tags e2e -o .test-run.tmp/webssh-e2e \
   -ldflags "-X github.com/bifrost0x/webssh/internal/buildinfo.version=3.4.0 -X github.com/bifrost0x/webssh/internal/buildinfo.revision=$(git rev-parse HEAD)" \
   ./cmd/webssh
-WEBSSH_E2E_SERVER_COMMAND='.test-run.tmp/webssh-e2e e2e' node tests/e2e/m1/run-go-subset.js --with passkeys,e2e_hooks
+WEBSSH_E2E_SERVER_COMMAND='.test-run.tmp/webssh-e2e e2e' node tests/e2e/run-go-suite.js --with passkeys,e2e_hooks
 ```
 
 Without the version in `-ldflags` the binary reports `dev`, and the
 account menu spec, which expects a release version, fails.
-`run-go-subset.js` runs the specs the Go preview has to pass
-(`m1/go-subset.json`); every left-out test names the capability it needs.
+`run-go-suite.js` runs the specs the Go server has to pass
+(`go-suite.json`). Every left-out test names its reason and the package
+that unlocks it, or the capability of the build it needs (`--with`).
+`--workers N` runs the specs in parallel; specs marked `serial` change the
+stored settings of a seed account (`e2e_admin`) that other specs read and
+run afterwards on one worker. A package that builds an area adds its
+specs to `go-suite.json` and removes the exclusions it unlocks.
 
 `go run -tags e2e ./cmd/webssh e2e` works as well but compiles on every
 start. The Go applier is stricter than `run_app.py`: unknown members, a

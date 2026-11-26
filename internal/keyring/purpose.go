@@ -33,12 +33,16 @@ const (
 	FeatureApproval   Purpose = "feature_approval"   // impact approvals of security feature changes (MAC)
 )
 
-// Purposes of M2 (docs/architecture/m2-contracts.md).
+// Purposes of the M2 contracts.
 const (
-	Credential Purpose = "credential" // saved passwords at rest (Seal)
+	Credential         Purpose = "credential"           // saved passwords at rest (Seal)
+	GitHubClientSecret Purpose = "github_client_secret" // #nosec G101 -- a key purpose name; seals the GitHub client secret (Seal)
+	FactorBootstrap    Purpose = "factor_bootstrap"     // stored form of one-time factor bootstrap codes (MAC)
+	BackupDownload     Purpose = "backup_download"      // one-time download tokens of online backups (MAC)
 )
 
-var purposes = []Purpose{SSHKey, TOTP, SessionToken, CSRF, StepUpGrant, WebAuthnChallenge, BrowserScope, FeatureApproval, Credential}
+var purposes = []Purpose{SSHKey, TOTP, SessionToken, CSRF, StepUpGrant, WebAuthnChallenge, BrowserScope, FeatureApproval,
+	Credential, GitHubClientSecret, FactorBootstrap, BackupDownload}
 
 // Purposes returns the closed list.
 func Purposes() []Purpose { return slices.Clone(purposes) }

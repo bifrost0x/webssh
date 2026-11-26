@@ -53,7 +53,9 @@ func contractRows(t *testing.T, root, heading string) map[string]string {
 }
 
 // docColumn returns the first cell (without backticks) of every table row
-// under the heading, and the second cell keyed by the first.
+// under the heading (or a heading that extends it: "### Error codes" also
+// takes "### Error codes (operation)"), and the second cell keyed by the
+// first.
 func docColumn(data []byte, heading string) (map[string]string, error) {
 	rows := map[string]string{}
 	inSection := false
@@ -61,7 +63,7 @@ func docColumn(data []byte, heading string) (map[string]string, error) {
 	for n := 1; scanner.Scan(); n++ {
 		line := strings.TrimSpace(scanner.Text())
 		if strings.HasPrefix(line, "#") {
-			inSection = line == heading
+			inSection = line == heading || strings.HasPrefix(line, heading+" (")
 			continue
 		}
 		if !inSection || !strings.HasPrefix(line, "| `") {
@@ -150,9 +152,9 @@ func TestReleaseBuildExcludesE2E(t *testing.T) {
 
 func TestDocColumn(t *testing.T) {
 	t.Parallel()
-	doc := []byte("# C\n\n### Error codes\n\n| Code | Status |\n|---|---|\n| `a` | 400 |\n| `b` | 500 |\n\n### Other\n\n| `c` | x |\n")
+	doc := []byte("# C\n\n### Error codes\n\n| Code | Status |\n|---|---|\n| `a` | 400 |\n| `b` | 500 |\n\n### Other\n\n| `c` | x |\n\n### Error codes (more)\n\n| `d` | 409 |\n\n### Error codesX\n\n| `e` | 1 |\n")
 	got, err := docColumn(doc, "### Error codes")
-	if err != nil || len(got) != 2 || got["a"] != "400" {
+	if err != nil || len(got) != 3 || got["a"] != "400" || got["d"] != "409" {
 		t.Fatalf("docColumn = %v, %v", got, err)
 	}
 	if _, err := docColumn([]byte("| `a` | 1 |\n| `a` | 2 |\n"), "### X"); err == nil {
