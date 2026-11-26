@@ -46,6 +46,7 @@ test('classic host rows show platform, virtualization, role and up to three serv
  await page.evaluate(items=>ProfileManager.setProfiles(items),[
   {...base,id:'pve',name:'pve-one',detected_platform:'proxmox',detected_virt:'bare-metal',detected_services:['docker','grafana','prometheus','nginx','redis']},
   {...base,id:'plain',name:'plain'},
+  {...base,id:'long',name:'a-rather-long-host-name-for-a-narrow-row-that-keeps-going-on',detected_platform:'debian',detected_services:['docker','grafana','prometheus']},
  ]);
  const row=id=>page.locator(`#overviewHosts .overview-row[data-host-id="${id}"]`);
  await expect(row('pve')).toBeVisible();
@@ -57,7 +58,18 @@ test('classic host rows show platform, virtualization, role and up to three serv
  const title=row('pve').locator('.overview-row-title');
  await expect(title).toHaveText('pve-one');
  expect(await title.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
- expect(await row('pve').locator('.shell-host-service:visible').count()).toBeLessThanOrEqual(3);
+ const logos=id=>row(id).locator('.shell-host-service:visible').count();
+ const nameWhole=id=>row(id).locator('.overview-row-title').evaluate(e=>e.scrollWidth<=e.clientWidth);
+ // Classic rows wrap the name instead of cutting it, so the logos keep their place at any width.
+ const inside=id=>row(id).evaluate(e=>{const box=e.getBoundingClientRect();
+  return e.scrollWidth<=e.clientWidth&&[...e.querySelectorAll('.shell-host-service')].every(tile=>{const r=tile.getBoundingClientRect();return r.left>=box.left&&r.right<=box.right;});});
+ for(const width of [1440,360]){
+  await page.setViewportSize({width,height:900});
+  await expect(row('long').locator('.overview-row-title')).toHaveText('a-rather-long-host-name-for-a-narrow-row-that-keeps-going-on');
+  await expect.poll(()=>logos('long'),{message:`${width}px`}).toBe(3);
+  expect(await nameWhole('long'),`${width}px name`).toBe(true);
+  expect(await inside('long'),`${width}px row`).toBe(true);
+ }
  await page.setViewportSize({width:1440,height:900});
  await expect(row('pve').locator('.overview-row-title')).toHaveText('pve-one');
  await expect(row('plain').locator('.overview-role')).toContainText('Server');
