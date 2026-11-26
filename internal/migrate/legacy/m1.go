@@ -103,7 +103,7 @@ func RegisterM1(r *Registry, m M1) error {
 	for _, s := range steps {
 		errs = append(errs, add(s.group, s.new))
 	}
-	errs = append(errs, AddSingleUserStores(r))
+	errs = append(errs, add(GroupInventory, func() Step { return &singleUserStores{} }))
 	if m.Passkeys != nil {
 		r.Schemas(m.Passkeys.Schema())
 		errs = append(errs, add(GroupFactors, func() Step { return &passkeysStep{store: m.Passkeys} }))

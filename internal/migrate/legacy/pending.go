@@ -18,8 +18,12 @@ func pendingEntities(backupTempDir string) []m1Pending {
 		{"E03", "B2", identityCount("ldap")},
 		{"E04", "B2", identityCount("github")},
 		{"E05", "B2", identityCount("oidc")},
-		{"E06", "B2", func(ctx context.Context, src *Source) (int, error) { return countTable(ctx, src, "github_auth_configuration") }},
-		{"E15", "B6", func(ctx context.Context, src *Source) (int, error) { return countTable(ctx, src, "automation_schedules") }},
+		{"E06", "B2", func(ctx context.Context, src *Source) (int, error) {
+			return countTable(ctx, src, "github_auth_configuration")
+		}},
+		{"E15", "B6", func(ctx context.Context, src *Source) (int, error) {
+			return countTable(ctx, src, "automation_schedules")
+		}},
 		{"E22", "B4", storeItems("smb_shares")},
 		{"E26", "B5", storeItems("commands")},
 		{"E27", "B5", storeItems("command_sets")},
