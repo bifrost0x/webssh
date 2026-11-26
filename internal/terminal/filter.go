@@ -10,9 +10,12 @@ import "bytes"
 // bytes across reads (K6 A8); ESC never occurs inside a UTF-8 sequence, so
 // the raw stream can be filtered without decoding it.
 
-// maxHeld bounds the possible DA prefix kept at the end of a read. Real
-// replies are about 30 bytes; a longer candidate is sent unchanged.
-const maxHeld = 64
+// maxHeld bounds the possible DA prefix kept at the end of a read. It is
+// the size of one read, so a sequence split across reads is filtered like
+// the expression on the whole stream whatever its length; only a
+// candidate longer than a read is sent unchanged. DA3 (ESC [ = c) is not
+// matched, as in the Python release.
+const maxHeld = DefaultReadSize
 
 type daMatch int
 

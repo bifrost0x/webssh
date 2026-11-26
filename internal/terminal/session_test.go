@@ -167,7 +167,9 @@ func TestAttachReplay(t *testing.T) {
 	if werr := call(t, m, third, protocol.TypeTerminalAttach, protocol.TerminalAttach{Ch: 1, SessionID: res.SessionID, AfterSeq: 2}, &att); werr != nil {
 		t.Fatal(werr)
 	}
-	if fs := frames(t, third); att.Full || att.Seq != 4 || len(fs) != 1 || string(fs[0].Data) != "three!" || fs[0].Flags != protocol.FlagReplay {
+	// Small reads share a chunk, so a delta inside it is a full replay;
+	// exact deltas at chunk boundaries are tested on the ring.
+	if fs := frames(t, third); !att.Full || att.Seq != 4 || len(fs) != 1 || string(fs[0].Data) != "one two three!" || fs[0].Flags != protocol.FlagReplay|protocol.FlagReset {
 		t.Fatalf("delta: %+v %+v", att, fs)
 	}
 	// Up to date: nothing is replayed.

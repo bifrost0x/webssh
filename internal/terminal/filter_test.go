@@ -3,6 +3,7 @@ package terminal
 import (
 	"bytes"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -91,25 +92,36 @@ func FuzzDAFilter(f *testing.F) {
 }
 
 func TestRing(t *testing.T) {
-	r := ring{max: 10}
+	big := func(b byte) []byte { return bytes.Repeat([]byte{b}, mergeLimit) }
+	r := ring{max: 3 * mergeLimit}
 	for i := range 5 {
-		r.add(chunk{seq: uint64(i + 1), data: []byte("abc")})
+		r.add(chunk{seq: uint64(i + 1), data: big('a' + byte(i))})
 	}
-	if r.size != 9 || r.chunks[0].seq != 3 {
-		t.Fatalf("size %d, first %d", r.size, r.chunks[0].seq)
+	if live := r.chunks[r.head:]; r.size != 3*mergeLimit || live[0].seq != 3 {
+		t.Fatalf("size %d, first %d", r.size, live[0].seq)
 	}
 	if out, full := r.since(4); full || len(out) != 1 || out[0].seq != 5 {
-		t.Fatalf("delta: %v %v", out, full)
+		t.Fatalf("delta: %v %v", len(out), full)
 	}
 	if out, full := r.since(1); !full || len(out) != 3 {
-		t.Fatalf("gap: %v %v", out, full)
+		t.Fatalf("gap: %v %v", len(out), full)
 	}
 	if out, full := r.since(5); full || len(out) != 0 {
-		t.Fatalf("up to date: %v %v", out, full)
+		t.Fatalf("up to date: %v %v", len(out), full)
 	}
-	r.add(chunk{seq: 6, data: []byte("0123456789ABC")})
-	if r.size != 10 || len(r.chunks) != 1 || string(r.chunks[0].data) != "3456789ABC" {
-		t.Fatalf("oversized chunk: %q", r.chunks[0].data)
+	// Small reads merge into the newest chunk.
+	r.add(chunk{seq: 6, data: []byte("x")})
+	r.add(chunk{seq: 7, data: []byte("y")})
+	if live := r.chunks[r.head:]; live[len(live)-1].first != 6 || live[len(live)-1].seq != 7 || string(live[len(live)-1].data) != "xy" {
+		t.Fatalf("merge: %+v", live[len(live)-1])
+	}
+	if _, full := r.since(6); !full {
+		t.Fatal("delta inside a merged chunk")
+	}
+	one := ring{max: 10}
+	one.add(chunk{seq: 1, data: []byte("0123456789ABC")})
+	if one.size != 10 || string(one.chunks[one.head].data) != "3456789ABC" {
+		t.Fatalf("oversized chunk: %q", one.chunks[one.head].data)
 	}
 	if out, full := (&ring{max: 1}).since(0); out != nil || !full {
 		t.Fatal("empty ring")
@@ -117,12 +129,23 @@ func TestRing(t *testing.T) {
 }
 
 func TestCoalesce(t *testing.T) {
-	in := []chunk{{1, []byte("ab")}, {2, []byte("cd")}, {3, []byte("efgh")}, {4, []byte("i")}}
+	in := []chunk{{seq: 1, data: []byte("ab")}, {seq: 2, data: []byte("cd")}, {seq: 3, data: []byte("efgh")}, {seq: 4, data: []byte("i")}}
 	out := coalesce(in, 4)
 	if len(out) != 3 || string(out[0].data) != "abcd" || out[0].seq != 2 || out[1].seq != 3 || out[2].seq != 4 {
 		t.Fatalf("%+v", out)
 	}
 	if string(in[0].data) != "ab" {
 		t.Fatal("coalesce changed the ring's chunks")
+	}
+}
+
+// A long sequence split across reads is filtered like the expression on
+// the whole stream (review 9); the hold bound is the read size.
+func TestDAFilterLongSequenceAcrossReads(t *testing.T) {
+	seq := "\x1b[?" + strings.Repeat("1;", 50) + "c"
+	var f daFilter
+	out := append(f.write([]byte("a"+seq[:80])), f.write([]byte(seq[80:]+"b"))...)
+	if string(append(out, f.flush()...)) != "ab" {
+		t.Fatalf("%q", out)
 	}
 }
