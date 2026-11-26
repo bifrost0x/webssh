@@ -1,0 +1,661 @@
+{
+ "source": "Flask url_map of the Python release plus the five LDAP routes registered only with LDAP_ENABLED=true; HEAD and OPTIONS omitted",
+ "routes": [
+  {
+   "method": "GET",
+   "rule": "/"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/audit"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/audit/export"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/audit/retention"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/backups"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/backups/<operation_id>"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/backups/<operation_id>/cancel"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/backups/<operation_id>/download"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/backups/<operation_id>/restore"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/backups/<operation_id>/restore/prepare"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/backups/restore/status"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/backups/upload"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/github-auth/config"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/github-auth/config"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/host-keys"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/host-keys"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/admin/api/host-keys/<entry_id>"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/ldap/status"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/operations"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/operations/connections/<connection_ref>/disconnect"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/operations/details"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/operations/sessions/<session_ref>/disconnect"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/operations/transfers/<transfer_id>/cancel"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/security-features"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/security-features/<feature_name>"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/security-features/<feature_name>/impact"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/settings"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/settings"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/users"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/users"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/users/<int:user_id>/<action>"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/admin/api/users/<int:user_id>/ldap-identities/<int:identity_id>"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/users/<int:user_id>/ldap-identity"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/users/<int:user_id>/ldap-link"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/admin/api/users/<int:user_id>/mfa"
+  },
+  {
+   "method": "GET",
+   "rule": "/admin/api/users/<int:user_id>/oidc-identities"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/admin/api/users/<int:user_id>/oidc-identities/<int:identity_id>"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/users/<int:user_id>/oidc-link"
+  },
+  {
+   "method": "POST",
+   "rule": "/admin/api/users/<int:user_id>/recovery"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/api/account/github"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/account/github"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/github/link/start"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/mfa/disable"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/account/oidc"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/oidc/link/start"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/preferences"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/account/recovery-check"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/recovery-check"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/account/security-state"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/account/sessions"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/sessions/revoke"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/step-up/bootstrap"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/step-up/github/start"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/step-up/intents"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/step-up/ldap"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/step-up/oidc/start"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/step-up/passkey/options"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/step-up/passkey/verify"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/step-up/password"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/step-up/status"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/step-up/totp"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/support-report"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/account/tour"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/account/tour"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/account/workspace-presets"
+  },
+  {
+   "method": "PUT",
+   "rule": "/api/account/workspace-presets"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/auth/mfa/disable"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/auth/recovery"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/preview"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/runbooks"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/api/automation/runbooks/<book_id>"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/automation/runs"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/api/automation/runs/<run_id>"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/runs/<run_id>/cancel"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/automation/runs/<run_id>/export"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/runs/clear"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/automation/schedules"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/schedules"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/api/automation/schedules/<schedule_id>"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/schedules/<schedule_id>/pause"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/schedules/<schedule_id>/preview-run"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/schedules/preview"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/start"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/automation/state"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/vault/apply"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/vault/intents"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/automation/vault/lock"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/credentials"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/api/credentials/<rid>"
+  },
+  {
+   "method": "PATCH",
+   "rule": "/api/credentials/<rid>"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/credentials/apply"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/credentials/assign"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/credentials/authorize-target"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/credentials/create-for-resource"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/credentials/import-legacy"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/credentials/intents"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/credentials/lock"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/credentials/state"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/discovery/scans"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/api/discovery/scans/<scan_id>"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/discovery/scans/<scan_id>"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/host-keys"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/api/host-keys/<entry_id>"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/host-keys/<entry_id>/deletion-impact"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/host-keys/effective"
+  },
+  {
+   "method": "PUT",
+   "rule": "/api/overview/preferences"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/overview/reachability"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/overview/reachability"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/overview/status"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/profiles/<profile_id>/context"
+  },
+  {
+   "method": "PUT",
+   "rule": "/api/profiles/<profile_id>/context"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/profiles/exchange"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/profiles/exchange"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/profiles/exchange/preview"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/recovery-codes"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/server-operations/<session_id>"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/server-operations/execute"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/server-operations/intents"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/server-operations/read"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/step-up/intents"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/step-up/oidc/result"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/step-up/oidc/start"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/step-up/passkey/options"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/step-up/passkey/verify"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/step-up/password"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/step-up/totp"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/totp/auth/verify"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/totp/authenticators"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/api/totp/authenticators/<int:authenticator_id>"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/totp/disable"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/totp/enroll"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/totp/enroll/verify"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/transfers/<token>/download"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/transfers/<token>/folder-download"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/transfers/<token>/upload"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/webauthn/auth/options"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/webauthn/auth/verify"
+  },
+  {
+   "method": "GET",
+   "rule": "/api/webauthn/credentials"
+  },
+  {
+   "method": "DELETE",
+   "rule": "/api/webauthn/credentials/<int:credential_id>"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/webauthn/mfa"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/webauthn/register/options"
+  },
+  {
+   "method": "POST",
+   "rule": "/api/webauthn/register/verify"
+  },
+  {
+   "method": "GET",
+   "rule": "/auth/github/callback"
+  },
+  {
+   "method": "GET",
+   "rule": "/auth/github/login"
+  },
+  {
+   "method": "GET",
+   "rule": "/automation"
+  },
+  {
+   "method": "GET",
+   "rule": "/change-password"
+  },
+  {
+   "method": "POST",
+   "rule": "/change-password"
+  },
+  {
+   "method": "GET",
+   "rule": "/credentials"
+  },
+  {
+   "method": "GET",
+   "rule": "/health"
+  },
+  {
+   "method": "GET",
+   "rule": "/login"
+  },
+  {
+   "method": "POST",
+   "rule": "/login"
+  },
+  {
+   "method": "POST",
+   "rule": "/login/cancel"
+  },
+  {
+   "method": "POST",
+   "rule": "/login/ldap"
+  },
+  {
+   "method": "POST",
+   "rule": "/login/recovery"
+  },
+  {
+   "method": "POST",
+   "rule": "/logout"
+  },
+  {
+   "method": "GET",
+   "rule": "/oidc/callback"
+  },
+  {
+   "method": "GET",
+   "rule": "/oidc/login"
+  },
+  {
+   "method": "GET",
+   "rule": "/ready"
+  },
+  {
+   "method": "GET",
+   "rule": "/register"
+  },
+  {
+   "method": "POST",
+   "rule": "/register"
+  },
+  {
+   "method": "GET",
+   "rule": "/security"
+  },
+  {
+   "method": "GET",
+   "rule": "/settings"
+  },
+  {
+   "method": "GET",
+   "rule": "/static/<path:filename>"
+  }
+ ]
+}
