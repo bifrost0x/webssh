@@ -1,8 +1,12 @@
 package legacy
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,10 +146,7 @@ func appendTo(t *testing.T, path, text string) {
 func TestM1WeakRSAKeyIsUnsupported(t *testing.T) {
 	t.Parallel()
 	dir := copyGolden(t)
-	weak, err := os.ReadFile(filepath.Join("testdata", "rsa512.pem"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	weak := weakRSAKey(t)
 	const id = "0f0f0f0f-0000-4000-8000-000000000512"
 	writeLegacyFile(t, dir, "users/user_3/keys/"+id+".pem", string(weak))
 	replaceIn(t, filepath.Join(dir, "users", "user_3", "keys", "keys.json"), `"keys": [`,
@@ -180,4 +181,21 @@ func TestM1OrphansStayInPlace(t *testing.T) {
 	if kept["users/user_99"] != "user_directory_without_account" || kept["deleted_users/notes"] != "unrecognised_entry" {
 		t.Fatalf("%v", kept)
 	}
+}
+
+// weakRSAKey builds a 512-bit RSA key in PKCS#1 PEM form from fixed,
+// synthetic primes; crypto/rsa no longer generates such keys.
+func weakRSAKey(t *testing.T) []byte {
+	t.Helper()
+	p, _ := new(big.Int).SetString("f067a84fe77c2367f4fb2276b793822e3f19ce78f6e933a8087eef6629ff5599", 16)
+	q, _ := new(big.Int).SetString("c2c287d09e1bac57708b5f6901a7620ae117cab9c20d86a4369badfd3f85e327", 16)
+	one := big.NewInt(1)
+	phi := new(big.Int).Mul(new(big.Int).Sub(p, one), new(big.Int).Sub(q, one))
+	key := &rsa.PrivateKey{PublicKey: rsa.PublicKey{N: new(big.Int).Mul(p, q), E: 65537}, Primes: []*big.Int{p, q}}
+	key.D = new(big.Int).ModInverse(big.NewInt(65537), phi)
+	key.Precompute()
+	if key.N.BitLen() != 512 {
+		t.Fatalf("modulus has %d bits", key.N.BitLen())
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
 }
