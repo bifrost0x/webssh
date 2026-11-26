@@ -32,7 +32,7 @@ type FactorHTTP struct {
 	Throttle *Throttle
 	StepUp   StepUp
 	Pending  PendingSignIn
-	Limits   Limits
+	Limits   FactorLimits
 	// Root is APPLICATION_ROOT without the trailing slash.
 	Root   string
 	Audit  Audit

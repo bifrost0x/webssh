@@ -27,7 +27,7 @@ type HTTP struct {
 	Gates   auth.Gates
 	StepUp  StepUp
 	Pending auth.PendingSignIn
-	Limits  auth.Limits
+	Limits  auth.FactorLimits
 	Audit   auth.Audit
 	Logger  *slog.Logger
 }

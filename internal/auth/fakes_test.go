@@ -95,14 +95,14 @@ type countingLimiter struct {
 	limit int
 }
 
-func (l *countingLimiter) Allow(key, _ string) bool {
+func (l *countingLimiter) Allow(key string, _ Rule) (bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.hits == nil {
 		l.hits = map[string]int{}
 	}
 	l.hits[key]++
-	return l.hits[key] <= l.limit
+	return l.hits[key] <= l.limit, 0
 }
 
 type recordingAudit struct {

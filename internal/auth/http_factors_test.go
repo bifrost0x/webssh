@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/principal/principaltest"
@@ -30,7 +31,7 @@ func newFactorEnv(t *testing.T) *factorEnv {
 	e.h = &FactorHTTP{
 		MFA: m, Recovery: &Recovery{DB: m.DB, iterations: 1}, Throttle: &Throttle{DB: m.DB},
 		StepUp: e.stepUp, Pending: e.pending, Root: "/ssh", Audit: e.audit,
-		Limits: Limits{Limiter: e.limiter, Enabled: true, Login: "5 per minute", Reauth: "10 per minute", ClientAddr: func(*http.Request) string { return "192.0.2.1" }},
+		Limits: FactorLimits{Limiter: e.limiter, Enabled: true, Login: Rule{5, time.Minute}, Reauth: Rule{10, time.Minute}, ClientAddr: func(*http.Request) string { return "192.0.2.1" }},
 	}
 	e.mux = http.NewServeMux()
 	e.h.Register(e.mux)

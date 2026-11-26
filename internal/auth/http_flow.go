@@ -24,12 +24,6 @@ type Passwords interface {
 	StoreTx(ctx context.Context, tx *store.Tx, userID int64, hash string) error
 }
 
-// Gates says whether a security feature (passkey, totp, recovery) is
-// active (provided by internal/operations).
-type Gates interface {
-	Active(ctx context.Context, feature string) (bool, error)
-}
-
 // SignInSettings are the administrator settings the sign-in reads
 // (provided by internal/settings): whether ongoing registration is open,
 // and the sign-in protection values login_username_limit,

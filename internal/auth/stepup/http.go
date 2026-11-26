@@ -20,7 +20,7 @@ import (
 // origin checks.
 type HTTP struct {
 	Service *Service
-	Limits  auth.Limits
+	Limits  auth.FactorLimits
 	Logger  *slog.Logger
 }
 

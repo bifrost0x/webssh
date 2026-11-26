@@ -13,24 +13,6 @@ import (
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-// Schema is the store of pending sign-ins: a verified primary credential
-// that waits for its second factor.
-func Schema() store.Schema {
-	return store.Schema{Owner: "auth", Migrations: []store.Migration{{Version: 1, SQL: `
-CREATE TABLE auth_pending (
-	binding_mac     BLOB PRIMARY KEY,
-	user_id         INTEGER NOT NULL,
-	auth_generation INTEGER NOT NULL,
-	primary_method  TEXT NOT NULL,
-	assurance       TEXT NOT NULL,
-	remember        INTEGER NOT NULL CHECK (remember IN (0, 1)),
-	continuation    TEXT NOT NULL,
-	created_us      INTEGER NOT NULL,
-	expires_us      INTEGER NOT NULL
-) STRICT;
-CREATE INDEX auth_pending_user ON auth_pending (user_id, created_us);`}}}
-}
-
 // Pending sign-ins live five minutes; a user has at most five at a time
 // (auth_assurance._PENDING_TTL, _MAX_PENDING_PER_USER).
 const (

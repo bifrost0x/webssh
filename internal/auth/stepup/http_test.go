@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/bifrost0x/webssh/internal/auth"
 	"github.com/bifrost0x/webssh/internal/principal"
@@ -19,11 +20,11 @@ type denyAfter struct {
 	limit int
 }
 
-func (d *denyAfter) Allow(string, string) bool {
+func (d *denyAfter) Allow(string, auth.Rule) (bool, time.Duration) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.n++
-	return d.n <= d.limit
+	return d.n <= d.limit, 0
 }
 
 type httpEnv struct {
@@ -35,7 +36,7 @@ type httpEnv struct {
 func newHTTPEnv(t *testing.T) *httpEnv {
 	t.Helper()
 	e := &httpEnv{env: newEnv(t), limiter: &denyAfter{limit: 1000}}
-	h := &HTTP{Service: e.svc, Limits: auth.Limits{Limiter: e.limiter, Enabled: true, Reauth: "10 per minute"}}
+	h := &HTTP{Service: e.svc, Limits: auth.FactorLimits{Limiter: e.limiter, Enabled: true, Reauth: auth.Rule{Limit: 10, Window: time.Minute}}}
 	e.mux = http.NewServeMux()
 	h.Register(e.mux)
 	return e

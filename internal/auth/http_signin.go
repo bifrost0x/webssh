@@ -1,6 +1,9 @@
 package auth
 
-import "net/http"
+import (
+	"net/http"
+	"time"
+)
 
 // PendingLogin is a sign-in that passed the primary factor and waits for
 // the second one.
@@ -25,27 +28,28 @@ type PendingSignIn interface {
 	Discard(w http.ResponseWriter, r *http.Request) error
 }
 
-// Limiter is the in-process rate limiter of the sign-in flow. Allow
-// reports whether one more hit on key fits into limit (Flask-Limiter
-// notation, e.g. "10 per minute").
-type Limiter interface {
-	Allow(key, limit string) bool
+// RuleLimiter is the part of the sign-in flow's rate limiter (*Limiter)
+// the factor routes use. Allow reports whether one more hit on key fits
+// into r.
+type RuleLimiter interface {
+	Allow(key string, r Rule) (bool, time.Duration)
 }
 
-// Limits applies RATELIMIT_* to the factor routes as the Python release
-// does: per source address, and for reauthentication per user and source.
-type Limits struct {
-	Limiter Limiter
+// FactorLimits applies RATELIMIT_* to the factor routes as the Python
+// release does: per source address, and for reauthentication per user and
+// source. It shares the Limiter of the sign-in forms (Flow.Limiter).
+type FactorLimits struct {
+	Limiter RuleLimiter
 	// Enabled is RATELIMIT_ENABLED.
 	Enabled bool
 	// Login is RATELIMIT_LOGIN_LIMIT, Reauth is RATELIMIT_REAUTH.
-	Login, Reauth string
+	Login, Reauth Rule
 	// ClientAddr returns the normalised client address of r (from the HTTP
 	// edge, after TRUSTED_PROXIES).
 	ClientAddr func(r *http.Request) string
 }
 
-func (l Limits) addr(r *http.Request) string {
+func (l FactorLimits) addr(r *http.Request) string {
 	if l.ClientAddr == nil {
 		return "unknown"
 	}
@@ -57,22 +61,27 @@ func (l Limits) addr(r *http.Request) string {
 
 // SourceLimited reports whether endpoint is over the login limit for the
 // request's source.
-func (l Limits) SourceLimited(r *http.Request, endpoint string) bool {
-	return l.Enabled && l.Limiter != nil && !l.Limiter.Allow(endpoint+":"+l.addr(r), l.Login)
+func (l FactorLimits) SourceLimited(r *http.Request, endpoint string) bool {
+	return l.Enabled && l.Limiter != nil && !l.allow(endpoint+":"+l.addr(r), l.Login)
 }
 
 // UserLimited reports whether endpoint is over limit for the user or the
 // source. Both buckets are charged, like check_reauth_rate_limit.
-func (l Limits) UserLimited(r *http.Request, userID int64, endpoint, limit string) bool {
+func (l FactorLimits) UserLimited(r *http.Request, userID int64, endpoint string, limit Rule) bool {
 	if !l.Enabled || l.Limiter == nil {
 		return false
 	}
-	user := l.Limiter.Allow(endpoint+":user:"+itoa(userID), limit)
-	source := l.Limiter.Allow(endpoint+":ip:"+l.addr(r), limit)
+	user := l.allow(endpoint+":user:"+itoa(userID), limit)
+	source := l.allow(endpoint+":ip:"+l.addr(r), limit)
 	return !(user && source)
 }
 
 // ReauthLimited is UserLimited with RATELIMIT_REAUTH.
-func (l Limits) ReauthLimited(r *http.Request, userID int64, endpoint string) bool {
+func (l FactorLimits) ReauthLimited(r *http.Request, userID int64, endpoint string) bool {
 	return l.UserLimited(r, userID, endpoint, l.Reauth)
+}
+
+func (l FactorLimits) allow(key string, r Rule) bool {
+	ok, _ := l.Limiter.Allow(key, r)
+	return ok
 }
