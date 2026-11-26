@@ -155,7 +155,8 @@ JS_CATALOG_FIXTURE = Path(__file__).parent / 'js' / 'fixtures' / 'host-catalog.j
 
 
 def _js_catalog():
-    return json.dumps({'platforms': sorted(c.PLATFORMS), 'services': sorted(c.SERVICES)}, indent=2) + '\n'
+    return json.dumps({'platforms': sorted(c.PLATFORMS), 'services': sorted(c.SERVICES), 'roles': sorted(c.ROLES)},
+                      indent=2) + '\n'
 
 
 def test_js_catalog_fixture_is_current():
@@ -172,6 +173,15 @@ def test_profile_editor_offers_every_platform():
     template = (Path(__file__).parents[1] / 'templates' / 'index.html').read_text(encoding='utf-8')
     select = re.search(r'<select id="profileEditorPlatformIcon".*?</select>', template, re.S).group(0)
     assert set(re.findall(r'<option value="([^"]+)"', select)) == c.PLATFORMS | {'auto'}
+
+
+def test_profile_editor_offers_every_role():
+    template = (Path(__file__).parents[1] / 'templates' / 'index.html').read_text(encoding='utf-8')
+    select = re.search(r'<select id="profileEditorRole".*?</select>', template, re.S).group(0)
+    values = re.findall(r'<option value="([^"]+)"', select)
+    assert values[0] == 'auto' and set(values) == c.ROLES | {'auto'} and len(values) == len(set(values))
+    for role in c.ROLES:
+        assert f'<option value="{role}" data-i18n="role.{role}"' in select
 
 
 def test_platform_icons_are_plain_simple_icons_with_provenance():

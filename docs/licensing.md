@@ -20,6 +20,7 @@ does not replace their copyright, permission or attribution notices.
 | highlight.js | `static/vendor/highlight/LICENSE` |
 | Material Icons | `static/vendor/material-icons/LICENSE` |
 | Simple Icons platform logos (CC0-1.0, except the marks listed below) | `static/icons/platforms/LICENSE.md`, upstream and per-logo sources in `static/icons/platforms/provenance.json` |
+| Simple Icons service logos (CC0-1.0) | `static/icons/services/LICENSE.md`, upstream and per-logo sources in `static/icons/services/provenance.json` |
 | Terminal fonts | `static/vendor/terminal-fonts/licenses/` and its `README.md` |
 | Website code graph (vis-network) | `site/vendor/vis-network-9.1.6/LICENSE-APACHE-2.0`, `LICENSE-MIT` |
 
@@ -29,6 +30,11 @@ their owner instead, as `provenance.json` records per logo:
 
 - Debian logo: CC-BY-SA-3.0, see <https://www.debian.org/logos>
 - Fedora logo: custom license, see <https://docs.fedoraproject.org/en-US/project/brand/>
+
+The service logos come from the same Simple Icons release. Only marks that
+Simple Icons publishes under CC0-1.0 are bundled. A service whose mark carries
+its own license, or that Simple Icons does not include, is shown as a
+two-letter monogram of its name instead.
 
 Brand names and logos are trademarks of their respective owners; WebSSH uses
 them only to identify the software a host runs, which implies no endorsement.

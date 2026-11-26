@@ -1,0 +1,61 @@
+/* Host role colours. --role tints tiles and accents (3:1 on every surface),
+   --role-ink is text on a role-tinted pill (4.5:1). Paper is the only light
+   theme and needs dark inks; all other themes share the luminous set. */
+[data-role="hypervisor"] { --role: #e67534; --role-ink: #f0ad85; }
+[data-role="backup"] { --role: #9d9913; --role-ink: #c6c019; }
+[data-role="storage"] { --role: #15a6a1; --role-ink: #1ad1ca; }
+[data-role="container"] { --role: #5097e9; --role-ink: #94bff2; }
+[data-role="docs"] { --role: #c48b18; --role-ink: #e8b349; }
+[data-role="photos"] { --role: #ec6894; --role-ink: #f4a5c0; }
+[data-role="media"] { --role: #eb5ec8; --role-ink: #f3a2df; }
+[data-role="cloud"] { --role: #1b9fd8; --role-ink: #6dc6ed; }
+[data-role="smarthome"] { --role: #78a314; --role-ink: #97cd19; }
+[data-role="network"] { --role: #7e8def; --role-ink: #afb9f5; }
+[data-role="monitoring"] { --role: #15ac2f; --role-ink: #1bd93a; }
+[data-role="dev"] { --role: #b879ee; --role-ink: #d3adf5; }
+[data-role="passwords"] { --role: #46aa15; --role-ink: #59d61a; }
+[data-role="database"] { --role: #15ab6c; --role-ink: #1ad688; }
+[data-role="web"] { --role: #9b85f0; --role-ink: #c0b3f6; }
+[data-role="workstation"] { --role: #da64ec; --role-ink: #e9a3f4; }
+[data-role="server"] { --role: #8c96a4; --role-ink: #b6bcc6; }
+
+body[data-theme="paper"] [data-role="hypervisor"] { --role: #833f17; --role-ink: #743814; }
+body[data-theme="paper"] [data-role="backup"] { --role: #57550f; --role-ink: #4c4a0d; }
+body[data-theme="paper"] [data-role="storage"] { --role: #105c5a; --role-ink: #0e514e; }
+body[data-theme="paper"] [data-role="container"] { --role: #1a5293; --role-ink: #174981; }
+body[data-theme="paper"] [data-role="docs"] { --role: #6b4d13; --role-ink: #5d4410; }
+body[data-theme="paper"] [data-role="photos"] { --role: #9e1c47; --role-ink: #8b183f; }
+body[data-theme="paper"] [data-role="media"] { --role: #961a77; --role-ink: #831768; }
+body[data-theme="paper"] [data-role="cloud"] { --role: #155976; --role-ink: #124d67; }
+body[data-theme="paper"] [data-role="smarthome"] { --role: #435910; --role-ink: #3b4f0e; }
+body[data-theme="paper"] [data-role="network"] { --role: #253dd5; --role-ink: #2135bb; }
+body[data-theme="paper"] [data-role="monitoring"] { --role: #11601e; --role-ink: #0f541a; }
+body[data-theme="paper"] [data-role="dev"] { --role: #7421bd; --role-ink: #661da7; }
+body[data-theme="paper"] [data-role="passwords"] { --role: #2a5d10; --role-ink: #25530e; }
+body[data-theme="paper"] [data-role="database"] { --role: #115f3e; --role-ink: #0e5336; }
+body[data-theme="paper"] [data-role="web"] { --role: #4e2cda; --role-ink: #4423c6; }
+body[data-theme="paper"] [data-role="workstation"] { --role: #8a1b9a; --role-ink: #791888; }
+body[data-theme="paper"] [data-role="server"] { --role: #4b535e; --role-ink: #424952; }
+
+.host-role-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 1px 8px;
+    border: 1px solid color-mix(in srgb, var(--role, currentColor) 45%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--role, currentColor) 14%, transparent);
+    color: var(--role-ink, inherit);
+    font-size: 12px;
+    line-height: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (forced-colors: active) {
+    /* Outranks the theme overrides above without matching their selectors one by one. */
+    [data-role] { --role: CanvasText !important; --role-ink: CanvasText !important; }
+    .host-role-pill { border-color: CanvasText; background: Canvas; color: CanvasText; }
+}

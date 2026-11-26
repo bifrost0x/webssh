@@ -1,0 +1,365 @@
+{
+  "upstream": "https://github.com/simple-icons/simple-icons/tree/16.0.0/icons",
+  "version": "16.0.0",
+  "license": "CC0-1.0",
+  "trademarks": "Logos and names are trademarks of their respective owners. They only identify the software a host runs and imply no endorsement.",
+  "icons": {
+    "adguard": {
+      "slug": "adguard",
+      "title": "AdGuard",
+      "hex": "68BC71",
+      "source": "https://adguard.com/en/media-materials.html"
+    },
+    "audiobookshelf": {
+      "slug": "audiobookshelf",
+      "title": "Audiobookshelf",
+      "hex": "82612C",
+      "source": "https://github.com/advplyr/audiobookshelf/blob/0d9d2fa4be9b642f0948e52ddff71ff370fd524d/images/banner.svg"
+    },
+    "authentik": {
+      "slug": "authentik",
+      "title": "Authentik",
+      "hex": "FD4B2D",
+      "source": "https://github.com/goauthentik/authentik/blob/2c64f72ebc57dad9789c1fb799dd7cd39003d043/web/icons/icon.svg"
+    },
+    "bookstack": {
+      "slug": "bookstack",
+      "title": "BookStack",
+      "hex": "0288D1",
+      "source": "https://www.bookstackapp.com"
+    },
+    "caddy": {
+      "slug": "caddy",
+      "title": "Caddy",
+      "hex": "1F88C0",
+      "source": "https://caddyserver.com"
+    },
+    "calibreweb": {
+      "slug": "calibreweb",
+      "title": "Calibre-Web",
+      "hex": "45B29D",
+      "source": "https://github.com/janeczku/calibre-web/blob/ab11919c0bff5ddea1eed2bfd80fd7ea26f05710/cps/static/icon.svg"
+    },
+    "docker": {
+      "slug": "docker",
+      "title": "Docker",
+      "hex": "2496ED",
+      "source": "https://www.docker.com/company/newsroom/media-resources"
+    },
+    "emby": {
+      "slug": "emby",
+      "title": "Emby",
+      "hex": "52B54B",
+      "source": "https://emby.media"
+    },
+    "esphome": {
+      "slug": "esphome",
+      "title": "ESPHome",
+      "hex": "000000",
+      "source": "https://esphome.io"
+    },
+    "gitea": {
+      "slug": "gitea",
+      "title": "Gitea",
+      "hex": "609926",
+      "source": "https://github.com/go-gitea/gitea/blob/e0c753e770a64cda5e3900aa1da3d7e1f3263c9a/assets/logo.svg"
+    },
+    "gitlab": {
+      "slug": "gitlab",
+      "title": "GitLab",
+      "hex": "FC6D26",
+      "source": "https://about.gitlab.com/press/press-kit/",
+      "guidelines": "https://about.gitlab.com/handbook/marketing/corporate-marketing/brand-activation/trademark-guidelines/"
+    },
+    "grafana": {
+      "slug": "grafana",
+      "title": "Grafana",
+      "hex": "F46800",
+      "source": "https://grafana.com"
+    },
+    "homarr": {
+      "slug": "homarr",
+      "title": "Homarr",
+      "hex": "FA5252",
+      "source": "https://github.com/ajnart/homarr/blob/2bf423132d9077d371d254e577fc57037a31ac4b/public/imgs/favicon/favicon.svg"
+    },
+    "homeassistant": {
+      "slug": "homeassistant",
+      "title": "Home Assistant",
+      "hex": "18BCF2",
+      "source": "https://github.com/home-assistant/assets/blob/0f69676da79c3881e7dfca6d6c0a5739f88273d8/logo/home-assistant-logo.zip",
+      "guidelines": "https://design.home-assistant.io/#brand/logo"
+    },
+    "homebridge": {
+      "slug": "homebridge",
+      "title": "Homebridge",
+      "hex": "491F59",
+      "source": "https://github.com/homebridge/branding/blob/6ef3a1685e79f79a2ecdcc83824e53775ec0475d/logos/homebridge-silhouette-round-black.svg"
+    },
+    "homepage": {
+      "slug": "homepage",
+      "title": "Homepage",
+      "hex": "009BD5",
+      "source": "https://github.com/gethomepage/homepage/blob/e56dccc7f17144a53b97a315c2e4f622fa07e58d/public/safari-pinned-tab.svg"
+    },
+    "immich": {
+      "slug": "immich",
+      "title": "Immich",
+      "hex": "4250AF",
+      "source": "https://github.com/immich-app/immich/blob/25c9b779e4d19bc34551f8b137266a459e0d70e1/design/immich-logo.svg"
+    },
+    "influxdb": {
+      "slug": "influxdb",
+      "title": "InfluxDB",
+      "hex": "22ADF6",
+      "source": "https://influxdata.github.io/branding/logo/downloads/",
+      "guidelines": "https://influxdata.github.io/branding/logo/usage/"
+    },
+    "jellyfin": {
+      "slug": "jellyfin",
+      "title": "Jellyfin",
+      "hex": "00A4DC",
+      "source": "https://jellyfin.org/docs/general/contributing/branding.html",
+      "guidelines": "https://jellyfin.org/docs/general/contributing/branding.html"
+    },
+    "joplin": {
+      "slug": "joplin",
+      "title": "Joplin",
+      "hex": "1071D3",
+      "source": "https://github.com/laurent22/joplin/blob/45e35576bd8b1bb0ffe958309cc1ab3736cc266b/Assets/JoplinLetter.svg"
+    },
+    "k3s": {
+      "slug": "k3s",
+      "title": "K3s",
+      "hex": "FFC61C",
+      "source": "https://k3s.io"
+    },
+    "mariadb": {
+      "slug": "mariadb",
+      "title": "MariaDB",
+      "hex": "003545",
+      "source": "https://mariadb.com/about-us/logos/",
+      "guidelines": "https://mariadb.com/about-us/logos/"
+    },
+    "mealie": {
+      "slug": "mealie",
+      "title": "Mealie",
+      "hex": "E58325",
+      "source": "https://github.com/mealie-recipes/mealie.io/blob/5519cac801c116a5688c63d8126c3bf1ce568c58/components/App/Toolbar.vue"
+    },
+    "mongodb": {
+      "slug": "mongodb",
+      "title": "MongoDB",
+      "hex": "47A248",
+      "source": "https://www.mongodb.com/pressroom"
+    },
+    "mosquitto": {
+      "slug": "eclipsemosquitto",
+      "title": "Eclipse Mosquitto",
+      "hex": "3C5280",
+      "source": "https://github.com/eclipse/mosquitto/blob/75fc908bba90d4bd06e85efc1c4ed77952ec842c/logo/mosquitto-logo-only.svg"
+    },
+    "netdata": {
+      "slug": "netdata",
+      "title": "Netdata",
+      "hex": "00AB44",
+      "source": "https://www.netdata.cloud"
+    },
+    "nextcloud": {
+      "slug": "nextcloud",
+      "title": "Nextcloud",
+      "hex": "0082C9",
+      "source": "https://nextcloud.com/press/",
+      "guidelines": "https://nextcloud.com/trademarks/"
+    },
+    "nginx": {
+      "slug": "nginx",
+      "title": "NGINX",
+      "hex": "009639",
+      "source": "https://www.nginx.com/press/",
+      "guidelines": "https://www.nginx.com/press/"
+    },
+    "nginxproxymanager": {
+      "slug": "nginxproxymanager",
+      "title": "Nginx Proxy Manager",
+      "hex": "F15833",
+      "source": "https://github.com/NginxProxyManager/nginx-proxy-manager/blob/2a06384a4aa597777931d38cef49cf89540392e6/docs/.vuepress/public/logo.svg"
+    },
+    "nodered": {
+      "slug": "nodered",
+      "title": "Node-RED",
+      "hex": "8F0000",
+      "source": "https://nodered.org/about/resources/"
+    },
+    "ollama": {
+      "slug": "ollama",
+      "title": "Ollama",
+      "hex": "000000",
+      "source": "https://github.com/ollama/ollama/issues/2152#issuecomment-1905286922"
+    },
+    "opensearch": {
+      "slug": "opensearch",
+      "title": "OpenSearch",
+      "hex": "005EB8",
+      "source": "https://opensearch.org/trademark-brand-policy.html",
+      "guidelines": "https://opensearch.org/trademark-brand-policy.html"
+    },
+    "openvpn": {
+      "slug": "openvpn",
+      "title": "OpenVPN",
+      "hex": "EA7E20",
+      "source": "https://openvpn.net",
+      "guidelines": "https://openvpn.net/legal"
+    },
+    "owncloud": {
+      "slug": "owncloud",
+      "title": "ownCloud",
+      "hex": "041E42",
+      "source": "https://owncloud.com"
+    },
+    "paperless": {
+      "slug": "paperlessngx",
+      "title": "Paperless-ngx",
+      "hex": "17541F",
+      "source": "https://github.com/paperless-ngx/paperless-ngx/blob/e16645b146da24f07004eb772a455450354a37a7/resources/logo/web/svg/square.svg"
+    },
+    "pihole": {
+      "slug": "pihole",
+      "title": "Pi-hole",
+      "hex": "96060C",
+      "source": "https://docs.pi-hole.net",
+      "guidelines": "https://pi-hole.net/trademark-rules-and-brand-guidelines/"
+    },
+    "plex": {
+      "slug": "plex",
+      "title": "Plex",
+      "hex": "EBAF00",
+      "source": "https://brand.plex.tv",
+      "guidelines": "https://brand.plex.tv"
+    },
+    "podman": {
+      "slug": "podman",
+      "title": "Podman",
+      "hex": "892CA0",
+      "source": "https://podman.io"
+    },
+    "portainer": {
+      "slug": "portainer",
+      "title": "Portainer",
+      "hex": "13BEF9",
+      "source": "https://www.portainer.io"
+    },
+    "postgresql": {
+      "slug": "postgresql",
+      "title": "PostgreSQL",
+      "hex": "4169E1",
+      "source": "https://wiki.postgresql.org/wiki/Logo",
+      "guidelines": "https://www.postgresql.org/about/policies/trademarks/"
+    },
+    "prometheus": {
+      "slug": "prometheus",
+      "title": "Prometheus",
+      "hex": "E6522C",
+      "source": "https://prometheus.io"
+    },
+    "qbittorrent": {
+      "slug": "qbittorrent",
+      "title": "qbittorrent",
+      "hex": "2F67BA",
+      "source": "https://github.com/qbittorrent/qBittorrent/blob/73028f9930d9ab9d89edb60ed4aedb66d75669d9/src/icons/qbittorrent-tray-light.svg"
+    },
+    "radarr": {
+      "slug": "radarr",
+      "title": "radarr",
+      "hex": "FFCB3D",
+      "source": "https://github.com/Radarr/Radarr/blob/5f624a147bb62d37b731d9a0ae02bfd338793962/Logo/Radarr.svg"
+    },
+    "redis": {
+      "slug": "redis",
+      "title": "Redis",
+      "hex": "FF4438",
+      "source": "https://redis.io/brand-guidelines",
+      "guidelines": "https://redis.io/brand-guidelines"
+    },
+    "seafile": {
+      "slug": "seafile",
+      "title": "Seafile",
+      "hex": "FF9800",
+      "source": "https://de.seafile.com"
+    },
+    "sonarr": {
+      "slug": "sonarr",
+      "title": "sonarr",
+      "hex": "2596BE",
+      "source": "https://github.com/Sonarr/Sonarr/blob/913b845faadc3c9fc005abfba815426743d01bdf/Logo/Sonarr.svg"
+    },
+    "syncthing": {
+      "slug": "syncthing",
+      "title": "Syncthing",
+      "hex": "0891D1",
+      "source": "https://github.com/syncthing/syncthing/blob/bdfd0f0548d2f6fc4b5500690dbd383baa3b0561/assets/logo-only.svg"
+    },
+    "tailscale": {
+      "slug": "tailscale",
+      "title": "Tailscale",
+      "hex": "242424",
+      "source": "https://tailscale.com/press"
+    },
+    "traefik": {
+      "slug": "traefikproxy",
+      "title": "Traefik Proxy",
+      "hex": "24A1C1",
+      "source": "https://traefik.io/traefik"
+    },
+    "transmission": {
+      "slug": "transmission",
+      "title": "Transmission",
+      "hex": "D70008",
+      "source": "https://github.com/transmission/transmission/blob/7c9e04d035f3f75a8124e83d612701824487eb4e/gtk/icons/hicolor_apps_symbolic_transmission-symbolic.svg"
+    },
+    "uptimekuma": {
+      "slug": "uptimekuma",
+      "title": "Uptime Kuma",
+      "hex": "5CDD8B",
+      "source": "https://uptime.kuma.pet"
+    },
+    "vaultwarden": {
+      "slug": "vaultwarden",
+      "title": "Vaultwarden",
+      "hex": "000000",
+      "source": "https://github.com/dani-garcia/vaultwarden/blob/44e9e1a58ed37bf4b352bb499fd3e97adcd3b26b/resources/vaultwarden-icon.svg"
+    },
+    "watchtower": {
+      "slug": "watchtower",
+      "title": "Watchtower",
+      "hex": "416271",
+      "source": "https://containrrr.dev/watchtower"
+    },
+    "wikijs": {
+      "slug": "wikidotjs",
+      "title": "Wiki.js",
+      "hex": "1976D2",
+      "source": "https://cdn.js.wiki/images/wikijs-butterfly-mono.svg"
+    },
+    "wireguard": {
+      "slug": "wireguard",
+      "title": "WireGuard",
+      "hex": "88171A",
+      "source": "https://www.wireguard.com",
+      "guidelines": "https://www.wireguard.com/trademark-policy"
+    },
+    "zerotier": {
+      "slug": "zerotier",
+      "title": "ZeroTier",
+      "hex": "FFB441",
+      "source": "https://www.zerotier.com",
+      "guidelines": "https://www.zerotier.com/media-kit"
+    },
+    "zigbee2mqtt": {
+      "slug": "zigbee2mqtt",
+      "title": "Zigbee2MQTT",
+      "hex": "FFC135",
+      "source": "https://github.com/Koenkk/zigbee2mqtt/blob/434981b567122c745c6a5228cd89b74694b15e4c/images/logo_vector.svg"
+    }
+  }
+}

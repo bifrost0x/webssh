@@ -659,20 +659,39 @@
             const state = windows.get(index);
             if (!state) return;
             state.title.textContent = chrome.title || '';
-            state.subtitle.textContent = chrome.subtitle || '';
-            state.subtitle.hidden = !chrome.subtitle;
+            // The host's identity leads the subtitle in its own element so logos can make room for it.
+            if (chrome.identity) {
+                const lead = doc.createElement('span');
+                lead.className = 'ws-window-identity';
+                lead.textContent = chrome.identity;
+                state.subtitle.replaceChildren(lead, ...(chrome.subtitle ? [` · ${chrome.subtitle}`] : []));
+            } else {
+                state.subtitle.textContent = chrome.subtitle || '';
+            }
+            state.subtitle.hidden = !chrome.subtitle && !chrome.identity;
             state.frame.setAttribute('aria-label', chrome.title || '');
             state.frame.dataset.status = chrome.status || 'idle';
             state.minimizeButton.hidden = chrome.minimizable === false;
             state.closeLabel = chrome.closeLabel || null;
-            state.badges.replaceChildren(...(chrome.badges || []).map(badge => {
+            if (chrome.role) state.frame.dataset.role = chrome.role;
+            else delete state.frame.dataset.role;
+            const items = (chrome.badges || []).map(badge => {
                 const item = doc.createElement('span');
                 item.className = 'ws-window-badge material-icons';
                 item.textContent = badge.icon;
                 item.title = badge.title || '';
                 item.setAttribute('aria-label', badge.title || '');
                 return item;
-            }));
+            });
+            // Service logos of the host, prepared by the caller from catalog ids.
+            const services = (chrome.services || []).filter(item => item?.nodeType === 1);
+            if (services.length) {
+                const holder = doc.createElement('span');
+                holder.className = 'ws-window-services';
+                holder.append(...services);
+                items.unshift(holder);
+            }
+            state.badges.replaceChildren(...items);
             updateButtons(state);
         }
 
