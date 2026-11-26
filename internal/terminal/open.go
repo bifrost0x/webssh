@@ -111,12 +111,16 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	if err != nil {
 		return protocol.TerminalOpened{}, err
 	}
+	plan, err := m.planTmux(actx, p.UserID, req.Target, target)
+	if err != nil {
+		return protocol.TerminalOpened{}, err
+	}
 	release, err := m.quota.reserve(p.UserID)
 	if err != nil {
 		return protocol.TerminalOpened{}, err
 	}
 	ix := &interaction{m: m, peer: peer, owner: p.UserID, requestID: req.RequestID}
-	sh, err := m.shells.OpenShell(actx, target, ix, req.Rows, req.Cols)
+	sh, tm, err := m.openShell(actx, target, ix, req.Rows, req.Cols, plan)
 	if err != nil {
 		release()
 		if m.cancelled(att) {
@@ -126,14 +130,17 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	}
 	if !m.commit(att) || peer.Context().Err() != nil {
 		release()
-		m.spawn(func() { _ = sh.Close() })
+		m.spawn(func() { m.finish("", p.UserID, sh, tm, endDiscard) })
 		return protocol.TerminalOpened{}, errCancelled
 	}
-	s := m.newSession(p.UserID, sh, sessionInfo(target), release)
-	s.opener, s.request = peer.ID(), req.RequestID
+	s := m.newSession(p.UserID, sh, withTmux(sessionInfo(target), tm, plan), release)
+	s.opener, s.request, s.tmux = peer.ID(), req.RequestID, tm
+	if tm != nil {
+		m.recordTmux(s)
+	}
 	if err := m.register(s, att.gen); err != nil {
 		release()
-		m.spawn(func() { _ = sh.Close() })
+		m.spawn(func() { m.finish(s.id, p.UserID, sh, tm, endDiscard) })
 		return protocol.TerminalOpened{}, err
 	}
 	// Bind before the loops start: nothing is read yet, so the first
@@ -141,7 +148,7 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	_, attachErr := m.attach(peer, s, req.Ch, 0, true)
 	s.start(notice(target, req.Target))
 	if attachErr != nil {
-		s.terminate(reasonClosed, nil)
+		s.terminateAs(reasonClosed, nil, endDiscard)
 		return protocol.TerminalOpened{}, attachErr
 	}
 	info, _ := s.snapshot()

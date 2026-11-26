@@ -131,8 +131,13 @@ func newLabManager(t *testing.T, profiles fakeProfiles) *Manager {
 // prompt contexts seen.
 func labOpen(t *testing.T, m *Manager, peer *peerT, ch uint32, profile string) (protocol.TerminalOpened, []string, *protocol.Error) {
 	t.Helper()
-	req := protocol.TerminalOpen{Ch: ch, RequestID: "lab-" + strconv.Itoa(int(ch)), Rows: 24, Cols: 80,
-		Target: protocol.OpenTarget{ProfileID: profile, AuthType: "password"}}
+	return labOpenTarget(t, m, peer, protocol.TerminalOpen{Ch: ch, RequestID: "lab-" + strconv.Itoa(int(ch)), Rows: 24, Cols: 80,
+		Target: protocol.OpenTarget{ProfileID: profile, AuthType: "password"}})
+}
+
+// labOpenTarget is labOpen for any request.
+func labOpenTarget(t *testing.T, m *Manager, peer *peerT, req protocol.TerminalOpen) (protocol.TerminalOpened, []string, *protocol.Error) {
+	t.Helper()
 	type outcome struct {
 		res  protocol.TerminalOpened
 		werr *protocol.Error

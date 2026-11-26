@@ -65,7 +65,7 @@ func (m *Manager) closeRequest(ctx context.Context, peer protocol.Peer, req prot
 	if err != nil {
 		return nil, err
 	}
-	s.terminate(reasonUser, peer)
+	s.terminateAs(reasonUser, peer, endKill)
 	return nil, nil
 }
 
@@ -85,7 +85,7 @@ func (m *Manager) discardLate(ctx context.Context, peer protocol.Peer, req proto
 	if s.opener != peer.ID() || req.RequestID == "" || s.request != req.RequestID {
 		return nil, fault.New(fault.NotFound, "Session not found.")
 	}
-	s.terminate(reasonDiscarded, peer)
+	s.terminateAs(reasonDiscarded, peer, endDiscard)
 	return nil, nil
 }
 
@@ -102,17 +102,31 @@ func (m *Manager) resizeRequest(ctx context.Context, peer protocol.Peer, req pro
 }
 
 // renameRequest sets the display name; an empty name clears it. It lives
-// with the session and is listed again after a reload.
+// with the session and is listed again after a reload; a persistent tmux
+// session, live or detached, keeps it in its row.
 func (m *Manager) renameRequest(ctx context.Context, _ protocol.Peer, req protocol.TerminalRename) (*protocol.Empty, error) {
 	p, err := principal.Require(ctx)
 	if err != nil {
 		return nil, err
 	}
-	s, err := m.lookup(p.UserID, req.SessionID)
-	if err != nil {
-		return nil, err
+	name := displayName(req.Name)
+	s, lookupErr := m.lookup(p.UserID, req.SessionID)
+	if lookupErr == nil {
+		s.rename(name)
+		if s.tmux == nil || !s.tmux.recorded {
+			return nil, nil
+		}
 	}
-	s.rename(displayName(req.Name))
+	if m.store.db == nil {
+		return nil, lookupErr
+	}
+	found, err := m.store.rename(ctx, p.UserID, req.SessionID, name)
+	switch {
+	case err != nil:
+		return nil, fault.Wrap(fault.StorageError, err, "")
+	case !found && lookupErr != nil:
+		return nil, lookupErr
+	}
 	return nil, nil
 }
 
