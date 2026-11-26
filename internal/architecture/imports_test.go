@@ -16,11 +16,12 @@ import (
 // entry needs a reviewed reason (ADR 0003).
 var execAllowed = map[string]bool{}
 
-// syscallAllowed lists the files that may import syscall directly. The
-// only planned entry is internal/netpolicy/route_linux.go (netlink route
-// lookup for Tailscale SSH); it is added together with that file, because
-// entries for missing files fail TestExceptionListsAreCurrent.
-var syscallAllowed = map[string]bool{}
+// syscallAllowed lists the files that may import syscall directly. Entries
+// for missing files fail TestExceptionListsAreCurrent.
+var syscallAllowed = map[string]bool{
+	// Netlink route lookup for the tailnet rule (ADR 0010).
+	"internal/netpolicy/route_linux.go": true,
+}
 
 // exceptions are the reviewed exception lists the import rules consult.
 type exceptions struct {
