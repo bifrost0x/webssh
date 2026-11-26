@@ -127,7 +127,8 @@ func (s *Service) completeLogin(w http.ResponseWriter, r *http.Request, f auth.F
 		writeError(w, http.StatusForbidden, msgInactive)
 		return
 	}
-	err = s.SignIn.SignInExternal(w, r, userID, "github", f.Continuation)
+	err = s.SignIn.SignInExternal(w, r, auth.ExternalSignIn{UserID: userID, Method: "github", Assurance: auth.AssuranceBasic,
+		Continuation: f.Continuation})
 	if fault.Is(err, fault.Forbidden) {
 		writeError(w, http.StatusForbidden, msgNoLocalMFA)
 		return

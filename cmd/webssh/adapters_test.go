@@ -38,7 +38,7 @@ func TestSettingsEnvironmentDefaults(t *testing.T) {
 
 func TestPreviewNotice(t *testing.T) {
 	signIn := previewNotice(true)
-	if !signIn.Enabled || len(signIn.Unavailable) != 1 || signIn.Unavailable[0] != "oidc" {
+	if signIn.Enabled || len(signIn.Unavailable) != 0 {
 		t.Errorf("sign-in notice %+v", signIn)
 	}
 	work := previewNotice(false)

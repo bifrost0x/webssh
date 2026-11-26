@@ -34,7 +34,7 @@ func TestApplyCheckedInSeed(t *testing.T) {
 	if !f.mfa[mixed] || len(f.mfa) != 1 {
 		t.Fatalf("mfa = %v", f.mfa)
 	}
-	wantSkipped := []string{"admin_settings.automation_enabled", "external_identities", "commands", "command_sets",
+	wantSkipped := []string{"admin_settings.automation_enabled", "commands", "command_sets",
 		"test_hooks.automation_ssh_peer", "test_hooks.socket_herdr_sessions"}
 	if !slices.Equal(a.Skipped, wantSkipped) {
 		t.Fatalf("skipped = %q", a.Skipped)
@@ -56,6 +56,11 @@ func TestApplyCheckedInSeed(t *testing.T) {
 			t.Fatalf("call %q at %d, want after %d; calls = %q", call, i, last, f.calls)
 		}
 		last = i
+	}
+	// Both identities are applied (run_app.py).
+	if !slices.Contains(f.calls, "oidc:e2e_user:https://issuer.example:existing-e2e-subject") || countPrefix(f.calls, "oidc:") != 1 ||
+		!slices.Contains(f.calls, "github:e2e_admin:424242:e2e-github") || countPrefix(f.calls, "github:") != 1 {
+		t.Errorf("external identities: %q", f.calls)
 	}
 	if n := countPrefix(f.calls, "onboarding "); n != 7 {
 		t.Errorf("onboarding for %d accounts, want 7", n)

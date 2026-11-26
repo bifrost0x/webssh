@@ -48,18 +48,18 @@ var variables = map[string]usage{
 	"TAILSCALE_SSH_INTERFACE": inert, "SMB_ENABLED": inert, "SMB_ALLOWED_TARGETS": inert,
 
 	// OIDC, LDAP and outbound TLS.
-	"OIDC_ENABLED": inert, "OIDC_ISSUER": inert, "OIDC_CLIENT_ID": inert,
-	"OIDC_CLIENT_SECRET_FILE": inert, "OIDC_REDIRECT_URI": inert, "OIDC_ALLOWED_SUBJECTS": inert,
-	"OIDC_ALLOWED_DOMAINS": inert, "OIDC_LOGIN_RATE_LIMIT": inert, "OIDC_MFA_AMR_VALUES": inert,
-	"OIDC_MFA_ACR_VALUES": inert, "OIDC_PHISHING_RESISTANT_AMR_VALUES": inert,
-	"OIDC_PHISHING_RESISTANT_ACR_VALUES": inert, "OIDC_STEP_UP_ACR_VALUES": inert,
+	"OIDC_ENABLED": used, "OIDC_ISSUER": used, "OIDC_CLIENT_ID": used,
+	"OIDC_CLIENT_SECRET_FILE": used, "OIDC_REDIRECT_URI": used, "OIDC_ALLOWED_SUBJECTS": used,
+	"OIDC_ALLOWED_DOMAINS": used, "OIDC_LOGIN_RATE_LIMIT": used, "OIDC_MFA_AMR_VALUES": used,
+	"OIDC_MFA_ACR_VALUES": used, "OIDC_PHISHING_RESISTANT_AMR_VALUES": used,
+	"OIDC_PHISHING_RESISTANT_ACR_VALUES": used, "OIDC_STEP_UP_ACR_VALUES": used,
 	"STEP_UP_MAX_AGE_SECONDS": used,
 	"LDAP_ENABLED":            used, "LDAP_AUTO_PROVISION": used, "LDAP_PROVIDER_ID": used, "LDAP_URL": used,
 	"LDAP_BACKUP_URL": used, "LDAP_BASE_DN": used, "LDAP_BIND_DN": used,
 	"LDAP_BIND_PASSWORD_FILE": used, "LDAP_CA_FILE": used, "LDAP_USER_FILTER": used,
 	"LDAP_UNIQUE_ID_ATTRIBUTE": used, "LDAP_LOGIN_RATE_LIMIT": used, "LDAP_CONNECT_TIMEOUT": used,
 	"LDAP_OPERATION_TIMEOUT": used, "LDAP_SESSION_REVALIDATION_SECONDS": used,
-	// The trust anchors of the outbound TLS clients (GitHub sign-in); LDAP
+	// The trust anchors of the outbound TLS clients (GitHub and OIDC sign-in); LDAP
 	// trusts only LDAP_CA_FILE.
 	"REQUESTS_CA_BUNDLE": used, "CURL_CA_BUNDLE": used,
 

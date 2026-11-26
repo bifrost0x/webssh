@@ -1,6 +1,7 @@
 package httpapi
 
-// Routes of the area "accounts" (ID4): account administration, the recovery sign-in and the step-up status.
+// Routes of the area "accounts" (ID4): account administration and the
+// recovery sign-in. The step-up status is built with OIDC (routes_oidc.go).
 // ID4 moves each route it builds from accountsPreview to accountsBuilt with its
 // access level; no other package edits this file.
 
@@ -11,6 +12,4 @@ var accountsBuilt = []route{
 	{"POST /login/recovery", AccessPublic},
 }
 
-var accountsPreview = []string{
-	"POST /api/account/step-up/status",
-}
+var accountsPreview = []string{}

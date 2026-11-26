@@ -206,3 +206,45 @@ func FuzzDeviceCookie(f *testing.F) {
 		}
 	})
 }
+
+// A session renewal after an account-wide change keeps the browser
+// known: its cookie is reissued under the new generation, while a copy
+// of the old cookie no longer counts (reissue_device).
+func TestRenewAfterReissuesTheKnownDevice(t *testing.T) {
+	t.Parallel()
+	e := newDeviceEnv(t)
+	acc := e.createUser(t, "owner", "rightpass1")
+	uid := acc.ID
+	var got error
+	e.externalRoutes(&uid, func(context.Context, *store.Tx) error { return nil }, &got)
+	owner := e.browser()
+	owner.do("POST", "/login", creds("owner", "rightpass1"))
+	old := owner.cookies["session_device"]
+	if old == "" {
+		t.Fatal("no known-device cookie")
+	}
+	if rec := owner.do("POST", "/test/renew", nil); rec.Code != http.StatusOK {
+		t.Fatalf("renew: %d %v", rec.Code, got)
+	}
+	fresh := owner.cookies["session_device"]
+	trusted := func(v string) bool {
+		r := httptest.NewRequest("POST", "/login", nil)
+		r.AddCookie(&http.Cookie{Name: "session_device", Value: v})
+		return e.flow.Devices.Trusted(r, "owner") != ""
+	}
+	if fresh == old || !trusted(fresh) || trusted(old) {
+		t.Fatalf("cookie not reissued: fresh %v old %v", trusted(fresh), trusted(old))
+	}
+	if e.flow.Devices.Presented(httptest.NewRequest("GET", "/", nil), uid) != "" {
+		t.Fatal("a request without cookie presented a device")
+	}
+
+	// A browser without cookie gets none.
+	other := e.browser()
+	other.do("POST", "/login", creds("owner", "rightpass1"))
+	delete(other.cookies, "session_device")
+	other.do("POST", "/test/renew", nil)
+	if other.cookies["session_device"] != "" {
+		t.Fatal("renewal issued a cookie to a browser without one")
+	}
+}

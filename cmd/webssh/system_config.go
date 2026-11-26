@@ -63,7 +63,7 @@ func tourDeployment(cfg config.Config, tmux bool) settings.TourDeployment {
 		Values: map[string]bool{
 			"SMB_ENABLED": false, "SFTP_CHMOD_ENABLED": false, "SERVER_OPERATIONS_ENABLED": false,
 			"TMUX_ENABLED": tmux && cfg.Features.Tmux.Value, "TAILSCALE_SSH_ENABLED": false,
-			"OIDC_ENABLED": false, "LDAP_ENABLED": cfg.LDAP.Enabled,
+			"OIDC_ENABLED": cfg.OIDC.Enabled, "LDAP_ENABLED": cfg.LDAP.Enabled,
 			"TOTP_ENABLED": cfg.Features.TOTP, "WEBAUTHN_ENABLED": cfg.Features.WebAuthn,
 			"BOOTSTRAP_REGISTRATION_ENABLED": cfg.Accounts.BootstrapRegistrationEnabled,
 			"SESSION_COOKIE_SECURE":          cfg.Cookies.Secure,

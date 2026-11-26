@@ -7,17 +7,18 @@ import (
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-// Schema returns the tables of this package as one ordered migration
-// list: the pending sign-ins of the login flow (a verified primary
-// credential that waits for its second factor), then the second-factor
-// state (recovery codes and the one-time code backoff), then the factor
-// bootstrap codes (bootstrap.go). All parts share
-// the owner "auth", so they must stay in this single list; a second
-// Schema with the same owner would fail the checksum comparison of
-// store.Apply. Times are microseconds since the Unix epoch (UTC).
-func Schema() store.Schema {
-	return store.Schema{Owner: "auth", Migrations: []store.Migration{
-		{Version: 1, SQL: `
+// authParts are the migrations of the owner "auth" in the order they were
+// released; the version of a part is its position. Parts come from
+// several packages of the area, so a new one is appended here and never
+// inserted: the ledger of store.Apply compares the checksum of every
+// applied version.
+var authParts = []struct {
+	name string
+	sql  string
+}{
+	// The pending sign-ins of the login flow: a verified primary
+	// credential that waits for its second factor.
+	{"pending", `
 CREATE TABLE auth_pending (
 	binding_mac     BLOB PRIMARY KEY,
 	user_id         INTEGER NOT NULL,
@@ -30,7 +31,9 @@ CREATE TABLE auth_pending (
 	expires_us      INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX auth_pending_user ON auth_pending (user_id, created_us);`},
-		{Version: 2, SQL: `
+	// The second-factor state: recovery codes and the one-time code
+	// backoff.
+	{"factors", `
 CREATE TABLE auth_recovery_codes (
 	id INTEGER PRIMARY KEY,
 	user_id INTEGER NOT NULL CHECK (user_id > 0),
@@ -47,7 +50,8 @@ CREATE TABLE auth_mfa_throttle (
 	PRIMARY KEY (user_id, scope)
 ) STRICT, WITHOUT ROWID;
 `},
-		{Version: 3, SQL: `
+	// The factor bootstrap codes (bootstrap.go).
+	{"bootstrap", `
 CREATE TABLE auth_factor_bootstrap (
 	token_mac       BLOB PRIMARY KEY,
 	user_id         INTEGER NOT NULL CHECK (user_id > 0),
@@ -59,7 +63,19 @@ CREATE TABLE auth_factor_bootstrap (
 ) STRICT;
 CREATE INDEX auth_factor_bootstrap_user ON auth_factor_bootstrap (user_id);
 `},
-	}}
+}
+
+// Schema returns the tables of this package as one ordered migration
+// list (authParts). All parts share the owner "auth", so they must stay
+// in this single list; a second Schema with the same owner would fail
+// the checksum comparison of store.Apply. Times are microseconds since
+// the Unix epoch (UTC).
+func Schema() store.Schema {
+	ms := make([]store.Migration, len(authParts))
+	for i, p := range authParts {
+		ms[i] = store.Migration{Version: i + 1, SQL: p.sql}
+	}
+	return store.Schema{Owner: "auth", Migrations: ms}
 }
 
 func micros(t time.Time) int64 { return t.UnixMicro() }

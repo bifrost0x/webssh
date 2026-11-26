@@ -30,6 +30,10 @@ type Pending struct {
 	Remember      bool
 	Continuation  string
 	ExpiresAt     time.Time
+	// StrongAt is when a provider last authenticated the user strongly
+	// (the OIDC auth_time of an MFA sign-in). It is not stored: a sign-in
+	// that waits for a second factor is BASIC.
+	StrongAt time.Time
 }
 
 var errPending = fault.New(fault.MFARestart, "")

@@ -708,7 +708,8 @@ in their `contract.go`.
   `link`, `step_up`, the values of the Python login state), state, nonce,
   PKCE verifier (`NewFlight`: 32, 32 and 64 random bytes as base64url, as
   `secrets.token_urlsafe`), user id, auth generation and session id for
-  `link` and `step_up`, the step-up action and target, the continuation.
+  `link` and `step_up`, the step-up intent token (`Flight.Intent`), the
+  administrator step-up action and target, the continuation.
   The flow of `internal/auth` stores it server-side, bound to the browser
   binding, consumes it once and drops it after `auth.FlightTTL` (five
   minutes). Providers keep no per-request state. `Flight.Accept(cb, now)`

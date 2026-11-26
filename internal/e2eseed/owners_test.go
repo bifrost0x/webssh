@@ -11,11 +11,10 @@ func TestSkippedPartsHaveOwners(t *testing.T) {
 	t.Parallel()
 	on := true
 	s := &Seed{
-		AdminSettings:      AdminSettings{AutomationEnabled: &on},
-		ExternalIdentities: []OwnedEntry{{}},
-		Commands:           []OwnedEntry{{}},
-		CommandSets:        []OwnedEntry{{}},
-		TestHooks:          []Hook{{Name: HookAutomationSSHPeer}, {Name: HookSocketHerdrSessions}, {Name: HookOutboundSSHGuard}},
+		AdminSettings: AdminSettings{AutomationEnabled: &on},
+		Commands:      []OwnedEntry{{}},
+		CommandSets:   []OwnedEntry{{}},
+		TestHooks:     []Hook{{Name: HookAutomationSSHPeer}, {Name: HookSocketHerdrSessions}, {Name: HookOutboundSSHGuard}},
 	}
 	parts := s.skipped()
 	for _, part := range parts {

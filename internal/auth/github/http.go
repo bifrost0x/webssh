@@ -32,7 +32,7 @@ type SignIn interface {
 	// SignInExternal signs in an account a redirect provider vouched for,
 	// with the account's second factor when it requires one; on success it
 	// has written the response.
-	SignInExternal(w http.ResponseWriter, r *http.Request, userID int64, method, continuation string) error
+	SignInExternal(w http.ResponseWriter, r *http.Request, in auth.ExternalSignIn) error
 	// RenewAfter runs change, raises the account's generation, ends every
 	// session of the account and continues this browser in a new session.
 	RenewAfter(w http.ResponseWriter, r *http.Request, reason principal.Reason, change func(ctx context.Context, tx *store.Tx) error) error

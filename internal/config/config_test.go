@@ -156,10 +156,11 @@ func TestQuirkWarnings(t *testing.T) {
 
 func TestUsageWarnings(t *testing.T) {
 	_, warns := mustLoad(t, map[string]string{
-		"OIDC_ENABLED": "false", "LDAP_ENABLED": "false", "GUNICORN_THREADS": "64", "RATELIMIT_STORAGE_URL": "redis://cache:6379/0",
+		"HOST_DISCOVERY_ENABLED": "true", "OIDC_ENABLED": "false", "LDAP_ENABLED": "false", "GUNICORN_THREADS": "64", "RATELIMIT_STORAGE_URL": "redis://cache:6379/0",
 		"SMB_ENABLED": " ", "TOTP_ENABLED": "true",
 	})
-	if !hasWarning(warns, WarnNoEffect, "OIDC_ENABLED", "without effect") || hasWarning(warns, WarnNoEffect, "LDAP_ENABLED", "") || !hasWarning(warns, WarnObsolete, "GUNICORN_THREADS", "") ||
+	if !hasWarning(warns, WarnNoEffect, "HOST_DISCOVERY_ENABLED", "without effect") || hasWarning(warns, WarnNoEffect, "OIDC_ENABLED", "") ||
+		hasWarning(warns, WarnNoEffect, "LDAP_ENABLED", "") || !hasWarning(warns, WarnObsolete, "GUNICORN_THREADS", "") ||
 		!hasWarning(warns, WarnObsolete, "RATELIMIT_STORAGE_URL", "restart") {
 		t.Errorf("warns %v", warns)
 	}

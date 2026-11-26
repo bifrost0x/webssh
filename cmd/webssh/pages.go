@@ -83,6 +83,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 		WebAuthnOrigin:           pg.cfg.WebAuthn.Origin,
 		WebAuthnRPID:             pg.cfg.WebAuthn.RPID,
 		TOTPEnabled:              pg.active(ctx, "totp"),
+		OIDCEnabled:              pg.active(ctx, "oidc"),
 		RecoveryCodesEnabled:     pg.active(ctx, "recovery"),
 		HostKeyManagementEnabled: pg.cfg.Features.HostKeyManagement,
 		LDAPEnabled:              pg.active(ctx, "ldap"),

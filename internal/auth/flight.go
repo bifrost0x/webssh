@@ -41,7 +41,10 @@ type Flight struct {
 	UserID     int64
 	Generation int64
 	SessionID  string
-	// Action and Target are the step-up intent of a step-up flight.
+	// Intent is the step-up intent token of a step-up flight
+	// (internal/auth/stepup); Action and Target are the administrator
+	// action and its target, empty for an account step-up.
+	Intent string
 	Action principal.Action
 	Target string
 	// Continuation is the local path to return to after sign-in.

@@ -58,6 +58,7 @@ type Config struct {
 	WebAuthn WebAuthn
 	// LDAP holds the LDAP_* settings.
 	LDAP LDAP
+	OIDC OIDC
 	// StepUpMaxAge is STEP_UP_MAX_AGE_SECONDS.
 	StepUpMaxAge time.Duration
 	RateLimits   RateLimits

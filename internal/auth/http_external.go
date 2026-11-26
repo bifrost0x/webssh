@@ -6,50 +6,69 @@ import (
 	"slices"
 	"time"
 
+	"github.com/bifrost0x/webssh/internal/accounts"
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/session"
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-// errNoLocalFactor refuses an external sign-in of an account that
-// requires a second factor but has none it can use here.
+// ExternalSignIn is a sign-in a redirect provider vouched for.
+type ExternalSignIn struct {
+	UserID int64
+	// Method is the provider's method name ("oidc", "github").
+	Method    string
+	Assurance Assurance
+	// StrongAt is when the provider authenticated the user with MFA or
+	// a phishing-resistant method (the OIDC auth_time); zero otherwise.
+	StrongAt time.Time
+	// Continuation is the local path to return to.
+	Continuation string
+}
+
+// errNoLocalFactor is the refusal of oidc_routes.py when MFA is required
+// and the account has no factor the provider sign-in may finish with.
 var errNoLocalFactor = fault.New(fault.Forbidden, "No active local MFA factor is available")
 
-// SignInExternal finishes the sign-in of an account a redirect provider
-// vouched for (method "github" or "oidc"). A pending sign-in of the
-// browser is replaced. An account that requires a second factor gets the
-// factor step of the sign-in page, without recovery codes, which only a
-// password sign-in may use; one without such a factor is
-// fault.Forbidden and nothing is written. Otherwise the session is issued
-// (never remembered) and the browser continues at continuation. On success
-// the response has been written.
-func (f *Flow) SignInExternal(w http.ResponseWriter, r *http.Request, userID int64, method, continuation string) error {
+// SignInExternal finishes a provider sign-in like the Python callback:
+// an account that requires MFA and a provider answer at BASIC continue
+// with a local second factor (recovery codes excluded) on the sign-in
+// page; otherwise the browser session starts at once with the provider's
+// assurance. It answers the request in both cases. A locked account or a
+// changed auth generation fails at the session issue as for every
+// sign-in.
+func (f *Flow) SignInExternal(w http.ResponseWriter, r *http.Request, in ExternalSignIn) error {
 	ctx := r.Context()
-	acc, err := f.Accounts.Get(ctx, userID)
+	acc, err := f.Accounts.Get(ctx, in.UserID)
 	if fault.Is(err, fault.NotFound) {
 		return fault.New(fault.AuthenticationNeeded, "")
 	}
 	if err != nil {
 		return err
 	}
-	p := Pending{UserID: userID, Generation: acc.AuthGeneration, PrimaryMethod: method, Assurance: session.Basic,
-		Continuation: SafeContinuation(continuation)}
-	if acc.MFARequired {
-		methods := slices.DeleteFunc(f.methods(ctx, userID), func(m string) bool { return m == "recovery" })
+	if acc.IsLocked {
+		return fault.New(fault.Forbidden, "External identity is not linked to an active account")
+	}
+	p := Pending{UserID: in.UserID, Generation: acc.AuthGeneration, PrimaryMethod: in.Method,
+		Assurance: session.Assurance(in.Assurance), Continuation: SafeContinuation(in.Continuation)}
+	if in.Assurance != AssuranceBasic {
+		p.StrongAt = in.StrongAt
+	}
+	if acc.MFARequired && in.Assurance == AssuranceBasic {
+		methods := slices.DeleteFunc(f.methods(ctx, in.UserID), func(m string) bool { return m == "recovery" })
 		if len(methods) == 0 {
 			return errNoLocalFactor
 		}
 		if err := f.pending().begin(ctx, f.binding(r), p); err != nil {
 			return err
 		}
-		f.Pages.Login(w, r, http.StatusOK, LoginView{AuthSource: method, MFARequired: true, MFAMethods: methods})
+		f.Pages.Login(w, r, http.StatusOK, LoginView{AuthSource: in.Method, MFARequired: true, MFAMethods: methods})
 		return nil
 	}
 	if err := f.pending().cancel(ctx, f.binding(r)); err != nil {
 		f.logger().WarnContext(ctx, "pending sign-in not discarded", "error", err)
 	}
-	if err := f.finalize(ctx, w, p, []string{method}); err != nil {
+	if err := f.finalize(ctx, w, p, []string{in.Method}); err != nil {
 		return err
 	}
 	f.redirect(w, r, PublicContinuation(f.Root, p.Continuation))
@@ -60,7 +79,8 @@ func (f *Flow) SignInExternal(w http.ResponseWriter, r *http.Request, userID int
 // account's generation, ends every session of the account for reason and
 // moves this browser to a new session with the sign-in's methods,
 // assurance and expiry (invalidate_user_authentication with
-// preserve_current_browser). An error of change is returned as it is and
+// preserve_current_browser); a known-device cookie of this browser is
+// reissued under the new generation (reissue_device). An error of change is returned as it is and
 // nothing is stored; a session that ended meanwhile is
 // fault.AuthenticationNeeded.
 func (f *Flow) RenewAfter(w http.ResponseWriter, r *http.Request, reason principal.Reason, change func(ctx context.Context, tx *store.Tx) error) error {
@@ -73,15 +93,17 @@ func (f *Flow) RenewAfter(w http.ResponseWriter, r *http.Request, reason princip
 	if err != nil {
 		return err
 	}
+	device := f.Devices.Presented(r, p.UserID)
 	var revs []principal.Revocation
 	var fresh session.Session
 	var token string
+	var gen int64
 	err = f.DB.Write(ctx, func(tx *store.Tx) error {
 		if err := change(ctx, tx); err != nil {
 			return err
 		}
-		gen, err := f.Accounts.RaiseGenerationTx(ctx, tx, p.UserID)
-		if err != nil {
+		var err error
+		if gen, err = f.Accounts.RaiseGenerationTx(ctx, tx, p.UserID); err != nil {
 			return err
 		}
 		if revs, err = f.Sessions.RevokeUserTx(ctx, tx, p.UserID, reason, ""); err != nil {
@@ -105,5 +127,8 @@ func (f *Flow) RenewAfter(w http.ResponseWriter, r *http.Request, reason princip
 		expires = fresh.ExpiresAt
 	}
 	f.Cookie.Set(w, token, expires)
+	// The new generation voids every known-device cookie, including the
+	// one of this browser, which stays signed in.
+	f.Devices.Reissue(w, accounts.Account{ID: p.UserID, AuthGeneration: gen}, device)
 	return nil
 }

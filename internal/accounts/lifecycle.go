@@ -71,13 +71,16 @@ func adminCountTx(ctx context.Context, tx *store.Tx) (int, error) {
 	return n, nil
 }
 
-// invalidateTx raises the account's auth_generation, which ends every
+// InvalidateTx raises the account's auth_generation, which ends every
 // credential issued before (sessions, pending sign-ins, step-up grants,
 // known-device cookies), and ends its sessions and live resources for
-// reason (invalidate_user_authentication and revoke_user_access).
-func (s *Service) invalidateTx(ctx context.Context, tx *store.Tx, id int64, reason principal.Reason) ([]principal.Revocation, error) {
-	if _, err := tx.ExecContext(ctx, `UPDATE accounts_users SET auth_generation = auth_generation + 1 WHERE id = ?`, id); err != nil {
-		return nil, fmt.Errorf("accounts: raise generation: %w", err)
+// reason (invalidate_user_authentication and revoke_user_access). The
+// caller publishes the revocations after the commit. Provider packages
+// use it when a removed identity must not keep the access it gave (OIDC
+// unlink).
+func (s *Service) InvalidateTx(ctx context.Context, tx *store.Tx, id int64, reason principal.Reason) ([]principal.Revocation, error) {
+	if _, err := s.RaiseGenerationTx(ctx, tx, id); err != nil {
+		return nil, err
 	}
 	if s.Sessions == nil {
 		return nil, nil
@@ -129,7 +132,7 @@ func (s *Service) Manage(ctx context.Context, actor principal.Principal, targetI
 			if _, err := tx.ExecContext(ctx, `UPDATE accounts_users SET is_locked = 1 WHERE id = ?`, acc.ID); err != nil {
 				return fmt.Errorf("accounts: lock: %w", err)
 			}
-			revs, err = s.invalidateTx(ctx, tx, acc.ID, principal.ReasonAccountLocked)
+			revs, err = s.InvalidateTx(ctx, tx, acc.ID, principal.ReasonAccountLocked)
 			changed = true
 		case ActionUnlock:
 			_, err = tx.ExecContext(ctx, `UPDATE accounts_users SET is_locked = 0 WHERE id = ?`, acc.ID)

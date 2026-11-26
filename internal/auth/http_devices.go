@@ -122,19 +122,54 @@ func (d *Devices) Trusted(r *http.Request, username string) string {
 	if d == nil || strings.TrimSpace(username) == "" {
 		return ""
 	}
-	c, err := r.Cookie(d.Cookie.Name())
-	if err != nil {
-		return ""
-	}
-	p, ok := d.decode(c.Value)
+	p, ok := d.presented(r)
 	if !ok || !hmac.Equal([]byte(p.Username), []byte(d.UsernameDigest(username))) {
 		return ""
 	}
+	return p.Nonce
+}
+
+// presented returns the payload of a valid cookie of r: well signed,
+// younger than DeviceMaxAge, and its account exists, is unlocked and
+// still has the generation the cookie was issued under.
+func (d *Devices) presented(r *http.Request) (devicePayload, bool) {
+	c, err := r.Cookie(d.Cookie.Name())
+	if err != nil {
+		return devicePayload{}, false
+	}
+	p, ok := d.decode(c.Value)
+	if !ok {
+		return devicePayload{}, false
+	}
 	acc, err := d.Accounts.Get(r.Context(), p.UserID)
 	if err != nil || acc.IsLocked || acc.AuthGeneration != p.Gen {
+		return devicePayload{}, false
+	}
+	return p, true
+}
+
+// Presented returns the name digest of a valid cookie r holds for the
+// account userID, or "" (presented_device_digest). Read it before the
+// account's generation changes and pass it to Reissue afterwards, so a
+// browser that stays signed in keeps its exemption.
+func (d *Devices) Presented(r *http.Request, userID int64) string {
+	if d == nil {
 		return ""
 	}
-	return p.Nonce
+	p, ok := d.presented(r)
+	if !ok || p.UserID != userID {
+		return ""
+	}
+	return p.Username
+}
+
+// Reissue issues a fresh cookie for the name digest under the account's
+// current generation; an empty digest issues nothing (reissue_device).
+func (d *Devices) Reissue(w http.ResponseWriter, acc accounts.Account, digest string) {
+	if d == nil || digest == "" {
+		return
+	}
+	d.issue(w, acc, digest)
 }
 
 // Remember issues a fresh cookie for the submitted name with the response
@@ -143,10 +178,14 @@ func (d *Devices) Remember(w http.ResponseWriter, acc accounts.Account, username
 	if d == nil {
 		return
 	}
+	d.issue(w, acc, d.UsernameDigest(username))
+}
+
+func (d *Devices) issue(w http.ResponseWriter, acc accounts.Account, digest string) {
 	var nonce [16]byte
 	_, _ = rand.Read(nonce[:]) // crypto/rand.Read never fails
 	now := d.now()
-	d.Cookie.Set(w, d.encode(devicePayload{Username: d.UsernameDigest(username), UserID: acc.ID, Gen: acc.AuthGeneration,
+	d.Cookie.Set(w, d.encode(devicePayload{Username: digest, UserID: acc.ID, Gen: acc.AuthGeneration,
 		Nonce: base64.RawURLEncoding.EncodeToString(nonce[:]), Issued: now.Unix()}), now.Add(DeviceMaxAge))
 }
 

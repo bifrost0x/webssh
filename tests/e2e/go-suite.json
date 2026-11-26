@@ -100,9 +100,12 @@
     {"file": "layout.spec.js", "serial": "e2e_admin", "exclude": [
       {"title": "admin audit logs remain mouse-scrollable in a short desktop viewport", "reason": "audit log view (C-AOPS)", "package": "OP3"},
       {"title": "admin security actions and empty host trust use user-facing copy", "reason": "global host trust table (C-TRUST-04, /admin/api/host-keys answers 501 in M1)", "package": "HO3"},
-      {"title": "auth workbench keeps a concentrated form below branding on ultrawide screens", "reason": "expects the OIDC sign-in method (C-OIDC, B2)", "package": "ID2"},
-      {"title": "mobile login keeps every sign-in method and the primary action in the first viewport", "reason": "expects the OIDC sign-in method (C-OIDC, B2); in the preview the notice bar also lengthens the narrow login page (D4, visible change of the preview)", "package": "ID2"},
-      {"title": "new login, security, and admin controls honor the stored locale", "reason": "checks the OIDC sign-in button (C-OIDC, B2)", "package": "ID2"}
+      {"title": "mobile login keeps every sign-in method and the primary action in the first viewport", "reason": "the preview notice bar lengthens the narrow login page (D4, visible change of the preview); the OIDC method is offered since ID2", "package": "FE1"},
+      {"title": "new login, security, and admin controls honor the stored locale", "reason": "opens the audit retention section of the administration (C-AOPS); the OIDC sign-in button passes since ID2", "package": "OP3"}
+    ]},
+    {"file": "admin-oidc.spec.js", "exclude": []},
+    {"file": "complete-design.spec.js", "exclude": [
+      {"title": "complete account and administration presentation at", "reason": "opens the audit retention section of the administration (C-AOPS)", "package": "OP3"}
     ]},
     {"file": "design-system.spec.js", "exclude": [
       {"title": "Warm Graphite Sand separates cream actions, selection and status across views", "reason": "iterates the file workspace (C-SFTP)", "package": "FS1"}

@@ -32,6 +32,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/account/step-up/ldap", h.accountProof(MethodLDAP, "password", "ldap"))
 	mux.HandleFunc("POST /api/account/step-up/passkey/options", h.accountPasskeyOptions)
 	mux.HandleFunc("POST /api/account/step-up/passkey/verify", h.accountProof(MethodPasskey, "", "passkey_verify"))
+	mux.HandleFunc("POST /api/account/step-up/status", h.accountStatus)
 	mux.HandleFunc("POST /api/step-up/intents", h.adminIntent)
 	mux.HandleFunc("POST /api/step-up/password", h.adminProof(MethodPassword, "password"))
 	mux.HandleFunc("POST /api/step-up/totp", h.adminProof(MethodTOTP, "code"))
@@ -286,4 +287,29 @@ func (h *HTTP) adminPasskeyVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth.WriteJSON(w, http.StatusOK, map[string]any{"grant": grant, "expires_in": expiresIn})
+}
+
+// accountStatus is the poll of a page whose intent a provider proves in
+// another window: pending, then the grant once. An unknown, expired or
+// already claimed intent is 410 step_up_expired, as in the Python
+// release; the fault catalog has no 410, so the answer is written here.
+func (h *HTTP) accountStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p, err := principal.Require(ctx)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	token, _ := auth.ReadObject(w, r).String("intent")
+	grant, pending, err := h.Service.ExternalStatus(ctx, p, token)
+	switch {
+	case err != nil && !fault.Is(err, fault.StepUpFailed):
+		h.fail(w, r, err)
+	case err != nil:
+		auth.WriteJSON(w, http.StatusGone, map[string]any{"code": "step_up_expired", "error": "Step-up authentication failed"})
+	case pending:
+		auth.WriteJSON(w, http.StatusOK, map[string]any{"status": "pending"})
+	default:
+		auth.WriteJSON(w, http.StatusOK, map[string]any{"status": "completed", "grant": grant, "expires_in": expiresIn})
+	}
 }

@@ -64,7 +64,7 @@ func (s *Service) Delete(ctx context.Context, actor principal.Principal, targetI
 		if _, err := tx.ExecContext(ctx, `UPDATE accounts_users SET is_locked = 1 WHERE id = ?`, acc.ID); err != nil {
 			return fmt.Errorf("accounts: lock before deletion: %w", err)
 		}
-		revs, err = s.invalidateTx(ctx, tx, acc.ID, principal.ReasonAccountLocked)
+		revs, err = s.InvalidateTx(ctx, tx, acc.ID, principal.ReasonAccountLocked)
 		return err
 	})
 	if err != nil {

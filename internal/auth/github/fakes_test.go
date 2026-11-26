@@ -213,14 +213,14 @@ type fakeSignIn struct {
 	noMFA   bool
 }
 
-func (f *fakeSignIn) SignInExternal(w http.ResponseWriter, r *http.Request, userID int64, method, continuation string) error {
+func (f *fakeSignIn) SignInExternal(w http.ResponseWriter, r *http.Request, in auth.ExternalSignIn) error {
 	if f.noMFA {
 		return fault.New(fault.Forbidden, "")
 	}
 	f.mu.Lock()
-	f.signed = append(f.signed, userID)
+	f.signed = append(f.signed, in.UserID)
 	f.mu.Unlock()
-	http.Redirect(w, r, auth.PublicContinuation("", continuation), http.StatusFound)
+	http.Redirect(w, r, auth.PublicContinuation("", in.Continuation), http.StatusFound)
 	return nil
 }
 

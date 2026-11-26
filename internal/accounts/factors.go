@@ -58,7 +58,7 @@ func (s *Service) ResetMFA(ctx context.Context, actor principal.Principal, targe
 		if _, err := tx.ExecContext(ctx, `UPDATE accounts_users SET mfa_required = 0 WHERE id = ?`, acc.ID); err != nil {
 			return fmt.Errorf("accounts: reset mfa: %w", err)
 		}
-		revs, err = s.invalidateTx(ctx, tx, acc.ID, principal.ReasonFactorChanged)
+		revs, err = s.InvalidateTx(ctx, tx, acc.ID, principal.ReasonFactorChanged)
 		return err
 	})
 	if err != nil {

@@ -14,7 +14,7 @@ import (
 // package does.
 func (e *env) externalRoutes(userID *int64, change func(context.Context, *store.Tx) error, got *error) {
 	e.mux.HandleFunc("GET /test/external", func(w http.ResponseWriter, r *http.Request) {
-		if err := e.flow.SignInExternal(w, r, *userID, "github", "/hosts"); err != nil {
+		if err := e.flow.SignInExternal(w, r, ExternalSignIn{UserID: *userID, Method: "github", Assurance: AssuranceBasic, Continuation: "/hosts"}); err != nil {
 			*got = err
 			w.WriteHeader(http.StatusTeapot)
 		}
@@ -27,7 +27,7 @@ func (e *env) externalRoutes(userID *int64, change func(context.Context, *store.
 	})
 }
 
-func TestSignInExternal(t *testing.T) {
+func TestSignInExternalBasic(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, true)
 	acc := e.createUser(t, "alice", "password1")
