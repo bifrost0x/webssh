@@ -63,6 +63,7 @@ type Config struct {
 	Terminal     Terminal
 	Stores       Stores
 	Audit        Audit
+	SMB          SMB
 	// ShutdownGrace is RUNTIME_SHUTDOWN_GRACE_SECONDS.
 	ShutdownGrace time.Duration
 	// CABundle is the extra trust anchor file or directory from

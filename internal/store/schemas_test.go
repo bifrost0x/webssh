@@ -14,6 +14,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/auth/stepup"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
 	"github.com/bifrost0x/webssh/internal/auth/webauthn"
+	"github.com/bifrost0x/webssh/internal/files/smb"
 	"github.com/bifrost0x/webssh/internal/hostops"
 	"github.com/bifrost0x/webssh/internal/hosts"
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
@@ -45,6 +46,7 @@ func productionSchemas() []store.Schema {
 		legacy.RecordSchema(),
 		webauthn.Schema(),
 		terminal.Schema(),
+		smb.Schema(),
 	}
 }
 

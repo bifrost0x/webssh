@@ -60,10 +60,7 @@ func loadNetwork(p *parser, c *Config, in *pending) {
 	in.smbTargets = p.csvList("SMB_ALLOWED_TARGETS", "SMB_ALLOWED_TARGETS")
 	in.smbConnectTimeout = p.positive("SMB_CONNECT_TIMEOUT_SECONDS", 10)
 	in.smbIdleTimeout = p.positive("SMB_IO_IDLE_TIMEOUT_SECONDS", 30)
-	p.str("SMB_CONNECT_RATELIMIT", "SMB_CONNECT_RATELIMIT", "5 per minute", false)
-	p.str("SMB_SHARE_MUTATION_RATELIMIT", "SMB_SHARE_MUTATION_RATELIMIT", "30 per minute", false)
-	p.str("SMB_SHARE_LIST_RATELIMIT", "SMB_SHARE_LIST_RATELIMIT", "60 per minute", false)
-	p.bounded("SMB_MAX_SAVED_SHARES", 100, 1, 1000)
+	loadSMB(p, c, in)
 
 	p.anyInt("MAX_DOWNLOAD_SIZE", 100*mib)
 	p.anyInt("MAX_ZIP_DOWNLOAD_SIZE", 500*mib)
