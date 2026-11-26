@@ -68,6 +68,10 @@ type Config struct {
 	// CABundle is the extra trust anchor file or directory from
 	// REQUESTS_CA_BUNDLE or CURL_CA_BUNDLE, or "".
 	CABundle CABundle
+	// BackupTempDir is BACKUP_TEMP_DIR as the Python release resolves it:
+	// where Python keeps its backup operation lock and restore status. The
+	// migration probes both before it reads legacy data.
+	BackupTempDir string
 
 	// explicit holds the variables with a non-empty value
 	// (EXPLICIT_ENVIRONMENT_KEYS).
@@ -173,6 +177,11 @@ type Network struct {
 	ProxyJumpRemoteDNS []string
 	// SOCKSRemoteDNS lists canonical names a SOCKS proxy may resolve.
 	SOCKSRemoteDNS []string
+	// TailscaleSSHEnabled is TAILSCALE_SSH_ENABLED and TailscaleInterface
+	// is TAILSCALE_SSH_INTERFACE (default tailscale0); the network policy
+	// applies its tailnet rule with them.
+	TailscaleSSHEnabled bool
+	TailscaleInterface  string
 }
 
 // Terminal holds the limits of interactive sessions.

@@ -25,7 +25,8 @@ func loadLimits(p *parser, c *Config) {
 	p.positive("BACKUP_OPERATION_TIMEOUT", 1800)
 	p.positive("BACKUP_DOWNLOAD_TTL", 600)
 	if !p.failed() {
-		p.record("BACKUP_TEMP_DIR", pyPath(p.raw("BACKUP_TEMP_DIR", pyTempDir(p.get)+"/webssh-backup-operations")))
+		c.BackupTempDir = pyPath(p.raw("BACKUP_TEMP_DIR", pyTempDir(p.get)+"/webssh-backup-operations"))
+		p.record("BACKUP_TEMP_DIR", c.BackupTempDir)
 	}
 	p.flag("BACKUP_RECOVERY_DURABLE", "BACKUP_RECOVERY_DURABLE", "false")
 
