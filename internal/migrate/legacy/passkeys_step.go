@@ -80,6 +80,9 @@ func (s *passkeysStep) Read(ctx context.Context, src *Source) error {
 
 func passkeyLastUse(ctx context.Context, src *Source) (map[int64]sql.NullString, error) {
 	out := map[int64]sql.NullString{}
+	if !src.schema.HasTable("webauthn_credentials") {
+		return out, nil
+	}
 	rows, err := src.db.QueryContext(ctx, `SELECT id, CAST(last_used_at AS TEXT) FROM webauthn_credentials`)
 	if err != nil {
 		return nil, fmt.Errorf("legacy: read passkeys: %w", err)

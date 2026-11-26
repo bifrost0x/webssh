@@ -148,4 +148,3 @@ func TestM1PasskeyInvalidCOSE(t *testing.T) {
 	assertUntouched(t, dir, before)
 	assertNoGoDatabase(t, dir)
 }
-

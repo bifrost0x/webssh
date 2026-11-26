@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rsa"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"strings"
@@ -85,7 +86,10 @@ func (s *sshKeysStep) Write(ctx context.Context, tx *store.Tx, seal Sealer) erro
 
 // unusableReason names why a key cannot be used, without key material.
 func unusableReason(k SSHKey) string {
-	if k.State == KeyUnsupported {
+	if block, _ := pem.Decode(k.PEM); block != nil && block.Type == "DSA PRIVATE KEY" {
+		return "DSA keys are not supported"
+	}
+	if k.State == KeyUnsupported || k.PublicKey == nil {
 		return k.Reason
 	}
 	switch k.PublicKey.Type() {
