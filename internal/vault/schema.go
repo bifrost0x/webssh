@@ -22,7 +22,7 @@ func Schema() store.Schema {
 	return store.Schema{Owner: "vault", Migrations: []store.Migration{{
 		Version: 1,
 		SQL: `CREATE TABLE vault_ssh_keys (
-	id TEXT PRIMARY KEY NOT NULL,
+	id TEXT NOT NULL,
 	user_id INTEGER NOT NULL CHECK (user_id > 0),
 	seq INTEGER NOT NULL,
 	name TEXT NOT NULL,
@@ -32,6 +32,7 @@ func Schema() store.Schema {
 	private_key BLOB NOT NULL,
 	uploaded_at TEXT NOT NULL,
 	state TEXT NOT NULL CHECK (state IN ('usable', 'unsupported')),
+	PRIMARY KEY (user_id, id),
 	UNIQUE (user_id, seq)
 ) STRICT`,
 	}}}

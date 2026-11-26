@@ -2160,12 +2160,15 @@ const ProfileManager = {
             description: message || '',
             label: this.t('keys.passphrase', 'Passphrase of the private key'),
             secret: true,
-            autocomplete: 'off',
+            // Keeps password managers from offering the account login here.
+            autocomplete: 'new-password',
+            name: 'ssh-key-passphrase',
+            maxLength: 1024,
         });
     },
 
     // A small modal question; resolves to the answer or null when cancelled.
-    keyQuestion(heading, {label = heading, description = '', choices = null, secret = false, autocomplete = 'off'} = {}) {
+    keyQuestion(heading, {label = heading, description = '', choices = null, secret = false, autocomplete = 'off', name = '', maxLength = 4096} = {}) {
         return new Promise(resolve => {
             const opener = document.activeElement;
             const dialog = document.createElement('dialog');
@@ -2197,7 +2200,8 @@ const ProfileManager = {
             } else {
                 input.type = secret ? 'password' : 'text';
                 input.autocomplete = autocomplete;
-                input.maxLength = 4096;
+                input.maxLength = maxLength;
+                if (name) input.name = name;
             }
             field.append(input);
             const controls = document.createElement('div');
@@ -2215,7 +2219,8 @@ const ProfileManager = {
             dialog.append(form);
             let answer = null;
             cancel.addEventListener('click', () => dialog.close());
-            form.addEventListener('submit', () => { answer = input.value; });
+            // An empty answer counts as cancel; it would only spend an attempt.
+            form.addEventListener('submit', () => { answer = input.value || null; });
             dialog.addEventListener('close', () => {
                 input.value = '';
                 dialog.remove();

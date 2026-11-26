@@ -132,3 +132,37 @@ func TestKDFSlotsBounded(t *testing.T) {
 	// Keys without passphrase need no slot.
 	r.upload(t, alice, "plain", newEd25519PEM(t))
 }
+
+// One user holds at most one KDF slot; others still get theirs.
+func TestKDFSlotPerUser(t *testing.T) {
+	r := newRig(t, Limits{})
+	alice, bob := principaltest.User(1), principaltest.User(2)
+	release, ok := r.svc.takeKDFSlot(alice.UserID)
+	if !ok {
+		t.Fatal("first slot refused")
+	}
+	protected := string(goldenByLabel(t, "ed25519-openssh-passphrase").pem(t))
+	_, err := r.svc.Upload(as(alice), Upload{Name: "k", Content: protected, Passphrase: goldenPassphrase})
+	wantCode(t, err, fault.Busy)
+	grant := r.grant(bob, principal.ActionKeyUpload, userTarget(bob))
+	if _, err := r.svc.Upload(as(bob), Upload{Name: "k", Content: protected, Passphrase: goldenPassphrase, Grant: grant}); err != nil {
+		t.Fatalf("other user: %v", err)
+	}
+	release()
+	if _, ok := r.svc.takeKDFSlot(alice.UserID); !ok {
+		t.Fatal("slot not released")
+	}
+}
+
+// IDs that cannot name a key are not found before any work is done.
+func TestReplaceRefusesMalformedID(t *testing.T) {
+	r := newRig(t, Limits{})
+	alice := principaltest.User(1)
+	for _, id := range []string{"a\x00b", "line\nbreak", strings.Repeat("x", 129)} {
+		_, err := r.svc.Replace(as(alice), Replace{ID: id, Content: string(newEd25519PEM(t)), Grant: "g"})
+		wantCode(t, err, fault.NotFound)
+	}
+	if len(r.stepUp.Calls()) != 0 {
+		t.Fatal("grant checked for a malformed ID")
+	}
+}

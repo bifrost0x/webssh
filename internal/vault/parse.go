@@ -25,14 +25,16 @@ const (
 	MaxKeyBytes        = 64 << 10
 	MaxNameRunes       = 128
 	MaxPassphraseBytes = 1024
+	minRSABits         = 1024
 )
 
 // maxKDFRounds bounds the bcrypt rounds of a passphrase-protected OpenSSH
 // key. The rounds come from the uploaded file; without a bound one upload
 // could keep a CPU busy for hours. ssh-keygen uses 16 unless told
-// otherwise; a round costs about 7 ms, so the bound keeps one upload under
-// two seconds and still loads keys made with -a 100 or -a 256.
-const maxKDFRounds = 256
+// otherwise; a round costs about 7 ms (measured for an Ed25519 key with
+// aes256-ctr), so the bound keeps one upload under one second and still
+// loads keys made with -a 100.
+const maxKDFRounds = 128
 
 // Reasons a key is refused. They are matched with errors.Is and mapped to
 // user texts in errors.go.
@@ -120,7 +122,9 @@ func parseKey(content, passphrase []byte) (parsedKey, error) {
 func normalize(raw any) (crypto.Signer, string, bool) {
 	switch k := raw.(type) {
 	case *rsa.PrivateKey:
-		return k, KeyRSA, true
+		// crypto/rsa refuses to sign with shorter keys; such a key would be
+		// listed as usable and fail at every connection.
+		return k, KeyRSA, k.N.BitLen() >= minRSABits
 	case *ecdsa.PrivateKey:
 		return k, KeyECDSA, true
 	case ed25519.PrivateKey:

@@ -242,3 +242,17 @@ func FuzzParseKey(f *testing.F) {
 		}
 	})
 }
+
+// RSA keys below 1024 bits load in Python but cannot sign in Go; they are
+// refused at upload instead of failing at every connection.
+func TestParseRejectsShortRSA(t *testing.T) {
+	t.Setenv("GODEBUG", "rsa1024min=0")
+	short, err := rsa.GenerateKey(rand.Reader, 768)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(short)})
+	if _, err := parseKey(in, nil); !errors.Is(err, errKeyInvalid) {
+		t.Fatalf("768-bit RSA: %v", err)
+	}
+}

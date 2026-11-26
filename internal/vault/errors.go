@@ -31,7 +31,7 @@ const (
 	textPassphraseWrong     = "The passphrase does not match the private key."
 	textPassphraseTooLong   = "The passphrase is too long."
 	textEncryptedPKCS8      = "Encrypted PKCS#8 private keys are not supported. Convert the key to the OpenSSH format with ssh-keygen -p, or remove its passphrase."
-	textKDFRounds           = "The passphrase protection of this key uses more than 256 bcrypt rounds. Change the passphrase with ssh-keygen -p -a 100 and upload it again."
+	textKDFRounds           = "The passphrase protection of this key uses more than 128 bcrypt rounds. Change the passphrase with ssh-keygen -p -a 100 and upload it again."
 	textUnusable            = "The SSH key cannot be used. Replace it with an RSA, ECDSA or Ed25519 key."
 	textBusy                = "Other keys are being checked. Try again in a moment."
 )

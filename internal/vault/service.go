@@ -3,9 +3,8 @@ package vault
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 	"uuid"
@@ -38,7 +37,8 @@ type Options struct {
 }
 
 // kdfSlots bounds how many passphrase-protected keys are opened at the
-// same time across all users; each one costs CPU for its KDF.
+// same time across all users; each one costs CPU for its KDF. One user
+// holds at most one slot, so a single account cannot take them all.
 const kdfSlots = 2
 
 // Service manages the users' SSH keys and provides client.KeySource.
@@ -49,6 +49,9 @@ type Service struct {
 	limits Limits
 	now    func() time.Time
 	kdf    chan struct{}
+
+	mu      sync.Mutex
+	kdfUser map[int64]bool // users holding a KDF slot
 }
 
 // New returns a Service.
@@ -59,7 +62,7 @@ func New(o Options) (*Service, error) {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &Service{db: o.DB, sealer: o.Sealer, stepUp: o.StepUp, limits: o.Limits, now: o.Now, kdf: make(chan struct{}, kdfSlots)}, nil
+	return &Service{db: o.DB, sealer: o.Sealer, stepUp: o.StepUp, limits: o.Limits, now: o.Now, kdf: make(chan struct{}, kdfSlots), kdfUser: map[int64]bool{}}, nil
 }
 
 // Summary is the key as the page sees it; it never holds key material.
@@ -125,7 +128,7 @@ func (s *Service) Upload(ctx context.Context, u Upload) (Summary, error) {
 	if utf8.RuneCountInString(u.Name) > MaxNameRunes {
 		return Summary{}, invalid(textNameTooLong)
 	}
-	key, err := s.parse(u.Content, u.Passphrase)
+	key, err := s.parse(p.UserID, u.Content, u.Passphrase)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -209,7 +212,10 @@ func (s *Service) Replace(ctx context.Context, rq Replace) (Summary, error) {
 	if rq.ID == "" || rq.Content == "" {
 		return Summary{}, invalid(textIDContentRequired)
 	}
-	key, err := s.parse(rq.Content, rq.Passphrase)
+	if !validID(rq.ID) {
+		return Summary{}, notFound()
+	}
+	key, err := s.parse(p.UserID, rq.Content, rq.Passphrase)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -315,65 +321,4 @@ func (s *Service) Signer(ctx context.Context, owner int64, keyID string) (ssh.Si
 		return nil, fault.Wrap(fault.InvalidValue, err, textUnusable)
 	}
 	return signer, nil
-}
-
-// parse checks an uploaded key. Opening a passphrase-protected key takes
-// one of the KDF slots; when all are taken the caller retries.
-func (s *Service) parse(content, passphrase string) (parsedKey, error) {
-	if len(content) > MaxKeyBytes {
-		return parsedKey{}, invalid(textContentTooLarge)
-	}
-	if len(passphrase) > MaxPassphraseBytes {
-		return parsedKey{}, invalid(textPassphraseTooLong)
-	}
-	if passphrase != "" {
-		select {
-		case s.kdf <- struct{}{}:
-			defer func() { <-s.kdf }()
-		default:
-			e := fault.New(fault.Busy, textBusy)
-			e.RetryAfter = time.Second
-			return parsedKey{}, e
-		}
-	}
-	pass := []byte(passphrase)
-	defer clear(pass)
-	key, err := parseKey([]byte(content), pass)
-	if err != nil {
-		return parsedKey{}, keyFault(err)
-	}
-	return key, nil
-}
-
-// fill seals the parsed key into r and sets its public facts.
-func (s *Service) fill(r *keyRow, key parsedKey) error {
-	defer clear(key.stored)
-	sealed, err := s.sealer.Seal(keyring.SSHKey, aad(r.UserID, r.ID), key.stored)
-	if err != nil {
-		return fault.Wrap(fault.StorageError, fmt.Errorf("vault: seal key: %w", err), "")
-	}
-	pub := key.signer.PublicKey()
-	r.KeyType = key.keyType
-	r.PublicKey = strings.TrimSuffix(string(ssh.MarshalAuthorizedKey(pub)), "\n")
-	r.Fingerprint = ssh.FingerprintSHA256(pub)
-	r.Sealed = sealed
-	r.State = stateUsable
-	return nil
-}
-
-// userTarget is the step-up target of key.upload: the user ID, the
-// default target of the account step-up intents.
-func userTarget(p principal.Principal) string { return strconv.FormatInt(p.UserID, 10) }
-
-// isoTime renders t like Python's datetime.isoformat() for an aware UTC
-// datetime: microseconds only when not zero. The Python release wrote
-// naive UTC times, which the page showed as local time; new keys carry the
-// offset.
-func isoTime(t time.Time) string {
-	t = t.UTC()
-	s := t.Format("2006-01-02T15:04:05")
-	if us := t.Nanosecond() / 1000; us != 0 {
-		s += fmt.Sprintf(".%06d", us)
-	}
-	return s + "+00:00"
 }
