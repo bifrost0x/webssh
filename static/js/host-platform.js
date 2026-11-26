@@ -274,6 +274,7 @@
     }
     // Text widths follow renames, theme fonts, panes and the viewport, so the text is what is watched.
     const fitters = new WeakMap();
+    const observed = new Set();
     let fitObserver = null;
     let pendingFits = new Set();
     function observeFit(target, fit) {
@@ -289,8 +290,10 @@
                     const targets = pendingFits;
                     pendingFits = new Set();
                     targets.forEach(element => {
-                        if (!element.isConnected) fitObserver.unobserve(element);
-                        else fitters.get(element)?.();
+                        if (!element.isConnected) {
+                            fitObserver.unobserve(element);
+                            observed.delete(element);
+                        } else fitters.get(element)?.();
                     });
                 };
                 if (typeof globalThis.requestAnimationFrame === 'function') globalThis.requestAnimationFrame(run);
@@ -298,6 +301,20 @@
             });
         }
         fitObserver?.observe(target);
+        if (fitObserver) observed.add(target);
+    }
+    /**
+     * Stops watching every text inside `root`. Call it before the container's rows
+     * are replaced: rows that never rendered (a hidden rail) never resize, so
+     * nothing else would let go of them.
+     */
+    function releaseFits(root) {
+        if (!fitObserver || !root) return;
+        observed.forEach(target => {
+            if (!root.contains(target)) return;
+            fitObserver.unobserve(target);
+            observed.delete(target);
+        });
     }
     /** Keeps the tiles of `holder` fitted next to the given texts while they change size. */
     function keepTilesFitting(holder, ...candidates) {
@@ -451,5 +468,5 @@
     }
     return {labels, resolve, services, serviceLabels, serviceAsset, render, renderService, renderSession,
         sameEndpoint, markSessionTab, fitSessionTab, refreshSessionIcons, sessionIdentity, markIdentityBar, serviceTiles,
-        keepTilesFitting};
+        keepTilesFitting, releaseFits};
 });

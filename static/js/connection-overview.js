@@ -165,6 +165,7 @@
                 && (sessionManager.getAllSessions().length > 0 || doc.body.dataset.hostRailRequested === 'true');
             container.parentElement.hidden = !showTree;
             retainFocus(container, () => {
+                win.HostPlatform?.releaseFits?.(container);
                 container.replaceChildren();
                 if (!showTree) return;
                 const favoritesOnly = doc.body.dataset.hostAccessFilter === 'favorites';

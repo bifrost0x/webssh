@@ -472,6 +472,7 @@
                 preview.replaceChildren();
                 preview.hidden = true;
                 byId('overviewRouteCard').hidden = true;
+                win.HostPlatform?.releaseFits?.(container);
                 container.replaceChildren();
                 const manager = win.ProfileManager;
                 const loaded = manager?.profilesLoaded === true;

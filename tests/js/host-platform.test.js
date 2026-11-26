@@ -249,3 +249,35 @@ test('every monogram shown for a catalog service is distinct', () => {
     }
     assert.ok(shown.size > 0);
 });
+
+test('re-rendering a container releases the texts its previous rows were fitted against', () => {
+    const observed = new Set();
+    const previous = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+        observe(target) { observed.add(target); }
+        unobserve(target) { observed.delete(target); }
+    };
+    try {
+        // A rail that is hidden never resizes its rows, so nothing else would unobserve them.
+        const row = () => ({
+            holder: {isConnected: true, hidden: false, children: []},
+            name: {isConnected: true, clientWidth: 0, scrollWidth: 0, children: []},
+        });
+        // Called before the old rows are replaced, so the container still holds them.
+        const rail = {contains: () => true};
+        const render = () => {
+            icons.releaseFits(rail);
+            [row(), row(), row()].forEach(item => icons.keepTilesFitting(item.holder, item.name));
+        };
+        render();
+        assert.equal(observed.size, 3);
+        render();
+        render();
+        assert.equal(observed.size, 3);
+        icons.releaseFits(rail);
+        assert.equal(observed.size, 0);
+    } finally {
+        if (previous === undefined) delete globalThis.ResizeObserver;
+        else globalThis.ResizeObserver = previous;
+    }
+});
