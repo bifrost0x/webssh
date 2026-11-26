@@ -28,6 +28,7 @@ type accountsStep struct {
 	missing        []string // ADMIN_USERS names without an account
 	orphans        []string // user directories without an account
 	orphanFloor    int64    // highest id of such a directory
+	implausible    []string // such directories with an id above maxDirectoryID
 	missingColumns []string
 }
 
@@ -69,7 +70,11 @@ func (s *accountsStep) Read(ctx context.Context, src *Source) error {
 		if err != nil || !strings.HasPrefix(d, "user_") || !ids[id] {
 			s.orphans = append(s.orphans, "users/"+d)
 		}
-		if err == nil && strings.HasPrefix(d, "user_") && !ids[id] && id > 0 {
+		switch {
+		case err != nil || !strings.HasPrefix(d, "user_") || ids[id] || id <= 0:
+		case id > maxDirectoryID:
+			s.implausible = append(s.implausible, "users/"+d)
+		default:
 			// Legacy data exists for this id; it is never handed out again
 			// (specification 4.1).
 			s.orphanFloor = max(s.orphanFloor, id)
@@ -241,6 +246,9 @@ func (s *accountsStep) Report() StepReport {
 	}
 	if s.orphanFloor > 0 {
 		r.Notes = append(r.Notes, fmt.Sprintf("new account ids start above %d, the highest id of a user directory without an account", s.orphanFloor))
+	}
+	for _, p := range s.implausible {
+		r.Notes = append(r.Notes, fmt.Sprintf("%s: the id is above %d and does not raise the id floor", p, maxDirectoryID))
 	}
 	for _, p := range s.orphans {
 		r.KeptInPlace = append(r.KeptInPlace, KeptPath{Path: p, Reason: "user_directory_without_account"})

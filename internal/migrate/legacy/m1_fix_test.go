@@ -2,6 +2,7 @@ package legacy
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -180,5 +181,46 @@ func TestM1PasswordStopHidesHash(t *testing.T) {
 	}
 	if se.UserID != 4 {
 		t.Fatalf("user %d", se.UserID)
+	}
+}
+
+// An id in a directory name above maxDirectoryID is no id Python handed
+// out; it neither raises the id floor (which would leave no ids, or
+// overflow) nor stops the migration. The directory stays in place and the
+// report names it.
+func TestM1IDFloorIgnoresImplausibleIDs(t *testing.T) {
+	t.Parallel()
+	dir := copyGolden(t)
+	deleted := "deleted_users/user_9223372036854775807_0123456789abcdef0123456789abcdef"
+	orphan := "users/user_2147483648"
+	writeLegacyFile(t, dir, deleted+"/profiles.json", `{"schema_version": 2}`)
+	writeLegacyFile(t, dir, orphan+"/settings.json", `{"schema_version": 2}`)
+	m := migrateM1(t, dir, golden.manifest.SecretKey.Value, M1{})
+	err := m.db.Read(t.Context(), func(tx *store.Tx) error {
+		floor, err := accounts.IDFloorTx(t.Context(), tx)
+		if err == nil && floor > maxDirectoryID {
+			t.Errorf("id floor %d", floor)
+		}
+		q, err2 := accounts.QuarantineTx(t.Context(), tx)
+		if _, ok := q[deleted]; ok {
+			t.Errorf("implausible id indexed")
+		}
+		return errors.Join(err, err2)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := map[string]string{}
+	for _, k := range m.report.KeptInPlace {
+		kept[k.Path] = k.Reason
+	}
+	if kept[deleted] != "implausible_account_id" || kept[orphan] != "user_directory_without_account" {
+		t.Errorf("kept in place %v", kept)
+	}
+	notes := strings.Join(append(m.entity(t, "E01").Notes, m.entity(t, "E33").Notes...), "\n")
+	for _, p := range []string{deleted, orphan} {
+		if !strings.Contains(notes, p) {
+			t.Errorf("report does not name %s: %s", p, notes)
+		}
 	}
 }

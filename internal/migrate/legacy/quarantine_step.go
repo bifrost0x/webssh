@@ -3,6 +3,8 @@ package legacy
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -19,7 +21,10 @@ import (
 type quarantineStep struct {
 	dirs  []quarantined
 	other []string // entries that are not named like a deleted account
-	found time.Time
+	// implausible are named like a deleted account with an id above
+	// maxDirectoryID; they stay in place without an index entry.
+	implausible []string
+	found       time.Time
 }
 
 type quarantined struct {
@@ -39,6 +44,10 @@ func (s *quarantineStep) Read(_ context.Context, src *Source) error {
 	s.found = time.Now().UTC()
 	for _, n := range names {
 		id, ok := quarantinedID(n)
+		if ok && id > maxDirectoryID {
+			s.implausible = append(s.implausible, "deleted_users/"+n)
+			continue
+		}
 		if !ok {
 			// Python never reads deleted_users/; an entry named otherwise is
 			// not an account's data and stays as it is.
@@ -49,6 +58,13 @@ func (s *quarantineStep) Read(_ context.Context, src *Source) error {
 	}
 	return nil
 }
+
+// maxDirectoryID bounds the ids taken from directory names for the id
+// floor. Python's account ids come from SQLite and stay far below it; a
+// larger number in a directory name is not an id Python handed out, and
+// raising the floor to it would leave no ids for new accounts (or
+// overflow). Such a directory stays in place and the report names it.
+const maxDirectoryID = math.MaxInt32
 
 // quarantinedID parses user_<id>_<hex32> (app/user_lifecycle.py).
 func quarantinedID(name string) (int64, bool) {
@@ -97,6 +113,10 @@ func (s *quarantineStep) Report() StepReport {
 	}
 	for _, p := range s.other {
 		r.KeptInPlace = append(r.KeptInPlace, KeptPath{Path: p, Reason: "unrecognised_entry"})
+	}
+	for _, p := range s.implausible {
+		r.KeptInPlace = append(r.KeptInPlace, KeptPath{Path: p, Reason: "implausible_account_id"})
+		r.Notes = append(r.Notes, fmt.Sprintf("%s: the id is above %d and does not raise the id floor", p, maxDirectoryID))
 	}
 	return r
 }
