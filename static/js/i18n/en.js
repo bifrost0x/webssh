@@ -798,6 +798,7 @@ window.i18n.registerLocales({
         "overviewWorkspace.chipContainersDenied": "Containers not readable",
         "overviewWorkspace.containersDeniedHint": "The SSH user may not read the Docker socket, so running containers are unknown.",
         "overviewWorkspace.profileTitle": "Host profile",
+        "overviewWorkspace.profileFor": "Host profile: {name}",
         "overviewWorkspace.profileSystem": "System",
         "overviewWorkspace.profileMachine": "Machine",
         "overviewWorkspace.profileServices": "Services",

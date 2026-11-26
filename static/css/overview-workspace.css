@@ -344,7 +344,7 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-error { margin: 8px 0 0; color: var(--od-danger); font-size: 13px; }
 .od-error[hidden] { display: none; }
 .od-attention[data-clear="true"] { border-color: var(--ws2-border); background: linear-gradient(180deg, color-mix(in srgb, var(--od-success) 6%, var(--ws2-surface)), var(--ws2-surface) 120px); }
-.od-host-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.od-host-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); align-items: start; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .od-host {
     display: flex;
     flex-direction: column;
@@ -374,12 +374,14 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 }
 .od-host-logo .host-platform-icon { width: 24px; height: 24px; font-size: 22px; }
 .od-host[data-role] .od-host-logo .host-platform-icon { color: var(--role-ink); }
-.od-host-logo:has(.od-virt) { margin-bottom: 6px; }
+/* The badge may overhang the tile by 10px on each side; the extra margin keeps 6px or more to the text. */
+.od-host-logo:has(.od-virt) { margin-bottom: 6px; margin-inline: 4px; }
 .od-virt {
     position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
     padding: 0 5px; border: 1px solid var(--ws2-border-strong, var(--ws2-border)); border-radius: 6px;
     background: var(--ws2-canvas); color: var(--ws2-text-secondary);
     font-size: 10px; font-weight: 700; letter-spacing: .02em; line-height: 14px; white-space: nowrap;
+    max-width: 64px; overflow: hidden; text-overflow: ellipsis;
 }
 .od-host-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .od-host-os { font-size: 12px; color: var(--ws2-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -392,8 +394,7 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-chip .material-icons { font-size: 14px; }
 .od-chip[data-route="jump"] { color: var(--ws2-text); border-color: color-mix(in srgb, var(--ws2-accent) 40%, var(--ws2-border)); }
 .od-chip[data-route="missing"] { color: var(--ws2-text); border-color: color-mix(in srgb, var(--od-danger) 55%, var(--ws2-border)); }
-/* Cards in a row share their height; the actions stay at the bottom edge. */
-.od-host-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: auto; }
+.od-host-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .od-state { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; font-size: 12px; color: var(--od-muted); }
 .od-state > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .od-state-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--od-state-color, var(--ws2-border-strong)); }

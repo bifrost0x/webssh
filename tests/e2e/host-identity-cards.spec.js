@@ -39,7 +39,7 @@ const card = (page, index) => page.locator(`#overviewHostList .od-host[data-host
 
 test('host cards show the role, machine, system and service logos of each host', async ({page}) => {
     await openOverview(page);
-    await seed(page, [PROXMOX, PAPERLESS, {}, {...PAPERLESS, detected_container_access: 'denied'}]);
+    await seed(page, [PROXMOX, PAPERLESS, {}, {...PAPERLESS, detected_container_access: 'denied'}, {...PROXMOX, detected_guests: 0}]);
 
     const proxmox = card(page, 0);
     await expect(proxmox).toHaveAttribute('data-role', 'hypervisor');
@@ -48,6 +48,7 @@ test('host cards show the role, machine, system and service logos of each host',
     await expect(proxmox.locator('.od-host-os')).toHaveText('Proxmox 8.2');
     await expect(proxmox.locator('.od-fact-chip[data-kind="guests"]')).toHaveText(/7 guests/);
     await expect(proxmox.locator('.od-service-chip')).toHaveCount(0);
+    await expect(card(page, 4).locator('.od-fact-chip')).toHaveCount(0);
 
     const paperless = card(page, 1);
     await expect(paperless).toHaveAttribute('data-role', 'docs');
@@ -70,6 +71,20 @@ test('host cards show the role, machine, system and service logos of each host',
     await expect(plain.locator('.od-role')).toHaveText(/Server/);
     await expect(plain.locator('.od-host-os')).toHaveCount(0);
     await expect(plain.locator('.od-virt')).toHaveCount(0);
+    await expect(plain.locator('.od-host-profile > summary')).toHaveAttribute('aria-label', 'Host profile: identity-2');
+    await expect(plain.locator('.od-host-profile > summary')).toHaveText('Host profile');
+    // Cards keep their own height: opening one profile leaves its row neighbours alone.
+    const rows = () => page.evaluate(() => ['identity-0', 'identity-1'].map(id => {
+        const rect = document.querySelector(`#overviewHostList .od-host[data-host-id="${id}"]`).getBoundingClientRect();
+        return {top: Math.round(rect.top), height: rect.height};
+    }));
+    const [, before] = await rows();
+    await proxmox.locator('.od-host-profile > summary').click();
+    await expect(proxmox.locator('.od-host-profile')).toHaveAttribute('open', '');
+    const [opened, after] = await rows();
+    expect(opened.top).toBe(after.top);
+    expect(opened.height).toBeGreaterThan(after.height + 40);
+    expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
     await plain.locator('.od-host-profile > summary').click();
     const profile = plain.locator('.od-host-profile');
     await expect(profile).toContainText('Not detected yet');
@@ -93,7 +108,8 @@ test('host cards show the role, machine, system and service logos of each host',
 
 test('the host profile explains the role and the detection, and stays open across updates', async ({page}) => {
     await openOverview(page);
-    await seed(page, [PAPERLESS, {...PROXMOX, role_override: 'backup'}, {...PAPERLESS, platform_checked_at: 1700000000}]);
+    await seed(page, [PAPERLESS, {...PROXMOX, role_override: 'backup'}, {...PAPERLESS, platform_checked_at: 1700000000},
+        {...PAPERLESS, platform_icon: 'ubuntu', detected_platform: 'debian'}]);
 
     const derived = card(page, 0);
     const summary = derived.locator('.od-host-profile > summary');
@@ -127,6 +143,14 @@ test('the host profile explains the role and the detection, and stays open acros
     await expect(manual.locator('.od-host-profile dd').nth(2)).toHaveText(/Backup.*manual/);
     await expect(manual.locator('.od-host-profile dd').nth(1)).toHaveText('Bare Metal · 7 guests');
 
+    // A chosen platform is named in the system row; detection keeps its own wording.
+    const manualPlatform = card(page, 3);
+    await expect(manualPlatform.locator('.od-host-os')).toHaveText('Ubuntu (manual choice)');
+    await manualPlatform.locator('.od-host-profile > summary').click();
+    const detection = manualPlatform.locator('.od-host-profile dd').last();
+    await expect(detection).toContainText('Detected after SSH connection');
+    await expect(detection).not.toContainText(/manual/i);
+
     const stale = card(page, 2);
     await stale.locator('.od-host-profile > summary').click();
     await expect(stale.locator('.od-host-profile')).toHaveClass(/od-stale/);
@@ -144,6 +168,7 @@ test('more than five services fold into a counter and the card fits at 360px', a
     const chips = host.locator('.od-service-chip');
     await expect(chips).toHaveCount(6);
     await expect(chips.last()).toHaveText('+19');
+    await expect(chips.last()).toHaveAttribute('aria-label', /^\+19: \S/);
     const rest = await page.evaluate(ids => HostPlatform.services({detected_services: ids}), services);
     expect((await chips.last().getAttribute('title')).split(', ')).toHaveLength(rest.length - 5);
     await expect(host.locator('.od-host-os')).toHaveText('Omarchy · Arch Linux-based');
@@ -158,6 +183,29 @@ test('more than five services fold into a counter and the card fits at 360px', a
     });
     expect(escaped).toEqual([]);
     expect(await page.locator('#connectionOverview').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+});
+
+test('the machine badge keeps clear of the host text in every language and width', async ({page}) => {
+    await openOverview(page);
+    await seed(page, ['bare-metal', 'vm', 'lxc', 'container', 'wsl'].map(virt => ({...PAPERLESS, detected_virt: virt})));
+    for (const width of [360, 768, 1440]) {
+        await page.setViewportSize({width, height: 900});
+        for (const language of ['en', 'de', 'es', 'fr', 'vi', 'zh']) {
+            await page.evaluate(language => window.i18n.setLanguage(language), language);
+            await expect(page.locator('#overviewHostList .od-virt')).toHaveCount(5);
+            await expect.poll(() => page.evaluate(() => window.i18n.getLanguage())).toBe(language);
+            const clashes = await page.locator('#overviewHostList .od-host').evaluateAll(items => items.flatMap(item => {
+                const badge = item.querySelector('.od-virt').getBoundingClientRect();
+                const bounds = item.getBoundingClientRect();
+                const texts = [...item.querySelectorAll('.od-host-copy > *')].map(element => element.getBoundingClientRect());
+                const problems = texts.filter(text => text.left - badge.right < 6).map(text => `gap ${Math.round(text.left - badge.right)}`);
+                if (badge.left < bounds.left) problems.push('outside card');
+                return problems.map(problem => `${item.querySelector('.od-virt').textContent}: ${problem}`);
+            }));
+            expect(clashes, `${language} at ${width}px`).toEqual([]);
+        }
+    }
+    await page.evaluate(() => window.i18n.setLanguage('en'));
 });
 
 test('role tints keep the card text, pill and tiles readable in every theme', async ({page}) => {

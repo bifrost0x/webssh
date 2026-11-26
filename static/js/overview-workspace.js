@@ -508,7 +508,7 @@
             } else if (platform.source === 'detected') {
                 system = [platform.label, facts.version].filter(Boolean).join(' ');
             } else if (platform.source === 'manual') {
-                system = platform.label;
+                system = `${platform.label} (${t('platform.manual', 'manual choice')})`;
             }
             const virt = facts.virt ? tw(...VIRT_LABELS[facts.virt]) : '';
             const guests = facts.guests === null ? ''
@@ -530,6 +530,7 @@
             details.open = openHostProfiles.has(host.id);
             const summary = node('summary', '', tw('profileTitle', 'Host profile'));
             summary.dataset.key = `profile:${host.id}`;
+            summary.setAttribute('aria-label', tw('profileFor', 'Host profile: {name}', {name: host.name}));
             const list = node('dl');
             const row = (label, ...values) => {
                 const value = node('dd');
@@ -543,7 +544,11 @@
             const labels = (facts?.services || []).map(id => win.HostPlatform.serviceLabels[id]);
             if (labels.length) row(tw('profileServices', 'Services'), labels.join(', '));
             row(tw('profileRole', 'Role'), t(`role.${role.id}`, role.id), roleBasis(role));
-            const source = facts ? sentence(t(`platform.${facts.platform.source}`, facts.platform.source)) : '';
+            // A chosen platform says nothing about detection; report the detection state instead.
+            const origin = facts?.platform.source === 'manual'
+                ? (facts.state === 'pending' ? 'pending' : facts.state === 'unavailable' ? 'unavailable' : 'detected')
+                : facts?.platform.source;
+            const source = origin ? sentence(t(`platform.${origin}`, origin)) : '';
             if (facts?.checkedAt) {
                 row(tw('profileDetection', 'Detection'), `${source} · ${formatDate(facts.checkedAt)}`,
                     facts.stale ? tw('profileStale', 'Older than 7 days; refreshed on the next connection')
@@ -593,9 +598,11 @@
             if (services.length > VISIBLE_SERVICES) {
                 const more = node('span', 'od-chip od-service-chip od-service-more', `+${services.length - VISIBLE_SERVICES}`);
                 more.title = labels.slice(VISIBLE_SERVICES).join(', ');
+                more.setAttribute('role', 'img');
+                more.setAttribute('aria-label', `+${services.length - VISIBLE_SERVICES}: ${more.title}`);
                 servicesRow.append(more);
             }
-            if (role.id === 'hypervisor' && identity.guests) {
+            if (role.id === 'hypervisor' && facts.guests > 0) {
                 const chip = node('span', 'od-chip od-fact-chip');
                 chip.dataset.kind = 'guests';
                 chip.append(icon('layers'), node('span', '', identity.guests));

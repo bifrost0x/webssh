@@ -793,6 +793,7 @@ window.i18n.registerLocales({
         "overviewWorkspace.chipContainersDenied": "无法读取容器",
         "overviewWorkspace.containersDeniedHint": "SSH 用户无权读取 Docker 套接字，因此无法得知正在运行的容器。",
         "overviewWorkspace.profileTitle": "主机概况",
+        "overviewWorkspace.profileFor": "主机概况：{name}",
         "overviewWorkspace.profileSystem": "系统",
         "overviewWorkspace.profileMachine": "机器",
         "overviewWorkspace.profileServices": "服务",
