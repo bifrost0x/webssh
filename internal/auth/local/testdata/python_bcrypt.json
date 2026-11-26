@@ -1,0 +1,52 @@
+[
+ {
+  "username": "cfg_admin",
+  "password": "config-admin-password-1",
+  "hash": "$2b$12$c8QNtFBbbAx6astaNz1SVe90ZgmJPNNsp8drB3w8zhtQE9MogbqQO"
+ },
+ {
+  "username": "github_linked",
+  "password": "github-linked-password-1",
+  "hash": "$2b$12$Lkw5MV9MQPZxrqSe0DcvVOdd811rbBRmhPAALDMMJWSlP3J/iVg0W"
+ },
+ {
+  "username": "golden_admin",
+  "password": "golden-admin-password-1",
+  "hash": "$2b$12$.UEM3KvXyZhya6oeilg0AOPotID4fwelmbYLc4Wchx4R/Jj9PNAoW"
+ },
+ {
+  "username": "jörg_ünïcødé",
+  "password": "legacy-unicode-password-1",
+  "hash": "$2b$12$Rl75l2T97oMTmxNEVfNvcOZsv7ZpQYTo0kUKTwZfH6PADazD6Xx.e"
+ },
+ {
+  "username": "limit_user",
+  "password": "ääääääääääääääääääääääääääääääxxxxxxxxxxxx",
+  "hash": "$2b$12$Pc3ZYY0McFvfOBDFuYPWau24APLgqOCZqJbtuJHj1fpU2DyC22sJu"
+ },
+ {
+  "username": "local_user",
+  "password": "local-user-password-1",
+  "hash": "$2b$12$tjkfw25f9jmBNSkEyW2r3esQ7GMxyaz29keCHefAL4JvYppfHiBbm"
+ },
+ {
+  "username": "locked_user",
+  "password": "locked-user-password-1",
+  "hash": "$2b$12$RGba5GbxFWfZsuxJAYrw.OV4cC5aaLJxsskwIJdiJfjP508D0tW6e"
+ },
+ {
+  "username": "oidc_user",
+  "password": "oidc-user-password-1",
+  "hash": "$2b$12$Y2b7zz122p5wumh4MYbOsejc/mev.Vs7jvmod3py6/ClmEN3iCs06"
+ },
+ {
+  "username": "passkey_user",
+  "password": "passkey-user-password-1",
+  "hash": "$2b$12$bN8isWnSL.DLkNwm4buG2.bpCh8EDu0hObruIjkm06ksjHx1q4iqa"
+ },
+ {
+  "username": "totp_user",
+  "password": "totp-user-password-1",
+  "hash": "$2b$12$1MN5UzQy24yLT4vtgIx9yuasy5FV9ZNliC6WU4GjogctHjrv68FiW"
+ }
+]
