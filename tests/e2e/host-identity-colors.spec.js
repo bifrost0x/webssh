@@ -70,20 +70,17 @@ test('every role keeps its accent and pill text readable on every theme surface'
         expect(new Set(results.map(result => result.accentColor)).size).toBe(17);
     }
     await page.emulateMedia({forcedColors: 'active'});
-    const forced = await page.evaluate(() => {
+    // Forced colours repaint text on their own; the custom properties prove the
+    // block exists, so tiles and borders built from --role follow the system too.
+    const forced = await page.evaluate(() => HostIdentity.ROLES.map(role => {
         document.body.dataset.theme = 'paper';
-        const pill = document.createElement('span');
-        pill.className = 'host-role-pill';
-        pill.dataset.role = 'hypervisor';
-        pill.textContent = 'hypervisor';
-        const accent = document.createElement('span');
-        accent.dataset.role = 'hypervisor';
-        accent.style.color = 'var(--role)';
-        const reference = document.createElement('span');
-        reference.style.color = 'CanvasText';
-        document.body.append(pill, accent, reference);
-        return [getComputedStyle(pill).color, getComputedStyle(accent).color, getComputedStyle(reference).color];
-    });
-    expect(forced[0]).toBe(forced[2]);
-    expect(forced[1]).toBe(forced[2]);
+        const element = document.createElement('span');
+        element.dataset.role = role;
+        document.body.append(element);
+        const style = getComputedStyle(element);
+        const values = [style.getPropertyValue('--role').trim(), style.getPropertyValue('--role-ink').trim()];
+        element.remove();
+        return {role, values};
+    }));
+    for (const {role, values} of forced) expect(values, role).toEqual(['CanvasText', 'CanvasText']);
 });

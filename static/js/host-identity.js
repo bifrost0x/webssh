@@ -1,9 +1,9 @@
 (function(root, factory) {
-    const platform = typeof module === 'object' && module.exports
+    const platform = typeof module !== 'undefined' && module.exports
         ? require('./host-platform.js')
         : root.HostPlatform;
     const api = factory(platform);
-    if (typeof module === 'object' && module.exports) module.exports = api;
+    if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (root) root.HostIdentity = api;
 })(typeof window !== 'undefined' ? window : globalThis, function(HostPlatform) {
     'use strict';
@@ -17,7 +17,8 @@
     });
     const DATABASE = ['mariadb', 'postgresql', 'redis', 'mongodb', 'influxdb'];
     const WEB = ['nginx', 'apache', 'caddy', 'traefik', 'nginxproxymanager', 'haproxy'];
-    const CONTAINER = ['docker', 'podman', 'portainer', 'k3s'];
+    // Runtimes first, then the tools that only manage or watch their containers.
+    const CONTAINER = ['docker', 'podman', 'portainer', 'k3s', 'watchtower', 'dozzle'];
     const rule = (role, platforms, services, only = null) => Object.freeze({
         role, platforms: Object.freeze(platforms), services: Object.freeze(services), only: only && Object.freeze(only),
     });
@@ -40,7 +41,7 @@
         rule('passwords', [], ['vaultwarden']),
         rule('database', [], DATABASE, [...DATABASE, ...WEB, ...CONTAINER]),
         rule('web', [], WEB, [...WEB, ...CONTAINER]),
-        rule('container', [], CONTAINER, CONTAINER),
+        rule('container', ['docker'], CONTAINER, CONTAINER),
     ]);
     // Services that name a role, in rule order; shown before everything else.
     const PRIORITY = Object.freeze(RULES.filter(item => !item.only).flatMap(item => item.services)

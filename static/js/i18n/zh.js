@@ -364,7 +364,7 @@ window.i18n.registerLocales({
         'role.docs': '文档',
         'role.photos': '照片',
         'role.media': '媒体',
-        'role.cloud': '云',
+        'role.cloud': '私有云',
         'role.smarthome': '智能家居',
         'role.network': '网络',
         'role.monitoring': '监控',

@@ -359,7 +359,7 @@ window.i18n.registerLocales({
         'platform.unlisted': 'detección realizada; plataforma no reconocida',
         'platform.server': 'Servidor',
         'role.hypervisor': 'Hipervisor',
-        'role.backup': 'Copias de seguridad',
+        'role.backup': 'Copias',
         'role.storage': 'Almacenamiento',
         'role.container': 'Contenedores',
         'role.docs': 'Documentos',

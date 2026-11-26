@@ -38,6 +38,13 @@ test('rules apply in their documented order', () => {
     assert.deepEqual(derived({detected_services: ['nginx', 'docker', 'redis', 'influxdb']}), {id: 'database', source: 'derived', basis: 'redis'});
     assert.deepEqual(derived({detected_services: ['docker', 'traefik', 'nginxproxymanager']}), {id: 'web', source: 'derived', basis: 'traefik'});
     assert.deepEqual(derived({detected_services: ['k3s']}), {id: 'container', source: 'derived', basis: 'k3s'});
+    assert.deepEqual(derived({detected_services: ['watchtower', 'docker']}), {id: 'container', source: 'derived', basis: 'docker'});
+    assert.deepEqual(derived({detected_services: ['dozzle']}), {id: 'container', source: 'derived', basis: 'dozzle'});
+    assert.deepEqual(derived({detected_platform: 'docker'}), {id: 'container', source: 'derived', basis: 'docker'});
+    assert.deepEqual(derived({platform_icon: 'docker'}), {id: 'container', source: 'derived', basis: 'docker'});
+    assert.deepEqual(derived({detected_services: ['docker', 'watchtower', 'paperless']}), {id: 'docs', source: 'derived', basis: 'paperless'});
+    assert.deepEqual(derived({detected_platform: 'docker', detected_services: ['paperless']}), {id: 'docs', source: 'derived', basis: 'paperless'});
+    assert.deepEqual(derived({detected_services: ['postgresql', 'watchtower']}), {id: 'database', source: 'derived', basis: 'postgresql'});
     assert.deepEqual(derived({detected_services: ['docker'], detected_graphical: true}), {id: 'container', source: 'derived', basis: 'docker'});
     assert.deepEqual(derived({detected_graphical: true}), {id: 'workstation', source: 'derived', basis: null});
     assert.deepEqual(derived({detected_graphical: 'true'}), {id: 'server', source: 'default', basis: null});
