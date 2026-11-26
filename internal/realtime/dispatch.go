@@ -125,6 +125,10 @@ func (s *Server) invoke(ep endpoint, env protocol.Envelope, route protocol.Route
 			return
 		}
 	}
+	if ep.Context().Err() != nil {
+		// Closed or revoked since the frame was read.
+		return
+	}
 	resp, err := s.run(ctx, ep, env, route)
 	if route.Spec.Mutates && s.deps.Auditor != nil {
 		s.deps.Auditor.RealtimeCall(context.WithoutCancel(ctx), p, env.T, err)

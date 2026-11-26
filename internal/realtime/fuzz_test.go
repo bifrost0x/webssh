@@ -29,7 +29,7 @@ func FuzzOriginCheck(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, originHeader, host string, ignoreScheme bool) {
 		p := OriginPolicy{IgnoreScheme: ignoreScheme}
-		if err := p.Compile(); err != nil {
+		if _, err := p.Compile(); err != nil {
 			t.Fatal(err)
 		}
 		r := httptest.NewRequest(http.MethodGet, "/ws", nil)

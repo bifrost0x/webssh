@@ -32,7 +32,9 @@ type fakeSessions struct {
 	checks  int
 	// onCheck, when set, runs at the start of every Check.
 	onCheck func(principal.Principal)
-	feed    principaltest.Revocations
+	// onAuth, when set, runs at the start of every Authenticate.
+	onAuth func()
+	feed   principaltest.Revocations
 }
 
 func newFakeSessions() *fakeSessions {
@@ -55,6 +57,12 @@ func (f *fakeSessions) set(tok string, p principal.Principal) {
 }
 
 func (f *fakeSessions) Authenticate(_ context.Context, token string) (principal.Principal, error) {
+	f.mu.Lock()
+	hook := f.onAuth
+	f.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	p, ok := f.tokens[token]

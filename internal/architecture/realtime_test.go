@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -24,9 +25,11 @@ const websocketAcceptFile = "internal/realtime/server.go"
 var guardedWebsocketFields = []string{"InsecureSkipVerify", "CompressionMode", "OriginPatterns"}
 
 // websocketViolations reports uses of the guarded fields outside the
-// accept file, in a file that imports the library. Test files are
-// included: a test that switches the origin check off elsewhere would
-// test another configuration than the one that runs.
+// accept file, in a file that imports the library or belongs to
+// internal/realtime (which can change the options acceptOptions returns
+// without importing the library). Test files are included: a test that
+// switches the origin check off elsewhere would test another
+// configuration than the one that runs.
 func websocketViolations(rel string, src []byte) ([]string, error) {
 	f, err := parser.ParseFile(token.NewFileSet(), rel, src, parser.SkipObjectResolution)
 	if err != nil {
@@ -37,6 +40,9 @@ func websocketViolations(rel string, src []byte) ([]string, error) {
 		if p, err := strconv.Unquote(spec.Path.Value); err == nil && p == websocketModule {
 			imported = true
 		}
+	}
+	if path.Dir(rel) == path.Dir(websocketAcceptFile) {
+		imported = true
 	}
 	if !imported || rel == websocketAcceptFile {
 		return nil, nil
@@ -121,6 +127,8 @@ var o = websocket.AcceptOptions{InsecureSkipVerify: true}`, 1},
 		{"field assignment", "internal/realtime/x_test.go", `package realtime
 import ws "github.com/coder/websocket"
 func f(o *ws.AcceptOptions) { o.CompressionMode = ws.CompressionContextTakeover; o.OriginPatterns = nil }`, 2},
+		{"options changed without the import", "internal/realtime/hello.go", `package realtime
+func f() { o := acceptOptions(nil); o.OriginPatterns = []string{"*"} }`, 1},
 		{"tls config elsewhere", "internal/auth/ldap/dial.go", `package ldap
 import "crypto/tls"
 var c = tls.Config{InsecureSkipVerify: false}`, 0},

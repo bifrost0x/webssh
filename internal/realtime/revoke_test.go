@@ -154,7 +154,9 @@ func TestRevocationDuringUpgrade(t *testing.T) {
 					return
 				}
 				if publish {
-					e.sessions.revoke(p.UserID, p.SessionID, principal.ReasonLogout)
+					// Delivered to the registered connection while Check
+					// still says valid: only the registration catches it.
+					e.sessions.feed.Revoke(principal.Revocation{SessionID: p.SessionID, UserID: p.UserID, Reason: principal.ReasonLogout})
 				} else {
 					e.sessions.markRevoked(p.SessionID)
 				}

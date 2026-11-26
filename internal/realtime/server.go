@@ -122,7 +122,10 @@ type Restorer interface {
 
 // BinaryHandler receives every binary frame of a connection. It runs on
 // the read loop and must not block; a returned error closes the
-// connection with protocol.CloseProtocolViolation.
+// connection with protocol.CloseProtocolViolation. The read loop drops
+// frames once the connection began to close; a frame read just before a
+// revocation can still arrive, so a handler that forwards input checks
+// peer.Context() where it hands the bytes on (condition K6).
 type BinaryHandler func(peer protocol.Peer, frame []byte) error
 
 // Server is the http.Handler of GET /ws.
@@ -136,13 +139,18 @@ type Server struct {
 	restorer Restorer
 	onClose  []func(protocol.Peer)
 	frozen   atomic.Bool
+	freezing sync.Once
 
-	readLimit   int64
-	cap         *capacity
-	rejectSlots chan struct{}
-	sessions    *sessionIndex
-	unsubscribe func()
+	readLimit       int64
+	cap             *capacity
+	rejectSlots     chan struct{}
+	sessions        *sessionIndex
+	unsubscribe     func()
+	unsubscribeOnce sync.Once
 
+	// mu orders admissions against Shutdown, so that no connection
+	// joins conns after Shutdown started waiting.
+	mu       sync.Mutex
 	shutdown atomic.Bool
 	conns    sync.WaitGroup
 
@@ -155,7 +163,8 @@ func NewServer(cfg Config, deps Deps) (*Server, error) {
 	if deps.Origin == nil || deps.Sessions == nil || deps.Revocations == nil || deps.Log == nil {
 		return nil, errors.New("realtime: origin policy, sessions, revocations and logger are required")
 	}
-	if err := deps.Origin.Compile(); err != nil {
+	ignored, err := deps.Origin.Compile()
+	if err != nil {
 		return nil, err
 	}
 	cfg.defaults()
@@ -171,6 +180,9 @@ func NewServer(cfg Config, deps Deps) (*Server, error) {
 		s.log.Warn("realtime connections accept any origin (SOCKETIO_ALLOW_ANY_ORIGIN); use it only for a front end served from another origin")
 	case deps.Origin.IgnoreScheme:
 		s.log.Warn("realtime connections compare the origin without its scheme, as kept from the previous release; configure trusted proxies to restore the full check")
+	}
+	for _, o := range ignored {
+		s.log.Warn("CORS_ORIGINS entry is not an origin and never matches; it is ignored", "entry", truncate(o, 200))
 	}
 	s.Mount(s.keepaliveRoute())
 	s.unsubscribe = deps.Revocations.Subscribe(s.revoke)
@@ -204,11 +216,13 @@ func (s *Server) mustNotServe() {
 	}
 }
 
+// freeze fixes the registrations and the read limit before the first
+// upgrade; concurrent first requests wait until it is done.
 func (s *Server) freeze() {
-	if s.frozen.Swap(true) {
-		return
-	}
-	s.readLimit = max(s.cfg.ReadLimit, int64(s.reg.maxPayload)+envelopeOverhead)
+	s.freezing.Do(func() {
+		s.readLimit = max(s.cfg.ReadLimit, int64(s.reg.maxPayload)+envelopeOverhead)
+		s.frozen.Store(true)
+	})
 }
 
 // ServeHTTP checks origin, session and capacity, in this order, and then
@@ -249,7 +263,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.conns.Add(1)
+	if !s.admit() {
+		closeBounded(ws, raw, protocol.CloseMaintenance, "the server is shutting down")
+		return
+	}
 	defer s.conns.Done()
 	newConn(s, ws, raw, p).run(r.Context())
 }
@@ -302,30 +319,6 @@ func (s *Server) accept(w http.ResponseWriter, r *http.Request) (*websocket.Conn
 	return ws, raw, true
 }
 
-// refuseOverLimit tells the page why it gets no connection. Python
-// refused at the handshake and the browser only saw a transport error
-// (baseline). Here the upgrade is accepted and closed at once with 1013
-// "try again later" and a readable reason; the number of such short-lived
-// connections is bounded by RejectSlots, beyond which plain 503 is sent.
-func (s *Server) refuseOverLimit(w http.ResponseWriter, r *http.Request, hit limitHit) {
-	reason := s.cap.limitReason(hit)
-	s.log.Warn("realtime connection refused at the connection limit", "per_user", hit == limitUser)
-	select {
-	case s.rejectSlots <- struct{}{}:
-		defer func() { <-s.rejectSlots }()
-	default:
-		w.Header().Set("Retry-After", "5")
-		http.Error(w, reason, http.StatusServiceUnavailable)
-		return
-	}
-	ws, raw, err := upgrade(w, r, nil)
-	if err != nil {
-		return
-	}
-	ws.SetReadLimit(1024)
-	closeBounded(ws, raw, websocket.StatusTryAgainLater, reason)
-}
-
 func (s *Server) logOriginRefusal(r *http.Request, err error) {
 	now := time.Now().Unix()
 	last := s.lastOriginLog.Load()
@@ -336,13 +329,26 @@ func (s *Server) logOriginRefusal(r *http.Request, err error) {
 		"origin", truncate(r.Header.Get("Origin"), 200), "host", truncate(r.Host, 200))
 }
 
-// Shutdown refuses new upgrades, ends the revocation subscription and
-// closes every connection with protocol.CloseMaintenance. It waits until
-// all connections have finished or ctx ends.
-func (s *Server) Shutdown(ctx context.Context) error {
-	if !s.shutdown.Swap(true) {
-		s.unsubscribe()
+// admit counts an upgraded connection unless Shutdown has begun.
+func (s *Server) admit() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.shutdown.Load() {
+		return false
 	}
+	s.conns.Add(1)
+	return true
+}
+
+// Shutdown refuses new upgrades and closes every connection with
+// protocol.CloseMaintenance. A connection admitted but not yet registered
+// sees the flag after its registration and closes itself (Conn.run). It
+// waits until all connections have finished or ctx ends, and ends the
+// revocation subscription once they have.
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.mu.Lock()
+	s.shutdown.Store(true)
+	s.mu.Unlock()
 	for _, c := range s.sessions.all() {
 		c.closeWith(protocol.CloseMaintenance, "the server is shutting down")
 	}
@@ -353,6 +359,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}()
 	select {
 	case <-done:
+		s.unsubscribeOnce.Do(s.unsubscribe)
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

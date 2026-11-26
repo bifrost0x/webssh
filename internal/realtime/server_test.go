@@ -22,7 +22,7 @@ func TestNewServerRequiresDeps(t *testing.T) {
 		"sessions":    {Origin: &OriginPolicy{}, Revocations: &s.feed, Log: discardLog()},
 		"revocations": {Origin: &OriginPolicy{}, Sessions: s, Log: discardLog()},
 		"log":         {Origin: &OriginPolicy{}, Sessions: s, Revocations: &s.feed},
-		"bad origin":  {Origin: &OriginPolicy{Allowed: []string{"*"}}, Sessions: s, Revocations: &s.feed, Log: discardLog()},
+		"star origin": {Origin: &OriginPolicy{Allowed: []string{"*"}}, Sessions: s, Revocations: &s.feed, Log: discardLog()},
 	} {
 		if _, err := NewServer(Config{}, d); err == nil {
 			t.Errorf("%s: NewServer accepted incomplete deps", name)
@@ -180,6 +180,20 @@ func TestConnectionLimitHasReadableReason(t *testing.T) {
 		}
 		e.open(2, "d") // another user is not affected
 	})
+	t.Run("refusal echoes the subprotocol browsers require", func(t *testing.T) {
+		e := newEnv(t, Config{MaxConnsPerUser: 1}, nil)
+		e.open(1, "a")
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		ws, _, err := e.dial(ctx, e.ts.URL, e.sessions.token(1, "b"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ws.CloseNow()
+		if ws.Subprotocol() != "webssh.v1" {
+			t.Fatalf("subprotocol %q", ws.Subprotocol())
+		}
+	})
 	t.Run("server", func(t *testing.T) {
 		e := newEnv(t, Config{MaxConnsPerUser: 5, MaxConns: 2}, nil)
 		e.open(1, "a")
@@ -295,6 +309,49 @@ func TestShutdownClosesWithMaintenance(t *testing.T) {
 	if _, resp, err := e.dial(ctx, e.ts.URL, e.sessions.token(2, "s2")); err == nil || resp == nil || resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("after shutdown: %v %v", err, resp)
 	}
+}
+
+// An upgrade that was past the shutdown check when Shutdown began is
+// closed too, and Shutdown waits for it.
+func TestShutdownCatchesUpgradeInFlight(t *testing.T) {
+	e := newEnv(t, Config{}, nil)
+	inAuth, release := make(chan struct{}), make(chan struct{})
+	e.sessions.mu.Lock()
+	e.sessions.onAuth = func() {
+		close(inAuth)
+		<-release
+	}
+	e.sessions.mu.Unlock()
+	codes := make(chan websocket.StatusCode, 1)
+	tok := e.sessions.token(1, "s1")
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		ws, _, err := e.dial(ctx, e.ts.URL, tok)
+		if err != nil {
+			codes <- -1
+			return
+		}
+		defer ws.CloseNow()
+		_, _, err = ws.Read(ctx)
+		codes <- websocket.CloseStatus(err)
+	}()
+	<-inAuth
+	done := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		done <- e.srv.Shutdown(ctx)
+	}()
+	waitFor(t, e.srv.shutdown.Load)
+	close(release)
+	if code := <-codes; code != protocol.CloseMaintenance {
+		t.Fatalf("close %d", code)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return e.srv.Stats().Conns == 0 })
 }
 
 func TestLegacySocketIOGone(t *testing.T) {

@@ -1,8 +1,13 @@
 package realtime
 
 import (
+	"net/http"
 	"strconv"
 	"sync"
+
+	"github.com/coder/websocket"
+
+	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 )
 
 // capacity bounds open connections in total and per user. It is a plain
@@ -69,4 +74,34 @@ func (c *capacity) limitReason(hit limitHit) string {
 	}
 	return "connection_limit_server: the server has reached its limit of " + strconv.Itoa(c.max) +
 		" realtime connections; try again later"
+}
+
+// refuseOverLimit tells the page why it gets no connection. Python
+// refused at the handshake and the browser only saw a transport error
+// (baseline). Here the upgrade is accepted and closed at once with 1013
+// "try again later" and a readable reason; the number of such short-lived
+// connections is bounded by RejectSlots, beyond which plain 503 is sent.
+func (s *Server) refuseOverLimit(w http.ResponseWriter, r *http.Request, hit limitHit) {
+	reason := s.cap.limitReason(hit)
+	s.log.Warn("realtime connection refused at the connection limit", "per_user", hit == limitUser)
+	select {
+	case s.rejectSlots <- struct{}{}:
+		defer func() { <-s.rejectSlots }()
+	default:
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, reason, http.StatusServiceUnavailable)
+		return
+	}
+	// Browsers fail a handshake that does not echo an offered
+	// subprotocol, and the page would see 1006 instead of the reason.
+	var offer []string
+	if v := pickVersion(r); v > 0 {
+		offer = []string{protocol.Subprotocol(v)}
+	}
+	ws, raw, err := upgrade(w, r, offer)
+	if err != nil {
+		return
+	}
+	ws.SetReadLimit(1024)
+	closeBounded(ws, raw, websocket.StatusTryAgainLater, reason)
 }

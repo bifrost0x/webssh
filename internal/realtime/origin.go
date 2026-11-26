@@ -2,7 +2,6 @@ package realtime
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -76,9 +75,12 @@ func KeepLegacySchemeRule(corsWildcard, allowAnyOrigin bool, trustedProxies int,
 	return corsWildcard && !allowAnyOrigin && trustedProxies == 0 && len(trustedProxyCIDRs) == 0
 }
 
-// Compile validates the allowlist once at start, so that a typo fails the
-// start instead of silently refusing every browser.
-func (p *OriginPolicy) Compile() error {
+// Compile prepares the allowlist once at start. "*" is an error: it is a
+// configuration mistake of the caller. Entries that are not origins (a
+// path, a trailing slash, no scheme) never matched in the Python release,
+// which compared the exact string; they are returned as ignored, so that
+// the start logs them instead of failing an upgraded installation.
+func (p *OriginPolicy) Compile() (ignored []string, err error) {
 	allowed := make(map[origin]struct{}, len(p.Allowed))
 	for _, raw := range p.Allowed {
 		raw = strings.TrimSpace(raw)
@@ -86,16 +88,17 @@ func (p *OriginPolicy) Compile() error {
 			continue
 		}
 		if raw == "*" {
-			return errors.New("realtime: '*' is not an origin; CORS_ORIGINS=* means the same-origin rule")
+			return nil, errors.New("realtime: '*' is not an origin; CORS_ORIGINS=* means the same-origin rule")
 		}
 		o, err := parseOrigin(raw)
 		if err != nil {
-			return fmt.Errorf("realtime: allowed origin %q: %w", raw, err)
+			ignored = append(ignored, raw)
+			continue
 		}
 		allowed[o] = struct{}{}
 	}
 	p.allowed = allowed
-	return nil
+	return ignored, nil
 }
 
 // Check accepts or refuses an upgrade request. Without Compile only the

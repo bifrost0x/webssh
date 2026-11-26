@@ -75,7 +75,7 @@ func TestOriginPolicy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := tt.policy
-			if err := p.Compile(); err != nil {
+			if _, err := p.Compile(); err != nil {
 				t.Fatal(err)
 			}
 			r := httptest.NewRequest(http.MethodGet, "/ws", nil)
@@ -93,19 +93,25 @@ func TestOriginPolicy(t *testing.T) {
 	}
 }
 
-func TestOriginPolicyCompileRejects(t *testing.T) {
-	for _, bad := range []string{"*", "ssh.example.com", "ftp://x", "https://x/path", "https://u@x", "https://x:99999", "null"} {
-		p := OriginPolicy{Allowed: []string{bad}}
-		if err := p.Compile(); err == nil {
-			t.Errorf("Compile accepted %q", bad)
-		}
+func TestOriginPolicyCompile(t *testing.T) {
+	if _, err := (&OriginPolicy{Allowed: []string{"https://a.example", "*"}}).Compile(); err == nil {
+		t.Fatal("Compile accepted '*'")
 	}
-	p := OriginPolicy{Allowed: []string{" https://a.example ", "", "https://B.example:443"}}
-	if err := p.Compile(); err != nil {
+	bad := []string{"ssh.example.com", "ftp://x", "https://x/path", "https://x/", "https://u@x", "https://x:99999", "null"}
+	p := OriginPolicy{Allowed: append([]string{" https://a.example ", "", "https://B.example:443"}, bad...)}
+	ignored, err := p.Compile()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p.allowed) != 2 {
-		t.Fatalf("allowed = %v", p.allowed)
+	if len(p.allowed) != 2 || len(ignored) != len(bad) {
+		t.Fatalf("allowed %v, ignored %v", p.allowed, ignored)
+	}
+	// An ignored entry never matches, as in Python.
+	r := httptest.NewRequest(http.MethodGet, "/ws", nil)
+	r.Host = "10.0.0.2"
+	r.Header.Set("Origin", "https://x")
+	if err := p.Check(r); !errors.Is(err, ErrOriginDenied) {
+		t.Fatalf("Check = %v", err)
 	}
 }
 
