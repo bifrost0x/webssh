@@ -11,7 +11,7 @@ test('account can switch classic overview and dashboard without losing layout',a
  await page.goto('/settings#preferences');await page.locator('#settingsOverviewLayout').selectOption('classic');
  await expect(page.locator('#settingsOverviewLayout')).toHaveAttribute('data-saved','classic');
  await page.goto('/');await page.waitForFunction(()=>ProfileManager.profilesLoaded);await installSshConnectTrap(page);
- await expect(page.locator('#overviewQuickConnect')).toBeVisible();await expect(page.locator('#connectionOverview[data-overview-workspace]')).toHaveCount(0);await expect(page.locator('#overviewSearch')).toHaveCount(0);
+ await expect(page.locator('#overviewQuickConnect')).toBeVisible();await expect(page.locator('#connectionOverview[data-overview-workspace]')).toHaveCount(0);await expect(page.locator('#overviewSearch')).toHaveCount(0);await expect(page.locator('.shell-grouping')).toHaveCount(0);
  expect(await page.locator('.global-navigation').evaluate(e=>getComputedStyle(e).flexDirection)).toBe(navDirection);
  await expect(page.locator('#overviewHostCount')).not.toHaveText('—');
  await page.locator('#overviewGraphBtn').click();await expect(page.locator('#overviewGraphBtn')).toHaveAttribute('aria-pressed','true');

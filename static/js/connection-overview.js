@@ -201,9 +201,9 @@
                     });
                     container.append(details);
                 };
-                if (grouping === 'role') {
+                if (grouping === 'role' && win.HostIdentity) {
                     const Identity = win.HostIdentity;
-                    groupByRole(hosts.filter(host => !favoritesOnly || host.favorite), Identity?.ROLES || []).forEach(([id, items]) => {
+                    groupByRole(hosts.filter(host => !favoritesOnly || host.favorite), Identity.ROLES).forEach(([id, items]) => {
                         const label = t(`role.${id}`, id);
                         section(id, collapsed.role, items, [icon(Identity.ROLE_GLYPHS[id] || 'dns'), node('span', '', label)], {role: id});
                     });
@@ -241,9 +241,10 @@
                 option.addEventListener('click', () => setGrouping(option.dataset.grouping));
                 option.addEventListener('keydown', event => {
                     const step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[event.key];
-                    if (step === undefined) return;
+                    if (step === undefined && event.key !== 'Home' && event.key !== 'End') return;
                     event.preventDefault();
-                    const next = options[(options.indexOf(option) + step + options.length) % options.length];
+                    const next = event.key === 'Home' ? options[0] : event.key === 'End' ? options[options.length - 1]
+                        : options[(options.indexOf(option) + step + options.length) % options.length];
                     setGrouping(next.dataset.grouping, true);
                 });
             });

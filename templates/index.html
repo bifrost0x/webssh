@@ -219,10 +219,12 @@
     <aside id="shellHostAccess" class="shell-groups" aria-labelledby="shellGroupsTitle">
         <div class="shell-groups-heading">
             <span id="shellGroupsTitle" data-i18n="profiles.savedConnections">Saved Connections</span>
+            {% if overview_layout != 'classic' %}
             <div class="shell-grouping" role="radiogroup" aria-label="Group hosts by" data-i18n-aria-label="profiles.groupBy">
                 <button type="button" role="radio" aria-checked="true" tabindex="0" data-grouping="group" data-i18n="profiles.groupByGroup">Group</button>
                 <button type="button" role="radio" aria-checked="false" tabindex="-1" data-grouping="role" data-i18n="profiles.groupByRole">Role</button>
             </div>
+            {% endif %}
         </div>
         <div id="shellGroups"></div>
     </aside>

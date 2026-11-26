@@ -46,14 +46,9 @@ body.webssh-shell {
 .shell-host-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shell-host[data-role] { border-left-color: var(--role); }
 .shell-host-group[data-role] > summary > .material-icons:not(:first-child) { color: var(--role-ink); }
-/* Never narrower than its tiles: the fit routine hides whole tiles instead. */
-.shell-host-services { --service-icon-size: 12px; display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; }
-.shell-host-services[hidden], .shell-host-service[hidden] { display: none; }
-.shell-host-service { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 4px; background: color-mix(in srgb, var(--role, currentColor) 18%, transparent); color: var(--role-ink, currentColor); }
 @media (forced-colors: active) {
     .shell-grouping button[aria-checked="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
     .shell-host[data-role] { border-left-color: CanvasText; }
-    .shell-host-service { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
 }
 .shell-host .material-icons { flex-shrink: 0; font-size: 14px; color: var(--ws2-text-muted); }
 .shell-host:hover { background: var(--overview-tint); color: var(--ws2-text); }

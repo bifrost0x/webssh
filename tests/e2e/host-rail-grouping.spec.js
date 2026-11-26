@@ -76,6 +76,12 @@ test('arrow keys move through the radio group and the favourites filter applies 
     await expect(group).toHaveAttribute('aria-checked', 'true');
     await page.keyboard.press('ArrowLeft');
     await expect(role).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(group).toBeFocused();
+    await expect(group).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('End');
+    await expect(role).toBeFocused();
+    await expect(role).toHaveAttribute('aria-checked', 'true');
 
     await page.evaluate(() => { document.body.dataset.hostAccessFilter = 'favorites'; window.dispatchEvent(new Event('host-access-change')); });
     expect(await headings(page)).toEqual(['Hypervisor', 'Monitoring']);
@@ -100,32 +106,21 @@ test('collapsing a heading in one mode leaves the other mode open', async ({page
 test('rows show at most four service logos and drop them before cutting a name', async ({page}) => {
     await openRail(page);
     const crowded = page.locator('#shellGroups .shell-host[aria-label="plain"]');
-    const tiles = crowded.locator('.shell-host-service:visible');
-    expect(await tiles.count()).toBeLessThanOrEqual(4);
+    // Six services are known; the row builds the first four only.
+    await expect(crowded.locator('.shell-host-service')).toHaveCount(4);
     const long = page.locator('#shellGroups .shell-host[aria-label^="a-rather-long"]');
     const logos = await long.evaluate(row => row.querySelectorAll('.shell-host-service:not([hidden])').length);
     // The name alone is wider than the rail: logos may not take any of its room.
     expect(logos).toBe(0);
 });
 
-test('names are text only and the rail does not overflow on a narrow screen', async ({page}) => {
+test('names are text only, the page does not overflow at 360 px and the rail stays hidden there', async ({page}) => {
     await page.setViewportSize({width: 360, height: 740});
     await page.evaluate(items => {
         ProfileManager.setProfiles([...items, {id: 'x', name: '<img src=x onerror=window.__pwn=1>', group: '<b>g</b>', host: 'x.example.invalid', port: 22, username: 'demo', auth_type: 'password'}]);
         SessionManager.createSession({session_id: 'rail-test', host: 'fixture.example.invalid', username: 'demo', port: 22});
     }, profiles);
-    if (await page.locator('#toggleHostRail').isVisible()) await page.locator('#toggleHostRail').click();
-    const heading = page.locator('.shell-groups-heading');
-    if (await heading.isVisible()) {
-        const box = await page.locator('#shellHostAccess').evaluate(rail => ({scroll: rail.scrollWidth, client: rail.clientWidth}));
-        expect(box.scroll).toBeLessThanOrEqual(box.client);
-        const inside = await page.locator('.shell-grouping').evaluate(item => {
-            const rail = item.closest('#shellHostAccess').getBoundingClientRect();
-            const rect = item.getBoundingClientRect();
-            return rect.left >= rail.left && rect.right <= rail.right;
-        });
-        expect(inside).toBe(true);
-    }
+    await expect(page.locator('#shellHostAccess')).toBeHidden();
     expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

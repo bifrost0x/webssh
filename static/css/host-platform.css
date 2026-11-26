@@ -83,8 +83,9 @@ body[data-theme="paper"] .host-platform-icon { color: var(--platform-ink-light, 
     top: 2px;
     box-shadow: 0 0 8px color-mix(in srgb, var(--role) 60%, transparent);
 }
-/* Never narrower than its tiles: fitSessionTab hides whole tiles instead. */
-.tab-services {
+/* Never narrower than its tiles: the fit routine hides whole tiles instead. */
+.tab-services,
+.shell-host-services {
     --service-icon-size: 12px;
     display: inline-flex;
     flex: 0 0 auto;
@@ -92,8 +93,11 @@ body[data-theme="paper"] .host-platform-icon { color: var(--platform-ink-light, 
     gap: 3px;
 }
 .tab-services[hidden],
-.tab-service[hidden] { display: none; }
-.tab-service {
+.tab-service[hidden],
+.shell-host-services[hidden],
+.shell-host-service[hidden] { display: none; }
+.tab-service,
+.shell-host-service {
     display: inline-flex;
     flex: 0 0 auto;
     align-items: center;
@@ -109,5 +113,6 @@ body[data-theme="paper"] .host-platform-icon { color: var(--platform-ink-light, 
     body[data-theme] .host-platform-icon { color: CanvasText; forced-color-adjust: none; }
     body[data-theme] .host-service-icon { color: CanvasText; forced-color-adjust: none; }
     .session-tab[data-role]::after { background: CanvasText; box-shadow: none; }
-    .tab-service { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+    .tab-service,
+    .shell-host-service { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
 }
