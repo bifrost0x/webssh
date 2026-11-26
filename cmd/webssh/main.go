@@ -21,6 +21,11 @@ Commands:
   help      show this help
 `
 
+// e2eCommand runs the backend of the end-to-end suite. It is set only in
+// the build with the tag "e2e" (e2e.go); the release binary has no such
+// command.
+var e2eCommand func(args []string, stdout, stderr io.Writer) int
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -37,6 +42,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return usageError(stderr, "version takes no arguments")
 		}
 		return write(stdout, buildinfo.Read().String()+"\n")
+	case "e2e":
+		if e2eCommand == nil {
+			return usageError(stderr, fmt.Sprintf("unknown command %q", command))
+		}
+		return e2eCommand(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		return write(stdout, usage)
 	default:
