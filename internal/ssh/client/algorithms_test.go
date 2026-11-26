@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"slices"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
@@ -155,13 +156,16 @@ func TestDialerUsesNetworkPolicy(t *testing.T) {
 	node, err := netpolicy.New(netpolicy.Config{Logger: quiet, Tailnet: netpolicy.Tailnet{
 		Interface: "tailscale0", InterfacePresent: func(string) bool { return true },
 		Lookup: func(_ context.Context, addr netip.Addr) (netpolicy.Route, error) {
-			return netpolicy.Route{Interface: "lo", Local: addr.IsLoopback()}, nil
+			if addr.IsLoopback() {
+				return netpolicy.Route{Interface: "lo", Local: true}, nil
+			}
+			return netpolicy.Route{Interface: "eth0"}, nil
 		},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	d = &Dialer{Net: node, HostKeys: trusting(s), Keepalive: -1}
+	d = &Dialer{Net: node, HostKeys: trusting(s), Keepalive: -1, HandshakeTimeout: 300 * time.Millisecond}
 	c, err := d.Dial(t.Context(), target(s, "u", Auth{Password: "pw"}), nil)
 	if err != nil {
 		t.Fatalf("loopback target on a tailnet node: %v", err)
@@ -172,6 +176,16 @@ func TestDialerUsesNetworkPolicy(t *testing.T) {
 	_, err = d.Dial(t.Context(), viaJump, nil)
 	if role, _ := hopOf(t, err); role != RoleJump || !errors.Is(err, netpolicy.ErrTailnetRestricted) {
 		t.Fatalf("loopback jump host on a tailnet node: %v", err)
+	}
+	// A second jump host on loopback is a relay too.
+	viaTwo := target(s, "u", Auth{Password: "pw"})
+	viaTwo.Jumps = []Hop{
+		{Host: "192.0.2.1", Port: 22, User: "u", Auth: Auth{Password: "pw"}},
+		{Host: "127.0.0.1", Port: s.port, User: "u", Auth: Auth{Password: "pw"}},
+	}
+	_, err = d.Dial(t.Context(), viaTwo, nil)
+	if role, _ := hopOf(t, err); role != RoleJump || !errors.Is(err, netpolicy.ErrTailnetRestricted) {
+		t.Fatalf("loopback second jump host on a tailnet node: %v", err)
 	}
 	viaSOCKS := target(s, "u", Auth{Password: "pw"})
 	viaSOCKS.Proxy = &SOCKS{Host: "127.0.0.1", Port: 1080}

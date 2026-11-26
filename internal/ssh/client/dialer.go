@@ -116,6 +116,8 @@ func (d *Dialer) Dial(ctx context.Context, t Target, ix Interaction) (*Conn, err
 // what each relay may be asked to reach and loads the stored keys, all
 // before the first packet is sent.
 func (d *Dialer) prepare(ctx context.Context, t Target) ([]hop, error) {
+	ctx, cancel := context.WithTimeout(ctx, d.HandshakeTimeout)
+	defer cancel()
 	switch {
 	case d.Net == nil || d.HostKeys == nil:
 		return nil, invalid("The SSH dialer is not configured.")
@@ -152,7 +154,7 @@ func (d *Dialer) prepare(ctx context.Context, t Target) ([]hop, error) {
 		var err error
 		switch {
 		case i > 0:
-			h.dest, err = d.Net.JumpDestination(ctx, h.Host, h.Port)
+			h.dest, err = d.Net.JumpDestination(ctx, h.Host, h.Port, i < len(hops)-1)
 		case t.Proxy != nil:
 			h.dest, err = d.Net.SOCKSDestination(ctx, h.Host, h.Port, t.Proxy.RemoteDNS)
 		}

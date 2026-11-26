@@ -176,3 +176,35 @@ func TestRemoteNameRestricted(t *testing.T) {
 		}
 	}
 }
+
+// tailscaled in userspace networking has no interface: a configured
+// TAILSCALE_SSH_INTERFACE keeps the rule active, so a loopback relay
+// (tailscaled's own SOCKS5 proxy) is refused.
+func TestTailnetRuleWithConfiguredInterfaceButNoDevice(t *testing.T) {
+	r := Tailnet{Interface: "tailscale0", InterfaceConfigured: true, Lookup: labRoutes.lookup, InterfacePresent: func(string) bool { return false }}
+	if !r.relayRestricted(t.Context(), netip.MustParseAddr("127.0.0.1")) {
+		t.Fatal("loopback relay allowed in userspace mode")
+	}
+	r.InterfaceConfigured = false
+	if r.relayRestricted(t.Context(), netip.MustParseAddr("127.0.0.1")) {
+		t.Fatal("the default interface name alone must not restrict a host without it")
+	}
+}
+
+// NAT64 addresses carry an IPv4 address; a tailnet node behind the
+// well-known prefix is a node address, and it is restricted unless its
+// route leaves through another interface (a NAT64 gateway on the LAN).
+func TestNodeAddressBehindNAT64(t *testing.T) {
+	got, ok := NodeAddress(netip.MustParseAddr("64:ff9b::100.100.100.10"))
+	if !ok || got != netip.MustParseAddr("100.100.100.10") {
+		t.Fatalf("got %v %v", got, ok)
+	}
+	if !rule(true).targetRestricted(t.Context(), netip.MustParseAddr("64:ff9b::100.100.100.10")) {
+		t.Fatal("tailnet node behind NAT64 with unknown route allowed")
+	}
+	for _, s := range []string{"64:ff9b::8.8.8.8", "64:ff9b::10.0.0.1", "64:ff9b::127.0.0.1"} {
+		if !Internal(netip.MustParseAddr(s)) {
+			t.Errorf("%s is not internal", s)
+		}
+	}
+}

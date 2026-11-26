@@ -145,7 +145,7 @@ func TestTailnetRuleInDialer(t *testing.T) {
 			t.Errorf("loopback relay: %v", err)
 		}
 	}
-	if _, err := p.JumpDestination(t.Context(), "box.tail1234.ts.net", 22); !errors.Is(err, ErrTailnetRestricted) {
+	if _, err := p.JumpDestination(t.Context(), "box.tail1234.ts.net", 22, false); !errors.Is(err, ErrTailnetRestricted) {
 		t.Errorf("MagicDNS behind a jump host: %v", err)
 	}
 	if _, err := p.SOCKSDestination(t.Context(), "box.tail1234.ts.net", 22, true); !errors.Is(err, ErrTailnetRestricted) {
@@ -158,13 +158,13 @@ func TestTailnetRuleInDialer(t *testing.T) {
 
 func TestDestinations(t *testing.T) {
 	p, _, _ := newTestPolicy(t, Config{BlockInternal: true, JumpRemoteDNS: []string{"only-remote.corp"}})
-	if got, err := p.JumpDestination(t.Context(), "Public.Example.", 22); err != nil || got != "8.8.8.8" {
+	if got, err := p.JumpDestination(t.Context(), "Public.Example.", 22, false); err != nil || got != "8.8.8.8" {
 		t.Errorf("resolvable name is pinned: %q, %v", got, err)
 	}
-	if got, err := p.JumpDestination(t.Context(), "only-remote.corp", 22); err != nil || got != "only-remote.corp" {
+	if got, err := p.JumpDestination(t.Context(), "only-remote.corp", 22, false); err != nil || got != "only-remote.corp" {
 		t.Errorf("allowlisted name goes to the bastion: %q, %v", got, err)
 	}
-	if _, err := p.JumpDestination(t.Context(), "elsewhere.corp", 22); !fault.Is(err, fault.TargetBlocked) {
+	if _, err := p.JumpDestination(t.Context(), "elsewhere.corp", 22, false); !fault.Is(err, fault.TargetBlocked) {
 		t.Errorf("name outside the allowlist: %v", err)
 	}
 	if _, err := p.SOCKSDestination(t.Context(), "fe80::1%eth0", 22, true); !fault.Is(err, fault.InvalidValue) {
@@ -226,4 +226,22 @@ func FuzzCanonicalHost(f *testing.F) {
 			t.Fatalf("not idempotent: %q -> %q -> %q, %v", in, out, again, err)
 		}
 	})
+}
+
+// Every jump host after the first is a relay as well: its address must
+// pass the relay rule, and a name it would resolve itself is refused while
+// the tailnet rule applies.
+func TestJumpRelayDestination(t *testing.T) {
+	p, _, _ := newTestPolicy(t, Config{Tailnet: Tailnet{InterfacePresent: func(string) bool { return true }}})
+	for _, host := range []string{"127.0.0.1", "only-remote.corp"} {
+		if _, err := p.JumpDestination(t.Context(), host, 22, true); !errors.Is(err, ErrTailnetRestricted) {
+			t.Errorf("relay %s: %v", host, err)
+		}
+		if _, err := p.JumpDestination(t.Context(), host, 22, false); err != nil {
+			t.Errorf("target %s: %v", host, err)
+		}
+	}
+	if got, err := p.JumpDestination(t.Context(), "fe80::1%eth0", 22, false); err != nil || got != "fe80::1" {
+		t.Errorf("zone must not be sent to a relay: %q %v", got, err)
+	}
 }

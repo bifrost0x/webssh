@@ -195,7 +195,7 @@ func (n *directNet) DialRelay(ctx context.Context, role netpolicy.Role, network,
 	return n.DialContext(ctx, role+"-relay", network, addr)
 }
 
-func (n *directNet) JumpDestination(_ context.Context, host string, _ int) (string, error) {
+func (n *directNet) JumpDestination(_ context.Context, host string, _ int, _ bool) (string, error) {
 	return host, nil
 }
 

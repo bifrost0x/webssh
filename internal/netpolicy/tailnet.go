@@ -12,15 +12,27 @@ var (
 	tailnetV4   = netip.MustParsePrefix("100.64.0.0/10")
 	tailnetV6   = netip.MustParsePrefix("fd7a:115c:a1e0::/48")
 	tailnet4via = netip.MustParsePrefix("fd7a:115c:a1e0:b1a::/64")
+	nat64       = netip.MustParsePrefix("64:ff9b::/96")
 )
+
+// embeddedV4 returns the IPv4 address inside an IPv4-mapped or a NAT64
+// (64:ff9b::/96) address, or addr itself.
+func embeddedV4(addr netip.Addr) netip.Addr {
+	addr = addr.Unmap().WithZone("")
+	if nat64.Contains(addr) {
+		b := addr.As16()
+		return netip.AddrFrom4([4]byte(b[12:]))
+	}
+	return addr
+}
 
 // NodeAddress reports whether addr is a tailnet node address and returns it
 // in its routed form. An IPv4-mapped address counts as its IPv4 form
 // (::ffff:100.64.0.1 is a node address): a dual-stack socket sends it over
 // IPv4. 4via6 subnet routes lie inside the node range but reach hosts with
-// their own sshd.
+// their own sshd. A NAT64 address of a node counts as the node.
 func NodeAddress(addr netip.Addr) (netip.Addr, bool) {
-	addr = addr.Unmap().WithZone("")
+	addr = embeddedV4(addr)
 	if !addr.IsValid() || tailnet4via.Contains(addr) {
 		return netip.Addr{}, false
 	}
@@ -48,6 +60,11 @@ type Tailnet struct {
 	Interface string
 	// FeatureEnabled is TAILSCALE_SSH_ENABLED.
 	FeatureEnabled bool
+	// InterfaceConfigured says TAILSCALE_SSH_INTERFACE was set explicitly.
+	// The rule then applies even without the device: tailscaled in
+	// userspace networking has no interface, but its local SOCKS5 and
+	// HTTP proxies still connect with the node identity.
+	InterfaceConfigured bool
 
 	// Lookup and InterfacePresent replace the kernel in tests.
 	Lookup           RouteLookup
@@ -73,7 +90,7 @@ func (t Tailnet) active() bool {
 	if name == "" {
 		return false
 	}
-	return t.FeatureEnabled || t.present(name)
+	return t.FeatureEnabled || t.InterfaceConfigured || t.present(name)
 }
 
 func (t Tailnet) lookup(ctx context.Context, addr netip.Addr) (Route, error) {
@@ -102,6 +119,10 @@ func (t Tailnet) targetRestricted(ctx context.Context, addr netip.Addr) bool {
 	node, ok := NodeAddress(addr)
 	if !ok || !t.active() {
 		return false
+	}
+	if plain := addr.Unmap().WithZone(""); nat64.Contains(plain) {
+		// The packets leave as IPv6 towards the NAT64 gateway.
+		node = plain
 	}
 	route, err := t.lookup(ctx, node)
 	if err != nil {

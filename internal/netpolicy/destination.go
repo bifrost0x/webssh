@@ -20,8 +20,11 @@ import (
 // host:port: the admitted address, or the canonical name when it cannot be
 // admitted here but remote resolution is allowed (BLOCK_INTERNAL_SSH off,
 // or the name is on PROXY_JUMP_REMOTE_DNS_ALLOWLIST). A tailnet refusal is
-// final: the bastion's resolver must not reopen a refused route.
-func (p *Policy) JumpDestination(ctx context.Context, host string, port int) (string, error) {
+// final: the bastion's resolver must not reopen a refused route. relay
+// marks a further jump host: its address passes the relay rule, and while
+// the tailnet rule applies it must be resolvable here. The zone of a
+// link-local address is never sent: it means nothing on the remote host.
+func (p *Policy) JumpDestination(ctx context.Context, host string, port int, relay bool) (string, error) {
 	canonical, err := CanonicalHost(host)
 	if err != nil {
 		return "", err
@@ -31,10 +34,14 @@ func (p *Policy) JumpDestination(ctx context.Context, host string, port int) (st
 	}
 	adm, err := p.Admit(ctx, RoleSSH, canonical, port)
 	switch {
+	case err == nil && relay && p.cfg.Tailnet.relayRestricted(ctx, adm.Addr.Addr()):
+		return "", tailnetRefusal(msgTailnetRelay)
 	case err == nil:
-		return adm.Addr.Addr().String(), nil
+		return adm.Addr.Addr().WithZone("").String(), nil
 	case errors.Is(err, ErrTailnetRestricted) || !refusedHere(err):
 		return "", err
+	case relay && p.cfg.Tailnet.active():
+		return "", tailnetRefusal(msgTailnetRelay)
 	}
 	if p.cfg.BlockInternal && !remoteDNSAllowed(canonical, p.cfg.JumpRemoteDNS) {
 		return "", errBlocked

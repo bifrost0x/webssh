@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/fault"
@@ -220,8 +221,14 @@ func TestPolicyMatchesPython(t *testing.T) {
 		}
 		compare(t, label("relay"), c.Relay, "", err)
 
-		got, err = p.JumpDestination(ctx, c.Host, 22)
-		compare(t, label("jump"), c.Jump, got, err)
+		got, err = p.JumpDestination(ctx, c.Host, 22, false)
+		jump := c.Jump
+		// Deliberate: the zone of a link-local address is not sent to a
+		// jump host (Python sent "fe80::1%eth0").
+		if i := strings.IndexByte(jump.IP, '%'); i >= 0 {
+			jump.IP = jump.IP[:i]
+		}
+		compare(t, label("jump"), jump, got, err)
 		got, err = p.SOCKSDestination(ctx, c.Host, 22, true)
 		compare(t, label("socks remote dns"), c.SOCKSTrue, got, err)
 		got, err = p.SOCKSDestination(ctx, c.Host, 22, false)

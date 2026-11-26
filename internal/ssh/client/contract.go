@@ -157,8 +157,9 @@ type Network interface {
 	// rule applies in addition.
 	DialRelay(ctx context.Context, role netpolicy.Role, network, addr string) (net.Conn, error)
 	// JumpDestination returns what a jump host is asked to connect to: an
-	// admitted address or, where permitted, the name.
-	JumpDestination(ctx context.Context, host string, port int) (string, error)
+	// admitted address or, where permitted, the name. relay marks a further
+	// jump host, which passes the relay rule as well.
+	JumpDestination(ctx context.Context, host string, port int, relay bool) (string, error)
 	// SOCKSDestination returns what a SOCKS5 proxy is asked to connect to.
 	SOCKSDestination(ctx context.Context, host string, port int, remoteDNS bool) (string, error)
 }
