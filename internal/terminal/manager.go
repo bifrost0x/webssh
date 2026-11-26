@@ -25,7 +25,10 @@ type Deps struct {
 	// typed by hand; without it such a connection answers
 	// not_available_in_preview.
 	Routes SavedRoutes
-	Log    *slog.Logger
+	// Passwords provides saved passwords; without it a request for one
+	// answers not_available_in_preview.
+	Passwords SavedPasswords
+	Log       *slog.Logger
 	// Connections, DB and TmuxEnabled run persistent tmux sessions; while
 	// one of them is missing, or TmuxEnabled reports the runtime switch
 	// tmux_enabled off, use_tmux opens the login shell.
@@ -53,6 +56,7 @@ type Manager struct {
 	shells   Shells
 	profiles Profiles
 	routes   SavedRoutes
+	saved    SavedPasswords
 	log      *slog.Logger
 	now      func() time.Time
 
@@ -87,7 +91,7 @@ func New(cfg Config, deps Deps) (*Manager, error) {
 	}
 	cfg.defaults()
 	m := &Manager{
-		cfg: cfg, shells: deps.Shells, profiles: deps.Profiles, routes: deps.Routes, log: deps.Log, now: time.Now,
+		cfg: cfg, shells: deps.Shells, profiles: deps.Profiles, routes: deps.Routes, saved: deps.Passwords, log: deps.Log, now: time.Now,
 		flow: newLedger(cfg.Flow), input: newInputBudget(cfg.Input),
 		quota:    newQuota(cfg.SessionsGlobal, cfg.SessionsPerUser),
 		prompts:  newPrompts(cfg.MaxPrompts),

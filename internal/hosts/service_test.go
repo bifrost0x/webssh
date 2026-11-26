@@ -212,12 +212,21 @@ func TestResolve(t *testing.T) {
 	if err != nil || local.Proxy == nil || local.Proxy.RemoteDNS {
 		t.Fatalf("remote_dns false must resolve locally: %+v %v", local, err)
 	}
+	// Password sign-in at the jump host and a SOCKS5 login: the hops carry
+	// no secret, the terminal adds it from the request.
+	pj, err := s.Resolve(ctx, oracleUser, "pw-jump")
+	if err != nil || len(pj.Jumps) != 1 || pj.Jumps[0] != (client.Hop{Host: "b.example", Port: 22, User: "j"}) {
+		t.Fatalf("password jump host: %+v %v", pj, err)
+	}
+	ls, err := s.Resolve(ctx, oracleUser, "login-socks")
+	if err != nil || ls.Proxy == nil || ls.Proxy.Username == "" || ls.Proxy.Password != "" {
+		t.Fatalf("SOCKS5 login: %+v %v", ls, err)
+	}
 	tmux, err := s.Resolve(ctx, oracleUser, "tmux")
 	if err != nil || !tmux.Display.UseTmux || !tmux.Display.StartupCommand || tmux.Hop.Port != 22 {
 		t.Fatalf("display flags: %+v %v", tmux, err)
 	}
 	for id, want := range map[string]fault.Code{
-		"pw-jump": fault.NotAvailableInPreview, "login-socks": fault.NotAvailableInPreview,
 		"umlaut": fault.ValidationError, "ts": fault.NotAvailableInPreview, "gw": fault.NotAvailableInPreview,
 		"missing": fault.NotFound,
 	} {

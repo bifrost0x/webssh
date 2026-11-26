@@ -15,8 +15,7 @@ import (
 // SavedRoutes resolves the saved jump host or SOCKS5 proxy a connection
 // typed by hand refers to (provided by internal/hosts). Both fail with
 // fault.NotFound for an entry that does not exist or belongs to another
-// user, and with fault.NotAvailableInPreview for one that needs what M1
-// does not build (saved passwords, SOCKS5 with login).
+// user. Neither carries a password: the terminal adds it.
 type SavedRoutes interface {
 	JumpHost(ctx context.Context, owner int64, jumpHostID string) (client.Hop, error)
 	SOCKSProxy(ctx context.Context, owner int64, socksProxyID string) (client.SOCKS, error)
@@ -47,6 +46,14 @@ func (m *Manager) resolve(ctx context.Context, owner int64, req protocol.OpenTar
 		t.Display.ProfileID = req.ProfileID
 		if t.Hop.Auth.Password == "" && t.Hop.Auth.KeyID == "" {
 			t.Hop.Auth.Password = req.Password
+			if req.SavedPassword {
+				if t.Hop.Auth.Password, err = m.savedPassword(ctx, owner, req.ProfileID); err != nil {
+					return client.Target{}, err
+				}
+			}
+		}
+		if err := m.addRouteSecrets(ctx, owner, &t, req); err != nil {
+			return client.Target{}, err
 		}
 		return t, nil
 	}
@@ -68,6 +75,9 @@ func (m *Manager) resolve(ctx context.Context, owner int64, req protocol.OpenTar
 		return client.Target{}, invalid("Username is required.")
 	case !usernamePattern.MatchString(user):
 		return client.Target{}, invalid("Invalid username format.")
+	case req.SavedPassword:
+		// A saved password belongs to a saved host (internal/vault).
+		return client.Target{}, errSavedPasswords
 	case req.AuthType == protocol.AuthPassword && req.Password == "":
 		return client.Target{}, invalid("Password required.")
 	case req.AuthType == protocol.AuthKey && req.KeyID == "":
@@ -94,14 +104,17 @@ func (m *Manager) resolve(ctx context.Context, owner int64, req protocol.OpenTar
 		}
 		t.Jumps = []client.Hop{j}
 		t.Display.JumpHostID = req.JumpHostID
-		return t, nil
+	} else {
+		p, err := m.routes.SOCKSProxy(ctx, owner, req.SOCKSProxyID)
+		if err != nil {
+			return client.Target{}, err
+		}
+		t.Proxy = &p
+		t.Display.SOCKSProxyID = req.SOCKSProxyID
 	}
-	p, err := m.routes.SOCKSProxy(ctx, owner, req.SOCKSProxyID)
-	if err != nil {
+	if err := m.addRouteSecrets(ctx, owner, &t, req); err != nil {
 		return client.Target{}, err
 	}
-	t.Proxy = &p
-	t.Display.SOCKSProxyID = req.SOCKSProxyID
 	return t, nil
 }
 

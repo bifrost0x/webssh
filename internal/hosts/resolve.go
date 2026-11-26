@@ -9,16 +9,14 @@ import (
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-var (
-	errJumpPasswordPreview  = fault.New(fault.NotAvailableInPreview, "Jump hosts with password sign-in are not available in this preview.")
-	errSOCKSPasswordPreview = fault.New(fault.NotAvailableInPreview, "SOCKS5 proxies with a login are not available in this preview.")
-	errTailscaleConnect     = fault.New(fault.NotAvailableInPreview, "Tailscale SSH is not available in this preview.")
-)
+var errTailscaleConnect = fault.New(fault.NotAvailableInPreview, "Tailscale SSH is not available in this preview.")
 
 // Resolve returns the connection target of a saved host of owner, read
-// from the stores at this moment (terminal.Profiles). The password of the
-// target hop, if any, comes with the request; everything else is taken
-// from the saved records, never from the browser. It fails with not_found
+// from the stores at this moment (terminal.Profiles). Passwords never come
+// from here: the target, a jump host with password sign-in and a SOCKS5
+// proxy with a login get theirs from the request or the saved passwords;
+// everything else is taken from the saved records, never from the
+// browser. It fails with not_found
 // for a host, jump host or proxy that does not exist for owner, and with
 // not_available_in_preview for routes this release does not build.
 func (s *Service) Resolve(ctx context.Context, owner int64, profileID string) (client.Target, error) {
@@ -78,9 +76,6 @@ func resolve(all stores, owner int64, profileID string) (client.Target, error) {
 		if j < 0 {
 			return client.Target{}, errJumpNotFound
 		}
-		if jumps[j].text("auth_type") != "key" {
-			return client.Target{}, errJumpPasswordPreview
-		}
 		jump, err := hopOf(&jumps[j])
 		if err != nil {
 			return client.Target{}, err
@@ -94,23 +89,37 @@ func resolve(all stores, owner int64, profileID string) (client.Target, error) {
 		if j < 0 {
 			return client.Target{}, errSOCKSNotFound
 		}
-		proxy := &proxies[j]
-		if proxy.text("auth_type") != "none" {
-			return client.Target{}, errSOCKSPasswordPreview
-		}
-		host, port, err := address(proxy)
+		proxy, err := socksOf(&proxies[j])
 		if err != nil {
 			return client.Target{}, err
 		}
-		remoteDNS, _ := proxy.get("remote_dns")
-		t.Proxy = &client.SOCKS{Host: host, Port: port, RemoteDNS: string(remoteDNS) == "true"}
+		t.Proxy = &proxy
 		t.Display.SOCKSProxyID = id
 	}
 	return t, nil
 }
 
+// socksOf is a saved SOCKS5 proxy. A proxy with auth_type "password"
+// carries its username; the password is added by the caller.
+func socksOf(r *record) (client.SOCKS, error) {
+	host, port, err := address(r)
+	if err != nil {
+		return client.SOCKS{}, err
+	}
+	remoteDNS, _ := r.get("remote_dns")
+	proxy := client.SOCKS{Host: host, Port: port, RemoteDNS: string(remoteDNS) == "true"}
+	if r.text("auth_type") == "password" {
+		proxy.Username = r.text("username")
+		if proxy.Username == "" {
+			return client.SOCKS{}, invalid("SOCKS5 proxy username required")
+		}
+	}
+	return proxy, nil
+}
+
 // hopOf is one SSH hop of a saved host or jump host. The host is the
-// stored name; host keys are kept under it.
+// stored name; host keys are kept under it. A hop with key sign-in names
+// its key; any other hop signs in with a password the caller adds.
 func hopOf(r *record) (client.Hop, error) {
 	host, port, err := address(r)
 	if err != nil {

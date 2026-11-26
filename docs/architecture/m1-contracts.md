@@ -458,6 +458,21 @@ attached to, the requesting one included. After
 the session a reconnecting tab replaces. The shim sends them once the
 terminal runs tmux sessions (D6).
 
+Since M2 (NW1) the target also carries the passwords of saved routes, as
+`ssh_connect` did in `proxy_jump.password` and `socks_proxy.password`:
+`jump_password` for a jump host with password sign-in and
+`socks_password` for a SOCKS5 proxy with a login (1 to 255 UTF-8 bytes,
+RFC 1929). `saved_password`, `jump_saved_password` and
+`socks_saved_password` ask for the saved password assigned to the saved
+host, `jump:<id>` or `socks:<id>` instead (the shim sets them for a
+`credential_id`); the terminal reads it through `SavedPasswords` and
+answers `not_available_in_preview` without a provider. A password typed
+for a route that does not sign in with one is ignored. The messages are
+those of `handle_ssh_connect` ("Jump host password or SSH key required",
+"SOCKS5 proxy password required", "SOCKS5 proxy password must contain 1
+to 255 UTF-8 bytes"); a typed and a saved SOCKS5 password together are
+`invalid_request`.
+
 `SessionRef` is `{session_id, request_id?}`. `terminal.discard_late`
 discards a session only for the connection whose `terminal.open` created
 it and only with that open's `request_id` (Python matched

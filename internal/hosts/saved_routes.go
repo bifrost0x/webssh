@@ -9,8 +9,8 @@ import (
 
 // JumpHost returns a saved jump host of owner as the first hop of a
 // connection typed by hand (terminal.SavedRoutes). The same rules as for a
-// saved host apply: only key sign-in is offered in this preview, and the
-// address is validated as stored.
+// saved host apply: the address is validated as stored, and a jump host
+// with password sign-in gets its password from the caller.
 func (s *Service) JumpHost(ctx context.Context, owner int64, jumpHostID string) (client.Hop, error) {
 	var hop client.Hop
 	err := s.DB.Read(ctx, func(tx *store.Tx) error {
@@ -23,9 +23,6 @@ func (s *Service) JumpHost(ctx context.Context, owner int64, jumpHostID string) 
 		if i < 0 {
 			return errJumpNotFound
 		}
-		if jumps[i].text("auth_type") != "key" {
-			return errJumpPasswordPreview
-		}
 		hop, err = hopOf(&jumps[i])
 		return err
 	})
@@ -36,8 +33,8 @@ func (s *Service) JumpHost(ctx context.Context, owner int64, jumpHostID string) 
 }
 
 // SOCKSProxy returns a saved SOCKS5 proxy of owner for a connection typed
-// by hand (terminal.SavedRoutes). Proxies with a login are not offered in
-// this preview.
+// by hand (terminal.SavedRoutes). A proxy with a login carries its
+// username; the caller adds the password.
 func (s *Service) SOCKSProxy(ctx context.Context, owner int64, socksProxyID string) (client.SOCKS, error) {
 	var proxy client.SOCKS
 	err := s.DB.Read(ctx, func(tx *store.Tx) error {
@@ -50,17 +47,8 @@ func (s *Service) SOCKSProxy(ctx context.Context, owner int64, socksProxyID stri
 		if i < 0 {
 			return errSOCKSNotFound
 		}
-		p := &proxies[i]
-		if p.text("auth_type") != "none" {
-			return errSOCKSPasswordPreview
-		}
-		host, port, err := address(p)
-		if err != nil {
-			return err
-		}
-		remoteDNS, _ := p.get("remote_dns")
-		proxy = client.SOCKS{Host: host, Port: port, RemoteDNS: string(remoteDNS) == "true"}
-		return nil
+		proxy, err = socksOf(&proxies[i])
+		return err
 	})
 	if err != nil {
 		return client.SOCKS{}, classify(err, "Failed to load SOCKS5 proxies")
