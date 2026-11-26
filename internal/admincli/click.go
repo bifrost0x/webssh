@@ -60,6 +60,9 @@ type option struct {
 	metavar  string
 	required bool
 	flag     bool
+	// choices is a click.Choice: the value must be one of them (case
+	// sensitive).
+	choices []string
 }
 
 // command describes the parsing of one command.
@@ -95,8 +98,11 @@ func (c *command) usageLine() string {
 type parsed struct {
 	values map[string]string
 	flags  map[string]bool
-	args   []string
-	help   bool
+	// order holds the options in the order of their first occurrence,
+	// the order in which Click processes the given parameters.
+	order []string
+	args  []string
+	help  bool
 }
 
 // value returns the value of an option and whether it was given.
@@ -130,9 +136,19 @@ func (c *command) parse(args []string) (parsed, error) {
 	if p.help {
 		return p, nil
 	}
+	for _, name := range p.order {
+		o := c.options[slices.IndexFunc(c.options, func(o option) bool { return o.name == name })]
+		if v := p.values[name]; len(o.choices) > 0 && !slices.Contains(o.choices, v) {
+			return p, &usageError{msg: invalidChoice(name, v, o.choices), withUsage: true}
+		}
+	}
 	for _, o := range c.options {
 		if _, ok := p.values[o.name]; o.required && !ok {
-			return p, &usageError{msg: fmt.Sprintf("Missing option '%s'.", o.name), withUsage: true}
+			msg := fmt.Sprintf("Missing option '%s'.", o.name)
+			if len(o.choices) > 0 {
+				msg += " Choose from:\n\t" + strings.Join(o.choices, ",\n\t")
+			}
+			return p, &usageError{msg: msg, withUsage: true}
 		}
 	}
 	if len(p.args) > c.maxArgs {
@@ -169,6 +185,9 @@ func (c *command) parseOption(p *parsed, arg string, rest []string) (int, error)
 		return 0, &usageError{msg: noSuchOption(name, c.longOptions()), withUsage: true}
 	}
 	o := c.options[i]
+	if !slices.Contains(p.order, name) {
+		p.order = append(p.order, name)
+	}
 	switch {
 	case o.flag && explicit:
 		return 0, &usageError{msg: fmt.Sprintf("Option '%s' does not take a value.", name)}
@@ -184,6 +203,15 @@ func (c *command) parseOption(p *parsed, arg string, rest []string) (int, error)
 		p.values[name] = rest[0]
 		return 1, nil
 	}
+}
+
+// invalidChoice is the message of a click.Choice that refused value.
+func invalidChoice(name, value string, choices []string) string {
+	quoted := make([]string, len(choices))
+	for i, c := range choices {
+		quoted[i] = "'" + c + "'"
+	}
+	return fmt.Sprintf("Invalid value for '%s': '%s' is not one of %s.", name, value, strings.Join(quoted, ", "))
 }
 
 func (c *command) longOptions() []string {
