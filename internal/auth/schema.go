@@ -10,7 +10,8 @@ import (
 // Schema returns the tables of this package as one ordered migration
 // list: the pending sign-ins of the login flow (a verified primary
 // credential that waits for its second factor), then the second-factor
-// state (recovery codes and the one-time code backoff). Both parts share
+// state (recovery codes and the one-time code backoff), then the factor
+// bootstrap codes (bootstrap.go). All parts share
 // the owner "auth", so they must stay in this single list; a second
 // Schema with the same owner would fail the checksum comparison of
 // store.Apply. Times are microseconds since the Unix epoch (UTC).
@@ -45,6 +46,18 @@ CREATE TABLE auth_mfa_throttle (
 	last_failed_at INTEGER,
 	PRIMARY KEY (user_id, scope)
 ) STRICT, WITHOUT ROWID;
+`},
+		{Version: 3, SQL: `
+CREATE TABLE auth_factor_bootstrap (
+	token_mac       BLOB PRIMARY KEY,
+	user_id         INTEGER NOT NULL CHECK (user_id > 0),
+	auth_generation INTEGER NOT NULL,
+	action          TEXT NOT NULL,
+	created_us      INTEGER NOT NULL,
+	expires_us      INTEGER NOT NULL,
+	consumed_us     INTEGER
+) STRICT;
+CREATE INDEX auth_factor_bootstrap_user ON auth_factor_bootstrap (user_id);
 `},
 	}}
 }
