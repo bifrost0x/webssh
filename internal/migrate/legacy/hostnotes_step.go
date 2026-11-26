@@ -31,6 +31,17 @@ const maxHostContexts = 2000
 
 func (*hostNotesStep) Entity() string { return "E28" }
 
+// countHostContextsLeft counts the host contexts whose directories or
+// command-set references stay in the legacy file, and those of deleted
+// profiles: the part of E28 a later phase migrates.
+func countHostContextsLeft(ctx context.Context, src *Source) (int, error) {
+	var s hostNotesStep
+	if err := s.Read(ctx, src); err != nil {
+		return 0, err
+	}
+	return s.pending + s.orphans, nil
+}
+
 func (*hostNotesStep) Version() int { return 1 }
 
 func (s *hostNotesStep) Read(ctx context.Context, src *Source) error {
