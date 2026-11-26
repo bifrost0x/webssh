@@ -44,6 +44,9 @@ type Target struct {
 	Proxy *SOCKS
 	// Display is how the session is presented; the dialer ignores it.
 	Display Display
+	// Variant is the SSH gateway or Tailscale SSH form of the connection
+	// (variant.go); nil for an ordinary one.
+	Variant *Variant
 }
 
 // Hop is one SSH server on the way to the target.
@@ -88,6 +91,10 @@ type Display struct {
 	UseTmux        bool
 	UseHerdr       bool
 	StartupCommand bool
+	// Tailscale marks a host that signs in with the WebSSH node's
+	// Tailscale identity (auth type "tailscale"): Hop.User is the remote
+	// user and the hop has no password or key.
+	Tailscale bool
 }
 
 // KeySource returns the signer of a stored SSH key of a user. Provided by

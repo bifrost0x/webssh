@@ -21,7 +21,7 @@ const (
 
 // handshake runs key exchange, the host-key check, authentication and the
 // banner decision on conn. conn is closed on failure.
-func (d *Dialer) handshake(ctx context.Context, conn net.Conn, owner int64, h hop, ix Interaction) (*ssh.Client, error) {
+func (d *Dialer) handshake(ctx context.Context, conn net.Conn, owner int64, h hop, ix Interaction, variant func(AuthRequest) ssh.ClientAuthCallback) (*ssh.Client, error) {
 	hctx, cancel := context.WithTimeout(ctx, d.InteractionTimeout)
 	defer cancel()
 	stopClose := context.AfterFunc(hctx, func() { _ = conn.Close() })
@@ -37,6 +37,20 @@ func (d *Dialer) handshake(ctx context.Context, conn net.Conn, owner int64, h ho
 	}
 	var banner strings.Builder
 	plan := &authPlan{ctx: hctx, password: h.Auth.Password, signer: h.signer, legacy: h.Legacy, attended: ix != nil}
+	authCallback := plan.next
+	if variant != nil {
+		signer := h.signer
+		if signer != nil {
+			if signer, err = restrictSigner(signer, h.Legacy); err != nil {
+				wd.stop()
+				stopClose()
+				_ = conn.Close()
+				return nil, fail(hctx, h.role, false, err)
+			}
+		}
+		authCallback = variant(AuthRequest{Ctx: hctx, Role: h.role, Host: h.Host, Port: h.Port, User: h.User,
+			Password: h.Auth.Password, Signer: signer, Pause: wd.pause})
+	}
 	cfg := &ssh.ClientConfig{
 		KeyExchanges: algos.KeyExchanges, Ciphers: algos.Ciphers, MACs: algos.MACs,
 		RekeyThreshold:    d.RekeyThreshold,
@@ -52,7 +66,7 @@ func (d *Dialer) handshake(ctx context.Context, conn net.Conn, owner int64, h ho
 			}
 			return nil
 		},
-		AuthCallback: plan.next,
+		AuthCallback: authCallback,
 	}
 	c, chans, reqs, err := ssh.NewClientConn(conn, joinHostPort(h.Host, h.Port), cfg)
 	timedOut := wd.stop()

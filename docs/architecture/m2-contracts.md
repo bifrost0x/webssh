@@ -1006,6 +1006,15 @@ than 16 KiB is refused with `not_found` or `invalid_request`.
 it is refused as in the Python release. `ssh_gateway_quick_cancel` belongs
 to Quick SFTP (FS2) and stays unavailable until FS2 builds it.
 
+The dialer gains `client.Target.Variant` (`internal/ssh/client/variant.go`,
+additive): `Auth` replaces the authentication plan of every hop (the
+gateway strategy; with it the target needs no password or key), `Dial`
+replaces the network policy for the target hop (Tailscale SSH, no jump
+host and no proxy) and `Ready` runs on the authenticated target before the
+connection is returned (the gateway's readiness probe).
+`client.Display.Tailscale` marks a saved host with the auth type
+`tailscale`. Host keys apply to every variant.
+
 ### End-to-end harness for M2
 
 - `tests/e2e/go-suite.json` (formerly `tests/e2e/m1/go-subset.json`) lists
