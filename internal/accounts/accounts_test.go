@@ -326,7 +326,7 @@ func TestAdminRules(t *testing.T) {
 func TestFoldName(t *testing.T) {
 	t.Parallel()
 	for in, want := range map[string]string{"Straße": "strasse", "ﬁle": "file", "ſam": "sam", "KELVIN": "kelvin", "Jörg": "jörg"} {
-		if got := foldName(in); got != want {
+		if got := FoldName(in); got != want {
 			t.Errorf("%s: %s", in, got)
 		}
 	}

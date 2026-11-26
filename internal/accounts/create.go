@@ -85,9 +85,9 @@ func (s *Service) validate(req CreateRequest, first bool, names []string) error 
 	if msg := validateNewName(req.Username); msg != "" {
 		return invalid(msg)
 	}
-	folded := foldName(req.Username)
+	folded := FoldName(req.Username)
 	for _, n := range names {
-		if foldName(n) == folded {
+		if FoldName(n) == folded {
 			return errNameTaken
 		}
 	}

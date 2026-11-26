@@ -69,9 +69,9 @@ var fullFolds = map[rune]string{
 	'ß': "ss", 'ẞ': "ss", 'ſ': "s", 'ﬀ': "ff", 'ﬁ': "fi", 'ﬂ': "fl", 'ﬃ': "ffi", 'ﬄ': "ffl", 'ﬅ': "st", 'ﬆ': "st",
 }
 
-// foldName approximates Python's str.casefold() for comparing account
+// FoldName approximates Python's str.casefold() for comparing account
 // names: simple lower-casing plus the full foldings that reach ASCII.
-func foldName(s string) string {
+func FoldName(s string) string {
 	var b strings.Builder
 	for _, r := range s {
 		if f, ok := fullFolds[r]; ok {
@@ -106,8 +106,8 @@ type Admins []string
 // case (is_config_admin_name): such a name may only be created by an
 // administrator or as the first account.
 func (a Admins) Reserves(name string) bool {
-	folded := foldName(name)
-	return slices.ContainsFunc(a, func(n string) bool { return foldName(n) == folded })
+	folded := FoldName(name)
+	return slices.ContainsFunc(a, func(n string) bool { return FoldName(n) == folded })
 }
 
 // Manages reports whether the start-up rule keeps acc an administrator
