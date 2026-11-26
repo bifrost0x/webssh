@@ -124,3 +124,22 @@ test('names are text only, the page does not overflow at 360 px and the rail sta
     expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('every rail row names its role to screen readers without a visible glyph', async ({page}) => {
+    await openRail(page);
+    for (const mode of [0, 1]) {
+        await page.locator('.shell-grouping [role="radio"]').nth(mode).click();
+        const rows = await page.locator('#shellGroups .shell-host').evaluateAll(items => items.map(item => {
+            const target = document.getElementById(item.getAttribute('aria-describedby') || '');
+            const box = target?.getBoundingClientRect();
+            return {role: item.dataset.role, text: target?.textContent, inside: item.contains(target),
+                hidden: !!box && box.width <= 1 && box.height <= 1};
+        }));
+        expect(rows.length).toBeGreaterThan(0);
+        for (const row of rows) {
+            expect(row.text, row.role).toBe({hypervisor: 'Hypervisor', storage: 'Storage', media: 'Media', monitoring: 'Monitoring', server: 'Server'}[row.role]);
+            expect(row.inside).toBe(true);
+            expect(row.hidden).toBe(true);
+        }
+    }
+});

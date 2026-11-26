@@ -171,12 +171,19 @@
                 const favoritesOnly = doc.body.dataset.hostAccessFilter === 'favorites';
                 let shown = 0;
                 const fits = [];
+                let rows = 0;
                 const row = host => {
                     const item = button(host.name, () => launch(host.id), 'shell-host');
                     item.dataset.overviewKey = `host:${host.id}`;
                     item.dataset.role = host.role.id;
                     const name = node('span', 'shell-host-name', host.name);
                     item.append(win.HostPlatform?.render(host.platform, doc) || icon('dns'), name);
+                    // The colour edge carries the role visually; screen readers get it as the description.
+                    const role = node('span', 'sr-only', t(`role.${host.role.id}`, host.role.id));
+                    role.id = `shell-host-role-${rows += 1}`;
+                    role.dataset.i18n = `role.${host.role.id}`;
+                    item.setAttribute('aria-describedby', role.id);
+                    item.append(role);
                     const tiles = win.HostPlatform?.serviceTiles?.(host.services.slice(0, VISIBLE_SERVICES), 'shell-host-service', doc) || [];
                     if (tiles.length) {
                         const holder = node('span', 'shell-host-services');
