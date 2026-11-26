@@ -265,7 +265,7 @@ func TestRevocationPublishing(t *testing.T) {
 		t.Fatal("excepted session ended")
 	}
 	revs := f.revocations()
-	want := []principal.Revocation{{a.ID, 2, principal.ReasonLogout}, {c.ID, 2, principal.ReasonPasswordChanged}}
+	want := []principal.Revocation{{SessionID: a.ID, UserID: 2, Reason: principal.ReasonLogout}, {SessionID: c.ID, UserID: 2, Reason: principal.ReasonPasswordChanged}}
 	if len(revs) != 2 || revs[0] != want[0] || revs[1] != want[1] {
 		t.Fatalf("revocations %+v", revs)
 	}
@@ -389,37 +389,6 @@ func TestSessionListAndRevokeHTTP(t *testing.T) {
 type auditFunc func(event string, kv ...any)
 
 func (f auditFunc) Security(event string, kv ...any) { f(event, kv...) }
-
-func TestCookies(t *testing.T) {
-	t.Parallel()
-	c := Cookies{Name: "session", Path: "/webssh", Secure: true}
-	rec := httptest.NewRecorder()
-	c.Set(rec, "tok", Session{Remember: true, ExpiresAt: time.Now().Add(time.Hour)})
-	ck := rec.Result().Cookies()[0]
-	if !ck.HttpOnly || !ck.Secure || ck.SameSite != http.SameSiteLaxMode || ck.Path != "/webssh" || ck.MaxAge <= 0 {
-		t.Fatalf("cookie %+v", ck)
-	}
-	rec = httptest.NewRecorder()
-	c.Set(rec, "tok", Session{})
-	if ck := rec.Result().Cookies()[0]; ck.MaxAge != 0 || !ck.Expires.IsZero() {
-		t.Fatalf("browser-session cookie got an expiry: %+v", ck)
-	}
-	req := httptest.NewRequest("GET", "/", nil)
-	rec = httptest.NewRecorder()
-	b := c.Binding(rec, req)
-	if !validBinding(b) {
-		t.Fatalf("binding %q", b)
-	}
-	req.AddCookie(&http.Cookie{Name: "session" + BindingSuffix, Value: b})
-	if c.Binding(httptest.NewRecorder(), req) != b || c.CurrentBinding(req) != b {
-		t.Fatal("binding not reused")
-	}
-	bad := httptest.NewRequest("GET", "/", nil)
-	bad.AddCookie(&http.Cookie{Name: "session" + BindingSuffix, Value: "short"})
-	if c.CurrentBinding(bad) != "" {
-		t.Fatal("malformed binding accepted")
-	}
-}
 
 func TestPyISO(t *testing.T) {
 	t.Parallel()

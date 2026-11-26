@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -70,6 +71,13 @@ type Pages interface {
 	Error(w http.ResponseWriter, r *http.Request, status int)
 }
 
+// SessionCookie writes the session cookie (httpapi.SessionCookie). A
+// zero expiry makes a browser-session cookie.
+type SessionCookie interface {
+	Set(w http.ResponseWriter, token string, expires time.Time)
+	Clear(w http.ResponseWriter)
+}
+
 // Limits are the rate limits of the sign-in forms (RATELIMIT_*).
 type Limits struct {
 	Enabled bool
@@ -81,11 +89,15 @@ type Limits struct {
 // cancel, registration, sign-out and password change. Second factors
 // finish a pending sign-in through PendingUser and CompletePending.
 type Flow struct {
-	DB        *store.DB
-	MAC       MAC
-	Accounts  *accounts.Service
-	Sessions  *session.Service
-	Cookies   session.Cookies
+	DB       *store.DB
+	MAC      MAC
+	Accounts *accounts.Service
+	Sessions *session.Service
+	Cookie   SessionCookie
+	// Binding returns the browser binding the HTTP edge keeps in its
+	// binding cookie (httpapi.BrowserBinding); pending sign-ins and
+	// flash messages are tied to it.
+	Binding   func(*http.Request) string
 	Password  Provider // the local provider
 	Passwords Passwords
 	Factors   []Factor
@@ -99,11 +111,11 @@ type Flow struct {
 	Root string
 	// Bootstrap is BOOTSTRAP_REGISTRATION_ENABLED.
 	Bootstrap bool
-	// ClientIP returns the client address after the proxy rules of the
-	// HTTP edge; nil uses the connection's address.
-	ClientIP func(*http.Request) string
-	Logger   *slog.Logger
-	Now      func() time.Time
+	// ClientAddr returns the client address after the proxy rules of the
+	// HTTP edge (httpapi.ClientAddr); nil uses the connection's address.
+	ClientAddr func(*http.Request) netip.Addr
+	Logger     *slog.Logger
+	Now        func() time.Time
 
 	flash flashes
 }
@@ -125,8 +137,11 @@ func (f *Flow) logger() *slog.Logger {
 func (f *Flow) pending() pendingStore { return pendingStore{db: f.DB, mac: f.MAC, now: f.now} }
 
 func (f *Flow) clientIP(r *http.Request) string {
-	if f.ClientIP != nil {
-		return f.ClientIP(r)
+	if f.ClientAddr != nil {
+		if a := f.ClientAddr(r); a.IsValid() {
+			return a.String()
+		}
+		return "unknown"
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
@@ -140,28 +155,29 @@ func (f *Flow) redirect(w http.ResponseWriter, r *http.Request, path string) {
 	http.Redirect(w, r, path, http.StatusFound)
 }
 
-// signedIn reports whether the request carries a valid session, from the
-// edge's principal or the cookie.
+// signedIn reports whether the request carries a valid session; the
+// edge puts its principal into the context also on public routes.
 func (f *Flow) signedIn(r *http.Request) bool {
-	if _, ok := principal.From(r.Context()); ok {
-		return true
+	_, ok := principal.From(r.Context())
+	return ok
+}
+
+func (f *Flow) binding(r *http.Request) string {
+	if f.Binding == nil {
+		return ""
 	}
-	if tok := f.Cookies.Token(r); tok != "" {
-		_, err := f.Sessions.Validate(r.Context(), tok)
-		return err == nil
-	}
-	return false
+	return f.Binding(r)
 }
 
 // AddFlash queues messages for the next page of this browser.
-func (f *Flow) AddFlash(w http.ResponseWriter, r *http.Request, msgs ...Flash) {
-	f.flash.add(f.now(), f.Cookies.Binding(w, r), msgs...)
+func (f *Flow) AddFlash(r *http.Request, msgs ...Flash) {
+	f.flash.add(f.now(), f.binding(r), msgs...)
 }
 
 // TakeFlashes returns and removes the queued messages of this browser;
 // the workspace page calls it too.
 func (f *Flow) TakeFlashes(r *http.Request) []Flash {
-	return f.flash.take(f.now(), f.Cookies.CurrentBinding(r))
+	return f.flash.take(f.now(), f.binding(r))
 }
 
 // methods returns the enrolled factors whose feature is active, in the
@@ -195,17 +211,21 @@ func (f *Flow) factor(kind string) Factor {
 // finalize issues the session of a completed sign-in, sets its cookie and
 // records it (finalize_login). The account must still be eligible under
 // the generation the primary credential was checked against.
-// It returns the browser's new binding, under which later flashes go.
-func (f *Flow) finalize(ctx context.Context, w http.ResponseWriter, p Pending, methods []string) (string, error) {
+// The caller answers with a redirect or JSON: the CSRF token of the page
+// changes with the new session.
+func (f *Flow) finalize(ctx context.Context, w http.ResponseWriter, p Pending, methods []string) error {
 	sess, token, err := f.Sessions.Issue(ctx, session.IssueRequest{
 		UserID: p.UserID, Generation: p.Generation, PrimaryMethod: p.PrimaryMethod, Methods: methods,
 		Assurance: p.Assurance, Remember: p.Remember,
 	})
 	if err != nil {
-		return "", err
+		return err
 	}
-	f.Cookies.Set(w, token, sess)
-	binding := f.Cookies.RotateBinding(w)
+	var expires time.Time
+	if sess.Remember {
+		expires = sess.ExpiresAt
+	}
+	f.Cookie.Set(w, token, expires)
 	if err := f.Accounts.RecordSignIn(ctx, p.UserID); err != nil {
 		f.logger().WarnContext(ctx, "last sign-in time not stored", "user_id", p.UserID, "error", err)
 	}
@@ -217,13 +237,13 @@ func (f *Flow) finalize(ctx context.Context, w http.ResponseWriter, p Pending, m
 		f.Audit.Security("AUTHENTICATION_SUCCESS", "user", name, "primary_method", p.PrimaryMethod,
 			"assurance", string(p.Assurance), "methods", strings.Join(methods, ","))
 	}
-	return binding, nil
+	return nil
 }
 
 // PendingUser returns the account of this browser's pending sign-in; a
 // missing or expired one is fault.MFARestart.
 func (f *Flow) PendingUser(r *http.Request) (int64, error) {
-	p, err := f.pending().peek(r.Context(), f.Cookies.CurrentBinding(r))
+	p, err := f.pending().peek(r.Context(), f.binding(r))
 	if err != nil {
 		return 0, err
 	}
@@ -236,7 +256,7 @@ func (f *Flow) PendingUser(r *http.Request) (int64, error) {
 // pending sign-in exactly once and returns the public continuation URL.
 // The assurance never drops below the pending one.
 func (f *Flow) CompletePending(w http.ResponseWriter, r *http.Request, userID int64, method string, assurance session.Assurance) (string, error) {
-	p, err := f.pending().consume(r.Context(), f.Cookies.CurrentBinding(r))
+	p, err := f.pending().consume(r.Context(), f.binding(r))
 	if err != nil {
 		return "", err
 	}
@@ -246,7 +266,7 @@ func (f *Flow) CompletePending(w http.ResponseWriter, r *http.Request, userID in
 	if assurance.Rank() > p.Assurance.Rank() {
 		p.Assurance = assurance
 	}
-	if _, err := f.finalize(r.Context(), w, p, []string{p.PrimaryMethod, method}); err != nil {
+	if err := f.finalize(r.Context(), w, p, []string{p.PrimaryMethod, method}); err != nil {
 		return "", err
 	}
 	return PublicContinuation(f.Root, p.Continuation), nil
@@ -254,9 +274,9 @@ func (f *Flow) CompletePending(w http.ResponseWriter, r *http.Request, userID in
 
 // DiscardPending drops this browser's pending sign-in, for a factor that
 // gave up after too many failures; msgs are shown on the sign-in page.
-func (f *Flow) DiscardPending(w http.ResponseWriter, r *http.Request, msgs ...Flash) {
-	if err := f.pending().cancel(r.Context(), f.Cookies.CurrentBinding(r)); err != nil {
+func (f *Flow) DiscardPending(r *http.Request, msgs ...Flash) {
+	if err := f.pending().cancel(r.Context(), f.binding(r)); err != nil {
 		f.logger().WarnContext(r.Context(), "pending sign-in not discarded", "error", err)
 	}
-	f.AddFlash(w, r, msgs...)
+	f.AddFlash(r, msgs...)
 }

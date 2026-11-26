@@ -211,26 +211,3 @@ func FuzzSafeContinuation(f *testing.F) {
 		}
 	})
 }
-
-func TestRecoveryRouteAllowed(t *testing.T) {
-	t.Parallel()
-	allowed := [][2]string{
-		{"GET", "/security"}, {"POST", "/logout"}, {"GET", "/static/js/app.js"}, {"POST", "/api/totp/enroll"},
-		{"GET", "/api/totp/authenticators"}, {"POST", "/api/auth/mfa/disable"}, {"GET", "/api/account/security-state"},
-		{"POST", "/api/webauthn/register/options"}, {"GET", "/api/webauthn/credentials"},
-	}
-	refused := [][2]string{
-		{"GET", "/"}, {"GET", "/api/account/sessions"}, {"DELETE", "/api/totp/authenticators"}, {"GET", "/api/totp/enroll"},
-		{"POST", "/change-password"}, {"GET", "/admin/api/users"}, {"POST", "/api/recovery-codes"}, {"GET", "/securityx"},
-	}
-	for _, c := range allowed {
-		if !RecoveryRouteAllowed(c[0], c[1]) {
-			t.Errorf("refused %v", c)
-		}
-	}
-	for _, c := range refused {
-		if RecoveryRouteAllowed(c[0], c[1]) {
-			t.Errorf("allowed %v", c)
-		}
-	}
-}

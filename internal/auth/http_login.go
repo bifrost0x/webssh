@@ -67,7 +67,6 @@ func (f *Flow) loginPage(w http.ResponseWriter, r *http.Request) {
 		f.redirect(w, r, f.url("/register"))
 		return
 	}
-	f.Cookies.Binding(w, r)
 	f.Pages.Login(w, r, http.StatusOK, LoginView{Flashes: f.TakeFlashes(r)})
 }
 
@@ -166,15 +165,16 @@ func (f *Flow) login(w http.ResponseWriter, r *http.Request) {
 	p := Pending{UserID: userID, Generation: acc.AuthGeneration, PrimaryMethod: f.Password.Name(), Assurance: session.Basic,
 		Remember: r.PostFormValue("remember") == "on", Continuation: SafeContinuation(next)}
 	if acc.MFARequired {
-		binding := f.Cookies.RotateBinding(w)
-		if err := f.pending().begin(ctx, binding, p); err != nil {
+		// The pending sign-in is no principal, so the CSRF token of the
+		// page rendered here stays valid for the factor step.
+		if err := f.pending().begin(ctx, f.binding(r), p); err != nil {
 			f.fail(w, r, err)
 			return
 		}
 		f.Pages.Login(w, r, http.StatusOK, LoginView{AuthSource: "local", MFARequired: true, MFAMethods: f.methods(ctx, userID)})
 		return
 	}
-	if _, err := f.finalize(ctx, w, p, []string{p.PrimaryMethod}); err != nil {
+	if err := f.finalize(ctx, w, p, []string{p.PrimaryMethod}); err != nil {
 		f.fail(w, r, err)
 		return
 	}
@@ -186,10 +186,9 @@ func (f *Flow) cancel(w http.ResponseWriter, r *http.Request) {
 		f.redirect(w, r, f.url("/"))
 		return
 	}
-	if err := f.pending().cancel(r.Context(), f.Cookies.CurrentBinding(r)); err != nil {
+	if err := f.pending().cancel(r.Context(), f.binding(r)); err != nil {
 		f.logger().WarnContext(r.Context(), "Pending authentication cancellation failed", "error", err)
 	}
-	f.Cookies.RotateBinding(w)
 	f.redirect(w, r, f.url("/login"))
 }
 
@@ -216,10 +215,9 @@ func (f *Flow) logout(w http.ResponseWriter, r *http.Request) {
 			f.logger().WarnContext(ctx, "Authentication invalidation failed during logout", "user_id", p.UserID, "error", err)
 		}
 	}
-	f.Cookies.Clear(w)
-	binding := f.Cookies.RotateBinding(w)
+	f.Cookie.Clear(w)
 	if !ended {
-		f.flash.add(f.now(), binding, Flash{"error", msgPartialLogout})
+		f.AddFlash(r, Flash{"error", msgPartialLogout})
 	}
 	f.redirect(w, r, f.url("/login"))
 }

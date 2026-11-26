@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -182,7 +183,7 @@ func newEnv(t *testing.T, reg bool) *env {
 	lim := NewLimiter()
 	lim.Now = e.clock.now
 	e.flow = &Flow{
-		DB: db, MAC: ring, Accounts: accs, Sessions: sess, Cookies: session.Cookies{Name: "session"},
+		DB: db, MAC: ring, Accounts: accs, Sessions: sess, Cookie: testCookie{}, Binding: testBinding,
 		Password: e.pw, Passwords: e.pw, Factors: []Factor{e.totp}, Gates: allGates{}, Settings: settings{reg},
 		Limiter: lim, Limits: Limits{Enabled: true, Login: Rule{5, time.Minute}, Default: Rule{200, time.Hour}},
 		Audit: e.audit, Pages: e.pages, Bootstrap: true, Now: e.clock.now,
@@ -191,6 +192,25 @@ func newEnv(t *testing.T, reg bool) *env {
 	e.flow.Register(e.mux)
 	return e
 }
+
+type testCookie struct{}
+
+func (testCookie) Set(w http.ResponseWriter, token string, expires time.Time) {
+	http.SetCookie(w, &http.Cookie{Name: "session", Value: token, Expires: expires, HttpOnly: true})
+}
+func (testCookie) Clear(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: "session", MaxAge: -1})
+}
+
+// testBinding reads the binding cookie the HTTP edge keeps.
+func testBinding(r *http.Request) string {
+	if c, err := r.Cookie("session_binding"); err == nil {
+		return c.Value
+	}
+	return ""
+}
+
+var bindingSeq atomic.Int64
 
 // browser keeps cookies between requests and puts the principal of a
 // valid session into the context, as the HTTP edge does.
@@ -201,7 +221,7 @@ type browser struct {
 }
 
 func (e *env) browser() *browser {
-	return &browser{e: e, cookies: map[string]string{}, ip: "192.0.2.1:1234"}
+	return &browser{e: e, cookies: map[string]string{"session_binding": "binding-" + strconv.FormatInt(bindingSeq.Add(1), 10)}, ip: "192.0.2.1:1234"}
 }
 
 func (b *browser) do(method, target string, form url.Values) *httptest.ResponseRecorder {
@@ -281,7 +301,7 @@ func TestBootstrapRegistration(t *testing.T) {
 		t.Fatalf("flash leaked to another browser: %v", got)
 	}
 	r := httptest.NewRequest("GET", "/", nil)
-	r.AddCookie(&http.Cookie{Name: "session" + session.BindingSuffix, Value: b.cookies["session"+session.BindingSuffix]})
+	r.AddCookie(&http.Cookie{Name: "session_binding", Value: b.cookies["session_binding"]})
 	if got := e.flow.TakeFlashes(r); len(got) != 1 || got[0].Message != "Account created successfully!" {
 		t.Fatalf("flash %v", got)
 	}
@@ -425,14 +445,13 @@ func TestPendingSecondFactor(t *testing.T) {
 	e.totp.enrolled[a.ID] = true
 	_ = e.flow.DB.Write(t.Context(), func(tx *store.Tx) error { return e.flow.Accounts.SetMFARequiredTx(t.Context(), tx, a.ID, true) })
 	b := e.browser()
-	before := b.cookies["session_binding"]
 	rec := b.do("POST", "/login?next=/x", creds("alice", "password1"))
 	got := e.pages.last()
 	if rec.Code != 200 || !got.login.MFARequired || len(got.login.MFAMethods) != 1 || got.login.MFAMethods[0] != "totp" {
 		t.Fatalf("%d %+v", rec.Code, got)
 	}
-	if b.cookies["session"] != "" || b.cookies["session_binding"] == before {
-		t.Fatal("signed in before the factor, or binding not rotated")
+	if b.cookies["session"] != "" {
+		t.Fatal("signed in before the factor")
 	}
 	req := func(br *browser) (*httptest.ResponseRecorder, *http.Request) {
 		r := httptest.NewRequest("POST", "/api/totp/auth/verify", nil)
@@ -525,7 +544,8 @@ func TestDiscardPendingFlashes(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("POST", "/", nil)
 	r.AddCookie(&http.Cookie{Name: "session_binding", Value: b.cookies["session_binding"]})
-	e.flow.DiscardPending(w, r, Flash{"error", "Too many invalid codes. Sign in again."})
+	_ = w
+	e.flow.DiscardPending(r, Flash{"error", "Too many invalid codes. Sign in again."})
 	b.do("GET", "/login", nil)
 	if got := e.pages.last(); len(got.login.Flashes) != 1 || got.login.Flashes[0].Message != "Too many invalid codes. Sign in again." {
 		t.Fatalf("%+v", got)

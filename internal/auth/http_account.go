@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 	"strconv"
+	"time"
 	"unicode/utf8"
 
 	"github.com/bifrost0x/webssh/internal/accounts"
@@ -28,12 +29,11 @@ func (f *Flow) registerPage(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		f.fail(w, r, err)
 	case !ongoing && !bootstrap:
-		f.AddFlash(w, r, Flash{"error", msgRegistrationOff})
+		f.AddFlash(r, Flash{"error", msgRegistrationOff})
 		f.redirect(w, r, f.url("/login"))
 	case f.signedIn(r):
 		f.redirect(w, r, f.url("/"))
 	default:
-		f.Cookies.Binding(w, r)
 		f.Pages.Register(w, r, http.StatusOK, FormView{Flashes: f.TakeFlashes(r)})
 	}
 }
@@ -46,7 +46,7 @@ func (f *Flow) register(w http.ResponseWriter, r *http.Request) {
 		f.fail(w, r, err)
 		return
 	case !ongoing && !bootstrap:
-		f.AddFlash(w, r, Flash{"error", msgRegistrationOff})
+		f.AddFlash(r, Flash{"error", msgRegistrationOff})
 		f.redirect(w, r, f.url("/login"))
 		return
 	case f.signedIn(r):
@@ -83,15 +83,14 @@ func (f *Flow) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := Pending{UserID: acc.ID, Generation: acc.AuthGeneration, PrimaryMethod: f.Password.Name(), Assurance: session.Basic, Continuation: "/"}
-	binding, err := f.finalize(ctx, w, p, []string{p.PrimaryMethod})
-	if err != nil {
+	if err := f.finalize(ctx, w, p, []string{p.PrimaryMethod}); err != nil {
 		f.fail(w, r, err)
 		return
 	}
 	if f.Audit != nil {
 		f.Audit.Registration(username, true, ip)
 	}
-	f.flash.add(f.now(), binding, Flash{"success", "Account created successfully!"})
+	f.AddFlash(r, Flash{"success", "Account created successfully!"})
 	f.redirect(w, r, f.url("/"))
 }
 
@@ -211,16 +210,20 @@ func (f *Flow) changePassword(w http.ResponseWriter, r *http.Request) {
 		return err
 	})
 	if err != nil {
-		f.Cookies.Clear(w)
+		f.Cookie.Clear(w)
 		f.logger().WarnContext(ctx, "Password change session rotation failed", "user", acc.Username, "error", err)
 		f.fail(w, r, fault.Wrap(fault.StorageError, err, ""))
 		return
 	}
 	f.Sessions.Publish(revs)
-	f.Cookies.Set(w, token, fresh)
+	var expires time.Time
+	if fresh.Remember {
+		expires = fresh.ExpiresAt
+	}
+	f.Cookie.Set(w, token, expires)
 	if f.Audit != nil {
 		f.Audit.PasswordChange(acc.Username, true, ip)
 	}
-	f.AddFlash(w, r, Flash{"success", "Password updated successfully"})
+	f.AddFlash(r, Flash{"success", "Password updated successfully"})
 	f.redirect(w, r, f.url("/"))
 }

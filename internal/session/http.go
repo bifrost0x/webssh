@@ -9,97 +9,11 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
-	"time"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/store"
 )
-
-// Cookies writes and reads the browser cookies of a session. Go uses its
-// own tokens (decision D-02); the cookie keeps the configured
-// SESSION_COOKIE_NAME, so a reverse proxy rule on the name still applies.
-type Cookies struct {
-	// Name is SESSION_COOKIE_NAME.
-	Name string
-	// Path is APPLICATION_ROOT or "/".
-	Path string
-	// Secure is SESSION_COOKIE_SECURE.
-	Secure bool
-}
-
-// BindingSuffix names the pre-sign-in cookie: Name + BindingSuffix.
-const BindingSuffix = "_binding"
-
-func (c Cookies) path() string {
-	if c.Path == "" {
-		return "/"
-	}
-	return c.Path
-}
-
-func (c Cookies) cookie(name, value string) *http.Cookie {
-	return &http.Cookie{Name: name, Value: value, Path: c.path(), HttpOnly: true, Secure: c.Secure, SameSite: http.SameSiteLaxMode}
-}
-
-// Token returns the session token of a request, or "".
-func (c Cookies) Token(r *http.Request) string {
-	if ck, err := r.Cookie(c.Name); err == nil && len(ck.Value) <= maxTokenLen {
-		return ck.Value
-	}
-	return ""
-}
-
-// Set writes the session cookie. A remembered session gets an expiry; any
-// other cookie ends with the browser session.
-func (c Cookies) Set(w http.ResponseWriter, token string, s Session) {
-	ck := c.cookie(c.Name, token)
-	if s.Remember {
-		ck.Expires = s.ExpiresAt
-		ck.MaxAge = max(1, int(time.Until(s.ExpiresAt).Seconds()))
-	}
-	http.SetCookie(w, ck)
-}
-
-// Clear removes the session cookie.
-func (c Cookies) Clear(w http.ResponseWriter) {
-	ck := c.cookie(c.Name, "")
-	ck.MaxAge = -1
-	http.SetCookie(w, ck)
-}
-
-// Binding returns the browser binding of a visitor that is not signed in
-// yet, creating it if needed. It ties a pending second-factor step to the
-// browser that entered the password (browser_session_binding) and is the
-// anchor for pre-sign-in CSRF tokens.
-func (c Cookies) Binding(w http.ResponseWriter, r *http.Request) string {
-	if ck, err := r.Cookie(c.Name + BindingSuffix); err == nil && validBinding(ck.Value) {
-		return ck.Value
-	}
-	v := randomText(32)
-	http.SetCookie(w, c.cookie(c.Name+BindingSuffix, v))
-	return v
-}
-
-// CurrentBinding returns the binding of a request without creating one.
-func (c Cookies) CurrentBinding(r *http.Request) string {
-	if ck, err := r.Cookie(c.Name + BindingSuffix); err == nil && validBinding(ck.Value) {
-		return ck.Value
-	}
-	return ""
-}
-
-// RotateBinding replaces the binding, so a sign-in never continues with a
-// value an attacker planted before it.
-func (c Cookies) RotateBinding(w http.ResponseWriter) string {
-	v := randomText(32)
-	http.SetCookie(w, c.cookie(c.Name+BindingSuffix, v))
-	return v
-}
-
-var bindingPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
-
-func validBinding(v string) bool { return bindingPattern.MatchString(v) }
 
 // Auditor writes security events (provided by internal/audit).
 type Auditor interface {
