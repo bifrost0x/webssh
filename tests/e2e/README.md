@@ -53,9 +53,17 @@ package `internal/e2eseed`); the release binary contains neither the
 `e2e` command nor the hooks.
 
 ```sh
-go build -tags e2e -o .test-run.tmp/webssh-e2e ./cmd/webssh
-WEBSSH_E2E_SERVER_COMMAND='.test-run.tmp/webssh-e2e e2e' npx playwright test
+scripts/stage-webassets.sh
+go build -tags e2e -o .test-run.tmp/webssh-e2e \
+  -ldflags "-X github.com/bifrost0x/webssh/internal/buildinfo.version=3.4.0 -X github.com/bifrost0x/webssh/internal/buildinfo.revision=$(git rev-parse HEAD)" \
+  ./cmd/webssh
+WEBSSH_E2E_SERVER_COMMAND='.test-run.tmp/webssh-e2e e2e' node tests/e2e/m1/run-go-subset.js --with passkeys,e2e_hooks
 ```
+
+Without the version in `-ldflags` the binary reports `dev`, and the
+account menu spec, which expects a release version, fails.
+`run-go-subset.js` runs the specs the Go preview has to pass
+(`m1/go-subset.json`); every left-out test names the capability it needs.
 
 `go run -tags e2e ./cmd/webssh e2e` works as well but compiles on every
 start. The Go applier is stricter than `run_app.py`: unknown members, a
@@ -158,7 +166,7 @@ like `entrypoint.sh`, the server reads or creates `DATA_DIR/secret_key`.
 |---|---|
 | `fresh-start` | `create-admin`, sign-in, TOTP activated and enrolled, sign-in with TOTP, saved host on `ssh-modern` with host-key prompt and shell round trip, reload resumes the session, close, second connection without prompt, key upload (step-up on Go), key connection through `ssh-bastion` to `ssh-inner` |
 | `hosts` | saved host created, edited and deleted, each surviving a reload, without any connection |
-| `passkey` | passkey registered with a virtual authenticator, then sign-in with it (marked `fixme` on Go until passkeys are merged) |
+| `passkey` | passkey registered with a virtual authenticator, then sign-in with it |
 | `preview-areas` | every navigation area, asset manager, workspace tool and Settings section opens without page errors, unhandled rejections, 5xx other than the preview's 501 or a loading indicator older than 5 s; the preview notice on Go, none on Python |
 | `migration` | the Python release writes a `DATA_DIR` through its interface (`python-data-dir.js`: TOTP, key, two hosts, accepted host key); the server under test starts on a copy; old password and TOTP sign in, hosts and key are there, the host key is trusted. On Go also the migration report and an unchanged legacy listing |
 

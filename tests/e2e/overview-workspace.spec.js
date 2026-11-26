@@ -187,7 +187,9 @@ test('connecting from the expanded route map closes the map once', async ({page}
     await page.locator('#overviewOpenMap').click();
     const dialog = page.locator('dialog.ssh-map-dialog');
     await expect(dialog).toBeVisible();
-    await dialog.locator('.overview-host-connect').first().click();
+    // A saved key host behind a saved jump host connects at once; the
+    // map's first host uses Tailscale SSH, which not every build offers.
+    await dialog.locator('.overview-host-connect[aria-label="Connect Key jump host"]').click();
     await expect(dialog).toBeHidden();
     await expect(page.locator('#connectionOverview')).toBeHidden();
     // The map must not reopen behind the workspace, and exactly one connection starts.
