@@ -183,7 +183,7 @@ func FuzzUserValues(f *testing.F) {
 	for _, s := range []string{"alice", "<script>alert(1)</script>", `"><img src=x onerror=alert(1)>`, "</script><!--", " ", "javascript:alert(1)"} {
 		f.Add(s, s)
 	}
-	r, err := NewRenderer(testAssets(&testing.T{}))
+	r, err := NewRenderer(testAssets(f))
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -290,6 +290,38 @@ func TestDerivedSignInValues(t *testing.T) {
 		if got := v.LDAPUsernameHint(); got != tt.ldap {
 			t.Errorf("%s: LDAPUsernameHint = %q, want %q", tt.name, got, tt.ldap)
 		}
+	}
+}
+
+// TestRecoverySessionHidesAdministration covers the gate the parity test
+// cannot tell apart from a template typo: a recovery session of an
+// administrator must not load the administration panel.
+func TestRecoverySessionHidesAdministration(t *testing.T) {
+	r := testRenderer(t)
+	for _, c := range loadCases(t) {
+		page := string(renderCase(t, r, c))
+		switch c.Name {
+		case "settings_recovery_admin":
+			for _, marker := range []string{`id="tab-users"`, "js/admin.js"} {
+				if strings.Contains(page, marker) {
+					t.Errorf("%s: recovery session contains %s", c.Name, marker)
+				}
+			}
+		case "settings_admin_all":
+			if !strings.Contains(page, `id="tab-users"`) || !strings.Contains(page, "js/admin.js") {
+				t.Errorf("%s: administrator page lacks the administration panel", c.Name)
+			}
+		}
+	}
+}
+
+func TestErrorPageFallsBackToHome(t *testing.T) {
+	var buf bytes.Buffer
+	if err := testRenderer(t).Render(&buf, PageError, PageData{BasePath: "/w", Kind: "not_found"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `class="btn btn-primary btn-block" href="/w/"`) {
+		t.Error("error page without an action URL does not link home")
 	}
 }
 

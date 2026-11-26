@@ -7,6 +7,13 @@ templates through the real Flask application and compares both documents
 after normalisation: tags, every attribute, text with collapsed
 whitespace, JSON blocks by value. Differences are allowed only where
 parity-exceptions.json names them with a reason.
+
+Limits of the comparison, covered by the Go tests instead: character
+references are decoded, so the form of escaping is not compared
+(TestUserValuesAreEscaped, FuzzUserValues); comments are dropped, as
+html/template strips them; whitespace in text is collapsed; asset versions
+are masked on both sides (TestAssetVersionIsContentHash checks the
+algorithm).
 """
 
 import json

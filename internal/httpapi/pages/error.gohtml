@@ -43,7 +43,7 @@
                                 <p data-i18n="errors.notFoundBody">The address may be outdated. Return to WebSSH to continue.</p>
                                 {{end}}
                             </div>
-                            <a class="btn btn-primary btn-block" href="{{$.ActionURL}}">
+                            <a class="btn btn-primary btn-block" href="{{or $.ActionURL ($.URL "/")}}">
                                 {{if or (eq $.Kind "form_expired") (eq $.Kind "cookie_rejected")}}
                                 <span data-i18n="errors.openFormAgain">Open the form again</span>
                                 {{else}}

@@ -5,7 +5,7 @@
     "workspace_.*"
    ],
    "side": "jinja",
-   "line": "<script src=\".*/static/vendor/socketio/socket\\.io\\.min\\.js\\?v=VERSION\">",
+   "line": "<script src=\"(/webssh)?/static/vendor/socketio/socket\\.io\\.min\\.js\\?v=VERSION\">",
    "reason": "The Go backend has no Socket.IO endpoint; the workspace loads the realtime shim instead (M1 plan 1.4, K6 way a). Removing an opening script line also removes its closing tag."
   },
   {
@@ -13,7 +13,7 @@
     "workspace_.*"
    ],
    "side": "go",
-   "line": "<script src=\".*/static/js/realtime-shim\\.js\\?v=VERSION\">",
+   "line": "<script src=\"(/webssh)?/static/js/realtime-shim\\.js\\?v=VERSION\">",
    "reason": "The realtime shim replaces socket.io.min.js at the same position."
   },
   {
@@ -22,7 +22,7 @@
     "login_preview"
    ],
    "side": "go",
-   "line": "(<script id=\"websshPreview\" type=\"application/json\">|json:\\{\"enabled\": true.*|<script src=\".*/static/js/preview-notice\\.js\\?v=VERSION\">)",
+   "line": "(<script id=\"websshPreview\" type=\"application/json\">|json:\\{\"enabled\": true, \"message\": \"Preview: [^\"]*\", \"unavailable\": \\[(\"[a-z]+\"(, )?)+\\]\\}|<script src=\"(/webssh)?/static/js/preview-notice\\.js\\?v=VERSION\">)",
    "reason": "The preview notice exists only in the Go build; it is rendered only when PageData.Preview.Enabled is set. Removing an opening script line also removes its closing tag."
   },
   {

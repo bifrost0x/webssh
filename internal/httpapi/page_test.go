@@ -24,7 +24,7 @@ var (
 )
 
 // testAssets indexes the staged static/ plus the preview stand-ins.
-func testAssets(t *testing.T) *Assets {
+func testAssets(t testing.TB) *Assets {
 	t.Helper()
 	testAssetsOnce.Do(func() {
 		static, err := StaticAssets()

@@ -18,6 +18,13 @@ func StaticAssets() (*Assets, error) {
 	if !ok {
 		return nil, errors.New("devfs: cannot locate the source tree")
 	}
-	root := filepath.Join(filepath.Dir(file), "..", "..", "static")
-	return NewAssets(os.DirFS(root))
+	if !filepath.IsAbs(file) {
+		return nil, errors.New("devfs: source path is not absolute; build without -trimpath")
+	}
+	// os.Root keeps every open, symlinks included, inside static/.
+	root, err := os.OpenRoot(filepath.Join(filepath.Dir(file), "..", "..", "static"))
+	if err != nil {
+		return nil, err
+	}
+	return NewAssets(root.FS())
 }
