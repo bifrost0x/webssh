@@ -12,7 +12,8 @@ Packages that do not exist yet are listed so that the structure is agreed
 before the code is written. The phase column names the build phase that
 creates the package (G0, B1 to B8 of the project plan; M1 for the preview
 milestone). The contracts between the packages built for M1 are in
-[m1-contracts.md](m1-contracts.md).
+[m1-contracts.md](m1-contracts.md), those of M2 in
+[m2-contracts.md](m2-contracts.md).
 
 Packages whose name ends in `test` hold test doubles. The architecture
 tests allow only test files to import them.
@@ -112,6 +113,9 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/migrate/legacy` | edge | One-time, verified migration of a Python `DATA_DIR` and of Python backups (lenient paths); registry of steps per entity; `migrate --replace` and `legacy purge` | – | B1 |
 | `internal/realtime` | edge | Native WebSocket endpoint, same-origin and allowlist check on every upgrade, connection lifecycle, dispatch | – | B3 |
 | `internal/admincli` | edge | Administrator subcommands of `webssh` | – | B7 |
+| `internal/idna2003` | foundation | IDNA 2003 host name conversion as the Python release applied it (`encodings.idna`), so the network policy sees one canonical form of every host ([M2 contracts](m2-contracts.md)) | – | B3 |
+| `internal/files/filestest` | capability | Test double: an in-memory file backend; imported by test files only | – | B4 |
+| `internal/vault/vaulttest` | capability | Test double of the saved-password provider; imported by test files only | – | B5 |
 | `internal/e2eseed` | edge | Applies the end-to-end seed to the Go stores and provides the test-only hooks; imported only by `cmd/webssh/e2e.go` (build tag `e2e`), never part of the release binary | – | M1 |
 
 `internal/migrate/legacy` is the only package that knows the Python schema

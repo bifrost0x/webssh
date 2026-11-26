@@ -3,7 +3,8 @@
 This document fixes the contracts between the Go packages built for the M1
 preview: the realtime protocol, the principal, the error codes, the store
 API and the interfaces where packages meet. It is the reference for the
-packages that are built in parallel against it.
+packages that are built in parallel against it. The contracts of M2
+continue it in [m2-contracts.md](m2-contracts.md).
 
 The [package map](go-package-map.md) says which package may import which.
 The rules behind both are in

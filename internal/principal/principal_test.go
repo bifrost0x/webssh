@@ -54,7 +54,7 @@ func TestActions(t *testing.T) {
 		}
 		seen[a] = true
 	}
-	if len(seen) != 13 || principal.Action("key.upload ").Known() {
+	if len(seen) != 14 || principal.Action("key.upload ").Known() {
 		t.Errorf("catalog has %d actions or accepts a near miss", len(seen))
 	}
 	principal.Actions()[0] = "mutated"

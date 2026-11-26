@@ -1,0 +1,125 @@
+[
+ {
+  "record": {
+   "id": "p1",
+   "host": "example.org",
+   "port": 22,
+   "username": "root",
+   "auth_type": "password",
+   "key_id": null,
+   "jump_host_id": null
+  },
+  "fingerprint": "4ddd18ed0e969d481d45dbe9b3d389d564aa4024e2db0be5705fcdb8f4927ceb"
+ },
+ {
+  "record": {
+   "id": "p2",
+   "host": "h\u00e4st.example",
+   "port": 2222,
+   "username": "J\u00fcrgen \ud83d\ude00",
+   "auth_type": "password",
+   "jump_host_id": "j1",
+   "route_fingerprint": "abababababababababababababababababababababababababababababababab"
+  },
+  "fingerprint": "4fb91265a38056dabefca656c8980d200f3c4c00a1c21e3e2ac5b07f45ec0a26"
+ },
+ {
+  "record": {
+   "id": "p3",
+   "host": "h",
+   "port": 22,
+   "username": "u",
+   "auth_type": "password",
+   "socks_proxy_id": "s1",
+   "route_fingerprint": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+  },
+  "fingerprint": "03332298948e5a2aee56589469af304cef090f8022aa1c250eeaf7890bb95b36"
+ },
+ {
+  "record": {
+   "id": "p4",
+   "host": "h",
+   "port": 22,
+   "username": "u",
+   "auth_type": "password",
+   "socks_proxy_id": ""
+  },
+  "fingerprint": "88afa6fba992687b0591b1b5be75d3bdc0f4e29a2bb79bad5abc7df8addb33a4"
+ },
+ {
+  "record": {
+   "id": "jump:j1",
+   "kind": "jump",
+   "host": "bastion",
+   "port": 22,
+   "username": "u",
+   "auth_type": "password",
+   "key_id": "k1"
+  },
+  "fingerprint": "6e99a14b1d385127123ab323e950bf8af948a0f47ecaec605756b1643f69f267"
+ },
+ {
+  "record": {
+   "id": "socks:s1",
+   "kind": "socks",
+   "host": "proxy",
+   "port": 1080,
+   "username": "u",
+   "auth_type": "password"
+  },
+  "fingerprint": "8abbb52e18aedd703d348ca54cb824e556d57de8545e116fa6f5db793f833fa0"
+ },
+ {
+  "record": {
+   "id": "socks:s2",
+   "kind": "socks",
+   "host": "proxy",
+   "port": 1080,
+   "username": "",
+   "auth_type": "password",
+   "remote_dns": false
+  },
+  "fingerprint": "a94fbe9dad0ef0885529930d36ab004e240a8f354ca947daf5d05fe03df44bf0"
+ },
+ {
+  "record": {
+   "id": "smb:x",
+   "kind": "smb",
+   "host": "10.0.0.5",
+   "port": 445,
+   "username": "u",
+   "auth_type": "password",
+   "share": "Daten"
+  },
+  "fingerprint": "c7a4b8155874a2c66411c632f110ba6bf604cb2d057eed2cd365d87b659a519d"
+ },
+ {
+  "record": {
+   "id": "smb:y",
+   "kind": "smb",
+   "host": "10.0.0.5",
+   "port": 445,
+   "username": "u",
+   "auth_type": "password",
+   "share": "d",
+   "domain": "CORP"
+  },
+  "fingerprint": "b39953feb6210ca68eab4c47891a6e2b19cfcfddad625fb4f9f3ac593b50cbff"
+ },
+ {
+  "record": {},
+  "fingerprint": "3bf6a6ad0832e19010590e88167195b82b3d57af8ee9ab253f8dae5a7849dfed"
+ },
+ {
+  "record": {
+   "id": "j1",
+   "host": "bastion",
+   "port": 22,
+   "username": "u\"\\\n",
+   "auth_type": "password",
+   "key_id": "k1",
+   "jump_host_id": null
+  },
+  "fingerprint": "b19c5207b3a387eb9e638a720c1b32f576eb4fdd96ce52ea35a983f0d73fbfd7"
+ }
+]

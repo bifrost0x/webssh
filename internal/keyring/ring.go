@@ -100,7 +100,7 @@ func newAEAD(key []byte) (cipher.AEAD, error) {
 // names the separate browser-local namespace derivation and has no keyring
 // key.
 var (
-	sealPurposes = []Purpose{SSHKey, TOTP, WebAuthnChallenge}
+	sealPurposes = []Purpose{SSHKey, TOTP, WebAuthnChallenge, Credential}
 	macPurposes  = []Purpose{SessionToken, CSRF, StepUpGrant, FeatureApproval}
 )
 

@@ -69,9 +69,14 @@ func TestErrorChain(t *testing.T) {
 func TestCatalog(t *testing.T) {
 	t.Parallel()
 	valid := regexp.MustCompile(`^[a-z][a-z0-9_]*[a-z0-9]$`)
+	// The file and transfer codes keep the upper-case spelling of the
+	// Python release (codes_data.go); no other code may use it.
+	upper := regexp.MustCompile(`^[A-Z][A-Z0-9_]*[A-Z0-9]$`)
 	for _, c := range Codes() {
-		if !valid.MatchString(string(c)) || len(c) > 64 {
-			t.Errorf("code %q is not lower snake case up to 64 bytes", c)
+		_, data := dataCatalog[c]
+		ok := valid.MatchString(string(c)) || data && upper.MatchString(string(c))
+		if !ok || len(c) > 64 {
+			t.Errorf("code %q is not snake case up to 64 bytes", c)
 		}
 		if s := c.HTTPStatus(); s < 400 || s > 599 {
 			t.Errorf("code %q maps to status %d", c, s)
