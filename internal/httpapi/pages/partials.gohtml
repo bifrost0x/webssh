@@ -1,0 +1,14 @@
+{{define "brand_logo"}}<svg class="{{.Class}}" viewBox="0 0 128 128" width="128" height="128" focusable="false" {{if .Decorative}}aria-hidden="true"{{else}}role="img" aria-label="WebSSH"{{end}}>
+    <use href="{{.Href}}#webssh-terminal"></use>
+</svg>{{end}}
+
+{{define "auth_alert"}}<div class="alert alert-{{.Category}}"{{with .Key}} data-i18n="{{.}}"{{end}}>{{.Message}}</div>{{end}}
+
+{{define "auth_messages"}}{{range .AuthMessages}}
+        {{template "auth_alert" .}}
+{{end}}{{end}}
+
+{{define "method_label"}}<span data-i18n="{{methodKey .I18nKey}}">{{.Label}}</span>{{end}}
+
+{{define "preview_notice"}}{{if .Preview.Enabled}}<script id="websshPreview" type="application/json">{{.Preview}}</script>
+    <script src="{{.Asset "js/preview-notice.js"}}"></script>{{end}}{{end}}

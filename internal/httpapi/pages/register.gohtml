@@ -1,0 +1,142 @@
+{{define "register"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" data-theme-logo type="image/svg+xml" href="{{$.Asset "images/webssh-logo.svg"}}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="app-root" content="{{$.URLPrefix}}">
+    <title data-i18n="auth.registerPageTitle">Create account · WebSSH</title>
+    <link rel="stylesheet" href="{{$.Asset "vendor/material-icons/material-icons.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/style.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/auth.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/webssh-2.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/product-ui.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/midnight-ui.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/branding.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/theme-scenes.css"}}">
+    <script src="{{$.Asset "js/branding.js"}}" defer></script>
+</head>
+<body class="webssh-ui webssh-auth" data-theme="glass" data-use-theme-preference data-defer-theme-background>
+    <script src="{{$.Asset "js/theme-preference.js"}}"></script>
+
+    <div class="auth-shell">
+        <header class="auth-utility-bar">
+            <div class="auth-instance-state">
+                <span class="material-icons" aria-hidden="true">dns</span>
+                <span data-i18n="auth.instanceStatus">WebSSH instance</span>
+                <strong id="authInstanceAddress"></strong>
+            </div>
+            <div class="language-selector">
+                <button class="lang-btn" id="langBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="langDropdown">
+                    <span class="material-icons" aria-hidden="true">language</span>
+                    <span id="currentLangFlag" class="language-code">EN</span>
+                    <span id="currentLangName">English</span>
+                    <span class="material-icons" aria-hidden="true">expand_more</span>
+                </button>
+                <div class="lang-dropdown" id="langDropdown"></div>
+            </div>
+        </header>
+
+        <main class="auth-shell-content">
+            <section class="auth-access-dock">
+                <div class="auth-context-panel">
+                    <div class="auth-brand-lockup">
+                        <a class="auth-product-brand" href="{{$.URL "/login"}}" aria-label="WebSSH sign in" data-i18n-aria-label="auth.websshSignIn">
+                            {{template "brand_logo" ($.Logo "auth-product-logo" false)}}
+                        </a>
+                        <p class="auth-context-footer" data-i18n="brand.tagline">Your shell. Your rules.</p>
+                    </div>
+                    <div class="auth-context-copy">
+                        <span class="auth-brand-eyebrow" data-i18n="auth.welcomeToWebssh">Welcome to WebSSH</span>
+                        <h1 data-i18n="auth.serverControlCenter">The control center for your servers.</h1>
+                        <ul class="auth-product-pillars" aria-label="WebSSH product areas" data-i18n-aria-label="auth.productAreas">
+                            <li data-product-area="ssh-workspaces">
+                                <span class="material-icons" aria-hidden="true">terminal</span>
+                                <strong data-i18n="navigation.sshWorkspaces">SSH Workspaces</strong>
+                            </li>
+                            <li data-product-area="file-manager">
+                                <span class="material-icons" aria-hidden="true">folder_open</span>
+                                <strong data-i18n="files.fileManager">File Manager</strong>
+                            </li>
+                            <li data-product-area="hosts">
+                                <span class="material-icons" aria-hidden="true">dns</span>
+                                <strong data-i18n="connectionAssets.hosts">Hosts</strong>
+                            </li>
+                            <li data-product-area="commands">
+                                <span class="material-icons" aria-hidden="true">code</span>
+                                <strong data-i18n="commands.workspace">Commands</strong>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="auth-form-panel">
+            <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <span class="auth-form-eyebrow" data-i18n="auth.registration">Registration</span>
+                <h1 data-i18n="auth.registerPrompt">Create a local WebSSH account</h1>
+                <p data-i18n="auth.registrationHint">Choose credentials for this instance. You can add stronger factors after sign-in.</p>
+            </div>
+
+            
+            {{template "auth_messages" $}}
+
+            <div class="auth-credentials-zone">
+            <form method="POST" action="{{$.URL "/register"}}" id="registerForm">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/>
+                <div class="form-group">
+                    <label for="username" data-i18n="auth.username">Username</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon material-icons" aria-hidden="true">person</span>
+                        <input type="text" id="username" aria-describedby="registerUsernameHint" name="username" class="form-control"
+                               data-i18n-placeholder="auth.username" placeholder="Username" required autofocus
+                               pattern="[a-zA-Z0-9_]{3,32}"
+                               title="3-32 characters, letters, numbers, and underscore only" data-i18n-title="auth.usernameRules">
+                    </div>
+                    <div class="field-hint" id="registerUsernameHint"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password" data-i18n="auth.password">Password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon material-icons" aria-hidden="true">lock</span>
+                        <input type="password" id="password" aria-describedby="registerPasswordHint" name="password" class="form-control"
+                               data-i18n-placeholder="auth.password" placeholder="Password" required minlength="8">
+                        <button type="button" class="password-toggle material-icons" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
+                    </div>
+                    <div class="field-hint" id="registerPasswordHint" data-i18n="auth.passwordHint">Minimum 8 characters</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm_password" data-i18n="auth.confirmPassword">Confirm Password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon material-icons" aria-hidden="true">lock</span>
+                        <input type="password" id="confirm_password" aria-describedby="registerConfirmHint" name="confirm_password" class="form-control"
+                               data-i18n-placeholder="auth.confirmPassword" placeholder="Confirm Password" required>
+                        <button type="button" class="password-toggle material-icons" data-target="confirm_password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
+                    </div>
+                    <div class="field-hint" id="registerConfirmHint"></div>
+                </div>
+
+                <button type="submit" class="btn-primary" id="submitBtn">
+                    <span data-i18n="auth.createAccount">Create Account</span>
+                </button>
+            </form>
+            </div>
+
+            <div class="auth-footer">
+                <span data-i18n="auth.haveAccount">Already have an account?</span>
+                <a href="{{$.URL "/login"}}" data-i18n="auth.loginHere">Sign in here</a>
+            </div>
+        </div>
+            </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{$.Asset "js/i18n-auth.js"}}"></script>
+    <script src="{{$.Asset "js/auth.js"}}"></script>
+</body>
+</html>{{end}}

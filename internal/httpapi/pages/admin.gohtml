@@ -1,0 +1,512 @@
+{{define "admin"}}
+
+
+        <section class="admin-panel hidden" id="tab-operations" aria-labelledby="operationsTitle">
+            <div class="admin-page-header operations-header">
+                <div><h2 id="operationsTitle" data-i18n="operations.title">Instance status</h2><p data-i18n="operations.hint">Manage active connections and transfers.</p></div>
+                <div class="operations-refresh"><span id="operationsStatus" role="status" aria-live="polite" data-i18n="operations.notLoaded">Not loaded</span><button type="button" class="btn btn-secondary" id="operationsRefresh"><span class="material-icons" aria-hidden="true">refresh</span><span data-i18n="admin.refresh">Refresh</span></button></div>
+            </div>
+            <p id="operationsNotice" class="alert alert-warning hidden" role="status"></p>
+            <div class="operations-metrics">
+                <section class="operations-metric"><span class="material-icons" aria-hidden="true">terminal</span><div><h3 data-i18n="operations.sessions">SSH sessions</h3><strong data-operation="sessions.active">—</strong><span class="operations-metric-note"><span data-operation="sessions.tmux">—</span> <span data-i18n="operations.tmuxSessions">Using tmux</span></span></div></section>
+                <section class="operations-metric"><span class="material-icons" aria-hidden="true">group</span><div><h3 data-i18n="operations.sessionUsers">Users with sessions</h3><strong data-operation="sessions.users">—</strong></div></section>
+                <section class="operations-metric"><span class="material-icons" aria-hidden="true">swap_vert</span><div><h3 data-i18n="operations.transfers">File transfers</h3><strong data-operation="transfers.running">—</strong><span class="operations-metric-note" data-i18n="operations.running">Running</span><p class="operations-metric-note"><span data-operation="transfers.pending">—</span> <span data-i18n="operations.waiting">Waiting</span> · <span data-operation="transfers.cancelling">—</span> <span data-i18n="operations.cancelling">Cancellation requested</span></p></div></section>
+            </div>
+            <nav class="operations-views" aria-label="Instance views" data-i18n-aria-label="operations.views">
+                <button type="button" class="btn btn-secondary" data-operation-view="sessions" aria-pressed="true"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="operations.sessions">SSH sessions</span></button>
+                <button type="button" class="btn btn-secondary" data-operation-view="transfers" aria-pressed="false"><span class="material-icons" aria-hidden="true">swap_vert</span><span data-i18n="operations.transfers">File transfers</span></button>
+            </nav>
+            <section id="operationsDetails" class="hidden" aria-labelledby="operationsDetailsTitle">
+                <div class="operations-list-header"><h3 id="operationsDetailsTitle" tabindex="-1"></h3><span id="operationsDetailsStatus" role="status" aria-live="polite"></span></div>
+                <p id="operationsDetailsHint" class="admin-muted"></p>
+                <p id="operationsActionStatus" role="status" aria-live="polite"></p>
+                <div class="admin-table-wrap operations-table-wrap" tabindex="0" role="region" aria-labelledby="operationsDetailsTitle">
+                    <table class="admin-table operations-table"><thead><tr id="operationsDetailHead"></tr></thead><tbody id="operationsDetailRows"></tbody></table>
+                </div>
+            </section>
+            <details id="operationsTransportDiagnostics" class="operations-disclosure">
+                <summary data-i18n="operations.technical">Connection and worker diagnostics</summary>
+                <p class="admin-muted" data-i18n="operations.browserExplanation">Browser connections are separate from SSH sessions. Opening Settings in the same tab closes that browser connection.</p>
+                <div class="operations-grid">
+                <section class="admin-card"><h3 data-i18n="operations.sockets">Browser connections</h3><dl>
+                    <dt data-i18n="operations.active">Active</dt><dd data-operation="sockets.active">—</dd>
+                    <dt data-i18n="operations.limit">Limit</dt><dd data-operation="sockets.limit">—</dd>
+                    <dt data-i18n="operations.perUser">Limit per user</dt><dd data-operation="sockets.per_user_limit">—</dd>
+                    <dt data-i18n="operations.httpReserve">Configured HTTP thread reserve</dt><dd data-operation="sockets.http_reserve">—</dd>
+                    <dt data-i18n="operations.rejectedTotal">Rejected: instance limit</dt><dd data-operation="sockets.rejected_total">—</dd>
+                    <dt data-i18n="operations.rejectedUser">Rejected: user limit</dt><dd data-operation="sockets.rejected_per_user">—</dd>
+                </dl><button type="button" class="btn btn-secondary" data-operation-view="connections" data-i18n="operations.manageConnections">Manage connections</button></section>
+                <section class="admin-card"><h3 data-i18n="operations.jobs">Background work</h3><dl>
+                    <dt data-i18n="operations.workers">Worker limit</dt><dd data-operation="jobs.workers">—</dd>
+                    <dt data-i18n="operations.running">Running</dt><dd data-operation="jobs.running">—</dd>
+                    <dt data-i18n="operations.waiting">Waiting</dt><dd data-operation="jobs.queued">—</dd>
+                    <dt data-i18n="operations.cancelling">Cancellation requested</dt><dd data-operation="jobs.cancelling">—</dd>
+                </dl><button type="button" class="btn btn-secondary" data-operation-view="jobs" data-i18n="operations.viewJobs">View tasks</button></section>
+                </div>
+            <p class="admin-muted" data-i18n="operations.explanation">Background counts include maintenance tasks. Cancellation requests overlap running or waiting jobs. The HTTP reserve is a configuration value, not a measurement of idle threads.</p>
+            <p class="admin-muted" data-i18n="operations.sessionExplanation">Only SSH connections managed by WebSSH are listed; detached remote tmux sessions are not included.</p>
+            </details>
+            <details id="operationsConfiguration" class="operations-disclosure">
+                <summary data-i18n="operations.configure">Change capacity limits</summary>
+                <p data-i18n="operations.configHint">Set these environment variables in your deployment configuration, then restart WebSSH. Plan the restart: active browser connections and in-process transfers will be interrupted.</p>
+                <ul>
+                    <li><code>GUNICORN_THREADS</code>, <code>MAX_SOCKET_CONNECTIONS</code>, <code>MAX_SOCKET_CONNECTIONS_PER_USER</code></li>
+                    <li><code>BACKGROUND_WORKERS</code></li>
+                </ul>
+                <p data-i18n="operations.configReserve">Keep at least four HTTP threads above the socket limit and use exactly one Gunicorn worker. Capacity changes are validated at startup.</p>
+            </details>
+        </section>
+        <section class="admin-panel hidden" id="tab-users">
+            <div class="admin-page-header">
+                <div><h2 data-i18n="admin.users">Users</h2><p data-i18n="admin.usersHint">Manage accounts, roles, access state, and recovery actions.</p></div>
+                <div class="admin-page-actions">
+                    <button class="btn btn-secondary" id="adminRefreshUsers"><span class="material-icons" aria-hidden="true">refresh</span><span data-i18n="admin.refresh">Refresh</span></button>
+                    <button class="btn btn-primary" id="adminAddUserBtn"><span class="material-icons" aria-hidden="true">person_add</span><span data-i18n="admin.addUser">Add User</span></button>
+                </div>
+            </div>
+            <div class="admin-toolbar admin-user-toolbar" role="search" aria-label="Filter users" data-i18n-aria-label="admin.filterUsers">
+                <label class="admin-search-field"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="admin.searchUsers">Search users</span><input type="search" id="adminUserSearch" class="form-control" placeholder="Search users" data-i18n-placeholder="admin.searchUsers"></label>
+                <label class="admin-user-filter-field"><span data-i18n="admin.access">Access</span><select id="adminUserFilter" class="form-control" aria-label="Filter users" data-i18n-aria-label="admin.filterUsers">
+                        <option value="all" data-i18n="admin.allUsers">All users</option>
+                        <option value="admin" data-i18n="admin.administrators">Administrators</option>
+                        <option value="user" data-i18n="admin.standardUsers">Standard users</option>
+                        <option value="locked" data-i18n="admin.lockedAccounts">Locked accounts</option>
+                    </select></label>
+                <output id="adminUserFilterStatus" class="admin-filter-count" aria-live="polite"></output>
+            </div>
+            <div class="admin-table-wrap">
+                <table class="admin-table admin-responsive-table" id="adminUsersTable">
+                    <thead>
+                        <tr>
+                            <th data-i18n="admin.colId">ID</th>
+                            <th data-i18n="admin.colUser">User</th>
+                            <th data-i18n="admin.colRole">Role</th>
+                            <th data-i18n="admin.colStatus">Status</th>
+                            <th data-i18n="admin.colCreated">Created</th>
+                            <th data-i18n="admin.colLastLogin">Last login</th>
+                            <th data-i18n="admin.colActions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminUsersBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        {{if $.AuditExportEnabled}}
+        <section class="admin-panel hidden" id="tab-audit">
+            <div class="admin-page-header">
+                <div><h2 data-i18n="admin.auditLogs">Audit Logs</h2><p data-i18n="admin.auditLogsHint">Review security and administrative activity.</p></div>
+                <div class="admin-page-actions">
+                    <button class="btn btn-secondary" id="auditRefresh"><span class="material-icons" aria-hidden="true">refresh</span><span data-i18n="admin.refresh">Refresh</span></button>
+                    <button class="btn btn-secondary" id="auditExportBtn"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="admin.exportJsonl">Export JSONL</span></button>
+                </div>
+            </div>
+            <div class="admin-toolbar">
+                <label class="admin-search-field"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="admin.search">Search</span><input type="search" id="auditSearch" class="form-control" placeholder="Search events, users, or sources" data-i18n-placeholder="admin.search"></label>
+                <select id="auditLevel" class="form-control" aria-label="Level" data-i18n-aria-label="audit.level">
+                    <option value="" data-i18n="admin.allLevels">All levels</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="ERROR">ERROR</option>
+                </select>
+            </div>
+            <div class="admin-table-wrap">
+                <table class="admin-table admin-responsive-table" id="adminAuditTable">
+                    <thead>
+                        <tr>
+                            <th data-i18n="audit.timestamp">Timestamp</th>
+                            <th data-i18n="audit.level">Level</th>
+                            <th data-i18n="audit.logger">Source</th>
+                            <th data-i18n="audit.message">Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminAuditBody"></tbody>
+                </table>
+            </div>
+            <div class="admin-pagination">
+                <button class="btn btn-secondary" id="auditPrev" data-i18n="admin.prev">Prev</button>
+                <span id="auditPageInfo" class="admin-page-info"></span>
+                <button class="btn btn-secondary" id="auditNext" data-i18n="admin.next">Next</button>
+            </div>
+        </section>
+
+        {{end}}
+        <section class="admin-panel hidden" id="tab-settings">
+            <section class="admin-settings-subpanel" data-settings-panel="authentication">
+                <div class="admin-page-header">
+                    <div><h2 data-i18n="admin.authentication">Authentication</h2><p data-i18n="admin.authenticationHint">Manage the sign-in methods available to WebSSH users.</p></div>
+                </div>
+                <div class="admin-settings-surface">
+                    <div class="admin-settings-intro">
+                        <h3 data-i18n="admin.authenticationFeatures">Authentication features</h3>
+                        <p class="admin-muted" data-i18n="admin.authenticationFeaturesHint">Deployment configuration defines the maximum available feature set. Only ready features can be activated here; disabling a provider blocks new logins without terminating existing sessions.</p>
+                    </div>
+                    <div id="securityFeatureList"></div>
+                    <p id="securityFeatureStatus" class="admin-muted admin-settings-status" role="status" aria-live="polite" data-i18n="admin.featureStatusNotLoaded">Not loaded</p>
+                    {{if $.LDAPEnabled}}
+                    <details class="admin-config-disclosure" id="ldapStatusPanel">
+                        <summary><span><strong data-i18n="admin.ldapDirectory">LDAP directory</strong><small data-i18n="admin.deploymentConnectionCheck">Deployment connection check</small></span><span class="material-icons" aria-hidden="true">expand_more</span></summary>
+                        <div class="admin-config-disclosure-body">
+                            <p class="admin-muted" data-i18n="admin.ldapCheckHint">Run a read-only TLS and service-bind check. Credentials and directory names are never returned to the browser.</p>
+                            <div class="admin-toolbar">
+                                <button class="btn btn-secondary" id="ldapStatusCheck" data-i18n="admin.checkConnection">Check connection</button>
+                                <span id="ldapStatusResult" class="admin-muted" role="status" aria-live="polite" data-i18n="admin.notChecked">Not checked</span>
+                            </div>
+                        </div>
+                    </details>
+                    {{end}}
+                </div>
+                <form class="admin-settings-surface" id="signInProtection" novalidate>
+                    <div class="admin-settings-intro">
+                        <h3 data-i18n="admin.signInProtection">Sign-in protection</h3>
+                        <p class="admin-muted" data-i18n="admin.signInProtectionHint">Limits failed password attempts per username for local and LDAP sign-in. Changes apply immediately.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="signInUsernameLimit" data-i18n="admin.signInUsernameLimit">Attempts per username and source (per minute)</label>
+                        <input class="form-control" id="signInUsernameLimit" name="login_username_limit" type="number" inputmode="numeric" min="1" max="1000" step="1" required aria-describedby="signInUsernameLimitHint signInUsernameLimitError" disabled>
+                        <p class="admin-muted" id="signInUsernameLimitHint" data-i18n="admin.signInUsernameLimitHint">Default 10. Lower values slow guessing from one address, but users who mistype their password reach the limit sooner.</p>
+                        <p class="admin-field-error hidden" id="signInUsernameLimitError"></p>
+                    </div>
+                    <div class="form-group">
+                        <label for="signInUsernameGlobalLimit" data-i18n="admin.signInUsernameGlobalLimit">Attempts per username from all sources (per minute)</label>
+                        <input class="form-control" id="signInUsernameGlobalLimit" name="login_username_global_limit" type="number" inputmode="numeric" min="1" max="1000" step="1" required aria-describedby="signInUsernameGlobalLimitHint signInUsernameGlobalLimitError" disabled>
+                        <p class="admin-muted" id="signInUsernameGlobalLimitHint" data-i18n="admin.signInUsernameGlobalLimitHint">Default 100, at least the limit per source. Slows guessing spread over many addresses; a sender at this ceiling also delays the real user's sign-in.</p>
+                        <p class="admin-field-error hidden" id="signInUsernameGlobalLimitError"></p>
+                    </div>
+                    <div class="form-group">
+                        <label for="signInIpv6Prefix" data-i18n="admin.signInIpv6Prefix">IPv6 grouping prefix length</label>
+                        <input class="form-control" id="signInIpv6Prefix" name="ratelimit_ipv6_prefix" type="number" inputmode="numeric" min="48" max="128" step="1" required aria-describedby="signInIpv6PrefixHint signInIpv6PrefixError" disabled>
+                        <p class="admin-muted" id="signInIpv6PrefixHint" data-i18n="admin.signInIpv6PrefixHint">Default 128: each address is limited on its own. A shorter prefix such as 64 stops one client from rotating addresses, but all clients in one IPv6 network of that size then share all source rate limits.</p>
+                        <p class="admin-field-error hidden" id="signInIpv6PrefixError"></p>
+                    </div>
+                    <div class="admin-toolbar">
+                        <button class="btn btn-primary" id="signInProtectionSave" type="submit" data-i18n="common.save" disabled>Save</button>
+                        <span class="admin-muted" id="signInProtectionStatus" role="status" aria-live="polite"></span>
+                    </div>
+                </form>
+                <div class="admin-settings-surface" id="githubAuthConfiguration">
+                    <div class="admin-settings-intro">
+                        <h3 data-i18n="admin.githubAuthentication">GitHub authentication</h3>
+                        <p class="admin-muted" data-i18n="admin.githubAuthenticationHint">Configure the GitHub App at runtime. The client secret is encrypted with WebSSH's persistent secret and is never returned to the browser.</p>
+                    </div>
+                    <details class="github-auth-setup-guide" id="githubAuthSetupGuide">
+                        <summary>
+                            <span><strong data-i18n="admin.githubSetupTitle">Set up the GitHub side first</strong><small data-i18n="admin.githubSetupHint">Exact GitHub menus, values, permissions, and installation</small></span>
+                            <span class="material-icons" aria-hidden="true">expand_more</span>
+                        </summary>
+                        <div class="github-auth-setup-body">
+                            <ol>
+                                <li data-i18n="admin.githubSetupUrl">Choose the public WebSSH URL. Use HTTPS and form the callback as https://your-webssh-host/auth/github/callback. If WebSSH uses an application-root prefix, place it before /auth/github/callback.</li>
+                                <li data-i18n="admin.githubSetupApp">Create a GitHub App. For a personal app, open Profile picture → Settings → Developer settings → GitHub Apps → New GitHub App. For an organization-owned app, open Profile picture → Your organizations → Settings → Developer settings → GitHub Apps → New GitHub App. Organization owners or designated GitHub App managers can create it.</li>
+                                <li data-i18n="admin.githubSetupBasic">Complete “Basic information”. Give the app a unique name, set Homepage URL to the public WebSSH base URL, and set Callback URL to the exact value used below. Leave Setup URL empty and clear Active under Webhook; WebSSH does not receive webhooks.</li>
+                                <li data-i18n="admin.githubSetupPermissions">Grant the minimum permissions. Keep all repository and account permissions at No access. Only when using Allowed organizations, open Permissions &amp; events → Organization permissions and set Members to Read-only (Members: read).</li>
+                                <li data-i18n="admin.githubSetupInstall">Create and install the app. Finish with Create GitHub App, then open Install App and install it on the personal account or organization whose resources and membership policy it should use. An organization owner must approve an installation that requests organization permissions.</li>
+                                <li data-i18n="admin.githubSetupCredentials">Copy the two credentials. On the app's General page copy Client ID—not App ID. Under Client secrets, choose Generate a new client secret and copy it immediately. WebSSH does not need an App private key, webhook secret, or PEM file.</li>
+                                <li data-i18n="admin.githubSetupFinish">Finish here. Paste the Client ID, generated client secret, and identical callback URL below. Add exact organization logins only if the allowlist should be enforced, choose whether to auto-provision non-admin users, enable GitHub sign-in, and save. WebSSH will request administrator reauthentication before accepting the configuration.</li>
+                            </ol>
+                            <div class="github-auth-setup-links">
+                                <a class="btn btn-secondary" href="https://github.com/settings/apps/new" target="_blank" rel="noopener noreferrer" data-i18n="admin.githubCreatePersonalApp">Create a personal GitHub App</a>
+                                <a class="btn btn-secondary" href="https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app" target="_blank" rel="noopener noreferrer" data-i18n="admin.githubRegistrationDocs">GitHub registration documentation</a>
+                                <a class="btn btn-secondary" href="https://github.com/bifrost0x/webssh/wiki/GitHub-Authentication" target="_blank" rel="noopener noreferrer" data-i18n="admin.githubFullGuide">Full WebSSH setup guide</a>
+                            </div>
+                        </div>
+                    </details>
+                    <div class="admin-settings-row">
+                        <div><strong id="githubAuthEnabledLabel" data-i18n="admin.githubEnable">Enable GitHub sign-in</strong><p id="githubAuthEnabledHint" class="admin-muted" data-i18n="admin.githubEnableHint">The login button appears only after every required value is saved.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="githubAuthEnabled" aria-labelledby="githubAuthEnabledLabel" aria-describedby="githubAuthEnabledHint"><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
+                    </div>
+                    <div class="form-group">
+                        <label for="githubAuthClientId" data-i18n="admin.githubClientId">GitHub App client ID</label>
+                        <input class="form-control" id="githubAuthClientId" type="text" maxlength="128" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="form-group">
+                        <label for="githubAuthClientSecret" data-i18n="admin.githubClientSecret">Client secret</label>
+                        <input class="form-control" id="githubAuthClientSecret" type="password" maxlength="512" autocomplete="new-password" placeholder="Leave blank to keep the stored secret" data-i18n-placeholder="admin.githubSecretPlaceholder">
+                        <p class="admin-muted" id="githubAuthSecretState" data-i18n="admin.githubNoSecret">No client secret stored</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="githubAuthRedirectUri" data-i18n="admin.githubCallbackUrl">Callback URL</label>
+                        <input class="form-control" id="githubAuthRedirectUri" type="url" maxlength="2048" autocomplete="off" spellcheck="false" placeholder="https://ssh.example.com/auth/github/callback">
+                        <p class="admin-muted" data-i18n="admin.githubCallbackHint">Enter this exact URL as a GitHub App callback URL. Production callbacks must use HTTPS.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="githubAuthAllowedOrgs" data-i18n="admin.githubAllowedOrgs">Allowed organizations</label>
+                        <input class="form-control" id="githubAuthAllowedOrgs" type="text" maxlength="2000" autocomplete="off" spellcheck="false" placeholder="example-org, another-org">
+                        <p class="admin-muted" data-i18n="admin.githubAllowedOrgsHint">Optional. Private membership checks require the GitHub App organization permission Members: read.</p>
+                    </div>
+                    <div class="admin-settings-row">
+                        <div><strong id="githubAuthAutoProvisionLabel" data-i18n="admin.githubAutoProvision">Automatically provision users</strong><p id="githubAuthAutoProvisionHint" class="admin-muted" data-i18n="admin.githubAutoProvisionHint">Disabled by default. New GitHub users are always created as non-admin accounts.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="githubAuthAutoProvision" aria-labelledby="githubAuthAutoProvisionLabel" aria-describedby="githubAuthAutoProvisionHint"><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
+                    </div>
+                    <div class="admin-toolbar">
+                        <button class="btn btn-primary" id="githubAuthSave" type="button" data-i18n="admin.githubSave">Save GitHub configuration</button>
+                        <button class="btn btn-danger" id="githubAuthClearSecret" type="button" data-i18n="admin.githubDisableRemoveSecret">Disable and remove secret</button>
+                        <span class="admin-muted" id="githubAuthStatus" role="status" aria-live="polite" data-i18n="admin.featureStatusNotLoaded">Not loaded</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="admin-settings-subpanel hidden" data-settings-panel="integrations">
+                <div class="admin-page-header"><div><h2 data-i18n="admin.integrations">Integrations</h2></div></div>
+                <div id="runtimeFeatureSettings" class="admin-settings-surface"></div>
+                <div class="admin-settings-surface">
+                    <div class="admin-settings-row">
+                        <div><label for="settingCredentials"><strong data-i18n="admin.credentials">Save passwords</strong></label><p id="credentialsSettingHint" class="admin-muted" data-i18n="admin.credentialsHint">Allow personal encrypted passwords for hosts and file connections. The server can decrypt them for authorized connections. Disabling preserves saved data and established connections.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingCredentials" aria-describedby="credentialsSettingHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
+                    </div>
+                    <div class="admin-settings-row">
+                        <div><label for="settingAutomation"><strong data-i18n="admin.automation">Automation</strong></label><p id="automationSettingHint" class="admin-muted" data-i18n="admin.automationHint">Allow reviewed SSH tasks and explicitly authorized schedules. Disabling stops further steps; commands already sent to a server may still take effect.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingAutomation" aria-describedby="automationSettingHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
+                    </div>
+                    <div class="admin-settings-row">
+                        <div><label for="settingSshGateway"><strong data-i18n="admin.sshGateway">Warpgate / SSH gateway</strong></label><p id="sshGatewaySettingHint" class="admin-muted" data-i18n="admin.sshGatewayHint">Allow interactive gateway connections using user:target for all users. Disabled by default. Disabling blocks new connections and unfinished gateway authentication; established sessions remain connected. Reload open workspaces after changing this setting.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingSshGateway" aria-describedby="sshGatewaySettingHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
+                    </div>
+                    <div class="admin-settings-row">
+                        <div><label for="settingTailnetRestriction"><strong data-i18n="admin.tailnetRestriction">Block ordinary SSH to tailnet nodes</strong></label><p id="tailnetRestrictionSettingHint" class="admin-muted" data-i18n="admin.tailnetRestrictionHint">When Tailscale SSH is on, normal password or key logins to Tailscale devices are blocked, because Tailscale would let them in without checking the password. Turn this off only if you reach your own SSH servers on Tailscale devices and none of them runs Tailscale SSH.</p><p id="tailnetRestrictionState" class="admin-muted admin-setting-state hidden"></p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingTailnetRestriction" aria-describedby="tailnetRestrictionSettingHint tailnetRestrictionState" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
+                    </div>
+                    <div class="admin-settings-row">
+                        <div><label for="settingHerdr"><strong data-i18n="admin.herdr">Herdr</strong></label><p id="herdrSettingHint" class="admin-muted" data-i18n="admin.herdrHint">Show the agents that Herdr reports on hosts whose saved connection has Herdr turned on, and offer Herdr as a terminal session mode. Applies to all users. Disabled by default. Disabling stops all Herdr queries, including from browser tabs that are already open; established sessions remain connected.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingHerdr" aria-describedby="herdrSettingHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
+                    </div>
+                    <div class="admin-settings-row">
+                        <div><label for="settingSupportLinks"><strong data-i18n="admin.supportLinks">Project support links</strong></label><p id="supportLinksSettingHint" class="admin-muted" data-i18n="admin.supportLinksHint">Show links to support WebSSH development in the account menu and the Settings side panel for all users.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingSupportLinks" aria-describedby="supportLinksSettingHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
+                    </div>
+                </div>
+            </section>
+
+            <section class="admin-settings-subpanel hidden" data-settings-panel="registration">
+                <div class="admin-page-header"><div><h2 data-i18n="admin.registration">Registration</h2><p data-i18n="admin.registrationHint">Control who can create a local WebSSH account.</p></div></div>
+                <div class="admin-settings-surface">
+                    <div class="admin-settings-row">
+                        <div><strong id="settingRegistrationLabel" data-i18n="admin.allowRegistration">Allow self-registration</strong><p id="settingRegistrationHint" class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingRegistration" aria-labelledby="settingRegistrationLabel" aria-describedby="settingRegistrationHint" disabled><span class="admin-switch-on" data-i18n="common.enabled">Enabled</span><span class="admin-switch-off" data-i18n="common.disabled">Disabled</span></label>
+                    </div>
+                </div>
+            </section>
+
+            {{if $.AuditExportEnabled}}
+            <section class="admin-settings-subpanel hidden" data-settings-panel="retention">
+                <div class="admin-page-header"><div><h2 data-i18n="admin.auditRetention">Audit retention</h2><p data-i18n="admin.auditRetentionPageHint">Define how many rotated audit archives WebSSH keeps.</p></div></div>
+                <div class="admin-settings-surface">
+                    <div class="admin-settings-row admin-audit-retention">
+                        <div><label for="auditRetention"><strong data-i18n="admin.auditRetentionBackups">Audit retention backups</strong></label><p class="admin-muted" data-i18n="admin.auditRetentionHint">The new limit applies immediately; older rotated archives beyond it are removed.</p></div>
+                        <div class="admin-inline-control"><input type="number" id="auditRetention" class="form-control" min="1" max="90" value="5"><button class="btn btn-primary" id="auditRetentionSave" data-i18n="common.save">Save</button></div>
+                    </div>
+                </div>
+            </section>
+            {{end}}
+
+            {{if $.HostKeyManagementEnabled}}
+            <section class="admin-settings-subpanel hidden" data-settings-panel="host-trust">
+                <div class="admin-page-header">
+                    <div><h2 data-i18n="admin.globalSshHostTrust">Global SSH host trust</h2><p data-i18n="admin.globalHostKeyHint">Import one independently verified OpenSSH known_hosts entry. Global trust applies to every WebSSH user; existing entries can be removed from the table below.</p></div>
+                    <div class="admin-page-actions"><button class="btn btn-secondary" id="globalHostKeyRefresh"><span class="material-icons" aria-hidden="true">refresh</span><span data-i18n="admin.refresh">Refresh</span></button></div>
+                </div>
+                <div class="admin-trust-import">
+                    <label for="globalHostKeyEntry" data-i18n="admin.globalHostKeyEntry">Verified known_hosts entry</label>
+                    <textarea id="globalHostKeyEntry" class="form-control" rows="3" maxlength="16384" spellcheck="false" data-i18n-placeholder="admin.globalHostKeyPlaceholder" placeholder="host.example ssh-ed25519 AAAA…"></textarea>
+                    <button type="button" class="btn btn-primary" id="globalHostKeyAdd" data-i18n="admin.importHostKey">Import verified key</button>
+                </div>
+                <div class="admin-table-wrap">
+                    <table class="admin-table admin-responsive-table">
+                        <thead><tr><th data-i18n="security.host">Host</th><th data-i18n="security.status">Status</th><th data-i18n="security.algorithm">Algorithm</th><th data-i18n="security.fingerprint">Fingerprint</th><th data-i18n="security.action">Action</th></tr></thead>
+                        <tbody id="globalHostKeyList"></tbody>
+                    </table>
+                </div>
+            </section>
+            {{end}}
+        </section>
+
+        <section class="admin-panel hidden" id="tab-backup">
+            <div class="admin-page-header"><div><h2 data-i18n="backup.title">Backup &amp; Restore</h2><p data-i18n="backup.pageHint">Create, verify, and restore WebSSH backup archives.</p></div></div>
+            <div class="admin-backup-warning" role="alert">
+                <span class="material-icons" aria-hidden="true">warning</span>
+                <p data-i18n="backup.sensitiveWarning">Native backups exclude saved remote passwords and SSH keys, but retain application secrets and account authentication data. Store every downloaded archive encrypted and off-host.</p>
+            </div>
+
+            <div class="backup-coverage">
+                <details>
+                    <summary data-i18n="customer.coverageTitle">Backup coverage</summary>
+                    <p class="admin-muted" data-i18n="customer.included">Includes configuration, account sign-in data, profiles, commands, workflows and user settings.</p>
+                    <p class="admin-muted" data-i18n="customer.excluded">Portable backups exclude saved remote passwords, SSH private keys and live sessions. Re-provision remote credentials after restore.</p>
+                </details>
+                <button type="button" class="btn btn-secondary" data-recovery-check data-i18n="customer.recoveryTitle">Recovery check</button>
+            </div>
+            <div class="admin-backup-grid">
+                <div class="admin-setting-row">
+                    <h2 data-i18n="backup.create">Create backup</h2>
+                    <p class="admin-muted" data-i18n="backup.createHint">Create an online-consistent snapshot while WebSSH remains available.</p>
+                    <div class="admin-toolbar admin-backup-actions">
+                        <button type="button" class="btn btn-primary" id="backupCreateBtn" data-i18n="backup.create">Create backup</button>
+                        <button type="button" class="btn btn-secondary" id="backupDownloadBtn" disabled data-i18n="backup.download">Download backup</button>
+                    </div>
+                    <p id="backupCreateStatus" class="admin-backup-status" role="status" aria-live="polite" data-i18n="backup.statusIdle">No operation running.</p>
+                </div>
+
+                <div class="admin-setting-row">
+                    <h2 id="backupUploadTitle" data-i18n="backup.upload">Upload and verify</h2>
+                    <p class="admin-muted" id="backupUploadHint" data-i18n="backup.uploadHint">Select a WebSSH ZIP backup. The archive is retained temporarily and can only be used by this administrator session.</p>
+                    <div class="form-group">
+                        <input type="file" id="backupUploadFile" class="form-control" accept=".zip,application/zip" aria-labelledby="backupUploadTitle" aria-describedby="backupUploadHint">
+                    </div>
+                    <button type="button" class="btn btn-primary" id="backupUploadBtn" data-i18n="backup.verify">Upload and verify</button>
+                    <p id="backupUploadStatus" class="admin-backup-status" role="status" aria-live="polite" data-i18n="backup.statusIdle">No operation running.</p>
+                </div>
+
+                <div class="admin-setting-row admin-backup-summary" id="backupValidationPanel" hidden>
+                    <h2 data-i18n="backup.validation">Validation result</h2>
+                    <dl>
+                        <div><dt data-i18n="backup.formatVersion">Format version</dt><dd id="backupFormatVersion">-</dd></div>
+                        <div><dt data-i18n="backup.dataSchemaVersion">Backup data schema</dt><dd id="backupDataSchemaVersion">-</dd></div>
+                        <div><dt data-i18n="backup.currentDataSchemaVersion">Current data schema</dt><dd id="backupCurrentDataSchemaVersion">-</dd></div>
+                        <div><dt data-i18n="backup.createdAt">Created at</dt><dd id="backupCreatedAt">-</dd></div>
+                        <div><dt data-i18n="backup.legacy">Legacy archive</dt><dd id="backupLegacy">-</dd></div>
+                        <div><dt data-i18n="backup.files">Files</dt><dd id="backupFileCount">-</dd></div>
+                        <div><dt data-i18n="backup.totalSize">Uncompressed size</dt><dd id="backupTotalSize">-</dd></div>
+                        <div><dt data-i18n="backup.compatible">Compatible</dt><dd id="backupCompatible">-</dd></div>
+                        <div><dt data-i18n="backup.compatibilityReason">Compatibility</dt><dd id="backupCompatibilityReason">-</dd></div>
+                    </dl>
+                    <p class="admin-backup-destructive" data-i18n="backup.restoreWarning">Restore replaces persistent state, invalidates all sessions, enters maintenance mode, and restarts WebSSH. Saved remote passwords and SSH keys are removed, even when restoring older archives. Reimport keys, recreate passwords, reassign credentials, and review and re-enable schedules.</p>
+                    <button type="button" class="btn btn-danger" id="backupRestoreBtn" disabled data-i18n="backup.restore">Restore verified backup</button>
+                </div>
+            </div>
+
+            <p id="restoreGlobalStatus" class="admin-backup-status" role="status" aria-live="polite"></p>
+        </section>
+
+    <div class="modal modal-small" id="addUserModal" role="dialog" aria-modal="true" aria-labelledby="addUserModalTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="addUserModalTitle" data-i18n="admin.addUser">Add User</h2>
+                <button type="button" class="close material-icons" id="closeAddUser" aria-label="Close" data-i18n-aria-label="common.close">close</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="newUsername" data-i18n="admin.username">Username</label>
+                    <input type="text" id="newUsername" class="form-control" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="newPassword" data-i18n="admin.password">Password</label>
+                    <input type="password" id="newPassword" class="form-control" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label class="admin-checkbox"><input type="checkbox" id="newIsAdmin"> <span data-i18n="admin.makeAdmin">Make admin</span></label>
+                </div>
+                <button class="btn btn-primary" id="submitNewUser" data-i18n="admin.create">Create</button>
+            </div>
+        </div>
+    </div>
+
+    {{if or (or $.RecoveryCodesEnabled $.OIDCEnabled) $.LDAPEnabled}}
+    <div class="modal modal-small" id="securityActionModal" role="dialog" aria-modal="true" aria-labelledby="securityActionTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="securityActionTitle" data-i18n="admin.accountRecovery">Account recovery</h2>
+                <button type="button" class="close material-icons" id="closeSecurityAction" aria-label="Close" data-i18n-aria-label="common.close">close</button>
+            </div>
+            <div class="modal-body">
+                <p id="securityActionHint" class="admin-muted"></p>
+                <div class="form-group hidden" id="securityActionOidcListGroup">
+                    <label data-i18n="admin.linkedOidcIdentities">Linked OIDC identities</label>
+                    <div id="securityActionOidcList" class="admin-oidc-list" aria-live="polite"></div>
+                </div>
+                <div class="form-group">
+                    <label for="securityActionConfirmation" data-i18n="admin.confirmTargetUsername">Type the target username to confirm</label>
+                    <input type="text" id="securityActionConfirmation" class="form-control" autocomplete="off">
+                </div>
+                <div class="form-group hidden" id="securityActionSubjectGroup">
+                    <label for="securityActionSubject" data-i18n="admin.stableOidcSubject">Stable OIDC subject</label>
+                    <input type="text" id="securityActionSubject" class="form-control" autocomplete="off">
+                </div>
+                <div class="form-group hidden" id="securityActionDirectoryUsernameGroup">
+                    <label for="securityActionDirectoryUsername" data-i18n="admin.directoryUsername">Directory username</label>
+                    <input type="text" id="securityActionDirectoryUsername" class="form-control" autocomplete="off">
+                </div>
+                <div class="form-group hidden" id="securityActionNewPasswordGroup">
+                    <label for="securityActionNewPassword" data-i18n="admin.newLocalPasswordAfterUnlinking">New local password after unlinking</label>
+                    <input type="password" id="securityActionNewPassword" class="form-control" autocomplete="new-password">
+                    <p class="admin-muted" data-i18n="admin.unlinkRestoresLocalAuth">Unlinking restores local authentication and therefore requires a fresh password.</p>
+                </div>
+                <button class="btn btn-primary" id="submitSecurityAction" data-i18n="admin.continue">Continue</button>
+                <div class="form-group hidden" id="securityActionResultGroup" style="margin-top:16px;">
+                    <label for="securityActionResult" data-i18n="admin.oneTimeRecoveryCodes">One-time recovery codes</label>
+                    <textarea id="securityActionResult" class="form-control" rows="10" readonly></textarea>
+                    <p class="admin-muted" data-i18n="admin.copyRecoveryCodesNow">Copy these codes now. They will not be shown again.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {{end}}
+
+    <div class="modal modal-small" id="stepUpModal" role="dialog" aria-modal="true" aria-labelledby="stepUpTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="stepUpTitle" data-i18n="admin.additionalAuthentication">Additional authentication</h2>
+                <button type="button" class="close material-icons" id="stepUpCancel" aria-label="Close" data-i18n-aria-label="common.close">close</button>
+            </div>
+            <div class="modal-body">
+                <p class="admin-muted" data-i18n="admin.stepUpHint">Confirm this sensitive administrator action. The authorization is valid for this action only.</p>
+                <div class="form-group hidden" id="stepUpPasswordGroup">
+                    <label for="stepUpPassword" data-i18n="admin.administratorPassword">Administrator password</label>
+                    <input type="password" id="stepUpPassword" class="form-control" autocomplete="current-password">
+                </div>
+                <div class="form-group hidden" id="stepUpTotpGroup">
+                    <label for="stepUpTotp" data-i18n="security.authenticatorCode">Authenticator code</label>
+                    <input type="text" id="stepUpTotp" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="16">
+                </div>
+                <p class="admin-field-error hidden" id="stepUpError" role="alert"></p>
+                <div class="admin-toolbar">
+                    <button type="button" class="btn btn-secondary" id="stepUpCancelButton" data-i18n="common.cancel">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="stepUpSubmit" data-i18n="admin.continue">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-small" id="restoreFirstConfirmModal" role="dialog" aria-modal="true" aria-labelledby="restoreFirstConfirmTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="restoreFirstConfirmTitle" data-i18n="backup.firstConfirm">Confirm restore impact</h2>
+                <button type="button" class="close material-icons" id="restoreFirstCancel" aria-label="Close" data-i18n-aria-label="common.close">close</button>
+            </div>
+            <div class="modal-body">
+                <p data-i18n="backup.restoreWarning">Restore replaces persistent state, invalidates all sessions, enters maintenance mode, and restarts WebSSH. Saved remote passwords and SSH keys are removed, even when restoring older archives. Reimport keys, recreate passwords, reassign credentials, and review and re-enable schedules.</p>
+                <label class="admin-checkbox">
+                    <input type="checkbox" id="restoreFirstAcknowledge">
+                    <span data-i18n="backup.firstAcknowledge">I understand that the current persistent state will be replaced.</span>
+                </label>
+                <div class="admin-toolbar admin-backup-actions">
+                    <button type="button" class="btn btn-secondary" id="restoreFirstCancelButton" data-i18n="backup.cancel">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="restoreFirstContinue" data-i18n="admin.continue">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-small" id="restoreSecondConfirmModal" role="dialog" aria-modal="true" aria-labelledby="restoreSecondConfirmTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="restoreSecondConfirmTitle" data-i18n="backup.secondConfirm">Final destructive confirmation</h2>
+                <button type="button" class="close material-icons" id="restoreSecondCancel" aria-label="Close" data-i18n-aria-label="common.close">close</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="restorePhrase" data-i18n="backup.typeRestore">Type RESTORE</label>
+                    <input type="text" id="restorePhrase" class="form-control" autocomplete="off">
+                </div>
+                <label class="admin-checkbox">
+                    <input type="checkbox" id="restoreFinalAcknowledge">
+                    <span data-i18n="backup.destructiveConfirm">Permanently replace the current persistent state now.</span>
+                </label>
+                <div class="admin-toolbar admin-backup-actions">
+                    <button type="button" class="btn btn-secondary" id="restoreSecondCancelButton" data-i18n="backup.cancel">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="restoreStartBtn" data-i18n="backup.startRestore">Start restore</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{{end}}

@@ -1,0 +1,62 @@
+{{define "error"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" data-theme-logo type="image/svg+xml" href="{{$.Asset "images/webssh-logo.svg"}}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="app-root" content="{{$.URLPrefix}}">
+    <title>WebSSH</title>
+    <link rel="stylesheet" href="{{$.Asset "vendor/material-icons/material-icons.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/style.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/auth.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/webssh-2.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/product-ui.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/midnight-ui.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/branding.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/theme-scenes.css"}}">
+    <script src="{{$.Asset "js/branding.js"}}" defer></script>
+</head>
+<body class="webssh-ui webssh-auth" data-theme="{{$.Theme}}" data-defer-theme-background>
+    <script src="{{$.Asset "js/theme-preference.js"}}"></script>
+    <div class="auth-shell">
+        <main class="auth-shell-content">
+            <section class="auth-access-dock">
+                <div class="auth-form-panel">
+                    <div class="auth-container">
+                        <div class="auth-card">
+                            <div class="auth-header">
+                                <a class="auth-product-brand" href="{{$.URL "/"}}" aria-label="WebSSH">{{template "brand_logo" ($.Logo "auth-product-logo" false)}}</a>
+                                <span class="auth-form-eyebrow">{{$.Status}}</span>
+                                {{if eq $.Kind "form_expired"}}
+                                <h1 data-i18n="auth.formExpired">The form expired. Please try again.</h1>
+                                <p data-i18n="errors.formExpiredBody">Nothing was sent. Open the form again to continue.</p>
+                                {{if $.Detail}}<p class="auth-form-eyebrow">{{$.Detail}}</p>{{end}}
+                                {{else if eq $.Kind "cookie_rejected"}}
+                                <h1 data-i18n="errors.cookieRejectedTitle">Your browser did not keep the WebSSH session cookie</h1>
+                                <p data-i18n="errors.cookieRejectedBody">WebSSH marks its cookies as secure, and browsers discard them on plain http:// addresses other than localhost, so sign-in cannot work here. Open WebSSH over HTTPS, or set SESSION_COOKIE_SECURE=false if it is only reachable on a trusted network.</p>
+                                {{else if eq $.Kind "forbidden"}}
+                                <h1 data-i18n="errors.forbiddenTitle">This area is not available to your account</h1>
+                                <p data-i18n="errors.forbiddenBody">Ask an administrator if you need access.</p>
+                                {{else}}
+                                <h1 data-i18n="errors.notFoundTitle">Page not found</h1>
+                                <p data-i18n="errors.notFoundBody">The address may be outdated. Return to WebSSH to continue.</p>
+                                {{end}}
+                            </div>
+                            <a class="btn btn-primary btn-block" href="{{or $.ActionURL ($.URL "/")}}">
+                                {{if or (eq $.Kind "form_expired") (eq $.Kind "cookie_rejected")}}
+                                <span data-i18n="errors.openFormAgain">Open the form again</span>
+                                {{else}}
+                                <span data-i18n="errors.backHome">Back to WebSSH</span>
+                                {{end}}
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="{{$.Asset "js/i18n-auth.js"}}"></script>
+    <script src="{{$.Asset "js/auth.js"}}"></script>
+</body>
+</html>{{end}}

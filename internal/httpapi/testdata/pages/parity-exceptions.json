@@ -1,0 +1,45 @@
+{
+ "exceptions": [
+  {
+   "cases": [
+    "workspace_.*"
+   ],
+   "side": "jinja",
+   "line": "<script src=\"(/webssh)?/static/vendor/socketio/socket\\.io\\.min\\.js\\?v=VERSION\">",
+   "reason": "The Go backend has no Socket.IO endpoint; the workspace loads the realtime shim instead (M1 plan 1.4, K6 way a). Removing an opening script line also removes its closing tag."
+  },
+  {
+   "cases": [
+    "workspace_.*"
+   ],
+   "side": "go",
+   "line": "<script src=\"(/webssh)?/static/js/realtime-shim\\.js\\?v=VERSION\">",
+   "reason": "The realtime shim replaces socket.io.min.js at the same position."
+  },
+  {
+   "cases": [
+    "workspace_preview",
+    "login_preview"
+   ],
+   "side": "go",
+   "line": "(<script id=\"websshPreview\" type=\"application/json\">|json:\\{\"enabled\": true, \"message\": \"Preview: [^\"]*\", \"unavailable\": \\[(\"[a-z]+\"(, )?)+\\]\\}|<script src=\"(/webssh)?/static/js/preview-notice\\.js\\?v=VERSION\">)",
+   "reason": "The preview notice exists only in the Go build; it is rendered only when PageData.Preview.Enabled is set. Removing an opening script line also removes its closing tag."
+  },
+  {
+   "cases": [
+    "error_unsafe_action"
+   ],
+   "side": "jinja",
+   "line": "<a class=\"btn btn-primary btn-block\" href=\"javascript:alert\\(1\\)\">",
+   "reason": "Go html/template replaces a javascript: URL with #ZgotmplZ. Python only ever passes url_for results here; the case checks the extra guard (fix, defence in depth)."
+  },
+  {
+   "cases": [
+    "error_unsafe_action"
+   ],
+   "side": "go",
+   "line": "<a class=\"btn btn-primary btn-block\" href=\"#ZgotmplZ\">",
+   "reason": "Counterpart of the javascript: URL guard above."
+  }
+ ]
+}

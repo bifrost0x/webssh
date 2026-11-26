@@ -55,6 +55,9 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Stage static assets for embedding
+        run: scripts/stage-webassets.sh
+
       - name: Build
         env:
           CGO_ENABLED: '0'
@@ -78,6 +81,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Stage static assets for embedding
+        run: scripts/stage-webassets.sh
 
       - name: Verify go.mod and go.sum are tidy
         run: |
@@ -132,6 +138,9 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Stage static assets for embedding
+        run: scripts/stage-webassets.sh
+
       # Tools are installed by exact version through the Go checksum
       # database and never enter go.mod (ADR 0004).
       - name: Install pinned security scanners
@@ -150,3 +159,48 @@ jobs:
 
       - name: Gosec
         run: gosec -quiet $GO_PACKAGES
+
+  # The Go page templates are a port of templates/*.html. The Go test
+  # renders the shared cases, the Python test renders them with Jinja and
+  # compares both; a template change on either side without the other fails.
+  page-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Stage static assets for embedding
+        run: scripts/stage-webassets.sh
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.15'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: uv.toml
+
+      - name: Install LDAP build dependencies
+        run: bash scripts/install_ci_test_system_deps.sh
+
+      - name: Install Python dependencies
+        run: uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt
+
+      - name: Render the Go pages
+        run: |
+          mkdir -p "$RUNNER_TEMP/pages"
+          WEBSSH_PAGE_PARITY_DIR="$RUNNER_TEMP/pages" go test -count=1 -run TestPagesRenderCases ./internal/httpapi
+
+      - name: Compare with the Jinja templates
+        run: WEBSSH_PAGE_PARITY_DIR="$RUNNER_TEMP/pages" python -m pytest tests/test_go_page_parity.py -q -p no:cacheprovider
