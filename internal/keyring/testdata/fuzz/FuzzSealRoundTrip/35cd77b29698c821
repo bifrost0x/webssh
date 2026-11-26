@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("\xb3")
+string("\x82\xe7=")
+string("0")
+string("\xb3\xfb\xff")

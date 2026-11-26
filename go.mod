@@ -3,7 +3,7 @@ module github.com/bifrost0x/webssh
 go 1.27.4
 
 require (
-	github.com/ncruces/go-sqlite3 v0.38.0
+	github.com/ncruces/go-sqlite3 v0.38.1
 	golang.org/x/crypto v0.59.0
 )
 
