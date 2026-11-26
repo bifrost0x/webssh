@@ -6,12 +6,14 @@ import (
 	"encoding/json/v2"
 	"io"
 	"log/slog"
+	"maps"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal/principaltest"
+	"github.com/bifrost0x/webssh/internal/quota"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol/protocoltest"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
@@ -142,7 +144,26 @@ func (p fakeProfiles) Resolve(_ context.Context, owner int64, id string) (client
 
 func newManager(t *testing.T, cfg Config, shells Shells) *Manager {
 	t.Helper()
-	m, err := New(cfg, Deps{Shells: shells, Log: slog.New(slog.DiscardHandler)})
+	return newLimited(t, 10, 5, cfg, shells)
+}
+
+// testQuotas is the quota policy with the given session limits and the
+// defaults of the other kinds.
+func testQuotas(t testing.TB, global, perUser int64) Quotas {
+	t.Helper()
+	limits := maps.Clone(quota.DefaultLimits)
+	limits[quota.SSHSession] = quota.Limit{Global: global, PerUser: perUser}
+	p, err := quota.New(limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// newLimited is newManager with the session limits global and perUser.
+func newLimited(t *testing.T, global, perUser int64, cfg Config, shells Shells) *Manager {
+	t.Helper()
+	m, err := New(cfg, Deps{Shells: shells, Log: slog.New(slog.DiscardHandler), Quotas: testQuotas(t, global, perUser)})
 	if err != nil {
 		t.Fatal(err)
 	}

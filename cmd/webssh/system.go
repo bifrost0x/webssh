@@ -22,10 +22,12 @@ import (
 	"github.com/bifrost0x/webssh/internal/hostops"
 	"github.com/bifrost0x/webssh/internal/hosts"
 	"github.com/bifrost0x/webssh/internal/httpapi"
+	"github.com/bifrost0x/webssh/internal/jobs"
 	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
 	"github.com/bifrost0x/webssh/internal/netpolicy"
 	"github.com/bifrost0x/webssh/internal/operations"
+	"github.com/bifrost0x/webssh/internal/quota"
 	"github.com/bifrost0x/webssh/internal/realtime"
 	"github.com/bifrost0x/webssh/internal/session"
 	"github.com/bifrost0x/webssh/internal/settings"
@@ -101,6 +103,8 @@ type system struct {
 	policy   *netpolicy.Policy
 	terminal *terminal.Manager
 	realtime *realtime.Server
+	quotas   *quota.Policy  // wire_jobs.go
+	jobs     *jobs.Registry // wire_jobs.go
 	edge     *httpapi.Handler
 	pages    *pages
 
@@ -194,7 +198,7 @@ func (s *system) buildCore(ctx context.Context, in bootInput) error {
 		s.log.Info("setting carried over from the previous release", "setting", m.Setting, "value", m.Value, "rule", m.Rule)
 	}
 	s.optional.featureReady = featureReadiness()
-	return nil
+	return s.buildRuntime()
 }
 
 // close releases everything in reverse order of opening; the Go lock is
@@ -213,7 +217,8 @@ func (s *system) close() error {
 }
 
 // drain ends the long-lived work at shutdown: the realtime connections
-// first (close code 4503), then the terminal sessions.
+// first (close code 4503), then the terminal sessions, then the
+// background jobs.
 func (s *system) drain(ctx context.Context) error {
 	var errs []error
 	if s.realtime != nil {
@@ -221,6 +226,9 @@ func (s *system) drain(ctx context.Context) error {
 	}
 	if s.terminal != nil {
 		errs = append(errs, s.terminal.Shutdown(ctx))
+	}
+	if s.jobs != nil {
+		errs = append(errs, s.jobs.Shutdown(ctx))
 	}
 	return errors.Join(errs...)
 }

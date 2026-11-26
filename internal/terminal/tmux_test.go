@@ -102,6 +102,7 @@ func newTmuxRig(t *testing.T) *tmuxRig {
 	r := &tmuxRig{shells: &fakeShells{}, next: func() *fakeHost { return &fakeHost{} }}
 	r.enabled.Store(true)
 	m, err := New(Config{TmuxPrefix: "webssh"}, Deps{
+		Quotas: testQuotas(t, 10, 5),
 		Shells: r.shells, Log: slog.New(slog.DiscardHandler),
 		DB: storetest.Open(t, Schema()), TmuxEnabled: func(context.Context) bool { return r.enabled.Load() },
 	})

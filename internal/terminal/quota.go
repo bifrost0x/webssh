@@ -1,54 +1,53 @@
 package terminal
 
 import (
+	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 )
 
-// quota counts SSH sessions, including attempts that are still connecting,
-// against the global and the per-user limit in one step (Python:
-// QuotaKind.SSH_SESSION of app/quota_manager.py).
-type quota struct {
-	global, perUser int
-	mu              sync.Mutex
-	total           int
-	users           map[int64]int
+// Quotas is the runtime quota policy (internal/quota). An SSH session,
+// including an attempt that is still connecting, holds one unit of kind
+// "ssh_session" (QuotaKind.SSH_SESSION of app/quota_manager.py).
+type Quotas interface {
+	Reserve(ctx context.Context, kind string, userID, amount int64) (release func(), err error)
 }
 
-func newQuota(global, perUser int) *quota {
-	return &quota{global: global, perUser: perUser, users: map[int64]int{}}
-}
+// sessionKind is the quota kind of an SSH session.
+const sessionKind = "ssh_session"
 
 // errSessionLimit is the refusal of a full quota. The Python release sent
 // "Maximum number of sessions reached" without a code.
 var errSessionLimit = fault.New(fault.Busy, "Maximum number of sessions reached.")
 
+// sessionQuota takes session slots from the policy and counts those this
+// manager holds (Stats.Reserved).
+type sessionQuota struct {
+	policy Quotas
+	held   atomic.Int64
+}
+
 // reserve takes one slot for user and returns its release function, which
-// may be called more than once.
-func (q *quota) reserve(user int64) (release func(), err error) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if q.users[user] >= q.perUser || q.total >= q.global {
-		return nil, errSessionLimit
+// may be called more than once. A full quota is errSessionLimit, whose
+// text the page shows.
+func (q *sessionQuota) reserve(ctx context.Context, user int64) (release func(), err error) {
+	free, err := q.policy.Reserve(ctx, sessionKind, user, 1)
+	if err != nil {
+		if fault.Is(err, fault.Busy) {
+			return nil, errSessionLimit
+		}
+		return nil, err
 	}
-	q.users[user]++
-	q.total++
+	q.held.Add(1)
 	var once sync.Once
 	return func() {
 		once.Do(func() {
-			q.mu.Lock()
-			defer q.mu.Unlock()
-			q.total--
-			if q.users[user]--; q.users[user] <= 0 {
-				delete(q.users, user)
-			}
+			free()
+			q.held.Add(-1)
 		})
 	}, nil
 }
 
-func (q *quota) used() int {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return q.total
-}
+func (q *sessionQuota) used() int { return int(q.held.Load()) }

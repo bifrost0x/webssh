@@ -36,6 +36,8 @@ type Deps struct {
 	// as a tmux session that may still run after its end was asked for.
 	// Optional: without it they go to Log only.
 	Audit Auditor
+	// Quotas bounds the SSH sessions (QUOTA_SSH_SESSION_*); required.
+	Quotas Quotas
 }
 
 // Auditor writes warning-level security events (provided by
@@ -63,7 +65,7 @@ type Manager struct {
 
 	flow    *ledger
 	input   *inputBudget
-	quota   *quota
+	quota   *sessionQuota
 	prompts *prompts
 
 	mu       sync.Mutex
@@ -82,14 +84,14 @@ type Manager struct {
 // New validates the dependencies and starts the sweeper of idle sessions
 // and stalled streams. Stop it with Shutdown.
 func New(cfg Config, deps Deps) (*Manager, error) {
-	if deps.Shells == nil || deps.Log == nil {
-		return nil, errors.New("terminal: shells and logger are required")
+	if deps.Shells == nil || deps.Log == nil || deps.Quotas == nil {
+		return nil, errors.New("terminal: shells, logger and quotas are required")
 	}
 	cfg.defaults()
 	m := &Manager{
 		cfg: cfg, shells: deps.Shells, profiles: deps.Profiles, routes: deps.Routes, log: deps.Log, now: time.Now,
 		flow: newLedger(cfg.Flow), input: newInputBudget(cfg.Input),
-		quota:    newQuota(cfg.SessionsGlobal, cfg.SessionsPerUser),
+		quota:    &sessionQuota{policy: deps.Quotas},
 		prompts:  newPrompts(cfg.MaxPrompts),
 		sessions: map[string]*Session{}, peers: map[uint64]*peerState{}, attempts: map[attemptKey]*attempt{}, revoked: map[int64]uint64{},
 		stop:  make(chan struct{}),

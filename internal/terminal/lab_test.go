@@ -114,7 +114,7 @@ func newLabManager(t *testing.T, profiles fakeProfiles) *Manager {
 	}
 	db := storetest.Open(t, hostkey.Schema())
 	dialer := &client.Dialer{Net: policy, HostKeys: hostkey.New(db, log)}
-	m, err := New(Config{}, Deps{Shells: dialer, Profiles: profiles, Log: log})
+	m, err := New(Config{}, Deps{Quotas: testQuotas(t, 10, 5), Shells: dialer, Profiles: profiles, Log: log})
 	if err != nil {
 		t.Fatal(err)
 	}

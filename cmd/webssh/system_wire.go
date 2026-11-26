@@ -109,7 +109,7 @@ func (s *system) buildCapabilities(in bootInput) error {
 	termCfg.TmuxPrefix = cfg.Features.TmuxSessionPrefix
 	s.terminal, err = terminal.New(termCfg, terminal.Deps{
 		Shells: shells, Profiles: s.hosts, Routes: routes, Log: s.log,
-		Connections: shells, DB: s.db, TmuxEnabled: s.tmuxEnabled, Audit: s.audit})
+		Connections: shells, DB: s.db, TmuxEnabled: s.tmuxEnabled, Audit: s.audit, Quotas: s.quotas})
 	if err != nil {
 		return fmt.Errorf("terminal: %w", err)
 	}

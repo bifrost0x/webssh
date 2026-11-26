@@ -13,7 +13,7 @@ import (
 )
 
 func TestSessionQuota(t *testing.T) {
-	m := newManager(t, Config{SessionsGlobal: 3, SessionsPerUser: 2}, &fakeShells{})
+	m := newLimited(t, 3, 2, Config{}, &fakeShells{})
 	a, b, c := user(t, 1), user(t, 2), user(t, 3)
 	open(t, m, a, 1)
 	open(t, m, a, 2)
@@ -40,7 +40,7 @@ func TestFailedOpenReleases(t *testing.T) {
 	shells := &fakeShells{before: func(context.Context, client.Interaction) error {
 		return fault.New(fault.AuthFailed, "")
 	}}
-	m := newManager(t, Config{SessionsGlobal: 2, SessionsPerUser: 1}, shells)
+	m := newLimited(t, 2, 1, Config{}, shells)
 	peer := user(t, 1)
 	for range 3 {
 		if werr := call(t, m, peer, protocol.TypeTerminalOpen, openReq(1, "r"), nil); werr == nil || werr.Code != fault.AuthFailed {
@@ -82,7 +82,7 @@ func TestOpenValidation(t *testing.T) {
 
 func TestOpenProfile(t *testing.T) {
 	shells := &fakeShells{}
-	m, err := New(Config{}, Deps{Shells: shells, Log: newManager(t, Config{}, shells).log, Profiles: fakeProfiles{
+	m, err := New(Config{}, Deps{Shells: shells, Quotas: testQuotas(t, 10, 5), Log: newManager(t, Config{}, shells).log, Profiles: fakeProfiles{
 		"p1": {Owner: 1, Hop: client.Hop{Host: "saved", Port: 2222, User: "alice"},
 			Jumps:   []client.Hop{{Host: "bastion", Port: 22, User: "j", Auth: client.Auth{KeyID: "k"}}},
 			Display: client.Display{JumpHostID: "j1", UseHerdr: true}},

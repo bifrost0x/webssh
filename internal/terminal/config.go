@@ -12,12 +12,6 @@ type Config struct {
 	Flow  FlowLimits
 	Input InputLimits
 
-	// SessionsGlobal and SessionsPerUser bound open SSH sessions
-	// (QUOTA_SSH_SESSION_GLOBAL and _PER_USER, defaults 10 and 5). Pending
-	// connection attempts count.
-	SessionsGlobal  int
-	SessionsPerUser int
-
 	// IdleTimeout ends a session without output, input or keepalive for
 	// this long (SESSION_TIMEOUT, default 30 min); IdleWarning before it,
 	// terminal.timeout_warning is sent once (2 min).
@@ -57,23 +51,21 @@ type Config struct {
 
 // Defaults of Config.
 const (
-	DefaultSessionsGlobal  = 10
-	DefaultSessionsPerUser = 5
-	DefaultIdleTimeout     = 30 * time.Minute
-	DefaultIdleWarning     = 2 * time.Minute
-	DefaultReplayBytes     = 512000
-	DefaultReadSize        = 32 << 10
-	DefaultPromptTimeout   = 60 * time.Second
-	DefaultMaxPrompts      = 128
-	DefaultOpenTimeout     = 10 * time.Minute
-	DefaultMaxChannels     = 64
-	DefaultSweepEvery      = time.Second
-	DefaultHoldBack        = 20 * time.Millisecond
+	DefaultIdleTimeout   = 30 * time.Minute
+	DefaultIdleWarning   = 2 * time.Minute
+	DefaultReplayBytes   = 512000
+	DefaultReadSize      = 32 << 10
+	DefaultPromptTimeout = 60 * time.Second
+	DefaultMaxPrompts    = 128
+	DefaultOpenTimeout   = 10 * time.Minute
+	DefaultMaxChannels   = 64
+	DefaultSweepEvery    = time.Second
+	DefaultHoldBack      = 20 * time.Millisecond
 )
 
-// FromConfig takes the documented settings (QUOTA_SSH_SESSION_*,
-// SESSION_TIMEOUT, SSH_OUTPUT_*, SSH_INPUT_*) from the loaded
-// configuration.
+// FromConfig takes the documented settings (SESSION_TIMEOUT, SSH_OUTPUT_*,
+// SSH_INPUT_*) from the loaded configuration. QUOTA_SSH_SESSION_* reach
+// the manager through Deps.Quotas.
 func FromConfig(t config.Terminal) Config {
 	o, in := t.Output, t.Input
 	return Config{
@@ -88,9 +80,7 @@ func FromConfig(t config.Terminal) Config {
 			SessionRate:   float64(in.SessionBytesPerSecond), SessionBurst: float64(in.SessionBurstBytes),
 			UserRate: float64(in.UserBytesPerSecond), UserBurst: float64(in.UserBurstBytes),
 		},
-		SessionsGlobal:  t.SessionsGlobal,
-		SessionsPerUser: t.SessionsPerUser,
-		IdleTimeout:     t.SessionTimeout,
+		IdleTimeout: t.SessionTimeout,
 	}
 }
 
@@ -107,9 +97,6 @@ func (c *Config) defaults() {
 	}
 	c.Flow.defaults()
 	c.Input.defaults()
-	def(&c.SessionsGlobal, DefaultSessionsGlobal)
-	def(&c.SessionsPerUser, DefaultSessionsPerUser)
-	c.SessionsPerUser = min(c.SessionsPerUser, c.SessionsGlobal)
 	defD(&c.IdleTimeout, DefaultIdleTimeout)
 	defD(&c.IdleWarning, DefaultIdleWarning)
 	c.IdleWarning = min(c.IdleWarning, c.IdleTimeout)
