@@ -46,6 +46,25 @@ Seeding and test hooks are for this harness only. A production build must
 not contain them, so another backend keeps them in a separate test build or
 binary.
 
+## Go backend
+
+The Go server applies the seed in a separate test build (build tag `e2e`,
+package `internal/e2eseed`); the release binary contains neither the
+`e2e` command nor the hooks.
+
+```sh
+go build -tags e2e -o .test-run.tmp/webssh-e2e ./cmd/webssh
+WEBSSH_E2E_SERVER_COMMAND='.test-run.tmp/webssh-e2e e2e' npx playwright test
+```
+
+`go run -tags e2e ./cmd/webssh e2e` works as well but compiles on every
+start. The Go applier is stricter than `run_app.py`: unknown members, a
+hook listed twice, references to another account's key or route and seed
+variables that move the data directory (`DATA_DIR`, `BACKUP_TEMP_DIR`,
+`TRANSFER_TEMP_DIR`) or set `WEBSSH_E2E_*` stop the start. Parts of the
+seed that belong to capabilities the Go build does not contain yet are
+logged and skipped.
+
 ## Seed file
 
 `seed.json` describes the fixture data by meaning, not by storage format.
@@ -82,7 +101,11 @@ spaces replaced by hyphens.
 The configuration in `environment` exists to make the loopback fixture work:
 `DEBUG` and `SESSION_COOKIE_SECURE=False` allow plain HTTP on loopback,
 which production defaults correctly refuse. The raised rate limits let many
-independent cases sign in to the same accounts. All secrets in the seed are
+independent cases sign in to the same accounts. The SSH key list limit is
+per user and minute; every sign-in and every visit of the file workspace
+lists the keys, so a run of consecutive cases as `e2e_admin` (the theme
+matrix visits the files view seven times per case) must stay below it, or
+the workspace never reports its keys as loaded. All secrets in the seed are
 fixed test values that are only valid for this harness.
 
 ## Test hooks

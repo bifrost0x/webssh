@@ -116,6 +116,13 @@ jobs:
       - name: Test with race detector
         run: go test -race -count=1 $GO_PACKAGES
 
+      # The end-to-end harness is built only with the tag e2e; keep that
+      # build vetted and tested so it does not rot between browser runs.
+      - name: Vet and test the e2e build
+        run: |
+          go vet -tags e2e ./cmd/...
+          go test -race -count=1 -tags e2e ./cmd/... ./internal/e2eseed
+
       # Release builds set the version with the linker (ADR 0004); this
       # keeps the variable names and the output format from drifting.
       - name: Check linker-set version

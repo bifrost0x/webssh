@@ -10,7 +10,7 @@
     "RATELIMIT_STORAGE_URL": "memory://",
     "RATELIMIT_LOGIN_LIMIT": "100 per minute",
     "RATELIMIT_REAUTH": "100 per minute",
-    "SSH_KEY_LIST_RATELIMIT": "100 per minute",
+    "SSH_KEY_LIST_RATELIMIT": "1000 per minute",
     "CORS_ORIGINS": "http://127.0.0.1:{port}",
     "WEBAUTHN_ENABLED": "true",
     "WEBAUTHN_RP_ID": "localhost",

@@ -22,6 +22,11 @@ type streams struct {
 	stdout, stderr io.Writer
 }
 
+// e2eCommand runs the backend of the end-to-end suite. It is set only in
+// the build with the tag "e2e" (e2e.go); the release binary has no such
+// command, and the usage text never lists it.
+var e2eCommand func(args []string, stdout, stderr io.Writer) int
+
 // command is one subcommand. run returns the process exit code: 0 on
 // success, 1 when the command fails and 2 for invalid usage.
 type command struct {
@@ -85,6 +90,9 @@ func run(ctx context.Context, args []string, s streams) int {
 	name := args[0]
 	if name == "-h" || name == "--help" {
 		name = "help"
+	}
+	if name == "e2e" && e2eCommand != nil {
+		return e2eCommand(args[1:], s.stdout, s.stderr)
 	}
 	c, ok := lookup(name)
 	if !ok {
