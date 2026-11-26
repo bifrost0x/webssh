@@ -24,6 +24,7 @@ var hostKeyOrder = []string{
 var legacyAlgorithms = ssh.Algorithms{
 	KeyExchanges: []string{ssh.InsecureKeyExchangeDH14SHA1, ssh.InsecureKeyExchangeDHGEXSHA1},
 	Ciphers:      []string{ssh.InsecureCipherAES128CBC, ssh.InsecureCipherTripleDESCBC},
+	MACs:         []string{ssh.HMACSHA1},
 	HostKeys:     []string{ssh.KeyAlgoRSA},
 }
 
@@ -33,7 +34,9 @@ var legacyAlgorithms = ssh.Algorithms{
 func Algorithms(legacy bool) ssh.Algorithms {
 	a := ssh.SupportedAlgorithms()
 	a.HostKeys = slices.Clone(hostKeyOrder)
+	a.MACs = slices.DeleteFunc(a.MACs, func(m string) bool { return slices.Contains(legacyAlgorithms.MACs, m) })
 	if legacy {
+		a.MACs = append(a.MACs, legacyAlgorithms.MACs...)
 		a.KeyExchanges = append(a.KeyExchanges, legacyAlgorithms.KeyExchanges...)
 		a.Ciphers = append(a.Ciphers, legacyAlgorithms.Ciphers...)
 		a.HostKeys = append(a.HostKeys, legacyAlgorithms.HostKeys...)

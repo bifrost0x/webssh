@@ -111,14 +111,22 @@ var errSignerAlgorithms = errors.New("the key cannot be restricted to safe signa
 // (SHA-1) for a server that does not send server-sig-algs. It fails
 // closed: an RSA signer that cannot be restricted is not used.
 func restrictSigner(s ssh.Signer, legacy bool) (ssh.Signer, error) {
-	if s.PublicKey().Type() != ssh.KeyAlgoRSA {
+	if !isRSA(s) {
 		return s, nil
 	}
+	// x/crypto names the signature algorithms of a certificate signer by
+	// those of the underlying key.
 	algos := []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256}
 	if legacy {
 		algos = append(algos, ssh.KeyAlgoRSA)
 	}
 	return withAlgorithms(s, algos)
+}
+
+// isRSA reports an RSA key or an RSA certificate.
+func isRSA(s ssh.Signer) bool {
+	t := s.PublicKey().Type()
+	return t == ssh.KeyAlgoRSA || t == ssh.CertAlgoRSAv01
 }
 
 func sha1Signer(s ssh.Signer) (ssh.Signer, error) {
@@ -139,7 +147,7 @@ func withAlgorithms(s ssh.Signer, algos []string) (ssh.Signer, error) {
 
 func (a *authPlan) legacyRSARetry(c *ssh.ClientAuthContext) bool {
 	return a.legacy && !a.sha1Key && a.signer != nil &&
-		a.signer.PublicKey().Type() == ssh.KeyAlgoRSA &&
+		isRSA(a.signer) &&
 		slices.Contains(c.AllowedMethods, "publickey") &&
 		slices.Contains(c.TriedMethods, "publickey") &&
 		!slices.Contains(c.PartialSuccessMethods, "publickey")

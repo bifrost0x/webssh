@@ -187,3 +187,38 @@ func TestDialerUsesNetworkPolicy(t *testing.T) {
 		t.Fatalf("MagicDNS name behind SOCKS5: %v", err)
 	}
 }
+
+// hmac-sha1 is a legacy algorithm too.
+func TestHMACSHA1OnlyWithLegacy(t *testing.T) {
+	if slices.Contains(Algorithms(false).MACs, ssh.HMACSHA1) {
+		t.Fatal("hmac-sha1 offered without the legacy setting")
+	}
+	if l := Algorithms(true).MACs; l[len(l)-1] != ssh.HMACSHA1 {
+		t.Fatalf("hmac-sha1 not last with the legacy setting: %v", l)
+	}
+}
+
+// An RSA certificate is restricted like a plain RSA key.
+func TestRestrictSignerRSACertificate(t *testing.T) {
+	key := rsaSigner(t)
+	ca := clientKey(t)
+	cert := &ssh.Certificate{Key: key.PublicKey(), CertType: ssh.UserCert, ValidPrincipals: []string{"u"}, ValidBefore: ssh.CertTimeInfinity}
+	if err := cert.SignCert(rand.Reader, ca); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := ssh.NewCertSigner(cert, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restricted, err := restrictSigner(cs, false)
+	if err != nil {
+		t.Fatalf("certificate signer: %v", err)
+	}
+	mas, ok := restricted.(ssh.MultiAlgorithmSigner)
+	if !ok || slices.Contains(mas.Algorithms(), ssh.KeyAlgoRSA) || slices.Contains(mas.Algorithms(), ssh.CertAlgoRSAv01) {
+		t.Fatalf("certificate may sign with SHA-1: %T", restricted)
+	}
+	if _, err := restrictSigner(plainSigner{cs}, false); err == nil {
+		t.Fatal("unrestrictable certificate signer accepted")
+	}
+}
