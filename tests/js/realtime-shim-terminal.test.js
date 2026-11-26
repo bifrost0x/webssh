@@ -81,7 +81,7 @@ test('a failed open and an unsupported target become ssh_error with the request 
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', client_request_id: 'req_a'});
     ws.fail(ws.lastRequest('terminal.open').id, {code: 'unreachable', message: 'The host could not be reached.'});
     const sent = ws.sent.length;
-    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'tailscale', client_request_id: 'req_b'});
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', credential_id: 'c1', client_request_id: 'req_b'});
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', proxy_jump: {host: 'j'}, client_request_id: 'req_c'});
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'key', key_id: 'k', jump_host_id: 'j1',
         proxy_jump: {jump_host_id: 'j2', host: 'j'}, client_request_id: 'req_d'});

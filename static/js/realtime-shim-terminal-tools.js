@@ -13,9 +13,44 @@
 })(typeof window !== 'undefined' ? window : globalThis, function () {
     'use strict';
 
+    const text = value => (typeof value === 'string' ? value : '');
+    const sequence = value => (Number.isSafeInteger(value) && value >= 0 ? value : 0);
+
     return Object.freeze({
+        // NW2: answers and the temporary terminal of a gateway attempt.
+        requests: Object.freeze({
+            ssh_gateway_answer: {
+                type: 'prompt.respond',
+                payload: data => ({
+                    request_id: text(data.client_request_id), prompt_id: text(data.challenge_id),
+                    answers: Array.isArray(data.answers) ? data.answers.map(text) : [],
+                }),
+                ack: () => ({success: true}),
+            },
+            ssh_gateway_input: {
+                type: 'gateway.input',
+                payload: data => ({request_id: text(data.client_request_id), data: text(data.data)}),
+                ack: () => ({success: true}),
+            },
+            ssh_gateway_ack: {
+                type: 'gateway.ack',
+                payload: data => ({request_id: text(data.client_request_id), sequence: sequence(data.sequence)}),
+                ack: () => ({success: true}),
+            },
+        }),
+        events: Object.freeze({
+            'prompt.interactive': p => ['ssh_gateway_challenge', {
+                client_request_id: p.request_id, challenge_id: p.prompt_id, context: p.context,
+                title: text(p.title), instructions: text(p.instructions),
+                prompts: (Array.isArray(p.prompts) ? p.prompts : []).map(q => ({label: text(q?.label), echo: q?.echo === true})),
+            }],
+            'gateway.setup': p => ['ssh_gateway_progress', {client_request_id: p.request_id, phase: text(p.phase)}],
+            'gateway.output': p => ['ssh_gateway_output', {
+                client_request_id: p.request_id, sequence: p.sequence, data: text(p.data),
+            }],
+        }),
         features: Object.freeze([
-            ['terminalTools', /^(request_herdr_snapshot|request_session_directory|ssh_gateway_)/],
+            ['terminalTools', /^(request_herdr_snapshot|request_session_directory|ssh_gateway_quick_cancel)/],
         ]),
     });
 });

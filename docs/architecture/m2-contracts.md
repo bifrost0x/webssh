@@ -978,6 +978,34 @@ package only.
 | `gateway` (`prompt.interactive`) | NW2 |
 | `credentials` (if it has socket events) | VA1 |
 
+### Message types (gateway)
+
+Defined by NW2 (`internal/realtime/protocol/payload_gateway.go`). The
+shim maps them in `static/js/realtime-shim-terminal-tools.js`; server
+events of an area are joined through the area's `events` table (see
+`realtime-catalog.js`). `prompt.interactive` carries one
+keyboard-interactive round of a connection attempt: of the SSH gateway
+(target and the jump host in front of it) and, once NW1 builds multi-step
+logins on it, of ordinary hosts. Its prompt is bound to the connection,
+the user and the attempt's `request_id`, has its own `prompt_id`, the
+server's echo flag per question and the seconds left (`expires_in`, at
+most 120). Answers are one-shot; a second answer, a wrong count or more
+than 16 KiB is refused with `not_found` or `invalid_request`.
+
+| Type | Direction | Owner | Payload | Socket.IO today |
+|---|---|---|---|---|
+| `prompt.interactive` | server | `internal/ssh/gateway` | `PromptInteractive` | `ssh_gateway_challenge` (`challenge_id` = `prompt_id`) |
+| `prompt.respond` | client | `internal/ssh/gateway` | `PromptRespond` | `ssh_gateway_answer` |
+| `gateway.setup` | server | `internal/ssh/gateway` | `GatewaySetup` | `ssh_gateway_progress` |
+| `gateway.output` | server | `internal/ssh/gateway` | `GatewayOutput` | `ssh_gateway_output` |
+| `gateway.input` | client | `internal/ssh/gateway` | `GatewayInput` | `ssh_gateway_input` |
+| `gateway.ack` | client | `internal/ssh/gateway` | `GatewayAck` | `ssh_gateway_ack` |
+
+`terminal.open` gains the auth type `tailscale` and the member
+`interactive` (`gateway_interaction` of today); a gateway selector without
+it is refused as in the Python release. `ssh_gateway_quick_cancel` belongs
+to Quick SFTP (FS2) and stays unavailable until FS2 builds it.
+
 ### End-to-end harness for M2
 
 - `tests/e2e/go-suite.json` (formerly `tests/e2e/m1/go-subset.json`) lists

@@ -54,6 +54,9 @@ type SessionInfo struct {
 const (
 	AuthPassword = "password"
 	AuthKey      = "key"
+	// AuthTailscale signs in with the WebSSH node's Tailscale identity
+	// (NW2); no password or key is sent.
+	AuthTailscale = "tailscale"
 )
 
 // TerminalOpen asks for a new SSH terminal on channel Ch. RequestID ties
@@ -91,6 +94,10 @@ type OpenTarget struct {
 	// the name before it reaches a shell command.
 	UseTmux         bool   `json:"use_tmux,omitzero"`
 	TmuxSessionName string `json:"tmux_session_name,omitzero"`
+	// Interactive says the page answers prompt.interactive and shows the
+	// gateway's temporary terminal (gateway_interaction of the Python
+	// release). An SSH gateway selector needs it.
+	Interactive bool `json:"interactive,omitzero"`
 }
 
 // TerminalOpened is the result of terminal.open.
@@ -110,8 +117,8 @@ func (r *TerminalOpen) Validate() error {
 	r.Rows, r.Cols = clampSize(r.Rows, r.Cols)
 	t := r.Target
 	switch {
-	case t.AuthType != AuthPassword && t.AuthType != AuthKey:
-		return errors.New("auth_type must be password or key")
+	case t.AuthType != AuthPassword && t.AuthType != AuthKey && t.AuthType != AuthTailscale:
+		return errors.New("auth_type must be password, key or tailscale")
 	case t.Port < 0 || t.Port > 65535:
 		return errors.New("port is out of range")
 	case t.ProfileID == "" && t.Host == "":

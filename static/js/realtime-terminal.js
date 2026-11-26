@@ -40,14 +40,16 @@
     }
 
     // Projects the Socket.IO ssh_connect payload onto terminal.open; inline
-    // routes, stored credentials, Tailscale and Herdr are not part of M1.
+    // routes, stored credentials and Herdr are not part of M1.
     // use_tmux carries the persistent session to reattach, which the server checks.
+    // gateway_interaction says the page answers gateway prompts (NW2).
     function openTarget(data) {
         const authType = data.auth_type || (data.key_id ? 'key' : 'password');
         const jump = savedRoute(data.proxy_jump, 'jump_host_id', data.jump_host_id);
         const socks = savedRoute(data.socks_proxy, 'socks_proxy_id', data.socks_proxy_id);
-        if (!['password', 'key'].includes(authType) || data.credential_id || jump === null || socks === null) return null;
+        if (!['password', 'key', 'tailscale'].includes(authType) || data.credential_id || jump === null || socks === null) return null;
         const target = {auth_type: authType};
+        if (data.gateway_interaction === 1) target.interactive = true;
         for (const name of TARGET_FIELDS) {
             if (typeof data[name] === 'string' && data[name] !== '') target[name] = data[name];
         }

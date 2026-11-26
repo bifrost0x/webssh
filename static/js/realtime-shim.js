@@ -293,7 +293,8 @@
             }
             if (envelope.type === 'hello') this._hello(ws, envelope.payload);
             else if (envelope.type === 'result') this._result(envelope);
-            else if (!this._terminal.onEvent(envelope.type, envelope.payload)) {
+            else if (!this._terminal.onEvent(envelope.type, envelope.payload)
+                && !catalog.serverEvent({dispatch: (name, payload) => this._dispatch(name, payload)}, envelope.type, envelope.payload)) {
                 const event = catalog.e2eEvent(envelope.type);
                 if (event) this._dispatch(event, envelope.payload);
             }

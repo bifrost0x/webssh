@@ -43,6 +43,7 @@
     //   refresh:     list request type: [event, build] pushed after a refresh
     //   unavailable: event: data => [event, payload], a local reply while the area is not built
     //   features:    [[feature, pattern]] for the preview notice
+    //   events:      v1 server event type: payload => [event, data], dispatched as Socket.IO event
     // payload(data) builds the request; ack(result, data) the acknowledgement;
     // push builders get the acknowledgement and the request data. errorEvent
     // repeats a failure as the generic 'error' event, as Python did for that
@@ -52,6 +53,7 @@
     const REQUESTS = join('requests');
     const REFRESH_PUSH = join('refresh');
     const UNAVAILABLE_REPLIES = join('unavailable');
+    const SERVER_EVENTS = join('events');
     for (const event of Object.keys(UNAVAILABLE_REPLIES)) {
         if (Object.hasOwn(REQUESTS, event)) throw new Error(`realtime shim: ${event} is both built and unavailable`);
     }
@@ -151,6 +153,14 @@
         else unmapped(host, event, data, ack);
     }
 
+    // Dispatches a server event of an area table; false when no area has it.
+    function serverEvent(host, type, payload) {
+        if (!Object.hasOwn(SERVER_EVENTS, type)) return false;
+        const [name, data] = SERVER_EVENTS[type](payload && typeof payload === 'object' ? payload : {});
+        host.dispatch(name, data);
+        return true;
+    }
+
     // The server event e2e.<name> as the Socket.IO event e2e_<name>, or null.
     function e2eEvent(type) {
         return /^e2e\.[a-z0-9_]{1,60}$/.test(type) ? `${E2E_PREFIX}${type.slice(4)}` : null;
@@ -165,6 +175,8 @@
         REQUESTS,
         REFRESH_PUSH,
         UNAVAILABLE_REPLIES,
+        SERVER_EVENTS,
+        serverEvent,
         featureOf,
         correlation,
         e2eEvent,
