@@ -89,10 +89,7 @@ func (s *system) buildCapabilities(in bootInput) error {
 	if err != nil {
 		return fmt.Errorf("key vault: %w", err)
 	}
-	s.hosts = &hosts.Service{DB: s.db, Keys: s.vault, Persistent: opt.persistent, Limits: hosts.Limits{
-		ProfileMaxRecords: cfg.Stores.ProfileMaxRecords, JumpHostMaxRecords: cfg.Stores.JumpHostMaxRecords,
-		SOCKSProxyMaxRecords: cfg.Stores.SOCKSProxyMaxRecords, StoreMaxBytes: cfg.Stores.ConnectionStoreMaxBytes,
-		ConfigMaxBytes: cfg.Stores.ConnectionConfigMaxBytes}}
+	s.hosts = &hosts.Service{DB: s.db, Keys: s.vault, Persistent: opt.persistent, Limits: hostLimits(cfg)}
 	s.notes = &hostops.Notes{DB: s.db}
 	s.hostkeys = hostkey.New(s.db, s.log)
 	if s.policy, err = s.networkPolicy(); err != nil {
@@ -173,9 +170,7 @@ func (s *system) tmuxEnabled(ctx context.Context) bool {
 // registerHTTP adds the routes of every capability to the edge's mux.
 func (s *system) registerHTTP(mux *http.ServeMux) {
 	cfg := s.cfg
-	limits := auth.FactorLimits{Limiter: s.limiter, Enabled: cfg.RateLimits.Enabled,
-		Login: auth.ParseRule(cfg.RateLimits.Login, ruleLogin), Reauth: auth.ParseRule(cfg.RateLimits.Reauth, ruleReauth),
-		ClientAddr: clientAddrString}
+	limits := s.factorLimits()
 	authAudit := authAudit{s.audit}
 	pending := s.flow.SignIn()
 	s.flow.Register(mux)
@@ -194,6 +189,14 @@ func (s *system) registerHTTP(mux *http.ServeMux) {
 	(&hostkey.HTTP{Store: s.hostkeys, Targets: sshTargets{s.hosts}, StepUp: s.stepup, Enabled: cfg.Features.HostKeyManagement, Logger: s.log}).Register(mux)
 	s.pages.register(mux)
 	mux.Handle("GET /ws", s.realtime)
+}
+
+// factorLimits are the rate limits of the factor and step-up routes.
+func (s *system) factorLimits() auth.FactorLimits {
+	cfg := s.cfg
+	return auth.FactorLimits{Limiter: s.limiter, Enabled: cfg.RateLimits.Enabled,
+		Login: auth.ParseRule(cfg.RateLimits.Login, ruleLogin), Reauth: auth.ParseRule(cfg.RateLimits.Reauth, ruleReauth),
+		ClientAddr: clientAddrString}
 }
 
 func clientAddrString(r *http.Request) string {

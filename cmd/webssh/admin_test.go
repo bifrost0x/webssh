@@ -216,9 +216,9 @@ func TestMigrateAndPurgeUsage(t *testing.T) {
 	if code, _, e := runIn(t, "", "webssh", "migrate", "--dry-run"); code != 1 || !strings.Contains(e, "replace_without_legacy_source") {
 		t.Errorf("dry run without legacy data: %d %q", code, e)
 	}
-	// This build's registry is incomplete, so it never activates a
-	// migration.
-	if code, _, e := runIn(t, "", "webssh", "migrate", "--replace"); code != 1 || !strings.Contains(e, "does not cover every legacy entity") {
+	// The registry covers every entity, so --replace gets as far as the
+	// missing legacy source.
+	if code, _, e := runIn(t, "", "webssh", "migrate", "--replace"); code != 1 || !strings.Contains(e, "replace_without_legacy_source") {
 		t.Errorf("replace: %d %q", code, e)
 	}
 }
