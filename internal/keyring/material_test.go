@@ -162,6 +162,15 @@ func TestUnusableMaterialStops(t *testing.T) {
 		"short file": func(t *testing.T, mp materialPaths) { put(t, mp.goFile, make([]byte, 31)) },
 		"long file":  func(t *testing.T, mp materialPaths) { put(t, mp.stateFile, make([]byte, 33)) },
 		"empty file": func(t *testing.T, mp materialPaths) { put(t, mp.goFile, nil) },
+		"readable by others": func(t *testing.T, mp materialPaths) {
+			if runtime.GOOS == "windows" {
+				t.Skip("no mode bits")
+			}
+			put(t, mp.goFile, make([]byte, MaterialSize))
+			if err := os.Chmod(mp.goFile, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		},
 		"directory": func(t *testing.T, mp materialPaths) {
 			if err := os.MkdirAll(mp.goFile, 0o700); err != nil {
 				t.Fatal(err)
@@ -226,8 +235,10 @@ func TestTwoCopies(t *testing.T) {
 	if err != nil || !bytes.Equal(got, a) {
 		t.Fatalf("identical copies: %x, %v", got, err)
 	}
-	if present(t, mp.stateFile) || present(t, mp.goTmp) || !present(t, mp.goFile) {
-		t.Fatal("interrupted move not completed")
+	// Loading removes only the temporary file; the identical copy under
+	// logs/ goes once the move is completed with a verified ring.
+	if !present(t, mp.stateFile) || present(t, mp.goTmp) || !present(t, mp.goFile) {
+		t.Fatal("loading removed material or kept the temporary file")
 	}
 }
 
@@ -248,15 +259,18 @@ func TestMoveMaterialToGo(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := tree(t, dir)
-	if err := MoveMaterialToGo(dir, other, func() error { return nil }); !errors.Is(err, ErrKeyMismatch) {
+	if err := MoveMaterialToGo(dir, other, other.KeyID(), func() error { return nil }); !errors.Is(err, ErrKeyMismatch) {
 		t.Fatalf("move with another ring: %v", err)
+	}
+	if err := MoveMaterialToGo(dir, r, other.KeyID(), func() error { return nil }); !errors.Is(err, ErrKeyMismatch) {
+		t.Fatalf("move for another database: %v", err)
 	}
 	if after := tree(t, dir); !slices.Equal(before, after) {
 		t.Fatal("refused move changed the data directory")
 	}
 
 	boom := errors.New("database unavailable")
-	if err := MoveMaterialToGo(dir, r, func() error { return boom }); !errors.Is(err, boom) {
+	if err := MoveMaterialToGo(dir, r, r.KeyID(), func() error { return boom }); !errors.Is(err, boom) {
 		t.Fatalf("failed record: %v", err)
 	}
 	if !present(t, mp.stateFile) || !present(t, mp.goFile) {
@@ -264,7 +278,7 @@ func TestMoveMaterialToGo(t *testing.T) {
 	}
 
 	records := 0
-	if err := MoveMaterialToGo(dir, r, func() error { records++; return nil }); err != nil {
+	if err := MoveMaterialToGo(dir, r, r.KeyID(), func() error { records++; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if records != 1 || present(t, mp.stateFile) || present(t, mp.goTmp) {
@@ -275,7 +289,7 @@ func TestMoveMaterialToGo(t *testing.T) {
 	if err != nil || !bytes.Equal(got, m) {
 		t.Fatalf("after the move: %v", err)
 	}
-	if err := MoveMaterialToGo(dir, r, func() error { records++; return nil }); err != nil || records != 2 {
+	if err := MoveMaterialToGo(dir, r, r.KeyID(), func() error { records++; return nil }); err != nil || records != 2 {
 		t.Fatalf("repeated move: %v", err)
 	}
 }
@@ -316,7 +330,7 @@ func TestMoveCrashPoints(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := MoveMaterialToGo(dir, r, func() error { return nil }); err != nil {
+			if err := MoveMaterialToGo(dir, r, r.KeyID(), func() error { return nil }); err != nil {
 				t.Fatal(err)
 			}
 			if !present(t, mp.goFile) || present(t, mp.stateFile) {

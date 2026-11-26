@@ -81,10 +81,12 @@ func (mp materialPaths) databaseExists() (bool, error) {
 }
 
 // LoadOrCreateMaterial returns the keyring material of the installation in
-// dataDir. It looks in go/ first, then in logs/.webssh-go/, and completes
-// an interrupted move of section 5.9: a leftover temporary copy is removed,
-// and of two identical copies the one under logs/ is removed. Two copies
-// that differ are ErrMaterialConflict.
+// dataDir. It looks in go/ first, then in logs/.webssh-go/. Two copies
+// that differ are ErrMaterialConflict. The only change it makes to
+// existing files is removing a leftover temporary copy (section 5.9), which
+// is never the only copy: it removes no material, so that a stop in state
+// S9 changes nothing. Of two identical copies, the one under logs/ is
+// removed by MoveMaterialToGo once the ring is verified.
 //
 // Without any copy it creates 32 random bytes, under logs/.webssh-go/ when
 // legacyPresent and in go/ otherwise, written completely and fsynced
@@ -104,11 +106,6 @@ func LoadOrCreateMaterial(dataDir string, legacyPresent bool) ([]byte, error) {
 		return nil, err
 	}
 	switch {
-	case inGo != nil && inState != nil:
-		if err := removeFile(mp.stateFile); err != nil {
-			return nil, err
-		}
-		return inGo, nil
 	case inGo != nil:
 		return inGo, nil
 	case inState != nil:
@@ -165,10 +162,14 @@ func (mp materialPaths) create(dataDir string, legacyPresent bool) ([]byte, erro
 // record to note "material in go/" in the database, and only then removes
 // the copy under logs/. At every moment one verified copy exists.
 //
-// It is idempotent: a move interrupted at any step is completed by calling
-// it again, so record must be idempotent too. Removing the marker and the
+// It first checks r against storedKeyID, the key identifier in the
+// database. It is idempotent: a move interrupted at any step is completed
+// by calling it again, so record must be idempotent too. Removing the marker and the
 // state directory is left to the caller, which owns the marker.
-func MoveMaterialToGo(dataDir string, r *Ring, record func() error) error {
+func MoveMaterialToGo(dataDir string, r *Ring, storedKeyID string, record func() error) error {
+	if err := r.Verify(storedKeyID); err != nil {
+		return err
+	}
 	mp := pathsIn(dataDir)
 	if err := mp.check(); err != nil {
 		return err

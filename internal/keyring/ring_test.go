@@ -9,6 +9,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -282,22 +284,24 @@ func TestOpenRing(t *testing.T) {
 func TestPurposeKeysAreIndependent(t *testing.T) {
 	t.Parallel()
 	r := katRing(t)
+	if len(sealPurposes)+len(macPurposes)+1 != len(Purposes()) {
+		t.Fatal("a purpose has no operation")
+	}
 	seen := map[string]Purpose{}
-	for _, p := range Purposes() {
-		if p == BrowserScope {
-			continue
-		}
+	for _, p := range macPurposes {
 		mac := hex.EncodeToString(r.MAC(p, []byte("m")))
 		if q, dup := seen[mac]; dup {
 			t.Errorf("%s and %s share a MAC key", p, q)
 		}
 		seen[mac] = p
+	}
+	for _, p := range sealPurposes {
 		sealed, err := r.Seal(p, katAAD, []byte("x"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, q := range Purposes() {
-			if q != p && q != BrowserScope {
+		for _, q := range sealPurposes {
+			if q != p {
 				if _, err := r.Open(q, katAAD, sealed); !errors.Is(err, ErrDecrypt) {
 					t.Errorf("%s value opened as %s: %v", p, q, err)
 				}
@@ -306,19 +310,48 @@ func TestPurposeKeysAreIndependent(t *testing.T) {
 	}
 }
 
-func TestMACPanicsOnInvalidPurpose(t *testing.T) {
+func TestPurposeOperations(t *testing.T) {
 	t.Parallel()
-	for _, p := range []Purpose{BrowserScope, "other"} {
+	r := katRing(t)
+	for _, p := range append([]Purpose{BrowserScope, "other"}, sealPurposes...) {
 		func() {
 			defer func() {
 				if recover() == nil {
 					t.Errorf("MAC(%q) did not panic", p)
 				}
 			}()
-			katRing(t).MAC(p, nil)
+			r.MAC(p, nil)
 		}()
 	}
-	if _, err := katRing(t).Seal(BrowserScope, katAAD, nil); !errors.Is(err, ErrPurpose) {
-		t.Errorf("Seal(BrowserScope): %v", err)
+	for _, p := range append([]Purpose{BrowserScope, "other"}, macPurposes...) {
+		if _, err := r.Seal(p, katAAD, nil); !errors.Is(err, ErrPurpose) {
+			t.Errorf("Seal(%q): %v", p, err)
+		}
+		if _, err := r.Open(p, katAAD, unhex(t, katSealed)); !errors.Is(err, ErrPurpose) {
+			t.Errorf("Open(%q): %v", p, err)
+		}
+	}
+}
+
+func TestFormattingRevealsNoKey(t *testing.T) {
+	t.Parallel()
+	r := katRing(t)
+	var logged bytes.Buffer
+	slog.New(slog.NewTextHandler(&logged, nil)).Info("ring", "ring", r)
+	outputs := []string{logged.String()}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%x", "%X", "%d"} {
+		outputs = append(outputs, fmt.Sprintf(verb, r))
+	}
+	for _, out := range outputs {
+		for _, secret := range [][]byte{katSecret, katMaterial} {
+			for _, form := range []string{string(secret), hex.EncodeToString(secret), fmt.Sprint(secret)} {
+				if strings.Contains(out, form) {
+					t.Errorf("output %q contains key material", out)
+				}
+			}
+		}
+		if !strings.Contains(out, katKeyID) {
+			t.Errorf("output %q does not name the key", out)
+		}
 	}
 }

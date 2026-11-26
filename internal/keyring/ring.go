@@ -11,6 +11,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 )
 
 // Stored formats. The info strings are part of every derived key and the
@@ -93,9 +95,14 @@ func newAEAD(key []byte) (cipher.AEAD, error) {
 	return aead, nil
 }
 
-// sealable reports whether p derives keyring keys. BrowserScope names the
-// separate browser-local namespace derivation and has no keyring key.
-func sealable(p Purpose) bool { return p.Known() && p != BrowserScope }
+// Each purpose has one operation: Seal and Open for secrets stored
+// encrypted, MAC for tokens stored only in their MAC form. BrowserScope
+// names the separate browser-local namespace derivation and has no keyring
+// key.
+var (
+	sealPurposes = []Purpose{SSHKey, TOTP, WebAuthnChallenge}
+	macPurposes  = []Purpose{SessionToken, CSRF, StepUpGrant}
+)
 
 // Open derives the ring from SECRET_KEY (as the bytes of the configured
 // string) and the keyring material. It does not read any file.
@@ -117,10 +124,7 @@ func Open(secret, material []byte) (*Ring, error) {
 		return nil, err
 	}
 	copy(r.id[:], id)
-	for _, p := range purposes {
-		if !sealable(p) {
-			continue
-		}
+	for _, p := range sealPurposes {
 		sk, err := derive(secret, material, infoSeal+string(p), 32)
 		if err != nil {
 			return nil, err
@@ -128,6 +132,8 @@ func Open(secret, material []byte) (*Ring, error) {
 		if r.seal[p], err = newAEAD(sk); err != nil {
 			return nil, err
 		}
+	}
+	for _, p := range macPurposes {
 		if r.mac[p], err = derive(secret, material, infoMAC+string(p), 32); err != nil {
 			return nil, err
 		}
@@ -142,6 +148,13 @@ func (r *Ring) KeyID() string { return hex.EncodeToString(r.id[:]) }
 
 // String names the ring by its key identifier and never prints key bytes.
 func (r *Ring) String() string { return "keyring.Ring(" + r.KeyID() + ")" }
+
+// Format prints String for every verb, including %#v and %+v, so that no
+// formatting of a ring reveals SECRET_KEY, the material or a key.
+func (r *Ring) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, r.String()) }
+
+// LogValue logs the ring as its key identifier.
+func (r *Ring) LogValue() slog.Value { return slog.StringValue(r.String()) }
 
 // Verify compares the ring with the key identifier stored in the database.
 // A mismatch is ErrKeyMismatch; Go must not start then (state S9).
@@ -163,10 +176,11 @@ func additionalData(header []byte, p Purpose, ad AAD) ([]byte, error) {
 	return append(bytes.Clone(header), enc...), nil
 }
 
-// Seal encrypts plain for the record ad. The result is
+// Seal encrypts plain for the record ad; only the seal purposes (SSHKey,
+// TOTP, WebAuthnChallenge) are accepted. The result is
 // version (1) | key id (8) | nonce (12) | ciphertext | tag (16).
 func (r *Ring) Seal(p Purpose, ad AAD, plain []byte) ([]byte, error) {
-	if !sealable(p) {
+	if r.seal[p] == nil {
 		return nil, ErrPurpose
 	}
 	header := append([]byte{sealVersion}, r.id[:]...)
@@ -180,7 +194,7 @@ func (r *Ring) Seal(p Purpose, ad AAD, plain []byte) ([]byte, error) {
 // Open decrypts a value sealed for the record ad. It fails with ErrFormat,
 // ErrWrongKey or ErrDecrypt and never returns partial plaintext.
 func (r *Ring) Open(p Purpose, ad AAD, sealed []byte) ([]byte, error) {
-	if !sealable(p) {
+	if r.seal[p] == nil {
 		return nil, ErrPurpose
 	}
 	if len(sealed) < MinSealedSize || sealed[0] != sealVersion {
@@ -200,12 +214,13 @@ func (r *Ring) Open(p Purpose, ad AAD, sealed []byte) ([]byte, error) {
 	return plain, nil
 }
 
-// MAC returns HMAC-SHA256 of msg under the purpose's MAC key (32 bytes).
+// MAC returns HMAC-SHA256 of msg under the purpose's MAC key (32 bytes);
+// only the MAC purposes (SessionToken, CSRF, StepUpGrant) have one.
 // Stored tokens are kept only in this form. Compare MACs with hmac.Equal.
 // Purposes are constants; an unknown one is a programming error and
 // panics.
 func (r *Ring) MAC(p Purpose, msg []byte) []byte {
-	if !sealable(p) {
+	if r.mac[p] == nil {
 		panic(fmt.Sprintf("keyring: MAC with purpose %q", p))
 	}
 	m := hmac.New(sha256.New, r.mac[p])
