@@ -39,15 +39,21 @@ async function login(page, username = 'e2e_admin', {workspace = true, tour = 'ac
     if (workspace) await openWorkspace(page);
 }
 
+// Readiness of the workspace after sign-in. The poll returns every flag,
+// so a timeout names the part that did not arrive.
+const inventoryReady = {
+    profiles: true, keys: true, jumpHosts: true, socksProxies: true, socket: true, jumpHostList: true,
+};
+
 async function waitForInventory(page) {
-    await expect.poll(() => page.evaluate(() => (
-        window.ProfileManager?.profilesLoaded === true
-        && window.ProfileManager?.keysLoaded === true
-        && window.JumpHostManager?.loaded === true
-        && window.SocksProxyManager?.loaded === true
-        && window.socket?.connected === true
-        && Array.isArray(window.JumpHostManager?.jumpHosts)
-    ))).toBe(true);
+    await expect.poll(() => page.evaluate(() => ({
+        profiles: window.ProfileManager?.profilesLoaded === true,
+        keys: window.ProfileManager?.keysLoaded === true,
+        jumpHosts: window.JumpHostManager?.loaded === true,
+        socksProxies: window.SocksProxyManager?.loaded === true,
+        socket: window.socket?.connected === true,
+        jumpHostList: Array.isArray(window.JumpHostManager?.jumpHosts),
+    }))).toEqual(inventoryReady);
 }
 
 async function openWorkspace(page) {

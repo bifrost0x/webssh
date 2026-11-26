@@ -101,7 +101,11 @@ spaces replaced by hyphens.
 The configuration in `environment` exists to make the loopback fixture work:
 `DEBUG` and `SESSION_COOKIE_SECURE=False` allow plain HTTP on loopback,
 which production defaults correctly refuse. The raised rate limits let many
-independent cases sign in to the same accounts. All secrets in the seed are
+independent cases sign in to the same accounts. The SSH key list limit is
+per user and minute; every sign-in and every visit of the file workspace
+lists the keys, so a run of consecutive cases as `e2e_admin` (the theme
+matrix visits the files view seven times per case) must stay below it, or
+the workspace never reports its keys as loaded. All secrets in the seed are
 fixed test values that are only valid for this harness.
 
 ## Test hooks

@@ -129,16 +129,26 @@ test('saving, reloading, removing and other-tab changes update dropdown presets'
 test('failed preset loading offers retry while built-in layouts remain usable', async ({page}) => {
     await login(page);
     let fail = true;
-    await page.route('**/api/account/workspace-presets', route => route.fulfill(fail
-        ? {status: 503, json: {error: 'Temporarily unavailable'}}
-        : {json: {presets: [{id: 'retry', name: 'Recovered preset', layout: 2, profile_ids: []}]}}
-    ));
+    let loads = 0;
+    await page.route('**/api/account/workspace-presets', route => {
+        loads += 1;
+        return route.fulfill(fail
+            ? {status: 503, json: {error: 'Temporarily unavailable'}}
+            : {json: {presets: [{id: 'retry', name: 'Recovered preset', layout: 2, profile_ids: []}]}});
+    });
     const picker = page.locator('#workspaceLayoutPicker');
     await picker.locator('summary').click();
     await expect(picker.getByRole('alert')).toBeVisible();
     await picker.locator('.split-btn[data-layout="4"]').click();
     expect(await page.evaluate(() => SessionManager.layout)).toBe(4);
+    // Opening the menu reloads the presets. Until that reload has failed
+    // too, the Retry button on screen is the one of the first failure and
+    // is replaced, so the backend may only recover after it.
+    const loadsBeforeReopen = loads;
     await picker.locator('summary').click();
+    await expect.poll(() => loads).toBe(loadsBeforeReopen + 1);
+    await expect(picker.getByRole('status')).toHaveCount(0);
+    await expect(picker.getByRole('alert')).toBeVisible();
     const retry = picker.getByRole('button', {name: 'Retry', exact: true});
     await expect(retry).toBeVisible();
     fail = false;
