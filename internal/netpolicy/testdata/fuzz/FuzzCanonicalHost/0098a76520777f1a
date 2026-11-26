@@ -1,0 +1,2 @@
+go test fuzz v1
+string("::%\x91\xb3\xa8")
