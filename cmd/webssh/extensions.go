@@ -49,8 +49,6 @@ type extension struct {
 var extensions []extension
 
 // register adds an extension; it is called from init functions.
-//
-//lint:ignore U1000 the extension point of capabilities built in parallel (passkeys)
 func register(e extension) {
 	if e.name == "" {
 		panic("webssh: extension without a name")

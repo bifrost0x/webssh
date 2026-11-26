@@ -8,6 +8,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -86,8 +87,9 @@ func TestSystemServesThePreview(t *testing.T) {
 	if resp, body := get(t, c, ts.URL+"/api/account/recovery-check"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `"needs_review":false`) {
 		t.Fatalf("recovery-check: %d %s", resp.StatusCode, body)
 	}
-	if resp, body := get(t, c, ts.URL+"/api/webauthn/credentials"); resp.StatusCode != http.StatusNotImplemented || !strings.Contains(body, "not_available_in_preview") {
-		t.Fatalf("passkeys without D1: %d %s", resp.StatusCode, body)
+	// WEBAUTHN_ENABLED is off by default, as in Python.
+	if resp, body := get(t, c, ts.URL+"/api/webauthn/credentials"); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("passkeys while disabled: %d %s", resp.StatusCode, body)
 	}
 	if resp, body := get(t, c, ts.URL+"/api/realtime/status"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `"authenticated":true`) {
 		t.Fatalf("realtime status: %d %s", resp.StatusCode, body)
@@ -170,5 +172,31 @@ func TestRecoveryFactorFollowsTheCodes(t *testing.T) {
 	}
 	if err := f.Verify(t.Context(), 1, nil); fault.CodeOf(err) != fault.AuthFailed {
 		t.Fatalf("Verify: %v", err)
+	}
+}
+
+// With WEBAUTHN_ENABLED the passkey extension is ready, is a factor of
+// MFA, step-up and sign-in, and serves its routes.
+func TestSystemWiresPasskeys(t *testing.T) {
+	sys, ts := openTestSystem(t, map[string]string{"WEBAUTHN_ENABLED": "true"})
+	if !sys.optional.featureReady["passkey"].Ready || sys.mfa.Passkeys == nil || sys.stepup.Passkeys == nil {
+		t.Fatal("passkeys not wired")
+	}
+	kinds := []string{}
+	for _, f := range sys.flow.Factors {
+		kinds = append(kinds, f.Kind())
+	}
+	if !slices.Contains(kinds, "passkey") {
+		t.Fatalf("sign-in factors %v", kinds)
+	}
+	if _, ok := sys.stepup.Targets[principal.ActionPasskeyDelete]; !ok {
+		t.Fatal("no step-up target check for passkey deletion")
+	}
+	c := signUp(t, ts.URL, "admin1", "first-password-1")
+	if resp, body := get(t, c, ts.URL+"/api/webauthn/credentials"); resp.StatusCode != http.StatusOK || body != `{"credentials":[]}` {
+		t.Fatalf("passkey list: %d %s", resp.StatusCode, body)
+	}
+	if resp, body := get(t, c, ts.URL+"/security"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `id="passkeyAddBtn"`) {
+		t.Fatalf("security page without passkeys: %d", resp.StatusCode)
 	}
 }
