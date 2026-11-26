@@ -21,6 +21,9 @@ type fork struct {
 	// Once a package of this module imports the fork, the same modules
 	// need entries in allowed-modules.txt.
 	deps []string
+	// forbidden are packages of the fork, relative to its module, that no
+	// package of this module may import.
+	forbidden []string
 }
 
 // forks maps fork directories, relative to the module root, to the fork.
@@ -28,6 +31,9 @@ var forks = map[string]fork{
 	"third_party/go-smb2": {
 		module: "github.com/hirochachacha/go-smb2/v2",
 		deps:   []string{"github.com/geoffgarside/ber", "golang.org/x/crypto"},
+		// client and dfs follow DFS referrals to other servers, which the
+		// SMB backend refuses (K1); user is LSA identity lookup over RPC.
+		forbidden: []string{"client", "dfs", "user"},
 	},
 }
 
@@ -57,6 +63,26 @@ func replaceViolations(replaces []goModReplace, forks map[string]fork) []string 
 			problems = append(problems, fmt.Sprintf("%s: %s is the fork of %s", where, dir, f.module))
 		case r.Old.Version != "" || r.New.Version != "":
 			problems = append(problems, where+": a fork replace must not name versions")
+		}
+	}
+	slices.Sort(problems)
+	return problems
+}
+
+// forkImportViolations reports imports of forbidden fork packages, or of
+// packages below them.
+func forkImportViolations(pkgs []sourcePackage, f fork) []string {
+	var problems []string
+	for _, pkg := range pkgs {
+		for _, file := range pkg.files {
+			for _, imp := range file.imports {
+				for _, rel := range f.forbidden {
+					banned := f.module + "/" + rel
+					if imp == banned || strings.HasPrefix(imp, banned+"/") {
+						problems = append(problems, fmt.Sprintf("%s/%s: imports %s, which the fork keeps only for its own tests", pkg.rel, file.name, imp))
+					}
+				}
+			}
 		}
 	}
 	slices.Sort(problems)
@@ -133,6 +159,9 @@ func TestForks(t *testing.T) {
 			for _, problem := range forkLinkViolations(rel, f, forkLinkedModules(t, dir)) {
 				t.Error(problem)
 			}
+			for _, problem := range forkImportViolations(loadPackages(t, root), f) {
+				t.Error(problem)
+			}
 		})
 	}
 }
@@ -181,6 +210,27 @@ func TestForkLinkViolations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			assertViolation(t, forkLinkViolations("third_party/lib", f, tt.linked), tt.want)
+		})
+	}
+}
+
+func TestForkImportViolations(t *testing.T) {
+	t.Parallel()
+	f := fork{module: "example.com/lib/v2", forbidden: []string{"client"}}
+	tests := []struct {
+		name, imp, want string
+	}{
+		{name: "root package", imp: "example.com/lib/v2"},
+		{name: "allowed subpackage", imp: "example.com/lib/v2/auth"},
+		{name: "similar name", imp: "example.com/lib/v2/clientx"},
+		{name: "forbidden package", imp: "example.com/lib/v2/client", want: "imports example.com/lib/v2/client"},
+		{name: "below forbidden package", imp: "example.com/lib/v2/client/x", want: "imports example.com/lib/v2/client/x"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			pkgs := []sourcePackage{{rel: "internal/files/smb", files: []fileImports{{name: "a.go", imports: []string{tt.imp}}}}}
+			assertViolation(t, forkImportViolations(pkgs, f), tt.want)
 		})
 	}
 }

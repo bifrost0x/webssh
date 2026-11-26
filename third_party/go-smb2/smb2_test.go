@@ -4733,7 +4733,10 @@ func TestManualMultichannel(t *testing.T) {
 
 			require.NoError(t, connections[0].Close()) // Explicit owned-link failure, not request cancellation.
 			// Observe receiver teardown through a read-only probe; never retry writes.
-			require.Eventually(t, func() bool { return session.Echo(ctx) == nil && session.Echo(ctx) == nil }, 5*time.Second, 10*time.Millisecond)
+			require.Eventually(t, func() bool {
+				//lint:ignore SA4000 two consecutive probes, each a separate request
+				return session.Echo(ctx) == nil && session.Echo(ctx) == nil
+			}, 5*time.Second, 10*time.Millisecond)
 			got := make([]byte, len(payload))
 			_, err = readAt(ctx, got, 0)
 			require.NoError(t, err)
