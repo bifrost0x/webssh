@@ -14,8 +14,8 @@ import (
 )
 
 // ErrTailnetRestricted is the cause of every refusal by the tailnet rule.
-// The frontend shows its own hint for it (code tailscale_route_restricted
-// in the Python release).
+// Its code is tailscale_route_restricted, as in the Python release; the
+// frontend shows its own hint for it.
 var ErrTailnetRestricted = errors.New("netpolicy: tailnet route restricted")
 
 // Refusals. The messages are those of the Python release.
@@ -28,7 +28,7 @@ var (
 )
 
 func tailnetRefusal(message string) error {
-	return fault.Wrap(fault.TargetBlocked, ErrTailnetRestricted, message)
+	return fault.Wrap(fault.TailnetRouteRestricted, ErrTailnetRestricted, message)
 }
 
 const (
@@ -111,8 +111,9 @@ type Admitted struct {
 }
 
 // Admit resolves host once and returns the first address the policy
-// allows. Every refusal is a *fault.Error with TargetBlocked (wrapping
-// ErrTailnetRestricted for the tailnet rule), Unreachable for a name that
+// allows. Every refusal is a *fault.Error with TargetBlocked,
+// TailnetRouteRestricted (wrapping ErrTailnetRestricted) for the tailnet
+// rule, Unreachable for a name that
 // does not resolve, or InvalidValue for a malformed host or port.
 func (p *Policy) Admit(ctx context.Context, role Role, host string, port int) (Admitted, error) {
 	canonical, err := CanonicalHost(host)

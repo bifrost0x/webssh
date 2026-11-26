@@ -3,6 +3,7 @@ package protocol_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -73,6 +74,14 @@ func TestWireError(t *testing.T) {
 	if limited.Code != fault.RateLimited || limited.RetryAfterMS != 1 {
 		t.Fatalf("rate limit: %+v", limited)
 	}
+	details := map[string]any{"usages": []string{"web-01"}}
+	inUse := protocol.WireError(fmt.Errorf("delete: %w", &fault.Error{Code: fault.Conflict, Details: details}))
+	if inUse.Code != fault.Conflict || inUse.Details["usages"] == nil {
+		t.Fatalf("details lost: %+v", inUse)
+	}
+	if hidden := protocol.WireError(&fault.Error{Code: "made_up", Details: details}); hidden.Details != nil {
+		t.Fatalf("details of an unknown code were sent: %+v", hidden)
+	}
 }
 
 func TestPeerDouble(t *testing.T) {
@@ -123,6 +132,10 @@ func TestPayloadValidation(t *testing.T) {
 	if err := good.Validate(); err != nil || good.Rows != 24 || good.Cols != 80 {
 		t.Fatalf("valid open rejected or not defaulted: %v %+v", err, good)
 	}
+	tmux := protocol.TerminalOpen{Ch: 1, RequestID: "r-2", ReplacementOf: "s-1", Target: protocol.OpenTarget{Host: "h", AuthType: protocol.AuthKey, UseTmux: true, TmuxSessionName: "webssh-1"}}
+	if err := tmux.Validate(); err != nil {
+		t.Fatalf("tmux open rejected: %v", err)
+	}
 	bad := []protocol.TerminalOpen{
 		{Ch: 0, RequestID: "r", Target: protocol.OpenTarget{Host: "h", AuthType: protocol.AuthKey}},
 		{Ch: 1, RequestID: "", Target: protocol.OpenTarget{Host: "h", AuthType: protocol.AuthKey}},
@@ -130,6 +143,8 @@ func TestPayloadValidation(t *testing.T) {
 		{Ch: 1, RequestID: "r", Target: protocol.OpenTarget{AuthType: protocol.AuthPassword}},
 		{Ch: 1, RequestID: "r", Target: protocol.OpenTarget{Host: "h", Port: 70000, AuthType: protocol.AuthPassword}},
 		{Ch: 1 << 31, RequestID: "r", Target: protocol.OpenTarget{Host: "h", AuthType: protocol.AuthPassword}},
+		{Ch: 1, RequestID: "r", Target: protocol.OpenTarget{Host: "h", AuthType: protocol.AuthKey, TmuxSessionName: strings.Repeat("t", protocol.MaxTmuxSessionName+1)}},
+		{Ch: 1, RequestID: "r", ReplacementOf: "a b", Target: protocol.OpenTarget{Host: "h", AuthType: protocol.AuthKey}},
 	}
 	for i, r := range bad {
 		if err := r.Validate(); err == nil {

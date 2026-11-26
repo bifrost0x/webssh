@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"strings"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 )
@@ -19,21 +20,7 @@ type SOCKSError struct{ Code string }
 
 func (e *SOCKSError) Error() string { return "socks5: " + e.Code }
 
-// socksMessages are the texts the Python release showed for each code.
-var socksMessages = map[string]string{
-	"socks_proxy_failure":       "The SOCKS5 proxy reported a general failure.",
-	"socks_not_allowed":         "The SOCKS5 proxy does not allow this connection.",
-	"socks_network_unreachable": "The SOCKS5 proxy cannot reach the target network.",
-	"socks_host_unreachable":    "The SOCKS5 proxy cannot reach the target host.",
-	"socks_connection_refused":  "The target refused the connection through the SOCKS5 proxy.",
-	"socks_ttl_expired":         "The connection through the SOCKS5 proxy timed out.",
-	"socks_unsupported":         "The SOCKS5 proxy does not support this request.",
-	"socks_protocol_error":      "The SOCKS5 proxy sent an invalid response.",
-	"socks_proxy_unreachable":   "The SOCKS5 proxy could not be reached.",
-	"socks_timeout":             "The SOCKS5 proxy did not respond in time.",
-	"socks_auth_required":       "The SOCKS5 proxy requires a username and password.",
-}
-
+// socksReplyCodes maps the reply field of RFC 1928 to the codes.
 var socksReplyCodes = map[byte]string{
 	1: "socks_proxy_failure",
 	2: "socks_not_allowed",
@@ -45,21 +32,13 @@ var socksReplyCodes = map[byte]string{
 	8: "socks_unsupported",
 }
 
-func (e *SOCKSError) message() string { return socksMessages[e.Code] }
-
-// fault maps the detail code to the shared catalog.
+// fault returns the catalog code of the failure; the socks_* codes are
+// in the catalog with the spelling of the Python release.
 func (e *SOCKSError) fault() fault.Code {
-	switch e.Code {
-	case "socks_proxy_unreachable", "socks_network_unreachable", "socks_host_unreachable", "socks_connection_refused":
-		return fault.Unreachable
-	case "socks_timeout", "socks_ttl_expired":
-		return fault.Timeout
-	case "socks_not_allowed":
-		return fault.TargetBlocked
-	case "socks_auth_required":
-		return fault.AuthFailed
+	if c := fault.Code(e.Code); strings.HasPrefix(e.Code, "socks_") && c.Known() {
+		return c
 	}
-	return fault.SSHProtocol
+	return fault.SOCKSProtocolError
 }
 
 func socksFail(code string) error { return &SOCKSError{Code: code} }

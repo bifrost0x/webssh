@@ -129,7 +129,7 @@ func TestTailnetRuleInDialer(t *testing.T) {
 	p, rec, _ := newTestPolicy(t, Config{Tailnet: Tailnet{InterfacePresent: func(string) bool { return true }}})
 	for _, addr := range []string{"100.100.100.10:22", "[::ffff:100.100.100.10]:22", "node.example:22", "100.99.0.1:22"} {
 		_, err := p.DialContext(t.Context(), RoleSSH, "tcp", addr)
-		if !errors.Is(err, ErrTailnetRestricted) || !fault.Is(err, fault.TargetBlocked) {
+		if !errors.Is(err, ErrTailnetRestricted) || !fault.Is(err, fault.TailnetRouteRestricted) {
 			t.Errorf("%s: %v", addr, err)
 		}
 	}

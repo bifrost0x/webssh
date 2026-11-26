@@ -143,7 +143,8 @@ type Interaction interface {
 
 // NetDialer opens the TCP connection to the first hop or proxy after the
 // network policy admitted it (provided by internal/netpolicy). Refusals
-// carry fault.TargetBlocked.
+// carry fault.TargetBlocked, those of the tailnet rule
+// fault.TailnetRouteRestricted.
 type NetDialer interface {
 	DialContext(ctx context.Context, role netpolicy.Role, network, addr string) (net.Conn, error)
 }

@@ -53,6 +53,19 @@ test('a failure keeps the code, repeats as error where Python did and pushes not
     socket.disconnect();
 });
 
+test('err.details reach the acknowledgement without replacing its own members', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const acks = [];
+    socket.emit('delete_jump_host', {jump_host_id: 'j'}, ack => acks.push(ack));
+    ws.fail(ws.lastRequest('hosts.jump.delete').id, {
+        code: 'conflict', message: 'In use.', details: {usages: ['web-01'], success: true, code: 'x'},
+    });
+    await tick();
+    assert.deepEqual(plain(acks), [{usages: ['web-01'], success: false, code: 'conflict', error: 'In use.'}]);
+    socket.disconnect();
+});
+
 test('host mutations repeat their failure as error like the Python release', async () => {
     const window = loadShim();
     const {socket, ws} = await connected(window);

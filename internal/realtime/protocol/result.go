@@ -24,6 +24,9 @@ type Error struct {
 	Code         fault.Code `json:"code"`
 	Message      string     `json:"message,omitzero"`
 	RetryAfterMS int64      `json:"retry_after_ms,omitzero"`
+	// Details is fault.Error.Details; the shim copies it into the
+	// acknowledgement.
+	Details map[string]any `json:"details,omitzero"`
 }
 
 // WireError converts a handler error into its wire form. Unclassified
@@ -34,7 +37,7 @@ func WireError(err error) *Error {
 		return nil
 	}
 	_, code, message := fault.Status(err)
-	e := &Error{Code: code, Message: message}
+	e := &Error{Code: code, Message: message, Details: fault.DetailsOf(err)}
 	if d := fault.RetryAfter(err); d > 0 {
 		e.RetryAfterMS = max(d.Milliseconds(), 1)
 	}

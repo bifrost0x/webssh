@@ -15,8 +15,11 @@
 
     const TIMEOUT_MESSAGE = 'operation has timed out';
 
+    // err.details (optional object) carries the members Python sent beside
+    // the error, such as requires_confirmation or usages.
     function failure(err, extra) {
-        const result = {success: false, code: err.code, error: err.message || err.code, ...extra};
+        const details = err.details && typeof err.details === 'object' && !Array.isArray(err.details) ? err.details : {};
+        const result = {...details, success: false, code: err.code, error: err.message || err.code, ...extra};
         if (err.retry_after_ms) result.retry_after_ms = err.retry_after_ms;
         return result;
     }

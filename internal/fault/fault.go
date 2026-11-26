@@ -24,7 +24,11 @@ type Error struct {
 	Message string
 	// RetryAfter tells the client when to retry (RateLimited, Busy).
 	RetryAfter time.Duration
-	Err        error
+	// Details are facts the page acts on (requires_confirmation, usages);
+	// optional, JSON-encodable and as safe to show as Message. The
+	// realtime transport sends them as err.details.
+	Details map[string]any
+	Err     error
 }
 
 // Error returns a text for logs: code, message and cause.
@@ -100,6 +104,15 @@ func Status(err error) (httpStatus int, code Code, message string) {
 		message = fe.Code.DefaultMessage()
 	}
 	return fe.Code.HTTPStatus(), fe.Code, message
+}
+
+// DetailsOf returns the details of err, or nil. Like Status it gives
+// nothing for an unclassified error or a code outside the catalog.
+func DetailsOf(err error) map[string]any {
+	if fe, ok := From(err); ok && fe.Code.Known() {
+		return fe.Details
+	}
+	return nil
 }
 
 // RetryAfter returns the retry hint of err, or 0.

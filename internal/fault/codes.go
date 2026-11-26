@@ -59,6 +59,27 @@ const (
 	BannerDeclined      Code = "auth_banner_declined"
 	SSHProtocol         Code = "ssh_protocol_error"
 	ChannelRejected     Code = "channel_rejected"
+
+	// The tailnet rule of the network policy refused the target or relay;
+	// the page shows its own hint (admins get a link to the setting).
+	TailnetRouteRestricted Code = "tailscale_route_restricted"
+)
+
+// SOCKS5 failures (internal/ssh/client). The spelling is that of the
+// Python release (app/socks5_client.py); static/js/ssh-error-ui.js shows
+// a text and a link to the proxy settings for each.
+const (
+	SOCKSProxyFailure       Code = "socks_proxy_failure"
+	SOCKSNotAllowed         Code = "socks_not_allowed"
+	SOCKSNetworkUnreachable Code = "socks_network_unreachable"
+	SOCKSHostUnreachable    Code = "socks_host_unreachable"
+	SOCKSConnectionRefused  Code = "socks_connection_refused"
+	SOCKSTTLExpired         Code = "socks_ttl_expired"
+	SOCKSUnsupported        Code = "socks_unsupported"
+	SOCKSProtocolError      Code = "socks_protocol_error"
+	SOCKSProxyUnreachable   Code = "socks_proxy_unreachable"
+	SOCKSTimeout            Code = "socks_timeout"
+	SOCKSAuthRequired       Code = "socks_auth_required"
 )
 
 // HTTP status codes used by the catalog. They are spelled out here so that
@@ -127,6 +148,23 @@ var catalog = map[Code]entry{
 	BannerDeclined:      {statusBadRequest, "The login banner was declined."},
 	SSHProtocol:         {statusBadGateway, "The SSH connection failed."},
 	ChannelRejected:     {statusBadGateway, "The host refused the session."},
+
+	TailnetRouteRestricted: {statusForbidden, "This target is on the tailnet and requires Tailscale SSH."},
+
+	// The statuses are those of the general codes the failures had
+	// before they got their own (unreachable, timeout, target_blocked,
+	// auth_failed, ssh_protocol_error).
+	SOCKSProxyFailure:       {statusBadGateway, "The SOCKS5 proxy reported a general failure."},
+	SOCKSNotAllowed:         {statusForbidden, "The SOCKS5 proxy does not allow this connection."},
+	SOCKSNetworkUnreachable: {statusBadGateway, "The SOCKS5 proxy cannot reach the target network."},
+	SOCKSHostUnreachable:    {statusBadGateway, "The SOCKS5 proxy cannot reach the target host."},
+	SOCKSConnectionRefused:  {statusBadGateway, "The target refused the connection through the SOCKS5 proxy."},
+	SOCKSTTLExpired:         {statusGatewayTimeout, "The connection through the SOCKS5 proxy timed out."},
+	SOCKSUnsupported:        {statusBadGateway, "The SOCKS5 proxy does not support this request."},
+	SOCKSProtocolError:      {statusBadGateway, "The SOCKS5 proxy sent an invalid response."},
+	SOCKSProxyUnreachable:   {statusBadGateway, "The SOCKS5 proxy could not be reached."},
+	SOCKSTimeout:            {statusGatewayTimeout, "The SOCKS5 proxy did not respond in time."},
+	SOCKSAuthRequired:       {statusBadGateway, "The SOCKS5 proxy requires a username and password."},
 }
 
 // Codes returns every code of the catalog, for tests and documentation.

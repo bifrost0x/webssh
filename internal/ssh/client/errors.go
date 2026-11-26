@@ -60,7 +60,7 @@ func fail(ctx context.Context, role Role, timedOut bool, err error) error {
 
 func classify(ctx context.Context, timedOut bool, err error) (fault.Code, string, string) {
 	if se, ok := errors.AsType[*SOCKSError](err); ok {
-		return se.fault(), se.message(), se.Code
+		return se.fault(), "", se.Code
 	}
 	switch {
 	case errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled):

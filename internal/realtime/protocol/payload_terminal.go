@@ -60,7 +60,14 @@ type TerminalOpen struct {
 	Cols      int        `json:"cols"`
 	Rows      int        `json:"rows"`
 	Target    OpenTarget `json:"target"`
+	// ReplacementOf names the session this attempt replaces (reconnect
+	// of a tab whose session ended); "" for a new tab.
+	ReplacementOf string `json:"replacement_of,omitzero"`
 }
+
+// MaxTmuxSessionName bounds tmux_session_name (the column of the Python
+// release holds 256 characters).
+const MaxTmuxSessionName = 256
 
 // OpenTarget is the connection the user asked for. A ProfileID makes the
 // server resolve the saved profile; the other fields are then ignored
@@ -75,6 +82,11 @@ type OpenTarget struct {
 	KeyID        string `json:"key_id,omitzero"`
 	JumpHostID   string `json:"jump_host_id,omitzero"`
 	SOCKSProxyID string `json:"socks_proxy_id,omitzero"`
+	// UseTmux and TmuxSessionName ask for the session to run in tmux, as
+	// the ssh_connect fields of the Python release; the terminal checks
+	// the name before it reaches a shell command.
+	UseTmux         bool   `json:"use_tmux,omitzero"`
+	TmuxSessionName string `json:"tmux_session_name,omitzero"`
 }
 
 // TerminalOpened is the result of terminal.open.
@@ -100,6 +112,10 @@ func (r *TerminalOpen) Validate() error {
 		return errors.New("port is out of range")
 	case t.ProfileID == "" && t.Host == "":
 		return errors.New("host or profile_id is required")
+	case len(t.TmuxSessionName) > MaxTmuxSessionName:
+		return errors.New("tmux_session_name is too long")
+	case r.ReplacementOf != "" && !validToken(r.ReplacementOf, MaxIDLen, false):
+		return errors.New("replacement_of is invalid")
 	}
 	return nil
 }

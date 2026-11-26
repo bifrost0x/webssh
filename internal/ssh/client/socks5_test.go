@@ -57,8 +57,8 @@ func TestSOCKSHandshake(t *testing.T) {
 			case tc.sent != nil && !bytes.Equal(s.out.Bytes(), tc.sent):
 				t.Fatalf("sent %v, want %v", s.out.Bytes(), tc.sent)
 			}
-			if se != nil && socksMessages[se.Code] == "" {
-				t.Fatalf("%s has no message", se.Code)
+			if se != nil && se.fault() != fault.Code(se.Code) {
+				t.Fatalf("%s is not in the fault catalog", se.Code)
 			}
 		})
 	}
@@ -95,7 +95,7 @@ func TestSOCKSErrorsThroughTheDialer(t *testing.T) {
 	_, err = d.Dial(t.Context(), tgt, nil)
 	he, _ := errors.AsType[*HopError](err)
 	status, code, message := fault.Status(err)
-	if he == nil || he.Role != RoleSOCKS || he.Detail != "socks_host_unreachable" || code != fault.Unreachable || status != 502 || message != socksMessages["socks_host_unreachable"] {
+	if he == nil || he.Role != RoleSOCKS || he.Detail != "socks_host_unreachable" || code != fault.SOCKSHostUnreachable || status != 502 || message != "The SOCKS5 proxy cannot reach the target host." {
 		t.Fatalf("got %v (%d %s %q)", err, status, code, message)
 	}
 	tgt.Proxy.Port = 1

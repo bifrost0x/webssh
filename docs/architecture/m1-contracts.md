@@ -68,13 +68,15 @@ func RequireAdmin(ctx context.Context) (Principal, error)
 ```go
 type Error struct {
 	Code       Code
-	Message    string        // safe to show
-	RetryAfter time.Duration // rate_limited, busy
-	Err        error         // cause, for logs only
+	Message    string         // safe to show
+	RetryAfter time.Duration  // rate_limited, busy
+	Details    map[string]any // optional facts the page acts on, safe to show
+	Err        error          // cause, for logs only
 }
 func New(code Code, message string) *Error
 func Wrap(code Code, cause error, message string) *Error
 func Status(err error) (httpStatus int, code Code, message string)
+func DetailsOf(err error) map[string]any
 ```
 
 - A capability returns a `*fault.Error` (possibly wrapped) for every
@@ -87,7 +89,20 @@ func Status(err error) (httpStatus int, code Code, message string)
 - HTTP JSON errors keep the shape the frontend expects:
   `{"success": false, "code": "<code>", "error": "<message>"}` with the
   status from the table. Realtime errors are the `err` member of a
-  `result` message: `{"code", "message", "retry_after_ms"}`.
+  `result` message: `{"code", "message", "retry_after_ms", "details"}`.
+- `details` is optional and an object. It carries what the Python release
+  sent beside the error and the page acts on: `requires_confirmation` and
+  `profiles` for `hosts.profile.move`, `usages` (display strings) for the
+  delete types. The shim copies its members into the acknowledgement; they
+  never replace `success`, `code` or `error`. Like `Message`, details never
+  hold secrets, remote-supplied text or paths, and an error outside the
+  catalog sends none.
+- Error text never becomes a message: `Error()` must not feed the message
+  of `fault.New` or `fault.Wrap`, and transport files of capabilities
+  (`http.go`, `http_*.go`, `realtime.go`) do not call it (architecture
+  test). The one exception is `internal/realtime/protocol/route.go`, which
+  sends the error of `Validate()`; every validator returns fixed texts of
+  its own and never includes request values.
 - Routes planned but not built in M1 answer
   `501 {"success": false, "code": "not_available_in_preview", "error": …}`.
 
@@ -121,12 +136,24 @@ func Status(err error) (httpStatus int, code Code, message string)
 | `not_found` | 404 | Not found. |
 | `precondition_failed` | 412 | The data has changed. Reload and try again. |
 | `rate_limited` | 429 | Too many attempts. Try again later. |
+| `socks_auth_required` | 502 | The SOCKS5 proxy requires a username and password. |
+| `socks_connection_refused` | 502 | The target refused the connection through the SOCKS5 proxy. |
+| `socks_host_unreachable` | 502 | The SOCKS5 proxy cannot reach the target host. |
+| `socks_network_unreachable` | 502 | The SOCKS5 proxy cannot reach the target network. |
+| `socks_not_allowed` | 403 | The SOCKS5 proxy does not allow this connection. |
+| `socks_protocol_error` | 502 | The SOCKS5 proxy sent an invalid response. |
+| `socks_proxy_failure` | 502 | The SOCKS5 proxy reported a general failure. |
+| `socks_proxy_unreachable` | 502 | The SOCKS5 proxy could not be reached. |
+| `socks_timeout` | 504 | The SOCKS5 proxy did not respond in time. |
+| `socks_ttl_expired` | 504 | The connection through the SOCKS5 proxy timed out. |
+| `socks_unsupported` | 502 | The SOCKS5 proxy does not support this request. |
 | `ssh_input_backpressure` | 503 | The terminal is not accepting input right now. |
 | `ssh_input_too_large` | 413 | The input is too large. |
 | `ssh_protocol_error` | 502 | The SSH connection failed. |
 | `step_up_failed` | 403 | The confirmation failed. |
 | `step_up_required` | 403 | Confirm your identity to continue. |
 | `storage_error` | 500 | The data could not be stored. |
+| `tailscale_route_restricted` | 403 | This target is on the tailnet and requires Tailscale SSH. |
 | `target_blocked` | 403 | The network policy does not allow this target. |
 | `timeout` | 504 | The connection timed out. |
 | `too_large` | 413 | The request is too large. |
@@ -140,12 +167,26 @@ The codes the Python release sends and the frontend matches on
 `last_factor_required`, `host_key_changed`, `host_key_not_accepted`,
 `auth_banner_declined`, `ssh_input_too_large`, `ssh_input_backpressure`,
 `busy`, `maintenance`, `unavailable`, `storage_error`, `invalid_request`,
-`invalid_value`, `not_found`) keep their spelling.
+`invalid_value`, `not_found`, `tailscale_route_restricted` and the
+`socks_*` codes) keep their spelling.
+
+`tailscale_route_restricted` is every refusal by the tailnet rule of the
+network policy (cause `netpolicy.ErrTailnetRestricted`); the page shows its
+own hint and links admins to the setting. The `socks_*` codes are those of
+`app/socks5_client.py`; their HTTP status is that of the general code the
+failure had before (`unreachable`, `timeout`, `target_blocked`,
+`auth_failed`). `socks_auth_rejected` and `socks_auth_failed` join the
+catalog together with SOCKS5 username and password authentication, which
+M1 does not offer.
 
 ## Realtime protocol
 
 `internal/realtime/protocol`, schema `webssh.v1`, WebSocket subprotocol
 `webssh.v1`.
+
+**Endpoint.** `GET {APPLICATION_ROOT}/ws` (WebSocket upgrade, subprotocol
+`webssh.v1`). `{APPLICATION_ROOT}/socket.io/` answers 410. The page derives
+the URL from its application root; no other path is used.
 
 **Envelope.** Every text frame is `{"v":1,"t":<type>,"id":<id>,"p":<object>}`.
 `id` is set by the client on requests that want a result and echoed in the
@@ -178,9 +219,53 @@ flags). Output flags: 1 reset, 2 replay. Input flag: 1 want ack, answered
 with `terminal.input_ack`. Channels `1 … 2^31-1` are allocated by the
 client.
 
-**Close codes.** 4001 unsupported version, 4002 protocol violation, 4003
-session ended or revoked, 4008 slow consumer, 4503 maintenance or
-shutdown.
+Input sequences start at 1 per channel and attachment. The server accepts
+input frame `s` only if `s` equals the next expected sequence `e`; any
+other frame is dropped silently. When it refuses frame `e` (rate limit,
+full queue), it sends exactly one
+`terminal.input_rejected {ch, iseq: e, code, retry_after_ms}` and from
+then on drops every frame until a frame with sequence `e` arrives; that
+frame is evaluated afresh and may be refused again. An accepted frame with
+the want-ack flag is answered with exactly one
+`terminal.input_ack {ch, iseq}`, a refused one only with the rejection.
+The client resends from `e` and ignores rejections until it has sent `e`
+again.
+
+The maximum data length of an input frame is `SSH_INPUT_MAX_BYTES`
+(default 128 KiB, range as in the Python release). The page receives the
+same value in `websshRuntimeLimits.sshInput.maxEventBytes`, and the
+server's `DecodeFrame(…, maxData)` uses it; a larger frame closes the
+connection with 4002.
+
+**Close codes.**
+
+| Close code | Meaning | Client |
+|---|---|---|
+| 1013 | connection limit reached; the reason starts with `connection_limit_user:` or `connection_limit_server:` and is readable text | `connect_error` with `data.code = connection_limit` and the reason, retry with backoff |
+| 4001 | no common schema version; reason `supported: webssh.v1` | `socket_protocol_mismatch`, no retry |
+| 4002 | malformed frame or envelope | retry with backoff |
+| 4003 | session ended, revoked or never valid; the reason is the `principal.Reason` value, otherwise `session_ended` | `io server disconnect` or `connect_error` with `authentication_required`, no retry |
+| 4008 | slow consumer | retry with backoff |
+| 4503 | maintenance or shutdown | retry with backoff |
+
+The 1013 refusal accepts the upgrade, echoes the offered subprotocol and
+closes at once; at most `RejectSlots` such connections exist at a time,
+beyond that the request gets HTTP 503 with `Retry-After`.
+
+**What a browser can see.** A browser cannot read the status of a refused
+upgrade, and it fails a handshake that does not echo an offered
+subprotocol with 1006. In M1:
+
+1. A refused origin (403), a missing, invalid or expired session cookie
+   (401), a recovery session (403), shutdown (503) and the server-wide
+   limit beyond `RejectSlots` (503) are answered before the upgrade. The
+   page sees an ordinary failed connection and retries with backoff; it
+   leaves for the sign-in through its own session expiry
+   (`auth_session_expires_at`) and the next page load.
+2. 4001 is sent only after an upgrade with a common subprotocol, so a
+   request without one reaches the page as 1006 and is retried like (1).
+   The shim also treats an open connection without `webssh.v1` as 4001.
+3. 4003 before or after `hello` ends reconnecting.
 
 **Routes.** Capabilities export `Routes() []protocol.Route` from
 `realtime.go`, built with
@@ -227,6 +312,29 @@ revocation enforceable:
 `Limiter.Allow(userID, key)` (from `internal/auth`) and
 `Auditor.RealtimeCall(ctx, p, type, err)` (from `internal/audit`) are the
 other edge interfaces.
+
+The server is wired by the composition root:
+
+```go
+func NewServer(cfg Config, deps Deps) (*Server, error)
+func (s *Server) Mount(routes ...protocol.Route)
+func (s *Server) HandleBinary(h BinaryHandler) // type BinaryHandler func(peer protocol.Peer, frame []byte) error
+func (s *Server) SetRestorer(r Restorer)
+func (s *Server) OnKeepalive(f func(protocol.Peer))
+func (s *Server) OnClose(f func(protocol.Peer))
+func (s *Server) Shutdown(ctx context.Context) error // closes with 4503
+type Restorer interface {
+	Restorable(ctx context.Context, p principal.Principal) ([]protocol.SessionInfo, error)
+}
+```
+
+`Restorer` is the source of `hello.restorable` (`internal/terminal`).
+`session.keepalive` is registered by the endpoint itself; it calls the
+`OnKeepalive` hooks (the terminal updates `last_activity`). `OnClose` runs
+once per connection after it ended and all its handlers returned.
+`HandleBinary` has one owner (the terminal) and runs on the read loop, as
+do routes without `Async`. All registrations happen before the first
+request; a later one panics.
 
 **hello.** First message of every connection:
 `{"user":{"username","is_admin"},"schema":1,"restorable":[SessionInfo…]}`.
@@ -286,6 +394,62 @@ produced by the shim from the result; the server sends none. All other
 Socket.IO events are answered by the shim locally with
 `not_available_in_preview`.
 
+`terminal.open` and `terminal.attach` bind channel `ch` before they
+return. For `terminal.attach` the server sends every replay frame (flag
+`replay`, the first one also `reset` when `full`) before the `result`;
+their sequences are at most `result.seq`. Live output of the same session
+may follow at any time after the binding, also before the `result`, always
+with sequences above `result.seq` and in order. For `terminal.open`,
+output may arrive before the `result`. `terminal.close` ends the session;
+the server sends `terminal.closed` to every connection the session was
+attached to, the requesting one included. After
+`terminal.resync_required` the channel is unbound on the server;
+`terminal.detach` for it is a no-op.
+
+`terminal.open` carries the tmux fields of `ssh_connect` in its target
+(`use_tmux`, `tmux_session_name`, at most 256 bytes) and `replacement_of`,
+the session a reconnecting tab replaces. The shim sends them once the
+terminal runs tmux sessions (D6).
+
+`terminal.cancel` answers `ok` when the attempt was cancelled, `not_found`
+when no attempt with that `request_id` exists, and `conflict` when the
+attempt already produced its session (the shim reports `cancelled: true`,
+`reason: 'not_found'` and `reason: 'already_committed'`).
+
+### Result forms
+
+The payloads marked "as today" carry exactly the members the frontend
+sends today (`profile-manager.js`, `jump-host-manager.js`,
+`socks-proxy-manager.js`, `app.js`). C4 and C5 declare them as Go types in
+`payload_hosts.go` and `payload_keys.go` and pin the member list with a
+test. The result `p` is the success payload of the Python release without
+`success`:
+
+| Type | Request | Result `p` |
+|---|---|---|
+| `hosts.profile.list` | `Empty` | `{profiles: [Profile]}` |
+| `hosts.profile.save` | `Profile` (every field the profile form sends; the client drops `tailscale_authorized`) | `{profile: Profile}` |
+| `hosts.profile.delete` | `{profile_id}` | `{}` |
+| `hosts.profile.organize` | `{profile_id, group?, favorite?}` | `{profile: Profile}` |
+| `hosts.profile.move` | `{profile_id, target_group, target_index, expected_source_group, confirm_source_group_removal}` | `{profiles: [{id, group, sort_order}]}` |
+| `hosts.jump.list` | `Empty` | `{jump_hosts: [JumpHost]}` |
+| `hosts.jump.save` | `{jump_host_id?, name, host, port, username, auth_type, key_id?}` | `{jump_host: JumpHost}` |
+| `hosts.jump.delete` | `{jump_host_id}` | `{}` |
+| `hosts.socks.list` | `Empty` | `{socks_proxies: [SOCKSProxy]}` |
+| `hosts.socks.save` | `{socks_proxy_id?, name, host, port, username, auth_type, remote_dns}` | `{socks_proxy: SOCKSProxy}` |
+| `hosts.socks.delete` | `{socks_proxy_id}` | `{}` |
+| `keys.list` | `Empty` | `{keys: [KeySummary]}` |
+| `keys.upload` | `{name, key_content, passphrase?, step_up?}` | `{key: KeySummary}` |
+| `keys.rename` | `{key_id, name}` | `{key: KeySummary}` |
+| `keys.replace` | `{key_id, key_content, passphrase?, step_up?}` | `{key: KeySummary}` |
+| `keys.delete` | `{key_id, step_up?}` | `{}` |
+| `settings.theme.set` | `SettingsTheme` | `{theme}` |
+| `settings.confirm_close.set` | `SettingsConfirmClose` | `{enabled}` (stored value) |
+| `settings.disconnect_action.set` | `SettingsDisconnectAction` | `{action}` (stored value) |
+
+For deletes the shim adds the IDs of the request to the acknowledgement.
+Failures the page acts on carry `err.details` (see Errors).
+
 `SessionInfo` carries the fields of `ssh_connected` and
 `ssh_session_restored` plus `last_seq`; empty strings stand for `null`
 there and the shim converts them. Terminal sizes are clamped like the
@@ -337,8 +501,15 @@ func (db *DB) Read(ctx context.Context, fn func(*Tx) error) error
 func (db *DB) Apply(ctx context.Context, owner string, ms []Migration) error
 func (db *DB) ApplyAll(ctx context.Context, schemas ...Schema) error
 func (db *DB) CloseForActivation(ctx context.Context) error
+func (db *DB) Close() error
+func (db *DB) QuickCheck(ctx context.Context) error
+func (db *DB) IntegrityCheck(ctx context.Context) error
+func (db *DB) Path() string
+func OpenReadOnly(ctx context.Context, path string, mode ReadOnlyMode) (*sql.DB, error)
+type Options struct { BusyTimeout time.Duration; MaxReaders int }
 type Migration struct { Version int; SQL string }
 type Schema struct { Owner string; Migrations []Migration }
+var ErrCorrupt, ErrNotRegular, ErrMigration error
 ```
 
 - WAL, `foreign_keys = ON`, `trusted_schema = OFF`, `synchronous = FULL`,
@@ -360,13 +531,21 @@ type Schema struct { Owner string; Migrations []Migration }
 - A migration does not touch rows of other owners; review checks this,
   the store cannot.
 - `CloseForActivation` checkpoints, switches to `journal_mode=DELETE` and
-  closes, so only the database file remains.
+  closes, so only the database file remains. `Close` does the same at
+  shutdown and waits for a running write and running reads first; a
+  stopped Go leaves only the database file.
+- `QuickCheck` and `IntegrityCheck` run the SQLite checks and fail with
+  `ErrCorrupt`. `Open` refuses a path that is not a regular file in a
+  directory (`ErrNotRegular`); `Apply` fails with `ErrMigration` for an
+  invalid migration. `OpenReadOnly` opens an existing database with
+  `mode=ro`, `query_only` and `trusted_schema = OFF` and never creates it
+  (migration reader).
 - `storetest.Open(t, schemas...)` gives tests a real database in a
   temporary directory.
 
-The first build wave (store package) adds crash tests of the activation,
-`quick_check`, the re-evaluation of the SQLite driver for writing and any
-tuning of the pragmas; the API above stays.
+Crash tests of the activation and of a write cut off by SQLite, and the
+driver version that rolls back such a write completely, are in place
+(first wave).
 
 ## Keyring
 
@@ -385,8 +564,70 @@ func (r *Ring) Seal(p Purpose, ad AAD, plain []byte) ([]byte, error)
 func (r *Ring) Open(p Purpose, ad AAD, sealed []byte) ([]byte, error)
 func (r *Ring) MAC(p Purpose, msg []byte) []byte
 func (r *Ring) KeyID() string
+func (r *Ring) Verify(storedKeyID string) error
+func (r *Ring) BrowserScope(userID int64, username, generation string) string
+func NewRotation(from, to *Ring, legacyPurged bool) (*Rotation, error)
+func (rt *Rotation) Reseal(p Purpose, ad AAD, sealed []byte) ([]byte, error)
 func LoadOrCreateMaterial(dataDir string, legacyPresent bool) ([]byte, error)
+func MoveMaterialToGo(dataDir string, r *Ring, storedKeyID string, record func() error) error
+const MaterialSize = 32
+const MinSealedSize = …
 ```
+
+- Purposes per operation: `Seal` and `Open` take `ssh_key`, `totp` and
+  `webauthn_challenge`; `MAC` takes `session_token`, `csrf` and
+  `step_up_grant`; `browser_scope` is only the name of the derivation
+  behind `BrowserScope` (the browser-local namespace, bit-identical to the
+  Python release). `Seal` and `Open` fail with `ErrPurpose` for any other
+  purpose; `MAC` with another purpose is a programming error and panics.
+- Errors: `ErrSecret`, `ErrMaterialSize`, `ErrFormat`, `ErrWrongKey`,
+  `ErrDecrypt`, `ErrKeyMismatch` (from `Verify`), `ErrPurpose`, `ErrAAD`,
+  `ErrMaterialMissing`, `ErrMaterialConflict`, `ErrMaterialFile`,
+  `ErrRotationLegacy`, `ErrRotationMaterial`, `ErrRotationSameKey`.
+- `LoadOrCreateMaterial` never recreates missing material when data
+  exists, and never removes material before a copy is verified.
+  `MoveMaterialToGo` moves it from `logs/.webssh-go/` to `go/` after
+  `webssh legacy purge`, crash-safe and idempotent; `record` notes
+  "material in go/" in the database and must be idempotent too.
+- The keyring stores neither the key ID nor that note: there is no owner
+  `keyring`. Both belong to the migration record (`migrate_`) or, on an
+  installation that never had Python data, to a row the composition root
+  writes at the first start; C7 and D4 fix the table.
+- File names are working names until B1 and live in
+  `internal/keyring/material.go`: `go/`, `go/webssh.db`,
+  `logs/.webssh-go/`, `keyring-material`. When the migration or the
+  composition root needs them, they move to one exported source (package
+  map decision); no package spells them a second time.
+
+## Configuration
+
+`internal/config` (first wave) reads the documented environment variables
+with the meaning they have in the Python release.
+
+```go
+type LookupFunc func(name string) (string, bool)
+func ResolveDataDir(lookup LookupFunc) (string, error)
+func ResolveSecretKey(dataDir string, lookup LookupFunc) (SecretResolution, []Warning, error)
+func Load(lookup LookupFunc) (Config, []Warning, error)
+func Bootstrap(lookup LookupFunc, prepare func(dataDir string) error) (Config, []Warning, error)
+func (c Config) Explicit(name string) bool
+```
+
+- The order is `ResolveDataDir` → `platform.PrepareDataDir` →
+  `ResolveSecretKey` → `Load`, as `Bootstrap` runs it; the composition
+  root (D4) calls `Bootstrap` with `platform.PrepareDataDir` and does not
+  reorder the steps.
+- `Config` holds only the settings this preview acts on; every other
+  documented variable is still validated like the Python release.
+  `Explicit(name)` says a variable was set to a non-blank value.
+- In the container the port stays 5000 (`serve --bind 0.0.0.0:5000`),
+  whatever `HOST` and `PORT` say.
+- Consumers that compare client addresses with `TRUSTED_PROXY_CIDRS` or
+  `SSH_ALLOWED_INTERNAL_NETWORKS` normalize them with `Unmap()` first
+  (C1).
+- `netpolicy.Tailnet.InterfaceConfigured` is
+  `cfg.Explicit("TAILSCALE_SSH_INTERFACE")`; D4 sets it when it builds
+  the network policy.
 
 ## Session and sign-in
 
@@ -420,7 +661,7 @@ for every wrong combination, with the same timing.
 `internal/ssh/client` declares what the dialer needs and the types its
 callers use: `Target{Owner, Hop, Jumps, Proxy, Display}`,
 `Hop{Host, Port, User, Auth, Legacy}`, `Auth{Password, KeyID}`,
-`SOCKS{Host, Port}` and
+`SOCKS{Host, Port, RemoteDNS}` and
 
 ```go
 type KeySource interface { Signer(ctx, owner int64, keyID string) (ssh.Signer, error) }         // internal/vault
@@ -434,6 +675,12 @@ type Interaction interface {                                                    
 	Banner(ctx, q BannerPrompt) (bool, error)
 }
 type NetDialer interface { DialContext(ctx, role netpolicy.Role, network, addr string) (net.Conn, error) } // internal/netpolicy
+type Network interface {                                                                        // internal/netpolicy
+	NetDialer
+	DialRelay(ctx, role netpolicy.Role, network, addr string) (net.Conn, error)
+	JumpDestination(ctx, host string, port int, relay bool) (string, error)
+	SOCKSDestination(ctx, host string, port int, remoteDNS bool) (string, error)
+}
 type Shell interface { io.ReadWriteCloser; Resize(rows, cols int) error; Wait() error }
 ```
 
@@ -441,6 +688,20 @@ type Shell interface { io.ReadWriteCloser; Resize(rows, cols int) error; Wait() 
   asked) and an error with `host_key_changed` or `host_key_revoked` when
   trust exists but not for this key (refused, no prompt).
 - A nil `Interaction` is unattended: unknown keys and banners are refused.
+- `Network` is the network policy as the dialer uses it (ADR 0010, every
+  hop separately); `*netpolicy.Policy` provides it and `Dialer.Net` is
+  required. `DialRelay` connects to a jump host or SOCKS5 proxy under the
+  tailnet relay rule. `JumpDestination` returns what a jump host is asked
+  to reach; `relay` marks a further jump host, which passes the relay rule
+  too. `SOCKSDestination` returns what a proxy is asked to reach; with
+  `remoteDNS` a name may go to the proxy unresolved where
+  `BLOCK_INTERNAL_SSH` and `SOCKS_REMOTE_DNS_ALLOWLIST` permit it.
+- `SOCKS.RemoteDNS` is the proxy's `remote_dns` setting. The Python
+  default is true; `internal/hosts` (C4) fills it from the stored proxy,
+  because the zero value means local resolution.
+- Refusals of the policy carry `target_blocked`, those of the tailnet rule
+  `tailscale_route_restricted`; SOCKS5 failures carry their `socks_*`
+  code. The remote text stays in the cause.
 - `(*client.Dialer).OpenShell(ctx, t, ix, rows, cols) (Shell, error)` is the
   terminal's entry; closing the shell closes the whole connection. The
   terminal consumes it through `terminal.Shells`, so its tests use a fake
@@ -451,6 +712,22 @@ type Shell interface { io.ReadWriteCloser; Resize(rows, cols int) error; Wait() 
 carries the profile name and the startup features M1 does not run, so
 neither package imports the other.
 
+`internal/ssh/hostkey` declares
+`Targets.SSHTargets(ctx, owner) ([]hostkey.Target, error)` for the
+`/effective` and `/deletion-impact` views, provided by `internal/hosts`
+(C4) from profiles and jump hosts. `(*hostkey.HTTP).Register(mux)` adds
+its routes relative to `APPLICATION_ROOT`; the HTTP edge (C1) puts session,
+CSRF and origin checks in front and the principal into the context.
+Deleting a host key needs the step-up `host_key.delete`. Host keys are
+stored per scope as whole files (`hostkey_files(scope, user_id, raw,
+modified_us)`); the migration (D2) takes them over with
+`hostkey.ImportFile(ctx, tx, scope, owner, raw, modified)`, which
+validates like the Python release, stores the file byte for byte and stops
+with an `*InvalidFileError` naming the line.
+
+`internal/vault` does not import `internal/ssh/client` (package map); it
+parses private keys with `golang.org/x/crypto/ssh` itself.
+
 ## Pages
 
 `internal/httpapi` owns `PageData` with every variable of
@@ -459,7 +736,19 @@ templates together; it is frozen when that package is merged and filled by
 the composition root from consumer interfaces of the capabilities. Assets
 are copied from `static/` to `internal/httpapi/webassets/` at build time
 (ignored by Git, the build fails on an empty directory) and embedded; the
-build tag `devfs` reads `static/` directly.
+build tag `devfs` reads `static/` directly. Every build and test of the Go
+module therefore runs `scripts/stage-webassets.sh` first: the CI jobs, the
+image build (`deploy/docker/Dockerfile` copies the same way) and every
+worktree.
+
+The workspace loads the realtime client where the Python page loads
+`socket.io.min.js`, in this order: `js/realtime-emitter.js`,
+`js/realtime-acks.js`, `js/realtime-wire.js`, `js/realtime-catalog.js`,
+`js/realtime-terminal.js`, `js/realtime-shim.js`. A preview page adds
+`css/preview-notice.css` in the head and `js/preview-notice.js` at the end;
+the workspace loads `js/preview-notice-i18n.js` after `js/i18n.js` and
+before it. The sign-in page has no `i18n.js`; the notice uses its built-in
+texts there. `internal/httpapi` tests pin this order.
 
 ## Migration steps
 
@@ -477,6 +766,15 @@ The seed applier and the test-only hooks live in `internal/e2eseed`. Only
 build of `cmd/webssh` must not depend on it (architecture test).
 Test-only switches such as `WEBSSH_E2E_FAST_HASHING` are read only in that
 file.
+
+The hook routes use the reserved type namespace `e2e.` (`e2e.output_load`,
+`e2e.output_load_done`, `e2e.workspace_restore`). They are not in the v1
+catalog; only the e2e build registers them, through the `routes` argument
+of `Backend.Serve`, which the composition root passes to `Mount`. The shim
+maps the Socket.IO events `e2e_output_load`, `e2e_output_load_done` and
+`e2e_workspace_restore` to these types (added with the e2e wiring, D4); a
+release server answers them with `unknown_type`. Playwright stops the backend with SIGINT
+(`webServer.gracefulShutdown`), so it can remove its scratch tree.
 
 ## Modules
 
