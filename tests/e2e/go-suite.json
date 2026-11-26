@@ -55,6 +55,15 @@
     {"file": "session-identity-bar.spec.js", "exclude": []},
     {"file": "notes-recovery.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "workspace-preset-dropdown.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "socks-proxy-history.spec.js", "exclude": []},
+    {"file": "socks-proxy-accessibility.spec.js", "exclude": []},
+    {"file": "form-journey.spec.js", "exclude": []},
+    {"file": "review-regressions.spec.js", "exclude": []},
+    {"file": "profile-launcher.spec.js", "exclude": [
+      {"title": "saved host and command set controls include their names", "reason": "command sets (C-CMD)", "package": "CM1"},
+      {"title": "referenced commands and command sets cannot be deleted", "reason": "command sets (C-CMD)", "package": "CM1"},
+      {"title": "only auto-connects profiles whose credentials and references are currently safe", "reason": "launches a Tailscale host (C-TS)", "package": "NW2"}
+    ]},
     {"file": "socks-proxy-routes.spec.js", "exclude": [
       {"title": "SOCKS route selector excludes Jump and Tailscale and saves the reference", "reason": "selects the Tailscale method (C-TS, flag off in M1)", "package": "NW2"},
       {"title": "saved SOCKS password launches automatically and reconnect retains the reference", "reason": "saved passwords (E32, credentials not in M1)", "package": "VA1"},
