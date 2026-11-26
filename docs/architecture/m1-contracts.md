@@ -127,6 +127,8 @@ func DetailsOf(err error) map[string]any
 | `in_use` | 409 | The item is still in use. |
 | `interaction_required` | 502 | The host asks for input that cannot be answered here. |
 | `internal` | 500 | An internal error occurred. |
+| `invalid_dismissed` | 400 | The acknowledgement list is invalid. |
+| `invalid_layout` | 400 | The overview layout is invalid. |
 | `invalid_request` | 400 | The request is invalid. |
 | `invalid_value` | 400 | A value is not allowed. |
 | `last_factor_required` | 409 | At least one second factor must remain. |
@@ -154,6 +156,7 @@ func DetailsOf(err error) map[string]any
 | `ssh_protocol_error` | 502 | The SSH connection failed. |
 | `step_up_failed` | 403 | The confirmation failed. |
 | `step_up_required` | 403 | Confirm your identity to continue. |
+| `storage` | 500 | The overview settings could not be saved. |
 | `storage_error` | 500 | The data could not be stored. |
 | `tailscale_route_restricted` | 403 | This target is on the tailnet and requires Tailscale SSH. |
 | `target_blocked` | 403 | The network policy does not allow this target. |
@@ -173,7 +176,9 @@ The codes the Python release sends and the frontend matches on
 `invalid_value`, `not_found`, `tailscale_route_restricted` and the
 `socks_*` codes) keep their spelling. The `hosts.*` types keep the codes
 of the Python handlers: `in_use` (with `details.usages`),
-`validation_error` and `quota_exceeded`.
+`validation_error` and `quota_exceeded`. `PUT /api/overview/preferences`
+keeps the codes of the Python route: `invalid_layout`,
+`invalid_dismissed` and `storage`.
 
 `tailscale_route_restricted` is every refusal by the tailnet rule of the
 network policy (cause `netpolicy.ErrTailnetRestricted`); the page shows its

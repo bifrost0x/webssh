@@ -40,6 +40,14 @@ const (
 	QuotaExceeded   Code = "quota_exceeded"   // the saved-connection storage limits refuse the change
 )
 
+// Codes the overview preferences of the Python release send; the page
+// keeps matching on them.
+const (
+	InvalidLayout    Code = "invalid_layout"    // the overview panel arrangement is invalid
+	InvalidDismissed Code = "invalid_dismissed" // the acknowledged attention items are invalid
+	StorageFailed    Code = "storage"           // the overview preferences could not be saved
+)
+
 // Realtime transport failures (internal/realtime, internal/realtime/protocol).
 const (
 	UnknownType        Code = "unknown_type"        // no handler for the message type
@@ -138,6 +146,9 @@ var catalog = map[Code]entry{
 	InUse:                 {statusConflict, "The item is still in use."},
 	ValidationError:       {statusBadRequest, "The data is invalid."},
 	QuotaExceeded:         {statusContentTooLarge, "Connection storage quota exceeded."},
+	InvalidLayout:         {statusBadRequest, "The overview layout is invalid."},
+	InvalidDismissed:      {statusBadRequest, "The acknowledgement list is invalid."},
+	StorageFailed:         {statusInternalServerError, "The overview settings could not be saved."},
 
 	UnknownType:        {statusBadRequest, "Unknown message type."},
 	VersionUnsupported: {statusBadRequest, "Reload the page to use the current version."},
