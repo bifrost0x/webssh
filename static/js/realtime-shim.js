@@ -344,13 +344,17 @@
                 return;
             }
             // A revoked or missing session does not heal by retrying; every
-            // other close, a protocol violation included, reconnects with backoff.
+            // other close (connection limit 1013, maintenance or shutdown
+            // 4503, a protocol violation) reconnects with backoff.
             const final = code === C.UNAUTHENTICATED;
             if (wasConnected) {
                 this._dispatch('disconnect', final ? 'io server disconnect' : 'transport close');
             } else {
-                const data = code === C.UNAUTHENTICATED ? {code: 'authentication_required'} : undefined;
-                this._dispatch('connect_error', Object.assign(new Error(final ? 'unauthorized' : 'websocket error'), data ? {data} : {}));
+                let data;
+                if (final) data = {code: 'authentication_required'};
+                else if (code === C.TRY_AGAIN_LATER) data = {code: 'connection_limit', message: reason || ''};
+                const message = final ? 'unauthorized' : (data ? data.message || 'connection limit' : 'websocket error');
+                this._dispatch('connect_error', Object.assign(new Error(message), data ? {data} : {}));
             }
             if (!final) this._scheduleReconnect();
         }

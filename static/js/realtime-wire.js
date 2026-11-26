@@ -18,6 +18,7 @@
     const KIND = Object.freeze({OUTPUT: 1, INPUT: 2, ACK: 3});
     const FLAG = Object.freeze({RESET: 1, REPLAY: 2, WANT_ACK: 1});
     const CLOSE = Object.freeze({
+        TRY_AGAIN_LATER: 1013,
         UNSUPPORTED_VERSION: 4001,
         PROTOCOL_VIOLATION: 4002,
         UNAUTHENTICATED: 4003,

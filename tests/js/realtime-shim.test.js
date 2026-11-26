@@ -145,6 +145,30 @@ test('an ended session closes with io server disconnect and does not reconnect',
     assert.equal(FakeWebSocket.instances.length, 1);
 });
 
+test('a connection limit and a maintenance close reconnect with backoff', async () => {
+    const window = loadShim();
+    const socket = window.io({path: '/socket.io', reconnectionDelay: 1, reconnectionDelayMax: 1});
+    const errors = [];
+    socket.on('connect_error', error => errors.push([error.message, error.data]));
+    FakeWebSocket.instances[0].serverClose(1013, 'connection_limit_user: at most 32 realtime connections per user are open');
+    await tick(20);
+    assert.deepEqual(JSON.parse(JSON.stringify(errors)), [[
+        'connection_limit_user: at most 32 realtime connections per user are open',
+        {code: 'connection_limit', message: 'connection_limit_user: at most 32 realtime connections per user are open'},
+    ]]);
+    assert.equal(FakeWebSocket.instances.length, 2, 'a refused connection is retried');
+    socket.disconnect();
+
+    const live = await connected(loadShim());
+    const reasons = [];
+    live.socket.on('disconnect', reason => reasons.push(reason));
+    live.ws.serverClose(4503, 'shutdown');
+    await tick(20);
+    assert.deepEqual(reasons, ['transport close']);
+    assert.equal(FakeWebSocket.instances.length, 2, 'maintenance or shutdown reconnects');
+    live.socket.disconnect();
+});
+
 test('an unsupported version reaches the existing mismatch handling', async () => {
     const window = loadShim();
     const socket = window.io({path: '/socket.io', reconnectionDelay: 1});
