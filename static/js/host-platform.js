@@ -363,18 +363,21 @@
         const name = typeof profile.name === 'string' && profile.name.trim() ? profile.name.trim() : String(session.host || '');
         return {role: role.id, glyph: Identity.ROLE_GLYPHS[role.id] || 'dns',
             label: label && label !== `role.${role.id}` ? label : role.id,
-            name, system, virt, services: facts.services.slice(0, BAR_SERVICES)};
+            name, system, virt, services: facts.services.slice(0, BAR_SERVICES),
+            // A plain Server with nothing known about it would only repeat the tab name.
+            informative: role.id !== 'server' || Boolean(system || virt) || facts.services.length > 0};
     }
     /**
      * The identity line above a terminal pane: role, host name, system, machine
-     * and up to four service logos. Removed when the session does not match its
-     * saved host; rebuilt only when what it shows changes.
+     * and up to four service logos. Left out when the session does not match its
+     * saved host or the host has no role, system, machine or service to show;
+     * rebuilt only when what it shows changes.
      */
     function markIdentityBar(pane, session, profile, doc = document) {
         if (!pane) return null;
         const current = [...(pane.children || [])].find(child => child.classList?.contains('session-identity-bar')) || null;
         const identity = sessionIdentity(session, profile);
-        if (!identity) {
+        if (!identity?.informative) {
             current?.remove();
             return null;
         }

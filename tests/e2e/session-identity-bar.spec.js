@@ -23,6 +23,9 @@ async function simulateSessions(page) {
             host('pve', 'pve1', {detected_platform: 'proxmox', detected_os_version: '9.1', detected_virt: 'bare-metal'}),
             host('cloud', 'Nextcloud', {detected_platform: 'debian', detected_services: ['apache', 'mariadb', 'nextcloud']}),
             host('fw', 'opnsense', {detected_platform: 'opnsense', detected_services: ['wireguard', 'unbound']}),
+            // Saved, but nothing is known about the machine yet.
+            host('plain', 'plainhost', {detection_state: 'pending', detected_platform: null, detected_services: [],
+                detected_virt: null, platform_icon: null, role_override: null, detected_graphical: null}),
         ]);
     });
 }
@@ -119,6 +122,34 @@ test('empty panes, launchers and sessions off their saved endpoint show no ident
     await expect(page.locator('.session-identity-bar')).toHaveCount(0);
     await page.evaluate(paneIndex => SessionManager.restoreConnectionLauncher(paneIndex), index);
     await expect(page.locator('.session-identity-bar')).toHaveCount(1);
+});
+
+test('a saved host without facts keeps the terminal layout of a pane without a saved host', async ({ page }) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await simulateSessions(page);
+    const layout = id => page.evaluate(sessionId => {
+        const wrapper = document.getElementById(`terminal-${sessionId}`);
+        const pane = wrapper.closest('.terminal-pane');
+        return {pane: pane.dataset.paneIndex, offset: Math.round(wrapper.getBoundingClientRect().top - pane.getBoundingClientRect().top),
+            height: Math.round(wrapper.getBoundingClientRect().height), rows: TerminalManager.terminals[sessionId].rows};
+    }, `idbar-${id}`);
+    // The same pane shows a session without a saved host, then one whose saved host has no facts.
+    await connect(page, 'other', {username: 'root', profile: 'paper'});
+    await expect.poll(() => terminalFits(page, 'other')).toMatchObject({insidePane: true});
+    const plainLayout = await layout('other');
+    await connect(page, 'plain');
+    await expect(page.locator('#tab-idbar-plain')).toHaveAttribute('data-role', 'server');
+    await expect(page.locator('.session-identity-bar')).toHaveCount(0);
+    await expect.poll(() => terminalFits(page, 'plain')).toMatchObject({insidePane: true});
+    expect(await layout('plain')).toEqual(plainLayout);
+    // The line comes back once detection has something to say.
+    await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'plain'
+        ? {...profile, detected_virt: 'vm'} : profile))));
+    await expect(bar(page, 'plain')).toHaveCount(1);
+    await expect(bar(page, 'plain').locator('.session-identity-virt')).toHaveText('VM');
+    await expect.poll(() => terminalFits(page, 'plain')).toMatchObject({insidePane: true, belowBar: true});
+    await expect.poll(async () => (await layout('plain')).rows).toBeLessThan(plainLayout.rows);
 });
 
 test('the bar follows profile updates and the session a pane shows', async ({ page }) => {

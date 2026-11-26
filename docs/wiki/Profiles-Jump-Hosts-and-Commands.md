@@ -231,13 +231,15 @@ classic overview layout keeps its compact rows: platform icon, virtualization
 badge, role pill and up to three service logos, without tint or profile.
 
 In the workspace, tabs carry the role colour as an edge with up to two service
-logos, dropping logos before a host name is cut. Above each terminal in the grid, an
-identity line names the role, the host and the system, with up to four service
-logos; in window mode the same information sits in the window's title bar. Rows in the host rail on the left have
-a role edge and up to four service logos, and a **Group / Role** switch groups
-the rail by role instead of by group. The choice is stored in the browser
-(`localStorage`), not on the server, and the switch does not exist in the
-classic layout.
+logos, dropping logos before a host name is cut. Above each terminal in the
+grid, an identity line names the role, the host and the system, with up to
+four service logos; in window mode the same information sits in the window's
+title bar. A saved host that is a plain Server with no known system, machine
+or service gets no identity line, and its terminal keeps the full pane. Rows
+in the host rail on the left have a role edge and up to four service logos,
+and a **Group / Role** switch groups the rail by role instead of by group. The
+choice is stored in the browser (`localStorage`), not on the server, and the
+switch does not exist in the classic layout.
 
 All of this uses only what detection read while you were connected anyway.
 Facts that are missing or outside the fixed catalogs are left out, and a host

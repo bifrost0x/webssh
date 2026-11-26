@@ -18,7 +18,8 @@ function createElement(tagName = 'div') {
         className: '',
         id: '',
         title: '',
-        classList: {add() {}, remove() {}, contains() { return false; }, toggle() { return false; }},
+        classList: {add() {}, remove() {}, contains: name => String(element.className).split(/\s+/).includes(name),
+            toggle() { return false; }},
         appendChild(child) { return this.insertBefore(child, null); },
         append(...nodes) { nodes.forEach(node => this.appendChild(node)); },
         replaceChildren(...nodes) {
@@ -38,6 +39,7 @@ function createElement(tagName = 'div') {
             child.parentNode = null;
         },
         remove() { this.parentNode?.removeChild(this); },
+        get firstElementChild() { return this.children[0] || null; },
         get nextElementSibling() {
             const siblings = this.parentNode?.children || [];
             return siblings[siblings.indexOf(this) + 1] || null;
@@ -230,4 +232,36 @@ test('tiles give way whole, last first, while the tab name is cut', () => {
         HostPlatform.fitSessionTab(tab);
         assert.equal(tiles(), 2);
     }
+});
+
+test('the identity line appears only when the saved host says more than its name', () => {
+    const bare = {id: 'plain', name: 'plainhost', host: 'paper.example.test', username: 'ops', port: 22};
+    const cases = [
+        [bare, false],
+        [{...bare, detection_state: 'detected'}, false],
+        [{...bare, detection_state: 'unavailable', detected_platform: 'server'}, false],
+        [{...bare, role_override: 'server'}, false],
+        [{...bare, greeting_platform: 'debian', name: 'ubuntu box'}, false],
+        [{...bare, role_override: 'backup'}, true],
+        [{...bare, detected_platform: 'debian', detection_state: 'detected'}, true],
+        [{...bare, platform_icon: 'debian'}, true],
+        [{...bare, detected_virt: 'vm'}, true],
+        [{...bare, detected_services: ['samba']}, true],
+        [{...bare, detected_graphical: true}, true],
+    ];
+    for (const [profile, shown] of cases) {
+        const pane = createElement('div');
+        const terminal = createElement('div');
+        pane.append(terminal);
+        const bar = HostPlatform.markIdentityBar(pane, session({profileId: 'plain'}), profile, {createElement});
+        assert.equal(Boolean(bar), shown, JSON.stringify(profile));
+        assert.equal(pane.children.length, shown ? 2 : 1, JSON.stringify(profile));
+        assert.equal(pane.children.at(-1), terminal);
+    }
+    // Facts that go away take the line with them.
+    const pane = createElement('div');
+    HostPlatform.markIdentityBar(pane, session({profileId: 'plain'}), {...bare, detected_virt: 'vm'}, {createElement});
+    assert.equal(pane.children.length, 1);
+    HostPlatform.markIdentityBar(pane, session({profileId: 'plain'}), bare, {createElement});
+    assert.equal(pane.children.length, 0);
 });
