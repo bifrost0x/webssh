@@ -43,6 +43,17 @@ type pyVectors struct {
 
 func loadPython(t *testing.T) (pyVectors, limits) {
 	t.Helper()
+	var v pyVectors
+	loadPythonInto(t, &v)
+	l := limits{maxName: v.Limits.MaxName, maxHandle: v.Limits.MaxHandle, maxMetadata: v.Limits.MaxMetadata}
+	if l != testLimits {
+		t.Fatalf("vectors were made with other limits: %+v", l)
+	}
+	return v, l
+}
+
+func loadPythonInto(t *testing.T, v any) {
+	t.Helper()
 	f, err := os.Open("testdata/python_vectors.json.gz")
 	if err != nil {
 		t.Fatal(err)
@@ -52,15 +63,9 @@ func loadPython(t *testing.T) (pyVectors, limits) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var v pyVectors
-	if err := json.UnmarshalRead(zr, &v); err != nil {
+	if err := json.UnmarshalRead(zr, v); err != nil {
 		t.Fatal(err)
 	}
-	l := limits{maxName: v.Limits.MaxName, maxHandle: v.Limits.MaxHandle, maxMetadata: v.Limits.MaxMetadata}
-	if l != testLimits {
-		t.Fatalf("vectors were made with other limits: %+v", l)
-	}
-	return v, l
 }
 
 func b64(t *testing.T, s string) []byte {

@@ -28,7 +28,7 @@ sys.path.insert(0, str(root))
 import config  # noqa: E402
 from paramiko.message import Message  # noqa: E402
 from paramiko.sftp import CMD_ATTRS, CMD_NAME, CMD_VERSION  # noqa: E402
-from app import paramiko_channels, sftp_handler, sftp_metadata  # noqa: E402
+from app import paramiko_channels, session_directory, sftp_handler, sftp_metadata  # noqa: E402
 
 rng = random.Random(20261127)
 
@@ -141,7 +141,7 @@ def version_reply():
     return out
 
 
-vectors = {'attrs': [], 'names': [], 'version': [], 'entry_names': []}
+vectors = {'attrs': [], 'names': [], 'version': [], 'entry_names': [], 'directory': [], 'probe': []}
 for _ in range(300):
     body = mutate(attrs_block())
     vectors['attrs'].append({'b64': base64.b64encode(body).decode(), 'accept': python_accepts(CMD_ATTRS, body)})
@@ -159,6 +159,49 @@ for _ in range(300):
     vectors['version'].append({'b64': base64.b64encode(body).decode(), 'result': python_version(body)})
 for name in ['a', '.', '..', '', 'a/b', 'a\\b', 'a\x00b', ' ', 'notes..txt', 'ä', '.hidden', 'x' * 300]:
     vectors['entry_names'].append({'name': name, 'safe': sftp_handler._is_safe_transfer_entry_name(name)})
+
+def directory_cases():
+    base = ['webssh-directory', '1234', '1', 'bash', '/home/u']
+    yield base + ['']
+    yield base + ['1', '']
+    yield base + ['0', '']
+    yield base + ['2', '']
+    yield base + ['', '1234:7:p', '']
+    yield base + ['1', '1234:7:c', '']
+    yield base + ['1', '99:7:c', '']
+    yield base + ['1', '1234:0:c', '']
+    yield base + ['1', '1234:7:x', '']
+    yield base + ['1', '', '']
+    yield ['webssh-directory', '1234', '1', 'zsh', '/srv', '1', '1234:7:p', '']
+    yield ['webssh-directory', '0', '1', 'bash', '/', '']
+    yield ['webssh-directory', '007', '0', 'sh', '/tmp', '']
+    yield ['webssh-directory', '-1', '1', 'bash', '/', '']
+    yield ['webssh-directory', '12', '2', 'bash', '/', '']
+    yield ['webssh-directory', '12', '1', 'tcsh', '/', '']
+    yield ['webssh-directory', '12', '1', 'bash', 'rel', '']
+    yield ['webssh-directory', '12', '1', 'bash', '/a\x01b', '']
+    yield ['webssh-directory', '12', '1', 'bash', '/a\x85b', '']
+    yield ['webssh-directory', '12', '1', 'bash', '/' + 'x' * 4096, '']
+    yield ['webssh-directory', '12', '1', 'bash', '/' + 'x' * 4095, '']
+    yield ['webssh-directory', '12', '1', 'bash', '/ä ö', '']
+    yield ['other', '12', '1', 'bash', '/', '']
+    yield ['webssh-directory', '12', '1', 'bash', '/']
+    yield ['webssh-directory', '12', '1', 'bash', '/', 'x', 'y', 'z', '']
+
+
+for parts in directory_cases():
+    raw = '\0'.join(parts).encode()
+    try:
+        result = session_directory.parse_directory(raw)
+    except (ValueError, UnicodeError):
+        result = None
+    vectors['directory'].append({'b64': base64.b64encode(raw).decode(), 'result': result})
+vectors['directory'].append({'b64': base64.b64encode(b'webssh-directory\x0012\x001\x00bash\x00/\xff\x00').decode(), 'result': None})
+for use_tmux, name in [(False, None), (True, 'webssh-abc'), (True, "it's"), (True, 'a b'), (True, '')]:
+    vectors['probe'].append({
+        'tmux': name if use_tmux and name else '',
+        'command': session_directory.probe_command({'use_tmux': use_tmux, 'tmux_session_name': name}),
+    })
 
 with open(sys.argv[2], 'wb') as raw, gzip.GzipFile(fileobj=raw, mode='wb', mtime=0) as packed, \
         io.TextIOWrapper(packed, encoding='utf-8') as out:
