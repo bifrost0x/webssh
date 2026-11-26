@@ -27,11 +27,7 @@ type fork struct {
 var forks = map[string]fork{
 	"third_party/go-smb2": {
 		module: "github.com/hirochachacha/go-smb2/v2",
-		deps: []string{
-			"github.com/geoffgarside/ber", "github.com/go-crypt/x", "github.com/go-krb5/krb5", "github.com/go-krb5/x",
-			"github.com/google/uuid", "github.com/pierrec/lz4/v4", "github.com/quic-go/quic-go",
-			"golang.org/x/crypto", "golang.org/x/net", "golang.org/x/sys",
-		},
+		deps:   []string{"github.com/geoffgarside/ber", "golang.org/x/crypto"},
 	},
 }
 

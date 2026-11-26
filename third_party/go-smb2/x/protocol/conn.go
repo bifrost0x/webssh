@@ -38,13 +38,6 @@ func newCipherContext(ciphers []Cipher) *wire.CipherContext {
 	}
 }
 
-func newCompressionContext() *wire.CompressionContext {
-	return &wire.CompressionContext{
-		CompressionAlgorithms: clientCompressionAlgorithms,
-		Flags:                 wire.SMB2_COMPRESSION_CAPABILITIES_FLAG_NONE,
-	}
-}
-
 const (
 	directStateIdle     uint32 = 0
 	directStateReading  uint32 = 1

@@ -2,7 +2,6 @@ package smb2
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"net"
 	"strconv"
@@ -58,28 +57,4 @@ func (d TCPDialer) Dial(ctx context.Context, serverName string) (Transport, erro
 	return NewTransport(conn), nil
 }
 
-// QUICDialer establishes SMB-over-QUIC transports.
-type QUICDialer struct {
-	Port      int // 0 indicates port 443
-	TLSConfig *tls.Config
-}
-
-// Dial connects to serverName over QUIC on the configured port.
-func (d QUICDialer) Dial(ctx context.Context, serverName string) (Transport, error) {
-	if ctx == nil {
-		panic("nil context")
-	}
-	if d.Port < 0 {
-		return nil, errors.New("smb2: invalid QUIC port")
-	}
-	port := d.Port
-	if port == 0 {
-		port = 443
-	}
-	return protocol.DialQUICTransport(ctx, resolveServerAddr(serverName, port), d.TLSConfig)
-}
-
-var (
-	_ TransportDialer = TCPDialer{}
-	_ TransportDialer = QUICDialer{}
-)
+var _ TransportDialer = TCPDialer{}

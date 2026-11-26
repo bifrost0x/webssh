@@ -247,9 +247,9 @@ func TestPublicAPIsRejectNilContext(t *testing.T) {
 	// Register types; reflection discovers their exported context methods.
 	for _, receiver := range []any{
 		&smb2.Dialer{}, &smb2.Session{}, &smb2.Share{}, &smb2.File{},
-		smb2.TCPDialer{}, smb2.QUICDialer{},
+		smb2.TCPDialer{},
 		&client.Client{}, &client.File{},
-		auth.NTLMCredential{}, &auth.KerberosCredential{},
+		auth.NTLMCredential{},
 		&dfs.Client{}, &Client{},
 		&protocol.Dialer{}, &protocol.Session{}, &protocol.Tree{}, &protocol.Request{},
 	} {
@@ -282,7 +282,6 @@ func TestPublicAPIsRejectNilContext(t *testing.T) {
 		call any
 	}{
 		{"user.NewClient", NewClient},
-		{"protocol.DialQUICTransport", protocol.DialQUICTransport},
 	} {
 		t.Run(function.name, func(t *testing.T) {
 			check(t, reflect.ValueOf(function.call))

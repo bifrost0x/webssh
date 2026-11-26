@@ -2190,9 +2190,6 @@ func TestConnRejectsZeroLengthReadAcrossReceivePaths(t *testing.T) {
 			outstandingRequests: newOutstandingRequests(),
 		}
 		c.session = &session{conn: c, sessionId: sessionID}
-		if path == "compressed" {
-			c.compressionIds = []uint16{wire.SMB2_COMPRESSION_ALGORITHM_LZ4}
-		}
 		if path == "encrypted" {
 			c.session.encrypter = aead
 			c.session.nonces = &encryptionNonces{}
@@ -2219,12 +2216,6 @@ func TestConnRejectsZeroLengthReadAcrossReceivePaths(t *testing.T) {
 			require.Nil(sink)
 			require.Zero(frontSize)
 			rp = &recvPacket{pkt: plain}
-		case "compressed":
-			compressed := compressReadResponseForTest(t, plain)
-			decompressed, ext, err := decompressPacketForReceive(c, compressed, c.responseReadSink)
-			require.NoError(err)
-			require.Nil(ext)
-			rp = &recvPacket{pkt: decompressed}
 		case "encrypted":
 			encrypted, err := c.session.encrypt(plain, make([]byte, 52+len(plain)+aead.Overhead()))
 			require.NoError(err)
@@ -2252,7 +2243,7 @@ func TestConnRejectsZeroLengthReadAcrossReceivePaths(t *testing.T) {
 	}
 
 	// [MS-SMB2] 2.2.20 uses an error Response for a read with no data.
-	for _, path := range []string{"direct", "compressed", "encrypted"} {
+	for _, path := range []string{"direct", "encrypted"} {
 		t.Run("end-of-file/"+path, func(t *testing.T) {
 			res := &wire.ErrorResponse{CommandCode: wire.SMB2_READ}
 			plain := make([]byte, res.Size())
@@ -2273,9 +2264,6 @@ func TestConnRejectsZeroLengthReadAcrossReceivePaths(t *testing.T) {
 	})
 	t.Run("direct-with-trailing-bytes", func(t *testing.T) {
 		run(t, "direct", zeroLengthReadResponse(1), nil)
-	})
-	t.Run("compressed", func(t *testing.T) {
-		run(t, "compressed", zeroLengthReadResponse(32), nil)
 	})
 	for name, aead := range directIOCiphers(t) {
 		t.Run("encrypted/"+name, func(t *testing.T) {
@@ -3866,23 +3854,23 @@ func TestDialerMakeRequest(t *testing.T) {
 		req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{SMB311, SMB302}, false)
 		require.NoError(err)
 		require.Equal(uint32(clientCapabilities), req.Capabilities)
-		require.Len(req.Contexts, 4)
+		require.Len(req.Contexts, 3)
 		require.Equal([]Dialect{SMB311, SMB302}, req.Dialects)
 	})
 
 	t.Run("TransportEncryptionAppendsTransportContext", func(t *testing.T) {
 		req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{SMB311}, true)
 		require.NoError(err)
-		require.Len(req.Contexts, 5)
-		tc, ok := req.Contexts[4].(*wire.TransportContext)
-		require.True(ok, "fifth context should be *wire.TransportContext")
+		require.Len(req.Contexts, 4)
+		tc, ok := req.Contexts[3].(*wire.TransportContext)
+		require.True(ok, "fourth context should be *wire.TransportContext")
 		require.Equal(uint32(wire.SMB2_ACCEPT_TRANSPORT_LEVEL_SECURITY), tc.Flags)
 	})
 
 	t.Run("SMB311HasHashAndCipherContexts", func(t *testing.T) {
 		req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{SMB311}, false)
 		require.NoError(err)
-		require.Len(req.Contexts, 4)
+		require.Len(req.Contexts, 3)
 
 		hc, ok := req.Contexts[0].(*wire.HashContext)
 		require.True(ok, "first context should be *wire.HashContext")
@@ -3893,16 +3881,15 @@ func TestDialerMakeRequest(t *testing.T) {
 		require.True(ok, "second context should be *wire.CipherContext")
 		require.Equal(clientCiphers, cc.Ciphers)
 
-		compression, ok := req.Contexts[2].(*wire.CompressionContext)
-		require.True(ok, "third context should be *wire.CompressionContext")
-		require.Equal(clientCompressionAlgorithms, compression.CompressionAlgorithms)
-		require.Zero(compression.Flags)
+		// The fork offers no compression (compression.go).
+		_, ok = req.Contexts[2].(*wire.SigningContext)
+		require.True(ok, "third context should be *wire.SigningContext")
 	})
 
 	t.Run("UnknownSMBHasHashAndCipherContexts", func(t *testing.T) {
 		req, err := (&Dialer{}).makeNegotiateRequest(clientDialects, false)
 		require.NoError(err)
-		require.Len(req.Contexts, 4)
+		require.Len(req.Contexts, 3)
 
 		hc, ok := req.Contexts[0].(*wire.HashContext)
 		require.True(ok, "first context should be *wire.HashContext")
@@ -3913,10 +3900,9 @@ func TestDialerMakeRequest(t *testing.T) {
 		require.True(ok, "second context should be *wire.CipherContext")
 		require.Equal(clientCiphers, cc.Ciphers)
 
-		compression, ok := req.Contexts[2].(*wire.CompressionContext)
-		require.True(ok, "third context should be *wire.CompressionContext")
-		require.Equal(clientCompressionAlgorithms, compression.CompressionAlgorithms)
-		require.Zero(compression.Flags)
+		// The fork offers no compression (compression.go).
+		_, ok = req.Contexts[2].(*wire.SigningContext)
+		require.True(ok, "third context should be *wire.SigningContext")
 	})
 }
 
@@ -3930,7 +3916,7 @@ func TestRunReceiverFatalErrors(t *testing.T) {
 		msgID            uint64 = 1
 	)
 
-	runFatalTest := func(t *testing.T, packetToSend []byte, decrypter cipher.AEAD, expectedErrSubstr string, compressed ...bool) {
+	runFatalTest := func(t *testing.T, packetToSend []byte, decrypter cipher.AEAD, expectedErrSubstr string) {
 		clientConn, serverConn := net.Pipe()
 		defer clientConn.Close()
 		defer serverConn.Close()
@@ -3939,10 +3925,6 @@ func TestRunReceiverFatalErrors(t *testing.T) {
 			t:                   NewTransport(clientConn),
 			outstandingRequests: newOutstandingRequests(),
 			account:             openAccount(10),
-		}
-		if len(compressed) > 0 && compressed[0] {
-			c.dialect = wire.SMB311
-			c.compressionIds = []uint16{wire.SMB2_COMPRESSION_ALGORITHM_LZ4}
 		}
 		c.enableSession()
 		c.session = &session{conn: c, sessionId: validSessionID, decrypter: decrypter}
@@ -4091,80 +4073,74 @@ func TestRunReceiverFatalErrors(t *testing.T) {
 		runFatalTest(t, makeEncryptedPacket(plaintext), aead, "unknown session id in encrypted Response")
 	})
 
-	t.Run("EncryptedCompressedCompoundSessionIDMismatch", func(t *testing.T) {
-		plaintext, err := compressPacket(makeCompound(validSessionID, unknownSessionID))
-		require.NoError(err)
-		runFatalTest(t, makeEncryptedPacket(plaintext), aead, "unknown session id in encrypted Response", true)
+	// Compression is never offered, so a compressed packet ends the
+	// connection before its content is decoded, encrypted or not.
+	t.Run("CompressedPacket", func(t *testing.T) {
+		runFatalTest(t, compressedPacketForTest(makeCompound(validSessionID, validSessionID)), nil, "compression was not negotiated")
+	})
+	t.Run("EncryptedCompressedPacket", func(t *testing.T) {
+		runFatalTest(t, makeEncryptedPacket(compressedPacketForTest(makeCompound(validSessionID, validSessionID))), aead, "compression was not negotiated")
 	})
 }
 
 func TestRunReceiverAcceptsEncryptedCompound(t *testing.T) {
 	t.Parallel()
-	for _, compressed := range []bool{false, true} {
-		t.Run(fmt.Sprintf("compressed-%t", compressed), func(t *testing.T) {
-			require := require.New(t)
-			clientConn, serverConn := net.Pipe()
-			defer serverConn.Close()
-			require.NoError(serverConn.SetDeadline(time.Now().Add(2 * time.Second)))
-			block, err := aes.NewCipher(make([]byte, 16))
-			require.NoError(err)
-			aead, err := cipher.NewGCM(block)
-			require.NoError(err)
-			c := &conn{
-				t:                   NewTransport(clientConn),
-				dialect:             wire.SMB311,
-				compressionIds:      []uint16{wire.SMB2_COMPRESSION_ALGORITHM_LZ4},
-				outstandingRequests: newOutstandingRequests(),
-				account:             openAccount(10),
-			}
-			c.session = &session{conn: c, sessionId: 0xCAFE, decrypter: aead, nonces: &encryptionNonces{}, encrypter: aead}
-			c.enableSession()
-			done := make(chan struct{})
-			go func() { defer close(done); c.runReceiver() }()
-			t.Cleanup(func() { _ = c.close(nil); <-done })
-			var requests []*outstandingRequest
-			var compound []byte
-			for i := range 2 {
-				rr := &outstandingRequest{msgId: uint64(i + 1), cmd: wire.SMB2_ECHO, ctx: context.Background(), recv: make(chan *recvPacket, 1)}
-				c.outstandingRequests.set(rr.msgId, rr)
-				requests = append(requests, rr)
-				res := &wire.EchoResponse{}
-				pkt := make([]byte, (res.Size()+7)&^7)
-				res.Encode(pkt)
-				p := wire.PacketCodec(pkt)
-				p.SetSessionId(c.session.sessionId)
-				p.SetMessageId(rr.msgId)
-				p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
-				if i == 0 {
-					p.SetNextCommand(uint32(len(pkt)))
-				}
-				compound = append(compound, pkt...)
-			}
-			if compressed {
-				compound, err = compressPacket(compound)
-				require.NoError(err)
-			}
-			pkt, err := c.session.encrypt(compound, make([]byte, 52+len(compound)+aead.Overhead()))
-			require.NoError(err)
-			_, err = NewTransport(serverConn).writev(pkt)
-			require.NoError(err)
-			for _, rr := range requests {
-				select {
-				case rp := <-rr.recv:
-					require.NotNil(rp)
-					accepted, err := accept(rr.cmd, rp, c.dialect)
-					require.NoError(err)
-					accepted.close()
-				case <-time.After(time.Second):
-					t.Fatal("matching encrypted response was not delivered")
-				}
-			}
-			c.m.Lock()
-			connErr := c.err
-			c.m.Unlock()
-			require.NoError(connErr)
-		})
+	require := require.New(t)
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+	require.NoError(serverConn.SetDeadline(time.Now().Add(2 * time.Second)))
+	block, err := aes.NewCipher(make([]byte, 16))
+	require.NoError(err)
+	aead, err := cipher.NewGCM(block)
+	require.NoError(err)
+	c := &conn{
+		t:                   NewTransport(clientConn),
+		dialect:             wire.SMB311,
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
 	}
+	c.session = &session{conn: c, sessionId: 0xCAFE, decrypter: aead, nonces: &encryptionNonces{}, encrypter: aead}
+	c.enableSession()
+	done := make(chan struct{})
+	go func() { defer close(done); c.runReceiver() }()
+	t.Cleanup(func() { _ = c.close(nil); <-done })
+	var requests []*outstandingRequest
+	var compound []byte
+	for i := range 2 {
+		rr := &outstandingRequest{msgId: uint64(i + 1), cmd: wire.SMB2_ECHO, ctx: context.Background(), recv: make(chan *recvPacket, 1)}
+		c.outstandingRequests.set(rr.msgId, rr)
+		requests = append(requests, rr)
+		res := &wire.EchoResponse{}
+		pkt := make([]byte, (res.Size()+7)&^7)
+		res.Encode(pkt)
+		p := wire.PacketCodec(pkt)
+		p.SetSessionId(c.session.sessionId)
+		p.SetMessageId(rr.msgId)
+		p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+		if i == 0 {
+			p.SetNextCommand(uint32(len(pkt)))
+		}
+		compound = append(compound, pkt...)
+	}
+	pkt, err := c.session.encrypt(compound, make([]byte, 52+len(compound)+aead.Overhead()))
+	require.NoError(err)
+	_, err = NewTransport(serverConn).writev(pkt)
+	require.NoError(err)
+	for _, rr := range requests {
+		select {
+		case rp := <-rr.recv:
+			require.NotNil(rp)
+			accepted, err := accept(rr.cmd, rp, c.dialect)
+			require.NoError(err)
+			accepted.close()
+		case <-time.After(time.Second):
+			t.Fatal("matching encrypted response was not delivered")
+		}
+	}
+	c.m.Lock()
+	connErr := c.err
+	c.m.Unlock()
+	require.NoError(connErr)
 }
 
 func TestReadResponseEncryptionPolicy(t *testing.T) {

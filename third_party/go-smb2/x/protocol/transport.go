@@ -1,23 +1,16 @@
 package protocol
 
 import (
-	"context"
-	"crypto/tls"
 	"errors"
 	"io"
 	"net"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/quic-go/quic-go"
 )
 
 type directSinkFinder func(head []byte, restSize int) (sink []byte, frontSize int)
 
-// packetStream is the byte stream used by Direct TCP framing. QUIC streams
-// implement the same operations, while their connection lifetime is managed
-// by quicTransport.
+// packetStream is the byte stream used by Direct TCP framing.
 type packetStream interface {
 	io.Reader
 	io.Writer
@@ -31,7 +24,7 @@ type packetStream interface {
 // must unblock any operation waiting on the transport.
 //
 // Transport is a sealed interface implemented by built-in transports
-// (such as Direct TCP and SMB over QUIC).
+// (Direct TCP; this fork has no SMB over QUIC).
 type Transport interface {
 	Close() error
 	writev(parts ...[]byte) (int, error)
@@ -366,86 +359,4 @@ func (t *transport) Close() error {
 	return t.closeErr
 }
 
-const smbQUICALPN = "smb"
-
-// dialQUICTransport establishes an SMB-over-QUIC transport to addr.
-//
-// The returned transport uses a dedicated QUIC connection with one
-// bidirectional stream. The TLS configuration is cloned before its ServerName
-// and ALPN are set; TLS certificate verification remains enabled by default.
-// DialAddr is used instead of DialAddrEarly, so this transport never sends
-// SMB messages using 0-RTT.
-// DialQUICTransport establishes an SMB-over-QUIC transport to addr.
-func DialQUICTransport(ctx context.Context, addr string, tlsConfig *tls.Config) (Transport, error) {
-	if ctx == nil {
-		panic("nil context")
-	}
-
-	config := cloneQUICClientTLS(addr, tlsConfig)
-	conn, err := quic.DialAddr(ctx, addr, config, &quic.Config{
-		// Start small enough for tunnels with a 1280-byte MTU. Path MTU
-		// discovery can increase the packet size after the handshake.
-		InitialPacketSize: 1200,
-		// Keep the QUIC connection alive while an SMB session is idle. SMB
-		// sessions can outlive individual operations by hours.
-		KeepAlivePeriod: clientQUICKeepAlivePeriod,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	stream, err := conn.OpenStreamSync(ctx)
-	if err != nil {
-		_ = conn.CloseWithError(0, "SMB stream setup failed")
-		return nil, err
-	}
-
-	return &quicTransport{
-		transport: &transport{conn: stream},
-		conn:      conn,
-	}, nil
-}
-
-func cloneQUICClientTLS(addr string, tlsConfig *tls.Config) *tls.Config {
-	var config tls.Config
-	if tlsConfig != nil {
-		config = *tlsConfig.Clone()
-	}
-	if config.MinVersion == 0 {
-		config.MinVersion = tls.VersionTLS13
-	}
-	if config.ServerName == "" {
-		if host, _, err := net.SplitHostPort(addr); err == nil {
-			config.ServerName = strings.Trim(host, "[]")
-		}
-	}
-	config.NextProtos = []string{smbQUICALPN}
-	return &config
-}
-
-type quicTransport struct {
-	*transport
-	conn *quic.Conn
-
-	closeOnce sync.Once
-	closeErr  error
-}
-
-// transportType identifies the built-in QUIC transport to negotiation. It is
-// private so only built-in transports can declare themselves.
-func (*quicTransport) transportType() string { return "quic" }
-
-// Close closes the QUIC connection, which also unblocks a receiver waiting on
-// the stream. Closing only the stream would send FIN and leave the connection
-// alive for the shared SMB connection's receiver.
-func (t *quicTransport) Close() error {
-	t.closeOnce.Do(func() {
-		t.closeErr = t.conn.CloseWithError(0, "SMB transport closed")
-	})
-	return t.closeErr
-}
-
-var (
-	_ Transport = (*transport)(nil)
-	_ Transport = (*quicTransport)(nil)
-)
+var _ Transport = (*transport)(nil)

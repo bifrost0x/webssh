@@ -55,42 +55,6 @@ func TestNTLMCredentialRejectsInvalidHash(t *testing.T) {
 	}
 }
 
-func TestKerberosCredentialErrorsAndNil(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	var nilCtx context.Context
-
-	var nilCreds *KerberosCredential
-	if _, err := nilCreds.NewInitiator(ctx, "server"); !errors.Is(err, errInvalidCredential) || errors.Is(err, os.ErrInvalid) {
-		t.Fatalf("nilCreds.NewInitiator = %v, want auth error", err)
-	}
-	if err := nilCreds.Close(); !errors.Is(err, errInvalidCredential) || errors.Is(err, os.ErrInvalid) {
-		t.Fatalf("nilCreds.Close = %v, want auth error", err)
-	}
-
-	// Nil context panics
-	func() {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic on nil context")
-			}
-		}()
-		_, _ = nilCreds.NewInitiator(nilCtx, "server")
-	}()
-
-	var zeroCreds KerberosCredential
-	if _, err := zeroCreds.NewInitiator(ctx, "server"); err == nil || errors.Is(err, os.ErrInvalid) {
-		t.Fatalf("zeroCreds.NewInitiator = %v, want auth error", err)
-	}
-
-	// Canceled context
-	canceledCtx, cancel := context.WithCancel(ctx)
-	cancel()
-	if _, err := zeroCreds.NewInitiator(canceledCtx, "server"); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled context = %v, want context.Canceled", err)
-	}
-}
-
 func TestNTLMCredentialNilContext(t *testing.T) {
 	t.Parallel()
 	defer func() {

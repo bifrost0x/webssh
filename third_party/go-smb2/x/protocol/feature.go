@@ -25,10 +25,11 @@ const (
 // For dialects, higher revisions precede lower ones ([MS-SMB2] 3.2.4.2.2).
 
 var (
-	clientSigningAlgorithms     = []wire.SigningAlgorithm{wire.AES128GMAC, wire.AES128CMAC}
-	clientHashAlgorithms        = []uint16{wire.SHA512}
-	clientCiphers               = []Cipher{AES256GCM, AES256CCM, AES128GCM, AES128CCM}
-	clientCompressionAlgorithms = []uint16{wire.SMB2_COMPRESSION_ALGORITHM_LZ4}
+	clientSigningAlgorithms = []wire.SigningAlgorithm{wire.AES128GMAC, wire.AES128CMAC}
+	clientHashAlgorithms    = []uint16{wire.SHA512}
+	clientCiphers           = []Cipher{AES256GCM, AES256CCM, AES128GCM, AES128CCM}
+	// The client offers no compression; see compression.go.
+	clientCompressionAlgorithms []uint16
 	clientDialects              = []Dialect{SMB311, SMB302, SMB300, SMB210, SMB202}
 )
 
@@ -39,7 +40,6 @@ const (
 	clientWriteTimeout        = 30 * time.Second
 	clientPacketReadTimeout   = 30 * time.Second
 	clientSessionCloseTimeout = 5 * time.Second
-	clientQUICKeepAlivePeriod = 15 * time.Second
 )
 
 // client concurrency & pipeline limits

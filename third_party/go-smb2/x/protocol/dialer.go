@@ -478,7 +478,7 @@ func (d *Dialer) makeNegotiateRequest(dialects []Dialect, acceptTransportSecurit
 		if d.bindingServer != nil {
 			algorithms = []wire.SigningAlgorithm{d.bindingServer.signingAlgorithm}
 		}
-		req.Contexts = append(req.Contexts, hc, newCipherContext(d.negotiationCiphers()), newCompressionContext(), &wire.SigningContext{SigningAlgorithms: algorithms})
+		req.Contexts = append(req.Contexts, hc, newCipherContext(d.negotiationCiphers()), &wire.SigningContext{SigningAlgorithms: algorithms})
 		if acceptTransportSecurity {
 			req.Contexts = append(req.Contexts, &wire.TransportContext{Flags: wire.SMB2_ACCEPT_TRANSPORT_LEVEL_SECURITY})
 		}

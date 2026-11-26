@@ -11,8 +11,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/sha512"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -66,15 +64,9 @@ func join(ss ...string) string {
 }
 
 type transportConfig struct {
-	Type string              `json:"type"`
-	Host string              `json:"host"`
-	Port int                 `json:"port"`
-	TLS  *transportTLSConfig `json:"tls"`
-}
-
-type transportTLSConfig struct {
-	ServerName string `json:"server_name"`
-	CAFile     string `json:"ca_file"`
+	Type string `json:"type"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
 }
 
 type connConfig struct {
@@ -89,20 +81,12 @@ type sessionConfig struct {
 	Password    string  `json:"passwd"`
 	Domain      *string `json:"domain"`
 	Workstation string  `json:"workstation"`
-	Realm       string  `json:"realm"`
-	KRB5Config  string  `json:"krb5Config"`
 	TargetSPN   *string `json:"targetSPN"`
 }
 
 type treeConnConfig struct {
 	Share1 string `json:"share1"`
 	Share2 string `json:"share2"`
-}
-
-// kerberosConfig selects the dialect matrix test. TreeConn.Share1 must be
-// writable without encryption; EncryptedShare must require SMB encryption.
-type kerberosConfig struct {
-	EncryptedShare string `json:"encrypted_share"`
 }
 
 type dfsConfig struct {
@@ -115,7 +99,6 @@ type config struct {
 	Benchmark        bool            `json:"benchmark"`
 	Name             string          `json:"name"`
 	DFS              *dfsConfig      `json:"dfs"`
-	Kerberos         *kerberosConfig `json:"kerberos"`
 	MaxCreditBalance uint16          `json:"max_credit_balance"`
 	Transport        transportConfig `json:"transport"`
 	Conn             connConfig      `json:"conn"`
@@ -136,7 +119,6 @@ type env struct {
 var (
 	envs                   []*env
 	dfsEnv                 *config
-	kerberosEnvs           []config
 	integrationInterrupted atomic.Bool
 )
 
@@ -175,10 +157,6 @@ func loadEnvs() []*env {
 			dfsEnv = &cfg
 			continue
 		}
-		if cfg.Kerberos != nil {
-			kerberosEnvs = append(kerberosEnvs, cfg)
-			continue
-		}
 		if e := connect(cfg, true); e != nil {
 			es = append(es, e)
 		}
@@ -187,24 +165,9 @@ func loadEnvs() []*env {
 }
 
 func connect(cfg config, secondShare bool) *env {
-	if cfg.Transport.Type != "tcp" && cfg.Transport.Type != "quic" {
+	if cfg.Transport.Type != "tcp" {
 		fmt.Println("unsupported transport type")
 		return nil
-	}
-
-	var tlsConfig *tls.Config
-	if cfg.Transport.Type == "quic" && cfg.Transport.TLS != nil {
-		tlsConfig = &tls.Config{ServerName: cfg.Transport.TLS.ServerName}
-		if path := cfg.Transport.TLS.CAFile; path != "" {
-			pem, err := os.ReadFile(path)
-			if err != nil {
-				panic(fmt.Errorf("%s: read QUIC CA file: %w", cfg.Name, err))
-			}
-			tlsConfig.RootCAs = x509.NewCertPool()
-			if !tlsConfig.RootCAs.AppendCertsFromPEM(pem) {
-				panic(fmt.Errorf("%s: QUIC CA file %q contains no certificates", cfg.Name, path))
-			}
-		}
 	}
 
 	var credentials smb2.Credentials
@@ -218,16 +181,6 @@ func connect(cfg config, secondShare bool) *env {
 			Workstation: cfg.Session.Workstation,
 			TargetSPN:   cfg.Session.TargetSPN,
 		}
-	case "kerberos":
-		kerberos, err := auth.NewKerberosCredential(auth.KerberosPassword{
-			User: cfg.Session.User, Realm: cfg.Session.Realm, Password: cfg.Session.Password,
-			ConfigFile: cfg.Session.KRB5Config, TargetSPN: cfg.Session.TargetSPN,
-		})
-		if err != nil {
-			panic(err)
-		}
-		credentials = kerberos
-		destroyCredentials = func() { _ = kerberos.Close() }
 	default:
 		panic(fmt.Sprintf("unsupported session type %q", cfg.Session.Type))
 	}
@@ -236,9 +189,6 @@ func connect(cfg config, secondShare bool) *env {
 		Credentials: credentials,
 		TransportDialer: transportDialerFunc(func(ctx context.Context, _ string) (smb2.Transport, error) {
 			addr := net.JoinHostPort(cfg.Transport.Host, strconv.Itoa(cfg.Transport.Port))
-			if cfg.Transport.Type == "quic" {
-				return smb2.QUICDialer{Port: cfg.Transport.Port, TLSConfig: tlsConfig}.Dial(ctx, cfg.Transport.Host)
-			}
 			conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 			if err != nil {
 				return nil, err
@@ -3182,77 +3132,6 @@ func TestConcurrentShareAccess(t *testing.T) {
 			t.Error(err)
 		}
 	})
-}
-
-// TestKerberosIntegration exercises authentication and required encryption
-// across SMB dialects using client_conf.json entries with a kerberos section.
-func TestKerberosIntegration(t *testing.T) {
-	t.Parallel()
-	if testing.Short() {
-		t.Skip("skipping integration test in -short mode")
-	}
-	if len(kerberosEnvs) == 0 {
-		t.Skip("Kerberos matrix entry is not configured in client_conf.json")
-	}
-	for _, cfg := range kerberosEnvs {
-		t.Run(cfg.Name, func(t *testing.T) {
-			require.Equal(t, "tcp", cfg.Transport.Type, "Kerberos matrix transport")
-			require.Equal(t, "kerberos", cfg.Session.Type, "Kerberos matrix session")
-			require.NotEmpty(t, cfg.TreeConn.Share1, "tree_conn.share1")
-			require.NotEmpty(t, cfg.Kerberos.EncryptedShare, "kerberos.encrypted_share")
-			creds, err := auth.NewKerberosCredential(auth.KerberosPassword{
-				User: cfg.Session.User, Realm: cfg.Session.Realm, Password: cfg.Session.Password,
-				ConfigFile: cfg.Session.KRB5Config, TargetSPN: cfg.Session.TargetSPN,
-			})
-			require.NoError(t, err)
-			defer creds.Close()
-			host := cfg.Transport.Host
-			addr := net.JoinHostPort(host, strconv.Itoa(cfg.Transport.Port))
-
-			for _, dialect := range []uint16{wire.SMB210, wire.SMB302, wire.SMB311} {
-				t.Run(fmt.Sprintf("%04x", dialect), func(t *testing.T) {
-					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-					defer cancel()
-
-					dialer := &smb2.Dialer{
-						Credentials:           creds,
-						RequireMessageSigning: true,
-						SpecifiedDialects:     []smb2.Dialect{smb2.Dialect(dialect)},
-						TransportDialer: transportDialerFunc(func(ctx context.Context, _ string) (smb2.Transport, error) {
-							tcp, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
-							if err != nil {
-								return nil, err
-							}
-							return smb2.NewTransport(tcp), nil
-						}),
-					}
-					session, err := dialer.Dial(ctx, host)
-					require.NoError(t, err)
-					defer session.Close()
-
-					shares := []string{cfg.TreeConn.Share1}
-					if dialect >= wire.SMB300 {
-						shares = append(shares, cfg.Kerberos.EncryptedShare)
-					}
-					for _, name := range shares {
-						require.NotEmpty(t, name)
-						share, err := session.Mount(ctx, name)
-						require.NoError(t, err)
-						func() {
-							defer share.Unmount(ctx)
-							path := fmt.Sprintf("kerberos-test-%d.txt", time.Now().UnixNano())
-							payload := []byte("Kerberos authenticated SMB read/write\n")
-							require.NoError(t, share.WriteFile(ctx, path, payload, 0o600))
-							defer share.Remove(ctx, path)
-							got, err := share.ReadFile(ctx, path)
-							require.NoError(t, err)
-							require.Equal(t, payload, got)
-						}()
-					}
-				})
-			}
-		})
-	}
 }
 
 func Example() {
