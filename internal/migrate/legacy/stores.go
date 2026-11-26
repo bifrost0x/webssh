@@ -9,7 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode/utf8"
+
+	"github.com/bifrost0x/webssh/internal/pyjson"
 )
 
 // storeSpec describes one JSON store of the Python release.
@@ -74,10 +75,15 @@ func upTo(n int) []int {
 // interpretation to the migration step of the entity.
 type Document struct {
 	Store   string
-	Version int            // as stored; Object and Items are lifted to the current version
+	Version int            // as stored; Raw, Object and Items are lifted to the current version
 	Object  map[string]any // nil for a bare array
 	Items   []any          // the list under listKey, or the bare array
 	Entries map[string]any // the object under listKey when it is a map
+	// Raw is the document as Python holds it after reading it: read like
+	// json.loads (pyjson.Load: compact, unique member names, member order
+	// kept) and lifted to the current version. Steps that keep records
+	// verbatim take their bytes from here.
+	Raw jsontext.Value
 	// Lifted reports that an older version was migrated in memory, as
 	// Python does on read (app/storage_migrations.py).
 	Lifted bool
@@ -86,6 +92,29 @@ type Document struct {
 	// ensure_ascii and reads back. Go strings cannot hold them; they are
 	// replaced with U+FFFD and the store is flagged in the report.
 	LoneSurrogates bool
+	// DuplicateNames reports an object that repeats a member name. Python
+	// keeps the last value, and so does the reader; the store is flagged
+	// in the report.
+	DuplicateNames bool
+}
+
+// RawList returns the records under the store's list key (or the bare
+// array) from Raw, each as compact JSON in document order. A store
+// without the list key has none.
+func (d Document) RawList(listKey string) ([]jsontext.Value, error) {
+	list := d.Raw
+	if listKey != "" {
+		v, ok := pyjson.Get(d.Raw, listKey)
+		if !ok || v.Kind() == 'n' {
+			return nil, nil
+		}
+		list = v
+	}
+	items, ok := pyjson.Items(list)
+	if !ok {
+		return nil, fmt.Errorf("legacy: %s: %s is not a list", d.Store, listKey)
+	}
+	return items, nil
 }
 
 // UserDocuments reads every JSON store of a user that exists. A store that
@@ -141,33 +170,24 @@ func (s *Source) readStore(name string, spec storeSpec) (Document, error) {
 	return doc, nil
 }
 
-// decodeStore decodes and checks one store document. Invalid UTF-8,
-// duplicate member names and unknown versions are rejected; Python would
-// reject the first and the last as well (app/storage_utils.py,
-// app/storage_migrations.py).
+// decodeStore decodes and checks one store document like json.loads and
+// the loader of app/storage_utils.py: invalid UTF-8 and unknown versions
+// are rejected, a repeated member name keeps its last value (flagged),
+// and an older version is lifted in memory.
 func decodeStore(data []byte, spec storeSpec) (Document, error) {
-	if !utf8.Valid(data) {
-		return Document{}, errors.New("invalid UTF-8")
+	raw, rep, err := pyjson.Load(data)
+	if err != nil {
+		return Document{}, fmt.Errorf("invalid JSON: %w", err)
 	}
-	doc := Document{Store: spec.name}
-	var top any
-	if err := json.Unmarshal(data, &top, numbersAsText); err != nil {
-		// The bytes are valid UTF-8, so a decoding that only fails strictly
-		// failed on an escaped lone surrogate.
-		if json.Unmarshal(data, &top, numbersAsText, jsontext.AllowInvalidUTF8(true)) != nil {
-			return Document{}, fmt.Errorf("invalid JSON: %w", err)
-		}
-		doc.LoneSurrogates = true
-	}
+	doc := Document{Store: spec.name, LoneSurrogates: rep.LoneSurrogates, DuplicateNames: rep.DuplicateNames}
 	if spec.topList {
-		return decodeCommands(doc, top, data)
+		return decodeCommands(doc, raw)
 	}
-	object, ok := top.(map[string]any)
+	members, ok := pyjson.Members(raw)
 	if !ok {
 		return Document{}, errors.New("not a JSON object")
 	}
-	doc.Object = object
-	version, err := storeVersion(data, spec.versionKey)
+	version, err := storeVersion(raw, spec.versionKey)
 	if err != nil {
 		return Document{}, err
 	}
@@ -175,12 +195,21 @@ func decodeStore(data []byte, spec storeSpec) (Document, error) {
 		return Document{}, fmt.Errorf("unsupported %s %d", spec.versionKey, version)
 	}
 	doc.Version = version
-	if spec.name == "profiles" && version < 3 {
-		liftProfiles(object, version)
-		doc.Lifted = true
+	if current := slices.Max(spec.versions); spec.versionKey == "schema_version" && version < current {
+		if spec.name == "profiles" {
+			members = liftProfiles(members, version)
+		}
+		members = pyjson.Set(members, "schema_version", jsontext.Value(strconv.Itoa(current)))
+		raw, doc.Lifted = pyjson.Object(members), true
 	}
+	doc.Raw = raw
+	var top any
+	if err := json.Unmarshal(raw, &top, numbersAsText); err != nil {
+		return Document{}, fmt.Errorf("invalid JSON: %w", err)
+	}
+	doc.Object, _ = top.(map[string]any)
 	if spec.listKey != "" {
-		switch v := object[spec.listKey].(type) {
+		switch v := doc.Object[spec.listKey].(type) {
 		case []any:
 			doc.Items = v
 		case map[string]any:
@@ -199,50 +228,77 @@ var commandWrapperVersions = []int{1, 2}
 
 // decodeCommands accepts both forms Python reads: a bare list, or
 // {"schema_version": 1|2, "commands": [...]}, which Python rewrites as a
-// list on the next read.
-func decodeCommands(doc Document, top any, data []byte) (Document, error) {
+// list on the next read. Raw is the list in both cases.
+func decodeCommands(doc Document, raw jsontext.Value) (Document, error) {
+	switch raw.Kind() {
+	case '[':
+		doc.Raw = raw
+	case '{':
+		version, err := storeVersion(raw, "schema_version")
+		_, present := pyjson.Get(raw, "schema_version")
+		list, isList := pyjson.Get(raw, "commands")
+		if err != nil || !present || !slices.Contains(commandWrapperVersions, version) || list.Kind() != '[' || !isList {
+			return Document{}, errors.New("unsupported commands document")
+		}
+		doc.Raw, doc.Version, doc.Lifted = list, version, true
+	default:
+		return Document{}, errors.New("commands document is neither a list nor an object")
+	}
+	var top any
+	if err := json.Unmarshal(raw, &top, numbersAsText); err != nil {
+		return Document{}, fmt.Errorf("invalid JSON: %w", err)
+	}
 	switch v := top.(type) {
 	case []any:
 		doc.Items = v
-		return doc, nil
 	case map[string]any:
-		version, err := storeVersion(data, "schema_version")
-		_, present := v["schema_version"]
-		list, isList := v["commands"].([]any)
-		if err != nil || !present || !slices.Contains(commandWrapperVersions, version) || !isList {
-			return Document{}, errors.New("unsupported commands document")
-		}
-		doc.Object, doc.Items, doc.Version, doc.Lifted = v, list, version, true
-		return doc, nil
+		doc.Object, doc.Items = v, v["commands"].([]any)
 	}
-	return Document{}, errors.New("commands document is neither a list nor an object")
+	return doc, nil
 }
 
 // liftProfiles applies the profile migrations of app/storage_migrations.py
-// in memory: 1 to 2 derives startup_mode, 2 to 3 drops the response-only
-// tailscale_authorized flag.
-func liftProfiles(object map[string]any, version int) {
-	profiles, _ := object["profiles"].([]any)
-	for _, p := range profiles {
-		profile, ok := p.(map[string]any)
-		if !ok {
+// in memory: 1 to 2 derives startup_mode (appended, as a new dict key),
+// 2 to 3 drops the response-only tailscale_authorized flag.
+func liftProfiles(members []pyjson.Member, version int) []pyjson.Member {
+	for i, m := range members {
+		if m.Name != "profiles" {
 			continue
 		}
-		if _, has := profile["startup_mode"]; version <= 1 && !has {
-			switch {
-			case truthy(profile["command_set_id"]):
-				profile["startup_mode"] = "command_set"
-			case truthy(profile["command_id"]):
-				profile["startup_mode"] = "command"
-			case truthy(profile["startup_commands"]):
-				profile["startup_mode"] = "free_text"
-			default:
-				profile["startup_mode"] = "none"
-			}
+		items, ok := pyjson.Items(m.Value)
+		if !ok {
+			return members
 		}
-		delete(profile, "tailscale_authorized")
+		for j, item := range items {
+			profile, ok := pyjson.Members(item)
+			if !ok {
+				continue
+			}
+			if _, has := pyjson.Get(item, "startup_mode"); version <= 1 && !has {
+				profile = pyjson.Set(profile, "startup_mode", pyjson.String(startupMode(item)))
+			}
+			items[j] = pyjson.Object(pyjson.Delete(profile, "tailscale_authorized"))
+		}
+		members[i].Value = pyjson.Array(items)
 	}
-	object["schema_version"] = Number("3")
+	return members
+}
+
+// startupMode is the startup_mode migrate_profiles_v1_to_v2 derives.
+func startupMode(profile jsontext.Value) string {
+	var p map[string]any
+	if json.Unmarshal(profile, &p, numbersAsText) != nil {
+		return "none"
+	}
+	switch {
+	case truthy(p["command_set_id"]):
+		return "command_set"
+	case truthy(p["command_id"]):
+		return "command"
+	case truthy(p["startup_commands"]):
+		return "free_text"
+	}
+	return "none"
 }
 
 // truthy is Python's truth value for decoded JSON.
@@ -264,14 +320,11 @@ func truthy(v any) bool {
 	return true
 }
 
-// storeVersion reads a version member. Like Python's "type(v) is int"
-// check it accepts only an integer literal: 1.0, true or "1" are rejected.
-func storeVersion(data []byte, key string) (int, error) {
-	var head map[string]jsontext.Value
-	if err := json.Unmarshal(data, &head, jsontext.AllowInvalidUTF8(true)); err != nil {
-		return 0, fmt.Errorf("invalid JSON object: %w", err)
-	}
-	raw, ok := head[key]
+// storeVersion reads a version member of a document read by pyjson.Load.
+// Like Python's "type(v) is int" check it accepts only an integer
+// literal: 1.0, true or "1" are rejected.
+func storeVersion(doc jsontext.Value, key string) (int, error) {
+	raw, ok := pyjson.Get(doc, key)
 	if !ok {
 		if key == "schema_version" {
 			return 0, nil
