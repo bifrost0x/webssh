@@ -163,43 +163,50 @@ access their context; orphaned entries are pruned on the next context write.
 
 ## Host roles and where they are shown
 
-Every host has a role: Hypervisor, Backup, Storage, Containers, Documents,
+Every host has a role: Hypervisor, Backup, Storage, Container host, Documents,
 Photos, Media, Cloud, Smart home, Network, Monitoring, Development, Passwords,
 Database, Web, Workstation or Server. WebSSH works it out in the browser from
 the platform and services that the connect-time probe stored (see above); it
-adds no request, no probe and no setting on the server. The rules are checked
-in this order, and the first one that matches names the role. Each rule matches
-on the platform or on a service:
+adds no request, no probe and no setting on the server. The first of these
+steps that matches names the role:
 
-1. Hypervisor: Proxmox VE.
-2. Backup: Proxmox Backup Server.
-3. Storage: TrueNAS, Unraid, Synology, QNAP.
-4. Photos: Immich, PhotoPrism.
-5. Documents: Paperless.
-6. Cloud: Nextcloud, ownCloud, Seafile.
-7. Media: Jellyfin, Plex, Emby.
-8. Smart home: Home Assistant.
-9. Network: OPNsense, pfSense, OpenWrt, MikroTik, Cisco, Ubiquiti, or
-   Pi-hole, AdGuard.
-10. Monitoring: Grafana, Prometheus, Uptime Kuma, Zabbix, Netdata.
-11. Development: Gitea, GitLab.
-12. Passwords: Vaultwarden.
-13. Database: MariaDB, PostgreSQL, Redis, MongoDB, InfluxDB.
-14. Web: nginx, Apache, Caddy, Traefik, Nginx Proxy Manager, HAProxy.
-15. Containers: the Docker platform, or Docker, Podman, Portainer, k3s,
-    Watchtower, Dozzle as the only services.
+1. The platform: Hypervisor for Proxmox VE, Backup for Proxmox Backup Server,
+   Storage for TrueNAS, Unraid, Synology and QNAP, Smart home for Home
+   Assistant, Network for OPNsense, pfSense, OpenWrt, MikroTik, Cisco and
+   Ubiquiti, Container host for the Docker platform.
+2. A container runtime or its tooling among the services (Docker, Podman,
+   Portainer, k3s, Watchtower, Dozzle): Container host, whichever
+   applications the host runs.
+3. The services, in this order:
+   1. Photos: Immich, PhotoPrism.
+   2. Documents: Paperless.
+   3. Cloud: Nextcloud, ownCloud, Seafile.
+   4. Media: Jellyfin, Plex, Emby.
+   5. Smart home: Home Assistant.
+   6. Network: Pi-hole, AdGuard.
+   7. Monitoring: Grafana, Prometheus, Uptime Kuma, Zabbix, Netdata.
+   8. Development: Gitea, GitLab.
+   9. Passwords: Vaultwarden.
+   10. Database: MariaDB, PostgreSQL, Redis, MongoDB, InfluxDB.
+   11. Web: nginx, Apache, Caddy, Traefik, Nginx Proxy Manager, HAProxy.
 
-Because a service rule can rank above a platform rule, a router platform that
-also runs Jellyfin is a Media host, not a Network host. Rules 13 to 15 describe
-hosts that run nothing but infrastructure: Database allows only databases, web
-servers and container tools, Web only web servers and container tools, and
-Containers only container tools. One more application and the host does not
-match them. VPN and overlay networks (WireGuard, Tailscale, ZeroTier, OpenVPN)
-say how a host is reached, not what it is: the rules ignore them, and their
-logos come after all other services. A host that boots into a graphical target
-and matched nothing is a Workstation, also when it runs a VPN overlay; another
-host that runs nothing but VPN overlays is a Network host; anything else is a
-Server.
+So a platform always beats the services: a router platform that also runs
+Jellyfin is a Network host, and a TrueNAS or Proxmox host that runs Docker
+keeps its Storage or Hypervisor role. On any other host a container runtime
+makes it a Container host, also when it runs Paperless or Immich in
+containers; the same applications without a runtime still give Documents or
+Photos. The same goes for a graphical host. Database and Web describe hosts
+that run nothing but infrastructure: Database allows only databases and web
+servers, Web only web servers. One more application and the host does not
+match them. VPN and overlay networks (WireGuard, Tailscale, ZeroTier,
+OpenVPN) say how a host is reached, not what it is: the rules ignore them,
+and their logos come after all other services. A host that boots into a
+graphical target and matched nothing is a Workstation, also when it runs a
+VPN overlay; another host that runs nothing but VPN overlays is a Network
+host; anything else is a Server. A role chosen by hand always wins.
+
+On a Container host the applications come first among the logos and the
+runtime follows them.
 
 Only a chosen platform, a detected one or a distribution family derived from
 detection (for example Debian-based) can name a role through the platform. A

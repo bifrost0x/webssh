@@ -361,7 +361,7 @@ window.i18n.registerLocales({
         'role.hypervisor': 'Hipervisor',
         'role.backup': 'Copias',
         'role.storage': 'Almacenamiento',
-        'role.container': 'Contenedores',
+        'role.container': 'Host de contenedores',
         'role.docs': 'Documentos',
         'role.photos': 'Fotos',
         'role.media': 'Multimedia',

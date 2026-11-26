@@ -360,7 +360,7 @@ window.i18n.registerLocales({
         'role.hypervisor': 'Trình ảo hóa',
         'role.backup': 'Sao lưu',
         'role.storage': 'Lưu trữ',
-        'role.container': 'Container',
+        'role.container': 'Máy chủ container',
         'role.docs': 'Tài liệu',
         'role.photos': 'Ảnh',
         'role.media': 'Đa phương tiện',

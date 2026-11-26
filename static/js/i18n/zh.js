@@ -360,7 +360,7 @@ window.i18n.registerLocales({
         'role.hypervisor': '虚拟化主机',
         'role.backup': '备份',
         'role.storage': '存储',
-        'role.container': '容器',
+        'role.container': '容器主机',
         'role.docs': '文档',
         'role.photos': '照片',
         'role.media': '媒体',

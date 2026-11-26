@@ -365,7 +365,7 @@ window.i18n.registerLocales({
         'role.hypervisor': 'Hypervisor',
         'role.backup': 'Backup',
         'role.storage': 'Speicher',
-        'role.container': 'Container',
+        'role.container': 'Container-Host',
         'role.docs': 'Dokumente',
         'role.photos': 'Fotos',
         'role.media': 'Medien',
