@@ -2,6 +2,8 @@ package stepup
 
 import (
 	"context"
+	json "encoding/json/v2"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -179,5 +181,27 @@ func TestStatusRoute(t *testing.T) {
 	}
 	if w := post(`{"intent":"` + c.Intent + `"}`); w.Code != http.StatusGone || !strings.Contains(w.Body.String(), "step_up_expired") {
 		t.Fatalf("claimed: %d %s", w.Code, w.Body)
+	}
+	// The bodies of account_step_up_routes.oidc_step_up_status, member for
+	// member.
+	c2, err := e.svc.Begin(t.Context(), p, principal.ActionKeyReplace, "k2", ChannelAccount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]map[string]any{
+		"pending": {"status": "pending"},
+		"expired": {"error": "Step-up authentication failed", "code": "step_up_expired"},
+	}
+	for name, body := range map[string]string{"pending": `{"intent":"` + c2.Intent + `"}`, "expired": `{}`} {
+		var got map[string]any
+		if err := json.Unmarshal(post(body).Body.Bytes(), &got); err != nil || !maps.Equal(got, want[name]) {
+			t.Fatalf("%s: %v %v", name, got, err)
+		}
+	}
+	grant2, _ := e.svc.ProveExternal(t.Context(), p, c2.Intent, "oidc", auth.AssuranceBasic)
+	var got map[string]any
+	if err := json.Unmarshal(post(`{"intent":"`+c2.Intent+`"}`).Body.Bytes(), &got); err != nil ||
+		!maps.Equal(got, map[string]any{"status": "completed", "grant": grant2, "expires_in": float64(300)}) {
+		t.Fatalf("completed: %v %v", got, err)
 	}
 }
