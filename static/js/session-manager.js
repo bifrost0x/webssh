@@ -2589,7 +2589,7 @@ const SessionManager = {
         const shown = [...(frame?.querySelectorAll('.ws-window-services > .session-identity-service') || [])];
         const ids = identity?.services || [];
         const services = shown.map(tile => tile.getAttribute('data-service')).join() === ids.join()
-            ? shown : window.HostPlatform.serviceTiles(ids, 'session-identity-service', document);
+            ? shown : (window.HostPlatform?.serviceTiles?.(ids, 'session-identity-service', document) || []);
         this.windowDesktop.setChrome(index, {
             title: this.getDisplayLabel(sessionId, session.username, session.host),
             subtitle: parts.join(' · '),
@@ -2605,7 +2605,7 @@ const SessionManager = {
         if (holder) {
             const subtitle = frame.querySelector('.ws-window-subtitle');
             const lead = subtitle?.querySelector('.ws-window-identity');
-            window.HostPlatform.keepTilesFitting(holder, lead && {lead, within: subtitle},
+            window.HostPlatform?.keepTilesFitting?.(holder, lead && {lead, within: subtitle},
                 frame.querySelector('.ws-window-title'));
         }
     },
