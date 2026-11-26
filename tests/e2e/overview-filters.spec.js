@@ -135,24 +135,24 @@ test('detected services show on host cards and filter the overview from the plat
     const {ids} = await openWithReadiness(page);
     await page.evaluate(([first, second]) => {
         ProfileManager.setProfiles(ProfileManager.profiles.map(profile => profile.id === first
-            ? {...profile, detected_services: ['docker', 'nextcloud', 'nginx', 'postgresql', 'grafana', 'redis', 'mariadb']}
-            : profile.id === second ? {...profile, detected_services: ['docker']} : profile));
+            ? {...profile, detected_services: ['nextcloud', 'nginx', 'postgresql', 'grafana', 'redis', 'mariadb']}
+            : profile.id === second ? {...profile, detected_services: ['grafana']} : profile));
     }, ids);
     const card = page.locator(`#overviewHostList .od-host[data-host-id="${ids[0]}"]`);
     // Logos, not text: the service that names the role leads, five at most, the rest counted.
     const chips = card.locator('.od-service-chip');
     await expect(chips).toHaveCount(6);
     expect(await chips.evaluateAll(nodes => nodes.slice(0, 5).map(node => [node.dataset.service, node.getAttribute('aria-label')])))
-        .toEqual([['nextcloud', 'Nextcloud'], ['grafana', 'Grafana'], ['docker', 'Docker'], ['mariadb', 'MariaDB'], ['nginx', 'nginx']]);
+        .toEqual([['nextcloud', 'Nextcloud'], ['grafana', 'Grafana'], ['mariadb', 'MariaDB'], ['nginx', 'nginx'], ['postgresql', 'PostgreSQL']]);
     await expect(chips.first()).toHaveAttribute('title', /^Nextcloud · Detected when connecting$/);
     await expect(chips.first().locator('.host-service-icon')).toHaveCount(1);
-    await expect(chips.last()).toHaveText('+2');
-    await expect(chips.last()).toHaveAttribute('title', 'PostgreSQL, Redis');
-    const docker = page.locator('#odPlatforms .od-service[data-service="docker"]');
-    await expect(docker.locator('.od-count')).toHaveText('2');
-    await docker.click();
+    await expect(chips.last()).toHaveText('+1');
+    await expect(chips.last()).toHaveAttribute('title', 'Redis');
+    const grafana = page.locator('#odPlatforms .od-service[data-service="grafana"]');
+    await expect(grafana.locator('.od-count')).toHaveText('2');
+    await grafana.click();
     await expect(page.locator('#overviewHostList .od-host')).toHaveCount(2);
-    await expect(page.locator('#overviewHostFilter')).toContainText('Docker');
+    await expect(page.locator('#overviewHostFilter')).toContainText('Grafana');
     await page.locator('#overviewHostFilter').click();
     await expect(page.locator('#overviewHostList .od-host')).toHaveCount(ids.length);
 });

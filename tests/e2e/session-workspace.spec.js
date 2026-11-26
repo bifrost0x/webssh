@@ -3819,11 +3819,11 @@ async function seedIdentityTabs(page) {
             jump_host_id: null, socks_proxy_id: null, detection_state: 'detected', ...facts});
         const hosts = [
             host('pve', 'pve1', {detected_platform: 'proxmox'}),
-            host('paper', 'Paperless', {detected_platform: 'ubuntu', detected_services: ['docker', 'postgresql', 'redis', 'paperless']}),
+            host('paper', 'Paperless', {detected_platform: 'ubuntu', detected_services: ['postgresql', 'redis', 'paperless']}),
             host('cloud', 'Nextcloud', {detected_platform: 'debian', detected_services: ['apache', 'mariadb', 'nextcloud']}),
             host('fw', 'opnsense', {detected_platform: 'opnsense', detected_services: ['wireguard', 'unbound']}),
             // A name too long for any logo beside it.
-            host('archive', 'Paperless archive copy', {detected_platform: 'ubuntu', detected_services: ['paperless', 'docker']}),
+            host('archive', 'Paperless archive copy', {detected_platform: 'ubuntu', detected_services: ['paperless']}),
         ];
         ProfileManager.setProfiles(hosts);
         hosts.forEach(profile => SessionManager.createSession({session_id: `identity-${profile.id}`, host: profile.host,
@@ -3838,7 +3838,7 @@ test('workspace tabs carry the role and main services of their saved host', asyn
     await login(page);
     await seedIdentityTabs(page);
     const tab = id => page.locator(`#tab-identity-${id}`);
-    const expected = {pve: ['hypervisor', []], paper: ['docs', ['paperless', 'docker']], cloud: ['cloud', ['nextcloud', 'apache']],
+    const expected = {pve: ['hypervisor', []], paper: ['docs', ['paperless', 'postgresql']], cloud: ['cloud', ['nextcloud', 'apache']],
         fw: ['network', ['unbound', 'wireguard']]};
     for (const [id, [role, services]] of Object.entries(expected)) {
         await expect(tab(id)).toHaveAttribute('data-role', role);
@@ -3879,7 +3879,7 @@ test('workspace tabs carry the role and main services of their saved host', asyn
     for (const id of ['cloud', 'fw', 'paper', 'pve']) expect(byId[id].cut, id).toBe(false);
     expect(byId.cloud.tiles).toBeGreaterThanOrEqual(1);
     expect(byId.archive.tiles).toBe(0);
-    await expect(tab('archive').getByRole('img', {name: 'Docker'})).toHaveCount(0);
+    await expect(tab('archive').getByRole('img', {name: 'Paperless'})).toHaveCount(0);
     await expect(tab('paper').locator('.tab-role')).toHaveText('Documents');
     await expect(tab('other')).not.toHaveAttribute('data-role', /.*/);
     await expect(tab('other').locator('.tab-services, .tab-role')).toHaveCount(0);
@@ -3887,7 +3887,7 @@ test('workspace tabs carry the role and main services of their saved host', asyn
     // A new detection result updates the tab in place.
     await page.evaluate(() => { document.getElementById('tab-identity-paper').__marker = true; });
     await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'paper'
-        ? {...profile, detected_services: ['jellyfin', 'docker']} : profile))));
+        ? {...profile, detected_services: ['jellyfin', 'plex']} : profile))));
     await expect(tab('paper')).toHaveAttribute('data-role', 'media');
     await expect(tab('paper').locator('.tab-service')).toHaveCount(2);
     expect(await page.evaluate(() => document.getElementById('tab-identity-paper').__marker)).toBe(true);
