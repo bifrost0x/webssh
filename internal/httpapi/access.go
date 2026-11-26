@@ -28,6 +28,13 @@ func (h *Handler) lookupSession(w http.ResponseWriter, r *http.Request) (princip
 	if err == nil && p.Valid() {
 		return p, true
 	}
+	if fault.CodeOf(err) == fault.LDAPValidationInProgress {
+		// Another request checks the account against the directory; the
+		// browser retries after Retry-After (the Python before-request
+		// answer, JSON for pages too).
+		writeFault(w, r, h.log, err)
+		return principal.Principal{}, false
+	}
 	if err != nil && fault.CodeOf(err) != fault.AuthenticationNeeded {
 		h.log.ErrorContext(r.Context(), "session lookup failed", "err", err)
 		writeFault(w, r, h.log, fault.Wrap(fault.Unavailable, err, ""))

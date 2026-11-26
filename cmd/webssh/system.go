@@ -26,6 +26,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
 	"github.com/bifrost0x/webssh/internal/netpolicy"
 	"github.com/bifrost0x/webssh/internal/operations"
+	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/realtime"
 	"github.com/bifrost0x/webssh/internal/session"
 	"github.com/bifrost0x/webssh/internal/settings"
@@ -63,6 +64,11 @@ type optional struct {
 	persistent     hosts.PersistentSessions
 	featureReady   map[string]operations.Readiness
 	terminalRoutes terminal.SavedRoutes
+	// ldapStepUp offers the LDAP step-up proof; sessionGate runs before
+	// every authenticated request and realtime connection (LDAP
+	// revalidation). Both come from the area "ldap".
+	ldapStepUp  stepup.Directory
+	sessionGate func(ctx context.Context, p principal.Principal) error
 	// passkeyPlaceholder stores a passkey that never authenticates (end-to-
 	// end seed only).
 	//lint:ignore U1000 read by the end-to-end build (e2e.go)

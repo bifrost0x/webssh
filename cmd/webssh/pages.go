@@ -83,6 +83,8 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 		TOTPEnabled:              pg.active(ctx, "totp"),
 		RecoveryCodesEnabled:     pg.active(ctx, "recovery"),
 		HostKeyManagementEnabled: pg.cfg.Features.HostKeyManagement,
+		LDAPEnabled:              pg.active(ctx, "ldap"),
+		LDAPProviderID:           pg.cfg.LDAP.ProviderID,
 		Preview:                  previewNotice(u == nil),
 	}
 	if u == nil {
@@ -93,6 +95,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 		return httpapi.PageData{}, nil, err
 	}
 	d.User = httpapi.User{ID: u.acc.ID, Username: u.acc.Username, IsAdmin: u.p.IsAdmin, Authenticated: true}
+	d.LDAPManaged = u.acc.Managed == accounts.ManagedLDAP
 	d.Theme = page.Theme
 	d.BackgroundScope = page.ConnectionHistoryScope
 	d.WebSSHVersion = buildinfo.Read().Version
@@ -155,6 +158,7 @@ func (pg *pages) Login(w http.ResponseWriter, r *http.Request, status int, v aut
 		return
 	}
 	d.Flashes, d.AuthSource, d.MFARequired, d.MFAMethods = flashes(v.Flashes), v.AuthSource, v.MFARequired, v.MFAMethods
+	d.LDAPError = v.LDAPError
 	pg.write(w, r, status, httpapi.PageLogin, d)
 }
 
