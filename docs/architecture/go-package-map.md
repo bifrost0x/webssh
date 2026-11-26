@@ -10,7 +10,12 @@ The **Packages** table is machine-checked: `internal/architecture` fails when
 it differs from the package map in `internal/architecture/packagemap_test.go`.
 Packages that do not exist yet are listed so that the structure is agreed
 before the code is written. The phase column names the build phase that
-creates the package (G0, B1 to B8 of the project plan).
+creates the package (G0, B1 to B8 of the project plan; M1 for the preview
+milestone). The contracts between the packages built for M1 are in
+[m1-contracts.md](m1-contracts.md).
+
+Packages whose name ends in `test` hold test doubles. The architecture
+tests allow only test files to import them.
 
 The Go backend is built in parallel to the Python application and has its
 own data model ([ADR 0002](../adr/0002-parallel-build-with-one-time-migration.md)).
@@ -38,7 +43,8 @@ Existing installations are carried over once, automatically, by
 | Limits: connection and storage quotas | `internal/quota` |
 | Platforms: Windows service, systemd, data directory permissions | `internal/platform` |
 | Upgrade from the Python release: one-time migration of `DATA_DIR`, restore of Python backups, removal of legacy data | `internal/migrate/legacy`, `internal/fernet` |
-| Runtime: process, HTTP, realtime | `cmd/webssh`, `internal/httpapi`, `internal/realtime`, `internal/realtime/protocol`, `internal/config`, `internal/store`, `internal/fault`, `internal/buildinfo` |
+| Runtime: process, HTTP, realtime | `cmd/webssh`, `internal/httpapi`, `internal/realtime`, `internal/realtime/protocol`, `internal/config`, `internal/store`, `internal/fault`, `internal/principal`, `internal/buildinfo` |
+| Testing: test doubles and the end-to-end seed | `internal/principal/principaltest`, `internal/realtime/protocol/protocoltest`, `internal/store/storetest`, `internal/e2eseed` |
 
 ## Packages
 
@@ -58,11 +64,15 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/store` | foundation | SQLite access, transactions, versioned schema migrations; the only store for user data (no per-user files), each capability owns its tables | – | B1 |
 | `internal/fernet` | foundation | Fernet tokens (tier C, official vectors), read only by the legacy migration | – | B1 |
 | `internal/keyring` | foundation | Per-purpose keys from `SECRET_KEY` (HKDF), AEAD for every secret Go writes, rotation, browser-local namespace derivation ([ADR 0008](../adr/0008-keyring-for-secrets-at-rest.md)) | – | B1 |
-| `internal/fault` | foundation | One error model for SSH, file, transfer and storage failures | – | B1 |
+| `internal/fault` | foundation | One error model: the catalog of stable codes, safe messages and their HTTP status, used by every transport ([M1 contracts](m1-contracts.md)) | – | B1 |
+| `internal/principal` | foundation | Who acts: the principal of a request or connection in the context, session revocations, the step-up action catalog ([M1 contracts](m1-contracts.md)) | – | M1 |
 | `internal/otp` | foundation | HOTP/TOTP (RFC 4226/6238, tier C) | – | B2 |
 | `internal/qrcode` | foundation | QR code generation for enrolment (tier C) | – | B2 |
 | `internal/ldapproto` | foundation | LDAP subset client, only if self-written (decided in B2) | – | B2 |
-| `internal/realtime/protocol` | foundation | Versioned realtime envelope and message type contract | – | B3 |
+| `internal/realtime/protocol` | foundation | Versioned realtime envelope, binary frames, close codes and the message type catalog, decoded strictly ([M1 contracts](m1-contracts.md)) | – | M1 |
+| `internal/principal/principaltest` | foundation | Test doubles: step-up service and revocation feed; imported by test files only | – | M1 |
+| `internal/realtime/protocol/protocoltest` | foundation | Test double of a realtime connection for capability handlers; imported by test files only | – | M1 |
+| `internal/store/storetest` | foundation | Throw-away databases for store tests; imported by test files only | – | M1 |
 | `internal/cron` | foundation | Cron expressions and schedules (tier C) | – | B6 |
 | `internal/platform` | foundation | Windows service, systemd notification, data directory owner, mode and ACLs | – | B8 |
 | `internal/session` | capability | Browser sessions: issue, validate, expire, revoke | – | B2 |
@@ -83,7 +93,7 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/ssh/remotecmd` | capability | Run one command on a connected host with time, output and input limits | `internal/ssh/client` | B3 |
 | `internal/terminal` | capability | Interactive shells: output flow, input budget, startup and post-connect commands, persistent tmux session names | `internal/ssh/client`, `internal/ssh/hostkey` | B3 |
 | `internal/hosts` | capability | Saved hosts and profiles, host catalog and identity, platform facts, profile exchange, workspace presets | `internal/ssh/client`, `internal/ssh/remotecmd` | B3 |
-| `internal/hostops` | capability | Server operations, discovery and reachability check behind their permission, runtime inventory, host context, notes (one model: saved host or none), session insights | `internal/ssh/client`, `internal/ssh/remotecmd` | B3 |
+| `internal/hostops` | capability | Server operations, discovery and reachability check behind their permission, runtime inventory, host context, notes (one model: saved host or none), session insights (M1: the note without a host and the minimal overview status) | `internal/ssh/client`, `internal/ssh/remotecmd` | B3 |
 | `internal/ssh/gateway` | capability | SSH gateway into WebSSH sessions, built on the shared dialer | `internal/ssh/client`, `internal/ssh/hostkey` | B3 |
 | `internal/ssh/tailscale` | capability | Tailscale SSH targets and shared-identity policy | `internal/ssh/client` | B3 |
 | `internal/files` | capability | Protocol-neutral file workspace, editor, backend registry, one preview path with the editor's decoding rule for SFTP and SMB | – | B4 |
@@ -95,12 +105,13 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/automation` | capability | Automations and permission jobs | `internal/ssh/client`, `internal/ssh/remotecmd`, `internal/vault` | B6 |
 | `internal/settings` | capability | Application and user settings, terminal appearance, onboarding | – | B1 |
 | `internal/backup` | capability | Go backup format (versioned manifest, SQLite, optional `SECRET_KEY`), strict restore, online backup, secret rotation, maintenance mode | – | B7 |
-| `internal/operations` | capability | Diagnostics, support report, security feature gates | – | B7 |
+| `internal/operations` | capability | Diagnostics, support report, security feature gates (M1: feature gates and their impact preview only) | – | B7 |
 | `internal/httpapi` | edge | HTTP server, routing, middleware (session, CSRF, origin, client address from `TRUSTED_PROXIES` and `TRUSTED_PROXY_CIDRS`, limits), health, static files and frontend | – | B1 |
 | `internal/jobs` | edge | Background job registry, single-owner execution | – | B1 |
 | `internal/migrate/legacy` | edge | One-time, verified migration of a Python `DATA_DIR` and of Python backups (lenient paths); registry of steps per entity; `migrate --replace` and `legacy purge` | – | B1 |
 | `internal/realtime` | edge | Native WebSocket endpoint, same-origin and allowlist check on every upgrade, connection lifecycle, dispatch | – | B3 |
 | `internal/admincli` | edge | Administrator subcommands of `webssh` | – | B7 |
+| `internal/e2eseed` | edge | Applies the end-to-end seed to the Go stores and provides the test-only hooks; imported only by `cmd/webssh/e2e.go` (build tag `e2e`), never part of the release binary | – | M1 |
 
 `internal/migrate/legacy` is the only package that knows the Python schema
 and file layout. It reads them and writes through the capabilities' stores.
@@ -132,7 +143,7 @@ kind-restricted peers.
 | File backends | `internal/files` | `internal/files/sftp`, `internal/files/smb` |
 | Sign-in providers | `internal/auth` | `internal/auth/local`, `internal/auth/ldap`, `internal/auth/oidc`, `internal/auth/github` |
 | Second factors | `internal/auth` | `internal/auth/totp`, `internal/auth/webauthn` |
-| Realtime message types | contract in `internal/realtime/protocol`, registry in `internal/realtime` | capability packages, in their `realtime.go` file |
+| Realtime message types | contract and catalog in `internal/realtime/protocol`, registry in `internal/realtime` | capability packages, in their `realtime.go` file |
 | Background jobs | `internal/jobs` | capability packages (automation, backup, audit retention) |
 | Migration steps per entity (read, write, verify) | `internal/migrate/legacy` | one file per entity in `internal/migrate/legacy` |
 

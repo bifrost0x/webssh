@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"maps"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"testing"
@@ -41,6 +42,21 @@ var debugPackages = []string{"expvar", "net/rpc", "net/http/pprof"}
 var transitiveTriggers = map[string]bool{
 	"net/http": true, "html/template": true, "os/exec": true,
 	"expvar": true, "net/rpc": true, "net/http/pprof": true,
+}
+
+// e2ePackage holds the end-to-end seed and test hooks. Only e2eEntryFile,
+// built with the tag "e2e", may import it; TestReleaseBuildExcludesE2E
+// checks that the untagged command does not reach it.
+const (
+	e2ePackage   = "internal/e2eseed"
+	e2eEntryFile = "cmd/webssh/e2e.go"
+)
+
+// isTestSupport reports whether a package holds test doubles (named like
+// net/http/httptest). Only test files and other test support packages may
+// import one.
+func isTestSupport(rel string) bool {
+	return strings.HasSuffix(path.Base(rel), "test") && rel != "internal/architecture"
 }
 
 // closureFunc returns the external packages an import pulls in, including
@@ -84,6 +100,10 @@ func checkImport(from string, r role, file, imp string, roles func(string) (role
 			return []string{fmt.Sprintf("imports %s, which is not in the package map", to)}
 		case !mayImport(from, r, to, target):
 			return []string{fmt.Sprintf("%s package must not import %s package %s", r.kind, target.kind, to)}
+		case isTestSupport(to) && !isTestSupport(from):
+			return []string{fmt.Sprintf("imports test support package %s; only test files may", to)}
+		case to == e2ePackage && from+"/"+file != e2eEntryFile:
+			return []string{fmt.Sprintf("imports %s; only %s (build tag e2e) may", to, e2eEntryFile)}
 		}
 		return nil
 	}
@@ -185,16 +205,18 @@ func TestPackageMapIsConsistent(t *testing.T) {
 func TestImportViolations(t *testing.T) {
 	t.Parallel()
 	roles := map[string]role{
-		"cmd/webssh":         {kind: entry},
-		"internal/codec":     {kind: foundation},
-		"internal/codec2":    {kind: foundation},
-		"internal/files":     {kind: capability},
-		"internal/files/smb": {kind: capability, uses: []string{"internal/netpolicy"}},
-		"internal/netpolicy": {kind: capability},
-		"internal/vault":     {kind: capability},
-		"internal/httpapi":   {kind: edge},
-		"internal/realtime":  {kind: edge},
-		"internal/proxy":     {kind: edge, uses: []string{"internal/httpapi"}},
+		"cmd/webssh":               {kind: entry},
+		"internal/codec":           {kind: foundation},
+		"internal/codec2":          {kind: foundation},
+		"internal/files":           {kind: capability},
+		"internal/files/smb":       {kind: capability, uses: []string{"internal/netpolicy"}},
+		"internal/netpolicy":       {kind: capability},
+		"internal/vault":           {kind: capability},
+		"internal/httpapi":         {kind: edge},
+		"internal/realtime":        {kind: edge},
+		"internal/proxy":           {kind: edge, uses: []string{"internal/httpapi"}},
+		"internal/codec/codectest": {kind: foundation},
+		"internal/e2eseed":         {kind: edge},
 	}
 	lookup := func(rel string) (role, bool) { r, ok := roles[rel]; return r, ok }
 	graph := depGraph{imports: map[string][]string{
@@ -256,6 +278,11 @@ func TestImportViolations(t *testing.T) {
 		{name: "os.StartProcess", pkg: "internal/vault", file: "service.go", imp: "os", calls: []string{"os.StartProcess"}, want: "uses os.StartProcess, which starts a process"},
 		{name: "syscall.ForkExec in listed file", pkg: "internal/netpolicy", file: "route_test_fixture.go", imp: "syscall", calls: []string{"syscall.ForkExec"}, want: "uses syscall.ForkExec"},
 		{name: "other standard library", pkg: "internal/codec", file: "codec.go", imp: "crypto/hmac"},
+		{name: "production code imports test support", pkg: "internal/vault", file: "service.go", imp: mod("internal/codec/codectest"), want: "only test files may"},
+		{name: "test support imports its parent", pkg: "internal/codec/codectest", file: "fake.go", imp: mod("internal/codec")},
+		{name: "e2e seed from the tagged entry file", pkg: "cmd/webssh", file: "e2e.go", imp: mod("internal/e2eseed")},
+		{name: "e2e seed from another entry file", pkg: "cmd/webssh", file: "main.go", imp: mod("internal/e2eseed"), want: "only cmd/webssh/e2e.go"},
+		{name: "e2e seed from an edge package", pkg: "internal/httpapi", file: "server.go", imp: mod("internal/e2eseed"), want: "edge package must not import edge package internal/e2eseed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
