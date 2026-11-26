@@ -1,0 +1,940 @@
+{
+ "appearance": [
+  {
+   "in": "{}",
+   "ok": true
+  },
+  {
+   "in": "[]",
+   "ok": false
+  },
+  {
+   "in": "null",
+   "ok": false
+  },
+  {
+   "in": "\"x\"",
+   "ok": false
+  },
+  {
+   "in": "{\"background\": \"#00ff00\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"background\": \"#00FF0\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"background\": null}",
+   "ok": true
+  },
+  {
+   "in": "{\"background\": \"#00ff00 \"}",
+   "ok": false
+  },
+  {
+   "in": "{\"foreground\": \"#abcdef\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"cursor_color\": \"#ABCDEF\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"selection_background\": \"red\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"selection_background\": 1}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_family\": \"Fira Code\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"font_family\": null}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_family\": \"\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_family\": \"Fira;Code\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_family\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"font_family\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_family\": \"Fira\\nCode\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_family\": \"Fïra\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_size\": 8}",
+   "ok": true
+  },
+  {
+   "in": "{\"font_size\": 32}",
+   "ok": true
+  },
+  {
+   "in": "{\"font_size\": 7}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_size\": 33}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_size\": null}",
+   "ok": true
+  },
+  {
+   "in": "{\"font_size\": 12.0}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_size\": true}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_size\": \"12\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"line_height\": 1}",
+   "ok": true
+  },
+  {
+   "in": "{\"line_height\": 2}",
+   "ok": true
+  },
+  {
+   "in": "{\"line_height\": 1.5}",
+   "ok": true
+  },
+  {
+   "in": "{\"line_height\": 0.99}",
+   "ok": false
+  },
+  {
+   "in": "{\"line_height\": 2.01}",
+   "ok": false
+  },
+  {
+   "in": "{\"line_height\": true}",
+   "ok": false
+  },
+  {
+   "in": "{\"line_height\": null}",
+   "ok": false
+  },
+  {
+   "in": "{\"line_height\": 1e0}",
+   "ok": true
+  },
+  {
+   "in": "{\"line_height\": 1e400}",
+   "ok": false
+  },
+  {
+   "in": "{\"letter_spacing\": -1}",
+   "ok": true
+  },
+  {
+   "in": "{\"letter_spacing\": 3}",
+   "ok": true
+  },
+  {
+   "in": "{\"letter_spacing\": -1.5}",
+   "ok": false
+  },
+  {
+   "in": "{\"letter_spacing\": 3.0}",
+   "ok": true
+  },
+  {
+   "in": "{\"letter_spacing\": false}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_weight\": \"normal\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"font_weight\": \"bold\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"font_weight\": \"bolder\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_weight\": null}",
+   "ok": false
+  },
+  {
+   "in": "{\"background_opacity\": 0}",
+   "ok": true
+  },
+  {
+   "in": "{\"background_opacity\": 100}",
+   "ok": true
+  },
+  {
+   "in": "{\"background_opacity\": 101}",
+   "ok": false
+  },
+  {
+   "in": "{\"background_opacity\": 50.0}",
+   "ok": false
+  },
+  {
+   "in": "{\"background_opacity\": -1}",
+   "ok": false
+  },
+  {
+   "in": "{\"background_opacity\": false}",
+   "ok": false
+  },
+  {
+   "in": "{\"cursor_style\": \"block\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"cursor_style\": \"underline\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"cursor_style\": \"bar\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"cursor_style\": \"beam\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"cursor_blink\": true}",
+   "ok": true
+  },
+  {
+   "in": "{\"cursor_blink\": 1}",
+   "ok": false
+  },
+  {
+   "in": "{\"cursor_blink\": null}",
+   "ok": false
+  },
+  {
+   "in": "{\"unknown\": 1}",
+   "ok": false
+  },
+  {
+   "in": "{\"font_size\": 14, \"cursor_blink\": false, \"line_height\": 1.2}",
+   "ok": true
+  }
+ ],
+ "panels": [
+  {
+   "in": "null",
+   "ok": true,
+   "known": "null"
+  },
+  {
+   "in": "[]",
+   "ok": true,
+   "known": "null"
+  },
+  {
+   "in": "{}",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "\"x\"",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[null]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4}]",
+   "ok": true,
+   "known": "[{\"id\": \"hosts\", \"w\": 4}]"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4, \"h\": null}]",
+   "ok": true,
+   "known": "[{\"h\": null, \"id\": \"hosts\", \"w\": 4}]"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4, \"h\": 8}]",
+   "ok": true,
+   "known": "[{\"h\": 8, \"id\": \"hosts\", \"w\": 4}]"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4, \"h\": 160}]",
+   "ok": true,
+   "known": "[{\"h\": 160, \"id\": \"hosts\", \"w\": 4}]"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4, \"h\": 7}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4, \"h\": 161}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 3}]",
+   "ok": true,
+   "known": "[{\"id\": \"hosts\", \"w\": 3}]"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 12}]",
+   "ok": true,
+   "known": "[{\"id\": \"hosts\", \"w\": 12}]"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 2}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 13}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4.0}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": true}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\"}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"w\": 4}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"nope\", \"w\": 4}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": 1, \"w\": 4}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4, \"hidden\": true}]",
+   "ok": true,
+   "known": "[{\"hidden\": true, \"id\": \"hosts\", \"w\": 4}]"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4, \"hidden\": null}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4, \"hidden\": 0}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4, \"extra\": 1}]",
+   "ok": false,
+   "known": "null"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4}, {\"id\": \"hosts\", \"w\": 5}]",
+   "ok": false,
+   "known": "[{\"id\": \"hosts\", \"w\": 4}]"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4}, {\"id\": \"kpis\", \"w\": 6, \"h\": null, \"hidden\": false}]",
+   "ok": true,
+   "known": "[{\"id\": \"hosts\", \"w\": 4}, {\"h\": null, \"hidden\": false, \"id\": \"kpis\", \"w\": 6}]"
+  },
+  {
+   "in": "[{\"id\": \"kpis\", \"w\": 4}, {\"id\": \"topology\", \"w\": 4}, {\"id\": \"hosts\", \"w\": 4}, {\"id\": \"attention\", \"w\": 4}, {\"id\": \"automation\", \"w\": 4}, {\"id\": \"platforms\", \"w\": 4}, {\"id\": \"activity\", \"w\": 4}, {\"id\": \"continue\", \"w\": 4}, {\"id\": \"agents\", \"w\": 4}]",
+   "ok": true,
+   "known": "[{\"id\": \"kpis\", \"w\": 4}, {\"id\": \"topology\", \"w\": 4}, {\"id\": \"hosts\", \"w\": 4}, {\"id\": \"attention\", \"w\": 4}, {\"id\": \"automation\", \"w\": 4}, {\"id\": \"platforms\", \"w\": 4}, {\"id\": \"activity\", \"w\": 4}, {\"id\": \"continue\", \"w\": 4}, {\"id\": \"agents\", \"w\": 4}]"
+  },
+  {
+   "in": "[{\"id\": \"kpis\", \"w\": 4}, {\"id\": \"topology\", \"w\": 4}, {\"id\": \"hosts\", \"w\": 4}, {\"id\": \"attention\", \"w\": 4}, {\"id\": \"automation\", \"w\": 4}, {\"id\": \"platforms\", \"w\": 4}, {\"id\": \"activity\", \"w\": 4}, {\"id\": \"continue\", \"w\": 4}, {\"id\": \"agents\", \"w\": 4}, {\"id\": \"kpis\", \"w\": 4}]",
+   "ok": false,
+   "known": "[{\"id\": \"kpis\", \"w\": 4}, {\"id\": \"topology\", \"w\": 4}, {\"id\": \"hosts\", \"w\": 4}, {\"id\": \"attention\", \"w\": 4}, {\"id\": \"automation\", \"w\": 4}, {\"id\": \"platforms\", \"w\": 4}, {\"id\": \"activity\", \"w\": 4}, {\"id\": \"continue\", \"w\": 4}, {\"id\": \"agents\", \"w\": 4}]"
+  },
+  {
+   "in": "[{\"id\": \"hosts\", \"w\": 4}, {\"id\": \"future\", \"w\": 4}, {\"id\": \"kpis\", \"w\": 99}, {\"id\": \"hosts\", \"w\": 6}]",
+   "ok": false,
+   "known": "[{\"id\": \"hosts\", \"w\": 4}]"
+  }
+ ],
+ "dismissed": [
+  {
+   "in": "[]",
+   "ok": true,
+   "known": []
+  },
+  {
+   "in": "null",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "{}",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "\"x\"",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "[1]",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "[\"host-keys:abc\"]",
+   "ok": true,
+   "known": [
+    "host-keys:abc"
+   ]
+  },
+  {
+   "in": "[\"host-keys:\"]",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "[\"host-keys\"]",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "[\":abc\"]",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "[\"nope:abc\"]",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "[\"host-keys:a-b_c.d\"]",
+   "ok": true,
+   "known": [
+    "host-keys:a-b_c.d"
+   ]
+  },
+  {
+   "in": "[\"host-keys:a b\"]",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "[\"host-keys:a:b\"]",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "[\"host-keys:äö\"]",
+   "ok": true,
+   "known": [
+    "host-keys:äö"
+   ]
+  },
+  {
+   "in": "[\"host-keys:٣\"]",
+   "ok": true,
+   "known": [
+    "host-keys:٣"
+   ]
+  },
+  {
+   "in": "[\"host-keys:abc\", \"host-keys:abc\"]",
+   "ok": false,
+   "known": [
+    "host-keys:abc"
+   ]
+  },
+  {
+   "in": "[\"unreachable:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]",
+   "ok": true,
+   "known": [
+    "unreachable:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ]
+  },
+  {
+   "in": "[\"unreachable:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]",
+   "ok": false,
+   "known": []
+  },
+  {
+   "in": "[\"reboot:x\", \"security-updates:y\", \"run-failed:z\", \"schedule-review:w\", \"credentials:v\", \"jump-missing:u\", \"socks-missing:t\"]",
+   "ok": true,
+   "known": [
+    "reboot:x",
+    "security-updates:y",
+    "run-failed:z",
+    "schedule-review:w",
+    "credentials:v",
+    "jump-missing:u",
+    "socks-missing:t"
+   ]
+  },
+  {
+   "in": "[\"host-keys:0\", \"host-keys:1\", \"host-keys:2\", \"host-keys:3\", \"host-keys:4\", \"host-keys:5\", \"host-keys:6\", \"host-keys:7\", \"host-keys:8\", \"host-keys:9\", \"host-keys:10\", \"host-keys:11\", \"host-keys:12\", \"host-keys:13\", \"host-keys:14\", \"host-keys:15\", \"host-keys:16\", \"host-keys:17\", \"host-keys:18\", \"host-keys:19\", \"host-keys:20\", \"host-keys:21\", \"host-keys:22\", \"host-keys:23\", \"host-keys:24\", \"host-keys:25\", \"host-keys:26\", \"host-keys:27\", \"host-keys:28\", \"host-keys:29\", \"host-keys:30\", \"host-keys:31\", \"host-keys:32\", \"host-keys:33\", \"host-keys:34\", \"host-keys:35\", \"host-keys:36\", \"host-keys:37\", \"host-keys:38\", \"host-keys:39\", \"host-keys:40\", \"host-keys:41\", \"host-keys:42\", \"host-keys:43\", \"host-keys:44\", \"host-keys:45\", \"host-keys:46\", \"host-keys:47\", \"host-keys:48\", \"host-keys:49\", \"host-keys:50\", \"host-keys:51\", \"host-keys:52\", \"host-keys:53\", \"host-keys:54\", \"host-keys:55\", \"host-keys:56\", \"host-keys:57\", \"host-keys:58\", \"host-keys:59\", \"host-keys:60\", \"host-keys:61\", \"host-keys:62\", \"host-keys:63\", \"host-keys:64\", \"host-keys:65\", \"host-keys:66\", \"host-keys:67\", \"host-keys:68\", \"host-keys:69\", \"host-keys:70\", \"host-keys:71\", \"host-keys:72\", \"host-keys:73\", \"host-keys:74\", \"host-keys:75\", \"host-keys:76\", \"host-keys:77\", \"host-keys:78\", \"host-keys:79\", \"host-keys:80\", \"host-keys:81\", \"host-keys:82\", \"host-keys:83\", \"host-keys:84\", \"host-keys:85\", \"host-keys:86\", \"host-keys:87\", \"host-keys:88\", \"host-keys:89\", \"host-keys:90\", \"host-keys:91\", \"host-keys:92\", \"host-keys:93\", \"host-keys:94\", \"host-keys:95\", \"host-keys:96\", \"host-keys:97\", \"host-keys:98\", \"host-keys:99\"]",
+   "ok": true,
+   "known": [
+    "host-keys:0",
+    "host-keys:1",
+    "host-keys:2",
+    "host-keys:3",
+    "host-keys:4",
+    "host-keys:5",
+    "host-keys:6",
+    "host-keys:7",
+    "host-keys:8",
+    "host-keys:9",
+    "host-keys:10",
+    "host-keys:11",
+    "host-keys:12",
+    "host-keys:13",
+    "host-keys:14",
+    "host-keys:15",
+    "host-keys:16",
+    "host-keys:17",
+    "host-keys:18",
+    "host-keys:19",
+    "host-keys:20",
+    "host-keys:21",
+    "host-keys:22",
+    "host-keys:23",
+    "host-keys:24",
+    "host-keys:25",
+    "host-keys:26",
+    "host-keys:27",
+    "host-keys:28",
+    "host-keys:29",
+    "host-keys:30",
+    "host-keys:31",
+    "host-keys:32",
+    "host-keys:33",
+    "host-keys:34",
+    "host-keys:35",
+    "host-keys:36",
+    "host-keys:37",
+    "host-keys:38",
+    "host-keys:39",
+    "host-keys:40",
+    "host-keys:41",
+    "host-keys:42",
+    "host-keys:43",
+    "host-keys:44",
+    "host-keys:45",
+    "host-keys:46",
+    "host-keys:47",
+    "host-keys:48",
+    "host-keys:49",
+    "host-keys:50",
+    "host-keys:51",
+    "host-keys:52",
+    "host-keys:53",
+    "host-keys:54",
+    "host-keys:55",
+    "host-keys:56",
+    "host-keys:57",
+    "host-keys:58",
+    "host-keys:59",
+    "host-keys:60",
+    "host-keys:61",
+    "host-keys:62",
+    "host-keys:63",
+    "host-keys:64",
+    "host-keys:65",
+    "host-keys:66",
+    "host-keys:67",
+    "host-keys:68",
+    "host-keys:69",
+    "host-keys:70",
+    "host-keys:71",
+    "host-keys:72",
+    "host-keys:73",
+    "host-keys:74",
+    "host-keys:75",
+    "host-keys:76",
+    "host-keys:77",
+    "host-keys:78",
+    "host-keys:79",
+    "host-keys:80",
+    "host-keys:81",
+    "host-keys:82",
+    "host-keys:83",
+    "host-keys:84",
+    "host-keys:85",
+    "host-keys:86",
+    "host-keys:87",
+    "host-keys:88",
+    "host-keys:89",
+    "host-keys:90",
+    "host-keys:91",
+    "host-keys:92",
+    "host-keys:93",
+    "host-keys:94",
+    "host-keys:95",
+    "host-keys:96",
+    "host-keys:97",
+    "host-keys:98",
+    "host-keys:99"
+   ]
+  },
+  {
+   "in": "[\"host-keys:0\", \"host-keys:1\", \"host-keys:2\", \"host-keys:3\", \"host-keys:4\", \"host-keys:5\", \"host-keys:6\", \"host-keys:7\", \"host-keys:8\", \"host-keys:9\", \"host-keys:10\", \"host-keys:11\", \"host-keys:12\", \"host-keys:13\", \"host-keys:14\", \"host-keys:15\", \"host-keys:16\", \"host-keys:17\", \"host-keys:18\", \"host-keys:19\", \"host-keys:20\", \"host-keys:21\", \"host-keys:22\", \"host-keys:23\", \"host-keys:24\", \"host-keys:25\", \"host-keys:26\", \"host-keys:27\", \"host-keys:28\", \"host-keys:29\", \"host-keys:30\", \"host-keys:31\", \"host-keys:32\", \"host-keys:33\", \"host-keys:34\", \"host-keys:35\", \"host-keys:36\", \"host-keys:37\", \"host-keys:38\", \"host-keys:39\", \"host-keys:40\", \"host-keys:41\", \"host-keys:42\", \"host-keys:43\", \"host-keys:44\", \"host-keys:45\", \"host-keys:46\", \"host-keys:47\", \"host-keys:48\", \"host-keys:49\", \"host-keys:50\", \"host-keys:51\", \"host-keys:52\", \"host-keys:53\", \"host-keys:54\", \"host-keys:55\", \"host-keys:56\", \"host-keys:57\", \"host-keys:58\", \"host-keys:59\", \"host-keys:60\", \"host-keys:61\", \"host-keys:62\", \"host-keys:63\", \"host-keys:64\", \"host-keys:65\", \"host-keys:66\", \"host-keys:67\", \"host-keys:68\", \"host-keys:69\", \"host-keys:70\", \"host-keys:71\", \"host-keys:72\", \"host-keys:73\", \"host-keys:74\", \"host-keys:75\", \"host-keys:76\", \"host-keys:77\", \"host-keys:78\", \"host-keys:79\", \"host-keys:80\", \"host-keys:81\", \"host-keys:82\", \"host-keys:83\", \"host-keys:84\", \"host-keys:85\", \"host-keys:86\", \"host-keys:87\", \"host-keys:88\", \"host-keys:89\", \"host-keys:90\", \"host-keys:91\", \"host-keys:92\", \"host-keys:93\", \"host-keys:94\", \"host-keys:95\", \"host-keys:96\", \"host-keys:97\", \"host-keys:98\", \"host-keys:99\", \"host-keys:100\"]",
+   "ok": false,
+   "known": [
+    "host-keys:1",
+    "host-keys:2",
+    "host-keys:3",
+    "host-keys:4",
+    "host-keys:5",
+    "host-keys:6",
+    "host-keys:7",
+    "host-keys:8",
+    "host-keys:9",
+    "host-keys:10",
+    "host-keys:11",
+    "host-keys:12",
+    "host-keys:13",
+    "host-keys:14",
+    "host-keys:15",
+    "host-keys:16",
+    "host-keys:17",
+    "host-keys:18",
+    "host-keys:19",
+    "host-keys:20",
+    "host-keys:21",
+    "host-keys:22",
+    "host-keys:23",
+    "host-keys:24",
+    "host-keys:25",
+    "host-keys:26",
+    "host-keys:27",
+    "host-keys:28",
+    "host-keys:29",
+    "host-keys:30",
+    "host-keys:31",
+    "host-keys:32",
+    "host-keys:33",
+    "host-keys:34",
+    "host-keys:35",
+    "host-keys:36",
+    "host-keys:37",
+    "host-keys:38",
+    "host-keys:39",
+    "host-keys:40",
+    "host-keys:41",
+    "host-keys:42",
+    "host-keys:43",
+    "host-keys:44",
+    "host-keys:45",
+    "host-keys:46",
+    "host-keys:47",
+    "host-keys:48",
+    "host-keys:49",
+    "host-keys:50",
+    "host-keys:51",
+    "host-keys:52",
+    "host-keys:53",
+    "host-keys:54",
+    "host-keys:55",
+    "host-keys:56",
+    "host-keys:57",
+    "host-keys:58",
+    "host-keys:59",
+    "host-keys:60",
+    "host-keys:61",
+    "host-keys:62",
+    "host-keys:63",
+    "host-keys:64",
+    "host-keys:65",
+    "host-keys:66",
+    "host-keys:67",
+    "host-keys:68",
+    "host-keys:69",
+    "host-keys:70",
+    "host-keys:71",
+    "host-keys:72",
+    "host-keys:73",
+    "host-keys:74",
+    "host-keys:75",
+    "host-keys:76",
+    "host-keys:77",
+    "host-keys:78",
+    "host-keys:79",
+    "host-keys:80",
+    "host-keys:81",
+    "host-keys:82",
+    "host-keys:83",
+    "host-keys:84",
+    "host-keys:85",
+    "host-keys:86",
+    "host-keys:87",
+    "host-keys:88",
+    "host-keys:89",
+    "host-keys:90",
+    "host-keys:91",
+    "host-keys:92",
+    "host-keys:93",
+    "host-keys:94",
+    "host-keys:95",
+    "host-keys:96",
+    "host-keys:97",
+    "host-keys:98",
+    "host-keys:99",
+    "host-keys:100"
+   ]
+  },
+  {
+   "in": "[\"host-keys:a\", 5, \"nope:b\", \"host-keys:a\", \"reboot:c\"]",
+   "ok": false,
+   "known": [
+    "host-keys:a",
+    "reboot:c"
+   ]
+  }
+ ],
+ "files": [
+  {
+   "in": "{\"schema_version\": 2}",
+   "ok": true
+  },
+  {
+   "in": "{}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 1}",
+   "ok": false
+  },
+  {
+   "in": "[]",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"theme\": \"removed-theme\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"schema_version\": 2, \"theme\": 1}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"start_page\": \"files\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_layout\": \"grid\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_reachability\": \"always\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_panels\": {}}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_panels\": [1, 2]}",
+   "ok": true
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_dismissed\": null}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_dismissed\": [5]}",
+   "ok": true
+  },
+  {
+   "in": "{\"schema_version\": 2, \"notepad\": 5}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"sync_terminal_directory\": 1}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"terminal_appearance\": {\"x\": 1}}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"confirm_session_close\": \"yes\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"disconnect_session_action\": \"reconnect\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"authentication_session_duration_minutes\": 45}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"authentication_session_duration_minutes\": 60}",
+   "ok": true
+  },
+  {
+   "in": "{\"schema_version\": 2, \"authentication_session_duration_minutes\": 60.0}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"intro_tour\": {\"any\": \"thing\"}, \"future_key\": [1, 2]}",
+   "ok": true
+  },
+  {
+   "in": "{\"schema_version\": 2, \"recovery_reviewed_at\": \"\"}",
+   "ok": true
+  }
+ ],
+ "updates": [
+  {
+   "in": "{\"schema_version\": 2, \"theme\": \"removed-theme\"}",
+   "ok": true
+  },
+  {
+   "in": "{\"schema_version\": 2, \"theme\": 1}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"start_page\": \"files\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_layout\": \"grid\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_reachability\": \"always\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_panels\": {}}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_panels\": [1, 2]}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_dismissed\": null}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_dismissed\": [5]}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"notepad\": 5}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"sync_terminal_directory\": 1}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"terminal_appearance\": {\"x\": 1}}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"confirm_session_close\": \"yes\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"disconnect_session_action\": \"reconnect\"}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"authentication_session_duration_minutes\": 45}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"authentication_session_duration_minutes\": 60}",
+   "ok": true
+  },
+  {
+   "in": "{\"schema_version\": 2, \"authentication_session_duration_minutes\": 60.0}",
+   "ok": false
+  },
+  {
+   "in": "{\"schema_version\": 2, \"intro_tour\": {\"any\": \"thing\"}, \"future_key\": [1, 2]}",
+   "ok": true
+  },
+  {
+   "in": "{\"schema_version\": 2, \"recovery_reviewed_at\": \"\"}",
+   "ok": true
+  }
+ ],
+ "encode": [
+  {
+   "in": "{\"panels\": null, \"dismissed\": []}",
+   "out": "{\"dismissed\": [], \"panels\": null}"
+  },
+  {
+   "in": "{\"panels\": [{\"w\": 4, \"id\": \"hosts\", \"h\": null, \"hidden\": false}], \"dismissed\": [\"host-keys:a\"]}",
+   "out": "{\"dismissed\": [\"host-keys:a\"], \"panels\": [{\"h\": null, \"hidden\": false, \"id\": \"hosts\", \"w\": 4}]}"
+  },
+  {
+   "in": "{\"x\": \"<&'>\\u00e9\\ud83d\\ude00\\u007f\\u0001\\\"\\\\/\\b\\f\\n\\r\\t\\u2028\"}",
+   "out": "{\"x\": \"\\u003c\\u0026\\u0027\\u003e\\u00e9\\ud83d\\ude00\\u007f\\u0001\\\"\\\\/\\b\\f\\n\\r\\t\\u2028\"}"
+  },
+  {
+   "in": "[1.0, 1e-05, 1e16, 0.1, 123456789012345678.0, 1.5e300, -0.0, 2, -0, 1.20, 1E2, 0.0001, 1e-7, 123456789012345678901234567890, 9007199254740993, 5e-324, 1.7976931348623157e308, 100.0, 1e15, 1e+16]",
+   "out": "[1.0, 1e-05, 1e+16, 0.1, 1.2345678901234568e+17, 1.5e+300, -0.0, 2, 0, 1.2, 100.0, 0.0001, 1e-07, 123456789012345678901234567890, 9007199254740993, 5e-324, 1.7976931348623157e+308, 100.0, 1000000000000000.0, 1e+16]"
+  },
+  {
+   "in": "{\"b\": {\"z\": [], \"a\": {}}, \"a\": true, \"c\": false, \"\\u00e4\": 1, \"Z\": null}",
+   "out": "{\"Z\": null, \"a\": true, \"b\": {\"a\": {}, \"z\": []}, \"c\": false, \"\\u00e4\": 1}"
+  },
+  {
+   "in": "{\"font_size\": 14, \"line_height\": 1.2, \"background\": \"#AbCdEf\"}",
+   "out": "{\"background\": \"#AbCdEf\", \"font_size\": 14, \"line_height\": 1.2}"
+  }
+ ]
+}
