@@ -477,3 +477,55 @@ func TestHandshakeTimeout(t *testing.T) {
 		t.Fatalf("took %v", took)
 	}
 }
+
+// A re-key repeats the host-key check after the handshake context ended.
+// The key verified at the first exchange must be accepted again without
+// the store or a prompt; another key must not.
+func TestRekeyKeepsTheSession(t *testing.T) {
+	calls := 0
+	s := startServer(t, passwordServer("u", "pw", &calls))
+	hk := trusting()
+	d, _ := newDialer(hk, nil)
+	d.RekeyThreshold = 512
+	ix := &prompts{accept: true}
+	sh, err := d.OpenShell(t.Context(), target(s, "u", Auth{Password: "pw"}), ix, 24, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sh.Close() }()
+	payload := strings.Repeat("x", 200) + "\n"
+	done := make(chan error, 1)
+	go func() {
+		for range 40 {
+			if _, err := io.WriteString(sh, payload); err != nil {
+				done <- err
+				return
+			}
+		}
+		_, err := io.WriteString(sh, "exit\n")
+		done <- err
+	}()
+	out, _ := io.ReadAll(sh)
+	if err := <-done; err != nil {
+		t.Fatalf("write after re-key: %v", err)
+	}
+	if n := strings.Count(string(out), payload); n < 40 {
+		t.Fatalf("session broke after re-key: %d of 40 lines echoed", n)
+	}
+	if len(ix.hostKeys) != 1 || hk.recorded != 1 {
+		t.Fatalf("re-key prompted or recorded again: %d prompts, %d records", len(ix.hostKeys), hk.recorded)
+	}
+}
+func TestRekeyRefusesAnotherKey(t *testing.T) {
+	first := clientKey(t).PublicKey()
+	check := pinnedHostKey(func(ssh.PublicKey) error { return nil })
+	if err := check(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := check(first); err != nil {
+		t.Fatalf("same key at re-key: %v", err)
+	}
+	if err := check(clientKey(t).PublicKey()); fault.CodeOf(err) != fault.HostKeyChanged {
+		t.Fatalf("another key at re-key: %v", err)
+	}
+}

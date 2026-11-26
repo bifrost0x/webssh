@@ -39,7 +39,10 @@ type Dialer struct {
 	// not answer within one interval is disconnected.
 	Keepalive time.Duration
 	MaxJumps  int
-	Logger    *slog.Logger
+	// RekeyThreshold is the number of bytes after which keys are
+	// renewed; 0 is the x/crypto default.
+	RekeyThreshold uint64
+	Logger         *slog.Logger
 }
 
 // hop is a validated hop with everything the handshake needs.

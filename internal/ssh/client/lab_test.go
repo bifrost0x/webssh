@@ -428,3 +428,29 @@ func TestLabHostKeys(t *testing.T) {
 		t.Fatalf("changed: %v", err)
 	}
 }
+
+// A forced re-key in the middle of a session keeps the session: the
+// host-key check of the new key exchange runs after the handshake context
+// ended and must accept the pinned key.
+func TestLabRekey(t *testing.T) {
+	r := newRig(t, netpolicy.Config{})
+	r.dialer.RekeyThreshold = 4 << 10
+	tgt := client.Target{Owner: 1, Hop: hop(t, "ssh-modern", "pwuser", client.Auth{Password: secret(t, "secrets/ssh-pwuser")})}
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	sh, err := r.dialer.OpenShell(ctx, tgt, r.ix, 24, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sh.Close() }()
+	if _, err := io.WriteString(sh, "seq 1 20000; echo END=$((6*7)); exit\n"); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(io.LimitReader(sh, 8<<20))
+	if !strings.Contains(string(out), "\n20000\r\n") || !strings.Contains(string(out), "END=42") {
+		t.Fatalf("session ended early after %d bytes (re-key every 4 KiB)", len(out))
+	}
+	if len(r.ix.seen) != 1 {
+		t.Fatalf("re-key prompted again: %d prompts", len(r.ix.seen))
+	}
+}

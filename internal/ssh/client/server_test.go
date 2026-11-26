@@ -221,7 +221,11 @@ func trusting(keys ...*testServer) *memHostKeys {
 	return m
 }
 
-func (m *memHostKeys) Known(_ context.Context, _ int64, host string, port int, key ssh.PublicKey) (bool, error) {
+func (m *memHostKeys) Known(ctx context.Context, _ int64, host string, port int, key ssh.PublicKey) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		// Like the database-backed store.
+		return false, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.knownErr != nil {

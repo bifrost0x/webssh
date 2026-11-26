@@ -1,9 +1,11 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"strings"
+	"sync"
 	"unicode"
 
 	"golang.org/x/crypto/ssh"
@@ -37,11 +39,13 @@ func (d *Dialer) handshake(ctx context.Context, conn net.Conn, owner int64, h ho
 	plan := &authPlan{ctx: hctx, password: h.Auth.Password, signer: h.signer, legacy: h.Legacy, attended: ix != nil}
 	cfg := &ssh.ClientConfig{
 		KeyExchanges: algos.KeyExchanges, Ciphers: algos.Ciphers, MACs: algos.MACs,
+		RekeyThreshold:    d.RekeyThreshold,
 		User:              h.User,
 		HostKeyAlgorithms: hostKeyAlgos,
-		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
-			return d.checkHostKey(hctx, wd, owner, h, ix, key)
-		},
+		HostKeyCallback: func() ssh.HostKeyCallback {
+			check := pinnedHostKey(func(key ssh.PublicKey) error { return d.checkHostKey(hctx, wd, owner, h, ix, key) })
+			return func(_ string, _ net.Addr, key ssh.PublicKey) error { return check(key) }
+		}(),
 		BannerCallback: func(message string) error {
 			if banner.Len()+len(message) <= maxBannerBytes {
 				banner.WriteString(message)
@@ -69,6 +73,30 @@ func (d *Dialer) handshake(ctx context.Context, conn net.Conn, owner int64, h ho
 		}
 	}
 	return client, nil
+}
+
+// pinnedHostKey runs first for the key of the first key exchange and
+// remembers it once it is accepted. A re-key repeats the host-key callback
+// long after the handshake context ended: then only the same key is
+// accepted, without the store and without a prompt.
+func pinnedHostKey(first func(ssh.PublicKey) error) func(ssh.PublicKey) error {
+	var mu sync.Mutex
+	var pinned []byte
+	return func(key ssh.PublicKey) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if pinned != nil {
+			if bytes.Equal(pinned, key.Marshal()) {
+				return nil
+			}
+			return fault.New(fault.HostKeyChanged, "")
+		}
+		if err := first(key); err != nil {
+			return err
+		}
+		pinned = key.Marshal()
+		return nil
+	}
 }
 
 // checkHostKey is the host-key callback of one hop. Only a host without any
