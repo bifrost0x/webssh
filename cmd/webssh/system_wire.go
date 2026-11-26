@@ -180,7 +180,8 @@ func (s *system) registerHTTP(mux *http.ServeMux) {
 	(&totp.HTTP{Service: s.totp, Gates: s.gates, StepUp: s.stepup, Pending: pending, Limits: limits, Audit: authAudit, Logger: s.log}).Register(mux)
 	(&session.HTTP{Service: s.sessions, Audit: s.audit, Logger: s.log}).Register(mux)
 	(&accounts.HTTP{Accounts: s.accounts, StepUp: s.stepup, Enabled: cfg.Accounts.AdminPanelEnabled, Logger: s.log}).Register(mux)
-	(&operations.HTTP{Gates: s.gates, Inventory: securityInventory{db: s.db, accounts: s.accounts, totp: s.totp, passkeys: s.optional.passkeyList},
+	(&operations.HTTP{Gates: s.gates, Inventory: securityInventory{db: s.db, accounts: s.accounts, totp: s.totp, passkeys: s.optional.passkeyList,
+		github: s.optional.githubIdentity, githubActive: s.optional.githubActive},
 		StepUp: s.stepup, MAC: s.ring, Enabled: cfg.Accounts.AdminPanelEnabled, Logger: s.log}).Register(mux)
 	(&settings.HTTP{Settings: s.settings, Gates: featureGates{s.gates}, Tour: tourDeployment(cfg, true),
 		BasePath: cfg.ApplicationRoot, Logger: s.log}).Register(mux)

@@ -117,6 +117,9 @@ type securityInventory struct {
 	accounts *accounts.Service
 	totp     *totp.Service
 	passkeys func(ctx context.Context, userID int64) ([]operations.Credential, error)
+	// github and githubActive come from the area "github"; nil: none.
+	github       func(ctx context.Context, userID int64) (*operations.Credential, error)
+	githubActive func(ctx context.Context) bool
 }
 
 func (s securityInventory) Accounts(ctx context.Context) ([]operations.Account, error) {
@@ -157,13 +160,20 @@ func (s securityInventory) Accounts(ctx context.Context) ([]operations.Account, 
 				return nil, err
 			}
 		}
+		if s.github != nil {
+			if acc.GitHub, err = s.github(ctx, a.ID); err != nil {
+				return nil, err
+			}
+		}
 		out = append(out, acc)
 	}
 	return out, nil
 }
 
-// GitHubActive is false: GitHub sign-in is not part of this preview.
-func (securityInventory) GitHubActive(context.Context) (bool, error) { return false, nil }
+// GitHubActive is github_auth_is_active.
+func (s securityInventory) GitHubActive(ctx context.Context) (bool, error) {
+	return s.githubActive != nil && s.githubActive(ctx), nil
+}
 
 func isoTime(t time.Time) string {
 	if t.IsZero() {

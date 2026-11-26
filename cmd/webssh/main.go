@@ -43,6 +43,7 @@ func commands() []command {
 		{name: "create-admin", summary: "create an administrator or promote an account", run: runCreateAdmin},
 		{name: "reset-password", summary: "set a new password for a local account", run: runResetPassword},
 		{name: "ldap-secret", summary: "manage the LDAP secret volume", run: runLDAPSecret},
+		{name: "issue-factor-bootstrap", summary: "issue a code for a GitHub account's first factor", run: runIssueFactorBootstrap},
 		{name: "migrate", summary: "--dry-run or --replace the migration of the Python data", run: runMigrate},
 		{name: "legacy", summary: "purge: remove the Python data after the migration", run: runLegacy},
 		{name: "version", summary: "print the version and source revision", run: runVersion},

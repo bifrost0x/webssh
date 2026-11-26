@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"net/http"
 
+	"github.com/bifrost0x/webssh/internal/accounts"
 	"github.com/bifrost0x/webssh/internal/httpapi"
 	"github.com/bifrost0x/webssh/internal/session"
 	"github.com/bifrost0x/webssh/internal/settings"
@@ -158,6 +159,15 @@ func (pg *pages) security(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.AccountMFAEnabled = acc.MFARequired
+	d.GitHubManaged = acc.Managed == accounts.ManagedGitHub
+	if pg.github != nil && pg.github.githubIdentity != nil {
+		id, err := pg.github.githubIdentity(r.Context(), acc.ID)
+		if err != nil {
+			pg.failed(w, r, err)
+			return
+		}
+		d.GitHubIdentityLinked = id != nil
+	}
 	pg.write(w, r, http.StatusOK, httpapi.PageSettings, d)
 }
 

@@ -4,16 +4,18 @@ package httpapi
 // ID3 moves each route it builds from githubPreview to githubBuilt with its
 // access level; no other package edits this file.
 
-var githubBuilt = []route{}
-
-var githubPreview = []string{
-	"GET /admin/api/github-auth/config",
-	"POST /admin/api/github-auth/config",
-	"DELETE /api/account/github",
-	"GET /api/account/github",
-	"POST /api/account/github/link/start",
-	"POST /api/account/step-up/bootstrap",
-	"POST /api/account/step-up/github/start",
-	"GET /auth/github/callback",
-	"GET /auth/github/login",
+var githubBuilt = []route{
+	// The redirect and its callback run before sign-in; a link callback
+	// reads the session the edge puts into the context.
+	{"GET /auth/github/login", AccessPublic},
+	{"GET /auth/github/callback", AccessPublic},
+	{"GET /api/account/github", AccessUser},
+	{"DELETE /api/account/github", AccessUser},
+	{"POST /api/account/github/link/start", AccessUser},
+	{"POST /api/account/step-up/github/start", AccessUser},
+	{"POST /api/account/step-up/bootstrap", AccessUser},
+	{"GET /admin/api/github-auth/config", AccessAdmin},
+	{"POST /admin/api/github-auth/config", AccessAdmin},
 }
+
+var githubPreview = []string{}
