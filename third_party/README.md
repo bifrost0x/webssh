@@ -43,6 +43,13 @@ client offers no compression in NEGOTIATE, refuses a server that selects an
 algorithm, and refuses compressed packets before decoding them. This takes
 quic-go, go-krb5, go-crypt/x, google/uuid, lz4 and x/net out of the build.
 
+**Lab tests for WebSSH:** `go-smb2/lab_test.go` checks the patch against
+the WebSSH test lab (`WEBSSH_SMB_LAB=<lab.json>`): encryption of every
+message after session setup on Samba shares with and without required
+encryption and on Windows Server, no compressed messages, refused empty
+and wrong credentials. The integration suite takes `"require_encryption":
+true` in the `conn` section of `client_conf.json`.
+
 **Test fixes:** two fake servers in the fork's tests accept CANCEL, which
 the client sends for pipelined reads it no longer needs; upstream they fail
 intermittently.
@@ -53,7 +60,9 @@ CI job `smb-fork` in `.github/workflows/go.yml` runs in `go-smb2`:
 `go mod tidy -diff`, `go mod verify`, gofmt, `go vet`, staticcheck,
 govulncheck and `go test -race ./...`. The fork's integration tests need a
 `client_conf.json` (path in `SMB2_CLIENT_CONFIG`) with real servers and
-skip without one; they run against the test lab by hand.
+skip without one; they run against the test lab by hand, with
+`SMB2_SKIP_DIRECTORY_SYMLINK_SUFFIX=1` for Samba, which does not resolve a
+stored symlink in the middle of a path.
 
 gosec is not run on the fork. Its findings there are dominated by integer
 conversions in wire decoding and by MD5, RC4 and MD4, which NTLMv2

@@ -73,6 +73,7 @@ type connConfig struct {
 	RequireMessageSigning bool   `json:"signing"`
 	ClientGuid            string `json:"guid"`
 	SpecifiedDialect      uint16 `json:"dialect"`
+	RequireEncryption     bool   `json:"require_encryption"`
 }
 
 type sessionConfig struct {
@@ -197,6 +198,7 @@ func connect(cfg config, secondShare bool) *env {
 		}),
 		MaxCreditBalance:      cfg.MaxCreditBalance,
 		RequireMessageSigning: cfg.Conn.RequireMessageSigning,
+		RequireEncryption:     cfg.Conn.RequireEncryption,
 		SpecifiedDialects: func() []smb2.Dialect {
 			if cfg.Conn.SpecifiedDialect != 0 {
 				return []smb2.Dialect{smb2.Dialect(cfg.Conn.SpecifiedDialect)}
