@@ -155,8 +155,7 @@ func openDB(t *testing.T) *store.DB {
 }
 
 func codeOf(err error) fault.Code {
-	var fe *fault.Error
-	if errors.As(err, &fe) {
+	if fe, ok := errors.AsType[*fault.Error](err); ok {
 		return fe.Code
 	}
 	return ""
