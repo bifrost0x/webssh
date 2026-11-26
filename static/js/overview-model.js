@@ -1,9 +1,9 @@
 /* Overview dashboard model: pure functions, no DOM. Exported for tests. */
 (function (root, factory) {
-    const api = factory();
+    const api = factory(root);
     if (typeof module === 'object' && module.exports) module.exports = api;
     if (root?.document) root.OverviewModel = api;
-}(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
     'use strict';
 
     const DAY = 24 * 60 * 60 * 1000;
@@ -65,10 +65,29 @@
                 || a.order - b.order || a.name.localeCompare(b.name));
     }
 
+    /** Searchable identity labels of a host: role, platform and services, in the current language. */
+    function identityTerms(profile) {
+        const Identity = root?.HostIdentity;
+        const Platform = root?.HostPlatform;
+        if (!Identity || !Platform) return [];
+        const terms = [];
+        const role = Identity.role(profile);
+        // Every unidentified host falls back to "server"; matching it would match nearly everything.
+        if (role.id !== 'server' || role.source === 'manual') {
+            const key = `role.${role.id}`;
+            const label = root.i18n?.t(key);
+            terms.push(label && label !== key ? label : role.id);
+        }
+        const facts = Identity.facts(profile);
+        if (facts.platform.id !== 'server' && facts.platform.label) terms.push(facts.platform.label);
+        for (const id of facts.services) terms.push(Platform.serviceLabels[id]);
+        return terms.filter(term => typeof term === 'string');
+    }
+
     function filter(list, query) {
         const search = String(query || '').trim().toLocaleLowerCase();
         if (!search) return list;
-        return list.filter(host => [host.name, host.destination, host.group, host.route.name || '']
+        return list.filter(host => [host.name, host.destination, host.group, host.route.name || '', ...identityTerms(host.profile)]
             .some(value => value.toLocaleLowerCase().includes(search)));
     }
 

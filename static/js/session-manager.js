@@ -48,6 +48,7 @@ const SessionManager = {
         this.initTabScrollAffordances();
         window.addEventListener('languageChanged', () => {
             this.refreshEmptyPanes();
+            this.refreshSessionIdentity();
         });
         const sessionBar = document.getElementById('sessionBar');
         if (sessionBar) {
@@ -330,8 +331,9 @@ const SessionManager = {
         platformIcon.className = 'session-platform-icon';
         const iconSession = this.sessions[sessionId];
         const iconProfile = window.ProfileManager?.profiles.find(profile => profile.id === iconSession?.profileId);
-        if (window.HostPlatform) platformIcon.append(window.HostPlatform.renderSession(iconSession, iconProfile));
+        if (window.HostPlatform) platformIcon.append(window.HostPlatform.renderSession(iconSession, iconProfile, document));
         tab.insertBefore(platformIcon, tabLabel);
+        window.HostPlatform?.markSessionTab?.(tab, iconSession, iconProfile, document);
         const sess = this.sessions[sessionId];
         if (sess?.viaSocks || sess?.socksProxyId) {
             const badge = document.createElement('span');
@@ -399,6 +401,7 @@ const SessionManager = {
         });
 
         document.getElementById('sessionTabs').appendChild(tab);
+        window.HostPlatform?.fitSessionTab?.(tab);
         this.scrollTabIntoView(sessionId);
     },
 
@@ -468,6 +471,7 @@ const SessionManager = {
 
         const tab = document.getElementById(`tab-${sessionId}`);
         if (tab) {
+            window.HostPlatform?.releaseFits?.(tab);
             tab.remove();
         }
 
@@ -1218,6 +1222,27 @@ const SessionManager = {
         }
     },
 
+    savedHostFor(session) {
+        const profiles = window.ProfileManager?.profiles;
+        if (!session?.profileId || !Array.isArray(profiles)) return null;
+        return profiles.find(profile => profile.id === session.profileId) || null;
+    },
+
+    /** Brings every visible identity line and window title bar in line with the saved hosts. */
+    refreshSessionIdentity() {
+        if (this.windowMode) {
+            this.paneAssignments.forEach((sessionId, index) => this.updateWindowChrome(index));
+            return;
+        }
+        const grid = this.ensureTerminalGrid();
+        this.paneAssignments.forEach((sessionId, index) => {
+            const pane = grid?.querySelector(`.terminal-pane[data-pane-index="${index}"]`);
+            if (!pane || !sessionId || this.connectionLauncherSessions.has(index)) return;
+            const session = this.sessions[sessionId];
+            if (session) window.HostPlatform?.markIdentityBar?.(pane, session, this.savedHostFor(session), document);
+        });
+    },
+
     renderPane(paneIndex, {preserveLauncherSearch = false} = {}) {
         const grid = this.ensureTerminalGrid();
         if (!grid) {
@@ -1242,6 +1267,7 @@ const SessionManager = {
                 container.appendChild(child);
             }
         });
+        window.HostPlatform?.releaseFits?.(pane);
         pane.innerHTML = '';
 
         const sessionId = this.paneAssignments[paneIndex];
@@ -1260,6 +1286,10 @@ const SessionManager = {
             if (wrapper) {
                 wrapper.classList.remove('unassigned');
                 pane.appendChild(wrapper);
+            }
+            // A window names its host in the title bar instead.
+            if (!this.windowMode) {
+                window.HostPlatform?.markIdentityBar?.(pane, session, this.savedHostFor(session), document);
             }
             TerminalManager.fitTerminal(sessionId);
             TerminalManager.resumeVisibleOutput?.(sessionId);
@@ -2554,13 +2584,32 @@ const SessionManager = {
                 title: session.tmuxSessionName ? `tmux: ${session.tmuxSessionName}` : 'tmux',
             });
         }
+        const identity = window.HostPlatform?.sessionIdentity?.(session, this.savedHostFor(session)) || null;
+        const known = identity ? [identity.label, identity.system, identity.virt] : [];
+        const frame = this.windowDesktop.frame?.(index);
+        // Status updates arrive often; unchanged logos keep their nodes.
+        const shown = [...(frame?.querySelectorAll('.ws-window-services > .session-identity-service') || [])];
+        const ids = identity?.services || [];
+        const services = shown.map(tile => tile.getAttribute('data-service')).join() === ids.join()
+            ? shown : (window.HostPlatform?.serviceTiles?.(ids, 'session-identity-service', document) || []);
         this.windowDesktop.setChrome(index, {
             title: this.getDisplayLabel(sessionId, session.username, session.host),
-            subtitle: parts.join('  ·  '),
+            subtitle: parts.join(' · '),
+            identity: known.filter(Boolean).join(' · '),
             status,
             badges,
+            role: identity?.role || null,
+            services,
             closeLabel: this.windowText('session.close', 'Close session'),
         });
+        // Logos give way before the host's identity text, and before the title once that is hidden.
+        const holder = frame?.querySelector('.ws-window-services');
+        if (holder) {
+            const subtitle = frame.querySelector('.ws-window-subtitle');
+            const lead = subtitle?.querySelector('.ws-window-identity');
+            window.HostPlatform?.keepTilesFitting?.(holder, lead && {lead, within: subtitle},
+                frame.querySelector('.ws-window-title'));
+        }
     },
 
     renderWindowDesktopEmpty(container) {

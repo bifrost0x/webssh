@@ -490,3 +490,35 @@ test('compact profile inspector retains persistence while advanced options start
         }
     }
 });
+
+test('the host editor loads and saves the role override', async () => {
+    const fields = {};
+    const field = (value = '') => ({value, checked: false, dataset: {}, classList: {contains: () => false}});
+    for (const id of ['profileEditorPostConnectMode', 'profileEditorName', 'profileEditorGroup', 'profileEditorHost',
+        'profileEditorPort', 'profileEditorUsername', 'profileEditorAuthType', 'profileEditorKeySelect',
+        'profileEditorJumpHostSelect', 'profileEditorPlatformIcon']) fields[id] = field();
+    fields.profileEditorPostConnectMode.value = 'none';
+    fields.profileEditorPort.value = '22';
+    fields.profileEditorAuthType.value = 'password';
+    const roles = new Set(['auto', 'backup', 'server']);
+    let stored = 'auto';
+    fields.profileEditorRole = {
+        get value() { return stored; },
+        set value(next) { stored = roles.has(next) ? next : ''; },
+    };
+    const sent = [];
+    const manager = loadProfileManager({document: {getElementById: id => fields[id] || null}});
+    manager.__testWindow.socket = {emit: (event, payload) => sent.push([event, payload])};
+    manager.editorSnapshot = () => 'snapshot';
+    manager.herdrEditorPayload = () => null;
+    manager.profiles = [];
+
+    fields.profileEditorRole.value = 'backup';
+    await manager.saveFromEditor();
+    assert.equal(sent[0][0], 'save_profile');
+    assert.equal(sent[0][1].role_override, 'backup');
+
+    fields.profileEditorRole.value = 'auto';
+    await manager.saveFromEditor();
+    assert.equal(sent[1][1].role_override, 'auto');
+});

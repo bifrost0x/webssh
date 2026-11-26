@@ -3807,3 +3807,197 @@ test('hidden page layouts keep the terminal size and never report a shrunk PTY s
     })).toEqual(fullSize);
     for (const size of await reportedSizes()) expect(size).toEqual(fullSize);
 });
+
+const IDENTITY_THEMES = ['glass', 'werkbank', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'];
+
+// Saved hosts with distinct roles, each with a session on its exact endpoint, and
+// one session whose user differs from its saved host.
+async function seedIdentityTabs(page) {
+    await page.evaluate(() => {
+        const base = ProfileManager.profiles[0];
+        const host = (id, name, facts) => ({...base, id, name, host: `${id}.identity.test`, username: 'ops', port: 22, group: null,
+            jump_host_id: null, socks_proxy_id: null, detection_state: 'detected', ...facts});
+        const hosts = [
+            host('pve', 'pve1', {detected_platform: 'proxmox'}),
+            host('paper', 'Paperless', {detected_platform: 'ubuntu', detected_services: ['postgresql', 'redis', 'paperless']}),
+            host('cloud', 'Nextcloud', {detected_platform: 'debian', detected_services: ['apache', 'mariadb', 'nextcloud']}),
+            host('fw', 'opnsense', {detected_platform: 'opnsense', detected_services: ['wireguard', 'unbound']}),
+            // A name too long for any logo beside it.
+            host('archive', 'Paperless archive copy', {detected_platform: 'ubuntu', detected_services: ['paperless']}),
+        ];
+        ProfileManager.setProfiles(hosts);
+        hosts.forEach(profile => SessionManager.createSession({session_id: `identity-${profile.id}`, host: profile.host,
+            username: 'ops', port: 22, profile_id: profile.id}));
+        SessionManager.createSession({session_id: 'identity-other', host: 'paper.identity.test', username: 'root', port: 22, profile_id: 'paper'});
+        SessionManager.switchSession('identity-paper');
+    });
+}
+
+test('workspace tabs carry the role and main services of their saved host', async ({page}) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await seedIdentityTabs(page);
+    const tab = id => page.locator(`#tab-identity-${id}`);
+    const expected = {pve: ['hypervisor', []], paper: ['docs', ['paperless', 'postgresql']], cloud: ['cloud', ['nextcloud', 'apache']],
+        fw: ['network', ['unbound', 'wireguard']]};
+    for (const [id, [role, services]] of Object.entries(expected)) {
+        await expect(tab(id)).toHaveAttribute('data-role', role);
+        await expect(tab(id).locator('.tab-service')).toHaveCount(services.length);
+        for (const [index, service] of services.entries()) {
+            await expect(tab(id).locator('.tab-service').nth(index)).toHaveAttribute('data-service', service);
+        }
+    }
+    await expect(tab('paper').locator('.tab-service').first()).toHaveAccessibleName('Paperless');
+
+    // Names come first: tiles drop out whole while a name is cut, and hidden tiles leave
+    // the accessibility tree. A name is only cut once no tile is left to give way, or
+    // when it is longer than its own limit.
+    const layout = () => page.locator('.session-tab[data-role]').evaluateAll(tabs => tabs.map(element => {
+        const label = element.querySelector('.tab-label');
+        const strip = element.querySelector('.tab-services');
+        const tiles = [...element.querySelectorAll('.tab-service')].filter(tile => tile.checkVisibility());
+        const name = label.children[0];
+        // Rounded widths miss text a fraction of a pixel too wide, which still draws an ellipsis.
+        const textCut = part => {
+            const range = document.createRange();
+            range.selectNodeContents(part);
+            const style = getComputedStyle(part);
+            const inner = part.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+                - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
+            return part.scrollWidth > part.clientWidth || range.getBoundingClientRect().width > inner + 0.01;
+        };
+        return {id: element.id, cut: label.scrollWidth > label.clientWidth || [...label.children].some(textCut),
+            capped: name.clientWidth >= parseFloat(getComputedStyle(name).maxWidth) - 0.5,
+            strip: strip?.checkVisibility() ? strip.getBoundingClientRect().width : 0, tiles: tiles.length};
+    }));
+    for (const item of await layout()) {
+        expect([0, 18, 39], item.id).toContain(Math.round(item.strip));
+        expect(Math.round(item.strip), item.id).toBe([0, 18, 39][item.tiles]);
+        if (item.cut) expect(item.tiles === 0 || item.capped, item.id).toBe(true);
+    }
+    const byId = Object.fromEntries((await layout()).map(item => [item.id.replace('tab-identity-', ''), item]));
+    for (const id of ['cloud', 'fw', 'paper', 'pve']) expect(byId[id].cut, id).toBe(false);
+    expect(byId.cloud.tiles).toBeGreaterThanOrEqual(1);
+    expect(byId.archive.tiles).toBe(0);
+    await expect(tab('archive').getByRole('img', {name: 'Paperless'})).toHaveCount(0);
+    await expect(tab('paper').locator('.tab-role')).toHaveText('Documents');
+    await expect(tab('other')).not.toHaveAttribute('data-role', /.*/);
+    await expect(tab('other').locator('.tab-services, .tab-role')).toHaveCount(0);
+
+    // A new detection result updates the tab in place.
+    await page.evaluate(() => { document.getElementById('tab-identity-paper').__marker = true; });
+    await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'paper'
+        ? {...profile, detected_services: ['jellyfin', 'plex']} : profile))));
+    await expect(tab('paper')).toHaveAttribute('data-role', 'media');
+    await expect(tab('paper').locator('.tab-service')).toHaveCount(2);
+    expect(await page.evaluate(() => document.getElementById('tab-identity-paper').__marker)).toBe(true);
+
+    // Logos never widen a tab beyond its limit, and the close button stays inside it.
+    const bounds = await page.locator('.session-tab').evaluateAll(tabs => tabs.map(element => {
+        const box = element.getBoundingClientRect();
+        const close = element.querySelector('.tab-close').getBoundingClientRect();
+        return {id: element.id, width: box.width, max: parseFloat(getComputedStyle(element).maxWidth),
+            closeInside: close.right <= box.right + 0.5 && close.width > 0};
+    }));
+    for (const item of bounds) {
+        expect(item.width, item.id).toBeLessThanOrEqual(item.max + 0.5);
+        expect(item.closeInside, item.id).toBe(true);
+    }
+    await assertNoExternalRequests(page);
+});
+
+test('the role edge of a workspace tab stays visible in every theme, active or not', async ({page}) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await seedIdentityTabs(page);
+    await page.mouse.move(0, 0);
+    // Measure each theme's settled colours, not a transition from the previous one.
+    await page.addStyleTag({content: '*, *::before, *::after { transition: none !important; }'});
+    for (const theme of IDENTITY_THEMES) {
+        const results = await page.evaluate(theme => {
+            document.body.dataset.theme = theme;
+            const parse = value => {
+                const numbers = value.match(/[\d.]+/g).map(Number);
+                const srgb = value.startsWith('color(');
+                const channels = numbers.slice(0, 3).map(v => (srgb ? v * 255 : v));
+                const alpha = value.includes('/') || value.startsWith('rgba') ? numbers[3] : 1;
+                return {channels, alpha: alpha ?? 1};
+            };
+            const mix = (top, alpha, bottom) => top.map((v, i) => v * alpha + bottom[i] * (1 - alpha));
+            const luminance = channels => channels.map(v => v / 255)
+                .map(v => (v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4))
+                .reduce((sum, value, i) => sum + value * [.2126, .7152, .0722][i], 0);
+            const ratio = (a, b) => {
+                const [x, y] = [luminance(a), luminance(b)];
+                return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
+            };
+            // The first opaque background behind the tabs.
+            let holder = document.getElementById('sessionTabs');
+            let behind = parse(getComputedStyle(holder).backgroundColor);
+            while (behind.alpha < 1 && holder.parentElement) {
+                holder = holder.parentElement;
+                behind = parse(getComputedStyle(holder).backgroundColor);
+            }
+            // Every role in both tab states, measured on the active tab and an inactive one.
+            const tabs = [document.getElementById('tab-identity-paper'), document.getElementById('tab-identity-fw')];
+            const results = [];
+            for (const tab of tabs) {
+                const saved = tab.dataset.role;
+                for (const role of HostIdentity.ROLES) {
+                    tab.dataset.role = role;
+                    const style = getComputedStyle(tab);
+                    const own = parse(style.backgroundColor);
+                    const surface = mix(own.channels, own.alpha, behind.channels);
+                    const edge = parse(getComputedStyle(tab, '::after').backgroundColor);
+                    const opacity = Number(style.opacity);
+                    const shown = mix(mix(edge.channels, edge.alpha, surface), opacity, behind.channels);
+                    // The logo is drawn in the tile's ink on the role-tinted tile.
+                    const tile = getComputedStyle(tab.querySelector('.tab-service'));
+                    const tileFill = parse(tile.backgroundColor);
+                    const tileSurface = mix(tileFill.channels, tileFill.alpha, surface);
+                    const ink = parse(tile.color);
+                    results.push({role, active: tab.classList.contains('active'), height: getComputedStyle(tab, '::after').height,
+                        background: style.backgroundColor, marker: tab.classList.contains('active') ? style.boxShadow : '',
+                        ratio: ratio(shown, mix(surface, opacity, behind.channels)),
+                        tile: ratio(mix(mix(ink.channels, ink.alpha, tileSurface), opacity, behind.channels),
+                            mix(tileSurface, opacity, behind.channels))});
+                }
+                tab.dataset.role = saved;
+            }
+            return results;
+        }, theme);
+        expect(results.filter(result => result.active)).toHaveLength(17);
+        expect(results.filter(result => !result.active)).toHaveLength(17);
+        for (const result of results) {
+            expect(result.height).toBe('2px');
+            const state = `${theme} ${result.role} ${result.active ? 'active' : 'inactive'} on ${result.background}`;
+            expect.soft(result.ratio, `${state} edge`).toBeGreaterThanOrEqual(3);
+            expect.soft(result.tile, `${state} logo tile`).toBeGreaterThanOrEqual(3);
+            // The theme's own marker for the active tab is kept.
+            if (result.active) expect(result.marker, state).toMatch(/inset/);
+        }
+    }
+    await page.emulateMedia({forcedColors: 'active'});
+    const forced = await page.locator('#tab-identity-paper').evaluate(tab => {
+        const reference = document.createElement('span');
+        reference.style.color = 'CanvasText';
+        document.body.append(reference);
+        const colours = [getComputedStyle(tab, '::after').backgroundColor, getComputedStyle(reference).color];
+        reference.remove();
+        return colours;
+    });
+    expect(forced[0]).toBe(forced[1]);
+});
+
+test('workspace tabs with services fit a 360px screen', async ({page}) => {
+    await page.setViewportSize({width: 360, height: 740});
+    await login(page);
+    await seedIdentityTabs(page);
+    await expect(page.locator('#tab-identity-paper')).toHaveAttribute('data-role', 'docs');
+    const overflow = await page.evaluate(() => {
+        const tabs = [...document.querySelectorAll('.session-tab')].map(tab => tab.getBoundingClientRect().width);
+        return {page: document.documentElement.scrollWidth, tabs};
+    });
+    expect(overflow.page).toBeLessThanOrEqual(360);
+    for (const width of overflow.tabs) expect(width).toBeLessThanOrEqual(360 * 0.72 + 0.5);
+});

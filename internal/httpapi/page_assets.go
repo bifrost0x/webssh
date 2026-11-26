@@ -18,9 +18,8 @@ import (
 // of its SHA-256, the same value Python appends as ?v= so that cached
 // URLs stay valid across the switch.
 type Assets struct {
-	files        fs.FS
-	versions     map[string]string
-	translations []string
+	files    fs.FS
+	versions map[string]string
 }
 
 // errNoAssets reports an asset tree without files, usually a build that
@@ -43,9 +42,6 @@ func NewAssets(files fs.FS) (*Assets, error) {
 			return err
 		}
 		a.versions[name] = version
-		if dir, file := path.Split(name); dir == "js/i18n/" && strings.HasSuffix(file, ".js") {
-			a.translations = append(a.translations, strings.TrimSuffix(file, ".js"))
-		}
 		return nil
 	})
 	if err != nil {
@@ -54,7 +50,6 @@ func NewAssets(files fs.FS) (*Assets, error) {
 	if len(a.versions) == 0 {
 		return nil, errNoAssets
 	}
-	slices.Sort(a.translations)
 	return a, nil
 }
 
@@ -79,7 +74,25 @@ func (a *Assets) Version(name string) (string, bool) {
 
 // Translations lists the languages with a file in js/i18n/, sorted.
 func (a *Assets) Translations() []string {
-	return slices.Clone(a.translations)
+	return a.stems("js/i18n/", ".js")
+}
+
+// ServiceIcons lists the services with a logo in icons/services/, sorted.
+func (a *Assets) ServiceIcons() []string {
+	return a.stems("icons/services/", ".svg")
+}
+
+// stems lists, sorted, the names without suffix of the files directly in
+// dir that end in suffix. dir ends with a slash.
+func (a *Assets) stems(dir, suffix string) []string {
+	var out []string
+	for name := range a.versions {
+		if d, file := path.Split(name); d == dir && strings.HasSuffix(file, suffix) {
+			out = append(out, strings.TrimSuffix(file, suffix))
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // FS returns the indexed files for the static file handler.

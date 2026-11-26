@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Model = require('../../static/js/overview-model.js');
+require('../../static/js/host-identity.js');
 
 const profiles = [
     {id: 'web', name: 'web-01', host: '10.0.0.1', port: 22, username: 'root', group: 'Prod'},
@@ -35,6 +36,51 @@ test('filter matches name, destination, group and route', () => {
     assert.deepEqual(Model.filter(hosts, 'bastion').map(host => host.id), ['db']);
     assert.deepEqual(Model.filter(hosts, '192.168').map(host => host.id), ['nas']);
     assert.equal(Model.filter(hosts, '  ').length, 3);
+});
+
+test('filter also matches role, platform and service labels', () => {
+    const identityProfiles = [
+        {id: 'dock', name: 'alpha', host: '10.1.0.1', detected_platform: 'ubuntu', detected_services: ['docker', 'paperless']},
+        {id: 'pve', name: 'beta', host: '10.1.0.2', detected_platform: 'proxmox'},
+        {id: 'u2', name: 'gamma', host: '10.1.0.3', detected_platform: 'ubuntu'},
+        {id: 'bare', name: 'delta', host: '10.1.0.4', group: 'Lab'},
+    ];
+    const hosts = Model.hosts({profiles: identityProfiles});
+    const ids = query => Model.filter(hosts, query).map(host => host.id).sort();
+    assert.deepEqual(ids('paperless'), ['dock']);
+    assert.deepEqual(ids('hypervisor'), ['pve']);
+    assert.deepEqual(ids('UBUNTU'), ['dock', 'u2']);
+    assert.deepEqual(ids('lab'), ['bare']);
+    assert.deepEqual(ids('server'), [], 'the default role of an unidentified host is not searchable');
+    assert.equal(Model.filter(hosts, '').length, 4);
+});
+
+test('filter uses the translated role label and honours a manual server role', () => {
+    const hosts = Model.hosts({profiles: [
+        {id: 'doc', name: 'a', host: '10.2.0.1', detected_services: ['paperless']},
+        {id: 'man', name: 'b', host: '10.2.0.2', role_override: 'server'},
+    ]});
+    globalThis.i18n = {t: key => (key === 'role.docs' ? 'Dokumente' : key)};
+    try {
+        assert.deepEqual(Model.filter(hosts, 'dokumente').map(host => host.id), ['doc']);
+        assert.deepEqual(Model.filter(hosts, 'server').map(host => host.id), ['man']);
+    } finally {
+        delete globalThis.i18n;
+    }
+});
+
+test('filter keeps the plain matching when the identity modules are absent', () => {
+    const hosts = Model.hosts({profiles: [{id: 'doc', name: 'alpha', host: '10.2.0.1', detected_services: ['paperless']}]});
+    const {HostIdentity, HostPlatform} = globalThis;
+    delete globalThis.HostIdentity;
+    delete globalThis.HostPlatform;
+    try {
+        assert.deepEqual(Model.filter(hosts, 'paperless'), []);
+        assert.deepEqual(Model.filter(hosts, 'alpha').map(host => host.id), ['doc']);
+    } finally {
+        globalThis.HostIdentity = HostIdentity;
+        globalThis.HostPlatform = HostPlatform;
+    }
 });
 
 test('automation bins count fourteen local days and ignore older runs', () => {

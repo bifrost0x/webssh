@@ -21,10 +21,14 @@ import (
 
 func TestAssetVersionIsContentHash(t *testing.T) {
 	files := fstest.MapFS{
-		"js/app.js":      {Data: []byte("console.log(1)\n")},
-		"js/i18n/de.js":  {Data: []byte("de")},
-		"js/i18n/en.js":  {Data: []byte("en")},
-		"js/i18n/x/y.js": {Data: []byte("nested")},
+		"js/app.js":                   {Data: []byte("console.log(1)\n")},
+		"js/i18n/de.js":               {Data: []byte("de")},
+		"js/i18n/en.js":               {Data: []byte("en")},
+		"js/i18n/x/y.js":              {Data: []byte("nested")},
+		"icons/services/plex.svg":     {Data: []byte("<svg/>")},
+		"icons/services/gitea.svg":    {Data: []byte("<svg/>")},
+		"icons/services/LICENSE.md":   {Data: []byte("license")},
+		"icons/services/old/plex.svg": {Data: []byte("nested")},
 	}
 	a, err := NewAssets(files)
 	if err != nil {
@@ -41,7 +45,14 @@ func TestAssetVersionIsContentHash(t *testing.T) {
 	if got := strings.Join(a.Translations(), ","); got != "de,en" {
 		t.Fatalf("Translations = %q, want de,en (direct children only)", got)
 	}
+	if got := strings.Join(a.ServiceIcons(), ","); got != "gitea,plex" {
+		t.Fatalf("ServiceIcons = %q, want gitea,plex (direct .svg children only)", got)
+	}
 	v := view{PageData: &PageData{BasePath: "/root"}, assets: a}
+	icons, err := v.ServiceIconAssets()
+	if err != nil || len(icons) != 2 || !strings.HasPrefix(icons["plex"], "/root/static/icons/services/plex.svg?v=") {
+		t.Fatalf("ServiceIconAssets = %v, %v", icons, err)
+	}
 	url, err := v.Asset("js/app.js")
 	if err != nil || url != "/root/static/js/app.js?v="+want {
 		t.Fatalf("Asset = %q, %v", url, err)

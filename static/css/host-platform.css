@@ -38,6 +38,81 @@
 .host-platform-icon[data-platform="freebsd"] { --platform-ink-dark: #ff8585; --platform-ink-light: #a62e35; }
 body[data-theme="paper"] .host-platform-icon { color: var(--platform-ink-light, #4b5968); }
 
+/* Service logos are drawn in the surrounding text colour; the tile behind them
+   (tinted by the host role) belongs to the component that places them, which
+   also sizes them by setting --service-icon-size. */
+.host-service-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--service-icon-size, 16px);
+    height: var(--service-icon-size, 16px);
+    flex: 0 0 var(--service-icon-size, 16px);
+    vertical-align: middle;
+    color: inherit;
+    background-color: currentColor;
+    mask-size: contain;
+    mask-position: center;
+    mask-repeat: no-repeat;
+}
+.host-service-icon:has(> .host-service-monogram) { background-color: transparent; }
+.host-service-monogram {
+    font-size: calc(var(--service-icon-size, 16px) * 0.56);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    user-select: none;
+}
+
+/* Workspace tabs of a saved host: the role as an edge along the top and up to
+   two service logos after the name. ::before stays the theme's active marker. */
+.session-tab[data-role]::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 10px;
+    right: 10px;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: var(--role);
+    pointer-events: none;
+}
+/* The active tab keeps the theme's inset accent line on top; the role sits just below it. */
+.session-tab.active[data-role]::after {
+    top: 2px;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--role) 60%, transparent);
+}
+/* Never narrower than its tiles: the fit routine hides whole tiles instead. */
+.tab-services,
+.shell-host-services {
+    --service-icon-size: 12px;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 3px;
+}
+.tab-services[hidden],
+.tab-service[hidden],
+.shell-host-services[hidden],
+.shell-host-service[hidden] { display: none; }
+.tab-service,
+.shell-host-service {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--role, currentColor) 18%, transparent);
+    color: var(--role-ink, currentColor);
+}
+
 @media (forced-colors: active) {
     body[data-theme] .host-platform-icon { color: CanvasText; forced-color-adjust: none; }
+    body[data-theme] .host-service-icon { color: CanvasText; forced-color-adjust: none; }
+    .session-tab[data-role]::after { background: CanvasText; box-shadow: none; }
+    .tab-service,
+    .shell-host-service { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
 }

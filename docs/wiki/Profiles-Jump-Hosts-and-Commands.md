@@ -127,11 +127,11 @@ instead, so the probe still does not repeat on every login. That memory
 belongs to the server process: it is lost when WebSSH restarts, and each
 server process keeps its own.
 
-The host icon shows where its platform came from: a manual choice, a
-detection, the SSH greeting, the host name, a detection that found no known
-platform, or "not detected yet". Choosing a
-manual icon turns detection off for that host. A role assigned to the host
-(the `role_override` field of a host import) does not.
+The host icon shows where its platform came from: a manual choice, a detection,
+the SSH greeting, the host name, a detection that found no known platform, or
+"not detected yet". Choosing a manual icon turns detection off for that host. A
+role assigned to the host (the **Role** field, or the `role_override` field of
+a host import) does not.
 
 ## Private host context
 
@@ -160,6 +160,98 @@ Opening context never establishes or restores an SSH connection.
 Context is stored in the account's `host_context.json`, with a 4 MiB account
 quota, and included in normal application backups. Deleted profiles cannot
 access their context; orphaned entries are pruned on the next context write.
+
+## Host roles and where they are shown
+
+Every host has a role: Hypervisor, Backup, Storage, Container host, Documents,
+Photos, Media, Cloud, Smart home, Network, Monitoring, Development, Passwords,
+Database, Web, Workstation or Server. WebSSH works it out in the browser from
+the platform and services that the connect-time probe stored (see above); it
+adds no request, no probe and no setting on the server. The first of these
+steps that matches names the role:
+
+1. The platform: Hypervisor for Proxmox VE, Backup for Proxmox Backup Server,
+   Storage for TrueNAS, Unraid, Synology and QNAP, Smart home for Home
+   Assistant, Network for OPNsense, pfSense, OpenWrt, MikroTik, Cisco and
+   Ubiquiti, Container host for the Docker platform.
+2. A container runtime or its tooling among the services (Docker, Podman,
+   Portainer, k3s, Watchtower, Dozzle): Container host, whichever
+   applications the host runs.
+3. The services, in this order:
+   1. Photos: Immich, PhotoPrism.
+   2. Documents: Paperless.
+   3. Cloud: Nextcloud, ownCloud, Seafile.
+   4. Media: Jellyfin, Plex, Emby.
+   5. Smart home: Home Assistant.
+   6. Network: Pi-hole, AdGuard.
+   7. Monitoring: Grafana, Prometheus, Uptime Kuma, Zabbix, Netdata.
+   8. Development: Gitea, GitLab.
+   9. Passwords: Vaultwarden.
+   10. Database: MariaDB, PostgreSQL, Redis, MongoDB, InfluxDB.
+   11. Web: nginx, Apache, Caddy, Traefik, Nginx Proxy Manager, HAProxy.
+
+So a platform always beats the services: a router platform that also runs
+Jellyfin is a Network host, and a TrueNAS or Proxmox host that runs Docker
+keeps its Storage or Hypervisor role. On any other host a container runtime
+makes it a Container host, also when it runs Paperless or Immich in
+containers; the same applications without a runtime still give Documents or
+Photos. The same goes for a graphical host. Database and Web describe hosts
+that run nothing but infrastructure: Database allows only databases and web
+servers, Web only web servers. One more application and the host does not
+match them. VPN and overlay networks (WireGuard, Tailscale, ZeroTier,
+OpenVPN) say how a host is reached, not what it is: the rules ignore them,
+and their logos come after all other services. A host that boots into a
+graphical target and matched nothing is a Workstation, also when it runs a
+VPN overlay; another host that runs nothing but VPN overlays is a Network
+host; anything else is a Server. A role chosen by hand always wins.
+
+On a Container host the applications come first among the logos and the
+runtime follows them.
+
+Only a chosen platform, a detected one or a distribution family derived from
+detection (for example Debian-based) can name a role through the platform. A
+greeting or host-name hint never does. In the host editor, the **Role** field
+offers **Automatic** and the 17 roles. A manual role only changes how the host
+is shown: detection keeps running and keeps its schedule.
+
+Each role has its own accent colour, tuned per theme; forced-colors mode uses
+the system colours.
+
+The overview shows, per host:
+
+- a role pill, a card edge and tint in the role colour, and the platform icon
+  on a role-tinted tile with a badge for the virtualization kind;
+- the system line (for example `Debian 12`, or the distribution and its
+  family for a derived one);
+- up to five service logos with `+n` for the rest, the role's own service
+  first; a name or hover text names each logo;
+- a guest count on hypervisors and a hint when running containers could not be
+  read because the SSH user may not use the Docker socket;
+- **Host profile**, an expandable section with system, machine, services,
+  role and how it was reached (manual, derived from a platform or service, the
+  graphical desktop, or default) and the detection source with its date. It
+  says when the facts are older than seven days; they are refreshed on the
+  next connection. With a manual platform icon it says that detection is off
+  instead, since such a host is not probed again.
+
+Search in the overview also matches role, platform and service names. The
+classic overview layout keeps its compact rows: platform icon, virtualization
+badge, role pill and up to three service logos, without tint or profile.
+
+In the workspace, tabs carry the role colour as an edge with up to two service
+logos, dropping logos before a host name is cut. Above each terminal in the
+grid, an identity line names the role, the host and the system, with up to four
+service logos; in window mode the same information sits in the window's title
+bar. A saved host that is a plain Server with no known system, machine or
+service gets no identity line, and its terminal keeps the full pane. Rows in
+the host rail on the left have a role edge and up to four service logos, and a
+**Group / Role** switch groups the rail by role instead of by group. The choice
+is stored in the browser (`localStorage`), not on the server, and the switch
+does not exist in the classic layout.
+
+All of this uses only what detection read while you were connected anyway.
+Facts that are missing or outside the fixed catalogs are left out, and a host
+that was never detected is shown as a Server without services.
 
 ## Favorites and groups
 

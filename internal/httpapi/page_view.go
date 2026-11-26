@@ -165,9 +165,19 @@ func (v view) PrimaryMethod() AuthMethod {
 // TranslationAssets maps each language to the versioned URL of its file
 // in static/js/i18n/.
 func (v view) TranslationAssets() (map[string]string, error) {
-	out := map[string]string{}
-	for _, name := range v.assets.Translations() {
-		url, err := v.Asset("js/i18n/" + name + ".js")
+	return v.assetURLs(v.assets.Translations(), "js/i18n/", ".js")
+}
+
+// ServiceIconAssets maps each bundled service logo to its versioned URL.
+// A service without a logo is missing; the page shows a monogram for it.
+func (v view) ServiceIconAssets() (map[string]string, error) {
+	return v.assetURLs(v.assets.ServiceIcons(), "icons/services/", ".svg")
+}
+
+func (v view) assetURLs(names []string, dir, suffix string) (map[string]string, error) {
+	out := make(map[string]string, len(names))
+	for _, name := range names {
+		url, err := v.Asset(dir + name + suffix)
 		if err != nil {
 			return nil, err
 		}

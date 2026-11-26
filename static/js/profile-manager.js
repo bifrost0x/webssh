@@ -1485,6 +1485,12 @@ const ProfileManager = {
         document.getElementById('profileEditorId').value = this.editingProfileId || '';
         const platformSelect = document.getElementById('profileEditorPlatformIcon');
         if (platformSelect) platformSelect.value = profile?.platform_icon || 'auto';
+        const roleSelect = document.getElementById('profileEditorRole');
+        if (roleSelect) {
+            roleSelect.value = profile?.role_override || 'auto';
+            // A stored value outside the catalog selects nothing; show the automatic choice.
+            if (roleSelect.value !== (profile?.role_override || 'auto')) roleSelect.value = 'auto';
+        }
         document.getElementById('profileEditorName').value = duplicating
             ? this.duplicateProfileName(profile?.name)
             : (profile?.name || '');
@@ -1697,6 +1703,7 @@ const ProfileManager = {
         const payload = {
             name: document.getElementById('profileEditorName').value.trim(),
             platform_icon: document.getElementById('profileEditorPlatformIcon')?.value || 'auto',
+            role_override: document.getElementById('profileEditorRole')?.value || 'auto',
             group: document.getElementById('profileEditorGroup').value.trim(),
             host: document.getElementById('profileEditorHost').value.trim(),
             port: Number(document.getElementById('profileEditorPort').value) || 22,

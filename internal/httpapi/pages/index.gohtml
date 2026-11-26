@@ -21,6 +21,7 @@
 
     <link rel="stylesheet" href="{{$.Asset "vendor/xterm/xterm.css"}}" />
     <script id="hostPlatformAssets" type="application/json">{{$.PlatformAssets}}</script>
+    <script id="hostServiceAssets" type="application/json">{{$.ServiceIconAssets}}</script>
     {{if $.InitialInventory}}<script id="initialInventory" type="application/json">{{$.InitialInventory}}</script>{{end}}
     <meta name="preview-highlight-script" content="{{$.Asset "vendor/highlight/highlight.min.js"}}">
     <meta name="preview-highlight-style" content="{{$.Asset "vendor/highlight/github-dark.min.css"}}">
@@ -46,6 +47,7 @@
     <link rel="stylesheet" href="{{$.Asset "css/permission-job-dialog.css"}}">
     <link rel="stylesheet" href="{{$.Asset "css/terminal-windows.css"}}">
     <link rel="stylesheet" href="{{$.Asset "css/host-platform.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/host-identity.css"}}">
     <link rel="stylesheet" href="{{$.Asset "css/server-operations.css"}}">
     <script src="{{$.Asset "js/branding.js"}}" defer></script>
     {{if ne $.OverviewLayout "classic"}}
@@ -211,7 +213,15 @@
         <a class="workspace-access-button workspace-access-settings" href="{{$.URL "/settings"}}" title="Settings" data-i18n-title="settings.title"><span class="material-icons" aria-hidden="true">settings</span><span class="sr-only" data-i18n="settings.title">Settings</span></a>
     </nav>
     <aside id="shellHostAccess" class="shell-groups" aria-labelledby="shellGroupsTitle">
-        <div class="shell-groups-heading"><span id="shellGroupsTitle" data-i18n="profiles.savedConnections">Saved Connections</span></div>
+        <div class="shell-groups-heading">
+            <span id="shellGroupsTitle" data-i18n="profiles.savedConnections">Saved Connections</span>
+            {{if ne $.OverviewLayout "classic"}}
+            <div class="shell-grouping" role="radiogroup" aria-label="Group hosts by" data-i18n-aria-label="profiles.groupBy">
+                <button type="button" role="radio" aria-checked="true" tabindex="0" data-grouping="group" data-i18n="profiles.groupByGroup">Group</button>
+                <button type="button" role="radio" aria-checked="false" tabindex="-1" data-grouping="role" data-i18n="profiles.groupByRole">Role</button>
+            </div>
+            {{end}}
+        </div>
         <div id="shellGroups"></div>
     </aside>
 
@@ -985,7 +995,7 @@
                                         </div>
                                         <span class="material-icons profile-advanced-chevron" aria-hidden="true">expand_more</span>
                                     </summary>                        <div class="form-group"><label for="profileEditorPlatformIcon" data-i18n="platform.label">Platform icon</label>
-                            <select id="profileEditorPlatformIcon" class="form-control">
+                            <select id="profileEditorPlatformIcon" class="form-control" aria-describedby="profileEditorPlatformIconHelp">
                                 <option value="auto" data-i18n="platform.auto">Automatic</option>
                                 <option value="server" data-i18n="platform.neutral">Neutral server</option>
                                 <option value="docker">Docker</option>
@@ -1027,7 +1037,30 @@
                                 <option value="ubiquiti">Ubiquiti</option>
                                 <option value="embedded">Embedded / BusyBox</option>
                             </select>
-                            <small data-i18n="platform.help">Automatic checks platform facts after connecting over SSH. Choose an icon to override detection.</small>
+                            <small id="profileEditorPlatformIconHelp" data-i18n="platform.help">Automatic checks platform facts after connecting over SSH. Choose an icon to override detection.</small>
+                        </div>
+                        <div class="form-group"><label for="profileEditorRole" data-i18n="role.label">Role</label>
+                            <select id="profileEditorRole" class="form-control" aria-describedby="profileEditorRoleHelp">
+                                <option value="auto" data-i18n="role.auto">Automatic</option>
+                                <option value="hypervisor" data-i18n="role.hypervisor">Hypervisor</option>
+                                <option value="backup" data-i18n="role.backup">Backup</option>
+                                <option value="storage" data-i18n="role.storage">Storage</option>
+                                <option value="container" data-i18n="role.container">Container host</option>
+                                <option value="docs" data-i18n="role.docs">Documents</option>
+                                <option value="photos" data-i18n="role.photos">Photos</option>
+                                <option value="media" data-i18n="role.media">Media</option>
+                                <option value="cloud" data-i18n="role.cloud">Cloud</option>
+                                <option value="smarthome" data-i18n="role.smarthome">Smart home</option>
+                                <option value="network" data-i18n="role.network">Network</option>
+                                <option value="monitoring" data-i18n="role.monitoring">Monitoring</option>
+                                <option value="dev" data-i18n="role.dev">Development</option>
+                                <option value="passwords" data-i18n="role.passwords">Passwords</option>
+                                <option value="database" data-i18n="role.database">Database</option>
+                                <option value="web" data-i18n="role.web">Web</option>
+                                <option value="workstation" data-i18n="role.workstation">Workstation</option>
+                                <option value="server" data-i18n="role.server">Server</option>
+                            </select>
+                            <small id="profileEditorRoleHelp" data-i18n="role.help">Detection keeps running; the role only changes how the host is shown.</small>
                         </div>
 
                         <fieldset class="connection-route-fields"><legend data-i18n="connection.route">Route</legend>
@@ -1894,6 +1927,7 @@
     <script src="{{$.Asset "js/account-workspace-pulse.js"}}"></script>
     <script src="{{$.Asset "js/broadcast-input.js"}}"></script>
     <script src="{{$.Asset "js/host-platform.js"}}"></script>
+    <script src="{{$.Asset "js/host-identity.js"}}"></script>
     <script src="{{$.Asset "js/profile-manager.js"}}"></script>
     <script src="{{$.Asset "js/host-discovery.js"}}"></script>
     <script src="{{$.Asset "js/profile-exchange.js"}}"></script>
