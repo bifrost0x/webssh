@@ -1,0 +1,333 @@
+{{define "login"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" data-theme-logo type="image/svg+xml" href="{{$.Asset "images/webssh-logo.svg"}}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{$.CSRFToken}}">
+    <meta name="app-root" content="{{$.URLPrefix}}">
+    <meta name="webauthn-configured-origin" content="{{$.WebAuthnOrigin}}">
+    <meta name="webauthn-rp-id" content="{{$.WebAuthnRPID}}">
+    <title data-i18n="auth.loginPageTitle">Sign in · WebSSH</title>
+    <link rel="stylesheet" href="{{$.Asset "vendor/material-icons/material-icons.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/style.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/auth.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/webssh-2.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/product-ui.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/midnight-ui.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/branding.css"}}">
+    <link rel="stylesheet" href="{{$.Asset "css/theme-scenes.css"}}">
+    <script src="{{$.Asset "js/branding.js"}}" defer></script>
+</head>
+<body class="webssh-ui webssh-auth" data-theme="glass" data-use-theme-preference data-defer-theme-background>
+    <script src="{{$.Asset "js/theme-preference.js"}}"></script>
+
+    <div class="auth-shell">
+        <header class="auth-utility-bar">
+            <div class="auth-instance-state">
+                <span class="material-icons" aria-hidden="true">dns</span>
+                <span data-i18n="auth.instanceStatus">WebSSH instance</span>
+                <strong id="authInstanceAddress"></strong>
+            </div>
+            <div class="language-selector">
+                <button class="lang-btn" id="langBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="langDropdown">
+                    <span class="material-icons" aria-hidden="true">language</span>
+                    <span id="currentLangFlag" class="language-code">EN</span>
+                    <span id="currentLangName">English</span>
+                    <span class="material-icons" aria-hidden="true">expand_more</span>
+                </button>
+                <div class="lang-dropdown" id="langDropdown"></div>
+            </div>
+        </header>
+
+        <main class="auth-shell-content">
+            <section class="auth-access-dock">
+                <div class="auth-context-panel">
+                    <div class="auth-brand-lockup">
+                        <div class="auth-product-brand">
+                            {{template "brand_logo" ($.Logo "auth-product-logo" false)}}
+                        </div>
+                        <p class="auth-context-footer" data-i18n="brand.tagline">Your shell. Your rules.</p>
+                    </div>
+                    <div class="auth-context-copy">
+                        {{if $.MFARequired}}
+                        <span class="auth-brand-eyebrow" data-i18n="auth.verificationOverviewEyebrow">Confirm sign-in</span>
+                        <h1 data-i18n="auth.verificationOverviewTitle">Confirm that it is really you.</h1>
+                        <p data-i18n="auth.verificationOverviewHint">Use one of your available factors for this second step. A recovery code opens a restricted session where you renew your account protection.</p>
+                        <ul class="auth-path-list" aria-label="Available verification methods" data-i18n-aria-label="auth.availableVerificationMethods">
+                            {{if has $.MFAMethods "totp"}}
+                            <li data-auth-path="totp">
+                                <span class="material-icons" aria-hidden="true">phonelink_lock</span>
+                                <span><strong data-i18n="security.methodTotp">Authenticator app</strong><small data-i18n="auth.enterAuthenticatorCode">Enter the six-digit code from your authenticator app.</small></span>
+                            </li>
+                            {{end}}
+                            {{if has $.MFAMethods "passkey"}}
+                            <li data-auth-path="passkey">
+                                <span class="material-icons" aria-hidden="true">key</span>
+                                <span><strong data-i18n="security.methodPasskey">Passkey</strong><small data-i18n="auth.passkeyAccessHint">Use a Passkey registered to your account</small></span>
+                            </li>
+                            {{end}}
+                            {{if has $.MFAMethods "recovery"}}
+                            <li data-auth-path="recovery">
+                                <span class="material-icons" aria-hidden="true">lock_reset</span>
+                                <span><strong data-i18n="security.methodRecoveryCode">Recovery code</strong><small data-i18n="auth.recoveryAccessHint">One-time access followed by factor repair</small></span>
+                            </li>
+                            {{end}}
+                        </ul>
+                        {{else}}
+                        <span class="auth-brand-eyebrow" data-i18n="auth.welcomeToWebssh">Welcome to WebSSH</span>
+                        <h1 data-i18n="auth.serverControlCenter">The control center for your servers.</h1>
+                        <ul class="auth-product-pillars" aria-label="WebSSH product areas" data-i18n-aria-label="auth.productAreas">
+                            <li data-product-area="ssh-workspaces">
+                                <span class="material-icons" aria-hidden="true">terminal</span>
+                                <strong data-i18n="navigation.sshWorkspaces">SSH Workspaces</strong>
+                            </li>
+                            <li data-product-area="file-manager">
+                                <span class="material-icons" aria-hidden="true">folder_open</span>
+                                <strong data-i18n="files.fileManager">File Manager</strong>
+                            </li>
+                            <li data-product-area="hosts">
+                                <span class="material-icons" aria-hidden="true">dns</span>
+                                <strong data-i18n="connectionAssets.hosts">Hosts</strong>
+                            </li>
+                            <li data-product-area="commands">
+                                <span class="material-icons" aria-hidden="true">code</span>
+                                <strong data-i18n="commands.workspace">Commands</strong>
+                            </li>
+                        </ul>
+                        {{end}}
+                    </div>
+                </div>
+                <div class="auth-form-panel">
+            <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                {{if $.MFARequired}}
+                <span class="auth-form-eyebrow" data-i18n="auth.verificationOverviewEyebrow">Confirm sign-in</span>
+                <h1 data-i18n="auth.twoFactorAuthentication">Two-factor authentication</h1>
+                <p data-i18n="auth.verificationOverviewHint">Use one of your available factors for this second step. A recovery code opens a restricted session where you renew your account protection.</p>
+                {{else}}
+                <span class="auth-form-eyebrow" data-i18n="auth.login">Sign in</span>
+                <h1 data-i18n="auth.signInPrompt">Access your SSH workspace</h1>
+                <p data-i18n="auth.signInSourceHint">Use the identity source configured for this WebSSH instance.</p>
+                {{end}}
+            </div>
+
+            
+            
+            
+            
+            
+            {{template "auth_messages" $}}
+            <div id="authNotificationContainer" class="auth-notification-container" aria-live="polite" aria-atomic="true"></div>
+
+            
+            {{if $.MFARequired}}
+            <form class="auth-mfa-back-form" method="POST" action="{{$.URL "/login/cancel"}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button class="auth-mfa-back" id="cancelMfaLogin" type="submit">
+                    <span class="material-icons" aria-hidden="true">arrow_back</span>
+                    <span data-i18n="auth.backToSignIn">Back to sign in</span>
+                </button>
+            </form>
+            
+            {{if gt (len $.MFAMethods) 1}}
+            <div id="authMfaMethodSwitcher" class="auth-method-switcher" role="tablist" aria-label="Choose a verification method" data-i18n-aria-label="auth.availableVerificationMethods">
+                {{if has $.MFAMethods "totp"}}
+                <button class="auth-method-option" id="totpMfaTab" type="button" role="tab" data-auth-mode="totp" aria-selected="{{if eq $.DefaultMFAMethod "totp"}}true{{else}}false{{end}}" aria-controls="totpMfaPanel">
+                    <span class="material-icons" aria-hidden="true">phonelink_lock</span>
+                    <span><strong data-i18n="security.methodTotp">Authenticator app</strong><small data-i18n="security.authenticatorCode">Authenticator code</small></span>
+                </button>
+                {{end}}
+                {{if has $.MFAMethods "passkey"}}
+                <button class="auth-method-option" id="passkeyMfaTab" type="button" role="tab" data-auth-mode="passkey" aria-selected="{{if eq $.DefaultMFAMethod "passkey"}}true{{else}}false{{end}}" aria-controls="passkeyLoginMode">
+                    <span class="material-icons" aria-hidden="true">key</span>
+                    <span><strong data-i18n="security.methodPasskey">Passkey</strong><small data-i18n="auth.deviceAuthentication">Device authentication</small></span>
+                </button>
+                {{end}}
+                {{if has $.MFAMethods "recovery"}}
+                <button class="auth-method-option" id="recoveryMfaTab" type="button" role="tab" data-auth-mode="recovery" aria-selected="{{if eq $.DefaultMFAMethod "recovery"}}true{{else}}false{{end}}" aria-controls="recoveryMfaPanel">
+                    <span class="material-icons" aria-hidden="true">lock_reset</span>
+                    <span><strong data-i18n="security.methodRecoveryCode">Recovery code</strong><small data-i18n="auth.recoveryAccessHint">One-time account recovery</small></span>
+                </button>
+                {{end}}
+            </div>
+            {{end}}
+            {{else}}
+            <div class="auth-method-switcher" role="tablist" aria-label="Choose how to sign in" data-i18n-aria-label="auth.chooseSignInMethod"{{if not (or (or $.WebAuthnEnabled $.OIDCEnabled) $.GitHubAuthEnabled)}} hidden{{end}}>
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="password" aria-selected="true" aria-controls="passwordLoginMode">
+                    <span class="material-icons" aria-hidden="true">person</span>
+                    <span><strong data-i18n="auth.localOrDirectory">Local / Directory</strong><small data-i18n="auth.usernameAndPassword">Username and password</small></span>
+                </button>
+                {{if $.WebAuthnEnabled}}
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="passkey" aria-selected="false" aria-controls="passkeyLoginMode">
+                    <span class="material-icons" aria-hidden="true">key</span>
+                    <span><strong data-i18n="security.methodPasskey">Passkey</strong><small data-i18n="auth.deviceAuthentication">Device authentication</small></span>
+                </button>
+                {{end}}
+                {{if $.OIDCEnabled}}
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="oidc" aria-selected="false" aria-controls="oidcLoginMode">
+                    <span class="material-icons" aria-hidden="true">verified_user</span>
+                    <span><strong data-i18n="security.methodOidc">Identity provider</strong><small data-i18n="auth.organizationSso">SSO with your organization</small></span>
+                </button>
+                {{end}}
+                {{if $.GitHubAuthEnabled}}
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="github" aria-selected="false" aria-controls="githubLoginMode">
+                    <span class="material-icons" aria-hidden="true">code</span>
+                    <span><strong data-i18n="security.methodGithub">GitHub</strong><small data-i18n="auth.githubSignInHint">Use your linked GitHub account</small></span>
+                </button>
+                {{end}}
+            </div>
+            {{end}}
+
+            <div class="auth-credentials-zone"{{if and $.MFARequired (gt (len $.MFAMethods) 1)}} data-mfa-layout="compact"{{end}}>
+            {{if and $.MFARequired (has $.MFAMethods "totp")}}
+            <section id="totpMfaPanel" class="login-mode{{if ne $.DefaultMFAMethod "totp"}} hidden{{end}}" data-auth-mode-panel="totp" aria-hidden="{{if eq $.DefaultMFAMethod "totp"}}false{{else}}true{{end}}"{{if gt (len $.MFAMethods) 1}} aria-labelledby="totpMfaTab"{{end}}>
+                {{if eq (len $.MFAMethods) 1}}
+                <h2 data-i18n="security.methodTotp">Authenticator app</h2>
+                <p data-i18n="auth.enterAuthenticatorCode">Enter the six-digit code from your authenticator app.</p>
+                {{end}}
+                <div class="form-group">
+                    <label for="totpMfaCode" data-i18n="security.authenticatorCode">Authenticator code</label>
+                    <input type="text" id="totpMfaCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" data-initial-focus>
+                </div>
+                <div class="alert alert-error hidden" id="totpMfaError" role="alert"></div>
+                <button type="button" class="btn-primary" id="submitTotpMfa" data-i18n="auth.verifyCode">Verify code</button>
+            </section>
+            {{end}}
+            {{if and $.MFARequired (has $.MFAMethods "recovery")}}
+            <section id="recoveryMfaPanel" class="login-mode{{if ne $.DefaultMFAMethod "recovery"}} hidden{{end}}" data-auth-mode-panel="recovery" aria-hidden="{{if eq $.DefaultMFAMethod "recovery"}}false{{else}}true{{end}}"{{if gt (len $.MFAMethods) 1}} aria-labelledby="recoveryMfaTab"{{end}}>
+                {{if eq (len $.MFAMethods) 1}}
+                <h2 data-i18n="auth.useRecoveryCode">Use a recovery code</h2>
+                <p data-i18n="auth.recoverySessionHint">This creates a restricted session where you must add a replacement factor or explicitly disable MFA.</p>
+                {{end}}
+                <div class="form-group">
+                    <label for="recoveryMfaCode" data-i18n="auth.recoveryCode">Recovery code</label>
+                    <input type="text" id="recoveryMfaCode" class="form-control" autocomplete="one-time-code">
+                </div>
+                <div class="alert alert-error hidden" id="recoveryMfaError" role="alert"></div>
+                <button type="button" class="btn-primary" id="submitRecoveryMfa" data-i18n="auth.continueWithRecoveryCode">Continue with recovery code</button>
+            </section>
+            {{end}}
+            <section id="passwordLoginMode" class="login-mode{{if $.MFARequired}} hidden{{end}}" data-auth-mode-panel="password" aria-hidden="{{if $.MFARequired}}true{{else}}false{{end}}">
+            <div id="passwordAuthenticationForms"{{if $.MFARequired}} class="hidden"{{end}}>
+            {{if $.LDAPEnabled}}
+            <div class="form-group">
+                <label for="authenticationSource" data-i18n="auth.authenticationSource">Authentication source</label>
+                <div class="input-wrapper auth-source-control">
+                    <span class="input-icon material-icons" aria-hidden="true">account_tree</span>
+                    <select id="authenticationSource" class="form-control" aria-controls="localLoginForm ldapLoginForm">
+                        <option value="local"{{if eq $.SelectedAuthSource "local"}} selected{{end}} data-i18n="auth.localAccount">Local account</option>
+                        <option value="ldap"{{if eq $.SelectedAuthSource "ldap"}} selected{{end}}>{{$.LDAPProviderID}}</option>
+                    </select>
+                </div>
+            </div>
+            {{end}}
+
+            <form method="POST" action="{{$.URL "/login"}}" id="localLoginForm" class="auth-source-form{{if ne $.SelectedAuthSource "local"}} hidden{{end}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/>
+                <div class="form-group">
+                    <label for="username" data-i18n="auth.username">Username</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon material-icons" aria-hidden="true">person</span>
+                        <input type="text" id="username" name="username" class="form-control"
+                               data-i18n-placeholder="auth.username" placeholder="Username" value="{{$.LocalUsernameHint}}" required{{if and (eq $.SelectedAuthSource "local") (not $.LocalUsernameHint)}} data-initial-focus{{end}}>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password" data-i18n="auth.password">Password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon material-icons" aria-hidden="true">lock</span>
+                        <input type="password" id="password" name="password" class="form-control"
+                               data-i18n-placeholder="auth.password" placeholder="Password" required{{if and (eq $.SelectedAuthSource "local") $.LocalUsernameHint}} data-initial-focus{{end}}>
+                        <button type="button" class="password-toggle material-icons" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
+                    </div>
+                </div>
+
+                <div class="form-group auth-remember-control">
+                    <input type="checkbox" id="remember" name="remember">
+                    <label for="remember" data-i18n="auth.rememberMe">Remember me</label>
+                </div>
+
+                <button type="submit" class="btn-primary">
+                    <span data-i18n="auth.login">Sign In</span>
+                </button>
+            </form>
+
+            {{if $.LDAPEnabled}}
+            <form method="POST" action="{{$.URL "/login/ldap"}}" id="ldapLoginForm" class="auth-source-form{{if ne $.SelectedAuthSource "ldap"}} hidden{{end}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <div class="form-group">
+                    <label for="ldapUsername" data-i18n="auth.directoryUsername">Directory username</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon material-icons" aria-hidden="true">person</span>
+                        <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" data-i18n-placeholder="auth.directoryUsername" placeholder="Directory username" value="{{$.LDAPUsernameHint}}" required{{if and (eq $.SelectedAuthSource "ldap") (not $.LDAPUsernameHint)}} data-initial-focus{{end}}>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="ldapPassword" data-i18n="security.directoryPassword">Directory password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon material-icons" aria-hidden="true">lock</span>
+                        <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" data-i18n-placeholder="security.directoryPassword" placeholder="Directory password" required{{if and (eq $.SelectedAuthSource "ldap") $.LDAPUsernameHint}} data-initial-focus{{end}}>
+                        <button type="button" class="password-toggle material-icons" data-target="ldapPassword" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
+                    </div>
+                </div>
+                <div class="form-group auth-remember-control">
+                    <input type="checkbox" id="ldapRemember" name="remember">
+                    <label for="ldapRemember" data-i18n="auth.rememberMe">Remember me</label>
+                </div>
+                {{if $.LDAPError}}{{template "auth_alert" ($.Alert $.LDAPError "error")}}{{end}}
+                <button type="submit" class="btn-primary" data-i18n="auth.login">Sign in</button>
+            </form>
+            {{end}}
+                </div>
+            </section>
+            {{if and $.WebAuthnEnabled (or (not $.MFARequired) (has $.MFAMethods "passkey"))}}
+            <section id="passkeyLoginMode" class="login-mode auth-provider-mode{{if or (not $.MFARequired) (ne $.DefaultMFAMethod "passkey")}} hidden{{end}}" data-auth-mode-panel="passkey" aria-hidden="{{if and $.MFARequired (eq $.DefaultMFAMethod "passkey")}}false{{else}}true{{end}}"{{if and $.MFARequired (gt (len $.MFAMethods) 1)}} aria-labelledby="passkeyMfaTab"{{end}}>
+                {{if or (not $.MFARequired) (eq (len $.MFAMethods) 1)}}
+                <span class="auth-provider-mode-icon material-icons" aria-hidden="true">key</span>
+                <h2 data-i18n="auth.passkeyPrompt">Use a Passkey</h2>
+                <p data-i18n="auth.passkeyPromptHint">Authenticate with a Passkey saved on this device or another nearby device.</p>
+                {{end}}
+                <button type="button" class="auth-provider-button" id="passkeyLoginBtn"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="auth.signInWithPasskey">Sign in with passkey</span></button>
+            </section>
+            {{end}}
+            {{if and $.OIDCEnabled (not $.MFARequired)}}
+            <section id="oidcLoginMode" class="login-mode auth-provider-mode hidden" data-auth-mode-panel="oidc" aria-hidden="true">
+                <span class="auth-provider-mode-icon material-icons" aria-hidden="true">verified_user</span>
+                <h2 data-i18n="auth.identityProviderPrompt">Continue with your identity provider</h2>
+                <p data-i18n="auth.identityProviderPromptHint">WebSSH redirects you to the configured provider. Provider credentials are never entered here.</p>
+                <a class="auth-provider-button" id="oidcLoginBtn" href="{{$.URL "/oidc/login"}}"><span class="material-icons" aria-hidden="true">verified_user</span><span data-i18n="auth.signInWithIdentityProvider">Sign in with identity provider</span></a>
+            </section>
+            {{end}}
+            {{if and $.GitHubAuthEnabled (not $.MFARequired)}}
+            <section id="githubLoginMode" class="login-mode auth-provider-mode hidden" data-auth-mode-panel="github" aria-hidden="true">
+                <span class="auth-provider-mode-icon material-icons" aria-hidden="true">code</span>
+                <h2 data-i18n="auth.githubPrompt">Continue with GitHub</h2>
+                <p data-i18n="auth.githubPromptHint">WebSSH uses your GitHub App authorization only to verify your identity and configured organization membership.</p>
+                <a class="auth-provider-button" id="githubLoginBtn" href="{{$.URL "/auth/github/login"}}"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="auth.signInWithGithub">Sign in with GitHub</span></a>
+            </section>
+            {{end}}
+            </div>
+            <div class="auth-footer{{if or $.MFARequired (not $.RegistrationEnabled)}} hidden{{end}}">
+                {{if $.RegistrationEnabled}}
+                <span data-i18n="auth.noAccount">Don't have an account?</span>
+                <a href="{{$.URL "/register"}}" data-i18n="auth.registerHere">Register here</a>
+                {{end}}
+            </div>
+        </div>
+            </div>
+            </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{$.Asset "js/i18n-auth.js"}}"></script>
+    <script src="{{$.Asset "js/auth.js"}}"></script>
+    <script src="{{$.Asset "js/security-ui.js"}}"></script>
+    <script src="{{$.Asset "js/webauthn.js"}}"></script>
+    {{template "preview_notice" $}}
+</body>
+</html>{{end}}

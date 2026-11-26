@@ -38,7 +38,7 @@ def test_every_uv_setup_consumes_the_same_required_version():
                 assert 'version-file: uv.toml' in block, path
                 assert not re.search(r'^\s+version:', block, re.M), path
                 setups.append(path)
-    assert len(setups) == 8
+    assert len(setups) == 9
 
 
 def test_scanner_fallbacks_use_the_same_pinned_release_images():
