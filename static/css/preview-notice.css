@@ -1,0 +1,58 @@
+/* Preview notice of the Go server (static/js/preview-notice.js). */
+.preview-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 8px 48px 8px 16px;
+    position: relative;
+    background: var(--warning-color, #f3c969);
+    color: #000;
+    font-size: 13px;
+    line-height: 1.4;
+    z-index: 1000;
+}
+
+.preview-notice[hidden],
+.preview-notice-details[hidden] {
+    display: none;
+}
+
+.preview-notice-title {
+    font-weight: 600;
+}
+
+.preview-notice-details {
+    flex-basis: 100%;
+}
+
+.preview-notice-dismiss {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    min-width: 32px;
+    min-height: 32px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.preview-notice-dismiss:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.preview-notice-dismiss:focus-visible {
+    outline: 2px solid #000;
+    outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+    .preview-notice {
+        padding-left: 12px;
+    }
+}
