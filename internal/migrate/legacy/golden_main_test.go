@@ -15,9 +15,9 @@ import (
 	"testing"
 )
 
-// The golden data set (tests/golden)
-// is a DATA_DIR produced by the unmodified Python application. Every
-// expected value in these tests comes from its manifest.json.
+// The golden data set (tests/golden) is a DATA_DIR produced by the
+// unmodified Python application. Every expected value in these tests comes
+// from its manifest.json.
 const fixtureDir = "../../../tests/golden/fixture"
 
 type goldenManifest struct {

@@ -8,6 +8,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { rawDir } = require('./lib/output');
 const { execFileSync } = require('node:child_process');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -54,7 +55,7 @@ function main() {
         python_distributions: python.length,
         packages: { debian: dpkg, python },
     };
-    const out = options.out || path.join(REPO_ROOT, 'plans', 'baseline', 'raw', `image-${result.measured_at.slice(0, 10)}.json`);
+    const out = options.out || path.join(rawDir(), `image-${result.measured_at.slice(0, 10)}.json`);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, `${JSON.stringify(result, null, 2)}\n`);
     process.stderr.write(`[baseline] wrote ${out}\n`);

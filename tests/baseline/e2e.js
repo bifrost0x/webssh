@@ -11,6 +11,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { rawDir } = require('./lib/output');
 const { spawn } = require('node:child_process');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -24,7 +25,7 @@ function main() {
     const outIndex = own.indexOf('--out');
     const startedAt = new Date().toISOString();
     const out = outIndex === -1
-        ? path.join(REPO_ROOT, 'plans', 'baseline', 'raw', `e2e-${startedAt.slice(0, 10)}.json`)
+        ? path.join(rawDir(), `e2e-${startedAt.slice(0, 10)}.json`)
         : own[outIndex + 1];
     const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'webssh-baseline-e2e-'));
     const args = [resolvePlaywrightCli(), 'test', '--trace', 'off', '--reporter', 'line', ...extra];

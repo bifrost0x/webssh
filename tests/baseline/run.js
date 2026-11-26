@@ -15,6 +15,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { rawDir } = require('./lib/output');
 const { execFileSync } = require('node:child_process');
 
 const environment = require('./lib/environment');
@@ -256,7 +257,7 @@ async function main() {
         options,
         phases: {},
     };
-    const out = options.out || path.join(environment.REPO_ROOT, 'plans', 'baseline', 'raw', `${options.target}-${result.started_at.slice(0, 10)}.json`);
+    const out = options.out || path.join(rawDir(), `${options.target}-${result.started_at.slice(0, 10)}.json`);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     const save = () => fs.writeFileSync(out, `${JSON.stringify(result, null, 2)}\n`);
     let sshd = null;

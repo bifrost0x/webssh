@@ -2,9 +2,10 @@
 'use strict';
 
 // Builds the summary (JSON + Markdown table) and benchstat-compatible text
-// from the raw measurement files.
+// from the raw files in <dir>/raw/ and writes them to <dir>. <dir> is
+// --dir, else WEBSSH_BASELINE_DIR, else test-results/baseline.
 //
-//   node tests/baseline/report.js --name 2026-11-26-baseline-python
+//   node tests/baseline/report.js --name 2026-11-26-baseline-python [--dir <dir>]
 //
 // For a later comparison, run the same measurements against the new backend
 // and compare the two .bench.txt files with benchstat.
@@ -12,8 +13,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const BASELINE_DIR = path.join(REPO_ROOT, 'plans', 'baseline');
+const { baselineDir } = require('./lib/output');
+
+function argValue(flag) {
+    const index = process.argv.indexOf(flag);
+    return index === -1 ? undefined : process.argv[index + 1];
+}
+
+const BASELINE_DIR = baselineDir(argValue('--dir'));
 const RAW_DIR = path.join(BASELINE_DIR, 'raw');
 
 function latest(prefix) {
@@ -112,8 +119,7 @@ function benchLines(run) {
 }
 
 function main() {
-    const nameIndex = process.argv.indexOf('--name');
-    const name = nameIndex === -1 ? 'baseline' : process.argv[nameIndex + 1];
+    const name = argValue('--name') || 'baseline';
     const docker = latest('docker-');
     const local = latest('local-');
     const image = latest('image-');
@@ -122,7 +128,7 @@ function main() {
     const lines = [
         `# Baseline ${name}`,
         '',
-        'Erzeugt mit `node tests/baseline/report.js` aus den Rohdaten der Messläufe.',
+        'Erzeugt mit `node tests/baseline/report.js` aus den Rohdaten in `raw/` neben diesem Bericht.',
         '',
         '## Umgebung',
         '',
@@ -177,10 +183,11 @@ function main() {
         lines.push('nicht gemessen', '');
     }
     const summary = { name, generated_at: new Date().toISOString(), sources: [docker, local, image, e2e].filter(Boolean).map((item) => item.file), host, rows: rows(docker, local).map(([label, dockerValue, localValue]) => ({ label, docker: dockerValue, local: localValue })), image: image?.data && { ...image.data, packages: undefined }, e2e: e2e?.data && { ...e2e.data, output_tail: undefined } };
+    fs.mkdirSync(BASELINE_DIR, { recursive: true });
     fs.writeFileSync(path.join(BASELINE_DIR, `${name}.md`), `${lines.join('\n')}\n`);
     fs.writeFileSync(path.join(BASELINE_DIR, `${name}.json`), `${JSON.stringify(summary, null, 2)}\n`);
     fs.writeFileSync(path.join(BASELINE_DIR, `${name}.bench.txt`), `${[...benchLines(docker), ...benchLines(local)].join('\n')}\n`);
-    process.stderr.write(`[baseline] wrote ${name}.md, ${name}.json, ${name}.bench.txt\n`);
+    process.stderr.write(`[baseline] wrote ${name}.md, ${name}.json, ${name}.bench.txt to ${BASELINE_DIR}\n`);
 }
 
 main();
