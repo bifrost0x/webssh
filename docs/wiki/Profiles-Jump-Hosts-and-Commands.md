@@ -131,7 +131,7 @@ The host icon shows where its platform came from: a manual choice, a
 detection, the SSH greeting, the host name, a detection that found no known
 platform, or "not detected yet". Choosing a
 manual icon turns detection off for that host. A role assigned to the host
-(the `role_override` field of a host import) does not.
+(the **Role** field, or the `role_override` field of a host import) does not.
 
 ## Private host context
 
@@ -160,6 +160,67 @@ Opening context never establishes or restores an SSH connection.
 Context is stored in the account's `host_context.json`, with a 4 MiB account
 quota, and included in normal application backups. Deleted profiles cannot
 access their context; orphaned entries are pruned on the next context write.
+
+## Host roles and where they are shown
+
+Every host has a role: Hypervisor, Backup, Storage, Containers, Documents,
+Photos, Media, Cloud, Smart home, Network, Monitoring, Development, Passwords,
+Database, Web, Workstation or Server. WebSSH works it out in the browser from
+the platform and services that the connect-time probe stored (see above); it
+adds no request, no probe and no setting on the server. The first matching rule
+wins:
+
+- a Proxmox VE host is a Hypervisor, Proxmox Backup Server a Backup host, and
+  TrueNAS, Unraid, Synology and QNAP are Storage; routers and firewalls
+  (OPNsense, pfSense, OpenWrt, MikroTik, Cisco, Ubiquiti) are Network;
+- a service that names a role decides it, for example Immich (Photos),
+  Jellyfin (Media), Nextcloud (Cloud), Home Assistant (Smart home), Grafana
+  (Monitoring), Gitea (Development) or Vaultwarden (Passwords);
+- a host that runs only databases, only web servers and proxies, or only a
+  container runtime and its management tools is Database, Web or Containers;
+  one more application makes it something else;
+- a host that boots into a graphical target is a Workstation;
+- anything else is a Server.
+
+A greeting or host-name hint never decides a role; only a chosen or detected
+platform does. In the host editor, the **Role** field offers **Automatic** and
+the 17 roles. A manual role only changes how the host is shown: detection keeps
+running and keeps its schedule.
+
+The role colour is a fixed accent per role in every theme, with forced-colors
+mode using the system colours.
+
+The overview shows, per host:
+
+- a role pill, a card edge and tint in the role colour, and the platform icon
+  on a role-tinted tile with a badge for the virtualization kind;
+- the system line (for example `Debian 12`, or the distribution and its
+  family for a derived one);
+- up to five service logos with `+n` for the rest, the role's own service
+  first; a name or hover text names each logo;
+- a guest count on hypervisors and a hint when running containers could not be
+  read because the SSH user may not use the Docker socket;
+- **Host profile**, an expandable section with system, machine, services,
+  role and how it was reached (manual, derived from a platform or service, the
+  graphical desktop, or default) and the detection source with its date. It
+  says when the facts are older than seven days; they are refreshed on the
+  next connection.
+
+Search in the overview also matches role, platform and service names. The
+classic overview layout keeps its compact rows: platform icon, virtualization
+badge, role pill and up to three service logos, without tint or profile.
+
+In the workspace, tabs carry the role colour as an edge with the main service
+logos, dropping logos before a host name is cut. An identity line above each
+terminal (in the grid and in window mode) names the role, the host and its
+services. The host rail on the left has a **Group / Role** switch that groups
+hosts by role instead of by group. The choice is stored in the browser
+(`localStorage`), not on the server, and the switch does not exist in the
+classic layout.
+
+All of this uses only what detection read while you were connected anyway.
+Facts that are missing or outside the fixed catalogs are left out, and a host
+that was never detected is shown as a Server without services.
 
 ## Favorites and groups
 
