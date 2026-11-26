@@ -33,7 +33,9 @@
 
     // Projects the Socket.IO ssh_connect payload onto terminal.open. Inline
     // jump hosts and SOCKS proxies, stored credentials and Tailscale are not
-    // part of M1; tmux, herdr and the display name are not sent.
+    // part of M1. use_tmux is sent with the name of a persistent session to
+    // reattach (reconnect_tmux_name); the server checks the name and takes
+    // the display name from its own record. Herdr is not sent.
     function openTarget(data) {
         const authType = data.auth_type || (data.key_id ? 'key' : 'password');
         if (!['password', 'key'].includes(authType)) return null;
@@ -44,6 +46,12 @@
         }
         const port = typeof data.port === 'string' && /^\d{1,5}$/.test(data.port) ? Number(data.port) : data.port;
         if (Number.isInteger(port) && port > 0) target.port = port;
+        if (data.use_tmux === true) {
+            target.use_tmux = true;
+            if (typeof data.reconnect_tmux_name === 'string' && data.reconnect_tmux_name !== '') {
+                target.tmux_session_name = data.reconnect_tmux_name;
+            }
+        }
         return target;
     }
 
