@@ -1,0 +1,60 @@
+{
+ "global": [
+  {
+   "id": "99c6c826e881159e481faf1e5c8faf28531998b3993bbb32a7082779e5aacf00",
+   "host": "bastion.golden.test",
+   "port": 22,
+   "algorithm": "ssh-ed25519",
+   "fingerprint": "SHA256:EgGJduE9XENiybCFAHl8AAdWhQHu8IlbYLakX+LJFDc",
+   "marker": null
+  },
+  {
+   "id": "04019b43f3a5c7478b9fe7f4f3d047c4ebc9dcf8fc4a8b6f3aeb0ec088444b40",
+   "host": "compromised.golden.test",
+   "port": 22,
+   "algorithm": "ssh-rsa",
+   "fingerprint": "SHA256:Iy7nSMSBg5+aJCriccTLUq/6a8Vk6GWCD0i/UH3ILuQ",
+   "marker": "@revoked"
+  }
+ ],
+ "user": [
+  {
+   "id": "ec740fe58ec4a4cc99e905bc1a014cc56dd999ded649bac7eba599d8ab1e9ef4",
+   "host": "pw.golden.test",
+   "port": 22,
+   "algorithm": "ssh-ed25519",
+   "fingerprint": "SHA256:EgGJduE9XENiybCFAHl8AAdWhQHu8IlbYLakX+LJFDc",
+   "marker": null
+  },
+  {
+   "id": "cd7f4939369c7f13d960aaa9c0e8e85d0778f621bdbdec2b02dd08bc092483c4",
+   "host": "uni.golden.test",
+   "port": 2222,
+   "algorithm": "ecdsa-sha2-nistp256",
+   "fingerprint": "SHA256:q1RQM20LgMVRqnB7NktO55ab4wWj+lHWmoyc5D5qBpA",
+   "marker": null
+  }
+ ],
+ "lookups": {
+  "pw.golden.test": [
+   [
+    "ssh-ed25519",
+    "AAAAC3NzaC1lZDI1NTE5AAAAIOL2WzJx0sV/B6VxWU9MnxKJFrrYYNJle330w6TBemSK"
+   ]
+  ],
+  "[uni.golden.test]:2222": [
+   [
+    "ecdsa-sha2-nistp256",
+    "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGbkDZQlygY9TMbu/rSOCk3lvjvq84d98C3WMEWJrmZ1vVPCsASnTEJW2/YRAnUtRRx2Tn0rgTlXVQJZotVKDPU="
+   ]
+  ],
+  "key.golden.test": [],
+  "bastion.golden.test": [
+   [
+    "ssh-ed25519",
+    "AAAAC3NzaC1lZDI1NTE5AAAAIOL2WzJx0sV/B6VxWU9MnxKJFrrYYNJle330w6TBemSK"
+   ]
+  ],
+  "compromised.golden.test": []
+ }
+}

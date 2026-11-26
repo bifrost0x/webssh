@@ -1,0 +1,4625 @@
+{
+ "paramiko": "5.1.0",
+ "keys": {
+  "edA": {
+   "type": "ssh-ed25519",
+   "base64": "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d",
+   "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+  },
+  "edB": {
+   "type": "ssh-ed25519",
+   "base64": "AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+",
+   "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w"
+  },
+  "ecC": {
+   "type": "ecdsa-sha2-nistp256",
+   "base64": "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=",
+   "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE"
+  },
+  "ec384": {
+   "type": "ecdsa-sha2-nistp384",
+   "base64": "AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBJvZp49rUdzvXUj5o3jdjoV6mZJeopqfYRqNutI9+89bUfd6zLcOyHOCqYttyAraeC+AmNwFTjYZ5rNI1TW+BBgcFTmdik67KgP3NvfiWop3XpEcY6NO0fuL1XXcTqZEfg==",
+   "fingerprint": "SHA256:ujz0nMan/DM4kEXdCiyxzpdyerLdFL/dGI6syoaTPCE"
+  },
+  "rsaD": {
+   "type": "ssh-rsa",
+   "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT",
+   "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM"
+  }
+ },
+ "cases": [
+  {
+   "name": "plain",
+   "user": "host.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "0db56cee720a1b8d3c03150a4adee01d254a18f5ff86ac070df190905f6416ad",
+     "host": "host.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "host.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "host.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "HOST.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "other.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    }
+   ]
+  },
+  {
+   "name": "port",
+   "user": "[host.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "5f42feb8bbb6bf779e42bd0da8e57e78111fc5ad2307600d85cc916096c3736f",
+     "host": "host.test",
+     "port": 2222,
+     "hosts": [
+      {
+       "host": "host.test",
+       "port": 2222
+      }
+     ],
+     "marker": null,
+     "algorithm": "ecdsa-sha2-nistp256",
+     "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "[host.test]:2222",
+     "effective": [
+      [
+       "ecdsa-sha2-nistp256",
+       "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo="
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "trusted",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "host.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    },
+    {
+     "hostname": "[host.test]:22",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    },
+    {
+     "hostname": "[HOST.TEST]:2222",
+     "effective": [
+      [
+       "ecdsa-sha2-nistp256",
+       "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo="
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "trusted",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-host",
+   "user": "a.test,b.test,10.0.0.1 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "f072f0d4e86636975924e160fa4d1baef9531d684881b99fce4c6467aabff836",
+     "host": "a.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "a.test",
+       "port": 22
+      },
+      {
+       "host": "b.test",
+       "port": 22
+      },
+      {
+       "host": "10.0.0.1",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-rsa",
+     "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "a.test",
+     "effective": [
+      [
+       "ssh-rsa",
+       "AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "trusted"
+     }
+    },
+    {
+     "hostname": "b.test",
+     "effective": [
+      [
+       "ssh-rsa",
+       "AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "trusted"
+     }
+    },
+    {
+     "hostname": "10.0.0.1",
+     "effective": [
+      [
+       "ssh-rsa",
+       "AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "trusted"
+     }
+    },
+    {
+     "hostname": "c.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    }
+   ]
+  },
+  {
+   "name": "wildcard",
+   "user": null,
+   "global": "*.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\ndb?.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "user_error": null,
+   "global_error": null,
+   "user_list": [],
+   "global_list": [
+    {
+     "id": "2795013bf9c2d32337bbfb3a5b3b7b4d319b19f750f516c8b45ded3a104d3fbb",
+     "host": "*.lab.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "*.lab.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    },
+    {
+     "id": "315caca22e33e5d2b5b5217ef49e92e073440d27ab0e7b718615fcfe75b56ca7",
+     "host": "db?.lab.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "db?.lab.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ecdsa-sha2-nistp256",
+     "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE"
+    }
+   ],
+   "lookups": [
+    {
+     "hostname": "x.lab.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "db1.lab.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ],
+      [
+       "ecdsa-sha2-nistp256",
+       "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo="
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "trusted",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "db12.lab.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "lab.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    },
+    {
+     "hostname": "X.LAB.TEST",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "a.b.lab.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "negation",
+   "user": null,
+   "global": "*.lab.test,!secret.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "user_error": null,
+   "global_error": null,
+   "user_list": [],
+   "global_list": [
+    {
+     "id": "ba50d5492bbda08330e874314666e9afce342f8ea1f3d2707a094de65220f003",
+     "host": "*.lab.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "*.lab.test",
+       "port": 22
+      },
+      {
+       "host": "!secret.lab.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "lookups": [
+    {
+     "hostname": "x.lab.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "secret.lab.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    },
+    {
+     "hostname": "SECRET.lab.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    }
+   ]
+  },
+  {
+   "name": "hashed",
+   "user": "|1|42sLnsGBMIQFBjs1IEPCXMIE0tk=|KfxvmVEw8ktY3cXGL4eT5+ChGpM= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n|1|CmtUVaOLD1KqZqIj7w1xRxVdSgg=|RR27WRbxYpRoqGOVEJDMFSmw0zY= ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "8b8269ef14e383288b84a20b65e324fa63f784a7066f74e266437d01005daf0a",
+     "host": "(hashed hostname)",
+     "port": null,
+     "hosts": [
+      {
+       "host": "(hashed hostname)",
+       "port": null
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    },
+    {
+     "id": "bb0d027c0ae414cd501f129abcb67b05f4e8d765924e861bf3a275cdc76ea9fb",
+     "host": "(hashed hostname)",
+     "port": null,
+     "hosts": [
+      {
+       "host": "(hashed hostname)",
+       "port": null
+      }
+     ],
+     "marker": null,
+     "algorithm": "ecdsa-sha2-nistp256",
+     "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "hashed.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "HASHED.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "[hashed.test]:2200",
+     "effective": [
+      [
+       "ecdsa-sha2-nistp256",
+       "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo="
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "trusted",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "other.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    }
+   ]
+  },
+  {
+   "name": "hashed-upper",
+   "user": "|1|eRJBFqRz/RRBghyBTPmbGObWsZs=|U+VVW/qOErmfEnIZ8x2/JwLwgoU= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "7b3ef6fa407259406eb0ae1c5a45b8c15273a7db73846515a096ada71033849d",
+     "host": "(hashed hostname)",
+     "port": null,
+     "hosts": [
+      {
+       "host": "(hashed hostname)",
+       "port": null
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "Upper.Test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "upper.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    },
+    {
+     "hostname": "UPPER.TEST",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    }
+   ]
+  },
+  {
+   "name": "negated-hashed",
+   "user": null,
+   "global": "*.test,!|1|bcudXwnO3qeLXOptvwgCqeLNYEQ=|5Jx920uzBijCbZniCNBgDAy2ys4= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "user_error": null,
+   "global_error": null,
+   "user_list": [],
+   "global_list": [
+    {
+     "id": "0603b3feb0df427ac14d4ecf401e77f3d127f41ca0c073483a6a6ad58b6862f3",
+     "host": "*.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "*.test",
+       "port": 22
+      },
+      {
+       "host": "!|1|bcudXwnO3qeLXOptvwgCqeLNYEQ=|5Jx920uzBijCbZniCNBgDAy2ys4=",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "lookups": [
+    {
+     "hostname": "no.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    },
+    {
+     "hostname": "yes.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "user-first",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\nh.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [
+    {
+     "id": "d82f22e02adde16587181546310930fee2241356fa655fce42f9db5ef71f3058",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w"
+    },
+    {
+     "id": "e36164d30da76f2f1a90858e20bda2abe7801a8fcedd1f1e24933deb8a8f331e",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ecdsa-sha2-nistp256",
+     "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE"
+    }
+   ],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ],
+      [
+       "ecdsa-sha2-nistp256",
+       "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo="
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "trusted",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "first-entry-wins",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    },
+    {
+     "id": "670864bfa92869b2a4ef86e9e4382aab8c56d18ead13de81adb7941f8b9d6ac1",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "revoked-global",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": "@revoked h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [
+    {
+     "id": "d09ece396910d0542ec13c94d3e90b07ce00185c54de70cd5a36e8371f554796",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": "@revoked",
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "revoked",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    }
+   ]
+  },
+  {
+   "name": "revoked-falls-through",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": "@revoked h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n",
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [
+    {
+     "id": "d09ece396910d0542ec13c94d3e90b07ce00185c54de70cd5a36e8371f554796",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": "@revoked",
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    },
+    {
+     "id": "d82f22e02adde16587181546310930fee2241356fa655fce42f9db5ef71f3058",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w"
+    }
+   ],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+"
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed",
+      "edB": "trusted",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "revoked-other-host",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": "@revoked x.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [
+    {
+     "id": "0c464e272732b3ab3d3a712642b15e8b05a4637e4621ef74e9496348303a9fb5",
+     "host": "x.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "x.test",
+       "port": 22
+      }
+     ],
+     "marker": "@revoked",
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "x.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "revoked",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    }
+   ]
+  },
+  {
+   "name": "revoked-wildcard",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": "@revoked *.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n",
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [
+    {
+     "id": "021594f1bdc8c77e5196304a1669efe51ae9d11de2b61434a8838ea613063d2e",
+     "host": "*.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "*.test",
+       "port": 22
+      }
+     ],
+     "marker": "@revoked",
+     "algorithm": "ssh-rsa",
+     "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM"
+    }
+   ],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "revoked"
+     }
+    },
+    {
+     "hostname": "z.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "revoked"
+     }
+    }
+   ]
+  },
+  {
+   "name": "cert-authority-ignored",
+   "user": null,
+   "global": "@cert-authority *.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "user_error": null,
+   "global_error": null,
+   "user_list": [],
+   "global_list": [
+    {
+     "id": "5f8dfda6c586cc90a753f765845739b974b4b9778bcff77cdc71763a796bd3b4",
+     "host": "*.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "*.test",
+       "port": 22
+      }
+     ],
+     "marker": "@cert-authority",
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    }
+   ]
+  },
+  {
+   "name": "comments-blank-crlf",
+   "user": "# comment\r\n\r\n   \r\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d trailing comment here\r\n\ti.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "dceef1a9980e2f7999f22219954e12130ffee76c7da186200924751e155a7c80",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    },
+    {
+     "id": "ba292accd90f5c315517922811f7518c497b11a36f9f2b45ed2df022b57fdd4e",
+     "host": "i.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "i.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ecdsa-sha2-nistp256",
+     "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "i.test",
+     "effective": [
+      [
+       "ecdsa-sha2-nistp256",
+       "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo="
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "trusted",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tabs",
+   "user": "h.test\tssh-ed25519\tAAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "67f81090a98f197f9c8aa8677cb4a6e688b7dd5b75b4e976e6b6e8eebda275ac",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "no-trailing-newline",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "formfeed-in-line",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\f\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "0d9f761ca1b952c5eaf0eb1442d9c34c723c38a547231233f04c8b1c5a55d918",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "golden-like",
+   "user": "pw.golden.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[uni.golden.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "global": "bastion.golden.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked compromised.golden.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n",
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "87df2d2f40a7ace9177af8a21df29d91f92e679727bc7918f64b1f1f15f530fc",
+     "host": "pw.golden.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "pw.golden.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    },
+    {
+     "id": "bac81800d6ee084b7fd54b98b816db8fdaa361a9ca6c185c684ce0821c1bff01",
+     "host": "uni.golden.test",
+     "port": 2222,
+     "hosts": [
+      {
+       "host": "uni.golden.test",
+       "port": 2222
+      }
+     ],
+     "marker": null,
+     "algorithm": "ecdsa-sha2-nistp256",
+     "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE"
+    }
+   ],
+   "global_list": [
+    {
+     "id": "7c6012f3c6881497d619fe2c44abf42d2fe87ca06666513ec1d5535f01f51c34",
+     "host": "bastion.golden.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "bastion.golden.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    },
+    {
+     "id": "93c2320a2924da4a5a99bd70a8344f391d8149a04ba3cec076d5136f8d9933e1",
+     "host": "compromised.golden.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "compromised.golden.test",
+       "port": 22
+      }
+     ],
+     "marker": "@revoked",
+     "algorithm": "ssh-rsa",
+     "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM"
+    }
+   ],
+   "lookups": [
+    {
+     "hostname": "pw.golden.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "[uni.golden.test]:2222",
+     "effective": [
+      [
+       "ecdsa-sha2-nistp256",
+       "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo="
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "trusted",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "bastion.golden.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "compromised.golden.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "revoked"
+     }
+    },
+    {
+     "hostname": "key.golden.test",
+     "effective": null,
+     "outcomes": {
+      "edA": "unknown",
+      "edB": "unknown",
+      "ecC": "unknown",
+      "ec384": "unknown",
+      "rsaD": "unknown"
+     }
+    }
+   ]
+  },
+  {
+   "name": "bad-marker",
+   "user": "@foo h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": null,
+   "user_error": "Unsupported known_hosts marker on line 1",
+   "global_error": null,
+   "user_list": null,
+   "global_list": [],
+   "lookups": []
+  },
+  {
+   "name": "too-few-fields",
+   "user": "h.test ssh-ed25519\n",
+   "global": null,
+   "user_error": "Invalid known_hosts entry on line 1",
+   "global_error": null,
+   "user_list": null,
+   "global_list": [],
+   "lookups": []
+  },
+  {
+   "name": "bad-base64",
+   "user": "h.test ssh-ed25519 !!!notbase64\n",
+   "global": null,
+   "user_error": "Invalid known_hosts entry on line 1",
+   "global_error": null,
+   "user_list": null,
+   "global_list": [],
+   "lookups": []
+  },
+  {
+   "name": "type-mismatch",
+   "user": "h.test ssh-rsa AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": null,
+   "user_error": "Invalid known_hosts entry on line 1",
+   "global_error": null,
+   "user_list": null,
+   "global_list": [],
+   "lookups": []
+  },
+  {
+   "name": "unknown-type",
+   "user": "h.test ssh-foo AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": null,
+   "user_error": "Invalid known_hosts entry on line 1",
+   "global_error": null,
+   "user_list": null,
+   "global_list": [],
+   "lookups": []
+  },
+  {
+   "name": "dss-line",
+   "user": "h.test ssh-dss AAAAB3NzaC1kc3MAAACBAPAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n",
+   "global": null,
+   "user_error": "Invalid known_hosts entry on line 1",
+   "global_error": null,
+   "user_list": null,
+   "global_list": [],
+   "lookups": []
+  },
+  {
+   "name": "empty-host",
+   "user": "a.test,,b.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": null,
+   "user_error": "Invalid known_hosts entry on line 1",
+   "global_error": null,
+   "user_list": null,
+   "global_list": [],
+   "lookups": []
+  },
+  {
+   "name": "bad-hash",
+   "user": "|1|abc|def ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": null,
+   "user_error": "Invalid known_hosts entry on line 1",
+   "global_error": null,
+   "user_list": null,
+   "global_list": [],
+   "lookups": []
+  },
+  {
+   "name": "invalid-utf8-free",
+   "user": "hé.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "e9c86b915a21c1cbd3f99fa19dcd31ec26a28a45d73c31d8cdba1fec2d50ce32",
+     "host": "hé.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "hé.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "hé.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    },
+    {
+     "hostname": "HÉ.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "base64-noise",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5*AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "b25ff7ca1aedecf72a7ae18db14638c911dfda8d7dfb116336a47d38e28b7c6b",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-ed25519",
+     "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-ed25519",
+       "AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d"
+      ]
+     ],
+     "outcomes": {
+      "edA": "trusted",
+      "edB": "changed",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "rsa-sha2-type-string",
+   "user": "h.test rsa-sha2-256 AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "537f150db98e210ef21186a156bd8dd708f9005a2d74d039742835256274708f",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-rsa",
+     "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-rsa",
+       "AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "trusted"
+     }
+    }
+   ]
+  },
+  {
+   "name": "ecdsa-curve-mismatch",
+   "user": "h.test ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "e75ef54d9318666e635a827e30fd8b2b823b9cce3d27d1c44a2352f397d478bb",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ecdsa-sha2-nistp256",
+     "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ecdsa-sha2-nistp256",
+       "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo="
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "trusted",
+      "ec384": "changed_after_prompt",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  },
+  {
+   "name": "rsa-cert-type-string",
+   "user": "h.test ssh-rsa-cert-v01@openssh.com AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "bac1c3557dfd405d6b38143e7915c8fa1abde32d8ad99aab5bcc464e442bcbc2",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ssh-rsa",
+     "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ssh-rsa",
+       "AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "changed_after_prompt",
+      "ec384": "changed_after_prompt",
+      "rsaD": "trusted"
+     }
+    }
+   ]
+  },
+  {
+   "name": "ec384",
+   "user": "h.test ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBJvZp49rUdzvXUj5o3jdjoV6mZJeopqfYRqNutI9+89bUfd6zLcOyHOCqYttyAraeC+AmNwFTjYZ5rNI1TW+BBgcFTmdik67KgP3NvfiWop3XpEcY6NO0fuL1XXcTqZEfg==\n",
+   "global": null,
+   "user_error": null,
+   "global_error": null,
+   "user_list": [
+    {
+     "id": "98ad632470f63792dc0a5eaec92693f3c8e1d1c14dddc18c50fc6ca7590203bf",
+     "host": "h.test",
+     "port": 22,
+     "hosts": [
+      {
+       "host": "h.test",
+       "port": 22
+      }
+     ],
+     "marker": null,
+     "algorithm": "ecdsa-sha2-nistp384",
+     "fingerprint": "SHA256:ujz0nMan/DM4kEXdCiyxzpdyerLdFL/dGI6syoaTPCE"
+    }
+   ],
+   "global_list": [],
+   "lookups": [
+    {
+     "hostname": "h.test",
+     "effective": [
+      [
+       "ecdsa-sha2-nistp384",
+       "AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBJvZp49rUdzvXUj5o3jdjoV6mZJeopqfYRqNutI9+89bUfd6zLcOyHOCqYttyAraeC+AmNwFTjYZ5rNI1TW+BBgcFTmdik67KgP3NvfiWop3XpEcY6NO0fuL1XXcTqZEfg=="
+      ]
+     ],
+     "outcomes": {
+      "edA": "changed_after_prompt",
+      "edB": "changed_after_prompt",
+      "ecC": "changed_after_prompt",
+      "ec384": "trusted",
+      "rsaD": "changed_after_prompt"
+     }
+    }
+   ]
+  }
+ ],
+ "recorded": [
+  {
+   "key": "edA",
+   "hostname": "h.test",
+   "line": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+  },
+  {
+   "key": "edA",
+   "hostname": "[h.test]:2222",
+   "line": "[h.test]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n",
+   "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ"
+  },
+  {
+   "key": "edB",
+   "hostname": "h.test",
+   "line": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n",
+   "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w"
+  },
+  {
+   "key": "edB",
+   "hostname": "[h.test]:2222",
+   "line": "[h.test]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n",
+   "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w"
+  },
+  {
+   "key": "ecC",
+   "hostname": "h.test",
+   "line": "h.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE"
+  },
+  {
+   "key": "ecC",
+   "hostname": "[h.test]:2222",
+   "line": "[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE"
+  },
+  {
+   "key": "ec384",
+   "hostname": "h.test",
+   "line": "h.test ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBJvZp49rUdzvXUj5o3jdjoV6mZJeopqfYRqNutI9+89bUfd6zLcOyHOCqYttyAraeC+AmNwFTjYZ5rNI1TW+BBgcFTmdik67KgP3NvfiWop3XpEcY6NO0fuL1XXcTqZEfg==\n",
+   "fingerprint": "SHA256:ujz0nMan/DM4kEXdCiyxzpdyerLdFL/dGI6syoaTPCE"
+  },
+  {
+   "key": "ec384",
+   "hostname": "[h.test]:2222",
+   "line": "[h.test]:2222 ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBJvZp49rUdzvXUj5o3jdjoV6mZJeopqfYRqNutI9+89bUfd6zLcOyHOCqYttyAraeC+AmNwFTjYZ5rNI1TW+BBgcFTmdik67KgP3NvfiWop3XpEcY6NO0fuL1XXcTqZEfg==\n",
+   "fingerprint": "SHA256:ujz0nMan/DM4kEXdCiyxzpdyerLdFL/dGI6syoaTPCE"
+  },
+  {
+   "key": "rsaD",
+   "hostname": "h.test",
+   "line": "h.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n",
+   "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM"
+  },
+  {
+   "key": "rsaD",
+   "hostname": "[h.test]:2222",
+   "line": "[h.test]:2222 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n",
+   "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM"
+  }
+ ],
+ "base64": [
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "QQ",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "QQ=",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "QQ==",
+   "out": "QQ=="
+  },
+  {
+   "in": "QQ===",
+   "out": "QQ=="
+  },
+  {
+   "in": "QUI=",
+   "out": "QUI="
+  },
+  {
+   "in": "QUJD",
+   "out": "QUJD"
+  },
+  {
+   "in": "QUJD=",
+   "out": "QUJD"
+  },
+  {
+   "in": "QUJDRA",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "QUJDRA==",
+   "out": "QUJDRA=="
+  },
+  {
+   "in": "QQ==QUJD",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Q",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "QUJDR",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "QU=JD",
+   "out": "QUJD"
+  },
+  {
+   "in": "=QUJD",
+   "out": "QUJD"
+  },
+  {
+   "in": "QU*JD",
+   "out": "QUJD"
+  },
+  {
+   "in": "QUJD\nRA==",
+   "out": "QUJDRA=="
+  },
+  {
+   "in": "QUJD====",
+   "out": "QUJD"
+  },
+  {
+   "in": "QUJDRA=x",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "yJMHb",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "I",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "2PH",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "GFRSnXYIa",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "276ffmr",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "J1r+Jos6L8I",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "5xs7ObQy/5j",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "3jtwTTdXA oGyy",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "z",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "aOG",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "T",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "uJwguO7n",
+   "out": "uJwguO7n"
+  },
+  {
+   "in": "r",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Uau-mLhVcqY",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "zd/DjYssuNZ9",
+   "out": "zd/DjYssuNZ9"
+  },
+  {
+   "in": "AsKPZWqyK",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Q7S8s_BNRYb",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "=p1H",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "61QCXT8Pp9NHjM",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "DIZ59fhZ",
+   "out": "DIZ59fhZ"
+  },
+  {
+   "in": "14ebPTuRcM+c3",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "1ou_ClId",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "hXQh/LXJChcPr1",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "QeUXna=iCE=YfN",
+   "out": "QeUXnaiCEYfN"
+  },
+  {
+   "in": "3yndRsQgHw",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "klX5upnXwjZAL",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Fm",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "KTx/",
+   "out": "KTx/"
+  },
+  {
+   "in": "S*",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "RCdFuwGfAI",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "LI8Jea6wkZS",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "mRHM+",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "k7ZK",
+   "out": "k7ZK"
+  },
+  {
+   "in": "l5xaL.u*Od+U+z",
+   "out": "l5xaLuOd+U+z"
+  },
+  {
+   "in": "1oqr",
+   "out": "1oqr"
+  },
+  {
+   "in": "ZlIJ2GGkTiov2",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "zaG0RkQ1mheyU=",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "cq5YWLvZ0ar/u=",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "bf5nC28+",
+   "out": "bf5nC28+"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "7",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "NTN6FQE",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Q3OmYcAmjf",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "f0nY1dv",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "ruZ",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "=/nYcl/cHSGS",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "H5oKq.",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "nwqNj1Pan38",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "5u8",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "zEHIrqFomI",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "87x3QXmTp6Kyf",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Ep2JK1",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "5RePlih",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "XTY",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "gdME8",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "5FdYYvWhAsvFga",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "pvnE9MTLy0nGt",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "uya32L",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "uUGyvV",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "UI",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Z",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "F9xU",
+   "out": "F9xU"
+  },
+  {
+   "in": "cZXFUPY\u0000Ep",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "6",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "nn2v4A+5",
+   "out": "nn2v4A+5"
+  },
+  {
+   "in": "68I34FQoK=RI",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "O+Vcsgj6=",
+   "out": "O+Vcsgj6"
+  },
+  {
+   "in": "heEzjwh.u5N yv",
+   "out": "heEzjwhu5Nyv"
+  },
+  {
+   "in": "vuKW",
+   "out": "vuKW"
+  },
+  {
+   "in": "G!oEl3uQF",
+   "out": "GoEl3uQF"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "Ncma8Bf5S",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "ihHs4/A XHN_Z",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "1W",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "m9A375NE",
+   "out": "m9A375NE"
+  },
+  {
+   "in": "h",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "_hb=hZpxe8A",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "dnyJVDUSDFFu ",
+   "out": "dnyJVDUSDFFu"
+  },
+  {
+   "in": "xaELkQarCkv8DD",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "MGbLkA",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "G+XshUbd",
+   "out": "G+XshUbd"
+  },
+  {
+   "in": "KNtyLDm",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "VdQE",
+   "out": "VdQE"
+  },
+  {
+   "in": "T5p4g",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "qeiTfsphN",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "NT",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "mZ",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "N",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "xB3l",
+   "out": "xB3l"
+  },
+  {
+   "in": "gzf31dP",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "hMfU2C0",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "XpxN-ZM6",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "8v06XPtg",
+   "out": "8v06XPtg"
+  },
+  {
+   "in": "H1tN",
+   "out": "H1tN"
+  },
+  {
+   "in": "zcy",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "QIYcS0l",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Q8dw29jm+Kum",
+   "out": "Q8dw29jm+Kum"
+  },
+  {
+   "in": "KpRsBalMd5TzV",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Lmb4OhRHS",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "/Ap/71JuDFq",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "9S1ruarGl/is",
+   "out": "9S1ruarGl/is"
+  },
+  {
+   "in": "PoQ",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "LFzGNY8Hw",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "K6WX1BRhX",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "CGF1zB",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "T0KbBBPLPC",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "fXuS",
+   "out": "fXuS"
+  },
+  {
+   "in": "l/gGBKnV+o4",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "SOU15qH",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "qBnfwdkp2",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "FS",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "S_/K+ZdH7gB6",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "tdhpZYlt",
+   "out": "tdhpZYlt"
+  },
+  {
+   "in": "T/N7TD",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Ca+bj",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "5QEXD\u0000",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "6IyLd",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "=5vcgHDG*9",
+   "out": "5vcgHDG9"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "A",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "m4N",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "gvVSBYU",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "JvRMxJrducXST0",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "ilV",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "o9*b",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "kZ3eM1Hl",
+   "out": "kZ3eM1Hl"
+  },
+  {
+   "in": "Cr",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Ak30XXdZ",
+   "out": "Ak30XXdZ"
+  },
+  {
+   "in": "L/WYZ!Hs/",
+   "out": "L/WYZHs/"
+  },
+  {
+   "in": "9",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "iu",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "A5",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "tpwHN/DR",
+   "out": "tpwHN/DR"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "cVg",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "DY74MF7j",
+   "out": "DY74MF7j"
+  },
+  {
+   "in": "z",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "dS7VCxEGrqpGSt",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "BX3",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "C16",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "FiiEgBFnV*",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "7SQ0jLkcZum8Dc",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "xyt",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "ep",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "bCIsH4N",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "TtZjM8QN",
+   "out": "TtZjM8QN"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "PTjO5k",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "txA/mm3dqfa",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Bg/ 33",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "FsBdvT",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "14rLoJWl1laYHN",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "FBnAy",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "BZ_S0S*M!7Hpe",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "EMI5C",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "FeF",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "W6",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "g/Ix",
+   "out": "g/Ix"
+  },
+  {
+   "in": "cz+fVXlu q",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Psxk3D",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "eL-Q7",
+   "out": "eLQ7"
+  },
+  {
+   "in": "etza8dQh4vzbP",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "ixSxWdNumn",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Q",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "k7QWsD7zMOcFU",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "mFWdgs",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "kGOosLycL2r5aQ",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "FhUefV0",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "n",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "+e",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "*RsRSePVT7z",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "l+HmnO4u\u0000B+qh",
+   "out": "l+HmnO4uB+qh"
+  },
+  {
+   "in": "3",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "-tkgKDy",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "v.VnptvvgFzb/",
+   "out": "vVnptvvgFzb/"
+  },
+  {
+   "in": "mKd4zF9v*kH",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "rBWVAs8p",
+   "out": "rBWVAs8p"
+  },
+  {
+   "in": "TKHqm19R",
+   "out": "TKHqm19R"
+  },
+  {
+   "in": "Dc5S",
+   "out": "Dc5S"
+  },
+  {
+   "in": "1eydZOgYgd",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "OKJRONyY",
+   "out": "OKJRONyY"
+  },
+  {
+   "in": "LHGBbP2LZ",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "trBP*tFt_",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "OfYC4",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "+",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "h",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "lw",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "giBT9EyU5JbQF",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "uqx",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "A9CFSihREM2Mke",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Smrfzr9fsa6ym",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "In_rYKm72IojCi",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "b5k",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "MHGrA BDpDzr1",
+   "out": "MHGrABDpDzr1"
+  },
+  {
+   "in": "qz7DoqCSLuTq",
+   "out": "qz7DoqCSLuTq"
+  },
+  {
+   "in": "h9n",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "6ujBMudLR-",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "XuWUsf/s",
+   "out": "XuWUsf/s"
+  },
+  {
+   "in": "6DBzswwcC3t2m/",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "UiR",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "L+f5Gau4RmOBm",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "tV",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "LyEZB=3",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "CoO+2cSO/Jb",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "ciBIZ0up6qiox",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "xS",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "A=gwZLEGp4oA8w",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "wIi",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "p-h8s9S.a",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "uW6Fu2Tw",
+   "out": "uW6Fu2Tw"
+  },
+  {
+   "in": "m",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "j55WTQe",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "rgZhWjg4/",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Qlv4Fl3gxQYva",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Kw1D7",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "38I+BZFlxPJBLb",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Z91RGSYA ",
+   "out": "Z91RGSYA"
+  },
+  {
+   "in": "Lgm1",
+   "out": "Lgm1"
+  },
+  {
+   "in": "mwgQ 7Sr\u0000o",
+   "out": "mwgQ7Sro"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "pcla64a3",
+   "out": "pcla64a3"
+  },
+  {
+   "in": "GJ/\u0000VlUa7L1g4",
+   "out": "GJ/VlUa7L1g4"
+  },
+  {
+   "in": "HR5doThbdE",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "l-ZXz",
+   "out": "lZXz"
+  },
+  {
+   "in": "t",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "a",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Js/LjL8dmM",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "TGsfu",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "m6",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "O",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "yEMQtUL9he/-",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "f",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Fu",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "\u0000Qe",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "N+adVh2OPb*HJM",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "Wr7",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "B0Ef*TRcI",
+   "out": "B0EfTRcI"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "EqIG0s//m7Vm",
+   "out": "EqIG0s//m7Vm"
+  },
+  {
+   "in": "Ogd6/Gyrzdr",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "2AC8mqK7li",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "4e",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "F",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "Xqusyo",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "YUBWfgMwgJqlwH",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "/CP5T6pAi*yje-",
+   "out": "/CP5T6pAiyje"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "0wuj/s",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "!H!nmuX8pzho8a",
+   "out": "HnmuX8pzho8a"
+  },
+  {
+   "in": "50oj80jykPBnuf",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "_0OVPyr/sS0kr0",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "e",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "bjQekwQxj",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "*bnKJp6RHE7",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "l",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "qda cDiIjO",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "0Hqg93",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "6YVY!ZZ",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "\u0000lCCahUonW16",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Nu8KoQgaCY3x",
+   "out": "Nu8KoQgaCY3x"
+  },
+  {
+   "in": "3B",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": " ",
+   "out": ""
+  },
+  {
+   "in": "LF p7a",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "tNQ",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "4GV",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "e88Pwe",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "dcEZEzcF0T9N",
+   "out": "dcEZEzcF0T9N"
+  },
+  {
+   "in": "M.*wADKJlAa=",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "aaOLtLMjlqAF",
+   "out": "aaOLtLMjlqAF"
+  },
+  {
+   "in": "b",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "0aKHDR3H",
+   "out": "0aKHDR3H"
+  },
+  {
+   "in": "lR",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "sw48",
+   "out": "sw48"
+  },
+  {
+   "in": "pf dtqeKNorP",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": ". 0LbB3",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "WVkfDaSImIJ",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "\u0000/j5M",
+   "out": "/j5M"
+  },
+  {
+   "in": "0WM6",
+   "out": "0WM6"
+  },
+  {
+   "in": "acaqB",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "LnX9HLclQtWgV",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "fVwDYxe8",
+   "out": "fVwDYxe8"
+  },
+  {
+   "in": "Gwe8",
+   "out": "Gwe8"
+  },
+  {
+   "in": "O+PW2Pi",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "eHcbw",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "3",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "!oK76Q5M",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "u8X",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "*8EdRSpv",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "XCKERmZzV9",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "v+b",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "YZ6pWCUAh",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "xejTRH25g",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "ci03NlW1wO/vYg",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "g0gJH8pBr",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "XpdLazdu/Q",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "i*z",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "J6t39UOla",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "ZmU6FB0iAK",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "WheOLTJo9qK",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "LGhq",
+   "out": "LGhq"
+  },
+  {
+   "in": "S\u0000T2C",
+   "out": "ST2C"
+  },
+  {
+   "in": "JMT",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "5d8",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Bb6hqDDl6",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "XnhHrnnoG",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "TfZu8",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "JI3gc91v",
+   "out": "JI3gc91v"
+  },
+  {
+   "in": "oNLj\u00007EI",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "rKMGRJ0W2ufOx",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "XkyQ+*f",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "Tpr1",
+   "out": "Tpr1"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "dBgEpoimtkd0f",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "GVnpn-HWRG68b",
+   "out": "GVnpnHWRG68b"
+  },
+  {
+   "in": "fPDDJ/Zz9n8",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "ntNI1",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "duPE3QLltH3JZq",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "XBSwV_Ou",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "==bTS42hd7AVed",
+   "out": "bTS42hd7AVed"
+  },
+  {
+   "in": "dZOb2GAL",
+   "out": "dZOb2GAL"
+  },
+  {
+   "in": "\u0000SVrfd03U5YPX",
+   "out": "SVrfd03U5YPX"
+  },
+  {
+   "in": "4+jZSd",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "x",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "t",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "ty7A9zmASzc",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "UzkD9",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "uCp9ghx",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "B",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "kUwY",
+   "out": "kUwY"
+  },
+  {
+   "in": "Rd3",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "NLTY",
+   "out": "NLTY"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "xWmHEVUZZ30",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "9WTH",
+   "out": "9WTH"
+  },
+  {
+   "in": "EBCrSSx",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "AA",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "1Y09UwbAphr-j",
+   "out": "1Y09UwbAphrj"
+  },
+  {
+   "in": "KFKl2ARj3g5Mm",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "hv*",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "2jo8FSl-",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "QwhEDE8KrXP",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "=VccHmI41o",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "x7ZUPzR8iM",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "qMORkxWD",
+   "out": "qMORkxWD"
+  },
+  {
+   "in": "P6uZW",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "YfIaa",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "PekYA2jB",
+   "out": "PekYA2jB"
+  },
+  {
+   "in": "XZcP*xD2",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "i",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "uCGxutvS",
+   "out": "uCGxutvS"
+  },
+  {
+   "in": "TP",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "M0",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "BeeAtLx",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "FGeXhq",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "Kn5T3N2FUHFN",
+   "out": "Kn5T3N2FUHFN"
+  },
+  {
+   "in": "YVa67cML",
+   "out": "YVa67cML"
+  },
+  {
+   "in": "uiqz3K-h",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "w+M/58IQDFJpci",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "uj4A-",
+   "out": "uj4A"
+  },
+  {
+   "in": "eThOLAtno4Z",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "9QcQ",
+   "out": "9QcQ"
+  },
+  {
+   "in": "3Xl58*lE",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "pbt6ua3gCH0.n",
+   "out": "pbt6ua3gCH0n"
+  },
+  {
+   "in": "rNXv+Q14TXtf",
+   "out": "rNXv+Q14TXtf"
+  },
+  {
+   "in": "W2TvO",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "*gywvpEYdZeppL",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "enudz2eE",
+   "out": "enudz2eE"
+  },
+  {
+   "in": "m9BwW8xN",
+   "out": "m9BwW8xN"
+  },
+  {
+   "in": "4LbI",
+   "out": "4LbI"
+  },
+  {
+   "in": "X",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "0lsV.",
+   "out": "0lsV"
+  },
+  {
+   "in": "laxqjKv",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": " RO1uAZ5h6vHc",
+   "out": "RO1uAZ5h6vHc"
+  },
+  {
+   "in": "z/ZIX=Vo 9OnZc",
+   "out": "z/ZIXVo9OnZc"
+  },
+  {
+   "in": "ouVNESI!d6",
+   "error": "Invalid base64-encoded string: number of data characters (9) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "XrQICPlm",
+   "out": "XrQICPlm"
+  },
+  {
+   "in": "L4jAkL9S76c*nc",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "v",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "+tUzTXa",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "fMs9bAmRQVM3",
+   "out": "fMs9bAmRQVM3"
+  },
+  {
+   "in": "3MWT3TY =MZNb",
+   "error": "Incorrect padding"
+  },
+  {
+   "in": "ndWvIUTMGaghg",
+   "error": "Invalid base64-encoded string: number of data characters (13) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "in": "",
+   "out": ""
+  }
+ ],
+ "stores": [
+  {
+   "name": "empty",
+   "user": null,
+   "global": null,
+   "targets": [
+    {
+     "id": "p1",
+     "name": "Plain",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 22
+    },
+    {
+     "id": "p2",
+     "name": "Port",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 2222
+    },
+    {
+     "id": "p3",
+     "name": "Wild",
+     "kind": "ssh",
+     "host": "x.lab.test",
+     "port": null
+    },
+    {
+     "id": "j1",
+     "name": "Bastion",
+     "kind": "jump",
+     "host": "bastion.test",
+     "port": 22
+    },
+    {
+     "id": "p4",
+     "name": "Other",
+     "kind": "ssh",
+     "host": "other.test",
+     "port": 22
+    }
+   ],
+   "effective": [
+    {
+     "id": "p1",
+     "name": "Plain",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 22,
+     "keys": []
+    },
+    {
+     "id": "p2",
+     "name": "Port",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 2222,
+     "keys": []
+    },
+    {
+     "id": "p3",
+     "name": "Wild",
+     "kind": "ssh",
+     "host": "x.lab.test",
+     "port": 22,
+     "keys": []
+    },
+    {
+     "id": "j1",
+     "name": "Bastion",
+     "kind": "jump",
+     "host": "bastion.test",
+     "port": 22,
+     "keys": []
+    },
+    {
+     "id": "p4",
+     "name": "Other",
+     "kind": "ssh",
+     "host": "other.test",
+     "port": 22,
+     "keys": []
+    }
+   ],
+   "impacts": [],
+   "deletes": [
+    {
+     "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ok": false,
+     "raw": null
+    },
+    {
+     "id": "xyz",
+     "ok": false,
+     "raw": null
+    }
+   ],
+   "records": [
+    {
+     "hostname": "h.test",
+     "key": "edA",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    },
+    {
+     "hostname": "h.test",
+     "key": "edB",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n"
+    },
+    {
+     "hostname": "h.test",
+     "key": "ecC",
+     "result": "ok",
+     "raw": "h.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "hostname": "[h.test]:2222",
+     "key": "edA",
+     "result": "ok",
+     "raw": "[h.test]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    },
+    {
+     "hostname": "new.test",
+     "key": "rsaD",
+     "result": "ok",
+     "raw": "new.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n"
+    },
+    {
+     "hostname": "x.lab.test",
+     "key": "edB",
+     "result": "ok",
+     "raw": "x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n"
+    },
+    {
+     "hostname": "bastion.test",
+     "key": "edA",
+     "result": "ok",
+     "raw": "bastion.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    }
+   ]
+  },
+  {
+   "name": "user-and-global",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "global": "*.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nbastion.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n",
+   "targets": [
+    {
+     "id": "p1",
+     "name": "Plain",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 22
+    },
+    {
+     "id": "p2",
+     "name": "Port",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 2222
+    },
+    {
+     "id": "p3",
+     "name": "Wild",
+     "kind": "ssh",
+     "host": "x.lab.test",
+     "port": null
+    },
+    {
+     "id": "j1",
+     "name": "Bastion",
+     "kind": "jump",
+     "host": "bastion.test",
+     "port": 22
+    },
+    {
+     "id": "p4",
+     "name": "Other",
+     "kind": "ssh",
+     "host": "other.test",
+     "port": 22
+    }
+   ],
+   "effective": [
+    {
+     "id": "p1",
+     "name": "Plain",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "user",
+       "algorithm": "ssh-ed25519",
+       "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ",
+       "status": "effective"
+      },
+      {
+       "scope": "global",
+       "algorithm": "ssh-ed25519",
+       "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w",
+       "status": "overridden"
+      }
+     ]
+    },
+    {
+     "id": "p2",
+     "name": "Port",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 2222,
+     "keys": [
+      {
+       "scope": "user",
+       "algorithm": "ecdsa-sha2-nistp256",
+       "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE",
+       "status": "effective"
+      }
+     ]
+    },
+    {
+     "id": "p3",
+     "name": "Wild",
+     "kind": "ssh",
+     "host": "x.lab.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "global",
+       "algorithm": "ssh-ed25519",
+       "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ",
+       "status": "effective"
+      }
+     ]
+    },
+    {
+     "id": "j1",
+     "name": "Bastion",
+     "kind": "jump",
+     "host": "bastion.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "global",
+       "algorithm": "ssh-rsa",
+       "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM",
+       "status": "effective"
+      }
+     ]
+    },
+    {
+     "id": "p4",
+     "name": "Other",
+     "kind": "ssh",
+     "host": "other.test",
+     "port": 22,
+     "keys": []
+    }
+   ],
+   "impacts": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "targets": [
+      {
+       "id": "p1",
+       "name": "Plain",
+       "kind": "ssh",
+       "host": "h.test",
+       "port": 22,
+       "keys": [
+        {
+         "scope": "global",
+         "algorithm": "ssh-ed25519",
+         "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w",
+         "status": "effective"
+        }
+       ]
+      }
+     ],
+     "unresolved": false
+    },
+    {
+     "id": "41ac30b28168c94e50d4755e98af825f89d6cf178747e59bad4dd7729b9817cb",
+     "targets": [
+      {
+       "id": "p2",
+       "name": "Port",
+       "kind": "ssh",
+       "host": "h.test",
+       "port": 2222,
+       "keys": []
+      }
+     ],
+     "unresolved": false
+    }
+   ],
+   "deletes": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "ok": true,
+     "raw": "[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "id": "41ac30b28168c94e50d4755e98af825f89d6cf178747e59bad4dd7729b9817cb",
+     "ok": true,
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    },
+    {
+     "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ok": false,
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "id": "xyz",
+     "ok": false,
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    }
+   ],
+   "records": [
+    {
+     "hostname": "h.test",
+     "key": "edA",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "hostname": "h.test",
+     "key": "edB",
+     "result": "changed",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "hostname": "h.test",
+     "key": "ecC",
+     "result": "changed",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "hostname": "[h.test]:2222",
+     "key": "edA",
+     "result": "changed",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "hostname": "new.test",
+     "key": "rsaD",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\nnew.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n"
+    },
+    {
+     "hostname": "x.lab.test",
+     "key": "edB",
+     "result": "changed",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "hostname": "bastion.test",
+     "key": "edA",
+     "result": "changed",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n[h.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    }
+   ]
+  },
+  {
+   "name": "revocations",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n",
+   "global": "@revoked h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "targets": [
+    {
+     "id": "p1",
+     "name": "Plain",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 22
+    },
+    {
+     "id": "p2",
+     "name": "Port",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 2222
+    },
+    {
+     "id": "p3",
+     "name": "Wild",
+     "kind": "ssh",
+     "host": "x.lab.test",
+     "port": null
+    },
+    {
+     "id": "j1",
+     "name": "Bastion",
+     "kind": "jump",
+     "host": "bastion.test",
+     "port": 22
+    },
+    {
+     "id": "p4",
+     "name": "Other",
+     "kind": "ssh",
+     "host": "other.test",
+     "port": 22
+    }
+   ],
+   "effective": [
+    {
+     "id": "p1",
+     "name": "Plain",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "user",
+       "algorithm": "ssh-ed25519",
+       "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ",
+       "status": "revoked"
+      },
+      {
+       "scope": "user",
+       "algorithm": "ssh-ed25519",
+       "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w",
+       "status": "revoked"
+      },
+      {
+       "scope": "global",
+       "algorithm": "ecdsa-sha2-nistp256",
+       "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE",
+       "status": "effective"
+      },
+      {
+       "scope": "global",
+       "algorithm": "ssh-ed25519",
+       "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ",
+       "status": "revoked"
+      }
+     ]
+    },
+    {
+     "id": "p2",
+     "name": "Port",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 2222,
+     "keys": []
+    },
+    {
+     "id": "p3",
+     "name": "Wild",
+     "kind": "ssh",
+     "host": "x.lab.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "user",
+       "algorithm": "ssh-ed25519",
+       "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w",
+       "status": "revoked"
+      }
+     ]
+    },
+    {
+     "id": "j1",
+     "name": "Bastion",
+     "kind": "jump",
+     "host": "bastion.test",
+     "port": 22,
+     "keys": []
+    },
+    {
+     "id": "p4",
+     "name": "Other",
+     "kind": "ssh",
+     "host": "other.test",
+     "port": 22,
+     "keys": []
+    }
+   ],
+   "impacts": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "targets": [
+      {
+       "id": "p1",
+       "name": "Plain",
+       "kind": "ssh",
+       "host": "h.test",
+       "port": 22,
+       "keys": [
+        {
+         "scope": "user",
+         "algorithm": "ssh-ed25519",
+         "fingerprint": "SHA256:HHf2fNPZHc/PLYS+vdMF/wr9JzYr/OvO0KGGmJBLr7w",
+         "status": "revoked"
+        },
+        {
+         "scope": "global",
+         "algorithm": "ecdsa-sha2-nistp256",
+         "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE",
+         "status": "effective"
+        },
+        {
+         "scope": "global",
+         "algorithm": "ssh-ed25519",
+         "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ",
+         "status": "revoked"
+        }
+       ]
+      }
+     ],
+     "unresolved": false
+    },
+    {
+     "id": "90baa4dcb634cf5dc2e998906a7a6814ba7b5f6c3ce7a62f3c6473fdb7ceebb9",
+     "targets": [
+      {
+       "id": "p1",
+       "name": "Plain",
+       "kind": "ssh",
+       "host": "h.test",
+       "port": 22,
+       "keys": [
+        {
+         "scope": "user",
+         "algorithm": "ssh-ed25519",
+         "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ",
+         "status": "revoked"
+        },
+        {
+         "scope": "global",
+         "algorithm": "ecdsa-sha2-nistp256",
+         "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE",
+         "status": "effective"
+        },
+        {
+         "scope": "global",
+         "algorithm": "ssh-ed25519",
+         "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ",
+         "status": "revoked"
+        }
+       ]
+      },
+      {
+       "id": "p3",
+       "name": "Wild",
+       "kind": "ssh",
+       "host": "x.lab.test",
+       "port": 22,
+       "keys": []
+      }
+     ],
+     "unresolved": false
+    }
+   ],
+   "deletes": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "ok": true,
+     "raw": "@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n"
+    },
+    {
+     "id": "90baa4dcb634cf5dc2e998906a7a6814ba7b5f6c3ce7a62f3c6473fdb7ceebb9",
+     "ok": true,
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    },
+    {
+     "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ok": false,
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n"
+    },
+    {
+     "id": "xyz",
+     "ok": false,
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n"
+    }
+   ],
+   "records": [
+    {
+     "hostname": "h.test",
+     "key": "edA",
+     "result": "revoked",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n"
+    },
+    {
+     "hostname": "h.test",
+     "key": "edB",
+     "result": "revoked",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n"
+    },
+    {
+     "hostname": "h.test",
+     "key": "ecC",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n"
+    },
+    {
+     "hostname": "[h.test]:2222",
+     "key": "edA",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n[h.test]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    },
+    {
+     "hostname": "new.test",
+     "key": "rsaD",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\nnew.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n"
+    },
+    {
+     "hostname": "x.lab.test",
+     "key": "edB",
+     "result": "revoked",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n"
+    },
+    {
+     "hostname": "bastion.test",
+     "key": "edA",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n@revoked h.test,x.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\nbastion.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    }
+   ]
+  },
+  {
+   "name": "wildcards-and-hashes",
+   "user": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT",
+   "global": null,
+   "targets": [
+    {
+     "id": "p1",
+     "name": "Plain",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 22
+    },
+    {
+     "id": "p2",
+     "name": "Port",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 2222
+    },
+    {
+     "id": "p3",
+     "name": "Wild",
+     "kind": "ssh",
+     "host": "x.lab.test",
+     "port": null
+    },
+    {
+     "id": "j1",
+     "name": "Bastion",
+     "kind": "jump",
+     "host": "bastion.test",
+     "port": 22
+    },
+    {
+     "id": "p4",
+     "name": "Other",
+     "kind": "ssh",
+     "host": "other.test",
+     "port": 22
+    }
+   ],
+   "effective": [
+    {
+     "id": "p1",
+     "name": "Plain",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "user",
+       "algorithm": "ssh-rsa",
+       "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM",
+       "status": "effective"
+      }
+     ]
+    },
+    {
+     "id": "p2",
+     "name": "Port",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 2222,
+     "keys": []
+    },
+    {
+     "id": "p3",
+     "name": "Wild",
+     "kind": "ssh",
+     "host": "x.lab.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "user",
+       "algorithm": "ecdsa-sha2-nistp256",
+       "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE",
+       "status": "effective"
+      }
+     ]
+    },
+    {
+     "id": "j1",
+     "name": "Bastion",
+     "kind": "jump",
+     "host": "bastion.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "user",
+       "algorithm": "ssh-ed25519",
+       "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ",
+       "status": "effective"
+      }
+     ]
+    },
+    {
+     "id": "p4",
+     "name": "Other",
+     "kind": "ssh",
+     "host": "other.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "user",
+       "algorithm": "ssh-rsa",
+       "fingerprint": "SHA256:NdVA/GLTyIVFf8+8tUYedXWfl5pQj1JhC+HFKceuouM",
+       "status": "effective"
+      }
+     ]
+    }
+   ],
+   "impacts": [
+    {
+     "id": "07987097b4e00861f3e4a88b66e052d70050976bfb0278006dba228b4e3e1d63",
+     "targets": [
+      {
+       "id": "p3",
+       "name": "Wild",
+       "kind": "ssh",
+       "host": "x.lab.test",
+       "port": 22,
+       "keys": []
+      }
+     ],
+     "unresolved": true
+    },
+    {
+     "id": "fe66128fe72fd412d8c8fd31720f996119a64d5841c83600bde6abc3b5442dfd",
+     "targets": [
+      {
+       "id": "j1",
+       "name": "Bastion",
+       "kind": "jump",
+       "host": "bastion.test",
+       "port": 22,
+       "keys": []
+      }
+     ],
+     "unresolved": false
+    },
+    {
+     "id": "7a7d4d631f71e3454cac38cd9035524757173923c20bc01427dd84b53f0536e3",
+     "targets": [
+      {
+       "id": "p1",
+       "name": "Plain",
+       "kind": "ssh",
+       "host": "h.test",
+       "port": 22,
+       "keys": []
+      },
+      {
+       "id": "p4",
+       "name": "Other",
+       "kind": "ssh",
+       "host": "other.test",
+       "port": 22,
+       "keys": []
+      }
+     ],
+     "unresolved": false
+    }
+   ],
+   "deletes": [
+    {
+     "id": "07987097b4e00861f3e4a88b66e052d70050976bfb0278006dba228b4e3e1d63",
+     "ok": true,
+     "raw": "# kept comment\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+    },
+    {
+     "id": "fe66128fe72fd412d8c8fd31720f996119a64d5841c83600bde6abc3b5442dfd",
+     "ok": true,
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+    },
+    {
+     "id": "7a7d4d631f71e3454cac38cd9035524757173923c20bc01427dd84b53f0536e3",
+     "ok": true,
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\n"
+    },
+    {
+     "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ok": false,
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+    },
+    {
+     "id": "xyz",
+     "ok": false,
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+    }
+   ],
+   "records": [
+    {
+     "hostname": "h.test",
+     "key": "edA",
+     "result": "changed",
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+    },
+    {
+     "hostname": "h.test",
+     "key": "edB",
+     "result": "changed",
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+    },
+    {
+     "hostname": "h.test",
+     "key": "ecC",
+     "result": "changed",
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+    },
+    {
+     "hostname": "[h.test]:2222",
+     "key": "edA",
+     "result": "ok",
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n[h.test]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    },
+    {
+     "hostname": "new.test",
+     "key": "rsaD",
+     "result": "ok",
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\nnew.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n"
+    },
+    {
+     "hostname": "x.lab.test",
+     "key": "edB",
+     "result": "changed",
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+    },
+    {
+     "hostname": "bastion.test",
+     "key": "edA",
+     "result": "ok",
+     "raw": "# kept comment\r\n*.lab.test,!secret.lab.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\r\n|1|AylDV2yhpGCRZlKH7g/AwncCt+g=|/PrH0w1ImaaGAcqxnYufA6XevKE= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n\nh.test,other.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT"
+    }
+   ]
+  },
+  {
+   "name": "duplicate-lines",
+   "user": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nother.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n",
+   "global": null,
+   "targets": [
+    {
+     "id": "p1",
+     "name": "Plain",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 22
+    },
+    {
+     "id": "p2",
+     "name": "Port",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 2222
+    },
+    {
+     "id": "p3",
+     "name": "Wild",
+     "kind": "ssh",
+     "host": "x.lab.test",
+     "port": null
+    },
+    {
+     "id": "j1",
+     "name": "Bastion",
+     "kind": "jump",
+     "host": "bastion.test",
+     "port": 22
+    },
+    {
+     "id": "p4",
+     "name": "Other",
+     "kind": "ssh",
+     "host": "other.test",
+     "port": 22
+    }
+   ],
+   "effective": [
+    {
+     "id": "p1",
+     "name": "Plain",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "user",
+       "algorithm": "ssh-ed25519",
+       "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ",
+       "status": "effective"
+      },
+      {
+       "scope": "user",
+       "algorithm": "ssh-ed25519",
+       "fingerprint": "SHA256:9dKlHR+/HkCIs5DKfzwBCuVrVZRXZYONx+Y0tmMPAiQ",
+       "status": "overridden"
+      }
+     ]
+    },
+    {
+     "id": "p2",
+     "name": "Port",
+     "kind": "ssh",
+     "host": "h.test",
+     "port": 2222,
+     "keys": []
+    },
+    {
+     "id": "p3",
+     "name": "Wild",
+     "kind": "ssh",
+     "host": "x.lab.test",
+     "port": 22,
+     "keys": []
+    },
+    {
+     "id": "j1",
+     "name": "Bastion",
+     "kind": "jump",
+     "host": "bastion.test",
+     "port": 22,
+     "keys": []
+    },
+    {
+     "id": "p4",
+     "name": "Other",
+     "kind": "ssh",
+     "host": "other.test",
+     "port": 22,
+     "keys": [
+      {
+       "scope": "user",
+       "algorithm": "ecdsa-sha2-nistp256",
+       "fingerprint": "SHA256:Si01PSUetCBiDHJj/COmtqxe8hT1XiFk5cXUxoP9/iE",
+       "status": "effective"
+      }
+     ]
+    }
+   ],
+   "impacts": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "targets": [
+      {
+       "id": "p1",
+       "name": "Plain",
+       "kind": "ssh",
+       "host": "h.test",
+       "port": 22,
+       "keys": []
+      }
+     ],
+     "unresolved": false
+    },
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "targets": [
+      {
+       "id": "p1",
+       "name": "Plain",
+       "kind": "ssh",
+       "host": "h.test",
+       "port": 22,
+       "keys": []
+      }
+     ],
+     "unresolved": false
+    },
+    {
+     "id": "92d5f0584994f4aa55d5995d5f6d529925ada6ae708495fcfe2669d54a10930c",
+     "targets": [
+      {
+       "id": "p4",
+       "name": "Other",
+       "kind": "ssh",
+       "host": "other.test",
+       "port": 22,
+       "keys": []
+      }
+     ],
+     "unresolved": false
+    }
+   ],
+   "deletes": [
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "ok": true,
+     "raw": "other.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "id": "335200665225497fde15dd3114b52e8ab59479eeefa2df238718974e28cf11c5",
+     "ok": true,
+     "raw": "other.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "id": "92d5f0584994f4aa55d5995d5f6d529925ada6ae708495fcfe2669d54a10930c",
+     "ok": true,
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    },
+    {
+     "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ok": false,
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nother.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "id": "xyz",
+     "ok": false,
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nother.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    }
+   ],
+   "records": [
+    {
+     "hostname": "h.test",
+     "key": "edA",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nother.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "hostname": "h.test",
+     "key": "edB",
+     "result": "changed",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nother.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "hostname": "h.test",
+     "key": "ecC",
+     "result": "changed",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nother.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n"
+    },
+    {
+     "hostname": "[h.test]:2222",
+     "key": "edA",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nother.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\n[h.test]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    },
+    {
+     "hostname": "new.test",
+     "key": "rsaD",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nother.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\nnew.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCR6zSVhMfopCEYau7rnbbgfWNl7kEa1/7Rdl2MMBBkMPKAuaBR/4pdSzwzJEamAnOR4MiXvZOqLDs0Eh+hx5LkTtq72cxJlxLILlP9notSITNfJQQ/9J5ADOF7UBzvjpyZso7AyUruJ4OoA+UV2Oqo1YTVkZTla7hrlu1A36wUSGCz4MYG6GHU/9ASwhJkFxPQWyLh6eYE/ONvUwVcg+addXh4NWs9iIT5DUKjOsRJlHvz7yQBgUmqSBpBlP4mxEqmvPE1ivrBGCQcOQQzedkqbn7Zja77AtcX/xvPy5V3KGXtfEF8fOOuaMI3/umgMT38tMVRH+NF1fqIzdNrQCeT\n"
+    },
+    {
+     "hostname": "x.lab.test",
+     "key": "edB",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nother.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\nx.lab.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6eEjg1B92Lz4sczOI+yR0ip5/OZvBgZiY0gmF/3L4+\n"
+    },
+    {
+     "hostname": "bastion.test",
+     "key": "edA",
+     "result": "ok",
+     "raw": "h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nh.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\nother.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc8z1wtkICAi92lKnHvvFlqmw4yi85DI1rUNsL3FgRI7DcU4zUV6oXIjPSVRWbnJR85CM5W6k0TakNW8WMvCvo=\nbastion.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFtdf7H8z05tB7/xw2DsYtPSjQ8wW6KXjR+6waNZmc4d\n"
+    }
+   ]
+  }
+ ]
+}
