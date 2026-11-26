@@ -67,9 +67,18 @@ func (c *Conn) Exec(ctx context.Context, command string, stdin io.Reader, stdout
 	}
 	// Running is bounded by ctx (internal/ssh/remotecmd); its end closes
 	// the channel only, so the connection stays usable for a fallback.
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	// Wait returns when the server confirms the close. A server that never
+	// does would hold the caller and its quota slot, so after the setup
+	// budget the whole connection is closed, as the channel guard does
+	// before the start.
+	waited := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		_ = s.Close()
+		c.closeUnlessDone(waited)
+	})
 	defer stop()
 	err = s.Wait()
+	close(waited)
 	if ctx.Err() != nil {
 		return -1, fail(ctx, RoleTarget, false, ctx.Err())
 	}
