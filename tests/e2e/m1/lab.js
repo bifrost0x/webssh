@@ -22,6 +22,10 @@ function loadLab() {
     };
     return {
         service,
+        // A secret file of the runtime directory, first line.
+        secret,
+        // The CA bundle of the lab's TLS services.
+        caFile: path.join(runtime, inventory.ca_file || 'ca/ca.crt'),
         password(serviceName, user) {
             return secret(service(serviceName).users[user].password_file);
         },
