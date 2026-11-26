@@ -335,12 +335,12 @@ func exec(t testing.TB, r *rig, cmd string) (string, error) {
 		return "", err
 	}
 	defer conn.Close()
-	var out bytes.Buffer
-	status, err := conn.Exec(context.Background(), cmd, nil, &out, &out)
+	var out, errOut bytes.Buffer
+	status, err := conn.Exec(context.Background(), cmd, nil, &out, &errOut)
 	if err == nil && status != 0 {
 		err = fmt.Errorf("exit status %d", status)
 	}
-	return out.String(), err
+	return out.String() + errOut.String(), err
 }
 
 func wantCode(t testing.TB, err error, code fault.Code) {
@@ -477,5 +477,20 @@ func TestLabTerminalDirectory(t *testing.T) {
 	go func() { _, _ = io.Copy(io.Discard, msh) }()
 	if _, err := sftp.CollectDirectory(context.Background(), mconn, ""); err != sftp.ErrDirectoryUnsupported {
 		t.Fatalf("busybox: %v", err)
+	}
+}
+
+func TestLabSOCKS(t *testing.T) {
+	r := newRig(t, sftp.Options{})
+	proxy := lab(t).Services["socks-open"]
+	inner := lab(t).Services["ssh-inner"]
+	b := r.open(t, client.Target{
+		Proxy: &client.SOCKS{Host: proxy.Host, Port: proxy.Port, RemoteDNS: true},
+		Hop:   client.Hop{Host: inner.InternalHost, Port: inner.InternalPort, User: "pwuser", Auth: client.Auth{Password: r.pw}},
+	})
+	dir := workdir(t, b)
+	write(t, b, dir+"/via-socks", []byte("hello"), files.WriteOptions{Exclusive: true})
+	if got := read(t, b, dir+"/via-socks"); string(got) != "hello" {
+		t.Fatalf("%q", got)
 	}
 }

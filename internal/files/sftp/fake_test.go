@@ -20,6 +20,7 @@ type fakeServer struct {
 	conn   net.Conn
 	mu     sync.Mutex
 	seen   []string // request types and extension names in order
+	exts   []string // announced extensions; nil: posix-rename and lsetstat
 	handle func(typ byte, id uint32, d *decoder) (byte, []byte)
 }
 
@@ -38,10 +39,13 @@ func attrsBody(mode uint32) []byte {
 	return append(be32(attrPermissions|attrUIDGID), append(append(be32(1000), be32(1000)...), be32(mode)...)...)
 }
 
-func newFake(t *testing.T, o Options, handle func(typ byte, id uint32, d *decoder) (byte, []byte)) (*Backend, *fakeServer) {
+func newFake(t *testing.T, o Options, handle func(typ byte, id uint32, d *decoder) (byte, []byte), exts ...string) (*Backend, *fakeServer) {
 	t.Helper()
 	srv, cli := net.Pipe()
-	f := &fakeServer{conn: srv, handle: handle}
+	if exts == nil {
+		exts = []string{extPosixRename, extLsetstat}
+	}
+	f := &fakeServer{conn: srv, handle: handle, exts: exts}
 	go f.serve()
 	c, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -65,7 +69,7 @@ func (f *fakeServer) serve() {
 		}
 		if body[0] == fxpInit {
 			v := be32(3)
-			for _, e := range []string{extPosixRename, extLsetstat} {
+			for _, e := range f.exts {
 				v = append(v, str([]byte(e))...)
 				v = append(v, str([]byte("1"))...)
 			}
@@ -222,4 +226,27 @@ func TestChmodModeMismatch(t *testing.T) {
 		return fxpStatus, statusBody(fxOK)
 	})
 	wantCode(t, b.Chmod(context.Background(), "/file", 0o600), fault.ModeMismatch)
+}
+
+// Without posix-rename@openssh.com nothing is replaced (Python rule: no
+// delete window); new files are still written.
+func TestNoPosixRenameRefusesReplace(t *testing.T) {
+	b, f := newFake(t, Options{ChmodEnabled: true}, func(typ byte, _ uint32, d *decoder) (byte, []byte) {
+		if typ == fxpLstat {
+			return fxpAttrs, attrsBody(0o100644)
+		}
+		return fxpStatus, statusBody(fxOpUnsupported)
+	}, "fsync@openssh.com")
+	c := b.Capabilities()
+	if len(c.Replace) != 0 || c.Ops.Has(files.CapChmod) {
+		t.Fatalf("capabilities %+v", c)
+	}
+	_, err := b.Write(context.Background(), "/existing", strings.NewReader("x"), files.WriteOptions{Size: 1})
+	wantCode(t, err, fault.AtomicReplaceUnavailable)
+	_, err = b.Write(context.Background(), "/existing", strings.NewReader("x"),
+		files.WriteOptions{Size: 1, ExpectedRevision: files.Revision(nil)})
+	wantCode(t, err, fault.AtomicReplaceUnavailable)
+	if got := f.requests(); got != "lstat,lstat" {
+		t.Fatalf("requests %s: something was staged", got)
+	}
 }
