@@ -244,7 +244,7 @@ func TestPasswordChangedTx(t *testing.T) {
 	t.Parallel()
 	s, _ := newService(t)
 	insertLegacy(t, s, 1, "modern", false, false, ManagedLocal, "hist-modern") // history == incarnation
-	insertLegacy(t, s, 2, "nullcreated", false, false, ManagedLocal, "")      // history from hash
+	insertLegacy(t, s, 2, "nullcreated", false, false, ManagedLocal, "")       // history from hash
 	for id, wantHist := range map[int64]string{1: "hist-modern", 2: "newhash"} {
 		var gen int64
 		err := s.DB.Write(t.Context(), func(tx *store.Tx) error {

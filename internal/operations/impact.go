@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/store"
 )
 
 // Credential is one sign-in credential or factor of an account,
@@ -111,7 +113,13 @@ func (g *Gates) snapshot(ctx context.Context, inv Inventory, feature string) (st
 	if err != nil {
 		return "", Impact{}, err
 	}
-	raw, err := json.Marshal(map[string]any{"gates": gates, "github_active": githubActive, "accounts": accounts}, json.Deterministic(true))
+	rows, err := g.storedRows(ctx)
+	if err != nil {
+		return "", Impact{}, err
+	}
+	// The stored rows carry the time of every change, so an approval
+	// never survives a disable and re-enable of the same gate.
+	raw, err := json.Marshal(map[string]any{"gates": gates, "stored": rows, "github_active": githubActive, "accounts": accounts}, json.Deterministic(true))
 	if err != nil {
 		return "", Impact{}, err
 	}
@@ -165,6 +173,30 @@ func (g *Gates) snapshot(ctx context.Context, inv Inventory, feature string) (st
 		}
 	}
 	return hex.EncodeToString(sum[:]), im, nil
+}
+
+func (g *Gates) storedRows(ctx context.Context) ([]string, error) {
+	var out []string
+	err := g.DB.Read(ctx, func(tx *store.Tx) error {
+		rows, err := tx.QueryContext(ctx, `SELECT feature || ':' || enabled || ':' || coalesce(updated_by, '') || ':' || coalesce(updated_us, '')
+			FROM operations_feature_gates ORDER BY feature`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var s string
+			if err := rows.Scan(&s); err != nil {
+				return err
+			}
+			out = append(out, s)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, fault.Wrap(fault.StorageError, err, "")
+	}
+	return out, nil
 }
 
 func b2i(b bool) int {

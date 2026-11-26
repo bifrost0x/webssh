@@ -231,6 +231,27 @@ func TestDisableNeedsConfirmationAndFreshApproval(t *testing.T) {
 	}
 }
 
+// Disable, re-enable and the old approval no longer disables again.
+func TestApprovalNotReusableAfterReenable(t *testing.T) {
+	t.Parallel()
+	g := newGates(t)
+	tick := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	g.Now = func() time.Time { tick = tick.Add(time.Second); return tick }
+	inv := &inventory{}
+	admin := principaltest.Admin(1)
+	_, _ = g.set(t.Context(), admin, "passkey", true)
+	d1, _, err := g.snapshot(t.Context(), inv, "passkey")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = g.set(t.Context(), admin, "passkey", false)
+	_, _ = g.set(t.Context(), admin, "passkey", true)
+	d2, _, _ := g.snapshot(t.Context(), inv, "passkey")
+	if d1 == d2 {
+		t.Fatal("digest unchanged after disable and re-enable")
+	}
+}
+
 func FuzzApproval(f *testing.F) {
 	f.Add("v1.1764158400.00")
 	f.Add("v1..")

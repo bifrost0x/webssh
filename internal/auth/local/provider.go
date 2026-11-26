@@ -100,7 +100,7 @@ func (p *Provider) Authenticate(ctx context.Context, username, secret string) (i
 		return 0, err
 	}
 	if id == 0 {
-		p.Hasher.VerifyDummy(ctx, secret)
+		p.Hasher.VerifyDummy(ctx, secret, p.legacyHashes(ctx))
 		return 0, errFailed
 	}
 	row, found, err := p.read(ctx, id)
@@ -108,7 +108,7 @@ func (p *Provider) Authenticate(ctx context.Context, username, secret string) (i
 		return 0, err
 	}
 	if !found {
-		p.Hasher.VerifyDummy(ctx, secret)
+		p.Hasher.VerifyDummy(ctx, secret, p.legacyHashes(ctx))
 		return 0, errFailed
 	}
 	ok, rehash, err := p.Hasher.Verify(ctx, row.algorithm, row.hash, secret)
@@ -126,6 +126,16 @@ func (p *Provider) Authenticate(ctx context.Context, username, secret string) (i
 		p.rehash(ctx, id, row, secret)
 	}
 	return id, nil
+}
+
+// legacyHashes reports whether any bcrypt hash is left; a failed read
+// counts as yes, the slower dummy.
+func (p *Provider) legacyHashes(ctx context.Context) bool {
+	var n int
+	err := p.DB.Read(ctx, func(tx *store.Tx) error {
+		return tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM authlocal_passwords WHERE algorithm = 'bcrypt' LIMIT 1)`).Scan(&n)
+	})
+	return err != nil || n > 0
 }
 
 // rehash replaces row with an Argon2id hash if the row is still the one
@@ -153,7 +163,7 @@ func (p *Provider) Matches(ctx context.Context, userID int64, password string) (
 	row, found, err := p.read(ctx, userID)
 	if err != nil || !found {
 		if !found && err == nil {
-			p.Hasher.VerifyDummy(ctx, password)
+			p.Hasher.VerifyDummy(ctx, password, p.legacyHashes(ctx))
 		}
 		return false, err
 	}

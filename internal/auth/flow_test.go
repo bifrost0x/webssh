@@ -671,3 +671,34 @@ func TestOngoingRegistration(t *testing.T) {
 		t.Fatal("ongoing registration")
 	}
 }
+
+// A session ended between the form check and the write is not replaced
+// by a fresh one.
+func TestChangePasswordDoesNotReviveEndedSession(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, false)
+	e.createUser(t, "alice", "password1")
+	b := e.browser()
+	b.do("POST", "/login", creds("alice", "password1"))
+	p := b.principal(t)
+	r := httptest.NewRequest("POST", "/change-password", strings.NewReader(url.Values{"current_password": {"password1"}, "new_password": {"newpassword"}, "confirm_password": {"newpassword"}}.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r = r.WithContext(principal.With(r.Context(), p))
+	// End the session after the edge resolved the principal.
+	if err := e.flow.Sessions.Revoke(t.Context(), p.SessionID, principal.ReasonRevokedByUser); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	e.mux.ServeHTTP(rec, r)
+	if rec.Code != 302 || rec.Header().Get("Location") != "/login" {
+		t.Fatalf("%d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "session" && c.Value != "" {
+			t.Fatal("new session issued")
+		}
+	}
+	if ok, _ := e.pw.Matches(t.Context(), p.UserID, "password1"); !ok {
+		t.Fatal("password changed without a session")
+	}
+}

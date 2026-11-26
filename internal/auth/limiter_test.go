@@ -104,13 +104,21 @@ func TestLimiterBoundedMemory(t *testing.T) {
 	r := Rule{Limit: 1, Window: time.Second}
 	for i := range maxBuckets {
 		l.Allow(strconv.Itoa(i), r)
+		c.add(time.Microsecond)
+	}
+	c.add(time.Millisecond)
+	if ok, _ := l.Allow("new", r); !ok {
+		t.Fatal("a full limiter refused a new key")
+	}
+	if _, kept := l.buckets["0"]; kept {
+		t.Fatal("least recently used bucket kept")
 	}
 	if ok, _ := l.Allow("new", r); ok {
-		t.Fatal("limiter grew beyond its bound")
+		t.Fatal("new key not limited")
 	}
 	c.add(2 * time.Second)
 	if ok, _ := l.Allow("new", r); !ok {
-		t.Fatal("expired buckets not reclaimed")
+		t.Fatal("window did not slide")
 	}
 	if len(l.buckets) > maxBuckets {
 		t.Fatalf("%d buckets", len(l.buckets))

@@ -49,8 +49,10 @@ var (
 )
 
 // maxBuckets bounds the limiter's memory. When it is reached and expired
-// buckets cannot make room, new keys are refused (fail closed) until
-// buckets expire.
+// buckets cannot make room, the bucket that was used least recently is
+// dropped. Refusing new keys instead would let a flood of fresh sources
+// lock every user out; dropping old buckets only forgets attempts that
+// lie furthest back.
 const maxBuckets = 1 << 16
 
 type event struct {
@@ -131,7 +133,7 @@ func (l *Limiter) Reserve(key string, r Rule) (res Reservation, ok bool, retryAf
 		if len(l.buckets) >= maxBuckets {
 			l.gc(now, true)
 			if len(l.buckets) >= maxBuckets {
-				return Reservation{}, false, r.Window
+				l.evictOldest()
 			}
 		}
 		b = &bucket{}
@@ -141,6 +143,22 @@ func (l *Limiter) Reserve(key string, r Rule) (res Reservation, ok bool, retryAf
 	l.seq++
 	b.events = append(b.events, event{at: now, id: l.seq})
 	return Reservation{key: key, id: l.seq}, true, 0
+}
+
+func (l *Limiter) evictOldest() {
+	var oldest string
+	var at time.Time
+	for k, b := range l.buckets {
+		if len(b.events) == 0 {
+			delete(l.buckets, k)
+			return
+		}
+		last := b.events[len(b.events)-1].at
+		if oldest == "" || last.Before(at) {
+			oldest, at = k, last
+		}
+	}
+	delete(l.buckets, oldest)
 }
 
 // Allow is Reserve without keeping the reservation.

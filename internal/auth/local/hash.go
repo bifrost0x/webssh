@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
@@ -72,6 +73,9 @@ type Hasher struct {
 	params Params
 	slots  chan struct{}
 	dummy  string
+
+	legacyOnce  sync.Once
+	legacyDummy string
 }
 
 // NewHasher returns a hasher. concurrency < 1 uses DefaultConcurrency.
@@ -141,13 +145,17 @@ func (h *Hasher) Verify(ctx context.Context, algorithm, stored, password string)
 		if !validBcrypt(stored) {
 			return false, false, ErrFormat
 		}
-		if len(password) > bcryptMaxBytes {
-			return false, false, nil
-		}
 		if err := h.acquire(ctx); err != nil {
 			return false, false, err
 		}
 		defer h.release()
+		if len(password) > bcryptMaxBytes {
+			// Spend the same time as a real check, so a long password
+			// does not reveal that the account still has a bcrypt hash;
+			// the result is discarded, a bcrypt hash never matches.
+			_ = bcrypt.CompareHashAndPassword([]byte(stored), []byte(password[:bcryptMaxBytes]))
+			return false, false, nil
+		}
 		err := bcrypt.CompareHashAndPassword([]byte(stored), []byte(password))
 		return err == nil, err == nil, nil
 	case AlgorithmArgon2id:
@@ -159,10 +167,10 @@ func (h *Hasher) Verify(ctx context.Context, algorithm, stored, password string)
 			return false, false, err
 		}
 		defer h.release()
-		got := argon2.IDKey([]byte(password), salt, p.Time, p.Memory, p.Threads, uint32(len(key)))
+		got := argon2.IDKey([]byte(password), salt, p.Time, p.Memory, p.Threads, uint32(len(key))) // #nosec G115 -- parseArgon2 bounds the key to 16–64 bytes
 		ok := subtle.ConstantTimeCompare(got, key) == 1
 		cur := h.params
-		weaker := p.Memory < cur.Memory || p.Time < cur.Time || p.Threads < cur.Threads || uint32(len(key)) < cur.KeyLen || uint32(len(salt)) < cur.SaltLen
+		weaker := p.Memory < cur.Memory || p.Time < cur.Time || p.Threads < cur.Threads || len(key) < int(cur.KeyLen) || len(salt) < int(cur.SaltLen)
 		return ok, ok && weaker, nil
 	default:
 		return false, false, ErrFormat
@@ -171,10 +179,28 @@ func (h *Hasher) Verify(ctx context.Context, algorithm, stored, password string)
 
 // VerifyDummy spends the time of a real verification against a hash of a
 // random secret. Sign-in uses it for unknown names, so the answer time
-// does not show whether an account exists.
-func (h *Hasher) VerifyDummy(ctx context.Context, password string) {
+// does not show whether an account exists. legacy selects a bcrypt dummy
+// with the cost of the Python release, used while migrated bcrypt hashes
+// remain: most accounts then still answer at bcrypt speed.
+func (h *Hasher) VerifyDummy(ctx context.Context, password string, legacy bool) {
+	if legacy {
+		h.legacyOnce.Do(func() {
+			secret := make([]byte, 32)
+			_, _ = rand.Read(secret)
+			if b, err := bcrypt.GenerateFromPassword(secret, legacyCost); err == nil {
+				h.legacyDummy = string(b)
+			}
+		})
+		if h.legacyDummy != "" {
+			_, _, _ = h.Verify(ctx, AlgorithmBcrypt, h.legacyDummy, password)
+			return
+		}
+	}
 	_, _, _ = h.Verify(ctx, AlgorithmArgon2id, h.dummy, password)
 }
+
+// legacyCost is the bcrypt cost of the Python release (bcrypt.gensalt()).
+const legacyCost = 12
 
 // validBcrypt accepts the modular crypt forms the Python release can
 // store: $2a$, $2b$ or $2y$, a two-digit cost and 53 characters of salt

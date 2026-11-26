@@ -148,8 +148,7 @@ func (h *HTTP) set(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s, err := h.Gates.set(r.Context(), p, name, enabled)
-	var unavailable errUnavailable
-	if errors.As(err, &unavailable) {
+	if unavailable, ok := errors.AsType[errUnavailable](err); ok {
 		reason := ""
 		if unavailable.status.Reason != nil {
 			reason = *unavailable.status.Reason

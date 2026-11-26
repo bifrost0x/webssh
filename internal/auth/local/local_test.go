@@ -338,3 +338,28 @@ func BenchmarkArgon2Default(b *testing.B) {
 		}
 	}
 }
+
+// Unknown names and over-long passwords against bcrypt accounts spend a
+// real bcrypt computation while bcrypt hashes remain.
+func TestLegacyTimingPaths(t *testing.T) {
+	t.Parallel()
+	v := vectors(t)[0]
+	p := providerWith(t, fakeAccounts{"alice": {1, true}})
+	insertRaw(t, p, 1, AlgorithmBcrypt, v.Hash)
+	if !p.legacyHashes(t.Context()) {
+		t.Fatal("bcrypt rows not seen")
+	}
+	start := time.Now()
+	_, err := p.Authenticate(t.Context(), "nobody", "password1")
+	if fault.CodeOf(err) != fault.AuthFailed || time.Since(start) < 50*time.Millisecond {
+		t.Fatalf("unknown name answered in %v (%v)", time.Since(start), err)
+	}
+	start = time.Now()
+	_, err = p.Authenticate(t.Context(), "alice", strings.Repeat("a", 73))
+	if fault.CodeOf(err) != fault.AuthFailed || time.Since(start) < 50*time.Millisecond {
+		t.Fatalf("73-byte password answered in %v (%v)", time.Since(start), err)
+	}
+	if p.Hasher.legacyDummy == "" {
+		t.Fatal("no legacy dummy")
+	}
+}

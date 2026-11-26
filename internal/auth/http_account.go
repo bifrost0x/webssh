@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -94,6 +95,8 @@ func (f *Flow) register(w http.ResponseWriter, r *http.Request) {
 	f.redirect(w, r, f.url("/"))
 }
 
+var errSessionGone = fault.New(fault.AuthenticationNeeded, "")
+
 // passwordAccount returns the signed-in local account; directory- and
 // GitHub-managed accounts get 403 as in the Python release.
 func (f *Flow) passwordAccount(w http.ResponseWriter, r *http.Request) (principal.Principal, accounts.Account, bool) {
@@ -185,6 +188,10 @@ func (f *Flow) changePassword(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = err2
 	}
+	if fault.Is(err, fault.AuthenticationNeeded) {
+		f.redirect(w, r, f.url("/login"))
+		return
+	}
 	if err != nil {
 		f.fail(w, r, err)
 		return
@@ -203,6 +210,11 @@ func (f *Flow) changePassword(w http.ResponseWriter, r *http.Request) {
 		if revs, err = f.Sessions.RevokeUserTx(ctx, tx, p.UserID, principal.ReasonPasswordChanged, ""); err != nil {
 			return err
 		}
+		// The browser's own session must still exist inside this
+		// transaction; a session ended meanwhile is not brought back.
+		if !slices.ContainsFunc(revs, func(r principal.Revocation) bool { return r.SessionID == p.SessionID }) {
+			return errSessionGone
+		}
 		fresh, token, err = f.Sessions.IssueTx(ctx, tx, session.IssueRequest{
 			UserID: p.UserID, Generation: gen, PrimaryMethod: cur.PrimaryMethod, Methods: cur.Methods,
 			Assurance: cur.Assurance, Remember: cur.Remember, StrongAt: cur.StrongAt, ExpiresAt: cur.ExpiresAt,
@@ -211,7 +223,11 @@ func (f *Flow) changePassword(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		f.Cookie.Clear(w)
-		f.logger().WarnContext(ctx, "Password change session rotation failed", "user", acc.Username, "error", err)
+		if fault.Is(err, fault.AuthenticationNeeded) {
+			f.redirect(w, r, f.url("/login"))
+			return
+		}
+		f.logger().WarnContext(ctx, "Password change session rotation failed", "user", acc.Username, "code", string(fault.CodeOf(err)))
 		f.fail(w, r, fault.Wrap(fault.StorageError, err, ""))
 		return
 	}
