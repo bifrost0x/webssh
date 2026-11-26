@@ -99,6 +99,9 @@ type Flow struct {
 	Settings  SignInSettings
 	Limiter   *Limiter
 	Limits    Limits
+	// Devices issues and checks known-device cookies; nil applies the
+	// per-name ceiling to every browser.
+	Devices *Devices
 	Audit     Auditor
 	Pages     Pages
 	// Root is APPLICATION_ROOT ("" at the root).

@@ -77,9 +77,11 @@ func usernameKey(name string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-// reserveUsername is reserve_login_username_attempt without the
-// known-device exception (C-AUTH-10 is not part of M1).
-func (f *Flow) reserveUsername(ctx context.Context, name, source string) ([]Reservation, bool) {
+// reserveUsername is reserve_login_username_attempt: one attempt per
+// name and source bucket, then either the failure budget of a valid
+// known-device cookie (device is its nonce) or the per-name ceiling across
+// all sources. Only failed attempts keep their reservations.
+func (f *Flow) reserveUsername(ctx context.Context, name, source, device string) ([]Reservation, bool) {
 	if strings.TrimSpace(name) == "" {
 		return nil, true
 	}
@@ -93,6 +95,11 @@ func (f *Flow) reserveUsername(ctx context.Context, name, source string) ([]Rese
 	src, ok, _ := f.Limiter.Reserve(key+":"+SourceBucket(source, prefix), Rule{Limit: perSource, Window: time.Minute})
 	if !ok {
 		return nil, false
+	}
+	if device != "" {
+		if dev, ok, _ := f.Limiter.Reserve(DeviceBudgetKey("login", device), Rule{Limit: DeviceFailureBudget, Window: DeviceFailureWindow}); ok {
+			return []Reservation{src, dev}, true
+		}
 	}
 	all, ok, _ := f.Limiter.Reserve(key, Rule{Limit: global, Window: time.Minute})
 	if !ok {
@@ -135,7 +142,7 @@ func (f *Flow) login(w http.ResponseWriter, r *http.Request) {
 	var reservation []Reservation
 	if f.Limits.Enabled {
 		var ok bool
-		if reservation, ok = f.reserveUsername(ctx, username, ip); !ok {
+		if reservation, ok = f.reserveUsername(ctx, username, ip, f.Devices.Trusted(r, username)); !ok {
 			limited("login_username", username)
 			return
 		}
@@ -158,6 +165,7 @@ func (f *Flow) login(w http.ResponseWriter, r *http.Request) {
 		f.fail(w, r, err)
 		return
 	}
+	f.Devices.Remember(w, acc, username)
 	next := r.URL.Query().Get("next")
 	if next == "" {
 		next = "/"

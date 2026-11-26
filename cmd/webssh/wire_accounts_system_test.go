@@ -93,6 +93,14 @@ func TestAccountAdministrationThroughTheServer(t *testing.T) {
 	if resp, _ := get(t, bob, ts.URL+"/api/account/sessions"); resp.StatusCode != http.StatusOK {
 		t.Fatalf("bob not signed in: %d", resp.StatusCode)
 	}
+	base, _ := url.Parse(ts.URL)
+	known := false
+	for _, ck := range bob.Jar.Cookies(base) {
+		known = known || ck.Name == "session_device" && strings.HasPrefix(ck.Value, "v1.")
+	}
+	if !known {
+		t.Fatal("the password sign-in set no known-device cookie")
+	}
 	if _, err := sys.recovery.Generate(t.Context(), bobAcc.ID); err != nil {
 		t.Fatal(err)
 	}

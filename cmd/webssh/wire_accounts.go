@@ -51,7 +51,8 @@ func legacyUserDir(dataDir string) accounts.LegacyUserDir {
 	}
 }
 
-// wireAccounts hands the account service what it ends and removes, and
+// wireAccounts hands the account service what it ends and removes, gives
+// the password sign-in its known devices, and
 // registers the administration routes and the retired stand-alone
 // recovery sign-in.
 func wireAccounts(sys *system) error {
@@ -62,6 +63,7 @@ func wireAccounts(sys *system) error {
 	a.Factors = accounts.TableReset{Tables: accounts.FactorTables}
 	a.Recovery = sys.recovery
 	a.LegacyDir = legacyUserDir(sys.cfg.DataDir)
+	sys.flow.Devices = &auth.Devices{MAC: sys.ring, Cookie: sys.edge.DeviceCookie(), Accounts: a}
 	(&accounts.HTTP{Accounts: a, StepUp: sys.stepup, Gates: sys.gates, Enabled: sys.cfg.Accounts.AdminPanelEnabled,
 		Logger: sys.log}).RegisterAdmin(sys.edge.Mux())
 	(&auth.FactorHTTP{MFA: sys.mfa, Logger: sys.log}).RegisterRecoveryCompat(sys.edge.Mux())
