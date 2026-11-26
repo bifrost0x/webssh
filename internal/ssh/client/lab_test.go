@@ -466,3 +466,56 @@ func TestLabRekey(t *testing.T) {
 		t.Fatalf("re-key prompted again: %d prompts", len(r.ix.seen))
 	}
 }
+
+// bannerPrompts trusts every host key (the banner server is a throwaway
+// container) and answers banners with accept.
+type bannerPrompts struct {
+	accept bool
+	seen   []client.BannerPrompt
+}
+
+func (*bannerPrompts) HostKey(context.Context, client.HostKeyPrompt) (bool, error) { return true, nil }
+
+func (b *bannerPrompts) Banner(_ context.Context, q client.BannerPrompt) (bool, error) {
+	b.seen = append(b.seen, q)
+	return b.accept, nil
+}
+
+// TestLabBanner runs against the OpenSSH server of testdata/banner-lab.sh:
+// the banner reaches the user cleaned of control characters, accepting it
+// signs in, declining it or connecting unattended ends the attempt.
+func TestLabBanner(t *testing.T) {
+	addr, password := os.Getenv("WEBSSH_BANNER_ADDR"), os.Getenv("WEBSSH_BANNER_PASSWORD")
+	if addr == "" {
+		t.Fatal("run with testdata/banner-lab.sh (WEBSSH_BANNER_ADDR)")
+	}
+	host, portText, _ := strings.Cut(addr, ":")
+	port, _ := strconv.Atoi(portText)
+	policy, err := netpolicy.New(netpolicy.Config{Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &rig{dialer: &client.Dialer{Net: policy, HostKeys: hostkey.New(storetest.Open(t, hostkey.Schema()), nil)}}
+	tgt := client.Target{Owner: 1, Hop: client.Hop{Host: host, Port: port, User: "pwuser", Auth: client.Auth{Password: password}}}
+	ix := &bannerPrompts{accept: true}
+	c, err := r.dialer.Dial(t.Context(), tgt, ix)
+	if err != nil {
+		t.Fatalf("accepted banner: %v", err)
+	}
+	_ = c.Close()
+	if len(ix.seen) != 1 {
+		t.Fatalf("banner prompts: %d", len(ix.seen))
+	}
+	q := ix.seen[0]
+	if q.Role != client.RoleTarget || q.Port != port || !strings.Contains(q.Banner, "Authorized use only.") ||
+		!strings.Contains(q.Banner, "Grüße") || strings.ContainsAny(q.Banner, "\x1b\a") {
+		t.Fatalf("banner prompt %+v, text %+q", q, q.Banner)
+	}
+	t.Logf("banner as shown: %+q", q.Banner)
+	if _, err := r.dialer.Dial(t.Context(), tgt, &bannerPrompts{accept: false}); code(err) != fault.BannerDeclined {
+		t.Fatalf("declined banner: %v", err)
+	}
+	if _, err := r.dialer.Dial(t.Context(), tgt, nil); code(err) != fault.BannerDeclined {
+		t.Fatalf("unattended banner: %v", err)
+	}
+}
