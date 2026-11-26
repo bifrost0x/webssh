@@ -127,11 +127,11 @@ instead, so the probe still does not repeat on every login. That memory
 belongs to the server process: it is lost when WebSSH restarts, and each
 server process keeps its own.
 
-The host icon shows where its platform came from: a manual choice, a
-detection, the SSH greeting, the host name, a detection that found no known
-platform, or "not detected yet". Choosing a
-manual icon turns detection off for that host. A role assigned to the host
-(the **Role** field, or the `role_override` field of a host import) does not.
+The host icon shows where its platform came from: a manual choice, a detection,
+the SSH greeting, the host name, a detection that found no known platform, or
+"not detected yet". Choosing a manual icon turns detection off for that host. A
+role assigned to the host (the **Role** field, or the `role_override` field of
+a host import) does not.
 
 ## Private host context
 
@@ -191,15 +191,15 @@ on the platform or on a service:
 16. Network: WireGuard, Tailscale, ZeroTier, OpenVPN as the only services.
 
 Because a service rule can rank above a platform rule, a router platform that
-also runs Jellyfin is a Media host, not a Network host. Rules 13 to 15
-describe hosts that run nothing but infrastructure: Database allows only
-databases, web servers and container tools, Web only web servers and container
-tools, and Containers only container tools. One more application and the host
-does not match them. VPN and overlay networks (WireGuard, Tailscale, ZeroTier,
-OpenVPN) say how a host is reached, not what it is: the other rules ignore
-them, a host that runs nothing else is a Network host (rule 16), and their
-logos come after all other services. A host that boots into a graphical
-target and matched nothing is a Workstation; anything else is a Server.
+also runs Jellyfin is a Media host, not a Network host. Rules 13 to 15 describe
+hosts that run nothing but infrastructure: Database allows only databases, web
+servers and container tools, Web only web servers and container tools, and
+Containers only container tools. One more application and the host does not
+match them. VPN and overlay networks (WireGuard, Tailscale, ZeroTier, OpenVPN)
+say how a host is reached, not what it is: the other rules ignore them, a host
+that runs nothing else is a Network host (rule 16), and their logos come after
+all other services. A host that boots into a graphical target and matched
+nothing is a Workstation; anything else is a Server.
 
 Only a chosen platform, a detected one or a distribution family derived from
 detection (for example Debian-based) can name a role through the platform. A
@@ -233,14 +233,14 @@ badge, role pill and up to three service logos, without tint or profile.
 
 In the workspace, tabs carry the role colour as an edge with up to two service
 logos, dropping logos before a host name is cut. Above each terminal in the
-grid, an identity line names the role, the host and the system, with up to
-four service logos; in window mode the same information sits in the window's
-title bar. A saved host that is a plain Server with no known system, machine
-or service gets no identity line, and its terminal keeps the full pane. Rows
-in the host rail on the left have a role edge and up to four service logos,
-and a **Group / Role** switch groups the rail by role instead of by group. The
-choice is stored in the browser (`localStorage`), not on the server, and the
-switch does not exist in the classic layout.
+grid, an identity line names the role, the host and the system, with up to four
+service logos; in window mode the same information sits in the window's title
+bar. A saved host that is a plain Server with no known system, machine or
+service gets no identity line, and its terminal keeps the full pane. Rows in
+the host rail on the left have a role edge and up to four service logos, and a
+**Group / Role** switch groups the rail by role instead of by group. The choice
+is stored in the browser (`localStorage`), not on the server, and the switch
+does not exist in the classic layout.
 
 All of this uses only what detection read while you were connected anyway.
 Facts that are missing or outside the fixed catalogs are left out, and a host
