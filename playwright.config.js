@@ -6,6 +6,7 @@ const python = process.env.PYTHON
         ? path.join('.venv', 'Scripts', 'python.exe')
         : 'python');
 const e2ePort = process.env.WEBSSH_E2E_PORT || '4173';
+// Specs and helpers build loopback URLs from the port, so the host is fixed.
 const e2eBaseUrl = `http://127.0.0.1:${e2ePort}`;
 const outputDir = process.env.WEBSSH_E2E_OUTPUT_DIR || (process.env.CI
     ? 'test-results'
@@ -34,10 +35,14 @@ module.exports = {
         screenshot: 'only-on-failure',
     },
     webServer: {
-        command: `"${python}" tests/e2e/run_app.py`,
+        // Another backend replaces the default runner via
+        // WEBSSH_E2E_SERVER_COMMAND; tests/e2e/README.md has the contract.
+        command: process.env.WEBSSH_E2E_SERVER_COMMAND
+            || `"${python}" tests/e2e/run_app.py`,
+        env: { WEBSSH_E2E_PORT: e2ePort },
         url: `${e2eBaseUrl}/login`,
         reuseExistingServer: false,
-        timeout: 120_000,
+        timeout: Number(process.env.WEBSSH_E2E_SERVER_TIMEOUT_MS || 120_000),
         stdout: 'pipe',
         stderr: 'pipe',
     },

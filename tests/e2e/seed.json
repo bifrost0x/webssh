@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "environment": {
+    "SECRET_KEY": "e2e-only-secret-key",
+    "DEBUG": "True",
+    "AUTOMATION_ALLOW_INSECURE_LOOPBACK": "true",
+    "SESSION_COOKIE_SECURE": "False",
+    "HOST": "127.0.0.1",
+    "PORT": "{port}",
+    "RATELIMIT_STORAGE_URL": "memory://",
+    "RATELIMIT_LOGIN_LIMIT": "100 per minute",
+    "RATELIMIT_REAUTH": "100 per minute",
+    "SSH_KEY_LIST_RATELIMIT": "100 per minute",
+    "CORS_ORIGINS": "http://127.0.0.1:{port}",
+    "WEBAUTHN_ENABLED": "true",
+    "WEBAUTHN_RP_ID": "localhost",
+    "WEBAUTHN_RP_NAME": "WebSSH E2E",
+    "WEBAUTHN_ORIGIN": "http://localhost:{port}",
+    "TOTP_ENABLED": "true",
+    "OIDC_ENABLED": "true",
+    "OIDC_ISSUER": "https://issuer.example",
+    "OIDC_CLIENT_ID": "webssh-e2e",
+    "OIDC_CLIENT_SECRET_FILE": "{data_dir}/oidc-client-secret",
+    "OIDC_REDIRECT_URI": "http://127.0.0.1:{port}/oidc/callback",
+    "TAILSCALE_SSH_ENABLED": "true",
+    "TAILSCALE_SSH_ALLOWED_TARGETS": "tail-node",
+    "TAILSCALE_SSH_ALLOWED_REMOTE_USERS": "root"
+  },
+  "unset_environment": ["AUTOMATION_ENABLED", "REGISTRATION_ENABLED"],
+  "data_files": {
+    "oidc-client-secret": "e2e-only-oidc-secret"
+  },
+  "admin_settings": {
+    "automation_enabled": true,
+    "registration_enabled": true,
+    "login_username_limit": 100,
+    "login_username_global_limit": 1000
+  },
+  "accounts": [
+    {"ref": "admin", "username": "e2e_admin", "password": "browser-password", "admin": true},
+    {"ref": "user", "username": "e2e_user", "password": "browser-password", "admin": false},
+    {"ref": "mfa", "username": "e2e_mfa", "password": "browser-password", "admin": false},
+    {"ref": "mixed_mfa", "username": "e2e_mixed_mfa", "password": "browser-password", "admin": false, "mfa_enabled": true}
+  ],
+  "account_settings": {
+    "intro_tour": "completed",
+    "intro_tour_v3_acknowledged": true
+  },
+  "external_identities": [
+    {"provider": "github", "account": "admin", "github_user_id": "424242", "login": "e2e-github"},
+    {"provider": "oidc", "account": "user", "issuer": "https://issuer.example", "subject": "existing-e2e-subject"}
+  ],
+  "security_features": [
+    {"feature": "totp", "enabled": true, "updated_by": "admin"},
+    {"feature": "passkey", "enabled": true, "updated_by": "admin"}
+  ],
+  "mfa_placeholders": [
+    {"type": "totp", "account": "mixed_mfa", "label": "E2E authenticator", "active": true, "secret": "e2e-only-mixed-totp"},
+    {"type": "passkey", "account": "mixed_mfa", "name": "E2E passkey", "credential_id": "e2e-mixed-passkey", "public_key": "e2e-only-public-key", "transports": []}
+  ],
+  "ssh_keys": [
+    {"ref": "usable", "account": "admin", "name": "E2E usable key", "generate": "ed25519"}
+  ],
+  "jump_hosts": [
+    {"ref": "key-jump", "account": "admin", "name": "E2E key jump host", "host": "jump.local", "port": 22, "username": "jumpuser", "auth_type": "key", "key": "usable"}
+  ],
+  "socks_proxies": [
+    {"ref": "open", "account": "admin", "name": "E2E none SOCKS proxy", "host": "proxy.example", "port": 1080, "auth_type": "none", "username": "", "remote_dns": true},
+    {"ref": "password", "account": "admin", "name": "E2E password SOCKS proxy", "host": "proxy.example", "port": 1080, "auth_type": "password", "username": "proxyuser", "remote_dns": true}
+  ],
+  "commands": [
+    {"account": "admin", "id": "e2e-command", "name": "E2E command", "command": "printf", "parameters": "--default", "description": "Disposable browser-test command", "os": ["all"], "category": "custom"},
+    {"account": "admin", "id": "guarded-direct-command", "name": "Guarded direct command", "command": "whoami", "parameters": "", "description": "Disposable browser-test command", "os": ["all"], "category": "custom"}
+  ],
+  "command_sets": [
+    {"account": "admin", "id": "e2e-command-set", "name": "E2E command set", "description": "Disposable browser-test set", "use_sudo": false, "steps": [{"type": "inline", "command": "printf set"}]},
+    {"account": "admin", "id": "guarded-profile-set", "name": "Guarded profile set", "description": "Disposable browser-test set", "use_sudo": false, "steps": [{"type": "inline", "command": "whoami"}]}
+  ],
+  "profiles": [
+    {"account": "admin", "id": "password-review", "name": "Password review", "host": "password.local", "port": 22, "username": "passworduser", "auth_type": "password", "group": "Customer systems"},
+    {"account": "admin", "id": "ops-first", "name": "Ops first", "host": "ops-first.local", "port": 22, "username": "operator", "auth_type": "password", "group": "Operations", "sort_order": 0},
+    {"account": "admin", "id": "ops-second", "name": "Ops second", "host": "ops-second.local", "port": 22, "username": "operator", "auth_type": "password", "group": "Operations", "sort_order": 1},
+    {"account": "admin", "id": "application-target", "name": "Application target", "host": "application.local", "port": 22, "username": "operator", "auth_type": "password", "group": "Applications", "sort_order": 0},
+    {"account": "admin", "id": "solo-database", "name": "Solo database", "host": "database.local", "port": 22, "username": "operator", "auth_type": "password", "group": "Databases", "sort_order": 0},
+    {"account": "admin", "id": "usable-key", "name": "Usable key", "host": "key.local", "port": 22, "username": "keyuser", "auth_type": "key", "key": "usable", "group": "Production", "favorite": true},
+    {"account": "admin", "id": "key-jump-host", "name": "Key jump host", "host": "jump-target.local", "port": 22, "username": "keyuser", "auth_type": "key", "key": "usable", "jump_host": "key-jump"},
+    {"account": "admin", "id": "missing-key", "name": "Missing key", "host": "missing-key.local", "port": 22, "username": "keyuser", "auth_type": "key", "key_id": "missing-key"},
+    {"account": "admin", "id": "missing-jump-host", "name": "Missing jump host", "host": "missing-jump.local", "port": 22, "username": "keyuser", "auth_type": "key", "key": "usable", "jump_host_id": "missing-jump-host"},
+    {"account": "admin", "id": "socks-key-host", "name": "SOCKS key host", "host": "socks-target.example", "port": 22, "username": "keyuser", "auth_type": "key", "key": "usable", "socks_proxy": "open"},
+    {"account": "admin", "id": "socks-password-host", "name": "SOCKS password host", "host": "socks-auth-target.example", "port": 22, "username": "keyuser", "auth_type": "key", "key": "usable", "socks_proxy": "password"},
+    {"account": "admin", "id": "missing-socks-host", "name": "Missing SOCKS host", "host": "socks-missing.example", "port": 22, "username": "keyuser", "auth_type": "key", "key": "usable", "socks_proxy_id": "missing-socks-proxy"},
+    {"account": "admin", "id": "authorized-tailscale", "name": "Authorized Tailscale", "host": "tail-node", "port": 22, "username": "root", "auth_type": "tailscale"},
+    {"account": "user", "id": "unauthorized-tailscale", "name": "Unauthorized Tailscale", "host": "tail-node", "port": 22, "username": "root", "auth_type": "tailscale"},
+    {"account": "admin", "id": "post-none", "name": "Post none", "host": "post-none.local", "port": 22, "username": "postuser", "auth_type": "key", "key": "usable"},
+    {"account": "admin", "id": "post-free-text", "name": "Post free text", "host": "post-free.local", "port": 22, "username": "postuser", "auth_type": "key", "key": "usable", "startup_mode": "free_text", "startup_commands": "printf free-text"},
+    {"account": "admin", "id": "post-command-default", "name": "Post command default", "host": "post-default.local", "port": 22, "username": "postuser", "auth_type": "key", "key": "usable", "startup_mode": "command", "command_id": "e2e-command"},
+    {"account": "admin", "id": "post-command-empty", "name": "Post command empty", "host": "post-empty.local", "port": 22, "username": "postuser", "auth_type": "key", "key": "usable", "startup_mode": "command", "command_id": "e2e-command", "parameters_override": ""},
+    {"account": "admin", "id": "post-command-custom", "name": "Post command custom", "host": "post-custom.local", "port": 22, "username": "postuser", "auth_type": "key", "key": "usable", "startup_mode": "command", "command_id": "e2e-command", "parameters_override": "--custom value"},
+    {"account": "admin", "id": "post-command-set", "name": "Post command set", "host": "post-set.local", "port": 22, "username": "postuser", "auth_type": "key", "key": "usable", "startup_mode": "command_set", "command_set_id": "e2e-command-set"},
+    {"account": "admin", "id": "post-missing-command", "name": "Post missing command", "host": "post-missing-command.local", "port": 22, "username": "postuser", "auth_type": "key", "key": "usable", "startup_mode": "command", "command_id": "missing-command"},
+    {"account": "admin", "id": "post-missing-command-set", "name": "Post missing command set", "host": "post-missing-set.local", "port": 22, "username": "postuser", "auth_type": "key", "key": "usable", "startup_mode": "command_set", "command_set_id": "missing-command-set"},
+    {"account": "admin", "id": "guarded-direct-command-profile", "name": "Guarded direct command profile", "host": "guarded-command.local", "port": 22, "username": "postuser", "auth_type": "key", "key": "usable", "startup_mode": "command", "command_id": "guarded-direct-command"},
+    {"account": "admin", "id": "guarded-command-set-profile", "name": "Guarded command set profile", "host": "guarded-set.local", "port": 22, "username": "postuser", "auth_type": "key", "key": "usable", "startup_mode": "command_set", "command_set_id": "guarded-profile-set"}
+  ],
+  "test_hooks": [
+    {"name": "automation_ssh_peer", "accounts": ["user"]},
+    {"name": "outbound_ssh_guard", "error": "E2E network guard reached"},
+    {"name": "socket_output_load"},
+    {"name": "socket_workspace_restore"},
+    {"name": "socket_herdr_sessions"}
+  ]
+}
