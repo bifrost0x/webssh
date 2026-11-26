@@ -665,14 +665,25 @@
             state.frame.dataset.status = chrome.status || 'idle';
             state.minimizeButton.hidden = chrome.minimizable === false;
             state.closeLabel = chrome.closeLabel || null;
-            state.badges.replaceChildren(...(chrome.badges || []).map(badge => {
+            if (chrome.role) state.frame.dataset.role = chrome.role;
+            else delete state.frame.dataset.role;
+            const items = (chrome.badges || []).map(badge => {
                 const item = doc.createElement('span');
                 item.className = 'ws-window-badge material-icons';
                 item.textContent = badge.icon;
                 item.title = badge.title || '';
                 item.setAttribute('aria-label', badge.title || '');
                 return item;
-            }));
+            });
+            // Service logos of the host, prepared by the caller from catalog ids.
+            const services = (chrome.services || []).filter(item => item?.nodeType === 1);
+            if (services.length) {
+                const holder = doc.createElement('span');
+                holder.className = 'ws-window-services';
+                holder.append(...services);
+                items.unshift(holder);
+            }
+            state.badges.replaceChildren(...items);
             updateButtons(state);
         }
 

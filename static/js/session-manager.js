@@ -48,6 +48,7 @@ const SessionManager = {
         this.initTabScrollAffordances();
         window.addEventListener('languageChanged', () => {
             this.refreshEmptyPanes();
+            this.refreshSessionIdentity();
         });
         const sessionBar = document.getElementById('sessionBar');
         if (sessionBar) {
@@ -1220,6 +1221,27 @@ const SessionManager = {
         }
     },
 
+    savedHostFor(session) {
+        const profiles = window.ProfileManager?.profiles;
+        if (!session?.profileId || !Array.isArray(profiles)) return null;
+        return profiles.find(profile => profile.id === session.profileId) || null;
+    },
+
+    /** Brings every visible identity line and window title bar in line with the saved hosts. */
+    refreshSessionIdentity() {
+        if (this.windowMode) {
+            this.paneAssignments.forEach((sessionId, index) => this.updateWindowChrome(index));
+            return;
+        }
+        const grid = this.ensureTerminalGrid();
+        this.paneAssignments.forEach((sessionId, index) => {
+            const pane = grid?.querySelector(`.terminal-pane[data-pane-index="${index}"]`);
+            if (!pane || !sessionId || this.connectionLauncherSessions.has(index)) return;
+            const session = this.sessions[sessionId];
+            if (session) window.HostPlatform?.markIdentityBar?.(pane, session, this.savedHostFor(session), document);
+        });
+    },
+
     renderPane(paneIndex, {preserveLauncherSearch = false} = {}) {
         const grid = this.ensureTerminalGrid();
         if (!grid) {
@@ -1262,6 +1284,10 @@ const SessionManager = {
             if (wrapper) {
                 wrapper.classList.remove('unassigned');
                 pane.appendChild(wrapper);
+            }
+            // A window names its host in the title bar instead.
+            if (!this.windowMode) {
+                window.HostPlatform?.markIdentityBar?.(pane, session, this.savedHostFor(session), document);
             }
             TerminalManager.fitTerminal(sessionId);
             TerminalManager.resumeVisibleOutput?.(sessionId);
@@ -2556,13 +2582,22 @@ const SessionManager = {
                 title: session.tmuxSessionName ? `tmux: ${session.tmuxSessionName}` : 'tmux',
             });
         }
+        const identity = window.HostPlatform?.sessionIdentity?.(session, this.savedHostFor(session)) || null;
+        const known = identity ? [identity.label, identity.system, identity.virt].filter(Boolean).join(' · ') : '';
+        const services = identity
+            ? window.HostPlatform.serviceTiles(identity.services, 'session-identity-service', document) : [];
         this.windowDesktop.setChrome(index, {
             title: this.getDisplayLabel(sessionId, session.username, session.host),
-            subtitle: parts.join('  ·  '),
+            subtitle: [known, ...parts].filter(Boolean).join('  ·  '),
             status,
             badges,
+            role: identity?.role || null,
+            services,
             closeLabel: this.windowText('session.close', 'Close session'),
         });
+        const frame = this.windowDesktop.frame?.(index);
+        const holder = frame?.querySelector('.ws-window-services');
+        if (holder) window.HostPlatform.keepTilesFitting(holder, frame.querySelector('.ws-window-title'));
     },
 
     renderWindowDesktopEmpty(container) {

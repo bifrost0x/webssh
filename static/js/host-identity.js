@@ -111,5 +111,35 @@
                 ? source.detection_state : 'pending',
         };
     }
-    return {ROLES, ROLE_GLYPHS, RULES, PRIORITY, role, facts};
+    const VIRT_LABELS = Object.freeze({'bare-metal': ['virtBareMetal', 'Bare Metal'], vm: ['virtVm', 'VM'],
+        lxc: ['virtLxc', 'LXC'], container: ['virtContainer', 'Container'], wsl: ['virtWsl', 'WSL']});
+    // Matches the os-release ID the server accepts; such a name is shown only next to its family.
+    const OS_ID = /^[a-z0-9._-]{1,32}$/;
+    const sentence = text => (text ? `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}` : text);
+    /** Role, facts and the system and machine texts a host is shown with. */
+    function describe(profile) {
+        const source = profile && typeof profile === 'object' ? profile : {};
+        const translate = (key, fallback, values = {}) => {
+            const text = globalThis.i18n?.t(key);
+            return Object.entries(values).reduce((value, [name, replacement]) => value.replaceAll(`{${name}}`, replacement),
+                text && text !== key ? text : fallback);
+        };
+        const current = role(source);
+        const details = facts(source);
+        const {platform, version} = details;
+        let system = '';
+        if (platform.source === 'family') {
+            const name = typeof source.detected_os_id === 'string' && OS_ID.test(source.detected_os_id)
+                ? sentence(source.detected_os_id) : '';
+            const family = translate('overviewWorkspace.osFamily', '{family}-based', {family: platform.label});
+            system = [[name, version].filter(Boolean).join(' '), family].filter(Boolean).join(' · ');
+        } else if (platform.source === 'detected') {
+            system = [platform.label, version].filter(Boolean).join(' ');
+        } else if (platform.source === 'manual') {
+            system = `${platform.label} (${translate('platform.manual', 'manual choice')})`;
+        }
+        const virt = details.virt ? translate(`overviewWorkspace.${VIRT_LABELS[details.virt][0]}`, VIRT_LABELS[details.virt][1]) : '';
+        return {role: current, facts: details, system, virt};
+    }
+    return {ROLES, ROLE_GLYPHS, RULES, PRIORITY, role, facts, describe};
 });

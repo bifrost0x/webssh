@@ -438,3 +438,69 @@ body.webssh-ui .context-workspace .session-command-popover-footer > .btn { flex:
     body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-pane-nav .fm-nav-btn { width: 44px; min-width: 44px; height: 44px; }
     body.webssh-ui #sftpFileManager.fm-workspace-mode .fm-action-menu-items { max-height: 180px; overflow-y: auto; }
 }
+
+/* Identity line above a terminal pane: role, host, system and main services.
+   One line; the text ellipsizes and whole logos are dropped before the host is cut. */
+.terminal-pane:has(> .session-identity-bar) { flex-direction: column; }
+.terminal-pane > .session-identity-bar + .terminal-wrapper { flex: 1 1 auto; height: auto; min-height: 0; }
+.session-identity-bar {
+    --service-icon-size: 12px;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    height: 26px;
+    margin-bottom: 6px;
+    padding: 0 4px 0 8px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--role, currentColor) 26%, var(--ws2-border));
+    border-radius: 6px;
+    background:
+        linear-gradient(90deg, color-mix(in srgb, var(--role, transparent) 16%, transparent), transparent 65%),
+        var(--ws2-surface);
+    color: var(--ws2-text-secondary);
+    font-size: 12px;
+    line-height: 18px;
+}
+.session-identity-glyph.material-icons { flex: 0 0 auto; color: var(--role, currentColor); font-size: 15px; }
+.session-identity-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.session-identity-text > * + *::before { content: "·" / ""; margin: 0 6px; color: var(--ws2-text-muted); font-weight: 400; }
+.session-identity-role { color: var(--role-ink, inherit); font-weight: 600; }
+.session-identity-name { color: var(--ws2-text); font-weight: 600; }
+.session-identity-services,
+.ws-window-services { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; }
+.session-identity-services[hidden],
+.ws-window-services[hidden],
+.session-identity-service[hidden] { display: none; }
+.session-identity-service {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--role, currentColor) 18%, transparent);
+    color: var(--role-ink, currentColor);
+}
+/* Windows name the host in the title bar; the role tints it like the line above a pane. */
+.ws-window[data-role] > .ws-window-titlebar {
+    background:
+        linear-gradient(90deg, color-mix(in srgb, var(--role) 14%, transparent), transparent 60%),
+        color-mix(in srgb, var(--ws2-surface) 94%, transparent);
+}
+.ws-window[data-role] .ws-window-services { --service-icon-size: 11px; }
+.ws-window[data-role] .session-identity-service { width: 18px; height: 18px; border-radius: 4px; }
+@media (forced-colors: active) {
+    .session-identity-bar { border-color: CanvasText; background: Canvas; color: CanvasText; }
+    .session-identity-role, .session-identity-name { color: CanvasText; }
+    .session-identity-service { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+    .ws-window[data-role] > .ws-window-titlebar { background: Canvas; }
+}

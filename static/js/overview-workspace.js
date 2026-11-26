@@ -484,10 +484,6 @@
             // The route has its own chip; the badge only states readiness.
             return host.state === 'unknown' ? tw('loading', 'Loading…') : stateLabel(host.state);
         }
-        const VIRT_LABELS = {'bare-metal': ['virtBareMetal', 'Bare Metal'], vm: ['virtVm', 'VM'], lxc: ['virtLxc', 'LXC'],
-            container: ['virtContainer', 'Container'], wsl: ['virtWsl', 'WSL']};
-        // Matches the os-release ID the server accepts; such a name is shown only next to its family.
-        const OS_ID = /^[a-z0-9._-]{1,32}$/;
         const VISIBLE_SERVICES = 5;
         const formatDate = seconds => new Date(seconds * 1000).toLocaleDateString(win.i18n?.getLanguage?.() || undefined);
         const sentence = text => (text ? `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}` : text);
@@ -495,22 +491,8 @@
         function identityOf(host) {
             const Identity = win.HostIdentity;
             const profile = host.profile || {};
-            const role = Identity?.role(profile) || {id: 'server', source: 'default', basis: null};
-            const facts = Identity?.facts(profile) || null;
-            if (!facts) return {role, facts: null, system: '', virt: '', guests: ''};
-            const {platform} = facts;
-            let system = '';
-            if (platform.source === 'family') {
-                const name = typeof profile.detected_os_id === 'string' && OS_ID.test(profile.detected_os_id)
-                    ? sentence(profile.detected_os_id) : '';
-                const family = tw('osFamily', '{family}-based', {family: platform.label});
-                system = [[name, facts.version].filter(Boolean).join(' '), family].filter(Boolean).join(' · ');
-            } else if (platform.source === 'detected') {
-                system = [platform.label, facts.version].filter(Boolean).join(' ');
-            } else if (platform.source === 'manual') {
-                system = `${platform.label} (${t('platform.manual', 'manual choice')})`;
-            }
-            const virt = facts.virt ? tw(...VIRT_LABELS[facts.virt]) : '';
+            if (!Identity) return {role: {id: 'server', source: 'default', basis: null}, facts: null, system: '', virt: '', guests: ''};
+            const {role, facts, system, virt} = Identity.describe(profile);
             const guests = facts.guests === null ? ''
                 : facts.guests === 1 ? tw('chipGuestsOne', '1 guest') : tw('chipGuests', '{count} guests', {count: facts.guests});
             return {role, facts, system, virt, guests};

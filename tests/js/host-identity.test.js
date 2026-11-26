@@ -146,3 +146,23 @@ test('the stylesheet colours every role and has a paper and forced-colors varian
     assert.ok(template.indexOf("js/host-identity.js") > template.indexOf("js/host-platform.js"));
     assert.ok(template.indexOf("css/host-identity.css") > template.indexOf("css/host-platform.css"));
 });
+
+test('describe gives the system and machine texts shared by cards and terminals', () => {
+    const vm = id.describe({detected_platform: 'ubuntu', detection_state: 'detected', detected_os_version: '24.04',
+        detected_virt: 'vm', detected_services: ['paperless']});
+    assert.equal(vm.role.id, 'docs');
+    assert.equal(vm.system, 'Ubuntu 24.04');
+    assert.equal(vm.virt, 'VM');
+    const derived = id.describe({detected_platform: 'archlinux', detected_family: 'archlinux', detected_os_id: 'omarchy',
+        detected_os_version: '3.1', detection_state: 'detected'});
+    assert.equal(derived.system, 'Omarchy 3.1 · Arch Linux-based');
+    assert.equal(id.describe({platform_icon: 'debian'}).system, 'Debian (manual choice)');
+    // Unverified or missing platforms name no system; an invalid os id names no derivative.
+    assert.equal(id.describe({greeting_platform: 'ubuntu'}).system, '');
+    assert.equal(id.describe({name: 'ubuntu box'}).system, '');
+    assert.equal(id.describe({detected_platform: 'archlinux', detected_family: 'archlinux', detected_os_id: '<b>x</b>'}).system,
+        'Arch Linux-based');
+    assert.deepEqual({system: id.describe(null).system, virt: id.describe(null).virt, role: id.describe(null).role.id},
+        {system: '', virt: '', role: 'server'});
+    assert.equal(id.describe({detected_virt: 'bogus'}).virt, '');
+});
