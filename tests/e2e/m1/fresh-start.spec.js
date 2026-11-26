@@ -1,6 +1,6 @@
 // M1 acceptance: a new installation from the first administrator to SSH
 // sessions on the test lab. Runs against Python by default and against the
-// Go server through WEBSSH_E2E_SERVER_COMMAND (tests/e2e/README.md).
+// Go server through WEBSSH_E2E_M1_SERVER_COMMAND (tests/e2e/README.md).
 const {test, expect} = require('playwright/test');
 const {freshBackend, attachLogOnFailure, kind} = require('./backend');
 const {loadLab} = require('./lab');

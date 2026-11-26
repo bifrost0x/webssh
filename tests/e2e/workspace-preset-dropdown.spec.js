@@ -1,7 +1,5 @@
 const {test, expect} = require('playwright/test');
 const {login, openWorkspace, installSshConnectTrap, assertNoExternalRequests} = require('./helpers');
-const path = require('node:path');
-const fs = require('node:fs');
 
 test.afterEach(async ({page}) => assertNoExternalRequests(page));
 
@@ -62,9 +60,7 @@ for (const width of [1440, 390]) {
         expect(bounds.x).toBeGreaterThanOrEqual(0);
         expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
         expect(await preset.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-        const folder = path.join(process.cwd(), 'plans', 'workspace-preset-dropdown');
-        fs.mkdirSync(folder, {recursive: true});
-        await page.screenshot({path: path.join(folder, `dropdown-${width}.png`)});
+        await page.screenshot({path: test.info().outputPath(`dropdown-${width}.png`)});
         await page.keyboard.press('Enter');
         await expect(picker).not.toHaveAttribute('open', '');
         await expect(summary).toBeFocused();

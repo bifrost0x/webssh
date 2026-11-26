@@ -49,7 +49,7 @@ for (const width of [390, 1536]) {
         await expect(page.locator('#jhPortInput')).toHaveValue('2222');
         await page.locator('#cancelJumpHostEdit').click();
         await expect(page.locator('#jhNameInput')).toHaveValue('');
-        await page.screenshot({path:`plans/jump-edit-review/jumps-${width}.png`,fullPage:true});
+        await page.screenshot({path:test.info().outputPath(`jumps-${width}.png`),fullPage:true});
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
         expect(overflow).toBe(false);
         page.once('dialog', d => d.accept());
