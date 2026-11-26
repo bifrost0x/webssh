@@ -197,3 +197,10 @@ test('VPN overlays are listed after every other service', () => {
     assert.deepEqual(id.facts({detected_services: ['wireguard']}).services, ['wireguard']);
     for (const service of id.VPN) assert.ok(catalog.services.includes(service), service);
 });
+
+test('placeholders take names verbatim, replacement patterns included', () => {
+    assert.equal(id.format('Host profile: {name}', {name: 'db $& box'}), 'Host profile: db $& box');
+    assert.equal(id.format('{a} and {a}', {a: "$' $$ $`"}), "$' $$ $` and $' $$ $`");
+    assert.equal(id.format('{family}-based', {family: 'Debian'}), 'Debian-based');
+    assert.equal(id.format('no {values}'), 'no {values}');
+});

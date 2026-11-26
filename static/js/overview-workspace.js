@@ -17,7 +17,7 @@
         const t = (key, fallback, values = {}) => {
             let text = win.i18n?.t(key);
             if (!text || text === key) text = fallback;
-            return Object.entries(values).reduce((value, [name, replacement]) => value.replaceAll(`{${name}}`, String(replacement)), text);
+            return Object.entries(values).reduce((value, [name, replacement]) => value.replaceAll(`{${name}}`, () => String(replacement)), text);
         };
         const tw = (key, fallback, values) => t(`overviewWorkspace.${key}`, fallback, values);
         const node = (tag, className, text) => {

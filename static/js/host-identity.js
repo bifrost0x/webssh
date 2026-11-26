@@ -120,14 +120,18 @@
         lxc: ['virtLxc', 'LXC'], container: ['virtContainer', 'Container'], wsl: ['virtWsl', 'WSL']});
     // Matches the os-release ID the server accepts; such a name is shown only next to its family.
     const OS_ID = /^[a-z0-9._-]{1,32}$/;
+    /** Fills `{name}` placeholders; a function replacement keeps `$&` and the like in values literal. */
+    function format(text, values = {}) {
+        return Object.entries(values).reduce((value, [name, replacement]) => value.replaceAll(`{${name}}`, () => String(replacement)),
+            text);
+    }
     const sentence = text => (text ? `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}` : text);
     /** Role, facts and the system and machine texts a host is shown with. */
     function describe(profile) {
         const source = profile && typeof profile === 'object' ? profile : {};
         const translate = (key, fallback, values = {}) => {
             const text = globalThis.i18n?.t(key);
-            return Object.entries(values).reduce((value, [name, replacement]) => value.replaceAll(`{${name}}`, replacement),
-                text && text !== key ? text : fallback);
+            return format(text && text !== key ? text : fallback, values);
         };
         const current = role(source);
         const details = facts(source);
@@ -146,5 +150,5 @@
         const virt = details.virt ? translate(`overviewWorkspace.${VIRT_LABELS[details.virt][0]}`, VIRT_LABELS[details.virt][1]) : '';
         return {role: current, facts: details, system, virt};
     }
-    return {ROLES, ROLE_GLYPHS, RULES, PRIORITY, VPN, role, facts, describe};
+    return {ROLES, ROLE_GLYPHS, RULES, PRIORITY, VPN, role, facts, describe, format};
 });

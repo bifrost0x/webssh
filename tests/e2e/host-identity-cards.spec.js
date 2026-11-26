@@ -102,6 +102,10 @@ test('host cards show the role, machine, system and service logos of each host',
     await expect(proxmox.locator('.od-virt')).toHaveText('Bare Metal');
     await expect(denied.locator('.od-hint-chip')).toHaveText(/Container nicht lesbar/);
     await page.evaluate(() => window.i18n.setLanguage('en'));
+    // Replacement patterns in a host name are text, not instructions.
+    await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'identity-2'
+        ? {...profile, name: "db $& box $' $$"} : profile))));
+    await expect(plain.locator('.od-host-profile > summary')).toHaveAttribute('aria-label', "Host profile: db $& box $' $$");
     expect(await sshAttempts(page)).toEqual([]);
     await assertNoExternalRequests(page);
 });
