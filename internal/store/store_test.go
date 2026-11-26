@@ -210,3 +210,59 @@ func TestCloseForActivation(t *testing.T) {
 		t.Fatalf("schema lost after activation: %v", err)
 	}
 }
+
+// The WAL and the shared-memory file hold the same pages as the database,
+// so they get its mode 0600 whatever the umask allowed (R1 L1, R2 L-1).
+// A side file left wider by an older run is narrowed at the next Open.
+func TestSideFilesArePrivate(t *testing.T) {
+	ctx := t.Context()
+	path := filepath.Join(t.TempDir(), "webssh.db")
+	check := func(stage string) {
+		t.Helper()
+		for _, name := range []string{"", "-wal", "-shm"} {
+			info, err := os.Stat(path + name)
+			if err != nil {
+				t.Fatalf("%s: %v", stage, err)
+			}
+			if mode := info.Mode().Perm(); mode != 0o600 {
+				t.Errorf("%s: %s has mode %o, want 600", stage, filepath.Base(path+name), mode)
+			}
+		}
+	}
+	write := func(db *store.DB) {
+		t.Helper()
+		if err := db.Apply(ctx, hostsSchema.Owner, hostsSchema.Migrations); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Write(ctx, func(tx *store.Tx) error {
+			_, err := tx.ExecContext(ctx, "INSERT OR REPLACE INTO hosts_profiles (id, name) VALUES ('a', 'a')")
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db, err := store.Open(ctx, path, store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(db)
+	check("new database")
+	// A crash leaves the side files; one that is wider is narrowed.
+	for _, name := range []string{"-wal", "-shm"} {
+		if err := os.Chmod(path+name, 0o644); err != nil { // #nosec G302 -- the test widens the mode on purpose
+			t.Fatal(err)
+		}
+	}
+	second, err := store.Open(ctx, path, store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(second)
+	check("reopened")
+	if err := second.CloseShared(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

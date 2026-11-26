@@ -85,3 +85,27 @@ func syncFile(path string) error {
 	}
 	return nil
 }
+
+// privateSideFiles narrows the WAL and the shared-memory file to 0600.
+// They hold the same pages as the database, but the SQLite VFS creates
+// them with 0666 masked by the process umask; the process umask itself
+// stays untouched. Called once WAL mode is on, when both files exist; a
+// file that is missing or not regular is left to createRegular's check.
+func privateSideFiles(path string) error {
+	for _, suffix := range []string{"-wal", "-shm"} {
+		info, err := os.Lstat(path + suffix)
+		if errors.Is(err, fs.ErrNotExist) || err == nil && !info.Mode().IsRegular() {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("store: database: %w", err)
+		}
+		if info.Mode().Perm() == 0o600 {
+			continue
+		}
+		if err := os.Chmod(path+suffix, 0o600); err != nil {
+			return fmt.Errorf("store: narrow %s: %w", filepath.Base(path+suffix), err)
+		}
+	}
+	return nil
+}

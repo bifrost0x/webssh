@@ -108,7 +108,8 @@ func hardenReader(busy time.Duration) func(*sqlite3.Conn) error {
 }
 
 // Open opens or creates the database at path in WAL mode. A new file is
-// created with mode 0600. path must be a regular file, or missing, in a
+// created with mode 0600, and the WAL and shared-memory files are narrowed
+// to 0600. path must be a regular file, or missing, in a
 // directory reached without a symlink in its last component: the Go
 // directory holds only regular files and directories (migration
 // specification, 2.1). The caller closes the DB.
@@ -148,6 +149,15 @@ func Open(ctx context.Context, path string, o Options) (*DB, error) {
 	db.reader = reader
 	if err := reader.PingContext(ctx); err != nil {
 		return nil, errors.Join(fmt.Errorf("store: open database: %w", err), db.Close())
+	}
+	// A first read maps the shared-memory file, so both side files exist
+	// when their modes are narrowed.
+	var pages int64
+	if err := writer.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pages); err != nil {
+		return nil, errors.Join(fmt.Errorf("store: open database: %w", err), db.Close())
+	}
+	if err := privateSideFiles(abs); err != nil {
+		return nil, errors.Join(err, db.Close())
 	}
 	// SQLite follows symlinks: make sure it opened the file checked above.
 	if err := sameRegular(abs, before); err != nil {
