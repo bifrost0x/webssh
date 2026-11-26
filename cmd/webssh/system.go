@@ -26,6 +26,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
 	"github.com/bifrost0x/webssh/internal/netpolicy"
 	"github.com/bifrost0x/webssh/internal/operations"
+	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/realtime"
 	"github.com/bifrost0x/webssh/internal/session"
 	"github.com/bifrost0x/webssh/internal/settings"
@@ -63,6 +64,11 @@ type optional struct {
 	persistent     hosts.PersistentSessions
 	featureReady   map[string]operations.Readiness
 	terminalRoutes terminal.SavedRoutes
+	// terminalVariants, hostVariants and tailscaleAllowed come from the
+	// gateway area (wire_gateway.go).
+	terminalVariants terminal.Variants
+	hostVariants     hosts.Variants
+	tailscaleAllowed func(principal.Principal) bool
 	// passkeyPlaceholder stores a passkey that never authenticates (end-to-
 	// end seed only).
 	//lint:ignore U1000 read by the end-to-end build (e2e.go)

@@ -10,7 +10,7 @@ import "github.com/bifrost0x/webssh/internal/httpapi"
 var (
 	previewWorkspaceAreas = []string{
 		"files", "smb", "automation", "credentials", "discovery", "commands",
-		"herdr", "gateway", "tailscale", "serverOps",
+		"herdr", "serverOps",
 	}
 	previewSignInAreas = []string{"ldap", "oidc", "github"}
 )

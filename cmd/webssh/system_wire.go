@@ -89,7 +89,7 @@ func (s *system) buildCapabilities(in bootInput) error {
 	if err != nil {
 		return fmt.Errorf("key vault: %w", err)
 	}
-	s.hosts = &hosts.Service{DB: s.db, Keys: s.vault, Persistent: opt.persistent, Limits: hostLimits(cfg)}
+	s.hosts = &hosts.Service{DB: s.db, Keys: s.vault, Persistent: opt.persistent, Variants: opt.hostVariants, Limits: hostLimits(cfg)}
 	s.notes = &hostops.Notes{DB: s.db}
 	s.hostkeys = hostkey.New(s.db, s.log)
 	if s.policy, err = s.networkPolicy(); err != nil {
@@ -109,7 +109,7 @@ func (s *system) buildCapabilities(in bootInput) error {
 	termCfg.TmuxPrefix = cfg.Features.TmuxSessionPrefix
 	s.terminal, err = terminal.New(termCfg, terminal.Deps{
 		Shells: shells, Profiles: s.hosts, Routes: routes, Log: s.log,
-		Connections: shells, DB: s.db, TmuxEnabled: s.tmuxEnabled, Audit: s.audit})
+		Connections: shells, DB: s.db, TmuxEnabled: s.tmuxEnabled, Audit: s.audit, Variants: opt.terminalVariants})
 	if err != nil {
 		return fmt.Errorf("terminal: %w", err)
 	}
