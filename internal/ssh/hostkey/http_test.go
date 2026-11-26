@@ -3,11 +3,14 @@ package hostkey
 import (
 	"context"
 	json "encoding/json/v2"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"unicode"
 
+	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/principal/principaltest"
 )
@@ -151,4 +154,21 @@ func TestDecimalTable(t *testing.T) {
 			t.Errorf("range %+v", r)
 		}
 	}
+}
+
+// An error body carries only what fault.Status allows, never the cause.
+func TestHTTPErrorBodyHasNoCause(t *testing.T) {
+	f := newHTTPFixture(t, true)
+	f.mux = http.NewServeMux()
+	(&HTTP{Store: f.store, Targets: failingTargets{}, StepUp: f.stepUp, Enabled: true}).Register(f.mux)
+	status, body := f.do(t, &f.user, "GET", "/api/host-keys/effective", nil)
+	if msg, _ := body["error"].(string); status != 500 || body["code"] != "storage_error" || strings.Contains(msg, "SECRET-CAUSE") {
+		t.Fatalf("%d %v", status, body)
+	}
+}
+
+type failingTargets struct{}
+
+func (failingTargets) SSHTargets(context.Context, int64) ([]Target, error) {
+	return nil, fault.Wrap(fault.StorageError, errors.New("SECRET-CAUSE /var/lib/x"), "")
 }

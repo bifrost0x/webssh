@@ -14,6 +14,10 @@ import (
 // *fault.Error the dialer returns, so the terminal reads the prompt context
 // with errors.As. Detail is a finer stable code where the Python release
 // had one (the socks_* codes); it is empty otherwise.
+//
+// Error() of a HopError, like that of the fault.Error around it, includes
+// causes with remote-supplied text. It is for logs only; what a client
+// sees comes from fault.Status (enforced by internal/architecture).
 type HopError struct {
 	Role   Role
 	Detail string

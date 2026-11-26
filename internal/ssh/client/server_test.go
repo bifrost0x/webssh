@@ -113,7 +113,7 @@ func (s *testServer) forwardChannel(nc ssh.NewChannel) {
 	s.mu.Unlock()
 	target, err := net.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(int(port))))
 	if err != nil {
-		_ = nc.Reject(ssh.ConnectionFailed, "")
+		_ = nc.Reject(ssh.ConnectionFailed, "REMOTE-SUPPLIED-TEXT")
 		return
 	}
 	ch, reqs, err := nc.Accept()

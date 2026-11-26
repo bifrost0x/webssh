@@ -529,3 +529,34 @@ func TestRekeyRefusesAnotherKey(t *testing.T) {
 		t.Fatalf("another key at re-key: %v", err)
 	}
 }
+
+// Remote-supplied text stays in the cause: Error() may contain it, the
+// message a client sees (fault.Status) never does.
+func TestRemoteTextNeverReachesTheMessage(t *testing.T) {
+	const marker = "REMOTE-SUPPLIED-TEXT"
+	calls := 0
+	inner := startServer(t, passwordServer("u", "pw", &calls))
+	cfg := passwordServer("u", "pw", &calls)
+	cfg.BannerCallback = func(ssh.ConnMetadata) string { return marker }
+	jump := startServer(t, cfg)
+	d, _ := newDialer(trusting(jump, inner), nil)
+	tgt := Target{Owner: 1, Jumps: []Hop{{Host: jump.host, Port: jump.port, User: "u", Auth: Auth{Password: "pw"}}},
+		Hop: Hop{Host: inner.host, Port: 1, User: "u", Auth: Auth{Password: "pw"}}}
+	var errs []error
+	_, err := d.Dial(t.Context(), tgt, &prompts{banner: true})
+	errs = append(errs, err)
+	_, err = d.Dial(t.Context(), tgt, &prompts{banner: false})
+	errs = append(errs, err)
+	for _, err := range errs {
+		if err == nil {
+			t.Fatal("dial succeeded")
+		}
+		status, code, message := fault.Status(err)
+		if strings.Contains(message, marker) || code == fault.Internal || status == 0 {
+			t.Errorf("%d %s %q", status, code, message)
+		}
+	}
+	if he, _ := errors.AsType[*HopError](errs[0]); he == nil || he.Role != RoleTarget || !strings.Contains(errs[0].Error(), marker) {
+		t.Fatalf("the cause is kept for logs: %v", errs[0])
+	}
+}

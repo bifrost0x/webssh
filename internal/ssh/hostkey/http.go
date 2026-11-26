@@ -2,6 +2,7 @@ package hostkey
 
 import (
 	"context"
+	"crypto/hmac"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"log/slog"
@@ -193,7 +194,7 @@ func (h *HTTP) delete(ctx context.Context, p principal.Principal, r *http.Reques
 	switch {
 	case err != nil:
 		return nil, err
-	case checkRevision && (!validID(revision) || revision != impact.Revision):
+	case checkRevision && (!validID(revision) || !hmac.Equal([]byte(revision), []byte(impact.Revision))):
 		return nil, errTrustChanged
 	}
 	if err := h.StepUp.Consume(ctx, p, principal.ActionHostKeyDelete, id, r.Header.Get(StepUpHeader)); err != nil {
