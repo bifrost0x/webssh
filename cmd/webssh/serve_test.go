@@ -314,7 +314,7 @@ func newBlockingApp() *blockingApp {
 	return &blockingApp{entered: make(chan struct{}), release: make(chan struct{}), drained: make(chan struct{})}
 }
 
-func (b *blockingApp) build(state *runtimeState) (application, error) {
+func (b *blockingApp) build(_ context.Context, state *runtimeState) (application, error) {
 	b.stopping = state.Stopping
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /slow", func(w http.ResponseWriter, r *http.Request) {
@@ -423,35 +423,6 @@ func TestShutdownForcedBySecondSignal(t *testing.T) {
 	<-status
 }
 
-func TestReadyReportsStoppingAndDataDirectory(t *testing.T) {
-	t.Parallel()
-	state := &runtimeState{dataDir: t.TempDir(), logger: slog.New(slog.DiscardHandler)}
-	app, err := buildProbeApplication(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := newTestServer(t, app.handler)
-	if code, _ := getJSON(t, srv+"/ready"); code != http.StatusOK {
-		t.Fatalf("ready %d", code)
-	}
-	state.stopping.Store(true)
-	code, body := getJSON(t, srv+"/ready")
-	if code != http.StatusServiceUnavailable || body["status"] != "not_ready" || !strings.Contains(strings.Join(anyStrings(body["failed"]), ","), "runtime") {
-		t.Errorf("stopping: %d %v", code, body)
-	}
-
-	missing := &runtimeState{dataDir: filepath.Join(t.TempDir(), "gone"), logger: slog.New(slog.DiscardHandler)}
-	app, err = buildProbeApplication(missing)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv = newTestServer(t, app.handler)
-	code, body = getJSON(t, srv+"/ready")
-	if code != http.StatusServiceUnavailable || strings.Join(anyStrings(body["failed"]), ",") != "data_directory" {
-		t.Errorf("missing data directory: %d %v", code, body)
-	}
-}
-
 func anyStrings(v any) []string {
 	list, _ := v.([]any)
 	out := make([]string, 0, len(list))
@@ -460,30 +431,4 @@ func anyStrings(v any) []string {
 		out = append(out, s)
 	}
 	return out
-}
-
-func TestCachedProbe(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	now := time.Unix(1000, 0)
-	p := &cachedProbe{dir: dir, ttl: probeTTL, now: func() time.Time { return now }}
-	if err := p.check(); err != nil {
-		t.Fatal(err)
-	}
-	// Within the interval a passed probe is reused, even if the directory
-	// has gone since.
-	p.dir = filepath.Join(dir, "gone")
-	now = now.Add(probeTTL - time.Second)
-	if err := p.check(); err != nil {
-		t.Errorf("cached probe ran again: %v", err)
-	}
-	now = now.Add(2 * time.Second)
-	if err := p.check(); err == nil {
-		t.Error("expired probe did not run again")
-	}
-	// A failure is not cached.
-	p.dir = dir
-	if err := p.check(); err != nil {
-		t.Errorf("probe after recovery: %v", err)
-	}
 }

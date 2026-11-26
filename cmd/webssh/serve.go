@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/buildinfo"
+	"github.com/bifrost0x/webssh/internal/httpapi"
 	"github.com/bifrost0x/webssh/internal/platform"
 )
 
@@ -131,10 +132,30 @@ type application struct {
 	// for, such as hijacked WebSocket connections. It runs while the
 	// server shuts down and must return when ctx ends. Optional.
 	drain func(ctx context.Context) error
+	// close releases the application after the server stopped: the
+	// database, the audit log and the lock on the data directory.
+	// Optional.
+	close func() error
+	// grace replaces the shutdown limit when it is set
+	// (RUNTIME_SHUTDOWN_GRACE_SECONDS).
+	grace time.Duration
 }
 
-// buildFunc builds the application on the prepared data directory.
-type buildFunc func(state *runtimeState) (application, error)
+// buildFunc builds the application. It prepares the data directory
+// itself, in the order the configuration resolves it.
+type buildFunc func(ctx context.Context, state *runtimeState) (application, error)
+
+// buildSystem is the buildFunc of the server: the whole system of this
+// build on the process environment.
+func buildSystem(console io.Writer) buildFunc {
+	return func(ctx context.Context, state *runtimeState) (application, error) {
+		sys, err := openSystem(ctx, bootInput{lookup: os.LookupEnv, log: state.logger, console: console, stopping: state.Stopping})
+		if err != nil {
+			return application{}, err
+		}
+		return application{handler: sys.handler(), drain: sys.drain, close: sys.close, grace: sys.shutdownGrace()}, nil
+	}
+}
 
 func runServe(ctx context.Context, args []string, s streams) int {
 	opts, err := parseServeOptions(args, os.LookupEnv)
@@ -144,7 +165,7 @@ func runServe(ctx context.Context, args []string, s streams) int {
 	logger := slog.New(slog.NewTextHandler(s.stderr, nil))
 	sigCtx, force, stop := withShutdownSignals(ctx)
 	defer stop()
-	if err := serve(sigCtx, opts, logger, buildProbeApplication, force, nil); err != nil {
+	if err := serve(sigCtx, opts, logger, buildSystem(s.stdout), force, nil); err != nil {
 		logger.Error("server stopped", "err", err)
 		return 1
 	}
@@ -159,17 +180,20 @@ func serve(ctx context.Context, opts serveOptions, logger *slog.Logger, build bu
 	if err := platform.CheckTimeZone(opts.tz, opts.tzSet); err != nil {
 		logger.Warn("time zone not applied", "err", err)
 	}
-	root, err := platform.PrepareDataDir(opts.dataDir)
-	if err != nil {
-		return err
-	}
-	if desc, err := platform.DescribeDataDir(root); err == nil {
-		logger.Info("data directory", "path", root, "access", desc)
-	}
-	state := &runtimeState{dataDir: root, logger: logger}
-	app, err := build(state)
+	state := &runtimeState{dataDir: opts.dataDir, logger: logger}
+	app, err := build(ctx, state)
 	if err != nil {
 		return fmt.Errorf("build application: %w", err)
+	}
+	if app.close != nil {
+		defer func() {
+			if cerr := app.close(); cerr != nil {
+				logger.Error("release resources", "err", cerr)
+			}
+		}()
+	}
+	if app.grace > 0 {
+		opts.shutdownTimeout = app.grace
 	}
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, listenNetwork(opts.addr), opts.addr)
@@ -177,11 +201,10 @@ func serve(ctx context.Context, opts serveOptions, logger *slog.Logger, build bu
 		return fmt.Errorf("listen: %w", err)
 	}
 	srv := &http.Server{
-		Handler:           app.handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       2 * time.Minute,
-		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
+		Handler:  app.handler,
+		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
+	httpapi.ConfigureServer(srv)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 

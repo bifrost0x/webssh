@@ -18,9 +18,6 @@ func TestE2ECommand(t *testing.T) {
 		{name: "arguments", args: []string{"x"}, wantCode: 2, wantStderr: "takes no arguments"},
 		{name: "bad port", port: "http", wantCode: 2, wantStderr: "not a port number"},
 		{name: "missing seed", seed: "missing.json", wantCode: 1, wantStderr: "missing.json"},
-		// Until the composition root wires a server, the start fails
-		// instead of serving a partial backend.
-		{name: "not wired", wantCode: 1, wantStderr: "no HTTP server"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
