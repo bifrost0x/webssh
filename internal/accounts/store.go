@@ -57,7 +57,16 @@ type Service struct {
 	Credentials Credentials
 	Admins      Admins
 	Audit       Auditor
-	Logger      *slog.Logger
+	// Sessions ends the sessions and live resources of an account that is
+	// locked, reset or deleted; Data removes a deleted account's rows after
+	// Retain received their copy. They are set by the composition root.
+	Sessions  Sessions
+	Data      UserData
+	Retain    Retainer
+	Factors   Factors
+	Recovery  RecoveryCodes
+	LegacyDir LegacyUserDir
+	Logger    *slog.Logger
 	// Now replaces the clock in tests.
 	Now func() time.Time
 }

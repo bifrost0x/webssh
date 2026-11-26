@@ -99,8 +99,11 @@ type Flow struct {
 	Settings  SignInSettings
 	Limiter   *Limiter
 	Limits    Limits
-	Audit     Auditor
-	Pages     Pages
+	// Devices issues and checks known-device cookies; nil applies the
+	// per-name ceiling to every browser.
+	Devices *Devices
+	Audit   Auditor
+	Pages   Pages
 	// Root is APPLICATION_ROOT ("" at the root).
 	Root string
 	// Bootstrap is BOOTSTRAP_REGISTRATION_ENABLED.

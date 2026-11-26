@@ -83,6 +83,25 @@ func (s *Service) RevokeUserTx(ctx context.Context, tx *store.Tx, userID int64, 
 	return s.deleteWhere(ctx, tx, reason, `user_id = ? AND id <> ?`, userID, except)
 }
 
+// RevokeAccountTx ends every session of userID inside the caller's
+// transaction for a change of the whole account (lock, deletion, MFA
+// reset). When the account has no session left, it records one
+// account-wide revocation (SessionID empty) in the journal instead, so the
+// terminals and persistent tmux sessions of the account end in every
+// process, including one that did not make the change. The caller passes
+// the result to Publish after the commit.
+func (s *Service) RevokeAccountTx(ctx context.Context, tx *store.Tx, userID int64, reason principal.Reason) ([]principal.Revocation, error) {
+	if userID <= 0 {
+		return nil, fmt.Errorf("session: account revocation: invalid user id %d", userID)
+	}
+	revs, err := s.RevokeUserTx(ctx, tx, userID, reason, "")
+	if err != nil || len(revs) > 0 {
+		return revs, err
+	}
+	revs = []principal.Revocation{{UserID: userID, Reason: reason}}
+	return revs, s.journal(ctx, tx, revs)
+}
+
 // RevokeSessionsTx deletes the listed sessions of userID inside the
 // caller's transaction.
 func (s *Service) RevokeSessionsTx(ctx context.Context, tx *store.Tx, userID int64, ids []string, reason principal.Reason) ([]principal.Revocation, error) {

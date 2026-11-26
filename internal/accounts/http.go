@@ -18,11 +18,14 @@ const StepUpHeader = "X-WebSSH-Step-Up"
 
 const maxBody = 16 << 10
 
-// HTTP serves the account list and account creation of the admin panel.
+// HTTP serves the account list, account creation and (RegisterAdmin)
+// the account administration of the admin panel.
 // The edge mounts it behind session, CSRF and origin checks.
 type HTTP struct {
 	Accounts *Service
 	StepUp   StepUp
+	// Gates gates the recovery reset; nil answers it with 404.
+	Gates Gates
 	// Enabled is ADMIN_PANEL_ENABLED; off answers 404.
 	Enabled bool
 	Logger  *slog.Logger
