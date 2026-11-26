@@ -1,7 +1,5 @@
 const {test, expect} = require('playwright/test');
 const {login} = require('./helpers');
-const fs = require('node:fs');
-const path = require('node:path');
 
 for (const width of [1536, 390]) {
     test(`login inventory revokes another browser and preserves this login at ${width}px`, async ({page, browser}) => {
@@ -17,16 +15,18 @@ for (const width of [1536, 390]) {
             await expect(list.getByText('This login', {exact:false})).toHaveCount(1);
             await expect(page.locator('#accountRevokeOthers')).toBeEnabled();
             expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-            const directory = path.join('plans', 'account-controls');
-            fs.mkdirSync(directory, {recursive:true});
             if (width < 600) await list.scrollIntoViewIfNeeded();
-            await page.screenshot({path:path.join(directory, `logins-${width}.png`)});
+            await page.screenshot({path:test.info().outputPath(`logins-${width}.png`)});
             page.once('dialog', dialog => dialog.accept());
             await page.locator('#accountRevokeOthers').click();
             await expect(page.locator('#accountLoginStatus')).toHaveText('Selected login access revoked.');
             await expect(list.locator('li')).toHaveCount(1);
+            // The revoked browser loses access. The Python server answers
+            // the JSON API with a redirect to the sign-in page, the Go
+            // server with 401; both deny the request.
             const after = await other.request.get('/api/account/sessions', {maxRedirects:0});
-            expect(after.status()).toBe(302);
+            expect([302, 401]).toContain(after.status());
+            if (after.status() === 302) expect(new URL(after.headers().location, page.url()).pathname).toMatch(/\/login$/);
             const current = await page.request.get('/api/account/sessions');
             expect(current.ok()).toBe(true);
             expect((await current.json()).sessions.some(row => row.handle === selected.handle)).toBe(false);
@@ -58,14 +58,12 @@ for (const width of [1536, 390]) {
         await expect(dialog).toContainText('Configured, not tested');
         await expect(dialog.locator('.account-impact-warning')).toBeVisible();
         await expect(dialog.getByRole('button', {name:'Cancel', exact:true})).toBeFocused();
-        const directory = path.join('plans', 'account-controls');
-        fs.mkdirSync(directory, {recursive:true});
-        await page.screenshot({path:path.join(directory, `impact-${width}.png`)});
+        await page.screenshot({path:test.info().outputPath(`impact-${width}.png`)});
         await dialog.locator('summary').click();
         await expect(dialog).toContainText('synthetic_admin_long_account_name');
         const footer = await dialog.getByRole('button', {name:'Continue to authentication'}).boundingBox();
         expect(footer.y + footer.height).toBeLessThan(960);
-        await page.screenshot({path:path.join(directory, `impact-details-${width}.png`)});
+        await page.screenshot({path:test.info().outputPath(`impact-details-${width}.png`)});
         expect(writes).toEqual([]);
         await page.keyboard.press('Escape');
         await expect(dialog).toHaveCount(0);

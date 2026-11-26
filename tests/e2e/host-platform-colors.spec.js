@@ -1,6 +1,4 @@
 const {test, expect} = require('playwright/test');
-const fs = require('node:fs');
-const path = require('node:path');
 const {login}=require('./helpers');
 
 test('Hosts management preserves platform colors in the actual host rows',async({page},info)=>{
@@ -20,12 +18,19 @@ test('Hosts management preserves platform colors in the actual host rows',async(
 });
 
 test('every platform retains contrast on every theme surface, including small session icons', async ({page}) => {
-    const root = path.resolve(__dirname, '../..');
-    const template = fs.readFileSync(path.join(root, 'templates/index.html'), 'utf8');
-    const sheets = [...template.matchAll(/filename='(css\/[^']+\.css)'/g)].map(match => match[1]);
+    // Use the stylesheets and the platform script the served workspace loads,
+    // in document order, so the check follows the page and not one template engine.
+    await login(page, 'e2e_admin', {workspace: false});
+    const assets = await page.evaluate(() => ({
+        sheets: [...document.querySelectorAll('link[rel="stylesheet"][href]')].map(link => link.href),
+        script: [...document.querySelectorAll('script[src]')].map(node => node.src)
+            .find(src => new URL(src).pathname.endsWith('/js/host-platform.js')),
+    }));
+    expect(assets.sheets.some(href => new URL(href).pathname.includes('/css/'))).toBe(true);
+    expect(assets.script, 'the workspace loads host-platform.js').toBeTruthy();
     await page.setContent('<body class="webssh-ui webssh-shell"></body>');
-    for (const sheet of sheets) await page.addStyleTag({path: path.join(root, 'static', sheet)});
-    await page.addScriptTag({path: path.join(root, 'static/js/host-platform.js')});
+    for (const sheet of assets.sheets) await page.addStyleTag({url: sheet});
+    await page.addScriptTag({url: assets.script});
     for (const theme of ['glass', 'werkbank', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian']) {
         const results = await page.evaluate(theme => {
             document.body.dataset.theme = theme;
