@@ -27,6 +27,7 @@ type accountsStep struct {
 	promoted       []string // names promoted by the start-up rules
 	missing        []string // ADMIN_USERS names without an account
 	orphans        []string // user directories without an account
+	orphanFloor    int64    // highest id of such a directory
 	missingColumns []string
 }
 
@@ -67,6 +68,11 @@ func (s *accountsStep) Read(ctx context.Context, src *Source) error {
 		id, err := strconv.ParseInt(strings.TrimPrefix(d, "user_"), 10, 64)
 		if err != nil || !strings.HasPrefix(d, "user_") || !ids[id] {
 			s.orphans = append(s.orphans, "users/"+d)
+		}
+		if err == nil && strings.HasPrefix(d, "user_") && !ids[id] && id > 0 {
+			// Legacy data exists for this id; it is never handed out again
+			// (specification 4.1).
+			s.orphanFloor = max(s.orphanFloor, id)
 		}
 	}
 	return nil
@@ -151,6 +157,9 @@ func applyStartupAdminRules(list []importedAccount, admins []string) (promoted, 
 }
 
 func (s *accountsStep) Write(ctx context.Context, tx *store.Tx, _ Sealer) error {
+	if err := (&accounts.Service{}).RaiseIDFloorTx(ctx, tx, s.orphanFloor); err != nil {
+		return err
+	}
 	for _, a := range s.accounts {
 		if err := accounts.ImportTx(ctx, tx, a.acc); err != nil {
 			return &StepError{UserID: a.acc.ID, Err: err}
@@ -196,7 +205,7 @@ func (s *accountsStep) Verify(ctx context.Context, tx *store.Tx, _ Opener) error
 	if err != nil {
 		return err
 	}
-	if floor < highest {
+	if highest = max(highest, s.orphanFloor); floor < highest {
 		return fmt.Errorf("legacy: id floor %d is below the highest account id %d", floor, highest)
 	}
 	return nil
@@ -229,6 +238,9 @@ func (s *accountsStep) Report() StepReport {
 	for _, name := range s.missing {
 		r.Warnings = append(r.Warnings, Warning{Code: "admin_user_missing",
 			Message: "ADMIN_USERS lists " + strconv.Quote(name) + ", which has no account; registration refuses this name"})
+	}
+	if s.orphanFloor > 0 {
+		r.Notes = append(r.Notes, fmt.Sprintf("new account ids start above %d, the highest id of a user directory without an account", s.orphanFloor))
 	}
 	for _, p := range s.orphans {
 		r.KeptInPlace = append(r.KeptInPlace, KeptPath{Path: p, Reason: "user_directory_without_account"})

@@ -93,7 +93,7 @@ func profileIDs(src *Source, userID int64) ([]string, error) {
 // collects the notes.
 func (s *hostNotesStep) readContexts(userID int64, raw jsontext.Value, profiles []string) error {
 	invalid := errors.New("legacy: host_context.json is not a valid host context document")
-	if v, _ := pyjson.Get(raw, "version"); string(v) != "1" {
+	if v, _ := pyjson.Get(raw, "version"); !equalsOne(v) {
 		return invalid
 	}
 	hostsValue, _ := pyjson.Get(raw, "hosts")
@@ -124,6 +124,19 @@ func (s *hostNotesStep) readContexts(userID int64, raw jsontext.Value, profiles 
 		s.kept = append(s.kept, KeptPath{Path: userDir(userID) + "/host_context.json", Reason: "host_context_directories_and_orphans"})
 	}
 	return nil
+}
+
+// equalsOne is Python's "value == 1" for a decoded JSON value: true, and
+// every number equal to one (1, 1.0, 1e0).
+func equalsOne(v jsontext.Value) bool {
+	switch v.Kind() {
+	case 't':
+		return true
+	case '0':
+		f, err := Number(string(v)).Float64()
+		return err == nil && f == 1
+	}
+	return false
 }
 
 // hostContext checks one context like _valid_content and returns its

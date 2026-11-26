@@ -16,13 +16,13 @@ type SecretCheck struct {
 
 // CheckSecret decrypts existing secrets with SECRET_KEY before the
 // migration writes anything (migration specification A02): the TOTP
-// secrets, the GitHub client secret, then the SSH keys and saved
+// authenticators, the GitHub client secret, then the SSH keys and saved
 // passwords of the first account that has any. A failure is
 // ErrSecretMismatch, with the entity and user that did not decrypt. With
 // no encrypted data the check cannot run; Checked is false and the report
 // says so.
 func (s *Source) CheckSecret(ctx context.Context) (SecretCheck, error) {
-	totp, err := s.TOTPSecrets(ctx)
+	totp, err := s.TOTPAuthenticators(ctx)
 	if err != nil {
 		return SecretCheck{Entity: "E08"}, fmt.Errorf("%w: %w", ErrSecretMismatch, err)
 	}

@@ -176,6 +176,20 @@ func TestM1GoldenAccounts(t *testing.T) {
 			if _, err := provider.Authenticate(t.Context(), name, *want.Password+"wrong"); err == nil {
 				t.Fatal("a wrong password signed in")
 			}
+			// D-12: the first sign-in replaced the bcrypt hash with Argon2id,
+			// and the password still works.
+			var algorithm string
+			_ = m.db.Read(t.Context(), func(tx *store.Tx) error {
+				var err error
+				algorithm, _, _, err = local.StoredTx(t.Context(), tx, want.ID)
+				return err
+			})
+			if algorithm != local.AlgorithmArgon2id {
+				t.Fatalf("after the first sign-in: %s", algorithm)
+			}
+			if id, err := provider.Authenticate(t.Context(), name, *want.Password); err != nil || id != want.ID {
+				t.Fatalf("sign-in after the rehash: %v", err)
+			}
 		})
 	}
 	limit := goldenUserByName(t, "limit_user")

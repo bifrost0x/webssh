@@ -35,7 +35,7 @@ func (s *passwordsStep) Read(ctx context.Context, src *Source) error {
 	for _, u := range users {
 		// A hash Python's bcrypt.checkpw cannot use is damaged user data.
 		if _, err := BcryptCost(u.PasswordHash); err != nil {
-			return &StepError{UserID: u.ID, Err: errors.Join(local.ErrLegacyHash, err)}
+			return &StepError{UserID: u.ID, Err: local.ErrLegacyHash} // the cause can quote the hash
 		}
 		s.hashes = append(s.hashes, accountHash{id: u.ID, hash: u.PasswordHash})
 	}
@@ -58,7 +58,7 @@ func (s *passwordsStep) Verify(ctx context.Context, tx *store.Tx, _ Opener) erro
 			return &StepError{UserID: h.id, Err: errors.Join(errors.New("legacy: the stored password hash differs"), err)}
 		}
 		if _, err := BcryptCost(hash); err != nil {
-			return &StepError{UserID: h.id, Err: err}
+			return &StepError{UserID: h.id, Err: local.ErrLegacyHash}
 		}
 	}
 	return nil

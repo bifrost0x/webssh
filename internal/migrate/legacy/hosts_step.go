@@ -106,7 +106,7 @@ func (s *hostsStep) Verify(ctx context.Context, tx *store.Tx, _ Opener) error {
 		}
 		same := sameRecords(got.Profiles, u.legacy.Profiles)
 		if u.result.DroppedFacts > 0 {
-			same = slices.Equal(recordIDs(got.Profiles), recordIDs(u.legacy.Profiles))
+			same = sameExceptDropped(got.Profiles, u.legacy.Profiles, u.result.DroppedFacts)
 		}
 		if !same {
 			return &StepError{UserID: u.id, Record: "profiles.json", Err: errors.New("legacy: the stored saved hosts differ")}
@@ -119,13 +119,37 @@ func sameRecords(a, b []jsontext.Value) bool {
 	return slices.EqualFunc(a, b, func(x, y jsontext.Value) bool { return string(x) == string(y) })
 }
 
-func recordIDs(records []jsontext.Value) []string {
-	out := make([]string, len(records))
-	for i, r := range records {
-		v, _ := pyjson.Get(r, "id")
-		out[i] = string(v)
+// sameExceptDropped compares stored and legacy profiles field by field
+// when Python drops stored host facts on load: every stored field equals
+// the legacy one in the legacy order, and exactly dropped legacy fields
+// are missing.
+func sameExceptDropped(got, legacy []jsontext.Value, dropped int) bool {
+	if len(got) != len(legacy) {
+		return false
 	}
-	return out
+	missing := 0
+	for i := range got {
+		g, ok1 := pyjson.Members(got[i])
+		l, ok2 := pyjson.Members(legacy[i])
+		if !ok1 || !ok2 {
+			return false
+		}
+		j := 0
+		for _, m := range l {
+			if j < len(g) && g[j].Name == m.Name {
+				if string(g[j].Value) != string(m.Value) {
+					return false
+				}
+				j++
+				continue
+			}
+			missing++
+		}
+		if j != len(g) {
+			return false
+		}
+	}
+	return missing == dropped
 }
 
 func (s *hostsStep) Report() StepReport {

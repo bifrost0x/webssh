@@ -25,7 +25,7 @@ func (*totpStep) Entity() string { return "E08" }
 func (*totpStep) Version() int { return 1 }
 
 func (s *totpStep) Read(ctx context.Context, src *Source) error {
-	secrets, err := src.TOTPSecrets(ctx)
+	secrets, err := src.TOTPAuthenticators(ctx)
 	if err != nil {
 		return err
 	}
