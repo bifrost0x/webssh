@@ -62,6 +62,7 @@ type Config struct {
 	Network      Network
 	Terminal     Terminal
 	Stores       Stores
+	Files        Files
 	Audit        Audit
 	// ShutdownGrace is RUNTIME_SHUTDOWN_GRACE_SECONDS.
 	ShutdownGrace time.Duration
@@ -230,6 +231,21 @@ type Stores struct {
 	SSHKeyStoreMaxBytes               int
 	MaxWebAuthnJSONSize               int
 	MaxRecoveryJSONSize               int
+}
+
+// Files are the limits of the file workspace and the editor.
+type Files struct {
+	MaxEditorBytes       int64 // MAX_EDITOR_FILE_SIZE
+	EditorBytesPerMinute int64 // EDITOR_SAVE_BYTES_PER_MINUTE
+	ControlBytesPerMin   int64 // FILE_CONTROL_BYTES_PER_MINUTE
+	ListingPageSize      int   // REMOTE_LISTING_PAGE_SIZE
+	SnapshotTTL          time.Duration
+	SnapshotsTotal       int   // REMOTE_LISTING_SNAPSHOT_MAX_STATES
+	SnapshotsPerUser     int   // REMOTE_LISTING_SNAPSHOT_MAX_PER_USER
+	MaxTransferMembers   int   // MAX_TRANSFER_MEMBERS
+	MaxPreviewBytes      int64 // MAX_PREVIEW_SIZE
+	MaxPreviewTailLines  int64 // MAX_PREVIEW_TAIL_LINES
+	MaxSupportedFileSize int64 // MAX_SUPPORTED_FILE_SIZE
 }
 
 // Audit holds the audit log limits.
