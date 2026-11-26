@@ -3822,6 +3822,8 @@ async function seedIdentityTabs(page) {
             host('paper', 'Paperless', {detected_platform: 'ubuntu', detected_services: ['docker', 'postgresql', 'redis', 'paperless']}),
             host('cloud', 'Nextcloud', {detected_platform: 'debian', detected_services: ['apache', 'mariadb', 'nextcloud']}),
             host('fw', 'opnsense', {detected_platform: 'opnsense', detected_services: ['wireguard', 'unbound']}),
+            // A name too long for any logo beside it.
+            host('archive', 'Paperless archive copy', {detected_platform: 'ubuntu', detected_services: ['paperless', 'docker']}),
         ];
         ProfileManager.setProfiles(hosts);
         hosts.forEach(profile => SessionManager.createSession({session_id: `identity-${profile.id}`, host: profile.host,
@@ -3846,6 +3848,29 @@ test('workspace tabs carry the role and main services of their saved host', asyn
         }
     }
     await expect(tab('paper').locator('.tab-service').first()).toHaveAccessibleName('Paperless');
+
+    // Names come first: tiles drop out whole while a name is cut, and hidden tiles leave
+    // the accessibility tree. A name is only cut once no tile is left to give way, or
+    // when it is longer than its own limit.
+    const layout = () => page.locator('.session-tab[data-role]').evaluateAll(tabs => tabs.map(element => {
+        const label = element.querySelector('.tab-label');
+        const strip = element.querySelector('.tab-services');
+        const tiles = [...element.querySelectorAll('.tab-service')].filter(tile => tile.checkVisibility());
+        const name = label.children[0];
+        return {id: element.id, cut: [label, ...label.children].some(part => part.scrollWidth > part.clientWidth),
+            capped: name.clientWidth >= parseFloat(getComputedStyle(name).maxWidth) - 0.5,
+            strip: strip?.checkVisibility() ? strip.getBoundingClientRect().width : 0, tiles: tiles.length};
+    }));
+    for (const item of await layout()) {
+        expect([0, 18, 39], item.id).toContain(Math.round(item.strip));
+        expect(Math.round(item.strip), item.id).toBe([0, 18, 39][item.tiles]);
+        if (item.cut) expect(item.tiles === 0 || item.capped, item.id).toBe(true);
+    }
+    const byId = Object.fromEntries((await layout()).map(item => [item.id.replace('tab-identity-', ''), item]));
+    for (const id of ['cloud', 'fw', 'paper', 'pve']) expect(byId[id].cut, id).toBe(false);
+    expect(byId.cloud.tiles).toBeGreaterThanOrEqual(1);
+    expect(byId.archive.tiles).toBe(0);
+    await expect(tab('archive').getByRole('img', {name: 'Docker'})).toHaveCount(0);
     await expect(tab('paper').locator('.tab-role')).toHaveText('Documents');
     await expect(tab('other')).not.toHaveAttribute('data-role', /.*/);
     await expect(tab('other').locator('.tab-services, .tab-role')).toHaveCount(0);
@@ -3905,7 +3930,7 @@ test('the role edge of a workspace tab stays visible in every theme, active or n
                 behind = parse(getComputedStyle(holder).backgroundColor);
             }
             // Every role in both tab states, measured on the active tab and an inactive one.
-            const tabs = [document.getElementById('tab-identity-paper'), document.getElementById('tab-identity-pve')];
+            const tabs = [document.getElementById('tab-identity-paper'), document.getElementById('tab-identity-fw')];
             const results = [];
             for (const tab of tabs) {
                 const saved = tab.dataset.role;
@@ -3917,8 +3942,16 @@ test('the role edge of a workspace tab stays visible in every theme, active or n
                     const edge = parse(getComputedStyle(tab, '::after').backgroundColor);
                     const opacity = Number(style.opacity);
                     const shown = mix(mix(edge.channels, edge.alpha, surface), opacity, behind.channels);
+                    // The logo is drawn in the tile's ink on the role-tinted tile.
+                    const tile = getComputedStyle(tab.querySelector('.tab-service'));
+                    const tileFill = parse(tile.backgroundColor);
+                    const tileSurface = mix(tileFill.channels, tileFill.alpha, surface);
+                    const ink = parse(tile.color);
                     results.push({role, active: tab.classList.contains('active'), height: getComputedStyle(tab, '::after').height,
-                        background: style.backgroundColor, ratio: ratio(shown, mix(surface, opacity, behind.channels))});
+                        background: style.backgroundColor, marker: tab.classList.contains('active') ? style.boxShadow : '',
+                        ratio: ratio(shown, mix(surface, opacity, behind.channels)),
+                        tile: ratio(mix(mix(ink.channels, ink.alpha, tileSurface), opacity, behind.channels),
+                            mix(tileSurface, opacity, behind.channels))});
                 }
                 tab.dataset.role = saved;
             }
@@ -3928,12 +3961,13 @@ test('the role edge of a workspace tab stays visible in every theme, active or n
         expect(results.filter(result => !result.active)).toHaveLength(17);
         for (const result of results) {
             expect(result.height).toBe('2px');
-            expect.soft(result.ratio, `${theme} ${result.role} ${result.active ? 'active' : 'inactive'} on ${result.background}`).toBeGreaterThanOrEqual(3);
+            const state = `${theme} ${result.role} ${result.active ? 'active' : 'inactive'} on ${result.background}`;
+            expect.soft(result.ratio, `${state} edge`).toBeGreaterThanOrEqual(3);
+            expect.soft(result.tile, `${state} logo tile`).toBeGreaterThanOrEqual(3);
+            // The theme's own marker for the active tab is kept.
+            if (result.active) expect(result.marker, state).toMatch(/inset/);
         }
     }
-    // The theme's own marker for the active tab is kept.
-    const active = await page.locator('#tab-identity-paper').evaluate(tab => getComputedStyle(tab).boxShadow);
-    expect(active).toMatch(/inset/);
     await page.emulateMedia({forcedColors: 'active'});
     const forced = await page.locator('#tab-identity-paper').evaluate(tab => {
         const reference = document.createElement('span');

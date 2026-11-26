@@ -181,3 +181,53 @@ test('the endpoint rule is shared by the icon and the identity', () => {
     assert.equal(HostPlatform.sameEndpoint({host: 'nas.example.test', username: 'root', port: 22, jumpHostId: 'j'}, profile), false);
     assert.equal(HostPlatform.sameEndpoint({host: 'nas.example.test', username: 'root'}, null), false);
 });
+
+test('unchanged role and services keep their nodes on refresh', () => {
+    const {manager, tabs, document} = setup([PAPERLESS]);
+    manager.sessions.s1 = session();
+    manager.createSessionTab('s1');
+    const tab = tabOf(tabs, 's1');
+    const role = tab.querySelector('.tab-role');
+    const holder = tab.querySelector('.tab-services');
+    HostPlatform.refreshSessionIcons(manager, [{...PAPERLESS, name: 'Renamed', detected_services: ['paperless', 'docker', 'redis']}], document);
+    assert.equal(tab.querySelector('.tab-role'), role);
+    assert.equal(tab.querySelector('.tab-services'), holder);
+});
+
+// A label that needs `need` pixels and gets what the visible tiles leave of `room`.
+function laidOut(tab, {need, room, cap = Infinity}) {
+    const label = tab.querySelector('.tab-label');
+    const tiles = () => tab.querySelector('.tab-services').children.filter(tile => !tile.hidden).length;
+    const width = () => Math.min(need, cap, room - tiles() * 21);
+    Object.defineProperty(label, 'clientWidth', {configurable: true, get: width});
+    Object.defineProperty(label, 'scrollWidth', {configurable: true, get: width});
+    const name = label.children[0];
+    Object.defineProperty(name, 'clientWidth', {configurable: true, get: width});
+    Object.defineProperty(name, 'scrollWidth', {configurable: true, get: () => need});
+    return tiles;
+}
+
+test('tiles give way whole, last first, while the tab name is cut', () => {
+    const cases = [
+        [{need: 50, room: 100}, 2],
+        [{need: 70, room: 100}, 1],
+        [{need: 90, room: 100}, 0],
+        [{need: 200, room: 100}, 0],
+        // A name cut by its own limit gains nothing from hiding tiles.
+        [{need: 200, room: 100, cap: 40}, 2],
+    ];
+    for (const [layout, visible] of cases) {
+        const {manager, tabs} = setup([PAPERLESS]);
+        manager.sessions.s1 = session();
+        manager.createSessionTab('s1');
+        const tab = tabOf(tabs, 's1');
+        const tiles = laidOut(tab, layout);
+        HostPlatform.fitSessionTab(tab);
+        assert.equal(tiles(), visible, JSON.stringify(layout));
+        assert.equal(tab.querySelector('.tab-services').hidden, visible === 0, JSON.stringify(layout));
+        // Freed space brings the tiles back.
+        laidOut(tab, {need: 10, room: 100});
+        HostPlatform.fitSessionTab(tab);
+        assert.equal(tiles(), 2);
+    }
+});

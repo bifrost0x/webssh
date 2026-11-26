@@ -195,26 +195,75 @@
             detection_state: stored.detection_state, greeting_platform: stored.greeting_platform}, doc);
     }
     const TAB_SERVICES = 2;
+    /**
+     * Shows as many service tiles as fit without cutting the tab name: tiles are
+     * dropped whole, last first, while the label is ellipsized. Hidden tiles
+     * leave the accessibility tree.
+     */
+    function fitSessionTab(tab) {
+        const label = tab?.querySelector('.tab-label');
+        const holder = tab?.querySelector('.tab-services');
+        if (!label || !holder) return;
+        if (label.querySelector('.tab-rename-input')) return;
+        const tiles = [...holder.children];
+        holder.hidden = false;
+        tiles.forEach(tile => { tile.hidden = false; });
+        const parts = [label, ...label.children];
+        const cut = () => parts.some(part => part.scrollWidth > part.clientWidth);
+        for (let index = tiles.length - 1; index >= 0 && cut(); index -= 1) {
+            const width = label.clientWidth;
+            tiles[index].hidden = true;
+            // A name longer than its own limit stays cut; then the tile costs nothing.
+            if (label.clientWidth <= width) {
+                tiles[index].hidden = false;
+                break;
+            }
+        }
+        holder.hidden = tiles.every(tile => tile.hidden);
+    }
+    let tabObserver = null;
+    // The label's width follows renames, theme fonts and the viewport, so it is the one thing to watch.
+    function observeSessionTab(label) {
+        if (!tabObserver && typeof globalThis.ResizeObserver === 'function') {
+            tabObserver = new globalThis.ResizeObserver(entries => {
+                for (const {target} of entries) {
+                    if (!target.isConnected) tabObserver.unobserve(target);
+                    else fitSessionTab(target.closest('.session-tab'));
+                }
+            });
+        }
+        tabObserver?.observe(label);
+    }
     /** Role and main services of a session tab, from the saved host only while it matches the endpoint. */
     function markSessionTab(tab, session, profile, doc = document) {
         const Identity = globalThis.HostIdentity;
         const label = tab?.querySelector('.tab-label');
         if (!label) return;
-        tab.querySelector('.tab-role')?.remove();
-        tab.querySelector('.tab-services')?.remove();
         if (!Identity || !sameEndpoint(session, profile)) {
+            tab.querySelector('.tab-role')?.remove();
+            tab.querySelector('.tab-services')?.remove();
             delete tab.dataset.role;
             return;
         }
+        // A platform detected in this session counts until the saved host is reloaded
+        // with it, exactly as for the platform icon.
         const stored = {...profile, detected_platform: session.detectedPlatform || profile.detected_platform};
         const role = Identity.role(stored).id;
+        const ids = Identity.facts(stored).services.slice(0, TAB_SERVICES);
+        const shown = [...(tab.querySelector('.tab-services')?.children || [])].map(tile => tile.getAttribute('data-service'));
+        if (tab.dataset.role === role && tab.querySelector('.tab-role') && shown.join() === ids.join()) return;
+        tab.querySelector('.tab-role')?.remove();
+        tab.querySelector('.tab-services')?.remove();
         tab.dataset.role = role;
         const name = doc.createElement('span');
         name.className = 'tab-role sr-only';
         name.setAttribute('data-i18n', `role.${role}`);
         name.textContent = globalThis.i18n?.t(`role.${role}`) || role;
         tab.insertBefore(name, label);
-        const tiles = Identity.facts(stored).services.slice(0, TAB_SERVICES).map(id => {
+        if (!ids.length) return;
+        const holder = doc.createElement('span');
+        holder.className = 'tab-services';
+        holder.append(...ids.map(id => {
             const logo = renderService(id, doc);
             // The tile carries the name; the logo inside is decoration.
             ['title', 'role', 'aria-label'].forEach(attribute => logo.removeAttribute(attribute));
@@ -227,12 +276,10 @@
             tile.title = serviceLabels[id];
             tile.append(logo);
             return tile;
-        });
-        if (!tiles.length) return;
-        const holder = doc.createElement('span');
-        holder.className = 'tab-services';
-        holder.append(...tiles);
+        }));
         tab.insertBefore(holder, label.nextElementSibling);
+        if (tab.isConnected) fitSessionTab(tab);
+        observeSessionTab(label);
     }
     function refreshSessionIcons(manager, profiles = [], doc = globalThis.document) {
         if (!manager?.sessions || !doc) return;
@@ -246,5 +293,5 @@
         }
     }
     return {labels, resolve, services, serviceLabels, serviceAsset, render, renderService, renderSession,
-        sameEndpoint, markSessionTab, refreshSessionIcons};
+        sameEndpoint, markSessionTab, fitSessionTab, refreshSessionIcons};
 });

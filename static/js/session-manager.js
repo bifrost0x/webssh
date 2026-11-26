@@ -400,6 +400,7 @@ const SessionManager = {
         });
 
         document.getElementById('sessionTabs').appendChild(tab);
+        window.HostPlatform?.fitSessionTab?.(tab);
         this.scrollTabIntoView(sessionId);
     },
 

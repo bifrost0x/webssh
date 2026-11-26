@@ -83,19 +83,16 @@ body[data-theme="paper"] .host-platform-icon { color: var(--platform-ink-light, 
     top: 2px;
     box-shadow: 0 0 8px color-mix(in srgb, var(--role) 60%, transparent);
 }
-/* In a crowded tab the logos give way before the name: the second tile wraps
-   onto a hidden line instead of being cut in half. */
+/* Never narrower than its tiles: fitSessionTab hides whole tiles instead. */
 .tab-services {
     --service-icon-size: 12px;
     display: inline-flex;
-    flex: 0 4 auto;
-    flex-wrap: wrap;
+    flex: 0 0 auto;
     align-items: center;
     gap: 3px;
-    min-width: 18px;
-    height: 18px;
-    overflow: hidden;
 }
+.tab-services[hidden],
+.tab-service[hidden] { display: none; }
 .tab-service {
     display: inline-flex;
     flex: 0 0 auto;
