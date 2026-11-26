@@ -52,6 +52,8 @@ type Service struct {
 
 	mu      sync.Mutex
 	kdfUser map[int64]bool // users holding a KDF slot
+
+	creds *credentials // saved passwords; nil until EnableCredentials
 }
 
 // New returns a Service.
