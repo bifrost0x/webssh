@@ -113,7 +113,8 @@ test('host cards show the role, machine, system and service logos of each host',
 test('the host profile explains the role and the detection, and stays open across updates', async ({page}) => {
     await openOverview(page);
     await seed(page, [PAPERLESS, {...PROXMOX, role_override: 'backup'}, {...PAPERLESS, platform_checked_at: 1700000000},
-        {...PAPERLESS, platform_icon: 'ubuntu', detected_platform: 'debian'}]);
+        {...PAPERLESS, platform_icon: 'ubuntu', detected_platform: 'debian'},
+        {...PAPERLESS, platform_icon: 'ubuntu', platform_checked_at: 1700000000}, {platform_icon: 'debian'}]);
 
     const derived = card(page, 0);
     const summary = derived.locator('.od-host-profile > summary');
@@ -147,13 +148,27 @@ test('the host profile explains the role and the detection, and stays open acros
     await expect(manual.locator('.od-host-profile dd').nth(2)).toHaveText(/Backup.*manual/);
     await expect(manual.locator('.od-host-profile dd').nth(1)).toHaveText('Bare Metal · 7 guests');
 
-    // A chosen platform is named in the system row; detection keeps its own wording.
+    // A chosen platform is named in the system row; detection keeps its own wording
+    // and says that it no longer runs, so no next check is announced.
     const manualPlatform = card(page, 3);
     await expect(manualPlatform.locator('.od-host-os')).toHaveText('Ubuntu (manual choice)');
     await manualPlatform.locator('.od-host-profile > summary').click();
     const detection = manualPlatform.locator('.od-host-profile dd').last();
     await expect(detection).toContainText('Detected after SSH connection');
-    await expect(detection).not.toContainText(/manual/i);
+    await expect(detection).not.toContainText(/manual choice/i);
+    await expect(detection.locator('small')).toHaveText('Detection off (manual platform)');
+    await expect(detection).not.toContainText('next check');
+    for (const index of [4, 5]) {
+        const host = card(page, index);
+        await host.locator('.od-host-profile > summary').click();
+        const row = host.locator('.od-host-profile dd').last();
+        await expect(row.locator('small')).toHaveText('Detection off (manual platform)');
+        await expect(row).not.toContainText(/refreshed|next check/);
+    }
+    await expect(card(page, 5).locator('.od-host-profile dd').last()).toContainText('Not detected yet');
+    await page.evaluate(() => window.i18n.setLanguage('de'));
+    await expect(detection.locator('small')).toHaveText('Erkennung aus (Plattform manuell gewählt)');
+    await page.evaluate(() => window.i18n.setLanguage('en'));
 
     const stale = card(page, 2);
     await stale.locator('.od-host-profile > summary').click();

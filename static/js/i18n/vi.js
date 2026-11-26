@@ -807,6 +807,7 @@ window.i18n.registerLocales({
         "overviewWorkspace.roleManual": "thủ công",
         "overviewWorkspace.roleDefault": "mặc định",
         "overviewWorkspace.profileNextCheck": "lần kiểm tra tiếp theo sớm nhất {date}",
+        "overviewWorkspace.profileDetectionOff": "Đã tắt nhận diện (nền tảng chọn thủ công)",
         "overviewWorkspace.profileStale": "Cũ hơn 7 ngày; cập nhật ở lần kết nối tiếp theo",
         "overviewWorkspace.profileNote": "Chỉ là dữ liệu đọc khi kết nối. Không giám sát, không sudo.",
         "overviewWorkspace.serviceFilter": "Hiện máy chủ đang chạy {name}",

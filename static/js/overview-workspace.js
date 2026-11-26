@@ -531,12 +531,16 @@
                 ? (facts.state === 'pending' ? 'pending' : facts.state === 'unavailable' ? 'unavailable' : 'detected')
                 : facts?.platform.source;
             const source = origin ? sentence(t(`platform.${origin}`, origin)) : '';
+            // The server never probes a host with a chosen platform again, so no refresh is due.
+            const schedule = facts?.platform.source === 'manual'
+                ? tw('profileDetectionOff', 'Detection off (manual platform)')
+                : facts?.stale ? tw('profileStale', 'Older than 7 days; refreshed on the next connection')
+                    : facts?.checkedAt ? tw('profileNextCheck', 'next check not before {date}', {date: formatDate(facts.checkedAt + 7 * 86400)})
+                        : '';
             if (facts?.checkedAt) {
-                row(tw('profileDetection', 'Detection'), `${source} · ${formatDate(facts.checkedAt)}`,
-                    facts.stale ? tw('profileStale', 'Older than 7 days; refreshed on the next connection')
-                        : tw('profileNextCheck', 'next check not before {date}', {date: formatDate(facts.checkedAt + 7 * 86400)}));
+                row(tw('profileDetection', 'Detection'), `${source} · ${formatDate(facts.checkedAt)}`, schedule);
             } else {
-                row(tw('profileDetection', 'Detection'), source || sentence(t('platform.pending', 'not detected yet')));
+                row(tw('profileDetection', 'Detection'), source || sentence(t('platform.pending', 'not detected yet')), schedule);
             }
             if (facts?.stale) details.classList.add('od-stale');
             details.append(summary, list, node('small', 'od-host-profile-note', tw('profileNote', 'Only facts read when connecting. No monitoring, no sudo.')));

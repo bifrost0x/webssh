@@ -807,6 +807,7 @@ window.i18n.registerLocales({
         "overviewWorkspace.roleManual": "手动",
         "overviewWorkspace.roleDefault": "默认",
         "overviewWorkspace.profileNextCheck": "最早于 {date} 再次核对",
+        "overviewWorkspace.profileDetectionOff": "检测已关闭（手动选择平台）",
         "overviewWorkspace.profileStale": "已超过 7 天；下次连接时更新",
         "overviewWorkspace.profileNote": "仅包含连接时读取的信息。无监控，无 sudo。",
         "overviewWorkspace.serviceFilter": "显示运行 {name} 的主机",

@@ -812,6 +812,7 @@ window.i18n.registerLocales({
         "overviewWorkspace.roleManual": "manual",
         "overviewWorkspace.roleDefault": "default",
         "overviewWorkspace.profileNextCheck": "next check not before {date}",
+        "overviewWorkspace.profileDetectionOff": "Detection off (manual platform)",
         "overviewWorkspace.profileStale": "Older than 7 days; refreshed on the next connection",
         "overviewWorkspace.profileNote": "Only facts read when connecting. No monitoring, no sudo.",
         "overviewWorkspace.serviceFilter": "Show hosts running {name}",

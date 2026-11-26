@@ -224,7 +224,8 @@ The overview shows, per host:
   role and how it was reached (manual, derived from a platform or service, the
   graphical desktop, or default) and the detection source with its date. It
   says when the facts are older than seven days; they are refreshed on the
-  next connection.
+  next connection. With a manual platform icon it says that detection is off
+  instead, since such a host is not probed again.
 
 Search in the overview also matches role, platform and service names. The
 classic overview layout keeps its compact rows: platform icon, virtualization
