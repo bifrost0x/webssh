@@ -141,17 +141,17 @@ func TestHostContextValidation(t *testing.T) {
 	ok := `{"revision":2,"notes":"n","directories":["/srv"],"command_sets":["cs"]}`
 	for in, want := range map[string]bool{
 		ok: true,
-		`{"revision":1,"notes":"","directories":[],"command_sets":[]}`:              true,
-		`{"revision":0,"notes":"","directories":[],"command_sets":[]}`:              false,
-		`{"revision":1.0,"notes":"","directories":[],"command_sets":[]}`:            false,
-		`{"revision":true,"notes":"","directories":[],"command_sets":[]}`:           false,
-		`{"revision":1,"notes":1,"directories":[],"command_sets":[]}`:               false,
-		`{"revision":1,"notes":"","directories":["rel"],"command_sets":[]}`:         false,
-		`{"revision":1,"notes":"","directories":["/a","/a"],"command_sets":[]}`:     false,
-		`{"revision":1,"notes":"","directories":[],"command_sets":[""]}`:            false,
-		`{"revision":1,"notes":"","directories":[],"command_sets":[],"extra":1}`:    false,
-		`{"revision":1,"notes":"","directories":[],"command_set":[]}`:               false,
-		`{"revision":1,"notes":"","directories":["/a\u0007"],"command_sets":[]}`:    false,
+		`{"revision":1,"notes":"","directories":[],"command_sets":[]}`:           true,
+		`{"revision":0,"notes":"","directories":[],"command_sets":[]}`:           false,
+		`{"revision":1.0,"notes":"","directories":[],"command_sets":[]}`:         false,
+		`{"revision":true,"notes":"","directories":[],"command_sets":[]}`:        false,
+		`{"revision":1,"notes":1,"directories":[],"command_sets":[]}`:            false,
+		`{"revision":1,"notes":"","directories":["rel"],"command_sets":[]}`:      false,
+		`{"revision":1,"notes":"","directories":["/a","/a"],"command_sets":[]}`:  false,
+		`{"revision":1,"notes":"","directories":[],"command_sets":[""]}`:         false,
+		`{"revision":1,"notes":"","directories":[],"command_sets":[],"extra":1}`: false,
+		`{"revision":1,"notes":"","directories":[],"command_set":[]}`:            false,
+		`{"revision":1,"notes":"","directories":["/a\u0007"],"command_sets":[]}`: false,
 	} {
 		_, _, _, valid := hostContext(pyjson.Member{Name: "p", Value: []byte(in)})
 		if valid != want {
