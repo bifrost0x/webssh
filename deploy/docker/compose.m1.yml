@@ -1,4 +1,5 @@
-# WebSSH Go preview (M1) for a trusted LAN. This is a preview, not a release:
+# WebSSH Go preview (M1) for a trusted LAN; guide: docs/preview/m1.md.
+# This is a preview, not a release:
 # it runs next to an existing Python instance and never uses its volumes.
 #
 # Start from the repository root:
