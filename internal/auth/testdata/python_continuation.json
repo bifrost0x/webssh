@@ -1,0 +1,254 @@
+[
+ {
+  "in": "/",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": "/",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ },
+ {
+  "in": "",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": "",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ },
+ {
+  "in": "/index?x=1",
+  "root": "",
+  "safe": "/index?x=1",
+  "public": "/index?x=1"
+ },
+ {
+  "in": "/index?x=1",
+  "root": "/webssh",
+  "safe": "/index?x=1",
+  "public": "/webssh/index?x=1"
+ },
+ {
+  "in": "//evil.com",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": "//evil.com",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ },
+ {
+  "in": "/\\evil",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": "/\\evil",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ },
+ {
+  "in": " /x",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": " /x",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ },
+ {
+  "in": "/x#frag",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": "/x#frag",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ },
+ {
+  "in": "/x\u0001",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": "/x\u0001",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ },
+ {
+  "in": "https://evil.com",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": "https://evil.com",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ },
+ {
+  "in": "/a/../b",
+  "root": "",
+  "safe": "/a/../b",
+  "public": "/"
+ },
+ {
+  "in": "/a/../b",
+  "root": "/webssh",
+  "safe": "/a/../b",
+  "public": "/webssh/"
+ },
+ {
+  "in": "/a/%2e%2e/b",
+  "root": "",
+  "safe": "/a/%2e%2e/b",
+  "public": "/"
+ },
+ {
+  "in": "/a/%2e%2e/b",
+  "root": "/webssh",
+  "safe": "/a/%2e%2e/b",
+  "public": "/webssh/"
+ },
+ {
+  "in": "/webssh/x",
+  "root": "",
+  "safe": "/webssh/x",
+  "public": "/webssh/x"
+ },
+ {
+  "in": "/webssh/x",
+  "root": "/webssh",
+  "safe": "/webssh/x",
+  "public": "/webssh/x"
+ },
+ {
+  "in": "/webssh",
+  "root": "",
+  "safe": "/webssh",
+  "public": "/webssh"
+ },
+ {
+  "in": "/webssh",
+  "root": "/webssh",
+  "safe": "/webssh",
+  "public": "/webssh"
+ },
+ {
+  "in": "/a%2E/b",
+  "root": "",
+  "safe": "/a%2E/b",
+  "public": "/a%2E/b"
+ },
+ {
+  "in": "/a%2E/b",
+  "root": "/webssh",
+  "safe": "/a%2E/b",
+  "public": "/webssh/a%2E/b"
+ },
+ {
+  "in": "x",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": "x",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ },
+ {
+  "in": "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ },
+ {
+  "in": "/ok?next=//x",
+  "root": "",
+  "safe": "/ok?next=//x",
+  "public": "/ok?next=//x"
+ },
+ {
+  "in": "/ok?next=//x",
+  "root": "/webssh",
+  "safe": "/ok?next=//x",
+  "public": "/webssh/ok?next=//x"
+ },
+ {
+  "in": "/%zz",
+  "root": "",
+  "safe": "/%zz",
+  "public": "/%zz"
+ },
+ {
+  "in": "/%zz",
+  "root": "/webssh",
+  "safe": "/%zz",
+  "public": "/webssh/%zz"
+ },
+ {
+  "in": "/a:b",
+  "root": "",
+  "safe": "/a:b",
+  "public": "/a:b"
+ },
+ {
+  "in": "/a:b",
+  "root": "/webssh",
+  "safe": "/a:b",
+  "public": "/webssh/a:b"
+ },
+ {
+  "in": "/x?y#",
+  "root": "",
+  "safe": "/x?y#",
+  "public": "/x?y#"
+ },
+ {
+  "in": "/x?y#",
+  "root": "/webssh",
+  "safe": "/x?y#",
+  "public": "/webssh/x?y#"
+ },
+ {
+  "in": "///x",
+  "root": "",
+  "safe": "/",
+  "public": "/"
+ },
+ {
+  "in": "///x",
+  "root": "/webssh",
+  "safe": "/",
+  "public": "/webssh/"
+ }
+]
