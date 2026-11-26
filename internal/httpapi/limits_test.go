@@ -106,7 +106,13 @@ func TestUpgradeCanHijack(t *testing.T) {
 		_, _ = brw.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nraw-ok")
 		_ = brw.Flush()
 	})
-	srv := httptest.NewServer(e.h)
+	// httptest.Server.Close does not wait for hijacked connections, so
+	// the test waits for the edge itself to return; it logs before that.
+	served := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(served)
+		e.h.ServeHTTP(w, r)
+	}))
 	defer srv.Close()
 	resp, err := srv.Client().Get(srv.URL + "/ws")
 	if err != nil {
@@ -117,7 +123,11 @@ func TestUpgradeCanHijack(t *testing.T) {
 	if string(body) != "raw-ok" {
 		t.Fatalf("body %q", body)
 	}
-	srv.Close() // waits for the handler, which logs on return
+	select {
+	case <-served:
+	case <-time.After(10 * time.Second):
+		t.Fatal("edge handler did not return")
+	}
 	if !strings.Contains(e.logs.String(), "status=101") {
 		t.Fatalf("hijacked request not logged as upgrade:\n%s", e.logs)
 	}
