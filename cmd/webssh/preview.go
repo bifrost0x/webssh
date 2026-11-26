@@ -9,7 +9,7 @@ import "github.com/bifrost0x/webssh/internal/httpapi"
 // static/js/preview-notice.js.
 var (
 	previewWorkspaceAreas = []string{
-		"files", "smb", "automation", "credentials", "discovery", "commands",
+		"smb", "automation", "credentials", "discovery", "commands",
 		"herdr", "gateway", "tailscale", "serverOps",
 	}
 	previewSignInAreas = []string{"ldap", "oidc", "github"}

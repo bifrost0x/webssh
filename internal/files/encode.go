@@ -45,7 +45,7 @@ func EncodeEditorText(content string, enc Encoding, nl Newline, original []byte)
 		if r > 0xff {
 			return nil, encodingError(r, enc, 1+strings.Count(text[:i], "\n"))
 		}
-		out = append(out, byte(r))
+		out = append(out, byte(r)) // #nosec G115 -- r <= 0xff is checked above
 	}
 	return out, nil
 }

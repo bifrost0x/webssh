@@ -192,9 +192,9 @@ func TestPreviewDecodesLikeTheEditor(t *testing.T) {
 	bad := []files.PreviewRequest{
 		{SourceID: f.id, Path: "/log", MaxBytes: new(int64)},
 		{SourceID: f.id, Path: "/log", TailLines: new(int64)},
-		{SourceID: f.id, Path: "/log", TailLines: ptr(int64(10001))},
-		{SourceID: f.id, Path: "/log", Offset: ptr(int64(-1))},
-		{SourceID: f.id, Path: "/log", Offset: ptr(int64(2 << 30))},
+		{SourceID: f.id, Path: "/log", TailLines: new(int64(10001))},
+		{SourceID: f.id, Path: "/log", Offset: new(int64(-1))},
+		{SourceID: f.id, Path: "/log", Offset: new(int64(2 << 30))},
 	}
 	for _, q := range bad {
 		if _, err := f.svc.Preview(ctx, c, q); !fault.Is(err, fault.InvalidRequest) {
@@ -206,7 +206,8 @@ func TestPreviewDecodesLikeTheEditor(t *testing.T) {
 	}
 }
 
-func ptr[T any](v T) *T { return &v }
+//go:fix inline
+func ptr[T any](v T) *T { return new(v) }
 
 func TestImagePreviewBounded(t *testing.T) {
 	t.Parallel()

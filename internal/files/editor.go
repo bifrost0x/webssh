@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 )
@@ -162,9 +163,7 @@ func withDetail(err error, key string, value any) error {
 	}
 	c := *fe
 	c.Details = map[string]any{}
-	for k, v := range fe.Details {
-		c.Details[k] = v
-	}
+	maps.Copy(c.Details, fe.Details)
 	c.Details[key] = value
 	return &c
 }
