@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/bifrost0x/webssh/internal/accounts"
 	"github.com/bifrost0x/webssh/internal/auth"
 	"github.com/bifrost0x/webssh/internal/auth/local"
@@ -37,12 +40,20 @@ func capabilitySchemas() []store.Schema {
 //     routes, the realtime routes and the terminal are built; it may set
 //     the optional dependencies in sys.optional.
 //   - wire runs after the core routes are registered and before the HTTP
-//     edge and the realtime endpoint are finished; it registers routes.
+//     edge and the realtime endpoint are finished; it registers routes
+//     (sys.edge.Mux()) and realtime types (sys.realtime.Mount).
+//   - background runs once the server is wired; it starts the extension's
+//     periodic work with sys.background.Go and returns. The work ends with
+//     ctx, which ends when the server closes.
+//   - migrate adds the extension's migration steps after those of the
+//     release (migrationRegistrar), one per entity it takes over.
 type extension struct {
-	name    string
-	schemas []store.Schema
-	prepare func(sys *system) error
-	wire    func(sys *system) error
+	name       string
+	schemas    []store.Schema
+	prepare    func(sys *system) error
+	wire       func(sys *system) error
+	background func(ctx context.Context, sys *system)
+	migrate    func(r *legacy.Registry, cfg config.Config, lookup config.LookupFunc) error
 }
 
 // extensions holds the registered extensions in registration order.
@@ -78,6 +89,13 @@ func migrationRegistry(cfg config.Config, lookup config.LookupFunc) (*legacy.Reg
 	r.Schemas(schemas()...)
 	if err := migrationRegistrar(r, cfg, lookup); err != nil {
 		return nil, err
+	}
+	for _, e := range extensions {
+		if e.migrate != nil {
+			if err := e.migrate(r, cfg, lookup); err != nil {
+				return nil, fmt.Errorf("extension %s: migration steps: %w", e.name, err)
+			}
+		}
 	}
 	return r, nil
 }

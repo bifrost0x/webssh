@@ -26,6 +26,11 @@ func (s *system) startBackground(ctx context.Context) {
 	s.stopBackground = cancel
 	s.background.Go(func() { s.every(ctx, sweepInterval, s.sweepSessions) })
 	s.background.Go(func() { s.every(ctx, revocationFollowInterval, s.followRevocations) })
+	for _, e := range extensions {
+		if e.background != nil {
+			e.background(ctx, s)
+		}
+	}
 	watch, err := legacy.NewSourceWatch(ctx, s.db, s.cfg.DataDir)
 	switch {
 	case err != nil:

@@ -58,14 +58,14 @@ var goOnlyRoutes = []string{"GET /ws", "GET /api/realtime/status"}
 // hold nothing else.
 func TestRouteCatalogCoversPython(t *testing.T) {
 	m1 := map[string]Access{}
-	for _, rt := range m1Routes {
+	for _, rt := range catalogRoutes() {
 		if _, dup := m1[patternKey(rt.pattern)]; dup {
-			t.Errorf("m1Routes lists %q twice", rt.pattern)
+			t.Errorf("the catalog lists %q twice", rt.pattern)
 		}
 		m1[patternKey(rt.pattern)] = rt.access
 	}
 	preview := map[string]bool{}
-	for _, p := range previewRoutes {
+	for _, p := range previewRoutes() {
 		k := patternKey(p)
 		if preview[k] {
 			t.Errorf("previewRoutes lists %q twice", p)
@@ -85,7 +85,7 @@ func TestRouteCatalogCoversPython(t *testing.T) {
 	}
 	for k := range m1 {
 		if !seen[k] && !slices.Contains(goOnlyRoutes, k) {
-			t.Errorf("m1Routes has %q, which the Python release does not have", k)
+			t.Errorf("the catalog has %q, which the Python release does not have", k)
 		}
 	}
 	for k := range preview {
@@ -103,10 +103,10 @@ func TestEveryCatalogRouteIsAnsweredWithoutHandlers(t *testing.T) {
 	}
 	// Only the edge's own routes have handlers in a bare edge.
 	own := []string{"GET /health", "GET /ready", "GET /static/{path...}", "GET /api/realtime/status"}
-	if want := len(m1Routes) - len(own); len(filled) != want {
+	if want := len(catalogRoutes()) - len(own); len(filled) != want {
 		t.Fatalf("Finish filled %d routes, want %d: %v", len(filled), want, filled)
 	}
-	for _, rt := range m1Routes {
+	for _, rt := range catalogRoutes() {
 		if slices.Contains(own, rt.pattern) {
 			continue
 		}
