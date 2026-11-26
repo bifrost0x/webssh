@@ -178,6 +178,10 @@ func (s *Source) Tables(ctx context.Context) (map[string]int64, error) {
 		if strings.HasPrefix(name, "sqlite_") {
 			continue
 		}
+		if s.emptiedByRestore(name) {
+			counts[name] = 0
+			continue
+		}
 		var n int64
 		// The name comes from sqlite_schema, which a restored archive
 		// controls; it is quoted as an identifier, so it cannot change the

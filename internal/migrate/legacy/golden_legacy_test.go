@@ -3,6 +3,7 @@ package legacy
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"os"
@@ -59,7 +60,8 @@ type legacyManifest struct {
 		Extended extendedValues `json:"extended"`
 	} `json:"values"`
 	Variants map[string]struct {
-		SQL []string `json:"sql"`
+		SQL   []string          `json:"sql"`
+		Files map[string]string `json:"files"`
 	} `json:"variants"`
 }
 
@@ -101,6 +103,20 @@ type extendedValues struct {
 	TrustAndFences struct {
 		CertAuthorityLine string `json:"cert_authority_line"`
 	} `json:"trust_and_fences"`
+	PersistentSessions []struct {
+		SessionID    string  `json:"session_id"`
+		Tmux         *string `json:"tmux_session_name"`
+		DisplayName  *string `json:"display_name"`
+		IsPersistent bool    `json:"is_persistent"`
+		Username     string  `json:"username"`
+		AuthType     string  `json:"auth_type"`
+	} `json:"persistent_sessions"`
+	RestoreStatus struct {
+		Documents map[string]jsontext.Value `json:"documents"`
+		Expected  map[string]struct {
+			MaintenanceActive bool `json:"maintenance_active"`
+		} `json:"expected"`
+	} `json:"restore_status"`
 	VaultV1 struct {
 		Passphrase string `json:"passphrase"`
 		Password   string `json:"password"`
@@ -412,7 +428,7 @@ func TestLegacyBackups(t *testing.T) {
 				logFiles += boolInt(strings.HasPrefix(f.Path, "logs/"))
 			}
 			dest := t.TempDir()
-			res, err := ExtractBackup(backup, dest, DefaultBackupLimits)
+			res, err := ExtractBackup(backup, dest, DefaultBackupLimits, RestoreRecoverySnapshot)
 			if err != nil || res.GoMembers != goFiles || res.LogMembers != logFiles {
 				t.Fatalf("extract %+v, %v (go %d, logs %d)", res, err, goFiles, logFiles)
 			}

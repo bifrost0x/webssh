@@ -48,7 +48,7 @@ func (u User) Incarnation() (string, error) {
 func (s *Source) Users(ctx context.Context) ([]User, error) {
 	// The select list holds only the constant column names below, or
 	// constant defaults where a column is absent; nothing from the data.
-	query := "SELECT " + s.schema.userSelect("id", "username", "password_hash", "created_at", // #nosec G202 -- constant identifiers and literals
+	query := "SELECT " + s.schema.userSelect(s.restored != nil, "id", "username", "password_hash", "created_at", // #nosec G202 -- constant identifiers and literals
 		"is_admin", "is_locked", "auth_generation", "mfa_enabled") + " FROM users ORDER BY id"
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
