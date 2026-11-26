@@ -1,0 +1,10 @@
+{"timestamp": "2026-11-02T09:00:00Z", "level": "INFO", "logger": "security_audit", "message": "INITIAL_ADMIN_REGISTERED | user=golden_admin"}
+{"timestamp": "2026-11-02T09:00:09.250000Z", "level": "INFO", "logger": "security_audit", "message": "SECURITY_FEATURE_CHANGED | active=True | admin=golden_admin | enabled=True | feature=passkey"}
+{"timestamp": "2026-11-02T09:00:09.250000Z", "level": "INFO", "logger": "security_audit", "message": "SECURITY_FEATURE_CHANGED | active=True | admin=golden_admin | enabled=True | feature=totp"}
+{"timestamp": "2026-11-02T09:00:09.250000Z", "level": "INFO", "logger": "security_audit", "message": "SECURITY_FEATURE_CHANGED | active=True | admin=golden_admin | enabled=True | feature=recovery"}
+{"timestamp": "2026-11-02T09:03:54.250000Z", "level": "INFO", "logger": "security_audit", "message": "AUTHENTICATION_SUCCESS | assurance=BASIC | methods=password | primary_method=password | user=local_user"}
+{"timestamp": "2026-11-02T09:03:54.250000Z", "level": "INFO", "logger": "security_audit", "message": "AUTOMATION_SCHEDULE_APPROVED | user_id=3"}
+{"timestamp": "2026-11-02T09:03:54.250000Z", "level": "INFO", "logger": "security_audit", "message": "AUTOMATION_SCHEDULE_APPROVED | user_id=3"}
+{"timestamp": "2026-11-02T09:03:54.250000Z", "level": "INFO", "logger": "security_audit", "message": "AUTOMATION_SCHEDULE_PAUSED | user_id=3"}
+{"timestamp": "2026-11-02T09:05:56.250000Z", "level": "INFO", "logger": "security_audit", "message": "AUTHENTICATION_SUCCESS | assurance=BASIC | methods=password | primary_method=password | user=local_user"}
+{"timestamp": "2026-11-02T09:05:56.250000Z", "level": "INFO", "logger": "security_audit", "message": "AUTHENTICATION_SUCCESS | assurance=BASIC | methods=password | primary_method=password | user=github_linked"}
