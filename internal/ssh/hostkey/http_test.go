@@ -117,10 +117,20 @@ func TestHTTPDeleteNeedsStepUp(t *testing.T) {
 		t.Fatalf("grant for another entry: %d", status)
 	}
 	f.stepUp.Issue(f.user, principal.ActionHostKeyDelete, f.ids[0], "g1")
-	if status, body := f.do(t, &f.user, "DELETE", path, map[string]string{"If-Match": "0" + revision[1:], StepUpHeader: "g1"}); status != 412 || body["code"] != "precondition_failed" {
+	// Ids and revisions come from per-run keys; the altered values differ
+	// from the real ones whatever their digits are.
+	stale := "0" + revision[1:]
+	if stale == revision {
+		stale = "1" + revision[1:]
+	}
+	if status, body := f.do(t, &f.user, "DELETE", path, map[string]string{"If-Match": stale, StepUpHeader: "g1"}); status != 412 || body["code"] != "precondition_failed" {
 		t.Fatalf("stale revision: %d %v", status, body)
 	}
-	if status, body := f.do(t, &f.user, "DELETE", "/api/host-keys/"+f.ids[0][:63]+"0", map[string]string{StepUpHeader: "g1"}); status != 404 {
+	unknown := f.ids[0][:63] + "0"
+	if unknown == f.ids[0] {
+		unknown = f.ids[0][:63] + "1"
+	}
+	if status, body := f.do(t, &f.user, "DELETE", "/api/host-keys/"+unknown, map[string]string{StepUpHeader: "g1"}); status != 404 {
 		t.Fatalf("unknown entry: %d %v", status, body)
 	}
 	if status, body := f.do(t, &f.user, "DELETE", path, map[string]string{"If-Match": revision, StepUpHeader: "g1"}); status != 200 || body["ok"] != true {
