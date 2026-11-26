@@ -294,23 +294,20 @@ func putSubstrings(dst []byte, attr, value string, star int) ([]byte, error) {
 // head is everything before ":=".
 func putExtensible(dst []byte, head, value string) ([]byte, error) {
 	typ, rule, hasRule, dnAttrs := head, "", false, false
-	if c := strings.IndexByte(head, ':'); c >= 0 {
-		typ = head[:c]
-		dn := head[c+1:]
-		if r := strings.IndexByte(dn, ':'); r < 0 {
-			if asciiEqualFold(dn, "dn") {
-				if !isDescription(typ) {
-					return nil, filterErr("dn attributes need a type")
-				}
-				dnAttrs, hasRule = true, true
-			} else {
-				rule, hasRule = dn, true
-			}
-		} else {
-			if !asciiEqualFold(dn[:r], "dn") {
+	if t, dn, ok := strings.Cut(head, ":"); ok {
+		typ = t
+		if marker, r, two := strings.Cut(dn, ":"); two {
+			if !asciiEqualFold(marker, "dn") {
 				return nil, filterErr("invalid extensible match")
 			}
-			rule, hasRule, dnAttrs = dn[r+1:], true, true
+			rule, hasRule, dnAttrs = r, true, true
+		} else if asciiEqualFold(dn, "dn") {
+			if !isDescription(typ) {
+				return nil, filterErr("dn attributes need a type")
+			}
+			dnAttrs, hasRule = true, true
+		} else {
+			rule, hasRule = dn, true
 		}
 	}
 	switch {
