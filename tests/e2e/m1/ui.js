@@ -53,16 +53,27 @@ async function signOut(page) {
 
 // Completes a step-up prompt with the account password if one is shown.
 // Returns whether the server asked for it.
+// Answers a step-up with the account password: the administrator dialog
+// (#stepUpModal) or the account confirmation that account actions such as
+// a key upload open (a credential question dialog). Returns false when
+// none appears within the timeout.
 async function answerStepUp(page, password, {timeout = 3000} = {}) {
-    const modal = page.locator('#stepUpModal');
+    const admin = page.locator('#stepUpModal');
+    const account = page.locator('dialog.credential-question[open]');
     try {
-        await expect(modal).toBeVisible({timeout});
+        await expect(admin.or(account)).toBeVisible({timeout});
     } catch {
         return false;
     }
-    await page.locator('#stepUpPassword').fill(password);
-    await page.locator('#stepUpSubmit').click();
-    await expect(modal).toBeHidden();
+    if (await admin.isVisible()) {
+        await page.locator('#stepUpPassword').fill(password);
+        await page.locator('#stepUpSubmit').click();
+        await expect(admin).toBeHidden();
+        return true;
+    }
+    await account.locator('input[type="password"]').fill(password);
+    await account.locator('button.btn-primary').click();
+    await expect(account).toHaveCount(0);
     return true;
 }
 

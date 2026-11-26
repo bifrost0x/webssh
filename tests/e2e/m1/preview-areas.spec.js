@@ -34,9 +34,14 @@ function watch(page) {
     page.on('response', async response => {
         const status = response.status();
         if (status === 501) {
-            const body = await response.json().catch(() => null);
             previewAnswers.push(new URL(response.url()).pathname);
-            if (body?.code !== 'not_available_in_preview') problems.push(`501 without preview code: ${response.url()}`);
+            // A page route (a navigation such as /automation) answers in
+            // plain text, an API route with the JSON error code.
+            const page = response.request().resourceType() === 'document';
+            const answer = page
+                ? (await response.text().catch(() => '')).includes('Not available in this preview yet.')
+                : (await response.json().catch(() => null))?.code === 'not_available_in_preview';
+            if (!answer) problems.push(`501 without preview answer: ${response.url()}`);
         } else if (status >= 500) {
             problems.push(`${status} ${response.request().method()} ${response.url()}`);
         }

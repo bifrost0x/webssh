@@ -2,7 +2,7 @@
 // sessions on the test lab. Runs against Python by default and against the
 // Go server through WEBSSH_E2E_M1_SERVER_COMMAND (tests/e2e/README.md).
 const {test, expect} = require('playwright/test');
-const {freshBackend, attachLogOnFailure, kind} = require('./backend');
+const {freshBackend, attachLogOnFailure} = require('./backend');
 const {loadLab} = require('./lab');
 const ui = require('./ui');
 
@@ -88,12 +88,14 @@ test('a new installation goes from create-admin to key-based SSH through a basti
     });
 
     await test.step('an uploaded key connects through ssh-bastion to the internal host', async () => {
-        const steppedUp = await ui.uploadKey(page, {
+        // The Go server guards the upload with the step-up action
+        // key.upload. Like Python's step-up, a sign-in with a second factor
+        // within STEP_UP_MAX_AGE_SECONDS counts as fresh, so the dialog
+        // appears only when this journey runs longer than that window;
+        // uploadKey answers it when it does.
+        await ui.uploadKey(page, {
             name: 'Lab ed25519', content: lab.clientKey('ed25519'), password: admin.password,
         });
-        // The Go server asks for a fresh confirmation before it stores a key
-        // (step-up action key.upload); Python accepts a signed-in upload.
-        if (kind === 'go') expect(steppedUp).toBe(true);
         const bastion = lab.service('ssh-bastion');
         const inner = lab.service('ssh-inner');
         await ui.createJumpHost(page, {

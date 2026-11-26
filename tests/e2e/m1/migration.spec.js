@@ -102,14 +102,18 @@ test('the migration report records the taken-over data and what stays in place',
     expect(written.E23).toBeGreaterThanOrEqual(1);
     expect((written.E24 || 0) + (written.E17 || 0)).toBeGreaterThanOrEqual(1);
 
-    const covered = new Map(report.coverage.map(entry => [entry.entity, entry.kind]));
-    for (const entity of ['E01', 'E08', 'E19', 'E23']) expect(covered.get(entity), entity).toBe('step');
+    const kinds = entity => report.coverage.filter(entry => entry.entity === entity).map(entry => entry.kind);
+    for (const entity of ['E01', 'E08', 'E19', 'E23']) expect(kinds(entity), entity).toContain('step');
+    // Pending entities are entities (E..) or additions (A..) of the
+    // specification. An entity migrated in part (a step that leaves the
+    // rest for a later phase) is a step and pending at once; one that is
+    // only pending writes nothing.
     for (const pending of report.pending) {
-        expect(pending.entity).toMatch(/^E\d+$/);
+        expect(pending.entity).toMatch(/^[EA]\d+$/);
         expect(pending.phase).toMatch(/\S/);
         expect(pending.count).toBeGreaterThanOrEqual(0);
-        expect(covered.get(pending.entity), pending.entity).toBe('keep_in_place_pending');
-        expect(written[pending.entity] ?? 0, pending.entity).toBe(0);
+        expect(kinds(pending.entity), pending.entity).toContain('keep_in_place_pending');
+        if (!kinds(pending.entity).includes('step')) expect(written[pending.entity] ?? 0, pending.entity).toBe(0);
     }
     // The report never carries secrets of the fixture account.
     const text = fs.readFileSync(file, 'utf8');

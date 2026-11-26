@@ -2,7 +2,7 @@
 // signs in without a password. WebAuthn needs a secure context, so the
 // spec uses http://localhost (the configured relying party).
 const {test, expect} = require('playwright/test');
-const {freshBackend, attachLogOnFailure, kind} = require('./backend');
+const {freshBackend, attachLogOnFailure} = require('./backend');
 const ui = require('./ui');
 
 const admin = {username: 'm1passkey', password: 'M1-passkey-admin-password-9'};
@@ -23,7 +23,6 @@ test.afterAll(async () => {
 test.afterEach(async ({}, testInfo) => attachLogOnFailure(testInfo, backend));
 
 test('a registered passkey signs in without the password', async ({browser}) => {
-    test.fixme(kind === 'go', 'Passkeys come with package D1 (internal/auth/webauthn), which is not merged yet.');
     const context = await browser.newContext({baseURL: backend.localhostURL});
     const page = await context.newPage();
     const errors = [];
