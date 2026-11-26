@@ -1,28 +1,67 @@
 #!/bin/sh
-# Runs the kernel-facing route tests of internal/netpolicy inside a network
-# namespace, as an unprivileged user without capabilities.
+# Runs the kernel-facing tests of internal/netpolicy and
+# internal/ssh/tailscale inside a network namespace, as an unprivileged
+# user without capabilities.
 #   lab      joins lab-ts-node, the Tailscale stand-in of the test lab
 #            (tests/lab); nothing in the lab is changed
 #   crafted  an own namespace built by netns-crafted.sh in a throwaway
 #            holder container
+# In lab mode it also shows, with the Python release's socket options,
+# that IP_UNICAST_IF does not hold a TCP connection on tailscale0.
 set -eu
 mode=${1:?usage: netns-test.sh lab|crafted}
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
+lab_json=${WEBSSH_LAB_JSON:-$root/tests/lab/runtime/lab.json}
 out=$(mktemp -d)
 chmod 755 "$out"
 holder=""
 cleanup() {
 	[ -n "$holder" ] && docker rm -f "$holder" >/dev/null 2>&1
-	rm -f "$out/netpolicy.test"
+	rm -f "$out/netpolicy.test" "$out/tailscale.test" "$out/py-routes.json"
 	rmdir "$out"
 }
 trap cleanup EXIT
 (cd "$root" && CGO_ENABLED=0 go test -c -o "$out/netpolicy.test" ./internal/netpolicy)
+(cd "$root" && CGO_ENABLED=0 go test -c -o "$out/tailscale.test" ./internal/ssh/tailscale)
+# The addresses whose route the Python release and Go must agree on.
+addresses="100.100.100.10 100.64.0.1 100.100.100.2 8.8.8.8 127.0.0.1 fd7a:115c:a1e0::1 fd7a:115c:a1e0:b1a::a00:1
+100.100.1.1 fd7a:115c:a1e0::9 100.80.0.7 100.90.0.1 100.91.0.1 100.100.1.2 192.0.2.10 198.51.100.1 ::ffff:100.100.100.10"
 run_in() {
+	# shellcheck disable=SC2086
 	docker run --rm --network "container:$1" --cap-drop ALL --read-only --user 65534:65534 \
-		-e WEBSSH_NETNS="$mode" -v "$out:/t:ro" alpine:3 \
-		/t/netpolicy.test -test.v -test.count=1 -test.run 'Namespace|LookupRoute'
+		-v "$here/python_routes.py:/p/routes.py:ro" -v "$root/app/tailscale_ssh.py:/p/tailscale_ssh.py:ro" \
+		python:3.15-alpine python3 -I /p/routes.py /p/tailscale_ssh.py $addresses > "$out/py-routes.json"
+	docker run --rm --network "container:$1" --cap-drop ALL --read-only --user 65534:65534 \
+		-e WEBSSH_NETNS="$mode" -e WEBSSH_PY_ROUTES=/t/py-routes.json -v "$out:/t:ro" alpine:3 \
+		/t/netpolicy.test -test.v -test.count=1 -test.run 'Namespace|LookupRoute|DialInterface|PythonRoutes'
+	if [ "$mode" = lab ]; then
+		fingerprints=$(jq -r '.services.tailscale.target.host_key_fingerprints | [.[]] | join(",")' "$lab_json")
+		modern=$(docker inspect -f '{{(index .NetworkSettings.Networks "webssh-lab_front").IPAddress}}' webssh-lab-ssh-modern-1)
+		docker run --rm --network "container:$1" --cap-drop ALL --read-only --user 65534:65534 \
+			-e WEBSSH_NETNS="$mode" -e WEBSSH_TS_FINGERPRINTS="$fingerprints" -e WEBSSH_LAB_SSH_MODERN="$modern:22" \
+			-v "$out:/t:ro" alpine:3 /t/tailscale.test -test.v -test.count=1 -test.run 'Lab'
+		echo "### Python socket options (app/network_policy.py) against ssh-modern on eth0"
+		docker run --rm --network "container:$1" --cap-drop ALL --read-only --user 65534:65534 \
+			-e MODERN="$modern" python:3.15-alpine python3 -I -c '
+import os, socket
+target = (os.environ["MODERN"], 22)
+def attempt(label, configure):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(3)
+    try:
+        configure(s)
+        s.connect(target)
+        print(label, "CONNECTED", s.recv(32))
+    except OSError as error:
+        print(label, "REFUSED", type(error).__name__, error.strerror or "")
+    finally:
+        s.close()
+index = socket.htonl(socket.if_nametoindex("tailscale0"))
+attempt("IP_UNICAST_IF (Python release):", lambda s: s.setsockopt(socket.IPPROTO_IP, 50, index))
+attempt("SO_BINDTODEVICE (Go):          ", lambda s: s.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, b"tailscale0"))
+'
+	fi
 }
 case "$mode" in
 lab)

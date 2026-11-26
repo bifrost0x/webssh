@@ -4,6 +4,7 @@ package netpolicy
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"net"
 	"net/netip"
@@ -120,6 +121,23 @@ func TestLabTailscaleNamespace(t *testing.T) {
 	if _, err := p.Admit(t.Context(), RoleSSH, "8.8.8.8", 22); err != nil {
 		t.Errorf("public address: %v", err)
 	}
+	// D-28 under D-01 with the real kernel: an upgraded installation keeps
+	// ordinary SSH to the node while Tailscale SSH is off, and the gap is
+	// reported; with the switch on the rule applies again.
+	legacy, err := New(Config{Tailnet: Tailnet{Interface: "tailscale0", FollowsSwitch: func() bool { return true }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Admit(t.Context(), RoleSSH, "100.100.100.10", 22); err != nil || !legacy.TailnetLegacyGap() {
+		t.Errorf("upgraded installation with Tailscale SSH off: %v, gap %v", err, legacy.TailnetLegacyGap())
+	}
+	legacyOn, err := New(Config{Tailnet: Tailnet{Interface: "tailscale0", FeatureEnabled: true, FollowsSwitch: func() bool { return true }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyOn.Admit(t.Context(), RoleSSH, "100.100.100.10", 22); !errors.Is(err, ErrTailnetRestricted) {
+		t.Errorf("upgraded installation with Tailscale SSH on: %v", err)
+	}
 	noResolve := func(context.Context, string) ([]netip.Addr, error) { return nil, errors.New("no resolver") }
 	if !(Tailnet{Interface: "tailscale0"}).remoteNameRestricted(t.Context(), "ts-target-alias.ts.net", noResolve) {
 		t.Error("MagicDNS name must be refused")
@@ -190,4 +208,47 @@ func TestDialInterfacePinsTheSocket(t *testing.T) {
 		return
 	}
 	t.Log("no other interface is up; only the lo case ran")
+}
+
+// TestPythonRoutesInNamespace compares the kernel's answers through the
+// Python release's lookup (testdata/python_routes.py, run by
+// netns-test.sh in the same namespace) with LookupRoute. Python returns
+// no interface for an IPv4-mapped address, whose route the kernel only
+// knows in its IPv4 form; Go's callers unmap first, so that one entry is
+// compared with the IPv4 route.
+func TestPythonRoutesInNamespace(t *testing.T) {
+	path := os.Getenv("WEBSSH_PY_ROUTES")
+	if path == "" {
+		t.Skip("run with testdata/netns-test.sh")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var python map[string]*string
+	if err := json.Unmarshal(raw, &python); err != nil || len(python) < 10 {
+		t.Fatalf("python routes: %v (%d)", err, len(python))
+	}
+	for text, want := range python {
+		addr := netip.MustParseAddr(text)
+		r, err := LookupRoute(t.Context(), addr)
+		got := ""
+		if err == nil {
+			got = r.Interface
+		}
+		w := ""
+		if want != nil {
+			w = *want
+		}
+		if addr.Is4In6() {
+			if w != "" {
+				t.Errorf("%s: python found %q for a mapped address", text, w)
+			}
+			continue
+		}
+		if got != w {
+			t.Errorf("%s: python %q, go %q (%v)", text, w, got, err)
+		}
+		t.Logf("%-28s python=%-10q go=%q", text, w, got)
+	}
 }
