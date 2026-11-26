@@ -1,10 +1,13 @@
 // Package keyring derives per-purpose keys from SECRET_KEY and the keyring
 // material and seals every secret Go writes (ADR 0008).
 //
-// This file fixes the vocabulary shared with the capabilities: the closed
+// purpose.go fixes the vocabulary shared with the capabilities: the closed
 // list of purposes and the associated data that binds a ciphertext to its
-// record. The Ring itself (HKDF derivation, AES-256-GCM, MAC, key id,
-// material handling) is specified in docs/architecture/m1-contracts.md.
+// record. ring.go derives the keys (HKDF-SHA256) and seals (AES-256-GCM)
+// and MACs (HMAC-SHA256) with them; material.go keeps the material file in
+// the place the migration specification assigns (sections 2.2 and 5.9);
+// rotate.go reseals for a new SECRET_KEY; scope.go is the browser-local
+// namespace derivation of the Python release.
 package keyring
 
 import (
