@@ -1,0 +1,1387 @@
+{
+ "backups": {
+  "backups/backup-v1-8c41517.zip": {
+   "release": "backup_v1",
+   "source": "datadir-v1.0.0.tar started by 8c41517",
+   "values": {
+    "files": [
+     {
+      "path": "app.db",
+      "sha256": "35ba9d92ce9fa12293861e935c08c4bbccdeb0e16aeb098a7802a6460a7f482c",
+      "size": 122880
+     },
+     {
+      "path": "app_settings.json",
+      "sha256": "7d9bb57371d7a47d4b63f94b0b0ad73970fc8613be63fbb385653915237efca0",
+      "size": 58
+     },
+     {
+      "path": "app_settings.json.36997acf75834798ba29d8c1faddd631.bak",
+      "sha256": "c1b5a5eda023c51078d93948d20b0b1e17f7cd3228142f4d96c652ac22b9ad03",
+      "size": 31
+     },
+     {
+      "path": "users/user_2/command_sets.json",
+      "sha256": "b5260563ef8bcffae5fcdfb99b70c6ffa5cf986417bce7e0e9c569e44fb33471",
+      "size": 485
+     },
+     {
+      "path": "users/user_2/commands.json",
+      "sha256": "8b97b25600cefff203ebbcc62544025ab8913b0c3ab57edcb2580baff93ba716",
+      "size": 310
+     },
+     {
+      "path": "users/user_2/jump_hosts.json",
+      "sha256": "86e0e7f2e0900159124da742727afa68e2d898c80498e1d86edcbb2d1259ef66",
+      "size": 330
+     },
+     {
+      "path": "users/user_2/keys/4debd7d8-2adb-444d-9590-4f0233cd08a9.pem",
+      "sha256": "0cb63495c9d075ec26132d07658a41a9089f01a0af741c7cbf648f76839e3afb",
+      "size": 248
+     },
+     {
+      "path": "users/user_2/keys/6f44b766-52e1-4dcc-895b-0926e27856ca.pem",
+      "sha256": "58db206e877f0a7468d1482e8079dd515eb6955f0527049acfcbbc574cab7101",
+      "size": 972
+     },
+     {
+      "path": "users/user_2/keys/8f3efed3-e161-4701-9d62-dffa74d9d89f.pem",
+      "sha256": "1ba058f544b70f07abb00fb857ac2802c214078a6d4ee397290179680452843c",
+      "size": 2488
+     },
+     {
+      "path": "users/user_2/keys/b1bc3dd2-1ac1-42e6-ae53-39242ded2158.pem",
+      "sha256": "004da5c8cd1996c24dfd741680f6b45758295751521b40ecf8b7c2723e82c3c8",
+      "size": 2444
+     },
+     {
+      "path": "users/user_2/keys/keys.json",
+      "sha256": "e0021433a7064d9a08dfa91802c9000f4232c90d66df101999f1c02629228e09",
+      "size": 1063
+     },
+     {
+      "path": "users/user_2/profiles.json",
+      "sha256": "ca43be35d8e5e441f5aa203df8923ba0a7cccff6a5a27d5a50e508f7ce63b320",
+      "size": 3622
+     },
+     {
+      "path": "users/user_2/settings.json",
+      "sha256": "8bcf056c30e4e0b2a606f408e8ba450ccea2eed21d52bd917c5887e0dd71008e",
+      "size": 101
+     },
+     {
+      "path": "users/user_3/profiles.json",
+      "sha256": "a1dfeee8f8ffe99714f7ddaabf06731c012cc8bdbebf85f22b4ed5a7508cba86",
+      "size": 402
+     },
+     {
+      "path": "users/user_4/command_sets.json",
+      "sha256": "0b39c38293eb1f1650d47f388742e34462407f7955987c76adac672ff549fc62",
+      "size": 5806
+     },
+     {
+      "path": "users/user_4/commands.json",
+      "sha256": "1844f7b3d6c18ab6d90966538b97aa96320ebf41e8ae1e0147981c9e63a86fe9",
+      "size": 145683
+     }
+    ],
+    "format_version": 1,
+    "profile": "9a463400-0ef0-476a-ab67-ed8fc136e232"
+   }
+  },
+  "backups/outdated-secret-key.zip": {
+   "archived_secret_key": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "data_schema_version": 2,
+   "files": [
+    {
+     "path": "app.db",
+     "sha256": "889d4933a5767f1dc8e1a713dd9f8247a0448a20d8d35a5322297bf7b433bcc1",
+     "size": 389120
+    },
+    {
+     "path": "app_settings.json",
+     "sha256": "b02b292c0e8af31476cc013a440fdde81a5aa8f55f4d6001435b3c18330f21f1",
+     "size": 412
+    },
+    {
+     "path": "commands/system_commands.json",
+     "sha256": "89b7d72527cddd58679597767afdd9419211961b4bcd75b40e2747c89054b9a8",
+     "size": 123
+    },
+    {
+     "path": "known_hosts",
+     "sha256": "6281bb97e41b7d1eb80f50135448fa89cfc23aafe8c512b18317bbb537c7b434",
+     "size": 629
+    },
+    {
+     "path": "profiles.json",
+     "sha256": "9e60c1c2a79441c2b212cf2b466ee1f4d11546251a33033afb92dd39e1d48545",
+     "size": 209
+    },
+    {
+     "path": "recovery-check.json",
+     "sha256": "8d04284e241cec6b381b483ffe897d8925b61177e1b9248e2e500b82351a90a0",
+     "size": 87
+    },
+    {
+     "path": "secret_key",
+     "sha256": "f2363c9e122462f7ce9aabb44384f945eb39e65b8f0be40c754e85336dee359e",
+     "size": 65
+    },
+    {
+     "path": "session_epoch",
+     "sha256": "29ee6041306cb123f7f0e8639b8386160f9059cafa5bfca0cc846ca41badc4be",
+     "size": 65
+    },
+    {
+     "path": "users/user_13/command_sets.json",
+     "sha256": "a32665a5341a5ea921a1fb99a63ced2eeb62b8bcede149463d3dedf7355ace89",
+     "size": 451
+    },
+    {
+     "path": "users/user_13/commands.json",
+     "sha256": "0b864b1c07b9faaf2d864ec11dbf8cfb4f58b7c7ae1674c7ad0f467bb9870816",
+     "size": 365
+    },
+    {
+     "path": "users/user_13/jump_hosts.json",
+     "sha256": "81a1502be9aca022de861b12f71c6eb43429afbb4aa303bc1d3033457e9c47ee",
+     "size": 352
+    },
+    {
+     "path": "users/user_13/profiles.json",
+     "sha256": "5ed14ba2103673e03645c3cf09d2c676e9cecc644969c667d7c0a8ba3db0038b",
+     "size": 1246
+    },
+    {
+     "path": "users/user_13/settings.json",
+     "sha256": "6e60530d86af93b751f83e67a819620b65c20ccbf5f70eeea9c51216c7caf7e6",
+     "size": 403
+    },
+    {
+     "path": "users/user_13/smb_shares.json",
+     "sha256": "dec719eaa53b3b7f0a1d1d406d083557f7b596cee310d00d36fa0107fceaeea4",
+     "size": 338
+    },
+    {
+     "path": "users/user_13/socks_proxies.json",
+     "sha256": "64f194e9e58bd02fb4c2db767a601d89743fd4033b5c393f65c0d78fdb7021ca",
+     "size": 318
+    },
+    {
+     "path": "users/user_14/profiles.json",
+     "sha256": "bfdcefa23f7816ff762f9aa6bc56905583750d90c8d8812418b623879e388330",
+     "size": 459
+    },
+    {
+     "path": "users/user_3/automation-runs.json",
+     "sha256": "2d5cecb3bb2154596ecc1f1f70f6b27f56f0d38904f7ddc2b48c3592f31f13f2",
+     "size": 1065
+    },
+    {
+     "path": "users/user_3/automation.json",
+     "sha256": "bacab2de31f203a61211937d71950aac6d798d82033835032392b6344b67c385",
+     "size": 3445
+    },
+    {
+     "path": "users/user_3/command_sets.json",
+     "sha256": "b37016b2320de869205306ee8f1e577c0f83dfe7eecaec36fad105a4e06cb112",
+     "size": 1443
+    },
+    {
+     "path": "users/user_3/commands.json",
+     "sha256": "e98771e363049f9da0dbc2f90c6c4c98398f63eb892d2006fd76de5ece7456eb",
+     "size": 743
+    },
+    {
+     "path": "users/user_3/host_context.json",
+     "sha256": "7acc0e04a713799c95e904ab8fd7c95f7a59b415e7a3ef1fc686da6417ce9165",
+     "size": 4980
+    },
+    {
+     "path": "users/user_3/jump_hosts.json",
+     "sha256": "417ed5289b741c6f987fabfc7e870584de216deac36c9f118dcae46d7fcd26ce",
+     "size": 358
+    },
+    {
+     "path": "users/user_3/known_hosts",
+     "sha256": "cc2115d31e7232f109d740cf86ca93e83ff37dec95f2221d6bcfe7aa68467118",
+     "size": 280
+    },
+    {
+     "path": "users/user_3/profiles.json",
+     "sha256": "08f4616a16f7a34380f95862acdf030c928a6ca428d75d91142e910757f9ed8d",
+     "size": 4364
+    },
+    {
+     "path": "users/user_3/settings.json",
+     "sha256": "10e95b3adaadb3bfa0cc8fa72573069693c0d8fd884dea6577d0485f33072d6f",
+     "size": 949
+    },
+    {
+     "path": "users/user_3/smb_shares.json",
+     "sha256": "bff0cd5050ed1b7a7020a213a7574becc754147d3daf7cf4ef7e52cb3630ffbc",
+     "size": 758
+    },
+    {
+     "path": "users/user_3/socks_proxies.json",
+     "sha256": "e6914af6cb5a25043d7c8e6715ab5b167dd239ae445898be96cd3a3aedfc5d40",
+     "size": 700
+    }
+   ],
+   "format_version": 2
+  },
+  "backups/with-go-dir.zip": {
+   "data_schema_version": 2,
+   "files": [
+    {
+     "path": "app.db",
+     "sha256": "889d4933a5767f1dc8e1a713dd9f8247a0448a20d8d35a5322297bf7b433bcc1",
+     "size": 389120
+    },
+    {
+     "path": "app_settings.json",
+     "sha256": "b02b292c0e8af31476cc013a440fdde81a5aa8f55f4d6001435b3c18330f21f1",
+     "size": 412
+    },
+    {
+     "path": "commands/system_commands.json",
+     "sha256": "89b7d72527cddd58679597767afdd9419211961b4bcd75b40e2747c89054b9a8",
+     "size": 123
+    },
+    {
+     "path": "go/webssh.db",
+     "sha256": "dd221b468cd564c8f13f0f6cb7990d59042ee4404f4323863a74f6ec1800d7ec",
+     "size": 8192
+    },
+    {
+     "path": "known_hosts",
+     "sha256": "6281bb97e41b7d1eb80f50135448fa89cfc23aafe8c512b18317bbb537c7b434",
+     "size": 629
+    },
+    {
+     "path": "profiles.json",
+     "sha256": "9e60c1c2a79441c2b212cf2b466ee1f4d11546251a33033afb92dd39e1d48545",
+     "size": 209
+    },
+    {
+     "path": "recovery-check.json",
+     "sha256": "8d04284e241cec6b381b483ffe897d8925b61177e1b9248e2e500b82351a90a0",
+     "size": 87
+    },
+    {
+     "path": "secret_key",
+     "sha256": "8185a570234044195a08c0736f511951d2e6ee4a2500a8923361e7669cf584e4",
+     "size": 65
+    },
+    {
+     "path": "session_epoch",
+     "sha256": "29ee6041306cb123f7f0e8639b8386160f9059cafa5bfca0cc846ca41badc4be",
+     "size": 65
+    },
+    {
+     "path": "users/user_13/command_sets.json",
+     "sha256": "a32665a5341a5ea921a1fb99a63ced2eeb62b8bcede149463d3dedf7355ace89",
+     "size": 451
+    },
+    {
+     "path": "users/user_13/commands.json",
+     "sha256": "0b864b1c07b9faaf2d864ec11dbf8cfb4f58b7c7ae1674c7ad0f467bb9870816",
+     "size": 365
+    },
+    {
+     "path": "users/user_13/jump_hosts.json",
+     "sha256": "81a1502be9aca022de861b12f71c6eb43429afbb4aa303bc1d3033457e9c47ee",
+     "size": 352
+    },
+    {
+     "path": "users/user_13/profiles.json",
+     "sha256": "5ed14ba2103673e03645c3cf09d2c676e9cecc644969c667d7c0a8ba3db0038b",
+     "size": 1246
+    },
+    {
+     "path": "users/user_13/settings.json",
+     "sha256": "6e60530d86af93b751f83e67a819620b65c20ccbf5f70eeea9c51216c7caf7e6",
+     "size": 403
+    },
+    {
+     "path": "users/user_13/smb_shares.json",
+     "sha256": "dec719eaa53b3b7f0a1d1d406d083557f7b596cee310d00d36fa0107fceaeea4",
+     "size": 338
+    },
+    {
+     "path": "users/user_13/socks_proxies.json",
+     "sha256": "64f194e9e58bd02fb4c2db767a601d89743fd4033b5c393f65c0d78fdb7021ca",
+     "size": 318
+    },
+    {
+     "path": "users/user_14/profiles.json",
+     "sha256": "bfdcefa23f7816ff762f9aa6bc56905583750d90c8d8812418b623879e388330",
+     "size": 459
+    },
+    {
+     "path": "users/user_3/automation-runs.json",
+     "sha256": "2d5cecb3bb2154596ecc1f1f70f6b27f56f0d38904f7ddc2b48c3592f31f13f2",
+     "size": 1065
+    },
+    {
+     "path": "users/user_3/automation.json",
+     "sha256": "bacab2de31f203a61211937d71950aac6d798d82033835032392b6344b67c385",
+     "size": 3445
+    },
+    {
+     "path": "users/user_3/command_sets.json",
+     "sha256": "b37016b2320de869205306ee8f1e577c0f83dfe7eecaec36fad105a4e06cb112",
+     "size": 1443
+    },
+    {
+     "path": "users/user_3/commands.json",
+     "sha256": "e98771e363049f9da0dbc2f90c6c4c98398f63eb892d2006fd76de5ece7456eb",
+     "size": 743
+    },
+    {
+     "path": "users/user_3/host_context.json",
+     "sha256": "7acc0e04a713799c95e904ab8fd7c95f7a59b415e7a3ef1fc686da6417ce9165",
+     "size": 4980
+    },
+    {
+     "path": "users/user_3/jump_hosts.json",
+     "sha256": "417ed5289b741c6f987fabfc7e870584de216deac36c9f118dcae46d7fcd26ce",
+     "size": 358
+    },
+    {
+     "path": "users/user_3/known_hosts",
+     "sha256": "cc2115d31e7232f109d740cf86ca93e83ff37dec95f2221d6bcfe7aa68467118",
+     "size": 280
+    },
+    {
+     "path": "users/user_3/profiles.json",
+     "sha256": "08f4616a16f7a34380f95862acdf030c928a6ca428d75d91142e910757f9ed8d",
+     "size": 4364
+    },
+    {
+     "path": "users/user_3/settings.json",
+     "sha256": "10e95b3adaadb3bfa0cc8fa72573069693c0d8fd884dea6577d0485f33072d6f",
+     "size": 949
+    },
+    {
+     "path": "users/user_3/smb_shares.json",
+     "sha256": "bff0cd5050ed1b7a7020a213a7574becc754147d3daf7cf4ef7e52cb3630ffbc",
+     "size": 758
+    },
+    {
+     "path": "users/user_3/socks_proxies.json",
+     "sha256": "e6914af6cb5a25043d7c8e6715ab5b167dd239ae445898be96cd3a3aedfc5d40",
+     "size": 700
+    }
+   ],
+   "format_version": 2
+  },
+  "backups/with-logs-members.zip": {
+   "data_schema_version": 2,
+   "files": [
+    {
+     "path": "app.db",
+     "sha256": "889d4933a5767f1dc8e1a713dd9f8247a0448a20d8d35a5322297bf7b433bcc1",
+     "size": 389120
+    },
+    {
+     "path": "app_settings.json",
+     "sha256": "b02b292c0e8af31476cc013a440fdde81a5aa8f55f4d6001435b3c18330f21f1",
+     "size": 412
+    },
+    {
+     "path": "commands/system_commands.json",
+     "sha256": "89b7d72527cddd58679597767afdd9419211961b4bcd75b40e2747c89054b9a8",
+     "size": 123
+    },
+    {
+     "path": "known_hosts",
+     "sha256": "6281bb97e41b7d1eb80f50135448fa89cfc23aafe8c512b18317bbb537c7b434",
+     "size": 629
+    },
+    {
+     "path": "logs/app.log",
+     "sha256": "5980ebde634f8bd63c72bec196223ecefd498dd3f07699ad26ca8ceac5ab6851",
+     "size": 84
+    },
+    {
+     "path": "profiles.json",
+     "sha256": "9e60c1c2a79441c2b212cf2b466ee1f4d11546251a33033afb92dd39e1d48545",
+     "size": 209
+    },
+    {
+     "path": "recovery-check.json",
+     "sha256": "8d04284e241cec6b381b483ffe897d8925b61177e1b9248e2e500b82351a90a0",
+     "size": 87
+    },
+    {
+     "path": "secret_key",
+     "sha256": "f2363c9e122462f7ce9aabb44384f945eb39e65b8f0be40c754e85336dee359e",
+     "size": 65
+    },
+    {
+     "path": "session_epoch",
+     "sha256": "29ee6041306cb123f7f0e8639b8386160f9059cafa5bfca0cc846ca41badc4be",
+     "size": 65
+    },
+    {
+     "path": "users/user_13/command_sets.json",
+     "sha256": "a32665a5341a5ea921a1fb99a63ced2eeb62b8bcede149463d3dedf7355ace89",
+     "size": 451
+    },
+    {
+     "path": "users/user_13/commands.json",
+     "sha256": "0b864b1c07b9faaf2d864ec11dbf8cfb4f58b7c7ae1674c7ad0f467bb9870816",
+     "size": 365
+    },
+    {
+     "path": "users/user_13/jump_hosts.json",
+     "sha256": "81a1502be9aca022de861b12f71c6eb43429afbb4aa303bc1d3033457e9c47ee",
+     "size": 352
+    },
+    {
+     "path": "users/user_13/profiles.json",
+     "sha256": "5ed14ba2103673e03645c3cf09d2c676e9cecc644969c667d7c0a8ba3db0038b",
+     "size": 1246
+    },
+    {
+     "path": "users/user_13/settings.json",
+     "sha256": "6e60530d86af93b751f83e67a819620b65c20ccbf5f70eeea9c51216c7caf7e6",
+     "size": 403
+    },
+    {
+     "path": "users/user_13/smb_shares.json",
+     "sha256": "dec719eaa53b3b7f0a1d1d406d083557f7b596cee310d00d36fa0107fceaeea4",
+     "size": 338
+    },
+    {
+     "path": "users/user_13/socks_proxies.json",
+     "sha256": "64f194e9e58bd02fb4c2db767a601d89743fd4033b5c393f65c0d78fdb7021ca",
+     "size": 318
+    },
+    {
+     "path": "users/user_14/profiles.json",
+     "sha256": "bfdcefa23f7816ff762f9aa6bc56905583750d90c8d8812418b623879e388330",
+     "size": 459
+    },
+    {
+     "path": "users/user_3/automation-runs.json",
+     "sha256": "2d5cecb3bb2154596ecc1f1f70f6b27f56f0d38904f7ddc2b48c3592f31f13f2",
+     "size": 1065
+    },
+    {
+     "path": "users/user_3/automation.json",
+     "sha256": "bacab2de31f203a61211937d71950aac6d798d82033835032392b6344b67c385",
+     "size": 3445
+    },
+    {
+     "path": "users/user_3/command_sets.json",
+     "sha256": "b37016b2320de869205306ee8f1e577c0f83dfe7eecaec36fad105a4e06cb112",
+     "size": 1443
+    },
+    {
+     "path": "users/user_3/commands.json",
+     "sha256": "e98771e363049f9da0dbc2f90c6c4c98398f63eb892d2006fd76de5ece7456eb",
+     "size": 743
+    },
+    {
+     "path": "users/user_3/host_context.json",
+     "sha256": "7acc0e04a713799c95e904ab8fd7c95f7a59b415e7a3ef1fc686da6417ce9165",
+     "size": 4980
+    },
+    {
+     "path": "users/user_3/jump_hosts.json",
+     "sha256": "417ed5289b741c6f987fabfc7e870584de216deac36c9f118dcae46d7fcd26ce",
+     "size": 358
+    },
+    {
+     "path": "users/user_3/known_hosts",
+     "sha256": "cc2115d31e7232f109d740cf86ca93e83ff37dec95f2221d6bcfe7aa68467118",
+     "size": 280
+    },
+    {
+     "path": "users/user_3/profiles.json",
+     "sha256": "08f4616a16f7a34380f95862acdf030c928a6ca428d75d91142e910757f9ed8d",
+     "size": 4364
+    },
+    {
+     "path": "users/user_3/settings.json",
+     "sha256": "10e95b3adaadb3bfa0cc8fa72573069693c0d8fd884dea6577d0485f33072d6f",
+     "size": 949
+    },
+    {
+     "path": "users/user_3/smb_shares.json",
+     "sha256": "bff0cd5050ed1b7a7020a213a7574becc754147d3daf7cf4ef7e52cb3630ffbc",
+     "size": 758
+    },
+    {
+     "path": "users/user_3/socks_proxies.json",
+     "sha256": "e6914af6cb5a25043d7c8e6715ab5b167dd239ae445898be96cd3a3aedfc5d40",
+     "size": 700
+    }
+   ],
+   "format_version": 2,
+   "log_member": "data/logs/app.log"
+  }
+ },
+ "cases": [
+  {
+   "case": "vault passphrase in the manifest",
+   "where": "main manifest values.vault_passphrase; values.extended.vault_v1.passphrase"
+  },
+  {
+   "case": "backup format version 1",
+   "where": "backups/backup-v1-8c41517.zip (written by 8c41517)"
+  },
+  {
+   "case": "vault version 1",
+   "where": "datadir-extended.tar, user legacy_stores (constructed, no release wrote v1)"
+  },
+  {
+   "case": "store files at schema 0",
+   "where": "datadir-2fcd38a.tar and datadir-v1.0.0.tar (written by the releases)"
+  },
+  {
+   "case": "store files at schema 1",
+   "where": "datadir-extended.tar, user legacy_stores (constructed); variant app_settings_schema_1"
+  },
+  {
+   "case": "profiles at schema 2 with tailscale_authorized",
+   "where": "datadir-extended.tar, user legacy_profiles_v2 (constructed); backup-v1 (8c41517)"
+  },
+  {
+   "case": "commands.json object form",
+   "where": "datadir-extended.tar, user legacy_stores (constructed from 131964f)"
+  },
+  {
+   "case": "database with missing additive columns",
+   "where": "datadir-2fcd38a.tar (no is_admin/is_locked), datadir-v1.0.0.tar"
+  },
+  {
+   "case": "DSA and passphrase-protected key files",
+   "where": "datadir-2fcd38a.tar, pioneer_user (written by 2fcd38a)"
+  },
+  {
+   "case": "records above current limits",
+   "where": "datadir-v1.0.0.tar bulk_user (501 commands, 65 set steps); 2fcd38a 200-character profile name"
+  },
+  {
+   "case": "non-empty global notepad",
+   "where": "datadir-2fcd38a.tar pioneer_user; datadir-extended.tar local_user"
+  },
+  {
+   "case": "workspace presets and tour state",
+   "where": "datadir-extended.tar local_user"
+  },
+  {
+   "case": "persistent ssh_sessions with display names",
+   "where": "datadir-v1.0.0.tar; datadir-extended.tar local_user"
+  },
+  {
+   "case": "created_at NULL and created_at vectors",
+   "where": "datadir-extended.tar users created_null, created_vector_*"
+  },
+  {
+   "case": "interrupted key deletion",
+   "where": "datadir-extended.tar local_user (both crash points)"
+  },
+  {
+   "case": "schedule with a stale claim",
+   "where": "datadir-extended.tar"
+  },
+  {
+   "case": "schedule with the incarnation of a deleted account",
+   "where": "datadir-extended.tar"
+  },
+  {
+   "case": "host context for a deleted profile",
+   "where": "datadir-extended.tar local_user"
+  },
+  {
+   "case": "recovery-check.json",
+   "where": "datadir-extended.tar; variants recovery_check_malformed, recovery_check_oversized"
+  },
+  {
+   "case": "restore-status.json per state",
+   "where": "values.extended.restore_status (path-bound, materialised by the test)"
+  },
+  {
+   "case": "Python backup with data/go/",
+   "where": "backups/with-go-dir.zip"
+  },
+  {
+   "case": "Python backup with data/logs/",
+   "where": "backups/with-logs-members.zip (edited archive)"
+  },
+  {
+   "case": "SECRET_KEY variants of I-08",
+   "where": "variants secret_key_*"
+  },
+  {
+   "case": "backup with an outdated data/secret_key",
+   "where": "backups/outdated-secret-key.zip"
+  },
+  {
+   "case": "LDAP revocation fence",
+   "where": "datadir-extended.tar .ldap-revocation-fences/<ldap_user id>"
+  },
+  {
+   "case": "sqlite_stat1, extra index, unknown table",
+   "where": "datadir-extended.tar app.db"
+  },
+  {
+   "case": "trigger and view in app.db",
+   "where": "variant database_trigger_and_view (SQL to apply)"
+  },
+  {
+   "case": "@cert-authority line",
+   "where": "datadir-extended.tar known_hosts"
+  },
+  {
+   "case": "ADMIN_USERS naming a missing account",
+   "where": "variant admin_users_missing_account"
+  },
+  {
+   "case": "legacy single-user paths",
+   "where": "datadir-extended.tar profiles.json, keys/, commands/ at the root (constructed)"
+  }
+ ],
+ "datadirs": {
+  "datadir-2fcd38a.tar": {
+   "note": "state after the initial release only",
+   "release": "initial",
+   "values": {
+    "command": "1717765d-3ffe-435d-acab-7fccf1d8938c",
+    "keys": {
+     "dsa_pem": {
+      "filename": "6f44b766-52e1-4dcc-895b-0926e27856ca.pem",
+      "key_id": "6f44b766-52e1-4dcc-895b-0926e27856ca",
+      "key_type": "DSA",
+      "plaintext_b64": "LS0tLS1CRUdJTiBEU0EgUFJJVkFURSBLRVktLS0tLQpNSUlCdWdJQkFBS0JnUUNEVnVrL1FmZ0s2TnRtaURCdWpKYlMxZFBEU1VFUzBTV3kzYlFsOUFGM285V1AyTDVICkk4ZURoWjJUTG9sZklFNGkzSm5hY2I2bndxRDlPY3B0VmxwdmRzOTE4dVZkUCtVQytXc2lzcEkvcU1iK2JYVG8KanZ0ZDhVUklWeGNKNDZ6c3haUk10M2JhZWNPVG5IVVJiekN6MEYyajZLbkl1SFB4MjVxRGpHWVhsd0lWQUxZRQo0eGI1N3RWYk13d3FjZjh6bzJQS1AzSG5Bb0dBWmpPN1Q3aVgreFNVYzA1ZldHZERZZ3o1MjZFaFpQY3dVdGlRCjczVStIUm5qUk1MK3hsQ2ZydE0zVXNINzcyWFNmNEtYVWlkdFhqTmNUcG02aytqbWhGRDBxV1RaMWNmM0lVUTUKSk1BOEdIU0Fja3BaWGxkayszSG1sc3diVWl3bm1RdUtEWDA1bWEvVHpYTGs4OTNYTjhTZTZWTU1lWi9CZFJBRApCT0t6QzJjQ2dZQTdJNzVLQVBhYnZHNkdMbGUzRE5tL2g3UTJNSjVZLzlYVWV2bVlXNWVjMEx4YjVjem05dXJ1Cis3UXNMUEM1RkxiZ0JOazQwK0xuU3p1RlpORkFVSUlsV1FhbHM3TFFFeFl0NVduY3Q5UmlVK2pvL094Y0VBVU4KZGdpUDFQTXVzZ1pwVGtLaWpwT3F4bnN6S2UrRVFTZTh2UXlSUk82SFBuMU44V1MzdlFkRWhBSVVibkI0NWRSVwpZanh3T3kzVFc0QXRscGdWM0lRPQotLS0tLUVORCBEU0EgUFJJVkFURSBLRVktLS0tLQo=",
+      "stored_file": "data/users/user_2/keys/6f44b766-52e1-4dcc-895b-0926e27856ca.pem"
+     },
+     "ed25519_pkcs8": {
+      "filename": "4debd7d8-2adb-444d-9590-4f0233cd08a9.pem",
+      "key_id": "4debd7d8-2adb-444d-9590-4f0233cd08a9",
+      "key_type": "Ed25519/Generic",
+      "plaintext_b64": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSUIxcTZISnk5WHkwdHREdlovVlZnZkVZQTVyemtBZ3NDVEJ4aHVpQXBzRGwKLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo=",
+      "stored_file": "data/users/user_2/keys/4debd7d8-2adb-444d-9590-4f0233cd08a9.pem"
+     },
+     "rsa_openssh": {
+      "filename": "8f3efed3-e161-4701-9d62-dffa74d9d89f.pem",
+      "key_id": "8f3efed3-e161-4701-9d62-dffa74d9d89f",
+      "key_type": "RSA",
+      "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUJGd0FBQUFkemMyZ3Rjbk5oQUFBQQpBd0VBQVFBQUFRRUFzRWxCOVpGbkZDM0FQMDZXd2VUZkx0c0VCSWpldnRCbjQxc1c2Qlpwc1NRUEJrZGNhMms0SFBscWJENE1HZWNsCnBZbTducWdrSjU2bzh3UHYwK3Z2amoreUhSY0dZckV2NDhvTnJOdVJnUDlmUmRXMlNGc1dZNjJQMyt6K1FaSEpxM3VHZDNYSDJkQVYKVXMrWWcrYTBOdkRKV2E5Uk82THFLaDRNc1k2aDhDd2J3MWRDdXJacTZvUUtVZFUxUDRHdC9aNDA4bkdiQTNkdlBBZGVyczZJaHZoLwpnWFJMNjJtNFZoV0JvRlc0cGRUakRrWnBpQm5GZzh6RDljNE1ZTDdTQ2xRdUlJM0JXemVmdHNRK3FYb3hVdjhOUmxQWWFwY3pza1RQCnpOd3RUd3RvNUpVZk5qV1hyYlBoYS9CVkVuUTZKSWNoaG5FWk53Wm1ObHAwR2ROcFR3QUFBN2hjaXJYdlhJcTE3d0FBQUFkemMyZ3QKY25OaEFBQUJBUUN3U1VIMWtXY1VMY0EvVHBiQjVOOHUyd1FFaU42KzBHZmpXeGJvRm1teEpBOEdSMXhyYVRnYytXcHNQZ3daNXlXbAppYnVlcUNRbm5xanpBKy9UNisrT1A3SWRGd1ppc1MvanlnMnMyNUdBLzE5RjFiWklXeFpqclkvZjdQNUJrY21yZTRaM2RjZlowQlZTCno1aUQ1clEyOE1sWnIxRTdvdW9xSGd5eGpxSHdMQnZEVjBLNnRtcnFoQXBSMVRVL2dhMzlualR5Y1pzRGQyODhCMTZ1em9pRytIK0IKZEV2cmFiaFdGWUdnVmJpbDFPTU9SbW1JR2NXRHpNUDF6Z3hndnRJS1ZDNGdqY0ZiTjUrMnhENnBlakZTL3cxR1U5aHFsek95Uk0vTQozQzFQQzJqa2xSODJOWmV0cytGcjhGVVNkRG9raHlHR2NSazNCbVkyV25RWjAybFBBQUFBQXdFQUFRQUFBUUVBa0dHdnNCMEN1N2dzCitLeTVOTnpySGtrckpUdWtrOHZGQ3FVVVFjbjVqcWZsMWxLa0V5VCtYRnk3R1NSSWJQNndDc0NmOWZYb2hycWZ6VW13SjNYWm9qdncKK1hwZU5IN0NwbUphaVBUY1d6Yk5KVGxBTGtyTUw1OTdjdjk3enVCRXVEcFhpNGZmd3psMS9Ya2hoUVp6RzN4aXJSMjEvbzRVRTZMQQo2cnZUVGd5MkV2OG84ckpoMDhDak1wM1FUQzFaYmUwRThvRnF2ZS9yRjdZS2ZGUXFTdGhZNHdHdy9TMmhBWXNRU2wxaEJCWFdqMlRKCnRzOUVUOE1TbGw1Y0RIcG5pWXlzbzU4eGF0MVp5Q2dpL09MOU1nd2hLcUxSM3FtSGg3Q3I4NE5ZK3puZmhLeitpR2ttdE52V0tlc2MKODVKMG5jd2kxYm1KcXlEUVZ3THhSV1pNZ1FBQUFJQVNlbmo0UmcyV2ZnemwwazFOcDQyYUNlTHZsNDJoOEQwamVFR0pWQXBYMUMrSQpydHdPNEE1aDd5S1IxWjYyZjBWMUdtOThsc1c2VUJZWkxYWjVxdEdnL0FUS3kzb2hsZWo1dmJvL3d2VFo5NWhLWVY2dk1yc0FrMHN5CkxWd2pEV05ZVlJrdTdpZkVCS3NCUWFNY01YOVkwOUJqbW9majdTQnhpTXRWSDZ0dEdRQUFBSUVBMjZOcFdtQ09vWjBhbXFSQVNmSzkKK0dJTWpBdjdKelRkUS9tb3ZFMHEvQTloMEN3R2d2bHhrUlppRUJxVGFRTm1NaGZlVW5PSXVoS0JZeUxTdStkRDd3NHp3ZXlsWmNuQwordEk2RFFjcUkraVVuTENuZWZPWXZOQUNFVndLc2ovUFZDUDM3d0VHWnhXRWhIRExQaHhlajRqY0ZLTzh3N1V5U2pxTEw1MGVFRkVBCkFBQ0JBTTE0aE40WlJybzRsaTJGWmxzM3R0ZnpWU0hwSDB6ODBHdVhFV3JmdFh6eFhjYzR3eU1xOE81L1Y4bG54OG9NSUhZUWk3aTAKeXhBM2IzL3AyZHd2SDZPbDVVcVJYbWRpNloreVRML2p1RU13cEp4UTVqV1lDZm9KQzA1K1ZCVVk4MWhHT3RrVERtdEVYYUZ4Q1l3YQpXb2o1THAvVWdsRGVQekdGMjNuSnNCZWZBQUFBQUFFQwotLS0tLUVORCBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0K",
+      "stored_file": "data/users/user_2/keys/8f3efed3-e161-4701-9d62-dffa74d9d89f.pem"
+     },
+     "rsa_pem_passphrase": {
+      "filename": "b1bc3dd2-1ac1-42e6-ae53-39242ded2158.pem",
+      "key_id": "b1bc3dd2-1ac1-42e6-ae53-39242ded2158",
+      "key_type": "RSA",
+      "plaintext_b64": "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpQcm9jLVR5cGU6IDQsRU5DUllQVEVECkRFSy1JbmZvOiBBRVMtMTI4LUNCQywwRDdFRUZDNDIzN0RGN0E5MjlERjQxMTAxMjQ0QjhGQgoKSVdSOUJzRHBaVVpsM2VOTXJqNFpTL01BOXhDYWVCZzVDbzRHa0loZHJZT0YwaVZmNkRiV0xBS0tnQ3ZIZDlVUQpmYkhVM0RrcHRZdTRPbmRBb0pVU2hoWG9MeVdQb3JPaUN5eTNIUFZXaDBBd0FMMm9KY2IxdkRuL29QbmdnUDEvCkxObmk3eVRQSlB1Z043bU43REJNMmsyV1VtZ05PMmJ1WkNkZEhDdW1ySDJ3TDF3VnhHSlhXYUQxSjhrY1ltVTYKNHppUUdHaXZTcy82WmxkcG5DQVNvaEliTURZRnUwSy9DbXdUcWV5ZHAvYWFEajNqNWtOdXh6amhadllkMEU3YwphVFhZZnNkc0FCUEJRTzd2Y1dZV3hEaURORlVzaHRkOGwva1RsQkwydVllYm9SdDkzVUVsZnRPdU1SR3RwKzJoCndpZjhoVXd0T2ZNemJiOWRxYWRROFpHTWE5bzliSENjQ0ZUdVlnM0kxdis3SWhkNG9IcXdYVW5lNFZWYndhaGcKSEt2eTc2V2lmS3BRck9pQmRaM1pmYSs1WUoxdWQ5bVhoTGthUXNLdTkwVFMwVlI2eFFlZkZFNys4TTRGZkt4cAowNDJQTHEyT0lwWFBkT1VUMFhlc21UcWprVnNnVzlwaXhpREZpRDFzcTFkRFdUV2gyRmVGZnVvejF5VU5qMmhnCmUxMFBuSHZ5cVF4SVFpMytLTnA2dXQyc3BLbTkxLzkwa3VVdnp2a1NJbjBIT0ZTdXBVUEh6dGt3V3Zia1J3eS8KSjI1MDJJQy80U1NiY2U4TnhjV01nTHJrdk1GOERlT0lRUzA2RXZ5N1BVOC9Nb0tIeTNudkM3cUMzaVpoSUQrego0T3d6b0RuS0pWOWRlQVk1aWk2bTB2U1NxUDBubTMrSVlZdFpwbHFTcS9aaVVFVGNQYXlFVmJxdlI3T21CdDcrCkgxMEp4bU82TlkxVW05YkZGbU9oRFc4bzQvUHI1WVhwN2l6L1Q0TFExdXpIMUl3cndIRTdHSWU0OGpGOWdDK3cKY3FuY3NzWVJHaEVqbGFiVjFBZTduUUpwNmhyeUdnTUdPbk02bTlMOWg3Y1pOeHJVSUtVMTY2Unk1WUltVm9LbgppU29kUXhUaHc4V281Ukd6d0Jkb05rT3diOWUrV3FPajZ1T1NJT29HREg1Z1QweS9aNTc2bi9Ob2NQWWd2bmxjCjVkTzZyQzNoT0MxeDUwRm5RaFRrUGJDTk9BVVJBNkRneTc5eFp1UndFZzkvWGlDNkpVYS96WTllcHFMcXVsWkUKQWZoeXNOLzdDU2J4T2xTTkc4d0xNWmRyRmNPaXg3ZVB2a1UwajBLRkVWdEpldzg3Wm1IcFN5ZUpPYkI5RlNONQozTXhWUFRLeTltQkJ2WTUvcFlrUmtUQU11ME5NSk92Q0d1cExRQUJ4S29qSlY1WjRobzZORU5sQVhRZ1RoTzk2Cm5lb0ltRFVraTF1RmdCbUV4TnJLeGNwa2Qwd1FqZ21EdHlQTkhoUGwrV3ljaXRxczVPQ1g2NWo5YzFINk1xNVoKRUJUSUdtbmNXcFBjMUtCSjlQdi9BMW1QMC9JaHZhWkZCcHd2LzRRT3JwQ1J6T2wyQzNpNCtld2dPdEZLSGZEeApuZG1LNTFvVVUvUzdGaWlGNVZhaG5iSXVBZkQ0bmdDdHZDd2thV29vTFdzR1R1RnFnb3J2M1UyNlorb3o2Q2VlCnBvQ1poU20renlXejVXSDl2cEZGOTdxKzZVNnFZdkpSYkZ6cDZlRjBnTzZybXZZT1JndGw4Tzg5Q04xeldZQTkKZ0ZGa3Y4WlZENmcxcmcwUmwxM1IxYmVPeVhTK0ViRHFNclI2Tng2VVJUUTRLV2lJY2tJeFRLSE4yemhnS2tyVQozMnprTFoxaHQ3LzJWWFJwNVZzeHdmc3NBVTFhK1lwYXVMak0ySEJKOWJjTVNqTWJUVlhLM0kwYWZlQVVmYURzCjNYbk9vVHlsam5EYkdndUNWQy8wQnpSU1VjZGxuME9qcC9kOU0rcjY1WUNvNGZ0R1o2MFZsazRqR1VqemowV0UKSXE1bGJ5VHNGOWF6eXVSekhYejBxUDd1LzBXdjdTaXZPd3VpdEZBVGpoS3YzYVFBSDNhVGVmQ1ZUYW9xS2FqUQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=",
+      "stored_file": "data/users/user_2/keys/b1bc3dd2-1ac1-42e6-ae53-39242ded2158.pem"
+     }
+    },
+    "notepad": "Pioneer notepad ✓\nZeile 2: ünïcødé\n",
+    "profiles": {
+     "dsa": "38fd7590-62ac-4d2b-96ab-b442b7f67067",
+     "key": "1d200673-1359-4d71-8dff-276d4747e120",
+     "long_name": "7d6eb8ea-57a8-4bca-a993-4ff89ef7a0b4",
+     "password": "593e604d-cc9f-4b47-869f-e7de666f76ae"
+    },
+    "users": {
+     "pioneer_admin": {
+      "id": 1,
+      "password": "pioneer-admin-password-1"
+     },
+     "pioneer_user": {
+      "id": 2,
+      "password": "pioneer-user-password-1"
+     }
+    }
+   }
+  },
+  "datadir-extended.tar": {
+   "base": "../datadir.tar",
+   "environment": {
+    "ADMIN_USERS": "cfg_admin",
+    "BACKUP_RECOVERY_DURABLE": "true",
+    "DEBUG": "false",
+    "DEPLOYMENT_PROFILE": "homelab",
+    "LDAP_AUTO_PROVISION": "false",
+    "LDAP_ENABLED": "false",
+    "OIDC_ENABLED": "false",
+    "RATELIMIT_STORAGE_URL": "memory://",
+    "RECOVERY_CODES_ENABLED": "true",
+    "SECRET_KEY": "e48156ffbf1a037015af592d5d61e8858a92e290703a30dc034d2dade6afe41e",
+    "SESSION_COOKIE_SECURE": "false",
+    "TAILSCALE_SSH_ENABLED": "false",
+    "TOTP_ENABLED": "true",
+    "TZ": "UTC",
+    "WEBAUTHN_ENABLED": "true",
+    "WEBAUTHN_ORIGIN": "https://webssh.golden.test",
+    "WEBAUTHN_RP_ID": "webssh.golden.test"
+   },
+   "release": "3.3.x (this tree)"
+  },
+  "datadir-v1.0.0.tar": {
+   "note": "datadir-2fcd38a.tar upgraded by v1.0.0 plus its additions",
+   "release": "v1.0.0",
+   "values": {
+    "bulk": {
+     "command_set": "d47243b9-d9e5-49cd-8614-1770e181291a",
+     "commands": 501,
+     "set_steps": 65
+    },
+    "command_set": "01a4e964-ccfe-472c-a354-1b0998dd501f",
+    "jump_host": "19469498-29ba-4ed3-969c-8ae911d7a16a",
+    "profiles": {
+     "command_set": "cbe0b941-c64d-4bb0-b6ab-d4fb6a0cbeda",
+     "free_text": "3921e973-d522-4800-8989-12d838c29a96",
+     "tailscale": "741f4eb0-845f-40c0-9317-331cc0148c45"
+    },
+    "ssh_session": {
+     "display_name": "Pioneer tmux ✓",
+     "session_id": "2c4254d6-0417-4095-b763-897cde69780c",
+     "tmux_session_name": "webssh_pioneer_user_key_pioneer_test_2222_2edbfaeb",
+     "user_id": 2
+    },
+    "users": {
+     "bulk_user": {
+      "id": 4,
+      "password": "bulk-user-password-1"
+     },
+     "release_user": {
+      "id": 3,
+      "password": "release-user-password-1"
+     }
+    }
+   }
+  }
+ },
+ "environment": {
+  "ADMIN_USERS": "cfg_admin",
+  "BACKUP_RECOVERY_DURABLE": "true",
+  "DEBUG": "false",
+  "DEPLOYMENT_PROFILE": "homelab",
+  "LDAP_AUTO_PROVISION": "false",
+  "LDAP_ENABLED": "false",
+  "OIDC_ENABLED": "false",
+  "RATELIMIT_STORAGE_URL": "memory://",
+  "RECOVERY_CODES_ENABLED": "true",
+  "SECRET_KEY": "e48156ffbf1a037015af592d5d61e8858a92e290703a30dc034d2dade6afe41e",
+  "SESSION_COOKIE_SECURE": "false",
+  "TAILSCALE_SSH_ENABLED": "false",
+  "TOTP_ENABLED": "true",
+  "TZ": "UTC",
+  "WEBAUTHN_ENABLED": "true",
+  "WEBAUTHN_ORIGIN": "https://webssh.golden.test",
+  "WEBAUTHN_RP_ID": "webssh.golden.test"
+ },
+ "files": [
+  {
+   "deterministic": false,
+   "path": "backups/backup-v1-8c41517.zip",
+   "sha256": "80fa4a2659a2d2d7cfbbad8519f25985cdb8430f8a2d03ec7a145783f51238dc",
+   "size": 28451
+  },
+  {
+   "deterministic": false,
+   "path": "backups/outdated-secret-key.zip",
+   "sha256": "74538fc8b04bbea4a40eedc749465a142c7228b5faea4299a637f053b9447cb7",
+   "size": 29258
+  },
+  {
+   "deterministic": false,
+   "path": "backups/with-go-dir.zip",
+   "sha256": "dab195d9bbbdb5c21b70fcc1cd4a3345709ed285a971189a14345f3b9124b4e2",
+   "size": 29645
+  },
+  {
+   "deterministic": false,
+   "path": "backups/with-logs-members.zip",
+   "sha256": "e7cf376dc7d81ef8fa16e3010fd1aade54760f13cc720dc0596b28857caaea14",
+   "size": 29501
+  },
+  {
+   "deterministic": false,
+   "path": "datadir-2fcd38a.tar",
+   "sha256": "6617f4ddb0ee69544ef974c5cd1cbca0aa7d6fccf937df2462e6f3ed7333c3db",
+   "size": 71680
+  },
+  {
+   "deterministic": false,
+   "path": "datadir-extended.tar",
+   "sha256": "ef7386b4811d0abebc7067e00ee1b8f45d555bf658b3c183fbadd23b2b14cb4a",
+   "size": 512000
+  },
+  {
+   "deterministic": false,
+   "path": "datadir-v1.0.0.tar",
+   "sha256": "f0aea5081cef023f0d71d51ed749dc2b9873e6e8fee6388aa03b4abaf0112651",
+   "size": 225280
+  }
+ ],
+ "format": "webssh-golden-legacy-data-set",
+ "generator": {
+  "command": "python -m tests.golden.legacy.build",
+  "seed": "webssh-golden-legacy-v1 (old releases), webssh-golden-extended-v1 (3.3.x)"
+ },
+ "nondeterministic": [
+  {
+   "path": "backups/*.zip",
+   "reason": "member timestamps come from staging-file mtimes; member contents are identical"
+  },
+  {
+   "path": "datadir-*.tar member data/app.db and app.db members of the backups",
+   "reason": "CREATE INDEX order; compare with tests.golden.compare.database_dump"
+  }
+ ],
+ "releases": {
+  "backup_v1": {
+   "commit": "8c415179b66fa4cc00a426627c7d8d80f7623a12",
+   "committed_at": "2026-08-03T10:54:10+02:00",
+   "packages": {
+    "authlib": "1.7.2",
+    "bcrypt": "5.0.0",
+    "bidict": "0.23.1",
+    "blinker": "1.9.0",
+    "cbor2": "6.1.4",
+    "certifi": "2026.7.22",
+    "cffi": "2.1.0",
+    "charset-normalizer": "3.4.9",
+    "click": "8.4.2",
+    "cryptography": "49.0.0",
+    "dnspython": "2.8.0",
+    "flask": "3.1.3",
+    "flask-login": "0.6.3",
+    "flask-socketio": "5.6.1",
+    "flask-sqlalchemy": "3.1.1",
+    "flask-wtf": "1.3.0",
+    "greenlet": "3.5.4",
+    "gunicorn": "26.0.0",
+    "h11": "0.16.0",
+    "idna": "3.18",
+    "invoke": "3.0.3",
+    "itsdangerous": "2.2.0",
+    "jinja2": "3.1.6",
+    "joserfc": "1.7.4",
+    "markupsafe": "3.0.3",
+    "packaging": "26.2",
+    "paramiko": "5.0.0",
+    "pyasn1": "0.6.4",
+    "pyasn1_modules": "0.4.2",
+    "pycparser": "3.0",
+    "pynacl": "1.6.2",
+    "pyopenssl": "26.4.0",
+    "python-dotenv": "1.2.2",
+    "python-engineio": "4.13.4",
+    "python-socketio": "5.16.3",
+    "redis": "8.1.0",
+    "requests": "2.34.2",
+    "simple-websocket": "1.1.0",
+    "sqlalchemy": "2.0.51",
+    "typing_extensions": "4.16.0",
+    "urllib3": "2.7.0",
+    "webauthn": "3.0.0",
+    "werkzeug": "3.1.8",
+    "wsproto": "1.3.2",
+    "wtforms": "3.2.2"
+   },
+   "python": "3.14.8",
+   "revision": "8c41517"
+  },
+  "initial": {
+   "commit": "2fcd38ad12cc1cf6d36563aace320ecb8a94e040",
+   "committed_at": "2026-01-23T17:02:46+01:00",
+   "packages": {
+    "bcrypt": "4.1.2",
+    "bidict": "0.23.1",
+    "blinker": "1.9.0",
+    "cffi": "2.0.0",
+    "click": "8.3.1",
+    "cryptography": "42.0.0",
+    "dnspython": "2.8.0",
+    "eventlet": "0.35.1",
+    "flask": "3.0.0",
+    "flask-login": "0.6.3",
+    "flask-socketio": "5.3.5",
+    "flask-sqlalchemy": "3.1.1",
+    "flask-wtf": "1.2.1",
+    "greenlet": "3.3.1",
+    "gunicorn": "21.2.0",
+    "h11": "0.16.0",
+    "itsdangerous": "2.2.0",
+    "jinja2": "3.1.6",
+    "markupsafe": "3.0.3",
+    "packaging": "26.0",
+    "paramiko": "3.4.0",
+    "pycparser": "3.0",
+    "pynacl": "1.6.2",
+    "python-dotenv": "1.0.0",
+    "python-engineio": "4.13.0",
+    "python-socketio": "5.10.0",
+    "simple-websocket": "1.1.0",
+    "sqlalchemy": "2.0.46",
+    "typing_extensions": "4.15.0",
+    "werkzeug": "3.1.5",
+    "wsproto": "1.3.2",
+    "wtforms": "3.2.1"
+   },
+   "python": "3.11.17",
+   "revision": "2fcd38a"
+  },
+  "v1.0.0": {
+   "commit": "9e73b60afd2573016652a8365ae5a7cd6d1f692b",
+   "committed_at": "2026-07-23T09:04:11+02:00",
+   "packages": {
+    "bcrypt": "4.3.0",
+    "bidict": "0.23.1",
+    "blinker": "1.9.0",
+    "cffi": "2.1.0",
+    "click": "8.4.2",
+    "cryptography": "48.0.1",
+    "dnspython": "2.8.0",
+    "eventlet": "0.41.1",
+    "flask": "3.1.3",
+    "flask-login": "0.6.3",
+    "flask-socketio": "5.6.1",
+    "flask-sqlalchemy": "3.1.1",
+    "flask-wtf": "1.3.0",
+    "greenlet": "3.3.2",
+    "gunicorn": "23.0.0",
+    "h11": "0.16.0",
+    "invoke": "3.0.3",
+    "itsdangerous": "2.2.0",
+    "jinja2": "3.1.6",
+    "markupsafe": "3.0.3",
+    "packaging": "26.2",
+    "paramiko": "5.0.0",
+    "pycparser": "3.0",
+    "pynacl": "1.6.2",
+    "python-dotenv": "1.2.2",
+    "python-engineio": "4.13.3",
+    "python-socketio": "5.16.3",
+    "redis": "6.4.0",
+    "simple-websocket": "1.1.0",
+    "sqlalchemy": "2.0.51",
+    "typing_extensions": "4.16.0",
+    "werkzeug": "3.1.8",
+    "wsproto": "1.3.2",
+    "wtforms": "3.2.2"
+   },
+   "python": "3.11.17",
+   "revision": "v1.0.0"
+  }
+ },
+ "secret_key": {
+  "source": "environment SECRET_KEY for the release DATA_DIRs (no secret_key file: an explicit SECRET_KEY is never persisted by the entrypoint); data/secret_key in datadir-extended.tar",
+  "value": "e48156ffbf1a037015af592d5d61e8858a92e290703a30dc034d2dade6afe41e"
+ },
+ "values": {
+  "extended": {
+   "account_settings": {
+    "intro_tour": "completed",
+    "intro_tour_v3_acknowledged": true,
+    "notepad": "Globaler Notizblock ✓\n日本語 notes\n\n- item 1\n",
+    "recovery_reviewed_at": "2026-11-02T10:00:00+00:00",
+    "workspace_presets": [
+     {
+      "id": "golden-pair",
+      "layout": 2,
+      "name": "Golden pair ✓",
+      "profile_ids": [
+       "0296e087-7c43-42d2-acb0-6703e8f44957",
+       "270ac363-514f-4978-a380-dadab27cfd3e"
+      ]
+     },
+     {
+      "id": "golden-single",
+      "layout": 1,
+      "name": "Single",
+      "profile_ids": []
+     }
+    ]
+   },
+   "created_at": {
+    "created_null": {
+     "created_at_text": null,
+     "incarnation": null,
+     "password": "legacy-stores-password-1",
+     "user_id": 20
+    },
+    "created_vector_a": {
+     "created_at_text": "2026-11-02 09:00:00.000000",
+     "incarnation": "2026-11-02T09:00:00",
+     "password": "legacy-stores-password-1",
+     "user_id": 15
+    },
+    "created_vector_b": {
+     "created_at_text": "2026-11-02 09:00:00.250000+00:00",
+     "incarnation": "2026-11-02T09:00:00.250000+00:00",
+     "password": "legacy-stores-password-1",
+     "user_id": 16
+    },
+    "created_vector_c": {
+     "created_at_text": "2026-11-02",
+     "incarnation": "2026-11-02T00:00:00",
+     "password": "legacy-stores-password-1",
+     "user_id": 17
+    },
+    "created_vector_d": {
+     "created_at_text": "2026-11-02 09:00",
+     "incarnation": "2026-11-02T09:00:00",
+     "password": "legacy-stores-password-1",
+     "user_id": 18
+    },
+    "created_vector_e": {
+     "created_at_text": "2026-11-02T09:00:01.5",
+     "incarnation": "2026-11-02T09:00:01.500000",
+     "password": "legacy-stores-password-1",
+     "user_id": 19
+    }
+   },
+   "database_objects": {
+    "objects": [
+     "sqlite_stat1",
+     "operator_users_last_login",
+     "operator_notes"
+    ],
+    "statements": [
+     "ANALYZE",
+     "CREATE INDEX operator_users_last_login ON users (last_login)",
+     "CREATE TABLE operator_notes (id INTEGER PRIMARY KEY, note TEXT)",
+     "INSERT INTO operator_notes (note) VALUES ('added by an operator')"
+    ]
+   },
+   "deleted_account_incarnation": "2026-11-02T09:03:55.250000",
+   "interrupted_key_deletions": {
+    "metadata_saved": {
+     "key_id": "444ecf82-023a-4060-b6cf-40d90037112b",
+     "pending_file": "data/users/user_3/keys/.delete-b19c1553d6b948c99e183c62790bf4fd-444ecf82-023a-4060-b6cf-40d90037112b.pem"
+    },
+    "staged_only": {
+     "key_id": "6127a9a7-967a-4c0a-891e-9066e247c70f",
+     "pending_file": "data/users/user_3/keys/.delete-1e36d891a579400da49b8af40f2a876b-6127a9a7-967a-4c0a-891e-9066e247c70f.pem",
+     "restored_file": "data/users/user_3/keys/6127a9a7-967a-4c0a-891e-9066e247c70f.pem"
+    }
+   },
+   "legacy_single_user_paths": [
+    "data/commands/system_commands.json",
+    "data/keys/keys.json",
+    "data/keys/single-user-key.pem",
+    "data/profiles.json"
+   ],
+   "legacy_stores": {
+    "command_id": "ec80cb07-4334-450c-97ad-c6fe9663e5b5",
+    "key_id": "51c3fa20-ddf2-4513-b640-bf1a9bd6fa4c",
+    "password": "legacy-stores-password-1",
+    "profiles": [
+     {
+      "auth_type": "password",
+      "created_at": "2026-11-02T10:00:10+00:00",
+      "host": "lpw.golden.test",
+      "id": "d893c002-3722-4ea6-bf63-e1d2b3921379",
+      "key_id": null,
+      "name": "Legacy password host",
+      "port": 22,
+      "sort_order": 0,
+      "startup_mode": "none",
+      "updated_at": "2026-11-02T10:00:10+00:00",
+      "username": "op"
+     },
+     {
+      "auth_type": "key",
+      "created_at": "2026-11-02T10:00:10+00:00",
+      "host": "lkey.golden.test",
+      "id": "87de2595-9295-4040-b373-7966fa66f9eb",
+      "jump_host_id": "506cd1db-d735-41e5-91ee-1c262d3f886c",
+      "key_id": "51c3fa20-ddf2-4513-b640-bf1a9bd6fa4c",
+      "name": "Legacy key host",
+      "port": 22,
+      "sort_order": 1,
+      "startup_mode": "none",
+      "updated_at": "2026-11-02T10:00:10+00:00",
+      "username": "op"
+     },
+     {
+      "auth_type": "password",
+      "created_at": "2026-11-02T10:00:10+00:00",
+      "host": "lsx.golden.test",
+      "id": "d01cb475-cf47-4978-9561-dd8a4b7373f0",
+      "key_id": null,
+      "name": "Legacy socks host",
+      "port": 22,
+      "socks_proxy_id": "88780fb8-2860-424b-bd37-a40456066e25",
+      "sort_order": 2,
+      "startup_mode": "none",
+      "updated_at": "2026-11-02T10:00:10+00:00",
+      "username": "op"
+     }
+    ],
+    "user_id": 13,
+    "username": "legacy_stores"
+   },
+   "orphan_host_context": {
+    "notes": "Orphaned notes ✓",
+    "profile_id": "0e24b76e-85fb-4e9a-8d58-66335f2b3cc1"
+   },
+   "persistent_sessions": [
+    {
+     "auth_type": "password",
+     "display_name": "Golden tmux ✓ 日本",
+     "host": "pw.golden.test",
+     "is_persistent": true,
+     "port": 22,
+     "session_id": "1ef404ec-b7dd-43b9-9c31-bff3c0f8ee64",
+     "tmux_session_name": "webssh_operator_pw_golden_test_22_453d0e8b",
+     "username": "operator"
+    },
+    {
+     "auth_type": "key",
+     "display_name": null,
+     "host": "inner.golden.test",
+     "is_persistent": true,
+     "port": 22,
+     "session_id": "b4636cf5-2f63-49a3-8267-e424efeca032",
+     "tmux_session_name": "webssh_wg_5500657be3cc8959_d70c220bcfb0459e983f363c6e00a52c",
+     "username": "deploy:root",
+     "via_jump": "bastion.golden.test"
+    },
+    {
+     "auth_type": "password",
+     "display_name": "Not persistent",
+     "host": "min.golden.test",
+     "is_persistent": false,
+     "port": 22,
+     "session_id": "23533b79-1f53-49f6-96bc-7253757026e2",
+     "tmux_session_name": null,
+     "username": "m"
+    }
+   ],
+   "profiles_schema_2": {
+    "password": "legacy-stores-password-1",
+    "profiles": [
+     {
+      "auth_type": "password",
+      "created_at": "2026-11-02T10:00:20+00:00",
+      "host": "v2.golden.test",
+      "id": "b82b545c-7d9f-4458-adc5-bfcb82cc18c1",
+      "key_id": null,
+      "name": "Authorized v2 host",
+      "port": 22,
+      "sort_order": 0,
+      "startup_mode": "none",
+      "updated_at": "2026-11-02T10:00:20+00:00",
+      "username": "op"
+     }
+    ],
+    "user_id": 14,
+    "username": "legacy_profiles_v2"
+   },
+   "restore_status": {
+    "data_fingerprint": "sha256 hex of realpath(DATA_DIR)",
+    "documents": {
+     "failed": {
+      "message": "Restore failed",
+      "operation_id": "golden-op",
+      "state": "failed",
+      "updated_at": 1793613640.0
+     },
+     "in_progress": {
+      "data_fingerprint": "{DATA_FINGERPRINT}",
+      "message": "Restoring persistent state",
+      "operation_id": "golden-op",
+      "rollback_relative": "operation-golden-op/rollback.zip",
+      "state": "in_progress",
+      "updated_at": 1793613640.0
+     },
+     "preparing": {
+      "data_fingerprint": "{DATA_FINGERPRINT}",
+      "message": "Preparing restore safety snapshot",
+      "operation_id": "golden-op",
+      "state": "preparing",
+      "updated_at": 1793613640.0
+     },
+     "rollback_failed": {
+      "data_fingerprint": "{DATA_FINGERPRINT}",
+      "message": "Rollback failed",
+      "operation_id": "golden-op",
+      "rollback_relative": "operation-golden-op/rollback.zip",
+      "state": "rollback_failed",
+      "updated_at": 1793613640.0
+     },
+     "succeeded": {
+      "message": "Restore completed; application restart requested",
+      "operation_id": "golden-op",
+      "state": "succeeded",
+      "updated_at": 1793613640.0
+     }
+    },
+    "expected": {
+     "failed": {
+      "maintenance_active": false
+     },
+     "in_progress": {
+      "maintenance_active": true
+     },
+     "preparing": {
+      "maintenance_active": true
+     },
+     "rollback_failed": {
+      "maintenance_active": true
+     },
+     "succeeded": {
+      "maintenance_active": false
+     }
+    },
+    "location": "{BACKUP_TEMP_DIR}/instance-{sha256(realpath(DATA_DIR))[:32]}/restore-status.json",
+    "source": "app/maintenance_mode.py"
+   },
+   "schedules": {
+    "deleted_account": {
+     "account": [
+      "2026-11-02T09:03:55.250000",
+      1,
+      "883b033c75b01839e333c978c2e9a9a4568c5f70a7f8af9757ece6891be57461"
+     ],
+     "claimed_at": null,
+     "id": "00000000-0000-4000-8000-0000000de1e7",
+     "revision": 1,
+     "user_id": 12
+    },
+    "stale_claim": {
+     "account": [
+      "2026-11-02T09:00:02.250000",
+      0,
+      "883b033c75b01839e333c978c2e9a9a4568c5f70a7f8af9757ece6891be57461"
+     ],
+     "claimed_at": 1793606440.0,
+     "id": "00000000-0000-4000-8000-00000000c1a1",
+     "revision": 1,
+     "user_id": 3
+    }
+   },
+   "trust_and_fences": {
+    "cert_authority_line": "@cert-authority *.ca.golden.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOL2WzJx0sV/B6VxWU9MnxKJFrrYYNJle330w6TBemSK",
+    "ldap_fence_user_id": 10,
+    "recovery_check": {
+     "remote_credentials_excluded": true,
+     "restored_at": "2026-11-02T10:00:40+00:00"
+    }
+   },
+   "vault_v1": {
+    "aad": "webssh-automation-vault-v1:13:2026-11-02T10:00:10",
+    "passphrase": "golden legacy vault passphrase v1",
+    "password": "legacy-vault-v1-password ✓",
+    "profile_id": "d893c002-3722-4ea6-bf63-e1d2b3921379",
+    "user_id": 13
+   }
+  },
+  "passwords": {
+   "bulk_user": "bulk-user-password-1",
+   "pioneer_admin": "pioneer-admin-password-1",
+   "pioneer_user": "pioneer-user-password-1",
+   "release_user": "release-user-password-1"
+  }
+ },
+ "variants": {
+  "admin_users_missing_account": {
+   "environment": {
+    "ADMIN_USERS": "cfg_admin,ghost_admin"
+   },
+   "expected": {
+    "cfg_admin_is_admin": true,
+    "ghost_admin_exists": false
+   }
+  },
+  "app_settings_schema_1": {
+   "expected": {
+    "loads": true,
+    "migrated_to": 2
+   },
+   "files": {
+    "data/app_settings.json": "ewogICJzY2hlbWFfdmVyc2lvbiI6IDEsCiAgImNyZWRlbnRpYWxzX2VuYWJsZWQiOiB0cnVlLAogICJjcmVkZW50aWFsc19lbmFibGVkX3JldmlzaW9uIjogIjc0ZTIxMzQ3ZGMxNTI4ZTgwZmE3NDMxMzYxOTQyYWEyMGZmOThhOTNiZDNlOWI4YjAwMzdlOGJmOTBmYjE5ODEiLAogICJhdXRvbWF0aW9uX2VuYWJsZWQiOiB0cnVlLAogICJhdXRvbWF0aW9uX2VuYWJsZWRfcmV2aXNpb24iOiAiNDhlNWNhMjdjNjEzMzFkMjJkYjMyN2VlNjEzYTkzYjI0MTY2OWUwZjQyMzY0NjFhMGViYjY3MzljN2M1NGNhZiIsCiAgImF1dG9tYXRpb25fZWZmZWN0aXZlX29ic2VydmVkIjogdHJ1ZSwKICAiYXV0b21hdGlvbl9lbmFibGVkX2Zyb21fZW52aXJvbm1lbnQiOiBmYWxzZSwKICAic3VwcG9ydF9saW5rc19lbmFibGVkIjogZmFsc2UKfQ=="
+   },
+   "note": "no release wrote schema 1; migrate_app_settings_v1_to_v2 still applies"
+  },
+  "database_trigger_and_view": {
+   "expected": {
+    "application_starts": true,
+    "create_backup_error": "backup database is invalid"
+   },
+   "note": "restore_database.harden_imported_database rejects triggers and views",
+   "sql": [
+    "CREATE TRIGGER operator_users_touch AFTER UPDATE OF last_login ON users BEGIN UPDATE operator_notes SET note = note WHERE id = 1; END",
+    "CREATE VIEW operator_admins AS SELECT id, username FROM users WHERE is_admin = 1"
+   ]
+  },
+  "recovery_check_malformed": {
+   "expected": {
+    "restore_marker": null
+   },
+   "files": {
+    "data/recovery-check.json": "eyJyZXN0b3JlZF9hdCI6IA=="
+   },
+   "note": "customer_workflows._restore_marker treats it as absent"
+  },
+  "recovery_check_oversized": {
+   "expected": {
+    "restore_marker": null
+   },
+   "files": {
+    "data/recovery-check.json": "eyJyZXN0b3JlZF9hdCI6ICIyMDI2LTExLTAyVDEwOjAwOjAwKzAwOjAwIiwgInBhZGRpbmciOiAieHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4In0="
+   }
+  },
+  "secret_key_conflicting_legacy_path": {
+   "environment": {
+    "SECRET_KEY": null
+   },
+   "expected": {
+    "entrypoint_exit": 1,
+    "stderr": "ERROR: conflicting secret_key files exist under /app/data and DATA_DIR."
+   },
+   "legacy_secret_key_file": "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZgo=",
+   "note": "LEGACY_SECRET_KEY_FILE is /app/data/secret_key; tests point it elsewhere"
+  },
+  "secret_key_crlf": {
+   "environment": {
+    "SECRET_KEY": null
+   },
+   "expected": {
+    "data_decrypts": false,
+    "entrypoint_secret_key_b64": "ZTQ4MTU2ZmZiZjFhMDM3MDE1YWY1OTJkNWQ2MWU4ODU4YTkyZTI5MDcwM2EzMGRjMDM0ZDJkYWRlNmFmZTQxZQ0="
+   },
+   "files": {
+    "data/secret_key": "ZTQ4MTU2ZmZiZjFhMDM3MDE1YWY1OTJkNWQ2MWU4ODU4YTkyZTI5MDcwM2EzMGRjMDM0ZDJkYWRlNmFmZTQxZQ0K"
+   },
+   "note": "entrypoint.sh: $(cat file) strips only the final LF"
+  },
+  "secret_key_empty_file": {
+   "environment": {
+    "SECRET_KEY": null
+   },
+   "expected": {
+    "entrypoint_secret_key_b64": "",
+    "python_starts": false
+   },
+   "files": {
+    "data/secret_key": ""
+   },
+   "note": "config.py raises without DEBUG when SECRET_KEY is empty"
+  },
+  "secret_key_placeholder_env": {
+   "environment": {
+    "SECRET_KEY": " changeme "
+   },
+   "expected": {
+    "data_decrypts": true,
+    "entrypoint_secret_key_b64": "ZTQ4MTU2ZmZiZjFhMDM3MDE1YWY1OTJkNWQ2MWU4ODU4YTkyZTI5MDcwM2EzMGRjMDM0ZDJkYWRlNmFmZTQxZQ=="
+   },
+   "note": "placeholders are compared lower-case with whitespace removed"
+  }
+ },
+ "version": 1
+}

@@ -27,3 +27,10 @@ regexes = ['''^t\.(?:TwoKeyMap=void|Sequencer=t\.Throttler=void)$''']
 condition = "AND"
 paths = ['''(^|/)site/vendor/vis-network-9\.1\.6/vis-network\.min\.js$''']
 regexes = ['''^_getDistanceToBezierEdge2$''']
+
+# synthetic test fixtures: the golden data set is generated from a fixed seed
+# by tests/golden/generate.py and holds no real keys or tokens.
+[[allowlists]]
+description = "synthetic test fixtures"
+targetRules = ["generic-api-key", "private-key"]
+paths = ['''(^|/)tests/golden/fixture/(legacy/)?manifest\.json$''']

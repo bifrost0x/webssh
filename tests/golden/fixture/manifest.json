@@ -1,0 +1,2304 @@
+{
+ "data_archive": {
+  "layout": "ustar; members under data/ (the DATA_DIR root), sorted, mtime = clock_start, uid/gid 0, file modes kept, empty user directories included",
+  "note": "every \"data/...\" path in this manifest is a member of this archive",
+  "path": "datadir.tar"
+ },
+ "data_kinds": [
+  {
+   "format": "ASCII, 64 lowercase hex characters, LF, mode 0600",
+   "id": "secret_key",
+   "location": "data/secret_key",
+   "source": "entrypoint.sh (persisted SECRET_KEY); config.SECRET_KEY"
+  },
+  {
+   "format": "SQLite 3; DateTime columns as naive UTC text \"YYYY-MM-DD HH:MM:SS.ffffff\"; Boolean as 0/1",
+   "id": "sqlite_database",
+   "location": "data/app.db",
+   "source": "app/models.py, app/automation_schedule.py (SQLAlchemy models)"
+  },
+  {
+   "algorithm": "bcrypt",
+   "format": "bcrypt modular crypt \"$2b$12$<22 salt><31 hash>\"",
+   "id": "password_hash",
+   "location": "users.password_hash",
+   "note": "Directory- and GitHub-managed accounts hold a random unknown password.",
+   "parameters": {
+    "cost": 12,
+    "input": "UTF-8 password, at most 72 bytes"
+   },
+   "source": "app/models.py User.set_password/check_password; app/auth.py password_exceeds_bcrypt_limit"
+  },
+  {
+   "algorithm": "Fernet spec 0x80 token: AES-128-CBC + HMAC-SHA256, 64-bit timestamp; key = urlsafe_b64encode(derived 32 bytes)",
+   "format": "raw Fernet token bytes (no newline); legacy files may hold plaintext PEM",
+   "id": "ssh_private_key_at_rest",
+   "location": "data/users/user_{user_id}/keys/<uuid>.pem",
+   "parameters": {
+    "iterations": 600000,
+    "kdf": "PBKDF2-HMAC-SHA256",
+    "length": 32,
+    "password": "\"{SECRET_KEY}:{user_id}\" UTF-8",
+    "salt": "webssh_key_encryption_v1"
+   },
+   "plaintext": "OpenSSH or traditional PEM private key text; see values.ssh_keys",
+   "source": "app/key_encryption.py _derive_key, encrypt_key_content, is_encrypted, read_key_content"
+  },
+  {
+   "format": "JSON {schema_version: 2, keys: [{id, name, filename, key_type, encrypted, uploaded_at}]}",
+   "id": "ssh_key_metadata",
+   "location": "data/users/user_{user_id}/keys/keys.json",
+   "source": "app/key_manager.py save_key, _valid_key_document"
+  },
+  {
+   "algorithm": "Fernet spec 0x80 token: AES-128-CBC + HMAC-SHA256, 64-bit timestamp; key = urlsafe_b64encode(derived 32 bytes)",
+   "format": "BLOB holding a Fernet token",
+   "id": "totp_secret",
+   "location": "totp_authenticators.encrypted_secret, totp_enrollments.encrypted_secret",
+   "parameters": {
+    "iterations": 600000,
+    "kdf": "PBKDF2-HMAC-SHA256",
+    "length": 32,
+    "password": "\"{SECRET_KEY}:totp:{user_id}\" UTF-8",
+    "salt": "webssh-mfa-totp-v1"
+   },
+   "plaintext": "RFC 4648 base32 secret, 32 characters (160 bits)",
+   "source": "app/mfa_crypto.py, app/totp_service.py",
+   "verification": "RFC 6238 HMAC-SHA1, 6 digits, 30 s step, window -1..+1, step must exceed last_accepted_step"
+  },
+  {
+   "algorithm": "SHA-256(b\"webssh-recovery-code-v1\\x00\" + ASCII(upper(code) without whitespace))",
+   "format": "BLOB, 32 bytes",
+   "id": "recovery_code",
+   "location": "recovery_codes.code_hash",
+   "plaintext": "XXXX-XXXX-XXXX-XXXX-XXXX, uppercase hex groups",
+   "source": "app/recovery_service.py"
+  },
+  {
+   "algorithm": "Fernet spec 0x80 token: AES-128-CBC + HMAC-SHA256, 64-bit timestamp; key = urlsafe_b64encode(derived 32 bytes)",
+   "format": "BLOB holding a Fernet token",
+   "id": "github_client_secret",
+   "location": "github_auth_configuration.encrypted_client_secret",
+   "parameters": {
+    "iterations": 600000,
+    "kdf": "PBKDF2-HMAC-SHA256",
+    "length": 32,
+    "password": "\"{SECRET_KEY}:github-auth:configuration\" UTF-8",
+    "salt": "webssh-github-auth-config-v1"
+   },
+   "source": "app/github_auth_crypto.py, app/github_auth_service.py update_settings"
+  },
+  {
+   "algorithm": "AES-256-GCM, key = HKDF-SHA256(ikm=SECRET_KEY UTF-8, salt=b\"webssh-named-credential-master-v1\", info=context, length=32), AAD = context",
+   "format": "JSON {version: 1, credentials: {id: {id, name, username, version, updated_at, ciphertext}}, assignments: {resource_id: {credential_id, fingerprint, generation}}, imports: []}; ciphertext = base64(nonce[12] || AES-GCM ciphertext+tag)",
+   "id": "named_credential",
+   "location": "data/users/user_{user_id}/credentials.json",
+   "parameters": {
+    "context": "compact JSON [\"webssh-named-credentials-v1\", {user_id} (int), \"{incarnation}\", \"<record id>\"]"
+   },
+   "source": "app/credential_crypto.py, app/credential_store.py"
+  },
+  {
+   "algorithm": "AES-256-GCM, key = scrypt(passphrase UTF-8, salt[16], N=131072, r=8, p=1, len=32)",
+   "format": "JSON {version: 2, kdf: \"scrypt-131072-8-1\", salt, nonce, ciphertext} (standard base64)",
+   "id": "automation_vault",
+   "location": "data/users/user_{user_id}/automation-vault.json",
+   "note": "version 1 (no generation field) is still readable",
+   "parameters": {
+    "aad": "\"webssh-automation-vault-v{version}:{user_id}:{incarnation}\"",
+    "plaintext": "compact JSON {profile_id: {fingerprint, password, generation}}"
+   },
+   "source": "app/automation_vault.py"
+  },
+  {
+   "algorithm": "SHA-256 hex of json.dumps(fields, sort_keys=True, separators=(\",\", \":\"))",
+   "id": "profile_fingerprint",
+   "location": "credentials.json assignments, vault records",
+   "source": "app/automation_store.py profile_fingerprint, digest"
+  },
+  {
+   "format": "credential_id raw BLOB; public_key = COSE_Key CBOR BLOB as returned by py_webauthn verify_registration_response; sign_count INTEGER; transports JSON text",
+   "id": "webauthn_credential",
+   "location": "webauthn_credentials",
+   "parameters": {
+    "algorithms": "EdDSA (-8), ES256 (-7), RS256 (-257)",
+    "counter_rule": "if stored > 0, new must be greater",
+    "origin": "WEBAUTHN_ORIGIN",
+    "rp_id": "WEBAUTHN_RP_ID",
+    "user_handle": "ASCII decimal user id",
+    "user_verification": "required"
+   },
+   "source": "app/webauthn_routes.py verify_registration, app/webauthn_service.py verify_assertion"
+  },
+  {
+   "algorithm": "SHA-256 hex of the UTF-8 token string",
+   "id": "token_digest",
+   "location": "authentication_sessions.session_hash and other *_hash columns",
+   "source": "app/models.py token_digest"
+  },
+  {
+   "format": "64 lowercase hex characters, LF, mode 0600",
+   "id": "session_epoch",
+   "location": "data/session_epoch",
+   "semantics": "every session cookie carries _auth_epoch; a mismatch logs the browser out",
+   "source": "app/session_epoch.py, app/__init__.py before_request"
+  },
+  {
+   "algorithm": "itsdangerous URLSafeTimedSerializer, salt \"cookie-session\", key_derivation \"hmac\" (derived key = HMAC-SHA1(SECRET_KEY, salt)), signature HMAC-SHA1, serializer flask.json.tag.TaggedJSONSerializer",
+   "format": "[.]b64url(payload).b64url(int_to_bytes(unix_ts)).b64url(signature); \".\" prefix = zlib-compressed payload",
+   "id": "flask_session_cookie",
+   "location": "cookie \"session\" (SESSION_COOKIE_NAME)",
+   "parameters": {
+    "max_age_seconds": 28800,
+    "payload": {
+     "_auth_epoch": "session_epoch value",
+     "_auth_session": "opaque; sha256 = authentication_sessions.session_hash",
+     "_fresh": "Flask-Login freshness flag",
+     "_id": "Flask-Login identifier: SHA-512 hex of f\"{remote_addr}|{user_agent_bytes!r}\", e.g. \"127.0.0.1|b'golden-fixture-browser/1'\"; session_protection \"basic\"",
+     "_user_id": "\"{user_id}:{auth_generation}:{opaque}\"",
+     "csrf_token": "not in the login response; Flask-WTF generate_csrf stores it when a page renders a token"
+    }
+   },
+   "source": ".venv flask/sessions.py SecureCookieSessionInterface (Flask 3.1.3); itsdangerous/url_safe.py, timed.py, signer.py (2.2.0); flask_login/utils.py _create_identifier (0.6.3); app/auth_assurance.py _issue_browser_session"
+  },
+  {
+   "algorithm": "itsdangerous URLSafeTimedSerializer(SECRET_KEY, salt \"webssh-login-device\"), defaults: key_derivation \"django-concat\", HMAC-SHA1",
+   "id": "login_device_cookie",
+   "location": "cookie \"session_device\"",
+   "parameters": {
+    "payload": {
+     "g": "auth_generation",
+     "i": "user id",
+     "n": "nonce",
+     "u": "HMAC-SHA256(SECRET_KEY, b\"webssh-login-username-v1\\x00\" + casefold(username))"
+    }
+   },
+   "source": "app/login_devices.py"
+  },
+  {
+   "algorithm": "HMAC-SHA256(SECRET_KEY, \"webssh-connection-history-v1\\0{user_id}\\0{username}\\0{incarnation}\")",
+   "id": "connection_history_scope",
+   "location": "browser localStorage namespace (rendered into the page)",
+   "note": "changes lose the browser-side connection history",
+   "source": "app/browser_identity.py"
+  },
+  {
+   "format": "OpenSSH known_hosts lines; \"@revoked\" marker; \"[host]:port\" for non-22 ports",
+   "id": "known_hosts",
+   "location": "data/known_hosts (global), data/users/user_{user_id}/known_hosts",
+   "source": "app/host_key_store.py"
+  },
+  {
+   "format": "JSON documents; schema_version per app/storage_migrations.py CURRENT_STORAGE_VERSIONS",
+   "id": "json_stores",
+   "location": "data/users/user_{user_id}/*.json, data/app_settings.json",
+   "source": "app/storage_utils.py, app/storage_migrations.py"
+  },
+  {
+   "format": "ZIP; manifest.json (sorted keys, compact) {files: [{path, sha256, size}], format_version: 2, created_at \"...Z\", data_schema_version: 2, producer: \"webssh\"}; members under data/",
+   "id": "backup_archive",
+   "location": "artifacts/backups/*.zip",
+   "parameters": {
+    "export_excludes": "keys/, credentials.json, automation-vault.json, deleted_users/, logs/, tmp/, .access-revocations/, .ldap-revocation-fences/",
+    "recovery_snapshot": "internal rollback; keeps keys, credentials and vault"
+   },
+   "source": "app/backup_manager.py, app/online_backup.py"
+  }
+ ],
+ "entity_inventory": [
+  {
+   "cases": "admin, non-admin, locked, ADMIN_USERS, bcrypt limit, legacy Unicode name, deleted (id reused)",
+   "entity": "user account",
+   "in_fixture": true,
+   "source": "users"
+  },
+  {
+   "cases": "72-byte UTF-8 boundary",
+   "entity": "local password",
+   "in_fixture": true,
+   "source": "users.password_hash"
+  },
+  {
+   "cases": "provisioned account",
+   "entity": "LDAP identity",
+   "in_fixture": true,
+   "source": "ldap_identities"
+  },
+  {
+   "cases": "provisioned (managed) and linked (local)",
+   "entity": "GitHub identity",
+   "in_fixture": true,
+   "source": "github_identities"
+  },
+  {
+   "cases": "admin link on a local account",
+   "entity": "OIDC identity",
+   "in_fixture": true,
+   "source": "oidc_identities"
+  },
+  {
+   "cases": "disabled, secret stored",
+   "entity": "GitHub sign-in configuration",
+   "in_fixture": true,
+   "source": "github_auth_configuration"
+  },
+  {
+   "cases": "passkey, totp, recovery on; oidc, ldap absent",
+   "entity": "security feature gate",
+   "in_fixture": true,
+   "source": "security_feature_states"
+  },
+  {
+   "cases": "active",
+   "entity": "TOTP authenticator",
+   "in_fixture": true,
+   "source": "totp_authenticators"
+  },
+  {
+   "cases": "abandoned, expires after 5 minutes",
+   "entity": "TOTP enrollment",
+   "in_fixture": true,
+   "source": "totp_enrollments"
+  },
+  {
+   "cases": "ES256, RS256, EdDSA synced (counter 0, BE/BS, Unicode name); one deleted",
+   "entity": "passkey",
+   "in_fixture": true,
+   "source": "webauthn_credentials"
+  },
+  {
+   "cases": "one consumed",
+   "entity": "recovery codes",
+   "in_fixture": true,
+   "source": "recovery_codes"
+  },
+  {
+   "cases": "valid, revoked, expired variants",
+   "entity": "browser login",
+   "in_fixture": true,
+   "source": "authentication_sessions + cookies"
+  },
+  {
+   "cases": "short-lived, not user data",
+   "entity": "transient auth state",
+   "in_fixture": false,
+   "source": "pending_authentications, step_up_*, factor_bootstrap_tokens, github_oauth_states, oidc_login_states, webauthn_challenges"
+  },
+  {
+   "cases": "live connections only",
+   "entity": "runtime sessions",
+   "in_fixture": false,
+   "source": "socket_sessions, ssh_sessions"
+  },
+  {
+   "cases": "active and paused",
+   "entity": "automation schedule",
+   "in_fixture": true,
+   "source": "automation_schedules"
+  },
+  {
+   "cases": "credentials/automation on, support links off",
+   "entity": "admin settings",
+   "in_fixture": true,
+   "source": "data/app_settings.json"
+  },
+  {
+   "cases": "trusted and @revoked",
+   "entity": "global host key",
+   "in_fixture": true,
+   "source": "data/known_hosts"
+  },
+  {
+   "cases": "rotated once",
+   "entity": "session epoch",
+   "in_fixture": true,
+   "source": "data/session_epoch"
+  },
+  {
+   "cases": "password, key, jump, SOCKS, Unicode, 200-char name, minimal, deleted, detected facts",
+   "entity": "SSH host profile",
+   "in_fixture": true,
+   "source": "users/user_N/profiles.json"
+  },
+  {
+   "cases": "one live, one deleted",
+   "entity": "jump host",
+   "in_fixture": true,
+   "source": "users/user_N/jump_hosts.json"
+  },
+  {
+   "cases": "no auth and password auth, Unicode",
+   "entity": "SOCKS proxy",
+   "in_fixture": true,
+   "source": "users/user_N/socks_proxies.json"
+  },
+  {
+   "cases": "with domain, empty domain, deleted",
+   "entity": "SMB share",
+   "in_fixture": true,
+   "source": "users/user_N/smb_shares.json"
+  },
+  {
+   "cases": "RSA, ECDSA P-256/384/521, Ed25519; OpenSSH and PEM; legacy plaintext; deleted; rejected formats as vectors",
+   "entity": "SSH private key",
+   "in_fixture": true,
+   "source": "users/user_N/keys/"
+  },
+  {
+   "cases": "three recorded, one deleted",
+   "entity": "user host key",
+   "in_fixture": true,
+   "source": "users/user_N/known_hosts"
+  },
+  {
+   "cases": "customized",
+   "entity": "user settings",
+   "in_fixture": true,
+   "source": "users/user_N/settings.json"
+  },
+  {
+   "cases": "Unicode, deleted",
+   "entity": "user command",
+   "in_fixture": true,
+   "source": "users/user_N/commands.json"
+  },
+  {
+   "cases": "inline, parameterized, library, Unicode, deleted",
+   "entity": "command set",
+   "in_fixture": true,
+   "source": "users/user_N/command_sets.json"
+  },
+  {
+   "cases": "notes, directories, command set reference",
+   "entity": "host context",
+   "in_fixture": true,
+   "source": "users/user_N/host_context.json"
+  },
+  {
+   "cases": "assigned, unassigned 4096-byte Unicode, empty username, deleted",
+   "entity": "saved password",
+   "in_fixture": true,
+   "source": "users/user_N/credentials.json"
+  },
+  {
+   "cases": "2 steps; 20 steps Unicode; deleted",
+   "entity": "automation runbook",
+   "in_fixture": true,
+   "source": "users/user_N/automation.json"
+  },
+  {
+   "cases": "three passwords incl. 4096 bytes",
+   "entity": "automation vault",
+   "in_fixture": true,
+   "source": "users/user_N/automation-vault.json"
+  },
+  {
+   "cases": "one failed run with output",
+   "entity": "automation run history",
+   "in_fixture": true,
+   "source": "users/user_N/automation-runs.json"
+  },
+  {
+   "cases": "quarantined by delete_user_account",
+   "entity": "deleted account data",
+   "in_fixture": true,
+   "source": "data/deleted_users/user_N_<hex>/"
+  },
+  {
+   "cases": "current files only, no rotation",
+   "entity": "audit and app logs",
+   "in_fixture": true,
+   "source": "data/logs/*.log[.N]"
+  },
+  {
+   "cases": "pre-multi-user layout",
+   "entity": "legacy single-user stores",
+   "in_fixture": false,
+   "source": "data/profiles.json, data/keys/, data/commands/"
+  },
+  {
+   "cases": "runtime queue, excluded from backups",
+   "entity": "access revocation queue",
+   "in_fixture": false,
+   "source": "data/.access-revocations/"
+  },
+  {
+   "cases": "runtime state, excluded from backups",
+   "entity": "LDAP revocation fences",
+   "in_fixture": false,
+   "source": "data/.ldap-revocation-fences/"
+  },
+  {
+   "cases": "transient",
+   "entity": "transfer temp files",
+   "in_fixture": false,
+   "source": "TRANSFER_TEMP_DIR (data/tmp)"
+  },
+  {
+   "cases": "transient; archives themselves are in artifacts/backups",
+   "entity": "backup operations",
+   "in_fixture": false,
+   "source": "BACKUP_TEMP_DIR"
+  },
+  {
+   "cases": "not stored in DATA_DIR",
+   "entity": "profile export file",
+   "in_fixture": false,
+   "source": "download (app/profile_exchange.py)"
+  },
+  {
+   "cases": "manifest.environment",
+   "entity": "deployment configuration",
+   "in_fixture": true,
+   "source": "environment / .env"
+  }
+ ],
+ "environment": {
+  "ADMIN_USERS": "cfg_admin",
+  "BACKUP_RECOVERY_DURABLE": "true",
+  "DEBUG": "false",
+  "DEPLOYMENT_PROFILE": "homelab",
+  "LDAP_AUTO_PROVISION": "false",
+  "LDAP_ENABLED": "false",
+  "OIDC_ENABLED": "false",
+  "RATELIMIT_STORAGE_URL": "memory://",
+  "RECOVERY_CODES_ENABLED": "true",
+  "SECRET_KEY": "e48156ffbf1a037015af592d5d61e8858a92e290703a30dc034d2dade6afe41e",
+  "SESSION_COOKIE_SECURE": "false",
+  "TAILSCALE_SSH_ENABLED": "false",
+  "TOTP_ENABLED": "true",
+  "TZ": "UTC",
+  "WEBAUTHN_ENABLED": "true",
+  "WEBAUTHN_ORIGIN": "https://webssh.golden.test",
+  "WEBAUTHN_RP_ID": "webssh.golden.test"
+ },
+ "files": [
+  {
+   "deterministic": false,
+   "mode": "0o600",
+   "path": "artifacts/backups/export.zip",
+   "sha256": "f196b812f1855d45a690abf2804d07c8a3a12406b68f3fa8d15479ec9b4006be",
+   "size": 21447
+  },
+  {
+   "deterministic": false,
+   "mode": "0o600",
+   "path": "artifacts/backups/online-recovery-snapshot.zip",
+   "sha256": "aafdeb2155e94774fc5e281f69e8cddceb41bb15a2239f50d0eb0e26a38ffa89",
+   "size": 47533
+  },
+  {
+   "deterministic": false,
+   "mode": "0o600",
+   "path": "artifacts/backups/online.zip",
+   "sha256": "357179f6dd8f40d7fcf807f3792b6409edfc4c6fbac714398a42c488111ee399",
+   "size": 21441
+  },
+  {
+   "deterministic": false,
+   "mode": "0o644",
+   "path": "data/app.db",
+   "sha256": "04bee102d7b13b246a12d56c237a368144cec55decd7b2f35d008c575a01708a",
+   "size": 368640
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/app_settings.json",
+   "sha256": "b02b292c0e8af31476cc013a440fdde81a5aa8f55f4d6001435b3c18330f21f1",
+   "size": 412
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/deleted_users/user_12_7e4cf8aa59be45c2be46c153bdb481cb/profiles.json",
+   "sha256": "65cfd9e1185c15bcd3b6df953be4f91dc8d792f19c04b5a428ac8dea444d7e32",
+   "size": 428
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/known_hosts",
+   "sha256": "2f1445d63a543dfadd8bdad9d2eed91f336a145dff139c534d91ef1ab53ca1b8",
+   "size": 515
+  },
+  {
+   "deterministic": true,
+   "mode": "0o644",
+   "path": "data/logs/app.log",
+   "sha256": "1a781a6c0308066de193bc10294a3e4b8602b6021805bbbeaacb988bf1543177",
+   "size": 3731
+  },
+  {
+   "deterministic": true,
+   "mode": "0o644",
+   "path": "data/logs/security_audit.log",
+   "sha256": "2258a05f0d4e4060f0ae9cd0d7b3e5340474370912b54a2ff84364f1871b4c6f",
+   "size": 1791
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/secret_key",
+   "sha256": "8185a570234044195a08c0736f511951d2e6ee4a2500a8923361e7669cf584e4",
+   "size": 65
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/session_epoch",
+   "sha256": "29ee6041306cb123f7f0e8639b8386160f9059cafa5bfca0cc846ca41badc4be",
+   "size": 65
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_1/keys/9d1eae83-7835-4ca9-8e20-68e2a561af32.pem",
+   "sha256": "60eec1ffaf41eb7f81e4ac701a9dc3b1c0c70d8fc756b129a98fcd4d90436adf",
+   "size": 387
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_1/keys/keys.json",
+   "sha256": "9b0d1e4f0e0b2fa73760210056d2b61a0bc2fe627fbebdf62307dd5de325a051",
+   "size": 322
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/automation-runs.json",
+   "sha256": "2d5cecb3bb2154596ecc1f1f70f6b27f56f0d38904f7ddc2b48c3592f31f13f2",
+   "size": 1065
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/automation-vault.json",
+   "sha256": "b634a3bd956681ef13808ac7e9e124615dab913afd2a6ec4d8e0c65c38040fff",
+   "size": 10565
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/automation.json",
+   "sha256": "bacab2de31f203a61211937d71950aac6d798d82033835032392b6344b67c385",
+   "size": 3445
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/command_sets.json",
+   "sha256": "b37016b2320de869205306ee8f1e577c0f83dfe7eecaec36fad105a4e06cb112",
+   "size": 1443
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/commands.json",
+   "sha256": "e98771e363049f9da0dbc2f90c6c4c98398f63eb892d2006fd76de5ece7456eb",
+   "size": 743
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/credentials.json",
+   "sha256": "650b7c99ef2c9ac3e3e5141d363badcfadd5966cfc04a25b2848dc15e1b008b5",
+   "size": 6677
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/host_context.json",
+   "sha256": "c755889fedc2f9794968676c7a4869043d641c992314b5caa9682407b07de0e6",
+   "size": 4802
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/jump_hosts.json",
+   "sha256": "417ed5289b741c6f987fabfc7e870584de216deac36c9f118dcae46d7fcd26ce",
+   "size": 358
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/0be272c2-af34-4b55-be4d-6b6a11b21acc.pem",
+   "sha256": "9811c39d2db95e3a2442337406d10cabb776f2d35461004c4dea7d0865a3bba2",
+   "size": 612
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/168716ca-55b4-4155-8827-f5d378fe0ad0.pem",
+   "sha256": "a1f42e83fb045a77dd8c537c79df972dc8da3e0c3d83e81e6cd05f0ffc81ea11",
+   "size": 2316
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/1f90186a-d5b6-4df7-9bb6-2167d8ce1bf2.pem",
+   "sha256": "c6d25bccaa0ea3f625d4571927bdf42186b02d5cc7578a74fe1503f9fb7a9863",
+   "size": 484
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/2139432b-cd59-437d-b01a-f2f37e7b64b4.pem",
+   "sha256": "6b49a8a41320356da1a2b60dc7c5a4b06bda879f14ef809a17a5de4a814d27df",
+   "size": 396
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/74249d68-7b0e-4f0e-b9c0-d36c3ca5dc31.pem",
+   "sha256": "07b90f361e871cd2a108abc34bf5b762941cdc55a783fee30b0dcaa43ba81b06",
+   "size": 888
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/80c09d20-daf6-4bf5-bc41-a41341ab13aa.pem",
+   "sha256": "cc93f2c59257722729f4dfccfda5a184c22c0304a9cd82f553bad7fb92d93ca4",
+   "size": 740
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/99506353-0152-479f-93ca-cf7ad973a4b4.pem",
+   "sha256": "562bef06ac79449574211a4f9331e1d4c605414c3867977d214ab7e563cfcbbb",
+   "size": 568
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/9971eb1e-92db-4b73-93dd-b5c5d5d8387c.pem",
+   "sha256": "f88b7265852a7ed1f4b792d13a63231ef1a52edbc560befe9767499b83f6d8f0",
+   "size": 2488
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/b27e2d5f-430a-4c37-aed2-5cb949373c98.pem",
+   "sha256": "07056fa3a35c4364e33ff24749b03a730974fda9a280c93fcb49adb9b6702239",
+   "size": 1036
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/d12ad3cd-eb07-4418-8967-a3169ba3de68.pem",
+   "sha256": "cd2928bba84e665b90139bca4ddab1f60f38a70913c713863c958aed99ac360e",
+   "size": 612
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/keys/keys.json",
+   "sha256": "bb341aab7333c45bc8b86d52a3c8c5b5eb7f05f67441abd2c7a6582e78c85bf0",
+   "size": 2881
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/known_hosts",
+   "sha256": "cc2115d31e7232f109d740cf86ca93e83ff37dec95f2221d6bcfe7aa68467118",
+   "size": 280
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/profiles.json",
+   "sha256": "08f4616a16f7a34380f95862acdf030c928a6ca428d75d91142e910757f9ed8d",
+   "size": 4364
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/settings.json",
+   "sha256": "a1830f0a9453b771e05e6c6bcd11624d428b8d37c0e7d84ff3f5db71221ae21a",
+   "size": 402
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/smb_shares.json",
+   "sha256": "bff0cd5050ed1b7a7020a213a7574becc754147d3daf7cf4ef7e52cb3630ffbc",
+   "size": 758
+  },
+  {
+   "deterministic": true,
+   "mode": "0o600",
+   "path": "data/users/user_3/socks_proxies.json",
+   "sha256": "e6914af6cb5a25043d7c8e6715ab5b167dd239ae445898be96cd3a3aedfc5d40",
+   "size": 700
+  }
+ ],
+ "format": "webssh-golden-data-set",
+ "generator": {
+  "clock_start": "2026-11-02T09:00:00+00:00",
+  "command": "python -m tests.golden.generate",
+  "packages": {
+   "Flask": "3.1.3",
+   "Flask-Login": "0.6.3",
+   "Flask-SQLAlchemy": "3.1.1",
+   "Flask-WTF": "1.3.0",
+   "SQLAlchemy": "2.1.6",
+   "Werkzeug": "3.1.9",
+   "bcrypt": "5.0.0",
+   "cbor2": "6.1.5",
+   "cryptography": "50.0.2",
+   "itsdangerous": "2.2.0",
+   "paramiko": "5.1.0",
+   "webauthn": "3.0.1"
+  },
+  "python": "3.15.1",
+  "seed": "webssh-golden-data-set-v1"
+ },
+ "nondeterministic": [
+  {
+   "path": "artifacts/backups/*.zip",
+   "reason": "ZIP member timestamps come from staging-file mtimes (zipfile ZipInfo.from_file); member contents are identical per run"
+  },
+  {
+   "path": "datadir.tar, data/app.db and the app.db member of each backup",
+   "reason": "CREATE INDEX order follows identity-hashed SQLAlchemy Index objects; schema and rows are identical, compare with compare.database_dump"
+  },
+  {
+   "path": "values.ssh_keys.rejected[deterministic=false]",
+   "reason": "PEM/PKCS#8 passphrase encryption draws IV and salt inside OpenSSL"
+  }
+ ],
+ "reference": {
+  "cookie_verify_at": "2026-11-02T09:08:56.250000+00:00",
+  "note": "Cookie expectations hold at this instant; the authentication sessions expire 30 minutes after their login."
+ },
+ "secret_key": {
+  "file": "data/secret_key",
+  "note": "synthetic, derived from the seed",
+  "value": "e48156ffbf1a037015af592d5d61e8858a92e290703a30dc034d2dade6afe41e"
+ },
+ "values": {
+  "automation": {
+   "runbook": {
+    "id": "1370aa3c-0642-44d5-b9b5-1f03f04e3ad5",
+    "name": "Golden check",
+    "steps": [
+     {
+      "command": "id",
+      "name": "Identity",
+      "sudo": false,
+      "timeout": 5
+     },
+     {
+      "command": "df -h /",
+      "name": "Disk",
+      "sudo": true,
+      "timeout": 30
+     }
+    ],
+    "stop_on_error": false
+   },
+   "schedule_id": "bb075e0d-6937-4796-92a2-05c0c9827d22"
+  },
+  "backups": {
+   "export": {
+    "created_at": "2026-11-02T09:09:56.250000Z",
+    "data_schema_version": 2,
+    "files": [
+     {
+      "path": "app.db",
+      "sha256": "04bee102d7b13b246a12d56c237a368144cec55decd7b2f35d008c575a01708a",
+      "size": 368640
+     },
+     {
+      "path": "app_settings.json",
+      "sha256": "b02b292c0e8af31476cc013a440fdde81a5aa8f55f4d6001435b3c18330f21f1",
+      "size": 412
+     },
+     {
+      "path": "known_hosts",
+      "sha256": "2f1445d63a543dfadd8bdad9d2eed91f336a145dff139c534d91ef1ab53ca1b8",
+      "size": 515
+     },
+     {
+      "path": "secret_key",
+      "sha256": "8185a570234044195a08c0736f511951d2e6ee4a2500a8923361e7669cf584e4",
+      "size": 65
+     },
+     {
+      "path": "session_epoch",
+      "sha256": "29ee6041306cb123f7f0e8639b8386160f9059cafa5bfca0cc846ca41badc4be",
+      "size": 65
+     },
+     {
+      "path": "users/user_3/automation-runs.json",
+      "sha256": "2d5cecb3bb2154596ecc1f1f70f6b27f56f0d38904f7ddc2b48c3592f31f13f2",
+      "size": 1065
+     },
+     {
+      "path": "users/user_3/automation.json",
+      "sha256": "bacab2de31f203a61211937d71950aac6d798d82033835032392b6344b67c385",
+      "size": 3445
+     },
+     {
+      "path": "users/user_3/command_sets.json",
+      "sha256": "b37016b2320de869205306ee8f1e577c0f83dfe7eecaec36fad105a4e06cb112",
+      "size": 1443
+     },
+     {
+      "path": "users/user_3/commands.json",
+      "sha256": "e98771e363049f9da0dbc2f90c6c4c98398f63eb892d2006fd76de5ece7456eb",
+      "size": 743
+     },
+     {
+      "path": "users/user_3/host_context.json",
+      "sha256": "c755889fedc2f9794968676c7a4869043d641c992314b5caa9682407b07de0e6",
+      "size": 4802
+     },
+     {
+      "path": "users/user_3/jump_hosts.json",
+      "sha256": "417ed5289b741c6f987fabfc7e870584de216deac36c9f118dcae46d7fcd26ce",
+      "size": 358
+     },
+     {
+      "path": "users/user_3/known_hosts",
+      "sha256": "cc2115d31e7232f109d740cf86ca93e83ff37dec95f2221d6bcfe7aa68467118",
+      "size": 280
+     },
+     {
+      "path": "users/user_3/profiles.json",
+      "sha256": "08f4616a16f7a34380f95862acdf030c928a6ca428d75d91142e910757f9ed8d",
+      "size": 4364
+     },
+     {
+      "path": "users/user_3/settings.json",
+      "sha256": "a1830f0a9453b771e05e6c6bcd11624d428b8d37c0e7d84ff3f5db71221ae21a",
+      "size": 402
+     },
+     {
+      "path": "users/user_3/smb_shares.json",
+      "sha256": "bff0cd5050ed1b7a7020a213a7574becc754147d3daf7cf4ef7e52cb3630ffbc",
+      "size": 758
+     },
+     {
+      "path": "users/user_3/socks_proxies.json",
+      "sha256": "e6914af6cb5a25043d7c8e6715ab5b167dd239ae445898be96cd3a3aedfc5d40",
+      "size": 700
+     }
+    ],
+    "format_version": 2,
+    "producer": "webssh"
+   },
+   "online": {
+    "created_at": "2026-11-02T09:09:56.250000Z",
+    "data_schema_version": 2,
+    "files": [
+     {
+      "path": "app.db",
+      "sha256": "ef031e0553150e547009f2112f7fd78302ff39c3c174bd87b98f64dd4516ecf7",
+      "size": 368640
+     },
+     {
+      "path": "app_settings.json",
+      "sha256": "b02b292c0e8af31476cc013a440fdde81a5aa8f55f4d6001435b3c18330f21f1",
+      "size": 412
+     },
+     {
+      "path": "known_hosts",
+      "sha256": "2f1445d63a543dfadd8bdad9d2eed91f336a145dff139c534d91ef1ab53ca1b8",
+      "size": 515
+     },
+     {
+      "path": "secret_key",
+      "sha256": "8185a570234044195a08c0736f511951d2e6ee4a2500a8923361e7669cf584e4",
+      "size": 65
+     },
+     {
+      "path": "session_epoch",
+      "sha256": "29ee6041306cb123f7f0e8639b8386160f9059cafa5bfca0cc846ca41badc4be",
+      "size": 65
+     },
+     {
+      "path": "users/user_3/automation-runs.json",
+      "sha256": "2d5cecb3bb2154596ecc1f1f70f6b27f56f0d38904f7ddc2b48c3592f31f13f2",
+      "size": 1065
+     },
+     {
+      "path": "users/user_3/automation.json",
+      "sha256": "bacab2de31f203a61211937d71950aac6d798d82033835032392b6344b67c385",
+      "size": 3445
+     },
+     {
+      "path": "users/user_3/command_sets.json",
+      "sha256": "b37016b2320de869205306ee8f1e577c0f83dfe7eecaec36fad105a4e06cb112",
+      "size": 1443
+     },
+     {
+      "path": "users/user_3/commands.json",
+      "sha256": "e98771e363049f9da0dbc2f90c6c4c98398f63eb892d2006fd76de5ece7456eb",
+      "size": 743
+     },
+     {
+      "path": "users/user_3/host_context.json",
+      "sha256": "c755889fedc2f9794968676c7a4869043d641c992314b5caa9682407b07de0e6",
+      "size": 4802
+     },
+     {
+      "path": "users/user_3/jump_hosts.json",
+      "sha256": "417ed5289b741c6f987fabfc7e870584de216deac36c9f118dcae46d7fcd26ce",
+      "size": 358
+     },
+     {
+      "path": "users/user_3/known_hosts",
+      "sha256": "cc2115d31e7232f109d740cf86ca93e83ff37dec95f2221d6bcfe7aa68467118",
+      "size": 280
+     },
+     {
+      "path": "users/user_3/profiles.json",
+      "sha256": "08f4616a16f7a34380f95862acdf030c928a6ca428d75d91142e910757f9ed8d",
+      "size": 4364
+     },
+     {
+      "path": "users/user_3/settings.json",
+      "sha256": "a1830f0a9453b771e05e6c6bcd11624d428b8d37c0e7d84ff3f5db71221ae21a",
+      "size": 402
+     },
+     {
+      "path": "users/user_3/smb_shares.json",
+      "sha256": "bff0cd5050ed1b7a7020a213a7574becc754147d3daf7cf4ef7e52cb3630ffbc",
+      "size": 758
+     },
+     {
+      "path": "users/user_3/socks_proxies.json",
+      "sha256": "e6914af6cb5a25043d7c8e6715ab5b167dd239ae445898be96cd3a3aedfc5d40",
+      "size": 700
+     }
+    ],
+    "format_version": 2,
+    "producer": "webssh"
+   },
+   "recovery_snapshot": {
+    "created_at": "2026-11-02T09:09:56.250000Z",
+    "data_schema_version": 2,
+    "files": [
+     {
+      "path": "app.db",
+      "sha256": "ef031e0553150e547009f2112f7fd78302ff39c3c174bd87b98f64dd4516ecf7",
+      "size": 368640
+     },
+     {
+      "path": "app_settings.json",
+      "sha256": "b02b292c0e8af31476cc013a440fdde81a5aa8f55f4d6001435b3c18330f21f1",
+      "size": 412
+     },
+     {
+      "path": "deleted_users/user_12_7e4cf8aa59be45c2be46c153bdb481cb/profiles.json",
+      "sha256": "65cfd9e1185c15bcd3b6df953be4f91dc8d792f19c04b5a428ac8dea444d7e32",
+      "size": 428
+     },
+     {
+      "path": "known_hosts",
+      "sha256": "2f1445d63a543dfadd8bdad9d2eed91f336a145dff139c534d91ef1ab53ca1b8",
+      "size": 515
+     },
+     {
+      "path": "secret_key",
+      "sha256": "8185a570234044195a08c0736f511951d2e6ee4a2500a8923361e7669cf584e4",
+      "size": 65
+     },
+     {
+      "path": "session_epoch",
+      "sha256": "29ee6041306cb123f7f0e8639b8386160f9059cafa5bfca0cc846ca41badc4be",
+      "size": 65
+     },
+     {
+      "path": "users/user_1/keys/9d1eae83-7835-4ca9-8e20-68e2a561af32.pem",
+      "sha256": "60eec1ffaf41eb7f81e4ac701a9dc3b1c0c70d8fc756b129a98fcd4d90436adf",
+      "size": 387
+     },
+     {
+      "path": "users/user_1/keys/keys.json",
+      "sha256": "9b0d1e4f0e0b2fa73760210056d2b61a0bc2fe627fbebdf62307dd5de325a051",
+      "size": 322
+     },
+     {
+      "path": "users/user_3/automation-runs.json",
+      "sha256": "2d5cecb3bb2154596ecc1f1f70f6b27f56f0d38904f7ddc2b48c3592f31f13f2",
+      "size": 1065
+     },
+     {
+      "path": "users/user_3/automation-vault.json",
+      "sha256": "b634a3bd956681ef13808ac7e9e124615dab913afd2a6ec4d8e0c65c38040fff",
+      "size": 10565
+     },
+     {
+      "path": "users/user_3/automation.json",
+      "sha256": "bacab2de31f203a61211937d71950aac6d798d82033835032392b6344b67c385",
+      "size": 3445
+     },
+     {
+      "path": "users/user_3/command_sets.json",
+      "sha256": "b37016b2320de869205306ee8f1e577c0f83dfe7eecaec36fad105a4e06cb112",
+      "size": 1443
+     },
+     {
+      "path": "users/user_3/commands.json",
+      "sha256": "e98771e363049f9da0dbc2f90c6c4c98398f63eb892d2006fd76de5ece7456eb",
+      "size": 743
+     },
+     {
+      "path": "users/user_3/credentials.json",
+      "sha256": "650b7c99ef2c9ac3e3e5141d363badcfadd5966cfc04a25b2848dc15e1b008b5",
+      "size": 6677
+     },
+     {
+      "path": "users/user_3/host_context.json",
+      "sha256": "c755889fedc2f9794968676c7a4869043d641c992314b5caa9682407b07de0e6",
+      "size": 4802
+     },
+     {
+      "path": "users/user_3/jump_hosts.json",
+      "sha256": "417ed5289b741c6f987fabfc7e870584de216deac36c9f118dcae46d7fcd26ce",
+      "size": 358
+     },
+     {
+      "path": "users/user_3/keys/0be272c2-af34-4b55-be4d-6b6a11b21acc.pem",
+      "sha256": "9811c39d2db95e3a2442337406d10cabb776f2d35461004c4dea7d0865a3bba2",
+      "size": 612
+     },
+     {
+      "path": "users/user_3/keys/168716ca-55b4-4155-8827-f5d378fe0ad0.pem",
+      "sha256": "a1f42e83fb045a77dd8c537c79df972dc8da3e0c3d83e81e6cd05f0ffc81ea11",
+      "size": 2316
+     },
+     {
+      "path": "users/user_3/keys/1f90186a-d5b6-4df7-9bb6-2167d8ce1bf2.pem",
+      "sha256": "c6d25bccaa0ea3f625d4571927bdf42186b02d5cc7578a74fe1503f9fb7a9863",
+      "size": 484
+     },
+     {
+      "path": "users/user_3/keys/2139432b-cd59-437d-b01a-f2f37e7b64b4.pem",
+      "sha256": "6b49a8a41320356da1a2b60dc7c5a4b06bda879f14ef809a17a5de4a814d27df",
+      "size": 396
+     },
+     {
+      "path": "users/user_3/keys/74249d68-7b0e-4f0e-b9c0-d36c3ca5dc31.pem",
+      "sha256": "07b90f361e871cd2a108abc34bf5b762941cdc55a783fee30b0dcaa43ba81b06",
+      "size": 888
+     },
+     {
+      "path": "users/user_3/keys/80c09d20-daf6-4bf5-bc41-a41341ab13aa.pem",
+      "sha256": "cc93f2c59257722729f4dfccfda5a184c22c0304a9cd82f553bad7fb92d93ca4",
+      "size": 740
+     },
+     {
+      "path": "users/user_3/keys/99506353-0152-479f-93ca-cf7ad973a4b4.pem",
+      "sha256": "562bef06ac79449574211a4f9331e1d4c605414c3867977d214ab7e563cfcbbb",
+      "size": 568
+     },
+     {
+      "path": "users/user_3/keys/9971eb1e-92db-4b73-93dd-b5c5d5d8387c.pem",
+      "sha256": "f88b7265852a7ed1f4b792d13a63231ef1a52edbc560befe9767499b83f6d8f0",
+      "size": 2488
+     },
+     {
+      "path": "users/user_3/keys/b27e2d5f-430a-4c37-aed2-5cb949373c98.pem",
+      "sha256": "07056fa3a35c4364e33ff24749b03a730974fda9a280c93fcb49adb9b6702239",
+      "size": 1036
+     },
+     {
+      "path": "users/user_3/keys/d12ad3cd-eb07-4418-8967-a3169ba3de68.pem",
+      "sha256": "cd2928bba84e665b90139bca4ddab1f60f38a70913c713863c958aed99ac360e",
+      "size": 612
+     },
+     {
+      "path": "users/user_3/keys/keys.json",
+      "sha256": "bb341aab7333c45bc8b86d52a3c8c5b5eb7f05f67441abd2c7a6582e78c85bf0",
+      "size": 2881
+     },
+     {
+      "path": "users/user_3/known_hosts",
+      "sha256": "cc2115d31e7232f109d740cf86ca93e83ff37dec95f2221d6bcfe7aa68467118",
+      "size": 280
+     },
+     {
+      "path": "users/user_3/profiles.json",
+      "sha256": "08f4616a16f7a34380f95862acdf030c928a6ca428d75d91142e910757f9ed8d",
+      "size": 4364
+     },
+     {
+      "path": "users/user_3/settings.json",
+      "sha256": "a1830f0a9453b771e05e6c6bcd11624d428b8d37c0e7d84ff3f5db71221ae21a",
+      "size": 402
+     },
+     {
+      "path": "users/user_3/smb_shares.json",
+      "sha256": "bff0cd5050ed1b7a7020a213a7574becc754147d3daf7cf4ef7e52cb3630ffbc",
+      "size": 758
+     },
+     {
+      "path": "users/user_3/socks_proxies.json",
+      "sha256": "e6914af6cb5a25043d7c8e6715ab5b167dd239ae445898be96cd3a3aedfc5d40",
+      "size": 700
+     }
+    ],
+    "format_version": 2,
+    "producer": "webssh"
+   }
+  },
+  "commands": {
+   "command_sets": [
+    {
+     "created_at": "2026-11-02T09:03:54.250000+00:00",
+     "description": "",
+     "id": "867426f3-ca2f-40df-837c-6430d34fa3c9",
+     "name": "Golden bootstrap",
+     "parameters": [],
+     "steps": [
+      {
+       "command": "uptime",
+       "type": "inline"
+      }
+     ],
+     "updated_at": "2026-11-02T09:03:54.250000+00:00",
+     "use_sudo": false
+    },
+    {
+     "created_at": "2026-11-02T09:03:54.250000+00:00",
+     "description": "",
+     "id": "5ba6f43d-d5c7-4422-b297-c5a32f3ba1eb",
+     "name": "Golden inspect path",
+     "parameters": [
+      {
+       "name": "path"
+      }
+     ],
+     "steps": [
+      {
+       "argv": [
+        "ls",
+        "-la",
+        "{{path}}"
+       ],
+       "type": "argv"
+      }
+     ],
+     "updated_at": "2026-11-02T09:03:54.250000+00:00",
+     "use_sudo": false
+    }
+   ],
+   "user_command": {
+    "category": "custom",
+    "command": "uptime",
+    "createdAt": "2026-11-02T09:03:54.250000",
+    "description": "Show uptime",
+    "id": "75ed71bc-c01f-418d-a728-7bda22477eb7",
+    "isSystem": false,
+    "name": "Golden uptime",
+    "os": [
+     "all"
+    ],
+    "parameters": "",
+    "userId": 3
+   }
+  },
+  "connections": {
+   "jump_host": {
+    "auth_type": "key",
+    "created_at": "2026-11-02T09:03:54.250000",
+    "host": "bastion.golden.test",
+    "id": "2735737b-d93a-4e54-acd5-85b740b63526",
+    "key_id": "d12ad3cd-eb07-4418-8967-a3169ba3de68",
+    "name": "Golden bastion",
+    "port": 22,
+    "username": "jumper"
+   },
+   "profiles": {
+    "Key server": {
+     "auth_type": "key",
+     "created_at": "2026-11-02T09:03:54.250000+00:00",
+     "host": "key.golden.test",
+     "id": "66d036e3-0797-4e4a-8cc5-6d20de19554a",
+     "key_id": "9971eb1e-92db-4b73-93dd-b5c5d5d8387c",
+     "name": "Key server",
+     "port": 22,
+     "sort_order": 2,
+     "startup_mode": "none",
+     "updated_at": "2026-11-02T09:03:54.250000+00:00",
+     "username": "deploy"
+    },
+    "Password server": {
+     "auth_type": "password",
+     "created_at": "2026-11-02T09:03:54.250000+00:00",
+     "host": "pw.golden.test",
+     "id": "c11ae780-b6eb-4dac-a794-d27d0b23f255",
+     "key_id": null,
+     "name": "Password server",
+     "port": 22,
+     "sort_order": 0,
+     "startup_mode": "none",
+     "updated_at": "2026-11-02T09:03:54.250000+00:00",
+     "username": "operator"
+    },
+    "Unicode server": {
+     "auth_type": "password",
+     "created_at": "2026-11-02T09:03:54.250000+00:00",
+     "host": "uni.golden.test",
+     "id": "270ac363-514f-4978-a380-dadab27cfd3e",
+     "key_id": null,
+     "name": "Unicode server",
+     "port": 2222,
+     "sort_order": 1,
+     "startup_mode": "none",
+     "updated_at": "2026-11-02T09:03:54.250000+00:00",
+     "username": "op.erator-2"
+    },
+    "Via SOCKS": {
+     "auth_type": "password",
+     "created_at": "2026-11-02T09:03:54.250000+00:00",
+     "host": "proxied.golden.test",
+     "id": "312f9a10-c676-4ca4-9743-e7aa2e758aa3",
+     "key_id": null,
+     "name": "Via SOCKS",
+     "port": 22,
+     "socks_proxy_id": "45af77db-0c12-41d0-b28e-ea67984e5ebd",
+     "sort_order": 4,
+     "startup_mode": "none",
+     "updated_at": "2026-11-02T09:03:54.250000+00:00",
+     "username": "deploy"
+    },
+    "Via bastion": {
+     "auth_type": "key",
+     "created_at": "2026-11-02T09:03:54.250000+00:00",
+     "host": "inner.golden.test",
+     "id": "0296e087-7c43-42d2-acb0-6703e8f44957",
+     "jump_host_id": "2735737b-d93a-4e54-acd5-85b740b63526",
+     "key_id": "80c09d20-daf6-4bf5-bc41-a41341ab13aa",
+     "name": "Via bastion",
+     "port": 22,
+     "sort_order": 3,
+     "startup_mode": "none",
+     "updated_at": "2026-11-02T09:03:54.250000+00:00",
+     "username": "deploy"
+    }
+   },
+   "smb_share": {
+    "created_at": "2026-11-02T09:03:54.250000+00:00",
+    "domain": "GOLDEN",
+    "host": "files.golden.test",
+    "id": "bd543af85d954675b86ba49170a9ed37",
+    "name": "Golden share",
+    "share": "public",
+    "updated_at": "2026-11-02T09:03:54.250000+00:00",
+    "username": "smbuser"
+   },
+   "socks_proxy": {
+    "auth_type": "none",
+    "created_at": "2026-11-02T09:03:54.250000",
+    "host": "socks.golden.test",
+    "id": "45af77db-0c12-41d0-b28e-ea67984e5ebd",
+    "name": "Golden SOCKS",
+    "port": 1080,
+    "remote_dns": true,
+    "username": ""
+   }
+  },
+  "cookies": [
+   {
+    "compressed": true,
+    "decoded_payload": {
+     "_auth_epoch": "4f73df5e685918c1dcea33563f2b476e4cf3ce705d82fead37babcdca8c5b1d9",
+     "_auth_session": "1o-6FKiiRQ-Y3ZQr0os5s43vG2AN8YVlDihZuOQrjo4",
+     "_fresh": true,
+     "_id": "24f6c1235277b2ea57156e0c790ed4d231cdb2fba7101272b92fd9dcdad28c3cddad8fe1211823face5ee2e08940406c7982d5a745e174e09bd88878ac929c58",
+     "_user_id": "3:0:1o-6FKiiRQ-Y3ZQr0os5s43vG2AN8YVlDihZuOQrjo4"
+    },
+    "expected": {
+     "accepted": true
+    },
+    "issued_at": "2026-11-02T09:05:56+00:00",
+    "issued_at_unix": 1793610356,
+    "name": "valid",
+    "note": "Fresh login after the epoch rotation.",
+    "value": ".eJyVj81KA0EQhN9lzwame366Jzch6EFQ4kFILmGmu4esiCs7WS_iu7tBX8Bb1aE-vvoaTmW5nE_2Mcl52A6hkdcWLXHMwAIqVryPyTesgZIFaV6MXFTGZkU91VJFpbDECpqHmz9gt97H6X1FwrRJdw_j-LzfHPxxP7upxx785z3ePvLh5W03no_L035-ncJ13Wbrq8llXmxto64EDC0JoI9IVNFKJIjJnFB2pkHRg2jFVguBAySsGZtmFS2KLF50DdwMEIDRtyIWzdAc5-CCSyuHUWOhEA0omMtVmZm4SMYska9aS7f518Zv3fY_n75_AB3Eamk.auhSdA.NCikbbVxcn2UctGOxle1kKtJJ4o"
+   },
+   {
+    "compressed": true,
+    "decoded_payload": {
+     "_auth_epoch": "4f73df5e685918c1dcea33563f2b476e4cf3ce705d82fead37babcdca8c5b1d9",
+     "_auth_session": "1o-6FKiiRQ-Y3ZQr0os5s43vG2AN8YVlDihZuOQrjo4",
+     "_fresh": true,
+     "_id": "24f6c1235277b2ea57156e0c790ed4d231cdb2fba7101272b92fd9dcdad28c3cddad8fe1211823face5ee2e08940406c7982d5a745e174e09bd88878ac929c58",
+     "_user_id": "3:0:1o-6FKiiRQ-Y3ZQr0os5s43vG2AN8YVlDihZuOQrjo4"
+    },
+    "expected": {
+     "accepted": false,
+     "reason": "signature_age"
+    },
+    "issued_at": "2026-11-02T01:08:55+00:00",
+    "issued_at_unix": 1793581735,
+    "name": "expired_signature",
+    "note": "Payload of \"valid\", signed 8 h + 1 s before verify_at.",
+    "value": ".eJyVj81KA0EQhN9lzwame366Jzch6EFQ4kFILmGmu4esiCs7WS_iu7tBX8Bb1aE-vvoaTmW5nE_2Mcl52A6hkdcWLXHMwAIqVryPyTesgZIFaV6MXFTGZkU91VJFpbDECpqHmz9gt97H6X1FwrRJdw_j-LzfHPxxP7upxx785z3ePvLh5W03no_L035-ncJ13Wbrq8llXmxto64EDC0JoI9IVNFKJIjJnFB2pkHRg2jFVguBAySsGZtmFS2KLF50DdwMEIDRtyIWzdAc5-CCSyuHUWOhEA0omMtVmZm4SMYska9aS7f518Zv3fY_n75_AB3Eamk.aufipw.DnafMumo-27MmKehVktMuOha4Tg"
+   },
+   {
+    "compressed": true,
+    "decoded_payload": {
+     "_auth_epoch": "883b033c75b01839e333c978c2e9a9a4568c5f70a7f8af9757ece6891be57461",
+     "_auth_session": "Xb0ayzbyGlMelXVyN9pKMm0Mp0MDp4DzGpdXRQTEDtg",
+     "_fresh": true,
+     "_id": "24f6c1235277b2ea57156e0c790ed4d231cdb2fba7101272b92fd9dcdad28c3cddad8fe1211823face5ee2e08940406c7982d5a745e174e09bd88878ac929c58",
+     "_user_id": "3:0:Xb0ayzbyGlMelXVyN9pKMm0Mp0MDp4DzGpdXRQTEDtg"
+    },
+    "expected": {
+     "accepted": false,
+     "reason": "session_epoch"
+    },
+    "issued_at": "2026-11-02T09:03:54+00:00",
+    "issued_at_unix": 1793610234,
+    "name": "revoked_epoch",
+    "note": "_auth_epoch holds the epoch before rotate_epoch().",
+    "value": ".eJyVj7FOAzEQRP_laor12r7dTR2UAh0SCKF0kb1eJ5ECOd3ligTx7ziCH6CbKebpzVe3S8vlsLPxrIdu1TH7DN4rxQyOvZhvRYgVTZKkEHvWWAkSVU5VKJKp9SwuW6TQu-7hDzjbPB_Pnw25zZCut3zdnAY7bd-vzzI-DR8wjDCsx7C-bcayfX15e1xf9vd1nWxuJpdpsdaOpREw1F4d-ohEGS1FcrE3UBKwEgp6pyVjzYkcOCTMgrVI0ZIKsnotLXA1h84x-prUohkasAQI0DcOY4mJQjRHwUByYWbipIKike9ay2zTr41fweo_n75_ABdEaqk.auhR-g.HBlXQzYOBlthTJT3cjSWizIV-rI"
+   },
+   {
+    "compressed": true,
+    "decoded_payload": {
+     "_auth_epoch": "4f73df5e685918c1dcea33563f2b476e4cf3ce705d82fead37babcdca8c5b1d9",
+     "_auth_session": "QaBbT1TZyuexKUaqws4NU1cb-jN0ZX1VGz5hh1jAmzE",
+     "_fresh": true,
+     "_id": "24f6c1235277b2ea57156e0c790ed4d231cdb2fba7101272b92fd9dcdad28c3cddad8fe1211823face5ee2e08940406c7982d5a745e174e09bd88878ac929c58",
+     "_user_id": "9:0:QaBbT1TZyuexKUaqws4NU1cb-jN0ZX1VGz5hh1jAmzE"
+    },
+    "expected": {
+     "accepted": false,
+     "reason": "auth_generation"
+    },
+    "issued_at": "2026-11-02T09:05:56+00:00",
+    "issued_at_unix": 1793610356,
+    "name": "revoked_generation",
+    "note": "invalidate_user_authentication() ran after login.",
+    "value": ".eJyVj8FKA0EQRP9lzwrTPTPbPbkpiAchICQiuUhPdw-bgEazWdSI_-4G_QFvVYd6vPrqnmQ6Dk_-utehW3SpUbSWvedcgBVMXWLMfWxYE_WetEV1CtkYm4tFqlLVVFhzBSvdxR9w9HHc7l9m5L1c1xWsNp-Tf9yt5e19TMs1aL3cLcPmER5uT3kYYHf1fLo5r9vBx9nkeJh8blubCZhar4AxI1FFl0yQew9KJbglwwhqFVsVggBIWAs2K6YmhqxRbQ7cHBCAMTZRz-7ogUsKKfQzh9GyUMoOlDyUasxMLFqwaOaz1jT64demLMLiP5--fwAIL2v5.auhSdA.bc8O3ZZpsjk0g4yBsJyKSJ_CuXw"
+   },
+   {
+    "compressed": true,
+    "decoded_payload": {
+     "_auth_epoch": "4f73df5e685918c1dcea33563f2b476e4cf3ce705d82fead37babcdca8c5b1d9",
+     "_auth_session": "1o-6FKiiRQ-Y3ZQr0os5s43vG2AN8YVlDihZuOQrjo4",
+     "_fresh": true,
+     "_id": "24f6c1235277b2ea57156e0c790ed4d231cdb2fba7101272b92fd9dcdad28c3cddad8fe1211823face5ee2e08940406c7982d5a745e174e09bd88878ac929c58",
+     "_user_id": "3:0:1o-6FKiiRQ-Y3ZQr0os5s43vG2AN8YVlDihZuOQrjo4"
+    },
+    "expected": {
+     "accepted": false,
+     "reason": "signature"
+    },
+    "issued_at": "2026-11-02T09:05:56+00:00",
+    "issued_at_unix": 1793610356,
+    "name": "tampered_signature",
+    "note": "First signature character changed.",
+    "value": ".eJyVj81KA0EQhN9lzwame366Jzch6EFQ4kFILmGmu4esiCs7WS_iu7tBX8Bb1aE-vvoaTmW5nE_2Mcl52A6hkdcWLXHMwAIqVryPyTesgZIFaV6MXFTGZkU91VJFpbDECpqHmz9gt97H6X1FwrRJdw_j-LzfHPxxP7upxx785z3ePvLh5W03no_L035-ncJ13Wbrq8llXmxto64EDC0JoI9IVNFKJIjJnFB2pkHRg2jFVguBAySsGZtmFS2KLF50DdwMEIDRtyIWzdAc5-CCSyuHUWOhEA0omMtVmZm4SMYska9aS7f518Zv3fY_n75_AB3Eamk.auhSdA.ACikbbVxcn2UctGOxle1kKtJJ4o"
+   },
+   {
+    "compressed": true,
+    "decoded_payload": {
+     "_auth_epoch": "4f73df5e685918c1dcea33563f2b476e4cf3ce705d82fead37babcdca8c5b1d9",
+     "_auth_session": "1o-6FKiiRQ-Y3ZQr0os5s43vG2AN8YVlDihZuOQrjo4",
+     "_fresh": true,
+     "_id": "24f6c1235277b2ea57156e0c790ed4d231cdb2fba7101272b92fd9dcdad28c3cddad8fe1211823face5ee2e08940406c7982d5a745e174e09bd88878ac929c58",
+     "_user_id": "1:0:1o-6FKiiRQ-Y3ZQr0os5s43vG2AN8YVlDihZuOQrjo4"
+    },
+    "expected": {
+     "accepted": false,
+     "reason": "signature"
+    },
+    "issued_at": "2026-11-02T09:05:56+00:00",
+    "issued_at_unix": 1793610356,
+    "name": "tampered_payload",
+    "note": "Payload claims the admin id; original signature kept.",
+    "value": ".eJyVj81KA0EQhN9lzwame366Jzch6EFQ4kFILmGmu4esiCs7WS_iu7tBX8Bb1aE-vvoaTmW5nE_2Mcl52A6hkdcWLXHMwAIqVryPyTesgZIFaV6MXFTGZkU91VJFpbDECpqHmz9gt97H6X1FwrRJdw_j-LzfHPxxP7upxx785z3ePvLh5W03no_L035-ncJ13Wbrq8llXmxto64EDC0JoI9IVNFKJIjJnFB2pkHRg2jFVguBAySsGZtmFS2KLF50DdwMEIDRtyIWzdAc5-CCSyuHUWOhEA0omMtVmZm4SMYska9aS7f51wa2bvufT98_HWJqZw.auhSdA.NCikbbVxcn2UctGOxle1kKtJJ4o"
+   },
+   {
+    "compressed": true,
+    "decoded_payload": {
+     "_auth_epoch": "4f73df5e685918c1dcea33563f2b476e4cf3ce705d82fead37babcdca8c5b1d9",
+     "_auth_session": "1o-6FKiiRQ-Y3ZQr0os5s43vG2AN8YVlDihZuOQrjo4",
+     "_fresh": true,
+     "_id": "24f6c1235277b2ea57156e0c790ed4d231cdb2fba7101272b92fd9dcdad28c3cddad8fe1211823face5ee2e08940406c7982d5a745e174e09bd88878ac929c58",
+     "_user_id": "3:0:1o-6FKiiRQ-Y3ZQr0os5s43vG2AN8YVlDihZuOQrjo4"
+    },
+    "expected": {
+     "accepted": false,
+     "reason": "signature"
+    },
+    "issued_at": "2026-11-02T09:08:56+00:00",
+    "issued_at_unix": 1793610536,
+    "name": "foreign_key",
+    "note": "Signed with a secret that is not the fixture key.",
+    "value": ".eJyVj81KA0EQhN9lzwame366Jzch6EFQ4kFILmGmu4esiCs7WS_iu7tBX8Bb1aE-vvoaTmW5nE_2Mcl52A6hkdcWLXHMwAIqVryPyTesgZIFaV6MXFTGZkU91VJFpbDECpqHmz9gt97H6X1FwrRJdw_j-LzfHPxxP7upxx785z3ePvLh5W03no_L035-ncJ13Wbrq8llXmxto64EDC0JoI9IVNFKJIjJnFB2pkHRg2jFVguBAySsGZtmFS2KLF50DdwMEIDRtyIWzdAc5-CCSyuHUWOhEA0omMtVmZm4SMYska9aS7f518Zv3fY_n75_AB3Eamk.auhTKA.iBqy2hDr-VyyS1YM3udhYOZBgxc"
+   }
+  ],
+  "device_cookies": {
+   "github_linked": ".eJwNzDEOwjAMAMC_eM5gx6R2MoJYkSoVdpzY0IWtHUD8He4B94ENGliWIo5sTOGiSJ6puNhk2VWV8hRRe1Gq3c2ZXKgPqgMPPOKuAQlWaDXBAxomeP3Lc7_YDd9Hf47Tct0X5j3WGb4_wgYfVQ.auhSdA.LMMU99thMZe3MnV8kycZ9tEF4_A",
+   "local_user": "eyJ1IjoiNDhjYTdlYTRkYjFkYjRlOTY0MTQ2MWRhMTM0MjkyMzEzY2NlNzA4MzRkOTM3Njc1NzQ4NGU2M2NkYmYwYTNlZSIsImkiOjMsImciOjAsIm4iOiJPNElZU2F3d1ZXR2RPWFZsNEhfWl93In0.auhSdA.9NidStziXqYr9GOfgqMxrBz0RwY"
+  },
+  "edge_cases": {
+   "admin_settings": {
+    "support_links_enabled": [
+     null,
+     false
+    ]
+   },
+   "automation": {
+    "deleted_runbook": "2c3170b0-ae58-445a-8af5-fc3bf9e8cdea",
+    "paused_schedule": "b93751a1-e72c-4cb8-a4f3-9a6f4a23e481",
+    "run_history": {
+     "created_at": "2026-11-02T09:03:54.250000+00:00",
+     "finished_at": "2026-11-02T09:03:54.250000+00:00",
+     "id": "golden-run-0001",
+     "name": "Ünïcødé ✓ 服务器 🚀 עברית",
+     "runbook_id": "c0a2d386-e9a2-4d2d-9bf8-637d73308d12",
+     "status": "failed",
+     "targets": [
+      {
+       "group": null,
+       "host": "pw.golden.test",
+       "id": "c11ae780-b6eb-4dac-a794-d27d0b23f255",
+       "name": "Password server",
+       "port": 22,
+       "reason": null,
+       "status": "failed",
+       "steps": [
+        {
+         "duration": 0.25,
+         "exit_code": 1,
+         "name": "Schritt 0 ✓",
+         "output_truncated": false,
+         "reason": null,
+         "status": "failed",
+         "stderr": "boom\n",
+         "stdout": "ünïcødé\n"
+        }
+       ],
+       "username": "operator"
+      }
+     ]
+    },
+    "runbook_20_steps": "c0a2d386-e9a2-4d2d-9bf8-637d73308d12"
+   },
+   "commands": {
+    "deleted_command": "1fb955e5-bf66-489b-a731-dea9c77f928e",
+    "deleted_set": "99cb015c-08b3-4f1a-ae86-afdbd0fa288e",
+    "unicode_command": "acbc6911-4ad5-4b97-98e7-f98c2fb33a46",
+    "unicode_set": "a7a83c08-b010-44d6-8aa7-98c40b058644"
+   },
+   "deleted_account": {
+    "former_id": 12,
+    "quarantine_dir": "deleted_users/user_12_7e4cf8aa59be45c2be46c153bdb481cb"
+   },
+   "host_context": {
+    "command_sets": [
+     "867426f3-ca2f-40df-837c-6430d34fa3c9"
+    ],
+    "directories": [
+     "/srv/ünïcødé",
+     "/var/log"
+    ],
+    "notes": "Notizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\nNotizen ✓ 日本語\n",
+    "revision": 1
+   },
+   "host_key_deleted": {
+    "deleted_host": "key.golden.test"
+   },
+   "keys": {
+    "deleted": "b77b4290-19a1-4760-b675-954bc18a769b",
+    "name_129_chars_error": "Key name too long (max 128 characters)",
+    "unicode_128_chars": "0be272c2-af34-4b55-be4d-6b6a11b21acc"
+   },
+   "legacy_unicode_account": {
+    "password": "legacy-unicode-password-1",
+    "username": "jörg_ünïcødé"
+   },
+   "named_credentials": {
+    "deleted": "63dffc5c6aa307842684f3ec756fdf80",
+    "unassigned_unicode": {
+     "password": "pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-p",
+     "record_id": "90efb144e688fdb2f30a50a01b2e6ff4",
+     "username": ""
+    }
+   },
+   "passkey_deleted": {
+    "credential_id_hex": "097db4d537af69f454606961c111c2e1048576383e32797b9128fa8748ac52ab",
+    "id": 4
+   },
+   "profiles": {
+    "deleted": "732e8950-3543-4372-9715-ef7ac4d10595",
+    "long_name": "cc519909-ce7a-4e9e-99b2-dcb816698f4f",
+    "minimal": "401cdf0a-7e23-47ad-a70b-2e0b7a1ef675",
+    "stored_long_name": "ŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁŁ",
+    "unicode": "1bd77053-ce70-4437-9be1-c35f332d2f4c"
+   },
+   "recovery_code": {
+    "consumed": "F814-FF5C-6A56-7FBE-BEF6",
+    "remaining": [
+     "92F9-A27A-45CA-2016-4CC3",
+     "B286-E6D2-C1F4-BB4E-25CE",
+     "96D7-5AB1-1B71-A6E2-CB60",
+     "DF61-B71B-5AF0-7066-4372",
+     "2192-53EA-8ABF-4D4B-053F",
+     "5A65-2E70-8945-ED50-8912",
+     "AE4C-B73D-09E8-9185-EF0A",
+     "2B44-528D-ED74-57A7-7E28",
+     "E696-0742-FC98-B647-6061"
+    ]
+   },
+   "routes": {
+    "deleted_jump_host": "05d08e10-0a27-4f11-b63f-dae9b0691ef4",
+    "deleted_smb": "0bb6f7816fd4401aa99388082fc582e5",
+    "smb_unicode_empty_domain": "312209c5f6c14fb6b32d9ab2370f2be7",
+    "socks_with_auth": "ae5c7232-6f7d-4457-bfca-0cc84e323aeb"
+   },
+   "vault_long_password": {
+    "password": "pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-pässwört-✓-p",
+    "profile_id": "312f9a10-c676-4ca4-9743-e7aa2e758aa3"
+   }
+  },
+  "epochs": {
+   "initial": "883b033c75b01839e333c978c2e9a9a4568c5f70a7f8af9757ece6891be57461",
+   "rotated": "4f73df5e685918c1dcea33563f2b476e4cf3ce705d82fead37babcdca8c5b1d9"
+  },
+  "github_client_secret": "golden-github-client-secret-0123456789abcdef",
+  "host_identity": {
+   "container_access": "ok",
+   "family": null,
+   "graphical": false,
+   "guests": null,
+   "os_id": null,
+   "os_version": "13",
+   "platform": "debian",
+   "services": [
+    "docker",
+    "nextcloud"
+   ],
+   "state": "detected",
+   "virt": "vm"
+  },
+  "host_keys": {
+   "global_lines": [
+    "bastion.golden.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOL2WzJx0sV/B6VxWU9MnxKJFrrYYNJle330w6TBemSK",
+    "@revoked compromised.golden.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCot+VUEkuy2yntiGpqAqaXR/hUDjMJknvv3SsXUj/ObrnUFZQma36XLAfrBeEZ+jkyT3vneJa99IV6iQWMl2OJSvlYIgEJEcbk91IrTIjFNXUS7fzVTtig6Mzwjb/ENWp0gmDnWab5bZXcxv4Np7I3SaDQTyXRgBIUPp8NqsgUXDkgs7Ahl6duujeGl2VuG7J/GS6imNiV9ZXO4NevQ8kVpu5WZmq71FfRL73ChhjbQhCuHzb3GNi6L54V8h4H5LdLVaSMBFTB4CGo2JeO4iB7DRruz8+q2hcjC8urSwiAb19qhWH31F7L7rjo5QHBOMcpYI51YPnqMidioWLxrlSp"
+   ],
+   "user_entries": [
+    {
+     "fingerprint_sha256": "SHA256:EgGJduE9XENiybCFAHl8AAdWhQHu8IlbYLakX+LJFDc",
+     "host": "pw.golden.test",
+     "key_type": "ssh-ed25519"
+    },
+    {
+     "fingerprint_sha256": "SHA256:q1RQM20LgMVRqnB7NktO55ab4wWj+lHWmoyc5D5qBpA",
+     "host": "[uni.golden.test]:2222",
+     "key_type": "ecdsa-sha2-nistp256"
+    },
+    {
+     "fingerprint_sha256": "SHA256:Iy7nSMSBg5+aJCriccTLUq/6a8Vk6GWCD0i/UH3ILuQ",
+     "host": "key.golden.test",
+     "key_type": "ssh-rsa"
+    }
+   ]
+  },
+  "named_credential": {
+   "password": "golden-named-credential-password",
+   "record_id": "4e37638ac61ccce2da594b17f59ac9e6",
+   "resource_id": "c11ae780-b6eb-4dac-a794-d27d0b23f255"
+  },
+  "passkey_recovery_codes": [
+   "70BE-10E3-60EE-82E1-692F",
+   "5D46-CF6B-67DE-B426-70C2",
+   "33A1-A5C5-2511-5DCD-5F20",
+   "FF03-4594-23E7-63EF-C9F7",
+   "269F-865B-A518-335A-DBE1",
+   "871B-7A19-EA33-57D5-080E",
+   "9429-0DE2-086B-D2D0-4DFF",
+   "1F03-5203-6A93-9A0C-1DEF",
+   "9020-0F30-5F1B-096D-4AEB",
+   "C0EF-1177-FBC2-E05C-ED3D"
+  ],
+  "ssh_keys": {
+   "legacy_plaintext": {
+    "key_id": "9d1eae83-7835-4ca9-8e20-68e2a561af32",
+    "key_type": "Ed25519",
+    "source_label": "ed25519-openssh",
+    "stored_file": "users/user_1/keys/9d1eae83-7835-4ca9-8e20-68e2a561af32.pem"
+   },
+   "rejected": [
+    {
+     "algorithm": "RSA",
+     "deterministic": true,
+     "expected_error": "Passphrase-encrypted private keys are not supported",
+     "format": "openssh",
+     "label": "rsa2048-openssh-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQ21GbGN6STFOaTFqZEhJQUFBQUdZbU55ZVhCMEFBQUFHQUFBQUJEUQpIdW5rM1NpbFg0eGxrZFlFdG1icEFBQUFFQUFBQUFFQUFBRVhBQUFBQjNOemFDMXljMkVBQUFBREFRQUJBQUFCCkFRREd5UU80N0JnVGVHYmZCQktJMXdoajhHZEdLU21zRVo1b0kzQ3dqMDQ4aVlXMkMzYXU1dWdOSVVkQ1RGaG0KS0dIeGtxZTNTL2dKbTdHRW9OTHY4dThUZmw4OGdEVUlKYnRZZ3JrUUdRK05UUjQ4SE41RHlzYlVYNytnN0t4ZAp0ZXNkc1RWS0t0WllHZmRFRmRoVm92azlJMHlLejJZeUQ5bThUMTI5bTQ4ZHVJdTEvN2NFL0w2bzhzVVYyd3lFCkkxVnFBMU1EWWUwSURjTzJIVXNNMWhHZ2lPT3BITzQ3UVFKNCtXSElaejBtMU1UdmxOZS9aM29TS2VkQXVmeU8KQzJ0aldVOGFjbnNscHlDbVlCSzgydFEyNGdyYmhJR1JjdW1UUEpnQTZnaS8zckRqLzBVMk1Lc2FTNnU0SEw3MQp2RHR2TEFocGU1Tnp5UHVhaTBNSndSK2hBQUFEd0FkbDNhS2dHZEx4ZWY1UytDTHpxVEtYUEN3RFltai9heTNGCkJzTzRoVG93WE1SbjVEUGZBWE9jeHlpZ0NBR09XOFlQOXBMMkY5MG9EcmhTYjkrRW1mUExua2FMaHVSeXQyYzIKVWV0NGl2emRaYUY0WU56NmRwZlBnemFQWHpvV3NzWEFlT2Y2aTFiWjRZNEtucm5YWG1kekNISS9NV0xXY3RDMgpMdm9PV1NXRGFhZnUxY1VwR0hrU1QxZUk3YlBTcEFCa2crY0FsaEEyT3RkMGZLRlNtUUVCZXJHcnNZemtaMGgwCmh2V1ZYR1QrdFpSSnU0UU1FUjkzREx5Nm5NWlNvRW5jcFhwZnZDUzNkcXllNTduUGhqSjJIMnNib2hYQ3BTVXMKeGo4V2xveVkyOXR6MEVxT1VIQ2J3YVRsclpJYnp1YTh5SDB5NmQ4QUMyM1pRV3NaSGtvb0pJM0h5eitObUliRwpGTVBRR3NZK3JIMUt6aElJWTA1bm4yZ2cvdHN2a2RpRlpIZCtseXZjYTl3SjNWRXFweVI5UWd4UVd2NTZRUFdYCnFyTUJVNkltZml6N21WVmRvZVRrcDN4d0hDZUpjSWEzSEs1NTF3d3NhOHpDTnV0VTFjcEJsaWhkQUlvZ2w1NGIKTDVPei93bWdidU1OMTdJTC9SZmZWTERlamV1OTRiVHZGUTU2UHltQlpjRFpzOHBsTGJtR1hNL3N3ODFxTHFpeQp2dXh5bTV6Tk13OWR6aldvTWgzZGVOdmZ4N1FLZDdvYnJqYi91ZHpwZnBab3pPSWxzb0M0Skhvcm0rTkFHZW80CktqWjJNQndxTytEZ3NYbWYrKzVFbmxuUDI1bWQya3VPa29ra1hnYmZHbWFWRWhZMHRvMUswWmxqLzF6aUM4bjQKRnlrekZvQVpSbUZJeDAyVDltVWlmVEN2S2V5bXFvU2dIM2p4WTh5a3l5S25PZDFZaDNyQU54T3ZtelJEZEZSTQo4YktSK0xxUnBnbVdONk5LK0QvSVd4N1JFNnZaamVRMDVwSU96eGN2d3NmYmxwZVZkTW9YOEo5OXEzZ3pqVFpICjJWbElHRHRTNEt2Wm1TSE5UWjE0bVdWd0lMb3lBU1RHbm1sV2VEeFpjMXR2UC9SSnpxQkpxZDJTZ09iaWxWY24KVG9GK3FZYkFoNDdud1RremQyUWVTMldmNG5QZ3p6dGh0Q2R4WjlWbldvQVdmQVg3TTRDakZ1VTQ4V0lVaVROZAp2cGhKV3lXQ3k5eWNRUEF3dFpsb2d4ZmQzT2FFQVlkMStZbkdWMldOS0R2QUFtb21US1BZSy9vekJwZkZJU0RXCk52a3FDalNZN0RtWlU5cFQ0YWNqb0c2M2x6UHY1V0FHemtRQkl6OXo3SDhNS0dVaDNrYStDWENhRnJyZkxEY28KYU1VV0RRZkFxKzhVZjRkb280OWloK29NdVYvY3h1SDFKeEZqbXF3STdpUnlSaFdYWUJsT1lWVzRsaGhvNHB3Ywo3UW45Tll4WGdlYTZpWEZwaGJOSFVOYUhiQjVsUk9nd0VGRFpFMjN6T0pPK3hqeXVERVJqQ3daY2RMZ2lMQmRUClpkcEVsdUovZkcxZDlsM0QwQnpRU2pmdGRGd0FUT0tjWXFJUzhKeS9YUlZoTmttR0VFWFRjSVlEK3haUDlBeksKYUFNQXY2UFg1TW9PVElVVUFrbVNRblhNV24wcmVnPT0KLS0tLS1FTkQgT1BFTlNTSCBQUklWQVRFIEtFWS0tLS0tCg==",
+     "public_key_openssh": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGyQO47BgTeGbfBBKI1whj8GdGKSmsEZ5oI3Cwj048iYW2C3au5ugNIUdCTFhmKGHxkqe3S/gJm7GEoNLv8u8Tfl88gDUIJbtYgrkQGQ+NTR48HN5DysbUX7+g7KxdtesdsTVKKtZYGfdEFdhVovk9I0yKz2YyD9m8T129m48duIu1/7cE/L6o8sUV2wyEI1VqA1MDYe0IDcO2HUsM1hGgiOOpHO47QQJ4+WHIZz0m1MTvlNe/Z3oSKedAufyOC2tjWU8acnslpyCmYBK82tQ24grbhIGRcumTPJgA6gi/3rDj/0U2MKsaS6u4HL71vDtvLAhpe5NzyPuai0MJwR+h"
+    },
+    {
+     "algorithm": "RSA",
+     "deterministic": false,
+     "expected_error": "Passphrase-encrypted private keys are not supported",
+     "format": "pem",
+     "label": "rsa2048-pem-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpQcm9jLVR5cGU6IDQsRU5DUllQVEVECkRFSy1JbmZvOiBBRVMtMjU2LUNCQyxGNjRBNDcwRURDRDA3QTBCNjgxREEzRjJDNUYwNkIwNwoKcFZPR0tQNE5McjdjQzhOcXNJYTNjYjAvNUxZQysrbFJkc1B1RFVobWI4QjBOVS9rWnB6SmJGc1JWSEE4ZkRaegowWjhZVXNWV0h1NUkvcm9OblUxaml5YnAvQU1VcGEyYmxncG5IdkJZZjV1QkFpZ0xYbFF0Z0FUQ3ZWVFJKZmllCmdJOGlFSlZZRkp0Q3hZdVFnWXNJb0ZIOVlIVWRRam9NbXk4Z3czdkhudnppM090NlhySW5FTWdsZTcxYjBvajAKTW9Pek5oeXc0dEF1QnduY3o5WHpVQUdoZzdJMFQxU2cyMnlMR2hCbWVma3FZRUFMS1F6akdVTHhlak5jc1lPRgozbE5tY3loVUNIbXlKVDk0M204emVLekVzYnBxOGVGVjQrY1k2T3llNmJpUSsvaXZKSW9iOUVDTnBoTnVnY2ZvCmdXVUk5eEZUMVhjL2JHVzdxaGRGKzRmS014LzFrd2FhL2lMeTF1WWt5OTYxNHlRYUoyMTRMTDM3eGJXanZ1ZVQKd3RhZWI3TUZJNzRzTFJYODB6ZnN4WjVwUUs3Mm1jM1ZqOG9ZWXJEL3Nyak5rUVZaN0pkaVlvR2dGbXBGeUtrSwpPRE9sNktDNzhyeUlpODhyQVRFb3lxc0w2ZHJKbUhXdkFMdkFxWkpkSE95TGI2blZsVm5NdkpSeTBRd1h4RFN5CjQ1T1YrOStaaCtMcHlqL1E1VEMwR2dlcHljaHNURjdIVmtQQVF4TWkrUnBQRXUzV3plTVZKM0VsNjFGNGVtdEYKdVM3TDZzSExqWmdMOFg0ODQ3UGZIWm81T0tUREtGZjZ1Q1lHVmhCdHNrM043WVVHdUcrU3lZNGhYQk9IYU00bQppOXY5YVFpN001UXFJNG1qcEFJYVlwbitpK1dnVC96bm43T1VLVVM5TG92SkhNRUZrWmJHVkIxb1BSN2gweU5tCmVqSE4wT3ZqUENOQWpmejhXWDBONzJnd3Y5WnZlVFdBdm1oejZVTk9Uakd6aE4wRzBqVVZiM3o2YTRMSFo5WFYKVDdhREVpMjBTUU5KbzhvSjJkaXhmdTRIUDg2eXpseFFKbk9icjhBUmNwVmM0VmlHZ0tMVGlnTjNiVnZyQnZzNgp1SFRQSGZkVE93V0pSYTZudUJYc3l0NEV2aWVaOUdseVhzVW9sS09NSnNHbjhKMG5KNHRhcUVPOExkQVMxNmlVCmRabVR4T1lXeENJcXRVQnkzYktxZCt4NWF5enROeXdDRnBvTmwyYWh6Z0Mxak43M2NBZHk1OG9Jc0doNW5rblEKYTdod2xnZGhQRkY4NGNYVUt5TmV4MGl5elNJUDJuRDV6YzJ2MVFDSnFwWDVzcXVuSTZHQTk2cGpUcEJGRmNzWAplcVV0dnNlQ3dySHB3YmhsT01NTjduN0l6Y0lUYUE1Mm9XNVd2cnpRdGR6dWVXcmhnRHJzTDJrY05ockpRK3VXCnlXY3dWUmdkREdpVU9CekRDblRNRjFMbVJRR0tOcE44OVVWSUY1MXhDQmw1dlR1ZDJUUVNTQXVhMndqa2lVYzYKZ2o5Ti9UUk9XcTVQM3dBR0RYbThqU1IwRDRPc3JIQUdFYklLSktXRzl2N2p0NmpuYmMxdXd0K3UzVm9jakM2SAptOFMxdnBZT1Q3MjA5T0JHaTE1MDVNY092L3REZERHUlBnMTc4c0tiU1ZSK25TdWRwWDdxWm9tVUlMb1B2a0R6ClEyc2dhYmYwSUhGN0Y4dGg4ZzJBOUNpNkhvaDIvSDAxTFViL3FMVFRQWFd5cjhjRFo0bjR0cWM2VmxVeVRNOWUKSzRtckNUd3VDRFpyOVFJbzBjK3BRdWh6QldveEloSnBWYk9Tci9GSU52U2p2RGZTYXJucXo5cFRtQzlDVHpORAo1TnR3QWdKUDljZWdjenJtdG5BQkl4RXB5Zm5sQTNmbEdYMm5mQUxJU0RJWldDa2FueXdtTkdZUS93eVh0RzFXClIvenVBWUlsYzZ2MkNDRkRsaXRrT0pPbkdvWmhrSE5uWGFoQTZYaGN2REhWcTAxZFZnUHBQd0c3TDFoUE5nb0YKbStMTzQ3eThnR1V6b0s3WW5NUnFIYmEyU3dzZDJKUnI2anZlSGxLNHY5cjB5ZnBnV1dyZGd4NlBweUdReVBGVgotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=",
+     "public_key_openssh": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGyQO47BgTeGbfBBKI1whj8GdGKSmsEZ5oI3Cwj048iYW2C3au5ugNIUdCTFhmKGHxkqe3S/gJm7GEoNLv8u8Tfl88gDUIJbtYgrkQGQ+NTR48HN5DysbUX7+g7KxdtesdsTVKKtZYGfdEFdhVovk9I0yKz2YyD9m8T129m48duIu1/7cE/L6o8sUV2wyEI1VqA1MDYe0IDcO2HUsM1hGgiOOpHO47QQJ4+WHIZz0m1MTvlNe/Z3oSKedAufyOC2tjWU8acnslpyCmYBK82tQ24grbhIGRcumTPJgA6gi/3rDj/0U2MKsaS6u4HL71vDtvLAhpe5NzyPuai0MJwR+h"
+    },
+    {
+     "algorithm": "RSA",
+     "deterministic": true,
+     "expected_error": "Unsupported or invalid private key format",
+     "format": "pkcs8",
+     "label": "rsa2048-pkcs8",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2Z0lCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktnd2dnU2tBZ0VBQW9JQkFRREd5UU80N0JnVGVHYmYKQkJLSTF3aGo4R2RHS1Ntc0VaNW9JM0N3ajA0OGlZVzJDM2F1NXVnTklVZENURmhtS0dIeGtxZTNTL2dKbTdHRQpvTkx2OHU4VGZsODhnRFVJSmJ0WWdya1FHUStOVFI0OEhONUR5c2JVWDcrZzdLeGR0ZXNkc1RWS0t0WllHZmRFCkZkaFZvdms5STB5S3oyWXlEOW04VDEyOW00OGR1SXUxLzdjRS9MNm84c1VWMnd5RUkxVnFBMU1EWWUwSURjTzIKSFVzTTFoR2dpT09wSE80N1FRSjQrV0hJWnowbTFNVHZsTmUvWjNvU0tlZEF1ZnlPQzJ0aldVOGFjbnNscHlDbQpZQks4MnRRMjRncmJoSUdSY3VtVFBKZ0E2Z2kvM3JEai8wVTJNS3NhUzZ1NEhMNzF2RHR2TEFocGU1Tnp5UHVhCmkwTUp3UitoQWdNQkFBRUNnZ0VCQUtLNVNtTEdZYThPa0tkZkhnMEdlY2ZWczdTclhZR05xcTUwMUhxejFNZVoKaSt0SjF3MjExNTluN24xSElkWCttSzYzN3JNTmJTM3dWWkRNVmVBMmJaNzNnOTV5MVBhbWJJWTMvR1pCSFluOQo1eEl1VDRRUEtsUVBUVDdlZnZyM1FGQStEL0YydjUrL0licUtaMTB5Mi9SQVFSZ2dUdmdNSWFFVkZ4ZHZqK2d6CkJoZ1JHaW5GSG1oNU12SUlpSVJraURTOG5FUm1TbGxmM2huZ0ZyK1BQTDAxbEl0SEI5MmlKSGwyN2VhaFVxaHIKU1BnY055b214VEVmZ1B1a2h5bzhCR0FVczJxaE9TS25LaUNWYVREUnhCVG5PRytuZ3kyS1p5cWRzVFAwMnpqbQpZYnJnZC9DUmc4S25qT2lXd3p2a0hjczRVZXJnaVFPZmVwbWdiTlAyakFFQ2dZRUErOXdQTnZLNUJGYUZHOEdDCnl0MGJiN0toNzhDcHZuUitaaTFSWDMvVERCUVVMOFc3Szg1cHFQMWRuNlVPeXdRblZodS81VVBMdmZPelZ2dEwKSlVJbnUzRmhPaE1Mamk4dGRoQ1lyekVLeGluQnJJTTVKNGE0QURzWGJWTkpGZURRN0RYeTE4SnNycWVOM2lSVgovK1UvbjJBYjZTalhTWVRWbGxGbGNibWNUOWtDZ1lFQXlnMllBQ0pOSi9pdWJYNkM0ckEwOWJTYjNkK0hlaFp6CllzR0liSlZPS3RMOTVQb1VMR0JGcWlFQTR1ZFdwVDQvM1YyS3FaMXc1K2Z0V25mTUlISDQvdFUzNU1kNXNJMUQKb0ZFNEhFaEVkdXg0cEN3RENRTE5JdmJhU2FzVWk3dlpWMzU0NkNRV2Y5TnNISElXdEVsVkE2c1hualRmU2RaVApZQ0I2Snk5ek9Ra0NnWUJOWENDSVBqRzZOV0VaVDJ6L0pyOGdwZnU3aXJBWXdldDVNdjVGbVJ1WUlDcTdLYjcrCkM1N0V1MTRnaFRCd0IweVYxRnd5N1lvTlJHZVhsZ1JVNDJjVTJoU0ZKQWh1bWVzYTBxb3pWWnI3bHlQWCswNTQKNTVabzY3MmNaUEtUOThQMGFmVzNkQTZ4N3VGU2xGS2VFU3BqcDcrcTlGSjhVSUxTY3huM3ZvMVdzUUtCZ1FDdQorK2pZck53dk1zSTFGMnhZMEF0OWd5VzltQmxuRlV4bWlYOFJzcGhZcEJPNEd4QWZnbHl5d3hSV2JjenZIS01JCm5qczVPNTJOYWFGNFNPbWlhN0lkV0NDbzVFd3lKNVVhb1Z3N3VpWjQ2OEJyUmFaM1JsTEw1Z2NUNTdMS2RTdjgKQnc3RTFJUWJ2Y2tTTllnT0tMZ1VqamJORDdNVTZpV1l5V2VneWdvNnFRS0JnQ0NXcWJ1VTNFSGhoNnRGZDg2RwpYTmtjYmVjTVVBT1N6THFmYmVLZTdmV0J5MXlCRDQ2VGdEN0dOeUU5b1hKcExrbVIvWUxEcG5lU2pUVHZISGxlCnBtMnR2TDVnNUVwOWxsMDJNN0NQRnB6T2FOSDNNdHJGRldLWmZ0ZU1PMzhoK3hKTnBwczlDaFFBUG1haEptVDIKSXVtUUFSR3ozRHNKeXRxSGxUUXEyOFhECi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K",
+     "public_key_openssh": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGyQO47BgTeGbfBBKI1whj8GdGKSmsEZ5oI3Cwj048iYW2C3au5ugNIUdCTFhmKGHxkqe3S/gJm7GEoNLv8u8Tfl88gDUIJbtYgrkQGQ+NTR48HN5DysbUX7+g7KxdtesdsTVKKtZYGfdEFdhVovk9I0yKz2YyD9m8T129m48duIu1/7cE/L6o8sUV2wyEI1VqA1MDYe0IDcO2HUsM1hGgiOOpHO47QQJ4+WHIZz0m1MTvlNe/Z3oSKedAufyOC2tjWU8acnslpyCmYBK82tQ24grbhIGRcumTPJgA6gi/3rDj/0U2MKsaS6u4HL71vDtvLAhpe5NzyPuai0MJwR+h"
+    },
+    {
+     "algorithm": "RSA",
+     "deterministic": false,
+     "expected_error": "Unsupported or invalid private key format",
+     "format": "pkcs8",
+     "label": "rsa2048-pkcs8-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFTkNSWVBURUQgUFJJVkFURSBLRVktLS0tLQpNSUlGTlRCZkJna3Foa2lHOXcwQkJRMHdVakF4QmdrcWhraUc5dzBCQlF3d0pBUVFkUDRsMVk0cXJqL2hUcTFIClJYaVl3Z0lDQ0FBd0RBWUlLb1pJaHZjTkFna0ZBREFkQmdsZ2hrZ0JaUU1FQVNvRUVIOGl4d0dQTFJhbXVyYk4KbTBIZ0RKWUVnZ1RRSmwyWi9vK2RDM2xYNTNzWjQzem9YbmttcTZZaGJ6S2FzRndwZ2MrZWd1ckNXeGk0eHlrQQpzYThRZVZuNDZaYTVUNlhseDY3K1lBa1VJZUZDaytZRVVzdW5Ea0wwZDEva1FNbWlHZTZOc1VJWEZVOEdNbXZnCkI1REhvRUtnLzgyYmg2ZEFHdExJQjZubHZHb2loSWJKZ2RBMnQwVGdKN29VdG5tSUdNZC9iRmVNenRkSWFjUkIKSUtMMkcrOE9VeDZlT1JIS1dLQnRHQ1h5SGJPeFlaYVVxcUcvRG5WdE80L3UwL2J5dkhPYWUveE5aMEVPck51Rgo3VlhyRVRFbmQycEhwRHpiRHZDQUVWY2RSSlBYcW5jUFUxQ2pXZXM5bXBUdERGaFczb2JUQ3hyM0VuUlZNN0NBCk1CTE5ZQ0NkQ1hXYTZONWllYlJXQzZsOXpjY1h5YW1icWg4SlEydFYyUE5pLzVhZkwxRnVSZ2lxWWtXbjduNHQKeGxlbzZTeDRyYTBwblRhbGY0Vmd1TlZYVWZDQlYrZ29JN2xBamhlM0M1NUpNU0QrbmJtaGdvVE5LWHh5dS9iMwpnc3NldGN0UVBFVzVPdmVJL0VobitxYjBTOUFLaTR6OVVTeW9RQ0xObklrbFJjUTl5TVhCTzFZKzdrQ3UreVZ5CmRPcWY4SnpSVTAyUFVvbjhWcVFidW5BKzFhanhJZW0rY0FjM3hEelZudzZQaUltTjlzOHMyNDdUbHY2cm40STgKYmhQR2l6Y2VqNUpzM2NQZmQxbVd6T29BRUF0UDdnN3FOOStNVnlZeWk4N1VxQ0ljYW51T0xZQkkySG52T1NvNgpWNDV4Z1pJL0lmS1JwTVQvZlpXK0NpYmFYcW5qUzh2M1laNU9iUnNoQm1IaHBPM0tpUDMwRXNodHlNekJqYlV0CjZSZ2NNMDRiYWlSc2pDZ0N1dGZneHJxUHhhWkFBR0ZYWVVndzEzeEFmTDZWNTVSRVhWNXN2MUJ2M292NVV3NlAKWkIyMlJiREhWNTArSXlzMTgrMHRkZHJzSlRkeHd6cU1hbjlwdktqUmhoMDcvaEdCN1dTNFY0bzBoYlMrSTJEUAo5eEg1RGdmcndDNWpDdzY5NUlvWno0aFJvdU94aldTeWE5elBLd2t3dVNSTlNNOHVjc0hxdDRQangwbWVXRTBwCktDRlN1UnlqbTRneFd0bCtzR21sdWQ2NXAzSi8rWGRIcFhtRFk4UTR2V1lxUHVCTWJWOXhPMllCZEZ5dlRLeFUKT290eEkzcTc0UUdxTER5VkIvMS9mSWZVWFE1MU5BNVJVaFZkWWl1WGhDdzNmTzNzV1pDVlJydFJJdHNyVDlHbgpLaFk4VmlYcnFDNVJ1VWxLdUo0SWpkbXljczF0OWltSDdwVnd0SWFoSk5aMEl3dktGN21RZDRrenlRbHBRZW1aCkRQZGo4ek5DaFhlOW5MMDBSYzRnQTVZV1luclV3V1dyZXNIL3FLVEhhS3VTOFBVMGtmTElhSnhMVGVJdEcvcmIKaWpEUE5XamwxQU5Xd1Fpek93UFF4SnVtODhsUXN6bEsxY0JLMEd2WWt6cnlaV0hBSkliWVNMblVSejlCQTUxbwpvcDI3S1plVTZnVHFMWmJac2tiRC9QMFh5T1BhdTF5RDZBZjREZTJvUjdxa3lUZGxEbDRvdGliMUx6UERUd21oCmFwckFzZElBNmRSb2ZCRWZsRGtvRlBmWkhKL083bWVkYkU1ak8zQVZRbWFCZndYbmNEU20wM1JqQXhBSUkzMUYKOS90dGlPQnc3QWNtK1VZekFRdlF2TXlPVUdsVjdoRSt2NjVMMWYycVMzdStYczNOWk9kM1BkQ2wrMUJxZmh2OApDRXpsV2hXdkkxeStoYk45bEowd3dTUjNYOGhra2haMWN4R3hnVFBFS1I3NC9tUy9WSXdjb3YwN3B6N1Z4SGN0Cm1lSGVqTkFZbkhoRFErVDlRenMzcnNVaEo1Ym0zdFVOclRRc3ZNZUZaYUg3Ynkxcy9ORWVUQ3FNOS9laEM4OHAKKzh5VzdjMTB1TUtHckh6b012TDRJWWJCaWVOTkJqV3RMSXZVb3k4R3ZTeWdWVGpBdm5iZExvdlZMMkZ0NDVKOApWRUlVN3VLSnJieTBLcG80QjFaRmtjZUZ0ek4ySnRoQVAxb1dXYkh2aXRyTjJRODRtbjhqaWhFPQotLS0tLUVORCBFTkNSWVBURUQgUFJJVkFURSBLRVktLS0tLQo=",
+     "public_key_openssh": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGyQO47BgTeGbfBBKI1whj8GdGKSmsEZ5oI3Cwj048iYW2C3au5ugNIUdCTFhmKGHxkqe3S/gJm7GEoNLv8u8Tfl88gDUIJbtYgrkQGQ+NTR48HN5DysbUX7+g7KxdtesdsTVKKtZYGfdEFdhVovk9I0yKz2YyD9m8T129m48duIu1/7cE/L6o8sUV2wyEI1VqA1MDYe0IDcO2HUsM1hGgiOOpHO47QQJ4+WHIZz0m1MTvlNe/Z3oSKedAufyOC2tjWU8acnslpyCmYBK82tQ24grbhIGRcumTPJgA6gi/3rDj/0U2MKsaS6u4HL71vDtvLAhpe5NzyPuai0MJwR+h"
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "expected_error": "Passphrase-encrypted private keys are not supported",
+     "format": "openssh",
+     "label": "ecdsa-p256-openssh-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQ21GbGN6STFOaTFqZEhJQUFBQUdZbU55ZVhCMEFBQUFHQUFBQUJEZQp2MTVEbEovQmxWSHdaYzdVdnR3bkFBQUFFQUFBQUFFQUFBQm9BQUFBRTJWalpITmhMWE5vWVRJdGJtbHpkSEF5Ck5UWUFBQUFJYm1semRIQXlOVFlBQUFCQkJIRlhpTEhyTVExbXlnY2IzSk0weUwyRldOZ0FKL3NSZWxTOXZvYzQKT2RsU1pzelp2c201TUV6QnJ3QzhyKysycWdsSnBOMk5ONFFtS1JjaGlmNm81M2dBQUFDZ3FkNTAwZFcyM2c1WQpKN2gzSUdha09ocjZSWmxPQ2ZxR1dyeVV5ZkIrWktjWUdCVXNkRTJ0RVAzZkhndTRBR0F3VjJuUEtWY3BZc1EyCmdKRUxLT2JzZmZzRXFRcDFYdG9jQ2ppcUNxUzF2OGRrVTJEOGhUek5haFcwZjFta2l6a25HWWxhTFZueEkvMVkKMXhoaklxUW0wdk5BcFM5eVJUVXpHa243eFZaTkZ4TUxaMmRxcE5ZdFdGbGFrMUk1OTJWYll5NmNJVEVpTVRTawpWTVpXUUdBRjFBPT0KLS0tLS1FTkQgT1BFTlNTSCBQUklWQVRFIEtFWS0tLS0tCg==",
+     "public_key_openssh": "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHFXiLHrMQ1mygcb3JM0yL2FWNgAJ/sRelS9voc4OdlSZszZvsm5MEzBrwC8r++2qglJpN2NN4QmKRchif6o53g="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": false,
+     "expected_error": "Passphrase-encrypted private keys are not supported",
+     "format": "pem",
+     "label": "ecdsa-p256-pem-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tClByb2MtVHlwZTogNCxFTkNSWVBURUQKREVLLUluZm86IEFFUy0yNTYtQ0JDLEYxRENGNjdBNTgzNTlDQkIxQzY3MzczNDcyQjYyOTY2CgpMOWVsdWF1RVd6SkhMV1dhSkhnendFb3FBYlJBck1hNXdOMHdFM3hpWVhxSXZxcG5uN2JsR3NpNEo2Z0JjemNnCi96TjUwNER3VGVuVHVQUlpNcFY0QjhMcXFMRUtqMlNuRllSVkdoVFlhL0h6Mm80RlEzQm4vcm0xaGUra0RpbVoKTk1XS21nWkRZbnZCcVdiSWhUdXBmZitKcWJNamFzZjg2eVpsM1BIRk01Zz0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=",
+     "public_key_openssh": "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHFXiLHrMQ1mygcb3JM0yL2FWNgAJ/sRelS9voc4OdlSZszZvsm5MEzBrwC8r++2qglJpN2NN4QmKRchif6o53g="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "expected_error": "Unsupported or invalid private key format",
+     "format": "pkcs8",
+     "label": "ecdsa-p256-pkcs8",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ3lWZzBycHJEZC9ha2NoK04KYjFjQ3ZpMHZvWE53c09TVjYxRHIvOGJrdHdDaFJBTkNBQVJ4VjRpeDZ6RU5ac29IRzl5VE5NaTloVmpZQUNmNwpFWHBVdmI2SE9EblpVbWJNMmI3SnVUQk13YThBdksvdnRxb0pTYVRkalRlRUppa1hJWW4rcU9kNAotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==",
+     "public_key_openssh": "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHFXiLHrMQ1mygcb3JM0yL2FWNgAJ/sRelS9voc4OdlSZszZvsm5MEzBrwC8r++2qglJpN2NN4QmKRchif6o53g="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": false,
+     "expected_error": "Unsupported or invalid private key format",
+     "format": "pkcs8",
+     "label": "ecdsa-p256-pkcs8-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFTkNSWVBURUQgUFJJVkFURSBLRVktLS0tLQpNSUgwTUY4R0NTcUdTSWIzRFFFRkRUQlNNREVHQ1NxR1NJYjNEUUVGRERBa0JCQmxJaFRiZCtaUWNWdElPMDJrCmJCdTRBZ0lJQURBTUJnZ3Foa2lHOXcwQ0NRVUFNQjBHQ1dDR1NBRmxBd1FCS2dRUThCOE04KzJuRzJ3cnJxcC8KMlFtbFZ3U0JrQTduUm1IaGwrbzEyVFgrRVJkUDRYQzlXWkIzMnc3OTJxK21oa2h1RDZzL3VFNWVTaGw0NzZkWApLUyt5QVA4UEY3Tmc3TTBFUU1xdmlZME1nNm9nQUl4NWhaZm02eDBFNnpTS0wyTmM1NklUdzdra01MakFwbUVOCkR6Tm9jVXFhWkg5VjlWNExCN1B6VWJWcGpPbXZhcWN1QjUwbFBTSTZDaTlkaENwbGJGT3JnTmdsaWRwNnpLKzAKS2JYekFJZDFYQT09Ci0tLS0tRU5EIEVOQ1JZUFRFRCBQUklWQVRFIEtFWS0tLS0tCg==",
+     "public_key_openssh": "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHFXiLHrMQ1mygcb3JM0yL2FWNgAJ/sRelS9voc4OdlSZszZvsm5MEzBrwC8r++2qglJpN2NN4QmKRchif6o53g="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "expected_error": "Passphrase-encrypted private keys are not supported",
+     "format": "openssh",
+     "label": "ecdsa-p384-openssh-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQ21GbGN6STFOaTFqZEhJQUFBQUdZbU55ZVhCMEFBQUFHQUFBQUJDRwpabHVyZVFvY2FkaHZqVm9qaHB0WkFBQUFFQUFBQUFFQUFBQ0lBQUFBRTJWalpITmhMWE5vWVRJdGJtbHpkSEF6Ck9EUUFBQUFJYm1semRIQXpPRFFBQUFCaEJEcVBnbzhpSklQcFR1NEdvT2RZeXp6NWRtdk03enJuRGRDZWFhVjEKWVVPZUk1Y2dUUis2UjkxWU93SlU2ZzQ4UjE2U01mL2Q1M2N2a2R0dHA5amg1Mi9UMGk5aG82S1ExeG1PZ2puQwpyeHVkSmpVZVFyamxIYmU5MTF0dzJEbVpZd0FBQU5DQnBWUHJqZURqa0pEU2twQm9sNzM1STJKR1NIUHZ5bndnCnhpTk5NT2JUSVRhS3JTeTNXNVBNS2JVSEpPNC9EdGUwQlpYTUtWZHVkUEZXaHQyZTgvSzk1K3N1dTZvZFJJeEIKTmdPUGR1OHEydy9nQ0tRQnNNZnliZjRXYkE3V0tDeVFLUmoyOFNFNGR0VXg5VllQNmVTN1FBMHptS3ZOejZIdgpQQVV2V00xRHFhVmxVRE9mdUxsWE9pREhSWWlBcnJSQXREallhSFJENUJoM3kxZExQZzQ1TkRZMlFzcTBmdVlJCjFSWTVXZHBycXFaZEJHaGJ1ZFZvVWpGWWNWTXZNbThjSk9xdnRDUlM1a3BrVjVQcUFsZG8KLS0tLS1FTkQgT1BFTlNTSCBQUklWQVRFIEtFWS0tLS0tCg==",
+     "public_key_openssh": "ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBDqPgo8iJIPpTu4GoOdYyzz5dmvM7zrnDdCeaaV1YUOeI5cgTR+6R91YOwJU6g48R16SMf/d53cvkdttp9jh52/T0i9ho6KQ1xmOgjnCrxudJjUeQrjlHbe911tw2DmZYw=="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": false,
+     "expected_error": "Passphrase-encrypted private keys are not supported",
+     "format": "pem",
+     "label": "ecdsa-p384-pem-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tClByb2MtVHlwZTogNCxFTkNSWVBURUQKREVLLUluZm86IEFFUy0yNTYtQ0JDLDRDQ0FGN0M0NDRCMUQ3NzRDOThCODM3MTU4RUMzMjk3CgpTK1VId1VCeXdnSXArTUdmandFNzB2T09nNGphZSs1Q0JOOEg1cHhJcjRxSEdsRjRsc0FxZ2JFZktzMnJKUHdxCjI4eDdsQm11WHdiTU1zcm9XMzZQU2FSalAzak9jUlBHZHJPSGh3bU90dlp6cGFHVlRSdVR2RFN4b2dnb1ZhdUQKcWVnVWxuR2FIK1hXU0VZMGMva0hFT3RWM1RKZ0dSbmtsS1J4RnBlUEk2UjhmbCtTUkEvcUp3bXIxVm5tSCtSLwpaclYwa1grQ0t0OFZVajhEalVCOW1tRWM0Ymh2WCtVZ2Vmbm9jSEZ0MXVRPQotLS0tLUVORCBFQyBQUklWQVRFIEtFWS0tLS0tCg==",
+     "public_key_openssh": "ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBDqPgo8iJIPpTu4GoOdYyzz5dmvM7zrnDdCeaaV1YUOeI5cgTR+6R91YOwJU6g48R16SMf/d53cvkdttp9jh52/T0i9ho6KQ1xmOgjnCrxudJjUeQrjlHbe911tw2DmZYw=="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "expected_error": "Unsupported or invalid private key format",
+     "format": "pkcs8",
+     "label": "ecdsa-p384-pkcs8",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JRzJBZ0VBTUJBR0J5cUdTTTQ5QWdFR0JTdUJCQUFpQklHZU1JR2JBZ0VCQkRBQ2xaSU9KS094Q2NiNHVDc00KSGJlYTNQWHNJOTlNWGQ5Y0Vjb1hDUTYvK0RCNDdjdTNoR0hVRkQ5Vi9FNEdFUFNoWkFOaUFBUTZqNEtQSWlTRAo2VTd1QnFEbldNczgrWFpyek84NjV3M1FubW1sZFdGRG5pT1hJRTBmdWtmZFdEc0NWT29PUEVkZWtqSC8zZWQzCkw1SGJiYWZZNGVkdjA5SXZZYU9pa05jWmpvSTV3cThiblNZMUhrSzQ1UjIzdmRkYmNOZzVtV009Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K",
+     "public_key_openssh": "ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBDqPgo8iJIPpTu4GoOdYyzz5dmvM7zrnDdCeaaV1YUOeI5cgTR+6R91YOwJU6g48R16SMf/d53cvkdttp9jh52/T0i9ho6KQ1xmOgjnCrxudJjUeQrjlHbe911tw2DmZYw=="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": false,
+     "expected_error": "Unsupported or invalid private key format",
+     "format": "pkcs8",
+     "label": "ecdsa-p384-pkcs8-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFTkNSWVBURUQgUFJJVkFURSBLRVktLS0tLQpNSUlCSkRCZkJna3Foa2lHOXcwQkJRMHdVakF4QmdrcWhraUc5dzBCQlF3d0pBUVFLekxNdzBLbGhoNlhSQ1dOCkpXQjdTUUlDQ0FBd0RBWUlLb1pJaHZjTkFna0ZBREFkQmdsZ2hrZ0JaUU1FQVNvRUVDaEFOMWFxZDVSVVlVSEkKK1NWbkd3NEVnY0NQRi9EZWNSWHZNNnA2d3hGdVVBV0NIV0toQmRpRGxFalp6UXhuRVNubWdKdllzUnVwaG5MRwpSNllvZGlyenNHZVkvQW42SS9hS3lDdXltV2tOMm80aHpJN1U0TzhFMmd3dXJmcHNrTG03SnFlOUNaV0RuM2gxCkFHZld2cnhucFhubzVqUDI0Z1FxWHB6UnNXYk42MzFvdEliTjVmeURUd2c5N3NwTFhPb3lCNW1SUkFGKy9wMTMKT3oxaXpMTnlPM3hScU0xaTBFUzZVdGVPZUxpSVc3b3Y1cXE3U1lrYmdiZ0NOckIyUjJTczBDQ2pPNzByemxGSwpwTjh1TVgzaXlEUT0KLS0tLS1FTkQgRU5DUllQVEVEIFBSSVZBVEUgS0VZLS0tLS0K",
+     "public_key_openssh": "ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBDqPgo8iJIPpTu4GoOdYyzz5dmvM7zrnDdCeaaV1YUOeI5cgTR+6R91YOwJU6g48R16SMf/d53cvkdttp9jh52/T0i9ho6KQ1xmOgjnCrxudJjUeQrjlHbe911tw2DmZYw=="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "expected_error": "Passphrase-encrypted private keys are not supported",
+     "format": "openssh",
+     "label": "ecdsa-p521-openssh-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQ21GbGN6STFOaTFqZEhJQUFBQUdZbU55ZVhCMEFBQUFHQUFBQUJDaApGM1VTWStCL01nY1Z0dXJNeko2MEFBQUFFQUFBQUFFQUFBQ3NBQUFBRTJWalpITmhMWE5vWVRJdGJtbHpkSEExCk1qRUFBQUFJYm1semRIQTFNakVBQUFDRkJBR2YyZ0hXWlNJdHVVMHF4eEI5bGp0SHVTcjZsa1dLM3hNV1dHdTkKTGJrbEVDTW90aGNjUHB0MVNBU3BsZXplbEJmWTV3M3R0azNoM29pUkVWcDRJUWtVOHdIZnArakdpcmJDNjB5Swo3QzAwamdRcTJPaVYwSElndnY2dDJMdDM5VWd5SGN0YXAvNnNBZmpybWNsZUFjWVdQR1lpTnRzZEFWNTNSNXZxCk1vMVRNdjFuMVFBQUFRRHlLQ3daa1NVVjQySzd0c0ZHZUlqK0gzdFNyM1RSTDNzbGxsWmNSMCtxTWJNM1ZrTVoKdTE2Z2tSdXpJTitQRlFjZVdmd0FHeFRxNlo2V28zMlhEV0o3K0dOZkMyZ25kSzRweHhkUlR4cnhFcHFXSGMrdwpLUk92M1YvSFpNazA1V3pVN0JYRitrRUc0NnRYS3REQlp1N04rSW1mV0pQaXVhV21ackRwbjd0MS9uMHRIRnQ3CjRYa2o3R1p6aUpIVUVBM2kraVV3cWtXMElJQVp2RnlDSGx5ckRFZlRPa1lmOFlMbnJndkFuV2MxYXRGWWFaVG0KanNkUnlONkVGY3Q5UnRuTGdtaTdKUHFwcVUwK0xSMnhaQm51ZEcvRHFYR1l1Z29DMm4vektkdm4yNkVydzUxRApMaHpGQXJ5NWRLZ2UrN0d5VmdBdnJNUkVsa3JZQmJ0Qy9QelgKLS0tLS1FTkQgT1BFTlNTSCBQUklWQVRFIEtFWS0tLS0tCg==",
+     "public_key_openssh": "ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBAGf2gHWZSItuU0qxxB9ljtHuSr6lkWK3xMWWGu9LbklECMothccPpt1SASplezelBfY5w3ttk3h3oiREVp4IQkU8wHfp+jGirbC60yK7C00jgQq2OiV0HIgvv6t2Lt39UgyHctap/6sAfjrmcleAcYWPGYiNtsdAV53R5vqMo1TMv1n1Q=="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": false,
+     "expected_error": "Passphrase-encrypted private keys are not supported",
+     "format": "pem",
+     "label": "ecdsa-p521-pem-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tClByb2MtVHlwZTogNCxFTkNSWVBURUQKREVLLUluZm86IEFFUy0yNTYtQ0JDLDRCOEVERkI3RTQ4RTYxRjdGM0YzMTBERTcwNDY2MDQ4CgppemZaNlhBQ2lvTytiQVRldHBNMlI5Z2VsMFhPOVRoazBjMWh6R1BlUkxwZ0dFeXhYMmUrN0ttK0d0Qkx2WkNBCm04OEJpQ2VEMGlTL3h5SGxlZGNaUUJSTHlWWHowL2JUcnhJTERQNHpLNTRmamFNNHRqdnE0UmxNYnc1Zkd2czYKMXBVYWVva1dOOXRIRTBndG5pQWpoczRKR3dwR1BaR0t6eWZPbDZSdjJ4cXZ2aTdjZkc1RnpnZjNDcTJ6M0p4MgpRaGl4dXpVRlJjUWhvVDkrczJ6YUVvS2krZHdxSnJGNWc0akVSdTZyamJvaXNVQVZXRmI3M2hQaWtaNWZQMDZVCnpIbzN5dE5ZYitoNXVMbzAxcWl4aFlsNWMwZzg1N25YYW1JS0JyT3BMWlE9Ci0tLS0tRU5EIEVDIFBSSVZBVEUgS0VZLS0tLS0K",
+     "public_key_openssh": "ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBAGf2gHWZSItuU0qxxB9ljtHuSr6lkWK3xMWWGu9LbklECMothccPpt1SASplezelBfY5w3ttk3h3oiREVp4IQkU8wHfp+jGirbC60yK7C00jgQq2OiV0HIgvv6t2Lt39UgyHctap/6sAfjrmcleAcYWPGYiNtsdAV53R5vqMo1TMv1n1Q=="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "expected_error": "Unsupported or invalid private key format",
+     "format": "pkcs8",
+     "label": "ecdsa-p521-pkcs8",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSHVBZ0VBTUJBR0J5cUdTTTQ5QWdFR0JTdUJCQUFqQklIV01JSFRBZ0VCQkVJQXg0VkE0cFVISVQyV1NZdnUKclRwYXJrU3p4bFRNYUY4R3A2NmkyalBubUNnY0ViWWVFc29oUjZWZTREK2pkVjdDSENoZ1lZU05DN3NGM0ZrMgpGZ3FWQnJDaGdZa0RnWVlBQkFHZjJnSFdaU0l0dVUwcXh4QjlsanRIdVNyNmxrV0szeE1XV0d1OUxia2xFQ01vCnRoY2NQcHQxU0FTcGxlemVsQmZZNXczdHRrM2gzb2lSRVZwNElRa1U4d0hmcCtqR2lyYkM2MHlLN0MwMGpnUXEKMk9pVjBISWd2djZ0Mkx0MzlVZ3lIY3RhcC82c0FmanJtY2xlQWNZV1BHWWlOdHNkQVY1M1I1dnFNbzFUTXYxbgoxUT09Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K",
+     "public_key_openssh": "ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBAGf2gHWZSItuU0qxxB9ljtHuSr6lkWK3xMWWGu9LbklECMothccPpt1SASplezelBfY5w3ttk3h3oiREVp4IQkU8wHfp+jGirbC60yK7C00jgQq2OiV0HIgvv6t2Lt39UgyHctap/6sAfjrmcleAcYWPGYiNtsdAV53R5vqMo1TMv1n1Q=="
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": false,
+     "expected_error": "Unsupported or invalid private key format",
+     "format": "pkcs8",
+     "label": "ecdsa-p521-pkcs8-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFTkNSWVBURUQgUFJJVkFURSBLRVktLS0tLQpNSUlCWlRCZkJna3Foa2lHOXcwQkJRMHdVakF4QmdrcWhraUc5dzBCQlF3d0pBUVFSQjJKcTVqaFZWMUZyczliCnlUY2ZXQUlDQ0FBd0RBWUlLb1pJaHZjTkFna0ZBREFkQmdsZ2hrZ0JaUU1FQVNvRUVFaGhxTytXUUdWY2tGcFYKaHJyN0Q4TUVnZ0VBNlhndmt5c1AxalB1SnN4T1RrdFNIeU8xeVU3aHFEQ2NXZVFNenNZQTJNWFNaVUlubW1wVQozZ3RHV0c5TmFZUE1qTHJONmdndkEwUGJ2UGt0c3RIRitncksxdXQ4ZXNNak8wV2JrR3Z2eWhyNm1KcndtVWhnCnA4UXV4ckNmNm9DaFJDMGJSd2NYUUlYWGhIUy82ejR3UitaK3h4dWIvVWNaeVllN1o3L1o4MzNVbnllUkxTdHkKVFFuMkpINjIyZ2Z1MUxLb0paVTRIclgvL0lOeGtqK2MrVHZiYWcwZ2dYeGRRL2NFaEdVTmhldmZsZDlQRllmWAp1bVV6bnJ3SVNwZFk4NFp0TFRNRU5zb2dCZHEybTBlUTZ1elJsbCtON2xyVDJ5dUxJQVJmQjNyNlZmV3ZTWnVXCjRKVU1DNVEvV3ZHbE45ZUVjYVJxR3ZTeU04MEk1Y3dRREE9PQotLS0tLUVORCBFTkNSWVBURUQgUFJJVkFURSBLRVktLS0tLQo=",
+     "public_key_openssh": "ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBAGf2gHWZSItuU0qxxB9ljtHuSr6lkWK3xMWWGu9LbklECMothccPpt1SASplezelBfY5w3ttk3h3oiREVp4IQkU8wHfp+jGirbC60yK7C00jgQq2OiV0HIgvv6t2Lt39UgyHctap/6sAfjrmcleAcYWPGYiNtsdAV53R5vqMo1TMv1n1Q=="
+    },
+    {
+     "algorithm": "Ed25519",
+     "deterministic": true,
+     "expected_error": "Passphrase-encrypted private keys are not supported",
+     "format": "openssh",
+     "label": "ed25519-openssh-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQ21GbGN6STFOaTFqZEhJQUFBQUdZbU55ZVhCMEFBQUFHQUFBQUJEcwpzSXViTmYxSm9qdHRaOHZTOVJmV0FBQUFFQUFBQUFFQUFBQXpBQUFBQzNOemFDMWxaREkxTlRFNUFBQUFJSEdpCmF6cm9VbUdpdEszU213RVZBZTlTVWFUa1JXeUN2czlFNkY3dkZhZ1RBQUFBa09uU3hsMFYzdlpxS0h0YTN2MkEKb2w4YjJjRXVyRStsblc2NHRmYm1xS2NRaVpEbjgva1B1aW1HRzlSRHJJNjllWlVpZGtDdExUUHhsUFZBM25zeQo4M3ZFdHloK3E5c1dCTnJCbGNYRlJTV3kreXRPL1VoY1BJa3dDc0dKNE5SZlBUS2xpWEx6cC82aTlGd2wvVk9FCjBuaUtvYzhGTTZzUTRQc0ZXMExvM21tMFVrMWVSMzVJb0VqMjNVTG5LbjlSZmc9PQotLS0tLUVORCBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0K",
+     "public_key_openssh": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHGiazroUmGitK3SmwEVAe9SUaTkRWyCvs9E6F7vFagT"
+    },
+    {
+     "algorithm": "Ed25519",
+     "deterministic": true,
+     "expected_error": "Unsupported or invalid private key format",
+     "format": "pkcs8",
+     "label": "ed25519-pkcs8",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSU9ZZjhYSFlPL21IK1pIOFpoKzlqTzkyMFNrNXplRklYWWVobjFwbU5xNUMKLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo=",
+     "public_key_openssh": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHGiazroUmGitK3SmwEVAe9SUaTkRWyCvs9E6F7vFagT"
+    },
+    {
+     "algorithm": "Ed25519",
+     "deterministic": false,
+     "expected_error": "Unsupported or invalid private key format",
+     "format": "pkcs8",
+     "label": "ed25519-pkcs8-passphrase",
+     "passphrase_protected": true,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFTkNSWVBURUQgUFJJVkFURSBLRVktLS0tLQpNSUdqTUY4R0NTcUdTSWIzRFFFRkRUQlNNREVHQ1NxR1NJYjNEUUVGRERBa0JCQkI2bFN3Njh4dlNjQUF4YjRTCnNGSGdBZ0lJQURBTUJnZ3Foa2lHOXcwQ0NRVUFNQjBHQ1dDR1NBRmxBd1FCS2dRUXBwNGtZOUcxKy9zZUFBTFMKYWtTVzJ3UkFUaExia2tTYzJQRldPalZTR3ZqRzl1MEFxZ1BBaXkyRzJQREI3OWcyOS9KZlVhRVVHZW1kYlVkcQo3NlpTT1lVcW9ET3hmUkt6d3RSYVZ0cEllY0ZzYVE9PQotLS0tLUVORCBFTkNSWVBURUQgUFJJVkFURSBLRVktLS0tLQo=",
+     "public_key_openssh": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHGiazroUmGitK3SmwEVAe9SUaTkRWyCvs9E6F7vFagT"
+    }
+   ],
+   "stored": [
+    {
+     "algorithm": "RSA",
+     "deterministic": true,
+     "format": "openssh",
+     "key_id": "9971eb1e-92db-4b73-93dd-b5c5d5d8387c",
+     "key_type": "RSA",
+     "label": "rsa2048-openssh",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUJGd0FBQUFkegpjMmd0Y25OaEFBQUFBd0VBQVFBQUFRRUF4c2tEdU93WUUzaG0zd1FTaU5jSVkvQm5SaWtwckJHZWFDTndzSTlPClBJbUZ0Z3QycnVib0RTRkhRa3hZWmloaDhaS250MHY0Q1p1eGhLRFM3L0x2RTM1ZlBJQTFDQ1c3V0lLNUVCa1AKalUwZVBCemVROHJHMUYrL29PeXNYYlhySGJFMVNpcldXQm4zUkJYWVZhTDVQU05NaXM5bU1nL1p2RTlkdlp1UApIYmlMdGYrM0JQeStxUExGRmRzTWhDTlZhZ05UQTJIdENBM0R0aDFMRE5ZUm9JampxUnp1TzBFQ2VQbGh5R2M5Ckp0VEU3NVRYdjJkNkVpbm5RTG44amd0clkxbFBHbko3SmFjZ3BtQVN2TnJVTnVJSzI0U0JrWExwa3p5WUFPb0kKdjk2dzQvOUZOakNyR2t1cnVCeSs5Ync3Ynl3SWFYdVRjOGo3bW90RENjRWZvUUFBQTdoVi9lK2tWZjN2cEFBQQpBQWR6YzJndGNuTmhBQUFCQVFER3lRTzQ3QmdUZUdiZkJCS0kxd2hqOEdkR0tTbXNFWjVvSTNDd2owNDhpWVcyCkMzYXU1dWdOSVVkQ1RGaG1LR0h4a3FlM1MvZ0ptN0dFb05Mdjh1OFRmbDg4Z0RVSUpidFlncmtRR1ErTlRSNDgKSE41RHlzYlVYNytnN0t4ZHRlc2RzVFZLS3RaWUdmZEVGZGhWb3ZrOUkweUt6Mll5RDltOFQxMjltNDhkdUl1MQovN2NFL0w2bzhzVVYyd3lFSTFWcUExTURZZTBJRGNPMkhVc00xaEdnaU9PcEhPNDdRUUo0K1dISVp6MG0xTVR2CmxOZS9aM29TS2VkQXVmeU9DMnRqV1U4YWNuc2xweUNtWUJLODJ0UTI0Z3JiaElHUmN1bVRQSmdBNmdpLzNyRGoKLzBVMk1Lc2FTNnU0SEw3MXZEdHZMQWhwZTVOenlQdWFpME1Kd1IraEFBQUFBd0VBQVFBQUFRRUFvcmxLWXNaaApydzZRcDE4ZURRWjV4OVd6dEt0ZGdZMnFyblRVZXJQVXg1bUw2MG5YRGJYWG4yZnVmVWNoMWY2WXJyZnVzdzF0CkxmQlZrTXhWNERadG52ZUQzbkxVOXFac2hqZjhaa0VkaWYzbkVpNVBoQThxVkE5TlB0NSsrdmRBVUQ0UDhYYS8Kbjc4aHVvcG5YVExiOUVCQkdDQk8rQXdob1JVWEYyK1A2RE1HR0JFYUtjVWVhSGt5OGdpSWhHU0lOTHljUkdaSwpXVi9lR2VBV3Y0ODh2VFdVaTBjSDNhSWtlWGJ0NXFGU3FHdEkrQnczS2liRk1SK0ErNlNIS2p3RVlCU3phcUU1CklxY3FJSlZwTU5IRUZPYzRiNmVETFlwbktwMnhNL1RiT09aaHV1QjM4SkdEd3FlTTZKYkRPK1FkeXpoUjZ1Q0oKQTU5Nm1hQnMwL2FNQVFBQUFJQWdscW03bE54QjRZZXJSWGZPaGx6WkhHM25ERkFEa3N5Nm4yM2ludTMxZ2N0YwpnUStPazRBK3hqY2hQYUZ5YVM1SmtmMkN3Nloza28wMDd4eDVYcVp0cmJ5K1lPUktmWlpkTmpPd2p4YWN6bWpSCjl6TGF4UlZpbVg3WGpEdC9JZnNTVGFhYlBRb1VBRDVtb1NaazlpTHBrQUVSczl3N0NjcmFoNVUwS3R2Rnd3QUEKQUlFQSs5d1BOdks1QkZhRkc4R0N5dDBiYjdLaDc4Q3B2blIrWmkxUlgzL1REQlFVTDhXN0s4NXBxUDFkbjZVTwp5d1FuVmh1LzVVUEx2Zk96VnZ0TEpVSW51M0ZoT2hNTGppOHRkaENZcnpFS3hpbkJySU01SjRhNEFEc1hiVk5KCkZlRFE3RFh5MThKc3JxZU4zaVJWLytVL24yQWI2U2pYU1lUVmxsRmxjYm1jVDlrQUFBQ0JBTW9ObUFBaVRTZjQKcm0xK2d1S3dOUFcwbTkzZmgzb1djMkxCaUd5VlRpclMvZVQ2RkN4Z1Jhb2hBT0xuVnFVK1A5MWRpcW1kY09mbgo3VnAzekNCeCtQN1ZOK1RIZWJDTlE2QlJPQnhJUkhic2VLUXNBd2tDelNMMjJrbXJGSXU3MlZkK2VPZ2tGbi9UCmJCeHlGclJKVlFPckY1NDAzMG5XVTJBZ2VpY3ZjemtKQUFBQUFBRUMKLS0tLS1FTkQgT1BFTlNTSCBQUklWQVRFIEtFWS0tLS0tCg==",
+     "public_key_openssh": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGyQO47BgTeGbfBBKI1whj8GdGKSmsEZ5oI3Cwj048iYW2C3au5ugNIUdCTFhmKGHxkqe3S/gJm7GEoNLv8u8Tfl88gDUIJbtYgrkQGQ+NTR48HN5DysbUX7+g7KxdtesdsTVKKtZYGfdEFdhVovk9I0yKz2YyD9m8T129m48duIu1/7cE/L6o8sUV2wyEI1VqA1MDYe0IDcO2HUsM1hGgiOOpHO47QQJ4+WHIZz0m1MTvlNe/Z3oSKedAufyOC2tjWU8acnslpyCmYBK82tQ24grbhIGRcumTPJgA6gi/3rDj/0U2MKsaS6u4HL71vDtvLAhpe5NzyPuai0MJwR+h",
+     "stored_file": "users/user_3/keys/9971eb1e-92db-4b73-93dd-b5c5d5d8387c.pem"
+    },
+    {
+     "algorithm": "RSA",
+     "deterministic": true,
+     "format": "pem",
+     "key_id": "168716ca-55b4-4155-8827-f5d378fe0ad0",
+     "key_type": "RSA",
+     "label": "rsa2048-pem",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBeHNrRHVPd1lFM2htM3dRU2lOY0lZL0JuUmlrcHJCR2VhQ053c0k5T1BJbUZ0Z3QyCnJ1Ym9EU0ZIUWt4WVppaGg4WktudDB2NENadXhoS0RTNy9MdkUzNWZQSUExQ0NXN1dJSzVFQmtQalUwZVBCemUKUThyRzFGKy9vT3lzWGJYckhiRTFTaXJXV0JuM1JCWFlWYUw1UFNOTWlzOW1NZy9adkU5ZHZadVBIYmlMdGYrMwpCUHkrcVBMRkZkc01oQ05WYWdOVEEySHRDQTNEdGgxTEROWVJvSWpqcVJ6dU8wRUNlUGxoeUdjOUp0VEU3NVRYCnYyZDZFaW5uUUxuOGpndHJZMWxQR25KN0phY2dwbUFTdk5yVU51SUsyNFNCa1hMcGt6eVlBT29Jdjk2dzQvOUYKTmpDckdrdXJ1QnkrOWJ3N2J5d0lhWHVUYzhqN21vdERDY0Vmb1FJREFRQUJBb0lCQVFDaXVVcGl4bUd2RHBDbgpYeDROQm5uSDFiTzBxMTJCamFxdWROUjZzOVRIbVl2clNkY050ZGVmWis1OVJ5SFYvcGl1dCs2ekRXMHQ4RldRCnpGWGdObTJlOTRQZWN0VDJwbXlHTi94bVFSMkovZWNTTGsrRUR5cFVEMDArM243NjkwQlFQZy94ZHIrZnZ5RzYKaW1kZE10djBRRUVZSUU3NERDR2hGUmNYYjQvb013WVlFUm9weFI1b2VUTHlDSWlFWklnMHZKeEVaa3BaWDk0Wgo0QmEvanp5OU5aU0xSd2Zkb2lSNWR1M21vVktvYTBqNEhEY3FKc1V4SDREN3BJY3FQQVJnRkxOcW9Ua2lweW9nCmxXa3cwY1FVNXpodnA0TXRpbWNxbmJFejlOczQ1bUc2NEhmd2tZUENwNHpvbHNNNzVCM0xPRkhxNElrRG4zcVoKb0d6VDlvd0JBb0dCQVB2Y0R6Ynl1UVJXaFJ2QmdzcmRHMit5b2UvQXFiNTBmbVl0VVY5LzB3d1VGQy9GdXl2TwphYWo5WForbERzc0VKMVliditWRHk3M3pzMWI3U3lWQ0o3dHhZVG9UQzQ0dkxYWVFtSzh4Q3NZcHdheURPU2VHCnVBQTdGMjFUU1JYZzBPdzE4dGZDYks2bmpkNGtWZi9sUDU5Z0cra28xMG1FMVpaUlpYRzVuRS9aQW9HQkFNb04KbUFBaVRTZjRybTErZ3VLd05QVzBtOTNmaDNvV2MyTEJpR3lWVGlyUy9lVDZGQ3hnUmFvaEFPTG5WcVUrUDkxZAppcW1kY09mbjdWcDN6Q0J4K1A3Vk4rVEhlYkNOUTZCUk9CeElSSGJzZUtRc0F3a0N6U0wyMmttckZJdTcyVmQrCmVPZ2tGbi9UYkJ4eUZyUkpWUU9yRjU0MDMwbldVMkFnZWljdmN6a0pBb0dBVFZ3Z2lENHh1alZoR1U5cy95YS8KSUtYN3U0cXdHTUhyZVRMK1Jaa2JtQ0FxdXltKy9ndWV4THRlSUlVd2NBZE1sZFJjTXUyS0RVUm5sNVlFVk9ObgpGTm9VaFNRSWJwbnJHdEtxTTFXYSs1Y2oxL3RPZU9lV2FPdTluR1R5ay9mRDlHbjF0M1FPc2U3aFVwUlNuaEVxClk2ZS9xdlJTZkZDQzBuTVo5NzZOVnJFQ2dZRUFydnZvMkt6Y0x6TENOUmRzV05BTGZZTWx2WmdaWnhWTVpvbC8KRWJLWVdLUVR1QnNRSDRKY3NzTVVWbTNNN3h5akNKNDdPVHVkaldtaGVFanBvbXV5SFZnZ3FPUk1NaWVWR3FGYwpPN29tZU92QWEwV21kMFpTeStZSEUrZXl5blVyL0FjT3hOU0VHNzNKRWpXSURpaTRGSTQyelErekZPb2xtTWxuCm9Nb0tPcWtDZ1lBZ2xxbTdsTnhCNFllclJYZk9obHpaSEczbkRGQURrc3k2bjIzaW51MzFnY3RjZ1ErT2s0QSsKeGpjaFBhRnlhUzVKa2YyQ3c2WjNrbzAwN3h4NVhxWnRyYnkrWU9SS2ZaWmROak93anhhY3ptalI5ekxheFJWaQptWDdYakR0L0lmc1NUYWFiUFFvVUFENW1vU1prOWlMcGtBRVJzOXc3Q2NyYWg1VTBLdHZGd3c9PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=",
+     "public_key_openssh": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGyQO47BgTeGbfBBKI1whj8GdGKSmsEZ5oI3Cwj048iYW2C3au5ugNIUdCTFhmKGHxkqe3S/gJm7GEoNLv8u8Tfl88gDUIJbtYgrkQGQ+NTR48HN5DysbUX7+g7KxdtesdsTVKKtZYGfdEFdhVovk9I0yKz2YyD9m8T129m48duIu1/7cE/L6o8sUV2wyEI1VqA1MDYe0IDcO2HUsM1hGgiOOpHO47QQJ4+WHIZz0m1MTvlNe/Z3oSKedAufyOC2tjWU8acnslpyCmYBK82tQ24grbhIGRcumTPJgA6gi/3rDj/0U2MKsaS6u4HL71vDtvLAhpe5NzyPuai0MJwR+h",
+     "stored_file": "users/user_3/keys/168716ca-55b4-4155-8827-f5d378fe0ad0.pem"
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "format": "openssh",
+     "key_id": "80c09d20-daf6-4bf5-bc41-a41341ab13aa",
+     "key_type": "ECDSA",
+     "label": "ecdsa-p256-openssh",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFhQUFBQUJObApZMlJ6WVMxemFHRXlMVzVwYzNSd01qVTJBQUFBQ0c1cGMzUndNalUyQUFBQVFRUnhWNGl4NnpFTlpzb0hHOXlUCk5NaTloVmpZQUNmN0VYcFV2YjZIT0RuWlVtYk0yYjdKdVRCTXdhOEF2Sy92dHFvSlNhVGRqVGVFSmlrWElZbisKcU9kNEFBQUFvREFhUlEwd0drVU5BQUFBRTJWalpITmhMWE5vWVRJdGJtbHpkSEF5TlRZQUFBQUlibWx6ZEhBeQpOVFlBQUFCQkJIRlhpTEhyTVExbXlnY2IzSk0weUwyRldOZ0FKL3NSZWxTOXZvYzRPZGxTWnN6WnZzbTVNRXpCCnJ3QzhyKysycWdsSnBOMk5ONFFtS1JjaGlmNm81M2dBQUFBaEFNbFlOSzZhdzNmMnBISWZqVzlYQXI0dEw2RnoKY0xEa2xldFE2Ly9HNUxjQUFBQUFBQUVDQXdRRkJnYz0KLS0tLS1FTkQgT1BFTlNTSCBQUklWQVRFIEtFWS0tLS0tCg==",
+     "public_key_openssh": "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHFXiLHrMQ1mygcb3JM0yL2FWNgAJ/sRelS9voc4OdlSZszZvsm5MEzBrwC8r++2qglJpN2NN4QmKRchif6o53g=",
+     "stored_file": "users/user_3/keys/80c09d20-daf6-4bf5-bc41-a41341ab13aa.pem"
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "format": "pem",
+     "key_id": "2139432b-cd59-437d-b01a-f2f37e7b64b4",
+     "key_type": "ECDSA",
+     "label": "ecdsa-p256-pem",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSU1sWU5LNmF3M2YycEhJZmpXOVhBcjR0TDZGemNMRGtsZXRRNi8vRzVMY0FvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFY1ZlSXNlc3hEV2JLQnh2Y2t6VEl2WVZZMkFBbit4RjZWTDIraHpnNTJWSm16Tm0reWJrdwpUTUd2QUx5djc3YXFDVW1rM1kwM2hDWXBGeUdKL3FqbmVBPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=",
+     "public_key_openssh": "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHFXiLHrMQ1mygcb3JM0yL2FWNgAJ/sRelS9voc4OdlSZszZvsm5MEzBrwC8r++2qglJpN2NN4QmKRchif6o53g=",
+     "stored_file": "users/user_3/keys/2139432b-cd59-437d-b01a-f2f37e7b64b4.pem"
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "format": "openssh",
+     "key_id": "74249d68-7b0e-4f0e-b9c0-d36c3ca5dc31",
+     "key_type": "ECDSA",
+     "label": "ecdsa-p384-openssh",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFpQUFBQUJObApZMlJ6WVMxemFHRXlMVzVwYzNSd016ZzBBQUFBQ0c1cGMzUndNemcwQUFBQVlRUTZqNEtQSWlTRDZVN3VCcURuCldNczgrWFpyek84NjV3M1FubW1sZFdGRG5pT1hJRTBmdWtmZFdEc0NWT29PUEVkZWtqSC8zZWQzTDVIYmJhZlkKNGVkdjA5SXZZYU9pa05jWmpvSTV3cThiblNZMUhrSzQ1UjIzdmRkYmNOZzVtV01BQUFEUXd1S1dTc0xpbGtvQQpBQUFUWldOa2MyRXRjMmhoTWkxdWFYTjBjRE00TkFBQUFBaHVhWE4wY0RNNE5BQUFBR0VFT28rQ2p5SWtnK2xPCjdnYWc1MWpMUFBsMmE4enZPdWNOMEo1cHBYVmhRNTRqbHlCTkg3cEgzVmc3QWxUcURqeEhYcEl4LzkzbmR5K1IKMjIybjJPSG5iOVBTTDJHam9wRFhHWTZDT2NLdkc1MG1OUjVDdU9VZHQ3M1hXM0RZT1psakFBQUFNQUtWa2c0awpvN0VKeHZpNEt3d2R0NXJjOWV3ajMweGQzMXdSeWhjSkRyLzRNSGp0eTdlRVlkUVVQMVg4VGdZUTlBQUFBQUFCCkFnTUVCUVlIQ0E9PQotLS0tLUVORCBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0K",
+     "public_key_openssh": "ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBDqPgo8iJIPpTu4GoOdYyzz5dmvM7zrnDdCeaaV1YUOeI5cgTR+6R91YOwJU6g48R16SMf/d53cvkdttp9jh52/T0i9ho6KQ1xmOgjnCrxudJjUeQrjlHbe911tw2DmZYw==",
+     "stored_file": "users/user_3/keys/74249d68-7b0e-4f0e-b9c0-d36c3ca5dc31.pem"
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "format": "pem",
+     "key_id": "1f90186a-d5b6-4df7-9bb6-2167d8ce1bf2",
+     "key_type": "ECDSA",
+     "label": "ecdsa-p384-pem",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1JR2tBZ0VCQkRBQ2xaSU9KS094Q2NiNHVDc01IYmVhM1BYc0k5OU1YZDljRWNvWENRNi8rREI0N2N1M2hHSFUKRkQ5Vi9FNEdFUFNnQndZRks0RUVBQ0toWkFOaUFBUTZqNEtQSWlTRDZVN3VCcURuV01zOCtYWnJ6Tzg2NXczUQpubW1sZFdGRG5pT1hJRTBmdWtmZFdEc0NWT29PUEVkZWtqSC8zZWQzTDVIYmJhZlk0ZWR2MDlJdllhT2lrTmNaCmpvSTV3cThiblNZMUhrSzQ1UjIzdmRkYmNOZzVtV009Ci0tLS0tRU5EIEVDIFBSSVZBVEUgS0VZLS0tLS0K",
+     "public_key_openssh": "ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBDqPgo8iJIPpTu4GoOdYyzz5dmvM7zrnDdCeaaV1YUOeI5cgTR+6R91YOwJU6g48R16SMf/d53cvkdttp9jh52/T0i9ho6KQ1xmOgjnCrxudJjUeQrjlHbe911tw2DmZYw==",
+     "stored_file": "users/user_3/keys/1f90186a-d5b6-4df7-9bb6-2167d8ce1bf2.pem"
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "format": "openssh",
+     "key_id": "b27e2d5f-430a-4c37-aed2-5cb949373c98",
+     "key_type": "ECDSA",
+     "label": "ecdsa-p521-openssh",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFyQUFBQUJObApZMlJ6WVMxemFHRXlMVzVwYzNSd05USXhBQUFBQ0c1cGMzUndOVEl4QUFBQWhRUUJuOW9CMW1VaUxibE5Lc2NRCmZaWTdSN2txK3BaRml0OFRGbGhydlMyNUpSQWpLTFlYSEQ2YmRVZ0VxWlhzM3BRWDJPY043YlpONGQ2SWtSRmEKZUNFSkZQTUIzNmZveG9xMnd1dE1pdXd0Tkk0RUt0am9sZEJ5SUw3K3JkaTdkL1ZJTWgzTFdxZityQUg0NjVuSgpYZ0hHRmp4bUlqYmJIUUZlZDBlYjZqS05Vekw5WjlVQUFBRUFaK0xieldmaTI4MEFBQUFUWldOa2MyRXRjMmhoCk1pMXVhWE4wY0RVeU1RQUFBQWh1YVhOMGNEVXlNUUFBQUlVRUFaL2FBZFpsSWkyNVRTckhFSDJXTzBlNUt2cVcKUllyZkV4WllhNzB0dVNVUUl5aTJGeHcrbTNWSUJLbVY3TjZVRjlqbkRlMjJUZUhlaUpFUlduZ2hDUlR6QWQrbgo2TWFLdHNMclRJcnNMVFNPQkNyWTZKWFFjaUMrL3EzWXUzZjFTRElkeTFxbi9xd0IrT3VaeVY0QnhoWThaaUkyCjJ4MEJYbmRIbStveWpWTXkvV2ZWQUFBQVFnREhoVURpbFFjaFBaWkppKzZ0T2xxdVJMUEdWTXhvWHdhbnJxTGEKTStlWUtCd1J0aDRTeWlGSHBWN2dQNk4xWHNJY0tHQmhoSTBMdXdYY1dUWVdDcFVHc0FBQUFBQUJBZz09Ci0tLS0tRU5EIE9QRU5TU0ggUFJJVkFURSBLRVktLS0tLQo=",
+     "public_key_openssh": "ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBAGf2gHWZSItuU0qxxB9ljtHuSr6lkWK3xMWWGu9LbklECMothccPpt1SASplezelBfY5w3ttk3h3oiREVp4IQkU8wHfp+jGirbC60yK7C00jgQq2OiV0HIgvv6t2Lt39UgyHctap/6sAfjrmcleAcYWPGYiNtsdAV53R5vqMo1TMv1n1Q==",
+     "stored_file": "users/user_3/keys/b27e2d5f-430a-4c37-aed2-5cb949373c98.pem"
+    },
+    {
+     "algorithm": "ECDSA",
+     "deterministic": true,
+     "format": "pem",
+     "key_id": "99506353-0152-479f-93ca-cf7ad973a4b4",
+     "key_type": "ECDSA",
+     "label": "ecdsa-p521-pem",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1JSGNBZ0VCQkVJQXg0VkE0cFVISVQyV1NZdnVyVHBhcmtTenhsVE1hRjhHcDY2aTJqUG5tQ2djRWJZZUVzb2gKUjZWZTREK2pkVjdDSENoZ1lZU05DN3NGM0ZrMkZncVZCckNnQndZRks0RUVBQ09oZ1lrRGdZWUFCQUdmMmdIVwpaU0l0dVUwcXh4QjlsanRIdVNyNmxrV0szeE1XV0d1OUxia2xFQ01vdGhjY1BwdDFTQVNwbGV6ZWxCZlk1dzN0CnRrM2gzb2lSRVZwNElRa1U4d0hmcCtqR2lyYkM2MHlLN0MwMGpnUXEyT2lWMEhJZ3Z2NnQyTHQzOVVneUhjdGEKcC82c0FmanJtY2xlQWNZV1BHWWlOdHNkQVY1M1I1dnFNbzFUTXYxbjFRPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=",
+     "public_key_openssh": "ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBAGf2gHWZSItuU0qxxB9ljtHuSr6lkWK3xMWWGu9LbklECMothccPpt1SASplezelBfY5w3ttk3h3oiREVp4IQkU8wHfp+jGirbC60yK7C00jgQq2OiV0HIgvv6t2Lt39UgyHctap/6sAfjrmcleAcYWPGYiNtsdAV53R5vqMo1TMv1n1Q==",
+     "stored_file": "users/user_3/keys/99506353-0152-479f-93ca-cf7ad973a4b4.pem"
+    },
+    {
+     "algorithm": "Ed25519",
+     "deterministic": true,
+     "format": "openssh",
+     "key_id": "d12ad3cd-eb07-4418-8967-a3169ba3de68",
+     "key_type": "Ed25519",
+     "label": "ed25519-openssh",
+     "passphrase_protected": false,
+     "plaintext_b64": "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFNd0FBQUF0egpjMmd0WldReU5UVXhPUUFBQUNCeG9tczY2Rkpob3JTdDBwc0JGUUh2VWxHazVFVnNncjdQUk9oZTd4V29Fd0FBCkFJZ3o3enFCTSs4NmdRQUFBQXR6YzJndFpXUXlOVFV4T1FBQUFDQnhvbXM2NkZKaG9yU3QwcHNCRlFIdlVsR2sKNUVWc2dyN1BST2hlN3hXb0V3QUFBRURtSC9GeDJEdjVoL21SL0dZZnZZenZkdEVwT2MzaFNGMkhvWjlhWmphdQpRbkdpYXpyb1VtR2l0SzNTbXdFVkFlOVNVYVRrUld5Q3ZzOUU2Rjd2RmFnVEFBQUFBQUVDQXdRRgotLS0tLUVORCBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0K",
+     "public_key_openssh": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHGiazroUmGitK3SmwEVAe9SUaTkRWyCvs9E6F7vFagT",
+     "stored_file": "users/user_3/keys/d12ad3cd-eb07-4418-8967-a3169ba3de68.pem"
+    }
+   ]
+  },
+  "totp": {
+   "activation_code": "170643",
+   "activation_step": 59787003,
+   "authenticator_id": 1,
+   "provisioning_uri": "otpauth://totp/WebSSH:totp_user?secret=FMXRWAVDZQ263ZYQ4K46DX32PZ6ZS4DV&issuer=WebSSH",
+   "recovery_codes": [
+    "F814-FF5C-6A56-7FBE-BEF6",
+    "92F9-A27A-45CA-2016-4CC3",
+    "B286-E6D2-C1F4-BB4E-25CE",
+    "96D7-5AB1-1B71-A6E2-CB60",
+    "DF61-B71B-5AF0-7066-4372",
+    "2192-53EA-8ABF-4D4B-053F",
+    "5A65-2E70-8945-ED50-8912",
+    "AE4C-B73D-09E8-9185-EF0A",
+    "2B44-528D-ED74-57A7-7E28",
+    "E696-0742-FC98-B647-6061"
+   ],
+   "secret_base32": "FMXRWAVDZQ263ZYQ4K46DX32PZ6ZS4DV"
+  },
+  "totp_pending": {
+   "expires_at": "2026-11-02T09:06:34.250000",
+   "secret_base32": "UOEJNFE3XSAT3ZZKFQGQCPKCKH4P7HQ5"
+  },
+  "user_settings": {
+   "authentication_session_duration_minutes": 30,
+   "confirm_session_close": true,
+   "disconnect_session_action": "retry",
+   "notepad": "",
+   "overview_dismissed": [],
+   "overview_layout": "dashboard",
+   "overview_panels": null,
+   "overview_reachability": "manual",
+   "start_page": "overview",
+   "sync_terminal_directory": true,
+   "terminal_appearance": {},
+   "theme": "glass"
+  },
+  "users": {
+   "cfg_admin": {
+    "auth_generation": 0,
+    "connection_history_scope": "03404a70ab5007c6185cb9e0cced3e2e605a0309b186f71db7f6a12e277183a9",
+    "created_at_db": "2026-11-02T09:00:01.250000",
+    "id": 2,
+    "is_admin": true,
+    "is_locked": false,
+    "kind": "local, administrator through ADMIN_USERS",
+    "mfa_enabled": false,
+    "password": "config-admin-password-1",
+    "password_login_allowed": true
+   },
+   "github_linked": {
+    "auth_generation": 1,
+    "connection_history_scope": "995f27f72e560e84caf8648119a4076c06a4629dc9c2229d7584df3963876d77",
+    "created_at_db": "2026-11-02T09:00:08.250000",
+    "id": 9,
+    "is_admin": false,
+    "is_locked": false,
+    "kind": "local with linked GitHub identity; sessions revoked",
+    "mfa_enabled": false,
+    "password": "github-linked-password-1",
+    "password_login_allowed": true
+   },
+   "golden_admin": {
+    "auth_generation": 0,
+    "connection_history_scope": "063756c7220ba69fb176e388b60873de7f3bf58fd1047dd6b29ffb6bec29026d",
+    "created_at_db": "2026-11-02T09:00:00",
+    "id": 1,
+    "is_admin": true,
+    "is_locked": false,
+    "kind": "local, administrator (first account)",
+    "mfa_enabled": false,
+    "password": "golden-admin-password-1",
+    "password_login_allowed": true
+   },
+   "jörg_ünïcødé": {
+    "auth_generation": 0,
+    "connection_history_scope": "3c5a6f5c531596ee77c6329689503ac7d970a57577644bb871cd14fde508498a",
+    "created_at_db": "2026-11-02T09:03:56.250000",
+    "id": 12,
+    "is_admin": false,
+    "is_locked": false,
+    "kind": "legacy Unicode name; reuses the id of the deleted account",
+    "mfa_enabled": false,
+    "password": "legacy-unicode-password-1",
+    "password_login_allowed": true
+   },
+   "ldap_user": {
+    "auth_generation": 0,
+    "connection_history_scope": "f4ab21a3a1d6ea8c38763201f8ae39d43f10cc590c125f517d3e8fd06a1099f4",
+    "created_at_db": "2026-11-02T09:00:10.250000",
+    "id": 10,
+    "is_admin": false,
+    "is_locked": false,
+    "kind": "LDAP-managed (directory-provisioned)",
+    "mfa_enabled": false,
+    "password": null,
+    "password_login_allowed": false
+   },
+   "limit_user": {
+    "auth_generation": 0,
+    "connection_history_scope": "d3fa0e1e19b83adb61dffcee8363eff3ff25609c21fefae39e6cd604b96fb425",
+    "created_at_db": "2026-11-02T09:00:03.250000",
+    "id": 4,
+    "is_admin": false,
+    "is_locked": false,
+    "kind": "local, password exactly 72 UTF-8 bytes",
+    "mfa_enabled": false,
+    "password": "ääääääääääääääääääääääääääääääxxxxxxxxxxxx",
+    "password_login_allowed": true
+   },
+   "local_user": {
+    "auth_generation": 0,
+    "connection_history_scope": "20cb257c6e0bf172f2e6e1fc61060746841cbb68c4639c37da9445d253f3a295",
+    "created_at_db": "2026-11-02T09:00:02.250000",
+    "id": 3,
+    "is_admin": false,
+    "is_locked": false,
+    "kind": "local, owner of all per-user stores",
+    "mfa_enabled": false,
+    "password": "local-user-password-1",
+    "password_login_allowed": true
+   },
+   "locked_user": {
+    "auth_generation": 1,
+    "connection_history_scope": "5af8177d2519c30bc47d177ab13f763b2bc9198005d883286011a1b5d94369e5",
+    "created_at_db": "2026-11-02T09:00:04.250000",
+    "id": 5,
+    "is_admin": false,
+    "is_locked": true,
+    "kind": "local, locked by an administrator",
+    "mfa_enabled": false,
+    "password": "locked-user-password-1",
+    "password_login_allowed": false
+   },
+   "octo_golden": {
+    "auth_generation": 0,
+    "connection_history_scope": "28a02221742355f7c58d9aeb0fba14ea92561c327e723250c66d7744cfbbb9d7",
+    "created_at_db": "2026-11-02T09:00:11.250000",
+    "id": 11,
+    "is_admin": false,
+    "is_locked": false,
+    "kind": "GitHub-managed (auto-provisioned)",
+    "mfa_enabled": false,
+    "password": null,
+    "password_login_allowed": false
+   },
+   "oidc_user": {
+    "auth_generation": 0,
+    "connection_history_scope": "40ab0a153871ed55d595b4dc652928f3530999c77bdc83f6f5769508c55cbb7f",
+    "created_at_db": "2026-11-02T09:00:07.250000",
+    "id": 8,
+    "is_admin": false,
+    "is_locked": false,
+    "kind": "local with linked OIDC identity",
+    "mfa_enabled": false,
+    "password": "oidc-user-password-1",
+    "password_login_allowed": true
+   },
+   "passkey_user": {
+    "auth_generation": 0,
+    "connection_history_scope": "ae9c09d4baec6462b98bdc8444c05aec64dfb19cfe877fa7062e1249ac2a520c",
+    "created_at_db": "2026-11-02T09:00:06.250000",
+    "id": 7,
+    "is_admin": false,
+    "is_locked": false,
+    "kind": "local, passkey MFA",
+    "mfa_enabled": true,
+    "password": "passkey-user-password-1",
+    "password_login_allowed": false
+   },
+   "totp_user": {
+    "auth_generation": 0,
+    "connection_history_scope": "458dabc8ed45d39d69a868ec2188b399170dacb5a4a48cd250b4d6f811946eb3",
+    "created_at_db": "2026-11-02T09:00:05.250000",
+    "id": 6,
+    "is_admin": false,
+    "is_locked": false,
+    "kind": "local, TOTP MFA",
+    "mfa_enabled": true,
+    "password": "totp-user-password-1",
+    "password_login_allowed": false
+   }
+  },
+  "vault": {
+   "Password server": {
+    "password": "golden-vault-password-ssh",
+    "profile_id": "c11ae780-b6eb-4dac-a794-d27d0b23f255"
+   },
+   "Unicode server": {
+    "password": "pässwörd-✓-golden",
+    "profile_id": "270ac363-514f-4978-a380-dadab27cfd3e"
+   }
+  },
+  "vault_passphrase": "golden automation vault passphrase",
+  "webauthn_vectors": [
+   {
+    "assertion_response": {
+     "authenticatorAttachment": "platform",
+     "clientExtensionResults": {},
+     "id": "dVZa2J_1DkTxW_r1EEv_KT-q2hK81BNZSTqd0iWNacU",
+     "rawId": "dVZa2J_1DkTxW_r1EEv_KT-q2hK81BNZSTqd0iWNacU",
+     "response": {
+      "authenticatorData": "mhI2MVkKL6e28pH3u7fl2Lcqq6JK3nOWi_PYgelqVmUFAAAACA",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiQ3k4d25JUklDZGMtWjcwOW5YR3N6ZWlPdEVlZWI3bTRxQlZrYnUxbUJDOCIsIm9yaWdpbiI6Imh0dHBzOi8vd2Vic3NoLmdvbGRlbi50ZXN0IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+      "signature": "MEYCIQDYhYfoSwRFLJYHKp2SFOPPWZf91THWWq-PJQHlx1LPcgIhAP08jq1TpicsNCQZSYNMbuWBNBzKiMP7xmtLLpbMN-KB",
+      "userHandle": "Nw"
+     },
+     "type": "public-key"
+    },
+    "assertion_sign_count": 8,
+    "challenge_b64url": "Cy8wnIRICdc-Z709nXGszeiOtEeeb7m4qBVkbu1mBC8",
+    "cose_alg": -7,
+    "credential_row_id": 1,
+    "expected_origin": "https://webssh.golden.test",
+    "expected_rp_id": "webssh.golden.test",
+    "flags": {
+     "BE": false,
+     "BS": false,
+     "UP": true,
+     "UV": true
+    },
+    "name": "Golden ES256",
+    "registration_response": {
+     "authenticatorAttachment": "platform",
+     "clientExtensionResults": {},
+     "id": "dVZa2J_1DkTxW_r1EEv_KT-q2hK81BNZSTqd0iWNacU",
+     "rawId": "dVZa2J_1DkTxW_r1EEv_KT-q2hK81BNZSTqd0iWNacU",
+     "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikmhI2MVkKL6e28pH3u7fl2Lcqq6JK3nOWi_PYgelqVmVFAAAABwAAAAAAAAAAAAAAAAAAAAAAIHVWWtif9Q5E8Vv69RBL_yk_qtoSvNQTWUk6ndIljWnFpQECAyYgASFYIEhc5pT1TfSCeynw-unEWT27TKfAIbrSvBDDUz_Owb4DIlgg9MC8vcmbb6Sl4J0rHcMo8QQY0Z4sD6po3phHOEyjT2w",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiSkRPS2ZYa0puOWc3Tk1YQlUzdHR1VkdPMkJHYWN5UERiZlIxcUgzNXl5SndlaTBFOTQ1ZjZpdWstUjJ4RG5mVmlzX2phLUo5c2dyT25XNGlMdGNMOWciLCJvcmlnaW4iOiJodHRwczovL3dlYnNzaC5nb2xkZW4udGVzdCIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+      "transports": [
+       "internal",
+       "hybrid"
+      ]
+     },
+     "type": "public-key"
+    },
+    "stored_sign_count": 7
+   },
+   {
+    "assertion_response": {
+     "authenticatorAttachment": "platform",
+     "clientExtensionResults": {},
+     "id": "qexwPsyK1pTSGgwWbUI7eVC3Pwaai1NSa8c-7eNtZqs",
+     "rawId": "qexwPsyK1pTSGgwWbUI7eVC3Pwaai1NSa8c-7eNtZqs",
+     "response": {
+      "authenticatorData": "mhI2MVkKL6e28pH3u7fl2Lcqq6JK3nOWi_PYgelqVmUFAAAAKg",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiSUN2V0NCQ2RtVktFaTRoZDRqZndyd25DMTg5ME9PNWxDMk5QY3NmM3VvdyIsIm9yaWdpbiI6Imh0dHBzOi8vd2Vic3NoLmdvbGRlbi50ZXN0IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+      "signature": "QGw_xkO-gsA8KdZTLhiom-rrTnMsNwrwZ6YRQ8XRf6pEaJg0d0io6B7KdvxpYXHAs1vwDqzuB_Mm_NkhAlWPMhZXIPIC66_IfK66kNQzo_p3FRDfHjghuLyTakrUHBXZIvb7idiaIYlsxm0ZkdBfh3tTjJ-w_PCtFafn2xkDWHPHAj3h5nQMbyYavhBt9_7CzFCQWHi5saiEv3G3Apb4lpGO_kpdUl1SpUrSETFAG8dtV0_nzfh_GuY4a4NHBwXhw0AI6w48ZBmiiKPy1eg8Y6OnguADuYKKektgsOdxgqb07MYrW_rp785RgHL9-bmx4onKpoYYh0uL0AHVeR3sjg",
+      "userHandle": "Nw"
+     },
+     "type": "public-key"
+    },
+    "assertion_sign_count": 42,
+    "challenge_b64url": "ICvWCBCdmVKEi4hd4jfwrwnC1890OO5lC2NPcsf3uow",
+    "cose_alg": -257,
+    "credential_row_id": 2,
+    "expected_origin": "https://webssh.golden.test",
+    "expected_rp_id": "webssh.golden.test",
+    "flags": {
+     "BE": false,
+     "BS": false,
+     "UP": true,
+     "UV": true
+    },
+    "name": "Golden RS256",
+    "registration_response": {
+     "authenticatorAttachment": "platform",
+     "clientExtensionResults": {},
+     "id": "qexwPsyK1pTSGgwWbUI7eVC3Pwaai1NSa8c-7eNtZqs",
+     "rawId": "qexwPsyK1pTSGgwWbUI7eVC3Pwaai1NSa8c-7eNtZqs",
+     "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVkBZ5oSNjFZCi-ntvKR97u35di3KquiSt5zlovz2IHpalZlRQAAACkAAAAAAAAAAAAAAAAAAAAAACCp7HA-zIrWlNIaDBZtQjt5ULc_BpqLU1Jrxz7t421mq6QBAwM5AQAgWQEAue77f-USdpg5mgxI5Cu4AuO4jXqrq3KuH5T7IsteLtk-LBwQQhbds9cVR1PbLZm1HngOhi1w4KeqZeNKixzxHSqF4HyPq9PPfRDzIMsvHncoglWkgDPXzWpnVzvVgQhweXY6SyKI85SOLUIMhZA9vyR-Hg4LmNr_Gwu5G3wYg_Nawj3qivlSdAWRUgKieKTi2lN3yalV7lZ1j4RoifLsiK8N2Xz3MaRNPref67o713G9NqgHtAeJSZ-W9HgwNQY826OXPEFaWzIF1PsgakkKD5hp6u3zIBc6CVUtBGIWpXZawWFUxlBC43hlm9BUDJVkyz3AMvLaJwh7HXdFQFmHEyFDAQAB",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiZ2t0Y2E1YUFDd2NFU1U4RnhzQm9GNnJkVHBPcVFXWUhKSmJhRk1WdzdGaUs1ZDVqLWZlRTBQYmN0bUh4bHZsRWJlWHFSTGpfYkxJTEt0RFBtNERIMXciLCJvcmlnaW4iOiJodHRwczovL3dlYnNzaC5nb2xkZW4udGVzdCIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+      "transports": [
+       "usb"
+      ]
+     },
+     "type": "public-key"
+    },
+    "stored_sign_count": 41
+   },
+   {
+    "assertion_response": {
+     "authenticatorAttachment": "platform",
+     "clientExtensionResults": {},
+     "id": "NEA50UVfAABkSJWdcNOVeDOfMKmv8OYy5ZxI2U41Rs8",
+     "rawId": "NEA50UVfAABkSJWdcNOVeDOfMKmv8OYy5ZxI2U41Rs8",
+     "response": {
+      "authenticatorData": "mhI2MVkKL6e28pH3u7fl2Lcqq6JK3nOWi_PYgelqVmUdAAAAAA",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiajRHcFpMeHZSYTFETHM3SV85Zk1NajVtQVIteHREenMxbVM4Y0xIcHZENCIsIm9yaWdpbiI6Imh0dHBzOi8vd2Vic3NoLmdvbGRlbi50ZXN0IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+      "signature": "Y99OiGqZq81U1xo1c0TUM26SEZGGoxbvB9JyD1_9dSmdJQ5QXt3uZ8hON_BqZ9o7Hpa1l2D8j2GAtE9uWcENBA",
+      "userHandle": "Nw"
+     },
+     "type": "public-key"
+    },
+    "assertion_sign_count": 0,
+    "challenge_b64url": "j4GpZLxvRa1DLs7I_9fMMj5mAR-xtDzs1mS8cLHpvD4",
+    "cose_alg": -8,
+    "credential_row_id": 3,
+    "expected_origin": "https://webssh.golden.test",
+    "expected_rp_id": "webssh.golden.test",
+    "flags": {
+     "BE": true,
+     "BS": true,
+     "UP": true,
+     "UV": true
+    },
+    "name": "Synced passkey ✓ 日本",
+    "registration_response": {
+     "authenticatorAttachment": "platform",
+     "clientExtensionResults": {},
+     "id": "NEA50UVfAABkSJWdcNOVeDOfMKmv8OYy5ZxI2U41Rs8",
+     "rawId": "NEA50UVfAABkSJWdcNOVeDOfMKmv8OYy5ZxI2U41Rs8",
+     "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViBmhI2MVkKL6e28pH3u7fl2Lcqq6JK3nOWi_PYgelqVmVdAAAAAAAAAAAAAAAAAAAAAAAAAAAAIDRAOdFFXwAAZEiVnXDTlXgznzCpr_DmMuWcSNlONUbPpAEBAycgBiFYIPfr32q-p-wCBDU6pKfELfpCOhe3hvMuoFuNLoxzf_X5",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiOXpuR1JveHZ0bDFtazU1Qy1UWGpqQUFTOUNENUNKQ0daVV9jNENYRUFEM1hrcWtObDhvV25Cd0FXUTNLTzdWUGVRcVZaSUVLRm1FRkxQaVNQTThhRWciLCJvcmlnaW4iOiJodHRwczovL3dlYnNzaC5nb2xkZW4udGVzdCIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+      "transports": [
+       "internal"
+      ]
+     },
+     "type": "public-key"
+    },
+    "stored_sign_count": 0
+   },
+   {
+    "assertion_response": {
+     "authenticatorAttachment": "platform",
+     "clientExtensionResults": {},
+     "id": "CX201TevafRUYGlhwRHC4QSFdjg-Mnl7kSj6h0isUqs",
+     "rawId": "CX201TevafRUYGlhwRHC4QSFdjg-Mnl7kSj6h0isUqs",
+     "response": {
+      "authenticatorData": "mhI2MVkKL6e28pH3u7fl2Lcqq6JK3nOWi_PYgelqVmUNAAAABA",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiYzduWDU1ZHpELVJBODQzYndFekszb2wySGVMeGFtX2dUM1ZDVFNDRjlUOCIsIm9yaWdpbiI6Imh0dHBzOi8vd2Vic3NoLmdvbGRlbi50ZXN0IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+      "signature": "MEUCIF1PmCPHqmXXEWU7szBRIeWTvnHQGOPanVXmv46GugmAAiEA2mxZM8PQ8EXd_LYeBJVtaRouNeQblpvRym4o-Lle6Ms",
+      "userHandle": "Nw"
+     },
+     "type": "public-key"
+    },
+    "assertion_sign_count": 4,
+    "challenge_b64url": "c7nX55dzD-RA843bwEzK3ol2HeLxam_gT3VCTSCF9T8",
+    "cose_alg": -7,
+    "credential_row_id": 4,
+    "expected_origin": "https://webssh.golden.test",
+    "expected_rp_id": "webssh.golden.test",
+    "flags": {
+     "BE": true,
+     "BS": false,
+     "UP": true,
+     "UV": true
+    },
+    "name": "Golden removed",
+    "registration_response": {
+     "authenticatorAttachment": "platform",
+     "clientExtensionResults": {},
+     "id": "CX201TevafRUYGlhwRHC4QSFdjg-Mnl7kSj6h0isUqs",
+     "rawId": "CX201TevafRUYGlhwRHC4QSFdjg-Mnl7kSj6h0isUqs",
+     "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikmhI2MVkKL6e28pH3u7fl2Lcqq6JK3nOWi_PYgelqVmVNAAAAAwAAAAAAAAAAAAAAAAAAAAAAIAl9tNU3r2n0VGBpYcERwuEEhXY4PjJ5e5Eo-odIrFKrpQECAyYgASFYIARPIUYXdk0-AAmpoLozC99ZLbcoN9fgChDHM_oyLYwtIlggug2MZ9vJjf-YvQseYzECmZEWiO_9IQ2D4arEiNQHyWo",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoia1ZtT0kxMHdoRTB1V2lDOFZseWZkMC1yM1hYYUNtRzJvbmFfemoxOXpkVENKR3BqTTA4eDFKWThLTzYwcnpYUFNVd1RxYWZPb2E2R1NqZEpNLWdjMlEiLCJvcmlnaW4iOiJodHRwczovL3dlYnNzaC5nb2xkZW4udGVzdCIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+      "transports": []
+     },
+     "type": "public-key"
+    },
+    "stored_sign_count": 3
+   }
+  ]
+ },
+ "version": 1
+}
