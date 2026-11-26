@@ -92,23 +92,19 @@ func parsePort(s string) (int, error) {
 	return int(n), nil
 }
 
-// listenNetwork keeps an IP literal to its address family: 0.0.0.0 listens
-// on IPv4 only, as Gunicorn and Werkzeug do, instead of Go's dual-stack
-// default for unspecified addresses.
+// listenNetwork binds an IPv4 literal to IPv4 only, so 0.0.0.0 listens on
+// IPv4 as Gunicorn and Werkzeug do instead of Go's dual-stack default.
+// Everything else uses "tcp": "::" is then dual-stack like the Python
+// servers on Linux, and a host name resolves as before.
 func listenNetwork(addr string) string {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return "tcp"
 	}
-	ip, err := netip.ParseAddr(host)
-	switch {
-	case err != nil:
-		return "tcp"
-	case ip.Is4():
+	if ip, err := netip.ParseAddr(host); err == nil && ip.Is4() {
 		return "tcp4"
-	default:
-		return "tcp6"
 	}
+	return "tcp"
 }
 
 func envOr(getenv func(string) (string, bool), name, fallback string) string {

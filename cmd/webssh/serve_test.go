@@ -71,17 +71,52 @@ func TestParseServeOptions(t *testing.T) {
 func TestListenNetwork(t *testing.T) {
 	t.Parallel()
 	for addr, want := range map[string]string{
-		"0.0.0.0:5000":   "tcp4",
-		"127.0.0.1:5000": "tcp4",
-		"[::]:5000":      "tcp6",
-		"[::1]:5000":     "tcp6",
-		"localhost:5000": "tcp",
-		":5000":          "tcp",
-		"garbage":        "tcp",
+		"0.0.0.0:5000":            "tcp4",
+		"127.0.0.1:5000":          "tcp4",
+		"[::]:5000":               "tcp",
+		"[::1]:5000":              "tcp",
+		"[::ffff:127.0.0.1]:5000": "tcp",
+		"localhost:5000":          "tcp",
+		":5000":                   "tcp",
+		"garbage":                 "tcp",
 	} {
 		if got := listenNetwork(addr); got != want {
 			t.Errorf("listenNetwork(%q) = %q, want %q", addr, got, want)
 		}
+	}
+}
+
+// HOST=:: must answer over IPv4 and IPv6, as the Python servers do, so the
+// healthcheck (127.0.0.1) still finds it.
+func TestServeUnspecifiedIPv6IsDualStack(t *testing.T) {
+	var lc net.ListenConfig
+	probe, err := lc.Listen(t.Context(), "tcp6", "[::1]:0")
+	if err != nil {
+		t.Skipf("no IPv6 loopback: %v", err)
+	}
+	if err := probe.Close(); err != nil {
+		t.Fatal(err)
+	}
+	opts, err := parseServeOptions(nil, lookupFrom(map[string]string{"HOST": "::", "PORT": "5000"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.addr != "[::]:5000" {
+		t.Fatalf("addr %q", opts.addr)
+	}
+	r := startServe(t, serveOptions{addr: "[::]:0"}, nil)
+	_, port, err := net.SplitHostPort(r.addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, host := range []string{"127.0.0.1", "::1"} {
+		if code, _ := getJSON(t, "http://"+net.JoinHostPort(host, port)+"/ready"); code != http.StatusOK {
+			t.Errorf("/ready over %s: %d", host, code)
+		}
+	}
+	t.Setenv("PORT", port)
+	if code, _, stderr := runArgs(t, "webssh", "healthcheck"); code != 0 {
+		t.Errorf("healthcheck against [::]:%s: %d %s", port, code, stderr)
 	}
 }
 
