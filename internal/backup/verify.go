@@ -84,6 +84,16 @@ func readMembers(tr *tar.Reader, m *Manifest, dbCopy string) (map[string][]byte,
 		return nil, fmt.Errorf("%w: unsupported manifest", ErrInvalid)
 	}
 	want := []string{DatabaseName, SecretName, MaterialName}
+	fixed := len(want)
+	if len(m.Files) < fixed {
+		return nil, fmt.Errorf("%w: members are missing", ErrInvalid)
+	}
+	for _, f := range m.Files[fixed:] {
+		if !LegacyMember(f.Name) || slices.Contains(want, f.Name) {
+			return nil, fmt.Errorf("%w: unexpected member %q in the manifest", ErrInvalid, f.Name)
+		}
+		want = append(want, f.Name)
+	}
 	small := map[string][]byte{}
 	seen := 0
 	for {
@@ -94,20 +104,23 @@ func readMembers(tr *tar.Reader, m *Manifest, dbCopy string) (map[string][]byte,
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
 		}
-		i := slices.IndexFunc(m.Files, func(f File) bool { return f.Name == h.Name })
-		if i < 0 || seen >= len(want) || want[seen] != h.Name || h.Typeflag != tar.TypeReg || h.Size != m.Files[i].Size {
+		i := seen
+		if seen >= len(want) || want[seen] != h.Name || m.Files[i].Name != h.Name || h.Typeflag != tar.TypeReg || h.Size != m.Files[i].Size {
 			return nil, fmt.Errorf("%w: unexpected member %q", ErrInvalid, h.Name)
 		}
 		seen++
 		var dst io.Writer
 		var buf bytes.Buffer
 		var out *os.File
-		if h.Name == DatabaseName {
+		switch {
+		case i >= fixed:
+			dst = io.Discard // a kept legacy file: only its hash is checked
+		case h.Name == DatabaseName:
 			if out, err = os.OpenFile(dbCopy, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err != nil { // #nosec G304 -- a private temporary directory
 				return nil, err
 			}
 			dst = out
-		} else {
+		default:
 			if h.Size > keyring.MaterialSize*1024 {
 				return nil, fmt.Errorf("%w: member %q is too large", ErrInvalid, h.Name)
 			}
@@ -124,11 +137,11 @@ func readMembers(tr *tar.Reader, m *Manifest, dbCopy string) (map[string][]byte,
 		if hex.EncodeToString(sum.Sum(nil)) != m.Files[i].SHA256 {
 			return nil, fmt.Errorf("%w: %s does not match its hash", ErrInvalid, h.Name)
 		}
-		if out == nil {
+		if out == nil && i < fixed {
 			small[h.Name] = buf.Bytes()
 		}
 	}
-	if seen != len(want) || len(m.Files) != len(want) {
+	if seen != len(want) {
 		return nil, fmt.Errorf("%w: members are missing", ErrInvalid)
 	}
 	return small, nil

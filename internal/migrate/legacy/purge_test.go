@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"testing"
 
+	"github.com/bifrost0x/webssh/internal/accounts"
 	"github.com/bifrost0x/webssh/internal/backup"
 	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/store"
@@ -56,7 +59,7 @@ func probeTestKey(ctx context.Context, tx *store.Tx, ring *keyring.Ring) (bool, 
 
 func backupWriter(ctx context.Context, req BackupRequest) (string, error) {
 	path, err := backup.Write(req.Dir, backup.Contents{Database: req.Database, SecretKey: req.Secret, Material: req.Material,
-		KeyID: req.KeyID, Release: req.Release, Reason: "legacy-purge", Now: req.Now})
+		KeyID: req.KeyID, Release: req.Release, Reason: "legacy-purge", Now: req.Now, DataDir: req.DataDir, Legacy: req.Legacy})
 	if err != nil {
 		return "", err
 	}
@@ -252,5 +255,95 @@ func TestRemoveLegacyFilesStaysInside(t *testing.T) {
 	}
 	if err := removeLegacyFiles(dataDir, []string{"../victim"}, Options{}); err == nil {
 		t.Error("a path outside was accepted")
+	}
+}
+
+// migratedWithKept returns a migrated golden data directory whose record keeps a
+// deleted account's directory in place (E33) and lists a pending entity
+// without data (E29, count 0), and the kept file.
+func migratedWithKept(t *testing.T) (Options, string) {
+	t.Helper()
+	dir := copyGolden(t)
+	file := "deleted_users/user_5_0123456789abcdef0123456789abcdef/profiles.json"
+	writeLegacyFile(t, dir, file, `{"schema_version": 2}`)
+	o := testOptions(t, dir)
+	r := purgeRegistry(t)
+	r.Schemas(accounts.Schema())
+	for _, err := range []error{
+		r.Add(GroupAccounts, func() Step { return &quarantineStep{} }),
+		r.KeepInPlace("E29", "B6", func(context.Context, *Source) (int, error) { return 0, nil }),
+	} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	o.Registry = r
+	if _, err := startClosed(o); err != nil {
+		t.Fatal(err)
+	}
+	return o, file
+}
+
+// A pending entity without data does not block the purge; the paths the
+// migration kept in place are shown before the confirmation and go into
+// the verified backup.
+func TestPurgeKeepsKeptInPlaceInTheBackup(t *testing.T) {
+	t.Parallel()
+	o, file := migratedWithKept(t)
+	var plan PurgePlan
+	out, err := Purge(t.Context(), PurgeOptions{Options: o, BackupDir: t.TempDir(), Backup: backupWriter,
+		Confirm: func(p PurgePlan) bool { plan = p; return true }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(plan.Kept, func(k KeptPath) bool { return k.Path == path.Dir(file) })
+	if i < 0 || plan.Kept[i].Files != 1 || plan.Kept[i].Reason != "deleted_account" ||
+		!slices.Contains(plan.KeptFiles, file) || plan.Files != out.Removed || len(plan.KeptFiles) >= plan.Files {
+		t.Fatalf("plan %+v", plan)
+	}
+	v, err := backup.Verify(t.Context(), out.Backup, probeTestKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range plan.KeptFiles {
+		if !slices.ContainsFunc(v.Manifest.Files, func(m backup.File) bool { return m.Name == "data/"+f }) {
+			t.Fatalf("backup lacks %s: %+v", f, v.Manifest.Files)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(o.DataDir, filepath.FromSlash(file))); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("kept file not purged: %v", err)
+	}
+}
+
+// Without a backup the kept files would be lost: --skip-backup is
+// refused. A declined confirmation changes nothing either.
+func TestPurgeKeptInPlaceNeedsBackup(t *testing.T) {
+	t.Parallel()
+	o, _ := migratedWithKept(t)
+	before := legacySnapshot(t, o.DataDir)
+	_, err := Purge(t.Context(), PurgeOptions{Options: o, SkipBackup: true,
+		Confirm: func(PurgePlan) bool { t.Error("asked before the refusal"); return true }})
+	if stopCode(err) != CodePurgeRefused {
+		t.Fatalf("skip-backup: %v", err)
+	}
+	dest := t.TempDir()
+	_, err = Purge(t.Context(), PurgeOptions{Options: o, BackupDir: dest, Backup: backupWriter,
+		Confirm: func(PurgePlan) bool { return false }})
+	if !errors.Is(err, ErrPurgeAborted) {
+		t.Fatalf("declined: %v", err)
+	}
+	assertUntouched(t, o.DataDir, before)
+	if entries, _ := os.ReadDir(dest); len(entries) != 0 {
+		t.Errorf("a backup was written: %v", entries)
+	}
+}
+
+func TestRefusePendingIgnoresEmptyEntities(t *testing.T) {
+	t.Parallel()
+	if err := refusePending([]Pending{{Entity: "E29", Phase: "B6"}, {Entity: "E30", Phase: "B6", Count: 0}}); err != nil {
+		t.Fatalf("empty pending refused: %v", err)
+	}
+	if err := refusePending([]Pending{{Entity: "E29", Phase: "B6"}, {Entity: "E30", Phase: "B6", Count: 1}}); stopCode(err) != CodePurgeRefused {
+		t.Fatalf("pending data purged: %v", err)
 	}
 }

@@ -35,6 +35,10 @@ type PurgeOptions struct {
 	// Backup writes the Go backup into req.Dir, verifies it by reading it
 	// back and returns its path (internal/backup, wired by cmd/webssh).
 	Backup func(ctx context.Context, req BackupRequest) (string, error)
+	// Confirm is asked with the plan after every check and before
+	// anything is written; false aborts with ErrPurgeAborted. Nil
+	// proceeds (--yes).
+	Confirm func(PurgePlan) bool
 }
 
 // BackupRequest is what the purge backup holds (section 5.9).
@@ -48,6 +52,11 @@ type BackupRequest struct {
 	KeyID    string
 	Release  string
 	Now      time.Time
+	// DataDir and Legacy are the legacy files the migration kept in place
+	// that the purge removes (PurgePlan.KeptFiles); the backup holds them
+	// too, relative to DataDir.
+	DataDir string
+	Legacy  []string
 }
 
 // Purged is the outcome of Purge.
@@ -65,10 +74,12 @@ type Purged struct {
 // a migration, in S5 and to finish S10; in S4 it only completes the move
 // of the keyring material. Before it removes anything it writes and
 // verifies a Go backup with SECRET_KEY and the keyring material, unless
-// SkipBackup is set. It refuses while the migration record lists legacy
-// entities a later release migrates (pending): removing them would lose
-// them. The service must be stopped: the Go lock refuses it while Go
-// serves.
+// SkipBackup is set; the backup also holds the legacy files the migration
+// kept in place, and --skip-backup is refused while there are any. It
+// refuses while the migration record lists legacy entities a later
+// release migrates (pending, with a count above zero): removing them
+// would lose them. The service must be stopped: the Go lock refuses it
+// while Go serves.
 func Purge(ctx context.Context, o PurgeOptions) (*Purged, error) {
 	if o.DataDir == "" || o.Secret == "" {
 		return nil, errors.New("legacy: purge needs the data directory and SECRET_KEY")
@@ -110,13 +121,21 @@ func Purge(ctx context.Context, o PurgeOptions) (*Purged, error) {
 		}
 		out.Warnings = append(out.Warnings, more...)
 	}
+	files := purgeList(ev.record.Listing)
+	plan := planPurge(ev.record.Report, files, o.SkipBackup)
+	if err := refuseUnsavedKept(ev.state, plan); err != nil {
+		return nil, err
+	}
+	if o.Confirm != nil && !o.Confirm(plan) {
+		return nil, ErrPurgeAborted
+	}
 	if !o.SkipBackup {
-		if out.Backup, err = writePurgeBackup(ctx, l, o, ev); err != nil {
+		if out.Backup, err = writePurgeBackup(ctx, l, o, ev, plan.KeptFiles); err != nil {
 			return nil, err
 		}
 		o.at(PointPurgeBackup)
 	}
-	entry := purgeEntry{InProgress: true, Files: purgeList(ev.record.Listing), Backup: out.Backup,
+	entry := purgeEntry{InProgress: true, Files: files, Backup: out.Backup,
 		StartedAt: o.now().UTC().Format(time.RFC3339Nano)}
 	out.Removed = len(entry.Files)
 	if err := startPurge(ctx, l, entry); err != nil {
@@ -163,7 +182,7 @@ func purgeList(listing []FileStat) []string {
 
 // writePurgeBackup closes the database cleanly and lets o.Backup write
 // and verify the backup.
-func writePurgeBackup(ctx context.Context, l layout, o PurgeOptions, ev evaluation) (string, error) {
+func writePurgeBackup(ctx context.Context, l layout, o PurgeOptions, ev evaluation, kept []string) (string, error) {
 	dir, err := purgeBackupDir(l, o)
 	if err != nil {
 		return "", stop(ev.state, CodePurgeBackup, "no directory for the backup; name one with --backup-to", err)
@@ -176,7 +195,7 @@ func writePurgeBackup(ctx context.Context, l layout, o PurgeOptions, ev evaluati
 		return "", stop(ev.state, CodePurgeBackup, "the keyring material could not be read for the backup", err)
 	}
 	path, err := o.Backup(ctx, BackupRequest{Dir: dir, Database: l.database, Secret: []byte(o.Secret), Material: material,
-		KeyID: ev.keyID, Release: o.Release, Now: o.now()})
+		KeyID: ev.keyID, Release: o.Release, Now: o.now(), DataDir: l.dataDir, Legacy: kept})
 	if err != nil {
 		return "", stop(ev.state, CodePurgeBackup, "the backup could not be written and verified; nothing was removed", err)
 	}

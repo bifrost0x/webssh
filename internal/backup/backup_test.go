@@ -202,3 +202,78 @@ func FuzzVerify(f *testing.F) {
 		}
 	})
 }
+
+// Legacy files kept in place go into the archive below data/ and are
+// verified by their hash; anything outside the data directory, in go/ or
+// logs/, SECRET_KEY, a duplicate and a link out of the data directory is
+// refused.
+func TestWriteVerifyLegacy(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	data := t.TempDir()
+	for name, body := range map[string]string{"users/user_9/settings.json": "{}", "deleted_users/user_3_x/keys/a": "key"} {
+		p := filepath.Join(data, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(data, "link")); err != nil {
+		t.Fatal(err)
+	}
+	c := f.contents()
+	c.DataDir, c.Legacy = data, []string{"users/user_9/settings.json", "deleted_users/user_3_x/keys/a"}
+	path, err := Write(t.TempDir(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := Verify(t.Context(), path, probe)
+	if err != nil || len(v.Manifest.Files) != 5 || v.Manifest.Files[4].Name != "data/deleted_users/user_3_x/keys/a" {
+		t.Fatalf("%+v, %v", v, err)
+	}
+	for _, bad := range [][]string{{"../x"}, {"go/webssh.db"}, {"logs/a"}, {"secret_key"}, {"a/../b"}, {"link"},
+		{"users/user_9/settings.json", "users/user_9/settings.json"}, {"missing"}, {"users"}} {
+		c.Legacy = bad
+		if _, err := Write(t.TempDir(), c); err == nil {
+			t.Errorf("legacy %q written", bad)
+		}
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := readAll(t, raw)
+	cases := map[string][]member{
+		"legacy file changed":  {ms[0], ms[1], ms[2], ms[3], {ms[4].name, []byte("other")}, ms[5]},
+		"legacy file missing":  {ms[0], ms[1], ms[2], ms[3], ms[4]},
+		"legacy files swapped": {ms[0], ms[1], ms[2], ms[3], ms[5], ms[4]},
+	}
+	for name, members := range cases {
+		p := filepath.Join(t.TempDir(), "a.tar")
+		if err := os.WriteFile(p, buildTar(members), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Verify(t.Context(), p, probe); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestLegacyMember(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]bool{
+		"data/users/user_1/a": true, "data/app.db": true, "data/go/x": false, "data/logs/x": false, "data/secret_key": false,
+		"data/": false, "users/a": false, "data/../a": false, "data/a//b": false, "data/a\\b": false, "data//a": false,
+	} {
+		if got := LegacyMember(name); got != want {
+			t.Errorf("%q: %v", name, got)
+		}
+	}
+}

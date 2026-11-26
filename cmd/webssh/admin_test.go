@@ -205,11 +205,11 @@ func TestMigrateAndPurgeUsage(t *testing.T) {
 			t.Errorf("%q: exit %d, want 2", args, code)
 		}
 	}
-	// Without confirmation nothing happens.
-	if code, _, e := runIn(t, "n\n", "webssh", "legacy", "purge"); code != 1 || e != "Aborted!\n" {
-		t.Errorf("purge without confirmation: %d %q", code, e)
+	// A fresh installation has no legacy data to purge or migrate; the
+	// purge refuses before it asks.
+	if code, out, e := runIn(t, "y\n", "webssh", "legacy", "purge"); code != 1 || out != "" || !strings.Contains(e, "purge_refused") {
+		t.Errorf("purge on a fresh installation: %d %q %q", code, out, e)
 	}
-	// A fresh installation has no legacy data to purge or migrate.
 	if code, _, e := runIn(t, "", "webssh", "legacy", "purge", "--yes", "--skip-backup"); code != 1 || !strings.Contains(e, "purge_refused") {
 		t.Errorf("purge on a fresh installation: %d %q", code, e)
 	}

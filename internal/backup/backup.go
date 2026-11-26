@@ -13,6 +13,9 @@
 //	data/go/webssh.db         the Go database
 //	data/secret_key           SECRET_KEY (only with includes_secret_key)
 //	data/go/keyring-material  the keyring material (likewise)
+//	data/<legacy path>        legacy files the purge removes that Go did
+//	                          not take over (kept in place), in the order
+//	                          the manifest lists them
 //
 // The members below data/ are named by their place in DATA_DIR, so that a
 // manual restore copies them back into the stopped installation.
@@ -27,7 +30,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -80,12 +85,19 @@ type Contents struct {
 	Release   string
 	Reason    string
 	Now       time.Time
+	// DataDir and Legacy name legacy files to keep in the archive: paths
+	// relative to DataDir in POSIX form, read inside DataDir only. They
+	// are stored as data/<path>.
+	DataDir string
+	Legacy  []string
 }
 
 type source struct {
 	name string
-	path string // a file, or
-	data []byte // in-memory content
+	path string   // a file, or
+	data []byte   // in-memory content, or
+	root *os.Root // a file below root
+	rel  string
 }
 
 // Write creates dir/webssh-backup-<UTC>.tar with mode 0600, syncs it and
@@ -96,6 +108,22 @@ func Write(dir string, c Contents) (string, error) {
 	}
 	sources := []source{{name: DatabaseName, path: c.Database}, {name: SecretName, data: c.SecretKey},
 		{name: MaterialName, data: c.Material}}
+	if len(c.Legacy) > 0 {
+		root, err := os.OpenRoot(c.DataDir)
+		if err != nil {
+			return "", fmt.Errorf("backup: open the data directory: %w", err)
+		}
+		defer root.Close()
+		seen := map[string]bool{}
+		for _, rel := range c.Legacy {
+			name := "data/" + rel
+			if !LegacyMember(name) || seen[name] {
+				return "", fmt.Errorf("backup: %q is not a legacy file to keep", rel)
+			}
+			seen[name] = true
+			sources = append(sources, source{name: name, root: root, rel: filepath.FromSlash(rel)})
+		}
+	}
 	m := Manifest{Format: FormatName, Version: FormatVersion, CreatedAt: c.Now.UTC().Format(time.RFC3339Nano),
 		Release: c.Release, Reason: c.Reason, IncludesSecretKey: true, KeyID: c.KeyID}
 	for _, s := range sources {
@@ -121,11 +149,30 @@ func Write(dir string, c Contents) (string, error) {
 	return path, nil
 }
 
+// LegacyMember reports whether name is a valid member for a kept legacy
+// file: below data/, a local path in clean POSIX form, and neither the
+// Go directory, logs/ nor SECRET_KEY, which have members of their own or
+// are never part of the legacy source.
+func LegacyMember(name string) bool {
+	rel, ok := strings.CutPrefix(name, "data/")
+	if !ok || rel == "" || path.Clean(rel) != rel || !filepath.IsLocal(filepath.FromSlash(rel)) || strings.Contains(rel, "\\") {
+		return false
+	}
+	top, _, _ := strings.Cut(rel, "/")
+	return top != "go" && top != "logs" && rel != "secret_key"
+}
+
 func (s source) open() (io.ReadCloser, int64, error) {
-	if s.path == "" {
+	if s.path == "" && s.root == nil {
 		return io.NopCloser(bytesReader(s.data)), int64(len(s.data)), nil
 	}
-	f, err := os.Open(s.path) // #nosec G304 -- the Go database
+	var f *os.File
+	var err error
+	if s.root != nil {
+		f, err = s.root.Open(s.rel)
+	} else {
+		f, err = os.Open(s.path) // #nosec G304 -- the Go database
+	}
 	if err != nil {
 		return nil, 0, err
 	}
@@ -134,7 +181,7 @@ func (s source) open() (io.ReadCloser, int64, error) {
 		return nil, 0, errors.Join(err, f.Close())
 	}
 	if !info.Mode().IsRegular() {
-		return nil, 0, errors.Join(fmt.Errorf("backup: %s is not a regular file", s.path), f.Close())
+		return nil, 0, errors.Join(fmt.Errorf("backup: %s is not a regular file", s.name), f.Close())
 	}
 	return f, info.Size(), nil
 }
