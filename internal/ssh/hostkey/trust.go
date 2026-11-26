@@ -111,8 +111,8 @@ func decimalValue(r rune) (int, bool) {
 		}
 	}
 	for _, rg := range unicode.Nd.R32 {
-		if lo, hi := rune(rg.Lo), rune(rg.Hi); r >= lo && r <= hi && rg.Stride == 1 {
-			return int(r-lo) % 10, true
+		if uint32(r) >= rg.Lo && uint32(r) <= rg.Hi && rg.Stride == 1 { // #nosec G115 -- r is a valid code point, never negative
+			return int(uint32(r)-rg.Lo) % 10, true
 		}
 	}
 	return 0, false

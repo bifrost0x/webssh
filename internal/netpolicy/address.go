@@ -6,8 +6,10 @@ import (
 )
 
 // Class is the address class of an IP address. The classes are the same
-// for every role (ADR 0010); docs/network-policy.md lists which of them
-// BLOCK_INTERNAL_SSH=true refuses.
+// for every role (ADR 0010). With BLOCK_INTERNAL_SSH=true every class but
+// ClassPublic is refused; SSH_ALLOWED_INTERNAL_NETWORKS re-admits private
+// and shared networks, never loopback, link-local, multicast, unspecified
+// or reserved addresses. Without the setting no class is refused.
 type Class string
 
 // Address classes, from the most specific to public.
@@ -30,7 +32,6 @@ const (
 // holds the two together.
 var (
 	v4LinkLocal = netip.MustParsePrefix("169.254.0.0/16")
-	v4Loopback  = netip.MustParsePrefix("127.0.0.0/8")
 	v4Multicast = netip.MustParsePrefix("224.0.0.0/4")
 	v4Shared    = netip.MustParsePrefix("100.64.0.0/10")
 	v4Reserved  = netip.MustParsePrefix("240.0.0.0/4")
