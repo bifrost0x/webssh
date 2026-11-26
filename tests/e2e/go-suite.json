@@ -19,6 +19,16 @@
     {"file": "branding.spec.js", "exclude": []},
     {"file": "admin-step-up-cancel.spec.js", "exclude": []},
     {"file": "admin-feature-recovery.spec.js", "exclude": []},
+    {"file": "admin-functional-flows.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "backup creation, verification and restore cancellation work at", "reason": "online backups (C-BAK, /admin/api/backups answers 501)", "package": "OP1"}
+    ]},
+    {"file": "admin-keyboard-auth.spec.js", "exclude": []},
+    {"file": "admin-deep-links.spec.js", "exclude": []},
+    {"file": "admin-pending-state.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "failed audit pagination retries the same page instead of skipping records", "reason": "audit log view (C-AOPS, /admin/api/audit answers 501)", "package": "OP3"},
+      {"title": "registration control is locked during authentication and restored after cancellation", "reason": "saves through POST /admin/api/settings, which belongs to the operations area", "package": "OP3"}
+    ]},
+    {"file": "presets-recovery-refinement.spec.js", "exclude": []},
 
     {"file": "overview-workspace.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-default-content.spec.js", "serial": "e2e_admin", "exclude": []},
