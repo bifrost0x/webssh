@@ -245,3 +245,23 @@ func TestHostPortUnicodeDigits(t *testing.T) {
 		}
 	}
 }
+
+// Trust, listing and deletion split a file into the same lines. Python
+// split text lines (U+2028, \v, \f, \x1c–\x1e, U+0085) for trust but byte
+// lines for listing and deletion, so a key hidden behind such a separator
+// was trusted without being listed or deletable.
+func TestOneLineSplittingForTrustAndListing(t *testing.T) {
+	a, b := newKey(t), newKey(t)
+	for _, sep := range []string{"\v", "\f", "\x1c", "\x1d", "\x1e", "\u0085", " ", " "} {
+		raw := "a.test " + a.Type() + " " + lineKey(a) + sep + "b.test " + b.Type() + " " + lineKey(b) + "\n"
+		parsed, perr := Parse([]byte(raw))
+		listed, lerr := List([]byte(raw), ScopeUser, "1")
+		if (perr == nil) != (lerr == nil) {
+			t.Errorf("%q: parse %v, list %v", sep, perr, lerr)
+			continue
+		}
+		if perr == nil && len(parsed.Trusted) != len(listed) {
+			t.Errorf("%q: %d trusted entries, %d listed", sep, len(parsed.Trusted), len(listed))
+		}
+	}
+}

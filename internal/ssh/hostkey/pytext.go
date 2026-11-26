@@ -9,36 +9,6 @@ import (
 // helpers reproduce the exact text rules Python applied, so a line that
 // was valid before the update is valid now and nothing else is.
 
-// pyLineBreak reports whether r ends a line for Python's str.splitlines.
-func pyLineBreak(r rune) bool {
-	switch r {
-	case '\n', '\r', '\v', '\f', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
-		return true
-	}
-	return false
-}
-
-// pySplitTextLines mirrors str.splitlines() without keepends.
-func pySplitTextLines(text string) []string {
-	var lines []string
-	start := 0
-	for i, r := range text {
-		if i < start || !pyLineBreak(r) {
-			continue
-		}
-		lines = append(lines, text[start:i])
-		next := i + len(string(r))
-		if r == '\r' && strings.HasPrefix(text[next:], "\n") {
-			next++
-		}
-		start = next
-	}
-	if start < len(text) {
-		lines = append(lines, text[start:])
-	}
-	return lines
-}
-
 // pySplitByteLines mirrors bytes.splitlines(): only \n, \r and \r\n.
 func pySplitByteLines(raw []byte) [][]byte {
 	var lines [][]byte

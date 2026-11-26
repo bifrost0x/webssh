@@ -84,9 +84,14 @@ func Parse(raw []byte) (*File, error) {
 		return nil, &InvalidFileError{Reason: errUnicode}
 	}
 	file := &File{Raw: raw}
-	for index, rawLine := range pySplitTextLines(string(raw)) {
+	// Lines are split at \n, \r and \r\n only, as for listing and
+	// deletion. Python split text lines here (also at \v, \f, \x1c-\x1e,
+	// U+0085, U+2028, U+2029), so a key behind such a separator was
+	// trusted but neither listed nor deletable; such a file is now read as
+	// one line and usually rejected.
+	for index, rawLine := range pySplitByteLines(raw) {
 		lineNumber := index + 1
-		line := pyStrip(rawLine)
+		line := pyStrip(string(rawLine))
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

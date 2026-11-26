@@ -17,10 +17,10 @@ func FuzzParse(f *testing.F) {
 				_ = trust.Verify(p, e.Key)
 			}
 		}
-		if _, err := List(raw, ScopeUser, "1"); err != nil {
-			// Listing uses byte line breaks; a file valid under text line
-			// breaks may differ only through exotic separators.
-			t.Logf("list differs: %v", err)
+		// Trust and listing see the same lines.
+		listed, err := List(raw, ScopeUser, "1")
+		if err != nil || len(listed) != len(file.Trusted)+len(file.Revoked)+len(file.CertAuthorities) {
+			t.Fatalf("parse accepts, list: %d entries, %v", len(listed), err)
 		}
 	})
 }
