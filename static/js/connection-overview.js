@@ -21,12 +21,16 @@
             const jump = jumpsLoaded && profile.jump_host_id
                 ? jumps.get(profile.jump_host_id) : null;
             const proxy = socksLoaded && profile.socks_proxy_id ? socks.get(profile.socks_proxy_id) : null;
+            const identity = globalThis.HostIdentity;
+            const role = identity?.role(profile);
             return {
                 id: profile.id,
                 name: String(profile.name || ''),
                 group: String(profile.group || ''),
                 favorite: profile.favorite === true,
                 platform: globalThis.HostPlatform?.resolve(profile) || {id: 'server', source: 'pending'},
+                role: role ? {id: role.id, source: role.source} : {id: 'server', source: 'pending'},
+                services: identity ? identity.facts(profile).services : [],
                 order: Number(profile.sort_order) || 0,
                 routeRef: typeof profile.socks_proxy_id === 'string' ? profile.socks_proxy_id : typeof profile.jump_host_id === 'string' ? profile.jump_host_id : '',
                 ...(profile.socks_proxy_id ? {routeKind: 'socks', socks: proxy || null} : {}),
@@ -67,17 +71,36 @@
         } catch { return []; }
     }
 
+    const GROUPING_KEY = 'webssh.hostRailGrouping';
+    const VISIBLE_SERVICES = 4;
+
+    /** The saved rail grouping: 'role', or 'group' for anything else. */
+    function readGrouping(storage) {
+        try {
+            return storage?.getItem(GROUPING_KEY) === 'role' ? 'role' : 'group';
+        } catch { return 'group'; }
+    }
+
+    /** Hosts per role in catalog order; empty roles and ids outside the catalog are left out. */
+    function groupByRole(hosts, roles) {
+        const byRole = new Map(roles.map(id => [id, []]));
+        hosts.forEach(host => byRole.get(host.role?.id)?.push(host));
+        return [...byRole].filter(([, items]) => items.length);
+    }
+
     // The dashboard in overview-workspace.js owns the Overview page. This
     // controller only maintains the workspace host rail and navigation labels;
     // an overviewPage option from older callers is ignored.
     function createController({window: win, document: doc, sessionManager}) {
         const view = doc.getElementById('connectionOverview');
         const byId = id => doc.getElementById(id);
-        const collapsedGroups = new Set();
+        const collapsed = {group: new Set(), role: new Set()};
+        let grouping = 'group';
         let storage = null;
         const scope = doc.querySelector('meta[name="background-scope"]')?.content;
         const orderKey = /^[a-f0-9]{64}$/.test(scope || '') ? `webssh:overview-group-order:${scope}` : null;
         try { storage = win.localStorage; } catch { /* Optional browser preference. */ }
+        grouping = readGrouping(storage);
         const groupOrder = readGroupOrder(storage, orderKey);
         const t = (key, fallback = key) => { const value = win.i18n?.t(key); return value && value !== key ? value : fallback; };
         const node = (tag, className, text) => {
@@ -146,32 +169,85 @@
                 if (!showTree) return;
                 const favoritesOnly = doc.body.dataset.hostAccessFilter === 'favorites';
                 let shown = 0;
-                groups.forEach((allItems, group) => {
-                    const items = favoritesOnly ? allItems.filter(host => host.favorite) : allItems;
-                    if (!items.length) return;
+                const fits = [];
+                const row = host => {
+                    const item = button(host.name, () => launch(host.id), 'shell-host');
+                    item.dataset.overviewKey = `host:${host.id}`;
+                    item.dataset.role = host.role.id;
+                    const name = node('span', 'shell-host-name', host.name);
+                    item.append(win.HostPlatform?.render(host.platform, doc) || icon('dns'), name);
+                    const tiles = win.HostPlatform?.serviceTiles?.(host.services.slice(0, VISIBLE_SERVICES), 'shell-host-service', doc) || [];
+                    if (tiles.length) {
+                        const holder = node('span', 'shell-host-services');
+                        holder.setAttribute('aria-hidden', 'true');
+                        holder.append(...tiles);
+                        item.append(holder);
+                        fits.push([holder, name]);
+                    }
+                    return item;
+                };
+                const section = (key, set, items, heading, attributes) => {
                     shown += items.length;
-                    const section = node('details', 'shell-host-group');
-                    section.dataset.tone = groupTone(group);
-                    section.open = !collapsedGroups.has(group);
+                    const details = node('details', 'shell-host-group');
+                    Object.assign(details.dataset, attributes);
+                    details.open = !set.has(key);
                     const summary = node('summary', 'shell-group');
-                    summary.dataset.overviewKey = `group:${group}`;
-                    summary.append(icon('expand_more'), icon('folder_open'), node('span', '', group || t('profiles.ungrouped')));
-                    section.append(summary);
-                    items.forEach(host => {
-                        const item = button(host.name, () => launch(host.id), 'shell-host');
-                        item.dataset.overviewKey = `host:${host.id}`;
-                        item.append(win.HostPlatform?.render(host.platform, doc) || icon('dns'), node('span', '', host.name));
-                        section.append(item);
+                    summary.dataset.overviewKey = `${grouping}:${key}`;
+                    summary.append(icon('expand_more'), ...heading);
+                    details.append(summary, ...items.map(row));
+                    details.addEventListener('toggle', () => {
+                        if (details.open) set.delete(key);
+                        else set.add(key);
                     });
-                    section.addEventListener('toggle', () => {
-                        if (section.open) collapsedGroups.delete(group);
-                        else collapsedGroups.add(group);
+                    container.append(details);
+                };
+                if (grouping === 'role') {
+                    const Identity = win.HostIdentity;
+                    groupByRole(hosts.filter(host => !favoritesOnly || host.favorite), Identity?.ROLES || []).forEach(([id, items]) => {
+                        const label = t(`role.${id}`, id);
+                        section(id, collapsed.role, items, [icon(Identity.ROLE_GLYPHS[id] || 'dns'), node('span', '', label)], {role: id});
                     });
-                    container.append(section);
-                });
+                } else {
+                    groups.forEach((allItems, group) => {
+                        const items = favoritesOnly ? allItems.filter(host => host.favorite) : allItems;
+                        if (!items.length) return;
+                        section(group, collapsed.group, items,
+                            [icon('folder_open'), node('span', '', group || t('profiles.ungrouped'))], {tone: groupTone(group)});
+                    });
+                }
+                // Measured once attached; logos give way before a name is cut.
+                fits.forEach(([holder, name]) => win.HostPlatform.keepTilesFitting(holder, name));
                 if (!shown) container.append(node('p', 'shell-host-empty', favoritesOnly
                     ? t('profiles.noFavorites', 'No favorite hosts yet.') : t('profiles.none')));
             });
+        }
+        function setGrouping(next, focus) {
+            grouping = next === 'role' ? 'role' : 'group';
+            try { storage?.setItem(GROUPING_KEY, grouping); } catch { /* Optional browser preference. */ }
+            syncGrouping();
+            if (focus) doc.querySelector(`.shell-grouping [data-grouping="${grouping}"]`)?.focus({preventScroll: true});
+            renderSidebar();
+        }
+        function syncGrouping() {
+            doc.querySelectorAll('.shell-grouping [data-grouping]').forEach(option => {
+                const checked = option.dataset.grouping === grouping;
+                option.setAttribute('aria-checked', String(checked));
+                option.tabIndex = checked ? 0 : -1;
+            });
+        }
+        function initGrouping() {
+            const options = [...doc.querySelectorAll('.shell-grouping [data-grouping]')];
+            options.forEach(option => {
+                option.addEventListener('click', () => setGrouping(option.dataset.grouping));
+                option.addEventListener('keydown', event => {
+                    const step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[event.key];
+                    if (step === undefined) return;
+                    event.preventDefault();
+                    const next = options[(options.indexOf(option) + step + options.length) % options.length];
+                    setGrouping(next.dataset.grouping, true);
+                });
+            });
+            syncGrouping();
         }
         function updateNavigation() {
             const key = {overview: 'overview.title', workspaces: 'navigation.workspaces',
@@ -186,10 +262,11 @@
                 .forEach(event => win.addEventListener(event, renderSidebar));
             win.addEventListener('primary-workspace-change', updateNavigation);
             win.addEventListener('languageChanged', updateNavigation);
+            initGrouping();
             renderSidebar();
             updateNavigation();
         }
         return {init};
     }
-    return {buildAccessModel, groupTone, orderedGroups, readGroupOrder, createController};
+    return {buildAccessModel, groupTone, orderedGroups, readGroupOrder, readGrouping, groupByRole, createController};
 });

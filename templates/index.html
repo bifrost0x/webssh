@@ -217,7 +217,13 @@
         <a class="workspace-access-button workspace-access-settings" href="{{ url_for('security_center') }}" title="Settings" data-i18n-title="settings.title"><span class="material-icons" aria-hidden="true">settings</span><span class="sr-only" data-i18n="settings.title">Settings</span></a>
     </nav>
     <aside id="shellHostAccess" class="shell-groups" aria-labelledby="shellGroupsTitle">
-        <div class="shell-groups-heading"><span id="shellGroupsTitle" data-i18n="profiles.savedConnections">Saved Connections</span></div>
+        <div class="shell-groups-heading">
+            <span id="shellGroupsTitle" data-i18n="profiles.savedConnections">Saved Connections</span>
+            <div class="shell-grouping" role="radiogroup" aria-label="Group hosts by" data-i18n-aria-label="profiles.groupBy">
+                <button type="button" role="radio" aria-checked="true" tabindex="0" data-grouping="group" data-i18n="profiles.groupByGroup">Group</button>
+                <button type="button" role="radio" aria-checked="false" tabindex="-1" data-grouping="role" data-i18n="profiles.groupByRole">Role</button>
+            </div>
+        </div>
         <div id="shellGroups"></div>
     </aside>
 
