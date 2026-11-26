@@ -33,7 +33,9 @@ type DB struct {
 	reader *sql.DB
 	// writeMu serializes write transactions inside the process, so a
 	// writer never waits on SQLite's busy handler for another goroutine.
+	// It also guards closed.
 	writeMu sync.Mutex
+	closed  bool
 }
 
 // Tx is a transaction handed to Read and Write callbacks. It is valid only
@@ -102,7 +104,10 @@ func hardenReader(busy time.Duration) func(*sqlite3.Conn) error {
 }
 
 // Open opens or creates the database at path in WAL mode. A new file is
-// created with mode 0600. The caller closes the DB.
+// created with mode 0600. path must be a regular file, or missing, in a
+// directory reached without a symlink in its last component: the Go
+// directory holds only regular files and directories (migration
+// specification, 2.1). The caller closes the DB.
 func Open(ctx context.Context, path string, o Options) (*DB, error) {
 	if o.BusyTimeout <= 0 {
 		o.BusyTimeout = 5 * time.Second
@@ -114,13 +119,8 @@ func Open(ctx context.Context, path string, o Options) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: resolve %q: %w", path, err)
 	}
-	// Create the file with restrictive permissions before SQLite does.
-	f, err := os.OpenFile(abs, os.O_RDWR|os.O_CREATE, 0o600) // #nosec G304 -- the configured database path, not request input
-	if err != nil {
-		return nil, fmt.Errorf("store: create database: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return nil, fmt.Errorf("store: create database: %w", err)
+	if err := createRegular(abs); err != nil {
+		return nil, err
 	}
 	dsn := func(mode string) string {
 		q := url.Values{"mode": {mode}, "_txlock": {"immediate"}}
@@ -167,6 +167,9 @@ func (db *DB) Path() string { return db.path }
 func (db *DB) Write(ctx context.Context, fn func(*Tx) error) error {
 	db.writeMu.Lock()
 	defer db.writeMu.Unlock()
+	if db.closed {
+		return errClosed
+	}
 	return run(ctx, db.writer, nil, fn)
 }
 
@@ -192,41 +195,60 @@ func run(ctx context.Context, pool *sql.DB, opts *sql.TxOptions, fn func(*Tx) er
 	return nil
 }
 
-// Close closes all connections. The WAL stays in place; use
-// CloseForActivation to leave a single file.
+// Close switches the database to journal_mode=DELETE and closes all
+// connections, so that a stopped Go leaves only the database file: a copy
+// that Python 3.3.x or an operator takes of the Go directory then is a
+// complete database (migration specification, 2.1). It waits for a
+// running write. If the switch fails the connections are still closed and
+// the error is returned; SQLite recovers the WAL at the next Open.
 func (db *DB) Close() error {
+	db.writeMu.Lock()
+	defer db.writeMu.Unlock()
+	return db.closeLocked(context.Background())
+}
+
+func (db *DB) closeLocked(ctx context.Context) error {
+	if db.closed {
+		return nil
+	}
+	db.closed = true
 	var errs []error
 	if db.reader != nil {
-		errs = append(errs, db.reader.Close())
+		if err := db.reader.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("store: close readers: %w", err))
+		}
 	}
-	errs = append(errs, db.writer.Close())
+	if len(errs) == 0 {
+		// The checkpoint and the mode switch need the readers closed.
+		if _, err := db.writer.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+			errs = append(errs, fmt.Errorf("store: checkpoint: %w", err))
+		} else if err := db.setJournalMode(ctx, "delete"); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := db.writer.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("store: close: %w", err))
+	}
 	return errors.Join(errs...)
 }
 
-// CloseForActivation checkpoints the WAL, switches the database to
-// journal_mode=DELETE and closes it, so that only the database file
-// remains (no -wal or -shm). The migration calls it before it moves a
-// staged database into place (migration spec, section 5.2).
+// CloseForActivation closes the database like Close and then checks that
+// no -wal, -shm or -journal file is left beside it and fsyncs the file.
+// The migration calls it before it moves a staged database into place
+// (migration specification, 5.2 step 10).
 func (db *DB) CloseForActivation(ctx context.Context) error {
 	db.writeMu.Lock()
 	defer db.writeMu.Unlock()
-	if err := db.reader.Close(); err != nil {
-		return errors.Join(fmt.Errorf("store: close readers: %w", err), db.writer.Close())
+	if db.closed {
+		return errClosed
 	}
-	db.reader = nil
-	if _, err := db.writer.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
-		return errors.Join(fmt.Errorf("store: checkpoint: %w", err), db.writer.Close())
+	if err := db.closeLocked(ctx); err != nil {
+		return err
 	}
-	if err := db.setJournalMode(ctx, "delete"); err != nil {
-		return errors.Join(err, db.writer.Close())
-	}
-	if err := db.writer.Close(); err != nil {
-		return fmt.Errorf("store: close: %w", err)
-	}
-	for _, suffix := range []string{"-wal", "-shm"} {
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
 		if _, err := os.Lstat(db.path + suffix); !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("store: %s still present after activation close (%v)", suffix, err)
 		}
 	}
-	return nil
+	return syncFile(db.path)
 }
