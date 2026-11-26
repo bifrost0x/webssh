@@ -153,8 +153,8 @@ test('a connection limit and a maintenance close reconnect with backoff', async 
     FakeWebSocket.instances[0].serverClose(1013, 'connection_limit_user: at most 32 realtime connections per user are open');
     await tick(20);
     assert.deepEqual(JSON.parse(JSON.stringify(errors)), [[
-        'connection_limit_user: at most 32 realtime connections per user are open',
-        {code: 'connection_limit', message: 'connection_limit_user: at most 32 realtime connections per user are open'},
+        'at most 32 realtime connections per user are open',
+        {code: 'connection_limit', scope: 'user', message: 'at most 32 realtime connections per user are open'},
     ]]);
     assert.equal(FakeWebSocket.instances.length, 2, 'a refused connection is retried');
     socket.disconnect();
@@ -336,4 +336,111 @@ test('the Python pages keep loading Socket.IO and never the shim', () => {
     }
     const index = fs.readFileSync(path.join(ROOT, 'templates/index.html'), 'utf8');
     assert.match(index, /vendor\/socketio\/socket\.io\.min\.js/);
+});
+
+// A browser cannot read why an upgrade was refused. After repeated
+// failures the shim asks the session status endpoint (same origin,
+// no-store) and goes to the sign-in at once on 401.
+function statusWindow(status, body) {
+    const calls = [];
+    const navigation = {assigned: [], reloads: 0};
+    const window = loadShim({
+        fetch: (url, init) => {
+            calls.push({url, init});
+            return Promise.resolve({status, ok: status >= 200 && status < 300, json: () => Promise.resolve(body)});
+        },
+        location: {
+            protocol: 'http:', host: 'webssh.test',
+            assign(url) { navigation.assigned.push(url); },
+            reload() { navigation.reloads += 1; },
+        },
+    });
+    return {window, calls, navigation};
+}
+
+async function failConnects(window, count, path = '/socket.io') {
+    const socket = window.io({path, reconnectionDelay: 1, reconnectionDelayMax: 1, randomizationFactor: 0});
+    for (let i = 0; i < count; i += 1) {
+        FakeWebSocket.instances.at(-1).serverClose(1006);
+        await tick(20);
+    }
+    return socket;
+}
+
+test('repeated failures ask the session status and go to the sign-in on 401', async () => {
+    const {window, calls, navigation} = statusWindow(401, {success: false, code: 'authentication_required', schema: 1});
+    const socket = await failConnects(window, 2, '/webssh/socket.io');
+    assert.equal(calls.length, 0, 'no status check before the third failure');
+    FakeWebSocket.instances.at(-1).serverClose(1006);
+    await tick(20);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, '/webssh/api/realtime/status');
+    assert.equal(calls[0].init.credentials, 'same-origin');
+    assert.equal(calls[0].init.cache, 'no-store');
+    assert.deepEqual(navigation.assigned, ['/webssh/login']);
+    const opened = FakeWebSocket.instances.length;
+    await tick(30);
+    assert.equal(FakeWebSocket.instances.length, opened, 'no further reconnects after the redirect');
+    socket.disconnect();
+});
+
+test('a valid session keeps retrying; another schema or a recovery session reloads', async () => {
+    const ok = statusWindow(200, {success: true, authenticated: true, recovery: false, schema: 1});
+    const socket = await failConnects(ok.window, 3);
+    assert.equal(ok.calls.length, 1);
+    assert.deepEqual(ok.navigation, {assigned: [], reloads: 0});
+    socket.disconnect();
+
+    for (const body of [{success: true, recovery: false, schema: 2}, {success: true, recovery: true, schema: 1}]) {
+        const other = statusWindow(200, body);
+        const s = await failConnects(other.window, 3);
+        assert.equal(other.navigation.reloads, 1, JSON.stringify(body));
+        s.disconnect();
+    }
+});
+
+test('a session ended before hello checks the status at once', async () => {
+    const {window, calls, navigation} = statusWindow(401, {schema: 1});
+    window.io({path: '/socket.io', reconnectionDelay: 1});
+    FakeWebSocket.instances[0].serverClose(4003, 'session_ended');
+    await tick(20);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(navigation.assigned, ['/login']);
+});
+
+// Detached persistent (tmux) sessions in hello become the Python event
+// persistent_session_available before connected.
+test('hello.persistent offers detached sessions before connected', async () => {
+    const window = loadShim();
+    const socket = window.io({path: '/socket.io', autoConnect: false});
+    const order = [];
+    socket.on('persistent_session_available', data => order.push(['persistent', data]));
+    socket.on('connected', () => order.push(['connected']));
+    socket.connect();
+    const ws = FakeWebSocket.instances.at(-1);
+    ws.accept();
+    ws.serverSend('hello', {user: {username: 'alice', is_admin: false}, schema: 1, restorable: [], persistent: [{
+        session_id: 'p1', host: 'h.test', port: 22, username: 'u', auth_type: 'key', key_id: 'k1', profile_id: '',
+        via_jump: '', jump_host_id: '', socks_proxy_id: '', via_socks: false, reconnect_route_known: true,
+        use_tmux: true, tmux_session_name: 'webssh_1', display_name: '', detected_platform: '', last_seq: 0,
+    }]});
+    await tick(20);
+    assert.deepEqual(JSON.parse(JSON.stringify(order)), [
+        ['persistent', {
+            session_id: 'p1', host: 'h.test', port: 22, username: 'u', key_id: 'k1', auth_type: 'key',
+            jump_host_id: null, socks_proxy_id: null, via_socks: false, profile_id: null, via_jump: null,
+            reconnect_route_known: true, tmux_session_name: 'webssh_1', display_name: null,
+        }],
+        ['connected'],
+    ]);
+    socket.disconnect();
+});
+
+test('a live connection ended with 4003 does not navigate on its own', async () => {
+    const calls = [];
+    const window = loadShim({fetch: url => { calls.push(url); return Promise.resolve({status: 401, ok: false, json: () => Promise.resolve({})}); }});
+    const {ws} = await connected(window);
+    ws.serverClose(4003, 'logout');
+    await tick(20);
+    assert.deepEqual(calls, []);
 });

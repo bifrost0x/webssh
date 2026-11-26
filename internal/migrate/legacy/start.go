@@ -3,6 +3,7 @@ package legacy
 import (
 	"context"
 	"errors"
+	"strings"
 )
 
 // Startup is the outcome of Start for a data directory Go may serve. It
@@ -66,6 +67,20 @@ func start(ctx context.Context, o Options, l layout, warnings []Warning) (*Start
 		return nil, ev.stop
 	case ev.stop != nil:
 		return nil, ev.stop
+	case ev.state == S1 && o.RequireCoverage && len(o.Registry.Uncovered()) > 0:
+		return nil, stop(S1, CodeIncompleteBuild, "this build does not migrate every kind of legacy data ("+
+			strings.Join(o.Registry.Uncovered(), ", ")+"); nothing was changed. Start a release that migrates them", nil)
+	case ev.state == S10 || ev.state == S4:
+		// Finish an interrupted purge from its stored list, and the move
+		// of the keyring material into go/ (section 5.9).
+		if err := completePurge(ctx, l, o, ev.keyID); err != nil {
+			return nil, err
+		}
+		if ev.state == S10 {
+			st.State = S4
+			st.Warnings = append(st.Warnings, Warning{Code: "purge_completed",
+				Message: "an interrupted `webssh legacy purge` was completed"})
+		}
 	case ev.state == S1:
 		r := &run{o: o, l: l}
 		if err := r.migrate(ctx); err != nil {
@@ -157,6 +172,9 @@ func DryRun(ctx context.Context, o Options) (*Report, error) {
 		return nil, err
 	}
 	defer lock.release()
+	if err := refuseDuringPurge(ctx, l); err != nil {
+		return nil, err
+	}
 	if p, err := legacyPresence(l.dataDir); err != nil || p != legacyComplete {
 		return nil, errors.Join(stop("", CodeReplaceNoLegacy, "there is no complete legacy source to migrate", nil), err)
 	}
@@ -165,4 +183,23 @@ func DryRun(ctx context.Context, o Options) (*Report, error) {
 		return nil, err
 	}
 	return &r.report, r.discard()
+}
+
+// refuseDuringPurge refuses a dry run or a replacement while a purge is in
+// progress (state S10): the legacy source is partly removed.
+func refuseDuringPurge(ctx context.Context, l layout) error {
+	present, err := l.databasePresent()
+	if err != nil || !present {
+		return nil
+	}
+	_, _, purge, err := inspectDatabase(ctx, l.database)
+	if err != nil || purge == nil || !purge.InProgress {
+		return nil
+	}
+	return purgeInProgress()
+}
+
+func purgeInProgress() *StopError {
+	return stop(S10, CodePurgeInProgress, "`webssh legacy purge` was interrupted and the legacy data is "+
+		"partly removed; start WebSSH or run `webssh legacy purge` again to complete it", nil)
 }

@@ -64,6 +64,7 @@
                 ],
                 credential_in_use: ['credentials.inUse', 'Remove the host assignments before deleting this password.'],
                 https_required: ['credentials.httpsRequired', 'Password management requires HTTPS.'],
+                not_available_in_preview: ['previewNotice.notAvailable', 'Not available in this preview yet.'],
                 authentication_session_invalid: [
                     'credentials.sessionExpired',
                     'Your sign-in session expired. Sign in again before saving.',
@@ -1209,9 +1210,11 @@
                     window.ProfileManager.editorBaseline = window.ProfileManager.editorSnapshot();
             } catch (error) {
                 if (!valid()) return;
-                if (error.code === 'https_required') {
-                    // The server rejects credential access over HTTP. Host metadata remains
-                    // editable; saving it must not create, replace or remove an assignment.
+                if (error.code === 'https_required' || error.code === 'not_available_in_preview') {
+                    // The server rejects credential access over HTTP, or offers no
+                    // password storage (preview of the new server). Host metadata
+                    // remains editable; saving it must not create, replace or remove
+                    // an assignment.
                     enabled = false;
                     select.dataset.loading = 'unavailable';
                     const manual = el('option', t('credentials.manual', 'Enter manually'));

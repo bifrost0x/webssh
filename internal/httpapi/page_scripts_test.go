@@ -56,7 +56,7 @@ func TestPreviewNoticeAssets(t *testing.T) {
 		css := slices.Contains(order, "css/preview-notice.css")
 		i18nNotice := slices.Index(order, "js/preview-notice-i18n.js")
 		switch c.Name {
-		case "workspace_preview":
+		case "workspace_preview", "settings_preview":
 			if notice < 0 || !css || i18nNotice < 0 || i18nNotice > notice || i18nNotice < slices.Index(order, "js/i18n.js") {
 				t.Errorf("%s: want css, i18n.js, preview-notice-i18n.js, preview-notice.js; got %v", c.Name, order)
 			}

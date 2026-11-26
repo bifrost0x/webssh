@@ -92,7 +92,7 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/ssh/client` | capability | The only SSH dialer (terminal, Quick SFTP, automation, gateway, reachability probe): authentication, keys, jump hosts, SOCKS5, host key check | `internal/netpolicy` | B3 |
 | `internal/ssh/hostkey` | capability | Known host keys and fingerprints | – | B3 |
 | `internal/ssh/remotecmd` | capability | Run one command on a connected host with time, output and input limits | `internal/ssh/client` | B3 |
-| `internal/terminal` | capability | Interactive shells: output flow, input budget, startup and post-connect commands, persistent tmux session names | `internal/ssh/client`, `internal/ssh/hostkey` | B3 |
+| `internal/terminal` | capability | Interactive shells: output flow, input budget, startup and post-connect commands, persistent tmux session names | `internal/ssh/client`, `internal/ssh/hostkey`, `internal/ssh/remotecmd` | B3 |
 | `internal/hosts` | capability | Saved hosts and profiles, host catalog and identity, platform facts, profile exchange, workspace presets | `internal/ssh/client`, `internal/ssh/remotecmd` | B3 |
 | `internal/hostops` | capability | Server operations, discovery and reachability check behind their permission, runtime inventory, host context, notes (one model: saved host or none), session insights (M1: the note without a host and the minimal overview status) | `internal/ssh/client`, `internal/ssh/remotecmd` | B3 |
 | `internal/ssh/gateway` | capability | SSH gateway into WebSSH sessions, built on the shared dialer | `internal/ssh/client`, `internal/ssh/hostkey` | B3 |

@@ -14,7 +14,14 @@
             "previewNotice.feature.commandSets": "Command sets",
             "previewNotice.feature.insights": "Session insights",
             "previewNotice.feature.terminalTools": "Terminal tools",
-            "previewNotice.feature.other": "Other functions"
+            "previewNotice.feature.other": "Other functions",
+            "previewNotice.feature.automation": "Automation",
+            "previewNotice.feature.credentials": "Saved passwords",
+            "previewNotice.feature.discovery": "Host discovery",
+            "previewNotice.feature.herdr": "Herdr",
+            "previewNotice.feature.gateway": "SSH gateway",
+            "previewNotice.feature.tailscale": "Tailscale SSH",
+            "previewNotice.feature.serverOps": "Server operations"
         },
         "vi": {
             "previewNotice.title": "Bản xem trước",
@@ -28,7 +35,14 @@
             "previewNotice.feature.commandSets": "Bộ lệnh",
             "previewNotice.feature.insights": "Thông tin phiên",
             "previewNotice.feature.terminalTools": "Công cụ terminal",
-            "previewNotice.feature.other": "Chức năng khác"
+            "previewNotice.feature.other": "Chức năng khác",
+            "previewNotice.feature.automation": "Tự động hóa",
+            "previewNotice.feature.credentials": "Mật khẩu đã lưu",
+            "previewNotice.feature.discovery": "Khám phá máy chủ",
+            "previewNotice.feature.herdr": "Herdr",
+            "previewNotice.feature.gateway": "Cổng SSH",
+            "previewNotice.feature.tailscale": "Tailscale SSH",
+            "previewNotice.feature.serverOps": "Thao tác máy chủ"
         },
         "de": {
             "previewNotice.title": "Vorschau",
@@ -42,7 +56,14 @@
             "previewNotice.feature.commandSets": "Befehlssets",
             "previewNotice.feature.insights": "Sitzungsdetails",
             "previewNotice.feature.terminalTools": "Terminal-Werkzeuge",
-            "previewNotice.feature.other": "Weitere Funktionen"
+            "previewNotice.feature.other": "Weitere Funktionen",
+            "previewNotice.feature.automation": "Automatisierung",
+            "previewNotice.feature.credentials": "Gespeicherte Passwörter",
+            "previewNotice.feature.discovery": "Host-Erkennung",
+            "previewNotice.feature.herdr": "Herdr",
+            "previewNotice.feature.gateway": "SSH-Gateway",
+            "previewNotice.feature.tailscale": "Tailscale SSH",
+            "previewNotice.feature.serverOps": "Server-Operationen"
         },
         "fr": {
             "previewNotice.title": "Aperçu",
@@ -56,7 +77,14 @@
             "previewNotice.feature.commandSets": "Jeux de commandes",
             "previewNotice.feature.insights": "Détails de session",
             "previewNotice.feature.terminalTools": "Outils du terminal",
-            "previewNotice.feature.other": "Autres fonctions"
+            "previewNotice.feature.other": "Autres fonctions",
+            "previewNotice.feature.automation": "Automatisation",
+            "previewNotice.feature.credentials": "Mots de passe enregistrés",
+            "previewNotice.feature.discovery": "Découverte des hôtes",
+            "previewNotice.feature.herdr": "Herdr",
+            "previewNotice.feature.gateway": "Passerelle SSH",
+            "previewNotice.feature.tailscale": "Tailscale SSH",
+            "previewNotice.feature.serverOps": "Opérations serveur"
         },
         "es": {
             "previewNotice.title": "Vista previa",
@@ -70,7 +98,14 @@
             "previewNotice.feature.commandSets": "Conjuntos de comandos",
             "previewNotice.feature.insights": "Detalles de sesión",
             "previewNotice.feature.terminalTools": "Herramientas de terminal",
-            "previewNotice.feature.other": "Otras funciones"
+            "previewNotice.feature.other": "Otras funciones",
+            "previewNotice.feature.automation": "Automatización",
+            "previewNotice.feature.credentials": "Contraseñas guardadas",
+            "previewNotice.feature.discovery": "Descubrimiento de hosts",
+            "previewNotice.feature.herdr": "Herdr",
+            "previewNotice.feature.gateway": "Pasarela SSH",
+            "previewNotice.feature.tailscale": "Tailscale SSH",
+            "previewNotice.feature.serverOps": "Operaciones del servidor"
         },
         "zh": {
             "previewNotice.title": "预览",
@@ -84,7 +119,14 @@
             "previewNotice.feature.commandSets": "命令集",
             "previewNotice.feature.insights": "会话详情",
             "previewNotice.feature.terminalTools": "终端工具",
-            "previewNotice.feature.other": "其他功能"
+            "previewNotice.feature.other": "其他功能",
+            "previewNotice.feature.automation": "自动化",
+            "previewNotice.feature.credentials": "已保存的密码",
+            "previewNotice.feature.discovery": "主机发现",
+            "previewNotice.feature.herdr": "Herdr",
+            "previewNotice.feature.gateway": "SSH 网关",
+            "previewNotice.feature.tailscale": "Tailscale SSH",
+            "previewNotice.feature.serverOps": "服务器操作"
         }
     };
     Object.entries(dictionaries).forEach(([language, dictionary]) => window.i18n.addTranslations(language, dictionary));

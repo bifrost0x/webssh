@@ -132,3 +132,13 @@ test('a failed shared load rejects every waiting caller and the next load retrie
  assert.deepEqual((await client.load()).credentials,[]);
  assert.equal(calls,2);
 });
+
+// The preview of the Go server answers password storage with 501
+// not_available_in_preview; the host editor then treats it like the
+// https_required refusal and keeps host metadata editable.
+test('a preview server without password storage reports its code',async()=>{
+ const client=nativeClient(async()=>({ok:false,status:501,json:async()=>({success:false,code:'not_available_in_preview',error:'Not available in this preview yet.'})}));
+ await assert.rejects(client.load(),error=>error.code==='not_available_in_preview'&&/preview/.test(error.message));
+ const source=fs.readFileSync('static/js/native-credentials.js','utf8');
+ assert.match(source,/error\.code === 'https_required' \|\| error\.code === 'not_available_in_preview'/);
+});

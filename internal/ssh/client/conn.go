@@ -111,6 +111,11 @@ func (c *Conn) Shell(ctx context.Context, rows, cols int) (Shell, error) {
 }
 
 func (c *Conn) openShell(ctx context.Context, rows, cols int) (*shell, error) {
+	return c.openPTY(ctx, rows, cols, "")
+}
+
+// openPTY starts command, or the login shell for "", with a PTY.
+func (c *Conn) openPTY(ctx context.Context, rows, cols int, command string) (*shell, error) {
 	if rows < 1 || cols < 1 || rows > maxPTYSize || cols > maxPTYSize {
 		return nil, fault.New(fault.InvalidValue, "The terminal size is out of range.")
 	}
@@ -136,7 +141,12 @@ func (c *Conn) openShell(ctx context.Context, rows, cols int) (*shell, error) {
 	if err := s.RequestPty("xterm-256color", rows, cols, modes); err != nil {
 		return failWith(err)
 	}
-	if err := s.Shell(); err != nil {
+	if command == "" {
+		err = s.Shell()
+	} else {
+		err = s.Start(command)
+	}
+	if err != nil {
 		return failWith(err)
 	}
 	if ctx.Err() != nil {

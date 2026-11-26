@@ -391,3 +391,27 @@ func TestErrorAndWarningText(t *testing.T) {
 		t.Error(s)
 	}
 }
+
+func TestBackupTempDir(t *testing.T) {
+	t.Parallel()
+	c, _ := mustLoad(t, map[string]string{"BACKUP_TEMP_DIR": "/app/recovery//ops/"})
+	if c.BackupTempDir != "/app/recovery/ops" {
+		t.Errorf("BackupTempDir = %q", c.BackupTempDir)
+	}
+	c, _ = mustLoad(t, map[string]string{"TMPDIR": "/var/tmp"})
+	if c.BackupTempDir != "/var/tmp/webssh-backup-operations" {
+		t.Errorf("default BackupTempDir = %q", c.BackupTempDir)
+	}
+}
+
+func TestTailscaleNetwork(t *testing.T) {
+	t.Parallel()
+	c, _ := mustLoad(t, nil)
+	if c.Network.TailscaleSSHEnabled || c.Network.TailscaleInterface != "tailscale0" || c.Explicit("TAILSCALE_SSH_INTERFACE") {
+		t.Errorf("defaults: %+v", c.Network)
+	}
+	c, _ = mustLoad(t, map[string]string{"TAILSCALE_SSH_INTERFACE": " ts1 "})
+	if c.Network.TailscaleInterface != "ts1" || !c.Explicit("TAILSCALE_SSH_INTERFACE") {
+		t.Errorf("interface: %+v", c.Network)
+	}
+}

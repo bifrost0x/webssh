@@ -362,10 +362,12 @@ func (s *Server) OnClose(f func(protocol.Peer))
 func (s *Server) Shutdown(ctx context.Context) error // closes with 4503
 type Restorer interface {
 	Restorable(ctx context.Context, p principal.Principal) ([]protocol.SessionInfo, error)
+	Persistent(ctx context.Context, p principal.Principal) ([]protocol.SessionInfo, error)
 }
 ```
 
-`Restorer` is the source of `hello.restorable` (`internal/terminal`).
+`Restorer` is the source of `hello.restorable` and `hello.persistent`
+(`internal/terminal`).
 `session.keepalive` is registered by the endpoint itself; it calls the
 `OnKeepalive` hooks (the terminal updates `last_activity`). `OnClose` runs
 once per connection after it ended and all its handlers returned.
@@ -374,7 +376,10 @@ do routes without `Async`. All registrations happen before the first
 request; a later one panics.
 
 **hello.** First message of every connection:
-`{"user":{"username","is_admin"},"schema":1,"restorable":[SessionInfo…]}`.
+`{"user":{"username","is_admin"},"schema":1,"restorable":[SessionInfo…],"persistent":[SessionInfo…]}`.
+`persistent` lists the account's detached persistent (tmux) sessions; the
+shim sends one `persistent_session_available` per entry, with the fields
+of the Python event, before `connected`.
 
 ### Message types
 
@@ -585,6 +590,7 @@ func (db *DB) Apply(ctx context.Context, owner string, ms []Migration) error
 func (db *DB) ApplyAll(ctx context.Context, schemas ...Schema) error
 func (db *DB) CloseForActivation(ctx context.Context) error
 func (db *DB) Close() error
+func (db *DB) CloseShared() error // a second process beside the owner: no checkpoint or journal switch
 func (db *DB) QuickCheck(ctx context.Context) error
 func (db *DB) IntegrityCheck(ctx context.Context) error
 func (db *DB) Path() string
@@ -805,6 +811,8 @@ func (s *Service) Publish(revs []principal.Revocation)
 func (s *Service) ClearRecovery(ctx, id, replacement string, mfaOff bool) (bool, error)
 func (s *Service) Subscribe(fn func(principal.Revocation)) (cancel func())
 func (s *Service) Sweep(ctx) (int, error)
+func (s *Service) FollowRevocations(ctx) (int, error) // revocations of other processes
+func (s *Service) EndRecovery(ctx, tx, sessionID, replacement string, basic bool) error // auth.RecoverySessions
 type Accounts interface { Standing(ctx, userID int64) (Standing, error) }       // internal/accounts
 type Durations interface { SessionMinutes(ctx, userID int64) (int, error) }     // internal/settings
 ```
@@ -813,7 +821,12 @@ A token is 32 random bytes; only `MAC(session_token,
 "webssh-session-v1\0"+token)` is stored. A session is bound to the
 account's `auth_generation` and to the installation's revoke-all epoch.
 Revocations are published after the commit and before the revoking call
-returns. HTTP: `GET /api/account/sessions`, `POST
+returns. Every ended session is also written to the revocation journal
+`session_revocations` in the same transaction, tagged with the writing
+service; the server calls `FollowRevocations` every second and publishes
+the entries other processes wrote (an administrator command such as
+`webssh reset-password`), so they take effect within two seconds like a
+revocation of the server itself. HTTP: `GET /api/account/sessions`, `POST
 /api/account/sessions/revoke`.
 
 `internal/auth` declares the registries:
@@ -953,7 +966,11 @@ Deps{Shells, Profiles, Routes, Log})`, `Mount(m.Routes()…)`,
 `HandleBinary(m.HandleBinary)`, `SetRestorer(m)`,
 `OnKeepalive(m.Keepalive)`, `OnClose(m.PeerClosed)` and
 `sessions.Subscribe(m.Revoked)`; at shutdown the realtime server stops
-first, then the terminal.
+first, then the terminal. Persistent tmux sessions (D6) need
+`Deps{Connections, DB, TmuxEnabled}` and `Config.TmuxPrefix`;
+`Deps.Audit` (`SecurityWarning`, from `*audit.Logger`) receives
+`TMUX_SESSION_NOT_ENDED`, and `*terminal.Manager` is the
+`hosts.PersistentSessions` of `internal/hosts`.
 
 `internal/ssh/hostkey` declares
 `Targets.SSHTargets(ctx, owner) ([]hostkey.Target, error)` for the
@@ -1042,8 +1059,8 @@ The workspace loads the realtime client where the Python page loads
 `js/realtime-acks.js`, `js/realtime-wire.js`, `js/realtime-catalog.js`,
 `js/realtime-terminal.js`, `js/realtime-shim.js`. A preview page adds
 `css/preview-notice.css` in the head and `js/preview-notice.js` at the end;
-the workspace loads `js/preview-notice-i18n.js` after `js/i18n.js` and
-before it. The sign-in page has no `i18n.js`; the notice uses its built-in
+the workspace and the settings page load `js/preview-notice-i18n.js`
+after `js/i18n.js` and before it. The sign-in page has no `i18n.js`; the notice uses its built-in
 texts there. `internal/httpapi` tests pin this order.
 
 ## Migration steps
@@ -1056,7 +1073,7 @@ their versions) and `pending` (entities kept in place with their phase and
 count).
 
 ```go
-type Options struct { DataDir, Secret, SecretSource, BackupTempDir, Release string; Registry *Registry; Origin OriginRule; Now func() time.Time }
+type Options struct { DataDir, Secret, SecretSource, BackupTempDir, Release string; Registry *Registry; Origin OriginRule; Now func() time.Time; RequireCoverage bool }
 func Start(ctx, Options) (*Startup, error)      // sections 5.1 and 5.2; holds the Go lock until Close
 func DryRun(ctx, Options) (*Report, error)      // steps 2 to 9 into staging, no activation
 func Replace(ctx, Options) (*Replaced, error)   // section 5.4
@@ -1083,6 +1100,10 @@ type StepError struct { UserID int64; Record string; Err error }
   `keyring_material`, `legacy_in_use`, `python_restore_unfinished`,
   `not_enough_space`, `secret_key_mismatch`, …); every message names the
   way out and never a secret value.
+- With `RequireCoverage` (set by the server) `Start` refuses to migrate in
+  S1 with `migration_incomplete_build` while the registry leaves entities
+  uncovered, so a build without every step never activates a database
+  that S2 would not migrate again.
 - The periodic re-check of 5.7 is `SourceWatch`; D4 calls `Changed` every
   60 seconds and treats an error as a change (maintenance, not ready,
   audit event).

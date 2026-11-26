@@ -28,12 +28,22 @@ type Service struct {
 	mu     sync.Mutex
 	subs   map[int]func(principal.Revocation)
 	nextID int
+
+	// origin names this service in the revocation journal; watch holds
+	// the journal position of FollowRevocations.
+	origin string
+	watch  struct {
+		sync.Mutex
+		seq     int64
+		started bool
+	}
 }
 
 // New returns the service. durations may be nil (every account uses
 // DefaultMinutes).
 func New(db *store.DB, mac MAC, accounts Accounts, durations Durations) *Service {
-	return &Service{db: db, mac: mac, accounts: accounts, durations: durations, Now: time.Now, subs: map[int]func(principal.Revocation){}}
+	return &Service{db: db, mac: mac, accounts: accounts, durations: durations, Now: time.Now, subs: map[int]func(principal.Revocation){},
+		origin: randomText(16)}
 }
 
 func (s *Service) now() time.Time { return s.Now().UTC() }

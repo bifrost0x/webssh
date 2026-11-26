@@ -221,6 +221,21 @@ func (s *Service) SetMFARequiredTx(ctx context.Context, tx *store.Tx, id int64, 
 	return nil
 }
 
+// MFARequiredTx reads whether the account requires a second factor inside
+// the caller's transaction, so that a factor change and the flag it
+// depends on are read and written together.
+func (s *Service) MFARequiredTx(ctx context.Context, tx *store.Tx, id int64) (bool, error) {
+	var required bool
+	err := tx.QueryRowContext(ctx, `SELECT mfa_required FROM accounts_users WHERE id = ?`, id).Scan(&required)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, errNotFound
+	}
+	if err != nil {
+		return false, fmt.Errorf("accounts: read mfa_required: %w", err)
+	}
+	return required, nil
+}
+
 // RaiseIDFloorTx makes every later id larger than floor; the migration
 // calls it with the largest legacy and quarantined id.
 func (s *Service) RaiseIDFloorTx(ctx context.Context, tx *store.Tx, floor int64) error {

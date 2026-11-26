@@ -31,6 +31,7 @@ type Session struct {
 	owner   int64
 	m       *Manager
 	shell   client.Shell
+	tmux    *tmuxBinding // nil without tmux; fixed before register
 	created time.Time
 	//lint:ignore U1000 set and read by the e2e hooks (fixtures.go)
 	fixture bool
@@ -129,7 +130,7 @@ func (s *Session) readLoop(out chan<- []byte) {
 // pump filters device attributes across reads and publishes the output.
 // It ends the session when the shell ends.
 func (s *Session) pump(in <-chan []byte, notice []byte) {
-	defer s.terminate(reasonClosed, nil)
+	defer s.terminateAs(reasonClosed, nil, endProbe)
 	s.publish(notice)
 	var f daFilter
 	hold := time.NewTimer(time.Hour)
@@ -210,7 +211,7 @@ func (s *Session) writeLoop() {
 			s.queued -= len(b)
 			s.mu.Unlock()
 			if _, err := s.shell.Write(b); err != nil {
-				s.terminate(reasonClosed, nil)
+				s.terminateAs(reasonClosed, nil, endProbe)
 				return
 			}
 		case <-s.resized:
@@ -255,8 +256,14 @@ func (s *Session) resize(rows, cols int) {
 
 // terminate ends the session once: it stops forwarding at once, tells
 // every attached connection and requester, and closes the shell in the
-// background. It reports whether this call ended the session.
+// background. It reports whether this call ended the session. A tmux
+// session behind it is detached.
 func (s *Session) terminate(reason string, requester protocol.Peer) bool {
+	return s.terminateAs(reason, requester, endDetach)
+}
+
+// terminateAs is terminate with what happens to the tmux session.
+func (s *Session) terminateAs(reason string, requester protocol.Peer, end endMode) bool {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -281,11 +288,7 @@ func (s *Session) terminate(reason string, requester protocol.Peer) bool {
 	if requester != nil && !told[requester.ID()] {
 		_ = requester.SendEvent(protocol.TypeTerminalClosed, ev)
 	}
-	s.m.spawn(func() {
-		if err := s.shell.Close(); err != nil {
-			s.m.log.Debug("terminal shell close", "session", s.id, "err", err)
-		}
-	})
+	s.m.spawn(func() { s.m.finish(s.id, s.owner, s.shell, s.tmux, end) })
 	return true
 }
 

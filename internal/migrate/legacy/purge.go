@@ -1,0 +1,324 @@
+package legacy
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/bifrost0x/webssh/internal/keyring"
+	"github.com/bifrost0x/webssh/internal/store"
+)
+
+// Checkpoints of a purge (section 5.9); a crash after each must be
+// resolved by the next start or a repeated purge (I-25, I-26).
+const (
+	PointPurgeBackup   = "purge-backup-verified"
+	PointPurgeStarted  = "purge-entry-written"
+	PointPurgeRemoved  = "purge-file-removed"
+	PointPurgeRecorded = "purge-entry-completed"
+	PointPurgeMaterial = "purge-material-moved"
+)
+
+// PurgeOptions configure Purge. Registry is not needed.
+type PurgeOptions struct {
+	Options
+	// BackupDir is --backup-to. Empty selects the parent of DATA_DIR when
+	// it is writable, otherwise BackupTempDir.
+	BackupDir string
+	// SkipBackup is --skip-backup: no backup is written.
+	SkipBackup bool
+	// Backup writes the Go backup into req.Dir, verifies it by reading it
+	// back and returns its path (internal/backup, wired by cmd/webssh).
+	Backup func(ctx context.Context, req BackupRequest) (string, error)
+}
+
+// BackupRequest is what the purge backup holds (section 5.9).
+type BackupRequest struct {
+	Dir string
+	// Database is the cleanly closed Go database; it does not change
+	// while the backup is written, because the purge holds the Go lock.
+	Database string
+	Secret   []byte
+	Material []byte
+	KeyID    string
+	Release  string
+	Now      time.Time
+}
+
+// Purged is the outcome of Purge.
+type Purged struct {
+	// State is the state the purge started in (S2, S5, S10 or S4).
+	State State
+	// Backup is the verified backup, "" with --skip-backup.
+	Backup string
+	// Removed counts the legacy files listed for removal.
+	Removed  int
+	Warnings []Warning
+}
+
+// Purge is `webssh legacy purge` (section 5.9). It is allowed in S2 after
+// a migration, in S5 and to finish S10; in S4 it only completes the move
+// of the keyring material. Before it removes anything it writes and
+// verifies a Go backup with SECRET_KEY and the keyring material, unless
+// SkipBackup is set. It refuses while the migration record lists legacy
+// entities a later release migrates (pending): removing them would lose
+// them. The service must be stopped: the Go lock refuses it while Go
+// serves.
+func Purge(ctx context.Context, o PurgeOptions) (*Purged, error) {
+	if o.DataDir == "" || o.Secret == "" {
+		return nil, errors.New("legacy: purge needs the data directory and SECRET_KEY")
+	}
+	if !o.SkipBackup && o.Backup == nil {
+		return nil, errors.New("legacy: purge needs a backup writer")
+	}
+	l, lock, warnings, err := lockAndClean(o.Options)
+	if err != nil {
+		return nil, err
+	}
+	defer lock.release()
+	ev, err := evaluate(ctx, l, o.Secret)
+	if err != nil {
+		return nil, err
+	}
+	out := &Purged{State: ev.state, Warnings: append(warnings, ev.warnings...)}
+	switch {
+	case ev.state == S10:
+		out.Backup, out.Removed = ev.purge.Backup, len(ev.purge.Files)
+		return out, completePurge(ctx, l, o.Options, ev.keyID)
+	case ev.state == S4:
+		out.Backup = ev.purge.Backup
+		return out, completePurge(ctx, l, o.Options, ev.keyID)
+	case ev.stop != nil:
+		return nil, ev.stop
+	case ev.record == nil:
+		return nil, stop(ev.state, CodePurgeRefused, "there is no migration record: this installation has no legacy data to purge", nil)
+	case ev.state != S2 && ev.state != S5:
+		return nil, stop(ev.state, CodePurgeRefused, "`webssh legacy purge` runs only after a migration", nil)
+	}
+	if err := refusePending(ev.record.Pending); err != nil {
+		return nil, err
+	}
+	if ev.legacy != legacyNone {
+		more, err := pythonIdle(l.dataDir, o.BackupTempDir)
+		if err != nil {
+			return nil, err
+		}
+		out.Warnings = append(out.Warnings, more...)
+	}
+	if !o.SkipBackup {
+		if out.Backup, err = writePurgeBackup(ctx, l, o, ev); err != nil {
+			return nil, err
+		}
+		o.at(PointPurgeBackup)
+	}
+	entry := purgeEntry{InProgress: true, Files: purgeList(ev.record.Listing), Backup: out.Backup,
+		StartedAt: o.now().UTC().Format(time.RFC3339Nano)}
+	out.Removed = len(entry.Files)
+	if err := startPurge(ctx, l, entry); err != nil {
+		return nil, stop(ev.state, CodePurgeFailed, "the purge entry could not be written; nothing was removed", err)
+	}
+	o.at(PointPurgeStarted)
+	return out, completePurge(ctx, l, o.Options, ev.keyID)
+}
+
+// refusePending refuses while the record names entities this build left
+// in place for a later release.
+func refusePending(pending []Pending) error {
+	var names []string
+	for _, p := range pending {
+		if p.Count > 0 {
+			names = append(names, fmt.Sprintf("%s (%d, phase %s)", p.Entity, p.Count, p.Phase))
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return stop("", CodePurgeRefused, "the legacy data still holds data this release keeps in place for a later "+
+		"release: "+strings.Join(names, ", ")+". A purge would delete it; run it after the release that migrates "+
+		"these entities", nil)
+}
+
+// purgeList is the list of legacy files to remove: the files of the
+// migration record, except secret_key, which holds SECRET_KEY for Go as
+// well (I-08). logs/ and go/ are never part of the record.
+func purgeList(listing []FileStat) []string {
+	var files []string
+	for _, f := range listing {
+		if f.Path == "secret_key" || !filepath.IsLocal(filepath.FromSlash(f.Path)) {
+			continue
+		}
+		top, _, _ := strings.Cut(f.Path, "/")
+		if top == keyring.GoDirName || top == keyring.LogsDirName {
+			continue
+		}
+		files = append(files, f.Path)
+	}
+	return files
+}
+
+// writePurgeBackup closes the database cleanly and lets o.Backup write
+// and verify the backup.
+func writePurgeBackup(ctx context.Context, l layout, o PurgeOptions, ev evaluation) (string, error) {
+	dir, err := purgeBackupDir(l, o)
+	if err != nil {
+		return "", stop(ev.state, CodePurgeBackup, "no directory for the backup; name one with --backup-to", err)
+	}
+	if err := closeCleanly(ctx, l.database); err != nil {
+		return "", stop(ev.state, CodePurgeBackup, "the Go database could not be closed for the backup", err)
+	}
+	material, err := keyring.LoadOrCreateMaterial(l.dataDir, ev.legacy != legacyNone)
+	if err != nil {
+		return "", stop(ev.state, CodePurgeBackup, "the keyring material could not be read for the backup", err)
+	}
+	path, err := o.Backup(ctx, BackupRequest{Dir: dir, Database: l.database, Secret: []byte(o.Secret), Material: material,
+		KeyID: ev.keyID, Release: o.Release, Now: o.now()})
+	if err != nil {
+		return "", stop(ev.state, CodePurgeBackup, "the backup could not be written and verified; nothing was removed", err)
+	}
+	return path, nil
+}
+
+// purgeBackupDir is --backup-to, or the parent of DATA_DIR when it is
+// writable, or BACKUP_TEMP_DIR; never the Go directory or a path in it.
+func purgeBackupDir(l layout, o PurgeOptions) (string, error) {
+	var candidates []string
+	if o.BackupDir != "" {
+		candidates = []string{o.BackupDir}
+	} else {
+		candidates = []string{filepath.Dir(l.dataDir)}
+		if o.BackupTempDir != "" {
+			candidates = append(candidates, o.BackupTempDir)
+		}
+	}
+	var errs []error
+	for _, dir := range candidates {
+		abs, err := filepath.Abs(dir)
+		if err == nil && (abs == l.goDir || strings.HasPrefix(abs, l.goDir+string(filepath.Separator))) {
+			err = errors.New("the backup must not be written into the Go directory")
+		}
+		if err == nil {
+			err = writable(abs, o.BackupDir == "" && dir == o.BackupTempDir)
+		}
+		if err == nil {
+			return abs, nil
+		}
+		errs = append(errs, fmt.Errorf("%s: %w", dir, err))
+	}
+	return "", errors.Join(errs...)
+}
+
+// writable checks dir by creating and removing a file in it; create makes
+// a missing directory with mode 0700 first.
+func writable(dir string, create bool) error {
+	if create {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+	}
+	f, err := os.CreateTemp(dir, ".webssh-purge-check-")
+	if err != nil {
+		return err
+	}
+	return errors.Join(f.Close(), os.Remove(f.Name()))
+}
+
+func startPurge(ctx context.Context, l layout, e purgeEntry) error {
+	db, err := store.Open(ctx, l.database, store.Options{})
+	if err != nil {
+		return err
+	}
+	err = db.ApplyAll(ctx, RecordSchema())
+	if err == nil {
+		err = db.Write(ctx, func(tx *store.Tx) error { return writePurgeStart(ctx, tx, e) })
+	}
+	return errors.Join(err, db.CloseForActivation(ctx))
+}
+
+// completePurge is section 5.9 steps 2 and 3 and the move of the keyring
+// material. It continues a purge from its stored entry, so a start in S10
+// and a repeated purge finish an interrupted one; every step is
+// idempotent.
+func completePurge(ctx context.Context, l layout, o Options, keyID string) error {
+	db, err := store.Open(ctx, l.database, store.Options{})
+	if err != nil {
+		return stop(S10, CodePurgeFailed, "the Go database could not be opened to complete the purge", err)
+	}
+	err = finishPurge(ctx, l, o, db, keyID)
+	return errors.Join(err, db.CloseForActivation(ctx))
+}
+
+func finishPurge(ctx context.Context, l layout, o Options, db *store.DB, keyID string) error {
+	var e *purgeEntry
+	err := db.Read(ctx, func(tx *store.Tx) error {
+		var err error
+		e, err = readPurge(ctx, tx)
+		return err
+	})
+	if err != nil || e == nil {
+		return stop(S10, CodePurgeFailed, "the purge entry could not be read", err)
+	}
+	if e.InProgress {
+		if err := removeLegacyFiles(l.dataDir, e.Files, o); err != nil {
+			return stop(S10, CodePurgeFailed, "a legacy file could not be removed; the purge continues at the next "+
+				"start or with `webssh legacy purge`", err)
+		}
+		err := db.Write(ctx, func(tx *store.Tx) error {
+			return writePurgeDone(ctx, tx, o.now().UTC().Format(time.RFC3339Nano))
+		})
+		if err != nil {
+			return stop(S10, CodePurgeFailed, "the purge entry could not be completed", err)
+		}
+		o.at(PointPurgeRecorded)
+	}
+	if err := moveMaterialAfterPurge(ctx, l, o.Secret, db, keyID); err != nil {
+		return stop(S4, CodeKeyMaterial, "the keyring material could not be moved into the Go directory; the next "+
+			"start completes the move", err)
+	}
+	o.at(PointPurgeMaterial)
+	return nil
+}
+
+// removeLegacyFiles removes the listed files below dataDir and syncs each
+// affected directory. Paths are resolved inside dataDir with os.Root, so a
+// link placed in the legacy tree cannot lead the removal outside it. A
+// file that is already gone counts as removed.
+func removeLegacyFiles(dataDir string, files []string, o Options) error {
+	root, err := os.OpenRoot(dataDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	for _, f := range files {
+		name := filepath.FromSlash(f)
+		if !filepath.IsLocal(name) {
+			return fmt.Errorf("legacy: %q is not a path below the data directory", f)
+		}
+		if err := root.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("legacy: remove %s: %w", f, err)
+		}
+		if err := syncRootDir(root, path.Dir(f)); err != nil {
+			return err
+		}
+		o.at(PointPurgeRemoved)
+	}
+	return nil
+}
+
+func syncRootDir(root *os.Root, dir string) error {
+	d, err := root.Open(filepath.FromSlash(dir))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("legacy: sync %s: %w", dir, err)
+	}
+	if err := errors.Join(syncFile(d), d.Close()); err != nil {
+		return fmt.Errorf("legacy: sync %s: %w", dir, err)
+	}
+	return nil
+}

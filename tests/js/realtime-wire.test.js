@@ -31,7 +31,6 @@ test('frames the browser must not accept are rejected', () => {
         ack: frame('03', '00', '00000001', '0000000000000001'),
         unknownFlag: frame('01', '04', '00000001', '0000000000000001'),
         channelZero: frame('01', '00', '00000000', '0000000000000001'),
-        channelHigh: frame('01', '00', '80000000', '0000000000000001'),
         unsafeSeq: frame('01', '00', '00000001', '0020000000000000'),
     };
     for (const [name, bytes] of Object.entries(cases)) {
@@ -41,7 +40,8 @@ test('frames the browser must not accept are rejected', () => {
 
 test('encoding refuses channels and sequences outside the contract', () => {
     assert.throws(() => wire.encodeAck(0, 1), /channel/);
-    assert.throws(() => wire.encodeAck(2 ** 31, 1), /channel/);
+    assert.throws(() => wire.encodeAck(2 ** 32, 1), /channel/);
+    assert.throws(() => wire.encodeInput(2 ** 31, 1, new Uint8Array([1]), false), /channel/);
     assert.throws(() => wire.encodeAck(1, -1), /sequence/);
     assert.throws(() => wire.encodeAck(1, 2 ** 53), /sequence/);
 });
@@ -57,4 +57,14 @@ test('envelopes are encoded and decoded strictly', () => {
         '{"v":1,"t":"HELLO","p":{}}', '{"v":1,"t":"result","id":"a b","p":{}}', '{"v":1,"p":{}}']) {
         assert.equal(wire.decodeEnvelope(text), null, text);
     }
+});
+
+// The test build binds synthetic streams to channels at or above 2^31,
+// which the client never allocates; their output decodes and is acked.
+test('server-bound channels above the client range carry output and acks', () => {
+    const bytes = Buffer.from('01' + '00' + '80000001' + '0000000000000001' + '78', 'hex');
+    const frame = wire.decodeFrame(new Uint8Array(bytes));
+    assert.equal(frame.channel, 2 ** 31 + 1);
+    assert.equal(hex(wire.encodeAck(2 ** 31 + 1, 1)), '03' + '00' + '80000001' + '0000000000000001');
+    assert.equal(hex(wire.encodeAck(2 ** 32 - 1, 1)), '03' + '00' + 'ffffffff' + '0000000000000001');
 });

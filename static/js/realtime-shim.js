@@ -40,17 +40,44 @@
         return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
     }
 
+    // The application root the page was served under, from the Socket.IO
+    // path option the frontend passes ("<root>/socket.io").
+    function basePath(options) {
+        return String(options.path || '/socket.io').replace(/\/socket\.io\/?$/, '').replace(/\/+$/, '');
+    }
+
     function endpointUrl(options) {
         const location = root.location;
-        const base = String(options.path || '/socket.io').replace(/\/socket\.io\/?$/, '').replace(/\/+$/, '');
         const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${scheme}//${location.host}${base}/ws`;
+        return `${scheme}//${location.host}${basePath(options)}/ws`;
+    }
+
+    // After this many failed connection attempts in a row the session
+    // status endpoint decides whether retrying can help at all: a browser
+    // cannot read why an upgrade was refused.
+    const STATUS_AFTER_FAILURES = 3;
+
+    // The readable text of a 1013 close: the reason without its
+    // connection_limit_user: or connection_limit_server: prefix.
+    function limitReason(reason) {
+        const match = /^connection_limit_(user|server):\s*(.*)$/s.exec(String(reason || ''));
+        return match ? {scope: match[1], message: match[2]} : {scope: '', message: String(reason || '')};
     }
 
     // The page's runtime limits (runtime-limits.js) bound one input frame.
     function inputLimit() {
         const configured = Number(root.WEBSSH_SSH_INPUT_LIMITS?.maxEventBytes);
         return Number.isSafeInteger(configured) && configured > 0 ? Math.min(configured, terminal.MAX_INPUT_BYTES) : terminal.MAX_INPUT_BYTES;
+    }
+
+    // The fields of persistent_session_available as the Python release sent
+    // them for a detached tmux session; "" stands for null as in hello.
+    const PERSISTENT_FIELDS = ['session_id', 'host', 'port', 'username', 'key_id', 'auth_type', 'jump_host_id',
+        'socks_proxy_id', 'via_socks', 'profile_id', 'via_jump', 'reconnect_route_known', 'tmux_session_name', 'display_name'];
+
+    function persistentEvent(info) {
+        const fields = terminal.sessionEvent(info);
+        return Object.fromEntries(PERSISTENT_FIELDS.map(name => [name, fields[name] ?? null]));
     }
 
     class RealtimeSocket extends Emitter {
@@ -73,6 +100,7 @@
             this._connectTimer = null;
             this._manual = false;
             this._terminal = null;
+            this._statusPending = false;
             if (this.opts.autoConnect) this.connect();
         }
 
@@ -265,7 +293,10 @@
             }
             if (envelope.type === 'hello') this._hello(ws, envelope.payload);
             else if (envelope.type === 'result') this._result(envelope);
-            else this._terminal.onEvent(envelope.type, envelope.payload);
+            else if (!this._terminal.onEvent(envelope.type, envelope.payload)) {
+                const event = catalog.e2eEvent(envelope.type);
+                if (event) this._dispatch(event, envelope.payload);
+            }
         }
 
         _result(envelope) {
@@ -302,6 +333,9 @@
             const bound = new Promise(resolve => root.setTimeout(resolve, this.opts.restoreTimeout));
             Promise.race([restored, bound]).then(() => {
                 if (this._ws !== ws || !this.connected) return;
+                for (const info of Array.isArray(payload.persistent) ? payload.persistent : []) {
+                    if (typeof info?.session_id === 'string') this._dispatch('persistent_session_available', persistentEvent(info));
+                }
                 this._dispatch('connected', {
                     status: 'success',
                     username: payload.user?.username,
@@ -352,17 +386,45 @@
             } else {
                 let data;
                 if (final) data = {code: 'authentication_required'};
-                else if (code === C.TRY_AGAIN_LATER) data = {code: 'connection_limit', message: reason || ''};
+                else if (code === C.TRY_AGAIN_LATER) data = {code: 'connection_limit', ...limitReason(reason)};
                 const message = final ? 'unauthorized' : (data ? data.message || 'connection limit' : 'websocket error');
                 this._dispatch('connect_error', Object.assign(new Error(message), data ? {data} : {}));
             }
-            if (!final) this._scheduleReconnect();
+            // A connection refused before hello has no other way to learn
+            // that the session is gone; a live one ended with 4003 is left
+            // to the page's own handling of io server disconnect.
+            if (final && !wasConnected) this._checkStatus();
+            else if (!final) this._scheduleReconnect();
+        }
+
+        // Asks GET <root>/api/realtime/status whether the session is still
+        // valid (it changes nothing). Without a session the page goes to the
+        // sign-in at once instead of retrying forever; a different schema or
+        // a recovery session reloads the page.
+        _checkStatus() {
+            if (this._statusPending || typeof root.fetch !== 'function') return;
+            this._statusPending = true;
+            const base = basePath(this.opts);
+            root.fetch(`${base}/api/realtime/status`, {credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}})
+                .then(response => response.json().catch(() => null).then(body => {
+                    if (response.status === 401) {
+                        this._manual = true;
+                        root.clearTimeout(this._reconnectTimer);
+                        this._reconnectTimer = null;
+                        root.location.assign(`${base}/login`);
+                    } else if (response.ok && body && (body.schema !== wire.VERSION || body.recovery === true)) {
+                        root.location.reload();
+                    }
+                }))
+                .catch(() => { /* offline: keep retrying */ })
+                .finally(() => { this._statusPending = false; });
         }
 
         _scheduleReconnect() {
             if (this._manual || !this.opts.reconnection || this._reconnectTimer) return;
             this._attempts += 1;
             const attempt = this._attempts;
+            if (attempt % STATUS_AFTER_FAILURES === 0) this._checkStatus();
             const base = Math.min(this.opts.reconnectionDelay * 2 ** (attempt - 1), this.opts.reconnectionDelayMax);
             const jitter = base * this.opts.randomizationFactor * (Math.random() * 2 - 1);
             const delay = Math.max(0, Math.round(Math.min(base + jitter, this.opts.reconnectionDelayMax)));
@@ -379,5 +441,5 @@
         return new RealtimeSocket(typeof uri === 'object' && uri !== null ? uri : (options || {}));
     }
 
-    return Object.freeze({io, RealtimeSocket, endpointUrl});
+    return Object.freeze({io, RealtimeSocket, endpointUrl, limitReason, STATUS_AFTER_FAILURES});
 });

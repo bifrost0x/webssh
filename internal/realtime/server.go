@@ -115,9 +115,11 @@ type Deps struct {
 }
 
 // Restorer lists the terminal sessions a new connection of p may attach
-// to; they are sent in hello (provided by internal/terminal).
+// to and the persistent sessions it may reconnect; both are sent in hello
+// (provided by internal/terminal).
 type Restorer interface {
 	Restorable(ctx context.Context, p principal.Principal) ([]protocol.SessionInfo, error)
+	Persistent(ctx context.Context, p principal.Principal) ([]protocol.SessionInfo, error)
 }
 
 // BinaryHandler receives every binary frame of a connection. It runs on

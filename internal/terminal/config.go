@@ -45,6 +45,10 @@ type Config struct {
 	// SweepEvery is the period of the idle and acknowledgement checks
 	// (1 s).
 	SweepEvery time.Duration
+	// TmuxPrefix starts the names of new tmux sessions
+	// (TMUX_SESSION_PREFIX, config.Features.TmuxSessionPrefix; "webssh"
+	// when empty).
+	TmuxPrefix string
 	// HoldBack is how long the output filter keeps the start of a
 	// possible device-attribute sequence at the end of a read before it
 	// sends it unchanged (20 ms).

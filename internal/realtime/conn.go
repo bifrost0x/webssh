@@ -108,19 +108,22 @@ func (c *Conn) hello() protocol.Hello {
 		User:       protocol.HelloUser{Username: c.p.Username, IsAdmin: c.p.IsAdmin},
 		Schema:     protocol.Version,
 		Restorable: []protocol.SessionInfo{},
+		Persistent: []protocol.SessionInfo{},
 	}
 	if c.srv.restorer == nil {
 		return h
 	}
 	ctx, cancel := context.WithTimeout(c.ctx, helloTimeout)
 	defer cancel()
-	list, err := c.srv.restorer.Restorable(ctx, c.p)
-	if err != nil {
+	if list, err := c.srv.restorer.Restorable(ctx, c.p); err != nil {
 		c.srv.log.Error("realtime hello: restorable sessions", "err", err)
-		return h
-	}
-	if list != nil {
+	} else if list != nil {
 		h.Restorable = list
+	}
+	if list, err := c.srv.restorer.Persistent(ctx, c.p); err != nil {
+		c.srv.log.Error("realtime hello: persistent sessions", "err", err)
+	} else if list != nil {
+		h.Persistent = list
 	}
 	return h
 }

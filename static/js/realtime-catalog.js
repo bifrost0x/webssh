@@ -199,10 +199,26 @@
         });
     }
 
+    // Hooks of the end-to-end suite: e2e_<name> is the request e2e.<name>
+    // and is acknowledged with its result as the Python hooks returned it.
+    // Only the test build of the server registers these types; a release
+    // server answers unknown_type.
+    const E2E_PREFIX = 'e2e_';
+
+    function e2eEntry(event) {
+        return {type: `e2e.${event.slice(E2E_PREFIX.length)}`, ack: result => result};
+    }
+
     // Sends a non-terminal event as its v1 request, or answers it locally.
     function route(host, event, data, ack) {
         if (Object.hasOwn(REQUESTS, event)) mapped(host, REQUESTS[event], data, ack);
+        else if (event.startsWith(E2E_PREFIX) && /^[a-z0-9_]{1,60}$/.test(event)) mapped(host, e2eEntry(event), data, ack);
         else unmapped(host, event, data, ack);
+    }
+
+    // The server event e2e.<name> as the Socket.IO event e2e_<name>, or null.
+    function e2eEvent(type) {
+        return /^e2e\.[a-z0-9_]{1,60}$/.test(type) ? `${E2E_PREFIX}${type.slice(4)}` : null;
     }
 
     return Object.freeze({
@@ -215,5 +231,6 @@
         UNAVAILABLE_REPLIES,
         featureOf,
         correlation,
+        e2eEvent,
     });
 });

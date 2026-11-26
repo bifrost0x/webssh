@@ -221,6 +221,33 @@ func (db *DB) Close() error {
 	return db.closeLocked(context.Background())
 }
 
+// CloseShared closes the connections without the checkpoint and the
+// switch to journal_mode=DELETE. A process that works on a database
+// another process owns (an administrator command beside the running
+// server, which holds the Go lock) uses it: the switch would fail while
+// the owner has the database open, and the owner leaves the single file
+// when it stops.
+func (db *DB) CloseShared() error {
+	db.writeMu.Lock()
+	defer db.writeMu.Unlock()
+	db.readMu.Lock()
+	defer db.readMu.Unlock()
+	if db.closed {
+		return nil
+	}
+	db.closed = true
+	var errs []error
+	if db.reader != nil {
+		if err := db.reader.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("store: close readers: %w", err))
+		}
+	}
+	if err := db.writer.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("store: close: %w", err))
+	}
+	return errors.Join(errs...)
+}
+
 func (db *DB) closeLocked(ctx context.Context) error {
 	db.readMu.Lock()
 	defer db.readMu.Unlock()

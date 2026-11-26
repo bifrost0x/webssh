@@ -19,7 +19,10 @@ import (
 //   - migrate_keyring, the key identifier of the keyring the database's
 //     sealed records belong to (state S9), and whether the material lives
 //     in go/; an installation that never had legacy data gets its row
-//     from the composition root.
+//     from the composition root;
+//   - migrate_purge (version 2), the entry of `webssh legacy purge`:
+//     "in progress" with the list of legacy files to remove (state S10),
+//     then "done" with the backup path (state S4), section 5.9.
 //
 // Settings derived from the previous behaviour (D-01) belong to
 // internal/settings (settings.MaterialisePolicies), not to this owner.
@@ -46,6 +49,16 @@ CREATE TABLE migrate_keyring (
 	id INTEGER PRIMARY KEY CHECK (id = 1),
 	key_id TEXT NOT NULL CHECK (key_id <> ''),
 	material_in_go INTEGER NOT NULL CHECK (material_in_go IN (0, 1))
+) STRICT`,
+	}, {
+		Version: 2,
+		SQL: `CREATE TABLE migrate_purge (
+	id INTEGER PRIMARY KEY CHECK (id = 1),
+	in_progress INTEGER NOT NULL CHECK (in_progress IN (0, 1)),
+	files TEXT NOT NULL,
+	backup TEXT NOT NULL,
+	started_at TEXT NOT NULL,
+	completed_at TEXT NOT NULL
 ) STRICT`,
 	}}}
 }

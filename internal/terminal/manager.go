@@ -11,6 +11,8 @@ import (
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
+	"github.com/bifrost0x/webssh/internal/ssh/client"
+	"github.com/bifrost0x/webssh/internal/store"
 )
 
 // Deps are the collaborators of the terminal. Shells and Log are required.
@@ -24,6 +26,22 @@ type Deps struct {
 	// not_available_in_preview.
 	Routes SavedRoutes
 	Log    *slog.Logger
+	// Connections, DB and TmuxEnabled run persistent tmux sessions; while
+	// one of them is missing, or TmuxEnabled reports the runtime switch
+	// tmux_enabled off, use_tmux opens the login shell.
+	Connections Connections
+	DB          *store.DB
+	TmuxEnabled func(context.Context) bool
+	// Audit records security events of the terminal in the audit log, such
+	// as a tmux session that may still run after its end was asked for.
+	// Optional: without it they go to Log only.
+	Audit Auditor
+}
+
+// Auditor writes warning-level security events (provided by
+// internal/audit).
+type Auditor interface {
+	SecurityWarning(event string, kv ...any)
 }
 
 // Manager owns every terminal session of the process. The composition
@@ -37,6 +55,11 @@ type Manager struct {
 	routes   SavedRoutes
 	log      *slog.Logger
 	now      func() time.Time
+
+	store       persistent
+	dialHost    func(ctx context.Context, t client.Target, ix client.Interaction) (remoteHost, error)
+	tmuxEnabled func(context.Context) bool
+	audit       Auditor
 
 	flow    *ledger
 	input   *inputBudget
@@ -69,7 +92,17 @@ func New(cfg Config, deps Deps) (*Manager, error) {
 		quota:    newQuota(cfg.SessionsGlobal, cfg.SessionsPerUser),
 		prompts:  newPrompts(cfg.MaxPrompts),
 		sessions: map[string]*Session{}, peers: map[uint64]*peerState{}, attempts: map[attemptKey]*attempt{}, revoked: map[int64]uint64{},
-		stop: make(chan struct{}),
+		stop:  make(chan struct{}),
+		store: persistent{db: deps.DB}, tmuxEnabled: deps.TmuxEnabled, audit: deps.Audit,
+	}
+	if deps.Connections != nil {
+		m.dialHost = func(ctx context.Context, t client.Target, ix client.Interaction) (remoteHost, error) {
+			c, err := deps.Connections.Dial(ctx, t, ix)
+			if err != nil {
+				return nil, err
+			}
+			return connHost{c}, nil
+		}
 	}
 	m.wg.Go(m.sweep)
 	return m, nil
@@ -174,7 +207,10 @@ func (m *Manager) generation(owner int64) uint64 {
 // already cancelled the session's connections, so their streams stop at
 // once; unless the reason keeps terminals, every SSH session and pending
 // connection attempt of the user ends as well, and an attempt that
-// commits concurrently fails to register. It does not block.
+// commits concurrently fails to register. Persistent tmux sessions stay
+// for a later reattach after a sign-out; for every other reason they end
+// and their rows are removed, as the Python release did. It does not
+// block.
 func (m *Manager) Revoked(rev principal.Revocation) {
 	if keepsTerminals(rev.Reason) || rev.UserID <= 0 {
 		return
@@ -183,8 +219,17 @@ func (m *Manager) Revoked(rev principal.Revocation) {
 	m.revoked[rev.UserID]++
 	m.mu.Unlock()
 	m.cancelAttemptsOf(func(_ attemptKey, a *attempt) bool { return a.owner == rev.UserID })
+	end := endRevoke
+	if rev.Reason == principal.ReasonLogout {
+		end = endDetach
+	}
+	var live []string
 	for _, s := range m.sessionsOf(rev.UserID) {
-		s.terminate(reasonClosed, nil)
+		live = append(live, s.id)
+		s.terminateAs(reasonClosed, nil, end)
+	}
+	if end == endRevoke {
+		m.spawn(func() { m.forgetUser(rev.UserID, live) })
 	}
 }
 

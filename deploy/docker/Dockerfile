@@ -51,7 +51,9 @@ RUN apk upgrade --no-cache ca-certificates-bundle \
     && chmod 0700 /rootfs/app/data /rootfs/app/data/logs /rootfs/app/data/keys /rootfs/app/recovery \
     && install -m 600 /dev/null /rootfs/app/recovery/.webssh-volume \
     && chown -R 1000:1000 /rootfs/app/data /rootfs/app/recovery \
-    && ln -s webssh /rootfs/app/entrypoint.sh
+    && ln -s webssh /rootfs/app/entrypoint.sh \
+    && mkdir -p /rootfs/usr/local/bin \
+    && ln -s /app/webssh /rootfs/usr/local/bin/python
 
 FROM busybox:1.37-musl@sha256:f6a95d611e0a8780fabdb2aec43e31275b2720dfefa3e41b16835bfc42454478 AS busybox
 

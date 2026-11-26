@@ -9,9 +9,8 @@ import (
 // specification, section 5.1).
 type State string
 
-// States of section 5.1. S4 and S10 need `webssh legacy purge`, which a
-// later phase adds; until then no database can be in them and the purge
-// is refused.
+// States of section 5.1. S4 and S10 follow `webssh legacy purge`
+// (purge.go).
 const (
 	S0  State = "S0"  // fresh: no legacy source, no Go database
 	S1  State = "S1"  // legacy only: migrate
@@ -28,24 +27,30 @@ const (
 
 // Stop codes. They are stable: the CLI, the log and the report use them.
 const (
-	CodeLocked          = "go_locked"
-	CodeLegacyChanged   = "legacy_changed"
-	CodeGoDataMissing   = "go_data_missing"
-	CodeGoDatabase      = "go_database_unusable"
-	CodeLegacyUnknown   = "legacy_source_unknown"
-	CodeKeyMaterial     = "keyring_material"
-	CodeLegacyInUse     = "legacy_in_use"
-	CodeRestorePending  = "python_restore_unfinished"
-	CodeNoSpace         = "not_enough_space"
-	CodeSecretMismatch  = "secret_key_mismatch"
-	CodeChangedDuring   = "legacy_changed_during_migration"
-	CodeUnsafeSource    = "legacy_unsafe_path"
-	CodeUnreadable      = "legacy_unreadable"
-	CodeStepFailed      = "migration_step_failed"
-	CodeVerifyFailed    = "migration_verification_failed"
-	CodeActivation      = "activation_failed"
-	CodeReplaceDamaged  = "replace_refused_damaged_database"
-	CodeReplaceNoLegacy = "replace_without_legacy_source"
+	CodeLocked           = "go_locked"
+	CodeLegacyChanged    = "legacy_changed"
+	CodeGoDataMissing    = "go_data_missing"
+	CodeGoDatabase       = "go_database_unusable"
+	CodeLegacyUnknown    = "legacy_source_unknown"
+	CodeKeyMaterial      = "keyring_material"
+	CodeLegacyInUse      = "legacy_in_use"
+	CodeRestorePending   = "python_restore_unfinished"
+	CodeNoSpace          = "not_enough_space"
+	CodeSecretMismatch   = "secret_key_mismatch"
+	CodeChangedDuring    = "legacy_changed_during_migration"
+	CodeUnsafeSource     = "legacy_unsafe_path"
+	CodeUnreadable       = "legacy_unreadable"
+	CodeStepFailed       = "migration_step_failed"
+	CodeVerifyFailed     = "migration_verification_failed"
+	CodeActivation       = "activation_failed"
+	CodeReplaceDamaged   = "replace_refused_damaged_database"
+	CodeReplaceNoLegacy  = "replace_without_legacy_source"
+	CodePurgeInProgress  = "purge_in_progress"
+	CodePurgeRefused     = "purge_refused"
+	CodePurgeBackup      = "purge_backup_failed"
+	CodePurgeFailed      = "purge_failed"
+	CodeLegacyAfterPurge = "legacy_after_purge"
+	CodeIncompleteBuild  = "migration_incomplete_build"
 )
 
 // ErrLocked reports that another Go process holds the Go lock.

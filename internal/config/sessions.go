@@ -35,6 +35,7 @@ func loadSessions(p *parser, c *Config, in *pending) {
 	in.tailscaleTargets = p.csvSet("TAILSCALE_SSH_ALLOWED_TARGETS", "TAILSCALE_SSH_ALLOWED_TARGETS", nil)
 	p.csvSet("TAILSCALE_SSH_ALLOWED_REMOTE_USERS", "TAILSCALE_SSH_ALLOWED_REMOTE_USERS", nil)
 	in.tailscaleInterface = p.str("TAILSCALE_SSH_INTERFACE", "TAILSCALE_SSH_INTERFACE", "tailscale0", true)
+	c.Network.TailscaleSSHEnabled, c.Network.TailscaleInterface = in.tailscaleEnabled, in.tailscaleInterface
 
 	c.Debug = p.flag("DEBUG", "DEBUG", "False")
 	loadSecret(p, c)
