@@ -22,7 +22,7 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='vendor/xterm/xterm.css') }}" />
 
     {% set platform_assets = namespace(urls={}) %}
-    {% for platform in ['alpinelinux', 'apple', 'archlinux', 'debian', 'docker', 'fedora', 'freebsd', 'homeassistant', 'linux', 'opnsense', 'proxmox', 'raspberrypi', 'truenas', 'ubuntu'] %}
+    {% for platform in ['almalinux', 'alpinelinux', 'apple', 'archlinux', 'centos', 'cisco', 'debian', 'docker', 'endeavouros', 'fedora', 'freebsd', 'homeassistant', 'kalilinux', 'linux', 'linuxmint', 'manjaro', 'mikrotik', 'nixos', 'opensuse', 'openwrt', 'opnsense', 'pfsense', 'popos', 'proxmox', 'qnap', 'raspberrypi', 'redhat', 'synology', 'truenas', 'ubiquiti', 'ubuntu', 'unraid', 'voidlinux'] %}
         {% set _ = platform_assets.urls.update({platform: static_asset_url(filename='icons/platforms/' ~ platform ~ '.svg')}) %}
     {% endfor %}
     <script id="hostPlatformAssets" type="application/json">{{ platform_assets.urls | tojson }}</script>
@@ -1006,6 +1006,30 @@
                                 <option value="linux">Linux</option>
                                 <option value="apple">macOS</option>
                                 <option value="freebsd">FreeBSD</option>
+                                <option value="proxmoxbackup">Proxmox Backup Server</option>
+                                <option value="rockylinux">Rocky Linux</option>
+                                <option value="almalinux">AlmaLinux</option>
+                                <option value="redhat">Red Hat Enterprise Linux</option>
+                                <option value="centos">CentOS</option>
+                                <option value="opensuse">openSUSE</option>
+                                <option value="nixos">NixOS</option>
+                                <option value="manjaro">Manjaro</option>
+                                <option value="endeavouros">EndeavourOS</option>
+                                <option value="linuxmint">Linux Mint</option>
+                                <option value="popos">Pop!_OS</option>
+                                <option value="kalilinux">Kali Linux</option>
+                                <option value="gentoo">Gentoo</option>
+                                <option value="voidlinux">Void Linux</option>
+                                <option value="unraid">Unraid</option>
+                                <option value="synology">Synology DSM</option>
+                                <option value="qnap">QNAP QTS</option>
+                                <option value="openwrt">OpenWrt</option>
+                                <option value="pfsense">pfSense</option>
+                                <option value="windows">Windows</option>
+                                <option value="mikrotik">MikroTik RouterOS</option>
+                                <option value="cisco">Cisco IOS</option>
+                                <option value="ubiquiti">Ubiquiti</option>
+                                <option value="embedded">Embedded / BusyBox</option>
                             </select>
                             <small data-i18n="platform.help">Automatic checks platform facts after connecting over SSH. Choose an icon to override detection.</small>
                         </div>

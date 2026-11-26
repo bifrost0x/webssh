@@ -49,9 +49,41 @@ def test_ports_are_validated(value):
 def test_banner_parsing_keeps_only_printable_facts():
     described = discovery.describe_banner(b'SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.5\r\n')
     assert described == {'software': 'OpenSSH 9.6p1', 'comment': 'Ubuntu-3ubuntu13.5', 'platform': 'ubuntu'}
-    assert discovery.describe_banner(b'SSH-2.0-dropbear_2022.83\r\n')['platform'] is None
+    assert discovery.describe_banner(b'SSH-2.0-dropbear_2022.83\r\n')['platform'] == 'embedded'
     assert discovery.describe_banner(b'HTTP/1.1 400 Bad Request\r\n') is None
     assert discovery.describe_banner(b'SSH-2.0-\x1b[31mevil\r\n') is None
+
+
+@pytest.mark.parametrize('banner, platform', [
+    (b'SSH-2.0-OpenSSH_for_Windows_9.5\r\n', 'windows'),
+    (b'SSH-2.0-ROSSSH\r\n', 'mikrotik'),
+    (b'SSH-2.0-Cisco-1.25\r\n', 'cisco'),
+    (b'SSH-2.0-dropbear_2022.83\r\n', 'embedded'),
+    (b'SSH-2.0-dropbear OpenWrt\r\n', 'openwrt'),
+    (b'SSH-2.0-dropbear_2022.83 OpenWrt-23.05\r\n', 'openwrt'),
+    (b'SSH-2.0-OpenSSH_9.2p1 Raspbian-2+deb12u3\r\n', 'raspberrypi'),
+    (b'SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.5\r\n', 'ubuntu'),
+    (b'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n', 'debian'),
+    (b'SSH-2.0-dropbear_2020.81 Debian-1\r\n', 'debian'),
+    (b'SSH-2.0-OpenSSH_9.9\r\n', None),
+])
+def test_banner_names_the_platform(banner, platform):
+    assert discovery.describe_banner(banner)['platform'] == platform
+
+
+@pytest.mark.parametrize('banner', [
+    b'SSH-2.0-OpenSSH_9.9 windows\r\n',
+    b'SSH-2.0-OpenSSH_9.9 cisco\r\n',
+    b'SSH-2.0-OpenSSH_9.9 rosssh\r\n',
+    b'SSH-2.0-OpenSSH_9.9 dropbear\r\n',
+    b'SSH-2.0-OpenSSH_for_Linux_9.9\r\n',
+    b'SSH-2.0-Ciscoish_1.0\r\n',
+    b'SSH-2.0-ROSSSHD_1.0\r\n',
+    b'SSH-2.0-dropbearx_1.0\r\n',
+    b'SSH-2.0-libssh_0.10.6\r\n',
+])
+def test_banner_near_misses_name_no_platform(banner):
+    assert discovery.describe_banner(banner)['platform'] is None
 
 
 def test_probe_never_sends_and_respects_the_network_policy(monkeypatch):

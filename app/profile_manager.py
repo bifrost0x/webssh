@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 
 import config
 
-from .host_platform import PLATFORMS, endpoint
+from .host_catalog import NON_POSIX_PLATFORMS, ROLES
+from .host_platform import PLATFORMS, endpoint, valid_identity_value
 from .audit_logger import log_error
 from .connection_storage_policy import (
     ConnectionStorageLimitError,
@@ -160,16 +161,59 @@ def _valid_profile(item):
         return False
     if 'greeting_platform' in item and not isinstance(item['greeting_platform'], str):
         return False
+    if 'authenticated_greeting' in item and not isinstance(item['authenticated_greeting'], str):
+        return False
     if 'detected_services' in item and not (isinstance(item['detected_services'], list)
                                             and all(isinstance(entry, str) for entry in item['detected_services'])):
         return False
     if 'services_checked_at' in item and (isinstance(item['services_checked_at'], bool)
                                           or not isinstance(item['services_checked_at'], (int, float))):
         return False
-    # detected_maintenance is never validated here: a malformed or newer value
-    # must not make the whole profiles document unreadable. Its only reader,
-    # the overview, ignores what it does not understand.
+    # detected_maintenance and the identity facts are never validated here: a
+    # malformed or newer value must not make the whole profiles document
+    # unreadable. The overview ignores maintenance facts it does not
+    # understand; _drop_invalid_stored_facts removes identity facts on load.
     return True
+
+
+# Stored identity fact -> parse_identity key. Write paths validate strictly;
+# on load an identity fact or role that does not fit (newer release, hand
+# edit) is dropped and detected again.
+_IDENTITY_FACTS = {
+    'detected_family': 'family', 'detected_os_id': 'os_id', 'detected_os_version': 'os_version',
+    'detected_virt': 'virt', 'detected_container_access': 'container_access',
+    'detected_guests': 'guests', 'detected_graphical': 'graphical',
+}
+# authenticated_greeting: the platform the last logged-in connection's SSH
+# version string named, '' for none. Unlike greeting_platform, which the
+# overview may set without logging in, it decides when the probe runs again.
+_ENDPOINT_FACTS = (
+    *_IDENTITY_FACTS, 'detected_services', 'services_checked_at', 'detected_maintenance',
+    'detection_state', 'platform_checked_at', 'authenticated_greeting',
+)
+
+
+def _valid_stored_fact(field, value):
+    if field == 'detection_state':
+        return value in ('detected', 'unavailable')
+    if field == 'platform_checked_at':
+        return not isinstance(value, bool) and isinstance(value, (int, float))
+    if field == 'role_override':
+        return isinstance(value, str) and (value == 'auto' or value in ROLES)
+    if field == 'authenticated_greeting':
+        return isinstance(value, str) and (value == '' or value in PLATFORMS)
+    return valid_identity_value(_IDENTITY_FACTS[field], value)
+
+
+def _drop_invalid_stored_facts(profiles):
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            continue
+        for field in (*_IDENTITY_FACTS, 'detection_state', 'platform_checked_at', 'role_override',
+                      'authenticated_greeting'):
+            if field in profile and not _valid_stored_fact(field, profile[field]):
+                del profile[field]
+    return profiles
 
 
 def _valid_profile_document(value):
@@ -188,6 +232,7 @@ _PROFILE_FIELDS = {
     'group', 'favorite', 'created_at', 'updated_at',
     'sort_order', 'platform_icon', 'detected_platform', 'greeting_platform',
     'detected_services', 'services_checked_at', 'detected_maintenance',
+    *_IDENTITY_FACTS, 'detection_state', 'platform_checked_at', 'role_override', 'authenticated_greeting',
 }
 
 
@@ -220,7 +265,7 @@ def _load_profiles_with_lock_held(user_id):
             _profile_migration_payload(profiles_file, document)
         ),
     )
-    return data['profiles']
+    return _drop_invalid_stored_facts(data['profiles'])
 
 
 def _load_profiles_for_read_with_lock_held(user_id):
@@ -365,6 +410,8 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     # What a discovery scan read from the SSH greeting; shown until a connection detects the platform.
     if 'greeting_platform' in payload and (not isinstance(payload['greeting_platform'], str) or payload['greeting_platform'] not in PLATFORMS):
         return None, 'Invalid platform icon'
+    if 'role_override' in payload and not _valid_stored_fact('role_override', payload['role_override']):
+        return None, 'Invalid role'
 
     name = payload.get('name')
     host = payload.get('host')
@@ -464,6 +511,8 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
         result['platform_icon'] = payload['platform_icon']
     if 'greeting_platform' in payload:
         result['greeting_platform'] = payload['greeting_platform']
+    if 'role_override' in payload:
+        result['role_override'] = payload['role_override']
     if group is not _UNSET and group:
         result['group'] = group
     if favorite is True:
@@ -591,13 +640,11 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
                                 result['platform_icon'] = existing['platform_icon']
                             if endpoint(existing) == endpoint(result) and existing.get('detected_platform') in PLATFORMS:
                                 result['detected_platform'] = existing['detected_platform']
-                            # Detected services describe the same login on the same host.
-                            if endpoint(existing) == endpoint(result) and 'detected_services' in existing:
-                                result['detected_services'] = existing['detected_services']
-                                if 'services_checked_at' in existing:
-                                    result['services_checked_at'] = existing['services_checked_at']
-                            if endpoint(existing) == endpoint(result) and 'detected_maintenance' in existing:
-                                result['detected_maintenance'] = existing['detected_maintenance']
+                            # Detected facts describe the same login on the same host.
+                            if endpoint(existing) == endpoint(result):
+                                result.update({field: existing[field] for field in _ENDPOINT_FACTS if field in existing})
+                            if 'role_override' not in payload and 'role_override' in existing:
+                                result['role_override'] = existing['role_override']
                             # The greeting belongs to an address and port; it goes when either changes.
                             if ('greeting_platform' not in payload and existing.get('greeting_platform') in PLATFORMS
                                     and (existing.get('host'), existing.get('port', 22)) == (result.get('host'), result.get('port', 22))):
@@ -1009,11 +1056,16 @@ def cache_greeting_platforms(user_id, observed):
     """Record what saved direct hosts' SSH greetings named; return how many changed.
 
     ``observed`` maps profile ids to ((canonical host, port), platform) as probed.
-    A host edited meanwhile, routed through a jump host or already showing the
-    same hint is left alone; detections and manual choices still take precedence.
+    A platform of None means the greeting named none and drops an older hint.
+    The greeting is read without authentication, so it is a display hint
+    only: it never removes stored facts and never decides whether the
+    identity probe runs. A host edited meanwhile, routed through a jump host or
+    already showing the same hint is left alone; detections and manual
+    choices still take precedence.
     """
     from .network_policy import canonicalize_hostname
-    wanted = {key: value for key, value in observed.items() if value and value[1] in PLATFORMS}
+    wanted = {key: value for key, value in observed.items()
+              if value and (value[1] is None or value[1] in PLATFORMS)}
     if not wanted:
         return 0
     with storage_lock(f'command-config:{user_id}'):
@@ -1033,7 +1085,10 @@ def cache_greeting_platforms(user_id, observed):
                     continue
                 if current != tuple(probed) or profile.get('greeting_platform') == platform:
                     continue
-                profile['greeting_platform'] = platform
+                if platform is None:
+                    profile.pop('greeting_platform')
+                else:
+                    profile['greeting_platform'] = platform
                 changed += 1
             if changed and save_profiles(user_id, profiles, previous_count=len(profiles)):
                 return changed
@@ -1041,18 +1096,78 @@ def cache_greeting_platforms(user_id, observed):
 
 
 @user_operation
-def cache_detected_facts(user_id, profile_id, expected_endpoint, *, platform=None, services=None,
-                         maintenance=None, now=None):
-    """Merge detected platform, service and maintenance facts into the current owned profile under its lock."""
-    from .host_platform import valid_maintenance, valid_services
-    if expected_endpoint is None or (platform is None and services is None and maintenance is None):
+def record_connect_greeting(user_id, profile_id, expected_endpoint, platform, *, now):
+    """Store what a connection's authenticated SSH version string named; return (profile, changed).
+
+    Unlike the overview's greeting this one came from the host-key-verified
+    transport, so it may change detection. A system without a POSIX shell
+    drops what the probe found at this endpoint before, which belonged to
+    another system. Otherwise the display hint follows it, and when it differs
+    from the greeting of the previous logged-in connection, the probe is due
+    again, but only when it last ran at least a day ago: alternating greetings
+    ask it at most once a day. A hint the overview stored without logging in
+    never counts as such a change. A check recorded as older than it is (a
+    stall, a silent login) is due within a day already and stays.
+    profile is the stored profile, or None when nothing could be saved.
+    """
+    from .host_platform import IDENTITY_REFRESH_SECONDS, SILENT_RETRY_SECONDS
+    if (expected_endpoint is None or (platform is not None and platform not in PLATFORMS)
+            or isinstance(now, bool) or not isinstance(now, (int, float))):
+        return None, False
+    value = platform or ''
+    try:
+        with storage_lock(f'command-config:{user_id}'):
+            with storage_lock(f'profiles:{user_id}'):
+                profiles, error = _load_profiles_for_write(user_id)
+                if error:
+                    return None, False
+                for profile in profiles:
+                    if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
+                        continue
+                    previous = profile.get('authenticated_greeting')
+                    changed = previous != value or profile.get('greeting_platform') != platform
+                    if platform in NON_POSIX_PLATFORMS:
+                        for field in ('detected_platform', *_ENDPOINT_FACTS):
+                            if field in profile and field != 'authenticated_greeting':
+                                del profile[field]
+                                changed = True
+                    elif previous is not None and previous != value:
+                        checked = profile.get('platform_checked_at')
+                        if (not isinstance(checked, bool) and isinstance(checked, (int, float))
+                                and SILENT_RETRY_SECONDS <= now - checked < IDENTITY_REFRESH_SECONDS - SILENT_RETRY_SECONDS):
+                            del profile['platform_checked_at']
+                    if not changed:
+                        return dict(profile), False
+                    profile['authenticated_greeting'] = value
+                    if platform is None:
+                        profile.pop('greeting_platform', None)
+                    else:
+                        profile['greeting_platform'] = platform
+                    if save_profiles(user_id, profiles, previous_count=len(profiles)):
+                        return dict(profile), True
+                    return None, False
+    except ConnectionStorageLimitError:
+        return None, False
+    return None, False
+
+
+@user_operation
+def cache_detected_facts(user_id, profile_id, expected_endpoint, *, identity=None, maintenance=None, now=None,
+                         keep_detected=False):
+    """Merge a probed identity and maintenance facts into the current owned profile under its lock.
+
+    A detected identity replaces every stored identity fact; one that could not
+    be read only records the attempt and keeps what an earlier probe found.
+    With keep_detected, such an attempt also leaves a 'detected' state as it is.
+    """
+    from .host_platform import valid_identity, valid_maintenance
+    if expected_endpoint is None or (identity is None and maintenance is None):
         return False
     if maintenance is not None and (not valid_maintenance(maintenance) or 'checked_at' in maintenance):
         return False
-    if platform is not None and platform not in PLATFORMS:
+    if identity is not None and not valid_identity(identity):
         return False
-    if services is not None and not valid_services(services):
-        return False
+    stamp = time.time() if now is None else now
     with storage_lock(f'command-config:{user_id}'):
         with storage_lock(f'profiles:{user_id}'):
             profiles, error = _load_profiles_for_write(user_id)
@@ -1061,14 +1176,54 @@ def cache_detected_facts(user_id, profile_id, expected_endpoint, *, platform=Non
             for profile in profiles:
                 if profile.get('id') != profile_id or endpoint(profile) != expected_endpoint:
                     continue
-                if platform is not None:
-                    profile['detected_platform'] = platform
-                if services is not None:
-                    profile['detected_services'] = list(services)
-                    profile['services_checked_at'] = time.time() if now is None else now
+                if identity is not None:
+                    if not (keep_detected and identity['state'] != 'detected'
+                            and profile.get('detection_state') == 'detected'):
+                        profile['detection_state'] = identity['state']
+                    profile['platform_checked_at'] = stamp
+                    # Only the old platform probe stored 'server'; it never names a platform.
+                    if profile.get('detected_platform') == 'server':
+                        del profile['detected_platform']
+                if identity is not None and identity['state'] == 'detected':
+                    facts = {'detected_platform': identity['platform'], 'detected_services': list(identity['services'])}
+                    facts.update({field: identity[key] for field, key in _IDENTITY_FACTS.items()})
+                    for field, value in facts.items():
+                        if value is None:
+                            profile.pop(field, None)
+                        else:
+                            profile[field] = value
+                    profile['services_checked_at'] = stamp
                 if maintenance is not None:
-                    profile['detected_maintenance'] = {**maintenance, 'checked_at': time.time() if now is None else now}
+                    profile['detected_maintenance'] = {**maintenance, 'checked_at': stamp}
                 return save_profiles(user_id, profiles, previous_count=len(profiles))
+    return False
+
+
+@user_operation
+def record_identity_attempt(user_id, profile_id, expected_endpoint, *, now):
+    """Record when the identity probe last ran; stored facts other than a legacy 'server' stay.
+
+    Only one number is set, so the store does not grow with repeated attempts.
+    Returns False, without raising, when the store quota refuses even that.
+    """
+    if expected_endpoint is None or isinstance(now, bool) or not isinstance(now, (int, float)):
+        return False
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'profiles:{user_id}'):
+            profiles, error = _load_profiles_for_write(user_id)
+            if error:
+                return False
+            for profile in profiles:
+                if profile.get('id') == profile_id and endpoint(profile) == expected_endpoint:
+                    profile['platform_checked_at'] = now
+                    # The old probe's 'server' would otherwise bring the probe back on every login.
+                    if profile.get('detected_platform') == 'server':
+                        del profile['detected_platform']
+                    try:
+                        return save_profiles(user_id, profiles, previous_count=len(profiles))
+                    except ConnectionStorageLimitError:
+                        # The caller keeps the attempt in memory instead.
+                        return False
     return False
 
 

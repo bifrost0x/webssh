@@ -110,7 +110,7 @@
             list.replaceChildren(...scan.found.map(entry => {
                 const item = node('li', 'discovery-result');
                 const logo = node('span', 'discovery-logo');
-                logo.append(win.HostPlatform?.render({detected_platform: entry.platform || undefined}, doc) || icon('dns'));
+                logo.append(win.HostPlatform?.render({greeting_platform: entry.platform || undefined}, doc) || icon('dns'));
                 const copy = node('div', 'discovery-copy');
                 copy.append(node('strong', '', entry.name || entry.address),
                     node('span', 'discovery-address', `${entry.address}${entry.port === 22 ? '' : `:${entry.port}`}`),

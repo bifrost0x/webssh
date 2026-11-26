@@ -327,11 +327,12 @@ def test_collect_linux_stats_uses_separate_fixed_exec_channel(monkeypatch):
     channel = FakeChannel()
     observed = {}
 
-    def open_channel(actual_transport, command, *, timeout):
+    def open_channel(actual_transport, command, *, timeout, **kwargs):
         observed.update(
             transport=actual_transport,
             command=command,
             timeout=timeout,
+            **kwargs,
         )
         return channel
 
@@ -349,6 +350,7 @@ def test_collect_linux_stats_uses_separate_fixed_exec_channel(monkeypatch):
         'transport': transport,
         'command': session_insights.LINUX_STATS_COMMAND,
         'timeout': 0.2,
+        'before_exec': None,
     }
     assert channel.closed is True
 
@@ -383,11 +385,12 @@ def test_collect_linux_stats_uses_expanded_fixed_command_only_when_requested(
     channel = FakeChannel(payload=DIAGNOSTICS_PAYLOAD.encode())
     observed = {}
 
-    def open_channel(actual_transport, command, *, timeout):
+    def open_channel(actual_transport, command, *, timeout, **kwargs):
         observed.update(
             transport=actual_transport,
             command=command,
             timeout=timeout,
+            **kwargs,
         )
         return channel
 
@@ -405,6 +408,7 @@ def test_collect_linux_stats_uses_expanded_fixed_command_only_when_requested(
         'transport': transport,
         'command': session_insights.LINUX_DIAGNOSTICS_COMMAND,
         'timeout': 0.2,
+        'before_exec': None,
     }
     assert channel.closed is True
 

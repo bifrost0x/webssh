@@ -353,22 +353,23 @@ class GreetingConnection:
         self.closed = True
 
 
-@pytest.mark.parametrize('chunks, platform', [
-    ((b'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n',), 'debian'),
-    ((b'SSH-2.0-OpenSSH_9.6p1 Ubu', b'ntu-3ubuntu13.5\r\n'), 'ubuntu'),
-    ((b'Welcome\r\n', b'SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.5\r\n'), 'ubuntu'),
-    ((b'SSH-2.0-OpenSSH_9.7\r\n',), None),
-    ((b'HTTP/1.1 400 Bad Request\r\n',), None),
-    ((b'x' * 400,), None),
+@pytest.mark.parametrize('chunks, platform, greeted', [
+    ((b'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n',), 'debian', True),
+    ((b'SSH-2.0-OpenSSH_9.6p1 Ubu', b'ntu-3ubuntu13.5\r\n'), 'ubuntu', True),
+    ((b'Welcome\r\n', b'SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.5\r\n'), 'ubuntu', True),
+    # A greeting that names no platform is reported as such, so an old hint can be dropped.
+    ((b'SSH-2.0-OpenSSH_9.7\r\n',), None, True),
+    ((b'HTTP/1.1 400 Bad Request\r\n',), None, False),
+    ((b'x' * 400,), None, False),
 ])
-def test_probe_reads_the_platform_from_the_ssh_greeting(monkeypatch, chunks, platform):
+def test_probe_reads_the_platform_from_the_ssh_greeting(monkeypatch, chunks, platform, greeted):
     from app import network_policy
     connection = GreetingConnection(*chunks)
     monkeypatch.setattr(network_policy, 'resolve_allowed_target', lambda *args, **kwargs: object())
     monkeypatch.setattr(network_policy, 'open_validated_socket', lambda target, timeout: connection)
     result = overview_routes._probe('host.example', 22)
     assert result['state'] == 'reachable'
-    assert result.get('platform') == platform
+    assert result.get('platform') == platform and ('platform' in result) is greeted
     assert connection.closed and connection.sent == []
 
 
@@ -399,10 +400,41 @@ def test_reachability_stores_greeting_hints_only_for_direct_hosts(app, client, c
         assert 'greeting_platform' not in get_profile(uid, routed['id'])
 
 
+@pytest.mark.parametrize('later', [None, 'debian'])
+def test_a_later_greeting_replaces_or_drops_an_old_hint(app, client, context, monkeypatch, later):
+    """The overview's greeting is only a hint: it is replaced or dropped and never stops the probe."""
+    from app import host_platform
+    from app.profile_manager import cache_greeting_platforms, get_profile
+    uid, _aid, _book, profile = context
+    with app.app_context():
+        assert cache_greeting_platforms(uid, {profile['id']: (('server.example', 22), 'windows')}) == 1
+        assert host_platform.identity_needed(get_profile(uid, profile['id']))
+    monkeypatch.setattr(overview_routes, '_probe', lambda host, port: dict(state='reachable', latency_ms=3, platform=later))
+    response = client.post('/api/overview/reachability', json={})
+    assert response.status_code == 200 and response.json['platforms_updated'] is True
+    assert 'platform' not in response.json['results'][profile['id']]
+    with app.app_context():
+        saved = get_profile(uid, profile['id'])
+        assert saved.get('greeting_platform') == later and host_platform.identity_needed(saved)
+        # Nothing to drop the second time.
+        assert cache_greeting_platforms(uid, {profile['id']: (('server.example', 22), later)}) == 0
+
+
+def test_an_unreadable_greeting_keeps_the_old_hint(app, client, context, monkeypatch):
+    from app.profile_manager import cache_greeting_platforms, get_profile
+    uid, _aid, _book, profile = context
+    with app.app_context():
+        assert cache_greeting_platforms(uid, {profile['id']: (('server.example', 22), 'mikrotik')}) == 1
+    monkeypatch.setattr(overview_routes, '_probe', lambda host, port: dict(state='reachable', latency_ms=3))
+    assert client.post('/api/overview/reachability', json={}).json['platforms_updated'] is False
+    with app.app_context():
+        assert get_profile(uid, profile['id'])['greeting_platform'] == 'mikrotik'
+
+
 def test_greeting_hints_skip_hosts_edited_since_the_probe(app, context):
     from app.profile_manager import cache_greeting_platforms, get_profile
     uid, _aid, _book, profile = context
     with app.app_context():
         assert cache_greeting_platforms(uid, {profile['id']: (('other.example', 22), 'ubuntu')}) == 0
         assert 'greeting_platform' not in get_profile(uid, profile['id'])
-        assert cache_greeting_platforms(uid, {profile['id']: (('server.example', 22), 'windows')}) == 0
+        assert cache_greeting_platforms(uid, {profile['id']: (('server.example', 22), 'plan9')}) == 0

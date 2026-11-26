@@ -19,8 +19,19 @@ does not replace their copyright, permission or attribution notices.
 | Socket.IO client | `static/vendor/socketio/LICENSE` |
 | highlight.js | `static/vendor/highlight/LICENSE` |
 | Material Icons | `static/vendor/material-icons/LICENSE` |
+| Simple Icons platform logos (CC0-1.0, except the marks listed below) | `static/icons/platforms/LICENSE.md`, upstream and per-logo sources in `static/icons/platforms/provenance.json` |
 | Terminal fonts | `static/vendor/terminal-fonts/licenses/` and its `README.md` |
 | Website code graph (vis-network) | `site/vendor/vis-network-9.1.6/LICENSE-APACHE-2.0`, `LICENSE-MIT` |
+
+The platform logos come from [Simple Icons](https://github.com/simple-icons/simple-icons),
+which releases its icon set under CC0-1.0. Some marks carry the license of
+their owner instead, as `provenance.json` records per logo:
+
+- Debian logo: CC-BY-SA-3.0, see <https://www.debian.org/logos>
+- Fedora logo: custom license, see <https://docs.fedoraproject.org/en-US/project/brand/>
+
+Brand names and logos are trademarks of their respective owners; WebSSH uses
+them only to identify the software a host runs, which implies no endorsement.
 
 `npm run vendor` copies the frontend library license notices from the locked
 upstream packages alongside their assets. `npm run vendor:check` verifies those

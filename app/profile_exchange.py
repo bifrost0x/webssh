@@ -5,6 +5,7 @@ import re
 import shlex
 
 from .profile_manager import _is_valid_host
+from .host_catalog import ROLES
 from .host_platform import PLATFORMS
 
 MAX_INPUT_BYTES = 64 * 1024
@@ -12,7 +13,7 @@ MAX_RECORDS = 100
 _FIELDS = {
     'name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux',
     'herdr', 'use_herdr', 'requires_key', 'jump_alias', 'auth_type', 'platform_icon',
-    'socks_route_omitted', 'warnings',
+    'role_override', 'socks_route_omitted', 'warnings',
 }
 SOCKS_ROUTE_WARNING = 'SOCKS5 route not exported'
 _ALIAS = re.compile(r'^[a-zA-Z0-9_.-]{1,128}$')
@@ -75,6 +76,7 @@ def _record(values):
         or type(row['requires_key']) is not bool
         or row.get('auth_type', 'password') not in ('password', 'key', 'tailscale')
         or ('platform_icon' in row and (not isinstance(row['platform_icon'], str) or row['platform_icon'] not in PLATFORMS | {'auto'}))
+        or ('role_override' in row and (not isinstance(row['role_override'], str) or row['role_override'] not in ROLES | {'auto'}))
         or ('group' in row and not _text(row['group'], 64))
         or any(type(row[field]) is not bool for field in ('favorite', 'use_tmux', 'herdr', 'use_herdr') if field in row)
     ):
@@ -236,6 +238,9 @@ def export_profiles(profiles, jump_hosts):
         for field in ('herdr', 'use_herdr'):
             if profile.get(field) is True:
                 row[field] = True
+        # The same holds for roles: only a chosen role is written, never 'auto'.
+        if profile.get('role_override') in ROLES:
+            row['role_override'] = profile['role_override']
         row['requires_key'] = profile.get('auth_type') == 'key'
         if profile.get('jump_host_id'):
             row['jump_alias'] = jumps.get(profile['jump_host_id'], 'Unresolved jump host')

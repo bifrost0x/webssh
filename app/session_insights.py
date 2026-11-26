@@ -376,8 +376,14 @@ def _release_session_lock(session_id, collector_lock):
 def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
                         max_bytes=DEFAULT_MAX_BYTES,
                         include_diagnostics=False, command=None, parser=parse_linux_stats,
-                        allow_partial=True, cancel_event=None):
-    """Collect one Linux sample without touching the interactive PTY."""
+                        allow_partial=True, cancel_event=None, on_deadline=None, before_exec=None):
+    """Collect one Linux sample without touching the interactive PTY.
+
+    When the deadline passes and partial output is not accepted, on_deadline,
+    if given, decides the (result, error) pair from the raw output so far;
+    otherwise the sample is 'transient'. before_exec, if given, is called
+    right before the exec request is sent.
+    """
     if not isinstance(session_id, str) or not session_id:
         return None, 'transient'
 
@@ -406,6 +412,7 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
             transport,
             command,
             timeout=timeout,
+            before_exec=before_exec,
         )
         deadline = time.monotonic() + timeout
         output = bytearray()
@@ -421,7 +428,7 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
             if cancel_event is not None and cancel_event.is_set():
                 return None, 'transient'
             if not allow_partial and time.monotonic() >= deadline:
-                return None, 'transient'
+                return on_deadline(bytes(output)) if on_deadline else (None, 'transient')
             if channel.recv_ready():
                 chunk = channel.recv(min(4096, max_bytes + 1 - len(output)))
                 if not chunk:
@@ -435,6 +442,8 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
             if time.monotonic() >= deadline:
                 if output and allow_partial:
                     return parse_output()
+                if not allow_partial and on_deadline:
+                    return on_deadline(bytes(output))
                 return None, 'transient'
             time.sleep(0.02)
 

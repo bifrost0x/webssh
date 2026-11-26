@@ -50,6 +50,89 @@ bounded name, and has no source profile ID. Saving therefore creates a separate
 profile and never overwrites the original. Passwords remain excluded because
 they are never stored in profiles.
 
+## Platform and service detection
+
+When a saved host in **Automatic** icon mode connects, WebSSH runs one
+read-only probe over a separate SSH channel and stores what it recognised with
+the profile. It runs at connect time only, at most once a week per host, and
+never on a schedule of its own. Quick connections are not probed. The probe
+needs `/bin/sh` on the host and runs under it from sh, bash, zsh, fish, csh or
+tcsh as the login shell: it is sent as one single-quoted line without the
+characters csh and tcsh would still expand there (a newline, or `!` as a
+history reference). A BSD csh with the classic 1024-character word limit may
+refuse it; then nothing runs and the host is shown as not determinable. nu has
+not been tried.
+
+The probe collects:
+
+- the platform, from `/etc/os-release` (`ID`, `ID_LIKE`, `VERSION_ID`), the
+  kernel name and fixed markers such as Proxmox VE, Proxmox Backup Server,
+  TrueNAS, OPNsense, pfSense, Unraid, Synology, QNAP, OpenWrt or UniFi;
+- the distribution family and version, and the distribution ID when it is not
+  in the catalog (for example Omarchy on Arch Linux, shown with the Arch Linux
+  icon and marked as derived from its family);
+- the virtualization kind (bare metal, VM, LXC, container or WSL), whether the
+  system boots into a graphical target and, on Proxmox VE, the number of guests;
+- known services from active systemd units, fixed install paths and snaps, at
+  most 24 per host; on a host with more, VPN and overlay networks (WireGuard,
+  Tailscale, ZeroTier, OpenVPN) and one service per host role (for example
+  Home Assistant, Nextcloud, Immich, Jellyfin, Vaultwarden) are kept first,
+  then the other applications, and container runtimes, web servers and
+  databases are left out first;
+- where the SSH user may already use Docker or Podman without sudo, the image
+  names of running containers, mapped to known services, and whether that
+  access worked. Both are asked only through an existing local daemon socket
+  (`/var/run/docker.sock`, the rootless Docker or the Podman API socket);
+  Docker contexts and `DOCKER_HOST` are never followed. On systemd hosts
+  Docker is not asked while `docker.socket` is active and `docker.service` is
+  not, because the query would start the stopped daemon; the same holds for
+  a rootless socket with the user's own service manager, and when that
+  manager cannot be reached. Docker is then listed without its access state.
+  A daemon that holds its own socket (the snap, vendor units, a `dockerd`
+  started by hand) and hosts without systemd are asked as usual. Podman is
+  asked through its socket even if `podman.socket` starts the Podman API
+  service for that; the service exits when idle and starts no containers. A
+  Docker socket that links to the Podman socket, as podman-docker sets it
+  up, counts as Podman.
+
+Only values that map to a fixed catalog entry or a strict pattern are stored.
+WebSSH never stores raw command output, host names, IP addresses, user
+names, file contents, process lists or container names, installs nothing,
+changes nothing and runs nothing with elevated rights.
+
+Windows, MikroTik RouterOS and Cisco IOS hosts are recognised only from their
+SSH greeting. **Find hosts** and the reachability check read it without logging
+in, so what they read only labels the host: it never removes stored facts and
+never decides whether the probe runs. On connect, WebSSH takes the greeting
+from the logged-in connection, whose host key was verified. When it names one
+of these systems, the probe does not run and what an earlier probe found at
+that endpoint is dropped. When it names another platform, or none, a stored
+Windows, MikroTik or Cisco hint is replaced and the probe keeps its usual
+schedule. A greeting that differs from the one of the previous logged-in
+connection runs the probe on that connection when it last ran more than a day
+ago, so greetings that alternate ask it at most once a day; what the overview
+read without logging in never counts as such a change.
+A Dropbear greeting marks a host as embedded until a connection detects more. When a host answers
+with something other than the probe output, for example a forced command or a
+menu, the profile records that detection is not possible, keeps any facts an
+earlier run found and does not run the probe again for a week. A host that
+prints nothing within four seconds, or only colour or window title sequences,
+may only have a slow login shell, so it is asked again after a day and an
+earlier detection stays as it is. When the probe starts answering but
+does not finish within four seconds, for example on a hung network mount,
+stored facts stay as they are and it runs again after a day. The same applies
+to any other failure once the probe was sent, such as a connection that closes
+meanwhile. If the connection store is full, the attempt is kept in memory
+instead, so the probe still does not repeat on every login. That memory
+belongs to the server process: it is lost when WebSSH restarts, and each
+server process keeps its own.
+
+The host icon shows where its platform came from: a manual choice, a
+detection, the SSH greeting, the host name, a detection that found no known
+platform, or "not detected yet". Choosing a
+manual icon turns detection off for that host. A role assigned to the host
+(the `role_override` field of a host import) does not.
+
 ## Private host context
 
 Open **Host context** from a saved host's action menu, or from the active

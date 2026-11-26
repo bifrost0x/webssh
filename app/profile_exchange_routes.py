@@ -142,7 +142,7 @@ def import_hosts():
         payload = {
             field: row[field] for field in
             ('name', 'host', 'port', 'username', 'group', 'favorite', 'use_tmux',
-             'herdr', 'use_herdr', 'platform_icon')
+             'herdr', 'use_herdr', 'platform_icon', 'role_override')
             if field in row
         }
         payload.update({

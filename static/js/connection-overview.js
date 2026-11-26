@@ -26,7 +26,7 @@
                 name: String(profile.name || ''),
                 group: String(profile.group || ''),
                 favorite: profile.favorite === true,
-                platform: globalThis.HostPlatform?.resolve(profile) || {id: 'server', source: 'fallback'},
+                platform: globalThis.HostPlatform?.resolve(profile) || {id: 'server', source: 'pending'},
                 order: Number(profile.sort_order) || 0,
                 routeRef: typeof profile.socks_proxy_id === 'string' ? profile.socks_proxy_id : typeof profile.jump_host_id === 'string' ? profile.jump_host_id : '',
                 ...(profile.socks_proxy_id ? {routeKind: 'socks', socks: proxy || null} : {}),
