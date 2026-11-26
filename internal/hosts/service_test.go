@@ -218,15 +218,17 @@ func TestResolve(t *testing.T) {
 	}
 	for id, want := range map[string]fault.Code{
 		"pw-jump": fault.NotAvailableInPreview, "login-socks": fault.NotAvailableInPreview,
-		"umlaut": fault.InvalidValue, "ts": fault.NotAvailableInPreview, "gw": fault.NotAvailableInPreview,
+		"umlaut": fault.ValidationError, "ts": fault.NotAvailableInPreview, "gw": fault.NotAvailableInPreview,
 		"missing": fault.NotFound,
 	} {
 		if _, err := s.Resolve(ctx, oracleUser, id); code(err) != want {
 			t.Errorf("Resolve(%s): %v, want %s", id, err, want)
 		}
 	}
-	if _, err := s.Resolve(ctx, oracleUser, "umlaut"); !errors.Is(err, errHostIDNA) {
-		t.Errorf("umlaut host: %v, want the IDNA refusal", err)
+	// The connect path of the Python release refuses names outside ASCII
+	// with the format error (_validate_ssh_params).
+	if _, err := s.Resolve(ctx, oracleUser, "umlaut"); err == nil || !strings.Contains(err.Error(), "Invalid host format") {
+		t.Errorf("umlaut host: %v, want the format refusal", err)
 	}
 }
 
@@ -333,7 +335,7 @@ func TestImportRefusesInvalidRecords(t *testing.T) {
 			v(`{"id":"u","name":"n","host":"bücher.example","username":"u","auth_type":"password"}`)}}, Limits{ProfileMaxRecords: 0})
 		return err
 	})
-	if err != nil || !slices.Equal(report.IDNAHosts, []string{"u"}) || !slices.Equal(report.OverLimit, []string{"profiles"}) {
+	if err != nil || !slices.Equal(report.OverLimit, []string{"profiles"}) {
 		t.Fatalf("report %+v, %v", report, err)
 	}
 }

@@ -3,17 +3,17 @@ package hosts
 import (
 	"net/netip"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/idna2003"
 )
 
 // Host names are validated as in app/profile_manager.py: an IP address as
 // ipaddress.ip_address accepts it, or an ASCII host name of RFC 1123
 // labels. Names with other characters were never accepted by the profile,
-// jump-host and SOCKS forms; a stored one (imported or hand-edited) is
-// refused when it is used, because Python converted such names with
-// IDNA 2003 and this release has no bit-identical conversion.
+// jump-host and SOCKS forms, nor by the connect path; a stored one
+// (imported or hand-edited) is kept and compared in its IDNA 2003 form,
+// as canonicalize_hostname does.
 
 func validHost(raw string) bool {
 	host := pyStrip(raw)
@@ -78,25 +78,10 @@ func validUsername(s string) bool {
 	return true
 }
 
-// NeedsIDNA reports a host name with characters outside ASCII. Such a
-// saved host cannot be connected in this release (decision for M1); the
-// migration report lists the records that have one.
-func NeedsIDNA(host string) bool {
-	for i := range len(host) {
-		if host[i] >= utf8.RuneSelf {
-			return true
-		}
-	}
-	return false
-}
-
-var errHostIDNA = fault.New(fault.InvalidValue, "Internationalized host names are not supported in this preview; use the xn-- form.")
-
-// canonicalHost is canonicalize_hostname of app/network_policy.py for the
-// ASCII names this release accepts: stripped, one pair of brackets and the
-// trailing dots removed, an IP address in its string form, a name in lower
-// case. ok is false where Python raises, and for names that would need
-// IDNA.
+// canonicalHost is canonicalize_hostname of app/network_policy.py:
+// stripped, one pair of brackets and the trailing dots removed, an IP
+// address in its string form, a name converted with IDNA 2003 and in lower
+// case. ok is false where Python raises.
 func canonicalHost(raw string) (string, bool) {
 	value := pyStrip(raw)
 	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") && len(value) >= 2 {
@@ -109,16 +94,11 @@ func canonicalHost(raw string) (string, bool) {
 	if addr, ok := pythonAddr(value); ok {
 		return addr.String(), true
 	}
-	if NeedsIDNA(value) {
+	encoded, err := idna2003.Encode(value)
+	if err != nil {
 		return "", false
 	}
-	labels := strings.Split(value, ".")
-	for i, label := range labels {
-		if len(label) >= 64 || (label == "" && i < len(labels)-1) {
-			return "", false
-		}
-	}
-	canonical := strings.ToLower(value)
+	canonical := strings.ToLower(encoded)
 	if len(canonical) > 253 {
 		return "", false
 	}

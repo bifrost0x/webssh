@@ -5,30 +5,19 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/bifrost0x/webssh/internal/idna2003"
 )
 
-var (
-	errHost = errors.New("invalid host")
-	// errNonASCIIHost marks a name that Python would pass through its IDNA
-	// 2003 codec. This build has no IDNA implementation; callers decide
-	// what such an entry means.
-	errNonASCIIHost = errors.New("non-ASCII host names are not supported")
-)
+var errHost = errors.New("invalid host")
 
-// idnaASCII is name.encode('idna').decode('ascii').lower() of Python for
-// an ASCII name: empty labels are refused except a final one, as are labels
-// of 64 or more characters.
+// idnaASCII is name.encode('idna').decode('ascii').lower() of Python.
 func idnaASCII(name string) (string, error) {
-	if !isASCII(name) {
-		return "", errNonASCIIHost
+	encoded, err := idna2003.Encode(name)
+	if err != nil {
+		return "", errHost
 	}
-	labels := strings.Split(name, ".")
-	for i, l := range labels {
-		if l == "" && i < len(labels)-1 || len(l) >= 64 {
-			return "", errHost
-		}
-	}
-	return strings.ToLower(name), nil
+	return strings.ToLower(encoded), nil
 }
 
 // validDNSName is the label check shared by the Python parsers.
@@ -113,34 +102,29 @@ func tailscaleTarget(raw string) (host string, port int, err error) {
 	return host, port, nil
 }
 
-// remoteDNSAllowlist is parse_remote_dns_allowlist of config.py. Entries
-// that are not ASCII are returned separately: Python canonicalizes them
-// with IDNA 2003, which this build does not implement.
-func remoteDNSAllowlist(raw, name string) (names, nonASCII []string, err error) {
+// remoteDNSAllowlist is parse_remote_dns_allowlist of config.py.
+func remoteDNSAllowlist(raw, name string) ([]string, error) {
+	var names []string
 	for part := range strings.SplitSeq(raw, ",") {
 		entry := pyStrip(part)
 		if entry == "" {
 			continue
 		}
 		if strings.ContainsAny(entry, ":[]%") {
-			return nil, nil, exactDNSError(name)
+			return nil, exactDNSError(name)
 		}
 		canonical, _, err := tailscaleTarget(entry)
-		if errors.Is(err, errNonASCIIHost) {
-			nonASCII = append(nonASCII, entry)
-			continue
-		}
 		if err != nil {
-			return nil, nil, exactDNSError(name)
+			return nil, exactDNSError(name)
 		}
 		if _, err := pyIPAddress(canonical); err == nil {
-			return nil, nil, exactDNSError(name)
+			return nil, exactDNSError(name)
 		}
 		if !slices.Contains(names, canonical) {
 			names = append(names, canonical)
 		}
 	}
-	return names, nonASCII, nil
+	return names, nil
 }
 
 func exactDNSError(name string) error {

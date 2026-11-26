@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"strings"
 )
 
@@ -15,7 +14,7 @@ func validateSecurity(p *parser, c *Config, in *pending) {
 	pairs, malformed := 0, false
 	if in.tailscaleEnabled {
 		for _, t := range in.tailscaleTargets {
-			if _, _, err := tailscaleTarget(t); err == nil || errors.Is(err, errNonASCIIHost) {
+			if _, _, err := tailscaleTarget(t); err == nil {
 				pairs++
 			} else {
 				malformed = true
@@ -27,7 +26,7 @@ func validateSecurity(p *parser, c *Config, in *pending) {
 		return
 	}
 	for _, t := range in.smbTargets {
-		if _, err := smbTarget(t); err != nil && !errors.Is(err, errNonASCIIHost) {
+		if _, err := smbTarget(t); err != nil {
 			p.fail(configError("SMB_ALLOWED_TARGETS", "SECURITY ERROR: SMB_ALLOWED_TARGETS must contain exact hostnames or IP addresses without ports, paths, or wildcards"))
 			return
 		}

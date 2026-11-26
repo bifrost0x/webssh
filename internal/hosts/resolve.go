@@ -128,9 +128,6 @@ func hopOf(r *record) (client.Hop, error) {
 
 func address(r *record) (string, int, error) {
 	host := r.text("host")
-	if NeedsIDNA(host) {
-		return "", 0, errHostIDNA
-	}
 	if !validHost(host) {
 		return "", 0, invalid("Invalid host format")
 	}

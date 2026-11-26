@@ -193,13 +193,6 @@ func lookupMap(env map[string]string) LookupFunc {
 // compareEnv checks one environment against the Python answer.
 func compareEnv(t *testing.T, env map[string]string, py pythonAnswer) bool {
 	t.Helper()
-	// Python canonicalizes non-ASCII host names with IDNA 2003; Go
-	// ignores such entries (errNonASCIIHost), a documented difference.
-	for _, name := range []string{"SOCKS_REMOTE_DNS_ALLOWLIST", "SMB_ALLOWED_TARGETS", "TAILSCALE_SSH_ALLOWED_TARGETS"} {
-		if !isASCII(env[name]) {
-			return true
-		}
-	}
 	c, warns, view, err := load(lookupMap(env))
 	production := pyLower(pyStrip(env["DEPLOYMENT_PROFILE"])) == "production"
 	fail := func(format string, args ...any) bool {

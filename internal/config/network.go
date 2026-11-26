@@ -27,12 +27,9 @@ func loadNetwork(p *parser, c *Config, in *pending) {
 	n.BlockInternalSSH = p.flag("BLOCK_INTERNAL_SSH", "BLOCK_INTERNAL_SSH", "false")
 	n.ProxyJumpRemoteDNS = p.csvList("PROXY_JUMP_REMOTE_DNS_ALLOWLIST", "PROXY_JUMP_REMOTE_DNS_ALLOWLIST")
 	if !p.failed() {
-		names, nonASCII, err := remoteDNSAllowlist(p.raw("SOCKS_REMOTE_DNS_ALLOWLIST", ""), "SOCKS_REMOTE_DNS_ALLOWLIST")
+		names, err := remoteDNSAllowlist(p.raw("SOCKS_REMOTE_DNS_ALLOWLIST", ""), "SOCKS_REMOTE_DNS_ALLOWLIST")
 		if err != nil {
 			p.fail(err)
-		}
-		for _, name := range nonASCII {
-			p.warn(WarnNoEffect, "SOCKS_REMOTE_DNS_ALLOWLIST", "the entry %q is ignored: this preview supports only ASCII host names here, so the SOCKS proxy does not resolve it", name)
 		}
 		n.SOCKSRemoteDNS = names
 		p.record("SOCKS_REMOTE_DNS_ALLOWLIST", listView(names))
