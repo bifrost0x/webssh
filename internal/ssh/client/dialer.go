@@ -109,7 +109,7 @@ func (d *Dialer) Dial(ctx context.Context, t Target, ix Interaction) (*Conn, err
 		}
 		chain = append(chain, client)
 	}
-	return newConn(chain, cfg.Keepalive), nil
+	return newConn(chain, cfg.Keepalive, cfg.HandshakeTimeout), nil
 }
 
 // prepare validates t, canonicalizes every host, asks the network policy

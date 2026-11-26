@@ -43,21 +43,33 @@ func (c *Conn) CommandShell(ctx context.Context, command string, rows, cols int)
 
 // Exec runs command on its own channel without a PTY and returns its exit
 // status. stdin, stdout and stderr may be nil; stdin must reach EOF, the
-// writers must not block. The end of ctx closes the channel. Exec does not
-// bound time or output: internal/ssh/remotecmd does.
+// writers must not block. Opening the channel and starting the command
+// are bounded by the handshake timeout; a peer that stalls there, or the
+// end of ctx meanwhile, closes the whole connection. After the start the
+// end of ctx closes the channel only. Exec does not bound the run time or
+// output: internal/ssh/remotecmd does.
 func (c *Conn) Exec(ctx context.Context, command string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
 	if err := checkCommand(command); err != nil {
 		return -1, err
 	}
+	gctx, disarm := c.guard(ctx)
 	s, err := c.client.NewSession()
 	if err != nil {
-		return -1, fail(ctx, RoleTarget, false, err)
+		return -1, setupFail(ctx, gctx, disarm(), err)
 	}
 	defer func() { _ = s.Close() }()
+	s.Stdin, s.Stdout, s.Stderr = stdin, stdout, stderr
+	if err := s.Start(command); err != nil {
+		return -1, setupFail(ctx, gctx, disarm(), err)
+	}
+	if disarm() {
+		return -1, setupFail(ctx, gctx, true, nil)
+	}
+	// Running is bounded by ctx (internal/ssh/remotecmd); its end closes
+	// the channel only, so the connection stays usable for a fallback.
 	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
 	defer stop()
-	s.Stdin, s.Stdout, s.Stderr = stdin, stdout, stderr
-	err = s.Run(command)
+	err = s.Wait()
 	if ctx.Err() != nil {
 		return -1, fail(ctx, RoleTarget, false, ctx.Err())
 	}

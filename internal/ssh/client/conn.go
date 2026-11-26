@@ -19,13 +19,15 @@ import (
 type Conn struct {
 	client *ssh.Client
 	chain  []*ssh.Client
-	once   sync.Once
-	done   chan struct{}
-	wg     sync.WaitGroup
+	// setup bounds opening a channel and its requests (HandshakeTimeout).
+	setup time.Duration
+	once  sync.Once
+	done  chan struct{}
+	wg    sync.WaitGroup
 }
 
-func newConn(chain []*ssh.Client, keepalive time.Duration) *Conn {
-	c := &Conn{client: chain[len(chain)-1], chain: chain, done: make(chan struct{})}
+func newConn(chain []*ssh.Client, keepalive, setup time.Duration) *Conn {
+	c := &Conn{client: chain[len(chain)-1], chain: chain, setup: setup, done: make(chan struct{})}
 	if keepalive > 0 {
 		for _, client := range chain {
 			c.wg.Go(func() { c.keepalive(client, keepalive) })
@@ -52,6 +54,39 @@ func (c *Conn) Close() error {
 
 // Done is closed when Close was called.
 func (c *Conn) Done() <-chan struct{} { return c.done }
+
+// guard closes the whole connection when ctx ends or the setup budget runs
+// out before disarm is called. x/crypto/ssh waits for the answer to a
+// channel open or a channel request without a context, so a peer that
+// accepts the login and answers keepalives but never confirms a channel
+// would hold the caller, and its quota slot, forever. Closing the
+// transport is the only way to end that wait. The connection belongs to
+// one terminal session, so closing it affects no one else.
+//
+// disarm reports whether the guard fired; its context tells why.
+func (c *Conn) guard(ctx context.Context) (gctx context.Context, disarm func() (fired bool)) {
+	budget := c.setup
+	if budget <= 0 {
+		budget = DefaultHandshakeTimeout
+	}
+	gctx, cancel := context.WithTimeout(ctx, budget)
+	stop := context.AfterFunc(gctx, func() { _ = c.Close() })
+	return gctx, func() bool {
+		fired := !stop()
+		cancel()
+		return fired
+	}
+}
+
+// setupFail classifies a failed channel setup. A fired guard is reported
+// as cancelled or timed out, not as the transport error it caused; gctx
+// keeps the reason it ended with.
+func setupFail(ctx, gctx context.Context, fired bool, err error) error {
+	if fired {
+		return fail(gctx, RoleTarget, false, gctx.Err())
+	}
+	return fail(ctx, RoleTarget, false, err)
+}
 
 // keepalive sends a request every interval and closes the chain when the
 // peer does not answer within one interval. paramiko sent keepalives
@@ -119,15 +154,15 @@ func (c *Conn) openPTY(ctx context.Context, rows, cols int, command string) (*sh
 	if rows < 1 || cols < 1 || rows > maxPTYSize || cols > maxPTYSize {
 		return nil, fault.New(fault.InvalidValue, "The terminal size is out of range.")
 	}
+	gctx, disarm := c.guard(ctx)
 	s, err := c.client.NewSession()
 	if err != nil {
-		return nil, fail(ctx, RoleTarget, false, err)
+		return nil, setupFail(ctx, gctx, disarm(), err)
 	}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
-	defer stop()
 	failWith := func(err error) (*shell, error) {
+		fired := disarm()
 		_ = s.Close()
-		return nil, fail(ctx, RoleTarget, false, err)
+		return nil, setupFail(ctx, gctx, fired, err)
 	}
 	stdin, err := s.StdinPipe()
 	if err != nil {
@@ -149,8 +184,9 @@ func (c *Conn) openPTY(ctx context.Context, rows, cols int, command string) (*sh
 	if err != nil {
 		return failWith(err)
 	}
-	if ctx.Err() != nil {
-		return failWith(ctx.Err())
+	if disarm() {
+		_ = s.Close()
+		return nil, setupFail(ctx, gctx, true, nil)
 	}
 	return &shell{session: s, stdin: stdin, stdout: stdout}, nil
 }
