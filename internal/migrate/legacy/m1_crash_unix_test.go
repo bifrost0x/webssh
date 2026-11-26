@@ -22,7 +22,7 @@ func TestM1CrashHelper(t *testing.T) {
 		t.Skip("helper process for the M1 crash test")
 	}
 	entity, dir, _ := strings.Cut(spec, "|")
-	m := M1{Passkeys: testPasskeys{}, Persistent: &testPersistent{}}
+	m := M1{Persistent: &testPersistent{}}
 	m.wrap = func(s Step) Step {
 		return &failingStep{Step: s, target: entity, crash: func() { _ = syscall.Kill(os.Getpid(), syscall.SIGKILL) }}
 	}
@@ -51,7 +51,7 @@ func TestM1CrashInEveryStep(t *testing.T) {
 				t.Fatalf("helper ended without SIGKILL: %v\n%s", err, out)
 			}
 			assertUntouched(t, dir, before)
-			o := m1Options(t, dir, M1{Passkeys: testPasskeys{}, Persistent: &testPersistent{}})
+			o := m1Options(t, dir, M1{Persistent: &testPersistent{}})
 			if ev := evaluateOnly(t, o); ev.state != S1 {
 				t.Fatalf("state after a crash in %s: %s", entity, ev.state)
 			}

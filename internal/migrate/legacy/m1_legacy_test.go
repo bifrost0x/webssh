@@ -50,7 +50,7 @@ func TestM1RealLegacyReleases(t *testing.T) {
 			t.Parallel()
 			values := fx.Datadirs[archive].Values
 			dir := extractLegacy(t, archive)
-			m := migrateM1(t, dir, fx.SecretKey.Value, M1{Passkeys: testPasskeys{}, Persistent: &testPersistent{}})
+			m := migrateM1(t, dir, fx.SecretKey.Value, M1{Persistent: &testPersistent{}})
 			provider := testProvider(t, m.db)
 			var owner int64
 			for name, u := range values.Users {

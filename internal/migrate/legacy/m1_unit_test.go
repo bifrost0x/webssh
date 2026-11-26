@@ -184,7 +184,7 @@ func TestDBTime(t *testing.T) {
 // without the optional stores.
 func TestRegisterM1CoversEverything(t *testing.T) {
 	t.Parallel()
-	for _, m := range []M1{{}, {Passkeys: testPasskeys{}, Persistent: &testPersistent{}}} {
+	for _, m := range []M1{{}, {Persistent: &testPersistent{}}} {
 		r := m1Registry(t, m)
 		if u := r.Uncovered(); len(u) != 0 {
 			t.Fatalf("uncovered %v", u)

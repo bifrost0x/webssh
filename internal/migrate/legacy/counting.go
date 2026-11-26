@@ -10,7 +10,7 @@ import (
 // countedTables are the tables the migration counts without importing
 // them. Only these names reach the statements below.
 var countedTables = []string{
-	"webauthn_credentials", "totp_enrollments", "authentication_sessions", "pending_authentications",
+	"totp_enrollments", "authentication_sessions", "pending_authentications",
 	"step_up_grants", "step_up_intents", "factor_bootstrap_tokens", "github_oauth_states", "oidc_login_states",
 	"webauthn_challenges", "socket_sessions", "automation_schedules", "oidc_identities", "ldap_identities",
 	"github_identities", "github_auth_configuration",

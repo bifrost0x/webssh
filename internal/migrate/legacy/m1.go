@@ -9,6 +9,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/auth"
 	"github.com/bifrost0x/webssh/internal/auth/local"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
+	"github.com/bifrost0x/webssh/internal/auth/webauthn"
 	"github.com/bifrost0x/webssh/internal/hostops"
 	"github.com/bifrost0x/webssh/internal/hosts"
 	"github.com/bifrost0x/webssh/internal/keyring"
@@ -31,9 +32,6 @@ type M1 struct {
 	// BackupTempDir is BACKUP_TEMP_DIR, to count the backup operations
 	// left in place (E39); empty counts none.
 	BackupTempDir string
-	// Passkeys stores migrated passkeys (internal/auth/webauthn). Without
-	// it the passkeys stay in place and are pending (E10).
-	Passkeys PasskeyStore
 	// Persistent stores the persistent tmux sessions (internal/terminal).
 	// Without it they stay in place and are pending (A01).
 	Persistent PersistentSessionStore
@@ -50,7 +48,7 @@ func RegisterM1(r *Registry, m M1) error {
 	if m.HostLimits == (hosts.Limits{}) {
 		m.HostLimits = hosts.DefaultLimits
 	}
-	r.Schemas(accounts.Schema(), local.Schema(), auth.Schema(), totp.Schema(), operations.Schema(), settings.Schema(),
+	r.Schemas(accounts.Schema(), local.Schema(), auth.Schema(), totp.Schema(), webauthn.Schema(), operations.Schema(), settings.Schema(),
 		vault.Schema(), hosts.Schema(), hostops.Schema(), hostkey.Schema())
 	add := func(g Group, newStep func() Step) error {
 		if m.wrap == nil {
@@ -68,6 +66,7 @@ func RegisterM1(r *Registry, m M1) error {
 		{GroupAccounts, func() Step { return &quarantineStep{} }},
 		{GroupFactors, func() Step { return &featureGatesStep{} }},
 		{GroupFactors, func() Step { return &totpStep{} }},
+		{GroupFactors, func() Step { return &passkeysStep{} }},
 		{GroupFactors, func() Step { return &recoveryCodesStep{} }},
 		{GroupFactors, func() Step { return &transientStep{} }},
 		{GroupFactors, func() Step { return &epochStep{} }},
@@ -104,12 +103,6 @@ func RegisterM1(r *Registry, m M1) error {
 		errs = append(errs, add(s.group, s.new))
 	}
 	errs = append(errs, add(GroupInventory, func() Step { return &singleUserStores{} }))
-	if m.Passkeys != nil {
-		r.Schemas(m.Passkeys.Schema())
-		errs = append(errs, add(GroupFactors, func() Step { return &passkeysStep{store: m.Passkeys} }))
-	} else {
-		errs = append(errs, r.KeepInPlace("E10", "D1", countPasskeys))
-	}
 	if m.Persistent != nil {
 		r.Schemas(m.Persistent.Schema())
 		errs = append(errs, add(GroupTerminal, func() Step { return &persistentSessionsStep{store: m.Persistent} }))

@@ -34,7 +34,7 @@ func (s *failingStep) Write(ctx context.Context, tx *store.Tx, seal Sealer) erro
 
 func m1Entities(t *testing.T) []string {
 	t.Helper()
-	r := m1Registry(t, M1{Passkeys: testPasskeys{}, Persistent: &testPersistent{}})
+	r := m1Registry(t, M1{Persistent: &testPersistent{}})
 	var out []string
 	for _, s := range r.ordered() {
 		out = append(out, s.entity)
@@ -52,7 +52,7 @@ func TestM1FailureInEveryStepLeavesNothing(t *testing.T) {
 			t.Parallel()
 			dir := copyGolden(t)
 			before := legacySnapshot(t, dir)
-			m := M1{Passkeys: testPasskeys{}, Persistent: &testPersistent{}}
+			m := M1{Persistent: &testPersistent{}}
 			m.wrap = func(s Step) Step { return &failingStep{Step: s, target: entity} }
 			_, err := startClosed(m1Options(t, dir, m))
 			se := assertStop(t, err, entity)
@@ -61,7 +61,7 @@ func TestM1FailureInEveryStepLeavesNothing(t *testing.T) {
 			}
 			assertUntouched(t, dir, before)
 			assertNoGoDatabase(t, dir)
-			st, err := startClosed(m1Options(t, dir, M1{Passkeys: testPasskeys{}, Persistent: &testPersistent{}}))
+			st, err := startClosed(m1Options(t, dir, M1{Persistent: &testPersistent{}}))
 			if err != nil || !st.Migrated {
 				t.Fatalf("next start: %+v, %v", st, err)
 			}
