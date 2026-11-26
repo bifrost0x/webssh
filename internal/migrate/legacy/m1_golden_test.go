@@ -305,7 +305,8 @@ func TestM1GoldenKeysAndHostTrust(t *testing.T) {
 			t.Errorf("%s: cannot sign: %v", k.Label, err)
 		}
 	}
-	if w := m.entity(t, "E23").Warnings; len(w) != 1 || w[0].Code != "plaintext_key_sealed" {
+	// One warning per sealed key; the audit event reports its count (R2 I-3).
+	if w := m.entity(t, "E23").Warnings; len(w) != 1 || w[0].Code != "plaintext_key_sealed" || w[0].Count != 1 {
 		t.Errorf("E23 warnings %+v", w)
 	}
 	trust := hostkey.New(m.db, nil)

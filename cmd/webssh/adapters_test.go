@@ -66,10 +66,10 @@ func TestAuditMigrationNamesSealedPlaintextKeys(t *testing.T) {
 	auditMigration(&w, nil)
 	auditMigration(&w, &legacy.Startup{})
 	st := &legacy.Startup{Migrated: true, Report: &legacy.Report{Entities: []legacy.StepReport{
-		{Entity: "E23", Warnings: []legacy.Warning{{Code: plaintextKeySealed, UserID: 3, Count: 2}, {Code: "other"}}},
+		{Entity: "E23", Warnings: []legacy.Warning{{Code: plaintextKeySealed, UserID: 3, Count: 1}, {Code: "other"}}},
 	}}}
 	auditMigration(&w, st)
-	if len(w.events) != 1 || w.events[0][0] != "MIGRATION_PLAINTEXT_KEY_SEALED" || w.events[0][4] != int64(3) {
+	if len(w.events) != 1 || w.events[0][0] != "MIGRATION_PLAINTEXT_KEY_SEALED" || w.events[0][4] != int64(3) || w.events[0][6] != 1 {
 		t.Fatalf("events %v", w.events)
 	}
 }

@@ -168,7 +168,7 @@ func (s *sshKeysStep) Report() StepReport {
 			}
 			if k.PlaintextAtRest {
 				plaintext++
-				r.Warnings = append(r.Warnings, Warning{Code: "plaintext_key_sealed", UserID: u.id,
+				r.Warnings = append(r.Warnings, Warning{Code: "plaintext_key_sealed", UserID: u.id, Count: 1,
 					Message: "the key " + k.ID + " was stored unencrypted by an old release; it is now sealed, and the unencrypted file is removed by webssh legacy purge"})
 			}
 			if k.RecoveredFrom != "" {
