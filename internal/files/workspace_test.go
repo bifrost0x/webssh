@@ -206,9 +206,6 @@ func TestPreviewDecodesLikeTheEditor(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func ptr[T any](v T) *T { return new(v) }
-
 func TestImagePreviewBounded(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, files.Options{MaxEditorBytes: 1 << 20})
