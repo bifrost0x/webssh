@@ -14,6 +14,7 @@ import (
 	"encoding/binary"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"maps"
 	"math/big"
 	"sync"
 	"testing"
@@ -197,9 +198,7 @@ func (a *authenticator) authData(flags byte, counter uint32, attested bool) []by
 func clientDataJSON(t testing.TB, typ string, challenge []byte, origin string, extra map[string]any) []byte {
 	t.Helper()
 	m := map[string]any{"type": typ, "challenge": encodeB64URL(challenge), "origin": origin, "crossOrigin": false}
-	for k, v := range extra {
-		m[k] = v
-	}
+	maps.Copy(m, extra)
 	b, err := json.Marshal(m, json.Deterministic(true))
 	if err != nil {
 		t.Fatal(err)

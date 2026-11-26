@@ -6,6 +6,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"maps"
 	"os"
 	"strings"
 	"testing"
@@ -215,9 +216,7 @@ func TestW3CTamperedAttestation(t *testing.T) {
 			sig[len(sig)-1] ^= 1
 			bad := att
 			bad.Stmt = cborMap{}
-			for k, val := range att.Stmt {
-				bad.Stmt[k] = val
-			}
+			maps.Copy(bad.Stmt, att.Stmt)
 			bad.Stmt["sig"] = sig
 			if verifyStatement(bad, ad, cdHash) == nil {
 				t.Fatal("tampered signature accepted")

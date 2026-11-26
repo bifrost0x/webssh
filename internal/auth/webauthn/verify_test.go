@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/bifrost0x/webssh/internal/fault"
 )
 
 var testRP = RelyingParty{ID: "localhost", Name: "WebSSH", Origin: "http://localhost:4173"}
@@ -272,6 +274,18 @@ func TestParseAssertionRefusals(t *testing.T) {
 	} {
 		if _, err := ParseAssertion(jsontext.Value(raw)); err == nil {
 			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestReason(t *testing.T) {
+	t.Parallel()
+	for err, want := range map[error]string{
+		errCounter: "counter", refused(errSignature): "signature", fault.Wrap(fault.InvalidRequest, errClientData, "x"): "client_data",
+		errLimit: "conflict", errors.New("disk"): "other", refused(errNotFound): "unknown_credential",
+	} {
+		if got := Reason(err); got != want {
+			t.Errorf("%v: %q, want %q", err, got, want)
 		}
 	}
 }
