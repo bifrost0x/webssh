@@ -23,6 +23,7 @@ does not replace their copyright, permission or attribution notices.
 | Simple Icons service logos (CC0-1.0) | `static/icons/services/LICENSE.md`, upstream and per-logo sources in `static/icons/services/provenance.json` |
 | Terminal fonts | `static/vendor/terminal-fonts/licenses/` and its `README.md` |
 | Website code graph (vis-network) | `site/vendor/vis-network-9.1.6/LICENSE-APACHE-2.0`, `LICENSE-MIT` |
+| go-smb2 (SMB client of the Go backend, modified fork, BSD-2-Clause) | `third_party/go-smb2/LICENSE`, repeated in `THIRD-PARTY-NOTICES`; changes in `third_party/README.md` |
 
 The platform logos come from [Simple Icons](https://github.com/simple-icons/simple-icons),
 which releases its icon set under CC0-1.0. Some marks carry the license of
