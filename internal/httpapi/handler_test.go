@@ -138,6 +138,16 @@ func TestAccessLevels(t *testing.T) {
 	}
 }
 
+// A recovery session that reaches another API gets the Python code
+// recovery_required.
+func TestRecoverySessionGetsRecoveryRequired(t *testing.T) {
+	e := newEdge(t)
+	w := e.do(req{target: "/api/account/sessions", token: "tok-repair"})
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"code":"recovery_required"`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
+
 // Fix: an API request without a valid session gets 401 JSON, not the
 // sign-in page (account-controls.spec.js:29 expects 302 from Python).
 func TestRevokedSessionGets401AndLosesCookie(t *testing.T) {

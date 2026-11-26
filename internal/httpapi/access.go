@@ -13,7 +13,7 @@ var (
 	errNotFound     = fault.New(fault.NotFound, "")
 	errSignIn       = fault.New(fault.AuthenticationNeeded, "")
 	errForbidden    = fault.New(fault.Forbidden, "")
-	errRecoveryOnly = fault.New(fault.Forbidden, "A replacement factor or explicit MFA disable is required")
+	errRecoveryOnly = fault.New(fault.RecoveryRequired, "A replacement factor or explicit MFA disable is required") // Python text
 )
 
 // lookupSession resolves the session cookie. ok is false when the request was

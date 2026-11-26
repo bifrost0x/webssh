@@ -140,6 +140,7 @@ func DetailsOf(err error) map[string]any
 | `precondition_failed` | 412 | The data has changed. Reload and try again. |
 | `quota_exceeded` | 413 | Connection storage quota exceeded. |
 | `rate_limited` | 429 | Too many attempts. Try again later. |
+| `recovery_required` | 403 | Add a replacement factor or turn off MFA to continue. |
 | `socks_auth_required` | 502 | The SOCKS5 proxy requires a username and password. |
 | `socks_connection_refused` | 502 | The target refused the connection through the SOCKS5 proxy. |
 | `socks_host_unreachable` | 502 | The SOCKS5 proxy cannot reach the target host. |

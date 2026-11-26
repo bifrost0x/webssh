@@ -15,6 +15,7 @@ const (
 	TooLarge              Code = "too_large"               // body, payload or field exceeds its limit
 	AuthenticationNeeded  Code = "authentication_required" // no valid browser session
 	Forbidden             Code = "forbidden"               // authenticated, but not allowed
+	RecoveryRequired      Code = "recovery_required"       // a recovery session may only repair second factors
 	CSRFExpired           Code = "csrf_expired"            // CSRF token missing, wrong or from another session
 	StepUpRequired        Code = "step_up_required"        // the action needs a fresh step-up grant
 	StepUpFailed          Code = "step_up_failed"          // the step-up proof was wrong
@@ -128,6 +129,7 @@ var catalog = map[Code]entry{
 	TooLarge:              {statusContentTooLarge, "The request is too large."},
 	AuthenticationNeeded:  {statusUnauthorized, "Sign in to continue."},
 	Forbidden:             {statusForbidden, "You are not allowed to do this."},
+	RecoveryRequired:      {statusForbidden, "Add a replacement factor or turn off MFA to continue."},
 	CSRFExpired:           {statusBadRequest, "The page has expired. Reload it and try again."},
 	StepUpRequired:        {statusForbidden, "Confirm your identity to continue."},
 	StepUpFailed:          {statusForbidden, "The confirmation failed."},
