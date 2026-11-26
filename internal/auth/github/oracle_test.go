@@ -210,11 +210,22 @@ func TestMatchesPython(t *testing.T) {
 		for i, a := range askPython(t, reqs) {
 			cases = append(cases, probeCase{Request: reqs[i], Answer: a})
 		}
-		raw, err := json.MarshalIndent(cases, "", " ")
-		if err != nil {
-			t.Fatal(err)
+		// One case per line keeps the file reviewable in a diff.
+		var b strings.Builder
+		b.WriteString("[\n")
+		for i, c := range cases {
+			raw, err := json.Marshal(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b.Write(raw)
+			if i < len(cases)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
 		}
-		if err := os.WriteFile(vectorsFile, append(raw, '\n'), 0o600); err != nil {
+		b.WriteString("]\n")
+		if err := os.WriteFile(vectorsFile, []byte(b.String()), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	} else {
