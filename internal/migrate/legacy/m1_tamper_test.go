@@ -106,7 +106,9 @@ func TestM1VerificationDetectsTampering(t *testing.T) {
 		{"TOTP replay step", "E08", "E08", execTx(`UPDATE totp_authenticators SET last_accepted_step = last_accepted_step - 1`)},
 		{"TOTP secret", "E08", "E08", reseal("totp_authenticators", "sealed_secret", "id", "id = 1", keyring.TOTP,
 			func(id string) string { return id + "/6" },
-			func(context.Context, *store.Tx, Opener, []byte) ([]byte, error) { return []byte("JBSWY3DPEHPK3PXP"), nil })},
+			func(context.Context, *store.Tx, Opener, []byte) ([]byte, error) {
+				return []byte("JBSWY3DPEHPK3PXP"), nil
+			})},
 		{"passkey counter", "E10", "E10", execTx(`UPDATE webauthn_credentials SET sign_count = sign_count + 1 WHERE id = (SELECT min(id) FROM webauthn_credentials)`)},
 		{"recovery code", "E11", "E11", execTx(`UPDATE auth_recovery_codes SET hash = zeroblob(32) WHERE id = (SELECT min(id) FROM auth_recovery_codes)`)},
 		{"application setting", "E16", "E16", execTx(`UPDATE settings_app SET value = '"tampered"' WHERE key = (SELECT min(key) FROM settings_app WHERE source = 'migrated')`)},
@@ -162,4 +164,3 @@ func TestM1VerificationDetectsTamperedSession(t *testing.T) {
 		t.Fatalf("code %s", se.Code)
 	}
 }
-
