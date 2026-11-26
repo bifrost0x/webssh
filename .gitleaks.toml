@@ -28,6 +28,27 @@ condition = "AND"
 paths = ['''(^|/)site/vendor/vis-network-9\.1\.6/vis-network\.min\.js$''']
 regexes = ['''^_getDistanceToBezierEdge2$''']
 
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)internal/migrate/legacy/sshkeys\.go$''']
+regexes = ['''^0123456789abcdef$''']
+
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)internal/migrate/legacy/safety_test\.go$''']
+regexes = ['''^9971eb1e-92db-4b73-93dd-b5c5d5d8387c\.pem$''']
+
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)internal/migrate/legacy/golden_legacy_test\.go$''']
+regexes = ['''^ed25519_pkcs8$''']
+
+# Public test vector of the Fernet specification, not a credential.
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)internal/fernet/fernet_test\.go$''']
+regexes = ['''^cw_0x689RpI-jtRR7oE8h_eQsKImvJapLeSbXpwF4e4=$''']
+
 # The lab passes per-run secrets generated into its ignored runtime directory.
 [[rules]]
 id = "curl-auth-user"
