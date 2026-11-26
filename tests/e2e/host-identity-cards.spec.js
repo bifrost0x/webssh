@@ -283,3 +283,32 @@ test('role tints keep the card text, pill and tiles readable in every theme', as
         }
     }
 });
+
+test('the overview search finds hosts by role, platform and service', async ({page}) => {
+    await openOverview(page);
+    await seed(page, [PROXMOX, PAPERLESS, {}]);
+    const search = page.locator('#overviewSearch');
+    const cards = page.locator('#overviewHostList .od-host');
+    await expect(cards).toHaveCount(3);
+
+    await search.fill('paperless');
+    await expect(cards).toHaveCount(1);
+    await expect(card(page, 1)).toBeVisible();
+    await search.fill('hypervisor');
+    await expect(cards).toHaveCount(1);
+    await expect(card(page, 0)).toBeVisible();
+    await search.fill('ubuntu');
+    await expect(cards).toHaveCount(1);
+    await expect(card(page, 1)).toBeVisible();
+
+    await page.evaluate(() => window.i18n.setLanguage('de'));
+    await search.fill('dokumente');
+    await expect(cards).toHaveCount(1);
+    await expect(card(page, 1)).toBeVisible();
+    await page.evaluate(() => window.i18n.setLanguage('en'));
+
+    await search.fill('');
+    await expect(cards).toHaveCount(3);
+    expect(await sshAttempts(page)).toEqual([]);
+    await assertNoExternalRequests(page);
+});

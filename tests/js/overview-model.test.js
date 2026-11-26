@@ -55,6 +55,34 @@ test('filter also matches role, platform and service labels', () => {
     assert.equal(Model.filter(hosts, '').length, 4);
 });
 
+test('filter uses the translated role label and honours a manual server role', () => {
+    const hosts = Model.hosts({profiles: [
+        {id: 'doc', name: 'a', host: '10.2.0.1', detected_services: ['paperless']},
+        {id: 'man', name: 'b', host: '10.2.0.2', role_override: 'server'},
+    ]});
+    globalThis.i18n = {t: key => (key === 'role.docs' ? 'Dokumente' : key)};
+    try {
+        assert.deepEqual(Model.filter(hosts, 'dokumente').map(host => host.id), ['doc']);
+        assert.deepEqual(Model.filter(hosts, 'server').map(host => host.id), ['man']);
+    } finally {
+        delete globalThis.i18n;
+    }
+});
+
+test('filter keeps the plain matching when the identity modules are absent', () => {
+    const hosts = Model.hosts({profiles: [{id: 'doc', name: 'alpha', host: '10.2.0.1', detected_services: ['paperless']}]});
+    const {HostIdentity, HostPlatform} = globalThis;
+    delete globalThis.HostIdentity;
+    delete globalThis.HostPlatform;
+    try {
+        assert.deepEqual(Model.filter(hosts, 'paperless'), []);
+        assert.deepEqual(Model.filter(hosts, 'alpha').map(host => host.id), ['doc']);
+    } finally {
+        globalThis.HostIdentity = HostIdentity;
+        globalThis.HostPlatform = HostPlatform;
+    }
+});
+
 test('automation bins count fourteen local days and ignore older runs', () => {
     const now = new Date(2026, 10, 7, 12).getTime();
     const runs = [
