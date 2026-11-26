@@ -29,6 +29,7 @@ const DYNAMIC_PREFIXES = {
     'overviewWorkspace.': 'overview-workspace.js tw()',
     'palette.': 'app.js `palette.${kind}s`',
     'platform.': 'host-platform.js `platform.${source}`',
+    'role.': 'host-identity.js role ids, looked up as `role.${id}`',
     'serverOps.': 'server-operations.js `serverOps.${code}`',
     'sessionCommands.search': 'session-command-launcher.js `sessionCommands.search${section}`',
     'sshErrors.': 'ssh-error-ui.js `sshErrors.${key}`',

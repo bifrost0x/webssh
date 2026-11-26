@@ -155,7 +155,8 @@ JS_CATALOG_FIXTURE = Path(__file__).parent / 'js' / 'fixtures' / 'host-catalog.j
 
 
 def _js_catalog():
-    return json.dumps({'platforms': sorted(c.PLATFORMS), 'services': sorted(c.SERVICES)}, indent=2) + '\n'
+    return json.dumps({'platforms': sorted(c.PLATFORMS), 'services': sorted(c.SERVICES), 'roles': sorted(c.ROLES)},
+                      indent=2) + '\n'
 
 
 def test_js_catalog_fixture_is_current():

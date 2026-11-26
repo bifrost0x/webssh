@@ -1,0 +1,114 @@
+(function(root, factory) {
+    const platform = typeof module === 'object' && module.exports
+        ? require('./host-platform.js')
+        : root.HostPlatform;
+    const api = factory(platform);
+    if (typeof module === 'object' && module.exports) module.exports = api;
+    if (root) root.HostIdentity = api;
+})(typeof window !== 'undefined' ? window : globalThis, function(HostPlatform) {
+    'use strict';
+    const ROLES = Object.freeze(['hypervisor', 'backup', 'storage', 'container', 'docs', 'photos', 'media', 'cloud',
+        'smarthome', 'network', 'monitoring', 'dev', 'passwords', 'database', 'web', 'workstation', 'server']);
+    const ROLE_GLYPHS = Object.freeze({
+        hypervisor: 'layers', backup: 'backup', storage: 'storage', container: 'view_in_ar', docs: 'description',
+        photos: 'photo_library', media: 'movie', cloud: 'cloud', smarthome: 'home', network: 'router',
+        monitoring: 'insights', dev: 'code', passwords: 'vpn_key', database: 'table_chart', web: 'language',
+        workstation: 'computer', server: 'dns',
+    });
+    const DATABASE = ['mariadb', 'postgresql', 'redis', 'mongodb', 'influxdb'];
+    const WEB = ['nginx', 'apache', 'caddy', 'traefik', 'nginxproxymanager', 'haproxy'];
+    const CONTAINER = ['docker', 'podman', 'portainer', 'k3s'];
+    const rule = (role, platforms, services, only = null) => Object.freeze({
+        role, platforms: Object.freeze(platforms), services: Object.freeze(services), only: only && Object.freeze(only),
+    });
+    // The first matching rule names the role. `only` rules describe hosts that run
+    // nothing but infrastructure: one more application and the host is more than that.
+    // NetBird, Headscale and Forgejo are not in the catalog; Forgejo reports as gitea.
+    const RULES = Object.freeze([
+        rule('hypervisor', ['proxmox'], []),
+        rule('backup', ['proxmoxbackup'], []),
+        rule('storage', ['truenas', 'unraid', 'synology', 'qnap'], []),
+        rule('photos', [], ['immich', 'photoprism']),
+        rule('docs', [], ['paperless']),
+        rule('cloud', [], ['nextcloud', 'owncloud', 'seafile']),
+        rule('media', [], ['jellyfin', 'plex', 'emby']),
+        rule('smarthome', ['homeassistant'], ['homeassistant']),
+        rule('network', ['opnsense', 'pfsense', 'openwrt', 'mikrotik', 'cisco', 'ubiquiti'],
+            ['wireguard', 'tailscale', 'pihole', 'adguard', 'openvpn']),
+        rule('monitoring', [], ['grafana', 'prometheus', 'uptimekuma', 'zabbix', 'netdata']),
+        rule('dev', [], ['gitea', 'gitlab']),
+        rule('passwords', [], ['vaultwarden']),
+        rule('database', [], DATABASE, [...DATABASE, ...WEB, ...CONTAINER]),
+        rule('web', [], WEB, [...WEB, ...CONTAINER]),
+        rule('container', [], CONTAINER, CONTAINER),
+    ]);
+    // Services that name a role, in rule order; shown before everything else.
+    const PRIORITY = Object.freeze(RULES.filter(item => !item.only).flatMap(item => item.services)
+        .filter((id, index, list) => list.indexOf(id) === index));
+    // Only a verified or chosen platform names a role; a greeting or name hint does not.
+    const TRUSTED_PLATFORM = new Set(['manual', 'detected', 'family']);
+    const VIRT = new Set(['bare-metal', 'vm', 'lxc', 'container', 'wsl']);
+    const VERSION = /^[0-9][0-9A-Za-z._-]{0,15}$/;
+    const STALE_SECONDS = 7 * 86400;
+
+    function trustedPlatform(profile) {
+        const resolved = HostPlatform.resolve(profile);
+        return TRUSTED_PLATFORM.has(resolved.source) && resolved.id !== 'server' ? resolved.id : null;
+    }
+    function derive(profile, services) {
+        const platform = trustedPlatform(profile);
+        for (const item of RULES) {
+            if (platform && item.platforms.includes(platform)) return {id: item.role, basis: platform};
+            const basis = item.services.find(id => services.includes(id));
+            if (!basis) continue;
+            if (item.only && !services.every(id => item.only.includes(id))) continue;
+            return {id: item.role, basis};
+        }
+        if (profile.detected_graphical === true) return {id: 'workstation', basis: null};
+        return null;
+    }
+    /** The host's role: a manual choice, else the first matching rule, else 'server'. */
+    function role(profile) {
+        const source = profile && typeof profile === 'object' ? profile : {};
+        if (ROLES.includes(source.role_override)) return {id: source.role_override, source: 'manual', basis: null};
+        const derived = derive(source, HostPlatform.services(source));
+        return derived ? {...derived, source: 'derived'} : {id: 'server', source: 'default', basis: null};
+    }
+    function stamp(value) {
+        return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+    }
+    function ordered(services, lead) {
+        const rank = id => (id === lead ? -1 : PRIORITY.includes(id) ? PRIORITY.indexOf(id) : PRIORITY.length);
+        return [...services].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+    }
+    /** Display facts of a host, each validated against the catalog or dropped. */
+    function facts(profile, now = Date.now() / 1000) {
+        const source = profile && typeof profile === 'object' ? profile : {};
+        const resolved = HostPlatform.resolve(source);
+        const translate = (key, fallback) => globalThis.i18n?.t(key) || fallback;
+        const label = resolved.id === 'server' ? translate('platform.server', 'Server') : HostPlatform.labels[resolved.id];
+        const services = HostPlatform.services(source);
+        const current = role(source);
+        const lead = current.source === 'manual'
+            ? RULES.find(item => item.role === current.id)?.services.find(id => services.includes(id))
+            : current.basis;
+        const guests = source.detected_guests;
+        const stamps = [stamp(source.platform_checked_at), stamp(source.services_checked_at)].filter(v => v !== null);
+        const checkedAt = stamps.length ? Math.max(...stamps) : null;
+        const version = source.detected_os_version;
+        return {
+            platform: {id: resolved.id, source: resolved.source, label},
+            version: typeof version === 'string' && VERSION.test(version) ? version : null,
+            virt: VIRT.has(source.detected_virt) ? source.detected_virt : null,
+            guests: Number.isInteger(guests) && guests >= 0 && guests <= 9999 ? guests : null,
+            containerAccess: source.detected_container_access === 'ok' || source.detected_container_access === 'denied'
+                ? source.detected_container_access : null,
+            services: ordered(services, lead),
+            checkedAt,
+            stale: checkedAt !== null && now - checkedAt > STALE_SECONDS,
+            state: source.detection_state === 'detected' || source.detection_state === 'unavailable'
+                ? source.detection_state : 'pending',
+        };
+    }
+    return {ROLES, ROLE_GLYPHS, RULES, PRIORITY, role, facts};
+});

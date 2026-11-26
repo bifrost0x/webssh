@@ -125,5 +125,24 @@
     "zabbix",
     "zerotier",
     "zigbee2mqtt"
+  ],
+  "roles": [
+    "backup",
+    "cloud",
+    "container",
+    "database",
+    "dev",
+    "docs",
+    "hypervisor",
+    "media",
+    "monitoring",
+    "network",
+    "passwords",
+    "photos",
+    "server",
+    "smarthome",
+    "storage",
+    "web",
+    "workstation"
   ]
 }
