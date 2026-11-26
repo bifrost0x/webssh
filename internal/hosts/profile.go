@@ -28,7 +28,7 @@ func profilePayload(req protocol.HostsProfileSave) payload {
 		"parameters_override": req.ParametersOverride, "use_tmux": req.UseTmux,
 		"herdr": req.Herdr, "use_herdr": req.UseHerdr,
 		"greeting_platform": req.GreetingPlatform, "favorite": req.Favorite,
-		"role_override": req.RoleOverride,
+		"role_override": req.RoleOverride, "legacy_algorithms": req.LegacyAlgorithms,
 	} {
 		if len(v) > 0 {
 			p[name] = v
@@ -133,7 +133,7 @@ func validateProfile(p payload) (draft, error) {
 	if p.has("use_tmux") && !isBool(p.get("use_tmux")) {
 		return draft{}, invalid("use_tmux must be a boolean")
 	}
-	for _, field := range []string{"herdr", "use_herdr"} {
+	for _, field := range []string{"herdr", "use_herdr", "legacy_algorithms"} {
 		if p.has(field) && !isBool(p.get(field)) {
 			return draft{}, invalid(field + " must be a boolean")
 		}
@@ -178,7 +178,7 @@ func finishProfile(d *draft, p payload) {
 	if string(p.get("favorite")) == "true" {
 		r.set("favorite", jsonTrue)
 	}
-	for _, field := range []string{"use_tmux", "herdr", "use_herdr"} {
+	for _, field := range []string{"use_tmux", "herdr", "use_herdr", "legacy_algorithms"} {
 		if p.has(field) {
 			r.set(field, p.get(field))
 		}

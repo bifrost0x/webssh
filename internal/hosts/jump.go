@@ -88,6 +88,9 @@ func (s *Service) SaveJumpHost(ctx context.Context, owner int64, req protocol.Ho
 			return nil, err
 		}
 	}
+	if len(req.LegacyAlgorithms) > 0 && !isBool(req.LegacyAlgorithms) {
+		return nil, invalid("legacy_algorithms must be a boolean")
+	}
 	var r record
 	r.set("id", jsonString(s.newID()))
 	r.set("name", jsonString(pyPrefix(pyStrip(name), 128)))
@@ -100,6 +103,9 @@ func (s *Service) SaveJumpHost(ctx context.Context, owner int64, req protocol.Ho
 		r.set("key_id", jsonString(keyID))
 	}
 	r.set("created_at", jsonString(isoNaive(s.now())))
+	if string(req.LegacyAlgorithms) == "true" {
+		r.set("legacy_algorithms", jsonTrue)
+	}
 	if err := checkBudgets(&r, nil, jumpBudgets, true); err != nil {
 		return nil, err
 	}

@@ -498,12 +498,12 @@ test. The result `p` is the success payload of the Python release without
 | Type | Request | Result `p` |
 |---|---|---|
 | `hosts.profile.list` | `Empty` | `{profiles: [Profile]}` |
-| `hosts.profile.save` | `Profile` (every field the profile form sends; the client drops `tailscale_authorized`) | `{profile: Profile}` |
+| `hosts.profile.save` | `Profile` (every field the profile form sends; the client drops `tailscale_authorized`; since M2 also `legacy_algorithms?`, the per-host opt-in of D-01) | `{profile: Profile}` |
 | `hosts.profile.delete` | `{profile_id}` | `{}` |
 | `hosts.profile.organize` | `{profile_id, group?, favorite?}` | `{profile: Profile}` |
 | `hosts.profile.move` | `{profile_id, target_group, target_index, expected_source_group, confirm_source_group_removal}` | `{requires_confirmation: false, organization: [{id, group, sort_order, updated_at?}]}` |
 | `hosts.jump.list` | `Empty` | `{jump_hosts: [JumpHost]}` |
-| `hosts.jump.save` | `{jump_host_id?, name, host, port, username, auth_type, key_id?}` | `{jump_host: JumpHost}` |
+| `hosts.jump.save` | `{jump_host_id?, name, host, port, username, auth_type, key_id?, legacy_algorithms?}` | `{jump_host: JumpHost}` |
 | `hosts.jump.delete` | `{jump_host_id}` | `{}` |
 | `hosts.socks.list` | `Empty` | `{socks_proxies: [SOCKSProxy]}` |
 | `hosts.socks.save` | `{socks_proxy_id?, name, host, port, username, auth_type, remote_dns}` | `{socks_proxy: SOCKSProxy}` |

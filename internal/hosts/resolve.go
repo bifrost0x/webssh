@@ -125,7 +125,8 @@ func hopOf(r *record) (client.Hop, error) {
 	if err != nil {
 		return client.Hop{}, err
 	}
-	hop := client.Hop{Host: host, Port: port, User: r.text("username")}
+	legacy, _ := r.get("legacy_algorithms")
+	hop := client.Hop{Host: host, Port: port, User: r.text("username"), Legacy: string(legacy) == "true"}
 	if r.text("auth_type") == "key" {
 		hop.Auth.KeyID = r.text("key_id")
 		if hop.Auth.KeyID == "" {

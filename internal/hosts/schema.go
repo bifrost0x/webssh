@@ -61,13 +61,20 @@ CREATE TABLE hosts_workspace_presets (
 	user_id INTEGER PRIMARY KEY CHECK (user_id > 0),
 	presets TEXT NOT NULL
 ) STRICT`,
+	}, {
+		// The per-host opt-in for the legacy SSH algorithms (D-01). The
+		// Python release has no such field: it offered them to every host.
+		Version: 2,
+		SQL: `ALTER TABLE hosts_profiles ADD COLUMN "legacy_algorithms" TEXT;
+ALTER TABLE hosts_jump_hosts ADD COLUMN "legacy_algorithms" TEXT`,
 	}}}
 }
 
 // Column sets of the record tables, in table order. The profile fields are
 // _PROFILE_FIELDS of app/profile_manager.py, the SOCKS fields
 // _SOCKS_PROXY_FIELDS of app/socks_proxy_manager.py, the jump-host fields
-// those add_jump_host writes.
+// those add_jump_host writes. legacy_algorithms is the only field of
+// this release that Python does not know.
 var (
 	profileFields = []string{
 		"id", "name", "host", "port", "username", "auth_type", "key_id",
@@ -79,9 +86,9 @@ var (
 		"detected_family", "detected_os_id", "detected_os_version",
 		"detected_virt", "detected_container_access", "detected_guests",
 		"detected_graphical", "detection_state", "platform_checked_at",
-		"role_override", "authenticated_greeting",
+		"role_override", "authenticated_greeting", "legacy_algorithms",
 	}
-	jumpFields  = []string{"id", "name", "host", "port", "username", "auth_type", "key_id", "created_at"}
+	jumpFields  = []string{"id", "name", "host", "port", "username", "auth_type", "key_id", "created_at", "legacy_algorithms"}
 	socksFields = []string{"id", "name", "host", "port", "username", "auth_type", "remote_dns", "created_at"}
 )
 
