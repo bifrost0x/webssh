@@ -40,13 +40,46 @@ func legacyPresence(dataDir string) (presence, error) {
 		return legacyNone, fmt.Errorf("legacy: inspect app.db: %w", err)
 	}
 	for _, name := range legacyIndicators {
-		if _, err := os.Lstat(filepath.Join(dataDir, name)); err == nil {
+		found, err := holdsData(filepath.Join(dataDir, name))
+		if err != nil {
+			return legacyNone, err
+		}
+		if found {
 			return legacyPartial, nil
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return legacyNone, fmt.Errorf("legacy: inspect %s: %w", name, err)
 		}
 	}
 	return legacyNone, nil
+}
+
+// holdsData reports whether path is anything but a missing path or a tree
+// of directories only. Empty directories are no legacy data: the
+// entrypoint and platform.PrepareDataDir create logs/ and keys/ on every
+// start. The walk does not follow links; a link counts as data.
+func holdsData(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("legacy: inspect %s: %w", path, err)
+	case !info.IsDir():
+		return true, nil
+	}
+	found := false
+	err = filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("legacy: inspect %s: %w", path, err)
+	}
+	return found, nil
 }
 
 // evaluation is the result of the state evaluation of section 5.1.
