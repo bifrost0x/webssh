@@ -11,8 +11,9 @@ it differs from the package map in `internal/architecture/packagemap_test.go`.
 Packages that do not exist yet are listed so that the structure is agreed
 before the code is written. The phase column names the build phase that
 creates the package (G0, B1 to B8 of the project plan; M1 for the preview
-milestone). The contracts between the packages built for M1 are in
-[m1-contracts.md](m1-contracts.md).
+milestone, M2 for the parity milestone). The contracts between the packages
+built for M1 are in [m1-contracts.md](m1-contracts.md), those of M2 in
+[m2-contracts.md](m2-contracts.md).
 
 Packages whose name ends in `test` hold test doubles. The architecture
 tests allow only test files to import them.
@@ -44,7 +45,7 @@ Existing installations are carried over once, automatically, by
 | Platforms: Windows service, systemd, data directory permissions | `internal/platform` |
 | Upgrade from the Python release: one-time migration of `DATA_DIR`, restore of Python backups, removal of legacy data | `internal/migrate/legacy`, `internal/fernet` |
 | Runtime: process, HTTP, realtime | `cmd/webssh`, `internal/httpapi`, `internal/realtime`, `internal/realtime/protocol`, `internal/config`, `internal/store`, `internal/fault`, `internal/principal`, `internal/buildinfo` |
-| Testing: test doubles and the end-to-end seed | `internal/principal/principaltest`, `internal/realtime/protocol/protocoltest`, `internal/store/storetest`, `internal/e2eseed` |
+| Testing: test doubles and the end-to-end seed | `internal/principal/principaltest`, `internal/realtime/protocol/protocoltest`, `internal/store/storetest`, `internal/auth/authtest`, `internal/backup/backuptest`, `internal/e2eseed` |
 
 ## Packages
 
@@ -105,6 +106,8 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/commands` | capability | Commands and command sets | – | B6 |
 | `internal/automation` | capability | Automations and permission jobs | `internal/ssh/client`, `internal/ssh/remotecmd`, `internal/vault` | B6 |
 | `internal/settings` | capability | Application and user settings, terminal appearance, onboarding | – | B1 |
+| `internal/auth/authtest` | capability | Test doubles of the external identity contracts (redirect provider, identity links, revalidator); imported by test files only | – | M2 |
+| `internal/backup/backuptest` | capability | Test doubles of the maintenance switch and the restorer of Python backups; imported by test files only | – | M2 |
 | `internal/backup` | capability | Go backup format (versioned manifest, SQLite, optional `SECRET_KEY`), strict restore, online backup, secret rotation, maintenance mode | – | B7 |
 | `internal/operations` | capability | Diagnostics, support report, security feature gates (M1: feature gates and their impact preview only) | – | B7 |
 | `internal/httpapi` | edge | HTTP server, routing, middleware (session, CSRF, origin, client address from `TRUSTED_PROXIES` and `TRUSTED_PROXY_CIDRS`, limits), health, static files and frontend | – | B1 |

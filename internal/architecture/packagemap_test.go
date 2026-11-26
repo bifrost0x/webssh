@@ -91,12 +91,15 @@ var packageMap = map[string]role{
 	"internal/auth/totp":                      {kind: capability},
 	"internal/auth/webauthn":                  {kind: capability},
 	"internal/backup":                         {kind: capability},
-	"internal/migrate/legacy":                 {kind: edge},
-	"internal/httpapi":                        {kind: edge},
-	"internal/realtime":                       {kind: edge},
-	"internal/jobs":                           {kind: edge},
-	"internal/admincli":                       {kind: edge},
-	"internal/e2eseed":                        {kind: edge},
+	// Test doubles of the M2 contracts (identity, operation).
+	"internal/auth/authtest":     {kind: capability},
+	"internal/backup/backuptest": {kind: capability},
+	"internal/migrate/legacy":    {kind: edge},
+	"internal/httpapi":           {kind: edge},
+	"internal/realtime":          {kind: edge},
+	"internal/jobs":              {kind: edge},
+	"internal/admincli":          {kind: edge},
+	"internal/e2eseed":           {kind: edge},
 }
 
 // roleOf returns the role of a module-relative package path. Commands
