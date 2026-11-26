@@ -343,7 +343,7 @@ test('the role tint leaves the live border and the hover and focus accents visib
     expect(await border(second)).toBe(rest);
 
     await second.evaluate(element => { element.dataset.state = 'live'; });
-    expect(await border(second), 'live card').not.toBe(rest);
+    await expect.poll(() => border(second), {message: 'live card'}).not.toBe(rest);
     expect(await border(first), 'idle card').toBe(rest);
     await second.evaluate(element => { element.dataset.state = 'ready'; });
 
