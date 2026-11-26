@@ -122,3 +122,26 @@ func FuzzLoad(f *testing.F) {
 		}
 	})
 }
+
+func TestLen(t *testing.T) {
+	for in, want := range map[string]int{`[]`: 0, `[1,[2,3],{"a":4}]`: 3, `{}`: 0, `{"a":1,"b":[2]}`: 2, `"x"`: 0, `7`: 0, `null`: 0} {
+		if got := Len(jsontext.Value(in)); got != want {
+			t.Errorf("Len(%s) = %d, want %d", in, got, want)
+		}
+	}
+}
+
+// Values returned by Members, Items and Get share the document's memory
+// but cannot overwrite it through append.
+func TestValuesDoNotOverwriteTheDocument(t *testing.T) {
+	doc := jsontext.Value(`{"a":[1],"b":2}`)
+	a, _ := Get(doc, "a")
+	_ = append(a, 'x')
+	items, _ := Items(a)
+	_ = append(items[0], 'y')
+	members, _ := Members(doc)
+	_ = append(members[0].Value, 'z')
+	if string(doc) != `{"a":[1],"b":2}` {
+		t.Fatalf("document changed: %s", doc)
+	}
+}

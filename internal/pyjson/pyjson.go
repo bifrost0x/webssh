@@ -134,12 +134,13 @@ type Member struct {
 
 // Members returns the members of an object value in order, or false
 // when v is not an object. v must come from Load or the builders of this
-// package (unique names, valid UTF-8).
+// package (unique names, valid UTF-8). The values share v's memory and
+// must not be modified in place; appending to one copies it.
 func Members(v jsontext.Value) ([]Member, bool) {
 	if v.Kind() != '{' {
 		return nil, false
 	}
-	dec := jsontext.NewDecoder(bytes.NewReader(v))
+	dec := jsontext.NewDecoder(bytes.NewBuffer(v))
 	if _, err := dec.ReadToken(); err != nil {
 		return nil, false
 	}
@@ -154,18 +155,18 @@ func Members(v jsontext.Value) ([]Member, bool) {
 		if err != nil {
 			return nil, false
 		}
-		out = append(out, Member{Name: name, Value: val.Clone()})
+		out = append(out, Member{Name: name, Value: capped(val)})
 	}
 	return out, true
 }
 
 // Items returns the items of an array value, or false when v is not an
-// array.
+// array. Like the values of Members, the items share v's memory.
 func Items(v jsontext.Value) ([]jsontext.Value, bool) {
 	if v.Kind() != '[' {
 		return nil, false
 	}
-	dec := jsontext.NewDecoder(bytes.NewReader(v))
+	dec := jsontext.NewDecoder(bytes.NewBuffer(v))
 	if _, err := dec.ReadToken(); err != nil {
 		return nil, false
 	}
@@ -175,24 +176,72 @@ func Items(v jsontext.Value) ([]jsontext.Value, bool) {
 		if err != nil {
 			return nil, false
 		}
-		out = append(out, val.Clone())
+		out = append(out, capped(val))
 	}
 	return out, true
 }
 
-// Get returns the value of the member name of an object.
+// Len returns the number of items of an array or members of an object
+// without copying them, and 0 for any other value.
+func Len(v jsontext.Value) int {
+	if k := v.Kind(); k != '[' && k != '{' {
+		return 0
+	}
+	dec := jsontext.NewDecoder(bytes.NewBuffer(v))
+	if _, err := dec.ReadToken(); err != nil {
+		return 0
+	}
+	n := 0
+	for k := dec.PeekKind(); k != ']' && k != '}'; k = dec.PeekKind() {
+		if v.Kind() == '{' {
+			if _, err := dec.ReadToken(); err != nil {
+				return n
+			}
+		}
+		if err := dec.SkipValue(); err != nil {
+			return n
+		}
+		n++
+	}
+	return n
+}
+
+// Get returns the value of the member name of an object. Other members
+// are skipped without being copied, so a lookup in a large store does
+// not allocate its size. The value shares v's memory.
 func Get(v jsontext.Value, name string) (jsontext.Value, bool) {
-	members, ok := Members(v)
-	if !ok {
+	if v.Kind() != '{' {
 		return nil, false
 	}
-	for _, m := range members {
-		if m.Name == name {
-			return m.Value, true
+	dec := jsontext.NewDecoder(bytes.NewBuffer(v))
+	if _, err := dec.ReadToken(); err != nil {
+		return nil, false
+	}
+	for dec.PeekKind() != '}' {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return nil, false
 		}
+		if tok.String() != name {
+			if err := dec.SkipValue(); err != nil {
+				return nil, false
+			}
+			continue
+		}
+		val, err := dec.ReadValue()
+		if err != nil {
+			return nil, false
+		}
+		return capped(val), true
 	}
 	return nil, false
 }
+
+// capped limits the capacity of a value that aliases its document, so
+// that an append copies instead of overwriting the bytes that follow.
+// A decoder reading from a bytes.Buffer returns values inside that
+// buffer and never writes to it.
+func capped(v jsontext.Value) jsontext.Value { return v[:len(v):len(v)] }
 
 // Set assigns name like a Python dict: an existing member keeps its
 // position, a new one is appended.

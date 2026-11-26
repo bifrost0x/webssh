@@ -194,7 +194,7 @@ func TestDecodeStoreVersions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := decodeStore([]byte(tt.doc), spec)
+			_, err := decodeStoreValues([]byte(tt.doc), spec)
 			if (err == nil) != tt.ok {
 				t.Fatalf("err = %v, want ok %v", err, tt.ok)
 			}
@@ -207,15 +207,15 @@ func TestDecodeStoreVersions(t *testing.T) {
 func TestDecodeStoreLoneSurrogate(t *testing.T) {
 	t.Parallel()
 	spec := storeSpec{name: "commands", topList: true}
-	doc, err := decodeStore([]byte(`[{"id":"a","command":"echo \\ud800"}]`), spec)
+	doc, err := decodeStoreValues([]byte(`[{"id":"a","command":"echo \\ud800"}]`), spec)
 	if err != nil || doc.LoneSurrogates {
 		t.Fatalf("escaped backslash: %+v, %v", doc, err)
 	}
-	doc, err = decodeStore([]byte(`[{"id":"a","command":"echo \ud800 \ud83d\ude80"}]`), spec)
+	doc, err = decodeStoreValues([]byte(`[{"id":"a","command":"echo \ud800 \ud83d\ude80"}]`), spec)
 	if err != nil || !doc.LoneSurrogates || doc.Items[0].(map[string]any)["command"] != "echo \ufffd \U0001F680" {
 		t.Fatalf("lone surrogate: %+v, %v", doc, err)
 	}
-	if _, err := decodeStore([]byte("[\"\xff\"]"), spec); err == nil {
+	if _, err := decodeStoreValues([]byte("[\"\xff\"]"), spec); err == nil {
 		t.Fatal("raw invalid UTF-8 accepted")
 	}
 }
@@ -240,7 +240,7 @@ func TestDecodeCommandsForms(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := decodeStore([]byte(tt.doc), spec); (err == nil) != tt.ok {
+			if _, err := decodeStoreValues([]byte(tt.doc), spec); (err == nil) != tt.ok {
 				t.Fatalf("err = %v, want ok %v", err, tt.ok)
 			}
 		})
@@ -252,7 +252,7 @@ func FuzzDecodeStore(f *testing.F) {
 	f.Add([]byte(`{"version":1,"hosts":{}}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		for _, spec := range userStores {
-			doc, err := decodeStore(data, spec)
+			doc, err := decodeStoreValues(data, spec)
 			if err == nil && !spec.topList && doc.Object == nil {
 				t.Fatalf("%s: accepted without object", spec.name)
 			}

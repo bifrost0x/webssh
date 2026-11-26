@@ -45,7 +45,7 @@ func TestStoreSizeLimits(t *testing.T) {
 // N10: numbers survive as written, also above 2^53.
 func TestStoreNumbersAreLossless(t *testing.T) {
 	t.Parallel()
-	doc, err := decodeStore([]byte(`{"schema_version": 2, "big": 9007199254740993, "neg": -12345678901234567890, "f": 1.50e3, "z": -0.0}`), userStores[5])
+	doc, err := decodeStoreValues([]byte(`{"schema_version": 2, "big": 9007199254740993, "neg": -12345678901234567890, "f": 1.50e3, "z": -0.0}`), userStores[5])
 	if err != nil {
 		t.Fatal(err)
 	}

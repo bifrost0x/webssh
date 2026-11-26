@@ -38,6 +38,9 @@ type Source struct {
 	mu   sync.Mutex
 	keys map[string][]byte // derived key material by purpose; see kdf.go
 
+	hostsMu sync.Mutex
+	hosts   *[]userHosts // host stores of every account; see readUserHosts
+
 	restored *restoreState // set by Restored
 }
 

@@ -68,11 +68,21 @@ func storeItems(store string) func(context.Context, *Source) (int, error) {
 				return 0, err
 			}
 			if found {
-				n += len(doc.Items) + len(doc.Entries)
+				n += doc.records(storeListKey(store))
 			}
 		}
 		return n, nil
 	}
+}
+
+// storeListKey is the list key of the per-user store named store.
+func storeListKey(store string) string {
+	for _, spec := range userStores {
+		if spec.name == store {
+			return spec.listKey
+		}
+	}
+	return ""
 }
 
 // storeFiles counts the accounts that have the store.

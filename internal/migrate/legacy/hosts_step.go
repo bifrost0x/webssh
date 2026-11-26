@@ -40,8 +40,26 @@ func (s *hostsStep) Read(ctx context.Context, src *Source) error {
 	return err
 }
 
-// readUserHosts reads the host stores of every account.
+// readUserHosts returns the host stores of every account. E19 and the
+// four entities written with it share one reading per source: each step
+// keeping its own copy held the profile store five times at once (R2
+// L-2). The records are read-only; every step gets its own slice, so the
+// import result of E19 stays its own.
 func readUserHosts(ctx context.Context, src *Source) ([]userHosts, error) {
+	src.hostsMu.Lock()
+	defer src.hostsMu.Unlock()
+	if src.hosts == nil {
+		users, err := loadUserHosts(ctx, src)
+		if err != nil {
+			return nil, err
+		}
+		src.hosts = &users
+	}
+	return slices.Clone(*src.hosts), nil
+}
+
+// loadUserHosts reads the host stores of every account.
+func loadUserHosts(ctx context.Context, src *Source) ([]userHosts, error) {
 	rows, err := src.AccountRows(ctx)
 	if err != nil {
 		return nil, err

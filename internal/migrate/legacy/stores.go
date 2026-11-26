@@ -75,7 +75,10 @@ func upTo(n int) []int {
 // interpretation to the migration step of the entity.
 type Document struct {
 	Store   string
-	Version int            // as stored; Raw, Object and Items are lifted to the current version
+	Version int // as stored; Raw, Object and Items are lifted to the current version
+	// Object, Items and Entries are Raw as generic values. Only
+	// UserDocuments and AppSettings fill them; the migration steps read
+	// Raw.
 	Object  map[string]any // nil for a bare array
 	Items   []any          // the list under listKey, or the bare array
 	Entries map[string]any // the object under listKey when it is a map
@@ -126,6 +129,9 @@ func (s *Source) UserDocuments(userID int64) (map[string]Document, error) {
 		if errors.Is(err, ErrNotFound) {
 			continue
 		}
+		if err == nil {
+			doc, err = doc.withValues(spec)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +142,11 @@ func (s *Source) UserDocuments(userID int64) (map[string]Document, error) {
 
 // AppSettings reads DATA_DIR/app_settings.json.
 func (s *Source) AppSettings() (Document, error) {
-	return s.readStore(appSettingsStore.file, appSettingsStore)
+	doc, err := s.readStore(appSettingsStore.file, appSettingsStore)
+	if err != nil {
+		return Document{}, err
+	}
+	return doc.withValues(appSettingsStore)
 }
 
 // readStoreBytes reads the file of the user store named store with the
@@ -203,23 +213,57 @@ func decodeStore(data []byte, spec storeSpec) (Document, error) {
 		raw, doc.Lifted = pyjson.Object(members), true
 	}
 	doc.Raw = raw
-	var top any
-	if err := json.Unmarshal(raw, &top, numbersAsText); err != nil {
-		return Document{}, fmt.Errorf("invalid JSON: %w", err)
-	}
-	doc.Object, _ = top.(map[string]any)
 	if spec.listKey != "" {
-		switch v := doc.Object[spec.listKey].(type) {
-		case []any:
-			doc.Items = v
-		case map[string]any:
-			doc.Entries = v
-		case nil:
-		default:
+		if v, ok := pyjson.Get(raw, spec.listKey); ok && !slices.Contains([]jsontext.Kind{'[', '{', 'n'}, v.Kind()) {
 			return Document{}, fmt.Errorf("%s is neither a list nor an object", spec.listKey)
 		}
 	}
 	return doc, nil
+}
+
+// withValues fills Object, Items and Entries of a document that
+// decodeStore returned. The migration steps work on Raw; the generic
+// values cost several times the size of the file, so only the public
+// readers of the package decode them.
+func (d Document) withValues(spec storeSpec) (Document, error) {
+	var top any
+	if err := json.Unmarshal(d.Raw, &top, numbersAsText); err != nil {
+		return Document{}, fmt.Errorf("invalid JSON: %w", err)
+	}
+	if spec.topList {
+		switch v := top.(type) {
+		case []any:
+			d.Items = v
+		case map[string]any:
+			d.Object, d.Items = v, v["commands"].([]any)
+		}
+		return d, nil
+	}
+	d.Object, _ = top.(map[string]any)
+	if spec.listKey != "" {
+		switch v := d.Object[spec.listKey].(type) {
+		case []any:
+			d.Items = v
+		case map[string]any:
+			d.Entries = v
+		}
+	}
+	return d, nil
+}
+
+// records counts the records under the store's list key (or of the bare
+// array) without decoding them: the items of a list, the members of a
+// map.
+func (d Document) records(listKey string) int {
+	list := d.Raw
+	if listKey != "" {
+		v, ok := pyjson.Get(d.Raw, listKey)
+		if !ok {
+			return 0
+		}
+		list = v
+	}
+	return pyjson.Len(list)
 }
 
 // commandWrapperVersions are the versions of the legacy object form of
@@ -243,16 +287,6 @@ func decodeCommands(doc Document, raw jsontext.Value) (Document, error) {
 		doc.Raw, doc.Version, doc.Lifted = list, version, true
 	default:
 		return Document{}, errors.New("commands document is neither a list nor an object")
-	}
-	var top any
-	if err := json.Unmarshal(raw, &top, numbersAsText); err != nil {
-		return Document{}, fmt.Errorf("invalid JSON: %w", err)
-	}
-	switch v := top.(type) {
-	case []any:
-		doc.Items = v
-	case map[string]any:
-		doc.Object, doc.Items = v, v["commands"].([]any)
 	}
 	return doc, nil
 }
