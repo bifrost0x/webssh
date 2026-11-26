@@ -31,6 +31,9 @@ const (
 	MethodTOTP     = "totp"
 	MethodPasskey  = "passkey"
 	MethodRecent   = "recent"
+	// MethodBootstrap is an operator's one-time code for the first factor
+	// of an account GitHub created (bootstrap.go).
+	MethodBootstrap = "bootstrap"
 )
 
 // SessionAssurance is how and when a browser session was authenticated.
@@ -89,6 +92,8 @@ type Service struct {
 	// Passkeys is nil until passkeys are built; the method is then never
 	// offered.
 	Passkeys Passkeys
+	// Bootstrap redeems factor bootstrap codes; nil offers no bootstrap.
+	Bootstrap Bootstrap
 	// Targets holds the extra target checks per action.
 	Targets map[principal.Action]TargetCheck
 	// RecentWindow is STEP_UP_MAX_AGE_SECONDS: a session authenticated with
@@ -335,7 +340,7 @@ func (s *Service) plan(ctx context.Context, p principal.Principal, action princi
 		plan.Grant, err = s.issue(ctx, p, action, target, level, channel)
 		return plan, target, err
 	}
-	if plan.Methods, err = s.methods(ctx, p, sa, required); err != nil {
+	if plan.Methods, err = s.offered(ctx, p, sa, required, action); err != nil {
 		return Plan{}, "", err
 	}
 	if len(plan.Methods) == 0 {

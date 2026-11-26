@@ -195,7 +195,7 @@ func (s *Service) allowed(ctx context.Context, p principal.Principal, in intent,
 	if err != nil {
 		return ErrFailed
 	}
-	methods, err := s.methods(ctx, p, sa, in.required)
+	methods, err := s.offered(ctx, p, sa, in.required, in.action)
 	if err != nil {
 		return err
 	}
@@ -295,6 +295,8 @@ func (s *Service) verify(ctx context.Context, p principal.Principal, in intent, 
 			return ErrFailed
 		}
 		return nil
+	case MethodBootstrap:
+		return s.redeemBootstrap(ctx, p, in, proof.Secret)
 	default:
 		return ErrFailed
 	}
