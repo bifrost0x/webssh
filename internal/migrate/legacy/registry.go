@@ -77,6 +77,16 @@ func (r *Registry) Add(g Group, newStep func() Step) error {
 	return nil
 }
 
+// TakeOver registers the step of an entity that the release registered
+// as pending: the package that builds the entity's capability migrates it
+// now, so it leaves the pending list. An entity that is not pending is
+// registered as with Add.
+func (r *Registry) TakeOver(g Group, newStep func() Step) error {
+	entity := newStep().Entity()
+	r.pending = slices.DeleteFunc(r.pending, func(p pendingEntity) bool { return p.entity == entity })
+	return r.Add(g, newStep)
+}
+
 // KeepInPlace registers an entity that this build leaves in the legacy
 // data (KEEP-IN-PLACE) and that phase will migrate. count reports how
 // many records the legacy source holds; the report names the entity with
