@@ -12,7 +12,7 @@ var (
 		"files", "smb", "automation", "credentials", "discovery", "commands",
 		"herdr", "gateway", "tailscale", "serverOps",
 	}
-	previewSignInAreas = []string{"ldap", "oidc", "github"}
+	previewSignInAreas = []string{"ldap", "github"}
 )
 
 const (

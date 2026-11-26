@@ -10,6 +10,5 @@ var accountsPreview = []string{
 	"POST /admin/api/users/{user_id}/{action}",
 	"DELETE /admin/api/users/{user_id}/mfa",
 	"POST /admin/api/users/{user_id}/recovery",
-	"POST /api/account/step-up/status",
 	"POST /login/recovery",
 }
