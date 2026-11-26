@@ -100,3 +100,36 @@ test('the built-in English fallback matches the English translations', () => {
     assert.equal(fallback.title.textContent, title.textContent);
     assert.equal(fallback.details.textContent, view.element.children[2].textContent);
 });
+
+// The server names the areas of the page in #websshPreview; they are
+// listed from the start, and the sign-in page explains which accounts
+// cannot sign in, in the browser's language.
+test('the page configuration lists the server-named areas', () => {
+    const document = fakeDocument();
+    const window = new EventTarget();
+    const config = {enabled: true, unavailable: ['files', 'automation', 'serverOps', 'bogus'], message: 'Preview'};
+    const view = notice.create({document, window, storage: null, config});
+    const [, text, details] = view.element.children;
+    assert.match(text.textContent, /preview of the new server/);
+    assert.equal(details.textContent, 'Not available in this preview yet: Files, Automation, Server operations');
+});
+
+test('the sign-in page names the accounts that cannot sign in', () => {
+    const document = fakeDocument();
+    document.documentElement = {lang: 'de'};
+    const window = new EventTarget();
+    const view = notice.create({document, window, storage: null, config: {enabled: true, unavailable: ['ldap', 'oidc', 'github']}});
+    const [, text, details] = view.element.children;
+    assert.match(text.textContent, /Konten aus LDAP, OIDC oder GitHub/);
+    assert.equal(details.hidden, true);
+});
+
+test('the configuration is read from the page', () => {
+    const document = fakeDocument();
+    document.getElementById = id => (id === 'websshPreview' ? {textContent: '{"enabled":true,"unavailable":["smb"]}'} : null);
+    const view = notice.create({document, window: new EventTarget(), storage: null});
+    assert.equal(view.element.children[2].textContent, 'Not available in this preview yet: SMB shares');
+    document.getElementById = () => ({textContent: '{broken'});
+    const broken = notice.create({document, window: new EventTarget(), storage: null});
+    assert.equal(broken.element.children[2].hidden, true);
+});
