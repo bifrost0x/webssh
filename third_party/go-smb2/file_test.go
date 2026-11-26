@@ -4758,6 +4758,8 @@ func TestAppendCopyUsesWrite(t *testing.T) {
 						}
 						written <- w.Offset()
 						sendTestResponse(server, req, &wire.WriteResponse{Count: w.Length()}, 0)
+					case wire.SMB2_CANCEL:
+						// A pipelined READ past the end may be canceled; CANCEL has no response.
 					default:
 						t.Errorf("append copy sent unexpected command %v", wire.PacketCodec(req).Command())
 						sendTestResponse(server, req, &wire.ErrorResponse{CommandCode: wire.PacketCodec(req).Command()}, uint32(erref.STATUS_NOT_SUPPORTED))
@@ -5698,6 +5700,11 @@ func candidatePeer(t *testing.T, data string, names []string, morePages ...[]str
 			if err != nil {
 				done <- err
 				return
+			}
+			// The client may cancel a pipelined READ it no longer needs;
+			// CANCEL has no response ([MS-SMB2] 3.3.5.16).
+			if wire.PacketCodec(req).Command() == wire.SMB2_CANCEL {
+				continue
 			}
 			var replies []compoundResponse
 			for off := 0; ; {
