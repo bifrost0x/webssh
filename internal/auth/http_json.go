@@ -27,6 +27,11 @@ func ReadObject(w http.ResponseWriter, r *http.Request) Object {
 	if err != nil {
 		return Object{}
 	}
+	return ObjectFrom(body)
+}
+
+// ObjectFrom decodes body as a JSON object, or returns an empty one.
+func ObjectFrom(body []byte) Object {
 	var obj Object
 	if json.Unmarshal(body, &obj) != nil || obj == nil {
 		return Object{}

@@ -240,3 +240,19 @@ func TestSecurityState(t *testing.T) {
 		t.Fatalf("state with TOTP off %+v", s)
 	}
 }
+
+func FuzzNormalizeRecoveryCode(f *testing.F) {
+	f.Add("abcd-ef01-2345-6789-abcd")
+	f.Add(" ß X ")
+	f.Fuzz(func(t *testing.T, code string) {
+		n := NormalizeRecoveryCode(code)
+		for _, r := range n {
+			if r > 127 || r == ' ' || r == '\t' || r == '\n' || (r >= 'a' && r <= 'z') {
+				t.Fatalf("normalized %q to %q", code, n)
+			}
+		}
+		if NormalizeRecoveryCode(n) != n {
+			t.Fatalf("not idempotent: %q", code)
+		}
+	})
+}
