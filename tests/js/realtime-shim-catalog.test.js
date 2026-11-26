@@ -44,10 +44,32 @@ test('a failure keeps the code, repeats as error where Python did and pushes not
     socket.emit('upload_key', {name: 'k', key_content: 'x', step_up: 'g'}, ack => seen.push(['ack', ack]));
     const request = ws.lastRequest('keys.upload');
     assert.equal(request.p.step_up, 'g');
-    ws.fail(request.id, {code: 'step_up_required', message: 'Confirm your identity to continue.'});
+    ws.fail(request.id, {code: 'invalid_value', message: 'Unsupported or invalid private key format'});
     await tick();
     assert.deepEqual(plain(seen), [
-        ['error', {success: false, error: 'Confirm your identity to continue.', code: 'step_up_required'}],
+        ['error', {success: false, error: 'Unsupported or invalid private key format', code: 'invalid_value'}],
+        ['ack', {success: false, code: 'invalid_value', error: 'Unsupported or invalid private key format'}],
+    ]);
+    socket.disconnect();
+});
+
+test('key changes the page answers itself are not repeated as error', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const seen = [];
+    socket.on('error', data => seen.push(['error', data]));
+    socket.emit('upload_key', {name: 'k', key_content: 'x'}, ack => seen.push(['ack', ack]));
+    ws.fail(ws.lastRequest('keys.upload').id, {code: 'step_up_required', message: 'Confirm your identity to continue.'});
+    socket.emit('replace_key', {key_id: 'k1', key_content: 'x'}, ack => seen.push(['ack', ack]));
+    ws.fail(ws.lastRequest('keys.replace').id, {
+        code: 'invalid_value', message: 'Enter the passphrase.', details: {passphrase_required: true},
+    });
+    socket.emit('delete_key', {key_id: 'k1'}, ack => seen.push(['ack', ack]));
+    ws.fail(ws.lastRequest('keys.delete').id, {code: 'step_up_required', message: 'Confirm your identity to continue.'});
+    await tick();
+    assert.deepEqual(plain(seen), [
+        ['ack', {success: false, code: 'step_up_required', error: 'Confirm your identity to continue.'}],
+        ['ack', {passphrase_required: true, success: false, code: 'invalid_value', error: 'Enter the passphrase.'}],
         ['ack', {success: false, code: 'step_up_required', error: 'Confirm your identity to continue.'}],
     ]);
     socket.disconnect();

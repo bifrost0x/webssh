@@ -1375,6 +1375,11 @@ window.i18n.registerLocales({
         'keys.replaceConfirm': 'Gespeicherten Schlüssel ersetzen',
         'keys.replacing': 'Schlüssel wird ersetzt...',
         'keys.replaceFailed': 'Schlüssel konnte nicht ersetzt werden',
+        'keys.loadFailed': 'SSH-Schlüssel konnten nicht geladen werden. WebSSH versucht es gleich erneut.',
+        'keys.loadRetry': 'Erneut versuchen',
+        'keys.changeCancelled': 'Der SSH-Schlüssel wurde nicht geändert.',
+        'keys.passphraseTitle': 'Passphrase des Schlüssels',
+        'keys.passphrase': 'Passphrase des privaten Schlüssels',
         'keys.replacementRequired': 'Gib den neuen privaten Schlüssel ein.',
         'keys.replacedSuccess': 'SSH-Schlüssel erfolgreich ersetzt',
 

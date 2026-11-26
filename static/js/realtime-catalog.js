@@ -16,12 +16,16 @@
     const UNAVAILABLE = 'not_available_in_preview';
     const ok = result => ({success: true, ...result});
     const KEYS_REFRESH = 'keys.list';
+    // profile-manager.js answers these failures of key changes with a
+    // step-up or a passphrase prompt and sends the request again.
+    const keyChallenge = failed => failed.code === 'step_up_required' || failed.passphrase_required === true;
 
     // event: {type, payload?, ack?, push?: [[event, build]], errorEvent?, refresh?}
     // payload(data) builds the request; ack(result, data) the acknowledgement;
     // push builders get the acknowledgement and the request data. errorEvent
     // repeats a failure as the generic 'error' event, as Python did for that
-    // event; refresh names a list request whose result is pushed afterwards.
+    // event, except for failures the page answers itself (answeredByPage);
+    // refresh names a list request whose result is pushed afterwards.
     const REQUESTS = Object.freeze({
         list_profiles: {type: 'hosts.profile.list', push: [['profiles_list', a => ({profiles: a.profiles || []})]], errorEvent: true},
         save_profile: {
@@ -59,14 +63,15 @@
             errorEvent: true,
         },
         list_keys: {type: 'keys.list', push: [['keys_list', a => ({keys: a.keys || []})]], errorEvent: true},
-        upload_key: {type: 'keys.upload', push: [['key_uploaded', a => ({key: a.key})]], errorEvent: true},
+        upload_key: {type: 'keys.upload', push: [['key_uploaded', a => ({key: a.key})]], errorEvent: true, answeredByPage: keyChallenge},
         rename_key: {type: 'keys.rename', push: [['key_renamed', a => a]], errorEvent: true, refresh: KEYS_REFRESH},
-        replace_key: {type: 'keys.replace', push: [['key_replaced', a => a]], errorEvent: true, refresh: KEYS_REFRESH},
+        replace_key: {type: 'keys.replace', push: [['key_replaced', a => a]], errorEvent: true, answeredByPage: keyChallenge, refresh: KEYS_REFRESH},
         delete_key: {
             type: 'keys.delete',
             ack: (result, data) => ok({key_id: data.key_id, ...result}),
             push: [['key_deleted', a => ({key_id: a.key_id})]],
             errorEvent: true,
+            answeredByPage: keyChallenge,
             refresh: KEYS_REFRESH,
         },
         set_theme: {type: 'settings.theme.set', push: [['theme_updated', (a, data) => ({theme: data.theme})]], errorEvent: true},
@@ -158,7 +163,7 @@
         host.request(entry.type, payload).then(result => {
             if (!result.ok) {
                 const failed = acks.failure(result.err);
-                if (entry.errorEvent) host.dispatch('error', {success: false, error: failed.error, code: failed.code});
+                if (entry.errorEvent && !entry.answeredByPage?.(failed)) host.dispatch('error', {success: false, error: failed.error, code: failed.code});
                 acks.answer(ack, result);
                 return;
             }

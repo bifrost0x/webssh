@@ -1371,6 +1371,11 @@ window.i18n.registerLocales({
         'keys.replaceConfirm': 'Reemplazar clave guardada',
         'keys.replacing': 'Reemplazando clave...',
         'keys.replaceFailed': 'No se pudo reemplazar la clave',
+        'keys.loadFailed': 'No se pudieron cargar las claves SSH. WebSSH lo volverá a intentar en breve.',
+        'keys.loadRetry': 'Reintentar',
+        'keys.changeCancelled': 'La clave SSH no se ha modificado.',
+        'keys.passphraseTitle': 'Frase de contraseña de la clave',
+        'keys.passphrase': 'Frase de contraseña de la clave privada',
         'keys.replacementRequired': 'Introduce la clave privada de reemplazo.',
         'keys.replacedSuccess': 'Clave SSH reemplazada correctamente',
 
