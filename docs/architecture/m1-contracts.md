@@ -1059,8 +1059,8 @@ The workspace loads the realtime client where the Python page loads
 `js/realtime-acks.js`, `js/realtime-wire.js`, `js/realtime-catalog.js`,
 `js/realtime-terminal.js`, `js/realtime-shim.js`. A preview page adds
 `css/preview-notice.css` in the head and `js/preview-notice.js` at the end;
-the workspace loads `js/preview-notice-i18n.js` after `js/i18n.js` and
-before it. The sign-in page has no `i18n.js`; the notice uses its built-in
+the workspace and the settings page load `js/preview-notice-i18n.js`
+after `js/i18n.js` and before it. The sign-in page has no `i18n.js`; the notice uses its built-in
 texts there. `internal/httpapi` tests pin this order.
 
 ## Migration steps

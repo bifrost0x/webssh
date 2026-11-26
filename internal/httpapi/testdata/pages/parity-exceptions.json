@@ -19,7 +19,8 @@
   {
    "cases": [
     "workspace_preview",
-    "login_preview"
+    "login_preview",
+    "settings_preview"
    ],
    "side": "go",
    "line": "(<script id=\"websshPreview\" type=\"application/json\">|json:\\{\"enabled\": true, \"message\": \"Preview: [^\"]*\", \"unavailable\": \\[(\"[a-z]+\"(, )?)+\\]\\}|<script src=\"(/webssh)?/static/js/preview-notice(-i18n)?\\.js\\?v=VERSION\">|<link href=\"(/webssh)?/static/css/preview-notice\\.css\\?v=VERSION\" rel=\"stylesheet\">)",
