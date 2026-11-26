@@ -6,6 +6,8 @@ import (
 	json "encoding/json/v2"
 	"os"
 	"testing"
+
+	"github.com/bifrost0x/webssh/internal/store"
 )
 
 // The oracle (testdata/oracle.py) records how the Python release judges
@@ -108,6 +110,65 @@ func TestOraclePythonJSON(t *testing.T) {
 		}
 		if got != c.Out {
 			t.Errorf("%s:\nGo     %s\nPython %s", c.In, got, c.Out)
+		}
+	}
+}
+
+// TestOracleEffectiveSettings imports settings.json documents and
+// compares the effective settings with get_user_settings of the Python
+// release for the same file and settings_default_generation, including
+// accounts without a file, filtered overview entries, unknown keys,
+// duplicate names and a lone surrogate in the notepad.
+func TestOracleEffectiveSettings(t *testing.T) {
+	raw, err := os.ReadFile("testdata/oracle.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases struct {
+		Effective []struct {
+			In         *string `json:"in"`
+			Generation int64   `json:"generation"`
+			Out        *string `json:"out"`
+		} `json:"effective"`
+	}
+	if err := json.Unmarshal(raw, &cases, json.RejectUnknownMembers(false)); err != nil {
+		t.Fatal(err)
+	}
+	if len(cases.Effective) < 9 {
+		t.Fatalf("%d cases", len(cases.Effective))
+	}
+	for i, c := range cases.Effective {
+		s, db := newService(t, Environment{})
+		var doc jsontext.Value
+		if c.In != nil {
+			doc = jsontext.Value(*c.In)
+		}
+		err := db.Write(t.Context(), func(tx *store.Tx) error {
+			_, err := ImportUser(t.Context(), tx, 1, doc, c.Generation)
+			return err
+		})
+		if c.Out == nil {
+			if err == nil {
+				t.Errorf("case %d: Python cannot load %s, Go imported it", i, *c.In)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("case %d: %v", i, err)
+			continue
+		}
+		u, err := s.User(t.Context(), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotRaw, err := json.Marshal(u.Document(), json.Deterministic(true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err1 := PythonJSON(gotRaw)
+		want, err2 := PythonJSON(jsontext.Value(*c.Out))
+		if err1 != nil || err2 != nil || got != want {
+			t.Errorf("case %d:\nGo     %s\nPython %s", i, got, want)
 		}
 	}
 }

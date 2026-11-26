@@ -102,16 +102,18 @@ func readObject(r *http.Request, msg string) (map[string]jsontext.Value, error) 
 		}
 		return nil, fault.Wrap(fault.InvalidRequest, err, msg)
 	}
-	var body map[string]jsontext.Value
-	if err := json.Unmarshal(raw, &body); err != nil || body == nil {
+	// json.loads semantics: the last of duplicate names wins.
+	v, _, err := pythonLoad(raw)
+	if err != nil {
 		return nil, fault.New(fault.InvalidRequest, msg)
 	}
-	for name, v := range body {
-		c, err := compact(v)
-		if err != nil {
-			return nil, fault.New(fault.InvalidRequest, msg)
-		}
-		body[name] = c
+	members, ok := asObject(v)
+	if !ok {
+		return nil, fault.New(fault.InvalidRequest, msg)
+	}
+	body := make(map[string]jsontext.Value, len(members))
+	for _, m := range members {
+		body[m.name] = m.value
 	}
 	return body, nil
 }
@@ -159,9 +161,24 @@ func (h *HTTP) overviewPreferences(ctx context.Context, p principal.Principal, r
 	}
 	u, err := h.Settings.Update(ctx, p.UserID, c)
 	if err != nil {
-		return nil, saveFault(err, msgOverviewNotSaved)
+		return nil, overviewFault(err)
 	}
 	return map[string]any{"panels": u.overviewPanelsValue(), "dismissed": u.OverviewDismissed}, nil
+}
+
+// overviewFault gives failures of the overview preferences the codes of
+// the Python route.
+func overviewFault(err error) error {
+	fe, ok := fault.From(err)
+	switch {
+	case ok && fe.Message == msgInvalidPanels:
+		return fault.New(fault.InvalidLayout, msgInvalidPanels)
+	case ok && fe.Message == msgInvalidDismissed:
+		return fault.New(fault.InvalidDismissed, msgInvalidDismissed)
+	case fault.Is(err, fault.StorageError):
+		return fault.Wrap(fault.StorageFailed, err, msgOverviewNotSaved)
+	}
+	return err
 }
 
 // saveFault gives a storage failure the message of the Python release.

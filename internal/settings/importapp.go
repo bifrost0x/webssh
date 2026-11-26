@@ -34,25 +34,37 @@ var legacyAppBounds = map[string][2]int64{
 // memory. Every key except schema_version is copied verbatim, the opaque
 // policy revisions included: schedules and credentials are bound to them.
 // Absent keys stay absent, so this release's default applies only where
-// D-01 allows it. It returns the stored keys, sorted.
-func ImportApp(ctx context.Context, tx *store.Tx, doc jsontext.Value, nowUS int64) ([]string, error) {
-	values, err := parseLegacyApp(doc)
+// D-01 allows it.
+func ImportApp(ctx context.Context, tx *store.Tx, doc jsontext.Value, nowUS int64) (AppImport, error) {
+	parsed, err := parseLegacyApp(doc)
 	if err != nil {
-		return nil, err
+		return AppImport{}, err
 	}
-	keys := slices.Sorted(maps.Keys(values))
-	for _, key := range keys {
-		if err := putApp(ctx, tx, key, values[key], SourceMigrated, "", nowUS); err != nil {
-			return nil, err
+	out := AppImport{Keys: slices.Sorted(maps.Keys(parsed.values)), Skipped: parsed.skipped, LoneSurrogates: parsed.lone}
+	for _, key := range out.Keys {
+		if err := putApp(ctx, tx, key, parsed.values[key], SourceMigrated, "", nowUS); err != nil {
+			return AppImport{}, err
 		}
 	}
-	return keys, nil
+	return out, nil
+}
+
+// AppImport is the outcome of importing app_settings.json.
+type AppImport struct {
+	// Keys are the stored settings, sorted.
+	Keys []string
+	// Skipped are legacy keys that would shadow a setting of this release
+	// (recovery_check, the derived settings); they stay in the legacy file
+	// and are listed in the report.
+	Skipped []string
+	// LoneSurrogates is as in UserImport.
+	LoneSurrogates bool
 }
 
 // VerifyApp checks that every key of the legacy document is stored with
 // the same value.
 func VerifyApp(ctx context.Context, tx *store.Tx, doc jsontext.Value) error {
-	values, err := parseLegacyApp(doc)
+	parsed, err := parseLegacyApp(doc)
 	if err != nil {
 		return err
 	}
@@ -60,7 +72,7 @@ func VerifyApp(ctx context.Context, tx *store.Tx, doc jsontext.Value) error {
 	if err != nil {
 		return err
 	}
-	for key, v := range values {
+	for key, v := range parsed.values {
 		r, ok := rows[key]
 		if !ok || string(r.value) != string(v) {
 			return fmt.Errorf("settings: application setting %s differs from the legacy file", key)
@@ -73,25 +85,33 @@ func VerifyApp(ctx context.Context, tx *store.Tx, doc jsontext.Value) error {
 // (recovery-check.json, A07) as the application setting recovery_check.
 // The legacy reader treats a malformed or oversized file as absent.
 func ImportRecoveryCheck(ctx context.Context, tx *store.Tx, v jsontext.Value, nowUS int64) error {
-	c, err := compact(v)
+	c, _, err := pythonLoad(v)
 	if err != nil || len(c) > 512 {
 		return fmt.Errorf("%w: recovery-check.json", ErrLegacyDocument)
 	}
 	return putApp(ctx, tx, "recovery_check", c, SourceMigrated, "", nowUS)
 }
 
-// parseLegacyApp checks a document like _valid_settings of
-// app/app_settings.py.
-func parseLegacyApp(doc jsontext.Value) (map[string]jsontext.Value, error) {
-	c, err := compact(doc)
+type legacyApp struct {
+	values  map[string]jsontext.Value
+	skipped []string
+	lone    bool
+}
+
+// parseLegacyApp reads a document like json.loads (pythonLoad) and checks
+// it like _valid_settings of app/app_settings.py. Keys that would shadow a
+// setting of this release are skipped, not refused: Python kept them as
+// values nobody reads.
+func parseLegacyApp(doc jsontext.Value) (legacyApp, error) {
+	c, lone, err := pythonLoad(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrLegacyDocument, err)
+		return legacyApp{}, fmt.Errorf("%w: %v", ErrLegacyDocument, err)
 	}
 	members, ok := asObject(c)
 	if !ok {
-		return nil, fmt.Errorf("%w: not an object", ErrLegacyDocument)
+		return legacyApp{}, fmt.Errorf("%w: not an object", ErrLegacyDocument)
 	}
-	out := map[string]jsontext.Value{}
+	out := legacyApp{values: map[string]jsontext.Value{}, lone: lone}
 	schemaOK := false
 	for _, m := range members {
 		if m.name == legacyKeySchemaVersion {
@@ -99,17 +119,19 @@ func parseLegacyApp(doc jsontext.Value) (map[string]jsontext.Value, error) {
 			schemaOK = ok && n == legacyAppSchema
 			continue
 		}
+		if !validLegacyApp(m.name, m.value) {
+			return legacyApp{}, fmt.Errorf("%w: %s", ErrLegacyDocument, m.name)
+		}
 		if slices.Contains(policyKeys, m.name) || m.name == "recovery_check" {
-			return nil, errPolicyKey(m.name)
+			out.skipped = append(out.skipped, m.name)
+			continue
 		}
-		if !validLegacyApp(m.name, m.value) || m.name == "" {
-			return nil, fmt.Errorf("%w: %s", ErrLegacyDocument, m.name)
-		}
-		out[m.name] = m.value
+		out.values[m.name] = m.value
 	}
 	if !schemaOK {
-		return nil, fmt.Errorf("%w: schema_version", ErrLegacyDocument)
+		return legacyApp{}, fmt.Errorf("%w: schema_version", ErrLegacyDocument)
 	}
+	slices.Sort(out.skipped)
 	return out, nil
 }
 

@@ -112,7 +112,7 @@ func TestImportUserMaterialisesOldDefault(t *testing.T) {
 func TestImportUserRefusesInvalidDocuments(t *testing.T) {
 	_, db := newService(t, Environment{})
 	for _, doc := range []string{`[]`, `{}`, `{"schema_version":1}`, `{"schema_version":2,"theme":1}`,
-		`{"schema_version":2,"notepad":5}`, `{"schema_version":2,"theme":"a","theme":"b"}`} {
+		`{"schema_version":2,"notepad":5}`, `{"schema_version":2.0}`, "{\"schema_version\":2,\"theme\":\"\xff\"}"} {
 		err := db.Write(t.Context(), func(tx *store.Tx) error {
 			_, err := ImportUser(t.Context(), tx, 1, jsontext.Value(doc), 1)
 			return err
@@ -161,7 +161,6 @@ func TestImportAppRefusals(t *testing.T) {
 		`{"schema_version":2,"ratelimit_ipv6_prefix":47}`,
 		`{"schema_version":2,"runtime_feature_migration":["nope"]}`,
 		`{"schema_version":2,"automation_enabled_revision":5}`,
-		`{"schema_version":2,"ssh.legacy_algorithms":true}`,
 		`{"credentials_enabled":true}`,
 	} {
 		err := db.Write(t.Context(), func(tx *store.Tx) error {
@@ -187,4 +186,54 @@ func TestRecoveryCheck(t *testing.T) {
 	if err := db.Write(t.Context(), func(tx *store.Tx) error { return ImportRecoveryCheck(t.Context(), tx, big, 1) }); err == nil {
 		t.Error("oversized notice accepted")
 	}
+}
+
+func TestImportUserReadsLikePython(t *testing.T) {
+	s, db := newService(t, Environment{})
+	long := strings.Repeat("k", 200)
+	doc := jsontext.Value(`{"schema_version":2,"notepad":"ab\ud83d","theme":"glass","theme":"noir","` + long + `":1}`)
+	var res UserImport
+	write(t, db, func(tx *store.Tx) error {
+		var err error
+		res, err = ImportUser(t.Context(), tx, 1, doc, 1)
+		return err
+	})
+	// A lone surrogate becomes U+FFFD, as in the legacy reader, and is
+	// reported; for duplicate names the last one wins, as in json.loads.
+	if res.Notepad != "ab\uFFFD" || !res.LoneSurrogates {
+		t.Errorf("notepad %q, flagged %v", res.Notepad, res.LoneSurrogates)
+	}
+	u, err := s.User(t.Context(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Theme != "noir" || string(u.Document()[long]) != "1" {
+		t.Errorf("imported %s", docJSON(t, u))
+	}
+}
+
+func TestImportAppReadsLikePython(t *testing.T) {
+	s, db := newService(t, Environment{})
+	long := strings.Repeat("k", 200)
+	doc := jsontext.Value(`{"schema_version":2,"support_links_enabled":true,"support_links_enabled":false,` +
+		`"recovery_check":{"x":1},"ssh.legacy_algorithms":true,"` + long + `":"ab\udc00"}`)
+	var res AppImport
+	write(t, db, func(tx *store.Tx) error {
+		var err error
+		res, err = ImportApp(t.Context(), tx, doc, 1)
+		return err
+	})
+	// Keys that would shadow a setting of this release are not stored but
+	// reported; Python kept them as values nobody reads.
+	if !slices.Equal(res.Skipped, []string{"recovery_check", "ssh.legacy_algorithms"}) || !res.LoneSurrogates {
+		t.Errorf("%+v", res)
+	}
+	a, err := s.App(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := asString(a.rows[long].value); a.SupportLinksEnabled || a.Policy.LegacySSHAlgorithms || v != "ab\uFFFD" {
+		t.Errorf("%+v %s", a, a.rows[long].value)
+	}
+	write(t, db, func(tx *store.Tx) error { return VerifyApp(t.Context(), tx, doc) })
 }

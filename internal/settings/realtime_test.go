@@ -41,6 +41,9 @@ func TestRealtimeRoutesAnswerTheStoredValue(t *testing.T) {
 		{protocol.TypeSettingsTheme, `{"theme":"nope"}`, "invalid_value"},
 		{protocol.TypeSettingsDisconnect, `{"action":"later"}`, "invalid_value"},
 		{protocol.TypeSettingsConfirmClose, `{"enabled":"yes"}`, "invalid_request"},
+		// Python requires a boolean; a missing or null value is refused.
+		{protocol.TypeSettingsConfirmClose, `{}`, "invalid_value"},
+		{protocol.TypeSettingsConfirmClose, `{"enabled":null}`, "invalid_value"},
 		{protocol.TypeSettingsTheme, `{"theme":"noir","extra":1}`, "invalid_request"},
 	} {
 		if _, werr := protocoltest.Call(ctx, routes[c.typ], peer, rawJSON(c.payload)); werr == nil || string(werr.Code) != c.code {

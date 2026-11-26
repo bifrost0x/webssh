@@ -911,6 +911,53 @@
    "ok": true
   }
  ],
+ "effective": [
+  {
+   "in": null,
+   "generation": 0,
+   "out": "{\"authentication_session_duration_minutes\": 30, \"confirm_session_close\": true, \"disconnect_session_action\": \"retry\", \"overview_dismissed\": [], \"overview_layout\": \"dashboard\", \"overview_panels\": null, \"overview_reachability\": \"manual\", \"start_page\": \"overview\", \"sync_terminal_directory\": true, \"terminal_appearance\": {}, \"theme\": \"glass\"}"
+  },
+  {
+   "in": null,
+   "generation": 1,
+   "out": "{\"authentication_session_duration_minutes\": 30, \"confirm_session_close\": false, \"disconnect_session_action\": \"retry\", \"overview_dismissed\": [], \"overview_layout\": \"dashboard\", \"overview_panels\": null, \"overview_reachability\": \"manual\", \"start_page\": \"overview\", \"sync_terminal_directory\": true, \"terminal_appearance\": {}, \"theme\": \"glass\"}"
+  },
+  {
+   "in": "{\"schema_version\": 2}",
+   "generation": 0,
+   "out": "{\"authentication_session_duration_minutes\": 30, \"confirm_session_close\": true, \"disconnect_session_action\": \"retry\", \"overview_dismissed\": [], \"overview_layout\": \"dashboard\", \"overview_panels\": null, \"overview_reachability\": \"manual\", \"start_page\": \"overview\", \"sync_terminal_directory\": true, \"terminal_appearance\": {}, \"theme\": \"glass\"}"
+  },
+  {
+   "in": "{\"schema_version\": 2.0, \"theme\": \"noir\"}",
+   "generation": 1,
+   "out": null
+  },
+  {
+   "in": "{\"schema_version\": 2, \"confirm_session_close\": false}",
+   "generation": 0,
+   "out": "{\"authentication_session_duration_minutes\": 30, \"confirm_session_close\": false, \"disconnect_session_action\": \"retry\", \"overview_dismissed\": [], \"overview_layout\": \"dashboard\", \"overview_panels\": null, \"overview_reachability\": \"manual\", \"start_page\": \"overview\", \"sync_terminal_directory\": true, \"terminal_appearance\": {}, \"theme\": \"glass\"}"
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_panels\": [{\"id\": \"future\", \"w\": 4}, {\"id\": \"hosts\", \"w\": 5}, {\"id\": \"hosts\", \"w\": 6}], \"overview_dismissed\": [\"future:x\", \"reboot:a\", \"reboot:a\", 7]}",
+   "generation": 1,
+   "out": "{\"authentication_session_duration_minutes\": 30, \"confirm_session_close\": false, \"disconnect_session_action\": \"retry\", \"overview_dismissed\": [\"reboot:a\"], \"overview_layout\": \"dashboard\", \"overview_panels\": [{\"id\": \"hosts\", \"w\": 5}], \"overview_reachability\": \"manual\", \"start_page\": \"overview\", \"sync_terminal_directory\": true, \"terminal_appearance\": {}, \"theme\": \"glass\"}"
+  },
+  {
+   "in": "{\"schema_version\": 2, \"overview_panels\": [{\"id\": \"future\", \"w\": 4}]}",
+   "generation": 1,
+   "out": "{\"authentication_session_duration_minutes\": 30, \"confirm_session_close\": false, \"disconnect_session_action\": \"retry\", \"overview_dismissed\": [], \"overview_layout\": \"dashboard\", \"overview_panels\": null, \"overview_reachability\": \"manual\", \"start_page\": \"overview\", \"sync_terminal_directory\": true, \"terminal_appearance\": {}, \"theme\": \"glass\"}"
+  },
+  {
+   "in": "{\"schema_version\": 2, \"intro_tour\": \"dismissed\", \"future_key\": {\"n\": 123456789012345678901}, \"notepad\": \"ab\\ud83d\", \"workspace_presets\": [], \"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\": 1}",
+   "generation": 1,
+   "out": "{\"authentication_session_duration_minutes\": 30, \"confirm_session_close\": false, \"disconnect_session_action\": \"retry\", \"future_key\": {\"n\": 123456789012345678901}, \"intro_tour\": \"dismissed\", \"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\": 1, \"overview_dismissed\": [], \"overview_layout\": \"dashboard\", \"overview_panels\": null, \"overview_reachability\": \"manual\", \"start_page\": \"overview\", \"sync_terminal_directory\": true, \"terminal_appearance\": {}, \"theme\": \"glass\"}"
+  },
+  {
+   "in": "{\"schema_version\": 2, \"theme\": \"glass\", \"theme\": \"noir\", \"terminal_appearance\": {\"line_height\": 1.2}}",
+   "generation": 0,
+   "out": "{\"authentication_session_duration_minutes\": 30, \"confirm_session_close\": true, \"disconnect_session_action\": \"retry\", \"overview_dismissed\": [], \"overview_layout\": \"dashboard\", \"overview_panels\": null, \"overview_reachability\": \"manual\", \"start_page\": \"overview\", \"sync_terminal_directory\": true, \"terminal_appearance\": {\"line_height\": 1.2}, \"theme\": \"noir\"}"
+  }
+ ],
  "encode": [
   {
    "in": "{\"panels\": null, \"dismissed\": []}",

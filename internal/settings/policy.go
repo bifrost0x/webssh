@@ -3,7 +3,6 @@ package settings
 import (
 	"context"
 	"encoding/json/jsontext"
-	"fmt"
 	"maps"
 	"slices"
 
@@ -14,8 +13,8 @@ import (
 // (migration spec, section 6, decision D-01). An installation without a
 // row gets the secure default of this release; the upgrade writes the
 // previous behaviour as an explicit, visible setting and lists it in the
-// migration report. The keys contain a dot, which no key of the legacy
-// app_settings.json does.
+// migration report. The keys contain a dot, which no key the Python
+// release writes does; ImportApp skips a legacy key of the same name.
 const (
 	// PolicyDiscovery grants host discovery per role (D-18, D-29). The
 	// value is an object of role names to booleans. HOST_DISCOVERY_ENABLED
@@ -154,9 +153,4 @@ func (a App) MaterialisedSettings() []Materialised {
 		}
 	}
 	return out
-}
-
-// errPolicyKey refuses a legacy key that would shadow a derived setting.
-func errPolicyKey(key string) error {
-	return fmt.Errorf("%w: reserved key %s", ErrLegacyDocument, key)
 }

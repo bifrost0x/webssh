@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	json "encoding/json/v2"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/principal/principaltest"
+	"github.com/bifrost0x/webssh/internal/store"
 )
 
 type fakeGates map[string]bool
@@ -74,7 +76,6 @@ func TestPreferences(t *testing.T) {
 		{`{"notepad":"x"}`, "application/json", msgNothingToChange, "invalid_request"},
 		{`[]`, "application/json", msgNothingToChange, "invalid_request"},
 		{`{"theme":"noir"}`, "text/plain", msgNothingToChange, "invalid_request"},
-		{`{"theme":"noir","theme":"glass"}`, "application/json", msgNothingToChange, "invalid_request"},
 		{`{"theme":"nope"}`, "application/json", msgInvalidTheme, "invalid_value"},
 		{`{"theme":1}`, "application/json", msgInvalidTheme, "invalid_value"},
 		{`{"confirm_session_close":"true"}`, "application/json", msgInvalidConfirm, "invalid_value"},
@@ -94,6 +95,10 @@ func TestPreferences(t *testing.T) {
 	big := `{"theme":"` + strings.Repeat("x", maxBody) + `"}`
 	if r := call(t, mux, &u, "POST", "/api/account/preferences", big, "application/json"); r.status != 413 {
 		t.Errorf("oversized body: %d", r.status)
+	}
+	// For duplicate names the last one wins, as in json.loads.
+	if r := call(t, mux, &u, "POST", "/api/account/preferences", `{"theme":"nope","theme":"paper"}`, "application/json"); r.status != 200 || r.body["settings"].(map[string]any)["theme"] != "paper" {
+		t.Errorf("duplicate member: %d %s", r.status, r.raw)
 	}
 	if r := call(t, mux, &u, "POST", "/api/account/preferences", `{"theme":"glass"}`, "application/vnd.webssh+json"); r.status != 200 {
 		t.Errorf("+json media type: %d", r.status)
@@ -125,16 +130,34 @@ func TestOverviewPreferences(t *testing.T) {
 	if r := call(t, mux, &u, "PUT", "/api/overview/preferences", `{"panels":null}`, "application/json"); r.raw != `{"dismissed":["reboot:a"],"panels":null}` {
 		t.Errorf("reset: %s", r.raw)
 	}
-	for body, msg := range map[string]string{
-		`{}`:                            "Invalid request.",
-		`{"other":1}`:                   "Invalid request.",
-		`{"panels":[{"id":"x","w":4}]}`: msgInvalidPanels,
-		`{"dismissed":["x"]}`:           msgInvalidDismissed,
-		`{"panels":5,"dismissed":5}`:    msgInvalidPanels,
+	// The codes of the Python release.
+	for body, want := range map[string][2]string{
+		`{}`:                            {"Invalid request.", "invalid_request"},
+		`{"other":1}`:                   {"Invalid request.", "invalid_request"},
+		`{"panels":[{"id":"x","w":4}]}`: {msgInvalidPanels, "invalid_layout"},
+		`{"dismissed":["x"]}`:           {msgInvalidDismissed, "invalid_dismissed"},
+		`{"panels":5,"dismissed":5}`:    {msgInvalidPanels, "invalid_layout"},
 	} {
-		if r := call(t, mux, &u, "PUT", "/api/overview/preferences", body, "application/json"); r.status != 400 || r.body["error"] != msg {
+		if r := call(t, mux, &u, "PUT", "/api/overview/preferences", body, "application/json"); r.status != 400 || r.body["error"] != want[0] || r.body["code"] != want[1] {
 			t.Errorf("%s: %d %s", body, r.status, r.raw)
 		}
+	}
+}
+
+func TestOverviewPreferencesStorageFailure(t *testing.T) {
+	h, mux := newHTTP(t)
+	h.Logger = slog.New(slog.DiscardHandler)
+	err := h.Settings.db.Write(t.Context(), func(tx *store.Tx) error {
+		_, err := tx.ExecContext(t.Context(), `DROP TABLE settings_user`)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := principaltest.User(2)
+	r := call(t, mux, &u, "PUT", "/api/overview/preferences", `{"panels":null}`, "application/json")
+	if r.status != 500 || r.body["code"] != "storage" || r.body["error"] != msgOverviewNotSaved {
+		t.Errorf("%d %s", r.status, r.raw)
 	}
 }
 

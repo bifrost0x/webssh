@@ -19,6 +19,7 @@ os.environ['DATA_DIR'] = tempfile.mkdtemp(prefix='settings-oracle-')
 
 from flask import Flask, render_template_string  # noqa: E402
 
+from app.storage_errors import StorageCorruptionError  # noqa: E402
 from app.terminal_appearance import valid_terminal_appearance  # noqa: E402
 from app.user_settings import (  # noqa: E402
     _known_overview_dismissed, _known_overview_panels, _valid_settings,
@@ -101,6 +102,61 @@ FILES = [
 ]
 
 
+# Effective settings (get_user_settings) for a settings.json, or None for an
+# account without a file, and the account's settings_default_generation.
+EFFECTIVE = [
+    (None, 0), (None, 1),
+    ('{"schema_version": 2}', 0), ('{"schema_version": 2.0, "theme": "noir"}', 1),
+    ('{"schema_version": 2, "confirm_session_close": false}', 0),
+    ('{"schema_version": 2, "overview_panels": [{"id": "future", "w": 4}, {"id": "hosts", "w": 5}, '
+     '{"id": "hosts", "w": 6}], "overview_dismissed": ["future:x", "reboot:a", "reboot:a", 7]}', 1),
+    ('{"schema_version": 2, "overview_panels": [{"id": "future", "w": 4}]}', 1),
+    ('{"schema_version": 2, "intro_tour": "dismissed", "future_key": {"n": 123456789012345678901}, '
+     '"notepad": "ab\\ud83d", "workspace_presets": [], "' + 'k' * 200 + '": 1}', 1),
+    ('{"schema_version": 2, "theme": "glass", "theme": "noir", "terminal_appearance": {"line_height": 1.2}}', 0),
+]
+
+
+class _StubUser:
+    def __init__(self, directory, generation):
+        self._dir, self.settings_default_generation = directory, generation
+
+    def get_data_dir(self):
+        return self._dir
+
+
+class _StubSession:
+    def __init__(self, user):
+        self._user = user
+
+    def get(self, _model, _user_id):
+        return self._user
+
+
+class _StubDB:
+    def __init__(self, user):
+        self.session = _StubSession(user)
+
+
+def effective(text, generation):
+    import app.models as models
+    from app.user_settings import _get_user_settings_with_lock_held
+    directory = Path(tempfile.mkdtemp(prefix='settings-oracle-user-'))
+    if text is not None:
+        (directory / 'settings.json').write_text(text, encoding='utf-8')
+    saved = models.db
+    models.db = _StubDB(_StubUser(directory, generation))
+    try:
+        result = _get_user_settings_with_lock_held(1)
+    except StorageCorruptionError:
+        return None
+    finally:
+        models.db = saved
+    result.pop('notepad', None)
+    result.pop('workspace_presets', None)
+    return json.dumps(result, sort_keys=True, ensure_ascii=False)
+
+
 def parse(text):
     return json.loads(text)
 
@@ -116,6 +172,7 @@ def main(out):
         'files': [{'in': t, 'ok': _valid_settings(parse(t))} for t in FILES],
         'updates': [{'in': t, 'ok': _valid_settings_update(parse(t))} for t in FILES[4:]],
     }
+    cases['effective'] = [{'in': t, 'generation': g, 'out': effective(t, g)} for t, g in EFFECTIVE]
     encode = [
         '{"panels": null, "dismissed": []}',
         '{"panels": [{"w": 4, "id": "hosts", "h": null, "hidden": false}], "dismissed": ["host-keys:a"]}',

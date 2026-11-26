@@ -20,7 +20,7 @@ func Schema() store.Schema {
 	return store.Schema{Owner: "settings", Migrations: []store.Migration{{
 		Version: 1,
 		SQL: `CREATE TABLE settings_app (
-	key TEXT PRIMARY KEY CHECK (length(key) BETWEEN 1 AND 128),
+	key TEXT PRIMARY KEY,
 	value TEXT NOT NULL CHECK (json_valid(value)),
 	source TEXT NOT NULL CHECK (source IN ('admin', 'migrated', 'materialised')),
 	rule TEXT NOT NULL DEFAULT '' CHECK ((source = 'materialised') = (rule <> '')),
@@ -28,7 +28,7 @@ func Schema() store.Schema {
 ) STRICT;
 CREATE TABLE settings_user (
 	user_id INTEGER NOT NULL CHECK (user_id > 0),
-	key TEXT NOT NULL CHECK (length(key) BETWEEN 1 AND 128),
+	key TEXT NOT NULL,
 	value TEXT NOT NULL CHECK (json_valid(value)),
 	PRIMARY KEY (user_id, key)
 ) STRICT`,

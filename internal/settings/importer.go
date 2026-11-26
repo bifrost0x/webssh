@@ -27,6 +27,9 @@ type UserImport struct {
 	// the hosts (A06), nil when absent. Both are left to their owners.
 	Notepad          string
 	WorkspacePresets jsontext.Value
+	// LoneSurrogates reports strings with an escaped unpaired UTF-16
+	// surrogate; they were read as U+FFFD, as the legacy reader does.
+	LoneSurrogates bool
 }
 
 // ImportUser stores the settings of one account of the Python release in
@@ -49,6 +52,7 @@ func ImportUser(ctx context.Context, tx *store.Tx, userID int64, doc jsontext.Va
 			return UserImport{}, err
 		}
 		stored, out.Notepad, out.WorkspacePresets = parsed.settings, parsed.notepad, parsed.presets
+		out.LoneSurrogates = parsed.lone
 	} else {
 		stored = map[string]jsontext.Value{}
 	}
@@ -99,12 +103,15 @@ type legacyDocument struct {
 	settings map[string]jsontext.Value
 	notepad  string
 	presets  jsontext.Value
+	lone     bool
 }
 
 // parseLegacyDocument checks a settings.json document like
-// _valid_settings of the Python release and splits it by owner.
+// _valid_settings of the Python release, after reading it like json.loads
+// (pythonLoad), and splits it by owner. The version must be the integer
+// 2: the Python loader refuses any other type (storage_migrations.py).
 func parseLegacyDocument(doc jsontext.Value) (legacyDocument, error) {
-	c, err := compact(doc)
+	c, lone, err := pythonLoad(doc)
 	if err != nil {
 		return legacyDocument{}, fmt.Errorf("%w: %v", ErrLegacyDocument, err)
 	}
@@ -112,7 +119,7 @@ func parseLegacyDocument(doc jsontext.Value) (legacyDocument, error) {
 	if !ok {
 		return legacyDocument{}, fmt.Errorf("%w: not an object", ErrLegacyDocument)
 	}
-	out := legacyDocument{settings: map[string]jsontext.Value{}}
+	out := legacyDocument{settings: map[string]jsontext.Value{}, lone: lone}
 	schemaOK := false
 	for _, m := range members {
 		switch m.name {
@@ -128,7 +135,7 @@ func parseLegacyDocument(doc jsontext.Value) (legacyDocument, error) {
 		case legacyKeyWorkspacePresets:
 			out.presets = m.value
 		default:
-			if !validStored(m.name, m.value) || len(m.name) == 0 || len(m.name) > 128 {
+			if !validStored(m.name, m.value) {
 				return legacyDocument{}, fmt.Errorf("%w: %s", ErrLegacyDocument, m.name)
 			}
 			out.settings[m.name] = m.value

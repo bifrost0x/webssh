@@ -26,8 +26,23 @@ func (s *Service) setTheme(ctx context.Context, _ protocol.Peer, req protocol.Se
 	return protocol.SettingsTheme{Theme: u.Theme}, err
 }
 
-func (s *Service) setConfirmClose(ctx context.Context, _ protocol.Peer, req protocol.SettingsConfirmClose) (protocol.SettingsConfirmClose, error) {
-	u, err := s.realtimeUpdate(ctx, Changes{ConfirmSessionClose: &req.Enabled}, "Failed to save close confirmation setting")
+// confirmCloseRequest is protocol.SettingsConfirmClose with the value
+// required: Python refuses a missing or null value instead of storing
+// false.
+type confirmCloseRequest struct {
+	Enabled *bool `json:"enabled"`
+}
+
+// Validate implements protocol.Validator.
+func (r *confirmCloseRequest) Validate() error {
+	if r.Enabled == nil {
+		return invalid(msgInvalidConfirm)
+	}
+	return nil
+}
+
+func (s *Service) setConfirmClose(ctx context.Context, _ protocol.Peer, req confirmCloseRequest) (protocol.SettingsConfirmClose, error) {
+	u, err := s.realtimeUpdate(ctx, Changes{ConfirmSessionClose: req.Enabled}, "Failed to save close confirmation setting")
 	return protocol.SettingsConfirmClose{Enabled: u.ConfirmSessionClose}, err
 }
 

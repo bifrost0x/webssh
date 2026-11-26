@@ -89,3 +89,26 @@ func FuzzValidators(f *testing.F) {
 		_, _ = parseLegacyApp(c)
 	})
 }
+
+// FuzzPythonLoad checks that the json.loads reading yields a strict,
+// compact value with unique names that reads back unchanged.
+func FuzzPythonLoad(f *testing.F) {
+	seedJSON(f)
+	f.Add([]byte(`{"a":1,"a":{"b":"\ud83d","b":2}}`))
+	f.Fuzz(func(t *testing.T, in []byte) {
+		v, lone, err := pythonLoad(in)
+		if err != nil {
+			return
+		}
+		if !v.IsValid() {
+			t.Fatalf("%q gave invalid %q", in, v)
+		}
+		again, lone2, err := pythonLoad(v)
+		if err != nil || string(again) != string(v) || lone2 {
+			t.Fatalf("%q: not stable: %q %v %v", in, again, lone2, err)
+		}
+		if !lone && !jsontext.Value(in).IsValid(jsontext.AllowDuplicateNames(true)) {
+			t.Fatalf("%q: lone surrogate not reported", in)
+		}
+	})
+}
