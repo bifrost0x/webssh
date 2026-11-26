@@ -471,6 +471,7 @@ const SessionManager = {
 
         const tab = document.getElementById(`tab-${sessionId}`);
         if (tab) {
+            window.HostPlatform?.releaseFits?.(tab);
             tab.remove();
         }
 
@@ -1266,6 +1267,7 @@ const SessionManager = {
                 container.appendChild(child);
             }
         });
+        window.HostPlatform?.releaseFits?.(pane);
         pane.innerHTML = '';
 
         const sessionId = this.paneAssignments[paneIndex];

@@ -263,13 +263,17 @@
         const label = tab?.querySelector('.tab-label');
         const holder = tab?.querySelector('.tab-services');
         if (!label || !holder) return;
-        if (label.querySelector('.tab-rename-input')) return;
+        if (label.querySelector('.tab-rename-input') || !rendered(label)) return;
         const parts = [...label.children];
         dropTiles(holder, () => label.scrollWidth > label.clientWidth || parts.some(textCut), () => widthOf(label));
     }
+    // A text in a hidden container (the rail of another view, for example) measures
+    // nothing. It is fitted when it shows: that resizes it, and the observer fires.
+    const rendered = element => typeof element?.getClientRects !== 'function' || element.getClientRects().length > 0;
     /** Shows as many tiles of `holder` as fit without cutting any of `texts`. */
     function fitTiles(holder, texts) {
         if (!holder?.isConnected || !texts.length) return;
+        if (!texts.every(text => rendered(text.within || text))) return;
         dropTiles(holder, () => texts.some(isCut), () => texts.reduce((sum, text) => sum + widthOf(text), 0));
     }
     // Text widths follow renames, theme fonts, panes and the viewport, so the text is what is watched.
@@ -378,7 +382,10 @@
         const current = [...(pane.children || [])].find(child => child.classList?.contains('session-identity-bar')) || null;
         const identity = sessionIdentity(session, profile);
         if (!identity?.informative) {
-            current?.remove();
+            if (current) {
+                releaseFits(current);
+                current.remove();
+            }
             return null;
         }
         const parts = [identity.label, identity.name, identity.system, identity.virt].filter(Boolean);
@@ -420,7 +427,10 @@
             holder.append(...tiles);
             bar.append(holder);
         }
-        if (current) current.replaceWith(bar);
+        if (current) {
+            releaseFits(current);
+            current.replaceWith(bar);
+        }
         else pane.insertBefore(bar, pane.firstElementChild);
         if (holder) keepTilesFitting(holder, text);
         return bar;

@@ -64,7 +64,7 @@ function createElement(tagName = 'div') {
     return element;
 }
 
-function setup(profiles) {
+function setup(profiles, extras = {}) {
     const tabs = createElement('div');
     tabs.id = 'sessionTabs';
     const document = {
@@ -79,13 +79,13 @@ function setup(profiles) {
     };
     const window = {ProfileManager: {profiles}, HostPlatform, HostIdentity, addEventListener() {}, dispatchEvent() {}};
     window.window = window;
-    const context = {console, document, window, setTimeout: () => 0};
+    const context = {console, document, window, setTimeout: () => 0, ...extras};
     vm.createContext(context);
     vm.runInContext(`${fs.readFileSync(path.join(__dirname, '../../static/js/session-manager.js'), 'utf8')}
 ;globalThis.__manager = SessionManager;`, context);
     const manager = context.__manager;
     manager.scrollTabIntoView = () => {};
-    return {manager, tabs, document};
+    return {manager, tabs, document, window};
 }
 
 const PAPERLESS = {
@@ -264,4 +264,21 @@ test('the identity line appears only when the saved host says more than its name
     assert.equal(pane.children.length, 1);
     HostPlatform.markIdentityBar(pane, session({profileId: 'plain'}), bare, {createElement});
     assert.equal(pane.children.length, 0);
+});
+
+test('closing a session stops watching the names in its tab', () => {
+    const {manager, tabs, window} = setup([PAPERLESS], {
+        TerminalManager: {destroyTerminal() {}},
+        CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
+    });
+    manager.sessions.s1 = session();
+    manager.createSessionTab('s1');
+    const tab = tabOf(tabs, 's1');
+    const released = [];
+    window.HostPlatform = {...HostPlatform, releaseFits: root => released.push(root)};
+    manager.updateSessionMeta = () => {};
+    manager.notifyWorkspaceChange = () => {};
+    manager.removeSessionUI('s1');
+    assert.equal(tabOf(tabs, 's1'), undefined);
+    assert.deepEqual(released, [tab]);
 });

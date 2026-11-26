@@ -152,6 +152,29 @@ test('a saved host without facts keeps the terminal layout of a pane without a s
     await expect.poll(async () => (await layout('plain')).rows).toBeLessThan(plainLayout.rows);
 });
 
+test('a pane lets go of its old identity line before it is redrawn', async ({ page }) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await simulateSessions(page);
+    await connect(page, 'pve');
+    await connect(page, 'paper');
+    await expect(bar(page, 'paper')).toHaveCount(1);
+    await page.evaluate(() => {
+        window.__released = [];
+        const release = HostPlatform.releaseFits;
+        HostPlatform.releaseFits = root => {
+            window.__released.push({pane: root.classList.contains('terminal-pane'), bar: Boolean(root.querySelector?.('.session-identity-bar')),
+                tab: root.classList.contains('session-tab')});
+            return release(root);
+        };
+    });
+    await page.locator('#tab-idbar-pve .tab-label').click();
+    await expect(page.locator('.terminal-pane').first().locator('.session-identity-bar')).toHaveAttribute('data-role', 'hypervisor');
+    expect(await page.evaluate(() => window.__released)).toContainEqual({pane: true, bar: true, tab: false});
+    await page.evaluate(() => SessionManager.removeSessionUI('idbar-paper'));
+    expect(await page.evaluate(() => window.__released)).toContainEqual({pane: false, bar: false, tab: true});
+});
+
 test('the bar follows profile updates and the session a pane shows', async ({ page }) => {
     await page.setViewportSize({width: 1440, height: 900});
     await login(page);

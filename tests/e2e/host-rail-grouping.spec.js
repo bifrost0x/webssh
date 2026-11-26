@@ -114,6 +114,29 @@ test('rows show at most four service logos and drop them before cutting a name',
     expect(logos).toBe(0);
 });
 
+test('rows built inside a collapsed heading fit their logos once it opens', async ({page}) => {
+    await openRail(page);
+    const edge = page.locator('#shellGroups > details[data-tone]').filter({hasText: 'Edge'});
+    // The rail stores the collapsed heading from the toggle event, which fires after the click.
+    const toggled = edge.evaluate(details => new Promise(resolve => details.addEventListener('toggle', resolve, {once: true})));
+    await edge.locator('summary').click();
+    await toggled;
+    await expect(edge).not.toHaveAttribute('open', '');
+    // Rebuilt while collapsed: the rows exist but are not rendered and cannot be measured.
+    await page.evaluate(items => ProfileManager.setProfiles(items.map(item => ({...item}))), profiles);
+    const reopened = page.locator('#shellGroups > details[data-tone]').filter({hasText: 'Edge'});
+    await expect(reopened).not.toHaveAttribute('open', '');
+    await reopened.locator('summary').click();
+    const long = page.locator('#shellGroups .shell-host[aria-label^="a-rather-long"]');
+    await expect.poll(() => long.evaluate(row => row.querySelectorAll('.shell-host-service:not([hidden])').length)).toBe(0);
+    const crowded = page.locator('#shellGroups .shell-host[aria-label="plain"]');
+    await expect.poll(() => crowded.evaluate(row => {
+        const name = row.querySelector('.shell-host-name');
+        return {cut: name.scrollWidth > name.clientWidth,
+            shown: row.querySelectorAll('.shell-host-service:not([hidden])').length > 0};
+    })).toEqual({cut: false, shown: true});
+});
+
 test('names are text only, the page does not overflow at 360 px and the rail stays hidden there', async ({page}) => {
     await page.setViewportSize({width: 360, height: 740});
     await page.evaluate(items => {
