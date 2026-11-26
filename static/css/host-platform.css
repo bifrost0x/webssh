@@ -38,6 +38,34 @@
 .host-platform-icon[data-platform="freebsd"] { --platform-ink-dark: #ff8585; --platform-ink-light: #a62e35; }
 body[data-theme="paper"] .host-platform-icon { color: var(--platform-ink-light, #4b5968); }
 
+/* Service logos are drawn in the surrounding text colour; the tile behind them
+   (tinted by the host role) belongs to the component that places them. */
+.host-service-icon {
+    --service-icon-size: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--service-icon-size);
+    height: var(--service-icon-size);
+    flex: 0 0 var(--service-icon-size);
+    vertical-align: middle;
+    color: inherit;
+    background-color: currentColor;
+    mask-size: contain;
+    mask-position: center;
+    mask-repeat: no-repeat;
+}
+.host-service-icon:has(> .host-service-monogram) { background-color: transparent; }
+.host-service-monogram {
+    font-size: calc(var(--service-icon-size) * 0.56);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    user-select: none;
+}
+
 @media (forced-colors: active) {
     body[data-theme] .host-platform-icon { color: CanvasText; forced-color-adjust: none; }
+    .host-service-icon { color: CanvasText; forced-color-adjust: none; }
 }

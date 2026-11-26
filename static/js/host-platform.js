@@ -68,6 +68,55 @@
         const list = Array.isArray(profile?.detected_services) ? profile.detected_services : [];
         return [...new Set(list.filter(id => Object.hasOwn(serviceLabels, id)))];
     }
+    let serviceManifest = {text: null, assets: {}};
+    /** Versioned URL of a bundled service logo, or null when none is bundled. */
+    function serviceAsset(id, doc = document) {
+        if (typeof id !== 'string' || !Object.hasOwn(serviceLabels, id)) return null;
+        // Without the manifest nothing says which logos exist, so no file is guessed.
+        const text = doc.getElementById?.('hostServiceAssets')?.textContent || '{}';
+        if (text !== serviceManifest.text) {
+            let assets = {};
+            try {
+                assets = JSON.parse(text);
+            } catch {
+                // Older embedded documents may not provide a valid asset manifest.
+            }
+            serviceManifest = {text, assets: assets && typeof assets === 'object' ? assets : {}};
+        }
+        const asset = Object.hasOwn(serviceManifest.assets, id) ? serviceManifest.assets[id] : null;
+        return typeof asset === 'string' && asset !== '' ? asset : null;
+    }
+    // Two capitals from the label: the first letters of two words, else the first
+    // letter and the next capital (NetBird -> NB), else the first two letters.
+    function monogram(label) {
+        const words = String(label).match(/[\p{L}\p{N}]+/gu) || [];
+        if (words.length > 1) return `${[...words[0]][0]}${[...words[1]][0]}`.toUpperCase();
+        const letters = [...(words[0] || '')];
+        const capital = letters.slice(1).find(letter => /\p{Lu}/u.test(letter));
+        return `${letters[0] || ''}${capital || letters[1] || ''}`.toUpperCase();
+    }
+    /** A service logo (or monogram) for a known service id; null for any other value. */
+    function renderService(id, doc = document) {
+        if (typeof id !== 'string' || !Object.hasOwn(serviceLabels, id)) return null;
+        const label = serviceLabels[id];
+        const element = doc.createElement('span');
+        element.className = 'host-service-icon';
+        element.setAttribute('data-service', id);
+        element.setAttribute('role', 'img');
+        element.setAttribute('aria-label', label);
+        element.title = label;
+        const asset = serviceAsset(id, doc);
+        if (asset) {
+            element.style.maskImage = `url("${asset}")`;
+        } else {
+            const letters = doc.createElement('span');
+            letters.className = 'host-service-monogram';
+            letters.setAttribute('aria-hidden', 'true');
+            letters.textContent = monogram(label);
+            element.append(letters);
+        }
+        return element;
+    }
     const sourceIds = ['manual', 'detected', 'family', 'greeting', 'hint', 'pending', 'unavailable', 'unlisted'];
     function resolve(profile = {}) {
         if (known(profile.platform_icon)) return {id: profile.platform_icon, source: 'manual'};
@@ -146,5 +195,5 @@
             holder.replaceChildren(renderSession(session, profile));
         }
     }
-    return {labels, resolve, services, serviceLabels, render, renderSession, refreshSessionIcons};
+    return {labels, resolve, services, serviceLabels, serviceAsset, render, renderService, renderSession, refreshSessionIcons};
 });

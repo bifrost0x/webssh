@@ -281,18 +281,26 @@ def init_static_delivery(app) -> None:
 
     app.jinja_env.globals["static_asset_url"] = static_asset_url
 
-    def translation_asset_urls() -> dict[str, str]:
-        """Versioned URLs of the per-language files in static/js/i18n/."""
-        prefix = "js/i18n/"
+    def directory_asset_urls(prefix: str, suffix: str) -> dict[str, str]:
+        """Versioned URLs of the files directly in one static directory, by stem."""
         return {
-            path[len(prefix):-len(".js")]: static_asset_url(path)
+            path[len(prefix):-len(suffix)]: static_asset_url(path)
             for path in sorted(app.extensions[_ASSET_INDEX_EXTENSION])
             if path.startswith(prefix)
-            and path.endswith(".js")
+            and path.endswith(suffix)
             and "/" not in path[len(prefix):]
         }
 
+    def translation_asset_urls() -> dict[str, str]:
+        """Versioned URLs of the per-language files in static/js/i18n/."""
+        return directory_asset_urls("js/i18n/", ".js")
+
+    def service_icon_urls() -> dict[str, str]:
+        """Versioned URLs of the bundled service logos, keyed by service id."""
+        return directory_asset_urls("icons/services/", ".svg")
+
     app.jinja_env.globals["translation_asset_urls"] = translation_asset_urls
+    app.jinja_env.globals["service_icon_urls"] = service_icon_urls
 
     @app.after_request
     def optimize_static_delivery(response):

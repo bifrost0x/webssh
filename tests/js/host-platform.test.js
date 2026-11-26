@@ -146,3 +146,86 @@ test('source texts name pending, unavailable and family identities', () => {
     assert.match(icons.renderSession(session, profile, fakeDocument()).title, /family/);
     assert.match(icons.renderSession(session, {name: 'x', host: 'h', username: 'u', detection_state: 'unavailable'}, fakeDocument()).title, /not possible/);
 });
+
+const serviceDocument = (manifest) => {
+    const doc = {
+        createElement(tag) {
+            const element = {tag, style: {}, children: [], className: '', setAttribute(key, value) {this[key] = value;},
+                append(...nodes) {this.children.push(...nodes);}};
+            Object.defineProperty(element, 'innerHTML', {set() {throw new Error('innerHTML must not be used');}});
+            return element;
+        },
+    };
+    if (manifest !== undefined) {
+        doc.getElementById = id => id === 'hostServiceAssets' ? {textContent: manifest} : null;
+    }
+    return doc;
+};
+
+test('service logos come from the versioned manifest and carry the label', () => {
+    const doc = serviceDocument(JSON.stringify({immich: '/tools/webssh/static/icons/services/immich.svg?v=0123456789abcdef'}));
+    const icon = icons.renderService('immich', doc);
+    assert.equal(icon.tag, 'span');
+    assert.equal(icon.className, 'host-service-icon');
+    assert.equal(icon['data-service'], 'immich');
+    assert.equal(icon.role, 'img');
+    assert.equal(icon['aria-label'], 'Immich');
+    assert.equal(icon.title, 'Immich');
+    assert.equal(icon.style.maskImage, 'url("/tools/webssh/static/icons/services/immich.svg?v=0123456789abcdef")');
+    assert.deepEqual(icon.children, []);
+    assert.equal(icons.serviceAsset('immich', doc), '/tools/webssh/static/icons/services/immich.svg?v=0123456789abcdef');
+});
+
+test('services without a bundled logo show a two-letter monogram', () => {
+    const doc = serviceDocument(JSON.stringify({immich: '/static/icons/services/immich.svg?v=1'}));
+    const cases = {filebrowser: 'FB', haproxy: 'HA', stirlingpdf: 'SP', openwebui: 'OW', samba: 'SA', k3s: 'K3'};
+    for (const [id, letters] of Object.entries(cases)) {
+        const icon = icons.renderService(id, doc);
+        assert.equal(icon.className, 'host-service-icon', id);
+        assert.equal(icon.style.maskImage, undefined, id);
+        assert.equal(icon['aria-label'], icons.serviceLabels[id], id);
+        const [monogram] = icon.children;
+        assert.equal(monogram.className, 'host-service-monogram', id);
+        assert.equal(monogram.textContent, letters, id);
+        assert.equal(monogram['aria-hidden'], 'true', id);
+    }
+    assert.equal(icons.serviceAsset('filebrowser', doc), null);
+    // Without a manifest nothing is known to exist, so no request for a missing file is made.
+    assert.equal(icons.serviceAsset('immich', serviceDocument()), null);
+    assert.equal(icons.serviceAsset('immich', serviceDocument('invalid json')), null);
+    assert.equal(icons.renderService('immich', serviceDocument()).children[0].textContent, 'IM');
+});
+
+test('monograms follow word and capital boundaries of the label', () => {
+    const doc = serviceDocument('{}');
+    const labels = {netbird: 'NetBird', uptime: 'Uptime Kuma', single: 'Grafana', camel: 'qBittorrent', short: 'X'};
+    try {
+        Object.assign(icons.serviceLabels, labels);
+        const letters = id => icons.renderService(id, doc).children[0].textContent;
+        assert.equal(letters('netbird'), 'NB');
+        assert.equal(letters('uptime'), 'UK');
+        assert.equal(letters('single'), 'GR');
+        assert.equal(letters('camel'), 'QB');
+        assert.equal(letters('short'), 'X');
+    } finally {
+        for (const id of Object.keys(labels)) delete icons.serviceLabels[id];
+    }
+});
+
+test('unknown services render nothing and labels never become markup', () => {
+    const doc = serviceDocument(JSON.stringify({future: '/static/icons/services/future.svg', '<img>': '/x.svg'}));
+    assert.equal(icons.renderService('future', doc), null);
+    assert.equal(icons.renderService('<img src=x>', doc), null);
+    assert.equal(icons.renderService('__proto__', doc), null);
+    assert.equal(icons.renderService(undefined, doc), null);
+    assert.equal(icons.serviceAsset('future', doc), null);
+    try {
+        icons.serviceLabels.markup = '<img src=x onerror=alert(1)> Probe';
+        const icon = icons.renderService('markup', doc);
+        assert.equal(icon.title, '<img src=x onerror=alert(1)> Probe');
+        assert.equal(icon['aria-label'], icon.title);
+        assert.equal(icon.children[0].textContent, 'IS');
+    } finally {
+        delete icons.serviceLabels.markup;
+    }
+});
