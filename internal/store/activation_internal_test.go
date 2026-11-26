@@ -3,6 +3,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -35,5 +36,28 @@ func TestOnlyDatabaseFile(t *testing.T) {
 	}
 	if err := onlyDatabaseFile(path); err == nil {
 		t.Error("a dangling link accepted")
+	}
+}
+
+// CloseForActivation itself runs the check: a side file that appears
+// after SQLite closed the database fails the close and is named. Not
+// parallel: the test sets the package seam.
+func TestCloseForActivationRefusesLeftoverSideFile(t *testing.T) {
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		path := filepath.Join(t.TempDir(), "webssh.db")
+		db, err := Open(t.Context(), path, Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		afterActivationClose = func(p string) {
+			if err := os.WriteFile(p+suffix, []byte("x"), 0o600); err != nil {
+				t.Error(err)
+			}
+		}
+		t.Cleanup(func() { afterActivationClose = func(string) {} })
+		err = db.CloseForActivation(t.Context())
+		if err == nil || !strings.Contains(err.Error(), suffix) {
+			t.Errorf("%s: %v", suffix, err)
+		}
 	}
 }

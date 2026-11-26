@@ -264,11 +264,17 @@ func (db *DB) CloseForActivation(ctx context.Context) error {
 	if err := db.closeLocked(ctx); err != nil {
 		return err
 	}
+	afterActivationClose(db.path)
 	if err := onlyDatabaseFile(db.path); err != nil {
 		return err
 	}
 	return syncFile(db.path)
 }
+
+// afterActivationClose runs between the close and the side-file check of
+// CloseForActivation. SQLite removes the side files a test could plant
+// before the close, so only this seam lets a test reach the check.
+var afterActivationClose = func(string) {}
 
 // onlyDatabaseFile fails when a -wal, -shm or -journal entry exists beside
 // the database. SQLite removes its own on a clean close in

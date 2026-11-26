@@ -213,6 +213,21 @@ func TestUnknownStates(t *testing.T) {
 		}
 		assertUntouched(t, dir, before)
 	})
+	// A legacy source can consist of a single top-level file without
+	// app.db; it is still legacy data and never a fresh installation.
+	for _, name := range []string{"app_settings.json", "known_hosts"} {
+		t.Run("partial legacy source of only "+name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("{}\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			before := legacySnapshot(t, dir)
+			if _, err := startClosed(testOptions(t, dir)); stopCode(err) != CodeLegacyUnknown {
+				t.Fatalf("err = %v", err)
+			}
+			assertUntouched(t, dir, before)
+		})
+	}
 	t.Run("database without record beside legacy data", func(t *testing.T) {
 		dir := copyGolden(t)
 		if err := os.MkdirAll(filepath.Join(dir, "go"), 0o700); err != nil {
