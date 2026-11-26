@@ -72,8 +72,8 @@
             if (item.only && !apps.every(id => item.only.includes(id))) continue;
             return {id: item.role, basis};
         }
-        if (services.length && !apps.length) return {id: 'network', basis: VPN.find(id => services.includes(id))};
         if (profile.detected_graphical === true) return {id: 'workstation', basis: null};
+        if (services.length && !apps.length) return {id: 'network', basis: VPN.find(id => services.includes(id))};
         return null;
     }
     /** The host's role: a manual choice, else the first matching rule, else 'server'. */

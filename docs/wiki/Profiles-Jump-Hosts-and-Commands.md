@@ -188,7 +188,6 @@ on the platform or on a service:
 14. Web: nginx, Apache, Caddy, Traefik, Nginx Proxy Manager, HAProxy.
 15. Containers: the Docker platform, or Docker, Podman, Portainer, k3s,
     Watchtower, Dozzle as the only services.
-16. Network: WireGuard, Tailscale, ZeroTier, OpenVPN as the only services.
 
 Because a service rule can rank above a platform rule, a router platform that
 also runs Jellyfin is a Media host, not a Network host. Rules 13 to 15 describe
@@ -196,10 +195,11 @@ hosts that run nothing but infrastructure: Database allows only databases, web
 servers and container tools, Web only web servers and container tools, and
 Containers only container tools. One more application and the host does not
 match them. VPN and overlay networks (WireGuard, Tailscale, ZeroTier, OpenVPN)
-say how a host is reached, not what it is: the other rules ignore them, a host
-that runs nothing else is a Network host (rule 16), and their logos come after
-all other services. A host that boots into a graphical target and matched
-nothing is a Workstation; anything else is a Server.
+say how a host is reached, not what it is: the rules ignore them, and their
+logos come after all other services. A host that boots into a graphical target
+and matched nothing is a Workstation, also when it runs a VPN overlay; another
+host that runs nothing but VPN overlays is a Network host; anything else is a
+Server.
 
 Only a chosen platform, a detected one or a distribution family derived from
 detection (for example Debian-based) can name a role through the platform. A

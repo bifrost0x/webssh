@@ -186,8 +186,9 @@ test('VPN overlays say how a host is reached, not what it is', () => {
     assert.deepEqual(derived(['pihole', 'tailscale']), {id: 'network', source: 'derived', basis: 'pihole'});
     // An overlay counts as nothing next to another application.
     assert.equal(derived(['tailscale', 'syncthing']).id, 'server');
-    // The overlay-only rule comes before the graphical fallback.
-    assert.equal(id.role({detected_services: ['tailscale'], detected_graphical: true}).id, 'network');
+    // A desktop that reaches the tailnet is still a workstation.
+    assert.deepEqual(id.role({detected_services: ['tailscale'], detected_graphical: true}),
+        {id: 'workstation', source: 'derived', basis: null});
 });
 
 test('VPN overlays are listed after every other service', () => {
