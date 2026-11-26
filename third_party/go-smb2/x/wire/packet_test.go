@@ -1,0 +1,262 @@
+package wire
+
+import (
+	"bytes"
+	"encoding/binary"
+	"testing"
+)
+
+func TestCompressionCodec(t *testing.T) {
+	t.Parallel()
+	pkt := make([]byte, 24)
+	copy(pkt[:4], []byte{0xfc, 'S', 'M', 'B'})
+	binary.LittleEndian.PutUint32(pkt[4:8], 0x11223344)
+	binary.LittleEndian.PutUint16(pkt[8:10], SMB2_COMPRESSION_ALGORITHM_LZ4)
+	binary.LittleEndian.PutUint16(pkt[10:12], SMB2_COMPRESSION_FLAG_NONE)
+	binary.LittleEndian.PutUint32(pkt[12:16], 0x00000008)
+
+	c := CompressionCodec(pkt)
+	if c.IsInvalid() {
+		t.Fatal("known compression header rejected")
+	}
+	if got := c.OriginalCompressedSegmentSize(); got != 0x11223344 {
+		t.Fatalf("OriginalCompressedSegmentSize = %#x", got)
+	}
+	if got := c.CompressionAlgorithm(); got != SMB2_COMPRESSION_ALGORITHM_LZ4 {
+		t.Fatalf("CompressionAlgorithm = %#x", got)
+	}
+	if got := c.Flags(); got != SMB2_COMPRESSION_FLAG_NONE {
+		t.Fatalf("Flags = %#x", got)
+	}
+	if got := c.Offset(); got != 0x00000008 {
+		t.Fatalf("Offset = %#x", got)
+	}
+
+	for n := range pkt {
+		if !CompressionCodec(pkt[:n]).IsInvalid() {
+			t.Fatalf("truncated compression header of length %d accepted", n)
+		}
+	}
+}
+
+func TestCompressionContextDataDecoder(t *testing.T) {
+	t.Parallel()
+	encoded := make([]byte, (&CompressionContext{
+		CompressionAlgorithms: []uint16{SMB2_COMPRESSION_ALGORITHM_LZ4},
+		Flags:                 SMB2_COMPRESSION_CAPABILITIES_FLAG_NONE,
+	}).Size())
+	(&CompressionContext{
+		CompressionAlgorithms: []uint16{SMB2_COMPRESSION_ALGORITHM_LZ4},
+		Flags:                 SMB2_COMPRESSION_CAPABILITIES_FLAG_NONE,
+	}).Encode(encoded)
+	want := []byte{
+		0x03, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00,
+	}
+	// The context is padded to an 8-byte boundary by the enclosing request,
+	// not by the context encoder itself.
+	if !bytes.Equal(encoded, want) {
+		t.Fatalf("encoded compression context = %x, want %x", encoded, want)
+	}
+
+	data := make([]byte, 12)
+	binary.LittleEndian.PutUint16(data[0:2], 2)
+	binary.LittleEndian.PutUint32(data[4:8], SMB2_COMPRESSION_CAPABILITIES_FLAG_NONE)
+	binary.LittleEndian.PutUint16(data[8:10], SMB2_COMPRESSION_ALGORITHM_LZ4)
+	binary.LittleEndian.PutUint16(data[10:12], SMB2_COMPRESSION_ALGORITHM_NONE)
+
+	d := CompressionContextDataDecoder(data)
+	if d.IsInvalid() {
+		t.Fatal("known compression context rejected")
+	}
+	if got := d.CompressionAlgorithms(); len(got) != 2 || got[0] != SMB2_COMPRESSION_ALGORITHM_LZ4 || got[1] != SMB2_COMPRESSION_ALGORITHM_NONE {
+		t.Fatalf("CompressionAlgorithms = %#v", got)
+	}
+
+	for n := range data {
+		if !CompressionContextDataDecoder(data[:n]).IsInvalid() {
+			t.Fatalf("truncated compression context of length %d accepted", n)
+		}
+	}
+}
+
+func TestTransformCodec(t *testing.T) {
+	t.Parallel()
+	// 52 bytes header + 64 bytes encrypted payload = 116 bytes
+	pkt := make([]byte, 116)
+	copy(pkt[:4], []byte{0xfd, 'S', 'M', 'B'})
+	tc := TransformCodec(pkt)
+	tc.SetFlags(Encrypted)
+
+	// OriginalMessageSize must describe the decrypted SMB2 message.
+	binary.LittleEndian.PutUint32(pkt[36:40], 0)
+	if !tc.IsInvalid() {
+		t.Fatal("TransformCodec with OriginalMessageSize=0 accepted")
+	}
+
+	// OriginalMessageSize matches payload size (116 - 52 = 64).
+	binary.LittleEndian.PutUint32(pkt[36:40], 64)
+	if tc.IsInvalid() {
+		t.Fatal("TransformCodec with matching OriginalMessageSize rejected")
+	}
+
+	// Mismatched size
+	binary.LittleEndian.PutUint32(pkt[36:40], 65)
+	if !tc.IsInvalid() {
+		t.Fatal("TransformCodec with mismatched OriginalMessageSize accepted")
+	}
+	binary.LittleEndian.PutUint32(pkt[36:40], 64)
+
+	// Invalid flags / encryption algorithm
+	tc.SetFlags(0)
+	if !tc.IsInvalid() {
+		t.Fatal("TransformCodec with zero flags accepted")
+	}
+	tc.SetFlags(2)
+	if !tc.IsInvalid() {
+		t.Fatal("TransformCodec with non-encrypted flags accepted")
+	}
+	tc.SetFlags(Encrypted)
+
+	// EncryptionAlgorithm field at offset 42..44
+	tc.SetEncryptionAlgorithm(SMB2_ENCRYPTION_AES128_CCM)
+	if got := tc.EncryptionAlgorithm(); got != SMB2_ENCRYPTION_AES128_CCM {
+		t.Fatalf("EncryptionAlgorithm() = %#x, want %#x", got, SMB2_ENCRYPTION_AES128_CCM)
+	}
+	if got := tc.Flags(); got != Encrypted {
+		t.Fatalf("Flags() = %#x, want %#x", got, Encrypted)
+	}
+}
+
+func TestCompressionCodecValidation(t *testing.T) {
+	t.Parallel()
+	pkt := make([]byte, 24)
+	copy(pkt[:4], []byte{0xfc, 'S', 'M', 'B'})
+	binary.LittleEndian.PutUint16(pkt[8:10], SMB2_COMPRESSION_ALGORITHM_LZ4)
+	binary.LittleEndian.PutUint16(pkt[10:12], SMB2_COMPRESSION_FLAG_NONE)
+	binary.LittleEndian.PutUint32(pkt[12:16], 8)
+
+	c := CompressionCodec(pkt)
+	if c.IsInvalid() {
+		t.Fatal("valid compression header rejected")
+	}
+
+	// [MS-SMB2] 3.1.4.4: Offset is the length of the uncompressed prefix
+	// and carries no alignment requirement.
+	binary.LittleEndian.PutUint32(pkt[12:16], 3)
+	if c.IsInvalid() {
+		t.Fatal("unaligned compression offset rejected")
+	}
+
+	// Non-zero flags
+	binary.LittleEndian.PutUint16(pkt[10:12], 1)
+	if !c.IsInvalid() {
+		t.Fatal("non-zero flags accepted")
+	}
+	binary.LittleEndian.PutUint16(pkt[10:12], 0)
+
+	// [MS-SMB2] 2.2.42.1 and 3.1.4.4 exclude NONE and Pattern_V1 from
+	// unchained messages.
+	for _, algorithm := range []uint16{SMB2_COMPRESSION_ALGORITHM_NONE, 4, 6} {
+		binary.LittleEndian.PutUint16(pkt[8:10], algorithm)
+		if !c.IsInvalid() {
+			t.Fatalf("compression algorithm %#x accepted", algorithm)
+		}
+	}
+}
+
+func TestPacketHeaderEncodeHeaderAsyncCommand(t *testing.T) {
+	t.Parallel()
+	hdr := &PacketHeader{
+		Flags:   SMB2_FLAGS_ASYNC_COMMAND,
+		AsyncId: 0x1234567890abcdef,
+		TreeId:  1, // remnant TreeId should not take precedence over AsyncId when ASYNC_COMMAND is set
+	}
+	pkt := make([]byte, 64)
+	hdr.encodeHeader(SMB2_CANCEL, 1, pkt)
+
+	p := PacketCodec(pkt)
+	if got := p.AsyncId(); got != 0x1234567890abcdef {
+		t.Fatalf("AsyncId() = %#x, want 0x1234567890abcdef", got)
+	}
+}
+
+func TestPacketHeaderEncodeHeaderResponseZeroStatus(t *testing.T) {
+	t.Parallel()
+	// Reused buffer with non-zero bytes in status field
+	pkt := make([]byte, 64)
+	binary.LittleEndian.PutUint32(pkt[8:12], 0xc0000022)
+
+	hdr := &PacketHeader{
+		Flags:  SMB2_FLAGS_SERVER_TO_REDIR,
+		Status: 0, // STATUS_SUCCESS
+	}
+	hdr.encodeHeader(SMB2_ECHO, 1, pkt)
+
+	p := PacketCodec(pkt)
+	if got := p.Status(); got != 0 {
+		t.Fatalf("Status() = %#x, want 0", got)
+	}
+}
+
+func TestTransformCodecCiphertextBoundaries(t *testing.T) {
+	t.Parallel()
+	// The encrypted bytes can contain a compressed message rather than a
+	// 64-byte SMB2 header. Inner structure is validated after decryption.
+	for size := 0; size <= 64; size++ {
+		packet := make([]byte, 52+size)
+		p := TransformCodec(packet)
+		p.SetProtocolId()
+		p.SetFlags(Encrypted)
+		p.SetOriginalMessageSize(uint32(size))
+		if got := p.IsInvalid(); got != (size == 0) {
+			t.Fatalf("ciphertext size %d: invalid=%t", size, got)
+		}
+		if size > 0 && len(p.EncryptedData()) != size {
+			t.Fatal("ciphertext length changed")
+		}
+	}
+	for size := range 52 {
+		if !TransformCodec(make([]byte, size)).IsInvalid() {
+			t.Fatalf("accepted %d-byte header", size)
+		}
+	}
+}
+
+func TestPacketCodecIsInvalidResponseRequest(t *testing.T) {
+	t.Parallel()
+	pkt := make([]byte, 64)
+	p := PacketCodec(pkt)
+	p.SetProtocolId()
+	p.SetStructureSize()
+
+	if p.IsInvalid() {
+		t.Fatal("valid SMB2 header rejected by IsInvalid")
+	}
+
+	// Without SERVER_TO_REDIR: valid request, invalid response
+	if p.IsInvalidRequest() {
+		t.Fatal("valid request rejected by IsInvalidRequest")
+	}
+	if !p.IsInvalidResponse() {
+		t.Fatal("request accepted by IsInvalidResponse")
+	}
+
+	// With SERVER_TO_REDIR: valid response, invalid request
+	p.SetFlags(SMB2_FLAGS_SERVER_TO_REDIR)
+	if !p.IsInvalidRequest() {
+		t.Fatal("response accepted by IsInvalidRequest")
+	}
+	if p.IsInvalidResponse() {
+		t.Fatal("valid response rejected by IsInvalidResponse")
+	}
+
+	// Structurally invalid packet fails both
+	invalidPkt := PacketCodec(make([]byte, 30))
+	if !invalidPkt.IsInvalidResponse() {
+		t.Fatal("short packet accepted by IsInvalidResponse")
+	}
+	if !invalidPkt.IsInvalidRequest() {
+		t.Fatal("short packet accepted by IsInvalidRequest")
+	}
+}

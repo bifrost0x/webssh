@@ -1,0 +1,1600 @@
+package wire
+
+import (
+	"encoding/binary"
+	"fmt"
+	"testing"
+
+	"github.com/hirochachacha/go-smb2/v2/internal/utf16le"
+	"github.com/stretchr/testify/require"
+)
+
+func TestLockResponseDecoder(t *testing.T) {
+	t.Parallel()
+	res := &LockResponse{}
+	pkt := make([]byte, res.Size())
+	res.Encode(pkt)
+	if d := LockResponseDecoder(pkt[64:]); d.IsInvalid() {
+		t.Fatal("a well-formed lock response was rejected")
+	}
+
+	bad := pkt[64:]
+	binary.LittleEndian.PutUint16(bad[:2], 5)
+	if d := LockResponseDecoder(bad); !d.IsInvalid() {
+		t.Fatal("invalid lock response structure size was accepted")
+	}
+}
+
+func TestChangeNotifyResponseDecoderBounds(t *testing.T) {
+	t.Parallel()
+	buf := make([]byte, 12)
+	binary.LittleEndian.PutUint16(buf[0:2], 9)
+	binary.LittleEndian.PutUint16(buf[2:4], 72)
+	binary.LittleEndian.PutUint32(buf[4:8], 4)
+	copy(buf[8:], []byte("test"))
+
+	r := ChangeNotifyResponseDecoder(buf)
+	if r.IsInvalid() || string(r.Output()) != "test" {
+		t.Fatalf("valid CHANGE_NOTIFY response was rejected: invalid=%v output=%q", r.IsInvalid(), r.Output())
+	}
+
+	cases := []struct {
+		name   string
+		offset uint16
+		length uint32
+		valid  bool
+	}{
+		{"empty response", 0, 0, true},
+		{"offset before fixed fields", 71, 1, false},
+		{"length beyond command", 72, 5, false},
+		{"offset beyond command", 80, 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := make([]byte, 12)
+			binary.LittleEndian.PutUint16(b[0:2], 9)
+			binary.LittleEndian.PutUint16(b[2:4], tc.offset)
+			binary.LittleEndian.PutUint32(b[4:8], tc.length)
+			if got := !ChangeNotifyResponseDecoder(b).IsInvalid(); got != tc.valid {
+				t.Fatalf("valid=%v, want %v", got, tc.valid)
+			}
+		})
+	}
+}
+
+// call recovers a panic from fn and reports it as a test failure.
+func call(t *testing.T, name string, fn func()) {
+	t.Helper()
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("%s panicked: %v", name, r)
+		}
+	}()
+
+	fn()
+}
+
+func TestSymbolicLinkErrorResponseDecoder_Overflow32Bit(t *testing.T) {
+	t.Parallel()
+	// Craft a payload with a large SymLinkLength (e.g. 0x7ffffff0 or 0xfffffffe)
+	// that would wrap 4 + tlen on 32-bit systems if evaluated as int.
+	for _, symLinkLen := range []uint32{0x7ffffff0, 0x7ffffffe, 0xfffffffe} {
+		buf := make([]byte, 40)
+		binary.LittleEndian.PutUint32(buf[0:4], symLinkLen)
+		binary.LittleEndian.PutUint32(buf[4:8], 0x4c4d5953) // SymLinkErrorTag
+		binary.LittleEndian.PutUint32(buf[8:12], IO_REPARSE_TAG_SYMLINK)
+		binary.LittleEndian.PutUint16(buf[12:14], 20) // ReparseDataLength
+		binary.LittleEndian.PutUint16(buf[16:18], 0)  // SubstituteNameOffset
+		binary.LittleEndian.PutUint16(buf[18:20], 4)  // SubstituteNameLength
+		binary.LittleEndian.PutUint16(buf[20:22], 4)  // PrintNameOffset
+		binary.LittleEndian.PutUint16(buf[22:24], 4)  // PrintNameLength
+
+		d := SymbolicLinkErrorResponseDecoder(buf)
+		if !d.IsInvalid() {
+			t.Errorf("IsInvalid() for SymLinkLength 0x%x = false, want true", symLinkLen)
+		}
+		// Slicing must not panic even on invalid/short buffer.
+		_ = d.SubstituteName()
+		_ = d.PrintName()
+	}
+}
+
+func TestSymbolicLinkErrorResponseDecoderRejectsOddLengths(t *testing.T) {
+	t.Parallel()
+	response := &SymbolicLinkErrorResponse{
+		Flags:          SYMLINK_FLAG_RELATIVE,
+		SubstituteName: "target",
+		PrintName:      "target",
+	}
+	buf := make([]byte, response.Size())
+	response.Encode(buf)
+	if d := SymbolicLinkErrorResponseDecoder(buf); d.IsInvalid() {
+		t.Fatal("well-formed symbolic link error response was rejected")
+	}
+
+	for _, tc := range []struct {
+		name   string
+		mutate func([]byte)
+	}{
+		{"UnparsedPathLength", func(b []byte) { binary.LittleEndian.PutUint16(b[14:16], 1) }},
+		{"SubstituteNameLength", func(b []byte) { binary.LittleEndian.PutUint16(b[18:20], 1) }},
+		{"PrintNameLength", func(b []byte) { binary.LittleEndian.PutUint16(b[22:24], 1) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := append([]byte(nil), buf...)
+			tc.mutate(bad)
+			if !SymbolicLinkErrorResponseDecoder(bad).IsInvalid() {
+				t.Fatal("odd symbolic link length was accepted")
+			}
+		})
+	}
+}
+
+func TestSymbolicLinkErrorResponseDecoderAcceptsValidUnicodeLengths(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		flags      uint32
+		unparsed   uint16
+		substitute string
+		printName  string
+	}{
+		{name: "zero print name", flags: SYMLINK_FLAG_RELATIVE, substitute: "target", printName: ""},
+		{name: "names end at buffer", flags: SYMLINK_FLAG_RELATIVE, unparsed: 2, substitute: "target", printName: "display"},
+		{name: "surrogate pair", flags: SYMLINK_FLAG_RELATIVE, substitute: "😀", printName: "😀"},
+		{name: "absolute unc", flags: 0, substitute: `\\server\share\target`, printName: `\\server\share\target`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := &SymbolicLinkErrorResponse{
+				Flags:              tc.flags,
+				UnparsedPathLength: tc.unparsed,
+				SubstituteName:     tc.substitute,
+				PrintName:          tc.printName,
+			}
+			buf := make([]byte, response.Size())
+			response.Encode(buf)
+			d := SymbolicLinkErrorResponseDecoder(buf)
+			if d.IsInvalid() {
+				t.Fatal("valid symbolic link error response was rejected")
+			}
+			if got := d.SubstituteName(); got != tc.substitute {
+				t.Errorf("SubstituteName() = %q, want %q", got, tc.substitute)
+			}
+			if got := d.PrintName(); got != tc.printName {
+				t.Errorf("PrintName() = %q, want %q", got, tc.printName)
+			}
+		})
+	}
+}
+
+func TestSymbolicLinkErrorResponseDecoderRejectsInvalidTargets(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		flags      uint32
+		substitute string
+	}{
+		{name: "empty target", flags: SYMLINK_FLAG_RELATIVE, substitute: ""},
+		{name: "relative leading backslash", flags: SYMLINK_FLAG_RELATIVE, substitute: `\target`},
+		{name: "relative leading slash", flags: SYMLINK_FLAG_RELATIVE, substitute: `/target`},
+		{name: "absolute drive path", flags: 0, substitute: `C:\dir`},
+		{name: "absolute NT drive path", flags: 0, substitute: `\??\C:\dir`},
+		{name: "absolute Win32 drive path", flags: 0, substitute: `\\?\C:\dir`},
+		{name: "absolute relative path", flags: 0, substitute: `dir\target`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := &SymbolicLinkErrorResponse{
+				Flags:          tc.flags,
+				SubstituteName: tc.substitute,
+				PrintName:      "display",
+			}
+			buf := make([]byte, response.Size())
+			response.Encode(buf)
+			if !SymbolicLinkErrorResponseDecoder(buf).IsInvalid() {
+				t.Fatalf("invalid target %q with flags %#x was accepted", tc.substitute, tc.flags)
+			}
+		})
+	}
+}
+
+func TestSymbolicLinkErrorResponseDecoderRejectsMalformedUTF16(t *testing.T) {
+	t.Parallel()
+	response := &SymbolicLinkErrorResponse{
+		SubstituteName: "target",
+		PrintName:      "display",
+	}
+	buf := make([]byte, response.Size())
+	response.Encode(buf)
+	printOffset := 28 + utf16le.EncodedStringLen(response.SubstituteName)
+	for _, tc := range []struct {
+		name   string
+		mutate func([]byte)
+	}{
+		{
+			name: "lone high substitute",
+			mutate: func(b []byte) {
+				binary.LittleEndian.PutUint16(b[28:30], 0xd800)
+			},
+		},
+		{
+			name: "lone low substitute",
+			mutate: func(b []byte) {
+				binary.LittleEndian.PutUint16(b[28:30], 0xdc00)
+			},
+		},
+		{
+			name: "malformed print pair",
+			mutate: func(b []byte) {
+				binary.LittleEndian.PutUint16(b[printOffset:printOffset+2], 0xd800)
+				binary.LittleEndian.PutUint16(b[printOffset+2:printOffset+4], 'x')
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := append([]byte(nil), buf...)
+			tc.mutate(bad)
+			if !SymbolicLinkErrorResponseDecoder(bad).IsInvalid() {
+				t.Fatal("malformed UTF-16 was accepted")
+			}
+		})
+	}
+}
+
+// ErrorResponse.Encode must write the ErrorData size as a uint32 into
+// ByteCount (offset 4), not as a uint16 into the ErrorContextCount area
+// (offset 2), so that a round trip through ErrorResponseDecoder restores
+// the original payload.
+func TestErrorResponse_EncodeDecode(t *testing.T) {
+	t.Parallel()
+	t.Run("SmallBufferErrorResponse", func(t *testing.T) {
+		c := &ErrorResponse{
+			ErrorData: &SmallBufferErrorResponse{
+				RequiredBufferLength: 0x01020304,
+			},
+		}
+
+		pkt := make([]byte, c.Size())
+		c.Encode(pkt)
+
+		r := ErrorResponseDecoder(pkt[64:])
+		if r.IsInvalid() {
+			t.Fatal("ErrorResponseDecoder.IsInvalid() = true, want false")
+		}
+
+		want := uint32(c.ErrorData.Size())
+		if got := r.ByteCount(); got != want {
+			t.Errorf("ByteCount() = %d, want %d", got, want)
+		}
+
+		data := r.ErrorData()
+		if len(data) != int(want) {
+			t.Fatalf("len(ErrorData()) = %d, want %d", len(data), want)
+		}
+
+		d := SmallBufferErrorResponseDecoder(data)
+		if d.IsInvalid() {
+			t.Fatal("SmallBufferErrorResponseDecoder.IsInvalid() = true, want false")
+		}
+		if got := d.RequiredBufferLength(); got != 0x01020304 {
+			t.Errorf("RequiredBufferLength() = %#x, want %#x", got, 0x01020304)
+		}
+	})
+
+	t.Run("SymbolicLinkErrorResponse", func(t *testing.T) {
+		c := &ErrorResponse{
+			ErrorData: &SymbolicLinkErrorResponse{
+				UnparsedPathLength: 8,
+				Flags:              0,
+				SubstituteName:     "\\??\\UNC\\host\\share",
+				PrintName:          "\\\\host\\share",
+			},
+		}
+
+		pkt := make([]byte, c.Size())
+		c.Encode(pkt)
+
+		r := ErrorResponseDecoder(pkt[64:])
+		if r.IsInvalid() {
+			t.Fatal("ErrorResponseDecoder.IsInvalid() = true, want false")
+		}
+
+		want := uint32(c.ErrorData.Size())
+		if got := r.ByteCount(); got != want {
+			t.Errorf("ByteCount() = %d, want %d", got, want)
+		}
+
+		data := r.ErrorData()
+		if len(data) != int(want) {
+			t.Fatalf("len(ErrorData()) = %d, want %d", len(data), want)
+		}
+
+		d := SymbolicLinkErrorResponseDecoder(data)
+		if d.IsInvalid() {
+			t.Fatal("SymbolicLinkErrorResponseDecoder.IsInvalid() = true, want false")
+		}
+		if got := d.SubstituteName(); got != "\\\\host\\share" {
+			t.Errorf("SubstituteName() = %q, want %q", got, "\\\\host\\share")
+		}
+		if got := d.PrintName(); got != "\\\\host\\share" {
+			t.Errorf("PrintName() = %q, want %q", got, "\\\\host\\share")
+		}
+	})
+}
+
+func TestSymbolicLinkErrorResponseLengthsExcludeTrailingBytes(t *testing.T) {
+	t.Parallel()
+	for _, target := range []string{"target.txt", "リンク先.txt"} {
+		for _, withContexts := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/contexts=%t", target, withContexts), func(t *testing.T) {
+				link := &SymbolicLinkErrorResponse{
+					Flags:          SYMLINK_FLAG_RELATIVE,
+					SubstituteName: target,
+					PrintName:      target,
+				}
+				res := &ErrorResponse{ErrorData: link}
+				if withContexts {
+					res.ErrorData = ErrorContextListResponse{
+						{ErrorData: link},
+						{ErrorData: &SmallBufferErrorResponse{RequiredBufferLength: 4096}},
+					}
+				}
+				pkt := make([]byte, Roundup(res.Size(), 8))
+				if len(pkt) == res.Size() {
+					t.Fatal("test requires compound padding")
+				}
+				res.Encode(pkt)
+				payload := ErrorResponseDecoder(pkt[64:]).ErrorData()
+				if withContexts {
+					payload = ErrorContextResponseDecoder(payload).ErrorData()
+				}
+				linkResponse := SymbolicLinkErrorResponseDecoder(payload)
+				if got, want := int(linkResponse.SymLinkLength()), len(payload)-4; got != want {
+					t.Errorf("SymLinkLength() = %d, want %d", got, want)
+				}
+				if got, want := int(linkResponse.ReparseDataLength()), len(payload)-16; got != want {
+					t.Errorf("ReparseDataLength() = %d, want %d", got, want)
+				}
+				if linkResponse.IsInvalid() {
+					t.Fatal("symbolic link response is invalid")
+				}
+				if linkResponse.SubstituteName() != target || linkResponse.PrintName() != target {
+					t.Fatal("symbolic link names did not round trip")
+				}
+			})
+		}
+	}
+}
+
+func TestNegotiateResponseDecoderSMB311Layout(t *testing.T) {
+	t.Parallel()
+	makePayload := func(packetLength int, securityOffset, securityLength uint16, contextOffset uint32) []byte {
+		payload := make([]byte, packetLength-64)
+		binary.LittleEndian.PutUint16(payload[0:2], 65) // StructureSize
+		binary.LittleEndian.PutUint16(payload[4:6], SMB311)
+		binary.LittleEndian.PutUint16(payload[56:58], securityOffset)
+		binary.LittleEndian.PutUint16(payload[58:60], securityLength)
+		binary.LittleEndian.PutUint32(payload[60:64], contextOffset)
+		return payload
+	}
+
+	tests := []struct {
+		name                   string
+		packetLength           int
+		securityBufferOffset   uint16
+		securityBufferLength   uint16
+		negotiateContextOffset uint32
+		invalid                bool
+	}{
+		{
+			name:                   "context offset in fixed response",
+			packetLength:           128,
+			negotiateContextOffset: 72,
+			invalid:                true,
+		},
+		{
+			name:                   "security buffer starts inside fixed response",
+			packetLength:           136,
+			securityBufferOffset:   120,
+			securityBufferLength:   8,
+			negotiateContextOffset: 128,
+			invalid:                true,
+		},
+		{
+			name:                   "context overlaps non-empty security buffer",
+			packetLength:           152,
+			securityBufferOffset:   128,
+			securityBufferLength:   16,
+			negotiateContextOffset: 136,
+			invalid:                true,
+		},
+		{
+			name:                   "security buffer extends past packet",
+			packetLength:           136,
+			securityBufferOffset:   128,
+			securityBufferLength:   9,
+			negotiateContextOffset: 136,
+			invalid:                true,
+		},
+		{
+			name:                   "context offset extends past packet",
+			packetLength:           128,
+			negotiateContextOffset: 136,
+			invalid:                true,
+		},
+		{
+			name:                   "context offset is not aligned",
+			packetLength:           136,
+			negotiateContextOffset: 130,
+			invalid:                true,
+		},
+		{
+			name:                   "empty security buffer",
+			packetLength:           128,
+			negotiateContextOffset: 128,
+		},
+		{
+			name:                   "empty security buffer ignores its offset",
+			packetLength:           128,
+			securityBufferOffset:   0xffff,
+			negotiateContextOffset: 128,
+		},
+		{
+			name:                   "non-empty security buffer",
+			packetLength:           136,
+			securityBufferOffset:   128,
+			securityBufferLength:   4,
+			negotiateContextOffset: 136,
+		},
+		{
+			name:                   "zero contexts with zero offset",
+			packetLength:           128,
+			negotiateContextOffset: 0,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			payload := makePayload(test.packetLength, test.securityBufferOffset, test.securityBufferLength, test.negotiateContextOffset)
+			if got := (NegotiateResponseDecoder)(payload).IsInvalid(); got != test.invalid {
+				t.Errorf("IsInvalid() = %v, want %v", got, test.invalid)
+			}
+		})
+	}
+}
+
+func TestNegotiateResponseDecoderSMB311ZeroContexts(t *testing.T) {
+	t.Parallel()
+	response := &NegotiateResponse{
+		DialectRevision: SMB311,
+		SystemTime:      Filetime{},
+		ServerStartTime: Filetime{},
+	}
+	pkt := make([]byte, response.Size())
+	response.Encode(pkt)
+
+	d := NegotiateResponseDecoder(pkt[64:])
+	if d.IsInvalid() {
+		t.Fatal("NegotiateResponseDecoder.IsInvalid() = true, want false for zero contexts")
+	}
+	if contexts := d.Contexts(); contexts != nil {
+		t.Fatalf("d.Contexts() = %v, want nil for zero contexts", contexts)
+	}
+}
+
+func TestNegotiateResponseDecoderIgnoresOffsetWithoutContexts(t *testing.T) {
+	t.Parallel()
+	response := &NegotiateResponse{DialectRevision: SMB311}
+	pkt := make([]byte, 144)
+	response.Encode(pkt)
+	binary.LittleEndian.PutUint32(pkt[124:128], 136)
+
+	d := NegotiateResponseDecoder(pkt[64:])
+	if d.IsInvalid() {
+		t.Fatal("response with zero contexts is invalid")
+	}
+	if got := d.Contexts(); got != nil {
+		t.Fatalf("Contexts() = %v, want nil", got)
+	}
+}
+
+func TestNegotiateResponseDecoderAcceptsContextWithoutTrailingPadding(t *testing.T) {
+	t.Parallel()
+	response := &NegotiateResponse{
+		DialectRevision: SMB311,
+		SystemTime:      Filetime{},
+		ServerStartTime: Filetime{},
+		Contexts: []Encoder{
+			&HashContext{HashAlgorithms: []uint16{SHA512}, HashSalt: make([]byte, 32)},
+		},
+	}
+	pkt := make([]byte, response.Size())
+	response.Encode(pkt)
+
+	if len(pkt)%8 == 0 {
+		t.Fatal("test response unexpectedly includes trailing context padding")
+	}
+	if d := NegotiateResponseDecoder(pkt[64:]); d.IsInvalid() {
+		t.Fatal("NegotiateResponseDecoder.IsInvalid() = true, want false")
+	}
+}
+
+func TestNegotiateContextDecoderDataLengthBounds(t *testing.T) {
+	t.Parallel()
+	for _, dataLength := range []uint16{0, 65527, 65528, 65535} {
+		t.Run(fmt.Sprintf("DataLength-%d", dataLength), func(t *testing.T) {
+			const trailing = 8
+			buf := make([]byte, 8+int(dataLength)+trailing)
+			binary.LittleEndian.PutUint16(buf[0:2], SMB2_PREAUTH_INTEGRITY_CAPABILITIES)
+			binary.LittleEndian.PutUint16(buf[2:4], dataLength)
+			for i := 0; i < int(dataLength); i++ {
+				buf[8+i] = byte(i)
+			}
+			for i := 8 + int(dataLength); i < len(buf); i++ {
+				buf[i] = 0xff
+			}
+
+			ctx := NegotiateContextDecoder(buf)
+			if ctx.IsInvalid() {
+				t.Fatal("IsInvalid() = true, want false")
+			}
+			data := ctx.Data()
+			if len(data) != int(dataLength) {
+				t.Fatalf("len(Data()) = %d, want %d", len(data), dataLength)
+			}
+			if dataLength > 0 {
+				if got, want := data[0], byte(0); got != want {
+					t.Errorf("Data()[0] = %#x, want %#x", got, want)
+				}
+				if got, want := data[len(data)-1], byte(int(dataLength)-1); got != want {
+					t.Errorf("Data()[last] = %#x, want %#x", got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestNegotiateContextDecoderRejectsTruncatedData(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		ctx  NegotiateContextDecoder
+	}{
+		{
+			name: "header shorter than 8 bytes",
+			ctx:  NegotiateContextDecoder(make([]byte, 7)),
+		},
+		{
+			name: "buffer one byte shorter than declared data",
+			ctx: func() NegotiateContextDecoder {
+				buf := make([]byte, 8+4)
+				binary.LittleEndian.PutUint16(buf[2:4], 5)
+				return NegotiateContextDecoder(buf)
+			}(),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if !test.ctx.IsInvalid() {
+				t.Fatal("IsInvalid() = false, want true")
+			}
+		})
+	}
+}
+
+func TestNegotiateResponseDecoderNegotiateContextListBounds(t *testing.T) {
+	t.Parallel()
+	makeBody := func(packetLength int, dialect uint16, contextOffset uint32) []byte {
+		body := make([]byte, packetLength-64)
+		binary.LittleEndian.PutUint16(body[0:2], 65) // StructureSize
+		binary.LittleEndian.PutUint16(body[4:6], dialect)
+		binary.LittleEndian.PutUint32(body[60:64], contextOffset)
+		return body
+	}
+
+	tests := []struct {
+		name       string
+		body       []byte
+		invalid    bool
+		wantLength int
+	}{
+		{
+			name:    "body shorter than fixed structure",
+			body:    make([]byte, 63),
+			invalid: true,
+		},
+		{
+			name:    "offset inside fixed response",
+			body:    makeBody(128, SMB311, 63),
+			invalid: true,
+		},
+		{
+			name:       "offset exactly at end",
+			body:       makeBody(128, SMB311, 128),
+			wantLength: 0,
+		},
+		{
+			name:    "offset one byte past end",
+			body:    makeBody(128, SMB311, 129),
+			invalid: true,
+		},
+		{
+			name:    "maximum offset",
+			body:    makeBody(128, SMB311, 0xffffffff),
+			invalid: true,
+		},
+		{
+			name:       "SMB311 context list",
+			body:       makeBody(136, SMB311, 128),
+			wantLength: 0, // No contexts are advertised.
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			d := NegotiateResponseDecoder(test.body)
+			if test.invalid {
+				if !d.IsInvalid() {
+					t.Fatal("IsInvalid() = false, want true")
+				}
+				return
+			}
+			if d.IsInvalid() {
+				t.Fatal("IsInvalid() = true, want false")
+			}
+			if len(d.Contexts()) != test.wantLength {
+				t.Fatalf("len(Contexts()) = %d, want %d", len(d.Contexts()), test.wantLength)
+			}
+		})
+	}
+}
+
+// [MS-SMB2] 2.2.4 places the variable-length SecurityBuffer after the 64-byte
+// SMB2 header and 64-byte response structure, so a non-empty buffer reported by
+// a non-SMB311 response must not start before offset 128.
+func TestNegotiateResponseDecoderNonSMB311SecurityBufferBounds(t *testing.T) {
+	t.Parallel()
+	makePayload := func(packetLength int, dialect uint16, securityOffset, securityLength uint16) []byte {
+		payload := make([]byte, packetLength-64)
+		binary.LittleEndian.PutUint16(payload[0:2], 65) // StructureSize
+		binary.LittleEndian.PutUint16(payload[4:6], dialect)
+		binary.LittleEndian.PutUint16(payload[56:58], securityOffset)
+		binary.LittleEndian.PutUint16(payload[58:60], securityLength)
+		// Invalid offsets must not overwrite fixed fields: otherwise the
+		// decoder could reject StructureSize instead of the buffer bounds.
+		for i := 0; securityOffset >= 128 && i < int(securityLength); i++ {
+			if bodyIndex := int(securityOffset) - 64 + i; bodyIndex < len(payload) {
+				payload[bodyIndex] = byte(0xa0 + i)
+			}
+		}
+		return payload
+	}
+
+	tests := []struct {
+		name                 string
+		packetLength         int
+		securityBufferOffset uint16
+		securityBufferLength uint16
+		invalid              bool
+	}{
+		{
+			name:                 "non-empty buffer at offset 0",
+			packetLength:         136,
+			securityBufferOffset: 0,
+			securityBufferLength: 4,
+			invalid:              true,
+		},
+		{
+			name:                 "non-empty buffer at offset 64",
+			packetLength:         136,
+			securityBufferOffset: 64,
+			securityBufferLength: 4,
+			invalid:              true,
+		},
+		{
+			name:                 "non-empty buffer at offset 127",
+			packetLength:         136,
+			securityBufferOffset: 127,
+			securityBufferLength: 4,
+			invalid:              true,
+		},
+		{
+			name:                 "non-empty buffer at offset 128",
+			packetLength:         136,
+			securityBufferOffset: 128,
+			securityBufferLength: 4,
+		},
+		{
+			name:                 "non-empty buffer ending exactly at packet end",
+			packetLength:         136,
+			securityBufferOffset: 132,
+			securityBufferLength: 4,
+		},
+		{
+			name:                 "non-empty buffer one byte past packet end",
+			packetLength:         136,
+			securityBufferOffset: 133,
+			securityBufferLength: 4,
+			invalid:              true,
+		},
+		{
+			name:                 "empty buffer at offset zero",
+			packetLength:         128,
+			securityBufferOffset: 0,
+		},
+		{
+			name:                 "empty buffer below variable buffer",
+			packetLength:         128,
+			securityBufferOffset: 127,
+		},
+		{
+			name:                 "empty buffer with in-packet offset",
+			packetLength:         128,
+			securityBufferOffset: 128,
+			securityBufferLength: 0,
+		},
+		{
+			name:                 "empty buffer with offset past packet end",
+			packetLength:         128,
+			securityBufferOffset: 129,
+			securityBufferLength: 0,
+			invalid:              true,
+		},
+	}
+
+	for _, dialect := range []uint16{SMB202, SMB210, SMB300, SMB302} {
+		t.Run(fmt.Sprintf("dialect-%#x", dialect), func(t *testing.T) {
+			for _, test := range tests {
+				t.Run(test.name, func(t *testing.T) {
+					payload := makePayload(test.packetLength, dialect, test.securityBufferOffset, test.securityBufferLength)
+					decoder := NegotiateResponseDecoder(payload)
+					if got := decoder.IsInvalid(); got != test.invalid {
+						t.Fatalf("IsInvalid() = %v, want %v", got, test.invalid)
+					}
+					if test.invalid || test.securityBufferLength == 0 {
+						return
+					}
+					want := make([]byte, test.securityBufferLength)
+					for i := range want {
+						want[i] = byte(0xa0 + i)
+					}
+					if got := decoder.SecurityBuffer(); string(got) != string(want) {
+						t.Errorf("SecurityBuffer() = %v, want %v", got, want)
+					}
+				})
+			}
+		})
+	}
+}
+
+// A non-SMB311 response is not required to carry a meaningful
+// NegotiateContextOffset, so IsInvalid must keep accepting it while the
+// accessor refuses to slice out of bounds.
+// NegotiateContextOffset is reserved for older dialects and MUST be ignored
+// ([MS-SMB2] 2.2.4).
+func TestNegotiateResponseDecoderIgnoresContextOffsetForOlderDialects(t *testing.T) {
+	t.Parallel()
+	body := make([]byte, 64)
+	binary.LittleEndian.PutUint16(body[0:2], 65)           // StructureSize
+	binary.LittleEndian.PutUint16(body[4:6], SMB210)       // DialectRevision
+	binary.LittleEndian.PutUint32(body[60:64], 0x30303030) // NegotiateContextOffset
+
+	d := NegotiateResponseDecoder(body)
+	if d.IsInvalid() {
+		t.Fatal("IsInvalid() = true, want false")
+	}
+	if got := d.Contexts(); got != nil {
+		t.Fatalf("Contexts() = %v, want nil", got)
+	}
+}
+
+// A well-formed response must still yield the declared buffer.
+func TestResponseDecodersAccessorsOnWellFormedBuffers(t *testing.T) {
+	t.Parallel()
+	t.Run("SessionSetupResponse", func(t *testing.T) {
+		buf := make([]byte, 12)
+		binary.LittleEndian.PutUint16(buf[0:2], 9)  // StructureSize
+		binary.LittleEndian.PutUint16(buf[4:6], 72) // SecurityBufferOffset (64+8)
+		binary.LittleEndian.PutUint16(buf[6:8], 4)  // SecurityBufferLength
+		copy(buf[8:], []byte{0xde, 0xad, 0xbe, 0xef})
+
+		if got := (SessionSetupResponseDecoder)(buf).SecurityBuffer(); string(got) != string([]byte{0xde, 0xad, 0xbe, 0xef}) {
+			t.Errorf("SecurityBuffer() = %v, want the declared 4-byte buffer", got)
+		}
+	})
+
+	t.Run("NegotiateResponse", func(t *testing.T) {
+		buf := make([]byte, 68)
+		binary.LittleEndian.PutUint16(buf[0:2], 65)    // StructureSize
+		binary.LittleEndian.PutUint16(buf[56:58], 128) // SecurityBufferOffset (64+64)
+		binary.LittleEndian.PutUint16(buf[58:60], 4)   // SecurityBufferLength
+		copy(buf[64:], []byte{0xde, 0xad, 0xbe, 0xef})
+
+		if got := (NegotiateResponseDecoder)(buf).SecurityBuffer(); string(got) != string([]byte{0xde, 0xad, 0xbe, 0xef}) {
+			t.Errorf("SecurityBuffer() = %v, want the declared 4-byte buffer", got)
+		}
+	})
+
+	t.Run("CreateResponse", func(t *testing.T) {
+		buf := make([]byte, 96)
+		binary.LittleEndian.PutUint16(buf[0:2], 89)    // StructureSize
+		binary.LittleEndian.PutUint32(buf[80:84], 152) // CreateContextsOffset (64+88)
+		binary.LittleEndian.PutUint32(buf[84:88], 8)   // CreateContextsLength
+		copy(buf[88:], []byte{0xde, 0xad, 0xbe, 0xef, 0x00, 0x00, 0x00, 0x00})
+
+		if got := (CreateResponseDecoder)(buf).Contexts(); len(got) != 8 {
+			t.Errorf("Contexts() = %v, want the declared 8-byte buffer", got)
+		}
+	})
+
+	t.Run("IoctlResponse", func(t *testing.T) {
+		buf := make([]byte, 64)
+		binary.LittleEndian.PutUint16(buf[0:2], 49)    // StructureSize
+		binary.LittleEndian.PutUint32(buf[24:28], 112) // InputOffset (64+48)
+		binary.LittleEndian.PutUint32(buf[28:32], 4)   // InputCount
+		binary.LittleEndian.PutUint32(buf[32:36], 120) // OutputOffset (64+48+4, rounded up)
+		binary.LittleEndian.PutUint32(buf[36:40], 4)   // OutputCount
+		copy(buf[48:52], []byte{0xde, 0xad, 0xbe, 0xef})
+		copy(buf[56:60], []byte{0xfe, 0xed, 0xfa, 0xce})
+
+		d := (IoctlResponseDecoder)(buf)
+		if d.IsInvalid() {
+			t.Fatal("IoctlResponseDecoder.IsInvalid() = true, want false")
+		}
+		if got := d.Input(); string(got) != string([]byte{0xde, 0xad, 0xbe, 0xef}) {
+			t.Errorf("Input() = %v, want the declared 4-byte buffer", got)
+		}
+		if got := d.Output(); string(got) != string([]byte{0xfe, 0xed, 0xfa, 0xce}) {
+			t.Errorf("Output() = %v, want the declared 4-byte buffer", got)
+		}
+	})
+}
+
+// A non-empty security buffer must start at or after the 64-byte SMB2 header
+// plus the 8-byte fixed response fields ([MS-SMB2] 2.2.6). IsInvalid must
+// reject offsets that point into the header or the fixed fields, while still
+// accepting a well-formed buffer and the existing empty-buffer behavior.
+func TestSessionSetupResponseDecoderPayloadValidation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		offset  uint16
+		length  uint16
+		size    int
+		want    []byte
+		invalid bool
+	}{
+		{name: "non-empty offset 0", offset: 0, length: 1, size: 72, invalid: true},
+		{name: "non-empty offset 63", offset: 63, length: 1, size: 72, invalid: true},
+		{name: "non-empty offset 64", offset: 64, length: 1, size: 72, invalid: true},
+		{name: "non-empty offset 71", offset: 71, length: 1, size: 72, invalid: true},
+		{name: "non-empty offset 72", offset: 72, length: 4, size: 12, want: []byte{0xde, 0xad, 0xbe, 0xef}},
+		{name: "non-empty after padding", offset: 80, length: 4, size: 20, want: []byte{0xfe, 0xed, 0xfa, 0xce}},
+		{name: "non-empty length past end", offset: 72, length: 5, size: 12, invalid: true},
+		{name: "non-empty offset past end", offset: 80, length: 1, size: 12, invalid: true},
+		{name: "empty offset 0", offset: 0, length: 0, size: 8},
+		{name: "empty offset 72", offset: 72, length: 0, size: 8},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buf := make([]byte, test.size)
+			binary.LittleEndian.PutUint16(buf[0:2], 9) // StructureSize
+			binary.LittleEndian.PutUint16(buf[4:6], test.offset)
+			binary.LittleEndian.PutUint16(buf[6:8], test.length)
+			if test.want != nil {
+				copy(buf[int(test.offset)-64:], test.want)
+			}
+
+			d := SessionSetupResponseDecoder(buf)
+			if got := d.IsInvalid(); got != test.invalid {
+				t.Errorf("IsInvalid() = %v, want %v", got, test.invalid)
+			}
+			if test.want != nil && !test.invalid {
+				if got := d.SecurityBuffer(); string(got) != string(test.want) {
+					t.Errorf("SecurityBuffer() = %v, want %v", got, test.want)
+				}
+			}
+		})
+	}
+}
+
+func TestQueryInfoResponseDecoderPayloadValidation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		offset  uint16
+		length  uint32
+		size    int
+		want    []byte
+		invalid bool
+	}{
+		{name: "non-empty offset 0", offset: 0, length: 1, size: 8, invalid: true},
+		{name: "non-empty offset 63", offset: 63, length: 1, size: 8, invalid: true},
+		{name: "non-empty offset 64", offset: 64, length: 1, size: 8, invalid: true},
+		{name: "non-empty offset 65", offset: 65, length: 1, size: 8, invalid: true},
+		{name: "non-empty offset 66", offset: 66, length: 1, size: 8, invalid: true},
+		{name: "non-empty offset 67", offset: 67, length: 1, size: 8, invalid: true},
+		{name: "non-empty offset 68", offset: 68, length: 1, size: 8, invalid: true},
+		{name: "non-empty offset 69", offset: 69, length: 1, size: 8, invalid: true},
+		{name: "non-empty offset 70", offset: 70, length: 1, size: 8, invalid: true},
+		{name: "non-empty offset 71", offset: 71, length: 1, size: 8, invalid: true},
+		{name: "non-empty offset 72", offset: 72, length: 4, size: 12, want: []byte{0xde, 0xad, 0xbe, 0xef}},
+		{name: "non-empty after padding", offset: 80, length: 4, size: 20, want: []byte{0xfe, 0xed, 0xfa, 0xce}},
+		{name: "non-empty past packet", offset: 72, length: 5, size: 12, invalid: true},
+		{name: "large length", offset: 72, length: 0xffffffff, size: 8, invalid: true},
+		{name: "empty offset 0", offset: 0, length: 0, size: 8},
+		{name: "empty offset 72", offset: 72, length: 0, size: 8},
+		{name: "empty past packet", offset: 73, length: 0, size: 8, invalid: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buf := make([]byte, test.size)
+			binary.LittleEndian.PutUint16(buf[0:2], 9) // StructureSize
+			binary.LittleEndian.PutUint16(buf[2:4], test.offset)
+			binary.LittleEndian.PutUint32(buf[4:8], test.length)
+			if test.want != nil {
+				copy(buf[int(test.offset)-64:], test.want)
+			}
+
+			d := QueryInfoResponseDecoder(buf)
+			if got := d.IsInvalid(); got != test.invalid {
+				t.Errorf("IsInvalid() = %v, want %v", got, test.invalid)
+			}
+			if test.want != nil && !test.invalid {
+				if got := d.Output(); string(got) != string(test.want) {
+					t.Errorf("Output() = %v, want %v", got, test.want)
+				}
+			}
+		})
+	}
+}
+
+func TestCreateResponseDecoderContextValidation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		packet   func() []byte
+		invalid  bool
+		wantQFid bool
+	}{
+		{
+			name: "empty context list",
+			packet: func() []byte {
+				buf := make([]byte, 64+88)
+				binary.LittleEndian.PutUint16(buf[64:66], 89)
+				return buf
+			},
+		},
+		{
+			name: "encoded single context",
+			packet: func() []byte {
+				res := &CreateResponse{
+					CreationTime:   Filetime{},
+					LastAccessTime: Filetime{},
+					LastWriteTime:  Filetime{},
+					ChangeTime:     Filetime{},
+					FileId:         FileId{},
+					Contexts:       []Encoder{qfidCreateContext{size: 56, response: true}},
+				}
+				buf := make([]byte, res.Size())
+				res.Encode(buf)
+				return buf
+			},
+			wantQFid: true,
+		},
+		{
+			name: "non-empty offset zero",
+			packet: func() []byte {
+				return createResponseContextPacket(0, 8)
+			},
+			invalid: true,
+		},
+		{
+			name: "non-empty offset 64",
+			packet: func() []byte {
+				return createResponseContextPacket(64, 8)
+			},
+			invalid: true,
+		},
+		{
+			name: "non-empty offset 144",
+			packet: func() []byte {
+				return createResponseContextPacket(144, 8)
+			},
+			invalid: true,
+		},
+		{
+			name: "non-aligned offset",
+			packet: func() []byte {
+				return append(createResponseContextPacket(153, 1), 0, 0)
+			},
+			invalid: true,
+		},
+		{
+			name: "context extends past packet end",
+			packet: func() []byte {
+				return createResponseContextPacket(152, 1)
+			},
+			invalid: true,
+		},
+		{
+			name: "empty context list with non-zero offset",
+			packet: func() []byte {
+				return createResponseContextPacket(152, 0)
+			},
+			invalid: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := tt.packet()
+			d := CreateResponseDecoder(buf[64:])
+			if got := d.IsInvalid(); got != tt.invalid {
+				t.Errorf("IsInvalid() = %v, want %v", got, tt.invalid)
+			}
+			if tt.wantQFid {
+				contexts := d.Contexts()
+				if len(contexts) != 56 || string(contexts[16:20]) != "QFid" {
+					t.Errorf("Contexts() = %v, want the encoded QFid context", contexts)
+				}
+			}
+		})
+	}
+}
+
+func TestCreateResponseDecoderSizeValidation(t *testing.T) {
+	t.Parallel()
+	for _, offset := range []int{40, 48} {
+		for _, size := range []uint64{0, 1, 1<<63 - 1, 1 << 63, ^uint64(0)} {
+			buf := make([]byte, 88)
+			binary.LittleEndian.PutUint16(buf[0:2], 89)
+			binary.LittleEndian.PutUint64(buf[offset:offset+8], size)
+			wantInvalid := size > 1<<63-1
+			if got := (CreateResponseDecoder)(buf).IsInvalid(); got != wantInvalid {
+				t.Errorf("size at offset %d = %d: IsInvalid() = %v, want %v", offset, size, got, wantInvalid)
+			}
+		}
+	}
+}
+
+func TestCloseResponseDecoderSizeValidation(t *testing.T) {
+	t.Parallel()
+	for _, offset := range []int{40, 48} {
+		for _, size := range []uint64{0, 1, 1<<63 - 1, 1 << 63, ^uint64(0)} {
+			buf := make([]byte, 60)
+			binary.LittleEndian.PutUint16(buf[0:2], 60)
+			binary.LittleEndian.PutUint64(buf[offset:offset+8], size)
+			wantInvalid := size > 1<<63-1
+			if got := (CloseResponseDecoder)(buf).IsInvalid(); got != wantInvalid {
+				t.Errorf("size at offset %d = %d: IsInvalid() = %v, want %v", offset, size, got, wantInvalid)
+			}
+		}
+	}
+}
+
+func createResponseContextPacket(offset, length uint32) []byte {
+	buf := make([]byte, 64+88)
+	binary.LittleEndian.PutUint16(buf[64:66], 89)
+	binary.LittleEndian.PutUint32(buf[64+80:64+84], offset)
+	binary.LittleEndian.PutUint32(buf[64+84:64+88], length)
+	return buf
+}
+
+func TestIoctlResponseDecoderPayloadValidation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		inputOffset  uint32
+		inputCount   uint32
+		outputOffset uint32
+		outputCount  uint32
+		length       int
+		invalid      bool
+	}{
+		{
+			name:         "non-empty input in fixed part",
+			inputOffset:  111,
+			inputCount:   1,
+			outputOffset: 0,
+			length:       49,
+			invalid:      true,
+		},
+		{
+			name:        "non-empty input past packet end",
+			inputOffset: 112,
+			inputCount:  2,
+			length:      49,
+			invalid:     true,
+		},
+		{
+			name:         "non-empty output in fixed part",
+			outputOffset: 1,
+			outputCount:  1,
+			length:       49,
+			invalid:      true,
+		},
+		{
+			name:         "non-empty output past packet end",
+			outputOffset: 112,
+			outputCount:  2,
+			length:       49,
+			invalid:      true,
+		},
+		{
+			name:         "output overlaps input",
+			inputOffset:  112,
+			inputCount:   4,
+			outputOffset: 112,
+			outputCount:  1,
+			length:       53,
+			invalid:      true,
+		},
+		{
+			name:         "output is not aligned after input",
+			inputOffset:  112,
+			inputCount:   4,
+			outputOffset: 116,
+			outputCount:  1,
+			length:       57,
+			invalid:      true,
+		},
+		{
+			name:         "non-empty output",
+			inputOffset:  112,
+			outputOffset: 112,
+			outputCount:  1,
+			length:       49,
+		},
+		{
+			name:         "input and output with alignment padding",
+			inputOffset:  112,
+			inputCount:   4,
+			outputOffset: 120,
+			outputCount:  4,
+			length:       60,
+		},
+		{
+			name:         "empty output offset is advisory",
+			inputOffset:  112,
+			inputCount:   4,
+			outputOffset: 1,
+			outputCount:  0,
+			length:       52,
+		},
+		{name: "unaligned input is legal", inputOffset: 113, inputCount: 2, outputOffset: 120, outputCount: 1, length: 57},
+		{name: "empty input still determines output position", inputOffset: 120, outputOffset: 120, outputCount: 1, length: 57},
+		{name: "incorrect output position with empty input", inputOffset: 120, outputOffset: 112, outputCount: 1, length: 57, invalid: true},
+		{name: "empty offsets are advisory", inputOffset: ^uint32(0), outputOffset: ^uint32(0), length: 49},
+		{name: "input range overflow", inputOffset: ^uint32(0), inputCount: 2, length: 49, invalid: true},
+		{name: "output rounding overflow", inputOffset: ^uint32(0), outputOffset: 112, outputCount: 1, length: 49, invalid: true},
+		{
+			name:   "empty response",
+			length: 49,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buf := make([]byte, test.length)
+			binary.LittleEndian.PutUint16(buf[0:2], 49) // StructureSize
+			binary.LittleEndian.PutUint32(buf[24:28], test.inputOffset)
+			binary.LittleEndian.PutUint32(buf[28:32], test.inputCount)
+			binary.LittleEndian.PutUint32(buf[32:36], test.outputOffset)
+			binary.LittleEndian.PutUint32(buf[36:40], test.outputCount)
+
+			if got := (IoctlResponseDecoder)(buf).IsInvalid(); got != test.invalid {
+				t.Errorf("IsInvalid() = %v, want %v", got, test.invalid)
+			}
+		})
+	}
+}
+
+type ioctlResponseTestEncoder []byte
+
+func (e ioctlResponseTestEncoder) Size() int { return len(e) }
+
+func (e ioctlResponseTestEncoder) Encode(dst []byte) { copy(dst, e) }
+
+func TestIoctlResponseEncodeAlignsOutput(t *testing.T) {
+	t.Parallel()
+	res := &IoctlResponse{
+		Input:  ioctlResponseTestEncoder{0xde, 0xad, 0xbe, 0xef},
+		Output: ioctlResponseTestEncoder{0xfe, 0xed, 0xfa, 0xce},
+	}
+	pkt := make([]byte, res.Size())
+	res.Encode(pkt)
+
+	d := IoctlResponseDecoder(pkt[64:])
+	if d.IsInvalid() {
+		t.Fatal("IoctlResponseDecoder.IsInvalid() = true, want false")
+	}
+	if d.InputOffset() != 112 || d.OutputOffset() != 120 {
+		t.Errorf("InputOffset() = %d, OutputOffset() = %d, want 112 and 120", d.InputOffset(), d.OutputOffset())
+	}
+}
+
+func TestReadResponseDecoder(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		dataLength     uint32
+		payloadSize    int
+		invalidHeader  bool
+		invalidPayload bool
+	}{
+		{
+			name:        "valid response",
+			dataLength:  10,
+			payloadSize: 10,
+		},
+		{
+			name:           "zero-length response",
+			dataLength:     0,
+			payloadSize:    0,
+			invalidPayload: true,
+		},
+		{
+			name:           "zero-length response with trailing byte",
+			dataLength:     0,
+			payloadSize:    1,
+			invalidPayload: true,
+		},
+		{
+			name:        "valid one-byte response",
+			dataLength:  1,
+			payloadSize: 1,
+		},
+		{
+			name:           "declared data exceeds payload",
+			dataLength:     10,
+			payloadSize:    0,
+			invalidPayload: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buf := make([]byte, 16+test.payloadSize)
+			binary.LittleEndian.PutUint16(buf[0:2], 17) // StructureSize
+			buf[2] = 80                                 // DataOffset (64+16)
+			binary.LittleEndian.PutUint32(buf[4:8], test.dataLength)
+
+			d := ReadResponseDecoder(buf)
+			if got := d.IsInvalidHeader(); got != test.invalidHeader {
+				t.Errorf("IsInvalidHeader() = %v, want %v", got, test.invalidHeader)
+			}
+			if got := d.IsInvalidPayload(); got != test.invalidPayload {
+				t.Errorf("IsInvalidPayload() = %v, want %v", got, test.invalidPayload)
+			}
+			if got, want := d.IsInvalid(), test.invalidHeader || test.invalidPayload; got != want {
+				t.Errorf("IsInvalid() = %v, want %v", got, want)
+			}
+		})
+	}
+
+	t.Run("invalid header structure size", func(t *testing.T) {
+		buf := make([]byte, 16)
+		binary.LittleEndian.PutUint16(buf[0:2], 18) // wrong StructureSize
+		buf[2] = 80
+
+		d := ReadResponseDecoder(buf)
+		if !d.IsInvalidHeader() {
+			t.Error("IsInvalidHeader() = false, want true")
+		}
+		if !d.IsInvalid() {
+			t.Error("IsInvalid() = false, want true")
+		}
+	})
+
+	t.Run("invalid header data offset", func(t *testing.T) {
+		buf := make([]byte, 16)
+		binary.LittleEndian.PutUint16(buf[0:2], 17)
+		buf[2] = 79 // DataOffset < 80
+
+		d := ReadResponseDecoder(buf)
+		if !d.IsInvalidHeader() {
+			t.Error("IsInvalidHeader() = false, want true")
+		}
+		if !d.IsInvalid() {
+			t.Error("IsInvalid() = false, want true")
+		}
+	})
+}
+
+// qfidCreateContext encodes a QFid context with a 20-byte request or a
+// 32-byte response payload. Extra bytes represent trailing context padding.
+type qfidCreateContext struct {
+	size     int
+	response bool
+}
+
+func (c qfidCreateContext) Size() int {
+	return c.size
+}
+
+func (c qfidCreateContext) Encode(p []byte) {
+	clear(p[:c.size])
+	le.PutUint32(p[:4], 0xdeadbeef) // overwritten by the CREATE encoder
+	le.PutUint16(p[4:6], 16)        // NameOffset
+	le.PutUint16(p[6:8], 4)         // NameLength
+	copy(p[16:20], "QFid")
+	if c.response {
+		le.PutUint16(p[10:12], 24)
+		le.PutUint32(p[12:16], 32)
+		for i := 24; i < 56; i++ {
+			p[i] = byte(i)
+		}
+	}
+}
+
+func TestCreateResponseContextNext(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		sizes []int
+	}{
+		{name: "single non-aligned", sizes: []int{60}},
+		{name: "non-aligned followed by non-aligned", sizes: []int{60, 60}},
+		{name: "aligned followed by non-aligned", sizes: []int{56, 60}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			contexts := make([]Encoder, len(tt.sizes))
+			for i, size := range tt.sizes {
+				contexts[i] = qfidCreateContext{size: size, response: true}
+			}
+
+			res := &CreateResponse{
+				CreationTime:   Filetime{},
+				LastAccessTime: Filetime{},
+				LastWriteTime:  Filetime{},
+				ChangeTime:     Filetime{},
+				FileId:         FileId{},
+				Contexts:       contexts,
+			}
+			pkt := make([]byte, res.Size())
+			res.Encode(pkt)
+
+			d := CreateResponseDecoder(pkt[64:])
+			if d.IsInvalid() {
+				t.Fatal("encoded create response was rejected")
+			}
+			assertCreateContextChain(t, pkt, d.CreateContextsOffset(), d.CreateContextsLength(), tt.sizes)
+		})
+	}
+}
+
+// [MS-SMB2] 2.2.10 requires ShareType to be one of SMB2_SHARE_TYPE_DISK
+// (0x01), SMB2_SHARE_TYPE_PIPE (0x02), or SMB2_SHARE_TYPE_PRINT (0x03).
+func TestTreeConnectResponseDecoderShareType(t *testing.T) {
+	t.Parallel()
+	const structureSize = 16
+
+	t.Run("all byte values", func(t *testing.T) {
+		valid := map[uint8]bool{
+			SMB2_SHARE_TYPE_DISK:  true,
+			SMB2_SHARE_TYPE_PIPE:  true,
+			SMB2_SHARE_TYPE_PRINT: true,
+		}
+
+		for shareType := 0; shareType <= 0xff; shareType++ {
+			buf := make([]byte, structureSize)
+			binary.LittleEndian.PutUint16(buf[0:2], structureSize)
+			buf[2] = uint8(shareType)
+
+			if got, want := !TreeConnectResponseDecoder(buf).IsInvalid(), valid[uint8(shareType)]; got != want {
+				t.Errorf("ShareType %#x: accepted=%v, want %v", shareType, got, want)
+			}
+		}
+	})
+
+	t.Run("truncated", func(t *testing.T) {
+		for length := range structureSize {
+			buf := make([]byte, length)
+			call(t, "IsInvalid", func() {
+				if !TreeConnectResponseDecoder(buf).IsInvalid() {
+					t.Errorf("length %d: IsInvalid() = false, want true", length)
+				}
+			})
+		}
+	})
+
+	t.Run("invalid structure size", func(t *testing.T) {
+		for _, size := range []uint16{0, 17} {
+			buf := make([]byte, structureSize)
+			binary.LittleEndian.PutUint16(buf[0:2], size)
+			buf[2] = SMB2_SHARE_TYPE_DISK
+
+			if !TreeConnectResponseDecoder(buf).IsInvalid() {
+				t.Errorf("StructureSize %d: IsInvalid() = false, want true", size)
+			}
+		}
+	})
+
+	t.Run("reserved is ignored", func(t *testing.T) {
+		for _, shareType := range []uint8{SMB2_SHARE_TYPE_DISK, SMB2_SHARE_TYPE_PIPE, SMB2_SHARE_TYPE_PRINT} {
+			buf := make([]byte, structureSize)
+			binary.LittleEndian.PutUint16(buf[0:2], structureSize)
+			buf[2] = shareType
+			buf[3] = 0xff // Reserved
+
+			if TreeConnectResponseDecoder(buf).IsInvalid() {
+				t.Errorf("ShareType %#x with Reserved=0xff was rejected", shareType)
+			}
+		}
+	})
+}
+
+func TestCreateResponseDecoderCreateActionValidation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		action  uint32
+		invalid bool
+	}{
+		{FILE_SUPERSEDED, false},
+		{FILE_OPENED, false},
+		{FILE_CREATED, false},
+		{FILE_OVERWRITTEN, false},
+		{4, true},
+		{100, true},
+		{^uint32(0), true},
+	}
+
+	for _, tt := range tests {
+		buf := make([]byte, 88)
+		binary.LittleEndian.PutUint16(buf[0:2], 89)
+		binary.LittleEndian.PutUint32(buf[4:8], tt.action)
+		if got := (CreateResponseDecoder)(buf).IsInvalid(); got != tt.invalid {
+			t.Errorf("CreateAction %d: IsInvalid() = %v, want %v", tt.action, got, tt.invalid)
+		}
+	}
+}
+
+func TestCreateResponseDecoderTimestampValidation(t *testing.T) {
+	t.Parallel()
+	// Offsets for CreationTime, LastAccessTime, LastWriteTime, ChangeTime
+	for _, offset := range []int{8, 16, 24, 32} {
+		buf := make([]byte, 88)
+		binary.LittleEndian.PutUint16(buf[0:2], 89)
+		// Set negative FILETIME (high bit of HighDateTime set)
+		binary.LittleEndian.PutUint32(buf[offset+4:offset+8], 0x80000000)
+		if !(CreateResponseDecoder)(buf).IsInvalid() {
+			t.Errorf("timestamp offset %d with high bit set was accepted", offset)
+		}
+	}
+}
+
+func TestCloseResponseDecoderTimestampValidation(t *testing.T) {
+	t.Parallel()
+	for _, offset := range []int{8, 16, 24, 32} {
+		buf := make([]byte, 60)
+		binary.LittleEndian.PutUint16(buf[0:2], 60)
+		binary.LittleEndian.PutUint32(buf[offset+4:offset+8], 0x80000000)
+		if !(CloseResponseDecoder)(buf).IsInvalid() {
+			t.Errorf("timestamp offset %d with high bit set was accepted", offset)
+		}
+	}
+}
+
+func TestNegotiateResponseDecoderTimestampValidation(t *testing.T) {
+	t.Parallel()
+	// SystemTime (40) and ServerStartTime (48) use unsigned FILETIME.
+	for _, offset := range []int{40, 48} {
+		buf := make([]byte, 64)
+		binary.LittleEndian.PutUint16(buf[0:2], 65)
+		binary.LittleEndian.PutUint32(buf[offset+4:offset+8], 0x80000000)
+		if (NegotiateResponseDecoder)(buf).IsInvalid() {
+			t.Errorf("unsigned timestamp offset %d with high bit set was rejected", offset)
+		}
+	}
+}
+
+func TestCreateContextsDecoderValidation(t *testing.T) {
+	t.Parallel()
+	// Minimum valid context: 16 bytes, Next = 0
+	validContext := make([]byte, 16)
+	if CreateContextsDecoder(validContext).IsInvalid() {
+		t.Fatal("16-byte create context rejected")
+	}
+
+	// Truncated context (< 16 bytes)
+	for n := 1; n < 16; n++ {
+		if !CreateContextsDecoder(make([]byte, n)).IsInvalid() {
+			t.Fatalf("truncated %d-byte create context accepted", n)
+		}
+	}
+
+	// Chained contexts: first next = 16 (valid), second next = 0
+	chained := make([]byte, 32)
+	binary.LittleEndian.PutUint32(chained[:4], 16)
+	if CreateContextsDecoder(chained).IsInvalid() {
+		t.Fatal("valid chained create contexts rejected")
+	}
+
+	// Chained with next < 16 (e.g. 8)
+	binary.LittleEndian.PutUint32(chained[:4], 8)
+	if !CreateContextsDecoder(chained).IsInvalid() {
+		t.Fatal("chained create context with next < 16 accepted")
+	}
+
+	// NameOffset inside header (< 16) with NameLength > 0
+	buf := make([]byte, 24)
+	binary.LittleEndian.PutUint16(buf[4:6], 12) // NameOffset
+	binary.LittleEndian.PutUint16(buf[6:8], 4)  // NameLength
+	if !CreateContextsDecoder(buf).IsInvalid() {
+		t.Fatal("context with NameOffset < 16 accepted")
+	}
+
+	// Name extending past context buffer
+	buf = make([]byte, 24)
+	binary.LittleEndian.PutUint16(buf[4:6], 16) // NameOffset
+	binary.LittleEndian.PutUint16(buf[6:8], 10) // NameLength (16+10 > 24)
+	if !CreateContextsDecoder(buf).IsInvalid() {
+		t.Fatal("context with Name exceeding buffer accepted")
+	}
+
+	// DataOffset inside header (< 16) with DataLength > 0
+	buf = make([]byte, 24)
+	binary.LittleEndian.PutUint16(buf[10:12], 8) // DataOffset
+	binary.LittleEndian.PutUint32(buf[12:16], 4) // DataLength
+	if !CreateContextsDecoder(buf).IsInvalid() {
+		t.Fatal("context with DataOffset < 16 accepted")
+	}
+
+	// Data extending past context buffer
+	buf = make([]byte, 24)
+	binary.LittleEndian.PutUint16(buf[10:12], 16) // DataOffset
+	binary.LittleEndian.PutUint32(buf[12:16], 10) // DataLength (16+10 > 24)
+	if !CreateContextsDecoder(buf).IsInvalid() {
+		t.Fatal("context with Data exceeding buffer accepted")
+	}
+
+	// Overlapping Name and Data buffers
+	buf = make([]byte, 32)
+	binary.LittleEndian.PutUint16(buf[4:6], 16)   // NameOffset
+	binary.LittleEndian.PutUint16(buf[6:8], 8)    // NameLength [16..24)
+	binary.LittleEndian.PutUint16(buf[10:12], 20) // DataOffset
+	binary.LittleEndian.PutUint32(buf[12:16], 8)  // DataLength [20..28)
+	if !CreateContextsDecoder(buf).IsInvalid() {
+		t.Fatal("context with overlapping Name and Data accepted")
+	}
+
+	// Non-overlapping valid Name and Data
+	buf = make([]byte, 32)
+	binary.LittleEndian.PutUint16(buf[4:6], 16)   // NameOffset
+	binary.LittleEndian.PutUint16(buf[6:8], 4)    // NameLength [16..20)
+	binary.LittleEndian.PutUint16(buf[10:12], 24) // DataOffset
+	binary.LittleEndian.PutUint32(buf[12:16], 8)  // DataLength [24..32)
+	if CreateContextsDecoder(buf).IsInvalid() {
+		t.Fatal("valid context with Name and Data rejected")
+	}
+}
+
+func TestQueryOnDiskIDResponseFindsContext(t *testing.T) {
+	t.Parallel()
+	other := make([]byte, 24)
+	QueryOnDiskIDRequest{}.Encode(other)
+	copy(other[16:20], "Test")
+	for _, present := range []bool{false, true} {
+		response := &CreateResponse{
+			CreationTime: Filetime{}, LastAccessTime: Filetime{}, LastWriteTime: Filetime{}, ChangeTime: Filetime{}, FileId: FileId{},
+			Contexts: CreateContexts{ioctlResponseTestEncoder(other)},
+		}
+		if present {
+			response.Contexts = append(response.Contexts, qfidCreateContext{size: 56, response: true})
+		}
+		packet := make([]byte, response.Size())
+		response.Encode(packet)
+		decoded := CreateResponseDecoder(packet[64:])
+		require.False(t, decoded.IsInvalid())
+		if present {
+			require.NotNil(t, decoded.QueryOnDiskID())
+		} else {
+			require.Nil(t, decoded.QueryOnDiskID())
+		}
+	}
+}

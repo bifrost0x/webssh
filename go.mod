@@ -15,3 +15,6 @@ require (
 	github.com/ncruces/julianday v1.0.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 )
+
+// Shortened, patched fork of go-smb2 v2; see third_party/README.md.
+replace github.com/hirochachacha/go-smb2/v2 => ./third_party/go-smb2

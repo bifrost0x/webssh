@@ -340,6 +340,7 @@ func skippedDir(name string) bool {
 type repoFiles struct {
 	goFiles    []string // without files under testdata
 	nestedMods []string // directories with their own go.mod
+	forks      []string // fork directories found, not walked into
 }
 
 func walkRepo(t *testing.T, root string) repoFiles {
@@ -359,6 +360,11 @@ func walkRepo(t *testing.T, root string) repoFiles {
 		rel = filepath.ToSlash(rel)
 		switch {
 		case d.IsDir() && skippedDir(d.Name()):
+			return filepath.SkipDir
+		case d.IsDir() && isForkDir(rel):
+			// A fork is its own module, checked by TestForks and the
+			// fork's CI job.
+			found.forks = append(found.forks, rel)
 			return filepath.SkipDir
 		case d.IsDir():
 			return nil

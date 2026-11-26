@@ -1,0 +1,1439 @@
+package protocol
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"math"
+	"strings"
+	"sync"
+	"testing"
+	"testing/synctest"
+	"time"
+
+	"github.com/hirochachacha/go-smb2/v2/internal/erref"
+	"github.com/hirochachacha/go-smb2/v2/x/wire"
+	"github.com/stretchr/testify/require"
+)
+
+// fakeEncoder is a minimal wire.Encoder of a fixed byte size.
+type fakeEncoder struct {
+	size int
+}
+
+func (e *fakeEncoder) Size() int       { return e.size }
+func (e *fakeEncoder) Encode(b []byte) {}
+
+func creditRequest(p wire.Packet) uint16 {
+	switch p := p.(type) {
+	case *wire.CreateRequest:
+		return p.CreditRequestResponse
+	case *wire.CloseRequest:
+		return p.CreditRequestResponse
+	case *wire.ReadRequest:
+		return p.CreditRequestResponse
+	case *DirectReadRequest:
+		return p.CreditRequestResponse
+	case *wire.IoctlRequest:
+		return p.CreditRequestResponse
+	case *wire.QueryDirectoryRequest:
+		return p.CreditRequestResponse
+	case *wire.QueryInfoRequest:
+		return p.CreditRequestResponse
+	default:
+		panic("unsupported packet type")
+	}
+}
+
+func TestCreditManager_InitialBalance(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	a := openAccount(10)
+
+	p := &wire.CreateRequest{}
+	ctx := context.Background()
+
+	// Initial balance is 1 credit.
+	msgIds, charge, err := a.loan(ctx, p)
+	req.NoError(err)
+	req.Equal(uint64(0), msgIds[0])
+	req.Equal(uint16(1), charge)
+	req.Equal(uint64(0), p.MessageId)
+	req.Equal(uint16(1), p.CreditCharge())
+	req.Equal(uint16(10), p.CreditRequestResponse)
+}
+
+func TestCalcCreditCharge(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		payloadSize uint64
+		want        uint16
+		wantErr     bool
+	}{
+		{name: "empty", payloadSize: 0, want: 1},
+		{name: "one credit boundary", payloadSize: 65536, want: 1},
+		{name: "two credit boundary", payloadSize: 65537, want: 2},
+		{name: "maximum representable", payloadSize: 4294901760, want: math.MaxUint16},
+		{name: "just over maximum representable", payloadSize: 4294901761, wantErr: true},
+		{name: "maximum uint32", payloadSize: math.MaxUint32, wantErr: true},
+		{name: "maximum uint64", payloadSize: math.MaxUint64, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := calcCreditCharge(tt.payloadSize)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "protocol: credit charge exceeds uint16")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestCreditManager_BlockingAndCharge(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	a := openAccount(10)
+	ctx := context.Background()
+
+	// Consume initial credit.
+	p1 := &wire.CreateRequest{}
+	_, _, err := a.loan(ctx, p1)
+	req.NoError(err)
+
+	// Second request should block because available credits = 0.
+	p2 := &wire.CreateRequest{}
+	done := make(chan struct{})
+
+	go func() {
+		msgIds, charge, err := a.loan(ctx, p2)
+		req.NoError(err)
+		req.Equal(uint64(1), msgIds[0])
+		req.Equal(uint16(1), charge)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("expected loan to block when credits exhausted")
+	case <-time.After(50 * time.Millisecond):
+		// Expected: loan is blocking
+	}
+
+	// Replenish credits from server Response.
+	a.charge(5)
+
+	select {
+	case <-done:
+		// Succeeded after charge
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected loan to unblock after charge")
+	}
+}
+
+// loanObservedContext observes select evaluation without production hooks.
+// In a blocked loan, Done is evaluated after capturing notify under a.m.
+type loanObservedContext struct {
+	context.Context
+	onDone func()
+}
+
+func (ctx loanObservedContext) Done() <-chan struct{} {
+	ctx.onDone()
+	return ctx.Context.Done()
+}
+
+// TestCreditManager_ReplenishmentWakesOnlyEligibleWaiter reproduces a lost
+// wakeup: a single replenished credit used to be consumed by a waiter that
+// still could not proceed, leaving an eligible one-credit waiter blocked
+// forever.
+func TestCreditManager_ReplenishmentWakesOnlyEligibleWaiter(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		replenish func(*account)
+	}{
+		{
+			name:      "charge",
+			replenish: func(a *account) { a.charge(1, 1) },
+		},
+		{
+			name:      "unloan",
+			replenish: func(a *account) { a.unloan(1) },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				req := require.New(t)
+				a := openAccount(10)
+				ctx := context.Background()
+
+				// Keep one request in flight after replenishment so the larger
+				// waiter can still expect credits, rather than hitting the idle limit.
+				a.charge(1)
+				_, _, err := a.loan(ctx, &wire.CreateRequest{})
+				req.NoError(err)
+				_, _, err = a.loan(ctx, &wire.CreateRequest{})
+				req.NoError(err)
+
+				waitCtx, cancel := context.WithCancel(ctx)
+				var loans sync.WaitGroup
+				t.Cleanup(func() {
+					cancel()
+					joined := make(chan struct{})
+					go func() { loans.Wait(); close(joined) }()
+					select {
+					case <-joined:
+					case <-time.After(time.Second):
+						t.Error("canceled loans did not exit")
+					}
+				})
+
+				startLoan := func(packet wire.Packet) <-chan error {
+					waiting := make(chan struct{})
+					result := make(chan error, 1)
+					calls := 0
+					observed := loanObservedContext{Context: waitCtx, onDone: func() {
+						calls++
+						// The first Done call is the initial cancellation check;
+						// the second is the insufficient-credit wait select.
+						if calls == 2 {
+							close(waiting)
+						}
+					}}
+					loans.Go(func() {
+						_, _, err := a.loan(observed, packet)
+						result <- err
+					})
+					select {
+					case <-waiting:
+					case <-time.After(time.Second):
+						t.Fatal("loan did not reach credit wait")
+					}
+					return result
+				}
+
+				readResult := startLoan(&wire.ReadRequest{Length: 128 * 1024})
+				createResult := startLoan(&wire.CreateRequest{})
+
+				// One replenished credit must wake the one-credit CREATE while the
+				// two-credit READ keeps waiting for its full charge.
+				tt.replenish(a)
+
+				select {
+				case err := <-createResult:
+					req.NoError(err)
+				case <-time.After(1 * time.Second):
+					t.Fatal("expected one-credit loan to complete after replenishment")
+				}
+
+				select {
+				case err := <-readResult:
+					t.Fatalf("two-credit loan completed with only one credit: %v", err)
+				case <-time.After(100 * time.Millisecond):
+					// Expected: the two-credit loan keeps waiting.
+				}
+
+				cancel()
+				select {
+				case err := <-readResult:
+					req.ErrorIs(err, context.Canceled)
+				case <-time.After(1 * time.Second):
+					t.Fatal("expected canceled two-credit loan to return")
+				}
+			})
+		})
+	}
+}
+
+func TestCreditManager_AbortUnblocksLoan(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	a := openAccount(10)
+	ctx := context.Background()
+
+	// Consume initial credit.
+	p1 := &wire.CreateRequest{}
+	_, _, err := a.loan(ctx, p1)
+	req.NoError(err)
+
+	// Requests should block because available credits = 0.
+	p2 := &wire.CreateRequest{}
+	p3 := &wire.CreateRequest{}
+	done1 := make(chan error, 1)
+	done2 := make(chan error, 1)
+
+	go func() {
+		_, _, err := a.loan(ctx, p2)
+		done1 <- err
+	}()
+	go func() {
+		_, _, err := a.loan(ctx, p3)
+		done2 <- err
+	}()
+
+	select {
+	case <-done1:
+		t.Fatal("expected loan 1 to block when credits exhausted")
+	case <-done2:
+		t.Fatal("expected loan 2 to block when credits exhausted")
+	case <-time.After(50 * time.Millisecond):
+		// Expected: loans are blocking
+	}
+
+	// Aborting the account must unblock all pending loans with the given error.
+	abortErr := errors.New("connection closed")
+	a.abort(abortErr)
+
+	select {
+	case err := <-done1:
+		req.Error(err)
+		req.ErrorIs(err, abortErr)
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected loan 1 to unblock after abort")
+	}
+
+	select {
+	case err := <-done2:
+		req.Error(err)
+		req.ErrorIs(err, abortErr)
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected loan 2 to unblock after abort")
+	}
+}
+
+func TestCreditManager_ContextCancel(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		req := require.New(t)
+		a := openAccount(10)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Consume initial credit.
+		p1 := &wire.CreateRequest{}
+		_, _, err := a.loan(ctx, p1)
+		req.NoError(err)
+
+		// Second request should block, then be canceled.
+		p2 := &wire.CreateRequest{}
+		done := make(chan error)
+
+		go func() {
+			_, _, err := a.loan(ctx, p2)
+			done <- err
+		}()
+
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+
+		select {
+		case err := <-done:
+			req.ErrorIs(err, context.Canceled)
+		case <-time.After(1 * time.Second):
+			t.Fatal("expected loan to exit on context cancellation")
+		}
+	})
+}
+
+func TestCreditManager_Timeout(t *testing.T) {
+	t.Parallel()
+	for _, timeout := range []time.Duration{0, -time.Second, 10 * time.Second} {
+		for _, completed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("timeout=%s/completed=%t", timeout, completed), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					a := openAccount(10)
+					a.creditTimeout = timeout
+					_, _, err := a.loan(context.Background(), &wire.EchoRequest{})
+					require.NoError(t, err)
+					if completed {
+						a.charge(0, 1)
+					}
+					inFlight := a.inFlightCredits
+					nextMessageId := a.nextMessageId
+					packet := &wire.EchoRequest{}
+					packet.SetMessageId(99)
+					// No transport is supplied: a credit timeout must return before
+					// any write, CANCEL, or connection teardown is attempted.
+					c := &conn{account: a}
+					start := time.Now()
+					_, err = c.send(context.Background(), false, packet)
+					want := timeout
+					if want <= 0 {
+						want = 30 * time.Second
+					}
+					if completed {
+						require.ErrorContains(t, err, "no credits available")
+						want = 0
+					} else {
+						require.ErrorIs(t, err, context.DeadlineExceeded)
+					}
+					require.Equal(t, want, time.Since(start))
+					require.Equal(t, uint64(99), packet.MessageId)
+					require.Zero(t, a.availableCredits)
+					require.Equal(t, inFlight, a.inFlightCredits)
+					require.Equal(t, nextMessageId, a.nextMessageId)
+					require.False(t, a.closed)
+					require.NoError(t, c.err)
+					// A later grant still allows other requests to use the account.
+					a.charge(1, inFlight)
+					_, _, err = a.loan(context.Background(), &wire.EchoRequest{})
+					require.NoError(t, err)
+				})
+			})
+		}
+	}
+}
+
+func TestCreditManager_TimeoutWithWakeupsAndContext(t *testing.T) {
+	t.Parallel()
+	for _, earlierDeadline := range []bool{false, true} {
+		t.Run(fmt.Sprintf("earlierDeadline=%t", earlierDeadline), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				a := openAccount(10)
+				a.creditTimeout = 10 * time.Second
+				_, _, err := a.loan(context.Background(), &wire.EchoRequest{})
+				require.NoError(t, err)
+				ctx := context.Background()
+				want := 10 * time.Second
+				if earlierDeadline {
+					want = 6 * time.Second
+					var cancel context.CancelFunc
+					ctx, cancel = context.WithTimeout(ctx, want)
+					defer cancel()
+				}
+				start := time.Now()
+				done := make(chan error, 1)
+				go func() {
+					_, _, err := a.loan(ctx, &wire.EchoRequest{})
+					done <- err
+				}()
+				synctest.Wait()
+				time.Sleep(4 * time.Second)
+				// A response without a grant leaves no possible source of
+				// credits, so the waiter fails immediately.
+				a.charge(0, 1)
+				require.ErrorContains(t, <-done, "no credits available")
+				require.Equal(t, 4*time.Second, time.Since(start))
+			})
+		})
+	}
+}
+
+func TestCreditManager_Unloan(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	a := openAccount(10)
+	ctx := context.Background()
+	p1 := &wire.CreateRequest{}
+	p1.SetMessageId(99)
+	_, charge, err := a.reserve(ctx, p1)
+	req.NoError(err)
+	req.Equal(uint64(99), p1.MessageId, "a count reservation must not assign IDs")
+	req.Zero(a.nextMessageId)
+	a.unloan(charge)
+	p2 := &wire.CreateRequest{}
+	charges, charge, err := a.reserve(ctx, p2)
+	req.NoError(err)
+	ids, err := a.assignIDs(charges, p2)
+	req.NoError(err)
+	req.Equal(uint64(0), ids[0], "unpublished reservation consumes no IDs")
+	req.Equal(uint16(1), charge)
+}
+
+// loan retains the combined reservation/assignment operation used by focused
+// account and encoding tests. Production sends reserve outside conn.m and assign
+// only after acquiring conn.m; this test helper does not model publication.
+func (a *account) loan(ctx context.Context, reqs ...wire.Packet) ([]uint64, uint16, error) {
+	charges, total, err := a.reserve(ctx, reqs...)
+	if err != nil {
+		return nil, total, err
+	}
+	ids, err := a.assignIDs(charges, reqs...)
+	if err != nil {
+		a.unloan(total)
+	}
+	return ids, total, err
+}
+
+func TestCreditManager_RequestTypes(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+
+	ctx := context.Background()
+
+	// ReadRequest (128KB payload -> credit charge 2)
+	a := openAccount(10)
+	a.charge(10)
+	readReq := &wire.ReadRequest{Length: 128 * 1024}
+	_, charge, err := a.loan(ctx, readReq)
+	req.NoError(err)
+	req.Equal(uint16(2), charge)
+	req.Equal(uint16(2), readReq.CreditCharge())
+
+	// WriteRequest (128KB data -> credit charge 2)
+	a = openAccount(10)
+	a.charge(10)
+	writeReq := &wire.WriteRequest{Data: make([]byte, 128*1024)}
+	_, charge, err = a.loan(ctx, writeReq)
+	req.NoError(err)
+	req.Equal(uint16(2), charge)
+	req.Equal(uint16(2), writeReq.CreditCharge())
+
+	// QueryDirectoryRequest (128KB output -> credit charge 2)
+	a = openAccount(10)
+	a.charge(10)
+	qdReq := &wire.QueryDirectoryRequest{OutputBufferLength: 128 * 1024}
+	_, charge, err = a.loan(ctx, qdReq)
+	req.NoError(err)
+	req.Equal(uint16(2), charge)
+	req.Equal(uint16(2), qdReq.CreditCharge())
+
+	// QueryInfoRequest (128KB output -> credit charge 2)
+	a = openAccount(10)
+	a.charge(10)
+	qiReq := &wire.QueryInfoRequest{OutputBufferLength: 128 * 1024}
+	_, charge, err = a.loan(ctx, qiReq)
+	req.NoError(err)
+	req.Equal(uint16(2), charge)
+	req.Equal(uint16(2), qiReq.CreditCharge())
+
+	// QueryInfoRequest input larger than output follows the input size
+	a = openAccount(10)
+	a.charge(10)
+	qiInputReq := &wire.QueryInfoRequest{
+		Input:              &fakeEncoder{size: 128 * 1024},
+		OutputBufferLength: 64 * 1024,
+	}
+	_, charge, err = a.loan(ctx, qiInputReq)
+	req.NoError(err)
+	req.Equal(uint16(2), charge)
+	req.Equal(uint16(2), qiInputReq.CreditCharge())
+
+	// SetInfoRequest (128KB input -> credit charge 2)
+	a = openAccount(10)
+	a.charge(10)
+	siReq := &wire.SetInfoRequest{Input: &fakeEncoder{size: 128 * 1024}}
+	_, charge, err = a.loan(ctx, siReq)
+	req.NoError(err)
+	req.Equal(uint16(2), charge)
+	req.Equal(uint16(2), siReq.CreditCharge())
+
+	// IoctlRequest with nil Input (should not panic)
+	a = openAccount(10)
+	a.charge(10)
+	ioctlNilReq := &wire.IoctlRequest{MaxOutputResponse: 1024}
+	_, charge, err = a.loan(ctx, ioctlNilReq)
+	req.NoError(err)
+	req.Equal(uint16(1), charge)
+	req.Equal(uint16(1), ioctlNilReq.CreditCharge())
+
+	// IoctlRequest with both Input and MaxOutputResponse (64KB each -> credit charge 1,
+	// based on max(input, output), not their sum)
+	a = openAccount(10)
+	a.charge(10)
+	ioctlReq := &wire.IoctlRequest{
+		Input:             &fakeEncoder{size: 64 * 1024},
+		MaxOutputResponse: 64 * 1024,
+	}
+	_, charge, err = a.loan(ctx, ioctlReq)
+	req.NoError(err)
+	req.Equal(uint16(1), charge)
+	req.Equal(uint16(1), ioctlReq.CreditCharge())
+
+	// Direct READ uses the same charge calculation without allocating its payload.
+	a = openAccount(65535)
+	directReadReq := &DirectReadRequest{
+		ReadRequest: &wire.ReadRequest{Length: math.MaxUint32},
+	}
+	_, charge, err = a.loan(ctx, directReadReq)
+	req.Error(err)
+	req.ErrorContains(err, "protocol: credit charge exceeds uint16")
+	req.Equal(uint16(0), charge)
+	req.Equal(uint16(1), directReadReq.CreditCharge())
+
+	// A negative encoder size is invalid and must not be converted to uint64.
+	a = openAccount(10)
+	negativeInputReq := &wire.IoctlRequest{Input: &fakeEncoder{size: -1}}
+	_, charge, err = a.loan(ctx, negativeInputReq)
+	req.Error(err)
+	req.ErrorContains(err, "protocol: negative IOCTL input size")
+	req.Equal(uint16(0), charge)
+	req.Equal(uint16(1), negativeInputReq.CreditCharge())
+
+	// A negative encoder size is invalid for QueryInfoRequest too.
+	a = openAccount(10)
+	negativeQiReq := &wire.QueryInfoRequest{Input: &fakeEncoder{size: -1}, OutputBufferLength: 1}
+	_, charge, err = a.loan(ctx, negativeQiReq)
+	req.Error(err)
+	req.ErrorContains(err, "protocol: negative QUERY_INFO input size")
+	req.Equal(uint16(0), charge)
+	req.Equal(uint16(1), negativeQiReq.CreditCharge())
+
+	// A negative encoder size is invalid for SetInfoRequest too.
+	a = openAccount(10)
+	negativeSiReq := &wire.SetInfoRequest{Input: &fakeEncoder{size: -1}}
+	_, charge, err = a.loan(ctx, negativeSiReq)
+	req.Error(err)
+	req.ErrorContains(err, "protocol: negative SET_INFO input size")
+	req.Equal(uint16(0), charge)
+	req.Equal(uint16(1), negativeSiReq.CreditCharge())
+}
+
+func TestCreditManager_IOCTLBufferSums(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		request wire.IoctlRequest
+		want    uint16
+	}{
+		{name: "Response sum 65536", request: wire.IoctlRequest{Input: &fakeEncoder{size: 1}, MaxInputResponse: 65535, MaxOutputResponse: 1}, want: 1},
+		{name: "Response sum 65537", request: wire.IoctlRequest{Input: &fakeEncoder{size: 1}, MaxInputResponse: 65536, MaxOutputResponse: 1}, want: 2},
+		{name: "larger input", request: wire.IoctlRequest{Input: &fakeEncoder{size: 131073}, MaxInputResponse: 65536, MaxOutputResponse: 1}, want: 3},
+		{name: "request sum", request: wire.IoctlRequest{Input: &fakeEncoder{size: 65536}, OutputCount: 1}, want: 2},
+		{name: "nil input", request: wire.IoctlRequest{MaxInputResponse: 65536, MaxOutputResponse: 1}, want: 2},
+		{name: "empty", request: wire.IoctlRequest{}, want: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := openAccount(10)
+			a.charge(9)
+			msgIds, charge, err := a.loan(context.Background(), &tt.request)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, charge)
+			require.Equal(t, tt.want, tt.request.CreditCharge())
+			require.Equal(t, []uint64{0}, msgIds)
+			require.Equal(t, uint16(10)-tt.want, a.availableCredits)
+			require.Equal(t, tt.want, a.inFlightCredits)
+			require.Equal(t, uint64(tt.want), a.nextMessageId)
+		})
+	}
+}
+
+func TestCreditManager_IOCTLInvalidSizesPreserveState(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		request   wire.IoctlRequest
+		wantError string
+	}{
+		{name: "negative input", request: wire.IoctlRequest{Input: &fakeEncoder{size: -1}}, wantError: "negative IOCTL input size"},
+		{name: "maximum Response fields", request: wire.IoctlRequest{MaxInputResponse: math.MaxUint32, MaxOutputResponse: math.MaxUint32}, wantError: "credit charge exceeds uint16"},
+		{name: "Response sum wraps uint32", request: wire.IoctlRequest{MaxInputResponse: math.MaxUint32, MaxOutputResponse: 2}, wantError: "credit charge exceeds uint16"},
+		{name: "request sum wraps uint32", request: wire.IoctlRequest{Input: &fakeEncoder{size: 2}, OutputCount: math.MaxUint32}, wantError: "credit charge exceeds uint16"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := openAccount(math.MaxUint16)
+			a.charge(math.MaxUint16 - 1)
+			_, _, err := a.loan(context.Background(), &wire.CreateRequest{})
+			require.NoError(t, err)
+			tt.request.SetCreditCharge(7)
+			tt.request.SetCreditRequest(8)
+			tt.request.SetMessageId(9)
+			want := tt.request
+
+			msgIds, charge, err := a.loan(context.Background(), &tt.request)
+			require.ErrorContains(t, err, "protocol: "+tt.wantError)
+			require.Nil(t, msgIds)
+			require.Zero(t, charge)
+			require.Equal(t, want, tt.request)
+			require.Equal(t, uint16(math.MaxUint16-1), a.availableCredits)
+			require.Equal(t, uint16(1), a.inFlightCredits)
+			require.Equal(t, uint16(math.MaxUint16), a.maxCredits)
+			require.Equal(t, uint64(1), a.nextMessageId)
+		})
+	}
+}
+
+func TestCreditManager_IOCTLWireChargeAndMessageIds(t *testing.T) {
+	t.Parallel()
+	a := openAccount(10)
+	a.charge(9)
+	p := &wire.IoctlRequest{
+		Input:             &fakeEncoder{size: 1},
+		MaxInputResponse:  65536,
+		MaxOutputResponse: 1,
+		// [MS-SMB2] 2.2.31 requires client OutputCount to be zero.
+		OutputCount: 0,
+	}
+	msgIds, charge, err := a.loan(context.Background(), p)
+	require.NoError(t, err)
+	require.Equal(t, uint16(2), charge)
+	encoded := make([]byte, p.Size())
+	p.Encode(encoded)
+	packet := wire.PacketCodec(encoded)
+	require.Equal(t, uint16(2), packet.CreditCharge())
+	require.Equal(t, msgIds[0], packet.MessageId())
+	require.Zero(t, wire.IoctlRequestDecoder(packet.Body()).OutputCount())
+
+	next := &wire.CreateRequest{}
+	msgIds, _, err = a.loan(context.Background(), next)
+	require.NoError(t, err)
+	require.Equal(t, packet.MessageId()+2, msgIds[0])
+	require.Equal(t, msgIds[0], next.MessageId)
+}
+
+func TestCreditManager_ChargeBoundaries(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		new  func(uint32) wire.Packet
+	}{
+		{
+			name: "read",
+			new: func(size uint32) wire.Packet {
+				return &wire.ReadRequest{Length: size}
+			},
+		},
+		{
+			name: "direct read",
+			new: func(size uint32) wire.Packet {
+				return &DirectReadRequest{ReadRequest: &wire.ReadRequest{Length: size}}
+			},
+		},
+		{
+			name: "query directory",
+			new: func(size uint32) wire.Packet {
+				return &wire.QueryDirectoryRequest{OutputBufferLength: size}
+			},
+		},
+		{
+			name: "ioctl output",
+			new: func(size uint32) wire.Packet {
+				return &wire.IoctlRequest{MaxOutputResponse: size}
+			},
+		},
+	}
+
+	const payloadSize uint32 = 4294901760
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := require.New(t)
+			a := openAccount(math.MaxUint16)
+			a.charge(math.MaxUint16 - 1)
+			p := tt.new(payloadSize)
+
+			msgIds, charge, err := a.loan(context.Background(), p)
+			req.NoError(err)
+			req.Equal([]uint64{0}, msgIds)
+			req.Equal(uint16(math.MaxUint16), charge)
+			req.Equal(uint16(math.MaxUint16), p.CreditCharge())
+			req.Equal(uint16(math.MaxUint16), creditRequest(p))
+			req.Equal(uint16(0), a.availableCredits)
+			req.Equal(uint16(math.MaxUint16), a.inFlightCredits)
+			req.Equal(uint64(math.MaxUint16), a.nextMessageId)
+
+			for _, size := range []uint32{payloadSize + 1, math.MaxUint32} {
+				a := openAccount(math.MaxUint16)
+				a.charge(math.MaxUint16 - 1)
+				p, want := tt.new(size), tt.new(size)
+				for _, packet := range []wire.Packet{p, want} {
+					packet.SetCreditCharge(7)
+					packet.SetCreditRequest(8)
+					packet.SetMessageId(9)
+				}
+				msgIds, charge, err := a.loan(context.Background(), p)
+				req.ErrorContains(err, "protocol: credit charge exceeds uint16")
+				req.Nil(msgIds)
+				req.Zero(charge)
+				req.Equal(want, p)
+				req.Equal(uint16(math.MaxUint16), a.availableCredits)
+				req.Zero(a.inFlightCredits)
+				req.Equal(uint16(math.MaxUint16), a.maxCredits)
+				req.Zero(a.nextMessageId)
+			}
+		})
+	}
+}
+
+func TestCreditManager_RejectsUnrepresentableIOCTLInput(t *testing.T) {
+	t.Parallel()
+	maxInt := int(^uint(0) >> 1)
+	inputSize := uint64(4294901761)
+	if uint64(maxInt) < inputSize {
+		t.Skip("fakeEncoder cannot represent an unrepresentable IOCTL input size")
+	}
+
+	req := require.New(t)
+	a := openAccount(10)
+	p := &wire.IoctlRequest{Input: &fakeEncoder{size: int(inputSize)}}
+	p.SetCreditCharge(7)
+	p.SetCreditRequest(8)
+	p.SetMessageId(9)
+
+	msgIds, charge, err := a.loan(context.Background(), p)
+	req.Error(err)
+	req.ErrorContains(err, "protocol: credit charge exceeds uint16")
+	req.Nil(msgIds)
+	req.Equal(uint16(0), charge)
+	req.Equal(uint16(7), p.CreditCharge())
+	req.Equal(uint16(8), p.CreditRequestResponse)
+	req.Equal(uint64(9), p.MessageId)
+	req.Equal(uint16(1), a.availableCredits)
+	req.Zero(a.inFlightCredits)
+	req.Equal(uint16(1), a.maxCredits)
+	req.Zero(a.nextMessageId)
+}
+
+func TestCreditManager_RejectedLoanPreservesRequestsAndAccount(t *testing.T) {
+	t.Parallel()
+	t.Run("single request", func(t *testing.T) {
+		req := require.New(t)
+		a := openAccount(10)
+		p := &wire.ReadRequest{Length: 4294901761}
+		p.SetCreditCharge(1)
+		p.SetCreditRequest(11)
+		p.SetMessageId(12)
+
+		msgIds, charge, err := a.loan(context.Background(), p)
+		req.Error(err)
+		req.ErrorContains(err, "protocol: credit charge exceeds uint16")
+		req.Nil(msgIds)
+		req.Equal(uint16(0), charge)
+		req.Equal(uint16(1), p.CreditCharge())
+		req.Equal(uint16(11), p.CreditRequestResponse)
+		req.Equal(uint64(12), p.MessageId)
+		req.Equal(uint16(1), a.availableCredits)
+		req.Equal(uint16(0), a.inFlightCredits)
+		req.Equal(uint16(1), a.maxCredits)
+		req.Equal(uint64(0), a.nextMessageId)
+	})
+
+	t.Run("normal request followed by excessive request", func(t *testing.T) {
+		req := require.New(t)
+		a := openAccount(10)
+		p1 := &wire.ReadRequest{Length: 0}
+		p1.SetCreditCharge(7)
+		p1.SetCreditRequest(11)
+		p1.SetMessageId(12)
+		p2 := &wire.ReadRequest{Length: 4294901761}
+		p2.SetCreditCharge(2)
+		p2.SetCreditRequest(21)
+		p2.SetMessageId(22)
+
+		msgIds, charge, err := a.loan(context.Background(), p1, p2)
+		req.Error(err)
+		req.ErrorContains(err, "protocol: credit charge exceeds uint16")
+		req.Nil(msgIds)
+		req.Equal(uint16(0), charge)
+		req.Equal(uint16(7), p1.CreditCharge())
+		req.Equal(uint16(11), p1.CreditRequestResponse)
+		req.Equal(uint64(12), p1.MessageId)
+		req.Equal(uint16(2), p2.CreditCharge())
+		req.Equal(uint16(21), p2.CreditRequestResponse)
+		req.Equal(uint64(22), p2.MessageId)
+		req.Equal(uint16(1), a.availableCredits)
+		req.Equal(uint16(0), a.inFlightCredits)
+		req.Equal(uint16(1), a.maxCredits)
+		req.Equal(uint64(0), a.nextMessageId)
+	})
+
+	t.Run("individually valid requests over cumulative limit", func(t *testing.T) {
+		req := require.New(t)
+		a := openAccount(math.MaxUint16)
+		p1 := &wire.ReadRequest{Length: 4294901760}
+		p1.SetCreditCharge(3)
+		p1.SetCreditRequest(31)
+		p1.SetMessageId(32)
+		p2 := &wire.ReadRequest{Length: 4294901760}
+		p2.SetCreditCharge(4)
+		p2.SetCreditRequest(41)
+		p2.SetMessageId(42)
+
+		msgIds, charge, err := a.loan(context.Background(), p1, p2)
+		req.Error(err)
+		req.ErrorContains(err, "protocol: compound credit charge exceeds uint16")
+		req.Nil(msgIds)
+		req.Equal(uint16(0), charge)
+		req.Equal(uint16(3), p1.CreditCharge())
+		req.Equal(uint16(31), p1.CreditRequestResponse)
+		req.Equal(uint64(32), p1.MessageId)
+		req.Equal(uint16(4), p2.CreditCharge())
+		req.Equal(uint16(41), p2.CreditRequestResponse)
+		req.Equal(uint64(42), p2.MessageId)
+		req.Equal(uint16(1), a.availableCredits)
+		req.Equal(uint16(0), a.inFlightCredits)
+		req.Equal(uint16(1), a.maxCredits)
+		req.Equal(uint64(0), a.nextMessageId)
+	})
+}
+
+func TestCreditManagerFailsFastWhenNoCreditsCanArrive(t *testing.T) {
+	t.Parallel()
+	a := openAccount(10)
+	a.availableCredits = 0
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, _, err := a.loan(ctx, &wire.EchoRequest{})
+	if err == nil || errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("loan with no available or in-flight credits = %v, want immediate credit error", err)
+	}
+}
+
+func TestCreditManagerDoesNotExceedConfiguredBalance(t *testing.T) {
+	t.Parallel()
+	a := openAccount(2)
+	a.charge(4)
+	_, _, err := a.loan(context.Background(), &wire.ReadRequest{Length: 3 * 64 * 1024})
+	if err == nil || !strings.Contains(err.Error(), "maximum credit balance") {
+		t.Fatalf("loan above configured balance = %v, want credit balance error", err)
+	}
+}
+
+func TestCreditManager_FailFastOnExcessiveCharge(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	a := openAccount(10)
+	ctx := context.Background()
+
+	// Request requiring 11 credits when target is 10 and max seen is 1 (initial).
+	// 11 * 64KB = 704KB. calcCreditCharge((11-1)*65536 + 1) = 11.
+	bigReq := &wire.ReadRequest{Length: 11 * 64 * 1024}
+	_, _, err := a.loan(ctx, bigReq)
+	req.Error(err)
+	req.ErrorContains(err, "protocol: requested credit charge exceeds maximum credit balance")
+}
+
+func TestCreditManager_MaxCreditCap(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	a := openAccount(10)
+
+	// Initially 1 credit observed
+	req.Equal(uint16(1), a.maxCreditCap())
+
+	// Replenish 4 credits -> available 5, max 5
+	a.charge(4)
+	req.Equal(uint16(5), a.maxCreditCap())
+
+	// Replenish 10 credits -> available 15, but target is 10, so cap is 10
+	a.charge(10)
+	req.Equal(uint16(10), a.maxCreditCap())
+}
+
+func TestCreditManager_MaintainAndSurplus(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	ctx := context.Background()
+
+	// Initial target is 10. Bring available credits to 10 (target reached).
+	a := openAccount(10)
+	a.charge(9) // available: 10, inFlight: 0
+
+	// 1st request: consumes 1 credit. Target is maintained, so creditRequest = 1.
+	p1 := &wire.CreateRequest{}
+	_, charge, err := a.loan(ctx, p1)
+	req.NoError(err)
+	req.Equal(uint16(1), charge)
+	req.Equal(uint16(1), p1.CreditRequestResponse)
+
+	// 2nd concurrent request (before 1st finishes): should ALSO request 1 (its own charge),
+	// not compounding deficit!
+	p2 := &wire.CreateRequest{}
+	_, charge, err = a.loan(ctx, p2)
+	req.NoError(err)
+	req.Equal(uint16(1), charge)
+	req.Equal(uint16(1), p2.CreditRequestResponse)
+
+	// 3rd concurrent request: should ALSO request 1.
+	p3 := &wire.CreateRequest{}
+	_, charge, err = a.loan(ctx, p3)
+	req.NoError(err)
+	req.Equal(uint16(1), charge)
+	req.Equal(uint16(1), p3.CreditRequestResponse)
+
+	// Complete all 3 requests with 1 credit each returned
+	a.charge(1, 1)
+	a.charge(1, 1)
+	a.charge(1, 1)
+	// Now available: 10, inFlight: 0
+
+	// Server gives surplus credits (e.g. 5 extra credits granted)
+	a.charge(5) // available: 15, inFlight: 0
+
+	// 4th request: since total (15) > maxCreditBalance (10), request should ask for 0
+	// to drain excess credits towards maxCreditBalance.
+	p4 := &wire.CreateRequest{}
+	_, charge, err = a.loan(ctx, p4)
+	req.NoError(err)
+	req.Equal(uint16(1), charge)
+	req.Equal(uint16(0), p4.CreditRequestResponse)
+}
+
+func TestCreditManager_CompoundCreditRequestAllocation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		replenish uint16
+		reqs      func() []wire.Packet
+		charges   []uint16
+		want      []uint16
+	}{
+		{
+			name:      "target balance",
+			replenish: 9,
+			reqs: func() []wire.Packet {
+				return []wire.Packet{&wire.CreateRequest{}, &wire.QueryInfoRequest{FileId: wire.FileId{}}, &wire.CloseRequest{}}
+			},
+			charges: []uint16{1, 1, 1},
+			want:    []uint16{1, 1, 1},
+		},
+		{
+			name:      "multiple credit charge",
+			replenish: 9,
+			reqs: func() []wire.Packet {
+				return []wire.Packet{&wire.ReadRequest{Length: 128 * 1024}, &wire.CreateRequest{}}
+			},
+			charges: []uint16{2, 1},
+			want:    []uint16{2, 1},
+		},
+		{
+			name:      "target deficit",
+			replenish: 2,
+			reqs: func() []wire.Packet {
+				return []wire.Packet{&wire.CreateRequest{}, &wire.CreateRequest{}, &wire.CreateRequest{}}
+			},
+			charges: []uint16{1, 1, 1},
+			want:    []uint16{8, 1, 1},
+		},
+		{
+			name:      "partial surplus",
+			replenish: 10,
+			reqs: func() []wire.Packet {
+				return []wire.Packet{&wire.CreateRequest{}, &wire.CreateRequest{}, &wire.CreateRequest{}}
+			},
+			charges: []uint16{1, 1, 1},
+			want:    []uint16{1, 1, 0},
+		},
+		{
+			name:      "surplus",
+			replenish: 14,
+			reqs: func() []wire.Packet {
+				return []wire.Packet{&wire.CreateRequest{}, &wire.CreateRequest{}, &wire.CreateRequest{}}
+			},
+			charges: []uint16{1, 1, 1},
+			want:    []uint16{0, 0, 0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := require.New(t)
+			a := openAccount(10)
+			a.charge(tt.replenish)
+
+			reqs := tt.reqs()
+			for _, p := range reqs {
+				p.SetCreditRequest(99) // All headers, including zero grants, must be overwritten.
+			}
+			_, _, err := a.loan(context.Background(), reqs...)
+			req.NoError(err)
+
+			got := make([]uint16, len(reqs))
+			var total uint32
+			for i, p := range reqs {
+				got[i] = creditRequest(p)
+				total += uint32(got[i])
+				req.Equal(tt.charges[i], p.CreditCharge())
+			}
+			req.Equal(tt.want, got)
+			var wantTotal uint32
+			for _, want := range tt.want {
+				wantTotal += uint32(want)
+			}
+			req.Equal(wantTotal, total)
+		})
+	}
+}
+
+func TestCreditManager_CompoundCreditSettlement(t *testing.T) {
+	t.Parallel()
+	models := []struct {
+		name  string
+		grant func([]wire.Packet) []uint16
+	}{
+		{
+			name: "per request",
+			grant: func(reqs []wire.Packet) []uint16 {
+				grants := make([]uint16, len(reqs))
+				for i, p := range reqs {
+					grants[i] = min(creditRequest(p), p.CreditCharge())
+				}
+				return grants
+			},
+		},
+		{
+			name: "final response aggregate",
+			grant: func(reqs []wire.Packet) []uint16 {
+				grants := make([]uint16, len(reqs))
+				for _, p := range reqs {
+					grants[len(grants)-1] += creditRequest(p)
+				}
+				return grants
+			},
+		},
+	}
+
+	for _, model := range models {
+		t.Run(model.name, func(t *testing.T) {
+			req := require.New(t)
+			a := openAccount(10)
+			a.charge(9)
+
+			for range 3 {
+				reqs := []wire.Packet{&wire.CreateRequest{}, &wire.CreateRequest{}, &wire.CreateRequest{}}
+				_, _, err := a.loan(context.Background(), reqs...)
+				req.NoError(err)
+
+				grants := model.grant(reqs)
+				for j, grant := range grants {
+					a.charge(grant, reqs[j].CreditCharge())
+				}
+
+				a.m.Lock()
+				req.Equal(uint16(10), a.availableCredits)
+				req.Equal(uint16(0), a.inFlightCredits)
+				a.m.Unlock()
+			}
+		})
+	}
+}
+
+func TestCreditOverflow_RejectCompoundChargeExceedingUint16(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	a := openAccount(128)
+	ctx := context.Background()
+
+	// Compound of 65536 requests, each with a credit charge of 1.
+	// The cumulative charge (65536) exceeds uint16 and must not wrap to 0.
+	reqs := make([]wire.Packet, 65536)
+	for i := range reqs {
+		reqs[i] = &wire.CreateRequest{}
+	}
+
+	msgIds, charge, err := a.loan(ctx, reqs...)
+	req.Error(err)
+	req.ErrorContains(err, "protocol: compound credit charge exceeds uint16")
+	req.Nil(msgIds)
+	req.Equal(uint16(0), charge)
+}
+
+func TestCreditManager_ChargeClampsAtMaxUint16(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	a := openAccount(128)
+
+	// Simulate a large available balance close to the uint16 limit.
+	a.m.Lock()
+	a.availableCredits = math.MaxUint16 - 1
+	a.m.Unlock()
+
+	// Granting more credits must not wrap around to a small value.
+	a.charge(10)
+
+	a.m.Lock()
+	defer a.m.Unlock()
+	req.Equal(uint16(math.MaxUint16), a.availableCredits)
+}
+
+func TestCreditManager_UnloanClampsAtMaxUint16(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	a := openAccount(128)
+
+	// Simulate a large available balance close to the uint16 limit.
+	a.m.Lock()
+	a.availableCredits = math.MaxUint16 - 1
+	a.inFlightCredits = 5
+	a.m.Unlock()
+
+	// Restoring credits must not wrap around to a small value.
+	a.unloan(5)
+
+	a.m.Lock()
+	defer a.m.Unlock()
+	req.Equal(uint16(math.MaxUint16), a.availableCredits)
+}
+
+func TestCreditManager_DeficitRampUp(t *testing.T) {
+	t.Parallel()
+	req := require.New(t)
+	ctx := context.Background()
+
+	// Initial balance is 1 credit, target is 10
+	a := openAccount(10)
+
+	// 1st request consumes 1 credit.
+	// balance after loan = 0. needed = 10 - 0 = 10.
+	p1 := &wire.CreateRequest{}
+	_, charge, err := a.loan(ctx, p1)
+	req.NoError(err)
+	req.Equal(uint16(1), charge)
+	req.Equal(uint16(10), p1.CreditRequestResponse)
+
+	// Server partially grants 2 credits (instead of 10)
+	a.charge(2, 1) // available: 2, inFlight: 0
+
+	// 2nd request consumes 1 credit.
+	// balance after loan = 2 - 1 = 1. needed = 10 - 1 = 9.
+	p2 := &wire.CreateRequest{}
+	_, charge, err = a.loan(ctx, p2)
+	req.NoError(err)
+	req.Equal(uint16(1), charge)
+	req.Equal(uint16(9), p2.CreditRequestResponse)
+}
+
+func TestMaxCreditSize32BitOverflow(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	c := &conn{account: openAccount(65535)}
+	c.account.maxCredits = 65535
+
+	size := c.maxCreditSize(0)
+	require.Positive(size)
+	require.Equal(255*64*1024, size)
+}
+
+func newCreditTestConn(dialect uint16, capabilities uint32) *conn {
+	c := &conn{
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(clientMaxCreditBalance),
+		dialect:             dialect,
+		capabilities:        capabilities,
+	}
+	c.account.charge(clientMaxCreditBalance)
+	return c
+}
+
+func encodeOutstandingRequests(t *testing.T, c *conn, reqs ...wire.Packet) ([]byte, []*outstandingRequest) {
+	t.Helper()
+	ctx := context.Background()
+	msgIds, _, err := c.account.loan(ctx, reqs...)
+	require.NoError(t, err)
+	rrs, parts, err := c.makeOutstandingRequest(ctx, false, msgIds, reqs...)
+	require.NoError(t, err)
+	var wireBytes []byte
+	for _, part := range parts {
+		wireBytes = append(wireBytes, part...)
+	}
+	return wireBytes, rrs
+}
+
+// wireCreditCharges walks a compound request chain via NextCommand and returns
+// the CreditCharge of each of the n request headers.
+func wireCreditCharges(t *testing.T, wireBytes []byte, n int) []uint16 {
+	t.Helper()
+	charges := make([]uint16, 0, n)
+	off := 0
+	for i := range n {
+		require.LessOrEqual(t, off, len(wireBytes))
+		require.GreaterOrEqual(t, len(wireBytes)-off, 64)
+		require.Zero(t, off%8, "request header is not 8-byte aligned")
+		codec := wire.PacketCodec(wireBytes[off : off+64])
+		charges = append(charges, codec.CreditCharge())
+		next := codec.NextCommand()
+		require.Zero(t, next%8, "NextCommand is not 8-byte aligned")
+		if i < n-1 {
+			require.GreaterOrEqual(t, next, uint32(64), "invalid NextCommand at request %d", i)
+			require.LessOrEqual(t, uint64(next), uint64(len(wireBytes)-off-64), "next header exceeds packet")
+			off += int(next)
+		} else {
+			require.Zero(t, next, "trailing NextCommand at last request")
+		}
+	}
+	return charges
+}
+
+func TestInterimCreditsAllowSequentialCompoundFallback(t *testing.T) {
+	t.Parallel()
+	c := &conn{outstandingRequests: newOutstandingRequests(), account: openAccount(128)}
+	ids, charge, err := c.account.loan(context.Background(), &wire.ChangeNotifyRequest{})
+	require.NoError(t, err)
+	rr := &outstandingRequest{cmd: wire.SMB2_CHANGE_NOTIFY, msgId: ids[0], creditCharge: charge, recv: make(chan *recvPacket, 1)}
+	c.outstandingRequests.set(rr.msgId, rr)
+	pending := testAcceptedResponse(t, &wire.ErrorResponse{CommandCode: rr.cmd})
+	pending.codec().SetMessageId(rr.msgId)
+	pending.codec().SetStatus(uint32(erref.STATUS_PENDING))
+	pending.codec().SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+	pending.codec().SetAsyncId(7)
+	pending.codec().SetCreditResponse(1)
+	require.NoError(t, c.tryHandle(pending, nil))
+	// The notification can remain pending indefinitely. Its final response is
+	// not a source of future credits (MS-SMB2 3.3.4.1.2).
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, _, err = c.account.loan(ctx, &wire.CreateRequest{}, &wire.CloseRequest{})
+	require.ErrorIs(t, err, errCompoundCredits)
+	require.EqualValues(t, 1, c.account.availableCredits)
+	require.Zero(t, c.account.inFlightCredits)
+}
+
+func TestAsyncFinalDoesNotConsumeAnotherRequestsCredit(t *testing.T) {
+	t.Parallel()
+	for _, invalid := range []bool{false, true} {
+		t.Run(fmt.Sprint(invalid), func(t *testing.T) {
+			c := &conn{outstandingRequests: newOutstandingRequests(), account: openAccount(128)}
+			ids, charge, err := c.account.loan(context.Background(), &wire.ChangeNotifyRequest{})
+			require.NoError(t, err)
+			rr := &outstandingRequest{cmd: wire.SMB2_CHANGE_NOTIFY, msgId: ids[0], creditCharge: charge, recv: make(chan *recvPacket, 1)}
+			c.outstandingRequests.set(rr.msgId, rr)
+			pending := testAcceptedResponse(t, &wire.ErrorResponse{CommandCode: rr.cmd})
+			pending.codec().SetMessageId(rr.msgId)
+			pending.codec().SetStatus(uint32(erref.STATUS_PENDING))
+			pending.codec().SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+			pending.codec().SetAsyncId(7)
+			pending.codec().SetCreditResponse(1)
+			require.NoError(t, c.tryHandle(pending, nil))
+			_, _, err = c.account.loan(context.Background(), &wire.EchoRequest{})
+			require.NoError(t, err)
+			require.EqualValues(t, 1, c.account.inFlightCredits)
+			final := testAcceptedResponse(t, &wire.ChangeNotifyResponse{})
+			final.codec().SetMessageId(rr.msgId)
+			final.codec().SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+			final.codec().SetAsyncId(7)
+			final.codec().SetCreditResponse(0)
+			var responseErr error
+			if invalid {
+				responseErr = &InvalidResponseError{Message: "invalid final response"}
+			}
+			err = c.tryHandle(final, responseErr)
+			if invalid {
+				var decoded *InvalidResponseError
+				require.ErrorAs(t, err, &decoded)
+				require.Equal(t, "invalid final response", decoded.Message)
+			} else {
+				require.NoError(t, err)
+			}
+			if response := <-rr.recv; response != nil {
+				response.close()
+			}
+			require.EqualValues(t, 1, c.account.inFlightCredits, "only the ECHO still expects a credit response")
+			require.Zero(t, c.account.availableCredits)
+		})
+	}
+}
+
+func TestAsyncCreditLifecycleAfterCancellation(t *testing.T) {
+	t.Parallel()
+	c := &conn{outstandingRequests: newOutstandingRequests(), account: openAccount(128)}
+	ids, charge, err := c.account.loan(context.Background(), &wire.ChangeNotifyRequest{})
+	require.NoError(t, err)
+	notify := &outstandingRequest{cmd: wire.SMB2_CHANGE_NOTIFY, msgId: ids[0], creditCharge: charge, recv: make(chan *recvPacket, 1)}
+	c.outstandingRequests.set(notify.msgId, notify)
+	pending := testAcceptedResponse(t, &wire.ErrorResponse{CommandCode: notify.cmd})
+	pending.codec().SetMessageId(notify.msgId)
+	pending.codec().SetStatus(uint32(erref.STATUS_PENDING))
+	pending.codec().SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+	pending.codec().SetAsyncId(7)
+	pending.codec().SetCreditResponse(1)
+	require.NoError(t, c.tryHandle(pending, nil))
+
+	ids, charge, err = c.account.loan(context.Background(), &wire.EchoRequest{})
+	require.NoError(t, err)
+	echo := &outstandingRequest{cmd: wire.SMB2_ECHO, msgId: ids[0], creditCharge: charge, recv: make(chan *recvPacket, 1)}
+	c.outstandingRequests.set(echo.msgId, echo)
+	notify.abort()
+	final := testAcceptedResponse(t, &wire.ErrorResponse{CommandCode: notify.cmd})
+	final.codec().SetMessageId(notify.msgId)
+	final.codec().SetStatus(uint32(erref.STATUS_CANCELLED))
+	final.codec().SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+	final.codec().SetAsyncId(7)
+	final.codec().SetCreditResponse(0)
+	require.NoError(t, c.tryHandle(final, nil))
+	require.Nil(t, final.buf, "discard the canceled response's buffer")
+	require.Empty(t, notify.recv)
+	require.EqualValues(t, 1, c.account.inFlightCredits)
+	require.Zero(t, c.account.availableCredits)
+	_, exists := c.outstandingRequests.peek(notify.msgId)
+	require.False(t, exists)
+
+	// Disconnect while a different request still holds the only credit.
+	disconnected := &TransportError{Err: io.ErrUnexpectedEOF}
+	c.closeLocked(disconnected)
+	c.outstandingRequests.shutdown(disconnected)
+	require.Nil(t, <-echo.recv)
+	require.ErrorIs(t, echo.err, io.ErrUnexpectedEOF)
+	_, _, err = c.account.loan(context.Background(), &wire.EchoRequest{})
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	require.Empty(t, c.outstandingRequests.requests)
+}
+
+type zeroChargePacket struct{ wire.EchoRequest }
+
+func (*zeroChargePacket) CreditCharge() uint16 { return 0 }
+
+func TestCreditManagerZeroWireChargeConsumesID(t *testing.T) {
+	a := openAccount(2)
+	p := &zeroChargePacket{}
+	charges, total, err := a.reserve(context.Background(), p)
+	require.NoError(t, err)
+	require.Equal(t, []uint16{1}, charges)
+	require.EqualValues(t, 1, total)
+	require.Zero(t, p.CreditCharge(), "wire charge remains caller supplied")
+	ids, err := a.assignIDs(charges, p)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{0}, ids)
+	require.EqualValues(t, 1, a.nextMessageId)
+}
+
+func TestCreditManagerMessageIDRange(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		next    uint64
+		charges []uint16
+		invalid bool
+	}{
+		{"last single", math.MaxUint64 - 1, []uint16{1}, false},
+		{"last multi", math.MaxUint64 - 3, []uint16{3}, false},
+		{"last compound", math.MaxUint64 - 3, []uint16{1, 2}, false},
+		{"sentinel", math.MaxUint64, []uint16{1}, true},
+		{"multi reaches sentinel", math.MaxUint64 - 2, []uint16{3}, true},
+		{"compound reaches sentinel", math.MaxUint64 - 2, []uint16{1, 2}, true},
+		{"zero internal charge", 0, []uint16{0}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := openAccount(10)
+			a.nextMessageId = tc.next
+			packets := make([]wire.Packet, len(tc.charges))
+			for i := range packets {
+				p := &wire.EchoRequest{}
+				p.SetMessageId(123)
+				packets[i] = p
+			}
+			ids, err := a.assignIDs(tc.charges, packets...)
+			if tc.invalid {
+				require.Error(t, err)
+				require.Nil(t, ids)
+				require.Equal(t, tc.next, a.nextMessageId)
+				for _, p := range packets {
+					require.EqualValues(t, 123, p.(*wire.EchoRequest).MessageId)
+				}
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, uint64(math.MaxUint64), a.nextMessageId)
+				require.Equal(t, tc.next, ids[0])
+			}
+		})
+	}
+}
+
+func TestCreditManager_Reserve_NilDirectRead(t *testing.T) {
+	t.Parallel()
+	a := openAccount(10)
+	ctx := context.Background()
+	_, charge, err := a.reserve(ctx, &DirectReadRequest{})
+	require.NoError(t, err)
+	a.unloan(charge)
+
+	_, charge, err = a.reserve(ctx, (*DirectReadRequest)(nil))
+	require.NoError(t, err)
+	a.unloan(charge)
+}

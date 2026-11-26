@@ -1,0 +1,4915 @@
+// This package is used for integration testing.
+
+package smb2_test
+
+import (
+	"bytes"
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/sha512"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	iofs "io/fs"
+	"maps"
+	mathrand "math/rand/v2"
+	"net"
+	"net/url"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path"
+	"path/filepath"
+	"reflect"
+	"runtime"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"testing/fstest"
+	"testing/synctest"
+	"time"
+
+	"github.com/hirochachacha/go-smb2/v2"
+	"github.com/hirochachacha/go-smb2/v2/auth"
+	smbclient "github.com/hirochachacha/go-smb2/v2/client"
+	"github.com/hirochachacha/go-smb2/v2/internal/erref"
+	"github.com/hirochachacha/go-smb2/v2/internal/msrpc"
+	pathpkg "github.com/hirochachacha/go-smb2/v2/internal/path"
+	"github.com/hirochachacha/go-smb2/v2/notify"
+	"github.com/hirochachacha/go-smb2/v2/security"
+	"github.com/hirochachacha/go-smb2/v2/user"
+	"github.com/hirochachacha/go-smb2/v2/x/protocol"
+	"github.com/hirochachacha/go-smb2/v2/x/wire"
+	"github.com/stretchr/testify/require"
+)
+
+type transportDialerFunc func(ctx context.Context, serverName string) (smb2.Transport, error)
+
+func (f transportDialerFunc) Dial(ctx context.Context, serverName string) (smb2.Transport, error) {
+	return f(ctx, serverName)
+}
+
+func join(ss ...string) string {
+	return strings.Join(ss, `\`)
+}
+
+type transportConfig struct {
+	Type string              `json:"type"`
+	Host string              `json:"host"`
+	Port int                 `json:"port"`
+	TLS  *transportTLSConfig `json:"tls"`
+}
+
+type transportTLSConfig struct {
+	ServerName string `json:"server_name"`
+	CAFile     string `json:"ca_file"`
+}
+
+type connConfig struct {
+	RequireMessageSigning bool   `json:"signing"`
+	ClientGuid            string `json:"guid"`
+	SpecifiedDialect      uint16 `json:"dialect"`
+}
+
+type sessionConfig struct {
+	Type        string  `json:"type"`
+	User        string  `json:"user"`
+	Password    string  `json:"passwd"`
+	Domain      *string `json:"domain"`
+	Workstation string  `json:"workstation"`
+	Realm       string  `json:"realm"`
+	KRB5Config  string  `json:"krb5Config"`
+	TargetSPN   *string `json:"targetSPN"`
+}
+
+type treeConnConfig struct {
+	Share1 string `json:"share1"`
+	Share2 string `json:"share2"`
+}
+
+// kerberosConfig selects the dialect matrix test. TreeConn.Share1 must be
+// writable without encryption; EncryptedShare must require SMB encryption.
+type kerberosConfig struct {
+	EncryptedShare string `json:"encrypted_share"`
+}
+
+type dfsConfig struct {
+	Target       string `json:"target"`
+	SecondTarget string `json:"second_target"`
+	Link         string `json:"link"`
+}
+
+type config struct {
+	Benchmark        bool            `json:"benchmark"`
+	Name             string          `json:"name"`
+	DFS              *dfsConfig      `json:"dfs"`
+	Kerberos         *kerberosConfig `json:"kerberos"`
+	MaxCreditBalance uint16          `json:"max_credit_balance"`
+	Transport        transportConfig `json:"transport"`
+	Conn             connConfig      `json:"conn"`
+	Session          sessionConfig   `json:"session"`
+	TreeConn         treeConnConfig  `json:"tree_conn"`
+}
+
+// env holds the connection established from a single client_conf.json entry.
+type env struct {
+	cfg                config
+	dialer             *smb2.Dialer
+	fs                 *smb2.Share
+	rfs                *smb2.Share
+	session            *smb2.Session
+	destroyCredentials func()
+}
+
+var (
+	envs                   []*env
+	dfsEnv                 *config
+	kerberosEnvs           []config
+	integrationInterrupted atomic.Bool
+)
+
+// loadEnvs saves specialized test configurations and connects to ordinary
+// test entries. Unreachable environments are skipped.
+func readTestConfigs() []config {
+	configPath := os.Getenv("SMB2_CLIENT_CONFIG")
+	if configPath == "" {
+		configPath = "client_conf.json"
+	}
+
+	cf, err := os.Open(configPath)
+	if err != nil {
+		fmt.Printf("cannot open %s\n", configPath)
+		return nil
+	}
+	defer cf.Close()
+
+	var cfgs []config
+	if err := json.NewDecoder(cf).Decode(&cfgs); err != nil {
+		fmt.Printf("cannot decode %s\n", configPath)
+		return nil
+	}
+
+	return cfgs
+}
+
+func loadEnvs() []*env {
+	cfgs := readTestConfigs()
+	var es []*env
+	for _, cfg := range cfgs {
+		if integrationInterrupted.Load() {
+			break
+		}
+		if cfg.DFS != nil {
+			dfsEnv = &cfg
+			continue
+		}
+		if cfg.Kerberos != nil {
+			kerberosEnvs = append(kerberosEnvs, cfg)
+			continue
+		}
+		if e := connect(cfg, true); e != nil {
+			es = append(es, e)
+		}
+	}
+	return es
+}
+
+func connect(cfg config, secondShare bool) *env {
+	if cfg.Transport.Type != "tcp" && cfg.Transport.Type != "quic" {
+		fmt.Println("unsupported transport type")
+		return nil
+	}
+
+	var tlsConfig *tls.Config
+	if cfg.Transport.Type == "quic" && cfg.Transport.TLS != nil {
+		tlsConfig = &tls.Config{ServerName: cfg.Transport.TLS.ServerName}
+		if path := cfg.Transport.TLS.CAFile; path != "" {
+			pem, err := os.ReadFile(path)
+			if err != nil {
+				panic(fmt.Errorf("%s: read QUIC CA file: %w", cfg.Name, err))
+			}
+			tlsConfig.RootCAs = x509.NewCertPool()
+			if !tlsConfig.RootCAs.AppendCertsFromPEM(pem) {
+				panic(fmt.Errorf("%s: QUIC CA file %q contains no certificates", cfg.Name, path))
+			}
+		}
+	}
+
+	var credentials smb2.Credentials
+	var destroyCredentials func()
+	switch cfg.Session.Type {
+	case "ntlm":
+		credentials = auth.NTLMCredential{
+			User:        cfg.Session.User,
+			Password:    cfg.Session.Password,
+			Domain:      cfg.Session.Domain,
+			Workstation: cfg.Session.Workstation,
+			TargetSPN:   cfg.Session.TargetSPN,
+		}
+	case "kerberos":
+		kerberos, err := auth.NewKerberosCredential(auth.KerberosPassword{
+			User: cfg.Session.User, Realm: cfg.Session.Realm, Password: cfg.Session.Password,
+			ConfigFile: cfg.Session.KRB5Config, TargetSPN: cfg.Session.TargetSPN,
+		})
+		if err != nil {
+			panic(err)
+		}
+		credentials = kerberos
+		destroyCredentials = func() { _ = kerberos.Close() }
+	default:
+		panic(fmt.Sprintf("unsupported session type %q", cfg.Session.Type))
+	}
+
+	dialer := &smb2.Dialer{
+		Credentials: credentials,
+		TransportDialer: transportDialerFunc(func(ctx context.Context, _ string) (smb2.Transport, error) {
+			addr := net.JoinHostPort(cfg.Transport.Host, strconv.Itoa(cfg.Transport.Port))
+			if cfg.Transport.Type == "quic" {
+				return smb2.QUICDialer{Port: cfg.Transport.Port, TLSConfig: tlsConfig}.Dial(ctx, cfg.Transport.Host)
+			}
+			conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+			if err != nil {
+				return nil, err
+			}
+			return smb2.NewTransport(conn), nil
+		}),
+		MaxCreditBalance:      cfg.MaxCreditBalance,
+		RequireMessageSigning: cfg.Conn.RequireMessageSigning,
+		SpecifiedDialects: func() []smb2.Dialect {
+			if cfg.Conn.SpecifiedDialect != 0 {
+				return []smb2.Dialect{smb2.Dialect(cfg.Conn.SpecifiedDialect)}
+			}
+			return nil
+		}(),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	session, err := dialer.Dial(ctx, cfg.Transport.Host)
+	if err != nil {
+		if destroyCredentials != nil {
+			destroyCredentials()
+		}
+		fmt.Printf("skipping %s: connection failed: %v\n", cfg.Name, err)
+		return nil
+	}
+	fs1, err := session.Mount(ctx, cfg.TreeConn.Share1)
+	if err != nil {
+		session.Close()
+		if destroyCredentials != nil {
+			destroyCredentials()
+		}
+		panic(err)
+	}
+
+	var fs2 *smb2.Share
+	if secondShare {
+		fs2, err = session.Mount(ctx, cfg.TreeConn.Share2)
+		if err != nil {
+			closeTestSession(ctx, session, fs1)
+			if destroyCredentials != nil {
+				destroyCredentials()
+			}
+			panic(err)
+		}
+	}
+
+	return &env{
+		cfg:                cfg,
+		dialer:             dialer,
+		fs:                 fs1,
+		rfs:                fs2,
+		session:            session,
+		destroyCredentials: destroyCredentials,
+	}
+}
+
+func (e *env) close() {
+	if e.rfs != nil {
+		closeTestSession(context.Background(), e.session, e.rfs, e.fs)
+	} else {
+		closeTestSession(context.Background(), e.session, e.fs)
+	}
+	if e.destroyCredentials != nil {
+		e.destroyCredentials()
+	}
+}
+
+// Unmount has a separate cleanup budget even after setup cancellation.
+// Session.Close owns its bounded LOGOFF and connection teardown.
+func closeTestSession(ctx context.Context, session interface{ Close() error }, shares ...interface{ Unmount(context.Context) error }) {
+	defer session.Close()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	for _, share := range shares {
+		_ = share.Unmount(ctx)
+	}
+}
+
+// forEachEnv runs tests in parallel, with each test's environments run serially.
+func forEachEnv(t *testing.T, f func(t *testing.T, e *env)) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
+	if len(envs) == 0 {
+		t.Skip("client_conf.json is not configured")
+	}
+	t.Parallel()
+	for _, e := range envs {
+		t.Run(e.cfg.Name, func(t *testing.T) {
+			if integrationInterrupted.Load() {
+				t.Skip("integration tests interrupted")
+			}
+			f(t, e)
+		})
+	}
+}
+
+// newTestDirectory creates a directory owned by this subtest. Cleanup runs
+// after deferred file closes and reports failures instead of silently leaking it.
+func newTestDirectory(t *testing.T, fs *smb2.Share) string {
+	t.Helper()
+	name, _, _ := strings.Cut(t.Name(), "/")
+	dir := "go-smb2-" + name + "-" + rand.Text()
+	require.NoError(t, fs.Mkdir(context.Background(), dir, 0o755))
+	t.Cleanup(func() {
+		// Recursive cleanup needs many round trips on remote test servers,
+		// which also serve other tests running in parallel.
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := fs.RemoveAll(ctx, dir); err != nil {
+			t.Errorf("remove test directory %q: %v", dir, err)
+		}
+	})
+	return dir
+}
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	interrupts := make(chan os.Signal, 1)
+	finished := make(chan struct{})
+	if !testing.Short() {
+		signal.Notify(interrupts, os.Interrupt)
+		go func() {
+			select {
+			case <-interrupts:
+				integrationInterrupted.Store(true)
+				signal.Stop(interrupts)
+				fmt.Fprintln(os.Stderr, "Interrupted: waiting for running tests and cleanup; press Ctrl-C again to force exit.")
+			case <-finished:
+			}
+		}()
+		// Bench-only and explicitly selected multichannel runs must not connect
+		// to unrelated integration environments.
+		if flag.Lookup("test.run").Value.String() != "^$" && *manualMultichannelEnv == "" {
+			envs = loadEnvs()
+		}
+	}
+	code := runTestSuite(m.Run)
+	for _, server := range benchmarkServers {
+		if server.unmount != nil {
+			if err := server.unmount(); err != nil {
+				fmt.Fprintf(os.Stderr, "benchmark %s: unmount failed: %v\n", server.cfg.Name, err)
+				code = 1
+			}
+		}
+		if server.connection != nil {
+			server.connection.close()
+		}
+	}
+	for _, e := range envs {
+		e.close()
+	}
+	close(finished)
+	signal.Stop(interrupts)
+	if integrationInterrupted.Load() {
+		code = 130
+	}
+	os.Exit(code)
+}
+
+func TestMkdirPreservesReadOnlyPermission(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+		readOnlyDir := join(testDir, "readOnly")
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := fs.Chmod(ctx, readOnlyDir, 0o755); err != nil && !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("restore directory permissions: %v", err)
+			}
+		})
+
+		if err := fs.Mkdir(context.Background(), readOnlyDir, 0o444); err != nil {
+			t.Fatal(err)
+		}
+
+		info, err := fs.Stat(context.Background(), readOnlyDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o200 != 0 {
+			t.Errorf("read-only directory mode = %o, has owner write permission", info.Mode().Perm())
+		}
+	})
+}
+
+func TestReaddir(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		d, err := fs.Open(context.Background(), testDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer d.Close(context.Background())
+
+		fi, err := d.Readdir(context.Background(), -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(fi) != 0 {
+			t.Error("unexpected content length:", len(fi))
+		}
+
+		f, err := fs.Create(context.Background(), testDir+`\testFile`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer fs.Remove(context.Background(), testDir+`\testFile`)
+		defer f.Close(context.Background())
+
+		d2, err := fs.Open(context.Background(), testDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer d2.Close(context.Background())
+
+		fi2, err := d2.Readdir(context.Background(), -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(fi2) != 1 {
+			t.Error("unexpected content length:", len(fi2))
+		}
+
+		_, err = d2.Readdir(context.Background(), 1)
+		if err != io.EOF {
+			t.Error("unexpected error: ", err)
+		}
+	})
+}
+
+func TestCreateInDirectoryWithSpaces(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		testDir := newTestDirectory(t, e.fs)
+		dir := pathpkg.Join(testDir, "FOLDER WITH SPACES")
+		require.NoError(t, e.fs.Mkdir(ctx, dir, 0o755))
+		name := pathpkg.Join(dir, "sambaTest.test")
+		// Use slash separators as in issue #60.
+		file, err := e.fs.Create(ctx, pathpkg.ToPOSIXPath(name))
+		require.NoError(t, err)
+		defer file.Close(context.Background())
+		content := []byte("file in a directory with spaces\n")
+		n, err := file.Write(ctx, content)
+		require.NoError(t, err)
+		require.Equal(t, len(content), n)
+		require.NoError(t, file.Close(ctx))
+
+		got, err := e.fs.ReadFile(ctx, name)
+		require.NoError(t, err)
+		require.Equal(t, content, got)
+		entries, err := e.fs.ReadDir(ctx, dir)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		require.Equal(t, "sambaTest.test", entries[0].Name())
+	})
+}
+
+func TestFileSequentialModel(t *testing.T) {
+	const maxContent = 64 << 10
+	const seed1, seed2 = uint64(0x5B2), uint64(0x20261004)
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		dir := newTestDirectory(t, e.fs)
+		f, err := e.fs.Create(ctx, pathpkg.Join(dir, "model.bin"))
+		require.NoError(t, err)
+		defer f.Close(context.Background())
+		rng := mathrand.New(mathrand.NewPCG(seed1, seed2))
+		type operation struct {
+			kind         string
+			offset, size int
+		}
+		initial := []operation{
+			{"SeekStart", 17, 0}, {"Write", 0, 7}, {"WriteAt", 3, 5},
+			{"ReadAt", 20, 8}, {"Truncate", 12, 0}, {"Truncate", 48, 0},
+			{"ReadAt", 45, 5}, {"SeekStart", 40, 0}, {"Write", 0, 9},
+			{"WriteAt", maxContent, 0}, {"ReadAt", maxContent, 0},
+			{"Truncate", maxContent, 0}, {"Truncate", 4, 0},
+			{"WriteAt", maxContent - 8, 8}, {"ReadAt", maxContent - 4, 8},
+			{"Truncate", 0, 0}, {"ReadAt", 0, 1}, {"Write", 0, 3},
+		}
+		var model []byte
+		position := 0
+		var history []string
+		t.Cleanup(func() {
+			if t.Failed() {
+				t.Logf("seeds=(%#x,%#x) operations:\n%s", seed1, seed2, strings.Join(history, "\n"))
+			}
+		})
+		for i := range 50 {
+			var op operation
+			if i < len(initial) {
+				op = initial[i]
+			} else {
+				op = operation{
+					kind:   []string{"Write", "WriteAt", "ReadAt", "SeekStart", "Truncate"}[rng.IntN(5)],
+					offset: rng.IntN(maxContent + 1), size: rng.IntN(1025),
+				}
+			}
+			if op.kind == "Write" {
+				op.offset = position
+			}
+			if op.kind == "Write" || op.kind == "WriteAt" {
+				op.size = min(op.size, maxContent-op.offset)
+			}
+			history = append(history, fmt.Sprintf("%02d %s offset=%d size=%d before(length=%d position=%d)", i, op.kind, op.offset, op.size, len(model), position))
+			switch op.kind {
+			case "Write", "WriteAt":
+				data := make([]byte, op.size)
+				for j := range data {
+					data[j] = byte(rng.IntN(256))
+				}
+				var n int
+				if op.kind == "Write" {
+					n, err = f.Write(ctx, data)
+					position += len(data)
+				} else {
+					n, err = f.WriteAt(ctx, data, int64(op.offset))
+				}
+				require.NoError(t, err)
+				require.Equal(t, len(data), n)
+				if len(data) != 0 {
+					end := op.offset + len(data)
+					if end > len(model) {
+						model = append(model, make([]byte, end-len(model))...)
+					}
+					copy(model[op.offset:], data)
+				}
+			case "ReadAt":
+				data := make([]byte, op.size)
+				n, readErr := f.ReadAt(ctx, data, int64(op.offset))
+				want := min(op.size, max(0, len(model)-op.offset))
+				require.Equal(t, want, n)
+				if want < len(data) {
+					require.Equal(t, io.EOF, readErr)
+				} else {
+					require.NoError(t, readErr)
+				}
+				if want > 0 {
+					require.True(t, bytes.Equal(model[op.offset:op.offset+want], data[:n]), "ReadAt bytes differ at operation %d", i)
+				}
+			case "SeekStart":
+				got, seekErr := f.Seek(ctx, int64(op.offset), io.SeekStart)
+				require.NoError(t, seekErr)
+				require.EqualValues(t, op.offset, got)
+				position = op.offset
+			case "Truncate":
+				require.NoError(t, f.Truncate(ctx, int64(op.offset)))
+				if op.offset > len(model) {
+					model = append(model, make([]byte, op.offset-len(model))...)
+				} else {
+					model = model[:op.offset]
+				}
+			}
+			// One byte beyond the expected end checks length and the short/EOF
+			// contract while observing content without changing the offset.
+			actual := make([]byte, len(model)+1)
+			n, readErr := f.ReadAt(ctx, actual, 0)
+			require.Equal(t, len(model), n, "length after operation %d", i)
+			require.Equal(t, io.EOF, readErr)
+			require.True(t, bytes.Equal(model, actual[:n]), "content after operation %d", i)
+			got, seekErr := f.Seek(ctx, 0, io.SeekCurrent)
+			require.NoError(t, seekErr)
+			require.EqualValues(t, position, got, "position after operation %d", i)
+		}
+	})
+}
+
+func TestFile(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		f, err := fs.Create(context.Background(), testDir+`\testFile`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer fs.Remove(context.Background(), testDir+`\testFile`)
+		defer f.Close(context.Background())
+
+		if f.Name() != testDir+`\testFile` {
+			t.Error("unexpected name:", f.Name())
+		}
+
+		n, err := f.Write(context.Background(), []byte("test"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if n != 4 {
+			t.Error("unexpected content length:", n)
+		}
+
+		n, err = f.Write(context.Background(), []byte("Content"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if n != 7 {
+			t.Error("unexpected content length:", n)
+		}
+
+		n64, err := f.Seek(context.Background(), 0, io.SeekStart)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if n64 != 0 {
+			t.Error("unexpected seek length:", n64)
+		}
+
+		p := make([]byte, 10)
+
+		n, err = f.Read(context.Background(), p)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if n != 10 {
+			t.Error("unexpected content length:", n)
+		}
+
+		if string(p) != "testConten" {
+			t.Error("unexpected content:", string(p))
+		}
+
+		stat, err := f.Stat(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if stat.Name() != "testFile" {
+			t.Error("unexpected name:", stat.Name())
+		}
+
+		if stat.Size() != 11 {
+			t.Error("unexpected content length:", n)
+		}
+
+		if stat.IsDir() {
+			t.Error("should be not a directory")
+		}
+
+		f.Truncate(context.Background(), 4)
+
+		n64, err = f.Seek(context.Background(), -3, io.SeekEnd)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if n64 != 1 {
+			t.Error("unexpected seek length:", n64)
+		}
+
+		n, err = f.Read(context.Background(), p)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if n != 3 {
+			t.Error("unexpected content length:", n)
+		}
+
+		if string(p[:n]) != "est" {
+			t.Error("unexpected content:", string(p))
+		}
+	})
+}
+
+func skipPermissionDenied(t *testing.T, err error) {
+	t.Helper()
+	if errors.Is(err, os.ErrPermission) || errors.Is(err, erref.STATUS_PRIVILEGE_NOT_HELD) {
+		t.Skipf("account lacks permission for this operation: %v", err)
+	}
+}
+
+func skipUnsupportedSymlink(t *testing.T, err error) {
+	t.Helper()
+	skipPermissionDenied(t, err)
+	if errors.Is(err, erref.STATUS_NOT_SUPPORTED) || errors.Is(err, erref.STATUS_NOT_A_REPARSE_POINT) {
+		t.Skipf("server does not support symlink creation: %v", err)
+	}
+}
+
+func TestSymlink(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx := context.Background()
+		dir := newTestDirectory(t, e.fs)
+		targetName := pathpkg.Join("nested", "testFile")
+		target := pathpkg.Join(dir, targetName)
+		link := pathpkg.Join(dir, "linkToTestFile")
+		payload := []byte("testContent")
+		require.NoError(t, e.fs.Mkdir(ctx, pathpkg.Join(dir, "nested"), 0o700))
+		require.NoError(t, e.fs.WriteFile(ctx, target, payload, 0o600))
+		created := false
+		t.Run("Create", func(t *testing.T) {
+			// Relative targets are resolved from the link's directory.
+			err := e.fs.Symlink(ctx, targetName, link)
+			skipUnsupportedSymlink(t, err)
+			require.NoError(t, err)
+			created = true
+		})
+		if !created {
+			return
+		}
+		if !t.Run("Inspect", func(t *testing.T) {
+			info, err := e.fs.Lstat(ctx, link)
+			require.NoError(t, err)
+			require.Equal(t, "linkToTestFile", info.Name())
+			require.NotZero(t, info.Mode()&os.ModeSymlink)
+			got, err := e.fs.Readlink(ctx, link)
+			require.NoError(t, err)
+			require.Equal(t, targetName, got)
+		}) {
+			return
+		}
+		testIntegrationSymlinkFollow(t, e, link, payload)
+		t.Run("Adapters", func(t *testing.T) {
+			c := smbclient.New(e.dialer)
+			t.Cleanup(func() { require.NoError(t, c.Close()) })
+			clientRoot := pathpkg.JoinPOSIXPath(e.cfg.Transport.Host, e.cfg.TreeConn.Share1, pathpkg.ToPOSIXPath(dir))
+			clientFS, err := iofs.Sub(c.WithContext(ctx), clientRoot)
+			require.NoError(t, err)
+			for _, adapter := range []struct {
+				name string
+				fs   iofs.FS
+			}{{"share", contextSubFS(e.fs, dir)}, {"client", clientFS}} {
+				t.Run(adapter.name, func(t *testing.T) {
+					links, ok := adapter.fs.(iofs.ReadLinkFS)
+					require.True(t, ok)
+					got, err := links.ReadLink("linkToTestFile")
+					require.NoError(t, err)
+					require.Equal(t, pathpkg.ToPOSIXPath(targetName), got)
+					info, err := links.Lstat("linkToTestFile")
+					require.NoError(t, err)
+					require.NotZero(t, info.Mode()&os.ModeSymlink)
+					info, err = iofs.Stat(adapter.fs, "linkToTestFile")
+					require.NoError(t, err)
+					require.Zero(t, info.Mode()&os.ModeSymlink)
+					require.Equal(t, int64(len(payload)), info.Size())
+					f, err := adapter.fs.Open("linkToTestFile")
+					require.NoError(t, err)
+					data, readErr := io.ReadAll(f)
+					closeErr := f.Close()
+					require.NoError(t, readErr)
+					require.NoError(t, closeErr)
+					require.Equal(t, payload, data)
+				})
+			}
+		})
+	})
+}
+
+func TestRelativeSymlink(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx := context.Background()
+		dir := newTestDirectory(t, e.fs)
+		target := pathpkg.Join(dir, "target.txt")
+		link := pathpkg.Join(dir, "linkToTarget")
+		payload := []byte("relativeSymlinkContent")
+		require.NoError(t, e.fs.WriteFile(ctx, target, payload, 0o600))
+		created := false
+		t.Run("Create", func(t *testing.T) {
+			err := e.fs.Symlink(ctx, "target.txt", link)
+			skipUnsupportedSymlink(t, err)
+			require.NoError(t, err)
+			created = true
+		})
+		if !created {
+			return
+		}
+		if !t.Run("Inspect", func(t *testing.T) {
+			info, err := e.fs.Lstat(ctx, link)
+			require.NoError(t, err)
+			require.Equal(t, "linkToTarget", info.Name())
+			require.NotZero(t, info.Mode()&os.ModeSymlink)
+			got, err := e.fs.Readlink(ctx, link)
+			require.NoError(t, err)
+			require.Equal(t, "target.txt", got)
+		}) {
+			return
+		}
+		testIntegrationSymlinkFollow(t, e, link, payload)
+		t.Run("UnicodeDirectorySuffix", func(t *testing.T) {
+			if os.Getenv("SMB2_SKIP_DIRECTORY_SYMLINK_SUFFIX") == "1" {
+				t.Skip("configured server lacks intermediate stored-symlink reparse support (standard Samba)")
+			}
+			dir := newTestDirectory(t, e.fs)
+			parent := pathpkg.Join(dir, "資料")
+			targetName := "保存😀"
+			targetDir := pathpkg.Join(parent, targetName)
+			link := pathpkg.Join(parent, "リンク😀")
+			payload := []byte("unicode directory symlink content")
+			require.NoError(t, e.fs.MkdirAll(ctx, targetDir, 0o700))
+			require.NoError(t, e.fs.WriteFile(ctx, pathpkg.Join(targetDir, "子😀.txt"), payload, 0o600))
+			created := false
+			t.Run("Create", func(t *testing.T) {
+				err := e.fs.Symlink(ctx, targetName, link)
+				skipUnsupportedSymlink(t, err)
+				require.NoError(t, err)
+				created = true
+			})
+			if !created {
+				return
+			}
+			if !t.Run("Inspect", func(t *testing.T) {
+				info, err := e.fs.Lstat(ctx, link)
+				require.NoError(t, err)
+				require.Equal(t, "リンク😀", info.Name())
+				require.NotZero(t, info.Mode()&os.ModeSymlink)
+				got, err := e.fs.Readlink(ctx, link)
+				require.NoError(t, err)
+				require.Equal(t, targetName, got)
+			}) {
+				return
+			}
+			testIntegrationSymlinkFollow(t, e, pathpkg.Join(link, "子😀.txt"), payload)
+		})
+	})
+}
+
+func testIntegrationSymlinkFollow(t *testing.T, e *env, link string, payload []byte) {
+	t.Helper()
+	ctx := context.Background()
+	t.Run("ShareFollow", func(t *testing.T) {
+		f, err := e.fs.Open(ctx, link)
+		require.NoError(t, err, "Open must follow the link created by this test")
+		defer f.Close(ctx)
+		got, err := io.ReadAll(f.WithContext(ctx))
+		require.NoError(t, err)
+		require.Equal(t, payload, got)
+		info, err := e.fs.Stat(ctx, link)
+		require.NoError(t, err)
+		require.EqualValues(t, len(payload), info.Size())
+		got, err = e.fs.ReadFile(ctx, link)
+		require.NoError(t, err)
+		require.Equal(t, payload, got)
+	})
+	t.Run("ClientFollow", func(t *testing.T) {
+		c := smbclient.New(e.dialer)
+		defer c.Close()
+		name := pathpkg.Join(`\\`+join(e.cfg.Transport.Host, e.cfg.TreeConn.Share1), link)
+		info, err := c.Stat(ctx, name)
+		require.NoError(t, err)
+		require.Equal(t, pathpkg.Base(link), info.Name())
+		require.EqualValues(t, len(payload), info.Size())
+		f, err := c.Open(ctx, name)
+		require.NoError(t, err)
+		defer f.Close(ctx)
+		info, err = f.Stat(ctx)
+		require.NoError(t, err)
+		require.Equal(t, pathpkg.Base(link), info.Name())
+		require.EqualValues(t, len(payload), info.Size())
+		got, err := io.ReadAll(f.WithContext(ctx))
+		require.NoError(t, err)
+		require.Equal(t, payload, got)
+	})
+}
+
+func TestIsXXX(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		f, err := fs.Create(context.Background(), testDir+`\Exist`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer fs.Remove(context.Background(), testDir+`\Exist`)
+		defer f.Close(context.Background())
+
+		_, err = fs.OpenFile(context.Background(), testDir+`\Exist`, os.O_CREATE|os.O_EXCL, 0o666)
+		if !errors.Is(err, os.ErrExist) {
+			t.Error("unexpected error:", err)
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			t.Error("unexpected error:", err)
+		}
+		if errors.Is(err, os.ErrPermission) {
+			t.Error("unexpected error:", err)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			t.Error("unexpected error:", err)
+		}
+
+		_, err = fs.Open(context.Background(), testDir+`\notExist`)
+		if errors.Is(err, os.ErrExist) {
+			t.Error("unexpected error:", err)
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Error("unexpected error:", err)
+		}
+		if errors.Is(err, os.ErrPermission) {
+			t.Error("unexpected error:", err)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			t.Error("unexpected error:", err)
+		}
+
+		err = fs.WriteFile(context.Background(), testDir+`\aaa`, []byte("aaa"), 0o444)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = fs.WriteFile(context.Background(), testDir+`\aaa`, []byte("aaa"), 0o444)
+		if !errors.Is(err, os.ErrPermission) {
+			t.Error("unexpected error:", err)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			t.Error("unexpected error:", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 0)
+		defer cancel()
+		_, err = fs.Create(ctx, testDir+`\Exist`)
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Error("unexpected error:", err)
+		}
+
+		ctx, cancel = context.WithCancel(context.Background())
+		cancel()
+		_, err = fs.Create(ctx, testDir+`\Exist`)
+		if errors.Is(err, context.DeadlineExceeded) {
+			t.Error("unexpected error:", err)
+		}
+	})
+}
+
+func TestRename(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		f, err := fs.Create(context.Background(), testDir+`\old`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = f.Write(context.Background(), []byte("testContent"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = f.Close(context.Background())
+		if err != nil {
+			fs.Remove(context.Background(), testDir+`\old`)
+
+			t.Fatal(err)
+		}
+
+		err = fs.Rename(context.Background(), testDir+`\old`, testDir+`\new`)
+		if err != nil {
+			fs.Remove(context.Background(), testDir+`\old`)
+
+			t.Fatal(err)
+		}
+		defer fs.Remove(context.Background(), testDir+`\new`)
+
+		_, err = fs.Stat(context.Background(), testDir+`\old`)
+		require.ErrorIs(t, err, os.ErrNotExist)
+		f, err = fs.Open(context.Background(), testDir+`\new`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close(context.Background())
+		bs, err := io.ReadAll(f.WithContext(context.Background()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(bs) != "testContent" {
+			t.Error("unexpected content:", string(bs))
+		}
+	})
+}
+
+func TestChtimes(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		f, err := fs.Create(context.Background(), testDir+`\testFile`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = f.Close(context.Background())
+		if err != nil {
+			fs.Remove(context.Background(), testDir+`\testFile`)
+
+			t.Fatal(err)
+		}
+
+		atime, err := time.Parse(time.RFC3339, "2006-01-02T15:04:05Z")
+		if err != nil {
+			t.Fatal(err)
+		}
+		mtime, err := time.Parse(time.RFC3339, "2006-03-08T19:32:05Z")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = fs.Chtimes(context.Background(), testDir+`\testFile`, atime, mtime)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		stat, err := fs.Stat(context.Background(), testDir+`\testFile`)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !stat.ModTime().Equal(mtime) {
+			t.Error("unexpected mtime:", stat.ModTime())
+		}
+	})
+}
+
+func TestChmod(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		f, err := fs.Create(context.Background(), testDir+`\testFile`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer fs.Remove(context.Background(), testDir+`\testFile`)
+		defer f.Close(context.Background())
+
+		stat, err := f.Stat(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stat.Mode() != 0o666 {
+			t.Error("unexpected mode:", stat.Mode())
+		}
+		err = f.Chmod(context.Background(), 0o444)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stat, err = f.Stat(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stat.Mode() != 0o444 {
+			t.Error("unexpected mode:", stat.Mode())
+		}
+
+		f2, err := fs.OpenFile(context.Background(), testDir+`\testReadOnlyFile`, os.O_CREATE, 0o000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f2.Close(context.Background())
+
+		if err := fs.Chmod(context.Background(), testDir+`\testReadOnlyFile`, 0o444); err != nil {
+			t.Fatal(err)
+		}
+		stat, err = fs.Stat(context.Background(), testDir+`\testReadOnlyFile`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stat.Mode() != 0o444 {
+			t.Error("unexpected mode:", stat.Mode())
+		}
+	})
+}
+
+func TestRemoveReadOnlyFile(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		f, err := fs.OpenFile(context.Background(), testDir+`\testReadOnlyFile`, os.O_CREATE, 0o000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Close(context.Background())
+
+		if err := fs.Remove(context.Background(), testDir+`\testReadOnlyFile`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fs.Stat(context.Background(), testDir+`\testReadOnlyFile`); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("failed to delete read only file")
+		}
+	})
+}
+
+func TestOpenFileCreateExistingReadOnlyFile(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		name := pathpkg.Join(newTestDirectory(t, fs), "readOnlyFile")
+		ctx := context.Background()
+		content := []byte("existing content")
+
+		require.NoError(t, fs.WriteFile(ctx, name, content, 0o666))
+		require.NoError(t, fs.Chmod(ctx, name, 0o444))
+
+		file, err := fs.OpenFile(ctx, name, os.O_RDONLY|os.O_CREATE, 0o666)
+		require.NoError(t, err)
+		require.NoError(t, file.Close(ctx))
+
+		got, err := fs.ReadFile(ctx, name)
+		require.NoError(t, err)
+		require.Equal(t, content, got)
+
+		info, err := fs.Stat(ctx, name)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0o444), info.Mode().Perm())
+	})
+}
+
+func TestTruncateExistingFilePreservesPermission(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		name := pathpkg.Join(newTestDirectory(t, fs), "writableFile")
+		ctx := context.Background()
+
+		require.NoError(t, fs.WriteFile(ctx, name, []byte("existing content"), 0o666))
+		file, err := fs.OpenFile(ctx, name, os.O_WRONLY|os.O_TRUNC, 0)
+		require.NoError(t, err)
+		require.NoError(t, file.Close(ctx))
+		require.NoError(t, fs.WriteFile(ctx, name, []byte("new"), 0o444))
+
+		got, err := fs.ReadFile(ctx, name)
+		require.NoError(t, err)
+		require.Equal(t, []byte("new"), got)
+
+		info, err := fs.Stat(ctx, name)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0o666), info.Mode().Perm())
+	})
+}
+
+func TestListShareNames(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		cfg := e.cfg
+		names, err := e.session.ListShareNames(context.Background())
+		skipPermissionDenied(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
+		slices.Sort(names)
+		for _, expected := range []string{"IPC$", cfg.TreeConn.Share1, cfg.TreeConn.Share2} {
+			found := slices.Contains(names, expected)
+			if !found {
+				t.Errorf("couldn't find share name %s in %v", expected, names)
+			}
+		}
+	})
+}
+
+// TestAppendIntegration exercises single-writer append semantics.
+// Run against client_conf.json environments; -short skips it.
+func TestAppendIntegration(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		dir := newTestDirectory(t, e.fs)
+		for _, trunc := range []bool{false, true} {
+			t.Run(fmt.Sprintf("write_truncate_%t", trunc), func(t *testing.T) {
+				name := pathpkg.Join(dir, fmt.Sprintf("write-%t", trunc))
+				require.NoError(t, e.fs.WriteFile(ctx, name, []byte("old"), 0o600))
+				flags := os.O_RDWR | os.O_APPEND
+				if trunc {
+					flags |= os.O_TRUNC
+				}
+				f, err := e.fs.OpenFile(ctx, name, flags, 0o600)
+				require.NoError(t, err)
+				defer f.Close(context.Background())
+				_, err = f.Write(ctx, []byte("A"))
+				require.NoError(t, err)
+				_, err = f.Write(ctx, []byte("B"))
+				require.NoError(t, err)
+				_, err = f.Write(ctx, []byte("C"))
+				require.NoError(t, err)
+				actual, err := e.fs.ReadFile(ctx, name)
+				require.NoError(t, err)
+				want := "ABC"
+				if !trunc {
+					want = "oldABC"
+				}
+				require.Equal(t, want, string(actual))
+			})
+		}
+		t.Run("large_write", func(t *testing.T) {
+			name := pathpkg.Join(dir, "large")
+			require.NoError(t, e.fs.WriteFile(ctx, name, []byte("prefix"), 0o600))
+			f, err := e.fs.OpenFile(ctx, name, os.O_WRONLY|os.O_APPEND, 0o600)
+			require.NoError(t, err)
+			defer f.Close(context.Background())
+			payload := make([]byte, 3*1024*1024)
+			for i := range payload {
+				payload[i] = byte(i / 4096)
+			}
+			n, err := f.Write(ctx, payload)
+			require.NoError(t, err)
+			require.Equal(t, len(payload), n)
+			actual, err := e.fs.ReadFile(ctx, name)
+			require.NoError(t, err)
+			require.True(t, bytes.Equal(append([]byte("prefix"), payload...), actual), "large append lost or reordered bytes")
+		})
+		for _, readFrom := range []bool{false, true} {
+			t.Run(fmt.Sprintf("copy_readfrom_%t", readFrom), func(t *testing.T) {
+				source := pathpkg.Join(dir, fmt.Sprintf("source-%t", readFrom))
+				dest := pathpkg.Join(dir, fmt.Sprintf("dest-%t", readFrom))
+				payload := bytes.Repeat([]byte("copy"), 1024)
+				require.NoError(t, e.fs.WriteFile(ctx, source, payload, 0o600))
+				require.NoError(t, e.fs.WriteFile(ctx, dest, []byte("prefix"), 0o600))
+				src, err := e.fs.Open(ctx, source)
+				require.NoError(t, err)
+				defer src.Close(context.Background())
+				dst, err := e.fs.OpenFile(ctx, dest, os.O_RDWR|os.O_APPEND, 0o600)
+				require.NoError(t, err)
+				defer dst.Close(context.Background())
+				var n int64
+				if readFrom {
+					n, err = dst.ReadFrom(ctx, src.WithContext(ctx))
+				} else {
+					n, err = src.WriteTo(ctx, dst.WithContext(ctx))
+				}
+				require.NoError(t, err)
+				require.Equal(t, int64(len(payload)), n)
+				actual, err := e.fs.ReadFile(ctx, dest)
+				require.NoError(t, err)
+				require.True(t, bytes.Equal(append([]byte("prefix"), payload...), actual), "copy did not append")
+			})
+		}
+	})
+}
+
+// TestServerSideCopyOffsets covers the File API's choice between server-side copy
+// and ordinary reads/writes, including the workaround for unequal offsets.
+func TestServerSideCopyOffsets(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		dir := newTestDirectory(t, e.fs)
+		const sourceText = "AAAABBBBCCCCDDDDEEEEFFFF"
+		const destinationText = "0123456789abcdef"
+		source := pathpkg.Join(dir, "source")
+		require.NoError(t, e.fs.WriteFile(ctx, source, []byte(sourceText), 0o600))
+		for _, readFrom := range []bool{false, true} {
+			for _, tc := range []struct {
+				name           string
+				source, target int64
+				appendMode     bool
+			}{
+				{"zero", 0, 0, false},
+				{"equal", 4, 4, false},
+				{"source", 4, 0, false},
+				{"target", 0, 6, false},
+				{"both", 4, 6, false},
+				{"unaligned", 3, 5, false},
+				{"extend", 8, 16, false},
+				{"append_equal", 16, 16, true},
+				{"append_different", 0, 16, true},
+			} {
+				t.Run(fmt.Sprintf("readFrom_%t_%s", readFrom, tc.name), func(t *testing.T) {
+					name := pathpkg.Join(dir, fmt.Sprintf("dest-%t-%s", readFrom, tc.name))
+					require.NoError(t, e.fs.WriteFile(ctx, name, []byte(destinationText), 0o600))
+					src, err := e.fs.Open(ctx, source)
+					require.NoError(t, err)
+					defer src.Close(context.Background())
+					flags := os.O_RDWR
+					if tc.appendMode {
+						flags |= os.O_APPEND
+					}
+					dst, err := e.fs.OpenFile(ctx, name, flags, 0o600)
+					require.NoError(t, err)
+					defer dst.Close(context.Background())
+					_, err = src.Seek(ctx, tc.source, io.SeekStart)
+					require.NoError(t, err)
+					if !tc.appendMode {
+						_, err = dst.Seek(ctx, tc.target, io.SeekStart)
+						require.NoError(t, err)
+					}
+					var n int64
+					if readFrom {
+						n, err = dst.ReadFrom(ctx, src.WithContext(ctx))
+					} else {
+						n, err = src.WriteTo(ctx, dst.WithContext(ctx))
+					}
+					require.NoError(t, err)
+					require.Equal(t, int64(len(sourceText))-tc.source, n)
+					require.NoError(t, dst.Close(ctx))
+					actual, err := e.fs.ReadFile(ctx, name)
+					require.NoError(t, err)
+					end := int(tc.target + n)
+					expected := []byte(destinationText)
+					if end > len(expected) {
+						expected = append(expected, make([]byte, end-len(expected))...)
+					}
+					copy(expected[tc.target:], sourceText[tc.source:])
+					require.Equal(t, string(expected), string(actual))
+				})
+			}
+		}
+	})
+}
+
+func TestServerSideCopy(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		err := fs.WriteFile(context.Background(), join(testDir, "src.txt"), []byte("hello world!"), 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sf, err := fs.Open(context.Background(), join(testDir, "src.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sf.Close(context.Background())
+
+		df, err := fs.Create(context.Background(), join(testDir, "dst.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer df.Close(context.Background())
+
+		_, err = io.Copy(df.WithContext(context.Background()), sf.WithContext(context.Background()))
+		if err != nil {
+			t.Error(err)
+		}
+
+		bs, err := fs.ReadFile(context.Background(), join(testDir, "dst.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(bs) != "hello world!" {
+			t.Error("unexpected content")
+		}
+	})
+}
+
+func TestRemoveAll(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+		require.NoError(t, fs.WriteFile(ctx, pathpkg.Join(testDir, "hello.txt"), []byte("hello world!"), 0o666))
+		for _, branch := range []string{"a", "b"} {
+			dir := pathpkg.Join(testDir, branch)
+			nested := pathpkg.Join(dir, "nested", "leaf")
+			require.NoError(t, fs.MkdirAll(ctx, nested, 0o755))
+			require.NoError(t, fs.Mkdir(ctx, pathpkg.Join(dir, "empty"), 0o755))
+			require.NoError(t, fs.WriteFile(ctx, pathpkg.Join(dir, "hello.txt"), []byte("hello world!"), 0o666))
+			require.NoError(t, fs.WriteFile(ctx, pathpkg.Join(nested, "readonly.txt"), []byte("read-only"), 0o444))
+		}
+
+		require.NoError(t, fs.RemoveAll(ctx, testDir))
+		_, err := fs.Stat(ctx, testDir)
+		require.ErrorIs(t, err, os.ErrNotExist)
+	})
+}
+
+func TestRemoveAll_SymlinkNotFollowed(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+		outsideDir := newTestDirectory(t, fs)
+		secretFile := join(outsideDir, "secret.txt")
+		err := fs.WriteFile(context.Background(), secretFile, []byte("preserve me"), 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		linkPath := join(testDir, "linkToOutside")
+		err = fs.Symlink(context.Background(), outsideDir, linkPath)
+		skipUnsupportedSymlink(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = fs.RemoveAll(context.Background(), testDir)
+		if err != nil {
+			t.Fatalf("RemoveAll failed: %v", err)
+		}
+
+		// Ensure outside directory and file are still intact!
+		bs, err := fs.ReadFile(context.Background(), secretFile)
+		if err != nil {
+			t.Fatalf("secretFile in outsideDir was deleted or unreadable: %v", err)
+		}
+		if string(bs) != "preserve me" {
+			t.Fatalf("unexpected content in secretFile: %q", string(bs))
+		}
+	})
+}
+
+func TestContextCancellation(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		cfg := e.cfg
+		ctx, cancel := context.WithCancel(context.Background())
+
+		cancelShare, err := e.session.Mount(context.Background(), cfg.TreeConn.Share1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, err := cancelShare.Open(context.Background(), ".")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close(context.Background())
+
+		cancel()
+
+		checkError1 := func(op string, err error) {
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("unexpected context handling: op=%s, type=%T, value=%v", op, err, err)
+			}
+		}
+
+		checkError2 := checkError1
+
+		_, err = e.session.Mount(ctx, "somewhere")
+		checkError2("mount", err)
+
+		err = cancelShare.Chmod(ctx, "aaa", 0)
+		checkError2("chmod", err)
+		err = cancelShare.Chtimes(ctx, "aaa", time.Time{}, time.Time{})
+		checkError2("chtimes", err)
+		_, err = cancelShare.Create(ctx, "aaa")
+		checkError2("create", err)
+		_, err = cancelShare.Lstat(ctx, "aaa")
+		checkError2("lstat", err)
+		err = cancelShare.Mkdir(ctx, "aaa", 0)
+		checkError2("mkdir", err)
+		err = cancelShare.MkdirAll(ctx, "aaa", 0)
+		checkError2("mkdirall", err)
+		_, err = cancelShare.Open(ctx, "aaa")
+		checkError2("open", err)
+		_, err = cancelShare.OpenFile(ctx, "aaa", 0, 0)
+		checkError2("openfile", err)
+		_, err = cancelShare.ReadDir(ctx, "aaa")
+		checkError2("readdir", err)
+		_, err = cancelShare.ReadFile(ctx, "aaa")
+		checkError2("readfile", err)
+		_, err = cancelShare.Readlink(ctx, "aaa")
+		checkError2("readlink", err)
+		err = cancelShare.Remove(ctx, "aaa")
+		checkError2("remove", err)
+		err = cancelShare.RemoveAll(ctx, "aaa")
+		checkError2("removeall", err)
+		err = cancelShare.Rename(ctx, "aaa", "bbb")
+		checkError2("rename", err)
+		_, err = cancelShare.Stat(ctx, "aaa")
+		checkError2("stat", err)
+		_, err = cancelShare.Statfs(ctx, "aaa")
+		checkError2("statfs", err)
+		err = cancelShare.Symlink(ctx, "aaa", "bbb")
+		checkError2("symlink", err)
+		err = cancelShare.Truncate(ctx, "aaa", 0)
+		checkError2("truncate", err)
+		err = cancelShare.WriteFile(ctx, "aaa", nil, 0)
+		checkError2("writefile", err)
+		err = cancelShare.Unmount(ctx)
+		checkError1("umount", err)
+
+		err = f.Chmod(ctx, 0)
+		checkError2("fchmod", err)
+		_, err = f.Read(ctx, make([]byte, 10))
+		checkError2("fread", err)
+		_, err = f.ReadAt(ctx, make([]byte, 10), 0)
+		checkError2("freadat", err)
+		_, err = f.ReadFrom(ctx, strings.NewReader("aaa"))
+		checkError2("freadfrom", err)
+		_, err = f.Readdir(ctx, -1)
+		checkError2("freaddir", err)
+		_, err = f.Readdirnames(ctx, -1)
+		checkError2("freaddirnames", err)
+		_, err = f.Seek(ctx, 1, io.SeekEnd)
+		checkError2("fseek", err)
+		_, err = f.Stat(ctx)
+		checkError2("fstat", err)
+		_, err = f.Statfs(ctx)
+		checkError2("fstatfs", err)
+		err = f.Sync(ctx)
+		checkError2("fsync", err)
+		err = f.Truncate(ctx, 1)
+		checkError2("ftruncate", err)
+		f.Seek(ctx, 0, io.SeekStart)
+		_, err = f.Write(ctx, []byte("aa"))
+		checkError2("fwrite", err)
+		_, err = f.WriteAt(ctx, []byte("aa"), 0)
+		checkError2("fwriteat", err)
+		f.Seek(ctx, 0, io.SeekStart)
+		_, err = f.Write(ctx, []byte("aa"))
+		checkError2("fwritestring", err)
+		f.Seek(ctx, 0, io.SeekStart)
+		_, err = f.WriteTo(ctx, bytes.NewBufferString("aaa"))
+		checkError2("fwriteto", err)
+	})
+}
+
+func TestGlob(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		for _, dir := range []string{"", "dir1", "dir2", "dir3"} {
+			if dir != "" {
+				err := fs.Mkdir(context.Background(), join(testDir, dir), 0o755)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, file := range []string{"abc.ext", "ab1.ext", "ab9.ext", "test", "tes"} {
+				err := fs.WriteFile(context.Background(), join(testDir, dir, file), []byte("hello world!"), 0o666)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+
+		matches1, err := fs.WithContext(context.Background()).Glob(path.Join(testDir, "ab[0-9].ext"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected1 := []string{path.Join(testDir, "ab1.ext"), path.Join(testDir, "ab9.ext")}
+
+		if !reflect.DeepEqual(matches1, expected1) {
+			t.Errorf("unexpected matches: %v != %v", matches1, expected1)
+		}
+
+		matches2, err := fs.WithContext(context.Background()).Glob(path.Join(testDir, "tes?"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected2 := []string{path.Join(testDir, "test")}
+
+		if !reflect.DeepEqual(matches2, expected2) {
+			t.Errorf("unexpected matches: %v != %v", matches2, expected2)
+		}
+
+		matches3, err := fs.WithContext(context.Background()).Glob(path.Join(testDir, "dir[0-2]/ab[0-9].ext"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected3 := []string{path.Join(testDir, "dir1", "ab1.ext"), path.Join(testDir, "dir1", "ab9.ext"), path.Join(testDir, "dir2", "ab1.ext"), path.Join(testDir, "dir2", "ab9.ext")}
+
+		if !reflect.DeepEqual(matches3, expected3) {
+			t.Errorf("unexpected matches: %v != %v", matches3, expected3)
+		}
+
+		matches4, err := fs.WithContext(context.Background()).Glob(path.Join(testDir, "*/ab[0-9].ext"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected4 := []string{path.Join(testDir, "dir1", "ab1.ext"), path.Join(testDir, "dir1", "ab9.ext"), path.Join(testDir, "dir2", "ab1.ext"), path.Join(testDir, "dir2", "ab9.ext"), path.Join(testDir, "dir3", "ab1.ext"), path.Join(testDir, "dir3", "ab9.ext")}
+
+		if !reflect.DeepEqual(matches4, expected4) {
+			t.Errorf("unexpected matches: %v != %v", matches4, expected4)
+		}
+
+		matches5, err := fs.WithContext(context.Background()).Glob(path.Join(testDir, "*/abcd"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var expected5 []string
+
+		if !reflect.DeepEqual(matches5, expected5) {
+			t.Errorf("unexpected matches: %v != %v", matches5, expected5)
+		}
+	})
+}
+
+func TestFileEdgeCases(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		// 1. Zero-byte file operations
+		emptyPath := join(testDir, "empty.txt")
+		ef, err := fs.Create(context.Background(), emptyPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		buf := make([]byte, 10)
+		n, err := ef.Read(context.Background(), buf)
+		if n != 0 || err != io.EOF {
+			t.Errorf("expected 0 bytes and io.EOF reading empty file, got n=%d, err=%v", n, err)
+		}
+		require.NoError(t, ef.Close(context.Background()))
+
+		// 2. ReadAt and WriteAt offset testing
+		atPath := join(testDir, "readwriteat.txt")
+		af, err := fs.OpenFile(context.Background(), atPath, os.O_RDWR|os.O_CREATE, 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer af.Close(context.Background())
+
+		initialData := []byte("0123456789ABCDEF")
+		_, err = af.Write(context.Background(), initialData)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = af.WriteAt(context.Background(), []byte("XXXX"), 4)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		readBuf := make([]byte, 4)
+		n, err = af.ReadAt(context.Background(), readBuf, 4)
+		if err != nil && err != io.EOF {
+			t.Fatal(err)
+		}
+		if string(readBuf[:n]) != "XXXX" {
+			t.Errorf("ReadAt expected 'XXXX', got %q", string(readBuf[:n]))
+		}
+
+		// 3. OpenFile modes: O_TRUNC, O_CREATE|O_EXCL, O_RDONLY
+		truncPath := join(testDir, "trunc.txt")
+		err = fs.WriteFile(context.Background(), truncPath, []byte("hello world"), 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tf, err := fs.OpenFile(context.Background(), truncPath, os.O_RDWR|os.O_TRUNC, 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stat, err := tf.Stat(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stat.Size() != 0 {
+			t.Errorf("expected size 0 after O_TRUNC, got %d", stat.Size())
+		}
+		tf.Close(context.Background())
+
+		// O_CREATE | O_EXCL on existing file should fail with ErrExist
+		_, err = fs.OpenFile(context.Background(), truncPath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o666)
+		if !errors.Is(err, os.ErrExist) {
+			t.Errorf("expected ErrExist when creating existing file with O_EXCL, got %v", err)
+		}
+
+		// O_RDONLY write attempt should fail
+		roFile, err := fs.OpenFile(context.Background(), truncPath, os.O_RDONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = roFile.Write(context.Background(), []byte("fail"))
+		if err == nil {
+			t.Error("expected error writing to O_RDONLY file, got nil")
+		}
+		roFile.Close(context.Background())
+
+		// 4. Large buffer Read/Write
+		largePath := join(testDir, "large.bin")
+		largeData := make([]byte, 3*1024*1024)
+		for i := range largeData {
+			largeData[i] = byte(i % 251)
+		}
+		err = fs.WriteFile(context.Background(), largePath, largeData, 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+		readLarge, err := fs.ReadFile(context.Background(), largePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(largeData, readLarge) {
+			t.Error("large file read content mismatch")
+		}
+	})
+}
+
+func TestDirectoryEdgeCases(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		// 1. MkdirAll deeply nested
+		deepPath := join(testDir, "sub1", "sub2", "sub3", "sub4")
+		err := fs.MkdirAll(context.Background(), deepPath, 0o755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		filePath := join(deepPath, "nested.txt")
+		err = fs.WriteFile(context.Background(), filePath, []byte("nested content"), 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		st, err := fs.Stat(context.Background(), filePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Name() != "nested.txt" {
+			t.Errorf("expected stat name 'nested.txt', got %q", st.Name())
+		}
+
+		// 2. Remove non-empty directory (should return error)
+		nonEmptyDir := join(testDir, "sub1")
+		err = fs.Remove(context.Background(), nonEmptyDir)
+		if err == nil {
+			t.Error("expected error when calling Remove on non-empty directory, got nil")
+		}
+
+		// 3. RemoveAll deep tree
+		err = fs.RemoveAll(context.Background(), nonEmptyDir)
+		if err != nil {
+			t.Fatalf("RemoveAll failed: %v", err)
+		}
+
+		// 4. Unicode & Special Character Filenames
+		unicodeDir := join(testDir, "日本語フォルダ")
+		err = fs.Mkdir(context.Background(), unicodeDir, 0o755)
+		if err != nil {
+			t.Fatalf("Mkdir with unicode failed: %v", err)
+		}
+		unicodeFile := join(unicodeDir, "テスト ファイル #1.txt")
+		err = fs.WriteFile(context.Background(), unicodeFile, []byte("ユニコードテスト"), 0o666)
+		if err != nil {
+			t.Fatalf("WriteFile with unicode failed: %v", err)
+		}
+
+		readBack, err := fs.ReadFile(context.Background(), unicodeFile)
+		if err != nil {
+			t.Fatalf("ReadFile with unicode failed: %v", err)
+		}
+		if string(readBack) != "ユニコードテスト" {
+			t.Errorf("unicode file content mismatch: got %q", string(readBack))
+		}
+
+		// 5. Slash and Backslash mixing
+		mixedPath := testDir + "/slashSub/backslashSub\\file.txt"
+		err = fs.MkdirAll(context.Background(), testDir+"/slashSub/backslashSub", 0o755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = fs.WriteFile(context.Background(), mixedPath, []byte("mixed path"), 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stMixed, err := fs.Stat(context.Background(), mixedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stMixed.Size() != int64(len("mixed path")) {
+			t.Errorf("unexpected size for mixed path file: %d", stMixed.Size())
+		}
+
+		// 6. Invalid operation types: Readdir on regular file
+		f, err := fs.Open(context.Background(), unicodeFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close(context.Background())
+		_, err = f.Readdir(context.Background(), -1)
+		if err == nil {
+			t.Error("expected error calling Readdir on a regular file, got nil")
+		}
+	})
+}
+
+func TestRenameEdgeCases(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		// 1. Move file into subfolder
+		subDir := join(testDir, "subdir")
+		err := fs.Mkdir(context.Background(), subDir, 0o755)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		srcFile := join(testDir, "src.txt")
+		dstFile := join(subDir, "dst.txt")
+		err = fs.WriteFile(context.Background(), srcFile, []byte("move test"), 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = fs.Rename(context.Background(), srcFile, dstFile)
+		if err != nil {
+			t.Fatalf("Rename across subfolders failed: %v", err)
+		}
+
+		content, err := fs.ReadFile(context.Background(), dstFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(content) != "move test" {
+			t.Errorf("unexpected content after rename: %q", string(content))
+		}
+
+		// 2. Rename directory
+		oldDir := join(testDir, "oldDir")
+		newDir := join(testDir, "newDir")
+		err = fs.Mkdir(context.Background(), oldDir, 0o755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = fs.WriteFile(context.Background(), join(oldDir, "inside.txt"), []byte("inside"), 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = fs.Rename(context.Background(), oldDir, newDir)
+		if err != nil {
+			t.Fatalf("Rename directory failed: %v", err)
+		}
+
+		insideContent, err := fs.ReadFile(context.Background(), join(newDir, "inside.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(insideContent) != "inside" {
+			t.Errorf("unexpected content inside renamed directory: %q", string(insideContent))
+		}
+	})
+}
+
+func TestClientBufferedCopyModel(t *testing.T) {
+	type offsets struct{ source, destination int64 }
+	cases := []struct {
+		name                        string
+		sourceSize, destinationSize int
+		steps                       []offsets
+	}{
+		{"long-tail", 4097, 64 << 10, []offsets{{17, 101}}},
+		{"source-eof", 4097, 8192, []offsets{{4097, 37}}},
+		{"reuse-after-seek", 64 << 10, 64 << 10, []offsets{{65527, 17}, {1027, 3}}},
+	}
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		client := smbclient.New(e.dialer)
+		t.Cleanup(func() { require.NoError(t, client.Close()) })
+		for _, method := range []string{"ReadFrom", "WriteTo"} {
+			for _, tc := range cases {
+				t.Run(method+"/"+tc.name, func(t *testing.T) {
+					dir := newTestDirectory(t, e.fs)
+					source := make([]byte, tc.sourceSize)
+					for i := range source {
+						source[i] = byte((i*31 + 7) % 251)
+					}
+					model := make([]byte, tc.destinationSize)
+					for i := range model {
+						model[i] = byte((i*17 + 97) % 251)
+					}
+					sourceName := pathpkg.JoinUNC(e.cfg.Transport.Host, e.cfg.TreeConn.Share1, dir, "source")
+					destinationName := pathpkg.JoinUNC(e.cfg.Transport.Host, e.cfg.TreeConn.Share1, dir, "destination")
+					require.NoError(t, client.WriteFile(ctx, sourceName, source, 0o600))
+					require.NoError(t, client.WriteFile(ctx, destinationName, model, 0o600))
+					src, err := client.Open(ctx, sourceName)
+					require.NoError(t, err)
+					defer src.Close(context.Background())
+					dst, err := client.OpenFile(ctx, destinationName, os.O_RDWR, 0)
+					require.NoError(t, err)
+					defer dst.Close(context.Background())
+					for step, op := range tc.steps {
+						t.Logf("step=%d source=%d destination=%d source-size=%d destination-size=%d", step, op.source, op.destination, len(source), len(model))
+						require.NotEqual(t, op.source, op.destination, "different offsets select buffered fallback")
+						position, err := src.Seek(ctx, op.source, io.SeekStart)
+						require.NoError(t, err)
+						require.Equal(t, op.source, position)
+						position, err = dst.Seek(ctx, op.destination, io.SeekStart)
+						require.NoError(t, err)
+						require.Equal(t, op.destination, position)
+						before := bytes.Clone(model)
+						wantCount := int64(len(source)) - op.source
+						end := op.destination + wantCount
+						copy(model[op.destination:end], source[op.source:])
+						var copied int64
+						if method == "ReadFrom" {
+							copied, err = dst.ReadFrom(ctx, src.WithContext(ctx))
+						} else {
+							copied, err = src.WriteTo(ctx, dst.WithContext(ctx))
+						}
+						require.NoError(t, err)
+						require.Equal(t, wantCount, copied)
+						position, err = src.Seek(ctx, 0, io.SeekCurrent)
+						require.NoError(t, err)
+						require.EqualValues(t, len(source), position)
+						position, err = dst.Seek(ctx, 0, io.SeekCurrent)
+						require.NoError(t, err)
+						require.Equal(t, end, position)
+						actual := make([]byte, len(model)+1)
+						n, readErr := dst.ReadAt(ctx, actual, 0)
+						require.Equal(t, len(model), n)
+						require.Equal(t, io.EOF, readErr)
+						require.True(t, bytes.Equal(model, actual[:n]), "copy bytes differ at step %d", step)
+						require.True(t, bytes.Equal(before[:op.destination], actual[:op.destination]), "prefix changed at step %d", step)
+						require.True(t, bytes.Equal(before[end:], actual[end:n]), "tail changed at step %d", step)
+					}
+				})
+			}
+		}
+	})
+}
+
+func TestLargeFileCopy(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		srcPath := join(testDir, "large_100mb_src.bin")
+		dstPath := join(testDir, "large_100mb_dst.bin")
+
+		// 100MB (100 * 1024 * 1024 = 104,857,600 bytes)
+		const totalSize = 100 * 1024 * 1024
+		const chunkSize = 1 * 1024 * 1024 // 1MB
+
+		sf, err := fs.Create(context.Background(), srcPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		srcHasher := sha256.New()
+		chunk := make([]byte, chunkSize)
+
+		written := 0
+		for written < totalSize {
+			toWrite := min(totalSize-written, chunkSize)
+			for i := range toWrite {
+				pos := written + i
+				chunk[i] = byte((pos*31 + 7) % 251)
+			}
+			n, err := sf.Write(context.Background(), chunk[:toWrite])
+			if err != nil {
+				sf.Close(context.Background())
+				t.Fatalf("Write failed at %d bytes: %v", written, err)
+			}
+			srcHasher.Write(chunk[:n])
+			written += n
+		}
+		sf.Close(context.Background())
+
+		// Copy via io.Copy (tests ReadFrom / ServerSideCopy or streaming Read/Write)
+		sf, err = fs.Open(context.Background(), srcPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sf.Close(context.Background())
+
+		df, err := fs.Create(context.Background(), dstPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		copied, err := io.Copy(df.WithContext(context.Background()), sf.WithContext(context.Background()))
+		if err != nil {
+			df.Close(context.Background())
+			t.Fatalf("io.Copy failed: %v", err)
+		}
+		df.Close(context.Background())
+
+		if copied != int64(totalSize) {
+			t.Errorf("copied size mismatch: expected %d, got %d", totalSize, copied)
+		}
+
+		// Verify copied file size and checksum
+		dstFile, err := fs.Open(context.Background(), dstPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer dstFile.Close(context.Background())
+
+		stat, err := dstFile.Stat(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stat.Size() != int64(totalSize) {
+			t.Errorf("dst stat size mismatch: expected %d, got %d", totalSize, stat.Size())
+		}
+
+		dstHasher := sha256.New()
+		readBuf := make([]byte, chunkSize)
+		for {
+			n, err := dstFile.Read(context.Background(), readBuf)
+			if n > 0 {
+				dstHasher.Write(readBuf[:n])
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Fatalf("dstRead failed: %v", err)
+			}
+		}
+
+		if !bytes.Equal(srcHasher.Sum(nil), dstHasher.Sum(nil)) {
+			t.Error("SHA256 checksum mismatch between src and copied dst file")
+		}
+	})
+}
+
+func TestWaitForChange(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		type outcome struct {
+			res notify.Result
+			err error
+		}
+
+		t.Run("NonRecursive", func(t *testing.T) {
+			d, err := fs.Open(context.Background(), testDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer d.Close(context.Background())
+
+			ch := make(chan outcome, 1)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			go func() {
+				res, err := d.WaitForChange(ctx, notify.FileName, false)
+				ch <- outcome{res: res, err: err}
+			}()
+
+			// Allow request to reach the server.
+			time.Sleep(100 * time.Millisecond)
+
+			filePath := join(testDir, "created.txt")
+			f, err := fs.Create(context.Background(), filePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = f.Close(context.Background())
+
+			select {
+			case out := <-ch:
+				if out.err != nil {
+					t.Fatalf("WaitForChange failed: %v", out.err)
+				}
+				if out.res.RescanRequired {
+					// Server (e.g. macOS smbd) signaled directory change via STATUS_NOTIFY_ENUM_DIR.
+					return
+				}
+				found := false
+				for _, e := range out.res.Events {
+					if e.Name == "created.txt" {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatalf("expected created.txt in events, got: %+v", out.res.Events)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for WaitForChange")
+			}
+		})
+
+		t.Run("WatchTree", func(t *testing.T) {
+			d, err := fs.Open(context.Background(), testDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer d.Close(context.Background())
+
+			ch := make(chan outcome, 1)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			go func() {
+				res, err := d.WaitForChange(ctx, notify.FileName, true)
+				ch <- outcome{res: res, err: err}
+			}()
+
+			// Allow request to reach the server.
+			time.Sleep(100 * time.Millisecond)
+
+			filePath := join(testDir, "watchtree_created.txt")
+			f, err := fs.Create(context.Background(), filePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = f.Close(context.Background())
+
+			select {
+			case out := <-ch:
+				if out.err != nil {
+					t.Fatalf("WaitForChange failed: %v", out.err)
+				}
+				if out.res.RescanRequired {
+					// Server signaled directory change via STATUS_NOTIFY_ENUM_DIR.
+					return
+				}
+				found := false
+				for _, e := range out.res.Events {
+					if e.Name == "watchtree_created.txt" {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatalf("expected watchtree_created.txt in events, got: %+v", out.res.Events)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for WaitForChange")
+			}
+		})
+
+		t.Run("ContextCancellation", func(t *testing.T) {
+			d, err := fs.Open(context.Background(), testDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer d.Close(context.Background())
+
+			ctx, cancel := context.WithCancel(context.Background())
+			ch := make(chan outcome, 1)
+
+			go func() {
+				res, err := d.WaitForChange(ctx, notify.FileName, false)
+				ch <- outcome{res: res, err: err}
+			}()
+
+			// Allow request to reach the server.
+			time.Sleep(100 * time.Millisecond)
+
+			cancel()
+
+			select {
+			case out := <-ch:
+				if !errors.Is(out.err, context.Canceled) {
+					t.Fatalf("expected context.Canceled, got: %v", out.err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for canceled WaitForChange")
+			}
+
+			// Ensure connection and share remain usable after request cancellation.
+			if _, err := fs.Stat(context.Background(), testDir); err != nil {
+				t.Fatalf("share unusable after WaitForChange cancellation: %v", err)
+			}
+		})
+
+		t.Run("InvalidTarget", func(t *testing.T) {
+			regularPath := join(testDir, "regular.txt")
+			f, err := fs.Create(context.Background(), regularPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close(context.Background())
+
+			_, err = f.WaitForChange(context.Background(), notify.FileName, false)
+			var pathErr *os.PathError
+			require.ErrorAs(t, err, &pathErr)
+			require.Equal(t, "waitforchange", pathErr.Op)
+			require.Equal(t, regularPath, pathErr.Path)
+			var responseErr *protocol.ResponseError
+			require.ErrorAs(t, pathErr.Err, &responseErr)
+			if !errors.Is(err, erref.STATUS_INVALID_PARAMETER) && !errors.Is(err, erref.STATUS_NOT_A_DIRECTORY) {
+				t.Fatalf("expected server rejection of regular file, got: %v", err)
+			}
+		})
+	})
+}
+
+func TestFileLock(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		filePath := join(testDir, "locked.txt")
+		f1, err := fs.OpenFile(context.Background(), filePath, os.O_RDWR|os.O_CREATE, 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f1.Close(context.Background())
+
+		data := []byte("0123456789abcdefghijklmnopqrstuvwxyz")
+		if _, err := f1.Write(context.Background(), data); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Run("ExclusiveLockAndUnlock", func(t *testing.T) {
+			err := f1.Lock(context.Background(), []smb2.LockRange{
+				{Range: smb2.ByteRange{Offset: 0, Length: 10}, Exclusive: true},
+			}, true)
+			if err != nil {
+				t.Fatalf("failed to acquire exclusive lock: %v", err)
+			}
+
+			err = f1.Unlock(context.Background(), []smb2.ByteRange{
+				{Offset: 0, Length: 10},
+			})
+			if err != nil {
+				t.Fatalf("failed to unlock: %v", err)
+			}
+		})
+
+		t.Run("LockConflict", func(t *testing.T) {
+			f2, err := fs.OpenFile(context.Background(), filePath, os.O_RDWR, 0o666)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f2.Close(context.Background())
+
+			err = f1.Lock(context.Background(), []smb2.LockRange{
+				{Range: smb2.ByteRange{Offset: 10, Length: 10}, Exclusive: true},
+			}, true)
+			if err != nil {
+				t.Fatalf("f1 failed to acquire exclusive lock: %v", err)
+			}
+			defer func() {
+				_ = f1.Unlock(context.Background(), []smb2.ByteRange{{Offset: 10, Length: 10}})
+			}()
+
+			err = f2.Lock(context.Background(), []smb2.LockRange{
+				{Range: smb2.ByteRange{Offset: 15, Length: 10}, Exclusive: true},
+			}, true)
+			if err == nil {
+				t.Fatal("expected error on conflicting lock, got nil")
+			}
+			if _, ok := errors.AsType[*protocol.ResponseError](err); !ok {
+				t.Fatalf("expected ResponseError on lock conflict, got: %v", err)
+			}
+
+			err = f1.Unlock(context.Background(), []smb2.ByteRange{{Offset: 10, Length: 10}})
+			if err != nil {
+				t.Fatalf("f1 failed to unlock: %v", err)
+			}
+
+			err = f2.Lock(context.Background(), []smb2.LockRange{
+				{Range: smb2.ByteRange{Offset: 15, Length: 10}, Exclusive: true},
+			}, true)
+			if err != nil {
+				t.Fatalf("f2 failed to acquire lock after f1 unlocked: %v", err)
+			}
+			_ = f2.Unlock(context.Background(), []smb2.ByteRange{{Offset: 15, Length: 10}})
+		})
+
+		t.Run("SharedLocks", func(t *testing.T) {
+			f2, err := fs.OpenFile(context.Background(), filePath, os.O_RDWR, 0o666)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f2.Close(context.Background())
+
+			err = f1.Lock(context.Background(), []smb2.LockRange{
+				{Range: smb2.ByteRange{Offset: 20, Length: 10}, Exclusive: false},
+			}, true)
+			if err != nil {
+				t.Fatalf("f1 failed to acquire shared lock: %v", err)
+			}
+			defer func() {
+				_ = f1.Unlock(context.Background(), []smb2.ByteRange{{Offset: 20, Length: 10}})
+			}()
+
+			err = f2.Lock(context.Background(), []smb2.LockRange{
+				{Range: smb2.ByteRange{Offset: 20, Length: 10}, Exclusive: false},
+			}, true)
+			if err != nil {
+				t.Fatalf("f2 failed to acquire shared lock on same range: %v", err)
+			}
+			defer func() {
+				_ = f2.Unlock(context.Background(), []smb2.ByteRange{{Offset: 20, Length: 10}})
+			}()
+
+			err = f2.Lock(context.Background(), []smb2.LockRange{
+				{Range: smb2.ByteRange{Offset: 20, Length: 10}, Exclusive: true},
+			}, true)
+			if err == nil {
+				t.Fatal("expected error on exclusive lock over shared lock, got nil")
+			}
+		})
+
+		t.Run("MultiRange", func(t *testing.T) {
+			ranges := []smb2.LockRange{
+				{Range: smb2.ByteRange{Offset: 0, Length: 5}, Exclusive: true},
+				{Range: smb2.ByteRange{Offset: 10, Length: 5}, Exclusive: true},
+			}
+			err := f1.Lock(context.Background(), ranges, true)
+			if err != nil {
+				t.Fatalf("failed to acquire multi-range lock: %v", err)
+			}
+
+			unlockRanges := []smb2.ByteRange{
+				{Offset: 0, Length: 5},
+				{Offset: 10, Length: 5},
+			}
+			err = f1.Unlock(context.Background(), unlockRanges)
+			if err != nil {
+				t.Fatalf("failed to unlock multi-range: %v", err)
+			}
+		})
+	})
+}
+
+func TestSecurityDescriptor(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		filePath := join(testDir, "sec.txt")
+		f, err := fs.Create(context.Background(), filePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Close(context.Background())
+
+		checkSupported := func(t *testing.T, err error) {
+			t.Helper()
+			var rerr *protocol.ResponseError
+			if errors.As(err, &rerr) && rerr.Code == 0xC00000BB /* STATUS_NOT_SUPPORTED */ {
+				t.Skip("server does not support security descriptors (STATUS_NOT_SUPPORTED)")
+			}
+		}
+
+		t.Run("QueryOwnerAndGroup", func(t *testing.T) {
+			sd, err := fs.GetSecurityDescriptor(context.Background(), filePath, security.Owner|security.Group)
+			if err != nil {
+				checkSupported(t, err)
+				t.Fatalf("failed to query owner/group security descriptor: %v", err)
+			}
+			if sd.Owner == nil {
+				t.Fatal("expected owner to be non-nil")
+			}
+			if sd.Group == nil {
+				t.Fatal("expected group to be non-nil")
+			}
+		})
+
+		t.Run("QueryDACL", func(t *testing.T) {
+			sd, err := fs.GetSecurityDescriptor(context.Background(), filePath, security.DACL)
+			if err != nil {
+				checkSupported(t, err)
+				t.Fatalf("failed to query DACL security descriptor: %v", err)
+			}
+			if sd == nil {
+				t.Fatal("expected security descriptor to be non-nil")
+			}
+		})
+
+		t.Run("SetDACL", func(t *testing.T) {
+			sd, err := fs.GetSecurityDescriptor(context.Background(), filePath, security.DACL)
+			if err != nil {
+				checkSupported(t, err)
+				t.Fatalf("failed to query DACL before set: %v", err)
+			}
+			err = fs.SetSecurityDescriptor(context.Background(), filePath, sd)
+			if err != nil {
+				checkSupported(t, err)
+				var rerr *protocol.ResponseError
+				if errors.As(err, &rerr) && rerr.Code == 0xC0000022 /* STATUS_ACCESS_DENIED */ {
+					t.Skip("account is not permitted to set the DACL")
+				}
+				t.Fatalf("failed to set DACL: %v", err)
+			}
+		})
+	})
+}
+
+type dfsIntegrationConfig struct {
+	server, target, secondTarget string
+	share, link                  string
+	addresses                    map[string]string
+	credentials                  auth.NTLMCredential
+}
+
+func loadDFSIntegrationConfig(t *testing.T) dfsIntegrationConfig {
+	t.Helper()
+	if dfsEnv == nil {
+		t.Skip("DFS entry is not configured in client_conf.json")
+	}
+	e := dfsEnv
+	require.Equal(t, "tcp", e.Transport.Type, "DFS transport type")
+	require.Equal(t, "ntlm", e.Session.Type, "DFS session type")
+	server, target, secondTarget := e.Transport.Host, e.DFS.Target, e.DFS.SecondTarget
+	require.NotEmpty(t, server, "transport.host")
+	require.NotEmpty(t, target, "dfs.target")
+	require.NotEmpty(t, secondTarget, "dfs.second_target")
+	require.NotEqual(t, server, target)
+	require.NotEqual(t, server, secondTarget)
+	require.NotEqual(t, target, secondTarget)
+	addr := net.JoinHostPort(e.Transport.Host, strconv.Itoa(e.Transport.Port))
+	cfg := dfsIntegrationConfig{
+		server: server, target: target, secondTarget: secondTarget,
+		share: e.TreeConn.Share1, link: e.DFS.Link,
+		addresses: map[string]string{
+			server:       addr,
+			target:       addr,
+			secondTarget: addr,
+		},
+		credentials: auth.NTLMCredential{
+			User: e.Session.User, Password: e.Session.Password,
+			Domain: e.Session.Domain, Workstation: e.Session.Workstation,
+			TargetSPN: e.Session.TargetSPN,
+		},
+	}
+	require.NotEmpty(t, cfg.share, "tree_conn.share1")
+	require.NotEmpty(t, cfg.link, "dfs.link")
+	require.NotEmpty(t, cfg.credentials.User, "session.user")
+	require.NotEmpty(t, cfg.credentials.Password, "session.passwd")
+	return cfg
+}
+
+type dfsIntegrationClient struct {
+	client      *smbclient.Client
+	dialer      *smb2.Dialer
+	ctx         context.Context
+	mu          sync.Mutex
+	connections map[string]int
+	sessions    map[string]*smb2.Session
+}
+
+func newDFSIntegrationClient(t *testing.T, cfg dfsIntegrationConfig) *dfsIntegrationClient {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	t.Cleanup(cancel)
+	c := &dfsIntegrationClient{ctx: ctx, connections: make(map[string]int), sessions: make(map[string]*smb2.Session)}
+	dialer := &smb2.Dialer{
+		Credentials: cfg.credentials,
+		TransportDialer: transportDialerFunc(func(ctx context.Context, server string) (smb2.Transport, error) {
+			address, ok := cfg.addresses[server]
+			if !ok {
+				return nil, fmt.Errorf("unexpected DFS server %q", server)
+			}
+			c.mu.Lock()
+			c.connections[server]++
+			c.mu.Unlock()
+			conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
+			if err != nil {
+				return nil, err
+			}
+			return smb2.NewTransport(conn), nil
+		}),
+		RequireMessageSigning: true,
+	}
+	c.dialer = dialer
+	c.client = smbclient.New(dialer)
+	t.Cleanup(func() {
+		require.NoError(t, c.client.Close())
+		c.mu.Lock()
+		sessions := make([]*smb2.Session, 0, len(c.sessions))
+		for _, s := range c.sessions {
+			sessions = append(sessions, s)
+		}
+		c.mu.Unlock()
+		for _, s := range sessions {
+			require.NoError(t, s.Close())
+		}
+	})
+	return c
+}
+
+func (c *dfsIntegrationClient) mount(t *testing.T, server, share string) *smb2.Share {
+	t.Helper()
+	c.mu.Lock()
+	session := c.sessions[strings.ToLower(server)]
+	c.mu.Unlock()
+	if session == nil {
+		var err error
+		session, err = c.dialer.Dial(c.ctx, server)
+		require.NoError(t, err)
+		c.mu.Lock()
+		if existing := c.sessions[strings.ToLower(server)]; existing != nil {
+			session.Close()
+			session = existing
+		} else {
+			c.sessions[strings.ToLower(server)] = session
+		}
+		c.mu.Unlock()
+	}
+	fs, err := session.Mount(c.ctx, share)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, fs.Unmount(context.Background())) })
+	return fs
+}
+
+func (c *dfsIntegrationClient) removeOnCleanup(t *testing.T, path string) {
+	t.Helper()
+	t.Cleanup(func() {
+		err := c.client.Remove(context.Background(), path)
+		if !errors.Is(err, os.ErrNotExist) {
+			require.NoError(t, err)
+		}
+	})
+}
+
+func (c *dfsIntegrationClient) connectionCounts() map[string]int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	counts := make(map[string]int, len(c.connections))
+	maps.Copy(counts, c.connections)
+	return counts
+}
+
+// The fixture has link and link-alias pointing at target/dfs-target, and
+// link-extra pointing at secondTarget/dfs-encrypted/nested. The latter share
+// requires SMB encryption. All three logical servers may use one Samba daemon.
+func TestDFSIntegration(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
+	cfg := loadDFSIntegrationConfig(t)
+	namespace := `\\` + join(cfg.server, cfg.share)
+
+	t.Run("context_filesystem", func(t *testing.T) {
+		c := newDFSIntegrationClient(t, cfg)
+		root := join(cfg.link, "context-fs-"+rand.Text())
+		testClientContextFS(t, c.client, c.ctx, cfg.server, cfg.share, root)
+	})
+
+	t.Run("referral_and_cache", func(t *testing.T) {
+		c := newDFSIntegrationClient(t, cfg)
+		c.mu.Lock()
+		s := c.sessions[strings.ToLower(cfg.server)]
+		c.mu.Unlock()
+		if s == nil {
+			var e error
+			s, e = c.dialer.Dial(c.ctx, cfg.server)
+			require.NoError(t, e)
+			c.mu.Lock()
+			c.sessions[strings.ToLower(cfg.server)] = s
+			c.mu.Unlock()
+		}
+		shares, err := s.ListShareNames(c.ctx)
+		require.NoError(t, err)
+		require.Contains(t, shares, cfg.share)
+		name := join(namespace, cfg.link, fmt.Sprintf("go-smb2-dfs-%d.txt", time.Now().UnixNano()))
+		t.Cleanup(func() { require.NoError(t, c.client.Remove(context.Background(), name)) })
+		payload := []byte("DFS referral integration test\n")
+		require.NoError(t, c.client.WriteFile(c.ctx, name, payload, 0o600))
+		before := c.connectionCounts()
+		got, err := c.client.ReadFile(c.ctx, name)
+		require.NoError(t, err)
+		require.Equal(t, payload, got)
+		require.Equal(t, 1, before[cfg.target])
+		require.Equal(t, before, c.connectionCounts(), "cached target should reuse its transport")
+	})
+
+	t.Run("prefixes_aliases_and_rename", func(t *testing.T) {
+		c := newDFSIntegrationClient(t, cfg)
+		directory := fmt.Sprintf("go-smb2-dfs-%d-日本語", time.Now().UnixNano())
+		plainPath := join(namespace, cfg.link, directory, "同名.txt")
+		encryptedPath := join(namespace, cfg.link+"-extra", directory, "同名.txt")
+		plain := bytes.Repeat([]byte("plain"), 300000)
+		encrypted := bytes.Repeat([]byte("encrypted"), 200000)
+		for _, link := range []string{cfg.link, cfg.link + "-extra"} {
+			path := join(namespace, link, directory)
+			require.NoError(t, c.client.Mkdir(c.ctx, path, 0o700))
+			t.Cleanup(func() { require.NoError(t, c.client.Remove(context.Background(), path)) })
+		}
+		c.removeOnCleanup(t, plainPath)
+		c.removeOnCleanup(t, encryptedPath)
+		require.NoError(t, c.client.WriteFile(c.ctx, plainPath, plain, 0o600))
+		require.NoError(t, c.client.WriteFile(c.ctx, encryptedPath, encrypted, 0o600))
+
+		// Verify storage independently of namespace routing. This catches a
+		// prefix collision routing link-extra into link, and a lost target base.
+		plainTarget := c.mount(t, cfg.target, "dfs-target")
+		encryptedTarget := c.mount(t, cfg.secondTarget, "dfs-encrypted")
+		got, err := plainTarget.ReadFile(c.ctx, join(directory, "同名.txt"))
+		require.NoError(t, err)
+		require.Equal(t, plain, got)
+		got, err = encryptedTarget.ReadFile(c.ctx, join("nested", directory, "同名.txt"))
+		require.NoError(t, err)
+		require.Equal(t, encrypted, got)
+
+		aliasPath := join(namespace, cfg.link+"-alias", directory, "変更.txt")
+		c.removeOnCleanup(t, aliasPath)
+		require.NoError(t, c.client.Rename(c.ctx, plainPath, aliasPath))
+		got, err = c.client.ReadFile(c.ctx, join(namespace, cfg.link, directory, "変更.txt"))
+		require.NoError(t, err)
+		require.Equal(t, plain, got)
+		_, err = c.client.Stat(c.ctx, plainPath)
+		require.ErrorIs(t, err, os.ErrNotExist)
+
+		crossTarget := join(namespace, cfg.link+"-extra", directory, "移動.txt")
+		require.ErrorContains(t, c.client.Rename(c.ctx, aliasPath, crossTarget), "cross-share")
+		got, err = c.client.ReadFile(c.ctx, aliasPath)
+		require.NoError(t, err)
+		require.Equal(t, plain, got, "rejected cross-target rename must preserve the source")
+		_, err = c.client.Stat(c.ctx, crossTarget)
+		require.ErrorIs(t, err, os.ErrNotExist)
+		got, err = c.client.ReadFile(c.ctx, encryptedPath)
+		require.NoError(t, err)
+		require.Equal(t, encrypted, got)
+		require.Equal(t, map[string]int{cfg.server: 1, cfg.target: 2, cfg.secondTarget: 2}, c.connectionCounts())
+	})
+
+	t.Run("concurrent_cold_referrals", func(t *testing.T) {
+		c := newDFSIntegrationClient(t, cfg)
+		const workers = 8
+		start := make(chan struct{})
+		results := make(chan error, workers)
+		prefix := fmt.Sprintf("go-smb2-dfs-%d", time.Now().UnixNano())
+		for i := range workers {
+			link := cfg.link
+			if i%2 != 0 {
+				link += "-extra"
+			}
+			path := join(namespace, link, fmt.Sprintf("%s-%d-並行.txt", prefix, i))
+			t.Cleanup(func() { require.NoError(t, c.client.Remove(context.Background(), path)) })
+			go func() {
+				<-start
+				payload := bytes.Repeat([]byte(fmt.Sprintf("worker-%d", i)), 16000)
+				if err := c.client.WriteFile(c.ctx, path, payload, 0o600); err != nil {
+					results <- fmt.Errorf("write %s: %w", path, err)
+					return
+				}
+				got, err := c.client.ReadFile(c.ctx, path)
+				if err == nil && !bytes.Equal(got, payload) {
+					err = fmt.Errorf("content mismatch for %s", path)
+				}
+				results <- err
+			}()
+		}
+		close(start)
+		// Drain all workers before cleanup, even if one worker fails.
+		for range workers {
+			if err := <-results; err != nil {
+				t.Error(err)
+			}
+		}
+		require.Equal(t, map[string]int{cfg.server: 1, cfg.target: 1, cfg.secondTarget: 1}, c.connectionCounts(), "concurrent misses should share target connections")
+	})
+
+	t.Run("close_invalidates_open_file", func(t *testing.T) {
+		c := newDFSIntegrationClient(t, cfg)
+		name := fmt.Sprintf("go-smb2-dfs-%d.txt", time.Now().UnixNano())
+		path := join(namespace, cfg.link, name)
+		cleanup := smbclient.New(c.dialer)
+		t.Cleanup(func() {
+			err := cleanup.Remove(context.Background(), path)
+			if !errors.Is(err, os.ErrNotExist) {
+				require.NoError(t, err)
+			}
+			require.NoError(t, cleanup.Close())
+		})
+		payload := []byte("file bound to a DFS client session")
+		require.NoError(t, c.client.WriteFile(c.ctx, path, payload, 0o600))
+		alias := join(namespace, cfg.link+"-alias", name)
+		file, err := c.client.Open(c.ctx, alias)
+		require.NoError(t, err)
+		require.Equal(t, alias, file.Name())
+		got := make([]byte, len(payload))
+		n, err := file.ReadAt(c.ctx, got, 0)
+		require.NoError(t, err)
+		require.Equal(t, len(payload), n)
+		require.Equal(t, payload, got)
+		require.NoError(t, c.client.Close())
+		_, err = file.ReadAt(context.Background(), got, 0)
+		require.Error(t, err, "Close must invalidate existing Files")
+		_ = file.Close(context.Background())
+		_, err = c.client.Open(context.Background(), path)
+		require.Error(t, err, "Close must reject new operations")
+	})
+}
+
+// testClientContextFS exercises both direct shares and DFS namespace paths.
+func testClientContextFS(t *testing.T, c *smbclient.Client, ctx context.Context, server, share, root string) {
+	t.Helper()
+	network := c.WithContext(ctx)
+	entries, err := network.ReadDir(".")
+	require.NoError(t, err)
+	require.Empty(t, entries, "a new client must not discover servers implicitly")
+
+	// Access the server directly before it appears in the cache listing.
+	entries, err = network.ReadDir(server)
+	skipPermissionDenied(t, err)
+	require.NoError(t, err)
+	require.True(t, slices.ContainsFunc(entries, func(entry iofs.DirEntry) bool {
+		return strings.EqualFold(entry.Name(), share) && entry.IsDir()
+	}), "configured share must be listed")
+	entries, err = network.ReadDir(".")
+	require.NoError(t, err)
+	require.True(t, slices.ContainsFunc(entries, func(entry iofs.DirEntry) bool {
+		return strings.EqualFold(entry.Name(), server) && entry.IsDir()
+	}), "direct access must populate the virtual root")
+
+	unc := `\\` + join(server, share, root)
+	require.NoError(t, c.MkdirAll(ctx, join(unc, "nested"), 0o700))
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		require.NoError(t, c.RemoveAll(cleanupCtx, unc))
+	})
+	payload := []byte("client io/fs integration\n")
+	for _, name := range []string{"hello.txt", `nested\world.txt`} {
+		require.NoError(t, c.WriteFile(ctx, join(unc, name), payload, 0o600))
+	}
+	// On Windows NTFS, writing inside a child directory modifies its MFT record
+	// but can lag in flushing to the parent directory index. Synchronize the
+	// directory timestamp so ReadDir and Stat match for fstest.TestFS.
+	nestedPath := join(unc, "nested")
+	nestedInfo, err := c.Stat(ctx, nestedPath)
+	require.NoError(t, err)
+	require.NoError(t, c.Chtimes(ctx, nestedPath, nestedInfo.ModTime(), nestedInfo.ModTime()))
+	virtualRoot := strings.ReplaceAll(join(server, share, root), `\`, "/")
+	project, err := iofs.Sub(network, virtualRoot)
+	require.NoError(t, err)
+	require.NoError(t, fstest.TestFS(project, "hello.txt", "nested", "nested/world.txt"))
+
+	data, err := iofs.ReadFile(project, "nested/world.txt")
+	require.NoError(t, err)
+	require.Equal(t, payload, data)
+	f, err := project.Open("hello.txt")
+	require.NoError(t, err)
+	data, readErr := io.ReadAll(f)
+	closeErr := f.Close()
+	require.NoError(t, readErr)
+	require.NoError(t, closeErr)
+	require.Equal(t, payload, data)
+
+	var visited []string
+	require.NoError(t, iofs.WalkDir(project, ".", func(name string, _ iofs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		visited = append(visited, name)
+		return nil
+	}))
+	require.Equal(t, []string{".", "hello.txt", "nested", "nested/world.txt"}, visited)
+	for pattern, want := range map[string][]string{
+		"*.txt":            {"hello.txt"},
+		"*/*.txt":          {"nested/world.txt"},
+		"nested/[vw]*.txt": {"nested/world.txt"},
+	} {
+		matches, err := iofs.Glob(project, pattern)
+		require.NoError(t, err)
+		require.Equal(t, want, matches)
+	}
+	matches, err := network.Glob(virtualRoot + "/*/*.txt")
+	require.NoError(t, err)
+	require.Equal(t, []string{virtualRoot + "/nested/world.txt"}, matches)
+
+	_, err = project.Open("../escape")
+	require.ErrorIs(t, err, os.ErrInvalid)
+	_, err = iofs.Stat(project, "missing")
+	require.ErrorIs(t, err, os.ErrNotExist)
+	var pathErr *os.PathError
+	require.ErrorAs(t, err, &pathErr)
+	require.Equal(t, "missing", pathErr.Path)
+
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	_, err = c.WithContext(canceled).ReadDir(".")
+	require.ErrorIs(t, err, context.Canceled)
+	// Closing an adapter file and canceling another adapter must leave the
+	// owning client and the original adapter usable.
+	_, err = iofs.Stat(project, "hello.txt")
+	require.NoError(t, err)
+}
+
+func TestContextClient(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		// fstest.TestFS performs many sequential requests on remote servers.
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		c := smbclient.New(e.dialer)
+		t.Cleanup(func() { require.NoError(t, c.Close()) })
+		root := "context-fs-" + rand.Text()
+		testClientContextFS(t, c, ctx, e.cfg.Transport.Host, e.cfg.TreeConn.Share1, root)
+		name := pathpkg.Join(`\\`+join(e.cfg.Transport.Host, e.cfg.TreeConn.Share1, root), "hello.txt")
+		t.Run("RemoveAllNonDirectoryAncestor", func(t *testing.T) {
+			before, err := c.ReadFile(ctx, name)
+			require.NoError(t, err)
+			require.NoError(t, c.RemoveAll(ctx, pathpkg.Join(name, "child")))
+			info, err := c.Stat(ctx, name)
+			require.NoError(t, err)
+			require.True(t, info.Mode().IsRegular())
+			after, err := c.ReadFile(ctx, name)
+			require.NoError(t, err)
+			require.Equal(t, before, after, "RemoveAll must preserve the intermediate file")
+		})
+		t.Run("ClosedFileOriginalUNC", func(t *testing.T) {
+			file, err := c.Open(ctx, name)
+			require.NoError(t, err)
+			bound := file.WithContext(ctx)
+			require.NoError(t, file.Close(ctx))
+			for _, test := range []struct {
+				name, op string
+				call     func() error
+			}{
+				{"ReadAt", "read", func() error { _, err := file.ReadAt(ctx, make([]byte, 1), 0); return err }},
+				{"WriteAt", "write", func() error { _, err := file.WriteAt(ctx, []byte("x"), 0); return err }},
+				{"Seek", "seek", func() error { _, err := file.Seek(ctx, 0, io.SeekStart); return err }},
+				{"Truncate", "truncate", func() error { return file.Truncate(ctx, 0) }},
+				{"Sync", "sync", func() error { return file.Sync(ctx) }},
+				{"Stat", "stat", func() error { _, err := file.Stat(ctx); return err }},
+				{"WithContext/ReadAt", "read", func() error { _, err := bound.ReadAt(make([]byte, 1), 0); return err }},
+				{"WithContext/WriteAt", "write", func() error { _, err := bound.WriteAt([]byte("x"), 0); return err }},
+				{"WithContext/Seek", "seek", func() error { _, err := bound.Seek(0, io.SeekStart); return err }},
+				{"WithContext/Stat", "stat", func() error { _, err := bound.Stat(); return err }},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					err := test.call()
+					require.ErrorIs(t, err, os.ErrClosed)
+					var pathErr *os.PathError
+					require.ErrorAs(t, err, &pathErr)
+					require.Equal(t, test.op, pathErr.Op)
+					require.Equal(t, name, pathErr.Path)
+					require.Equal(t, os.ErrClosed, pathErr.Err, "must not add nested operation wrappers")
+				})
+			}
+		})
+	})
+}
+
+func contextSubFS(share *smb2.Share, root string) iofs.FS {
+	bound := share.WithContext(context.Background())
+	fs, err := iofs.Sub(bound, strings.ReplaceAll(root, `\`, "/"))
+	if err != nil {
+		panic(err)
+	}
+	return fs
+}
+
+func TestContextShare(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		err := fs.WriteFile(context.Background(), path.Join(testDir, "hello.txt"), []byte("hello world!"), 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = fs.Mkdir(context.Background(), path.Join(testDir, "hello"), 0o755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = fs.WriteFile(context.Background(), path.Join(testDir, "hello", "hello2.txt"), []byte("hello world!"), 0o444)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Keep directory metadata stable for TestFS's ReadDir/Stat comparisons
+		// on servers whose parent directory index can lag child writes.
+		nestedPath := pathpkg.Join(testDir, "hello")
+		info, err := fs.Stat(context.Background(), nestedPath)
+		require.NoError(t, err)
+		require.NoError(t, fs.Chtimes(context.Background(), nestedPath, info.ModTime(), info.ModTime()))
+		adapter := contextSubFS(fs, testDir)
+		require.NoError(t, fstest.TestFS(adapter, "hello.txt", "hello", "hello/hello2.txt"))
+		nested, err := iofs.Sub(adapter, "hello")
+		require.NoError(t, err)
+		require.NoError(t, fstest.TestFS(nested, "hello2.txt"))
+
+		{
+			var entries []string
+
+			iofs.WalkDir(contextSubFS(fs, testDir), ".", func(path string, d iofs.DirEntry, err error) error {
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				entries = append(entries, path)
+
+				return nil
+			})
+
+			if !reflect.DeepEqual(entries, []string{".", "hello", "hello/hello2.txt", "hello.txt"}) {
+				t.Error("unexpected result")
+			}
+		}
+
+		{
+			var entries []string
+
+			iofs.WalkDir(contextSubFS(fs, testDir), "hello", func(path string, d iofs.DirEntry, err error) error {
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				entries = append(entries, path)
+
+				return nil
+			})
+
+			if !reflect.DeepEqual(entries, []string{"hello", "hello/hello2.txt"}) {
+				t.Error("unexpected result")
+			}
+		}
+	})
+}
+
+func TestGlobFS(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		err := fs.WriteFile(context.Background(), path.Join(testDir, "hello.txt"), []byte("hello world!"), 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = fs.Mkdir(context.Background(), path.Join(testDir, "hello"), 0o755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = fs.WriteFile(context.Background(), path.Join(testDir, "hello", "hello2.txt"), []byte("hello world!"), 0o444)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		cases := []struct {
+			pattern  string
+			expected []string
+		}{
+			{
+				pattern:  "hello.txt",
+				expected: []string{"hello.txt"},
+			},
+			{
+				pattern:  "hel?o.txt",
+				expected: []string{"hello.txt"},
+			},
+			{
+				pattern:  "*",
+				expected: []string{"hello", "hello.txt"},
+			},
+			{
+				pattern:  "*/*",
+				expected: []string{"hello/hello2.txt"},
+			},
+		}
+
+		for _, tt := range cases {
+			matches, err := iofs.Glob(contextSubFS(fs, testDir), tt.pattern)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(matches, tt.expected) {
+				t.Errorf("Glob(%q) = %q, want %q", tt.pattern, matches, tt.expected)
+				t.Error("unexpected result")
+			}
+		}
+	})
+}
+
+// Compare the server-prefiltered Glob with io/fs's generic rune matching on
+// stable names; hide optional methods only after constructing each Sub FS.
+func TestGlobFSUnicodeParity(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx := context.Background()
+		root := newTestDirectory(t, e.fs)
+		names := []string{"a中.txt", "a😀.txt", "aab.txt", "literal[中].txt"}
+		for _, dir := range []string{root, pathpkg.Join(root, "nested中")} {
+			if dir != root {
+				require.NoError(t, e.fs.Mkdir(ctx, dir, 0o755))
+			}
+			for _, name := range names {
+				require.NoError(t, e.fs.WriteFile(ctx, pathpkg.Join(dir, name), nil, 0o666))
+			}
+		}
+		base, err := iofs.Sub(e.fs.WithContext(ctx), pathpkg.ToPOSIXPath(root))
+		require.NoError(t, err)
+		nested, err := iofs.Sub(base, "nested中")
+		require.NoError(t, err)
+		patterns := []string{"a?.txt", "./a?.txt", "a??.txt", "a[中😀].txt", "./a[中😀].txt", "a[^中].txt", `a\中.txt`, `a\😀.txt`, `literal\[中\].txt`, "*.txt"}
+		for _, adapter := range []struct {
+			name string
+			fs   iofs.FS
+		}{{"root", base}, {"nested", nested}} {
+			t.Run(adapter.name, func(t *testing.T) {
+				generic := struct{ iofs.FS }{adapter.fs}
+				for _, pattern := range patterns {
+					t.Run(pattern, func(t *testing.T) {
+						want, err := iofs.Glob(generic, pattern)
+						require.NoError(t, err)
+						got, err := iofs.Glob(adapter.fs, pattern)
+						require.NoError(t, err)
+						require.Equal(t, want, got)
+					})
+				}
+			})
+		}
+	})
+}
+
+func TestContextShareEdgeCases(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		err := fs.WriteFile(context.Background(), path.Join(testDir, "sample.txt"), []byte("sample content"), 0o666)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		dirFS := contextSubFS(fs, testDir)
+
+		// 1. Valid path open & read
+		f, err := dirFS.Open("sample.txt")
+		if err != nil {
+			t.Fatalf("dirFS.Open sample.txt failed: %v", err)
+		}
+		fi, err := f.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Name() != "sample.txt" {
+			t.Errorf("expected sample.txt, got %s", fi.Name())
+		}
+		f.Close()
+
+		// 2. Invalid path checks (leading slash, parent traversal ..)
+		for _, invalidPath := range []string{"/sample.txt", "../sample.txt", "a/../../sample.txt"} {
+			_, err := dirFS.Open(invalidPath)
+			if err == nil {
+				t.Errorf("expected error for invalid io/fs path %q, got nil", invalidPath)
+			}
+		}
+
+		// 3. ReadFile on ContextShare
+		rf, ok := dirFS.(iofs.ReadFileFS)
+		if ok {
+			content, err := rf.ReadFile("sample.txt")
+			if err != nil {
+				t.Fatalf("ReadFileFS.ReadFile failed: %v", err)
+			}
+			if string(content) != "sample content" {
+				t.Errorf("unexpected ReadFile content: %q", string(content))
+			}
+		}
+
+		// 4. StatFS on ContextShare
+		sf, ok := dirFS.(iofs.StatFS)
+		if ok {
+			st, err := sf.Stat("sample.txt")
+			if err != nil {
+				t.Fatalf("StatFS.Stat failed: %v", err)
+			}
+			if st.Size() != int64(len("sample content")) {
+				t.Errorf("unexpected stat size: %d", st.Size())
+			}
+		}
+	})
+}
+
+// TestMultiCreditIO exercises request sizes around the 64 KiB credit boundary so
+// that the per-request CreditCharge and MessageId accounting are validated on a
+// real server, including dialects that support multi-credit operations.
+func TestMultiCreditIO(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		sizes := []int{
+			0,
+			1,
+			64*1024 - 1,
+			64 * 1024,
+			64*1024 + 1,
+			1024 * 1024,
+			1024*1024 + 1,
+		}
+
+		for _, size := range sizes {
+			name := join(testDir, fmt.Sprintf("bulk-%d.bin", size))
+
+			data := make([]byte, size)
+			for i := range data {
+				data[i] = byte((i*31 + 7) % 251)
+			}
+
+			if err := fs.WriteFile(context.Background(), name, data, 0o644); err != nil {
+				t.Fatalf("WriteFile(%d bytes): %v", size, err)
+			}
+
+			fi, err := fs.Stat(context.Background(), name)
+			if err != nil {
+				t.Fatalf("Stat(%d bytes): %v", size, err)
+			}
+			if fi.Size() != int64(size) {
+				t.Fatalf("Stat(%d bytes) size = %d", size, fi.Size())
+			}
+
+			got, err := fs.ReadFile(context.Background(), name)
+			if err != nil {
+				t.Fatalf("ReadFile(%d bytes): %v", size, err)
+			}
+			if !bytes.Equal(got, data) {
+				t.Fatalf("ReadFile(%d bytes) returned %d bytes with different content", size, len(got))
+			}
+
+			if err := fs.Remove(context.Background(), name); err != nil {
+				t.Fatalf("Remove(%d bytes): %v", size, err)
+			}
+		}
+	})
+}
+
+// TestConcurrentShareAccess runs independent read/write cycles in parallel over
+// one share so that credit lending, signing/encryption, and response dispatch
+// are exercised concurrently rather than one request at a time.
+func TestConcurrentShareAccess(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		fs := e.fs
+		testDir := newTestDirectory(t, fs)
+
+		const (
+			workers = 8
+			size    = 128 * 1024
+		)
+
+		var wg sync.WaitGroup
+		errs := make(chan error, workers)
+		for w := range workers {
+			wg.Add(1)
+			go func(w int) {
+				defer wg.Done()
+
+				name := join(testDir, fmt.Sprintf("worker-%d.bin", w))
+				data := make([]byte, size)
+				for i := range data {
+					data[i] = byte((i*17 + w*53) % 251)
+				}
+
+				if err := fs.WriteFile(context.Background(), name, data, 0o644); err != nil {
+					errs <- fmt.Errorf("worker %d: WriteFile: %w", w, err)
+					return
+				}
+				got, err := fs.ReadFile(context.Background(), name)
+				if err != nil {
+					errs <- fmt.Errorf("worker %d: ReadFile: %w", w, err)
+					return
+				}
+				if !bytes.Equal(got, data) {
+					errs <- fmt.Errorf("worker %d: content mismatch", w)
+					return
+				}
+				if err := fs.Remove(context.Background(), name); err != nil {
+					errs <- fmt.Errorf("worker %d: Remove: %w", w, err)
+				}
+			}(w)
+		}
+
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			t.Error(err)
+		}
+	})
+}
+
+// TestKerberosIntegration exercises authentication and required encryption
+// across SMB dialects using client_conf.json entries with a kerberos section.
+func TestKerberosIntegration(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
+	if len(kerberosEnvs) == 0 {
+		t.Skip("Kerberos matrix entry is not configured in client_conf.json")
+	}
+	for _, cfg := range kerberosEnvs {
+		t.Run(cfg.Name, func(t *testing.T) {
+			require.Equal(t, "tcp", cfg.Transport.Type, "Kerberos matrix transport")
+			require.Equal(t, "kerberos", cfg.Session.Type, "Kerberos matrix session")
+			require.NotEmpty(t, cfg.TreeConn.Share1, "tree_conn.share1")
+			require.NotEmpty(t, cfg.Kerberos.EncryptedShare, "kerberos.encrypted_share")
+			creds, err := auth.NewKerberosCredential(auth.KerberosPassword{
+				User: cfg.Session.User, Realm: cfg.Session.Realm, Password: cfg.Session.Password,
+				ConfigFile: cfg.Session.KRB5Config, TargetSPN: cfg.Session.TargetSPN,
+			})
+			require.NoError(t, err)
+			defer creds.Close()
+			host := cfg.Transport.Host
+			addr := net.JoinHostPort(host, strconv.Itoa(cfg.Transport.Port))
+
+			for _, dialect := range []uint16{wire.SMB210, wire.SMB302, wire.SMB311} {
+				t.Run(fmt.Sprintf("%04x", dialect), func(t *testing.T) {
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+
+					dialer := &smb2.Dialer{
+						Credentials:           creds,
+						RequireMessageSigning: true,
+						SpecifiedDialects:     []smb2.Dialect{smb2.Dialect(dialect)},
+						TransportDialer: transportDialerFunc(func(ctx context.Context, _ string) (smb2.Transport, error) {
+							tcp, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+							if err != nil {
+								return nil, err
+							}
+							return smb2.NewTransport(tcp), nil
+						}),
+					}
+					session, err := dialer.Dial(ctx, host)
+					require.NoError(t, err)
+					defer session.Close()
+
+					shares := []string{cfg.TreeConn.Share1}
+					if dialect >= wire.SMB300 {
+						shares = append(shares, cfg.Kerberos.EncryptedShare)
+					}
+					for _, name := range shares {
+						require.NotEmpty(t, name)
+						share, err := session.Mount(ctx, name)
+						require.NoError(t, err)
+						func() {
+							defer share.Unmount(ctx)
+							path := fmt.Sprintf("kerberos-test-%d.txt", time.Now().UnixNano())
+							payload := []byte("Kerberos authenticated SMB read/write\n")
+							require.NoError(t, share.WriteFile(ctx, path, payload, 0o600))
+							defer share.Remove(ctx, path)
+							got, err := share.ReadFile(ctx, path)
+							require.NoError(t, err)
+							require.Equal(t, payload, got)
+						}()
+					}
+				})
+			}
+		})
+	}
+}
+
+func Example() {
+	domain := "MicrosoftAccount"
+	dialer := &smb2.Dialer{
+		Credentials: auth.NTLMCredential{
+			User:     "Guest",
+			Password: "",
+			Domain:   &domain,
+		},
+		TransportDialer: smb2.TCPDialer{},
+	}
+	session, err := dialer.Dial(context.Background(), "localhost")
+	if err != nil {
+		panic(err)
+	}
+	defer session.Close()
+
+	ctx := context.Background()
+	fs, err := session.Mount(ctx, "share")
+	if err != nil {
+		panic(err)
+	}
+	defer fs.Unmount(ctx)
+
+	f, err := fs.Create(ctx, "hello.txt")
+	if err != nil {
+		panic(err)
+	}
+	defer fs.Remove(ctx, "hello.txt")
+	defer f.Close(ctx)
+
+	_, err = f.Write(ctx, []byte("Hello world!"))
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = f.Seek(ctx, 0, io.SeekStart)
+	if err != nil {
+		panic(err)
+	}
+
+	bs, err := io.ReadAll(f.WithContext(ctx))
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(string(bs))
+
+	// Hello world!
+}
+
+func TestFileIdentity(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		fs := e.fs
+		dir := newTestDirectory(t, fs)
+		target := join(dir, "target")
+		require.NoError(t, fs.WriteFile(ctx, target, []byte("identity"), 0o600))
+		first, err := fs.Stat(ctx, target)
+		require.NoError(t, err)
+		second, err := fs.Lstat(ctx, target)
+		require.NoError(t, err)
+		require.True(t, smb2.SameFile(first, second))
+		require.NotZero(t, first.(*smb2.FileStat).FileId)
+		f, err := fs.Open(ctx, target)
+		require.NoError(t, err)
+		opened, statErr := f.Stat(ctx)
+		closeErr := f.Close(ctx)
+		require.NoError(t, statErr)
+		require.NoError(t, closeErr)
+		require.True(t, smb2.SameFile(first, opened))
+
+		entries, err := fs.ReadDir(ctx, dir)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		require.Equal(t, first.(*smb2.FileStat).FileId, entries[0].(*smb2.FileStat).FileId)
+		require.False(t, smb2.SameFile(first, entries[0]))
+
+		link := join(dir, "link")
+		err = fs.Symlink(ctx, "target", link)
+		skipUnsupportedSymlink(t, err)
+		require.NoError(t, err)
+		t.Run("follow_symlink", func(t *testing.T) {
+			linked, err := fs.Stat(ctx, link)
+			require.NoError(t, err)
+			require.True(t, smb2.SameFile(first, linked))
+			f, err := fs.Open(ctx, link)
+			require.NoError(t, err)
+			linkedOpen, statErr := f.Stat(ctx)
+			closeErr := f.Close(ctx)
+			require.NoError(t, statErr)
+			require.NoError(t, closeErr)
+			require.True(t, smb2.SameFile(first, linkedOpen))
+		})
+		linkInfo, err := fs.Lstat(ctx, link)
+		require.NoError(t, err)
+		require.False(t, smb2.SameFile(first, linkInfo))
+		renamed := join(dir, "renamed")
+		require.NoError(t, fs.Rename(ctx, target, renamed))
+		moved, err := fs.Stat(ctx, renamed)
+		require.NoError(t, err)
+		require.True(t, smb2.SameFile(first, moved))
+	})
+}
+
+func TestLSARPCIdentityLookup(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		ipc, err := e.session.IPC(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, err := user.NewClient(ctx, ipc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := client.Close(closeCtx); err != nil {
+				t.Error(err)
+			}
+		})
+		var userName string
+		var sid *security.SID
+		t.Run("Current", func(t *testing.T) {
+			identity, err := client.Current(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.EqualFold(identity.Name, e.cfg.Session.User) || identity.Domain == "" || identity.SID == nil {
+				t.Fatalf("current identity = %+v", identity)
+			}
+			userName = identity.Name
+			sid = identity.SID
+		})
+		if userName == "" {
+			return
+		}
+		t.Run("Lookup", func(t *testing.T) {
+			resolved, err := client.Lookup(ctx, userName)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolved.SID == nil {
+				t.Fatalf("lookup name result = %+v", resolved)
+			}
+			if resolved.SID.String() != sid.String() {
+				t.Fatalf("lookup SID %s differs from current SID %s", resolved.SID, sid)
+			}
+		})
+		t.Run("LookupUnknown", func(t *testing.T) {
+			_, err := client.Lookup(ctx, "go-smb2-unknown-identity-5bb3b5a7")
+			if invalid, ok := errors.AsType[*msrpc.InvalidResponseError](err); ok {
+				if strings.HasPrefix(invalid.Message, "translated SID count mismatch: got 0, want 1") || invalid.Message == "invalid translated SID: invalid RPC_SID revision or count" {
+					t.Skipf("server returned a malformed unresolved SID: %v", err)
+				}
+				t.Fatalf("server returned an invalid lookup response: %v", err)
+			}
+			if err == nil || !strings.HasSuffix(err.Error(), ": user: identity not found") {
+				t.Fatalf("unknown lookup error = %v, want user identity not found", err)
+			}
+		})
+		t.Run("LookupSID", func(t *testing.T) {
+			identity, err := client.LookupSID(ctx, sid)
+			if err != nil {
+				var fault *msrpc.FaultError
+				if errors.As(err, &fault) && fault.Status == 0x1c000007 {
+					t.Skipf("server rejects LsarLookupSids: %v", err)
+				}
+				t.Fatal(err)
+			}
+			if identity.Name == "" || identity.SID.String() != sid.String() {
+				t.Fatalf("lookup SID result = %+v", identity)
+			}
+		})
+		t.Run("SetSecurityDescriptorWithResolvedSID", func(t *testing.T) {
+			path := join(newTestDirectory(t, e.fs), "resolved-sid.txt")
+			file, err := e.fs.Create(ctx, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := file.Close(ctx); err != nil {
+				t.Fatal(err)
+			}
+			original, err := e.fs.GetSecurityDescriptor(ctx, path, security.DACL)
+			if errors.Is(err, erref.STATUS_NOT_SUPPORTED) {
+				t.Skipf("server does not support security descriptors: %v", err)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if original.DACL == security.NullACL {
+				t.Skip("file has a NULL DACL")
+			}
+			acl := *original.DACL
+			countResolvedACE := func(acl *security.ACL) int {
+				var count int
+				for _, ace := range acl.ACEs {
+					if ace.Type == security.AccessAllowed && ace.SID != nil && ace.SID.String() == sid.String() {
+						count++
+					}
+				}
+				return count
+			}
+			before := countResolvedACE(original.DACL)
+			acl.ACEs = append(append([]security.ACE(nil), acl.ACEs...), security.ACE{
+				Type: security.AccessAllowed, Mask: security.FileGenericRead, SID: sid,
+			})
+			if err := e.fs.SetSecurityDescriptor(ctx, path, &security.Descriptor{DACL: &acl}); err != nil {
+				if errors.Is(err, os.ErrPermission) || errors.Is(err, erref.STATUS_NOT_SUPPORTED) {
+					t.Skipf("server rejected DACL update: %v", err)
+				}
+				t.Fatal(err)
+			}
+			updated, err := e.fs.GetSecurityDescriptor(ctx, path, security.DACL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if updated.DACL == security.NullACL || countResolvedACE(updated.DACL) <= before {
+				t.Fatalf("resolved SID %s is missing from updated DACL", sid)
+			}
+		})
+		if err := client.Close(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.Lookup(ctx, userName); err == nil || err.Error() != "user: client closed" {
+			t.Fatalf("lookup after close: got %v, want user client closed", err)
+		}
+	})
+}
+
+type cleanupTestSession struct{ order *[]string }
+
+func (s cleanupTestSession) Close() error {
+	*s.order = append(*s.order, "session")
+	return nil
+}
+
+type cleanupTestShare struct {
+	name    string
+	order   *[]string
+	ctx     context.Context
+	wait    bool
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *cleanupTestShare) Unmount(ctx context.Context) error {
+	s.ctx = ctx
+	*s.order = append(*s.order, s.name)
+	if s.started != nil {
+		close(s.started)
+	}
+	if s.wait {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-s.release:
+			return os.ErrPermission
+		}
+	}
+	return os.ErrPermission
+}
+
+func TestIntegrationCleanupBoundsUnmount(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		var order []string
+		share2 := &cleanupTestShare{name: "share2", order: &order, wait: true, started: make(chan struct{}), release: make(chan struct{})}
+		share1 := &cleanupTestShare{name: "share1", order: &order}
+		finished := make(chan struct{})
+		t.Cleanup(func() {
+			close(share2.release)
+			<-finished
+		})
+		started := time.Now()
+		go func() {
+			closeTestSession(context.Background(), cleanupTestSession{&order}, share2, share1)
+			close(finished)
+		}()
+		<-share2.started
+		synctest.Wait()
+		deadline, ok := share2.ctx.Deadline()
+		require.True(t, ok, "Unmount must have its own bounded cleanup context")
+		require.Equal(t, 5*time.Second, deadline.Sub(started))
+		<-finished
+		require.Equal(t, 5*time.Second, time.Since(started))
+		require.Equal(t, []string{"share2", "share1", "session"}, order)
+		require.ErrorIs(t, share2.ctx.Err(), context.DeadlineExceeded)
+	})
+}
+
+func TestIntegrationCleanupDetachesExpiredSetupContext(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		setup, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
+		defer cancel()
+		require.ErrorIs(t, setup.Err(), context.DeadlineExceeded)
+		var order []string
+		share := &cleanupTestShare{name: "share1", order: &order}
+		closeTestSession(setup, cleanupTestSession{&order}, share)
+		require.Equal(t, []string{"share1", "session"}, order)
+		deadline, ok := share.ctx.Deadline()
+		require.True(t, ok)
+		require.Equal(t, 5*time.Second, time.Until(deadline))
+		require.ErrorIs(t, share.ctx.Err(), context.Canceled, "cleanup context must be canceled on return")
+	})
+}
+func TestDirectorySeekRestart(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		dir := newTestDirectory(t, e.fs)
+		const entryCount = 33
+		expected := make([]string, entryCount)
+		for i := range expected {
+			expected[i] = fmt.Sprintf("entry-%03d.txt", i)
+			require.NoError(t, e.fs.WriteFile(ctx, pathpkg.Join(dir, expected[i]), []byte("payload"), 0600))
+		}
+		f, err := e.fs.Open(ctx, dir)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			closeCtx, stop := context.WithTimeout(context.Background(), 15*time.Second)
+			defer stop()
+			err := f.Close(closeCtx)
+			if !errors.Is(err, os.ErrClosed) {
+				require.NoError(t, err)
+			}
+		})
+		partial, err := f.ReadDir(ctx, 3)
+		require.NoError(t, err)
+		require.Len(t, partial, 3)
+		savedNames := make([]string, len(partial))
+		for i, entry := range partial {
+			savedNames[i] = entry.Name()
+			require.Contains(t, expected, entry.Name())
+		}
+		require.NotEqual(t, savedNames[0], savedNames[1])
+		require.NotEqual(t, savedNames[0], savedNames[2])
+		require.NotEqual(t, savedNames[1], savedNames[2])
+		position, err := f.Seek(ctx, 0, io.SeekStart)
+		require.NoError(t, err)
+		require.Zero(t, position)
+		var names []string
+		for {
+			batch, err := f.Readdirnames(ctx, 7)
+			names = append(names, batch...)
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+		}
+		slices.Sort(names)
+		require.Equal(t, expected, names, "restart after partial consumption must include each entry exactly once")
+		_, err = f.Readdirnames(ctx, 1)
+		require.Equal(t, io.EOF, err)
+		position, err = f.Seek(ctx, 0, io.SeekStart)
+		require.NoError(t, err)
+		require.Zero(t, position)
+		all, err := f.ReadDir(ctx, -1)
+		require.NoError(t, err)
+		names = names[:0]
+		for _, entry := range all {
+			names = append(names, entry.Name())
+		}
+		slices.Sort(names)
+		require.Equal(t, expected, names, "restart after EOF must include each entry exactly once")
+		require.NoError(t, f.Close(ctx))
+		for i, entry := range partial {
+			require.Equal(t, savedNames[i], entry.Name())
+			info, err := entry.Info()
+			require.NoError(t, err)
+			require.Equal(t, savedNames[i], info.Name())
+			require.EqualValues(t, 7, info.Size())
+		}
+		for _, entry := range all {
+			info, err := entry.Info()
+			require.NoError(t, err)
+			require.Equal(t, entry.Name(), info.Name())
+			require.EqualValues(t, 7, info.Size())
+		}
+		_, err = f.ReadDir(ctx, 1)
+		require.ErrorIs(t, err, os.ErrClosed)
+		require.ErrorIs(t, f.Close(ctx), os.ErrClosed)
+	})
+}
+func TestClientNestedSubUnicodeParity(t *testing.T) {
+	forEachEnv(t, func(t *testing.T, e *env) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		root := newTestDirectory(t, e.fs)
+		client := smbclient.New(e.dialer)
+		t.Cleanup(func() { require.NoError(t, client.Close()) })
+		virtualRoot := pathpkg.JoinPOSIXPath(e.cfg.Transport.Host, e.cfg.TreeConn.Share1, root)
+		directoryUNC := pathpkg.PosixPathToUNC(pathpkg.JoinPOSIXPath(virtualRoot, "nested😀", "forms中"))
+		require.NoError(t, client.MkdirAll(ctx, directoryUNC, 0700))
+		const name = "cafe\u0301-😀.txt"
+		payload := []byte("Unicode content")
+		unc := pathpkg.Join(directoryUNC, name)
+		require.NoError(t, client.WriteFile(ctx, unc, payload, 0600))
+		file, err := client.Open(ctx, unc)
+		require.NoError(t, err)
+		info, statErr := file.Stat(ctx)
+		closeErr := file.Close(ctx)
+		require.NoError(t, statErr)
+		require.NoError(t, closeErr)
+		require.Equal(t, name, info.Name())
+		// Use this host's share listing as the representation baseline: a server
+		// may return composed names even when creation used combining characters.
+		native, err := e.fs.ReadDir(ctx, pathpkg.Join(root, "nested😀", "forms中"))
+		require.NoError(t, err)
+		require.Len(t, native, 1)
+		observed := native[0].Name()
+		direct, err := client.ReadDir(ctx, directoryUNC)
+		require.NoError(t, err)
+		require.Len(t, direct, 1)
+		require.Equal(t, observed, direct[0].Name())
+		var nested iofs.FS = client.WithContext(ctx)
+		for _, component := range []string{virtualRoot, "nested😀", "forms中"} {
+			nested, err = iofs.Sub(nested, component)
+			require.NoError(t, err)
+		}
+		entries, err := iofs.ReadDir(nested, ".")
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		require.Equal(t, observed, entries[0].Name())
+		info, err = iofs.Stat(nested, observed)
+		require.NoError(t, err)
+		require.Equal(t, observed, info.Name())
+		got, err := iofs.ReadFile(nested, observed)
+		require.NoError(t, err)
+		require.Equal(t, payload, got)
+		matches, err := iofs.Glob(nested, "*.txt")
+		require.NoError(t, err)
+		require.Equal(t, []string{observed}, matches)
+		const missing = "missing-cafe\u0301-😀.txt"
+		missingUNC := pathpkg.Join(directoryUNC, missing)
+		_, err = client.Stat(ctx, missingUNC)
+		require.ErrorIs(t, err, os.ErrNotExist)
+		var pathErr *os.PathError
+		require.ErrorAs(t, err, &pathErr)
+		require.Equal(t, "stat", pathErr.Op)
+		require.Equal(t, missingUNC, pathErr.Path)
+		_, err = iofs.Stat(nested, missing)
+		require.ErrorIs(t, err, os.ErrNotExist)
+		require.ErrorAs(t, err, &pathErr)
+		require.Equal(t, "stat", pathErr.Op)
+		require.Equal(t, missing, pathErr.Path)
+	})
+}
+
+func TestSelectBenchmarkConfigs(t *testing.T) {
+	var cfgs []config
+	require.NoError(t, json.Unmarshal([]byte(`[
+  {"name":"ordinary"},
+  {"name":"selected","benchmark":true},
+  {"name":"disabled","benchmark":false}
+ ]`), &cfgs))
+	selected := selectBenchmarkConfigs(cfgs)
+	require.Len(t, selected, 1)
+	require.Equal(t, "selected", selected[0].Name)
+	require.Empty(t, selectBenchmarkConfigs(nil))
+}
+
+func selectBenchmarkConfigs(cfgs []config) []config {
+	var selected []config
+	for _, cfg := range cfgs {
+		if cfg.Benchmark {
+			selected = append(selected, cfg)
+		}
+	}
+	return selected
+}
+
+// These benchmarks use only opted-in environments. Resources are shared across
+// benchmark functions and -count repetitions, then released by TestMain.
+type benchmarkServer struct {
+	cfg            config
+	connection     *env
+	connected      bool
+	mount          string
+	mountErr       error
+	mountAttempted bool
+	unmount        func() error
+}
+
+var benchmarkServers []*benchmarkServer
+var benchmarkServersOnce sync.Once
+
+func BenchmarkReadFile(b *testing.B)  { benchmarkServerFiles(b, "ReadFile") }
+func BenchmarkWriteFile(b *testing.B) { benchmarkServerFiles(b, "WriteFile") }
+func BenchmarkReadAt(b *testing.B)    { benchmarkServerFiles(b, "ReadAt") }
+func BenchmarkWriteAt(b *testing.B)   { benchmarkServerFiles(b, "WriteAt") }
+func BenchmarkReaddir(b *testing.B)   { benchmarkServerFiles(b, "Readdir") }
+func BenchmarkStat(b *testing.B)      { benchmarkServerFiles(b, "Stat") }
+
+type benchmarkFile interface {
+	io.ReaderAt
+	io.WriterAt
+	io.Closer
+}
+
+type benchmarkFiles struct {
+	readFile  func(string) ([]byte, error)
+	writeFile func(string, []byte, os.FileMode) error
+	openFile  func(string, int, os.FileMode) (benchmarkFile, error)
+	readDir   func(string) ([]os.FileInfo, error)
+	stat      func(string) (os.FileInfo, error)
+	mkdir     func(string, os.FileMode) error
+	removeAll func(string) error
+}
+
+func goBenchmarkFiles(fs *smb2.Share) benchmarkFiles {
+	ctx := context.Background()
+	return benchmarkFiles{
+		readFile:  func(p string) ([]byte, error) { return fs.ReadFile(ctx, p) },
+		writeFile: func(p string, contents []byte, mode os.FileMode) error { return fs.WriteFile(ctx, p, contents, mode) },
+		openFile: func(p string, flags int, mode os.FileMode) (benchmarkFile, error) {
+			f, err := fs.OpenFile(ctx, p, flags, mode)
+			if err != nil {
+				return nil, err
+			}
+			return f.WithContext(ctx), nil
+		},
+		readDir: func(p string) ([]os.FileInfo, error) { return fs.ReadDir(ctx, p) },
+		stat:    func(p string) (os.FileInfo, error) { return fs.Stat(ctx, p) },
+		mkdir:   func(p string, mode os.FileMode) error { return fs.Mkdir(ctx, p, mode) },
+		removeAll: func(p string) error {
+			ctx, cancel := context.WithTimeout(ctx, time.Minute)
+			defer cancel()
+			return fs.RemoveAll(ctx, p)
+		},
+	}
+}
+
+func nativeBenchmarkFiles(root string) benchmarkFiles {
+	local := func(p string) string { return filepath.Join(root, filepath.FromSlash(pathpkg.ToPOSIXPath(p))) }
+	return benchmarkFiles{
+		readFile:  func(p string) ([]byte, error) { return os.ReadFile(local(p)) },
+		writeFile: func(p string, contents []byte, mode os.FileMode) error { return os.WriteFile(local(p), contents, mode) },
+		openFile: func(p string, flags int, mode os.FileMode) (benchmarkFile, error) {
+			return os.OpenFile(local(p), flags, mode)
+		},
+		readDir: func(p string) (entries []os.FileInfo, err error) {
+			f, err := os.Open(local(p))
+			if err != nil {
+				return nil, err
+			}
+			defer func() { err = errors.Join(err, f.Close()) }()
+			return f.Readdir(-1)
+		},
+		stat:      func(p string) (os.FileInfo, error) { return os.Stat(local(p)) },
+		mkdir:     func(p string, mode os.FileMode) error { return os.Mkdir(local(p), mode) },
+		removeAll: func(p string) error { return os.RemoveAll(local(p)) },
+	}
+}
+
+func benchmarkServerFiles(b *testing.B, operation string) {
+	if testing.Short() {
+		b.Skip("real-server benchmarks are disabled by -short")
+	}
+	benchmarkServersOnce.Do(func() {
+		for _, cfg := range selectBenchmarkConfigs(readTestConfigs()) {
+			benchmarkServers = append(benchmarkServers, &benchmarkServer{cfg: cfg})
+		}
+	})
+	if len(benchmarkServers) == 0 {
+		b.Skip("no benchmark: true entry in client_conf.json")
+	}
+	for _, server := range benchmarkServers {
+		b.Run(server.cfg.Name, func(b *testing.B) {
+			for _, backend := range benchmarkBackendOrder() {
+				b.Run(backend, func(b *testing.B) {
+					if integrationInterrupted.Load() {
+						b.Skip("interrupted")
+					}
+					if !server.connected {
+						server.connected = true
+						server.connection = connect(server.cfg, false)
+					}
+					if server.connection == nil {
+						b.Fatal("selected benchmark server connection failed")
+					}
+					prep := goBenchmarkFiles(server.connection.fs)
+					fs := prep
+					if backend == "Native" {
+						if !server.mountAttempted {
+							server.mountAttempted = true
+							server.mount, server.unmount, server.mountErr = mountBenchmarkShare(server.cfg)
+						}
+						if server.mountErr != nil {
+							b.Skipf("native mount unavailable: %v", server.mountErr)
+						}
+						fs = nativeBenchmarkFiles(server.mount)
+					}
+					if operation == "Readdir" {
+						b.Run("128Entries", func(b *testing.B) { benchmarkFileOperation(b, prep, fs, operation, 4096, 128) })
+					} else if operation == "Stat" {
+						benchmarkFileOperation(b, prep, fs, operation, 4096, 1)
+					} else {
+						for _, size := range []struct {
+							name  string
+							bytes int
+						}{
+							{"4KiB", 4 << 10}, {"64MiB", 64 << 20},
+						} {
+							b.Run(size.name, func(b *testing.B) { benchmarkFileOperation(b, prep, fs, operation, size.bytes, 1) })
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+// Each leaf owns a fresh directory. Repeated reads and overwrites intentionally
+// measure repeated API calls. Native cache policy is set at mount time;
+// server caches and durable flush are unchanged.
+func benchmarkFileOperation(b *testing.B, prep, fs benchmarkFiles, operation string, size, count int) {
+	dir := "go-smb2-bench-" + rand.Text()
+	if err := prep.mkdir(dir, 0700); err != nil {
+		b.Fatal(err)
+	}
+	root := dir
+	b.Cleanup(func() {
+		if err := prep.removeAll(root); err != nil {
+			b.Errorf("remove benchmark directory %s: %v", dir, err)
+		}
+	})
+	// Keep all file and OS metadata activity below the owned sample root.
+	dir = pathpkg.Join(dir, "data")
+	if err := prep.mkdir(dir, 0700); err != nil {
+		b.Fatal(err)
+	}
+
+	payload := make([]byte, size)
+	if _, err := rand.Read(payload); err != nil {
+		b.Fatal(err)
+	}
+	for i := range count {
+		if err := prep.writeFile(pathpkg.Join(dir, fmt.Sprintf("file-%04d", i)), payload, 0600); err != nil {
+			b.Fatal(err)
+		}
+	}
+	filename := pathpkg.Join(dir, "file-0000")
+	var operationCall func() error
+	var got []byte
+	var entries []os.FileInfo
+	var stat os.FileInfo
+	var closeFile func() error
+	switch operation {
+	case "ReadFile":
+		operationCall = func() (err error) { got, err = fs.readFile(filename); return }
+	case "WriteFile":
+		operationCall = func() error { return fs.writeFile(filename, payload, 0600) }
+	case "ReadAt", "WriteAt":
+		flags := os.O_RDONLY
+		if operation == "WriteAt" {
+			flags = os.O_WRONLY
+		}
+		file, err := fs.openFile(filename, flags, 0600)
+		if err != nil {
+			b.Fatal(err)
+		}
+		closed := false
+		b.Cleanup(func() {
+			if !closed {
+				if err := file.Close(); err != nil {
+					b.Error(err)
+				}
+			}
+		})
+		got = make([]byte, size)
+		operationCall = func() error {
+			var n int
+			var err error
+			if operation == "ReadAt" {
+				n, err = file.ReadAt(got, 0)
+			} else {
+				n, err = file.WriteAt(payload, 0)
+			}
+			if err != nil {
+				return err
+			}
+			if n != size {
+				return fmt.Errorf("short I/O: %d, want %d", n, size)
+			}
+			return nil
+		}
+		closeFile = func() error {
+			err := file.Close()
+			closed = true
+			return err
+		}
+
+	case "Readdir":
+		operationCall = func() (err error) { entries, err = fs.readDir(dir); return }
+	case "Stat":
+		operationCall = func() (err error) { stat, err = fs.stat(filename); return }
+	default:
+		b.Fatalf("unknown operation %q", operation)
+	}
+	if operation != "Readdir" && operation != "Stat" {
+		b.SetBytes(int64(size))
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if integrationInterrupted.Load() {
+			b.Fatal("benchmark interrupted")
+		}
+		if err := operationCall(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	// b.Loop stops the timer before content validation and cleanup.
+	if closeFile != nil {
+		if err := closeFile(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	switch operation {
+	case "ReadFile", "ReadAt":
+		if !bytes.Equal(got, payload) {
+			b.Fatal("read content mismatch")
+		}
+	case "WriteFile", "WriteAt":
+		contents, err := prep.readFile(filename)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !bytes.Equal(contents, payload) {
+			b.Fatal("written content mismatch")
+		}
+	case "Readdir":
+		names := make(map[string]bool, count)
+		for i := range count {
+			names[fmt.Sprintf("file-%04d", i)] = true
+		}
+		for _, entry := range entries {
+			if !names[entry.Name()] || entry.IsDir() || entry.Size() != int64(size) {
+				b.Fatalf("directory entry mismatch: name=%q size=%d dir=%v", entry.Name(), entry.Size(), entry.IsDir())
+			}
+			delete(names, entry.Name())
+		}
+		if len(names) != 0 {
+			b.Fatalf("missing directory entries: got %d, missing %d", len(entries), len(names))
+		}
+	case "Stat":
+		if stat.IsDir() || stat.Size() != int64(size) {
+			b.Fatal("file stat mismatch")
+		}
+	}
+}
+
+// Commands get a bounded lifetime and no interactive input. Their output is
+// deliberately not forwarded because platform tools can echo credentials.
+func runBenchmarkCommand(name string, args []string, environment []string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = append(os.Environ(), environment...)
+	output, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return nil, fmt.Errorf("%s: %w", filepath.Base(name), err)
+	}
+	return output, nil
+}
+
+func mountBenchmarkShare(cfg config) (root string, unmount func() error, err error) {
+	if cfg.Transport.Type != "tcp" || cfg.Session.Type != "ntlm" {
+		return "", nil, errors.New("automatic native mounting requires TCP/NTLM")
+	}
+	port := cfg.Transport.Port
+	if port == 0 {
+		port = 445
+	}
+	domain := ""
+	if cfg.Session.Domain != nil {
+		domain = *cfg.Session.Domain
+	}
+	if runtime.GOOS == "windows" {
+		environment := []string{
+			"SMB_BENCH_REMOTE=" + pathpkg.JoinUNC(cfg.Transport.Host, cfg.TreeConn.Share1),
+			"SMB_BENCH_USER=" + cfg.Session.User, "SMB_BENCH_PASSWORD=" + cfg.Session.Password,
+			"SMB_BENCH_PORT=" + strconv.Itoa(port),
+		}
+		if domain != "" {
+			environment[1] = "SMB_BENCH_USER=" + domain + `\` + cfg.Session.User
+		}
+		// A newly allocated drive letter makes ownership explicit. Never remove an
+		// existing mapping, including one to the same share.
+		script := `$ErrorActionPreference='Stop';
+$used=@(Get-PSDrive -PSProvider FileSystem | ForEach-Object {$_.Name+':'}) + @(Get-SmbMapping | ForEach-Object {$_.LocalPath});
+$drive=90..68 | ForEach-Object {([char]$_).ToString()+':'} | Where-Object {$_ -notin $used} | Select-Object -First 1;
+if (!$drive) {throw 'No free drive letter'};
+$options=@{LocalPath=$drive; RemotePath=$env:SMB_BENCH_REMOTE; UserName=$env:SMB_BENCH_USER; Password=$env:SMB_BENCH_PASSWORD; Persistent=$false};
+if ($env:SMB_BENCH_PORT -ne '445') {$options.TcpPort=[UInt16]$env:SMB_BENCH_PORT};
+New-SmbMapping @options | Out-Null;
+[Console]::Write($drive)`
+		output, err := runBenchmarkCommand("powershell.exe", []string{"-NoProfile", "-NonInteractive", "-Command", script}, environment)
+		if err != nil {
+			return "", nil, err
+		}
+		drive := strings.TrimSpace(string(output))
+		if len(drive) != 2 || drive[0] < 'D' || drive[0] > 'Z' || drive[1] != ':' {
+			return "", nil, errors.New("mount returned invalid drive letter")
+		}
+		return drive + `\`, func() error {
+			_, err := runBenchmarkCommand("powershell.exe", []string{"-NoProfile", "-NonInteractive", "-Command", `Remove-SmbMapping -LocalPath $env:SMB_BENCH_DRIVE -Force -UpdateProfile:$false -Confirm:$false -ErrorAction Stop`}, []string{"SMB_BENCH_DRIVE=" + drive})
+			return err
+		}, nil
+	}
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		return "", nil, errors.New("native mounts unsupported on " + runtime.GOOS)
+	}
+	root, err = os.MkdirTemp("", "go-smb2-mount-")
+	if err != nil {
+		return "", nil, err
+	}
+	// Never recursively remove a mount point, even when mounting fails.
+	defer func() {
+		if err != nil {
+			_ = os.Remove(root)
+		}
+	}()
+	if runtime.GOOS == "darwin" {
+		user := url.UserPassword(cfg.Session.User, cfg.Session.Password).String()
+		if domain != "" {
+			user = url.PathEscape(domain) + ";" + user
+		}
+		source := "//" + user + "@" + net.JoinHostPort(cfg.Transport.Host, strconv.Itoa(port)) + "/" + url.PathEscape(cfg.TreeConn.Share1)
+		// These API benchmarks do not subscribe to filesystem change notifications.
+		_, err = runBenchmarkCommand("/sbin/mount_smbfs", []string{"-N", "-s", "-o", "nobrowse,nodatacache,nomdatacache,nonotification", source, root}, nil)
+	} else {
+		// Passwords containing commas cannot be represented by mount -o password=.
+		// PASSWD supplies them without including them in process arguments.
+		if strings.ContainsAny(cfg.Session.User+domain, ",\r\n") {
+			return root, nil, errors.New("native mount username/domain contains an option separator")
+		}
+		options := "username=" + cfg.Session.User + ",port=" + strconv.Itoa(port)
+		if domain != "" {
+			options += ",domain=" + domain
+		}
+		_, err = runBenchmarkCommand("mount.cifs", []string{pathpkg.ToPOSIXPath(pathpkg.JoinUNC(cfg.Transport.Host, cfg.TreeConn.Share1)), root, "-o", options}, []string{"PASSWD=" + cfg.Session.Password})
+	}
+	if err != nil {
+		return root, nil, err
+	}
+	return root, func() error {
+		if _, err := runBenchmarkCommand("umount", []string{root}, nil); err != nil {
+			return fmt.Errorf("mount retained at %s: %w", root, err)
+		}
+		return os.Remove(root)
+	}, nil
+}
+
+func TestBenchmarkSuiteOrder(t *testing.T) {
+	for _, scenario := range []struct {
+		name, run, bench  string
+		failAt, wantCalls int
+	}{
+		{"benchmark rounds", "^$", ".", -1, 3},
+		{"stop on failure", "^$", ".", 1, 2},
+		{"ordinary tests", "TestExample", "", -1, 1},
+		{"mixed run", "TestExample", ".", -1, 1},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			for name, value := range map[string]string{"test.run": scenario.run, "test.bench": scenario.bench, "test.count": "3"} {
+				previous := flag.Lookup(name).Value.String()
+				require.NoError(t, flag.Set(name, value))
+				t.Cleanup(func() { _ = flag.Set(name, previous) })
+			}
+			calls := 0
+			code := runTestSuite(func() int {
+				round := calls
+				calls++
+				if scenario.run == "^$" {
+					require.Equal(t, "1", flag.Lookup("test.count").Value.String())
+					want := []string{"Go", "Native"}
+					if round%2 == 1 {
+						want = []string{"Native", "Go"}
+					}
+					require.Equal(t, want, benchmarkBackendOrder())
+				} else {
+					require.Equal(t, "3", flag.Lookup("test.count").Value.String())
+				}
+				if round == scenario.failAt {
+					return 7
+				}
+				return 0
+			})
+			require.Equal(t, scenario.wantCalls, calls)
+			wantCode := 0
+			if scenario.failAt >= 0 {
+				wantCode = 7
+			}
+			require.Equal(t, wantCode, code)
+			require.Equal(t, "3", flag.Lookup("test.count").Value.String())
+		})
+	}
+}
+
+// Go's -count normally repeats each leaf before moving to the next backend.
+// For bench-only invocations, repeat the suite instead so temporal drift does
+// not always favor one client. Test and mixed test/benchmark runs are unchanged.
+func runTestSuite(run func() int) int {
+	if flag.Lookup("test.run").Value.String() != "^$" || flag.Lookup("test.bench").Value.String() == "" {
+		return run()
+	}
+	originalCount := flag.Lookup("test.count").Value.String()
+	rounds, err := strconv.Atoi(originalCount)
+	if err != nil || rounds < 1 {
+		return run()
+	}
+	if err := flag.Set("test.count", "1"); err != nil {
+		panic(err)
+	}
+	previousRound := benchmarkRound
+	defer func() {
+		_ = flag.Set("test.count", originalCount)
+		benchmarkRound = previousRound
+	}()
+	for round := range rounds {
+		benchmarkRound = round
+		if code := run(); code != 0 {
+			return code
+		}
+		if integrationInterrupted.Load() {
+			return 130
+		}
+	}
+	return 0
+}
+
+var benchmarkRound int
+
+func benchmarkBackendOrder() []string {
+	if benchmarkRound%2 == 1 {
+		return []string{"Native", "Go"}
+	}
+	return []string{"Go", "Native"}
+}
+
+var manualMultichannelGMAC = flag.Bool("smb2.multichannel-gmac", false, "require SMB 3.1.1 GMAC and independently verify binding key transitions")
+
+// This observer is used only by the opted-in NTLM fixture. Keys and transcripts
+// remain in memory and are never included in trace records or assertion output.
+type multichannelCredentials struct {
+	smb2.Credentials
+	initiator auth.Initiator
+}
+
+func (c *multichannelCredentials) NewInitiator(ctx context.Context, name string) (auth.Initiator, error) {
+	i, err := c.Credentials.NewInitiator(ctx, name)
+	c.initiator = i // Dial/Bind are serialized by this fixture.
+	return i, err
+}
+
+type multichannelGMACTrace struct {
+	initiator                       auth.Initiator
+	preauth                         [64]byte
+	originalKey, channelKey, gssKey [16]byte
+	binding                         bool
+	requests, intermediate          int
+	final                           bool
+}
+
+func (g *multichannelGMACTrace) hash(data []byte) {
+	h := sha512.New()
+	h.Write(g.preauth[:])
+	h.Write(data)
+	copy(g.preauth[:], h.Sum(nil))
+}
+
+func multichannelVerifyGMAC(key [16]byte, data []byte) bool {
+	h := wire.PacketCodec(data) // Caller has validated the header.
+	if h.Flags()&wire.SMB2_FLAGS_SIGNED == 0 {
+		return false
+	}
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return false
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return false
+	}
+	var nonce [12]byte
+	binary.LittleEndian.PutUint64(nonce[:8], h.MessageId())
+	if h.Flags()&wire.SMB2_FLAGS_SERVER_TO_REDIR != 0 {
+		nonce[8] = 1
+	}
+	if h.Command() == wire.SMB2_CANCEL {
+		nonce[8] |= 2
+	}
+	var signature [16]byte
+	copy(signature[:], h.Signature())
+	clear(h.Signature())
+	expected := aead.Seal(nil, nonce[:], nil, data)
+	h.SetSignature(signature[:])
+	return hmac.Equal(signature[:], expected)
+}
+
+func (g *multichannelGMACTrace) request(data []byte) error {
+	h := wire.PacketCodec(data)
+	if h.Command() == wire.SMB2_NEGOTIATE {
+		g.hash(data)
+	}
+	if h.Command() != wire.SMB2_SESSION_SETUP {
+		return nil
+	}
+	r := wire.SessionSetupRequestDecoder(data[64:])
+	if r.IsInvalid() {
+		return errors.New("invalid traced setup request")
+	}
+	if r.Flags()&wire.SMB2_SESSION_FLAG_BINDING != 0 {
+		g.binding = true
+		if !multichannelVerifyGMAC(g.originalKey, data) {
+			return errors.New("binding request did not verify with original session key")
+		}
+		g.requests++
+	}
+	clear(g.gssKey[:])
+	copy(g.gssKey[:], g.initiator.SessionKey())
+	g.hash(data)
+	return nil
+}
+
+func (g *multichannelGMACTrace) response(data []byte) error {
+	h := wire.PacketCodec(data)
+	if h.Command() == wire.SMB2_NEGOTIATE {
+		g.hash(data)
+	}
+	if h.Command() != wire.SMB2_SESSION_SETUP {
+		return nil
+	}
+	if h.Status() == uint32(erref.STATUS_MORE_PROCESSING_REQUIRED) {
+		if g.binding {
+			if !multichannelVerifyGMAC(g.originalKey, data) {
+				return errors.New("binding intermediate response did not verify with original session key")
+			}
+			g.intermediate++
+		}
+		g.hash(data)
+		return nil
+	}
+	if h.Status() != 0 {
+		return nil
+	}
+	// SP800-108 HMAC-SHA256 KDF, SMBSigningKey label, current channel preauth.
+	kdf := hmac.New(sha256.New, g.gssKey[:])
+	kdf.Write([]byte{0, 0, 0, 1})
+	kdf.Write([]byte("SMBSigningKey\x00"))
+	kdf.Write([]byte{0}) // SP800-108 separator after the NUL-terminated SMB label.
+	kdf.Write(g.preauth[:])
+	kdf.Write([]byte{0, 0, 0, 128})
+	copy(g.channelKey[:], kdf.Sum(nil))
+	if !multichannelVerifyGMAC(g.channelKey, data) {
+		return errors.New("final response did not verify with channel key and preauth")
+	}
+	if g.binding && multichannelVerifyGMAC(g.originalKey, data) {
+		return errors.New("binding final response unexpectedly verified with original session key")
+	}
+	g.final = true
+	clear(g.gssKey[:])
+	g.initiator = nil
+	return nil
+}
+
+var manualMultichannelEncrypted = flag.Bool("smb2.multichannel-encrypted", false, "require encrypted file I/O in the selected manual multichannel environment")
+
+var manualMultichannelEnv = flag.String("smb2.multichannel-env", "", "run manual multichannel integration only against this configured environment")
+
+// multichannelTraceConn records header metadata only; authentication tokens and
+// file contents are never retained in the trace or logged. The frame buffers are
+// transient. Fault injection models a peer/link failure on this owned socket.
+type multichannelTraceConn struct {
+	net.Conn
+	closeOnce           sync.Once
+	closeErr            error
+	closed              bool
+	mu                  sync.Mutex
+	tx                  []byte
+	rx                  []byte
+	packets             []multichannelTracePacket
+	dropWriteResponse   bool
+	dropped             bool
+	droppedStatus       uint32
+	dialect             uint16
+	capabilities        uint32
+	signing             wire.SigningAlgorithm
+	cipherID            wire.Cipher
+	offeredSigning      []wire.SigningAlgorithm
+	offeredCiphers      []wire.Cipher
+	gmac                *multichannelGMACTrace
+	dropBindingResponse bool
+	bindingDropped      bool
+	expectedCommand     wire.Command // Set only around a serialized file operation; never decoded from ciphertext.
+	encryptedResponses  int
+	plainIOResponses    int
+}
+
+type multichannelTracePacket struct {
+	command   wire.Command
+	tree      uint32
+	session   uint64
+	binding   bool
+	signed    bool
+	file      [16]byte
+	encrypted bool
+	nonce     [16]byte
+}
+
+func (c *multichannelTraceConn) Close() error {
+	c.closeOnce.Do(func() {
+		c.closeErr = c.Conn.Close()
+		c.mu.Lock()
+		c.closed = true
+		c.mu.Unlock()
+	})
+	return c.closeErr
+}
+
+func (c *multichannelTraceConn) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n, err := c.Conn.Write(p)
+	c.tx = append(c.tx, p[:n]...)
+	for len(c.tx) >= 4 {
+		size := int(binary.BigEndian.Uint32(c.tx[:4]))
+		if size < 64 || size > 1<<24-1 {
+			return n, errors.New("invalid traced SMB frame")
+		}
+		if len(c.tx)-4 < size {
+			break
+		}
+		data := c.tx[4 : 4+size]
+		if data[0] == 0xfd {
+			transform := wire.TransformCodec(data)
+			if transform.IsInvalid() {
+				return n, errors.New("invalid traced transform")
+			}
+			packet := multichannelTracePacket{encrypted: true, session: transform.SessionId(), command: c.expectedCommand}
+			copy(packet.nonce[:], transform.Nonce())
+			c.packets = append(c.packets, packet)
+			clear(c.tx[:4+size])
+			c.tx = c.tx[4+size:]
+			continue
+		}
+		header := wire.PacketCodec(data)
+		if header.IsInvalid() {
+			return n, errors.New("invalid traced SMB header")
+		}
+		if c.gmac != nil {
+			if err := c.gmac.request(data); err != nil {
+				return n, err
+			}
+		}
+		if header.Command() == wire.SMB2_NEGOTIATE {
+			r := wire.NegotiateRequestDecoder(data[64:])
+			if r.IsInvalid() {
+				return n, errors.New("invalid traced negotiate request")
+			}
+			for _, nc := range r.Contexts().Contexts() {
+				switch nc.ContextType() {
+				case wire.SMB2_SIGNING_CAPABILITIES:
+					v := wire.SigningContextDataDecoder(nc.Data())
+					if v.IsInvalid() {
+						return n, errors.New("invalid traced signing offer")
+					}
+					c.offeredSigning = v.SigningAlgorithms()
+				case wire.SMB2_ENCRYPTION_CAPABILITIES:
+					v := wire.CipherContextDataDecoder(nc.Data())
+					if v.IsInvalid() {
+						return n, errors.New("invalid traced cipher offer")
+					}
+					c.offeredCiphers = v.Ciphers()
+				}
+			}
+		}
+		packet := multichannelTracePacket{command: header.Command(), tree: header.TreeId(), session: header.SessionId()}
+		packet.signed = header.Flags()&wire.SMB2_FLAGS_SIGNED != 0
+		switch packet.command {
+		case wire.SMB2_READ:
+			r := wire.ReadRequestDecoder(data[64:])
+			if r.IsInvalid() {
+				return n, errors.New("invalid traced read request")
+			}
+			copy(packet.file[:], r.FileId())
+		case wire.SMB2_WRITE:
+			r := wire.WriteRequestDecoder(data[64:])
+			if r.IsInvalid() {
+				return n, errors.New("invalid traced write request")
+			}
+			copy(packet.file[:], r.FileId())
+		}
+
+		if packet.command == wire.SMB2_SESSION_SETUP {
+			r := wire.SessionSetupRequestDecoder(data[64:])
+			if r.IsInvalid() {
+				return n, errors.New("invalid traced setup request")
+			}
+			packet.binding = r.Flags()&wire.SMB2_SESSION_FLAG_BINDING != 0
+		}
+		c.packets = append(c.packets, packet)
+		clear(c.tx[:4+size])
+		c.tx = c.tx[4+size:]
+	}
+	return n, err
+}
+
+func (c *multichannelTraceConn) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if len(c.rx) == 0 {
+		var head [4]byte
+		if _, err := io.ReadFull(c.Conn, head[:]); err != nil {
+			return 0, err
+		}
+		size := int(binary.BigEndian.Uint32(head[:]))
+		if size < 64 || size > 1<<24-1 {
+			return 0, errors.New("invalid traced response frame")
+		}
+		frame := make([]byte, 4+size)
+		copy(frame, head[:])
+		if _, err := io.ReadFull(c.Conn, frame[4:]); err != nil {
+			return 0, err
+		}
+		if frame[4] == 0xfd {
+			transform := wire.TransformCodec(frame[4:])
+			if transform.IsInvalid() {
+				return 0, errors.New("invalid traced response transform")
+			}
+			c.mu.Lock()
+			c.encryptedResponses++
+			drop := c.dropWriteResponse && c.expectedCommand == wire.SMB2_WRITE
+			if drop {
+				c.dropped = true
+			}
+			c.mu.Unlock()
+			if drop {
+				clear(frame)
+				_ = c.Close()
+				return 0, io.ErrUnexpectedEOF
+			}
+			c.rx = frame
+		} else {
+			header := wire.PacketCodec(frame[4:])
+			if header.IsInvalid() {
+				return 0, errors.New("invalid traced response header")
+			}
+			c.mu.Lock()
+			if header.Command() == wire.SMB2_NEGOTIATE && header.Status() == 0 {
+				r := wire.NegotiateResponseDecoder(frame[68:])
+				if r.IsInvalid() {
+					c.mu.Unlock()
+					return 0, errors.New("invalid negotiate response")
+				}
+				c.dialect, c.capabilities = r.DialectRevision(), r.Capabilities()
+				c.signing, c.cipherID = wire.AES128CMAC, wire.AES128CCM
+				for _, nc := range r.Contexts().Contexts() {
+					switch nc.ContextType() {
+					case wire.SMB2_SIGNING_CAPABILITIES:
+						v := wire.SigningContextDataDecoder(nc.Data())
+						if v.IsInvalid() || len(v.SigningAlgorithms()) != 1 {
+							c.mu.Unlock()
+							return 0, errors.New("invalid traced selected signing algorithm")
+						}
+						c.signing = v.SigningAlgorithms()[0]
+					case wire.SMB2_ENCRYPTION_CAPABILITIES:
+						v := wire.CipherContextDataDecoder(nc.Data())
+						if v.IsInvalid() || len(v.Ciphers()) != 1 {
+							c.mu.Unlock()
+							return 0, errors.New("invalid traced selected cipher")
+						}
+						c.cipherID = v.Ciphers()[0]
+					}
+				}
+			}
+			if c.gmac != nil {
+				if err := c.gmac.response(frame[4:]); err != nil {
+					c.mu.Unlock()
+					return 0, err
+				}
+			}
+			if c.dropBindingResponse && header.Command() == wire.SMB2_SESSION_SETUP && header.Status() == uint32(erref.STATUS_MORE_PROCESSING_REQUIRED) {
+				c.bindingDropped = true
+				c.mu.Unlock()
+				clear(frame)
+				_ = c.Close()
+				return 0, io.ErrUnexpectedEOF
+			}
+			if header.Command() == wire.SMB2_READ || header.Command() == wire.SMB2_WRITE {
+				c.plainIOResponses++
+			}
+			drop := c.dropWriteResponse && header.Command() == wire.SMB2_WRITE
+			if drop {
+				c.dropped, c.droppedStatus = true, header.Status()
+			}
+			c.mu.Unlock()
+			if drop {
+				clear(frame)
+				_ = c.Close()
+				return 0, io.ErrUnexpectedEOF
+			}
+			c.rx = frame
+		}
+	}
+	n := copy(p, c.rx)
+	clear(c.rx[:n])
+	c.rx = c.rx[n:]
+	return n, nil
+}
+
+func (c *multichannelTraceConn) trace() []multichannelTracePacket {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.packets)
+}
+
+func TestManualMultichannel(t *testing.T) {
+	if testing.Short() || *manualMultichannelEnv == "" {
+		t.Skip("select an owned integration environment with -smb2.multichannel-env")
+	}
+	t.Parallel()
+	var selected *config
+	for _, cfg := range readTestConfigs() {
+		if cfg.Name == *manualMultichannelEnv {
+			require.True(t, selected == nil, "environment name must be unique")
+			selected = &cfg
+		}
+	}
+	require.NotNil(t, selected, "selected environment is missing")
+	cfg := *selected
+	require.Equal(t, "tcp", cfg.Transport.Type)
+	require.Equal(t, "ntlm", cfg.Session.Type, "this fixture uses existing NTLM credentials only")
+	for _, shareName := range []string{cfg.TreeConn.Share1, cfg.TreeConn.Share2} {
+		t.Run(shareName, func(t *testing.T) {
+			require.NotEmpty(t, shareName)
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			defer cancel()
+			var connections []*multichannelTraceConn // Dial and Bind are sequential in this fixture.
+			endpoint := net.JoinHostPort(cfg.Transport.Host, strconv.Itoa(cfg.Transport.Port))
+			credentials := &multichannelCredentials{Credentials: auth.NTLMCredential{User: cfg.Session.User, Password: cfg.Session.Password, Domain: cfg.Session.Domain, Workstation: cfg.Session.Workstation, TargetSPN: cfg.Session.TargetSPN}}
+			dialect := smb2.SMB302
+			if *manualMultichannelGMAC {
+				dialect = smb2.SMB311
+			}
+			failNextBind := false
+			dialer := &smb2.Dialer{
+				Credentials:           credentials,
+				RequireMessageSigning: true, SpecifiedDialects: []smb2.Dialect{dialect}, DisableAAPLExtension: true,
+				TransportDialer: transportDialerFunc(func(ctx context.Context, address string) (smb2.Transport, error) {
+					if address != cfg.Transport.Host && address != endpoint {
+						return nil, errors.New("fixture refused another endpoint")
+					}
+					conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", endpoint)
+					if err != nil {
+						return nil, err
+					}
+					traced := &multichannelTraceConn{Conn: conn, dropBindingResponse: failNextBind}
+					if *manualMultichannelGMAC {
+						traced.gmac = &multichannelGMACTrace{initiator: credentials.initiator}
+						if len(connections) > 0 {
+							connections[0].mu.Lock()
+							traced.gmac.originalKey = connections[0].gmac.channelKey
+							connections[0].mu.Unlock()
+						}
+					}
+					connections = append(connections, traced)
+					return smb2.NewTransport(traced), nil
+				}),
+			}
+			session, err := dialer.Dial(ctx, cfg.Transport.Host)
+			require.NoError(t, err, "initial authentication")
+			t.Cleanup(func() {
+				require.NoError(t, session.Close())
+				if *manualMultichannelEncrypted {
+					seen := make(map[[16]byte]bool)
+					for _, c := range connections {
+						for _, p := range c.trace() {
+							if !p.encrypted {
+								require.False(t, p.command == wire.SMB2_READ || p.command == wire.SMB2_WRITE, "file requests must be encrypted")
+								continue
+							}
+							require.False(t, seen[p.nonce], "outbound nonce reused across session channels")
+							nonceSize := 11
+							if c.cipherID == wire.AES128GCM || c.cipherID == wire.AES256GCM {
+								nonceSize = 12
+							}
+							require.True(t, bytes.Equal(p.nonce[nonceSize:], make([]byte, 16-nonceSize)), "nonce reserved bytes")
+							seen[p.nonce] = true
+						}
+					}
+					require.NotEmpty(t, seen)
+					t.Logf("session outbound encryption nonces: %d unique across %d connections", len(seen), len(connections))
+				}
+				for _, c := range connections {
+					func() {
+						c.mu.Lock()
+						defer c.mu.Unlock()
+						closed := c.closed
+						if c.gmac != nil {
+							require.Equal(t, wire.AES128GMAC, c.signing)
+							require.Equal(t, uint16(wire.SMB311), c.dialect)
+							if c.gmac.binding {
+								require.Equal(t, []wire.SigningAlgorithm{wire.AES128GMAC}, c.offeredSigning)
+								require.Equal(t, []wire.Cipher{connections[0].cipherID}, c.offeredCiphers)
+								require.Positive(t, c.gmac.requests)
+								require.Positive(t, c.gmac.intermediate)
+							}
+							require.Equal(t, !c.bindingDropped, c.gmac.final)
+							t.Logf("GMAC wire verification: binding=%t requests(session key)=%d intermediate(session key)=%d final(derived key)=%t final rejects original binding key=%t interrupted=%t", c.gmac.binding, c.gmac.requests, c.gmac.intermediate, c.gmac.final, c.gmac.binding && c.gmac.final, c.bindingDropped)
+							clear(c.gmac.originalKey[:])
+							clear(c.gmac.channelKey[:])
+							clear(c.gmac.gssKey[:])
+							c.gmac.initiator = nil
+						}
+						plainResponses := c.plainIOResponses
+						require.True(t, closed, "session cleanup must close every owned socket")
+						if *manualMultichannelEncrypted {
+							require.Zero(t, plainResponses, "file responses must be encrypted")
+						}
+					}()
+				}
+				t.Log("session cleanup: PASS (all owned sockets closed)")
+			})
+			require.NoError(t, session.BindChannel(ctx, endpoint), "bind second channel")
+			require.Len(t, connections, 2)
+			for i, c := range connections {
+				c.mu.Lock()
+				dialect, caps := c.dialect, c.capabilities
+				c.mu.Unlock()
+				require.Equal(t, uint16(dialer.SpecifiedDialects[0]), dialect)
+				require.NotZero(t, caps&wire.SMB2_GLOBAL_CAP_MULTI_CHANNEL)
+				t.Logf("channel %d: dialect=%#x signing=%#x cipher=%#x MULTI_CHANNEL, authenticated", i, dialect, c.signing, c.cipherID)
+			}
+			bound := false
+			for _, p := range connections[1].trace() {
+				bound = bound || p.binding
+				if p.binding {
+					require.True(t, p.signed, "binding must be signed")
+				}
+			}
+			require.True(t, bound, "second connection must send binding SESSION_SETUP")
+			t.Log("bind: PASS")
+			share, err := session.Mount(ctx, shareName) // SMB TREE_CONNECT, never an OS filesystem mount.
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				clean, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				require.NoError(t, share.Unmount(clean))
+			})
+			dir := "go-smb2-multichannel-" + rand.Text()
+			require.NoError(t, share.Mkdir(ctx, dir, 0o700)) // Success establishes exclusive fixture ownership.
+			t.Cleanup(func() {
+				clean, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				require.NoError(t, share.RemoveAll(clean, dir))
+				_, err := share.Stat(clean, dir)
+				require.ErrorIs(t, err, os.ErrNotExist)
+				t.Logf("cleanup: PASS (%s)", dir)
+			})
+			file, err := share.OpenFile(ctx, pathpkg.Join(dir, "payload"), os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				clean, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				require.NoError(t, file.Close(clean))
+			})
+			// Only one API operation is outstanding during these probes. Labels
+			// correlate opaque encrypted frames with that operation; we do not
+			// decrypt or claim to inspect its inner TreeId/FileId/command.
+			setOperation := func(command wire.Command) {
+				for _, c := range connections {
+					c.mu.Lock()
+					c.expectedCommand = command
+					c.mu.Unlock()
+				}
+			}
+			writeAt := func(ctx context.Context, data []byte, off int64) (int, error) {
+				setOperation(wire.SMB2_WRITE)
+				defer setOperation(0)
+				return file.WriteAt(ctx, data, off)
+			}
+			readAt := func(ctx context.Context, data []byte, off int64) (int, error) {
+				setOperation(wire.SMB2_READ)
+				defer setOperation(0)
+				return file.ReadAt(ctx, data, off)
+			}
+			payload := bytes.Repeat([]byte("multichannel-content-"), 128)
+			for i := range 4 {
+				off := int64(i * len(payload))
+				n, err := writeAt(ctx, payload, off)
+				require.NoError(t, err)
+				require.Equal(t, len(payload), n)
+			}
+			for i := range 4 {
+				got := make([]byte, len(payload))
+				n, err := readAt(ctx, got, int64(i*len(payload)))
+				require.NoError(t, err)
+				require.Equal(t, len(got), n)
+				require.True(t, bytes.Equal(payload, got), "file content mismatch")
+			}
+			var tree uint32
+			var sessionID uint64
+			var fileID [16]byte
+			for i, c := range connections {
+				reads, writes := 0, 0
+				for _, p := range c.trace() {
+					if p.command != wire.SMB2_READ && p.command != wire.SMB2_WRITE {
+						continue
+					}
+					if sessionID == 0 {
+						tree, sessionID, fileID = p.tree, p.session, p.file
+					}
+					require.Equal(t, sessionID, p.session)
+					if !p.encrypted {
+						require.Equal(t, tree, p.tree)
+						require.Equal(t, fileID, p.file)
+					}
+					require.Equal(t, *manualMultichannelEncrypted, p.encrypted, "file I/O encryption")
+					if !p.encrypted {
+						require.True(t, p.signed, "plain file I/O must be signed")
+					}
+					if p.command == wire.SMB2_READ {
+						reads++
+					} else {
+						writes++
+					}
+				}
+				require.Positive(t, reads)
+				require.Positive(t, writes)
+				if *manualMultichannelEncrypted {
+					c.mu.Lock()
+					responses := c.encryptedResponses
+					c.mu.Unlock()
+					require.Positive(t, responses)
+					t.Logf("channel %d: encrypted READ=%d WRITE=%d responses=%d, same open File", i, reads, writes, responses)
+				} else {
+					t.Logf("channel %d: READ=%d WRITE=%d same Tree/File", i, reads, writes)
+				}
+			}
+			t.Log("content correctness: PASS")
+			if *manualMultichannelEncrypted {
+				// Separate ranges are supported concurrently on the same File.
+				// No operation labels are attached to these parallel frames.
+				results := make(chan error, 8)
+				for i := range 8 {
+					go func() {
+						off := int64((8 + i) * len(payload))
+						n, err := file.WriteAt(ctx, payload, off)
+						if err == nil && n != len(payload) {
+							err = io.ErrShortWrite
+						}
+						if err == nil {
+							got := make([]byte, len(payload))
+							n, err = file.ReadAt(ctx, got, off)
+							if err == nil && (n != len(payload) || !bytes.Equal(payload, got)) {
+								err = errors.New("parallel file content mismatch")
+							}
+						}
+						results <- err
+					}()
+				}
+				var operationErrors []error
+				for range 8 {
+					operationErrors = append(operationErrors, <-results)
+				}
+				for _, err := range operationErrors {
+					require.NoError(t, err)
+				}
+				t.Log("parallel encrypted I/O on 8 disjoint ranges: PASS")
+			}
+
+			if *manualMultichannelGMAC {
+				failNextBind = true
+				require.Error(t, session.BindChannel(ctx, endpoint), "interrupt binding after its authenticated intermediate response")
+				failNextBind = false
+				failed := connections[len(connections)-1]
+				failed.mu.Lock()
+				wasDropped, wasClosed := failed.bindingDropped, failed.closed
+				failed.mu.Unlock()
+				require.True(t, wasDropped)
+				require.True(t, wasClosed)
+				require.NoError(t, session.Echo(ctx))
+				require.NoError(t, session.Echo(ctx))
+				require.NoError(t, session.BindChannel(ctx, endpoint), "retry binding on a fresh connection")
+				t.Log("interrupted binding, existing channels preserved, fresh retry: PASS")
+			}
+
+			require.NoError(t, connections[0].Close()) // Explicit owned-link failure, not request cancellation.
+			// Observe receiver teardown through a read-only probe; never retry writes.
+			require.Eventually(t, func() bool { return session.Echo(ctx) == nil && session.Echo(ctx) == nil }, 5*time.Second, 10*time.Millisecond)
+			got := make([]byte, len(payload))
+			_, err = readAt(ctx, got, 0)
+			require.NoError(t, err)
+			require.True(t, bytes.Equal(payload, got), "file content mismatch")
+			_, err = writeAt(ctx, payload, int64(4*len(payload)))
+			require.NoError(t, err)
+			t.Log("one channel disconnected, new same-file I/O: PASS")
+			require.NoError(t, session.BindChannel(ctx, endpoint), "replace failed channel for independent unknown-WRITE test")
+			expectedConnections := 3
+			if *manualMultichannelGMAC {
+				expectedConnections += 2
+			}
+			require.Len(t, connections, expectedConnections)
+			countWrites := func() int {
+				n := 0
+				for _, c := range connections {
+					for _, p := range c.trace() {
+						if p.command == wire.SMB2_WRITE {
+							n++
+						}
+					}
+				}
+				return n
+			}
+			before := countWrites()
+			for _, c := range connections[1:] {
+				c.mu.Lock()
+				c.dropWriteResponse = true
+				c.mu.Unlock()
+			}
+			_, err = writeAt(ctx, payload, int64(5*len(payload)))
+			require.Error(t, err, "lost response must report unknown WRITE outcome")
+			dropped := 0
+			for i, c := range connections[1:] {
+				c.mu.Lock()
+				c.dropWriteResponse = false
+				didDrop, status := c.dropped, c.droppedStatus
+				c.mu.Unlock()
+				if didDrop {
+					dropped++
+					if !*manualMultichannelEncrypted {
+						require.Zero(t, status)
+					}
+					t.Logf("unknown WRITE: channel %d response discarded (completion checked by survivor read)", i+1)
+				}
+			}
+			require.Equal(t, 1, dropped)
+			require.Equal(t, 1, countWrites()-before, "unknown WRITE must not be sent again on another channel")
+			got = make([]byte, len(payload))
+			_, err = readAt(ctx, got, int64(5*len(payload)))
+			require.NoError(t, err)
+			require.True(t, bytes.Equal(payload, got), "file content mismatch")
+			require.Equal(t, 1, countWrites()-before)
+			t.Log("unknown WRITE non-replay and surviving-channel read: PASS")
+
+		})
+	}
+}

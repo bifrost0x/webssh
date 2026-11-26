@@ -1,0 +1,5535 @@
+package protocol
+
+import (
+	"bytes"
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/asn1"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"testing/synctest"
+	"time"
+
+	"github.com/hirochachacha/go-smb2/v2/internal/crypto/cmac"
+	"github.com/hirochachacha/go-smb2/v2/internal/erref"
+	"github.com/hirochachacha/go-smb2/v2/internal/ntlm"
+	"github.com/hirochachacha/go-smb2/v2/internal/spnego"
+	"github.com/hirochachacha/go-smb2/v2/x/wire"
+	"github.com/stretchr/testify/require"
+)
+
+func TestNewBenchConnCleanupWithCompletedReceiver(t *testing.T) {
+	t.Parallel()
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	c, cleanup := newBenchConn(clientConn)
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	c.closeLocked(nil)
+	c.transportClosed.Store(true)
+
+	cleanupWithTimeout := func() {
+		done := make(chan struct{})
+		go func() {
+			cleanup()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("cleanup timed out")
+		}
+	}
+
+	cleanupWithTimeout()
+	cleanupWithTimeout()
+}
+
+func TestConnLargePayloadCredits(t *testing.T) {
+	t.Parallel()
+	for _, size := range []int{2 * 1024 * 1024, 8 * 1024 * 1024, 255 * 64 * 1024} {
+		for _, write := range []bool{false, true} {
+			t.Run(fmt.Sprintf("size=%d/write=%t", size, write), func(t *testing.T) {
+				c := newCreditTestConn(wire.SMB210, wire.SMB2_GLOBAL_CAP_LARGE_MTU)
+				c.account = openAccount(256)
+				c.account.charge(255)
+				payloadSize := c.effectivePayloadSize(uint32(size), 0)
+				require.Equal(t, size, payloadSize)
+				var request wire.Packet = &wire.ReadRequest{Length: uint32(payloadSize)}
+				if write {
+					request = &wire.WriteRequest{Data: make([]byte, payloadSize)}
+				}
+				packet, _ := encodeOutstandingRequests(t, c, request)
+				header := wire.PacketCodec(packet)
+				charge := uint16(size / (64 * 1024))
+				require.Equal(t, charge, header.CreditCharge())
+				require.Zero(t, header.MessageId())
+				require.LessOrEqual(t, len(packet)+52, maxDirectTCPSize, "leave room for encryption")
+				if write {
+					body := wire.WriteRequestDecoder(header.Body())
+					require.False(t, body.IsInvalid())
+					require.Equal(t, size, len(body.Data()))
+				} else {
+					body := wire.ReadRequestDecoder(header.Body())
+					require.False(t, body.IsInvalid())
+					require.Equal(t, uint32(size), body.Length())
+				}
+				c.account.charge(charge, charge)
+				next, _ := encodeOutstandingRequests(t, c, &wire.EchoRequest{})
+				require.Equal(t, uint64(charge), wire.PacketCodec(next).MessageId())
+			})
+		}
+	}
+}
+
+const bufSize = 10 * (1 << 20)
+
+// newBenchConn creates a conn wired to a net.Pipe() with pre-set negotiated
+// parameters matching a typical SMB 3.0.2 connection. The returned cleanup
+// function tears down the sender/receiver goroutines.
+func newBenchConn(netConn net.Conn) (*conn, func()) {
+	c := &conn{
+		t:                   NewTransport(netConn),
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(512),
+		dialect:             wire.SMB302,
+		cipherId:            wire.AES128CCM,
+		maxReadSize:         1 << 20,
+		maxWriteSize:        1 << 20,
+		maxTransactSize:     1 << 20,
+		capabilities:        wire.SMB2_GLOBAL_CAP_LARGE_MTU,
+	}
+	c.account.charge(511) // replenish initial credits for bench connection
+	go c.runReceiver()
+
+	cleanup := func() {
+		c.transportClosed.Store(true)
+		netConn.Close()
+	}
+	return c, cleanup
+}
+
+// newGCM creates an AES-128-GCM cipher with nonce size 12.
+func newGCM(key []byte) cipher.AEAD {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+	gcm, err := cipher.NewGCMWithNonceSize(block, 12)
+	if err != nil {
+		panic(err)
+	}
+	return gcm
+}
+
+// fakeServer reads SMB2 requests from t and writes back a fixed ReadResponse or WriteResponse.
+func fakeServer(t Transport, responseData []byte, sessionId uint64) {
+	for {
+		rp, err := t.readPacket()
+		if err != nil {
+			return
+		}
+
+		p := rp.codec()
+		cmd := p.Command()
+		msgId := p.MessageId()
+
+		var respBuf []byte
+		if cmd == wire.SMB2_WRITE {
+			wreq := wire.WriteRequestDecoder(rp.data())
+			wres := &wire.WriteResponse{
+				Flags:     wire.SMB2_FLAGS_SERVER_TO_REDIR,
+				SessionId: sessionId,
+				Count:     wreq.Length(),
+			}
+			respBuf = make([]byte, wres.Size())
+			wres.Encode(respBuf)
+		} else {
+			rreq := wire.ReadRequestDecoder(rp.data())
+			readLen := min(int(rreq.Length()), len(responseData))
+			resp := &wire.ReadResponse{
+				Flags:     wire.SMB2_FLAGS_SERVER_TO_REDIR,
+				SessionId: sessionId,
+				Data:      responseData[:readLen],
+			}
+			respBuf = make([]byte, resp.Size())
+			resp.Encode(respBuf)
+		}
+
+		outPkt := wire.PacketCodec(respBuf)
+		outPkt.SetMessageId(msgId)
+		outPkt.SetCreditResponse(p.CreditRequest())
+
+		rp.close()
+
+		if _, err := t.writev(respBuf); err != nil {
+			return
+		}
+	}
+}
+
+// fakeServerEncrypted reads encrypted SMB2 requests, decrypts them, and writes
+// back encrypted responses.
+func fakeServerEncrypted(t Transport, responseData []byte, dec, enc cipher.AEAD, sessionId uint64) {
+	decBuf := make([]byte, 0, bufSize+16) // decrypt work buffer
+
+	for {
+		rp, err := t.readPacket()
+		if err != nil {
+			return
+		}
+
+		// Decrypt incoming request.
+		tc := rp.transformCodec()
+		decBuf = append(decBuf[:0], tc.EncryptedData()...)
+		decBuf = append(decBuf, tc.Signature()...)
+		plain, err := dec.Open(decBuf[:0], tc.Nonce()[:dec.NonceSize()], decBuf, tc.AssociatedData())
+		rp.close()
+		if err != nil {
+			return
+		}
+
+		p := wire.PacketCodec(plain)
+		cmd := p.Command()
+		msgId := p.MessageId()
+
+		var plainResp []byte
+		if cmd == wire.SMB2_WRITE {
+			wreq := wire.WriteRequestDecoder(plain[64:])
+			wres := &wire.WriteResponse{
+				Flags:     wire.SMB2_FLAGS_SERVER_TO_REDIR,
+				SessionId: sessionId,
+				Count:     wreq.Length(),
+			}
+			plainResp = make([]byte, wres.Size())
+			wres.Encode(plainResp)
+		} else {
+			rreq := wire.ReadRequestDecoder(plain[64:])
+			readLen := min(int(rreq.Length()), len(responseData))
+			resp := &wire.ReadResponse{
+				Flags:     wire.SMB2_FLAGS_SERVER_TO_REDIR,
+				SessionId: sessionId,
+				Data:      responseData[:readLen],
+			}
+			plainResp = make([]byte, resp.Size())
+			resp.Encode(plainResp)
+		}
+
+		// Patch MessageId and CreditResponse into the template.
+		outPkt := wire.PacketCodec(plainResp)
+		outPkt.SetMessageId(msgId)
+		outPkt.SetCreditResponse(p.CreditRequest())
+
+		// Encrypt Response.
+		encBuf := make([]byte, 52+len(plainResp)+16)
+		tt := wire.TransformCodec(encBuf)
+		nonce := tt.Nonce()[:enc.NonceSize()]
+		if _, err := rand.Read(nonce); err != nil {
+			return
+		}
+		tt.SetProtocolId()
+		tt.SetOriginalMessageSize(uint32(len(plainResp)))
+		tt.SetFlags(wire.Encrypted)
+		tt.SetSessionId(sessionId)
+
+		sealed := enc.Seal(encBuf[:52], nonce, plainResp, tt.AssociatedData())
+		copy(encBuf[4:20], sealed[len(sealed)-16:]) // move tag to signature field
+
+		if _, err := t.writev(sealed[:len(sealed)-16]); err != nil {
+			return
+		}
+	}
+}
+
+func readMsg(t Transport) ([]byte, error) {
+	rp, err := t.readPacket()
+	if err != nil {
+		return nil, err
+	}
+	defer rp.close()
+	return append([]byte(nil), rp.bytes()...), nil
+}
+
+func TestConnRecvPrefersBufferedResponseOverCanceledContext(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	c := &conn{
+		outstandingRequests: newOutstandingRequests(),
+	}
+
+	echoRes := &wire.EchoResponse{}
+	resBuf := make([]byte, echoRes.Size())
+	echoRes.Encode(resBuf)
+	p := wire.PacketCodec(resBuf)
+	p.SetMessageId(1)
+	p.SetStatus(uint32(erref.STATUS_SUCCESS))
+	p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+
+	// The Response has already arrived on the request's channel while the
+	// context is already canceled: the response must win over the
+	// cancellation instead of being discarded as context.Canceled.
+	for i := range 50 {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		rr := &outstandingRequest{
+			msgId: uint64(i) + 1,
+			cmd:   wire.SMB2_ECHO,
+			ctx:   ctx,
+			recv:  make(chan *recvPacket, 1),
+		}
+		c.outstandingRequests.set(rr.msgId, rr)
+
+		rp := allocRecvPacket(len(resBuf))
+		copy(rp.pkt, resBuf)
+		buf := rp.buf
+		rr.recv <- rp
+
+		got, err := c.recv(rr)
+		require.NoError(err, "buffered Response must not be dropped in favor of context cancellation")
+		require.NotNil(got)
+		require.Equal(resBuf, got.bytes())
+		got.close()
+
+		// the response buffer must not leak either
+		require.Equal(int32(0), buf.refCount.Load())
+	}
+}
+
+func TestConnRecvBufferedCancellationPreservesContextError(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name   string
+		ctxErr error
+		status erref.NtStatus
+	}{
+		{name: "canceled", ctxErr: context.Canceled, status: erref.STATUS_CANCELLED},
+		{name: "deadline", ctxErr: context.DeadlineExceeded, status: erref.STATUS_CANCELLED},
+		{name: "server cancellation", status: erref.STATUS_CANCELLED},
+		{name: "unrelated error", ctxErr: context.Canceled, status: erref.STATUS_ACCESS_DENIED},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			if test.ctxErr == context.Canceled {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			} else if test.ctxErr == context.DeadlineExceeded {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithDeadline(ctx, time.Time{})
+				defer cancel()
+			}
+			rr := &outstandingRequest{
+				cmd:  wire.SMB2_READ,
+				ctx:  ctx,
+				recv: make(chan *recvPacket, 1),
+			}
+			res := &wire.ErrorResponse{CommandCode: wire.SMB2_READ}
+			rp := allocRecvPacket(res.Size())
+			clear(rp.pkt) // Encode requires a zero-initialized destination.
+			res.Encode(rp.pkt)
+			rp.codec().SetStatus(uint32(test.status))
+			rp.codec().SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+			buf := rp.buf
+			// Keep the buffer out of the shared pool until the release assertion.
+			buf.refCount.Add(1)
+			t.Cleanup(func() { releaseRecvBuf(buf) })
+			// Queue the response first so this covers the race deterministically.
+			rr.recv <- rp
+			got, err := (&conn{}).recv(rr)
+			require.Nil(t, got)
+			if test.ctxErr != nil && test.status == erref.STATUS_CANCELLED {
+				require.ErrorIs(t, err, test.ctxErr)
+			} else {
+				var responseErr *ResponseError
+				require.ErrorAs(t, err, &responseErr)
+				require.Equal(t, uint32(test.status), responseErr.Code)
+			}
+			require.EqualValues(t, 1, buf.refCount.Load())
+		})
+	}
+}
+
+func TestConnRecvLockCancelKeepsFinalOutcome(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	for _, test := range []struct {
+		name       string
+		status     erref.NtStatus
+		wantCtxErr bool
+	}{
+		{name: "success", status: erref.STATUS_SUCCESS},
+		{name: "cancelled", status: erref.STATUS_CANCELLED, wantCtxErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			rr := &outstandingRequest{
+				msgId:    1,
+				cmd:      wire.SMB2_LOCK,
+				ctx:      ctx,
+				recv:     make(chan *recvPacket, 1),
+				lockWait: true,
+			}
+			c := &conn{
+				outstandingRequests: newOutstandingRequests(),
+				err:                 &TransportError{Err: net.ErrClosed},
+			}
+
+			cancel()
+			go func() {
+				var res wire.Packet = &wire.LockResponse{}
+				if test.wantCtxErr {
+					res = &wire.ErrorResponse{CommandCode: wire.SMB2_LOCK}
+				}
+				buf := make([]byte, res.Size())
+				res.Encode(buf)
+				p := wire.PacketCodec(buf)
+				p.SetMessageId(rr.msgId)
+				p.SetStatus(uint32(test.status))
+				p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+				rr.recv <- &recvPacket{pkt: buf}
+			}()
+
+			got, err := c.recv(rr)
+			if test.wantCtxErr {
+				require.Nil(got)
+				require.ErrorIs(err, context.Canceled)
+			} else {
+				require.NoError(err)
+				require.NotNil(got)
+				got.close()
+			}
+		})
+	}
+}
+
+func TestConnRecvLockFinalResponseWinsWhenAlreadyBuffered(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name       string
+		status     erref.NtStatus
+		wantCtxErr bool
+	}{
+		{name: "success", status: erref.STATUS_SUCCESS},
+		{name: "cancelled", status: erref.STATUS_CANCELLED, wantCtxErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			rr := &outstandingRequest{
+				msgId:    1,
+				cmd:      wire.SMB2_LOCK,
+				ctx:      ctx,
+				recv:     make(chan *recvPacket, 1),
+				lockWait: true,
+			}
+			var res wire.Packet = &wire.LockResponse{}
+			if test.wantCtxErr {
+				res = &wire.ErrorResponse{CommandCode: wire.SMB2_LOCK}
+			}
+			buf := make([]byte, res.Size())
+			res.Encode(buf)
+			p := wire.PacketCodec(buf)
+			p.SetMessageId(rr.msgId)
+			p.SetStatus(uint32(test.status))
+			p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+			rr.recv <- &recvPacket{pkt: buf}
+			cancel()
+
+			c := &conn{outstandingRequests: newOutstandingRequests()}
+			got, err := c.recv(rr)
+			if test.wantCtxErr {
+				require.Nil(t, got)
+				require.ErrorIs(t, err, context.Canceled)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, got)
+				got.close()
+			}
+		})
+	}
+}
+
+func TestRecvClosedChannelNilErr(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	c := &conn{
+		outstandingRequests: newOutstandingRequests(),
+	}
+
+	t.Run("returns rr.err when set", func(t *testing.T) {
+		// simulates conn.close(err) shutting down outstanding requests
+		rr := &outstandingRequest{
+			cmd:  wire.SMB2_ECHO,
+			ctx:  context.Background(),
+			recv: make(chan *recvPacket),
+			err:  fmt.Errorf("connection closed"),
+		}
+		close(rr.recv)
+
+		_, err := c.recv(rr)
+		require.Error(err)
+		require.Equal(rr.err, err)
+	})
+
+	t.Run("returns TransportError when rr.err is nil", func(t *testing.T) {
+		// simulates conn.close(nil) during logoff shutting down outstanding requests
+		rr := &outstandingRequest{
+			cmd:  wire.SMB2_ECHO,
+			ctx:  context.Background(),
+			recv: make(chan *recvPacket),
+			err:  nil,
+		}
+		close(rr.recv)
+
+		_, err := c.recv(rr)
+		require.Error(err)
+		require.ErrorIs(err, net.ErrClosed)
+		var te *TransportError
+		require.ErrorAs(err, &te)
+	})
+}
+
+func TestConnRecvShutdownWithBufferedPacketClosesPacket(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	c := &conn{
+		outstandingRequests: newOutstandingRequests(),
+	}
+
+	rr := &outstandingRequest{
+		msgId: 1,
+		cmd:   wire.SMB2_ECHO,
+		ctx:   context.Background(),
+		recv:  make(chan *recvPacket, 1),
+	}
+	c.outstandingRequests.set(rr.msgId, rr)
+
+	rp := allocRecvPacket(64)
+	buf := rp.buf
+
+	// The Response arrives on the request's channel right before the
+	// connection is torn down.
+	rr.recv <- rp
+
+	shutdownErr := fmt.Errorf("connection closed by peer")
+	c.outstandingRequests.shutdown(shutdownErr)
+
+	_, err := c.recv(rr)
+	require.Error(err)
+	require.Equal(shutdownErr, err)
+
+	// The buffered packet must be closed so its buffer refcount drops to 0;
+	// otherwise the pooled buffer leaks.
+	require.Equal(int32(0), buf.refCount.Load(), "buffered response packet leaked on shutdown")
+}
+
+type compoundTestReceiver func(*outstandingRequest) (*recvPacket, error)
+
+func (receive compoundTestReceiver) recv(rr *outstandingRequest) (*recvPacket, error) {
+	return receive(rr)
+}
+
+func compoundEchoResponse(msgID uint64, status erref.NtStatus, grant uint16) []byte {
+	var res wire.Packet = &wire.EchoResponse{}
+	if status != erref.STATUS_SUCCESS {
+		res = &wire.ErrorResponse{CommandCode: wire.SMB2_ECHO}
+	}
+	buf := make([]byte, res.Size())
+	res.Encode(buf)
+	p := wire.PacketCodec(buf)
+	p.SetMessageId(msgID)
+	p.SetStatus(uint32(status))
+	p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+	p.SetCreditResponse(grant)
+	return buf
+}
+
+func TestCompoundResponsesPreserveCreditsAndIndexes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		grants []uint16
+		wait   bool
+	}{
+		{name: "wait-after-first-error", grants: []uint16{1, 0, 0}, wait: true},
+		{name: "wait-after-first-error-with-three-grant", grants: []uint16{0, 0, 3}, wait: true},
+		{name: "responses-already-buffered", grants: []uint16{1, 0, 0}},
+		{name: "responses-already-buffered-with-three-grant", grants: []uint16{0, 0, 3}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clientConn, serverConn := net.Pipe()
+			defer clientConn.Close()
+			defer serverConn.Close()
+
+			c := &conn{
+				t:                   NewTransport(clientConn),
+				outstandingRequests: newOutstandingRequests(),
+				account:             openAccount(3),
+			}
+			c.account.charge(2) // Initial available balance is three credits.
+			go c.runReceiver()
+			defer c.close(nil)
+
+			firstWritten := make(chan struct{})
+			allWritten := make(chan struct{})
+			release := make(chan struct{})
+			serverDone := make(chan struct{})
+			go func() {
+				defer close(serverDone)
+				st := NewTransport(serverConn)
+				reqBuf, err := readMsg(st)
+				if err != nil {
+					return
+				}
+				p := wire.PacketCodec(reqBuf)
+				statuses := []erref.NtStatus{
+					erref.STATUS_ACCESS_DENIED,
+					erref.STATUS_SUCCESS,
+					erref.STATUS_INVALID_PARAMETER,
+				}
+				writeResponse := func(i int) error {
+					buf := compoundEchoResponse(p.MessageId()+uint64(i), statuses[i], tc.grants[i])
+					if i > 0 {
+						rp := wire.PacketCodec(buf)
+						rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_RELATED_OPERATIONS)
+					}
+					_, err := st.writev(buf)
+					return err
+				}
+
+				if err := writeResponse(0); err != nil {
+					return
+				}
+				close(firstWritten)
+				if tc.wait {
+					<-release
+				}
+				for i := 2; i >= 1; i-- {
+					if err := writeResponse(i); err != nil {
+						return
+					}
+				}
+				close(allWritten)
+			}()
+
+			reqs := []wire.Packet{&wire.EchoRequest{}, &wire.EchoRequest{}, &wire.EchoRequest{}}
+			rrs, err := c.send(context.Background(), false, reqs...)
+			require.NoError(t, err)
+
+			if !tc.wait {
+				<-allWritten
+				require.Eventually(t, func() bool {
+					return len(rrs[0].recv) == 1 && len(rrs[1].recv) == 1 && len(rrs[2].recv) == 1
+				}, time.Second, time.Millisecond)
+			}
+			waitingForSecond := make(chan struct{})
+			receiver := compoundTestReceiver(func(rr *outstandingRequest) (*recvPacket, error) {
+				if rr == rrs[1] {
+					close(waitingForSecond)
+				}
+				return c.recv(rr)
+			})
+			var res *Response
+			var recvErr error
+			recvDone := make(chan struct{})
+			go func() {
+				res, recvErr = recvAll(rrs, receiver)
+				close(recvDone)
+			}()
+
+			if tc.wait {
+				<-firstWritten
+				select {
+				case <-waitingForSecond:
+				case <-time.After(time.Second):
+					t.Fatal("recvAll did not request the response after the first error")
+				}
+				select {
+				case <-recvDone:
+					t.Fatal("recvAll returned before the later responses")
+				default:
+				}
+				require.Eventually(t, func() bool {
+					c.account.m.Lock()
+					defer c.account.m.Unlock()
+					return c.account.availableCredits == tc.grants[0] && c.account.inFlightCredits == 2
+				}, time.Second, time.Millisecond)
+				close(release)
+			}
+
+			select {
+			case <-recvDone:
+			case <-time.After(time.Second):
+				t.Fatal("recvAll did not collect every compound response")
+			}
+			require.NotNil(t, res)
+			var cerr *CompoundResponseError
+			require.ErrorAs(t, recvErr, &cerr)
+			require.ErrorIs(t, cerr.OpError(0), erref.STATUS_ACCESS_DENIED)
+			require.Nil(t, cerr.OpError(1))
+			require.ErrorIs(t, cerr.OpError(2), erref.STATUS_INVALID_PARAMETER)
+			require.Nil(t, res.packet(0))
+			require.NotNil(t, res.packet(1))
+			require.Nil(t, res.packet(2))
+			res.close()
+
+			require.Eventually(t, func() bool {
+				c.account.m.Lock()
+				defer c.account.m.Unlock()
+				return c.account.availableCredits == tc.grants[0]+tc.grants[1]+tc.grants[2] && c.account.inFlightCredits == 0
+			}, time.Second, time.Millisecond)
+			<-serverDone
+		})
+	}
+}
+
+func TestCompoundCancellationKeepsRequestsForDelayedResponses(t *testing.T) {
+	t.Parallel()
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	c := &conn{
+		t:                   NewTransport(clientConn),
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(3),
+	}
+	c.account.charge(2) // Initial available balance is three credits.
+	go c.runReceiver()
+	defer c.close(nil)
+
+	grants := []uint16{0, 0, 3}
+	serverReady := make(chan struct{})
+	release := make(chan struct{})
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		st := NewTransport(serverConn)
+		reqBuf, err := readMsg(st)
+		if err != nil {
+			return
+		}
+		p := wire.PacketCodec(reqBuf)
+		for range 3 {
+			cancelBuf, err := readMsg(st)
+			if err != nil || wire.PacketCodec(cancelBuf).Command() != wire.SMB2_CANCEL {
+				return
+			}
+		}
+		close(serverReady)
+		<-release
+		statuses := []erref.NtStatus{
+			erref.STATUS_ACCESS_DENIED,
+			erref.STATUS_SUCCESS,
+			erref.STATUS_INVALID_PARAMETER,
+		}
+		for i := range grants {
+			buf := compoundEchoResponse(p.MessageId()+uint64(i), statuses[i], grants[i])
+			if i > 0 {
+				rp := wire.PacketCodec(buf)
+				rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_RELATED_OPERATIONS)
+			}
+			if _, err := st.writev(buf); err != nil {
+				return
+			}
+		}
+		// The same transport must still serve a new request after cancellation.
+		echo, err := readMsg(st)
+		if err != nil {
+			return
+		}
+		_, _ = st.writev(compoundEchoResponse(wire.PacketCodec(echo).MessageId(), erref.STATUS_SUCCESS, 1))
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	reqs := []wire.Packet{&wire.EchoRequest{}, &wire.EchoRequest{}, &wire.EchoRequest{}}
+	rrs, err := c.send(ctx, false, reqs...)
+	require.NoError(t, err)
+	cancel()
+
+	recvDone := make(chan struct{})
+	var recvErr error
+	go func() {
+		_, recvErr = recvAll(rrs, c)
+		close(recvDone)
+	}()
+	select {
+	case <-recvDone:
+	case <-time.After(time.Second):
+		t.Fatal("compound cancellation did not return")
+	}
+	var cerr *CompoundResponseError
+	require.ErrorAs(t, recvErr, &cerr)
+	require.Error(t, cerr.OpError(0))
+	require.Error(t, cerr.OpError(1))
+	require.Error(t, cerr.OpError(2))
+
+	<-serverReady
+	c.account.m.Lock()
+	available, inFlight := c.account.availableCredits, c.account.inFlightCredits
+	c.account.m.Unlock()
+	require.Zero(t, available, "cancellation must not refund sent credits")
+	require.EqualValues(t, 3, inFlight)
+	for _, rr := range rrs {
+		_, registered := c.outstandingRequests.peek(rr.msgId)
+		require.True(t, registered)
+	}
+	close(release)
+	require.Eventually(t, func() bool {
+		c.account.m.Lock()
+		defer c.account.m.Unlock()
+		return c.account.availableCredits == 3 && c.account.inFlightCredits == 0
+	}, time.Second, time.Millisecond)
+	ctx, stop := context.WithTimeout(context.Background(), time.Second)
+	defer stop()
+	res, err := c.sendRecv(ctx, &wire.EchoRequest{})
+	require.NoError(t, err)
+	res.close()
+	<-serverDone
+	c.account.m.Lock()
+	available, inFlight = c.account.availableCredits, c.account.inFlightCredits
+	c.account.m.Unlock()
+	require.EqualValues(t, 3, available)
+	require.Zero(t, inFlight)
+}
+
+func TestConnCloseNilSetsDefaultError(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	c := &conn{
+		t:                   NewTransport(clientConn),
+		outstandingRequests: newOutstandingRequests(),
+	}
+
+	err := c.close(nil)
+	require.NoError(err)
+
+	c.m.Lock()
+	connErr := c.err
+	c.m.Unlock()
+
+	require.Error(connErr)
+	require.ErrorIs(connErr, net.ErrClosed)
+	var te *TransportError
+	require.ErrorAs(connErr, &te)
+
+	// Idempotent: subsequent close calls are no-ops returning nil
+	require.NoError(c.close(nil))
+
+	// send on closed connection fails immediately with connErr
+	c.account = openAccount(10)
+	_, sendErr := c.send(context.Background(), false, &wire.EchoRequest{})
+	require.Error(sendErr)
+	require.ErrorIs(sendErr, net.ErrClosed)
+}
+
+func TestConnCloseClosesTransportOnceConcurrently(t *testing.T) {
+	t.Parallel()
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	var closes atomic.Int32
+	transport := &countingClientTransport{Transport: NewTransport(clientConn), closes: &closes}
+	c := &conn{
+		t:                   transport,
+		outstandingRequests: newOutstandingRequests(),
+	}
+
+	done := make(chan struct{}, 8)
+	for range 8 {
+		go func() {
+			_ = c.close(nil)
+			done <- struct{}{}
+		}()
+	}
+	for range 8 {
+		<-done
+	}
+	require.Equal(t, int32(1), closes.Load())
+}
+
+func TestConnCloseUnblocksCreditLoan(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	c := &conn{
+		t:                   NewTransport(clientConn),
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+	t.Cleanup(func() {
+		_ = c.close(nil)
+	})
+
+	// Exhaust the initial credit so the next send blocks inside account.loan.
+	_, _, err := c.account.loan(context.Background(), &wire.EchoRequest{})
+	require.NoError(err)
+
+	sendDone := make(chan error, 1)
+	go func() {
+		_, err := c.send(context.Background(), false, &wire.EchoRequest{})
+		sendDone <- err
+	}()
+
+	select {
+	case <-sendDone:
+		t.Fatal("expected send to block on credit loan")
+	case <-time.After(50 * time.Millisecond):
+		// Expected: send is blocked waiting for credits
+	}
+
+	// Closing the connection must abort the credit wait and unblock send.
+	require.NoError(c.close(nil))
+
+	var te *TransportError
+	select {
+	case err := <-sendDone:
+		require.Error(err)
+		require.ErrorAs(err, &te)
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected send to unblock after conn.close")
+	}
+}
+
+func TestIoctlResponseRejectsInvalidOutputOffset(t *testing.T) {
+	t.Parallel()
+
+	// A non-empty output buffer cannot point into the SMB2 header or the
+	// fixed IOCTL Response structure ([MS-SMB2] 2.2.32).
+	body := make([]byte, 49)
+	binary.LittleEndian.PutUint16(body[0:2], 49)  // StructureSize
+	binary.LittleEndian.PutUint32(body[32:36], 1) // OutputOffset
+	binary.LittleEndian.PutUint32(body[36:40], 1) // OutputCount
+
+	if !wire.IoctlResponseDecoder(body).IsInvalid() {
+		t.Fatal("invalid IOCTL output offset was accepted")
+	}
+}
+
+func TestAcceptCopyIoctlErrorResponses(t *testing.T) {
+	t.Parallel()
+	newPacket := func(t *testing.T, body []byte, status uint32) (*recvPacket, *recvBuf) {
+		t.Helper()
+		pkt := make([]byte, 64+len(body))
+		p := wire.PacketCodec(pkt)
+		p.SetProtocolId()
+		p.SetStructureSize()
+		p.SetCommand(wire.SMB2_IOCTL)
+		p.SetStatus(status)
+		p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+		copy(pkt[64:], body)
+
+		rp := allocRecvPacket(len(pkt))
+		copy(rp.pkt, pkt)
+		buf := rp.buf
+		// Keep a test-owned reference until the assertion. After accept releases
+		// its reference, the count must be exactly one; the shared pool cannot
+		// hand this buffer to another parallel test in the meantime.
+		buf.refCount.Add(1)
+		t.Cleanup(func() { releaseRecvBuf(buf) })
+		return rp, buf
+	}
+
+	validCopyResponse := func(ctlCode uint32) []byte {
+		res := &wire.IoctlResponse{
+			CtlCode: ctlCode,
+			Output:  rawEncoder(make([]byte, 12)),
+		}
+		pkt := make([]byte, res.Size())
+		res.Encode(pkt)
+		return pkt[64:]
+	}
+
+	for _, ctlCode := range []uint32{
+		wire.FSCTL_SRV_COPYCHUNK,
+		wire.FSCTL_SRV_COPYCHUNK_WRITE,
+	} {
+		for _, status := range []erref.NtStatus{
+			erref.STATUS_DISK_FULL,
+			erref.STATUS_INVALID_PARAMETER,
+		} {
+			t.Run(fmt.Sprintf("copy Response/%#x/%v", ctlCode, status), func(t *testing.T) {
+				rp, buf := newPacket(t, validCopyResponse(ctlCode), uint32(status))
+				_, err := accept(wire.SMB2_IOCTL, rp, wire.SMB311)
+				require := require.New(t)
+
+				require.Error(err)
+				var responseErr *ResponseError
+				require.ErrorAs(err, &responseErr)
+				require.Equal(uint32(status), responseErr.Code)
+				require.Empty(responseErr.data)
+				require.NotErrorAs(err, new(*InvalidResponseError))
+				require.Nil(rp.buf)
+				require.Equal(int32(1), buf.refCount.Load())
+			})
+		}
+	}
+
+	for _, status := range []erref.NtStatus{
+		erref.STATUS_DISK_FULL,
+		erref.STATUS_INVALID_PARAMETER,
+	} {
+		t.Run(fmt.Sprintf("error Response/%v", status), func(t *testing.T) {
+			eres := &wire.ErrorResponse{CommandCode: wire.SMB2_IOCTL}
+			pkt := make([]byte, eres.Size())
+			eres.Encode(pkt)
+			body := pkt[64:]
+			rp, buf := newPacket(t, body, uint32(status))
+			_, err := accept(wire.SMB2_IOCTL, rp, wire.SMB311)
+			require := require.New(t)
+
+			require.Error(err)
+			var responseErr *ResponseError
+			require.ErrorAs(err, &responseErr)
+			require.Equal(uint32(status), responseErr.Code)
+			require.Nil(rp.buf)
+			require.Equal(int32(1), buf.refCount.Load())
+		})
+	}
+
+	t.Run("truncated fixed part", func(t *testing.T) {
+		body := validCopyResponse(wire.FSCTL_SRV_COPYCHUNK_WRITE)[:47]
+		rp, buf := newPacket(t, body, uint32(erref.STATUS_DISK_FULL))
+		_, err := accept(wire.SMB2_IOCTL, rp, wire.SMB311)
+		require := require.New(t)
+
+		var invalid *InvalidResponseError
+		require.ErrorAs(err, &invalid)
+		require.Equal("broken error response format", invalid.Message)
+		require.Nil(rp.buf)
+		require.Equal(int32(1), buf.refCount.Load())
+	})
+
+	t.Run("invalid output range", func(t *testing.T) {
+		body := validCopyResponse(wire.FSCTL_SRV_COPYCHUNK_WRITE)
+		binary.LittleEndian.PutUint32(body[32:36], 1) // OutputOffset
+		binary.LittleEndian.PutUint32(body[36:40], 1) // OutputCount
+		rp, buf := newPacket(t, body, uint32(erref.STATUS_DISK_FULL))
+		_, err := accept(wire.SMB2_IOCTL, rp, wire.SMB311)
+		require := require.New(t)
+
+		var invalid *InvalidResponseError
+		require.ErrorAs(err, &invalid)
+		require.Equal("broken error response format", invalid.Message)
+		require.Nil(rp.buf)
+		require.Equal(int32(1), buf.refCount.Load())
+	})
+	t.Run("non-copy ioctl retains generic error handling", func(t *testing.T) {
+		rp, buf := newPacket(t, validCopyResponse(wire.FSCTL_PIPE_TRANSCEIVE), uint32(erref.STATUS_DISK_FULL))
+		_, err := accept(wire.SMB2_IOCTL, rp, wire.SMB311)
+		require.ErrorAs(t, err, new(*InvalidResponseError))
+		require.Nil(t, rp.buf)
+		require.Equal(t, int32(1), buf.refCount.Load())
+	})
+
+	t.Run("invalid input range", func(t *testing.T) {
+		body := validCopyResponse(wire.FSCTL_SRV_COPYCHUNK_WRITE)
+		le.PutUint32(body[24:28], 1)
+		le.PutUint32(body[28:32], 1)
+		rp, buf := newPacket(t, body, uint32(erref.STATUS_DISK_FULL))
+		_, err := accept(wire.SMB2_IOCTL, rp, wire.SMB311)
+		require.ErrorAs(t, err, new(*InvalidResponseError))
+		require.Nil(t, rp.buf)
+		require.Equal(t, int32(1), buf.refCount.Load())
+	})
+}
+
+func TestQueryInfoResponseRejectsInvalidOutputOffset(t *testing.T) {
+	t.Parallel()
+
+	// A non-empty output buffer cannot point into the SMB2 header or the
+	// fixed QUERY_INFO Response structure ([MS-SMB2] 2.2.38).
+	body := make([]byte, 8)
+	binary.LittleEndian.PutUint16(body[0:2], 9)  // StructureSize
+	binary.LittleEndian.PutUint16(body[2:4], 71) // OutputBufferOffset
+	binary.LittleEndian.PutUint32(body[4:8], 1)  // OutputBufferLength
+
+	if !wire.QueryInfoResponseDecoder(body).IsInvalid() {
+		t.Fatal("invalid QUERY_INFO output offset was accepted")
+	}
+}
+
+func TestCreateResponseRejectsInvalidContextOffset(t *testing.T) {
+	t.Parallel()
+
+	body := make([]byte, 88)
+	binary.LittleEndian.PutUint16(body[0:2], 89)    // StructureSize
+	binary.LittleEndian.PutUint32(body[80:84], 144) // CreateContextsOffset
+	binary.LittleEndian.PutUint32(body[84:88], 8)   // CreateContextsLength
+
+	if !wire.CreateResponseDecoder(body).IsInvalid() {
+		t.Fatal("invalid CREATE context offset was accepted")
+	}
+}
+
+func TestRunReceiverRejectsMissingDirectionInCompoundResponse(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	clientConn, serverConn := net.Pipe()
+	c, cleanup := newBenchConn(clientConn)
+	defer cleanup()
+	defer serverConn.Close()
+
+	const sessionID uint64 = 0xCAFE
+	c.session = &session{conn: c, sessionId: sessionID}
+	c.enableSession()
+
+	newResponse := func(messageID uint64, flags uint32, next uint32) []byte {
+		res := &wire.EchoResponse{}
+		pkt := make([]byte, (res.Size()+7)&^7)
+		res.Encode(pkt)
+		p := wire.PacketCodec(pkt)
+		p.SetMessageId(messageID)
+		p.SetSessionId(sessionID)
+		p.SetFlags(flags)
+		p.SetNextCommand(next)
+		p.SetCreditResponse(1)
+		return pkt
+	}
+
+	requests := []*outstandingRequest{
+		{msgId: 1, cmd: wire.SMB2_ECHO, creditCharge: 1, recv: make(chan *recvPacket, 1)},
+		{msgId: 2, cmd: wire.SMB2_ECHO, creditCharge: 1, recv: make(chan *recvPacket, 1)},
+	}
+	for _, rr := range requests {
+		c.outstandingRequests.set(rr.msgId, rr)
+	}
+
+	first := newResponse(1, wire.SMB2_FLAGS_SERVER_TO_REDIR, 72)
+	second := newResponse(2, 0, 0)
+	_, err := NewTransport(serverConn).writev(append(first, second...))
+	require.NoError(err)
+
+	select {
+	case rp := <-requests[0].recv:
+		require.NotNil(rp)
+		accepted, err := accept(wire.SMB2_ECHO, rp, c.dialect)
+		require.NoError(err)
+		accepted.close()
+	case <-time.After(time.Second):
+		t.Fatal("valid first compound response was not delivered")
+	}
+
+	select {
+	case _, ok := <-requests[1].recv:
+		require.False(ok, "compound response without server-to-redir must not be delivered")
+	case <-time.After(time.Second):
+		t.Fatal("invalid second compound response was not rejected")
+	}
+}
+
+func TestConnTryHandleDiscardsInvalidSignature(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	const sessionID uint64 = 0xCAFE
+	const msgID uint64 = 1
+
+	ciph, err := aes.NewCipher(make([]byte, 16))
+	require.NoError(err)
+
+	newConn := func() *conn {
+		c := &conn{
+			outstandingRequests: newOutstandingRequests(),
+			account:             openAccount(1),
+			requireSigning:      true,
+			dialect:             wire.SMB302,
+		}
+		c.session = &session{
+			conn:      c,
+			sessionId: sessionID,
+			signer:    newHashSigner(cmac.New(ciph)),
+			verifier:  newHashSigner(cmac.New(ciph)),
+		}
+		c.enableSession()
+		c.account.m.Lock()
+		c.account.availableCredits = 0
+		c.account.inFlightCredits = 1
+		c.account.maxCredits = 1
+		c.account.m.Unlock()
+		return c
+	}
+
+	newResponse := func(creditResponse uint16) *recvPacket {
+		res := &wire.EchoResponse{}
+		buf := make([]byte, res.Size())
+		res.Encode(buf)
+		p := wire.PacketCodec(buf)
+		p.SetMessageId(msgID)
+		p.SetSessionId(sessionID)
+		p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_SIGNED)
+		p.SetCreditResponse(creditResponse)
+		rp := allocRecvPacket(len(buf))
+		copy(rp.pkt, buf)
+		return rp
+	}
+
+	t.Run("matching request", func(t *testing.T) {
+		c := newConn()
+		rr := &outstandingRequest{
+			msgId:        msgID,
+			cmd:          wire.SMB2_ECHO,
+			creditCharge: 1,
+			recv:         make(chan *recvPacket, 1),
+		}
+		c.outstandingRequests.set(msgID, rr)
+
+		bad := newResponse(65535)
+		verifyErr := c.tryVerify(bad, false)
+		require.Error(verifyErr)
+		require.Error(c.tryHandle(bad, verifyErr))
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, _, loanErr := c.account.loan(ctx, &wire.ReadRequest{Length: 2 * maxSingleCreditPayloadSize})
+		require.ErrorContains(loanErr, "protocol: requested credit charge exceeds maximum credit balance", "invalid signature must not expand the request limit")
+
+		c.account.m.Lock()
+		require.Equal(uint16(1), c.account.availableCredits)
+		require.Equal(uint16(0), c.account.inFlightCredits)
+		require.Equal(uint16(1), c.account.maxCredits)
+		c.account.m.Unlock()
+		_, ok := c.outstandingRequests.peek(msgID)
+		require.False(ok)
+		var invalid *InvalidResponseError
+		require.ErrorAs(rr.err, &invalid)
+		require.NotNil(invalid.Command)
+		require.Equal(wire.SMB2_ECHO, *invalid.Command)
+		require.Equal("packet failed signature verification", invalid.Message)
+		_, open := <-rr.recv
+		require.False(open)
+	})
+
+	t.Run("unknown request", func(t *testing.T) {
+		c := newConn()
+		bad := newResponse(65535)
+		verifyErr := c.tryVerify(bad, false)
+		require.Error(verifyErr)
+		require.Error(c.tryHandle(bad, verifyErr))
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, _, loanErr := c.account.loan(ctx, &wire.ReadRequest{Length: 2 * maxSingleCreditPayloadSize})
+		require.ErrorContains(loanErr, "protocol: requested credit charge exceeds maximum credit balance", "invalid signature must not expand the request limit")
+
+		c.account.m.Lock()
+		require.Equal(uint16(0), c.account.availableCredits)
+		require.Equal(uint16(1), c.account.inFlightCredits)
+		require.Equal(uint16(1), c.account.maxCredits)
+		c.account.m.Unlock()
+	})
+}
+
+func TestConnTryHandleDiscardsUnknownResponsesWithoutCredits(t *testing.T) {
+	t.Parallel()
+	newResponse := func(messageID uint64) *recvPacket {
+		res := &wire.EchoResponse{}
+		buf := make([]byte, res.Size())
+		res.Encode(buf)
+		p := wire.PacketCodec(buf)
+		p.SetMessageId(messageID)
+		p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+		p.SetCreditResponse(65535)
+		rp := allocRecvPacket(len(buf))
+		copy(rp.pkt, buf)
+		return rp
+	}
+
+	for _, test := range []struct {
+		name      string
+		messageID uint64
+	}{
+		{name: "unknown message id", messageID: 42},
+		{name: "all bits set echo", messageID: ^uint64(0)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			require := require.New(t)
+			c := &conn{
+				outstandingRequests: newOutstandingRequests(),
+				account:             openAccount(1),
+			}
+
+			c.account.m.Lock()
+			availableBefore := c.account.availableCredits
+			maxBefore := c.account.maxCredits
+			inFlightBefore := c.account.inFlightCredits
+			c.account.m.Unlock()
+
+			err := c.tryHandle(newResponse(test.messageID), nil)
+			require.Error(err)
+			var invalid *InvalidResponseError
+			require.ErrorAs(err, &invalid)
+			require.Equal("unknown message id returned", invalid.Message)
+
+			c.account.m.Lock()
+			require.Equal(availableBefore, c.account.availableCredits)
+			require.Equal(maxBefore, c.account.maxCredits)
+			require.Equal(inFlightBefore, c.account.inFlightCredits)
+			c.account.m.Unlock()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			_, _, loanErr := c.account.loan(ctx, &wire.ReadRequest{Length: 2 * maxSingleCreditPayloadSize})
+			require.ErrorContains(loanErr, "protocol: requested credit charge exceeds maximum credit balance")
+		})
+	}
+}
+
+func TestNegotiateClosesTransportOnError(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	st := NewTransport(serverConn)
+
+	go func() {
+		// Read negotiate request then abruptly close serverConn to simulate failure
+		_, _ = readMsg(st)
+		_ = serverConn.Close()
+	}()
+
+	n := &Dialer{}
+
+	a := openAccount(128)
+	_, err := n.negotiate(context.Background(), NewTransport(clientConn), a)
+	require.Error(err)
+
+	// clientConn must be closed by negotiate cleanup; reading from it should return an error
+	buf := make([]byte, 1)
+	_, readErr := clientConn.Read(buf)
+	require.Error(readErr, "clientConn should be closed after failed negotiate")
+}
+
+func TestNegotiateRejectsUnsupportedDialectRevision(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	st := NewTransport(serverConn)
+
+	go func() {
+		buf, err := readMsg(st)
+		if err != nil {
+			return
+		}
+		p := wire.PacketCodec(buf)
+		resp := &wire.NegotiateResponse{
+			Flags:           wire.SMB2_FLAGS_SERVER_TO_REDIR,
+			MessageId:       p.MessageId(),
+			SecurityMode:    1,
+			DialectRevision: 0x0312, // not in clientDialects
+			MaxTransactSize: 65536,
+			MaxReadSize:     65536,
+			MaxWriteSize:    65536,
+			SystemTime:      wire.Filetime{},
+			ServerStartTime: wire.Filetime{},
+		}
+		respBuf := make([]byte, resp.Size())
+		resp.Encode(respBuf)
+		wire.PacketCodec(respBuf).SetCreditResponse(1)
+		_, _ = st.writev(respBuf)
+	}()
+
+	n := &Dialer{}
+
+	a := openAccount(128)
+	_, err := n.negotiate(context.Background(), NewTransport(clientConn), a)
+	require.Error(err)
+	var ire *InvalidResponseError
+	require.ErrorAs(err, &ire)
+	require.Equal("unexpected dialect returned", ire.Message)
+
+	// clientConn must be closed by negotiate cleanup; reading from it should return an error
+	readBuf := make([]byte, 1)
+	_, readErr := clientConn.Read(readBuf)
+	require.Error(readErr, "clientConn should be closed after failed negotiate")
+}
+
+func TestNegotiatePreservesServerCapabilities(t *testing.T) {
+	t.Parallel()
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	serverTransport := NewTransport(serverConn)
+	go func() {
+		request, err := readMsg(serverTransport)
+		if err != nil {
+			return
+		}
+		response := &wire.NegotiateResponse{
+			Flags:           wire.SMB2_FLAGS_SERVER_TO_REDIR,
+			MessageId:       wire.PacketCodec(request).MessageId(),
+			SecurityMode:    wire.SMB2_NEGOTIATE_SIGNING_ENABLED,
+			DialectRevision: wire.SMB302,
+			Capabilities:    wire.SMB2_GLOBAL_CAP_LEASING | wire.SMB2_GLOBAL_CAP_LARGE_MTU,
+			MaxTransactSize: 65536,
+			MaxReadSize:     65536,
+			MaxWriteSize:    65536,
+		}
+		encoded := make([]byte, response.Size())
+		response.Encode(encoded)
+		wire.PacketCodec(encoded).SetCreditResponse(1)
+		_, _ = serverTransport.writev(encoded)
+	}()
+
+	c, err := (&Dialer{SpecifiedDialects: []Dialect{SMB302}}).negotiate(
+		context.Background(), NewTransport(clientConn), openAccount(128))
+	require.NoError(t, err)
+	defer c.close(nil)
+	require.Equal(t, uint32(wire.SMB2_GLOBAL_CAP_LEASING|wire.SMB2_GLOBAL_CAP_LARGE_MTU), c.capabilities)
+}
+
+func TestNegotiateRejectsPayloadSizesBelow64KB(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name         string
+		transactSize uint32
+		readSize     uint32
+		writeSize    uint32
+	}{
+		{"transact size below 64KB", 65535, 65536, 65536},
+		{"read size below 64KB", 65536, 65535, 65536},
+		{"write size below 64KB", 65536, 65536, 65535},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+
+			clientConn, serverConn := net.Pipe()
+			defer serverConn.Close()
+
+			st := NewTransport(serverConn)
+
+			go func() {
+				buf, err := readMsg(st)
+				if err != nil {
+					return
+				}
+				p := wire.PacketCodec(buf)
+				resp := &wire.NegotiateResponse{
+					Flags:           wire.SMB2_FLAGS_SERVER_TO_REDIR,
+					MessageId:       p.MessageId(),
+					SecurityMode:    1,
+					DialectRevision: wire.SMB210,
+					MaxTransactSize: tc.transactSize,
+					MaxReadSize:     tc.readSize,
+					MaxWriteSize:    tc.writeSize,
+					SystemTime:      wire.Filetime{},
+					ServerStartTime: wire.Filetime{},
+				}
+				respBuf := make([]byte, resp.Size())
+				resp.Encode(respBuf)
+				wire.PacketCodec(respBuf).SetCreditResponse(1)
+				_, _ = st.writev(respBuf)
+			}()
+
+			n := &Dialer{}
+
+			a := openAccount(128)
+			_, err := n.negotiate(context.Background(), NewTransport(clientConn), a)
+			require.Error(err)
+			var ire *InvalidResponseError
+			require.ErrorAs(err, &ire)
+			require.Equal("payload size below 64KB", ire.Message)
+
+			// clientConn must be closed by negotiate cleanup; reading from it should return an error
+			readBuf := make([]byte, 1)
+			_, readErr := clientConn.Read(readBuf)
+			require.Error(readErr, "clientConn should be closed after failed negotiate")
+		})
+	}
+}
+
+func TestNegotiateRejectsRepeatedSMB2WildcardResponse(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	st := NewTransport(serverConn)
+
+	go func() {
+		// Server keeps replying with the SMB2 wildcard dialect (0x0200)
+		// even after the client re-negotiates with a specified dialect.
+		for range 10 {
+			buf, err := readMsg(st)
+			if err != nil {
+				return
+			}
+			p := wire.PacketCodec(buf)
+			resp := &wire.NegotiateResponse{
+				Flags:           wire.SMB2_FLAGS_SERVER_TO_REDIR,
+				MessageId:       p.MessageId(),
+				SecurityMode:    1,
+				DialectRevision: wire.SMB2,
+				MaxTransactSize: 65536,
+				MaxReadSize:     65536,
+				MaxWriteSize:    65536,
+				SystemTime:      wire.Filetime{},
+				ServerStartTime: wire.Filetime{},
+			}
+			respBuf := make([]byte, resp.Size())
+			resp.Encode(respBuf)
+			wire.PacketCodec(respBuf).SetCreditResponse(1)
+			if _, err := st.writev(respBuf); err != nil {
+				return
+			}
+		}
+	}()
+
+	n := &Dialer{}
+
+	a := openAccount(128)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := n.negotiate(ctx, NewTransport(clientConn), a)
+	require.Error(err)
+	var ire *InvalidResponseError
+	require.ErrorAs(err, &ire)
+	require.Equal("unexpected dialect returned", ire.Message)
+
+	// clientConn must be closed by negotiate cleanup; reading from it should return an error
+	readBuf := make([]byte, 1)
+	_, readErr := clientConn.Read(readBuf)
+	require.Error(readErr, "clientConn should be closed after failed negotiate")
+}
+
+func TestNegotiateRejectsInvalidNegotiateContexts(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		contexts []wire.Encoder
+		message  string
+	}{
+		"missing preauth context": {
+			contexts: []wire.Encoder{
+				&wire.CipherContext{Ciphers: []Cipher{wire.AES128GCM}},
+			},
+			message: "missing preauth integrity capabilities context",
+		},
+		"duplicate preauth contexts": {
+			contexts: []wire.Encoder{
+				&wire.HashContext{HashAlgorithms: []uint16{wire.SHA512}, HashSalt: make([]byte, 32)},
+				&wire.HashContext{HashAlgorithms: []uint16{wire.SHA512}, HashSalt: make([]byte, 32)},
+				&wire.CipherContext{Ciphers: []Cipher{wire.AES128GCM}},
+			},
+			message: "duplicate preauth integrity capabilities context",
+		},
+		"unsupported preauth hash algorithm": {
+			contexts: []wire.Encoder{
+				&wire.HashContext{HashAlgorithms: []uint16{0xffff}, HashSalt: make([]byte, 32)},
+				&wire.CipherContext{Ciphers: []Cipher{wire.AES128GCM}},
+			},
+			message: "unsupported hash algorithm",
+		},
+		"unsupported cipher algorithm": {
+			contexts: []wire.Encoder{
+				&wire.HashContext{HashAlgorithms: []uint16{wire.SHA512}, HashSalt: make([]byte, 32)},
+				&wire.CipherContext{Ciphers: []Cipher{0xffff}},
+			},
+			message: "unsupported cipher algorithm",
+		},
+		"missing cipher algorithm": {
+			contexts: []wire.Encoder{
+				&wire.HashContext{HashAlgorithms: []uint16{wire.SHA512}, HashSalt: make([]byte, 32)},
+				&wire.CipherContext{},
+			},
+			message: "multiple cipher algorithms",
+		},
+		"multiple cipher algorithms": {
+			contexts: []wire.Encoder{
+				&wire.HashContext{HashAlgorithms: []uint16{wire.SHA512}, HashSalt: make([]byte, 32)},
+				&wire.CipherContext{Ciphers: []Cipher{wire.AES128GCM, wire.AES128CCM}},
+			},
+			message: "multiple cipher algorithms",
+		},
+		"duplicate encryption contexts": {
+			contexts: []wire.Encoder{
+				&wire.HashContext{HashAlgorithms: []uint16{wire.SHA512}, HashSalt: make([]byte, 32)},
+				&wire.CipherContext{Ciphers: []Cipher{wire.AES128GCM}},
+				&wire.CipherContext{Ciphers: []Cipher{wire.AES128CCM}},
+			},
+			message: "duplicate encryption capabilities context",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			clientConn, serverConn := net.Pipe()
+			defer serverConn.Close()
+
+			st := NewTransport(serverConn)
+
+			go func() {
+				buf, err := readMsg(st)
+				if err != nil {
+					return
+				}
+				p := wire.PacketCodec(buf)
+				resp := &wire.NegotiateResponse{
+					Flags:           wire.SMB2_FLAGS_SERVER_TO_REDIR,
+					MessageId:       p.MessageId(),
+					SecurityMode:    1,
+					DialectRevision: wire.SMB311,
+					MaxTransactSize: 65536,
+					MaxReadSize:     65536,
+					MaxWriteSize:    65536,
+					SystemTime:      wire.Filetime{},
+					ServerStartTime: wire.Filetime{},
+					Contexts:        tc.contexts,
+				}
+				respBuf := make([]byte, resp.Size())
+				resp.Encode(respBuf)
+				wire.PacketCodec(respBuf).SetCreditResponse(1)
+				_, _ = st.writev(respBuf)
+			}()
+
+			n := &Dialer{}
+
+			a := openAccount(128)
+			_, err := n.negotiate(context.Background(), NewTransport(clientConn), a)
+			require.Error(err)
+			var ire *InvalidResponseError
+			require.ErrorAs(err, &ire)
+			require.Equal(tc.message, ire.Message)
+		})
+	}
+}
+
+func TestNegotiateRejectsContextInsideFixedResponse(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() {
+		clientConn.Close()
+		serverConn.Close()
+	})
+
+	st := NewTransport(serverConn)
+	go func() {
+		buf, err := readMsg(st)
+		if err != nil {
+			return
+		}
+		p := wire.PacketCodec(buf)
+		context := &wire.HashContext{HashAlgorithms: []uint16{wire.SHA512}, HashSalt: make([]byte, 32)}
+		resp := &wire.NegotiateResponse{
+			Flags:           wire.SMB2_FLAGS_SERVER_TO_REDIR,
+			MessageId:       p.MessageId(),
+			SecurityMode:    1,
+			DialectRevision: wire.SMB311,
+			MaxTransactSize: 65536,
+			MaxReadSize:     65536,
+			MaxWriteSize:    65536,
+			SystemTime:      wire.Filetime{},
+			ServerStartTime: wire.Filetime{},
+			Contexts:        []wire.Encoder{context},
+		}
+		respBuf := make([]byte, resp.Size())
+		resp.Encode(respBuf)
+		// Move a structurally valid preauth context into ServerGuid and point
+		// NegotiateContextOffset at it, simulating a context in the fixed part.
+		copy(respBuf[72:72+context.Size()], respBuf[128:128+context.Size()])
+		binary.LittleEndian.PutUint32(respBuf[64+60:64+64], 72)
+		wire.PacketCodec(respBuf).SetCreditResponse(1)
+		_, _ = st.writev(respBuf)
+	}()
+
+	n := &Dialer{}
+	_, err := n.negotiate(context.Background(), NewTransport(clientConn), openAccount(128))
+	require.Error(err)
+	var ire *InvalidResponseError
+	require.ErrorAs(err, &ire)
+}
+
+func TestNegotiateRejectsMissingNegotiateContextElement(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() {
+		clientConn.Close()
+		serverConn.Close()
+	})
+
+	st := NewTransport(serverConn)
+	go func() {
+		buf, err := readMsg(st)
+		if err != nil {
+			return
+		}
+		p := wire.PacketCodec(buf)
+		resp := &wire.NegotiateResponse{
+			Flags:           wire.SMB2_FLAGS_SERVER_TO_REDIR,
+			MessageId:       p.MessageId(),
+			SecurityMode:    1,
+			DialectRevision: wire.SMB311,
+			MaxTransactSize: 65536,
+			MaxReadSize:     65536,
+			MaxWriteSize:    65536,
+			SystemTime:      wire.Filetime{},
+			ServerStartTime: wire.Filetime{},
+			Contexts: []wire.Encoder{
+				&wire.HashContext{HashAlgorithms: []uint16{wire.SHA512}, HashSalt: make([]byte, 32)},
+			},
+		}
+		respBuf := make([]byte, resp.Size())
+		resp.Encode(respBuf)
+		// Claim two contexts while providing only the one encoded element.
+		binary.LittleEndian.PutUint16(respBuf[64+6:64+8], 2)
+		wire.PacketCodec(respBuf).SetCreditResponse(1)
+		_, _ = st.writev(respBuf)
+	}()
+
+	n := &Dialer{}
+	_, err := n.negotiate(context.Background(), NewTransport(clientConn), openAccount(128))
+	require.Error(err)
+	var ire *InvalidResponseError
+	require.ErrorAs(err, &ire)
+	require.Equal("broken negotiate response format", ire.Message)
+}
+
+func TestNegotiateRejectsOversizedPreauthContextWithoutPanic(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() {
+		clientConn.Close()
+		serverConn.Close()
+	})
+
+	st := NewTransport(serverConn)
+	go func() {
+		buf, err := readMsg(st)
+		if err != nil {
+			return
+		}
+		p := wire.PacketCodec(buf)
+
+		const dataLength = 65535
+		resp := &wire.NegotiateResponse{
+			Flags:           wire.SMB2_FLAGS_SERVER_TO_REDIR,
+			MessageId:       p.MessageId(),
+			SecurityMode:    1,
+			DialectRevision: wire.SMB311,
+			MaxTransactSize: 65536,
+			MaxReadSize:     65536,
+			MaxWriteSize:    65536,
+			SystemTime:      wire.Filetime{},
+			ServerStartTime: wire.Filetime{},
+		}
+		// Build the response with a raw, zero-filled PREAUTH context so the
+		// encoder's Data accessor is not exercised while producing the packet.
+		respBuf := make([]byte, 128+8+dataLength)
+		resp.Encode(respBuf)
+		binary.LittleEndian.PutUint16(respBuf[64+6:64+8], 1)     // NegotiateContextCount
+		binary.LittleEndian.PutUint32(respBuf[64+60:64+64], 128) // NegotiateContextOffset
+		context := respBuf[128:]
+		binary.LittleEndian.PutUint16(context[0:2], wire.SMB2_PREAUTH_INTEGRITY_CAPABILITIES)
+		binary.LittleEndian.PutUint16(context[2:4], dataLength)
+		// HashAlgorithmCount and SaltLength remain zero, so the existing
+		// algorithm count check must reject the context.
+		wire.PacketCodec(respBuf).SetCreditResponse(1)
+		_, _ = st.writev(respBuf)
+	}()
+
+	n := &Dialer{}
+	_, err := n.negotiate(context.Background(), NewTransport(clientConn), openAccount(128))
+	require.Error(err)
+	var ire *InvalidResponseError
+	require.ErrorAs(err, &ire)
+	require.Equal("multiple hash algorithms", ire.Message)
+}
+
+func TestNegotiateAcceptsSelectedCiphers(t *testing.T) {
+	t.Parallel()
+	for _, cipherID := range []uint16{0, wire.AES128GCM, wire.AES128CCM, wire.AES256GCM, wire.AES256CCM} {
+		t.Run(fmt.Sprintf("cipher-%d", cipherID), func(t *testing.T) {
+			require := require.New(t)
+
+			clientConn, serverConn := net.Pipe()
+			defer serverConn.Close()
+
+			st := NewTransport(serverConn)
+			go func() {
+				buf, err := readMsg(st)
+				if err != nil {
+					return
+				}
+				p := wire.PacketCodec(buf)
+				resp := &wire.NegotiateResponse{
+					Flags:           wire.SMB2_FLAGS_SERVER_TO_REDIR,
+					MessageId:       p.MessageId(),
+					SecurityMode:    1,
+					DialectRevision: wire.SMB311,
+					MaxTransactSize: 65536,
+					MaxReadSize:     65536,
+					MaxWriteSize:    65536,
+					SystemTime:      wire.Filetime{},
+					ServerStartTime: wire.Filetime{},
+					Contexts: []wire.Encoder{
+						&wire.HashContext{HashAlgorithms: []uint16{wire.SHA512}, HashSalt: make([]byte, 32)},
+						&wire.CipherContext{Ciphers: []Cipher{Cipher(cipherID)}},
+					},
+				}
+				respBuf := make([]byte, resp.Size())
+				resp.Encode(respBuf)
+				wire.PacketCodec(respBuf).SetCreditResponse(1)
+				_, _ = st.writev(respBuf)
+			}()
+
+			n := &Dialer{}
+			c, err := n.negotiate(context.Background(), NewTransport(clientConn), openAccount(128))
+			require.NoError(err)
+			require.Equal(cipherID, c.cipherId)
+
+			if cipherID == 0 {
+				s := &session{
+					conn: &conn{
+						dialect:  wire.SMB311,
+						cipherId: cipherID,
+					},
+					sessionFlags: 0,
+				}
+				require.NoError(s.setupKeys(bytes.Repeat([]byte{0x42}, 16)))
+				require.NotNil(s.signer)
+				require.NotNil(s.verifier)
+				require.Nil(s.encrypter)
+				require.Nil(s.decrypter)
+
+				req := &wire.EchoRequest{}
+				pkt := make([]byte, req.Size())
+				req.Encode(pkt)
+				s.sign(pkt)
+				require.True(wire.PacketCodec(pkt).Flags()&wire.SMB2_FLAGS_SIGNED != 0)
+				require.True(s.verify(pkt))
+			}
+
+			require.NoError(c.close(nil))
+		})
+	}
+}
+
+func TestAcceptErrorSingleContextWithoutTrailingPadding(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	// The last error context in an SMB2 ERROR Response need not be padded to
+	// the 8-byte boundary (MS-SMB2 2.2.2). acceptError must not treat the
+	// missing trailing padding as a broken response format.
+	contextData := []byte{0xde, 0xad, 0xbe, 0xef}
+
+	payload := make([]byte, 8+8+len(contextData))
+	// SMB2 Error Response header
+	binary.LittleEndian.PutUint16(payload[0:2], 9)                          // StructureSize
+	payload[2] = 1                                                          // ErrorContextCount
+	binary.LittleEndian.PutUint32(payload[4:8], uint32(8+len(contextData))) // ByteCount
+	// SMB2 Error Context Response
+	binary.LittleEndian.PutUint32(payload[8:12], uint32(len(contextData))) // ErrorDataLength
+	binary.LittleEndian.PutUint32(payload[12:16], 0x1234)                  // ErrorId
+	copy(payload[16:], contextData)
+
+	err := acceptError(uint32(erref.STATUS_INVALID_PARAMETER), payload, wire.SMB202)
+	require.Error(err)
+	var re *ResponseError
+	require.ErrorAs(err, &re)
+	require.Equal(uint32(erref.STATUS_INVALID_PARAMETER), re.Code)
+	require.Equal([][]byte{contextData}, re.data)
+}
+
+func TestAcceptErrorCopiesReceivedBuffers(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	contextData := []byte{0xde, 0xad, 0xbe, 0xef}
+
+	newErrorPayload := func(contextCount uint16) []byte {
+		switch contextCount {
+		case 0:
+			// SMB2 Error response with raw ErrorData (no contexts)
+			payload := make([]byte, 8+len(contextData))
+			binary.LittleEndian.PutUint16(payload[0:2], 9)                        // StructureSize
+			binary.LittleEndian.PutUint32(payload[4:8], uint32(len(contextData))) // ByteCount
+			copy(payload[8:], contextData)
+			return payload
+		default:
+			// SMB2 Error response with a single Error Context
+			payload := make([]byte, 8+8+len(contextData))
+			binary.LittleEndian.PutUint16(payload[0:2], 9)                          // StructureSize
+			payload[2] = byte(contextCount)                                         // ErrorContextCount
+			binary.LittleEndian.PutUint32(payload[4:8], uint32(8+len(contextData))) // ByteCount
+			// SMB2 Error Context Response
+			binary.LittleEndian.PutUint32(payload[8:12], uint32(len(contextData))) // ErrorDataLength
+			binary.LittleEndian.PutUint32(payload[12:16], 0x1234)                  // ErrorId
+			copy(payload[16:], contextData)
+			return payload
+		}
+	}
+
+	for _, tc := range []struct {
+		name         string
+		contextCount uint16
+	}{
+		{"RawErrorData", 0},
+		{"ErrorContext", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := newErrorPayload(tc.contextCount)
+			err := acceptError(uint32(erref.STATUS_INVALID_PARAMETER), payload, wire.SMB202)
+			require.Error(err)
+			var re *ResponseError
+			require.ErrorAs(err, &re)
+			require.Equal(uint32(erref.STATUS_INVALID_PARAMETER), re.Code)
+			require.Equal([][]byte{contextData}, re.data)
+
+			// The received buffer is recycled by the receiver, so acceptError
+			// must not alias it: mutating the source buffer must not corrupt
+			// the data held by the returned ResponseError.
+			for i := range payload {
+				payload[i] = 0
+			}
+			require.Equal([][]byte{contextData}, re.data)
+		})
+	}
+}
+
+func TestAcceptErrorSecurityQueryRequiredLengthForms(t *testing.T) {
+	t.Parallel()
+	required := uint32(8192)
+	plain := make([]byte, 12)
+	binary.LittleEndian.PutUint16(plain[0:2], 9)
+	binary.LittleEndian.PutUint32(plain[4:8], 4)
+	binary.LittleEndian.PutUint32(plain[8:12], required)
+	err := acceptError(uint32(erref.STATUS_BUFFER_TOO_SMALL), plain, wire.SMB202)
+	var responseErr *ResponseError
+	require.True(t, errors.As(err, &responseErr))
+	require.Equal(t, required, responseErr.requiredBufferLength)
+
+	context := make([]byte, 20)
+	binary.LittleEndian.PutUint16(context[0:2], 9)
+	context[2] = 1
+	binary.LittleEndian.PutUint32(context[4:8], 12)
+	binary.LittleEndian.PutUint32(context[8:12], 4)
+	binary.LittleEndian.PutUint32(context[12:16], wire.SMB2_ERROR_ID_DEFAULT)
+	binary.LittleEndian.PutUint32(context[16:20], required)
+	err = acceptError(uint32(erref.STATUS_INFO_LENGTH_MISMATCH), context, wire.SMB311)
+	require.True(t, errors.As(err, &responseErr))
+	require.Equal(t, required, responseErr.requiredBufferLength)
+
+	binary.LittleEndian.PutUint32(context[12:16], 1)
+	err = acceptError(uint32(erref.STATUS_INFO_LENGTH_MISMATCH), context, wire.SMB311)
+	require.True(t, errors.As(err, &responseErr))
+	require.Zero(t, responseErr.requiredBufferLength)
+}
+
+func TestConn_RecvContextCancelReclaimsCredits(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() {
+		clientConn.Close()
+		serverConn.Close()
+	})
+
+	c := &conn{
+		t:                   NewTransport(clientConn),
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+	c.account.charge(9) // availableCredits = 10
+	go c.runReceiver()
+	t.Cleanup(func() {
+		_ = c.close(nil)
+	})
+
+	st := NewTransport(serverConn)
+
+	var serverErr error
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+
+		// 1. Read Echo request
+		reqBuf, err := readMsg(st)
+		if err != nil {
+			serverErr = err
+			return
+		}
+		p := wire.PacketCodec(reqBuf)
+
+		// 2. Read Cancel request sent asynchronously by client
+		cancelBuf, err := readMsg(st)
+		if err != nil {
+			serverErr = err
+			return
+		}
+		pCancel := wire.PacketCodec(cancelBuf)
+		if pCancel.Command() != wire.SMB2_CANCEL || pCancel.MessageId() != p.MessageId() {
+			serverErr = fmt.Errorf("unexpected cancel command %v id %v", pCancel.Command(), pCancel.MessageId())
+			return
+		}
+
+		// 3. Send delayed Response to the Echo request with CreditResponse = 5
+		echoRes := &wire.EchoResponse{}
+		resBuf := make([]byte, echoRes.Size())
+		echoRes.Encode(resBuf)
+		rp := wire.PacketCodec(resBuf)
+		rp.SetMessageId(p.MessageId())
+		rp.SetStatus(uint32(erref.STATUS_SUCCESS))
+		rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+		rp.SetCreditResponse(5)
+
+		if _, err := st.writev(resBuf); err != nil {
+			serverErr = err
+			return
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Send an Echo request (costs 1 credit -> availableCredits becomes 9)
+	req := &wire.EchoRequest{}
+	rrs, err := c.send(ctx, false, req)
+	require.NoError(err)
+	require.Equal(uint16(9), c.account.availableCredits)
+
+	// Cancel context before receiving Response
+	cancel()
+
+	// Recv should return context.Canceled immediately.
+	_, recvErr := c.recv(rrs[0])
+	require.ErrorIs(recvErr, context.Canceled)
+
+	<-serverDone
+	require.NoError(serverErr)
+
+	// The 5 credits granted by server must be reclaimed by account even though request was canceled
+	require.Eventually(func() bool {
+		c.account.m.Lock()
+		defer c.account.m.Unlock()
+		return c.account.availableCredits == 14 // 9 + 5
+	}, 1*time.Second, 10*time.Millisecond, "credits from delayed Response must be reclaimed after cancellation")
+}
+
+type notifyingReadTransport struct {
+	Transport
+	selected chan struct{}
+	once     sync.Once
+}
+
+func (t *notifyingReadTransport) readPacket(findSink ...directSinkFinder) (*recvPacket, error) {
+	if len(findSink) == 0 || findSink[0] == nil {
+		return t.Transport.readPacket(findSink...)
+	}
+
+	finder := findSink[0]
+	return t.Transport.readPacket(func(head []byte, restSize int) ([]byte, int) {
+		sink, frontSize := finder(head, restSize)
+		if sink != nil {
+			t.once.Do(func() { close(t.selected) })
+		}
+		return sink, frontSize
+	})
+}
+
+type cancelTransport struct{}
+
+func (cancelTransport) writev(p ...[]byte) (int, error) {
+	var n int
+	for _, part := range p {
+		n += len(part)
+	}
+	return n, nil
+}
+
+func (cancelTransport) setReadDeadline(time.Time) error { return nil }
+
+func (cancelTransport) setWriteTimeout(time.Duration) {}
+
+func (cancelTransport) setPacketReadTimeout(time.Duration) {}
+
+func (cancelTransport) readPacket(...directSinkFinder) (*recvPacket, error) {
+	return nil, io.EOF
+}
+
+func (cancelTransport) Close() error { return nil }
+
+func readResponseHead(messageID uint64, data []byte) ([]byte, int) {
+	res := &wire.ReadResponse{Data: data}
+	buf := make([]byte, res.Size())
+	res.Encode(buf)
+	p := wire.PacketCodec(buf)
+	p.SetMessageId(messageID)
+	p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+	return buf[:80], len(buf) - 80
+}
+
+func zeroLengthReadResponse(extra int) []byte {
+	res := &wire.ReadResponse{}
+	buf := make([]byte, 80+extra)
+	res.Encode(buf)
+	return buf
+}
+
+func TestConnDirectReadSinkRejectsOverflowingDataLength(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	const messageID = uint64(7)
+	original := bytes.Repeat([]byte{0xa5}, 16)
+	readBuf := bytes.Clone(original)
+	c := &conn{outstandingRequests: newOutstandingRequests()}
+	rr := &outstandingRequest{msgId: messageID, readBuf: readBuf}
+	c.outstandingRequests.set(messageID, rr)
+
+	head, _ := readResponseHead(messageID, []byte{0})
+	head[66] = 208                                         // DataOffset
+	binary.LittleEndian.PutUint32(head[68:72], 0xffffff80) // DataLength
+
+	var sink []byte
+	var frontSize int
+	require.NotPanics(func() {
+		sink, frontSize = c.directReadSink(head, 0)
+	})
+	require.Nil(sink)
+	require.Zero(frontSize)
+	require.Equal(directStateIdle, rr.directState.Load())
+	require.Equal(original, readBuf)
+	got, ok := c.outstandingRequests.peek(messageID)
+	require.True(ok)
+	require.Same(rr, got)
+}
+
+func TestDirectReadBoundsResponseToRequestedLength(t *testing.T) {
+	t.Parallel()
+	const messageID = uint64(17)
+	readBuf := bytes.Repeat([]byte{0xa5}, 8)
+	c := &conn{outstandingRequests: newOutstandingRequests()}
+	rr := &outstandingRequest{msgId: messageID, readBuf: readBuf}
+	c.outstandingRequests.set(messageID, rr)
+
+	head, _ := readResponseHead(messageID, bytes.Repeat([]byte{1}, 16))
+	sink, front := c.directReadSink(head, 16)
+	if sink != nil || front != 0 {
+		t.Fatalf("directReadSink accepted %d bytes for %d-byte buffer", 16, len(readBuf))
+	}
+	if !bytes.Equal(readBuf, bytes.Repeat([]byte{0xa5}, len(readBuf))) {
+		t.Fatalf("direct read modified caller buffer: %x", readBuf)
+	}
+}
+
+func TestConnDirectReadSinkAcceptsPaddedRead(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	const (
+		messageID = uint64(8)
+		padding   = 16
+	)
+	payload := []byte("direct payload")
+	readBuf := make([]byte, len(payload)+8)
+	c := &conn{outstandingRequests: newOutstandingRequests()}
+	rr := &outstandingRequest{msgId: messageID, readBuf: readBuf}
+	c.outstandingRequests.set(messageID, rr)
+
+	head, _ := readResponseHead(messageID, payload)
+	head[66] = byte(80 + padding) // DataOffset
+	sink, frontSize := c.directReadSink(head, padding+len(payload))
+
+	require.Equal(80+padding, frontSize)
+	require.Len(sink, len(payload))
+	require.Same(&readBuf[0], &sink[0])
+	require.Equal(directStateReading, rr.directState.Load())
+}
+
+func TestConnRejectsZeroLengthReadAcrossReceivePaths(t *testing.T) {
+	t.Parallel()
+	run := func(t *testing.T, path string, plain []byte, aead cipher.AEAD) {
+		t.Helper()
+		require := require.New(t)
+
+		const (
+			sessionID = uint64(0xCAFE)
+			messageID = uint64(7)
+		)
+		original := bytes.Repeat([]byte{0xa5}, 32)
+		c := &conn{
+			dialect:             wire.SMB311,
+			outstandingRequests: newOutstandingRequests(),
+		}
+		c.session = &session{conn: c, sessionId: sessionID}
+		if path == "compressed" {
+			c.compressionIds = []uint16{wire.SMB2_COMPRESSION_ALGORITHM_LZ4}
+		}
+		if path == "encrypted" {
+			c.session.encrypter = aead
+			c.session.nonces = &encryptionNonces{}
+			c.session.decrypter = aead
+		}
+
+		readBuf := bytes.Clone(original)
+		rr := &outstandingRequest{
+			msgId:      messageID,
+			readBuf:    readBuf,
+			directDone: make(chan struct{}),
+		}
+		c.outstandingRequests.set(messageID, rr)
+
+		p := wire.PacketCodec(plain)
+		p.SetMessageId(messageID)
+		p.SetSessionId(sessionID)
+		p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+
+		var rp *recvPacket
+		switch path {
+		case "direct":
+			sink, frontSize := c.directReadSink(plain[:min(80, len(plain))], max(0, len(plain)-80))
+			require.Nil(sink)
+			require.Zero(frontSize)
+			rp = &recvPacket{pkt: plain}
+		case "compressed":
+			compressed := compressReadResponseForTest(t, plain)
+			decompressed, ext, err := decompressPacketForReceive(c, compressed, c.responseReadSink)
+			require.NoError(err)
+			require.Nil(ext)
+			rp = &recvPacket{pkt: decompressed}
+		case "encrypted":
+			encrypted, err := c.session.encrypt(plain, make([]byte, 52+len(plain)+aead.Overhead()))
+			require.NoError(err)
+			var errDecrypt error
+			rp, _, errDecrypt = c.tryDecrypt(&recvPacket{pkt: encrypted})
+			require.NoError(errDecrypt)
+		}
+
+		require.Nil(rp.ext)
+		require.Equal(directStateIdle, rr.directState.Load())
+		require.Equal(original, readBuf)
+
+		accepted, err := accept(wire.SMB2_READ, rp, c.dialect)
+		if p.Status() == uint32(erref.STATUS_END_OF_FILE) {
+			require.Nil(accepted)
+			var responseErr *ResponseError
+			require.ErrorAs(err, &responseErr)
+			require.Equal(uint32(erref.STATUS_END_OF_FILE), responseErr.Code)
+		} else {
+			require.Error(err)
+			require.Nil(accepted)
+		}
+		require.Equal(directStateIdle, rr.directState.Load())
+		require.Equal(original, readBuf)
+	}
+
+	// [MS-SMB2] 2.2.20 uses an error Response for a read with no data.
+	for _, path := range []string{"direct", "compressed", "encrypted"} {
+		t.Run("end-of-file/"+path, func(t *testing.T) {
+			res := &wire.ErrorResponse{CommandCode: wire.SMB2_READ}
+			plain := make([]byte, res.Size())
+			res.Encode(plain)
+			wire.PacketCodec(plain).SetStatus(uint32(erref.STATUS_END_OF_FILE))
+			if path == "encrypted" {
+				for name, aead := range directIOCiphers(t) {
+					t.Run(name, func(t *testing.T) { run(t, path, bytes.Clone(plain), aead) })
+				}
+			} else {
+				run(t, path, plain, nil)
+			}
+		})
+	}
+
+	t.Run("direct-without-trailing-bytes", func(t *testing.T) {
+		run(t, "direct", zeroLengthReadResponse(0), nil)
+	})
+	t.Run("direct-with-trailing-bytes", func(t *testing.T) {
+		run(t, "direct", zeroLengthReadResponse(1), nil)
+	})
+	t.Run("compressed", func(t *testing.T) {
+		run(t, "compressed", zeroLengthReadResponse(32), nil)
+	})
+	for name, aead := range directIOCiphers(t) {
+		t.Run("encrypted/"+name, func(t *testing.T) {
+			run(t, "encrypted", zeroLengthReadResponse(0), aead)
+		})
+	}
+}
+
+func TestConnCancellationSerializesReadBufferAccess(t *testing.T) {
+	t.Parallel()
+	for _, decrypted := range []bool{false, true} {
+		t.Run(fmt.Sprintf("decrypted-%t", decrypted), func(t *testing.T) {
+			c := &conn{outstandingRequests: newOutstandingRequests()}
+			c.session = &session{conn: c, sessionId: 42}
+			rr := &outstandingRequest{msgId: 7, readBuf: bytes.Repeat([]byte{0xa5}, 32)}
+			c.outstandingRequests.set(rr.msgId, rr)
+			res := &wire.ReadResponse{Data: []byte("payload")}
+			pkt := make([]byte, res.Size())
+			res.Encode(pkt)
+			p := wire.PacketCodec(pkt)
+			p.SetMessageId(rr.msgId)
+			p.SetSessionId(42)
+			p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+			rp := &recvPacket{pkt: pkt}
+
+			// Cancel the request before the receiver tries to publish or copy.
+			// The atomic state transition ensures the receiver sees cancellation
+			// and never accesses or exposes the caller's buffer.
+			rr.canceled.Store(true)
+			rr.directState.Store(directStateCanceled)
+
+			var sink []byte
+			if decrypted {
+				c.copyDecryptedReadPayload(rp)
+			} else {
+				sink, _ = c.directReadSink(pkt[:80], len(pkt)-80)
+			}
+			require.Nil(t, sink)
+			require.Nil(t, rp.ext)
+			require.Equal(t, bytes.Repeat([]byte{0xa5}, 32), rr.readBuf)
+		})
+	}
+}
+
+func TestConnDirectReadCancellationBeforeSinkPublication(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &conn{t: cancelTransport{}, outstandingRequests: newOutstandingRequests()}
+	rr := &outstandingRequest{
+		msgId:      3,
+		cmd:        wire.SMB2_READ,
+		ctx:        ctx,
+		recv:       make(chan *recvPacket, 1),
+		readBuf:    make([]byte, 32),
+		directDone: make(chan struct{}),
+	}
+	c.outstandingRequests.set(rr.msgId, rr)
+	cancel()
+
+	recvDone := make(chan struct{})
+	go func() {
+		defer close(recvDone)
+		_, _ = c.recv(rr)
+	}()
+
+	select {
+	case <-recvDone:
+	case <-time.After(time.Second):
+		t.Fatal("canceled direct READ did not return")
+	}
+	require.True(rr.canceled.Load())
+	require.Equal(directStateCanceled, rr.directState.Load())
+
+	head, restSize := readResponseHead(rr.msgId, []byte("late payload"))
+	sink, _ := c.directReadSink(head, restSize)
+	require.Nil(sink)
+}
+
+func TestConnDirectReadCancellationAfterSinkPublicationWaits(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &conn{t: cancelTransport{}, outstandingRequests: newOutstandingRequests()}
+	rr := &outstandingRequest{
+		msgId:      4,
+		cmd:        wire.SMB2_READ,
+		ctx:        ctx,
+		recv:       make(chan *recvPacket, 1),
+		readBuf:    make([]byte, 32),
+		directDone: make(chan struct{}),
+	}
+	c.outstandingRequests.set(rr.msgId, rr)
+
+	want := []byte("direct payload")
+	head, restSize := readResponseHead(rr.msgId, want)
+	sink, _ := c.directReadSink(head, restSize)
+	require.NotNil(sink)
+
+	recvDone := make(chan struct{})
+	var recvErr error
+	go func() {
+		defer close(recvDone)
+		_, recvErr = c.recv(rr)
+	}()
+	cancel()
+
+	select {
+	case <-recvDone:
+		t.Fatal("canceled direct READ returned before direct reception completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	copy(sink, want)
+	close(rr.directDone)
+
+	select {
+	case <-recvDone:
+	case <-time.After(time.Second):
+		t.Fatal("canceled direct READ did not return")
+	}
+	require.ErrorIs(recvErr, context.Canceled)
+	require.Equal(want, rr.readBuf[:len(want)])
+}
+
+func TestConnDecryptedDirectReadCancellationBeforeCopy(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	const (
+		messageID uint64 = 5
+		sessionID uint64 = 0xCAFE
+	)
+
+	buf := bytes.Repeat([]byte{0xa5}, 32)
+	c := &conn{outstandingRequests: newOutstandingRequests()}
+	c.session = &session{conn: c, sessionId: sessionID}
+	rr := &outstandingRequest{msgId: messageID, readBuf: buf}
+	c.outstandingRequests.set(messageID, rr)
+	rr.canceled.Store(true)
+
+	res := &wire.ReadResponse{
+		Flags:     wire.SMB2_FLAGS_SERVER_TO_REDIR,
+		SessionId: sessionID,
+		Data:      []byte("decrypted payload"),
+	}
+	pkt := make([]byte, res.Size())
+	res.Encode(pkt)
+	p := wire.PacketCodec(pkt)
+	p.SetMessageId(messageID)
+	rp := &recvPacket{pkt: pkt}
+
+	c.copyDecryptedReadPayload(rp)
+	require.Nil(rp.ext)
+	require.Equal(bytes.Repeat([]byte{0xa5}, len(buf)), buf)
+}
+
+func TestConnDecryptedDirectReadCancellationDuringCopy(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := &conn{t: cancelTransport{}, outstandingRequests: newOutstandingRequests()}
+	c.session = &session{conn: c, sessionId: 42, sessionFlags: wire.SMB2_SESSION_FLAG_IS_GUEST}
+	rr := &outstandingRequest{
+		msgId:      7,
+		cmd:        wire.SMB2_READ,
+		ctx:        ctx,
+		recv:       make(chan *recvPacket, 1),
+		readBuf:    make([]byte, 8<<20),
+		directDone: make(chan struct{}),
+	}
+	c.outstandingRequests.set(rr.msgId, rr)
+	res := &wire.ReadResponse{
+		Flags:     wire.SMB2_FLAGS_SERVER_TO_REDIR,
+		SessionId: c.session.sessionId,
+		Data:      make([]byte, len(rr.readBuf)),
+	}
+	pkt := make([]byte, res.Size())
+	res.Encode(pkt)
+	wire.PacketCodec(pkt).SetMessageId(rr.msgId)
+	rp := &recvPacket{pkt: pkt}
+
+	copyDone := make(chan struct{})
+	go func() {
+		c.copyDecryptedReadPayload(rp)
+		rr.finishDirect()
+		close(copyDone)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for rr.directState.Load() == directStateIdle {
+		if time.Now().After(deadline) {
+			t.Fatal("decrypted READ copy did not start")
+		}
+		runtime.Gosched()
+	}
+	cancel()
+	_, err := c.recv(rr)
+	// Reuse the caller's buffer immediately after cancellation returns.
+	// Under -race, this must synchronize with the receiver's payload copy.
+	rr.readBuf[0] = 0x5a
+	<-copyDone
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, byte(0x5a), rr.readBuf[0])
+	require.Equal(t, directStateCanceled, rr.directState.Load())
+}
+
+func TestConnCanceledDirectReadDoesNotWriteCallerBuffer(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	selected := make(chan struct{})
+	c := &conn{
+		t:                   &notifyingReadTransport{Transport: NewTransport(clientConn), selected: selected},
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+	c.session = &session{conn: c}
+	c.enableSession()
+	t.Cleanup(func() { _ = c.close(nil) })
+	go c.runReceiver()
+
+	const messageID = 1
+	ctx, cancel := context.WithCancel(context.Background())
+	rr := &outstandingRequest{
+		msgId:      messageID,
+		cmd:        wire.SMB2_READ,
+		ctx:        ctx,
+		recv:       make(chan *recvPacket, 1),
+		readBuf:    make([]byte, 32),
+		directDone: make(chan struct{}),
+	}
+	for i := range rr.readBuf {
+		rr.readBuf[i] = 0xa5
+	}
+	c.outstandingRequests.set(messageID, rr)
+
+	want := []byte("late payload")
+	res := &wire.ReadResponse{Data: want}
+	resBuf := make([]byte, res.Size())
+	res.Encode(resBuf)
+	p := wire.PacketCodec(resBuf)
+	p.SetMessageId(messageID)
+	p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+
+	serverDone := make(chan error, 1)
+	go func() {
+		var size [4]byte
+		binary.BigEndian.PutUint32(size[:], uint32(len(resBuf)))
+		if _, err := serverConn.Write(size[:]); err != nil {
+			serverDone <- err
+			return
+		}
+		if _, err := serverConn.Write(resBuf[:80]); err != nil {
+			serverDone <- err
+			return
+		}
+		<-selected
+
+		cancelBuf, err := readMsg(NewTransport(serverConn))
+		if err == nil {
+			cancelPacket := wire.PacketCodec(cancelBuf)
+			if cancelPacket.Command() != wire.SMB2_CANCEL || cancelPacket.MessageId() != messageID {
+				err = fmt.Errorf("unexpected cancel command %v id %v", cancelPacket.Command(), cancelPacket.MessageId())
+			}
+		}
+		if _, writeErr := serverConn.Write(want); err == nil {
+			err = writeErr
+		}
+		serverDone <- err
+	}()
+
+	recvDone := make(chan struct{})
+	var recvErr error
+	go func() {
+		defer close(recvDone)
+		_, recvErr = c.recv(rr)
+	}()
+
+	select {
+	case <-selected:
+	case <-time.After(time.Second):
+		t.Fatal("direct READ payload was not selected")
+	}
+
+	cancel()
+	select {
+	case <-recvDone:
+	case <-time.After(time.Second):
+		t.Fatal("canceled direct READ did not return")
+	}
+	require.ErrorIs(recvErr, context.Canceled)
+	require.NoError(<-serverDone)
+
+	// Reuse the caller's buffer immediately after cancellation returns.
+	// Reception of the in-flight packet has completed, so no late writes occur.
+	for i := range rr.readBuf {
+		rr.readBuf[i] = 0x5a
+	}
+
+	require.Eventually(func() bool {
+		_, ok := c.outstandingRequests.peek(messageID)
+		return !ok
+	}, time.Second, time.Millisecond)
+	require.Equal(bytes.Repeat([]byte{0x5a}, len(rr.readBuf)), rr.readBuf)
+
+	// Another request must still succeed on the same connection.
+	echoCtx, echoCancel := context.WithTimeout(context.Background(), time.Second)
+	defer echoCancel()
+	echo := &outstandingRequest{
+		msgId: 99, cmd: wire.SMB2_ECHO,
+		ctx: echoCtx, recv: make(chan *recvPacket, 1),
+	}
+	c.outstandingRequests.set(echo.msgId, echo)
+	echoRes := &wire.EchoResponse{}
+	echoPacket := make([]byte, echoRes.Size())
+	echoRes.Encode(echoPacket)
+	wire.PacketCodec(echoPacket).SetMessageId(echo.msgId)
+	wire.PacketCodec(echoPacket).SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+	_, err := NewTransport(serverConn).writev(echoPacket)
+	require.NoError(err)
+	got, err := c.recv(echo)
+	require.NoError(err)
+	got.close()
+}
+
+func TestConnDirectReadZeroCopy(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	selected := make(chan struct{})
+	c := &conn{
+		t:                   &notifyingReadTransport{Transport: NewTransport(clientConn), selected: selected},
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+	c.session = &session{conn: c}
+	c.enableSession()
+	t.Cleanup(func() { _ = c.close(nil) })
+	go c.runReceiver()
+
+	const (
+		messageID = 2
+		padding   = 16
+	)
+	rr := &outstandingRequest{
+		msgId:      messageID,
+		cmd:        wire.SMB2_READ,
+		ctx:        context.Background(),
+		recv:       make(chan *recvPacket, 1),
+		readBuf:    make([]byte, 32),
+		directDone: make(chan struct{}),
+	}
+	c.outstandingRequests.set(messageID, rr)
+
+	want := []byte("direct payload")
+	res := &wire.ReadResponse{Data: want}
+	resBuf := make([]byte, res.Size())
+	res.Encode(resBuf)
+	p := wire.PacketCodec(resBuf)
+	p.SetMessageId(messageID)
+	p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+	resBuf[66] = byte(80 + padding) // DataOffset
+
+	serverDone := make(chan error, 1)
+	go func() {
+		var size [4]byte
+		binary.BigEndian.PutUint32(size[:], uint32(len(resBuf)+padding))
+		if _, err := serverConn.Write(size[:]); err != nil {
+			serverDone <- err
+			return
+		}
+		if _, err := serverConn.Write(resBuf[:80]); err != nil {
+			serverDone <- err
+			return
+		}
+		<-selected
+		if _, err := serverConn.Write(make([]byte, padding)); err != nil {
+			serverDone <- err
+			return
+		}
+		_, err := serverConn.Write(want)
+		serverDone <- err
+	}()
+
+	recvDone := make(chan struct{})
+	var got *recvPacket
+	var recvErr error
+	go func() {
+		defer close(recvDone)
+		got, recvErr = c.recv(rr)
+	}()
+
+	select {
+	case <-recvDone:
+	case <-time.After(time.Second):
+		t.Fatal("direct READ did not return")
+	}
+	require.NoError(recvErr)
+	require.NotNil(got)
+	require.Equal(want, got.ext)
+	require.Same(&rr.readBuf[0], &got.ext[0])
+	require.Equal(want, rr.readBuf[:len(want)])
+	require.NoError(<-serverDone)
+	got.close()
+}
+
+func TestResponseReadSinkRejectsUnvalidatedRead(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	const (
+		sessionID = uint64(0xCAFE)
+		messageID = uint64(7)
+	)
+
+	makePacket := func(sessionID uint64, flags uint32) []byte {
+		res := &wire.ReadResponse{
+			Flags: flags, SessionId: sessionID,
+			Data: []byte("payload"),
+		}
+		pkt := make([]byte, res.Size())
+		res.Encode(pkt)
+		p := wire.PacketCodec(pkt)
+		p.SetMessageId(messageID)
+		return pkt
+	}
+
+	tests := []struct {
+		name            string
+		responseSession uint64
+		flags           uint32
+		requireEncrypt  bool
+		requireSigning  bool
+		useSession      bool
+	}{
+		{
+			name:            "session mismatch",
+			responseSession: sessionID + 1,
+		},
+		{
+			name:           "encryption required",
+			requireEncrypt: true,
+		},
+		{
+			name:  "signed Response",
+			flags: wire.SMB2_FLAGS_SIGNED,
+		},
+		{
+			name:           "signing required",
+			requireSigning: true,
+		},
+		{
+			name:       "session in use without session",
+			useSession: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buf := bytes.Repeat([]byte{0xa5}, 32)
+			c := &conn{
+				dialect:             wire.SMB311,
+				outstandingRequests: newOutstandingRequests(),
+				requireSigning:      test.requireSigning,
+			}
+			if test.useSession {
+				c.enableSession()
+			} else {
+				c.session = &session{conn: c, sessionId: sessionID}
+				c.enableSession()
+			}
+			c.outstandingRequests.set(messageID, &outstandingRequest{
+				msgId:             messageID,
+				readBuf:           buf,
+				requireEncryption: test.requireEncrypt,
+			})
+
+			responseSession := test.responseSession
+			if responseSession == 0 {
+				responseSession = sessionID
+			}
+			pkt := makePacket(responseSession, wire.SMB2_FLAGS_SERVER_TO_REDIR|test.flags)
+
+			clientConn, serverConn := net.Pipe()
+			t.Cleanup(func() {
+				clientConn.Close()
+				serverConn.Close()
+			})
+			writeDone := make(chan error, 1)
+			go func() {
+				var size [4]byte
+				binary.BigEndian.PutUint32(size[:], uint32(len(pkt)))
+				if _, err := serverConn.Write(size[:]); err != nil {
+					writeDone <- err
+					return
+				}
+				_, err := serverConn.Write(pkt)
+				writeDone <- err
+			}()
+
+			rp, err := NewTransport(clientConn).readPacket(c.responseReadSink)
+			writeErr := <-writeDone
+			require.NoError(err)
+			require.NoError(writeErr)
+			require.NotNil(rp)
+			require.Nil(rp.ext)
+			require.Equal(pkt, rp.bytes())
+			rp.close()
+			require.Equal(bytes.Repeat([]byte{0xa5}, len(buf)), buf)
+		})
+	}
+}
+
+// panicTransport is a mock transport whose Read panics, simulating a
+// malformed packet triggering an unexpected panic inside the receiver.
+type panicTransport struct {
+	closed chan struct{}
+}
+
+func (t *panicTransport) writev(p ...[]byte) (int, error) {
+	return 0, net.ErrClosed
+}
+
+func (t *panicTransport) setReadDeadline(time.Time) error { return nil }
+
+func (t *panicTransport) setWriteTimeout(time.Duration) {}
+
+func (t *panicTransport) setPacketReadTimeout(time.Duration) {}
+
+func (t *panicTransport) readPacket(findSink ...directSinkFinder) (*recvPacket, error) {
+	panic("malformed packet")
+}
+
+func (t *panicTransport) Close() error {
+	select {
+	case <-t.closed:
+	default:
+		close(t.closed)
+	}
+	return nil
+}
+
+func TestRunReceiverPanicClosesTransport(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	mt := &panicTransport{closed: make(chan struct{})}
+	c := &conn{
+		t:                   mt,
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.runReceiver()
+	}()
+
+	select {
+	case <-mt.closed:
+		// transport was closed by the receiver after recovering from the panic
+	case <-time.After(2 * time.Second):
+		t.Fatal("transport was not closed after receiver panic")
+	}
+	<-done
+
+	c.m.Lock()
+	err := c.err
+	c.m.Unlock()
+	require.Error(err)
+	var ire *InvalidResponseError
+	require.ErrorAs(err, &ire)
+	require.Contains(ire.Message, "receiver panic")
+}
+
+// readErrorTransport is a mock transport whose reads fail immediately,
+// simulating a broken transport that terminates the receiver loop.
+type readErrorTransport struct {
+	readErr error
+	closed  chan struct{}
+}
+
+func (t *readErrorTransport) writev(p ...[]byte) (int, error) {
+	return 0, t.readErr
+}
+
+func (t *readErrorTransport) setReadDeadline(time.Time) error { return nil }
+
+func (t *readErrorTransport) setWriteTimeout(time.Duration) {}
+
+func (t *readErrorTransport) setPacketReadTimeout(time.Duration) {}
+
+func (t *readErrorTransport) readPacket(findSink ...directSinkFinder) (*recvPacket, error) {
+	return nil, t.readErr
+}
+
+func (t *readErrorTransport) Close() error {
+	select {
+	case <-t.closed:
+	default:
+		close(t.closed)
+	}
+	return nil
+}
+
+func TestRunReceiverReadErrorClosesTransport(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	mt := &readErrorTransport{
+		readErr: fmt.Errorf("simulated read failure"),
+		closed:  make(chan struct{}),
+	}
+	c := &conn{
+		t:                   mt,
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.runReceiver()
+	}()
+
+	select {
+	case <-mt.closed:
+		// transport was closed by the receiver after a read error
+	case <-time.After(2 * time.Second):
+		t.Fatal("transport was not closed after receiver read error")
+	}
+	<-done
+
+	c.m.Lock()
+	err := c.err
+	c.m.Unlock()
+	require.Error(err)
+	var te *TransportError
+	require.ErrorAs(err, &te)
+	require.ErrorIs(err, mt.readErr)
+}
+
+type invalidPacketTransport struct {
+	closed chan struct{}
+	stop   chan struct{}
+	once   sync.Once
+}
+
+func (t *invalidPacketTransport) writev(p ...[]byte) (int, error) {
+	return 0, net.ErrClosed
+}
+
+func (t *invalidPacketTransport) setReadDeadline(time.Time) error { return nil }
+
+func (t *invalidPacketTransport) setWriteTimeout(time.Duration) {}
+
+func (t *invalidPacketTransport) setPacketReadTimeout(time.Duration) {}
+
+func (t *invalidPacketTransport) readPacket(findSink ...directSinkFinder) (*recvPacket, error) {
+	select {
+	case <-t.stop:
+		return nil, io.EOF
+	default:
+		return allocRecvPacket(64), nil
+	}
+}
+
+func (t *invalidPacketTransport) Close() error {
+	t.once.Do(func() {
+		close(t.closed)
+		close(t.stop)
+	})
+	return nil
+}
+
+func TestRunReceiverInvalidPacketBeforeSessionClosesTransport(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	mt := &invalidPacketTransport{
+		closed: make(chan struct{}),
+		stop:   make(chan struct{}),
+	}
+	c := &conn{
+		t:                   mt,
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.runReceiver()
+	}()
+
+	select {
+	case <-mt.closed:
+		// transport was closed after the invalid pre-session packet
+	case <-time.After(2 * time.Second):
+		t.Fatal("transport was not closed after an invalid pre-session packet")
+	}
+	<-done
+
+	c.m.Lock()
+	err := c.err
+	c.m.Unlock()
+	require.Error(err)
+	var ire *InvalidResponseError
+	require.ErrorAs(err, &ire)
+	require.Equal("invalid packet header", ire.Message)
+}
+
+// errorTransport is a mock transport whose Write always fails, simulating a
+// broken connection (partial or failed write).
+type errorTransport struct {
+	writeErr error
+	closed   chan struct{}
+}
+
+type countingWriteTransport struct {
+	writes int
+	closes int
+}
+
+func (t *countingWriteTransport) writev(p ...[]byte) (int, error) {
+	t.writes++
+	var n int
+	for _, part := range p {
+		n += len(part)
+	}
+	return n, nil
+}
+
+func (t *countingWriteTransport) setReadDeadline(time.Time) error { return nil }
+
+func (t *countingWriteTransport) setWriteTimeout(time.Duration) {}
+
+func (t *countingWriteTransport) setPacketReadTimeout(time.Duration) {}
+
+func (t *countingWriteTransport) readPacket(...directSinkFinder) (*recvPacket, error) {
+	return nil, io.EOF
+}
+
+func (t *countingWriteTransport) Close() error {
+	t.closes++
+	return nil
+}
+
+func (t *errorTransport) writev(p ...[]byte) (int, error) {
+	return 0, t.writeErr
+}
+
+func (t *errorTransport) setReadDeadline(time.Time) error { return nil }
+
+func (t *errorTransport) setWriteTimeout(time.Duration) {}
+
+func (t *errorTransport) setPacketReadTimeout(time.Duration) {}
+
+func (t *errorTransport) readPacket(findSink ...directSinkFinder) (*recvPacket, error) {
+	return nil, t.writeErr
+}
+
+func (t *errorTransport) Close() error {
+	select {
+	case <-t.closed:
+	default:
+		close(t.closed)
+	}
+	return nil
+}
+
+func TestConnWriteFailure(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	mt := &errorTransport{
+		writeErr: fmt.Errorf("simulated write failure"),
+		closed:   make(chan struct{}),
+	}
+	c := &conn{
+		t:                   mt,
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+
+	_, err := c.send(context.Background(), false, &wire.EchoRequest{})
+	require.Error(err)
+	var te *TransportError
+	require.ErrorAs(err, &te)
+	require.ErrorIs(err, mt.writeErr)
+
+	require.Equal(uint64(1), c.account.nextMessageId, "a write failure must not rewind assigned IDs")
+
+	// the connection must be marked as broken
+	c.m.Lock()
+	connErr := c.err
+	c.m.Unlock()
+	require.Error(connErr)
+	require.ErrorIs(connErr, mt.writeErr)
+
+	// the underlying transport must be closed
+	select {
+	case <-mt.closed:
+	default:
+		t.Fatal("transport was not closed after write failure")
+	}
+
+	// subsequent sends fail immediately with the recorded error
+	_, err = c.send(context.Background(), false, &wire.EchoRequest{})
+	require.Error(err)
+	require.ErrorIs(err, mt.writeErr)
+}
+
+func TestConnSendWriteDeadline(t *testing.T) {
+	t.Parallel()
+	server, client := net.Pipe()
+	defer server.Close()
+
+	c := &conn{
+		t:                   NewTransport(client),
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+		writeTimeout:        10 * time.Millisecond,
+	}
+
+	_, err := c.send(context.Background(), false, &wire.EchoRequest{})
+	if err == nil {
+		t.Fatal("send() expected write deadline error, got nil")
+	}
+	if _, ok := errors.AsType[*TransportError](err); !ok {
+		t.Fatalf("send() error = %T, want *TransportError", err)
+	}
+	require.Error(t, c.err)
+	require.True(t, c.account.closed)
+	require.Equal(t, uint64(1), c.account.nextMessageId, "a deadline failure must not rewind assigned IDs")
+}
+
+func TestConnSendCancellationWaitsForFrameCompletion(t *testing.T) {
+	t.Parallel()
+	for _, deadline := range []bool{false, true} {
+		for _, partial := range []bool{false, true} {
+			t.Run(fmt.Sprintf("deadline-%t/partial-%t", deadline, partial), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					testConnSendCancellationDuringFrame(t, deadline, partial)
+				})
+			})
+		}
+	}
+}
+
+func testConnSendCancellationDuringFrame(t *testing.T, deadline bool, partial bool) {
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	c := &conn{
+		t:                   NewTransport(clientConn),
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+		writeTimeout:        time.Second,
+	}
+	go c.runReceiver()
+	t.Cleanup(func() {
+		_ = c.close(nil)
+		_ = serverConn.Close()
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	if deadline {
+		cancel()
+		ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+	}
+	defer cancel()
+	require.NoError(serverConn.SetDeadline(time.Now().Add(3 * time.Second)))
+
+	type sendResult struct {
+		rrs []*outstandingRequest
+		err error
+	}
+	sendDone := make(chan sendResult, 1)
+	go func() {
+		rrs, err := c.send(ctx, false, &wire.EchoRequest{})
+		sendDone <- sendResult{rrs: rrs, err: err}
+	}()
+
+	// Observing the transport header proves send has borrowed credits and
+	// entered writev before cancellation. Optionally consume payload too.
+	var header [4]byte
+	_, err := io.ReadFull(serverConn, header[:])
+	require.NoError(err)
+	reqBuf := make([]byte, int(binary.BigEndian.Uint32(header[:])))
+	prefix := 0
+	if partial {
+		prefix = 1
+		_, err = io.ReadFull(serverConn, reqBuf[:prefix])
+		require.NoError(err)
+	}
+	if !deadline {
+		cancel()
+	}
+	<-ctx.Done()
+	select {
+	case <-sendDone:
+		t.Fatal("send returned before the frame was completed")
+	default:
+	}
+	c.account.m.Lock()
+	require.False(c.account.closed)
+	require.Zero(c.account.availableCredits)
+	require.Equal(uint16(1), c.account.inFlightCredits)
+	c.account.m.Unlock()
+
+	releaseResponse := make(chan struct{})
+	serverDone := make(chan error, 1)
+	go func() {
+		st := NewTransport(serverConn)
+
+		_, err := io.ReadFull(serverConn, reqBuf[prefix:])
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		req := wire.PacketCodec(reqBuf)
+		expected := &wire.EchoRequest{}
+		expected.SetMessageId(req.MessageId())
+		expected.SetCreditRequest(10)
+		want := make([]byte, expected.Size())
+		expected.Encode(want)
+		if !bytes.Equal(want, reqBuf) {
+			serverDone <- fmt.Errorf("request frame changed during cancellation")
+			return
+		}
+
+		cancelBuf, err := readMsg(st)
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		cancelPkt := wire.PacketCodec(cancelBuf)
+		if cancelPkt.Command() != wire.SMB2_CANCEL || cancelPkt.MessageId() != req.MessageId() {
+			serverDone <- fmt.Errorf("unexpected cancel command %v id %v", cancelPkt.Command(), cancelPkt.MessageId())
+			return
+		}
+
+		writeEchoResponse := func(messageID uint64) error {
+			res := &wire.EchoResponse{}
+			resBuf := make([]byte, res.Size())
+			res.Encode(resBuf)
+			resPkt := wire.PacketCodec(resBuf)
+			resPkt.SetMessageId(messageID)
+			resPkt.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+			resPkt.SetCreditResponse(1)
+			_, err := st.writev(resBuf)
+			return err
+		}
+
+		<-releaseResponse
+		if err := writeEchoResponse(req.MessageId()); err != nil {
+			serverDone <- err
+			return
+		}
+
+		secondReq, err := readMsg(st)
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		if wire.PacketCodec(secondReq).Command() != wire.SMB2_ECHO {
+			serverDone <- fmt.Errorf("expected follow-up ECHO, got another command")
+			return
+		}
+		if err := writeEchoResponse(wire.PacketCodec(secondReq).MessageId()); err != nil {
+			serverDone <- err
+			return
+		}
+		serverDone <- nil
+	}()
+
+	var result sendResult
+	select {
+	case result = <-sendDone:
+	case <-time.After(time.Second):
+		t.Fatal("send did not finish after the transport resumed reading")
+	}
+	require.NoError(result.err)
+	require.Len(result.rrs, 1)
+
+	_, recvErr := c.recv(result.rrs[0])
+	require.ErrorIs(recvErr, ctx.Err())
+
+	c.account.m.Lock()
+	require.Zero(c.account.availableCredits)
+	require.Equal(uint16(1), c.account.inFlightCredits)
+	c.account.m.Unlock()
+	_, outstanding := c.outstandingRequests.peek(result.rrs[0].msgId)
+	require.True(outstanding)
+	close(releaseResponse)
+
+	secondRrs, err := c.send(context.Background(), false, &wire.EchoRequest{})
+	require.NoError(err)
+	_, err = c.recv(secondRrs[0])
+	require.NoError(err)
+
+	select {
+	case err := <-serverDone:
+		require.NoError(err)
+	case <-time.After(time.Second):
+		t.Fatal("server did not observe the request, cancel, and follow-up request")
+	}
+
+	c.m.Lock()
+	require.NoError(c.err)
+	c.m.Unlock()
+	c.account.m.Lock()
+	require.False(c.account.closed)
+	require.Zero(c.account.inFlightCredits)
+	c.account.m.Unlock()
+}
+
+func TestConnSendCanceledBeforeWriteUnloansOnce(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	mt := &countingWriteTransport{}
+	c := &conn{
+		t:                   mt,
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Cancel at send's pre-write check, after loan's initial context check.
+	// Successful loans no longer notify credit waiters.
+	checks := 0
+	observed := loanObservedContext{Context: ctx, onDone: func() {
+		checks++
+		if checks == 2 {
+			c.account.m.Lock()
+			require.Zero(c.account.availableCredits)
+			require.Equal(uint16(1), c.account.inFlightCredits)
+			c.account.m.Unlock()
+			cancel()
+		}
+	}}
+	_, err := c.send(observed, false, &wire.EchoRequest{})
+	require.Equal(2, checks)
+	require.ErrorIs(err, context.Canceled)
+	require.Zero(mt.writes)
+
+	c.account.m.Lock()
+	require.Equal(uint16(1), c.account.availableCredits)
+	require.Zero(c.account.inFlightCredits)
+	require.Zero(c.account.nextMessageId, "cancellation before preparation consumes no IDs")
+	c.account.m.Unlock()
+}
+
+func TestConnTryHandleCancelRaceClosesOrphanPacket(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		require := require.New(t)
+
+		c := &conn{
+			outstandingRequests: newOutstandingRequests(),
+			account:             openAccount(10),
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		rr := &outstandingRequest{
+			msgId: 1,
+			cmd:   wire.SMB2_ECHO,
+			ctx:   ctx,
+			recv:  make(chan *recvPacket, 1),
+		}
+		c.outstandingRequests.set(rr.msgId, rr)
+
+		echoRes := &wire.EchoResponse{}
+		resBuf := make([]byte, echoRes.Size())
+		echoRes.Encode(resBuf)
+		p := wire.PacketCodec(resBuf)
+		p.SetMessageId(rr.msgId)
+		p.SetStatus(uint32(erref.STATUS_SUCCESS))
+		p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+
+		rp := allocRecvPacket(len(resBuf))
+		copy(rp.pkt, resBuf)
+		buf := rp.buf
+		// Retain a test-owned reference until the assertion. Otherwise another
+		// parallel test can acquire the released buffer from the shared pool.
+		buf.refCount.Add(1)
+		defer releaseRecvBuf(buf)
+
+		// Occupy rr.recv so that tryHandle blocks on the channel send right
+		// after its canceled check, reproducing the race window where
+		// conn.recv takes the ctx.Done() branch before the response is sent.
+		filler := allocRecvPacket(1)
+		rr.recv <- filler
+
+		tryDone := make(chan struct{})
+		go func() {
+			defer close(tryDone)
+			_ = c.tryHandle(rp, nil)
+		}()
+
+		// Give tryHandle time to pass its canceled check and block on the send.
+		time.Sleep(50 * time.Millisecond)
+
+		// Emulate conn.recv taking the ctx.Done() branch: mark the request as
+		// canceled, then drain and close whatever the channel holds.
+		cancel()
+		rr.canceled.Store(true)
+		select {
+		case orphan := <-rr.recv:
+			require.Same(filler, orphan)
+			orphan.close()
+		default:
+			t.Fatal("expected filler packet to be still queued in rr.recv")
+		}
+
+		<-tryDone
+
+		// tryHandle must notice the cancellation after its send and close the
+		// Response; otherwise the underlying buffer leaks.
+		require.Equal(int32(1), buf.refCount.Load(), "response packet leaked after cancellation race")
+
+		select {
+		case orphan := <-rr.recv:
+			require.Fail("packet left unconsumed in rr.recv", "packet length %d", len(orphan.pkt))
+		default:
+		}
+	})
+}
+
+func TestConnPendingAsyncIdRaceWithSendCancel(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		clientConn, serverConn := net.Pipe()
+		defer clientConn.Close()
+		defer serverConn.Close()
+
+		// Drain the SMB2_CANCEL requests emitted by sendCancel so its writes
+		// never block while conn.m is held.
+		go func() {
+			_, _ = io.Copy(io.Discard, serverConn)
+		}()
+
+		c := &conn{
+			t:                   NewTransport(clientConn),
+			outstandingRequests: newOutstandingRequests(),
+			account:             openAccount(10),
+		}
+
+		const asyncId = uint64(0xABCD)
+
+		for i := range 50 {
+			ctx, cancel := context.WithCancel(context.Background())
+
+			rr := &outstandingRequest{
+				msgId: uint64(i) + 1,
+				cmd:   wire.SMB2_ECHO,
+				ctx:   ctx,
+				recv:  make(chan *recvPacket, 1),
+			}
+			c.outstandingRequests.set(rr.msgId, rr)
+
+			pendingRes := &wire.ErrorResponse{CommandCode: wire.SMB2_ECHO}
+			resBuf := make([]byte, pendingRes.Size())
+			pendingRes.Encode(resBuf)
+			p := wire.PacketCodec(resBuf)
+			p.SetMessageId(rr.msgId)
+			p.SetStatus(uint32(erref.STATUS_PENDING))
+			p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+			p.SetAsyncId(asyncId)
+
+			rp := allocRecvPacket(len(resBuf))
+			copy(rp.pkt, resBuf)
+
+			recvDone := make(chan struct{})
+			go func() {
+				defer close(recvDone)
+				_, _ = c.recv(rr)
+			}()
+
+			// Let c.recv block on the select.
+			synctest.Wait()
+
+			tryDone := make(chan struct{})
+			go func() {
+				defer close(tryDone)
+				_ = c.tryHandle(rp, nil)
+			}()
+
+			// Let tryHandle adopt rr.asyncId while the context is still alive.
+			synctest.Wait()
+
+			// Canceling afterwards spawns sendCancel from the ctx.Done() branch,
+			// which reads rr.asyncId concurrently with the store made by the
+			// STATUS_PENDING branch of tryHandle in another goroutine.
+			cancel()
+
+			<-tryDone
+			<-recvDone
+		}
+	})
+}
+
+// TestConnPendingAsyncIdSurvivesRecvBufReuse drives tryHandle with standalone
+// small STATUS_PENDING responses while another goroutine continuously
+// allocates, overwrites, and releases same-sized receive buffers from the pool.
+// The pending branch must read the SMB2 header while it still owns the buffer;
+// otherwise a released buffer can be reused and overwrite the AsyncId, which is
+// then adopted into rr.asyncId ([MS-SMB2] 3.3.4.2). Each final async Response is
+// checked through Tree.recv, which rejects a request whose stored async id
+// no longer matches.
+func TestConnPendingAsyncIdSurvivesRecvBufReuse(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	// Drain any SMB2_CANCEL written by sendCancel so it cannot block.
+	go func() {
+		_, _ = io.Copy(io.Discard, serverConn)
+	}()
+
+	c := &conn{
+		t:                   NewTransport(clientConn),
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+
+	const (
+		sessionId  = uint64(0x55)
+		treeId     = uint32(0x66)
+		iterations = 250
+	)
+
+	s := &session{conn: c, sessionId: sessionId}
+	tc := &Tree{session: s, treeId: treeId}
+
+	pendingRes := &wire.ErrorResponse{CommandCode: wire.SMB2_ECHO}
+	pendingBuf := make([]byte, pendingRes.Size())
+	pendingRes.Encode(pendingBuf)
+
+	finalRes := &wire.EchoResponse{}
+	finalBuf := make([]byte, finalRes.Size())
+	finalRes.Encode(finalBuf)
+
+	// Legitimately churn same-sized buffers through the shared pool. The
+	// goroutine only touches buffers it acquires itself, never the packets
+	// handed to tryHandle.
+	start := make(chan struct{})
+	stop := make(chan struct{})
+	reuseDone := make(chan struct{})
+	go func() {
+		defer close(reuseDone)
+		<-start
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			rp := allocRecvPacket(len(pendingBuf))
+			for i := range rp.pkt {
+				rp.pkt[i] = 0xFF
+			}
+			rp.close()
+		}
+	}()
+	close(start)
+	defer func() {
+		close(stop)
+		<-reuseDone
+	}()
+
+	for i := range iterations {
+		msgId := uint64(i) + 1
+		asyncId := uint64(0x1000) + uint64(i)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		rr := &outstandingRequest{
+			msgId: msgId,
+			cmd:   wire.SMB2_ECHO,
+			ctx:   ctx,
+			recv:  make(chan *recvPacket, 1),
+		}
+		c.outstandingRequests.set(msgId, rr)
+
+		rp := allocRecvPacket(len(pendingBuf))
+		copy(rp.pkt, pendingBuf)
+		p := rp.codec()
+		p.SetMessageId(msgId)
+		p.SetStatus(uint32(erref.STATUS_PENDING))
+		p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+		p.SetAsyncId(asyncId)
+
+		require.NoError(c.tryHandle(rp, nil))
+		require.Equal(asyncId, rr.asyncId.Load())
+
+		stored, ok := c.outstandingRequests.peek(msgId)
+		require.True(ok, "pending request must stay outstanding")
+		require.Same(rr, stored)
+
+		// Deliver the matching final async Response through the receive
+		// path, then let Tree.recv verify it against the adopted
+		// rr.asyncId.
+		frp := allocRecvPacket(len(finalBuf))
+		copy(frp.pkt, finalBuf)
+		fp := frp.codec()
+		fp.SetMessageId(msgId)
+		fp.SetSessionId(sessionId)
+		fp.SetStatus(uint32(erref.STATUS_SUCCESS))
+		fp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+		fp.SetAsyncId(asyncId)
+		require.NoError(c.tryHandle(frp, nil))
+
+		res, err := tc.recv(rr)
+		require.NoError(err)
+		res.close()
+
+		_, ok = c.outstandingRequests.peek(msgId)
+		require.False(ok, "final response must complete the request")
+
+		cancel()
+	}
+}
+
+func TestConnSendCancelEncryptsRequiredRequest(t *testing.T) {
+	t.Parallel()
+	for _, policy := range []string{"session", "share"} {
+		for _, async := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/async-%t", policy, async), func(t *testing.T) {
+				require := require.New(t)
+				clientConn, serverConn := net.Pipe()
+				defer clientConn.Close()
+				defer serverConn.Close()
+
+				const (
+					messageID uint64 = 0x1234
+					sessionID uint64 = 0xCAFE
+					asyncID   uint64 = 0xABCD
+				)
+				aead := newGCM(make([]byte, 16))
+				c := &conn{
+					t:                   &countingWriteTransport{},
+					account:             openAccount(1),
+					outstandingRequests: newOutstandingRequests(),
+				}
+				s := &session{
+					conn:      c,
+					sessionId: sessionID,
+					nonces:    &encryptionNonces{}, encrypter: aead,
+					decrypter: aead,
+				}
+				c.session = s
+				tc := &Tree{session: s}
+				if policy == "session" {
+					s.sessionFlags = wire.SMB2_SESSION_FLAG_ENCRYPT_DATA
+				} else {
+					tc.shareFlags = wire.SMB2_SHAREFLAG_ENCRYPT_DATA
+				}
+				rrs, err := tc.send(context.Background(), &wire.EchoRequest{})
+				require.NoError(err)
+				rr := rrs[0]
+				require.True(rr.requireEncryption)
+				rr.msgId = messageID
+				c.t = NewTransport(clientConn)
+
+				if async {
+					rr.asyncId.Store(asyncID)
+				}
+
+				sendDone := make(chan struct{})
+				go func() {
+					c.sendCancel(rr)
+					close(sendDone)
+				}()
+
+				wireBytes, err := readMsg(NewTransport(serverConn))
+				require.NoError(err)
+				require.Equal([]byte(wire.MAGIC2), wireBytes[:4])
+				transform := wire.TransformCodec(wireBytes)
+				require.Equal(uint16(wire.Encrypted), transform.Flags())
+				require.Equal(sessionID, transform.SessionId())
+
+				plain, err := s.decrypt(wireBytes)
+				require.NoError(err)
+				p := wire.PacketCodec(plain)
+				require.Equal(wire.SMB2_CANCEL, p.Command())
+				require.Equal(messageID, p.MessageId())
+				require.Zero(p.Flags() & wire.SMB2_FLAGS_SIGNED)
+				require.Equal(sessionID, p.SessionId())
+				if async {
+					require.NotZero(p.Flags() & wire.SMB2_FLAGS_ASYNC_COMMAND)
+					require.Equal(asyncID, p.AsyncId())
+				} else {
+					require.Zero(p.Flags() & wire.SMB2_FLAGS_ASYNC_COMMAND)
+				}
+				<-sendDone
+			})
+		}
+	}
+}
+
+func TestConnSendCancelEncryptionFailureDoesNotFallback(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	mt := &countingWriteTransport{}
+	c := &conn{
+		t:                   mt,
+		outstandingRequests: newOutstandingRequests(),
+	}
+	c.session = &session{conn: c, sessionId: 0xCAFE}
+
+	c.sendCancel(&outstandingRequest{msgId: 1, requireEncryption: true})
+	c.session = nil
+	c.sendCancel(&outstandingRequest{msgId: 2, requireEncryption: true})
+
+	require.Zero(mt.writes)
+	require.Zero(mt.closes)
+	c.m.Lock()
+	require.NoError(c.err)
+	c.m.Unlock()
+}
+
+func TestConnSendCancelSignsUnencryptedRequest(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	block, err := aes.NewCipher(make([]byte, 16))
+	require.NoError(err)
+	verifyBlock, err := aes.NewCipher(make([]byte, 16))
+	require.NoError(err)
+	c := &conn{
+		t:                   NewTransport(clientConn),
+		outstandingRequests: newOutstandingRequests(),
+		requireSigning:      true,
+	}
+	s := &session{
+		conn:      c,
+		sessionId: 0xCAFE,
+		signer:    newHashSigner(cmac.New(block)),
+		verifier:  newHashSigner(cmac.New(verifyBlock)),
+	}
+	c.session = s
+
+	sendDone := make(chan struct{})
+	go func() {
+		c.sendCancel(&outstandingRequest{msgId: 1})
+		close(sendDone)
+	}()
+
+	wireBytes, err := readMsg(NewTransport(serverConn))
+	require.NoError(err)
+	require.NotEqual([]byte(wire.MAGIC2), wireBytes[:4])
+	p := wire.PacketCodec(wireBytes)
+	require.Equal(wire.SMB2_CANCEL, p.Command())
+	require.NotZero(p.Flags() & wire.SMB2_FLAGS_SIGNED)
+	require.True(s.verify(wireBytes))
+	<-sendDone
+}
+
+func TestConnTryHandlePendingReRegistersCanceledRequest(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	c := &conn{
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+
+	// Loan a credit for the request so it is tracked in inFlightCredits.
+	req := &wire.EchoRequest{}
+	msgIds, totalCreditCharge, err := c.account.loan(context.Background(), req)
+	require.NoError(err)
+	require.Equal(uint16(1), totalCreditCharge)
+
+	rr := &outstandingRequest{
+		msgId:        msgIds[0],
+		cmd:          wire.SMB2_ECHO,
+		ctx:          context.Background(),
+		recv:         make(chan *recvPacket, 1),
+		creditCharge: totalCreditCharge,
+	}
+	c.outstandingRequests.set(rr.msgId, rr)
+
+	// The caller gives up while the request is still in flight.
+	rr.canceled.Store(true)
+
+	// A STATUS_PENDING interim Response arrives for the canceled request.
+	pendingRes := &wire.ErrorResponse{CommandCode: wire.SMB2_ECHO}
+	pendingBuf := make([]byte, pendingRes.Size())
+	pendingRes.Encode(pendingBuf)
+	p := wire.PacketCodec(pendingBuf)
+	p.SetMessageId(rr.msgId)
+	p.SetStatus(uint32(erref.STATUS_PENDING))
+	p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+	p.SetAsyncId(1)
+
+	rp := allocRecvPacket(len(pendingBuf))
+	copy(rp.pkt, pendingBuf)
+	require.NoError(c.tryHandle(rp, nil))
+
+	// The canceled request must be re-registered so the final response can
+	// still be routed back to it.
+	popped, ok := c.outstandingRequests.pop(rr.msgId)
+	require.True(ok, "canceled request must be re-registered after STATUS_PENDING")
+	require.Equal(rr, popped)
+	c.outstandingRequests.set(rr.msgId, rr)
+
+	// The final response arrives.
+	finalRes := &wire.EchoResponse{}
+	finalBuf := make([]byte, finalRes.Size())
+	finalRes.Encode(finalBuf)
+	p = wire.PacketCodec(finalBuf)
+	p.SetMessageId(rr.msgId)
+	p.SetStatus(uint32(erref.STATUS_SUCCESS))
+	p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+
+	rp = allocRecvPacket(len(finalBuf))
+	copy(rp.pkt, finalBuf)
+	require.NoError(c.tryHandle(rp, nil))
+
+	c.account.m.Lock()
+	inFlight := c.account.inFlightCredits
+	c.account.m.Unlock()
+	require.Zero(inFlight, "in-flight credits must be returned when the canceled request is resolved")
+}
+
+func TestDialerMakeRequest(t *testing.T) {
+	t.Parallel()
+	t.Run("SMB3AdvertisesDFSAndExistingCapabilities", func(t *testing.T) {
+		require := require.New(t)
+		req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{SMB302}, false)
+		require.NoError(err)
+		require.Equal(uint32(clientCapabilities), req.Capabilities)
+		require.Equal(uint32(wire.SMB2_GLOBAL_CAP_DFS), req.Capabilities&wire.SMB2_GLOBAL_CAP_DFS)
+		require.Equal(uint32(wire.SMB2_GLOBAL_CAP_LARGE_MTU), req.Capabilities&wire.SMB2_GLOBAL_CAP_LARGE_MTU)
+		require.Equal(uint32(wire.SMB2_GLOBAL_CAP_ENCRYPTION), req.Capabilities&wire.SMB2_GLOBAL_CAP_ENCRYPTION)
+	})
+
+	require := require.New(t)
+
+	t.Run("SMB202ClearsCapabilities", func(t *testing.T) {
+		req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{SMB202}, false)
+		require.NoError(err)
+		require.Zero(req.Capabilities)
+	})
+
+	t.Run("SMB210ClearsCapabilities", func(t *testing.T) {
+		req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{SMB210}, false)
+		require.NoError(err)
+		require.Zero(req.Capabilities)
+	})
+
+	for _, dialect := range []Dialect{SMB300, SMB302} {
+		t.Run(fmt.Sprintf("SMB%XHasNoContexts", dialect), func(t *testing.T) {
+			req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{dialect}, false)
+			require.NoError(err)
+			require.Empty(req.Contexts)
+		})
+	}
+
+	t.Run("MultipleSMB3Without311HasNoContexts", func(t *testing.T) {
+		req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{SMB302, SMB300}, false)
+		require.NoError(err)
+		require.Equal(uint32(clientCapabilities), req.Capabilities)
+		require.Empty(req.Contexts)
+		require.Equal([]Dialect{SMB302, SMB300}, req.Dialects)
+	})
+
+	t.Run("MultipleSMB3With311HasContexts", func(t *testing.T) {
+		req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{SMB311, SMB302}, false)
+		require.NoError(err)
+		require.Equal(uint32(clientCapabilities), req.Capabilities)
+		require.Len(req.Contexts, 4)
+		require.Equal([]Dialect{SMB311, SMB302}, req.Dialects)
+	})
+
+	t.Run("TransportEncryptionAppendsTransportContext", func(t *testing.T) {
+		req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{SMB311}, true)
+		require.NoError(err)
+		require.Len(req.Contexts, 5)
+		tc, ok := req.Contexts[4].(*wire.TransportContext)
+		require.True(ok, "fifth context should be *wire.TransportContext")
+		require.Equal(uint32(wire.SMB2_ACCEPT_TRANSPORT_LEVEL_SECURITY), tc.Flags)
+	})
+
+	t.Run("SMB311HasHashAndCipherContexts", func(t *testing.T) {
+		req, err := (&Dialer{}).makeNegotiateRequest([]Dialect{SMB311}, false)
+		require.NoError(err)
+		require.Len(req.Contexts, 4)
+
+		hc, ok := req.Contexts[0].(*wire.HashContext)
+		require.True(ok, "first context should be *wire.HashContext")
+		require.Equal(clientHashAlgorithms, hc.HashAlgorithms)
+		require.Len(hc.HashSalt, 32)
+
+		cc, ok := req.Contexts[1].(*wire.CipherContext)
+		require.True(ok, "second context should be *wire.CipherContext")
+		require.Equal(clientCiphers, cc.Ciphers)
+
+		compression, ok := req.Contexts[2].(*wire.CompressionContext)
+		require.True(ok, "third context should be *wire.CompressionContext")
+		require.Equal(clientCompressionAlgorithms, compression.CompressionAlgorithms)
+		require.Zero(compression.Flags)
+	})
+
+	t.Run("UnknownSMBHasHashAndCipherContexts", func(t *testing.T) {
+		req, err := (&Dialer{}).makeNegotiateRequest(clientDialects, false)
+		require.NoError(err)
+		require.Len(req.Contexts, 4)
+
+		hc, ok := req.Contexts[0].(*wire.HashContext)
+		require.True(ok, "first context should be *wire.HashContext")
+		require.Equal(clientHashAlgorithms, hc.HashAlgorithms)
+		require.Len(hc.HashSalt, 32)
+
+		cc, ok := req.Contexts[1].(*wire.CipherContext)
+		require.True(ok, "second context should be *wire.CipherContext")
+		require.Equal(clientCiphers, cc.Ciphers)
+
+		compression, ok := req.Contexts[2].(*wire.CompressionContext)
+		require.True(ok, "third context should be *wire.CompressionContext")
+		require.Equal(clientCompressionAlgorithms, compression.CompressionAlgorithms)
+		require.Zero(compression.Flags)
+	})
+}
+
+func TestRunReceiverFatalErrors(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	const (
+		validSessionID   uint64 = 0xCAFE
+		unknownSessionID uint64 = 0xDEAD
+		msgID            uint64 = 1
+	)
+
+	runFatalTest := func(t *testing.T, packetToSend []byte, decrypter cipher.AEAD, expectedErrSubstr string, compressed ...bool) {
+		clientConn, serverConn := net.Pipe()
+		defer clientConn.Close()
+		defer serverConn.Close()
+
+		c := &conn{
+			t:                   NewTransport(clientConn),
+			outstandingRequests: newOutstandingRequests(),
+			account:             openAccount(10),
+		}
+		if len(compressed) > 0 && compressed[0] {
+			c.dialect = wire.SMB311
+			c.compressionIds = []uint16{wire.SMB2_COMPRESSION_ALGORITHM_LZ4}
+		}
+		c.enableSession()
+		c.session = &session{conn: c, sessionId: validSessionID, decrypter: decrypter}
+
+		rr := &outstandingRequest{
+			msgId: msgID,
+			ctx:   context.Background(),
+			recv:  make(chan *recvPacket, 1),
+		}
+		c.outstandingRequests.set(msgID, rr)
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			c.runReceiver()
+		}()
+
+		st := NewTransport(serverConn)
+		_, err := st.writev(packetToSend)
+		require.NoError(err)
+
+		select {
+		case rp, ok := <-rr.recv:
+			if ok && rp != nil {
+				rp.close()
+				t.Fatal("expected request to fail, but received packet")
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for outstanding request to fail")
+		}
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for receiver loop to exit")
+		}
+
+		c.m.Lock()
+		connErr := c.err
+		c.m.Unlock()
+		require.Error(connErr)
+		if expectedErrSubstr != "" {
+			require.Contains(connErr.Error(), expectedErrSubstr)
+		}
+		require.Error(rr.err)
+	}
+
+	makeCompound := func(sessionIDs ...uint64) []byte {
+		compound := make([]byte, 64*len(sessionIDs))
+		for i, sessionID := range sessionIDs {
+			p := wire.PacketCodec(compound[i*64:])
+			p.SetProtocolId()
+			p.SetStructureSize()
+			p.SetCommand(wire.SMB2_ECHO)
+			p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+			p.SetMessageId(uint64(i + 1))
+			p.SetSessionId(sessionID)
+			if i+1 < len(sessionIDs) {
+				p.SetNextCommand(64)
+			}
+		}
+		return compound
+	}
+
+	block, err := aes.NewCipher(make([]byte, 16))
+	require.NoError(err)
+	aead, err := cipher.NewGCM(block)
+	require.NoError(err)
+	makeEncryptedPacket := func(plaintext []byte) []byte {
+		s := &session{sessionId: validSessionID, nonces: &encryptionNonces{}, encrypter: aead}
+		pkt, err := s.encrypt(plaintext, make([]byte, 52+len(plaintext)+aead.Overhead()))
+		require.NoError(err)
+		return pkt
+	}
+
+	t.Run("BrokenTransformHeader", func(t *testing.T) {
+		bogus := make([]byte, 64)
+		runFatalTest(t, bogus, nil, "broken packet header format")
+	})
+
+	t.Run("UnknownSessionIDEncrypted", func(t *testing.T) {
+		pkt := make([]byte, 52+64)
+		tc := wire.TransformCodec(pkt)
+		tc.SetProtocolId()
+		tc.SetFlags(wire.Encrypted)
+		tc.SetOriginalMessageSize(64)
+		tc.SetSessionId(unknownSessionID)
+		runFatalTest(t, pkt, nil, "unknown session id returned")
+	})
+
+	t.Run("DecryptionFailure", func(t *testing.T) {
+		pkt := make([]byte, 52+64)
+		tc := wire.TransformCodec(pkt)
+		tc.SetProtocolId()
+		tc.SetFlags(wire.Encrypted)
+		tc.SetOriginalMessageSize(64)
+		tc.SetSessionId(validSessionID)
+		dec := &stubDecrypter{err: errors.New("cipher: message authentication failed")}
+		runFatalTest(t, pkt, dec, "cipher: message authentication failed")
+	})
+
+	t.Run("OriginalMessageSizeMismatch", func(t *testing.T) {
+		pkt := make([]byte, 52+64)
+		tc := wire.TransformCodec(pkt)
+		tc.SetProtocolId()
+		tc.SetFlags(wire.Encrypted)
+		tc.SetOriginalMessageSize(80) // len(pkt) == 52 + 64 != 52 + 80
+		tc.SetSessionId(validSessionID)
+		runFatalTest(t, pkt, nil, "broken packet header format")
+	})
+
+	t.Run("UnknownSessionIDPlain", func(t *testing.T) {
+		pkt := make([]byte, 64)
+		p := wire.PacketCodec(pkt)
+		p.SetProtocolId()
+		p.SetStructureSize()
+		p.SetSessionId(unknownSessionID)
+		p.SetMessageId(msgID)
+		runFatalTest(t, pkt, nil, "unknown session id")
+	})
+
+	t.Run("NextCommandOutOfBounds", func(t *testing.T) {
+		pkt := make([]byte, 64)
+		p := wire.PacketCodec(pkt)
+		p.SetProtocolId()
+		p.SetStructureSize()
+		p.SetSessionId(validSessionID)
+		p.SetMessageId(msgID)
+		p.SetNextCommand(16) // out of bounds: < 64 (but 8-byte aligned)
+		runFatalTest(t, pkt, nil, "broken packet header format")
+	})
+
+	t.Run("InvalidChainedPacketHeader", func(t *testing.T) {
+		pkt := make([]byte, 128)
+		p := wire.PacketCodec(pkt)
+		p.SetProtocolId()
+		p.SetStructureSize()
+		p.SetSessionId(validSessionID)
+		p.SetMessageId(msgID)
+		p.SetNextCommand(64)
+		runFatalTest(t, pkt, nil, "invalid chained packet header")
+	})
+
+	t.Run("EncryptedCompoundSessionIDMismatch", func(t *testing.T) {
+		plaintext := makeCompound(validSessionID, unknownSessionID)
+		runFatalTest(t, makeEncryptedPacket(plaintext), aead, "unknown session id in encrypted Response")
+	})
+
+	t.Run("EncryptedCompressedCompoundSessionIDMismatch", func(t *testing.T) {
+		plaintext, err := compressPacket(makeCompound(validSessionID, unknownSessionID))
+		require.NoError(err)
+		runFatalTest(t, makeEncryptedPacket(plaintext), aead, "unknown session id in encrypted Response", true)
+	})
+}
+
+func TestRunReceiverAcceptsEncryptedCompound(t *testing.T) {
+	t.Parallel()
+	for _, compressed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("compressed-%t", compressed), func(t *testing.T) {
+			require := require.New(t)
+			clientConn, serverConn := net.Pipe()
+			defer serverConn.Close()
+			require.NoError(serverConn.SetDeadline(time.Now().Add(2 * time.Second)))
+			block, err := aes.NewCipher(make([]byte, 16))
+			require.NoError(err)
+			aead, err := cipher.NewGCM(block)
+			require.NoError(err)
+			c := &conn{
+				t:                   NewTransport(clientConn),
+				dialect:             wire.SMB311,
+				compressionIds:      []uint16{wire.SMB2_COMPRESSION_ALGORITHM_LZ4},
+				outstandingRequests: newOutstandingRequests(),
+				account:             openAccount(10),
+			}
+			c.session = &session{conn: c, sessionId: 0xCAFE, decrypter: aead, nonces: &encryptionNonces{}, encrypter: aead}
+			c.enableSession()
+			done := make(chan struct{})
+			go func() { defer close(done); c.runReceiver() }()
+			t.Cleanup(func() { _ = c.close(nil); <-done })
+			var requests []*outstandingRequest
+			var compound []byte
+			for i := range 2 {
+				rr := &outstandingRequest{msgId: uint64(i + 1), cmd: wire.SMB2_ECHO, ctx: context.Background(), recv: make(chan *recvPacket, 1)}
+				c.outstandingRequests.set(rr.msgId, rr)
+				requests = append(requests, rr)
+				res := &wire.EchoResponse{}
+				pkt := make([]byte, (res.Size()+7)&^7)
+				res.Encode(pkt)
+				p := wire.PacketCodec(pkt)
+				p.SetSessionId(c.session.sessionId)
+				p.SetMessageId(rr.msgId)
+				p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+				if i == 0 {
+					p.SetNextCommand(uint32(len(pkt)))
+				}
+				compound = append(compound, pkt...)
+			}
+			if compressed {
+				compound, err = compressPacket(compound)
+				require.NoError(err)
+			}
+			pkt, err := c.session.encrypt(compound, make([]byte, 52+len(compound)+aead.Overhead()))
+			require.NoError(err)
+			_, err = NewTransport(serverConn).writev(pkt)
+			require.NoError(err)
+			for _, rr := range requests {
+				select {
+				case rp := <-rr.recv:
+					require.NotNil(rp)
+					accepted, err := accept(rr.cmd, rp, c.dialect)
+					require.NoError(err)
+					accepted.close()
+				case <-time.After(time.Second):
+					t.Fatal("matching encrypted response was not delivered")
+				}
+			}
+			c.m.Lock()
+			connErr := c.err
+			c.m.Unlock()
+			require.NoError(connErr)
+		})
+	}
+}
+
+func TestReadResponseEncryptionPolicy(t *testing.T) {
+	t.Parallel()
+	for _, policy := range []string{"session", "share", "optional"} {
+		for _, shape := range []string{"single", "compound", "async"} {
+			for _, encrypted := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/encrypted-%t", policy, shape, encrypted), func(t *testing.T) {
+					require := require.New(t)
+					clientConn, serverConn := net.Pipe()
+					c, cleanup := newBenchConn(clientConn)
+					defer cleanup()
+					defer serverConn.Close()
+					require.NoError(serverConn.SetDeadline(time.Now().Add(3 * time.Second)))
+					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+					defer cancel()
+					s := &session{conn: c, sessionId: 42, nonces: &encryptionNonces{}, encrypter: newGCM(make([]byte, 16)), decrypter: newGCM(make([]byte, 16))}
+					c.session = s
+					tc := &Tree{session: s, treeId: 7}
+					if policy == "session" {
+						s.sessionFlags = wire.SMB2_SESSION_FLAG_ENCRYPT_DATA
+					} else if policy == "share" {
+						tc.shareFlags = wire.SMB2_SHAREFLAG_ENCRYPT_DATA
+					}
+					c.enableSession()
+					serverErr := make(chan error, 1)
+					go func() {
+						_, err := readMsg(NewTransport(serverConn))
+						serverErr <- err
+					}()
+					reqs := []wire.Packet{&wire.ReadRequest{Length: 1}}
+					if shape == "compound" {
+						reqs = append(reqs, &wire.ReadRequest{Length: 1})
+					}
+					rrs, err := tc.send(ctx, reqs...)
+					require.NoError(err)
+					require.NoError(<-serverErr)
+					writeResponse := func(pkt []byte, encrypt bool) {
+						if encrypt {
+							var err error
+							pkt, err = s.encrypt(pkt, make([]byte, 52+len(pkt)+16))
+							require.NoError(err)
+						}
+						_, err := NewTransport(serverConn).writev(pkt)
+						require.NoError(err)
+					}
+					var compound []byte
+					for i, rr := range rrs {
+						require.Equal(policy != "optional", rr.requireEncryption)
+						res := &wire.ReadResponse{Data: []byte{99}}
+						pkt := make([]byte, wire.Roundup(res.Size(), 8))
+						res.Encode(pkt)
+						p := wire.PacketCodec(pkt)
+						p.SetMessageId(rr.msgId)
+						p.SetSessionId(s.sessionId)
+						p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+						p.SetCreditResponse(1)
+						// A substituted TreeId must not erase the request policy.
+						p.SetTreeId(0)
+						if shape == "async" {
+							p.SetFlags(p.Flags() | wire.SMB2_FLAGS_ASYNC_COMMAND)
+							p.SetAsyncId(13)
+							pending := testAcceptedResponse(t, &wire.ErrorResponse{CommandCode: wire.SMB2_READ})
+							pending.codec().SetMessageId(rr.msgId)
+							pending.codec().SetSessionId(s.sessionId)
+							pending.codec().SetFlags(p.Flags())
+							pending.codec().SetAsyncId(13)
+							pending.codec().SetStatus(uint32(erref.STATUS_PENDING))
+							writeResponse(pending.pkt, true)
+							pending.close()
+						}
+						if i+1 < len(rrs) {
+							p.SetNextCommand(uint32(len(pkt)))
+						}
+						compound = append(compound, pkt...)
+					}
+					writeResponse(compound, encrypted)
+					for _, rr := range rrs {
+						rp, err := s.recv(rr)
+						if policy != "optional" && !encrypted {
+							require.ErrorContains(err, "encrypted response required")
+							require.Nil(rp)
+							continue
+						}
+						require.NoError(err)
+						rp, err = accept(wire.SMB2_READ, rp, c.dialect)
+						require.NoError(err)
+						require.Equal([]byte{99}, wire.ReadResponseDecoder(rp.codec().Body()).Data())
+						rp.close()
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestResponseEncryptionExceptions(t *testing.T) {
+	t.Parallel()
+	for _, req := range []wire.Packet{&wire.NegotiateRequest{}, &wire.SessionSetupRequest{}, &wire.TreeConnectRequest{Path: `\\server\share`}} {
+		t.Run(req.Command().String(), func(t *testing.T) {
+			require := require.New(t)
+			c := &conn{outstandingRequests: newOutstandingRequests()}
+			c.session = &session{conn: c, sessionId: 42}
+			// SESSION_SETUP can establish an encrypted session in plaintext;
+			// TREE_CONNECT has not established a share encryption policy yet.
+			if req.Command() == wire.SMB2_SESSION_SETUP {
+				c.session.sessionFlags = wire.SMB2_SESSION_FLAG_ENCRYPT_DATA
+			}
+			rrs, _, err := c.makeOutstandingRequest(context.Background(), false, []uint64{1}, req)
+			require.NoError(err)
+			require.False(rrs[0].requireEncryption)
+			pkt := make([]byte, 64)
+			p := wire.PacketCodec(pkt)
+			p.SetProtocolId()
+			p.SetStructureSize()
+			p.SetCommand(req.Command())
+			p.SetMessageId(1)
+			p.SetSessionId(42)
+			p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+			require.NoError(c.tryVerify(&recvPacket{pkt: pkt}, false))
+		})
+	}
+}
+
+type transportContextBytes []byte
+
+func (b transportContextBytes) Size() int { return 8 + len(b) }
+
+func (b transportContextBytes) Encode(p []byte) {
+	le.PutUint16(p[:2], wire.SMB2_TRANSPORT_CAPABILITIES)
+	le.PutUint16(p[2:4], uint16(len(b)))
+	copy(p[8:], b)
+}
+
+func TestNegotiateTransportSecurity(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name         string
+		quic, optIn  bool
+		contexts     []wire.Encoder
+		accepted     bool
+		errorMessage string
+	}{
+		{"accepted", true, true, []wire.Encoder{&wire.TransportContext{Flags: 1}}, true, ""},
+		{"declined", true, true, []wire.Encoder{&wire.TransportContext{}}, false, ""},
+		{"absent", true, true, nil, false, ""},
+		{"TCP", false, true, []wire.Encoder{&wire.TransportContext{Flags: 1}}, false, ""},
+		{"disabled", true, false, []wire.Encoder{&wire.TransportContext{Flags: 1}}, false, ""},
+		{"unknown flags", true, true, []wire.Encoder{&wire.TransportContext{Flags: 2}}, false, ""},
+		{"extended", true, true, []wire.Encoder{transportContextBytes{1, 0, 0, 0, 9}}, true, ""},
+		{"truncated", true, true, []wire.Encoder{transportContextBytes{1, 0, 0}}, false, "broken transport context data format"},
+		{"duplicate", true, true, []wire.Encoder{&wire.TransportContext{Flags: 1}, &wire.TransportContext{Flags: 1}}, false, "duplicate transport capabilities context"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			client, server := net.Pipe()
+			defer client.Close()
+			defer server.Close()
+			offered := make(chan bool, 1)
+			go func() {
+				st := NewTransport(server)
+				buf, err := readMsg(st)
+				if err != nil {
+					return
+				}
+				p := wire.PacketCodec(buf)
+				req := wire.NegotiateRequestDecoder(p.Body())
+				list := req.Contexts()
+				found := false
+				for i := req.NegotiateContextCount(); i > 0; i-- {
+					nc := wire.NegotiateContextDecoder(list)
+					if nc.IsInvalid() {
+						return
+					}
+					if nc.ContextType() == wire.SMB2_TRANSPORT_CAPABILITIES {
+						found = len(nc.Data()) == 4 && le.Uint32(nc.Data()) == 1
+					}
+					if i > 1 {
+						list = list[nc.Next():]
+					}
+				}
+				offered <- found
+				resp := &wire.NegotiateResponse{
+					Flags: wire.SMB2_FLAGS_SERVER_TO_REDIR, MessageId: p.MessageId(),
+					SecurityMode: 1, DialectRevision: wire.SMB311,
+					MaxTransactSize: 65536, MaxReadSize: 65536, MaxWriteSize: 65536,
+					SystemTime: wire.Filetime{}, ServerStartTime: wire.Filetime{},
+					Contexts: append([]wire.Encoder{&wire.HashContext{HashAlgorithms: []uint16{wire.SHA512}}, &wire.CipherContext{Ciphers: []Cipher{wire.AES128GCM}}}, tt.contexts...),
+				}
+				out := make([]byte, resp.Size())
+				resp.Encode(out)
+				wire.PacketCodec(out).SetCreditResponse(1)
+				_, _ = st.writev(out)
+			}()
+			var transport Transport = NewTransport(client)
+			if tt.quic {
+				transport = negotiateQUICTransport{transport}
+			}
+			n := Dialer{DisableEncryptionOverSecureTransport: tt.optIn}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			c, err := n.negotiate(ctx, transport, openAccount(8))
+			if tt.errorMessage != "" {
+				require.ErrorContains(t, err, tt.errorMessage)
+			} else {
+				require.NoError(t, err)
+				defer c.close(nil)
+				require.Equal(t, tt.accepted, c.acceptTransportSecurity)
+			}
+			select {
+			case got := <-offered:
+				require.Equal(t, tt.quic && tt.optIn, got)
+			case <-ctx.Done():
+				t.Fatal("request not inspected")
+			}
+		})
+	}
+}
+
+func TestTransportSecuritySkipsSMBEncryption(t *testing.T) {
+	t.Parallel()
+	for _, accepted := range []bool{false, true} {
+		c := &conn{outstandingRequests: newOutstandingRequests(), acceptTransportSecurity: accepted}
+		c.session = &session{conn: c, sessionId: 42}
+		rrs, parts, err := c.makeOutstandingRequest(context.Background(), true, []uint64{1}, &wire.EchoRequest{})
+		if !accepted {
+			require.ErrorContains(t, err, "encryption required but no cipher negotiated")
+			continue
+		}
+		require.NoError(t, err)
+		require.False(t, rrs[0].requireEncryption)
+		require.Equal(t, wire.MAGIC, string(parts[0][:4]))
+	}
+}
+
+func TestResponseReadSinkDoesNotReadSessionBeforePublication(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	const (
+		sessionID = uint64(0xCAFE)
+		messageID = uint64(7)
+	)
+
+	head, restSize := readResponseHead(messageID, []byte("payload"))
+	wire.PacketCodec(head).SetSessionId(sessionID)
+	c := &conn{outstandingRequests: newOutstandingRequests()}
+	c.outstandingRequests.set(messageID, &outstandingRequest{
+		msgId:   messageID,
+		readBuf: make([]byte, len("payload")),
+	})
+	sessions := []*session{{conn: c}, {conn: c}}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	var readErr error
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for i := range 10000 {
+			s := sessions[i%len(sessions)]
+			s.sessionId = sessionID
+			s.sessionFlags = uint16(i)
+			s.anonymous = i%2 == 0
+			c.session = s
+			runtime.Gosched()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		close(start)
+		for range 10000 {
+			sink, frontSize := c.responseReadSink(head, restSize)
+			if sink != nil || frontSize != 0 {
+				readErr = fmt.Errorf("responseReadSink selected a direct sink before session publication")
+				return
+			}
+			runtime.Gosched()
+		}
+	}()
+	wg.Wait()
+
+	require.NoError(readErr)
+}
+
+func TestResponseReadSinkSelectsDirectReadAfterPublication(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	const (
+		sessionID = uint64(0xCAFE)
+		messageID = uint64(7)
+	)
+	payload := []byte("direct payload")
+	readBuf := make([]byte, len(payload))
+	c := &conn{
+		dialect:             wire.SMB311,
+		outstandingRequests: newOutstandingRequests(),
+	}
+	s := &session{conn: c, sessionId: sessionID}
+	c.session = s
+	c.enableSession()
+	c.outstandingRequests.set(messageID, &outstandingRequest{
+		msgId:   messageID,
+		readBuf: readBuf,
+	})
+
+	head, restSize := readResponseHead(messageID, payload)
+	wire.PacketCodec(head).SetSessionId(sessionID)
+	sink, frontSize := c.responseReadSink(head, restSize)
+
+	require.Equal(80, frontSize)
+	require.NotEmpty(sink)
+	require.Same(&readBuf[0], &sink[0])
+	require.Equal(len(payload), len(sink))
+}
+
+// failingDirectTransport makes Send fail once a direct I/O sink has been
+// published. Close is observed but does not close the underlying pipe, so the
+// test controls when the in-flight direct reception is allowed to complete.
+type failingDirectTransport struct {
+	Transport
+	sendEntered chan struct{}
+	selected    chan struct{}
+	closed      chan struct{}
+
+	enteredOnce sync.Once
+	selectOnce  sync.Once
+	closeOnce   sync.Once
+}
+
+func (t *failingDirectTransport) writev(...[]byte) (int, error) {
+	t.enteredOnce.Do(func() { close(t.sendEntered) })
+	<-t.selected
+	return -1, errors.New("simulated send failure")
+}
+
+func (t *failingDirectTransport) readPacket(findSink ...directSinkFinder) (*recvPacket, error) {
+	if len(findSink) == 0 || findSink[0] == nil {
+		return t.Transport.readPacket(findSink...)
+	}
+	finder := findSink[0]
+	return t.Transport.readPacket(func(head []byte, restSize int) ([]byte, int) {
+		sink, frontSize := finder(head, restSize)
+		if sink != nil {
+			t.selectOnce.Do(func() { close(t.selected) })
+		}
+		return sink, frontSize
+	})
+}
+
+func (t *failingDirectTransport) Close() error {
+	t.closeOnce.Do(func() { close(t.closed) })
+	return nil
+}
+
+// immediateFailTransport fails Send without ever publishing a direct sink.
+type immediateFailTransport struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (*immediateFailTransport) writev(...[]byte) (int, error) {
+	return -1, errors.New("simulated send failure")
+}
+
+func (*immediateFailTransport) setReadDeadline(time.Time) error { return nil }
+
+func (*immediateFailTransport) setWriteTimeout(time.Duration) {}
+
+func (*immediateFailTransport) setPacketReadTimeout(time.Duration) {}
+
+func (*immediateFailTransport) readPacket(...directSinkFinder) (*recvPacket, error) {
+	return nil, io.EOF
+}
+
+func (t *immediateFailTransport) Close() error {
+	t.once.Do(func() { close(t.closed) })
+	return nil
+}
+
+// TestConnSendFailureWaitsForDirectReadReception verifies that a send failure
+// arriving after a direct I/O sink was published does not return the caller's
+// buffer until the receiver has finished writing into it. The receiver is
+// stopped either by a transport error or by a normal Response, and its real
+// completion path (runReceiver shutdown or tryHandle) closes directDone.
+func TestConnSendFailureWaitsForDirectReadReception(t *testing.T) {
+	t.Parallel()
+	const messageID = uint64(0)
+
+	run := func(t *testing.T, abortReception bool) {
+		require := require.New(t)
+
+		clientConn, serverConn := net.Pipe()
+		t.Cleanup(func() {
+			clientConn.Close()
+			serverConn.Close()
+		})
+
+		ft := &failingDirectTransport{
+			Transport:   NewTransport(clientConn),
+			sendEntered: make(chan struct{}),
+			selected:    make(chan struct{}),
+			closed:      make(chan struct{}),
+		}
+		c := &conn{
+			t:                   ft,
+			outstandingRequests: newOutstandingRequests(),
+			account:             openAccount(10),
+		}
+		c.account.charge(9)
+		c.account.nextMessageId = messageID
+		c.session = &session{conn: c}
+		c.enableSession()
+		go c.runReceiver()
+		t.Cleanup(func() { _ = c.close(nil) })
+
+		readBuf := bytes.Repeat([]byte{0xa5}, 32)
+		req := &DirectReadRequest{
+			ReadRequest: &wire.ReadRequest{Length: uint32(len(readBuf)), MinimumCount: 1},
+			Buffer:      readBuf,
+		}
+
+		want := []byte("late payload")
+		allowPayload := make(chan struct{})
+		serverDone := make(chan error, 1)
+		go func() {
+			<-ft.sendEntered
+
+			res := &wire.ReadResponse{Data: want}
+			resBuf := make([]byte, res.Size())
+			res.Encode(resBuf)
+			p := wire.PacketCodec(resBuf)
+			p.SetMessageId(messageID)
+			p.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+
+			var size [4]byte
+			binary.BigEndian.PutUint32(size[:], uint32(len(resBuf)))
+			if _, err := serverConn.Write(size[:]); err != nil {
+				serverDone <- err
+				return
+			}
+			if _, err := serverConn.Write(resBuf[:80]); err != nil {
+				serverDone <- err
+				return
+			}
+
+			<-allowPayload
+			if abortReception {
+				serverConn.Close()
+				serverDone <- nil
+				return
+			}
+			_, err := serverConn.Write(want)
+			serverDone <- err
+		}()
+
+		sendDone := make(chan error, 1)
+		go func() {
+			_, err := c.send(context.Background(), false, req)
+			sendDone <- err
+		}()
+
+		select {
+		case <-ft.selected:
+		case <-time.After(time.Second):
+			t.Fatal("direct sink was not published")
+		}
+
+		// Observe the send failure before testing that it waits; sink
+		// publication alone does not guarantee Send has returned yet.
+		select {
+		case <-ft.closed:
+		case <-time.After(time.Second):
+			t.Fatal("transport Close was not called")
+		}
+
+		// Send has failed but must not return while the receiver is still
+		// writing into the caller's buffer.
+		select {
+		case err := <-sendDone:
+			t.Fatalf("send returned before direct reception completed: %v", err)
+		case <-time.After(30 * time.Millisecond):
+		}
+
+		close(allowPayload)
+
+		select {
+		case err := <-sendDone:
+			require.Error(err)
+		case <-time.After(time.Second):
+			t.Fatal("send did not return after direct reception finished")
+		}
+
+		require.NoError(<-serverDone)
+
+		if !abortReception {
+			require.Equal(want, readBuf[:len(want)])
+		}
+
+		// The caller reuses its buffer once send has returned: the receiver
+		// must no longer write into it.
+		for i := range readBuf {
+			readBuf[i] = 0x5a
+		}
+		runtime.Gosched()
+		time.Sleep(10 * time.Millisecond)
+		require.Equal(bytes.Repeat([]byte{0x5a}, len(readBuf)), readBuf)
+	}
+
+	t.Run("success-Response", func(t *testing.T) { run(t, false) })
+	t.Run("receive-error", func(t *testing.T) { run(t, true) })
+}
+
+// TestConnSendFailureWithoutDirectReceptionDoesNotWait verifies that a send
+// failure with no published direct sink does not block on direct reception.
+func TestConnSendFailureWithoutDirectReceptionDoesNotWait(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ft := &immediateFailTransport{closed: make(chan struct{})}
+	c := &conn{
+		t:                   ft,
+		outstandingRequests: newOutstandingRequests(),
+		account:             openAccount(10),
+	}
+	c.account.charge(9)
+
+	readBuf := make([]byte, 32)
+	req := &DirectReadRequest{
+		ReadRequest: &wire.ReadRequest{Length: uint32(len(readBuf)), MinimumCount: 1},
+		Buffer:      readBuf,
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.send(context.Background(), false, req)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(err)
+	case <-time.After(time.Second):
+		t.Fatal("send waited for a direct reception that never started")
+	}
+
+	select {
+	case <-ft.closed:
+	case <-time.After(time.Second):
+		t.Fatal("transport Close was not called")
+	}
+}
+
+func (cancelTransport) transportType() string { return "tcp" }
+
+func (t *immediateFailTransport) transportType() string { return "tcp" }
+
+func (t *countingWriteTransport) transportType() string { return "tcp" }
+
+func (t *errorTransport) transportType() string { return "tcp" }
+
+func (t *invalidPacketTransport) transportType() string { return "tcp" }
+
+func (t *panicTransport) transportType() string { return "tcp" }
+
+func (t *readErrorTransport) transportType() string { return "tcp" }
+
+func TestRejectMalformedInterimResponses(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		mutate   func(*recvPacket)
+		previous uint64
+		valid    bool
+	}{
+		{name: "valid", valid: true},
+		{name: "same id", previous: 7, valid: true},
+		{name: "wrong command", mutate: func(p *recvPacket) { p.codec().SetCommand(wire.SMB2_READ) }},
+		{name: "missing async flag", mutate: func(p *recvPacket) { p.codec().SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR) }},
+		{name: "zero id", mutate: func(p *recvPacket) { p.codec().SetAsyncId(0) }},
+		{name: "changed id", previous: 8},
+		{name: "missing body", mutate: func(p *recvPacket) { p.pkt = p.pkt[:64] }},
+		{name: "nonzero byte count", mutate: func(p *recvPacket) { p.pkt[68] = 1 }},
+		{name: "nonzero contexts", mutate: func(p *recvPacket) { p.pkt[66] = 1 }},
+		{name: "reserved byte", valid: true, mutate: func(p *recvPacket) { p.pkt[67] = 255 }},
+		{name: "header-only error body", valid: true, mutate: func(p *recvPacket) { p.pkt = p.pkt[:72] }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &conn{outstandingRequests: newOutstandingRequests(), account: openAccount(10), dialect: wire.SMB311}
+			rr := &outstandingRequest{cmd: wire.SMB2_ECHO, msgId: 1, recv: make(chan *recvPacket, 1)}
+			rr.asyncId.Store(tc.previous)
+			c.outstandingRequests.set(1, rr)
+			p := testAcceptedResponse(t, &wire.ErrorResponse{CommandCode: wire.SMB2_ECHO})
+			p.codec().SetMessageId(1)
+			p.codec().SetStatus(uint32(erref.STATUS_PENDING))
+			p.codec().SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+			p.codec().SetAsyncId(7)
+			p.codec().SetCreditResponse(5)
+			if tc.mutate != nil {
+				tc.mutate(p)
+			}
+			before := c.account.availableCredits
+			err := c.tryHandle(p, nil)
+			if tc.valid {
+				require.NoError(t, err)
+				require.Equal(t, uint64(7), rr.asyncId.Load())
+			} else {
+				var invalid *InvalidResponseError
+				require.ErrorAs(t, err, &invalid)
+				require.Equal(t, tc.previous, rr.asyncId.Load())
+				require.Equal(t, before, c.account.availableCredits)
+			}
+		})
+	}
+}
+
+func TestInterimResponseContextCountAndUniqueID(t *testing.T) {
+	t.Parallel()
+	for _, dialect := range []uint16{wire.SMB202, wire.SMB210, wire.SMB300, wire.SMB302, wire.SMB311} {
+		c := &conn{outstandingRequests: newOutstandingRequests(), dialect: dialect}
+		rr := &outstandingRequest{cmd: wire.SMB2_ECHO}
+		p := testAcceptedResponse(t, &wire.ErrorResponse{CommandCode: wire.SMB2_ECHO})
+		defer p.close()
+		p.codec().SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR | wire.SMB2_FLAGS_ASYNC_COMMAND)
+		p.codec().SetAsyncId(7)
+		p.pkt[66] = 1
+		require.Error(t, c.validateInterimResponse(rr, p.codec()))
+		p.pkt[66] = 0
+		other := &outstandingRequest{}
+		other.asyncId.Store(7)
+		c.outstandingRequests.set(2, other)
+		require.Error(t, c.validateInterimResponse(rr, p.codec()))
+		c.outstandingRequests.pop(2)
+		require.NoError(t, c.validateInterimResponse(rr, p.codec()))
+	}
+}
+
+func TestDirectReadRequestedLengthBeforeCopy(t *testing.T) {
+	t.Parallel()
+	for _, size := range []int{4, 5} {
+		for _, encrypted := range []bool{false, true} {
+			original := bytes.Repeat([]byte{0xa5}, 8)
+			c := &conn{outstandingRequests: newOutstandingRequests(), session: &session{sessionId: 9}}
+			rr := &outstandingRequest{msgId: 17, readBuf: append([]byte(nil), original...), expectedRead: 4, hasExpectedRead: true}
+			c.outstandingRequests.set(17, rr)
+			rp := testAcceptedResponse(t, &wire.ReadResponse{Data: bytes.Repeat([]byte{1}, size)})
+			rp.codec().SetMessageId(17)
+			rp.codec().SetSessionId(9)
+			if encrypted {
+				c.copyDecryptedReadPayload(rp)
+				require.Equal(t, size == 4, rp.ext != nil)
+			} else {
+				sink, _ := c.directReadSink(rp.pkt[:80], size)
+				require.Equal(t, size == 4, sink != nil)
+			}
+			if size > 4 {
+				require.Equal(t, original, rr.readBuf)
+				require.Equal(t, directStateIdle, rr.directState.Load())
+			}
+			rp.close()
+		}
+	}
+}
+
+// Hold A's first transport write while it owns conn.m. B can then reserve
+// credit through the normal Request.Send path without publishing a packet.
+type candidateWriteGate struct {
+	net.Conn
+	entered, release chan struct{}
+	once             sync.Once
+}
+
+func (g *candidateWriteGate) Write(p []byte) (int, error) {
+	g.once.Do(func() { close(g.entered); <-g.release })
+	return g.Conn.Write(p)
+}
+
+func TestSourceCandidateUnsentCreditIdentifier(t *testing.T) {
+	t.Parallel()
+	for _, laterLive := range []bool{false, true} {
+		t.Run(map[bool]string{false: "two-credits", true: "three-credits-later-live"}[laterLive], func(t *testing.T) {
+			func() {
+				client, peer := net.Pipe()
+				gate := &candidateWriteGate{Conn: client, entered: make(chan struct{}), release: make(chan struct{})}
+				c, cleanup := newBenchConn(gate)
+				var releaseOnce sync.Once
+				release := func() { releaseOnce.Do(func() { close(gate.release) }) }
+				defer release()
+				defer cleanup()
+				defer peer.Close()
+				credits := uint16(2)
+				if laterLive {
+					credits = 3
+				}
+				c.account = openAccount(credits)
+				c.account.charge(credits - 1)
+				c.session = &session{conn: c, sessionId: 0x100}
+				c.enableSession()
+				tree := &Tree{session: c.session, treeId: 0x200}
+				ctx, cancelAll := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancelAll()
+				packets := make(chan uint64, 4)
+				responderDone := make(chan error, 1)
+				go func() {
+					transport := NewTransport(peer)
+					for {
+						buf, err := transport.readPacket()
+						if err != nil {
+							responderDone <- err
+							return
+						}
+						p := buf.codec()
+
+						if p.IsInvalid() {
+							buf.close()
+							responderDone <- errors.New("invalid source-generated packet")
+							return
+						}
+						id := p.MessageId()
+						buf.close()
+						packets <- id /* deliberately no responses or grants */
+					}
+				}()
+				var senders sync.WaitGroup
+				defer func() {
+					cancelAll()
+					release()
+					_ = peer.Close()
+					cleanup()
+					senders.Wait()
+					select {
+					case err := <-responderDone:
+						if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, io.ErrClosedPipe) {
+							t.Errorf("responder: %v", err)
+						}
+					case <-time.After(time.Second):
+						t.Error("responder did not finish")
+					}
+				}()
+				send := func(ctx context.Context) <-chan error {
+					done := make(chan error, 1)
+					senders.Go(func() {
+						_, err := tree.Request().WithFileID(wire.FileId{Persistent: [8]byte{1}}).Read(1, 0).Send(ctx)
+						done <- err
+					})
+					return done
+				}
+				aDone := send(ctx)
+				<-gate.entered
+				bctx, cancelB := context.WithCancel(ctx)
+				bDone := send(bctx)
+				waitReserved(t, ctx, c.account, 2)
+				var dDone <-chan error
+				if laterLive {
+					dDone = send(ctx)
+					waitReserved(t, ctx, c.account, 3)
+				}
+				cancelB()
+				release()
+				if err := <-aDone; err != nil {
+					t.Fatal(err)
+				}
+				if err := <-bDone; !errors.Is(err, context.Canceled) {
+					t.Fatalf("B Send=%v", err)
+				}
+				if dDone != nil {
+					if err := <-dDone; err != nil {
+						t.Fatal(err)
+					}
+				}
+				c.account.m.Lock()
+				refunded := c.account.availableCredits
+				c.account.m.Unlock()
+				if refunded != 1 {
+					t.Errorf("refunded count=%d; want 1", refunded)
+				}
+				cDone := send(ctx)
+				if err := <-cDone; err != nil {
+					t.Fatal(err)
+				}
+				count := 2
+				if laterLive {
+					count = 3
+				}
+				var ids []uint64
+				for range count {
+					ids = append(ids, <-packets)
+				}
+				t.Logf("granted IDs=[0,%d); B canceled unsent; source-generated wire IDs=%v; refunded count=%d; no response grants", credits, ids, refunded)
+				// Membership is the requirement: no lowest-available ordering assumption.
+				seen := map[uint64]bool{}
+				for _, id := range ids {
+					if id >= uint64(credits) {
+						t.Errorf("wire MessageId %d was never granted (granted [0,%d))", id, credits)
+					}
+					if seen[id] {
+						t.Errorf("duplicate wire MessageId %d", id)
+					}
+					seen[id] = true
+				}
+			}()
+		})
+	}
+}
+
+// Observe count reservations under their owning mutex, then open the next barrier.
+// Do not depend on eager MessageId assignment: a repair can assign IDs at send.
+// This avoids depending on scheduling delays or reading a request being built.
+func waitReserved(t *testing.T, ctx context.Context, a *account, want uint16) {
+	t.Helper()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for {
+		a.m.Lock()
+		got := a.inFlightCredits
+		a.m.Unlock()
+		if got == want {
+			return
+		}
+		if got > want {
+			t.Fatalf("reservation advanced to %d; want %d", got, want)
+		}
+		select {
+		case <-tick.C:
+		case <-ctx.Done():
+			t.Fatalf("reservation barrier %d: %v", want, ctx.Err())
+		}
+	}
+}
+
+// Exercise local assembly failures through supported builders. The oversized
+// CREATE and long directory pattern fail before any request bytes are sent.
+func TestSourceCandidatePreparationCreditIdentifier(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"packet-size", "compound-query-encoding"} {
+		t.Run(kind, func(t *testing.T) {
+			tree, peer := newTestTree(t)
+			c := tree.conn
+			c.account = openAccount(4)
+			c.account.charge(3)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			wireIDs := make(chan uint64, 4)
+			done := make(chan error, 1)
+			go func() {
+				transport := NewTransport(peer)
+				for {
+					packet, err := transport.readPacket()
+					if err != nil {
+						done <- err
+						return
+					}
+					p := packet.codec()
+					if p.IsInvalid() {
+						packet.close()
+						done <- errors.New("invalid source-generated packet")
+						return
+					}
+					id := p.MessageId()
+					packet.close()
+					wireIDs <- id /* no responses or grants */
+				}
+			}()
+			defer func() {
+				_ = peer.Close()
+				select {
+				case err := <-done:
+					if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, io.ErrClosedPipe) {
+						t.Error(err)
+					}
+				case <-time.After(time.Second):
+					t.Error("responder did not finish")
+				}
+			}()
+			sendRead := func() {
+				_, err := tree.Request().WithFileID(wire.FileId{Persistent: [8]byte{1}}).Read(1, 0).Send(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			sendRead()
+			if id := <-wireIDs; id != 0 {
+				t.Fatalf("initial published ID=%d", id)
+			}
+			var request *Request
+			var wantError string
+			if kind == "packet-size" {
+				request = tree.Request().Create(strings.Repeat("x", maxDirectTCPSize/2+1), wire.FILE_READ_DATA, wire.FILE_OPEN, 0, wire.FILE_ATTRIBUTE_NORMAL)
+				wantError = "invalid packet size"
+			} else {
+				request = tree.Request().WithFileID(wire.FileId{Persistent: [8]byte{1}}).Read(65537, 0).QueryDir(wire.FileIdBothDirectoryInformation, strings.Repeat("x", 32768), 1024)
+				wantError = "invalid encoded query directory request"
+			}
+			_, err := request.Send(ctx)
+			if err == nil || !strings.Contains(err.Error(), wantError) {
+				t.Fatalf("preparation failure=%v; want %s", err, wantError)
+			}
+			c.account.m.Lock()
+			next, available, inFlight := c.account.nextMessageId, c.account.availableCredits, c.account.inFlightCredits
+			c.account.m.Unlock()
+			c.outstandingRequests.m.Lock()
+			outstanding := len(c.outstandingRequests.requests)
+			c.outstandingRequests.m.Unlock()
+			t.Logf("after unpublished preparation failure: next=%d available=%d inFlight=%d outstanding=%d", next, available, inFlight, outstanding)
+			if available != 3 || inFlight != 1 || outstanding != 1 {
+				t.Fatalf("unpublished preparation changed counts/registration")
+			}
+			if next != 1 {
+				t.Errorf("unpublished suffix not restored: next=%d; want 1 (keep published ID 0)", next)
+			}
+			sendRead()
+			if id := <-wireIDs; id != 1 {
+				t.Errorf("next live ID=%d; want 1 after unpublished failure", id)
+			}
+		})
+	}
+}
+
+var le = binary.LittleEndian
+
+// testNTLMInitiator keeps protocol tests independent of the root package's
+// credential constructors while exercising the real NTLM wire exchange.
+type testNTLMInitiator struct {
+	User, Password string
+	client         *ntlm.Client
+	complete       bool
+	sendSeq        uint32
+	recvSeq        uint32
+}
+
+func (*testNTLMInitiator) OID() asn1.ObjectIdentifier { return spnego.NlmpOid }
+
+func (i *testNTLMInitiator) InitSecContext() ([]byte, error) {
+	i.client = &ntlm.Client{User: i.User, Password: i.Password}
+	i.complete = false
+	i.sendSeq, i.recvSeq = 0, 0
+	return i.client.Negotiate()
+}
+
+func (i *testNTLMInitiator) AcceptSecContext(token []byte) ([]byte, error) {
+	if i.client == nil || i.complete {
+		return nil, errors.New("ntlm: unexpected authentication token")
+	}
+	msg, err := i.client.Authenticate(token)
+	if err == nil {
+		i.complete = true
+	}
+	return msg, err
+}
+
+func (i *testNTLMInitiator) GetMIC(message []byte) ([]byte, error) {
+	if !i.complete || i.client == nil || i.client.Session() == nil {
+		return nil, errors.New("ntlm: authentication is incomplete")
+	}
+	var mic []byte
+	mic, i.sendSeq = i.client.Session().Sign(message, i.sendSeq)
+	return mic, nil
+}
+
+func (i *testNTLMInitiator) VerifyMIC(message, mic []byte) error {
+	if !i.complete || i.client == nil || i.client.Session() == nil {
+		return errors.New("ntlm: authentication is incomplete")
+	}
+	ok, next := i.client.Session().Verify(mic, message, i.recvSeq)
+	if !ok {
+		return errors.New("ntlm: invalid mechanism list MIC")
+	}
+	i.recvSeq = next
+	return nil
+}
+
+func (i *testNTLMInitiator) Complete() bool { return i.complete }
+
+func (i *testNTLMInitiator) SessionKey() []byte {
+	if i.client == nil || i.client.Session() == nil {
+		return nil
+	}
+	return i.client.Session().SessionKey()
+}
+
+type countingClientTransport struct {
+	Transport
+	closes *atomic.Int32
+}
+
+func (t *countingClientTransport) Close() error {
+	t.closes.Add(1)
+	return t.Transport.Close()
+}
+
+type negotiateQUICTransport struct{ Transport }
+
+func (negotiateQUICTransport) transportType() string { return "quic" }
+
+type rawEncoder []byte
+
+func (b rawEncoder) Size() int { return len(b) }
+
+func (b rawEncoder) Encode(p []byte) { copy(p, b) }
+
+// newTestTree creates a negotiated-looking tree backed by a pipe. Protocol
+// tests use this fixture directly so root file-system types do not leak into
+// the low-level package.
+func newTestTree(t *testing.T) (*Tree, net.Conn) {
+	t.Helper()
+
+	clientConn, serverConn := net.Pipe()
+	c, cleanup := newBenchConn(clientConn)
+	t.Cleanup(func() {
+		cleanup()
+		_ = serverConn.Close()
+	})
+
+	c.session = &session{conn: c, sessionId: 0x100}
+	c.enableSession()
+	return &Tree{session: c.session, treeId: 0x200}, serverConn
+}
+
+func sendTestResponse(dt Transport, req []byte, res wire.Packet, status uint32) {
+	resBuf := make([]byte, res.Size())
+	res.Encode(resBuf)
+	p := wire.PacketCodec(req)
+	rp := wire.PacketCodec(resBuf)
+	rp.SetMessageId(p.MessageId())
+	rp.SetSessionId(p.SessionId())
+	rp.SetTreeId(p.TreeId())
+	rp.SetStatus(status)
+	rp.SetCreditResponse(1)
+	rp.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+	_, _ = dt.writev(resBuf)
+}
+
+func sendTestCloseResponse(dt Transport, req []byte) {
+	sendTestResponse(dt, req, &wire.CloseResponse{
+		CreationTime:   wire.Filetime{},
+		LastAccessTime: wire.Filetime{},
+		LastWriteTime:  wire.Filetime{},
+		ChangeTime:     wire.Filetime{},
+	}, uint32(0))
+}
+
+func sendTestCreateAttributesResponse(dt Transport, req []byte, fileID wire.FileId, attrs uint32) {
+	sendTestResponse(dt, req, &wire.CreateResponse{
+		FileId:         fileID,
+		CreationTime:   wire.Filetime{},
+		LastAccessTime: wire.Filetime{},
+		LastWriteTime:  wire.Filetime{},
+		ChangeTime:     wire.Filetime{},
+		FileAttributes: attrs,
+	}, uint32(0))
+}
+
+type compoundResponse struct {
+	packet wire.Packet
+	status erref.NtStatus
+}
+
+func sendCompoundResponse(dt Transport, request []byte, responses []compoundResponse) error {
+	if len(responses) == 0 {
+		return fmt.Errorf("empty compound response")
+	}
+	var out []byte
+	requestOffset := 0
+	for i, response := range responses {
+		if requestOffset < 0 || requestOffset >= len(request) {
+			return fmt.Errorf("compound request ended early")
+		}
+		reqPacket := wire.PacketCodec(request[requestOffset:])
+		span := wire.Roundup(response.packet.Size(), 8)
+		buf := make([]byte, span)
+		response.packet.Encode(buf)
+		p := wire.PacketCodec(buf)
+		p.SetMessageId(reqPacket.MessageId())
+		p.SetSessionId(reqPacket.SessionId())
+		p.SetTreeId(reqPacket.TreeId())
+		p.SetStatus(uint32(response.status))
+		p.SetCreditResponse(reqPacket.CreditRequest())
+		flags := uint32(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+		if i > 0 {
+			flags |= wire.SMB2_FLAGS_RELATED_OPERATIONS
+		}
+		p.SetFlags(flags)
+		if i < len(responses)-1 {
+			p.SetNextCommand(uint32(span))
+		}
+		out = append(out, buf...)
+		if next := reqPacket.NextCommand(); next != 0 {
+			requestOffset += int(next)
+		} else {
+			requestOffset = len(request)
+		}
+	}
+	_, err := dt.writev(out)
+	return err
+}
+
+func TestConnMessageIDExhaustionClosesOwner(t *testing.T) {
+	mt := &countingWriteTransport{}
+	c := &conn{t: mt, outstandingRequests: newOutstandingRequests(), account: openAccount(10)}
+	c.account.nextMessageId = ^uint64(0)
+	p := &wire.EchoRequest{}
+	p.SetMessageId(123)
+	_, err := c.send(context.Background(), false, p)
+	require.ErrorIs(t, err, errMessageIDExhausted)
+	require.Zero(t, mt.writes)
+	require.True(t, c.transportClosed.Load())
+	require.True(t, c.account.closed)
+	require.EqualValues(t, 123, p.MessageId)
+	require.Equal(t, ^uint64(0), c.account.nextMessageId)
+}
+
+type failingPacketSigner struct {
+	failAt, calls int
+	err           error
+}
+
+func (*failingPacketSigner) usesNonce() bool { return true }
+
+func (a *failingPacketSigner) sum([12]byte, ...[]byte) ([16]byte, error) {
+	a.calls++
+	if a.calls == a.failAt {
+		return [16]byte{}, a.err
+	}
+	return [16]byte{}, nil
+}
+
+func TestGMACPreparationFailureBurnsEntireRange(t *testing.T) {
+	for _, failAt := range []int{1, 2} {
+		t.Run(fmt.Sprint(failAt), func(t *testing.T) {
+			cause := &InvalidResponseError{Message: "synthetic signer failure"}
+			mt := &countingWriteTransport{}
+			c := &conn{t: mt, account: openAccount(10), requireSigning: true, outstandingRequests: newOutstandingRequests()}
+			c.account.charge(1)
+			c.session = &session{conn: c, sessionId: 1, signer: &failingPacketSigner{failAt: failAt, err: cause}}
+			_, err := c.send(context.Background(), false, &wire.EchoRequest{}, &wire.EchoRequest{})
+			require.ErrorIs(t, err, cause)
+			var typed *InvalidResponseError
+			require.ErrorAs(t, err, &typed)
+			var marker *signedPreparationError
+			require.ErrorAs(t, err, &marker)
+			require.EqualValues(t, 2, c.account.nextMessageId)
+			require.True(t, c.account.closed)
+			require.True(t, c.transportClosed.Load())
+			require.Equal(t, 1, mt.closes)
+			require.Zero(t, mt.writes)
+			require.Empty(t, c.outstandingRequests.requests)
+			_, err = c.send(context.Background(), false, &wire.EchoRequest{})
+			require.ErrorIs(t, err, cause)
+		})
+	}
+}
+
+func TestGMACPreparationFailureBeforeSigningRollsBack(t *testing.T) {
+	mt := &countingWriteTransport{}
+	signer := &failingPacketSigner{failAt: 1, err: errors.New("not reached")}
+	c := &conn{t: mt, account: openAccount(10), requireSigning: true, outstandingRequests: newOutstandingRequests()}
+	c.session = &session{conn: c, sessionId: 1, signer: signer}
+	_, err := c.send(context.Background(), false, &sizedPacket{size: 63})
+	require.Error(t, err)
+	require.Zero(t, signer.calls)
+	require.Zero(t, c.account.nextMessageId)
+	require.EqualValues(t, 1, c.account.availableCredits)
+	require.Zero(t, c.account.inFlightCredits)
+	require.False(t, c.account.closed)
+	require.Zero(t, mt.closes)
+	require.NoError(t, c.err)
+}
+
+type signedWriteFailureTransport struct {
+	countingWriteTransport
+	count int
+	err   error
+}
+
+func (t *signedWriteFailureTransport) writev(...[]byte) (int, error) { return t.count, t.err }
+
+func TestGMACWriteFailureNeverReturnsMID(t *testing.T) {
+	for _, count := range []int{0, 1, 64} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			cause := errors.New("synthetic write failure")
+			mt := &signedWriteFailureTransport{count: count, err: cause}
+			c := &conn{t: mt, account: openAccount(10), dialect: wire.SMB311, signingAlgorithm: wire.AES128GMAC, requireSigning: true, outstandingRequests: newOutstandingRequests()}
+			c.session = &session{conn: c, sessionId: 1}
+			require.NoError(t, c.session.setupKeys(make([]byte, 16)))
+			_, err := c.send(context.Background(), false, &wire.EchoRequest{})
+			require.ErrorIs(t, err, cause)
+			require.EqualValues(t, 1, c.account.nextMessageId)
+			require.True(t, c.account.closed)
+			require.Equal(t, 1, mt.closes)
+		})
+	}
+}
+
+type cancelRecordingTransport struct {
+	countingWriteTransport
+	packets chan []byte
+}
+
+func TestEncryptionNonceSurvivesWriteFailureAndCancel(t *testing.T) {
+	t.Parallel()
+	nonces := new(encryptionNonces)
+	failed := &errorTransport{writeErr: errors.New("failed write"), closed: make(chan struct{})}
+	a := &conn{t: failed, account: openAccount(8), outstandingRequests: newOutstandingRequests()}
+	a.session = &session{conn: a, sessionId: 1, nonces: nonces, encrypter: newGCM(make([]byte, 16))}
+	_, err := a.send(context.Background(), true, &wire.EchoRequest{})
+	require.ErrorIs(t, err, failed.writeErr)
+	require.Equal(t, uint64(1), nonces.used.Load())
+	recorder := &cancelRecordingTransport{packets: make(chan []byte, 2)}
+	b := &conn{t: recorder, account: openAccount(8), outstandingRequests: newOutstandingRequests()}
+	b.session = &session{conn: b, sessionId: 1, nonces: nonces, encrypter: newGCM(make([]byte, 16))}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = b.send(canceled, true, &wire.EchoRequest{})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, uint64(1), nonces.used.Load(), "nothing encrypted before canceled send")
+	b.sendCancel(&outstandingRequest{msgId: 3, requireEncryption: true})
+	packet := <-recorder.packets
+	require.Equal(t, uint64(2), binary.LittleEndian.Uint64(packet[24:32]))
+	_, err = b.send(context.Background(), true, &wire.EchoRequest{})
+	require.NoError(t, err)
+	packet = <-recorder.packets
+	require.Equal(t, uint64(3), binary.LittleEndian.Uint64(packet[24:32]))
+}
+
+func (t *cancelRecordingTransport) writev(parts ...[]byte) (int, error) {
+	b := concat(parts)
+	t.packets <- b
+	return len(b), nil
+}
+
+func TestGMACCancelOnceWithAsyncRace(t *testing.T) {
+	mt := &cancelRecordingTransport{packets: make(chan []byte, 2)}
+	c := &conn{t: mt, account: openAccount(10), dialect: wire.SMB311, signingAlgorithm: wire.AES128GMAC, outstandingRequests: newOutstandingRequests()}
+	c.session = &session{conn: c, sessionId: 1}
+	require.NoError(t, c.session.setupKeys(make([]byte, 16)))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rr := &outstandingRequest{msgId: 7, cmd: wire.SMB2_ECHO, ctx: ctx, recv: make(chan *recvPacket, 1)}
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for range 100 {
+			rr.asyncId.Store(0xABCD)
+		}
+	})
+	for range 20 {
+		wg.Go(func() {
+			_, err := c.recv(rr)
+			if !errors.Is(err, context.Canceled) {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	var packet []byte
+	select {
+	case packet = <-mt.packets:
+	case <-time.After(time.Second):
+		t.Fatal("CANCEL missing")
+	}
+	require.Empty(t, mt.packets)
+	p := wire.PacketCodec(packet)
+	require.False(t, p.IsInvalid())
+	require.Equal(t, wire.SMB2_CANCEL, p.Command())
+	require.EqualValues(t, 7, p.MessageId())
+	if p.Flags()&wire.SMB2_FLAGS_ASYNC_COMMAND != 0 {
+		require.EqualValues(t, 0xABCD, p.AsyncId())
+	}
+	signature := append([]byte(nil), p.Signature()...)
+	clear(p.Signature())
+	key := kdf(make([]byte, 16), []byte("SMBSigningKey\x00"), c.session.preauthIntegrityHashValue[:], 16)
+	block, err := aes.NewCipher(key)
+	require.NoError(t, err)
+	oracle, err := cipher.NewGCM(block)
+	require.NoError(t, err)
+	nonce := [12]byte{7, 0, 0, 0, 0, 0, 0, 0, 2}
+	require.Equal(t, oracle.Seal(nil, nonce[:], nil, packet), signature)
+	require.False(t, c.transportClosed.Load())
+	require.Zero(t, c.account.nextMessageId, "CANCEL consumes no sequence numbers")
+}
+
+type staleEncodedHeaderPacket struct{ wire.EchoRequest }
+
+func (p *staleEncodedHeaderPacket) Encode(b []byte) {
+	p.EchoRequest.Encode(b)
+	h := wire.PacketCodec(b)
+	h.SetMessageId(42)
+	h.SetCommand(wire.SMB2_CANCEL)
+}
+
+func TestGMACUsesReservedHeaderForCustomPacket(t *testing.T) {
+	mt := &cancelRecordingTransport{packets: make(chan []byte, 2)}
+	c := &conn{t: mt, account: openAccount(10), dialect: wire.SMB311, signingAlgorithm: wire.AES128GMAC, requireSigning: true, outstandingRequests: newOutstandingRequests()}
+	c.account.charge(1)
+	c.session = &session{conn: c, sessionId: 1}
+	require.NoError(t, c.session.setupKeys(make([]byte, 16)))
+	key := kdf(make([]byte, 16), []byte("SMBSigningKey\x00"), c.session.preauthIntegrityHashValue[:], 16)
+	block, err := aes.NewCipher(key)
+	require.NoError(t, err)
+	oracle, err := cipher.NewGCM(block)
+	require.NoError(t, err)
+	for i := range 2 {
+		_, err = c.send(context.Background(), false, &staleEncodedHeaderPacket{})
+		require.NoError(t, err)
+		packet := <-mt.packets
+		p := wire.PacketCodec(packet)
+		require.EqualValues(t, i, p.MessageId())
+		require.Equal(t, wire.SMB2_ECHO, p.Command())
+		signature := append([]byte(nil), p.Signature()...)
+		clear(p.Signature())
+		n := [12]byte{}
+		binary.LittleEndian.PutUint64(n[:8], uint64(i))
+		require.Equal(t, oracle.Seal(nil, n[:], nil, packet), signature)
+	}
+}
+
+func TestCancelCannotUseOrdinarySend(t *testing.T) {
+	mt := &countingWriteTransport{}
+	c := &conn{t: mt, account: openAccount(10), outstandingRequests: newOutstandingRequests()}
+	_, err := c.send(context.Background(), false, &wire.CancelRequest{})
+	require.Error(t, err)
+	require.Zero(t, c.account.nextMessageId)
+	require.EqualValues(t, 1, c.account.availableCredits)
+	require.Zero(t, mt.writes)
+	require.Zero(t, mt.closes)
+}
+
+func TestConnZeroWireChargeCompletion(t *testing.T) {
+	c := &conn{t: &countingWriteTransport{}, account: openAccount(10), outstandingRequests: newOutstandingRequests()}
+	rrs, err := c.send(context.Background(), false, &zeroChargePacket{})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, rrs[0].creditCharge)
+	echo := &wire.EchoResponse{}
+	echo.SetFlags(wire.SMB2_FLAGS_SERVER_TO_REDIR)
+	echo.SetMessageId(0)
+	b := make([]byte, echo.Size())
+	echo.Encode(b)
+	wire.PacketCodec(b).SetCreditResponse(1)
+	rp := allocRecvPacket(len(b))
+	copy(rp.pkt, b)
+	require.NoError(t, c.tryHandle(rp, nil))
+	result, err := c.recv(rrs[0])
+	require.NoError(t, err)
+	result.close()
+	require.Zero(t, c.account.inFlightCredits)
+	require.EqualValues(t, 1, c.account.availableCredits)
+}
+
+func TestEncryptionNonceExhaustionPreventsTransportWrite(t *testing.T) {
+	t.Parallel()
+	for _, cipherID := range []uint16{wire.AES128CCM, wire.AES128GCM, wire.AES256CCM, wire.AES256GCM} {
+		t.Run(fmt.Sprint(cipherID), func(t *testing.T) {
+			transport := new(countingWriteTransport)
+			c := &conn{t: transport, account: openAccount(8), outstandingRequests: newOutstandingRequests(), dialect: wire.SMB311, cipherId: cipherID, signingAlgorithm: wire.AES128CMAC}
+			c.session = &session{conn: c, sessionId: 1}
+			require.NoError(t, c.session.setupKeys(bytes.Repeat([]byte{5}, 32)))
+			c.session.nonces.used.Store(^uint64(0))
+			// CANCEL must fail encryption without falling back to plaintext.
+			c.sendCancel(&outstandingRequest{msgId: 3, requireEncryption: true})
+			for range 2 {
+				_, err := c.send(context.Background(), true, &wire.EchoRequest{})
+				require.ErrorIs(t, err, errEncryptionNonceExhausted)
+			}
+			require.Zero(t, transport.writes)
+			require.Equal(t, ^uint64(0), c.session.nonces.used.Load())
+		})
+	}
+}
