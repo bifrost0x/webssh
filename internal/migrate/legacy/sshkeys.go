@@ -3,6 +3,7 @@ package legacy
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -64,6 +65,9 @@ type SSHKeyStore struct {
 	Pending []PendingDeletion
 	// Unreferenced lists other files that keys.json does not name.
 	Unreferenced []string
+	// LoneSurrogates reports that keys.json holds a string with an escaped
+	// unpaired surrogate, read as U+FFFD (FLAG in the report).
+	LoneSurrogates bool
 }
 
 type keyMetadata struct {
@@ -97,11 +101,16 @@ func (s *Source) SSHKeys(userID int64) (SSHKeyStore, error) {
 	if err != nil {
 		return out, err
 	}
-	if _, err := decodeStore(data, keysStore); err != nil {
+	checked, err := decodeStore(data, keysStore)
+	if err != nil {
 		return out, fmt.Errorf("legacy: %s/keys.json: %w", dir, err)
 	}
+	// Python accepts a key name with an escaped lone surrogate ("\ud800"):
+	// save_key and rename_key check only type, emptiness and length. Such
+	// a name is read with U+FFFD in its place and the store is flagged.
+	out.LoneSurrogates = checked.LoneSurrogates
 	var doc keyDocument
-	if err := json.Unmarshal(data, &doc); err != nil {
+	if err := json.Unmarshal(data, &doc, jsontext.AllowInvalidUTF8(checked.LoneSurrogates)); err != nil {
 		return out, fmt.Errorf("legacy: %s/keys.json: %w", dir, err)
 	}
 	entries, err := s.listDir(dir)

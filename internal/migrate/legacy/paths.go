@@ -11,8 +11,9 @@ import (
 	"strings"
 )
 
-// maxFileBytes bounds every legacy file read into memory. Stores have
-// their own, lower limits (stores.go).
+// maxFileBytes bounds every legacy file read into memory. Stores that
+// Python reads only up to a smaller size use that limit instead
+// (storeSpec.maxBytes in stores.go).
 const maxFileBytes = 64 << 20
 
 // ErrUnsafePath reports a symbolic link or a special file in the legacy

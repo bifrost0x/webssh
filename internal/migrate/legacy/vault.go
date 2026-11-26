@@ -47,7 +47,7 @@ var ErrVaultPassphrase = errors.New("legacy: vault passphrase is wrong or the va
 // user has none.
 func (s *Source) Vault(userID int64) (*Vault, error) {
 	name := userDir(userID) + "/automation-vault.json"
-	data, err := s.readFile(name)
+	data, err := s.readStoreBytes(name, "automation_vault")
 	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
