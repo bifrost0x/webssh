@@ -1,0 +1,37 @@
+include     /etc/openldap/schema/core.schema
+include     /etc/openldap/schema/cosine.schema
+include     /etc/openldap/schema/inetorgperson.schema
+
+modulepath  /usr/lib/openldap
+moduleload  back_mdb.so
+
+pidfile     /run/openldap/slapd.pid
+argsfile    /run/openldap/slapd.args
+
+TLSCACertificateFile  /etc/openldap/tls/ca.crt
+TLSCertificateFile    /etc/openldap/tls/server.crt
+TLSCertificateKeyFile /etc/openldap/tls/server.key
+TLSProtocolMin        3.3
+
+# Simple binds need TLS (StartTLS or LDAPS). The root DSE stays readable
+# in the clear so clients can discover StartTLS support.
+security    simple_bind=128
+
+access to dn.base="" by * read
+access to dn.base="cn=Subschema" by * read
+access to attrs=userPassword
+    by self =xw
+    by anonymous auth
+    by * none
+access to *
+    by users read
+    by * none
+
+database    mdb
+maxsize     67108864
+suffix      "dc=lab,dc=test"
+rootdn      "cn=admin,dc=lab,dc=test"
+rootpw      @ROOTPW@
+directory   /var/lib/openldap/@NAME@
+index       objectClass eq
+index       uid eq

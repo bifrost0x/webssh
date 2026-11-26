@@ -1,0 +1,20 @@
+Port 22
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/keys/ssh_host_rsa_key
+HostKey /etc/ssh/keys/ssh_host_dsa_key
+HostKeyAlgorithms ssh-rsa,ssh-dss
+KexAlgorithms diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group1-sha1
+Ciphers aes128-ctr,aes128-cbc,3des-cbc
+MACs hmac-sha1
+PubkeyAcceptedAlgorithms ssh-rsa,ssh-dss
+UsePAM no
+PermitRootLogin no
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+AllowUsers legacyuser
+AllowTcpForwarding no
+X11Forwarding no
+Subsystem sftp internal-sftp
+LogLevel VERBOSE

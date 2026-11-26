@@ -1,0 +1,428 @@
+# Local test lab for the Go migration (G0, kill risks K1-K9).
+# Start and stop only through up.sh / down.sh: they generate the per-run
+# secrets in ./runtime and pass lab.env. Every port binds to LAB_BIND
+# (loopback). Lab only; never deploy any of this.
+name: webssh-lab
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  init: true
+  restart: "no"
+
+x-runtime: &runtime
+  - ./runtime:/lab:ro
+
+x-tools-build: &tools-build
+  context: .
+  dockerfile: images/tools/Dockerfile
+
+x-ssh-build: &ssh-build
+  context: images/ssh
+
+x-ssh-caps: &ssh-caps
+  - CHOWN
+  - DAC_OVERRIDE
+  - FOWNER
+  - SETGID
+  - SETUID
+  - SYS_CHROOT
+  - KILL
+
+x-ssh-health: &ssh-health
+  test: ["CMD", "nc", "-z", "127.0.0.1", "22"]
+  interval: 2s
+  timeout: 3s
+  retries: 30
+
+networks:
+  front:
+    ipam:
+      config:
+        - subnet: 172.31.240.0/24
+  inner:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.241.0/24
+  tailnet:
+    internal: true
+    ipam:
+      config:
+        - subnet: 100.100.100.0/24
+
+services:
+  # One-shot generators, run by up.sh before the services start.
+  lab-init:
+    profiles: ["init"]
+    build: *tools-build
+    image: webssh-lab/tools:local
+    network_mode: none
+    environment:
+      LAB_BIND: ${LAB_BIND:?}
+      LAB_PORT_SAMBA: ${LAB_PORT_SAMBA:?}
+      LAB_PORT_SSH_MODERN: ${LAB_PORT_SSH_MODERN:?}
+      LAB_PORT_SSH_BASTION: ${LAB_PORT_SSH_BASTION:?}
+      LAB_PORT_SSH_LEGACY: ${LAB_PORT_SSH_LEGACY:?}
+      LAB_PORT_SOCKS_OPEN: ${LAB_PORT_SOCKS_OPEN:?}
+      LAB_PORT_SOCKS_AUTH: ${LAB_PORT_SOCKS_AUTH:?}
+      LAB_PORT_LDAP1: ${LAB_PORT_LDAP1:?}
+      LAB_PORT_LDAP1_TLS: ${LAB_PORT_LDAP1_TLS:?}
+      LAB_PORT_LDAP2: ${LAB_PORT_LDAP2:?}
+      LAB_PORT_LDAP_SLOW: ${LAB_PORT_LDAP_SLOW:?}
+      LAB_PORT_LDAP_BLACKHOLE: ${LAB_PORT_LDAP_BLACKHOLE:?}
+      LAB_PORT_DEX: ${LAB_PORT_DEX:?}
+      LAB_PORT_MOCK_OAUTH2: ${LAB_PORT_MOCK_OAUTH2:?}
+      LAB_PORT_GITHUB_STUB: ${LAB_PORT_GITHUB_STUB:?}
+      LAB_PORT_WIN_WEB: ${LAB_PORT_WIN_WEB:?}
+      LAB_PORT_WIN_RDP: ${LAB_PORT_WIN_RDP:?}
+      LAB_PORT_WIN_SMB: ${LAB_PORT_WIN_SMB:?}
+      LAB_PORT_WIN_SSH: ${LAB_PORT_WIN_SSH:?}
+    volumes:
+      - ./runtime:/lab-runtime
+      - ${LAB_WINDOWS_STORAGE:?}:/windows-storage
+    command:
+      - python3
+      - /opt/lab/generate.py
+      - --out=/lab-runtime
+      - --host-runtime=${LAB_RUNTIME_HOST:?}
+      - --windows-storage=/windows-storage
+
+  lab-init-legacy:
+    profiles: ["init"]
+    build:
+      context: images/ssh-legacy
+    image: webssh-lab/ssh-legacy:local
+    network_mode: none
+    volumes:
+      - ./runtime:/lab-runtime
+    command: ["keygen"]
+
+  samba:
+    <<: *hardening
+    build:
+      context: images/samba
+    image: webssh-lab/samba:local
+    hostname: samba
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID, KILL]
+    volumes: *runtime
+    networks:
+      front:
+        aliases: [samba.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_SAMBA}:445"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "smbclient -L //127.0.0.1 -m SMB3 -U \"smbuser%$$(head -n1 /lab/secrets/samba-smbuser)\" >/dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  ssh-modern:
+    <<: *hardening
+    build: *ssh-build
+    image: webssh-lab/ssh:local
+    hostname: ssh-modern
+    cap_add: *ssh-caps
+    environment:
+      LAB_SSH_HOST: ssh-modern
+    volumes: *runtime
+    networks:
+      front:
+        aliases: [ssh-modern.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_SSH_MODERN}:22"
+    healthcheck: *ssh-health
+
+  ssh-bastion:
+    <<: *hardening
+    build: *ssh-build
+    image: webssh-lab/ssh:local
+    hostname: ssh-bastion
+    cap_add: *ssh-caps
+    environment:
+      LAB_SSH_HOST: ssh-bastion
+    volumes: *runtime
+    networks:
+      front:
+        aliases: [ssh-bastion.lab.test]
+      inner:
+        aliases: [ssh-bastion.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_SSH_BASTION}:22"
+    healthcheck: *ssh-health
+
+  # Reachable only through ssh-bastion or the SOCKS proxies.
+  ssh-inner:
+    <<: *hardening
+    build: *ssh-build
+    image: webssh-lab/ssh:local
+    hostname: ssh-inner
+    cap_add: *ssh-caps
+    environment:
+      LAB_SSH_HOST: ssh-inner
+    volumes: *runtime
+    networks:
+      inner:
+        aliases: [ssh-inner.lab.test]
+    healthcheck: *ssh-health
+
+  ssh-legacy:
+    <<: *hardening
+    build:
+      context: images/ssh-legacy
+    image: webssh-lab/ssh-legacy:local
+    hostname: ssh-legacy
+    cap_add: *ssh-caps
+    volumes: *runtime
+    networks:
+      front:
+        aliases: [ssh-legacy.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_SSH_LEGACY}:22"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 22), 2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  socks-open:
+    <<: *hardening
+    build:
+      context: images/socks
+    image: webssh-lab/socks:local
+    cap_add: [SETGID, SETUID, CHOWN, DAC_OVERRIDE]
+    environment:
+      LAB_SOCKS_MODE: open
+    volumes: *runtime
+    networks:
+      front:
+        interface_name: eth0
+        aliases: [socks-open.lab.test]
+      inner:
+        interface_name: eth1
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_SOCKS_OPEN}:1080"
+
+  socks-auth:
+    <<: *hardening
+    build:
+      context: images/socks
+    image: webssh-lab/socks:local
+    cap_add: [SETGID, SETUID, CHOWN, DAC_OVERRIDE]
+    environment:
+      LAB_SOCKS_MODE: auth
+    volumes: *runtime
+    networks:
+      front:
+        interface_name: eth0
+        aliases: [socks-auth.lab.test]
+      inner:
+        interface_name: eth1
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_SOCKS_AUTH}:1080"
+
+  ldap1:
+    <<: *hardening
+    build:
+      context: images/ldap
+    image: webssh-lab/ldap:local
+    hostname: ldap1
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    environment:
+      LAB_LDAP_NAME: ldap1
+    volumes: *runtime
+    networks:
+      front:
+        aliases: [ldap1.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_LDAP1}:389"
+      - "${LAB_BIND}:${LAB_PORT_LDAP1_TLS}:636"
+    healthcheck: &ldap-health
+      test: ["CMD", "ldapsearch", "-x", "-LLL", "-H", "ldap://127.0.0.1", "-b", "", "-s", "base", "supportedExtension"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  ldap2:
+    <<: *hardening
+    build:
+      context: images/ldap
+    image: webssh-lab/ldap:local
+    hostname: ldap2
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    environment:
+      LAB_LDAP_NAME: ldap2
+    volumes: *runtime
+    networks:
+      front:
+        aliases: [ldap2.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_LDAP2}:389"
+    healthcheck: *ldap-health
+
+  # Delayed and black-holed TCP paths to ldap1 for timeout tests.
+  toxiproxy:
+    <<: *hardening
+    image: ghcr.io/shopify/toxiproxy:2.13.0@sha256:5d3dae09bc185dcc5ff6cf43abf6062a4a720aff0c4306a471e773acdcd107aa
+    read_only: true
+    user: "65534:65534"
+    command: ["-host=0.0.0.0", "-port=8474"]
+    networks:
+      front:
+        aliases: [toxiproxy.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_LDAP_SLOW}:3891"
+      - "${LAB_BIND}:${LAB_PORT_LDAP_BLACKHOLE}:3892"
+
+  toxiproxy-config:
+    <<: *hardening
+    image: webssh-lab/tools:local
+    pull_policy: never
+    user: "10001:10001"
+    read_only: true
+    networks: [front]
+    depends_on:
+      toxiproxy:
+        condition: service_started
+      ldap1:
+        condition: service_healthy
+    command: ["sh", "-c", "for i in $$(seq 1 30); do curl -fsS http://toxiproxy.lab.test:8474/version >/dev/null 2>&1 && exec /opt/lab/toxics.sh; sleep 1; done; exit 1"]
+
+  dex:
+    <<: *hardening
+    image: ghcr.io/dexidp/dex:v2.46.1@sha256:65b72ca0f4b0bf6d4ada84ec21da8851782563404ac7b8f926923d27ceced9ab
+    read_only: true
+    user: "1001:1001"
+    command: ["dex", "serve", "/lab/dex/config.yaml"]
+    tmpfs:
+      - /tmp
+    # Non-root services get single files: the runtime root is 0700.
+    volumes:
+      - ./runtime/dex/config.yaml:/lab/dex/config.yaml:ro
+      - ./runtime/tls/dex.crt:/lab/tls/dex.crt:ro
+      - ./runtime/tls/dex.key:/lab/tls/dex.key:ro
+    networks:
+      front:
+        aliases: [dex.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_DEX}:${LAB_PORT_DEX}"
+
+  mock-oauth2:
+    <<: *hardening
+    image: ghcr.io/navikt/mock-oauth2-server:7.0.2@sha256:95966a61e512c003daa3c884623665c2bbf04f46f85ce97d7ee659384d804202
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      SERVER_PORT: "8080"
+    networks:
+      front:
+        aliases: [mock-oauth2.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_MOCK_OAUTH2}:8080"
+
+  github-stub:
+    <<: *hardening
+    image: webssh-lab/tools:local
+    pull_policy: never
+    user: "10001:10001"
+    read_only: true
+    volumes:
+      - ./runtime/github/config.json:/lab/github/config.json:ro
+      - ./runtime/tls/github-stub.crt:/lab/tls/github-stub.crt:ro
+      - ./runtime/tls/github-stub.key:/lab/tls/github-stub.key:ro
+      - ./runtime/ca/ca.crt:/lab/ca/ca.crt:ro
+    command: ["python3", "/opt/lab/github_stub.py", "/lab/github/config.json",
+              "/lab/tls/github-stub.crt", "/lab/tls/github-stub.key", "8443"]
+    networks:
+      front:
+        aliases: [github.lab.test, api.github.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_GITHUB_STUB}:8443"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--cacert", "/lab/ca/ca.crt", "https://localhost:8443/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Tailscale stand-in. ts-node is the network namespace a WebSSH process
+  # joins (--network container:lab-ts-node); its tailnet interface is named
+  # tailscale0 and routed through table 52 like tailscaled does.
+  ts-node:
+    <<: *hardening
+    image: webssh-lab/tools:local
+    pull_policy: never
+    container_name: lab-ts-node
+    cap_add: [NET_ADMIN]
+    volumes: *runtime
+    command: ["/opt/lab/ts-node.sh"]
+    networks:
+      front:
+        interface_name: eth0
+      tailnet:
+        interface_name: tailscale0
+        ipv4_address: 100.100.100.2
+    healthcheck:
+      test: ["CMD", "sh", "-c", "ip rule show | grep -q 'lookup 52'"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  ts-target:
+    <<: *hardening
+    build: *ssh-build
+    image: webssh-lab/ssh:local
+    hostname: ts-target
+    cap_add: *ssh-caps
+    environment:
+      LAB_SSH_HOST: ts-target
+      LAB_SSH_ROLE: tailscale
+    volumes: *runtime
+    networks:
+      tailnet:
+        ipv4_address: 100.100.100.10
+    healthcheck: *ssh-health
+
+  # Windows Server evaluation in KVM (dockur/windows). Profile "windows";
+  # storage lives outside the repo (LAB_WINDOWS_STORAGE) and survives down.sh.
+  windows:
+    profiles: ["windows"]
+    image: docker.io/dockurr/windows:6.06@sha256:16fd7c39a3e48bb946d29c59dc6015942e5b900a1fa5d7e5552053bfc48ee2ea
+    container_name: lab-windows
+    environment:
+      VERSION: "2025"
+      LANGUAGE: "English"
+      RAM_SIZE: "4G"
+      CPU_CORES: "2"
+      DISK_SIZE: "64G"
+      # Rootless Docker cannot create the NAT bridge, so dockur falls back to
+      # user-mode networking (passt), which forwards only listed ports:
+      # SMB and the guest's OpenSSH server (key login for labadmin only).
+      USER_PORTS: "445,22"
+      # The guest serves SMB; dockur's own host-folder Samba would hold 445.
+      SAMBA: "N"
+    env_file:
+      - path: ./runtime/windows/windows.env
+        required: false
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ${LAB_WINDOWS_STORAGE:?}:/storage
+      - ./runtime/windows/oem:/oem:ro
+    networks:
+      front:
+        aliases: [windows.lab.test]
+    ports:
+      - "${LAB_BIND}:${LAB_PORT_WIN_WEB}:8006"
+      - "${LAB_BIND}:${LAB_PORT_WIN_RDP}:3389/tcp"
+      - "${LAB_BIND}:${LAB_PORT_WIN_SMB}:445/tcp"
+      - "${LAB_BIND}:${LAB_PORT_WIN_SSH}:22/tcp"
+    stop_grace_period: 2m
+    restart: "no"

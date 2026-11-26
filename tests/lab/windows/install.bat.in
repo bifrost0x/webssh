@@ -1,0 +1,14 @@
+@echo off
+rem Runs once at the first logon after the unattended installation (C:\OEM).
+rem Creates the lab SMB user and share. The password is lab-only.
+rem PowerShell instead of "net user": net user asks for confirmation for
+rem passwords longer than 14 characters and would block here.
+powershell -NoProfile -Command "New-LocalUser -Name smbuser -Password (ConvertTo-SecureString '@SMBUSER_PASSWORD@' -AsPlainText -Force) -PasswordNeverExpires -UserMayNotChangePassword"
+mkdir C:\LabShare
+echo windows share fixture> C:\LabShare\hello.txt
+icacls C:\LabShare /grant "smbuser:(OI)(CI)M"
+powershell -NoProfile -Command "New-SmbShare -Name LabShare -Path C:\LabShare -ChangeAccess smbuser"
+powershell -NoProfile -Command "Set-SmbServerConfiguration -RequireSecuritySignature $true -Confirm:$false"
+powershell -NoProfile -Command "Enable-NetFirewallRule -DisplayGroup 'File and Printer Sharing'"
+rem OpenSSH server with key login for labadmin (see enable-ssh.ps1).
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\OEM\enable-ssh.ps1

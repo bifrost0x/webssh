@@ -1,0 +1,20 @@
+# Stand-in for Tailscale SSH: the "none" method succeeds without any
+# credential, like tailssh after it authorized the connecting node.
+Port 22
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/keys/ssh_host_ed25519_key
+HostKey /etc/ssh/keys/ssh_host_ecdsa_key
+HostKey /etc/ssh/keys/ssh_host_rsa_key
+UsePAM no
+PermitRootLogin no
+PasswordAuthentication yes
+PermitEmptyPasswords yes
+KbdInteractiveAuthentication no
+PubkeyAuthentication no
+AllowUsers tsuser
+AllowTcpForwarding no
+X11Forwarding no
+Subsystem sftp internal-sftp
+LogLevel VERBOSE
+# Lab tests fail authentication on purpose; no per-source lockout.
+PerSourcePenalties no

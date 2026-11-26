@@ -1,0 +1,59 @@
+# Enables the OpenSSH server that ships with Windows Server 2025 for the lab:
+# public-key login for labadmin only, a fixed ed25519 host key from the lab
+# generator, no passwords. Idempotent. Lab-only key material.
+$ErrorActionPreference = 'Stop'
+Start-Transcript -Path (Join-Path $env:ProgramData 'lab-enable-ssh.log') -Append | Out-Null
+
+function Write-Ascii([string]$Path, [string]$Text) {
+    [IO.File]::WriteAllText($Path, $Text.Replace("`r`n", "`n"), [Text.Encoding]::ASCII)
+}
+function Set-AdminOnly([string]$Path) {
+    icacls $Path /inheritance:r /grant 'SYSTEM:F' /grant 'Administrators:F' | Out-Null
+}
+
+if (-not (Get-Service sshd -ErrorAction SilentlyContinue)) {
+    Add-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0' | Out-Null
+}
+$sshDir = Join-Path $env:ProgramData 'ssh'
+New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+
+$hostKey = Join-Path $sshDir 'ssh_host_ed25519_key'
+$hostKeyText = @'
+@HOST_KEY@
+'@
+Write-Ascii $hostKey ($hostKeyText + "`n")
+Write-Ascii "$hostKey.pub" "@HOST_KEY_PUB@`n"
+Set-AdminOnly $hostKey
+
+$adminKeys = Join-Path $sshDir 'administrators_authorized_keys'
+Write-Ascii $adminKeys "@ADMIN_PUBKEY@`n"
+Set-AdminOnly $adminKeys
+
+$config = Join-Path $sshDir 'sshd_config'
+Write-Ascii $config @'
+Port 22
+HostKey __PROGRAMDATA__/ssh/ssh_host_ed25519_key
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+AllowUsers labadmin
+Subsystem sftp sftp-server.exe
+Match Group administrators
+       AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys
+'@
+Set-AdminOnly $config
+
+New-Item -Path 'HKLM:\SOFTWARE\OpenSSH' -Force | Out-Null
+New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -PropertyType String -Force `
+    -Value "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" | Out-Null
+
+$rule = Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue
+if ($rule) {
+    Enable-NetFirewallRule -Name 'OpenSSH-Server-In-TCP'
+} else {
+    New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' `
+        -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow | Out-Null
+}
+Set-Service -Name sshd -StartupType Automatic
+Restart-Service -Name sshd -Force
+Stop-Transcript | Out-Null

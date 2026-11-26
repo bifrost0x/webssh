@@ -1,0 +1,30 @@
+Port 22
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/keys/ssh_host_ed25519_key
+HostKey /etc/ssh/keys/ssh_host_ecdsa_key
+HostKey /etc/ssh/keys/ssh_host_rsa_key
+UsePAM yes
+PermitRootLogin no
+PermitEmptyPasswords no
+PasswordAuthentication yes
+KbdInteractiveAuthentication yes
+PubkeyAuthentication yes
+AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+AllowUsers pwuser keyuser kiuser mfauser
+AllowTcpForwarding yes
+X11Forwarding no
+PermitTunnel no
+MaxAuthTries 10
+Subsystem sftp internal-sftp
+LogLevel VERBOSE
+# Lab tests fail authentication on purpose; no per-source lockout.
+PerSourcePenalties no
+
+Match User pwuser
+    AuthenticationMethods password
+Match User keyuser
+    AuthenticationMethods publickey
+Match User kiuser
+    AuthenticationMethods keyboard-interactive
+Match User mfauser
+    AuthenticationMethods publickey,keyboard-interactive

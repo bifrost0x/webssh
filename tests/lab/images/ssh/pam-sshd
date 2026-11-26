@@ -1,0 +1,7 @@
+# Password first, then TOTP for accounts that have a google_authenticator
+# file. Accounts without one (pwuser) skip the second prompt.
+auth      required  pam_unix.so
+auth      required  pam_google_authenticator.so nullok secret=/etc/lab-totp/${USER} user=root
+account   required  pam_unix.so
+password  required  pam_deny.so
+session   required  pam_unix.so

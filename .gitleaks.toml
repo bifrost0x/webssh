@@ -28,6 +28,15 @@ condition = "AND"
 paths = ['''(^|/)site/vendor/vis-network-9\.1\.6/vis-network\.min\.js$''']
 regexes = ['''^_getDistanceToBezierEdge2$''']
 
+# The lab passes per-run secrets generated into its ignored runtime directory.
+[[rules]]
+id = "curl-auth-user"
+
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)tests/lab/smoke\.sh$''']
+regexes = ['''^'webssh-lab:\$\(secret dex-client-secret\)'$''']
+
 # synthetic test fixtures: the golden data set is generated from a fixed seed
 # by tests/golden/generate.py and holds no real keys or tokens.
 [[allowlists]]

@@ -125,3 +125,6 @@ qa-*.md
 tests/integration/paramiko5/runtime/
 
 .impeccable/
+
+# Per-run secrets and inventory of the local test lab
+tests/lab/runtime/
