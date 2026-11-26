@@ -20,6 +20,7 @@
     {"file": "admin-step-up-cancel.spec.js", "exclude": []},
     {"file": "admin-feature-recovery.spec.js", "exclude": []},
     {"file": "admin-config-draft.spec.js", "exclude": []},
+    {"file": "form-journey.spec.js", "exclude": []},
 
     {"file": "overview-workspace.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-default-content.spec.js", "serial": "e2e_admin", "exclude": []},
