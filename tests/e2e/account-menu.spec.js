@@ -127,7 +127,7 @@ test('account menu and settings stay inside a mobile viewport', async ({ page })
     const version = page.locator('#accountDropdownHeader [data-webssh-version]');
     await version.scrollIntoViewIfNeeded();
     await expect(version).toBeVisible();
-    await expect(version).toHaveText(/^\d+\.\d+\.\d+( \([0-9a-f]{7}\))?$/);
+    await expect(version).toHaveText(/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?( \([0-9a-f]{7}\))?$/);
     const support = page.locator('#accountSupportLink');
     await expect(support).toBeVisible();
     await expect(support).toHaveAttribute('href', 'https://github.com/bifrost0x/webssh?sponsor=1');
