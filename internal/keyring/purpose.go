@@ -33,7 +33,12 @@ const (
 	FeatureApproval   Purpose = "feature_approval"   // impact approvals of security feature changes (MAC)
 )
 
-var purposes = []Purpose{SSHKey, TOTP, SessionToken, CSRF, StepUpGrant, WebAuthnChallenge, BrowserScope, FeatureApproval}
+// Purposes of M2 (docs/architecture/m2-contracts.md).
+const (
+	Credential Purpose = "credential" // saved passwords at rest (Seal)
+)
+
+var purposes = []Purpose{SSHKey, TOTP, SessionToken, CSRF, StepUpGrant, WebAuthnChallenge, BrowserScope, FeatureApproval, Credential}
 
 // Purposes returns the closed list.
 func Purposes() []Purpose { return slices.Clone(purposes) }

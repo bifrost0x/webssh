@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -14,9 +15,42 @@ import (
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 )
 
-// contractsDoc is the human-readable M1 contract. Its catalog tables are
-// checked against the code, so the document cannot drift.
-const contractsDoc = "docs/architecture/m1-contracts.md"
+// contractsGlob matches the human-readable contracts (m1-contracts.md,
+// m2-contracts.md and later parts). Their catalog tables are checked
+// against the code, so the documents cannot drift.
+const contractsGlob = "docs/architecture/m[0-9]*-contracts*.md"
+
+// contractRows merges the table rows under heading over every contract
+// document. A document without the heading adds nothing; a name in two
+// documents, or no row at all, is an error.
+func contractRows(t *testing.T, root, heading string) map[string]string {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(contractsGlob)))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("contract documents %s: %v", contractsGlob, err)
+	}
+	rows := map[string]string{}
+	for _, file := range files {
+		rel, _ := filepath.Rel(root, file)
+		part, err := docColumn(readRepoFile(t, root, filepath.ToSlash(rel)), heading)
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "no table rows") {
+				continue
+			}
+			t.Fatalf("%s: %v", rel, err)
+		}
+		for k, v := range part {
+			if _, dup := rows[k]; dup {
+				t.Fatalf("%s: %s %q is documented twice", rel, heading, k)
+			}
+			rows[k] = v
+		}
+	}
+	if len(rows) == 0 {
+		t.Fatalf("no table rows under %q in %s", heading, contractsGlob)
+	}
+	return rows
+}
 
 // docColumn returns the first cell (without backticks) of every table row
 // under the heading, and the second cell keyed by the first.
@@ -54,12 +88,12 @@ func setDiff(what string, doc map[string]string, code []string) []string {
 	var problems []string
 	for _, name := range code {
 		if _, ok := doc[name]; !ok {
-			problems = append(problems, fmt.Sprintf("%s %q is in the code but not in %s", what, name, contractsDoc))
+			problems = append(problems, fmt.Sprintf("%s %q is in the code but not in %s", what, name, contractsGlob))
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(doc)) {
 		if !slices.Contains(code, name) {
-			problems = append(problems, fmt.Sprintf("%s %q is in %s but not in the code", what, name, contractsDoc))
+			problems = append(problems, fmt.Sprintf("%s %q is in %s but not in the code", what, name, contractsGlob))
 		}
 	}
 	return problems
@@ -67,12 +101,9 @@ func setDiff(what string, doc map[string]string, code []string) []string {
 
 func TestContractDocumentation(t *testing.T) {
 	t.Parallel()
-	data := readRepoFile(t, moduleRoot(t), contractsDoc)
+	root := moduleRoot(t)
 
-	codes, err := docColumn(data, "### Error codes")
-	if err != nil {
-		t.Fatal(err)
-	}
+	codes := contractRows(t, root, "### Error codes")
 	var codeNames []string
 	for _, c := range fault.Codes() {
 		codeNames = append(codeNames, string(c))
@@ -84,10 +115,7 @@ func TestContractDocumentation(t *testing.T) {
 		t.Error(p)
 	}
 
-	types, err := docColumn(data, "### Message types")
-	if err != nil {
-		t.Fatal(err)
-	}
+	types := contractRows(t, root, "### Message types")
 	var typeNames []string
 	for _, m := range protocol.V1() {
 		typeNames = append(typeNames, m.Name)
@@ -102,10 +130,7 @@ func TestContractDocumentation(t *testing.T) {
 		t.Error(p)
 	}
 
-	actions, err := docColumn(data, "### Step-up actions")
-	if err != nil {
-		t.Fatal(err)
-	}
+	actions := contractRows(t, root, "### Step-up actions")
 	var actionNames []string
 	for _, a := range principal.Actions() {
 		actionNames = append(actionNames, string(a))

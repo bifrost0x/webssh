@@ -97,6 +97,10 @@ var packageMap = map[string]role{
 	"internal/jobs":                           {kind: edge},
 	"internal/admincli":                       {kind: edge},
 	"internal/e2eseed":                        {kind: edge},
+	// M2 (docs/architecture/m2-contracts.md).
+	"internal/idna2003":        {kind: foundation},
+	"internal/files/filestest": {kind: capability},
+	"internal/vault/vaulttest": {kind: capability},
 }
 
 // roleOf returns the role of a module-relative package path. Commands

@@ -25,11 +25,21 @@ const (
 	ActionUserCreate            Action = "user.create"
 )
 
+// Step-up actions of M2 (docs/architecture/m2-contracts.md).
+const (
+	// ActionCredentialsVault binds a saved-password change to its intent:
+	// the target is the intent token, and the intent holds the operation
+	// and the digest of the mutation. The name is the one the page sends
+	// (static/js/native-credentials.js).
+	ActionCredentialsVault Action = "credentials.vault"
+)
+
 var actions = []Action{
 	ActionKeyUpload, ActionKeyReplace, ActionKeyDelete, ActionHostKeyDelete,
 	ActionTOTPEnroll, ActionTOTPDelete, ActionPasskeyEnroll, ActionPasskeyDelete,
 	ActionMFAEnable, ActionMFADisable, ActionRecoveryRotate,
 	ActionSecurityFeatureUpdate, ActionUserCreate,
+	ActionCredentialsVault,
 }
 
 // Actions returns the catalog.
