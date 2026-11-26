@@ -91,9 +91,12 @@ func DetailsOf(err error) map[string]any
   status from the table. Realtime errors are the `err` member of a
   `result` message: `{"code", "message", "retry_after_ms", "details"}`.
 - `details` is optional and an object. It carries what the Python release
-  sent beside the error and the page acts on: `requires_confirmation` and
-  `profiles` for `hosts.profile.move`, `usages` (display strings) for the
-  delete types. The shim copies its members into the acknowledgement; they
+  sent beside the error and the page acts on: `requires_confirmation` with
+  `organization` (or `profile_id`, `profile_name`, `source_group` when the
+  move asks for confirmation) for `hosts.profile.move`, `usages` (display
+  strings) for the delete types, and `passphrase_required: true` for
+  `keys.upload` and `keys.replace` when the key's passphrase is missing or
+  wrong (code `invalid_value`). The shim copies its members into the acknowledgement; they
   never replace `success`, `code` or `error`. Like `Message`, details never
   hold secrets, remote-supplied text or paths, and an error outside the
   catalog sends none.
@@ -105,6 +108,10 @@ func DetailsOf(err error) map[string]any
   its own and never includes request values.
 - Routes planned but not built in M1 answer
   `501 {"success": false, "code": "not_available_in_preview", "error": …}`.
+- One answer leaves the catalog on purpose: a wrong password or code on
+  the admin step-up routes is `403 {"code": "invalid_value"}`, because
+  `admin.js` retries only on that pair; `internal/auth/stepup/http.go`
+  writes it itself (`writeRejected`).
 
 ### Error codes
 
@@ -174,8 +181,11 @@ The codes the Python release sends and the frontend matches on
 `last_factor_required`, `host_key_changed`, `host_key_not_accepted`,
 `auth_banner_declined`, `ssh_input_too_large`, `ssh_input_backpressure`,
 `busy`, `maintenance`, `unavailable`, `storage_error`, `invalid_request`,
-`invalid_value`, `not_found`, `tailscale_route_restricted` and the
-`socks_*` codes) keep their spelling. The `hosts.*` types keep the codes
+`invalid_value`, `not_found`, `recovery_required`,
+`tailscale_route_restricted` and the `socks_*` codes) keep their spelling.
+`recovery_required` is the refusal of a recovery session on every API
+route outside factor repair, with the Python text; the frontend does not
+match on it, its spelling is kept for scripts. The `hosts.*` types keep the codes
 of the Python handlers: `in_use` (with `details.usages`),
 `validation_error` and `quota_exceeded`. `PUT /api/overview/preferences`
 keeps the codes of the Python route: `invalid_layout`,
@@ -269,10 +279,19 @@ subprotocol with 1006. In M1:
 
 1. A refused origin (403), a missing, invalid or expired session cookie
    (401), a recovery session (403), shutdown (503) and the server-wide
-   limit beyond `RejectSlots` (503) are answered before the upgrade. The
-   page sees an ordinary failed connection and retries with backoff; it
-   leaves for the sign-in through its own session expiry
-   (`auth_session_expires_at`) and the next page load.
+   limit beyond `RejectSlots` (503) are answered before the upgrade; there
+   are no unauthenticated upgrades. The page sees an ordinary failed
+   connection and retries with backoff. After repeated failures the shim
+   asks `GET {APPLICATION_ROOT}/api/realtime/status` (same origin,
+   `Cache-Control: no-store`, changes nothing):
+   - `401 {"success": false, "code": "authentication_required", "error",
+     "authenticated": false, "recovery": false, "schema": 1,
+     "subprotocols": ["webssh.v1"]}` without a valid session: the page goes
+     to the sign-in at once;
+   - `200 {"success": true, "authenticated": true, "recovery": <bool>,
+     "schema": 1, "subprotocols": ["webssh.v1"]}` otherwise; a different
+     `schema` or `recovery: true` makes the page reload.
+   The shim side comes with D4.
 2. 4001 is sent only after an upgrade with a common subprotocol, so a
    request without one reaches the page as 1006 and is retried like (1).
    The shim also treats an open connection without `webssh.v1` as 4001.
@@ -315,6 +334,13 @@ revocation enforceable:
 3. On a revocation the endpoint cancels the context of every connection of
    the session at once and closes it with 4003. Running handlers end with
    their context; the terminal stops forwarding output of that connection.
+   For the reasons `logout`, `password_changed`, `factor_changed`,
+   `account_locked` and `role_changed` the terminal (`Manager.Revoked`)
+   also ends every terminal session and pending attempt of the account,
+   as the Python release closed every socket and SSH connection of the
+   account on logout; on `password_changed` this includes the tmux
+   sessions once D6 runs them. The other reasons end only the connections
+   of the session.
 4. Before every message whose `Spec` has `Mutates` set, the dispatcher
    calls `Check`; a failure closes with 4003 and the handler does not run.
 5. The periodic re-check stays as a backstop for expiry; it is not the
@@ -422,6 +448,14 @@ attached to, the requesting one included. After
 the session a reconnecting tab replaces. The shim sends them once the
 terminal runs tmux sessions (D6).
 
+`SessionRef` is `{session_id, request_id?}`. `terminal.discard_late`
+discards a session only for the connection whose `terminal.open` created
+it and only with that open's `request_id` (Python matched
+`client_request_id`); otherwise it answers `not_found`. The shim maps
+`client_request_id` to `request_id`. `terminal.close` ignores
+`request_id`. A full session quota answers `busy`, as the Python release
+did.
+
 `terminal.cancel` answers `ok` when the attempt was cancelled, `not_found`
 when no attempt with that `request_id` exists, and `conflict` when the
 attempt already produced its session (the shim reports `cancelled: true`,
@@ -442,7 +476,7 @@ test. The result `p` is the success payload of the Python release without
 | `hosts.profile.save` | `Profile` (every field the profile form sends; the client drops `tailscale_authorized`) | `{profile: Profile}` |
 | `hosts.profile.delete` | `{profile_id}` | `{}` |
 | `hosts.profile.organize` | `{profile_id, group?, favorite?}` | `{profile: Profile}` |
-| `hosts.profile.move` | `{profile_id, target_group, target_index, expected_source_group, confirm_source_group_removal}` | `{profiles: [{id, group, sort_order}]}` |
+| `hosts.profile.move` | `{profile_id, target_group, target_index, expected_source_group, confirm_source_group_removal}` | `{requires_confirmation: false, organization: [{id, group, sort_order, updated_at?}]}` |
 | `hosts.jump.list` | `Empty` | `{jump_hosts: [JumpHost]}` |
 | `hosts.jump.save` | `{jump_host_id?, name, host, port, username, auth_type, key_id?}` | `{jump_host: JumpHost}` |
 | `hosts.jump.delete` | `{jump_host_id}` | `{}` |
@@ -459,7 +493,22 @@ test. The result `p` is the success payload of the Python release without
 | `settings.disconnect_action.set` | `SettingsDisconnectAction` | `{action}` (stored value) |
 
 For deletes the shim adds the IDs of the request to the acknowledgement.
-Failures the page acts on carry `err.details` (see Errors).
+Failures the page acts on carry `err.details` (see Errors). The page
+reads the move result from `organization`; a move that would empty its
+source group fails with `details {requires_confirmation: true,
+profile_id, profile_name, source_group}`.
+
+The payload types are those of `payload_hosts.go` and `payload_keys.go`.
+`keys.upload` and `keys.replace` accept up to `protocol.MaxKeyPayload`
+(192 KiB: the key of at most 64 KiB, its passphrase and the step-up
+grant); every other type keeps the default of 4 KiB. `hosts.*` failures
+keep the Python codes (`in_use`, `validation_error`, `quota_exceeded`).
+
+The shim's catalog entries may carry `answeredByPage(failure)`: a failure
+the page answers itself (the step-up and passphrase questions of the key
+dialog) is then not repeated as an `error` event. Every other failure of
+an entry with `errorEvent` is sent as `error` with all members of the
+rejection (`details`, `retry_after_ms`).
 
 `SessionInfo` carries the fields of `ssh_connected` and
 `ssh_session_restored` plus `last_seq`; empty strings stand for `null`
@@ -479,9 +528,32 @@ type StepUp interface {
 
 (compiled in `internal/ssh/hostkey`, `internal/vault`,
 `internal/operations` and `internal/accounts`). A grant is bound to user,
-session, action and target, valid for `STEP_UP_MAX_AGE_SECONDS` and
-consumed once. Every failure is `step_up_required`.
-`principaltest.StepUp` implements the same rules for tests.
+session, action and target, valid for a fixed 300 seconds as in the Python
+release, and consumed once. `STEP_UP_MAX_AGE_SECONDS` (60–900) is only the
+window of the shortcut: a session that authenticated with MFA or a passkey
+within it gets a grant without a new proof. Every failure is
+`step_up_required`. `principaltest.StepUp` implements the same rules for
+tests.
+
+Own-account actions (`totp.enroll`, `passkey.enroll`, `mfa.enable`,
+`mfa.disable`, `recovery.rotate`, `key.upload`) take the user id as their
+target when the request has none and refuse any other. `key.replace` and
+`key.delete` take the `key_id`; the vault checks ownership before
+`Consume`. Both URL families exist: the account family
+`/api/account/step-up/…` (`security-ui.js`) and the admin family
+`/api/step-up/…` (`admin.js`).
+
+`*stepup.Service` takes its dependencies as consumer interfaces:
+`Sessions.Assurance(ctx, p) (SessionAssurance{Level, StrongAt, Methods},
+error)` (from `internal/session`), `Passwords{HasPassword,
+VerifyPassword}` (from `internal/auth/local`, the same time for every
+wrong password), `TOTP`, `Passkeys{Enrolled, AssertionOptions,
+VerifyAssertion}` (D1; nil until then, so passkeys are never offered),
+`auth.Accounts`, `auth.Gates`, `auth.Audit` and the per-action
+`Targets[action]` checks (`totp.delete` → `(*totp.Service).OwnsTarget`;
+D1 sets `passkey.delete`). It satisfies every `StepUp` interface above
+structurally; the composition root (D4) asserts that at compile time,
+because capabilities do not import each other.
 
 ### Step-up actions
 
@@ -562,7 +634,7 @@ driver version that rolls back such a write completely, are in place
 
 `internal/keyring` (ADR 0008). Compiled now: the closed purpose list
 (`ssh_key`, `totp`, `session_token`, `csrf`, `step_up_grant`,
-`webauthn_challenge`, `browser_scope`) and `AAD{Table, Column, Row}` with
+`webauthn_challenge`, `browser_scope`, `feature_approval`) and `AAD{Table, Column, Row}` with
 its encoding `"webssh-aad-v1\x00" + purpose + "\x00" + table + "\x00" +
 column + "\x00" + row` (every part non-empty, no NUL). Both are stored
 formats and never change.
@@ -581,13 +653,16 @@ func NewRotation(from, to *Ring, legacyPurged bool) (*Rotation, error)
 func (rt *Rotation) Reseal(p Purpose, ad AAD, sealed []byte) ([]byte, error)
 func LoadOrCreateMaterial(dataDir string, legacyPresent bool) ([]byte, error)
 func MoveMaterialToGo(dataDir string, r *Ring, storedKeyID string, record func() error) error
+func MoveMaterialToState(dataDir string, r *Ring, storedKeyID string) (moved bool, err error)
+const GoDirName, DatabaseName, LogsDirName, StateDirName, MaterialName
 const MaterialSize = 32
 const MinSealedSize = …
 ```
 
 - Purposes per operation: `Seal` and `Open` take `ssh_key`, `totp` and
-  `webauthn_challenge`; `MAC` takes `session_token`, `csrf` and
-  `step_up_grant`; `browser_scope` is only the name of the derivation
+  `webauthn_challenge`; `MAC` takes `session_token`, `csrf`,
+  `step_up_grant` and `feature_approval` (the five-minute impact approval
+  of a security feature change, never stored); `browser_scope` is only the name of the derivation
   behind `BrowserScope` (the browser-local namespace, bit-identical to the
   Python release). `Seal` and `Open` fail with `ErrPurpose` for any other
   purpose; `MAC` with another purpose is a programming error and panics.
@@ -600,15 +675,19 @@ const MinSealedSize = …
   `MoveMaterialToGo` moves it from `logs/.webssh-go/` to `go/` after
   `webssh legacy purge`, crash-safe and idempotent; `record` notes
   "material in go/" in the database and must be idempotent too.
+- `MoveMaterialToState` is the reverse move of condition F2: legacy data
+  exists but the material lies only in `go/` (copied by hand, or a Python
+  backup restored onto a new installation). It moves the material to
+  `logs/.webssh-go/` crash-safe and reports whether it moved anything;
+  nothing that could export decryptable material starts before it.
 - The keyring stores neither the key ID nor that note: there is no owner
-  `keyring`. Both belong to the migration record (`migrate_`) or, on an
-  installation that never had Python data, to a row the composition root
-  writes at the first start; C7 and D4 fix the table.
-- File names are working names until B1 and live in
-  `internal/keyring/material.go`: `go/`, `go/webssh.db`,
-  `logs/.webssh-go/`, `keyring-material`. When the migration or the
-  composition root needs them, they move to one exported source (package
-  map decision); no package spells them a second time.
+  `keyring`. Both are in `migrate_keyring(key_id, material_in_go)` of the
+  migration record; on an installation that never had Python data the
+  composition root writes the row at the first start with
+  `legacy.RecordKeyID`.
+- The file names have one exported source, the constants above in
+  `internal/keyring`: `go/`, `go/webssh.db`, `logs/`, `logs/.webssh-go/`,
+  `keyring-material`. No package spells them a second time.
 
 ## Configuration
 
@@ -639,15 +718,103 @@ func (c Config) Explicit(name string) bool
 - `netpolicy.Tailnet.InterfaceConfigured` is
   `cfg.Explicit("TAILSCALE_SSH_INTERFACE")`; D4 sets it when it builds
   the network policy.
+- `BACKUP_TEMP_DIR` is registered as inert today; `Config` offers its
+  resolved value with D4, which passes it to `legacy.Options.BackupTempDir`
+  (restore-state probes of the migration).
+
+## HTTP edge
+
+`internal/httpapi` (second wave) is the HTTP edge in front of every route.
+
+```go
+func New(o Options) (*Handler, error) // Options{Config, Sessions, MAC, Assets, Renderer, ErrorPageData, Readiness, Logger}
+func (h *Handler) Mux() *http.ServeMux
+func (h *Handler) Finish() (filled []string, err error)
+func (h *Handler) SessionCookie() SessionCookie // Set(w, token, expires), Clear(w), Name()
+func ConfigureServer(srv *http.Server)
+func CSRFToken(r *http.Request) string
+func BrowserBinding(r *http.Request) string
+func ClientAddr(r *http.Request) netip.Addr
+func Origin(r *http.Request) (scheme, host string) // realtime.OriginPolicy.Self
+func BasePath(r *http.Request) string
+type SessionValidator interface {
+	Authenticate(ctx context.Context, token string) (principal.Principal, error) // as in realtime
+}
+type Readiness struct { Maintenance, Stopping func() bool; Database Pinger; DataDir string }
+```
+
+- Pipeline: client address, security headers, admin gate (404 while
+  `ADMIN_PANEL_ENABLED` is false), preview routes (501 before the body is
+  read), per-request deadlines (none for `/ws`), body limit, session,
+  access level, origin, CSRF, handler.
+- Capabilities register on `Mux()` with patterns relative to
+  `APPLICATION_ROOT`; wildcard names do not matter. A pattern outside the
+  route catalog is refused at run time. `Finish()` runs at start; every
+  catalog route without a handler then answers 501, so an unwired package
+  stays closed.
+- Access levels: `AccessPublic` (no session needed; a valid one is still
+  put into the context, unsafe methods still need CSRF and same origin),
+  `AccessUser`, `AccessRepair` (also a recovery session: factor repair,
+  settings page, sign-out), `AccessAdmin`, `AccessUpgrade` (`/ws` checks
+  origin and session itself), `AccessProbe` (`/health`, `/ready`, static
+  files), `AccessPreview` (501).
+- An API request without a valid session gets `401
+  authentication_required` and the session cookie is cleared; a page
+  request is redirected to the sign-in. A recovery session on other APIs
+  gets `403 recovery_required`. A failure of the session store is `503
+  unavailable`, never anonymous access.
+- CSRF tokens are MACs (purpose `csrf`) bound to the browser binding
+  cookie `<SESSION_COOKIE_NAME>_binding`; an unsafe request from another
+  origin is `403`. A handler that issues or ends a session answers with a
+  redirect or JSON, never with a form in the same response, because that
+  form's token would belong to the old binding.
+- Client address: forwarding headers count with `TRUSTED_PROXIES` (hops
+  like Werkzeug's ProxyFix) only when the direct peer is in
+  `TRUSTED_PROXY_CIDRS`, and every address the hop count skips must be in
+  the CIDRs too; otherwise the first address outside is the client.
+  Addresses are compared after `Unmap()`. Malformed forwarded values are
+  ignored and logged once.
+- `/health` and `/ready` keep the Python bodies and order
+  (`maintenance`, `runtime`, `database`, `data_directory`).
+- `GET /api/realtime/status` is the session status for the realtime
+  client (see "What a browser can see").
+
+Visible changes against the Python release: the binding cookie, 401
+instead of a redirect for API requests without a session, 403 for a
+cross-origin unsafe request, and `connect-src 'self'` in the CSP.
 
 ## Session and sign-in
 
-`internal/session` (second wave) provides `Issue(ctx, IssueRequest)
-(Session, token string, error)`, `Revoke(ctx, id, reason)`,
-`RevokeUser(ctx, userID, reason, except string)`, `List(ctx, userID)`, and
-for the transports `Authenticate`, `Check` and `Subscribe` as above. A
-token is a random value; only `keyring.MAC(SessionToken, token)` is
-stored.
+`internal/session` (second wave):
+
+```go
+func New(db *store.DB, mac MAC, accounts Accounts, durations Durations) *Service
+func (s *Service) Issue(ctx, IssueRequest) (Session, string, error)
+func (s *Service) IssueTx(ctx, tx *store.Tx, IssueRequest) (Session, string, error)
+func (s *Service) Authenticate(ctx, token string) (principal.Principal, error)
+func (s *Service) Check(ctx, p principal.Principal) error
+func (s *Service) Validate(ctx, token string) (Session, error)
+func (s *Service) Lookup(ctx, id string) (Session, error)
+func (s *Service) List(ctx, userID int64) ([]Session, error)
+func (s *Service) Revoke(ctx, id string, reason principal.Reason) error
+func (s *Service) RevokeUser(ctx, userID int64, reason principal.Reason, except string) (int, error)
+func (s *Service) RevokeUserTx(ctx, tx, userID, reason, except) ([]principal.Revocation, error) // then Publish
+func (s *Service) RevokeSessionsTx(ctx, tx, userID int64, ids []string, …) ([]principal.Revocation, error)
+func (s *Service) RevokeAll(ctx, reason principal.Reason) (int, error) // revoke-all epoch
+func (s *Service) Publish(revs []principal.Revocation)
+func (s *Service) ClearRecovery(ctx, id, replacement string, mfaOff bool) (bool, error)
+func (s *Service) Subscribe(fn func(principal.Revocation)) (cancel func())
+func (s *Service) Sweep(ctx) (int, error)
+type Accounts interface { Standing(ctx, userID int64) (Standing, error) }       // internal/accounts
+type Durations interface { SessionMinutes(ctx, userID int64) (int, error) }     // internal/settings
+```
+
+A token is 32 random bytes; only `MAC(session_token,
+"webssh-session-v1\0"+token)` is stored. A session is bound to the
+account's `auth_generation` and to the installation's revoke-all epoch.
+Revocations are published after the commit and before the revoking call
+returns. HTTP: `GET /api/account/sessions`, `POST
+/api/account/sessions/revoke`.
 
 `internal/auth` declares the registries:
 
@@ -663,9 +830,63 @@ type Factor interface {
 }
 ```
 
-`internal/auth/local` is a provider; `internal/auth/totp` and
-`internal/auth/webauthn` are factors. A provider fails with `auth_failed`
-for every wrong combination, with the same timing.
+`internal/auth/local` is a provider (Argon2id, migrated bcrypt hashes
+verify and are rehashed); `internal/auth/totp` and `internal/auth/webauthn`
+are factors. A provider fails with `auth_failed` for every wrong
+combination, with the same timing per hash kind.
+
+`auth.Flow` runs `/login`, `/login/cancel`, `/register`, `/logout` and
+`/change-password` (`Register(mux)`). Second factors finish a pending
+sign-in through `PendingUser(r) (int64, error)`,
+`CompletePending(w, r, userID, method, assurance) (continuation string,
+error)` and `DiscardPending(r, flashes…)`; D4 renders flashes with
+`TakeFlashes` and `AddFlash`. A pending sign-in is not a principal; it
+lives in `auth_pending`, bound to the browser binding, five minutes, at
+most five per user. Its consumer interfaces: `Passwords`, `Gates`,
+`SignInSettings{RegistrationEnabled, LoginLimits}` (C6), `Auditor`
+(`internal/audit`), `Pages` (D4 adapts `httpapi.Renderer`),
+`SessionCookie` (`httpapi.SessionCookie`), `Binding`
+(`httpapi.BrowserBinding`), `ClientAddr` (`httpapi.ClientAddr`).
+
+The factor side of `internal/auth`, `internal/auth/totp` and
+`internal/auth/stepup` declares:
+
+- `auth.Accounts{MFARequired, SetMFARequired}` with `*store.Tx`, so a
+  factor change and the flag commit together (`internal/accounts`);
+- `auth.RecoverySessions.EndRecovery(ctx, tx, sessionID, replacement,
+  basic)` (`internal/session`);
+- `auth.PendingSignIn{Pending, Complete, Discard}`; D4 adapts
+  `auth.Flow` to it (`Complete` returns the public continuation with
+  `APPLICATION_ROOT`);
+- `auth.Gates.Active(ctx, feature)` (`(*operations.Gates).Active`);
+- `auth.Audit.Security(ctx, level, event, kv…)`; D4 adapts
+  `*audit.Logger` (`Security` for info, `SecurityWarning` for warnings);
+  without one it logs through slog;
+- `auth.DurableFactor`, `auth.FactorRemover` per factor kind.
+
+The sign-in forms and the factor routes share one `auth.Limiter`
+(sliding window, bounded memory); the factor routes use it through
+`auth.RuleLimiter` in `auth.FactorLimits{Limiter, Enabled, Login, Reauth,
+ClientAddr}`. The realtime endpoint gets a second, separate instance
+through `auth.Realtime`, so realtime traffic cannot use up the sign-in
+budget.
+
+The auth store has one owner `auth` with one ordered migration list in
+`internal/auth/schema.go` (pending sign-ins, then recovery codes and
+`auth_mfa_throttle`); a test in `internal/store` applies every production
+schema together.
+
+`internal/accounts` keeps `accounts_users` (with `managed_by`),
+`accounts_id_floor` and `accounts_quarantine`, applies ADMIN_USERS variant
+B (`Normalize` before serving) and offers `RaiseIDFloorTx` and
+`SetMFARequiredTx` to D2 and C3. `internal/operations` keeps the feature
+gates (`Status`, `All`, `Active`); its impact approval is a MAC of
+purpose `feature_approval`, bound to feature, administrator, session and
+state digest for five minutes.
+
+D4 wires `Accounts.Normalize` before serving, `Sessions.Sweep`
+periodically, and `audit.Open(DATA_DIR/logs, …)` with
+`AUDIT_LOG_MAX_BYTES` and `audit_backup_count`.
 
 ## SSH
 
@@ -719,14 +940,26 @@ type Shell interface { io.ReadWriteCloser; Resize(rows, cols int) error; Wait() 
   shell.
 
 `internal/terminal` declares `Profiles.Resolve(ctx, owner, profileID)
-(client.Target, error)`, provided by `internal/hosts`. `client.Display`
-carries the profile name and the startup features M1 does not run, so
-neither package imports the other.
+(client.Target, error)`, provided by `(*hosts.Service).Resolve`, and the
+optional `SavedRoutes{JumpHost(ctx, owner, id) (client.Hop, error),
+SOCKSProxy(ctx, owner, id) (client.SOCKS, error)}` for a connection typed
+by hand that names a saved jump host or proxy (`jump_host_id`,
+`socks_proxy_id` without `profile_id`); D4 adapts `internal/hosts` to it,
+and without a provider such a connection answers
+`not_available_in_preview`. `client.Display` carries the profile name and
+the startup features M1 does not run, so neither package imports the
+other. The terminal is wired with `terminal.New(FromConfig(cfg.Terminal),
+Deps{Shells, Profiles, Routes, Log})`, `Mount(m.Routes()…)`,
+`HandleBinary(m.HandleBinary)`, `SetRestorer(m)`,
+`OnKeepalive(m.Keepalive)`, `OnClose(m.PeerClosed)` and
+`sessions.Subscribe(m.Revoked)`; at shutdown the realtime server stops
+first, then the terminal.
 
 `internal/ssh/hostkey` declares
 `Targets.SSHTargets(ctx, owner) ([]hostkey.Target, error)` for the
-`/effective` and `/deletion-impact` views, provided by `internal/hosts`
-(C4) from profiles and jump hosts. `(*hostkey.HTTP).Register(mux)` adds
+`/effective` and `/deletion-impact` views. `internal/hosts` may not import
+`internal/ssh/hostkey`; it offers `(*hosts.Service).SSHTargets(ctx,
+owner) ([]hosts.Endpoint, error)` with the same fields, and D4 adapts it. `(*hostkey.HTTP).Register(mux)` adds
 its routes relative to `APPLICATION_ROOT`; the HTTP edge (C1) puts session,
 CSRF and origin checks in front and the principal into the context.
 Deleting a host key needs the step-up `host_key.delete`. Host keys are
@@ -736,8 +969,60 @@ modified_us)`); the migration (D2) takes them over with
 validates like the Python release, stores the file byte for byte and stops
 with an `*InvalidFileError` naming the line.
 
-`internal/vault` does not import `internal/ssh/client` (package map); it
-parses private keys with `golang.org/x/crypto/ssh` itself.
+`internal/vault` is the one parser of private keys. It does not import
+`internal/ssh/client` (package map) and parses with
+`golang.org/x/crypto/ssh` itself; `internal/ssh/client` has no key parser
+and receives ready signers through `KeySource`, which `*vault.Service`
+provides (`Signer`). The vault also provides `hosts.Keys.HasKey(ctx,
+owner, keyID) (bool, error)`: true for a stored key of that owner,
+usable or not, so saved hosts and jump hosts can refer to it. New
+uploads refuse RSA below 1024 bits and protected OpenSSH keys with more
+than 128 bcrypt rounds; migrated keys are not refused for that
+(migration specification 4.8). D2 imports keys with
+`vault.ImportKey(ctx, tx, sealer, Imported{…})` in the order of
+`keys.json` (column `seq`).
+
+`internal/hosts` takes `Service{DB, Keys, Limits, Persistent}`. The
+optional `PersistentSessions.UsingSOCKSProxy(ctx, owner, proxyID) (count,
+labels, error)` (D6, from the terminal's tmux sessions) blocks deleting a
+SOCKS5 proxy that a persistent session still needs; without a provider
+nothing blocks. D2 imports with `hosts.Import(ctx, tx, owner, Legacy,
+limits)` and `hostops.ImportNote`.
+
+## Settings and overview
+
+`internal/settings` owns application and user settings. Application
+settings are rows of `settings_app(key, value, source, rule, updated_us)`
+with `source` `admin`, `migrated` or `materialised`; user settings are
+`settings_user(user_id, key, value)`. The settings derived from the
+Python behaviour (migration specification, section 6) are written only by
+`settings.MaterialisePolicies` with `source = 'materialised'`:
+`permission.hosts.discovery` and `permission.hosts.reachability` (role
+rights stay settings until the role model of B2/B3; `Granted(roles, role,
+admin)` always grants admins), `ssh.legacy_algorithms` and
+`origin.ignore_scheme`. The origin setting has no second copy elsewhere;
+D4 applies it to `OriginPolicy.IgnoreScheme` and the origin check of the
+HTTP edge only while `realtime.KeepLegacySchemeRule` still holds for the
+current configuration, and otherwise reports once that it has no effect.
+
+Consumer interfaces, adapted by D4:
+
+- `settings.FeatureGates.FeatureActive(ctx, feature)` (from
+  `(*operations.Gates).Active`);
+- `settings.Scoper` (`*keyring.Ring`), `settings.Account{ID, Username,
+  HistoryGeneration}` (from `accounts_users`; an empty generation fails
+  the page closed), `settings.TourDeployment`;
+- `hostops.Inventory.OverviewInventory(ctx, owner) (OverviewInventory,
+  error)` from `internal/hosts` and `internal/vault`;
+- `hostops.HostTrust.Trusted(ctx, owner, host, port) (bool, error)` from
+  `internal/ssh/hostkey` (host canonicalised as `canonicalize_hostname`; an
+  invalid host is `false, nil`).
+
+`settings.New(db, Environment{Values, Explicit, Production,
+AuditBackupCount})` is filled from `internal/config`. The page data takes
+`settings.Page` values as typed Go values; `html/template` encodes the
+JSON blocks as usual (no `template.JS`). Specs that compared the bytes of
+Python's `json.dumps` are rewritten to check behaviour (D5).
 
 ## Pages
 
@@ -770,6 +1055,44 @@ by `*keyring.Ring`. The migration record holds `coverage` (the steps with
 their versions) and `pending` (entities kept in place with their phase and
 count).
 
+```go
+type Options struct { DataDir, Secret, SecretSource, BackupTempDir, Release string; Registry *Registry; Origin OriginRule; Now func() time.Time }
+func Start(ctx, Options) (*Startup, error)      // sections 5.1 and 5.2; holds the Go lock until Close
+func DryRun(ctx, Options) (*Report, error)      // steps 2 to 9 into staging, no activation
+func Replace(ctx, Options) (*Replaced, error)   // section 5.4
+func NewSourceWatch(ctx, *store.DB, dataDir string) (*SourceWatch, error) // nil without a record
+func (w *SourceWatch) Changed() (bool, error)   // section 5.7
+func NewRegistry() *Registry                    // Add, KeepInPlace, Schemas, Covered, Uncovered
+func RecordSchema() store.Schema                // owner migrate
+func RecordKeyID(ctx, *store.DB, keyID string) error
+func StoredKeyID(ctx, *store.DB) (string, error)
+func ExtractBackup(b *Backup, dest string, limits BackupLimits, mode RestoreMode) (ExtractResult, error)
+type StopError struct { State State; Code, Entity string; UserID int64; Record, Message string; Err error }
+type StepError struct { UserID int64; Record string; Err error }
+```
+
+- The owner `migrate` has `migrate_record` and `migrate_keyring`; there
+  is no table of derived settings. After every step has written, the
+  framework calls `settings.MaterialisePolicies` in the same transaction
+  with `Origin.KeepLegacyScheme` and lists what it wrote in
+  `materialised_settings` of the report.
+- `StepReport` gains flags, kept paths, warnings and user actions
+  (`Flag`, `KeptPath`, `MaterialisedSetting`, `Warning`, `UserAction`);
+  `Restored(mode, at)` marks a run on a restored Python backup.
+- Stop codes are stable constants (`legacy_changed`, `go_data_missing`,
+  `keyring_material`, `legacy_in_use`, `python_restore_unfinished`,
+  `not_enough_space`, `secret_key_mismatch`, …); every message names the
+  way out and never a secret value.
+- The periodic re-check of 5.7 is `SourceWatch`; D4 calls `Changed` every
+  60 seconds and treats an error as a change (maintenance, not ready,
+  audit event).
+- `internal/migrate/legacy/host_unix.go` and `host_windows.go` may use
+  `syscall` (lock and free-space probes, architecture test); R2 reviews
+  both. On Windows the Go lock is real; the SQLite and flock probes and
+  the free-space check still only warn and must become real checks before
+  the Windows release (decision C7, open).
+- `--replace` moves to `internal/backup` once that exists (B8/B7).
+
 ## End-to-end harness
 
 The seed applier and the test-only hooks live in `internal/e2eseed`. Only
@@ -786,6 +1109,14 @@ maps the Socket.IO events `e2e_output_load`, `e2e_output_load_done` and
 `e2e_workspace_restore` to these types (added with the e2e wiring, D4); a
 release server answers them with `unknown_type`. Playwright stops the backend with SIGINT
 (`webServer.gracefulShutdown`), so it can remove its scratch tree.
+
+The terminal's hooks (`e2eseed.Hooks{OutputFlow, FixtureSessions}`, both
+`*terminal.Manager`) add the server event `e2e.output_stream {ch,
+session_id}`: it binds a synthetic load stream on a channel at or above
+2^31, which the client never allocates, to the session name `load-N`
+before its first frame. The shim maps it to a channel with that
+`session_id` and delivers and acknowledges its frames like
+`ssh_output` (D4).
 
 ## Modules
 
