@@ -100,10 +100,6 @@ func TestCanonicalHostMatchesPython(t *testing.T) {
 		got, err := CanonicalHost(c.In)
 		switch {
 		case c.OK && (err != nil || got != c.Out):
-			if errors.Is(err, errHostIDNA) {
-				t.Logf("%q: refused as IDNA (Python %q), a documented gap", c.In, c.Out)
-				continue
-			}
 			t.Errorf("%q: Go %q, %v; Python %q", c.In, got, err, c.Out)
 		case !c.OK && err == nil:
 			t.Errorf("%q: Go accepts %q, Python refuses", c.In, got)

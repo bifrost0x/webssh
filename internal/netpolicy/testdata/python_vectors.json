@@ -10513,6 +10513,141 @@
 "in": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
 "ok": true,
 "out": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+},
+{
+"in": "BÜCHER.De",
+"ok": true,
+"out": "xn--bcher-kva.de"
+},
+{
+"in": "münchen。de",
+"ok": true,
+"out": "xn--mnchen-3ya.de"
+},
+{
+"in": "münchen．de.",
+"ok": true,
+"out": "xn--mnchen-3ya.de"
+},
+{
+"in": "ü.",
+"ok": true,
+"out": "xn--tda"
+},
+{
+"in": "ü。",
+"ok": false
+},
+{
+"in": "[bücher.de]",
+"ok": true,
+"out": "xn--bcher-kva.de"
+},
+{
+"in": "xn--bcher-kva.de",
+"ok": true,
+"out": "xn--bcher-kva.de"
+},
+{
+"in": "XN--BCHER-KVA.DE",
+"ok": true,
+"out": "xn--bcher-kva.de"
+},
+{
+"in": "xn--ü.de",
+"ok": false
+},
+{
+"in": "straße.de",
+"ok": true,
+"out": "strasse.de"
+},
+{
+"in": "中文.cn",
+"ok": true,
+"out": "xn--fiq228c.cn"
+},
+{
+"in": "العربية.eg",
+"ok": true,
+"out": "xn--mgbcd4a2b0d2b.eg"
+},
+{
+"in": "אa.il",
+"ok": false
+},
+{
+"in": "a­ü.de",
+"ok": true,
+"out": "xn--a-eha.de"
+},
+{
+"in": "üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü.de",
+"ok": false
+},
+{
+"in": "üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü.de",
+"ok": true,
+"out": "xn--tdaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.de"
+},
+{
+"in": "ﬁ.example",
+"ok": true,
+"out": "fi.example"
+},
+{
+"in": "①.example",
+"ok": true,
+"out": "1.example"
+},
+{
+"in": "*ü.de",
+"ok": false
+},
+{
+"in": "ü_b.de",
+"ok": false
+},
+{
+"in": "ü b.de",
+"ok": false
+},
+{
+"in": "-ü.de",
+"ok": true,
+"out": "xn----eha.de"
+},
+{
+"in": "ü-.de",
+"ok": true,
+"out": "xn----dha.de"
+},
+{
+"in": "ü..de",
+"ok": false
+},
+{
+"in": "İstanbul.tr",
+"ok": true,
+"out": "xn--istanbul-o0e.tr"
+},
+{
+"in": "😀.example",
+"ok": true,
+"out": "xn--e28h.example"
+},
+{
+"in": "​.example",
+"ok": false
+},
+{
+"in": "　ü　",
+"ok": true,
+"out": "xn--tda"
+},
+{
+"in": "ü.ü.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+"ok": false
 }
 ],
 "cases": [

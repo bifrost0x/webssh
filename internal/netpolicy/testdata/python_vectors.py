@@ -128,6 +128,13 @@ host_inputs = [
     "[host]", "[[host]]", "host.", "HOST", "*.lan", "a.b-c.d", "123", "1.2.3", "1.2.3.4.5",
     "::", "0:0::0", "2001:DB8::1", "::ffff:100.100.100.10", "[::1]", "[::1]:22", "h​x",
     "a" * 253, "a" * 63 + "." + "b" * 63 + "." + "c" * 63 + "." + "d" * 61,
+    # IDNA 2003 (internal/idna2003 covers the codec itself).
+    "B\u00dcCHER.De", "m\u00fcnchen\u3002de", "m\u00fcnchen\uff0ede.", "\u00fc.", "\u00fc\u3002",
+    "[b\u00fccher.de]", "xn--bcher-kva.de", "XN--BCHER-KVA.DE", "xn--\u00fc.de", "stra\u00dfe.de",
+    "\u4e2d\u6587.cn", "\u0627\u0644\u0639\u0631\u0628\u064a\u0629.eg", "\u05d0a.il", "a\u00ad\u00fc.de",
+    "\u00fc" * 60 + ".de", "\u00fc" * 56 + ".de", "\ufb01.example", "\u2460.example", "*\u00fc.de",
+    "\u00fc_b.de", "\u00fc b.de", "-\u00fc.de", "\u00fc-.de", "\u00fc..de", "\u0130stanbul.tr",
+    "\U0001f600.example", "\u200b.example", "\u3000\u00fc\u3000", "\u00fc.\u00fc." + "a" * 250,
 ]
 canonical = []
 for value in host_inputs:
