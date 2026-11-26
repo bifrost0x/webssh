@@ -99,8 +99,15 @@ func TestM1MigratesGolden(t *testing.T) {
 	t.Parallel()
 	dir := copyGolden(t)
 	m := migrateM1(t, dir, golden.manifest.SecretKey.Value, M1{AdminUsers: []string{"cfg_admin"}})
-	if got := len(m.report.Entities) + len(m.report.Pending); got != len(Entities) {
-		t.Fatalf("report covers %d of %d entities", got, len(Entities))
+	covered := map[string]bool{}
+	for _, e := range m.report.Entities {
+		covered[e.Entity] = true
+	}
+	for _, p := range m.report.Pending {
+		covered[p.Entity] = true
+	}
+	if len(covered) != len(Entities) {
+		t.Fatalf("report covers %d of %d entities", len(covered), len(Entities))
 	}
 	pending := map[string]Pending{}
 	for _, p := range m.report.Pending {

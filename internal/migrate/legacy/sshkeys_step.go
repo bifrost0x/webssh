@@ -3,6 +3,7 @@ package legacy
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/rsa"
 	"encoding/pem"
 	"errors"
@@ -121,6 +122,9 @@ func (s *sshKeysStep) Verify(ctx context.Context, tx *store.Tx, open Opener) err
 		for i, k := range u.store.Keys {
 			g := got[i]
 			same := g.ID == k.ID && g.Name == k.Name && g.KeyType == k.KeyType && g.UploadedAt == k.UploadedAt && bytes.Equal(g.PEM, k.PEM)
+			if g.Usable && k.PublicKey != nil {
+				same = same && signsFor(g.PEM, k.PublicKey)
+			}
 			clear(g.PEM)
 			_, unusable := u.unsupported[k.ID]
 			if g.Usable {
@@ -136,6 +140,20 @@ func (s *sshKeysStep) Verify(ctx context.Context, tx *store.Tx, open Opener) err
 		}
 	}
 	return nil
+}
+
+// signsFor reports whether the stored private key signs a challenge that
+// the public key of the legacy key accepts: a functional check that does
+// not rely on comparing bytes.
+func signsFor(pemBytes []byte, legacy ssh.PublicKey) bool {
+	signer, err := ssh.ParsePrivateKey(pemBytes)
+	if err != nil {
+		return false
+	}
+	challenge := make([]byte, 32)
+	_, _ = rand.Read(challenge) // crypto/rand.Read never fails
+	sig, err := signer.Sign(rand.Reader, challenge)
+	return err == nil && legacy.Verify(challenge, sig) == nil
 }
 
 func (s *sshKeysStep) Report() StepReport {

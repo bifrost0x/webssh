@@ -17,6 +17,7 @@ import (
 // enrolments are E09 and are not imported.
 type totpStep struct {
 	authenticators []totp.Imported
+	keys           map[int64][]byte // decoded legacy secrets, for the code check
 }
 
 func (*totpStep) Entity() string { return "E08" }
@@ -36,6 +37,10 @@ func (s *totpStep) Read(ctx context.Context, src *Source) error {
 		if t.Pending {
 			continue
 		}
+		if s.keys == nil {
+			s.keys = map[int64][]byte{}
+		}
+		s.keys[t.ID] = t.Key
 		a := totp.Imported{ID: t.ID, UserID: t.UserID, Label: t.Label, Base32: t.Base32, Active: t.Active, LastAcceptedStep: t.LastStep}
 		tt := times[t.ID]
 		if a.CreatedAt, err = dbTime(tt[0]); err == nil {
@@ -104,7 +109,11 @@ func (s *totpStep) Verify(ctx context.Context, tx *store.Tx, open Opener) error 
 		same := got.UserID == want.UserID && got.Label == want.Label && got.Base32 == want.Base32 &&
 			got.Active == want.Active && got.LastAcceptedStep == want.LastAcceptedStep && got.CreatedAt.Equal(want.CreatedAt) &&
 			got.ActivatedAt.Equal(want.ActivatedAt) && got.LastUsedAt.Equal(want.LastUsedAt)
-		if _, err := otp.DecodeSecret(got.Base32); err != nil || !same {
+		key, err := otp.DecodeSecret(got.Base32)
+		if err == nil && same {
+			same = sameCodes(key, s.keys[want.ID])
+		}
+		if err != nil || !same {
 			return &StepError{UserID: want.UserID, Record: fmt.Sprint(want.ID), Err: errors.Join(errors.New("legacy: the stored TOTP authenticator differs"), err)}
 		}
 	}
@@ -113,4 +122,18 @@ func (s *totpStep) Verify(ctx context.Context, tx *store.Tx, open Opener) error 
 
 func (s *totpStep) Report() StepReport {
 	return StepReport{Entity: "E08", Version: 1, Read: len(s.authenticators), Written: len(s.authenticators)}
+}
+
+// sameCodes reports whether two secrets yield the same codes for a few
+// fixed time steps: the stored secret produces the codes the user's
+// authenticator app produces.
+func sameCodes(stored, legacy []byte) bool {
+	for _, step := range []uint64{0, 1, 59787003, 1 << 32} {
+		a, err1 := otp.TOTP(stored, step)
+		b, err2 := otp.TOTP(legacy, step)
+		if err1 != nil || err2 != nil || a != b {
+			return false
+		}
+	}
+	return true
 }
