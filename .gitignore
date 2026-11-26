@@ -128,3 +128,6 @@ tests/integration/paramiko5/runtime/
 
 # Per-run secrets and inventory of the local test lab
 tests/lab/runtime/
+
+# Go build copy of static/ (scripts/stage-webassets.sh)
+/internal/httpapi/webassets/

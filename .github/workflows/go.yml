@@ -55,6 +55,9 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Stage static assets for embedding
+        run: scripts/stage-webassets.sh
+
       - name: Build
         env:
           CGO_ENABLED: '0'
@@ -78,6 +81,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Stage static assets for embedding
+        run: scripts/stage-webassets.sh
 
       - name: Verify go.mod and go.sum are tidy
         run: |
@@ -131,6 +137,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Stage static assets for embedding
+        run: scripts/stage-webassets.sh
 
       # Tools are installed by exact version through the Go checksum
       # database and never enter go.mod (ADR 0004).
