@@ -1774,8 +1774,13 @@ def _probe_part(start):
     return command[begin:command.index('\nfi\n', begin) + 4]
 
 
-def _run_probe_part(snippet, root, *, replace=(), tools=None, system_tools=_PROBE_TOOLS, env=None):
-    """Run a probe block with fake tools; paths in ``replace`` point into root."""
+def _run_probe_part(snippet, root, *, replace=(), tools=None, system_tools=_PROBE_TOOLS, env=None,
+                    builtin_applets=True):
+    """Run a probe block with fake tools; paths in ``replace`` point into root.
+
+    BusyBox sh finds its own applets (timeout among them) without PATH, so a
+    test that removes a tool asks for a shell without applets.
+    """
     bin_dir = root / 'bin'
     bin_dir.mkdir(exist_ok=True)
     for name in system_tools:
@@ -1788,7 +1793,7 @@ def _run_probe_part(snippet, root, *, replace=(), tools=None, system_tools=_PROB
     for old, new in replace:
         snippet = snippet.replace(old, new)
     script = "found() { printf 'service=%s\\n' \"$1\"; }\nimages=\n" + snippet + '\nprintf \'images=%s\\n\' "$images"\n'
-    busybox = shutil.which('busybox')
+    busybox = shutil.which('busybox') if builtin_applets else None
     argv = [busybox, 'sh', '-c', script] if busybox else [shutil.which('dash') or shutil.which('sh'), '-c', script]
     result = subprocess.run(argv, capture_output=True, text=True, timeout=10,
                             env={'PATH': str(bin_dir), **(env or {})})
@@ -1988,7 +1993,8 @@ def test_podman_with_a_socket_but_no_timeout_still_names_podman(short_root):
     sock = _unix_socket(short_root / 'podman' / 'podman.sock')
     try:
         lines, calls = _run_probe_part(_probe_part('if [ -n "$psock" ]'), short_root, tools={'podman': ''},
-                                       system_tools=(), env={'XDG_RUNTIME_DIR': str(short_root)})
+                                       system_tools=(), env={'XDG_RUNTIME_DIR': str(short_root)},
+                                       builtin_applets=False)
     finally:
         sock.close()
     assert 'timeout 1 podman --remote' in command
