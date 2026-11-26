@@ -191,7 +191,7 @@ func weakRSAKey(t *testing.T) []byte {
 	q, _ := new(big.Int).SetString("c2c287d09e1bac57708b5f6901a7620ae117cab9c20d86a4369badfd3f85e327", 16)
 	one := big.NewInt(1)
 	phi := new(big.Int).Mul(new(big.Int).Sub(p, one), new(big.Int).Sub(q, one))
-	key := &rsa.PrivateKey{PublicKey: rsa.PublicKey{N: new(big.Int).Mul(p, q), E: 65537}, Primes: []*big.Int{p, q}}
+	key := &rsa.PrivateKey{N: new(big.Int).Mul(p, q), E: 65537, Primes: []*big.Int{p, q}}
 	key.D = new(big.Int).ModInverse(big.NewInt(65537), phi)
 	key.Precompute()
 	if key.N.BitLen() != 512 {
