@@ -218,7 +218,7 @@ func TestProvisionTx(t *testing.T) {
 		{"x", "oidc", errProvisionManager},
 		{"", "ldap", ErrProvisionName},
 		{"a\nb", "ldap", ErrProvisionName},
-		{"a‎b", "ldap", ErrProvisionName},
+		{"a\u200eb", "ldap", ErrProvisionName},
 		{"bad\xff", "ldap", ErrProvisionName},
 	} {
 		if _, err := provision(c.name, c.manager); !errors.Is(err, c.want) {
