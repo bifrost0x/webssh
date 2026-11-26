@@ -65,7 +65,7 @@ var packageMap = map[string]role{
 	"internal/netpolicy":                      {kind: capability},
 	"internal/ssh/client":                     {kind: capability, uses: []string{"internal/netpolicy"}},
 	"internal/ssh/hostkey":                    {kind: capability},
-	"internal/terminal":                       {kind: capability, uses: []string{"internal/ssh/client", "internal/ssh/hostkey"}},
+	"internal/terminal":                       {kind: capability, uses: []string{"internal/ssh/client", "internal/ssh/hostkey", "internal/ssh/remotecmd"}},
 	"internal/ssh/remotecmd":                  {kind: capability, uses: []string{"internal/ssh/client"}},
 	"internal/hosts":                          {kind: capability, uses: []string{"internal/ssh/client", "internal/ssh/remotecmd"}},
 	"internal/hostops":                        {kind: capability, uses: []string{"internal/ssh/client", "internal/ssh/remotecmd"}},
