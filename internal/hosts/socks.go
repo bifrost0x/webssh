@@ -91,7 +91,7 @@ func (s *Service) SaveSOCKSProxy(ctx context.Context, owner int64, req protocol.
 			return err
 		}
 		if !validSOCKSProxy(&r) {
-			return fault.New(fault.InvalidValue, "Failed to save SOCKS proxy")
+			return fault.New(fault.ValidationError, "Failed to save SOCKS proxy")
 		}
 		if err := checkGrowth(s.Limits, socksKind, all, next); err != nil {
 			return err

@@ -151,7 +151,7 @@ const (
 const quotaPrefix = "Connection storage quota exceeded: "
 
 func quotaError(message string) error {
-	return fault.New(fault.TooLarge, quotaPrefix+message)
+	return fault.New(fault.QuotaExceeded, quotaPrefix+message)
 }
 
 // fieldBudget is one bounded_text check: the field of the record must be

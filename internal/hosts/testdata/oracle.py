@@ -268,11 +268,38 @@ def handle_delete_socks(data):
     return usage_result(*sm.delete_socks_proxy(USER, proxy_id))
 
 
+def command_set_code(error, usages=None):
+    """The code _command_set_error of app/socket_events.py sends."""
+    if usages:
+        return 'in_use'
+    if error in ('Command not found', 'Command set not found', 'Profile not found', 'Jump host not found'):
+        return 'not_found'
+    if error.startswith('Connection storage quota exceeded:'):
+        return 'quota_exceeded'
+    if 'unreadable' in error:
+        return 'storage_error'
+    return 'validation_error'
+
+
+def with_code(handler, first_check):
+    """Handlers that answer through _command_set_error after their own first check."""
+    def run(data):
+        result = handler(data)
+        if 'error' in result and result['error'] != first_check:
+            usages = json.loads(result['details'])['usages'] if 'details' in result else None
+            result['code'] = command_set_code(result['error'], usages)
+        return result
+    return run
+
+
 HANDLERS = {
-    'hosts.profile.save': handle_save_profile, 'hosts.profile.delete': handle_delete_profile,
+    'hosts.profile.save': handle_save_profile,
+    'hosts.profile.delete': with_code(handle_delete_profile, 'Profile ID required'),
     'hosts.profile.organize': handle_organize, 'hosts.profile.move': handle_move,
-    'hosts.jump.save': handle_save_jump, 'hosts.jump.delete': handle_delete_jump,
-    'hosts.socks.save': handle_save_socks, 'hosts.socks.delete': handle_delete_socks,
+    'hosts.jump.save': with_code(handle_save_jump, None),
+    'hosts.jump.delete': with_code(handle_delete_jump, 'Jump host ID required'),
+    'hosts.socks.save': with_code(handle_save_socks, None),
+    'hosts.socks.delete': with_code(handle_delete_socks, None),
 }
 
 

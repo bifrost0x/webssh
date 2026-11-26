@@ -174,7 +174,7 @@ func (s *Service) MoveProfile(ctx context.Context, owner int64, req protocol.Hos
 		if fe, ok := fault.From(err); ok && fe.Code == fault.Conflict {
 			return protocol.HostsMoved{}, err
 		}
-		if fault.Is(err, fault.NotFound) || fault.Is(err, fault.TooLarge) {
+		if fault.Is(err, fault.NotFound) || fault.Is(err, fault.QuotaExceeded) {
 			return protocol.HostsMoved{}, withOrganization(err, nil)
 		}
 		return protocol.HostsMoved{}, withOrganization(classify(err, "Failed to move profile"), nil)

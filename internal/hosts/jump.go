@@ -114,7 +114,7 @@ func (s *Service) SaveJumpHost(ctx context.Context, owner int64, req protocol.Ho
 			return err
 		}
 		if !validJumpHost(&r) {
-			return fault.New(fault.InvalidValue, "Failed to save jump host")
+			return fault.New(fault.ValidationError, "Failed to save jump host")
 		}
 		if err := checkGrowth(s.Limits, jumpKind, all, next); err != nil {
 			return err
@@ -229,5 +229,5 @@ func shown(count, listed int) string {
 }
 
 func usageError(message string, usages []string) error {
-	return &fault.Error{Code: fault.Conflict, Message: message, Details: map[string]any{"usages": usages}}
+	return &fault.Error{Code: fault.InUse, Message: message, Details: map[string]any{"usages": usages}}
 }

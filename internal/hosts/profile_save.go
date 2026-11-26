@@ -13,8 +13,8 @@ import (
 var (
 	errProfileNotFound = fault.New(fault.NotFound, "Profile not found")
 	errJumpNotFound    = fault.New(fault.NotFound, "Jump host not found")
-	errSOCKSNotFound   = fault.New(fault.NotFound, "SOCKS proxy not found")
-	errKeyNotFound     = fault.New(fault.InvalidValue, "SSH key not found")
+	errSOCKSNotFound   = fault.New(fault.ValidationError, "SOCKS proxy not found") // Python: not in the not-found list
+	errKeyNotFound     = fault.New(fault.ValidationError, "SSH key not found")
 )
 
 // SaveProfile creates or updates a saved host of owner (upsert_profile).
@@ -78,7 +78,7 @@ func (s *Service) SaveProfile(ctx context.Context, owner int64, req protocol.Hos
 			return err
 		}
 		if !validProfile(&saved) {
-			return fault.New(fault.InvalidValue, "Failed to save profile")
+			return fault.New(fault.ValidationError, "Failed to save profile")
 		}
 		if err := checkGrowth(s.Limits, profileKind, all, next); err != nil {
 			return err

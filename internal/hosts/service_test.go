@@ -120,7 +120,7 @@ func TestRecordLimitsRefuseOnlyGrowth(t *testing.T) {
 	s := seeded(t, Legacy{})
 	s.Limits.ProfileMaxRecords = 10 // the golden user already has 13
 	newHost := protocol.HostsProfileSave{Name: v(`"n"`), Host: v(`"n.example"`), Username: v(`"u"`), AuthType: v(`"password"`)}
-	if _, err := s.SaveProfile(t.Context(), oracleUser, newHost); code(err) != fault.TooLarge ||
+	if _, err := s.SaveProfile(t.Context(), oracleUser, newHost); code(err) != fault.QuotaExceeded ||
 		!strings.Contains(err.Error(), "more than 10 records are not allowed") {
 		t.Fatalf("growth beyond the limit: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestByteLimitsRefuseOnlyGrowth(t *testing.T) {
 	s.Limits.StoreMaxBytes = 1 << 10
 	long := protocol.HostsProfileSave{Name: v(`"n"`), Host: v(`"n.example"`), Username: v(`"u"`), AuthType: v(`"password"`),
 		StartupMode: v(`"free_text"`), StartupCommands: jsonString(strings.Repeat("x", 4000))}
-	if _, err := s.SaveProfile(t.Context(), oracleUser, long); code(err) != fault.TooLarge {
+	if _, err := s.SaveProfile(t.Context(), oracleUser, long); code(err) != fault.QuotaExceeded {
 		t.Fatalf("store growth beyond the byte limit: %v", err)
 	}
 	if err := s.DeleteProfile(t.Context(), oracleUser, v(`"syn-free"`)); err != nil {

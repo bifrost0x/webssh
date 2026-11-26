@@ -33,6 +33,7 @@ type oracleCase struct {
 	OK      *string                   `json:"ok"`
 	Error   *string                   `json:"error"`
 	Details *string                   `json:"details"`
+	Code    *string                   `json:"code"`
 	After   map[string]jsontext.Value `json:"after"`
 }
 
@@ -212,6 +213,9 @@ func TestOracleCases(t *testing.T) {
 				}
 				if *tc.Error != "confirmation" && werr.Message != *tc.Error {
 					t.Fatalf("message %q (%s), Python %q", werr.Message, werr.Code, *tc.Error)
+				}
+				if tc.Code != nil && string(werr.Code) != *tc.Code {
+					t.Fatalf("code %s, Python %s", werr.Code, *tc.Code)
 				}
 				checkDetails(t, werr.Details, tc.Details)
 			}

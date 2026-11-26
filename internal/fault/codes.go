@@ -32,6 +32,14 @@ const (
 	Internal              Code = "internal"
 )
 
+// Codes the saved-connection handlers of the Python release send
+// (_command_set_error in app/socket_events.py); the spelling stays.
+const (
+	InUse           Code = "in_use"           // a jump host or SOCKS proxy is still referenced
+	ValidationError Code = "validation_error" // a saved host, jump host or proxy is invalid
+	QuotaExceeded   Code = "quota_exceeded"   // the saved-connection storage limits refuse the change
+)
+
 // Realtime transport failures (internal/realtime, internal/realtime/protocol).
 const (
 	UnknownType        Code = "unknown_type"        // no handler for the message type
@@ -127,6 +135,9 @@ var catalog = map[Code]entry{
 	Unavailable:           {statusServiceUnavailable, "The service is unavailable."},
 	StorageError:          {statusInternalServerError, "The data could not be stored."},
 	Internal:              {statusInternalServerError, "An internal error occurred."},
+	InUse:                 {statusConflict, "The item is still in use."},
+	ValidationError:       {statusBadRequest, "The data is invalid."},
+	QuotaExceeded:         {statusContentTooLarge, "Connection storage quota exceeded."},
 
 	UnknownType:        {statusBadRequest, "Unknown message type."},
 	VersionUnsupported: {statusBadRequest, "Reload the page to use the current version."},

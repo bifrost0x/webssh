@@ -37,7 +37,7 @@ func profilePayload(req protocol.HostsProfileSave) payload {
 	return p
 }
 
-func invalid(message string) error { return fault.New(fault.InvalidValue, message) }
+func invalid(message string) error { return fault.New(fault.ValidationError, message) }
 
 var (
 	errTailscalePreview = fault.New(fault.NotAvailableInPreview, "Tailscale SSH hosts cannot be saved in this preview.")

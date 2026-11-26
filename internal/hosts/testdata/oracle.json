@@ -1188,6 +1188,7 @@
    "type": "hosts.profile.delete",
    "payload": "{\"profile_id\":\"nope\"}",
    "error": "Profile not found",
+   "code": "not_found",
    "after": {}
   },
   {
@@ -1202,6 +1203,7 @@
    "type": "hosts.profile.delete",
    "payload": "{\"profile_id\":5}",
    "error": "Profile not found",
+   "code": "not_found",
    "after": {}
   },
   {
@@ -1564,6 +1566,7 @@
    "type": "hosts.jump.save",
    "payload": "{\"name\":\"Bastion\",\"host\":\"bastion2.golden.test\",\"port\":2222,\"username\":\"j\",\"auth_type\":\"key\",\"key_id\":\"nope\"}",
    "error": "SSH key not found",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1619,6 +1622,7 @@
    "type": "hosts.jump.save",
    "payload": "{\"name\":\"Bastion\",\"host\":\"bastion2.golden.test\",\"port\":false,\"username\":\"j\",\"auth_type\":\"password\"}",
    "error": "Port must be between 1 and 65535",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1626,6 +1630,7 @@
    "type": "hosts.jump.save",
    "payload": "{\"name\":\"Bastion\",\"host\":\"bastion2.golden.test\",\"port\":\"x\",\"username\":\"j\",\"auth_type\":\"password\"}",
    "error": "Invalid port number",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1633,6 +1638,7 @@
    "type": "hosts.jump.save",
    "payload": "{\"name\":\"Bastion\",\"host\":\"a_b\",\"port\":2222,\"username\":\"j\",\"auth_type\":\"password\"}",
    "error": "Invalid host format",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1640,6 +1646,7 @@
    "type": "hosts.jump.save",
    "payload": "{\"name\":\"Bastion\",\"host\":\"bastion2.golden.test\",\"port\":2222,\"username\":\"a:b\",\"auth_type\":\"password\"}",
    "error": "Invalid username format",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1647,6 +1654,7 @@
    "type": "hosts.jump.save",
    "payload": "{\"name\":\" \",\"host\":\"bastion2.golden.test\",\"port\":2222,\"username\":\"j\",\"auth_type\":\"password\"}",
    "error": "Invalid jump host name",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1654,6 +1662,7 @@
    "type": "hosts.jump.save",
    "payload": "{\"name\":\"Bastion\",\"host\":\"bastion2.golden.test\",\"port\":2222,\"username\":\"\",\"auth_type\":\"password\"}",
    "error": "Missing required fields",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1661,6 +1670,7 @@
    "type": "hosts.jump.save",
    "payload": "{\"name\":\"Bastion\",\"host\":\"bastion2.golden.test\",\"port\":2222,\"username\":\"j\",\"auth_type\":\"none\"}",
    "error": "Invalid auth_type",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1668,6 +1678,7 @@
    "type": "hosts.jump.save",
    "payload": "{\"name\":\"Bastion\",\"host\":\"bastion2.golden.test\",\"port\":2222,\"username\":\"j\",\"auth_type\":\"password\",\"key_id\":5}",
    "error": "Invalid key reference",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1698,6 +1709,7 @@
    "type": "hosts.jump.save",
    "payload": "{\"name\":\"Bastion\",\"host\":\"bastion2.golden.test\",\"port\":2222,\"username\":\"j\",\"auth_type\":\"password\",\"jump_host_id\":\"nope\"}",
    "error": "Jump host not found",
+   "code": "not_found",
    "after": {}
   },
   {
@@ -1706,6 +1718,7 @@
    "payload": "{\"jump_host_id\":\"2735737b-d93a-4e54-acd5-85b740b63526\"}",
    "error": "Jump host is used by 1 profile",
    "details": "{\"usages\":[\"Via bastion\"]}",
+   "code": "in_use",
    "after": {}
   },
   {
@@ -1713,6 +1726,7 @@
    "type": "hosts.jump.delete",
    "payload": "{\"jump_host_id\":\"nope\"}",
    "error": "Jump host not found",
+   "code": "not_found",
    "after": {}
   },
   {
@@ -1766,6 +1780,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"office.example\",\"port\":1080,\"username\":\"u\",\"auth_type\":\"none\",\"remote_dns\":true}",
    "error": "Username requires password authentication",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1773,6 +1788,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"office.example\",\"port\":1080,\"username\":\"\",\"auth_type\":\"password\",\"remote_dns\":true}",
    "error": "Username required for password authentication",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1780,6 +1796,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"office.example\",\"port\":1080,\"username\":\"\",\"auth_type\":null,\"remote_dns\":true}",
    "error": "Invalid auth_type",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1787,6 +1804,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"office.example\",\"port\":1080,\"username\":null,\"auth_type\":\"none\",\"remote_dns\":true}",
    "error": "Invalid SOCKS proxy username",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1794,6 +1812,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"office.example\",\"port\":1080,\"username\":\"\",\"auth_type\":\"none\",\"remote_dns\":\"yes\"}",
    "error": "remote_dns must be a boolean",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1801,6 +1820,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"office.example\",\"port\":\"1080\",\"username\":\"\",\"auth_type\":\"none\",\"remote_dns\":true}",
    "error": "Invalid port number",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1808,6 +1828,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"office.example\",\"port\":1080.0,\"username\":\"\",\"auth_type\":\"none\",\"remote_dns\":true}",
    "error": "Invalid port number",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1815,6 +1836,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"office.example\",\"port\":0,\"username\":\"\",\"auth_type\":\"none\",\"remote_dns\":true}",
    "error": "Port must be between 1 and 65535",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1822,6 +1844,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"bücher.example\",\"port\":1080,\"username\":\"\",\"auth_type\":\"none\",\"remote_dns\":true}",
    "error": "Invalid host format",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1842,6 +1865,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"\",\"host\":\"office.example\",\"port\":1080,\"username\":\"\",\"auth_type\":\"none\",\"remote_dns\":true}",
    "error": "Invalid SOCKS proxy name",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1862,6 +1886,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn\",\"host\":\"office.example\",\"port\":1080,\"username\":\"\",\"auth_type\":\"none\",\"remote_dns\":true}",
    "error": "Connection storage quota exceeded: SOCKS-proxy name is too large",
+   "code": "quota_exceeded",
    "after": {}
   },
   {
@@ -1869,6 +1894,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"office.example\",\"port\":1080,\"username\":\"\",\"auth_type\":\"none\",\"remote_dns\":true,\"socks_proxy_id\":\"\"}",
    "error": "Invalid SOCKS proxy reference",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1888,6 +1914,7 @@
    "type": "hosts.socks.save",
    "payload": "{\"name\":\"Office\",\"host\":\"office.example\",\"port\":1080,\"username\":\"\",\"auth_type\":\"none\",\"remote_dns\":true,\"socks_proxy_id\":\"nope\"}",
    "error": "SOCKS proxy not found",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1896,6 +1923,7 @@
    "payload": "{\"socks_proxy_id\":\"45af77db-0c12-41d0-b28e-ea67984e5ebd\"}",
    "error": "SOCKS proxy is used by 1 profile",
    "details": "{\"usages\":[\"Via SOCKS\"]}",
+   "code": "in_use",
    "after": {}
   },
   {
@@ -1914,6 +1942,7 @@
    "type": "hosts.socks.delete",
    "payload": "{\"socks_proxy_id\":\"nope\"}",
    "error": "SOCKS proxy not found",
+   "code": "validation_error",
    "after": {}
   },
   {
@@ -1921,6 +1950,7 @@
    "type": "hosts.socks.delete",
    "payload": "{\"socks_proxy_id\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
    "error": "SOCKS proxy ID required",
+   "code": "validation_error",
    "after": {}
   }
  ],
