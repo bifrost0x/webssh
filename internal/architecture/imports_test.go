@@ -17,10 +17,14 @@ import (
 var execAllowed = map[string]bool{}
 
 // syscallAllowed lists the files that may import syscall directly. The
-// only planned entry is internal/netpolicy/route_linux.go (netlink route
-// lookup for Tailscale SSH); it is added together with that file, because
-// entries for missing files fail TestExceptionListsAreCurrent.
-var syscallAllowed = map[string]bool{}
+// only other planned entry is internal/netpolicy/route_linux.go (netlink
+// route lookup for Tailscale SSH); it is added together with that file,
+// because entries for missing files fail TestExceptionListsAreCurrent.
+var syscallAllowed = map[string]bool{
+	// syscall.SIGTERM, the stop signal of docker stop and service
+	// managers; os has no portable name for it.
+	"cmd/webssh/signal.go": true,
+}
 
 // exceptions are the reviewed exception lists the import rules consult.
 type exceptions struct {

@@ -1,0 +1,25 @@
+# Build context of deploy/docker/Dockerfile (repository root). Only the Go
+# module and the frontend assets are sent; everything else, including .git,
+# data directories, virtual environments, node_modules and the Python
+# application, stays out.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!static/
+
+# Tests and their fixtures are not part of the build.
+**/*_test.go
+**/testdata/
+internal/httpapi/webassets/
+
+# Stray files that must never reach an image.
+**/.env
+**/.env.*
+**/*.db
+**/*.sqlite*
+**/*.pem
+**/*.key
+**/.DS_Store
+**/__pycache__/

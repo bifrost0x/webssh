@@ -1,0 +1,18 @@
+# Reverse proxy for the WebSSH Go preview (compose.m1.tls.yml).
+{
+	# No admin API, no saved configuration, no HTTP listener on port 80, no
+	# attempt to install the internal CA into the trust store of the
+	# container.
+	admin off
+	persist_config off
+	auto_https disable_redirects
+	skip_install_trust
+	http_port 5480
+}
+
+{$WEBSSH_GO_TLS_HOST}:5443 {
+	tls internal
+	# Caddy sets X-Forwarded-For, X-Forwarded-Proto and X-Forwarded-Host and
+	# forwards WebSocket upgrades.
+	reverse_proxy webssh-go:5000
+}

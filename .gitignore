@@ -62,6 +62,9 @@ known_hosts
 instance/
 .webassets-cache
 
+# Go: frontend assets copied from static/ for embedding at build time
+internal/httpapi/webassets/
+
 # Distribution / packaging
 build/
 dist/
