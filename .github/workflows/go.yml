@@ -69,7 +69,7 @@ jobs:
 
   checks:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -113,8 +113,10 @@ jobs:
 
       # Includes the architecture tests: package map, import rules, file
       # sizes, package names and the module allowlist.
+      # internal/migrate/legacy replays the golden data directories with
+      # the race detector and needs more than the default ten minutes.
       - name: Test with race detector
-        run: go test -race -count=1 $GO_PACKAGES
+        run: go test -race -count=1 -timeout 30m $GO_PACKAGES
 
       # The end-to-end harness is built only with the tag e2e; keep that
       # build vetted and tested so it does not rot between browser runs.
