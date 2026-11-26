@@ -67,10 +67,13 @@ type Auth struct {
 	KeyID    string
 }
 
-// SOCKS is a SOCKS5 proxy. M1 supports proxies without authentication.
+// SOCKS is a SOCKS5 proxy. Username and Password, both set or both
+// empty, are the login of RFC 1929.
 type SOCKS struct {
-	Host string
-	Port int
+	Host     string
+	Port     int
+	Username string
+	Password string
 	// RemoteDNS is the proxy's remote_dns setting: the proxy may resolve
 	// the target name itself where the network policy permits it.
 	RemoteDNS bool

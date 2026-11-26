@@ -330,6 +330,21 @@ func TestLabSOCKS(t *testing.T) {
 	if he, _ := errors.AsType[*client.HopError](err); he == nil || he.Role != client.RoleSOCKS || he.Detail != "socks_auth_required" {
 		t.Fatalf("proxy with login: %v", err)
 	}
+	// RFC 1929 login (C-CONN-08).
+	tgt.Proxy.Username, tgt.Proxy.Password = "labproxy", secret(t, "secrets/socks-labproxy")
+	if got := whoami(t, r, tgt); got != "pwuser" {
+		t.Fatalf("through socks-auth with login: %q", got)
+	}
+	tgt.Proxy.Password = "wrong"
+	_, err = r.dialer.Dial(t.Context(), tgt, r.ix)
+	if he, _ := errors.AsType[*client.HopError](err); he == nil || he.Role != client.RoleSOCKS || code(err) != fault.SOCKSAuthFailed {
+		t.Fatalf("wrong proxy password: %v", err)
+	}
+	// The open proxy offers no login method.
+	tgt.Proxy = &client.SOCKS{Host: open.Host, Port: open.Port, RemoteDNS: true, Username: "labproxy", Password: "x"}
+	if _, err := r.dialer.Dial(t.Context(), tgt, r.ix); code(err) != fault.SOCKSAuthRejected {
+		t.Fatalf("login offered to a proxy without login: %v", err)
+	}
 	// A proxy that is down has its own code since the socks_* codes of the
 	// Python release are in the catalog.
 	tgt.Proxy = &client.SOCKS{Host: "127.0.0.1", Port: 1, RemoteDNS: true}
