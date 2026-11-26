@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ncruces/go-sqlite3"
@@ -40,6 +41,25 @@ type DB struct {
 	// closed is set with writeMu and readMu held, so either suffices to
 	// read it.
 	closed bool
+	// private is set once both side files exist and have mode 0600.
+	private atomic.Bool
+}
+
+// narrowSideFiles narrows the WAL and the shared-memory file to 0600
+// until both exist. SQLite creates them with the first transaction, not
+// at Open, so every transaction checks afterwards until then; a forced
+// read at Open would keep a lock on the WAL index for as long as the
+// database stays open. An error after a write means the transaction was
+// committed but a side file could not be narrowed.
+func (db *DB) narrowSideFiles() error {
+	if db.private.Load() {
+		return nil
+	}
+	both, err := privateSideFiles(db.path)
+	if err == nil && both {
+		db.private.Store(true)
+	}
+	return err
 }
 
 // Tx is a transaction handed to Read and Write callbacks. It is valid only
@@ -150,13 +170,7 @@ func Open(ctx context.Context, path string, o Options) (*DB, error) {
 	if err := reader.PingContext(ctx); err != nil {
 		return nil, errors.Join(fmt.Errorf("store: open database: %w", err), db.Close())
 	}
-	// A first read maps the shared-memory file, so both side files exist
-	// when their modes are narrowed.
-	var pages int64
-	if err := writer.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pages); err != nil {
-		return nil, errors.Join(fmt.Errorf("store: open database: %w", err), db.Close())
-	}
-	if err := privateSideFiles(abs); err != nil {
+	if err := db.narrowSideFiles(); err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
 	// SQLite follows symlinks: make sure it opened the file checked above.
@@ -189,7 +203,10 @@ func (db *DB) Write(ctx context.Context, fn func(*Tx) error) error {
 	if db.closed {
 		return errClosed
 	}
-	return run(ctx, db.writer, nil, fn)
+	if err := run(ctx, db.writer, nil, fn); err != nil {
+		return err
+	}
+	return db.narrowSideFiles()
 }
 
 // Read runs fn in a read-only transaction with a consistent snapshot.
@@ -199,7 +216,10 @@ func (db *DB) Read(ctx context.Context, fn func(*Tx) error) error {
 	if db.closed {
 		return errClosed
 	}
-	return run(ctx, db.reader, &sql.TxOptions{ReadOnly: true}, fn)
+	if err := run(ctx, db.reader, &sql.TxOptions{ReadOnly: true}, fn); err != nil {
+		return err
+	}
+	return db.narrowSideFiles()
 }
 
 func run(ctx context.Context, pool *sql.DB, opts *sql.TxOptions, fn func(*Tx) error) error {
