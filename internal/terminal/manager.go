@@ -47,7 +47,9 @@ type Manager struct {
 	sessions map[string]*Session
 	peers    map[uint64]*peerState
 	attempts map[attemptKey]*attempt
-	stopping bool
+	revoked  map[int64]uint64 // revocation generation per user
+	closing  bool             // Shutdown began: no new attempts or sessions
+	stopping bool             // goroutines are being waited for
 
 	wg   sync.WaitGroup
 	stop chan struct{}
@@ -66,7 +68,7 @@ func New(cfg Config, deps Deps) (*Manager, error) {
 		flow: newLedger(cfg.Flow), input: newInputBudget(cfg.Input),
 		quota:    newQuota(cfg.SessionsGlobal, cfg.SessionsPerUser),
 		prompts:  newPrompts(cfg.MaxPrompts),
-		sessions: map[string]*Session{}, peers: map[uint64]*peerState{}, attempts: map[attemptKey]*attempt{},
+		sessions: map[string]*Session{}, peers: map[uint64]*peerState{}, attempts: map[attemptKey]*attempt{}, revoked: map[int64]uint64{},
 		stop: make(chan struct{}),
 	}
 	m.wg.Go(m.sweep)
@@ -149,25 +151,38 @@ func (m *Manager) Keepalive(peer protocol.Peer) {
 	}
 }
 
-// endsTerminals are the revocation reasons after which the Python release
-// closed every SSH session of the user (user_lifecycle.revoke_user_access:
-// sign-out, password change, factor reset, lock, role change). Ending a
-// login from the session list or by expiry leaves the user's terminals
-// running, as before.
-var endsTerminals = []principal.Reason{
-	principal.ReasonLogout, principal.ReasonPasswordChanged, principal.ReasonFactorChanged,
-	principal.ReasonAccountLocked, principal.ReasonRoleChanged,
+// keepReasons are the revocation reasons after which the user's
+// terminals keep running: ending another login from the session list, the
+// expiry of a login and the end of a factor-repair session (which never
+// has terminals). Every other reason, including any added later, closes
+// every SSH session of the user (fail closed). The Python release closed
+// them for sign-out, password change, factor reset, lock and role change
+// (user_lifecycle.revoke_user_access).
+var keptFor = []principal.Reason{principal.ReasonRevokedByUser, principal.ReasonExpired, principal.ReasonRecoveryEnded}
+
+func keepsTerminals(r principal.Reason) bool { return slices.Contains(keptFor, r) }
+
+// generation is the revocation generation of owner, read when an attempt
+// starts and checked when its session registers.
+func (m *Manager) generation(owner int64) uint64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.revoked[owner]
 }
 
 // Revoked reacts to an ended browser session. The realtime endpoint has
 // already cancelled the session's connections, so their streams stop at
-// once; for the reasons above every SSH session and pending connection
-// attempt of the user ends as well. It does not block.
+// once; unless the reason keeps terminals, every SSH session and pending
+// connection attempt of the user ends as well, and an attempt that
+// commits concurrently fails to register. It does not block.
 func (m *Manager) Revoked(rev principal.Revocation) {
-	if !slices.Contains(endsTerminals, rev.Reason) || rev.UserID <= 0 {
+	if keepsTerminals(rev.Reason) || rev.UserID <= 0 {
 		return
 	}
-	m.cancelAttemptsOf(func(k attemptKey, a *attempt) bool { return a.owner == rev.UserID })
+	m.mu.Lock()
+	m.revoked[rev.UserID]++
+	m.mu.Unlock()
+	m.cancelAttemptsOf(func(_ attemptKey, a *attempt) bool { return a.owner == rev.UserID })
 	for _, s := range m.sessionsOf(rev.UserID) {
 		s.terminate(reasonClosed, nil)
 	}
@@ -186,7 +201,7 @@ func (m *Manager) sweep() {
 			now := m.now()
 			for _, a := range m.allAttachments() {
 				if m.flow.stale(a.credit, now) {
-					m.detach(a, "backpressure")
+					m.detach(a, reasonBackpressure)
 				}
 			}
 			m.checkIdle(now)
@@ -217,18 +232,24 @@ func (m *Manager) checkIdle(now time.Time) {
 // session and waits for all goroutines of the terminal or for ctx.
 func (m *Manager) Shutdown(ctx context.Context) error {
 	m.once.Do(func() {
-		m.cancelAttemptsOf(func(attemptKey, *attempt) bool { return true })
+		// Refuse new work first, end what runs while shell closes still
+		// start in the background, then stop starting goroutines and wait,
+		// bounded by ctx.
 		m.mu.Lock()
-		m.stopping = true
+		m.closing = true
 		list := make([]*Session, 0, len(m.sessions))
 		for _, s := range m.sessions {
 			list = append(list, s)
 		}
 		m.mu.Unlock()
+		m.cancelAttemptsOf(func(attemptKey, *attempt) bool { return true })
 		close(m.stop)
 		for _, s := range list {
 			s.terminate(reasonClosed, nil)
 		}
+		m.mu.Lock()
+		m.stopping = true
+		m.mu.Unlock()
 	})
 	done := make(chan struct{})
 	go func() {

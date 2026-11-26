@@ -17,6 +17,8 @@ const (
 	reasonClosed    = "Connection closed"
 	reasonUser      = "User requested disconnect"
 	reasonDiscarded = "Cancelled connection discarded"
+	// reasonBackpressure is the reason of terminal.resync_required.
+	reasonBackpressure = "backpressure"
 )
 
 // stdinFrames bounds queued input frames; QueueBytes bounds their bytes.
@@ -30,7 +32,9 @@ type Session struct {
 	m       *Manager
 	shell   client.Shell
 	created time.Time
+	//lint:ignore U1000 set and read by the e2e hooks (fixtures.go)
 	fixture bool
+	opener  uint64 // the connection whose terminal.open created it
 	release func() // quota slot
 
 	mu       sync.Mutex
@@ -74,12 +78,17 @@ func (m *Manager) newSession(owner int64, shell client.Shell, info protocol.Sess
 }
 
 // register adds s to the manager and reserves its three goroutines, which
-// start must then launch. It fails once Shutdown began.
-func (m *Manager) register(s *Session) error {
+// start must then launch. It fails once Shutdown began, and when the
+// owner was signed out since gen was read: such a session would outlive
+// the revocation.
+func (m *Manager) register(s *Session, gen uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.stopping {
+	if m.closing {
 		return fault.New(fault.Unavailable, "The server is shutting down.")
+	}
+	if m.revoked[s.owner] != gen {
+		return errCancelled
 	}
 	m.sessions[s.id] = s
 	m.wg.Add(3)
@@ -147,7 +156,9 @@ func (s *Session) pump(in <-chan []byte, notice []byte) {
 }
 
 // publish records a chunk and delivers it to every attachment, waiting for
-// credit on each.
+// credit on each. One slow attachment therefore holds back the other tabs
+// of the same session until it acknowledges or the sweeper detaches it
+// after AckTimeout; the replay buffer lets it catch up by re-attaching.
 func (s *Session) publish(data []byte) {
 	if len(data) == 0 {
 		return
@@ -164,14 +175,17 @@ func (s *Session) publish(data []byte) {
 	targets := s.attachmentsLocked()
 	s.mu.Unlock()
 	for _, a := range targets {
-		// The peer context ends on disconnect and revocation; nothing is
-		// forwarded to such a connection.
-		if err := s.m.flow.acquire(a.peer.Context(), a.credit, c.seq, len(data)); err != nil {
-			continue // detached or gone; the replay buffer keeps the chunk
-		}
 		frame := protocol.AppendFrame(make([]byte, 0, protocol.HeaderLen+len(data)),
 			protocol.Frame{Kind: protocol.KindOutput, Channel: a.ch, Seq: c.seq, Data: data})
-		if err := a.peer.SendBinary(frame); err != nil {
+		var sendErr error
+		// The peer context ends on disconnect and revocation; nothing is
+		// forwarded to such a connection. A detached stream keeps the chunk
+		// in the replay buffer.
+		_ = s.m.flow.acquire(a.peer.Context(), a.credit, c.seq, len(data), func() error {
+			sendErr = a.peer.SendBinary(frame)
+			return sendErr
+		})
+		if sendErr != nil {
 			s.m.detach(a, "")
 		}
 	}

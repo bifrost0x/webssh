@@ -27,9 +27,10 @@ type peerState struct {
 	atts     map[uint32]*attachment
 	reserved map[uint32]bool // channels of terminal.open still connecting
 	streams  map[string]*attachment
-	// nextStream numbers the synthetic streams of the e2e output load.
-	nextStream uint32
-	closed     bool
+	// cooldown holds, per session, until when a stream detached for
+	// backpressure may not attach again.
+	cooldown map[string]time.Time
+	closed   bool
 }
 
 // peer returns the state of a live connection, nil for a closed one.
@@ -41,13 +42,19 @@ func (m *Manager) peer(p protocol.Peer) *peerState {
 	}
 	ps := m.peers[p.ID()]
 	if ps == nil {
-		ps = &peerState{atts: map[uint32]*attachment{}, reserved: map[uint32]bool{}, streams: map[string]*attachment{}}
+		ps = &peerState{atts: map[uint32]*attachment{}, reserved: map[uint32]bool{}, streams: map[string]*attachment{}, cooldown: map[string]time.Time{}}
 		m.peers[p.ID()] = ps
 	}
 	return ps
 }
 
 var errPeerGone = fault.New(fault.Cancelled, "")
+
+// reattachCooldown delays a new attachment of a connection to a session
+// whose stream on it was detached for backpressure, so a client that does
+// not read cannot keep taking the shared output budget of others. The
+// page retries after retry_after_ms.
+const reattachCooldown = time.Second
 
 func (m *Manager) attachmentOf(p protocol.Peer, ch uint32) *attachment {
 	m.mu.Lock()
@@ -123,6 +130,15 @@ func (m *Manager) attach(p protocol.Peer, s *Session, ch uint32, afterSeq uint64
 		return protocol.TerminalAttached{}, errPeerGone
 	}
 	ps.mu.Lock()
+	if until, ok := ps.cooldown[s.id]; ok {
+		if wait := until.Sub(m.now()); wait > 0 {
+			ps.mu.Unlock()
+			e := fault.New(fault.Backpressure, "Acknowledge pending output first.")
+			e.RetryAfter = wait
+			return protocol.TerminalAttached{}, e
+		}
+		delete(ps.cooldown, s.id)
+	}
 	if !reserved || !ps.reserved[ch] {
 		if err := ps.claimLocked(ch, m.cfg.MaxChannels); err != nil {
 			ps.mu.Unlock()
@@ -201,6 +217,16 @@ func (m *Manager) detach(a *attachment, reason string) {
 		s.mu.Unlock()
 	}
 	m.dropAttachment(a)
+	if was && reason == reasonBackpressure {
+		m.mu.Lock()
+		ps := m.peers[a.peer.ID()]
+		m.mu.Unlock()
+		if ps != nil {
+			ps.mu.Lock()
+			ps.cooldown[a.sess.id] = m.now().Add(reattachCooldown)
+			ps.mu.Unlock()
+		}
+	}
 	if was && reason != "" {
 		_ = a.peer.SendEvent(protocol.TypeTerminalResync, protocol.TerminalResync{Ch: a.ch, SessionID: a.sess.id, Reason: reason})
 	}

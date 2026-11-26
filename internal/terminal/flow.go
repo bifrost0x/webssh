@@ -46,7 +46,7 @@ func (l *FlowLimits) defaults() {
 }
 
 // usage is one level of the ledger; refs counts the open credits of a
-// connection level, which is dropped with its last credit.
+// connection or user level, which is dropped with its last credit.
 type usage struct{ bytes, frames, refs int }
 
 func (u usage) fits(n, maxBytes, maxFrames int) bool {
@@ -77,6 +77,12 @@ type credit struct {
 
 // ledger accounts output in flight on all levels under one lock, so a
 // frame is admitted only if every level has room (all or nothing).
+//
+// The user and process levels are shared: a client that does not
+// acknowledge can hold its share until AckTimeout detaches its streams,
+// and meanwhile other users' output may wait for room on the process
+// level. A detached stream may attach again only after reattachCooldown,
+// which bounds how often one connection can take the shared budget.
 type ledger struct {
 	lim     FlowLimits
 	now     func() time.Time
@@ -103,6 +109,7 @@ func (l *ledger) open(conn uint64, user int64) *credit {
 	if l.users[user] == nil {
 		l.users[user] = &usage{}
 	}
+	l.users[user].refs++
 	return &credit{conn: conn, user: user, wake: make(chan struct{}, 1)}
 }
 
@@ -127,8 +134,12 @@ func (l *ledger) addLocked(c *credit, seq uint64, n int, now time.Time) {
 }
 
 // acquire blocks until frame seq of n bytes fits on every level, the
-// attachment is detached, or ctx ends.
-func (l *ledger) acquire(ctx context.Context, c *credit, seq uint64, n int) error {
+// attachment is detached, or ctx ends. send, if set, delivers the frame
+// under the ledger lock right after the admission: a close (detach) either
+// happens before and the frame is not sent, or after and releases it, so
+// no frame reaches a freed channel once close returned. send must not
+// block; an error from it withdraws the frame.
+func (l *ledger) acquire(ctx context.Context, c *credit, seq uint64, n int, send func() error) error {
 	for {
 		l.mu.Lock()
 		if c.gone {
@@ -138,8 +149,16 @@ func (l *ledger) acquire(ctx context.Context, c *credit, seq uint64, n int) erro
 		if l.fitsLocked(c, n) {
 			l.addLocked(c, seq, n, l.now())
 			delete(l.waiters, c)
+			var err error
+			if send != nil {
+				if err = send(); err != nil {
+					c.pending = c.pending[:len(c.pending)-1]
+					l.releaseLocked(c, n)
+					l.wakeLocked()
+				}
+			}
 			l.mu.Unlock()
-			return nil
+			return err
 		}
 		l.waiters[c] = struct{}{}
 		l.mu.Unlock()
@@ -248,6 +267,11 @@ func (l *ledger) close(c *credit) {
 			delete(l.conns, c.conn)
 		}
 	}
+	if u := l.users[c.user]; u != nil {
+		if u.refs--; u.refs <= 0 {
+			delete(l.users, c.user)
+		}
+	}
 	select {
 	case c.wake <- struct{}{}:
 	default:
@@ -260,16 +284,6 @@ func (l *ledger) stale(c *credit, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return !c.gone && len(c.pending) > 0 && now.Sub(c.pending[0].sent) >= l.lim.AckTimeout
-}
-
-// connFrames is the number of unacknowledged frames of a connection.
-func (l *ledger) connFrames(conn uint64) int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if u := l.conns[conn]; u != nil {
-		return u.frames
-	}
-	return 0
 }
 
 // inFlight is the process level, for diagnostics and tests.

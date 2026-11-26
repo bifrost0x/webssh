@@ -1,9 +1,12 @@
+//go:build e2e
+
 package terminal
 
 import (
 	"context"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
@@ -28,11 +31,15 @@ type OutputStream struct {
 // allocate channels below it, so the two never meet.
 const fixtureChannelBase uint32 = 1 << 31
 
-// maxStreams bounds synthetic streams per connection at a time,
-// maxStreamChannels over the connection's lifetime.
+// streamChannels numbers synthetic streams (test build only).
+var streamChannels atomic.Uint32
+
+// maxStreams bounds synthetic streams per connection at a time;
+// their channels cycle through maxStreamChannels numbers above
+// fixtureChannelBase.
 const (
-	maxStreams        = 64
-	maxStreamChannels = 1 << 16
+	maxStreams               = 64
+	maxStreamChannels uint32 = 1 << 16
 )
 
 // Emit sends one output frame of a synthetic stream through the same
@@ -43,11 +50,9 @@ func (m *Manager) Emit(ctx context.Context, peer protocol.Peer, stream string, s
 	if err != nil {
 		return err
 	}
-	if err := m.flow.acquire(ctx, a.credit, seq, len(data)); err != nil {
-		return err
-	}
-	return peer.SendBinary(protocol.AppendFrame(make([]byte, 0, protocol.HeaderLen+len(data)),
-		protocol.Frame{Kind: protocol.KindOutput, Channel: a.ch, Seq: seq, Data: data}))
+	frame := protocol.AppendFrame(make([]byte, 0, protocol.HeaderLen+len(data)),
+		protocol.Frame{Kind: protocol.KindOutput, Channel: a.ch, Seq: seq, Data: data})
+	return m.flow.acquire(ctx, a.credit, seq, len(data), func() error { return peer.SendBinary(frame) })
 }
 
 // InFlight is the number of unacknowledged output frames of the peer.
@@ -63,12 +68,14 @@ func (m *Manager) stream(peer protocol.Peer, name string) (*attachment, error) {
 		ps.mu.Unlock()
 		return a, nil
 	}
-	if ps.closed || len(ps.streams) >= maxStreams || ps.nextStream >= maxStreamChannels {
+	if ps.closed || len(ps.streams) >= maxStreams {
 		ps.mu.Unlock()
 		return nil, fault.New(fault.RateLimited, "")
 	}
-	ch := fixtureChannelBase + ps.nextStream
-	ps.nextStream++
+	ch := fixtureChannelBase + streamChannels.Add(1)%maxStreamChannels
+	for ps.atts[ch] != nil {
+		ch = fixtureChannelBase + streamChannels.Add(1)%maxStreamChannels
+	}
 	a := &attachment{peer: peer, ch: ch, credit: m.flow.open(peer.ID(), peer.Principal().UserID)}
 	ps.atts[ch] = a
 	ps.streams[name] = a
@@ -108,7 +115,7 @@ func (m *Manager) ReplaceFixtureSessions(_ context.Context, _ protocol.Peer, own
 		s.fixture = true
 		s.seq = 1
 		s.replay.add(chunk{seq: 1, data: []byte(fixtureOutput)})
-		if err := m.register(s); err != nil {
+		if err := m.register(s, m.generation(owner)); err != nil {
 			return ids, err
 		}
 		s.start(nil)
@@ -142,3 +149,13 @@ func (s *idleShell) Write(p []byte) (int, error) {
 func (s *idleShell) Resize(int, int) error { return nil }
 func (s *idleShell) Wait() error           { <-s.closed; return nil }
 func (s *idleShell) Close() error          { s.once.Do(func() { close(s.closed) }); return nil }
+
+// connFrames is the number of unacknowledged frames of a connection.
+func (l *ledger) connFrames(conn uint64) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if u := l.conns[conn]; u != nil {
+		return u.frames
+	}
+	return 0
+}

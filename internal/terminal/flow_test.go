@@ -20,7 +20,7 @@ func tryAcquire(t *testing.T, l *ledger, c *credit, seq uint64, n int) bool {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
 	defer cancel()
-	err := l.acquire(ctx, c, seq, n)
+	err := l.acquire(ctx, c, seq, n, nil)
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("acquire: %v", err)
 	}
@@ -122,13 +122,13 @@ func TestLedgerWakeups(t *testing.T) {
 		t.Fatal("first frame")
 	}
 	got := make(chan error, 1)
-	go func() { got <- l.acquire(t.Context(), b, 1, 50) }()
+	go func() { got <- l.acquire(t.Context(), b, 1, 50, nil) }()
 	time.Sleep(20 * time.Millisecond)
 	l.ack(a, 1)
 	if err := <-got; err != nil {
 		t.Fatalf("waiter after ack: %v", err)
 	}
-	go func() { got <- l.acquire(t.Context(), b, 2, 100) }()
+	go func() { got <- l.acquire(t.Context(), b, 2, 100, nil) }()
 	time.Sleep(20 * time.Millisecond)
 	l.close(b)
 	if err := <-got; !errors.Is(err, errDetached) {
