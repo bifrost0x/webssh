@@ -134,3 +134,6 @@ tests/lab/runtime/
 
 # Go build copy of static/ (scripts/stage-webassets.sh)
 /internal/httpapi/webassets/
+
+# Binary of `go build ./cmd/webssh` in the repository root
+/webssh
