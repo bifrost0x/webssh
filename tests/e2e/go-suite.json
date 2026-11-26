@@ -1,0 +1,92 @@
+{
+  "description": "Specs of the main suite that must pass against the Go server, run with the e2e build (tests/e2e/README.md). Every M2 package adds its specs. An excluded test names its reason and the package of the M2 plan that unlocks it (package), or a capability of the build (requires). serial names the seed account whose stored settings a spec changes; with more than one worker those specs run afterwards on one worker. run-go-suite.js turns this file into Playwright invocations.",
+  "requires": {
+    "passkeys": "passkeys (D1, internal/auth/webauthn); in the build since the third wave",
+    "e2e_hooks": "the realtime shim maps the e2e_* hooks to the e2e. routes of the e2e build (D4); in the build since the third wave"
+  },
+  "specs": [
+    {"file": "mfa.spec.js", "exclude": [
+      {"title": "shows mixed MFA methods one at a time", "requires": "passkeys", "reason": "the passkey method needs the seeded passkey placeholder"}
+    ]},
+    {"file": "webauthn.spec.js", "requires": "passkeys", "exclude": []},
+    {"file": "auth-submit.spec.js", "exclude": []},
+    {"file": "auth-original-layout.spec.js", "exclude": []},
+    {"file": "auth-session-warning.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "account-controls.spec.js", "exclude": []},
+    {"file": "account-menu.spec.js", "exclude": [
+      {"title": "administrators can hide the support links for all users", "reason": "admin integration settings (C-ASET) answer 501 in M1", "package": "OP3"}
+    ]},
+    {"file": "branding.spec.js", "exclude": []},
+    {"file": "admin-step-up-cancel.spec.js", "exclude": []},
+    {"file": "admin-feature-recovery.spec.js", "exclude": []},
+
+    {"file": "overview-workspace.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "overview-default-content.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "overview-classic.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "connection-overview.spec.js", "exclude": [
+      {"title": "single navigation entries retain Files, Commands, Hosts and recent connection form", "reason": "opens the file manager (C-SFTP, template flag off in M1)", "package": "FS1"}
+    ]},
+    {"file": "empty-states.spec.js", "exclude": [
+      {"title": "empty management surfaces are consistent and actionable", "reason": "expects built-in commands in the command library (C-CMD)", "package": "CM1"},
+      {"title": "empty account factors and admin tables keep structure at", "reason": "ends on the global host trust table; global known_hosts entries (C-TRUST-04, /admin/api/host-keys) answer 501 in M1", "package": "HO3"}
+    ]},
+    {"file": "onboarding.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "tour crosses workspaces, handles small screens and saves completion", "reason": "tour step 6 opens the automation workspace (C-AUTO)", "package": "AU1"}
+    ]},
+
+    {"file": "management-dialogs-redesign.spec.js", "exclude": []},
+    {"file": "management-persistence.spec.js", "exclude": [
+      {"title": "command and command-set edits survive a reload", "reason": "commands and command sets (C-CMD)", "package": "CM1"},
+      {"title": "command-set editor does not steal focus after the user chooses another field", "reason": "command sets (C-CMD)", "package": "CM1"},
+      {"title": "command-set actions survive list refresh", "reason": "command sets (C-CMD)", "package": "CM1"},
+      {"title": "command-set refresh drops removed or filtered actions without stealing external focus", "reason": "command sets (C-CMD)", "package": "CM1"}
+    ]},
+    {"file": "jump-host-edit.spec.js", "exclude": []},
+    {"file": "host-draft-navigation.spec.js", "exclude": []},
+    {"file": "quick-connect-redesign.spec.js", "exclude": []},
+    {"file": "host-terminal-journey.spec.js", "exclude": []},
+    {"file": "host-platform-colors.spec.js", "exclude": []},
+    {"file": "notes-recovery.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "workspace-preset-dropdown.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "socks-proxy-routes.spec.js", "exclude": [
+      {"title": "SOCKS route selector excludes Jump and Tailscale and saves the reference", "reason": "selects the Tailscale method (C-TS, flag off in M1)", "package": "NW2"},
+      {"title": "saved SOCKS password launches automatically and reconnect retains the reference", "reason": "saved passwords (E32, credentials not in M1)", "package": "VA1"},
+      {"title": "SOCKS hosts are blocked at all Quick SFTP entry points", "reason": "Quick SFTP (C-SFTP)", "package": "FS2"},
+      {"title": "host export warns that SOCKS routes are omitted", "reason": "host export (C-EXCH)", "package": "HO3"}
+    ]},
+
+    {"file": "terminal-safety.spec.js", "exclude": []},
+    {"file": "terminal-parser-bounds.spec.js", "exclude": []},
+    {"file": "terminal-scroll.spec.js", "exclude": []},
+    {"file": "terminal-load.spec.js", "requires": "e2e_hooks", "exclude": [
+      {"title": "20 active TUIs retain state without reconnecting over polling", "reason": "no long polling in the Go server (ADR 0005)", "package": "FE1"}
+    ]},
+
+    {"file": "settings-layout.spec.js", "exclude": []},
+    {"file": "settings-preference-states.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "cancelled admin authentication is localized and leaves backup creation usable", "reason": "backup creation (C-BAK)", "package": "OP1"}
+    ]},
+    {"file": "theme-system.spec.js", "exclude": []},
+    {"file": "theme-live-settings.spec.js", "exclude": []},
+    {"file": "account-theme-matrix.spec.js", "exclude": [
+      {"title": "main workspaces retain all primary views in", "reason": "visits the file workspace (C-SFTP)", "package": "FS1"}
+    ]},
+    {"file": "terminal-appearance.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "restored terminals load their saved fonts on demand without losing output", "reason": "hook e2e_workspace_restore, not mapped in M1", "package": "TM1"}
+    ]},
+    {"file": "i18n-locales.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "redesign-shell.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "reference composition and workspace continuity at", "reason": "opens the files context and the file manager (C-SFTP)", "package": "FS1"}
+    ]},
+    {"file": "layout.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "admin audit logs remain mouse-scrollable in a short desktop viewport", "reason": "audit log view (C-AOPS)", "package": "OP3"},
+      {"title": "admin security actions and empty host trust use user-facing copy", "reason": "global host trust table (C-TRUST-04, /admin/api/host-keys answers 501 in M1)", "package": "HO3"},
+      {"title": "auth workbench keeps a concentrated form below branding on ultrawide screens", "reason": "expects the OIDC sign-in method (C-OIDC, B2)", "package": "ID2"},
+      {"title": "mobile login keeps every sign-in method and the primary action in the first viewport", "reason": "expects the OIDC sign-in method (C-OIDC, B2); in the preview the notice bar also lengthens the narrow login page (D4, visible change of the preview)", "package": "ID2"},
+      {"title": "new login, security, and admin controls honor the stored locale", "reason": "checks the OIDC sign-in button (C-OIDC, B2)", "package": "ID2"}
+    ]},
+    {"file": "design-system.spec.js", "exclude": [
+      {"title": "Warm Graphite Sand separates cream actions, selection and status across views", "reason": "iterates the file workspace (C-SFTP)", "package": "FS1"}
+    ]}
+  ]
+}

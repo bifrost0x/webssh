@@ -140,7 +140,8 @@ func Apply(ctx context.Context, s *Seed, st Stores, log *slog.Logger) (Applied, 
 	}
 	a := Applied{Users: map[string]int64{}, Skipped: s.skipped()}
 	for _, part := range a.Skipped {
-		log.Info("e2e seed: skipped, not part of this build", "part", part)
+		owner, _ := SkippedOwner(part)
+		log.Info("e2e seed: skipped, not part of this build", "part", part, "package", owner)
 	}
 	steps := []func() error{
 		func() error { return applyAdminSettings(ctx, s.AdminSettings, st.AppSettings) },
