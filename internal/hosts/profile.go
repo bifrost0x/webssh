@@ -55,10 +55,10 @@ type draft struct {
 }
 
 // validateProfile is the payload half of _validate_profile_payload, the
-// checks before any store is read, in Python's order. Tailscale SSH and
-// gateway selectors are refused because this release builds neither.
-func validateProfile(p payload) (draft, error) {
-	if s, ok := asString(p.get("auth_type")); ok && s == "tailscale" {
+// checks before any store is read, in Python's order. Without rules
+// Tailscale SSH and gateway selectors are refused as not available.
+func validateProfile(p payload, rules *variantRules) (draft, error) {
+	if s, ok := asString(p.get("auth_type")); ok && s == "tailscale" && rules == nil {
 		return draft{}, errTailscalePreview
 	}
 	if p.has("platform_icon") {
@@ -97,16 +97,32 @@ func validateProfile(p payload) (draft, error) {
 		return draft{}, invalid("Port must be between 1 and 65535")
 	}
 	username, ok := asString(p.get("username"))
-	if ok && strings.Contains(username, ":") {
-		return draft{}, errGatewayPreview
-	}
-	username = pyStrip(username)
-	if !ok || !validUsername(username) {
-		return draft{}, invalid("Invalid username format")
-	}
 	authType, _ := asString(p.get("auth_type"))
-	if authType != "password" && authType != "key" {
+	if ok && strings.Contains(username, ":") {
+		// A gateway selector is kept exactly as typed.
+		if rules == nil {
+			return draft{}, errGatewayPreview
+		}
+		if err := rules.v.GatewayEnabled(rules.ctx); err != nil {
+			return draft{}, err
+		}
+		if authType == "tailscale" {
+			return draft{}, invalid("Gateway selectors cannot use Tailscale SSH")
+		}
+		if err := rules.v.GatewaySelector(username); err != nil {
+			return draft{}, err
+		}
+	} else {
+		username = pyStrip(username)
+		if !ok || !validUsername(username) {
+			return draft{}, invalid("Invalid username format")
+		}
+	}
+	if authType != "password" && authType != "key" && authType != "tailscale" {
 		return draft{}, invalid("Invalid auth_type")
+	}
+	if authType == "tailscale" && truthy(p.get("jump_host_id")) {
+		return draft{}, invalid("Tailscale SSH cannot be used with a jump host")
 	}
 	socks := p.get("socks_proxy_id")
 	if p.has("socks_proxy_id") && !isNull(socks) {
@@ -116,6 +132,9 @@ func validateProfile(p payload) (draft, error) {
 	}
 	if truthy(socks) && truthy(p.get("jump_host_id")) {
 		return draft{}, invalid("A host can use either a jump host or a SOCKS5 proxy, not both")
+	}
+	if truthy(socks) && authType == "tailscale" {
+		return draft{}, invalid("Tailscale SSH cannot be used with a SOCKS5 proxy")
 	}
 	d := draft{hasGroup: p.has("group")}
 	if d.hasGroup {

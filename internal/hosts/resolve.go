@@ -28,7 +28,7 @@ func (s *Service) Resolve(ctx context.Context, owner int64, profileID string) (c
 		if err != nil {
 			return err
 		}
-		t, err = resolve(all, owner, profileID)
+		t, err = resolve(all, owner, profileID, s.Variants != nil)
 		return err
 	})
 	if err != nil {
@@ -37,26 +37,36 @@ func (s *Service) Resolve(ctx context.Context, owner int64, profileID string) (c
 	return t, nil
 }
 
-func resolve(all stores, owner int64, profileID string) (client.Target, error) {
+func resolve(all stores, owner int64, profileID string, variants bool) (client.Target, error) {
 	profiles := all["profiles"]
 	index := find(profiles, profileID)
 	if index < 0 {
 		return client.Target{}, errProfileNotFound
 	}
 	p := &profiles[index]
+	tailscale := false
 	switch p.text("auth_type") {
 	case "tailscale":
-		return client.Target{}, errTailscaleConnect
+		tailscale = true
+		if !variants {
+			return client.Target{}, errTailscaleConnect
+		}
 	case "password", "key":
 	default:
 		return client.Target{}, invalid("Invalid auth_type")
 	}
-	if strings.Contains(p.text("username"), ":") {
+	if strings.Contains(p.text("username"), ":") && !variants {
 		return client.Target{}, errGatewayPreview
 	}
 	hop, err := hopOf(p)
 	if err != nil {
 		return client.Target{}, err
+	}
+	if jump, _ := p.get("jump_host_id"); tailscale && truthy(jump) {
+		return client.Target{}, invalid("Tailscale SSH cannot be used with a jump host")
+	}
+	if socks, _ := p.get("socks_proxy_id"); tailscale && truthy(socks) {
+		return client.Target{}, invalid("Tailscale SSH cannot be used with a SOCKS5 proxy")
 	}
 	mode, _ := startupMode(p.get)
 	useTmux, _ := p.get("use_tmux")
@@ -70,6 +80,7 @@ func resolve(all stores, owner int64, profileID string) (client.Target, error) {
 			UseTmux:        string(useTmux) == "true",
 			UseHerdr:       string(useHerdr) == "true",
 			StartupCommand: string(mode) != `"none"`,
+			Tailscale:      tailscale,
 		},
 	}
 	if id, _ := p.str("jump_host_id"); id != "" {

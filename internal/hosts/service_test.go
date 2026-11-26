@@ -405,7 +405,7 @@ func FuzzProfilePayload(f *testing.F) {
 		if protocol.DecodePayload(jsontext.Value(body), &req) != nil {
 			return
 		}
-		d, err := validateProfile(profilePayload(req))
+		d, err := validateProfile(profilePayload(req), nil)
 		if err != nil {
 			if _, ok := fault.From(err); !ok {
 				t.Fatalf("unclassified error %v", err)

@@ -23,7 +23,25 @@ var (
 // the position in the group.
 func (s *Service) SaveProfile(ctx context.Context, owner int64, req protocol.HostsProfileSave) (jsontext.Value, error) {
 	p := profilePayload(req)
-	d, err := validateProfile(p)
+	if s.Variants != nil {
+		// handle_save_profile checks Tailscale SSH access before the
+		// payload rules.
+		if a, _ := asString(p.get("auth_type")); a == "tailscale" {
+			host, _ := asString(p.get("host"))
+			user, _ := asString(p.get("username"))
+			port, ok := int64(22), true
+			if p.has("port") {
+				port, ok = pyInt(p.get("port"))
+			}
+			if !ok || port < 1 || port > 65535 {
+				port = 0
+			}
+			if err := s.Variants.TailscaleAccess(ctx, host, int(port), user); err != nil {
+				return nil, err
+			}
+		}
+	}
+	d, err := validateProfile(p, s.variantRules(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +106,7 @@ func (s *Service) SaveProfile(ctx context.Context, owner int64, req protocol.Hos
 	if err != nil {
 		return nil, classify(err, "Failed to save profile")
 	}
-	return publicProfile(saved), nil
+	return publicProfile(saved, s.tailscaleAuthorized(ctx)), nil
 }
 
 func (s *Service) checkKey(ctx context.Context, owner int64, keyID string) error {
@@ -268,13 +286,16 @@ func herdrModeError(r *record) error {
 }
 
 // publicProfile is _public_profile: tailscale_authorized is derived for
-// the response and never stored. Tailscale SSH is not part of this
-// release, so no such host is authorized for launch.
-func publicProfile(r record) jsontext.Value {
+// the response from the live policy and never stored.
+func publicProfile(r record, authorized func(*record) bool) jsontext.Value {
 	out := r.clone()
 	out.del("tailscale_authorized")
 	if s, _ := out.str("auth_type"); s == "tailscale" {
-		out.set("tailscale_authorized", jsonFalse)
+		v := jsonFalse
+		if authorized != nil && authorized(&out) {
+			v = jsonTrue
+		}
+		out.set("tailscale_authorized", v)
 	}
 	return out.encode()
 }

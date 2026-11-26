@@ -15,8 +15,9 @@ func (s *Service) Profiles(ctx context.Context, owner int64) ([]jsontext.Value, 
 	var out []jsontext.Value
 	err := s.DB.Read(ctx, func(tx *store.Tx) error {
 		profiles, err := load(ctx, tx, profileTable, owner)
+		authorized := s.tailscaleAuthorized(ctx)
 		for _, r := range profiles {
-			out = append(out, publicProfile(r))
+			out = append(out, publicProfile(r, authorized))
 		}
 		return err
 	})
@@ -117,7 +118,7 @@ func (s *Service) OrganizeProfile(ctx context.Context, owner int64, req protocol
 	if err != nil {
 		return nil, classify(err, "Failed to save profile")
 	}
-	return publicProfile(saved), nil
+	return publicProfile(saved, s.tailscaleAuthorized(ctx)), nil
 }
 
 // MoveProfile moves a saved host to a position in a group in one step
