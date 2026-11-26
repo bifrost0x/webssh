@@ -3857,7 +3857,16 @@ test('workspace tabs carry the role and main services of their saved host', asyn
         const strip = element.querySelector('.tab-services');
         const tiles = [...element.querySelectorAll('.tab-service')].filter(tile => tile.checkVisibility());
         const name = label.children[0];
-        return {id: element.id, cut: [label, ...label.children].some(part => part.scrollWidth > part.clientWidth),
+        // Rounded widths miss text a fraction of a pixel too wide, which still draws an ellipsis.
+        const textCut = part => {
+            const range = document.createRange();
+            range.selectNodeContents(part);
+            const style = getComputedStyle(part);
+            const inner = part.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+                - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
+            return part.scrollWidth > part.clientWidth || range.getBoundingClientRect().width > inner + 0.01;
+        };
+        return {id: element.id, cut: label.scrollWidth > label.clientWidth || [...label.children].some(textCut),
             capped: name.clientWidth >= parseFloat(getComputedStyle(name).maxWidth) - 0.5,
             strip: strip?.checkVisibility() ? strip.getBoundingClientRect().width : 0, tiles: tiles.length};
     }));

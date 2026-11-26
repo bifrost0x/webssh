@@ -659,8 +659,16 @@
             const state = windows.get(index);
             if (!state) return;
             state.title.textContent = chrome.title || '';
-            state.subtitle.textContent = chrome.subtitle || '';
-            state.subtitle.hidden = !chrome.subtitle;
+            // The host's identity leads the subtitle in its own element so logos can make room for it.
+            if (chrome.identity) {
+                const lead = doc.createElement('span');
+                lead.className = 'ws-window-identity';
+                lead.textContent = chrome.identity;
+                state.subtitle.replaceChildren(lead, ...(chrome.subtitle ? [` · ${chrome.subtitle}`] : []));
+            } else {
+                state.subtitle.textContent = chrome.subtitle || '';
+            }
+            state.subtitle.hidden = !chrome.subtitle && !chrome.identity;
             state.frame.setAttribute('aria-label', chrome.title || '');
             state.frame.dataset.status = chrome.status || 'idle';
             state.minimizeButton.hidden = chrome.minimizable === false;

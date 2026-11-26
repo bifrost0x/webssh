@@ -2583,21 +2583,31 @@ const SessionManager = {
             });
         }
         const identity = window.HostPlatform?.sessionIdentity?.(session, this.savedHostFor(session)) || null;
-        const known = identity ? [identity.label, identity.system, identity.virt].filter(Boolean).join(' · ') : '';
-        const services = identity
-            ? window.HostPlatform.serviceTiles(identity.services, 'session-identity-service', document) : [];
+        const known = identity ? [identity.label, identity.system, identity.virt] : [];
+        const frame = this.windowDesktop.frame?.(index);
+        // Status updates arrive often; unchanged logos keep their nodes.
+        const shown = [...(frame?.querySelectorAll('.ws-window-services > .session-identity-service') || [])];
+        const ids = identity?.services || [];
+        const services = shown.map(tile => tile.getAttribute('data-service')).join() === ids.join()
+            ? shown : window.HostPlatform.serviceTiles(ids, 'session-identity-service', document);
         this.windowDesktop.setChrome(index, {
             title: this.getDisplayLabel(sessionId, session.username, session.host),
-            subtitle: [known, ...parts].filter(Boolean).join('  ·  '),
+            subtitle: parts.join(' · '),
+            identity: known.filter(Boolean).join(' · '),
             status,
             badges,
             role: identity?.role || null,
             services,
             closeLabel: this.windowText('session.close', 'Close session'),
         });
-        const frame = this.windowDesktop.frame?.(index);
+        // Logos give way before the host's identity text, and before the title once that is hidden.
         const holder = frame?.querySelector('.ws-window-services');
-        if (holder) window.HostPlatform.keepTilesFitting(holder, frame.querySelector('.ws-window-title'));
+        if (holder) {
+            const subtitle = frame.querySelector('.ws-window-subtitle');
+            const lead = subtitle?.querySelector('.ws-window-identity');
+            window.HostPlatform.keepTilesFitting(holder, lead && {lead, within: subtitle},
+                frame.querySelector('.ws-window-title'));
+        }
     },
 
     renderWindowDesktopEmpty(container) {

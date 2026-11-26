@@ -216,20 +216,61 @@
         }
         holder.hidden = tiles.every(tile => tile.hidden);
     }
-    const overflows = element => element.scrollWidth > element.clientWidth;
+    // scrollWidth and clientWidth are rounded, so text a fraction of a pixel too
+    // wide still draws its ellipsis; the fractional checks below catch that.
+    function contentBox(element) {
+        const box = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        const left = parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);
+        const right = parseFloat(style.paddingRight) + parseFloat(style.borderRightWidth);
+        return {left: box.left + left, right: box.right - right, width: box.width - left - right};
+    }
+    const measurable = element => typeof element.getBoundingClientRect === 'function'
+        && typeof globalThis.getComputedStyle === 'function';
+    /** Whether the text of `element` is cut, measured by its text nodes. */
+    function textCut(element) {
+        if (element.scrollWidth > element.clientWidth) return true;
+        const range = measurable(element) ? element.ownerDocument?.createRange?.() : null;
+        if (!range) return false;
+        range.selectNodeContents(element);
+        return range.getBoundingClientRect().width > contentBox(element).width + 0.01;
+    }
+    /**
+     * Whether a line of inline parts is cut. Its last part ends past the content
+     * edge; a Range would miss generated separators between the parts.
+     */
+    function lineCut(element) {
+        if (element.scrollWidth > element.clientWidth) return true;
+        const last = element.lastElementChild;
+        if (!last || !measurable(element)) return false;
+        return last.getBoundingClientRect().right > contentBox(element).right + 0.01;
+    }
+    // A text is an element, or {lead, within}: a leading part that must end inside
+    // the content box of the element it runs in, whatever follows it there.
+    function isCut(text) {
+        if (text.lead) {
+            return measurable(text.within)
+                && text.lead.getBoundingClientRect().right > contentBox(text.within).right + 0.01;
+        }
+        return text.children?.length ? lineCut(text) : textCut(text);
+    }
+    function widthOf(text) {
+        const element = text.within || text;
+        return typeof element.getBoundingClientRect === 'function' ? element.getBoundingClientRect().width : element.clientWidth;
+    }
     /** Shows as many service tiles as fit without cutting the tab name. */
     function fitSessionTab(tab) {
         const label = tab?.querySelector('.tab-label');
         const holder = tab?.querySelector('.tab-services');
         if (!label || !holder) return;
         if (label.querySelector('.tab-rename-input')) return;
-        const parts = [label, ...label.children];
-        dropTiles(holder, () => parts.some(overflows), () => label.clientWidth);
+        const parts = [...label.children];
+        dropTiles(holder, () => label.scrollWidth > label.clientWidth || parts.some(textCut), () => widthOf(label));
     }
-    /** Shows as many tiles of `holder` as fit without cutting `text`. */
-    function fitTiles(holder, text) {
-        if (!holder?.isConnected || !text) return;
-        dropTiles(holder, () => overflows(text), () => text.clientWidth);
+    /** Shows as many tiles of `holder` as fit without cutting any of `texts`. */
+    function fitTiles(holder, texts) {
+        if (!holder?.isConnected || !texts.length) return;
+        dropTiles(holder, () => texts.some(isCut), () => texts.reduce((sum, text) => sum + widthOf(text), 0));
     }
     // Text widths follow renames, theme fonts, panes and the viewport, so the text is what is watched.
     const fitters = new WeakMap();
@@ -258,11 +299,12 @@
         }
         fitObserver?.observe(target);
     }
-    /** Keeps the tiles of `holder` fitted next to `text` while either changes size. */
-    function keepTilesFitting(holder, text) {
-        if (!holder || !text) return;
-        fitTiles(holder, text);
-        observeFit(text, () => fitTiles(holder, text));
+    /** Keeps the tiles of `holder` fitted next to the given texts while they change size. */
+    function keepTilesFitting(holder, ...candidates) {
+        const texts = candidates.filter(Boolean);
+        if (!holder || !texts.length) return;
+        fitTiles(holder, texts);
+        texts.forEach(text => observeFit(text.within || text, () => fitTiles(holder, texts)));
     }
     function serviceTile(id, className, doc) {
         const logo = renderService(id, doc);

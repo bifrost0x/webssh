@@ -196,7 +196,13 @@ test('a narrow pane drops service logos whole before cutting the host name', asy
     await expect.poll(() => identity.locator('.session-identity-service:visible').count()).toBeLessThan(4);
     const state = await identity.evaluate(element => {
         const tiles = [...element.querySelectorAll('.session-identity-service')];
+        const text = element.querySelector('.session-identity-text');
+        const style = getComputedStyle(text);
+        const right = text.getBoundingClientRect().right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
         return {
+            // Measured in fractions: rounded widths miss a cut of less than a pixel.
+            textCut: text.lastElementChild.getBoundingClientRect().right > right + 0.01,
+            visibleTiles: tiles.filter(tile => !tile.hidden).length,
             overflow: element.scrollWidth - element.clientWidth,
             hiddenOutOfTree: tiles.filter(tile => tile.hidden).every(tile => tile.offsetWidth === 0),
             page: document.documentElement.scrollWidth,
@@ -205,6 +211,32 @@ test('a narrow pane drops service logos whole before cutting the host name', asy
     expect(state.overflow).toBeLessThanOrEqual(0);
     expect(state.hiddenOutOfTree).toBe(true);
     expect(state.page).toBeLessThanOrEqual(360);
+    if (state.textCut) expect(state.visibleTiles).toBe(0);
+});
+
+test('a tab name cut by a fraction of a pixel still makes its logos give way', async ({ page }) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await page.evaluate(() => applyTheme('glass'));
+    await simulateSessions(page);
+    await page.evaluate(() => {
+        const gateway = ProfileManager.profiles.find(profile => profile.id === 'fw');
+        ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile === gateway ? {...profile, name: 'Gateway'} : profile)));
+    });
+    await setLayout(page, 4);
+    for (const id of ['paper', 'pve', 'cloud', 'fw']) await connect(page, id);
+    const tab = page.locator('#tab-idbar-fw');
+    await expect(tab).toHaveAttribute('data-role', 'network');
+    await expect.poll(() => tab.evaluate(element => {
+        const name = element.querySelector('.tab-host-name');
+        const range = document.createRange();
+        range.selectNodeContents(name);
+        const style = getComputedStyle(name);
+        const inner = name.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        const whole = range.getBoundingClientRect().width <= inner + 0.01;
+        const tiles = [...element.querySelectorAll('.tab-service')].filter(tile => !tile.hidden).length;
+        return whole || tiles === 0;
+    })).toBe(true);
 });
 
 test('floating windows carry the identity in their title bar, not in a second line', async ({ page }) => {
@@ -219,6 +251,18 @@ test('floating windows carry the identity in their title bar, not in a second li
     await expect(frame).toHaveAttribute('data-role', 'docs');
     await expect(frame.locator('.ws-window-badges .session-identity-service')).toHaveCount(4);
     await expect(frame.locator('.session-identity-bar')).toHaveCount(0);
+    // In a narrow window the logos give way before the identity text is cut.
+    await frame.evaluate(element => { element.style.width = '470px'; });
+    await expect.poll(() => frame.evaluate(element => {
+        const subtitle = element.querySelector('.ws-window-subtitle');
+        const lead = subtitle.querySelector('.ws-window-identity');
+        const style = getComputedStyle(subtitle);
+        const right = subtitle.getBoundingClientRect().right - parseFloat(style.paddingRight);
+        const tiles = [...element.querySelectorAll('.ws-window-services .session-identity-service')].filter(tile => !tile.hidden);
+        return {whole: lead.getBoundingClientRect().right <= right + 0.01, someHidden: tiles.length < 4,
+            ok: lead.getBoundingClientRect().right <= right + 0.01 || tiles.length === 0};
+    })).toMatchObject({ok: true, someHidden: true});
+    await frame.evaluate(element => { element.style.width = ''; });
     await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'paper'
         ? {...profile, detected_services: ['jellyfin']} : profile))));
     await expect(frame.locator('.ws-window-subtitle')).toContainText('Media');
