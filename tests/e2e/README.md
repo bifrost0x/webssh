@@ -121,3 +121,44 @@ fixed test values that are only valid for this harness.
 All hooks reject unauthenticated callers and only touch the caller's own
 fixture state. `automation_fixture.py`, `output_load.py`,
 `workspace_restore.py` and `herdr_fixture.py` are the Python versions.
+
+## M1 acceptance specs
+
+`tests/e2e/m1/` holds the acceptance journeys of the Go preview (M1). They
+do not use the shared server or the seed: every spec file starts its own
+backend on a data directory it prepared, so first start, `create-admin`
+and the takeover of an existing `DATA_DIR` run as on a real installation.
+The main configuration ignores the directory.
+
+```sh
+tests/lab/up.sh                                            # the journeys connect to the lab
+npx playwright test -c tests/e2e/m1/playwright.config.js   # Python
+go build -o .test-run.tmp/webssh ./cmd/webssh
+WEBSSH_E2E_SERVER_COMMAND='.test-run.tmp/webssh serve' \
+WEBSSH_E2E_ADMIN_COMMAND='.test-run.tmp/webssh' \
+npx playwright test -c tests/e2e/m1/playwright.config.js   # Go
+```
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `WEBSSH_E2E_SERVER_COMMAND` | `"$PYTHON" tests/e2e/m1/python_backend.py serve` | Starts the server on an existing `DATA_DIR`. When set, the specs treat the backend as the Go server. |
+| `WEBSSH_E2E_ADMIN_COMMAND` | `"$PYTHON" tests/e2e/m1/python_backend.py cli` | Prefix for `create-admin --username <name> --password-file <file>`. Required when the server command is set. |
+| `WEBSSH_LAB_INVENTORY` | `tests/lab/runtime/lab.json` | Inventory of the running lab. Without it the journeys fail instead of passing without a connection. |
+
+Both commands run in the repository root with `DATA_DIR`, `HOST=127.0.0.1`,
+`PORT` (also `WEBSSH_E2E_PORT`) and documented settings for the loopback
+fixture (`backend.js`: plain-HTTP cookies, lab targets on 127.0.0.1,
+passkeys on `http://localhost:<port>`, raised sign-in limits). The server
+must serve `GET /login` and stop on SIGINT. `SECRET_KEY` is not passed;
+like `entrypoint.sh`, the server reads or creates `DATA_DIR/secret_key`.
+
+| Spec | Journey |
+|---|---|
+| `fresh-start` | `create-admin`, sign-in, TOTP activated and enrolled, sign-in with TOTP, saved host on `ssh-modern` with host-key prompt and shell round trip, reload resumes the session, close, second connection without prompt, key upload (step-up on Go), key connection through `ssh-bastion` to `ssh-inner` |
+| `hosts` | saved host created, edited and deleted, each surviving a reload, without any connection |
+| `passkey` | passkey registered with a virtual authenticator, then sign-in with it (marked `fixme` on Go until passkeys are merged) |
+| `preview-areas` | every navigation area, asset manager, workspace tool and Settings section opens without page errors, unhandled rejections, 5xx other than the preview's 501 or a loading indicator older than 5 s; the preview notice on Go, none on Python |
+| `migration` | the Python release writes a `DATA_DIR` through its interface (`python-data-dir.js`: TOTP, key, two hosts, accepted host key); the server under test starts on a copy; old password and TOTP sign in, hosts and key are there, the host key is trusted. On Go also the migration report and an unchanged legacy listing |
+
+`node tests/e2e/m1/python-data-dir.js <empty dir>` writes the same fixture
+for other checks and prints the synthetic account details as JSON.
