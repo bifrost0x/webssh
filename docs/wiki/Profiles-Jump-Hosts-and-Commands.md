@@ -167,28 +167,43 @@ Every host has a role: Hypervisor, Backup, Storage, Containers, Documents,
 Photos, Media, Cloud, Smart home, Network, Monitoring, Development, Passwords,
 Database, Web, Workstation or Server. WebSSH works it out in the browser from
 the platform and services that the connect-time probe stored (see above); it
-adds no request, no probe and no setting on the server. The first matching rule
-wins:
+adds no request, no probe and no setting on the server. The rules are checked
+in this order, and the first one that matches names the role. Each rule matches
+on the platform or on a service:
 
-- a Proxmox VE host is a Hypervisor, Proxmox Backup Server a Backup host, and
-  TrueNAS, Unraid, Synology and QNAP are Storage; routers and firewalls
-  (OPNsense, pfSense, OpenWrt, MikroTik, Cisco, Ubiquiti) are Network;
-- a service that names a role decides it, for example Immich (Photos),
-  Jellyfin (Media), Nextcloud (Cloud), Home Assistant (Smart home), Grafana
-  (Monitoring), Gitea (Development) or Vaultwarden (Passwords);
-- a host that runs only databases, only web servers and proxies, or only a
-  container runtime and its management tools is Database, Web or Containers;
-  one more application makes it something else;
-- a host that boots into a graphical target is a Workstation;
-- anything else is a Server.
+1. Hypervisor: Proxmox VE.
+2. Backup: Proxmox Backup Server.
+3. Storage: TrueNAS, Unraid, Synology, QNAP.
+4. Photos: Immich, PhotoPrism.
+5. Documents: Paperless.
+6. Cloud: Nextcloud, ownCloud, Seafile.
+7. Media: Jellyfin, Plex, Emby.
+8. Smart home: Home Assistant.
+9. Network: OPNsense, pfSense, OpenWrt, MikroTik, Cisco, Ubiquiti, or
+   WireGuard, Tailscale, Pi-hole, AdGuard, OpenVPN.
+10. Monitoring: Grafana, Prometheus, Uptime Kuma, Zabbix, Netdata.
+11. Development: Gitea, GitLab.
+12. Passwords: Vaultwarden.
+13. Database: MariaDB, PostgreSQL, Redis, MongoDB, InfluxDB.
+14. Web: nginx, Apache, Caddy, Traefik, Nginx Proxy Manager, HAProxy.
+15. Containers: Docker, or Docker, Podman, Portainer, k3s, Watchtower, Dozzle.
 
-A greeting or host-name hint never decides a role; only a chosen or detected
-platform does. In the host editor, the **Role** field offers **Automatic** and
-the 17 roles. A manual role only changes how the host is shown: detection keeps
-running and keeps its schedule.
+Because a service rule can rank above a platform rule, a router platform that
+also runs Jellyfin is a Media host, not a Network host. The last three rules
+describe hosts that run nothing but infrastructure: Database allows only
+databases, web servers and container tools, Web only web servers and container
+tools, and Containers only container tools. One more application and the host
+does not match them. A host that boots into a graphical target and matched
+nothing is a Workstation; anything else is a Server.
 
-The role colour is a fixed accent per role in every theme, with forced-colors
-mode using the system colours.
+Only a chosen platform, a detected one or a distribution family derived from
+detection (for example Debian-based) can name a role through the platform. A
+greeting or host-name hint never does. In the host editor, the **Role** field
+offers **Automatic** and the 17 roles. A manual role only changes how the host
+is shown: detection keeps running and keeps its schedule.
+
+Each role has its own accent colour, tuned per theme; forced-colors mode uses
+the system colours.
 
 The overview shows, per host:
 
@@ -210,11 +225,12 @@ Search in the overview also matches role, platform and service names. The
 classic overview layout keeps its compact rows: platform icon, virtualization
 badge, role pill and up to three service logos, without tint or profile.
 
-In the workspace, tabs carry the role colour as an edge with the main service
+In the workspace, tabs carry the role colour as an edge with up to two service
 logos, dropping logos before a host name is cut. An identity line above each
-terminal (in the grid and in window mode) names the role, the host and its
-services. The host rail on the left has a **Group / Role** switch that groups
-hosts by role instead of by group. The choice is stored in the browser
+terminal (in the grid and in window mode) names the role, the host and the
+system, with up to four service logos. Rows in the host rail on the left have
+a role edge and up to four service logos, and a **Group / Role** switch groups
+the rail by role instead of by group. The choice is stored in the browser
 (`localStorage`), not on the server, and the switch does not exist in the
 classic layout.
 
