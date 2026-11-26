@@ -16,6 +16,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/auth/webauthn"
 	"github.com/bifrost0x/webssh/internal/hostops"
 	"github.com/bifrost0x/webssh/internal/hosts"
+	"github.com/bifrost0x/webssh/internal/jobs"
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
 	"github.com/bifrost0x/webssh/internal/operations"
 	"github.com/bifrost0x/webssh/internal/session"
@@ -45,6 +46,7 @@ func productionSchemas() []store.Schema {
 		legacy.RecordSchema(),
 		webauthn.Schema(),
 		terminal.Schema(),
+		jobs.Schema(),
 	}
 }
 
