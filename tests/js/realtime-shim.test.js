@@ -435,3 +435,12 @@ test('hello.persistent offers detached sessions before connected', async () => {
     ]);
     socket.disconnect();
 });
+
+test('a live connection ended with 4003 does not navigate on its own', async () => {
+    const calls = [];
+    const window = loadShim({fetch: url => { calls.push(url); return Promise.resolve({status: 401, ok: false, json: () => Promise.resolve({})}); }});
+    const {ws} = await connected(window);
+    ws.serverClose(4003, 'logout');
+    await tick(20);
+    assert.deepEqual(calls, []);
+});

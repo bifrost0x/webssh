@@ -71,7 +71,7 @@ func (s *system) buildCapabilities(in bootInput) error {
 		Gates: gates, Passwords: passwordCheck{s.local, s.accounts}, TOTP: s.totp, Passkeys: opt.passkeys,
 		Targets: targets, RecentWindow: cfg.StepUpMaxAge, Audit: authAudit, Logger: s.log}
 
-	factors := []auth.Factor{totp.Factor{Service: s.totp}}
+	factors := []auth.Factor{totp.Factor{Service: s.totp}, recoveryFactor{s.db}}
 	if opt.passkeyFactor != nil {
 		factors = append(factors, opt.passkeyFactor)
 	}

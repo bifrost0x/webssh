@@ -390,8 +390,11 @@
                 const message = final ? 'unauthorized' : (data ? data.message || 'connection limit' : 'websocket error');
                 this._dispatch('connect_error', Object.assign(new Error(message), data ? {data} : {}));
             }
-            if (final) this._checkStatus();
-            else this._scheduleReconnect();
+            // A connection refused before hello has no other way to learn
+            // that the session is gone; a live one ended with 4003 is left
+            // to the page's own handling of io server disconnect.
+            if (final && !wasConnected) this._checkStatus();
+            else if (!final) this._scheduleReconnect();
         }
 
         // Asks GET <root>/api/realtime/status whether the session is still

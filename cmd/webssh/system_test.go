@@ -153,3 +153,23 @@ func TestHostAdapters(t *testing.T) {
 		t.Errorf("targets %v %v", targets, err)
 	}
 }
+
+func TestRecoveryFactorFollowsTheCodes(t *testing.T) {
+	sys, _ := openTestSystem(t, nil)
+	f := recoveryFactor{sys.db}
+	if f.Kind() != "recovery" {
+		t.Fatal(f.Kind())
+	}
+	if ok, err := f.Enrolled(t.Context(), 1); ok || err != nil {
+		t.Fatalf("without codes: %v %v", ok, err)
+	}
+	if _, err := sys.recovery.Generate(t.Context(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := f.Enrolled(t.Context(), 1); !ok || err != nil {
+		t.Fatalf("with codes: %v %v", ok, err)
+	}
+	if err := f.Verify(t.Context(), 1, nil); fault.CodeOf(err) != fault.AuthFailed {
+		t.Fatalf("Verify: %v", err)
+	}
+}

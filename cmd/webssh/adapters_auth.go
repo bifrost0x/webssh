@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"log/slog"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/auth/local"
 	"github.com/bifrost0x/webssh/internal/auth/stepup"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
+	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/operations"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/session"
@@ -168,4 +170,28 @@ func isoTime(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format("2006-01-02T15:04:05.000000")
+}
+
+// recoveryFactor lists recovery codes among the second-factor methods of
+// a pending sign-in (available_mfa_methods): an account with unused codes
+// is offered the recovery sign-in, which internal/auth serves on its own
+// route (POST /api/auth/recovery). It never verifies anything itself.
+type recoveryFactor struct{ db *store.DB }
+
+func (recoveryFactor) Kind() string { return "recovery" }
+
+func (f recoveryFactor) Enrolled(ctx context.Context, userID int64) (bool, error) {
+	var has bool
+	err := f.db.Read(ctx, func(tx *store.Tx) error {
+		var err error
+		has, err = auth.HasCodesTx(ctx, tx, userID)
+		return err
+	})
+	return has, err
+}
+
+// Verify refuses: recovery codes are checked by the recovery sign-in
+// route, which also opens the restricted recovery session.
+func (recoveryFactor) Verify(context.Context, int64, jsontext.Value) error {
+	return fault.New(fault.AuthFailed, "")
 }
