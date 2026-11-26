@@ -15,8 +15,8 @@ type Passkey struct {
 	CredentialID []byte
 	// COSEKey is the stored COSE_Key, unchanged. The migration keeps these
 	// bytes; PublicKey proves they parse.
-	COSEKey   []byte
-	PublicKey webauthn.PublicKey // parsed by the passkey capability
+	COSEKey    []byte
+	PublicKey  webauthn.PublicKey // parsed by the passkey capability
 	SignCount  int64
 	Transports []string
 	Name       string
@@ -51,4 +51,3 @@ func (s *Source) Passkeys(ctx context.Context) ([]Passkey, error) {
 	}
 	return out, rows.Err()
 }
-

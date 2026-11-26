@@ -118,4 +118,3 @@ func samePasskey(a, b webauthn.Imported) bool {
 func (s *passkeysStep) Report() StepReport {
 	return StepReport{Entity: "E10", Version: 1, Read: len(s.keys), Written: len(s.keys)}
 }
-
