@@ -30,9 +30,10 @@ const (
 	StepUpGrant       Purpose = "step_up_grant"      // stored form of step-up grants (MAC)
 	WebAuthnChallenge Purpose = "webauthn_challenge" // pending WebAuthn ceremonies (Seal)
 	BrowserScope      Purpose = "browser_scope"      // reserved name of the browser-local namespace derivation
+	FeatureApproval   Purpose = "feature_approval"   // impact approvals of security feature changes (MAC)
 )
 
-var purposes = []Purpose{SSHKey, TOTP, SessionToken, CSRF, StepUpGrant, WebAuthnChallenge, BrowserScope}
+var purposes = []Purpose{SSHKey, TOTP, SessionToken, CSRF, StepUpGrant, WebAuthnChallenge, BrowserScope, FeatureApproval}
 
 // Purposes returns the closed list.
 func Purposes() []Purpose { return slices.Clone(purposes) }

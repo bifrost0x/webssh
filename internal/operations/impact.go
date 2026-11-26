@@ -223,7 +223,7 @@ type MAC interface {
 
 func approvalMAC(m MAC, feature string, p principal.Principal, issued int64, digest string) string {
 	msg := strings.Join([]string{"webssh-feature-impact-v1", feature, strconv.FormatInt(p.UserID, 10), p.SessionID, strconv.FormatInt(issued, 10), digest}, "\x00")
-	return hex.EncodeToString(m.MAC(keyring.StepUpGrant, []byte(msg)))
+	return hex.EncodeToString(m.MAC(keyring.FeatureApproval, []byte(msg)))
 }
 
 // approval binds a preview to the feature, the administrator, the exact

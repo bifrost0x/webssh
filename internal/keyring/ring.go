@@ -101,7 +101,7 @@ func newAEAD(key []byte) (cipher.AEAD, error) {
 // key.
 var (
 	sealPurposes = []Purpose{SSHKey, TOTP, WebAuthnChallenge}
-	macPurposes  = []Purpose{SessionToken, CSRF, StepUpGrant}
+	macPurposes  = []Purpose{SessionToken, CSRF, StepUpGrant, FeatureApproval}
 )
 
 // Open derives the ring from SECRET_KEY (as the bytes of the configured
@@ -215,7 +215,8 @@ func (r *Ring) Open(p Purpose, ad AAD, sealed []byte) ([]byte, error) {
 }
 
 // MAC returns HMAC-SHA256 of msg under the purpose's MAC key (32 bytes);
-// only the MAC purposes (SessionToken, CSRF, StepUpGrant) have one.
+// only the MAC purposes (SessionToken, CSRF, StepUpGrant, FeatureApproval)
+// have one.
 // Stored tokens are kept only in this form. Compare MACs with hmac.Equal.
 // Purposes are constants; an unknown one is a programming error and
 // panics.
