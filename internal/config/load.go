@@ -87,15 +87,17 @@ func loadCore(p *parser, c *Config, in *pending) {
 
 // loadIdentity follows config.py through OIDC, LDAP and the step-up age.
 func loadIdentity(p *parser, c *Config, in *pending) {
+	o := &c.OIDC
 	in.oidcEnabled = p.flag("OIDC_ENABLED", "OIDC_ENABLED", "false")
 	in.oidcIssuer = strings.TrimRight(p.str("OIDC_ISSUER", "OIDC_ISSUER", "", true), "/")
 	p.record("OIDC_ISSUER", in.oidcIssuer)
-	p.str("OIDC_CLIENT_ID", "OIDC_CLIENT_ID", "", true)
-	p.str("OIDC_CLIENT_SECRET_FILE", "OIDC_CLIENT_SECRET_FILE", "", true)
+	o.ClientID = p.str("OIDC_CLIENT_ID", "OIDC_CLIENT_ID", "", true)
+	o.ClientSecretFile = p.str("OIDC_CLIENT_SECRET_FILE", "OIDC_CLIENT_SECRET_FILE", "", true)
 	in.oidcRedirectURI = p.str("OIDC_REDIRECT_URI", "OIDC_REDIRECT_URI", "", true)
-	p.csvSet("OIDC_ALLOWED_SUBJECTS", "OIDC_ALLOWED_SUBJECTS", nil)
-	p.csvSet("OIDC_ALLOWED_DOMAINS", "OIDC_ALLOWED_DOMAINS", pyLower)
-	p.str("OIDC_LOGIN_RATE_LIMIT", "OIDC_LOGIN_RATE_LIMIT", "10 per minute", false)
+	o.AllowedSubjects = p.csvSet("OIDC_ALLOWED_SUBJECTS", "OIDC_ALLOWED_SUBJECTS", nil)
+	o.AllowedDomains = p.csvSet("OIDC_ALLOWED_DOMAINS", "OIDC_ALLOWED_DOMAINS", pyLower)
+	o.LoginRateLimit = p.str("OIDC_LOGIN_RATE_LIMIT", "OIDC_LOGIN_RATE_LIMIT", "10 per minute", false)
+	o.Enabled, o.Issuer, o.RedirectURI = in.oidcEnabled, in.oidcIssuer, in.oidcRedirectURI
 
 	in.ldapEnabled = p.flag("LDAP_ENABLED", "LDAP_ENABLED", "false")
 	p.flag("LDAP_AUTO_PROVISION", "LDAP_AUTO_PROVISION", "false")
@@ -117,12 +119,12 @@ func loadIdentity(p *parser, c *Config, in *pending) {
 	p.bounded("LDAP_OPERATION_TIMEOUT", 5, 1, 30)
 	p.bounded("LDAP_SESSION_REVALIDATION_SECONDS", 300, 60, 3600)
 	c.Features.TOTP = p.flag("TOTP_ENABLED", "TOTP_ENABLED", "true")
-	for _, name := range []string{
-		"OIDC_MFA_AMR_VALUES", "OIDC_MFA_ACR_VALUES",
-		"OIDC_PHISHING_RESISTANT_AMR_VALUES", "OIDC_PHISHING_RESISTANT_ACR_VALUES",
-		"OIDC_STEP_UP_ACR_VALUES",
+	for name, dst := range map[string]*[]string{
+		"OIDC_MFA_AMR_VALUES": &o.MFAAMR, "OIDC_MFA_ACR_VALUES": &o.MFAACR,
+		"OIDC_PHISHING_RESISTANT_AMR_VALUES": &o.PhishingAMR, "OIDC_PHISHING_RESISTANT_ACR_VALUES": &o.PhishingACR,
+		"OIDC_STEP_UP_ACR_VALUES": &o.StepUpACR,
 	} {
-		p.csvSet(name, name, nil)
+		*dst = p.csvSet(name, name, nil)
 	}
 	c.StepUpMaxAge = seconds(p.bounded("STEP_UP_MAX_AGE_SECONDS", 300, 60, 900))
 }

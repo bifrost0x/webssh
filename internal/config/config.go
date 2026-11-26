@@ -56,6 +56,7 @@ type Config struct {
 	Accounts Accounts
 	Features Features
 	WebAuthn WebAuthn
+	OIDC     OIDC
 	// StepUpMaxAge is STEP_UP_MAX_AGE_SECONDS.
 	StepUpMaxAge time.Duration
 	RateLimits   RateLimits
