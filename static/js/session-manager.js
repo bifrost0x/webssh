@@ -330,8 +330,9 @@ const SessionManager = {
         platformIcon.className = 'session-platform-icon';
         const iconSession = this.sessions[sessionId];
         const iconProfile = window.ProfileManager?.profiles.find(profile => profile.id === iconSession?.profileId);
-        if (window.HostPlatform) platformIcon.append(window.HostPlatform.renderSession(iconSession, iconProfile));
+        if (window.HostPlatform) platformIcon.append(window.HostPlatform.renderSession(iconSession, iconProfile, document));
         tab.insertBefore(platformIcon, tabLabel);
+        window.HostPlatform?.markSessionTab?.(tab, iconSession, iconProfile, document);
         const sess = this.sessions[sessionId];
         if (sess?.viaSocks || sess?.socksProxyId) {
             const badge = document.createElement('span');

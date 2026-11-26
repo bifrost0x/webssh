@@ -179,25 +179,72 @@
         try { return new URL(value.includes(':') ? `http://[${value}]/` : `http://${value}/`).hostname; }
         catch { return value.toLowerCase(); }
     }
-    function renderSession(session = {}, profile, doc = document) {
-        const sameEndpoint = profile && canonicalHost(profile.host) === canonicalHost(session.host) && profile.username === session.username
+    /** Whether a saved host still describes the endpoint and route of a session. */
+    function sameEndpoint(session, profile) {
+        if (!profile || !session) return false;
+        return canonicalHost(profile.host) === canonicalHost(session.host) && profile.username === session.username
             && Number(profile.port || 22) === Number(session.port || 22)
             && (profile.socks_proxy_id || null) === (session.socksProxyId || null)
             && (profile.jump_host_id || null) === (session.jumpHostId || null);
-        const stored = sameEndpoint ? profile : {};
+    }
+    function renderSession(session = {}, profile, doc = document) {
+        const stored = sameEndpoint(session, profile) ? profile : {};
         return render({name: profile?.name || '', platform_icon: profile?.platform_icon,
             detected_platform: session.detectedPlatform || stored.detected_platform,
             detected_family: stored.detected_family, detected_os_id: stored.detected_os_id,
             detection_state: stored.detection_state, greeting_platform: stored.greeting_platform}, doc);
     }
-    function refreshSessionIcons(manager, profiles = []) {
-        if (!manager?.sessions || typeof document === 'undefined') return;
+    const TAB_SERVICES = 2;
+    /** Role and main services of a session tab, from the saved host only while it matches the endpoint. */
+    function markSessionTab(tab, session, profile, doc = document) {
+        const Identity = globalThis.HostIdentity;
+        const label = tab?.querySelector('.tab-label');
+        if (!label) return;
+        tab.querySelector('.tab-role')?.remove();
+        tab.querySelector('.tab-services')?.remove();
+        if (!Identity || !sameEndpoint(session, profile)) {
+            delete tab.dataset.role;
+            return;
+        }
+        const stored = {...profile, detected_platform: session.detectedPlatform || profile.detected_platform};
+        const role = Identity.role(stored).id;
+        tab.dataset.role = role;
+        const name = doc.createElement('span');
+        name.className = 'tab-role sr-only';
+        name.setAttribute('data-i18n', `role.${role}`);
+        name.textContent = globalThis.i18n?.t(`role.${role}`) || role;
+        tab.insertBefore(name, label);
+        const tiles = Identity.facts(stored).services.slice(0, TAB_SERVICES).map(id => {
+            const logo = renderService(id, doc);
+            // The tile carries the name; the logo inside is decoration.
+            ['title', 'role', 'aria-label'].forEach(attribute => logo.removeAttribute(attribute));
+            logo.setAttribute('aria-hidden', 'true');
+            const tile = doc.createElement('span');
+            tile.className = 'tab-service';
+            tile.setAttribute('data-service', id);
+            tile.setAttribute('role', 'img');
+            tile.setAttribute('aria-label', serviceLabels[id]);
+            tile.title = serviceLabels[id];
+            tile.append(logo);
+            return tile;
+        });
+        if (!tiles.length) return;
+        const holder = doc.createElement('span');
+        holder.className = 'tab-services';
+        holder.append(...tiles);
+        tab.insertBefore(holder, label.nextElementSibling);
+    }
+    function refreshSessionIcons(manager, profiles = [], doc = globalThis.document) {
+        if (!manager?.sessions || !doc) return;
         for (const [id, session] of Object.entries(manager.sessions)) {
-            const holder = document.getElementById(`tab-${id}`)?.querySelector('.session-platform-icon');
+            const tab = doc.getElementById(`tab-${id}`);
+            const holder = tab?.querySelector('.session-platform-icon');
             if (!holder) continue;
             const profile = profiles.find(item => item.id === session.profileId);
-            holder.replaceChildren(renderSession(session, profile));
+            holder.replaceChildren(renderSession(session, profile, doc));
+            markSessionTab(tab, session, profile, doc);
         }
     }
-    return {labels, resolve, services, serviceLabels, serviceAsset, render, renderService, renderSession, refreshSessionIcons};
+    return {labels, resolve, services, serviceLabels, serviceAsset, render, renderService, renderSession,
+        sameEndpoint, markSessionTab, refreshSessionIcons};
 });

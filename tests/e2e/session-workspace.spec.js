@@ -3807,3 +3807,154 @@ test('hidden page layouts keep the terminal size and never report a shrunk PTY s
     })).toEqual(fullSize);
     for (const size of await reportedSizes()) expect(size).toEqual(fullSize);
 });
+
+const IDENTITY_THEMES = ['glass', 'werkbank', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'];
+
+// Saved hosts with distinct roles, each with a session on its exact endpoint, and
+// one session whose user differs from its saved host.
+async function seedIdentityTabs(page) {
+    await page.evaluate(() => {
+        const base = ProfileManager.profiles[0];
+        const host = (id, name, facts) => ({...base, id, name, host: `${id}.identity.test`, username: 'ops', port: 22, group: null,
+            jump_host_id: null, socks_proxy_id: null, detection_state: 'detected', ...facts});
+        const hosts = [
+            host('pve', 'pve1', {detected_platform: 'proxmox'}),
+            host('paper', 'Paperless', {detected_platform: 'ubuntu', detected_services: ['docker', 'postgresql', 'redis', 'paperless']}),
+            host('cloud', 'Nextcloud', {detected_platform: 'debian', detected_services: ['apache', 'mariadb', 'nextcloud']}),
+            host('fw', 'opnsense', {detected_platform: 'opnsense', detected_services: ['wireguard', 'unbound']}),
+        ];
+        ProfileManager.setProfiles(hosts);
+        hosts.forEach(profile => SessionManager.createSession({session_id: `identity-${profile.id}`, host: profile.host,
+            username: 'ops', port: 22, profile_id: profile.id}));
+        SessionManager.createSession({session_id: 'identity-other', host: 'paper.identity.test', username: 'root', port: 22, profile_id: 'paper'});
+        SessionManager.switchSession('identity-paper');
+    });
+}
+
+test('workspace tabs carry the role and main services of their saved host', async ({page}) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await seedIdentityTabs(page);
+    const tab = id => page.locator(`#tab-identity-${id}`);
+    const expected = {pve: ['hypervisor', []], paper: ['docs', ['paperless', 'docker']], cloud: ['cloud', ['nextcloud', 'apache']],
+        fw: ['network', ['wireguard', 'unbound']]};
+    for (const [id, [role, services]] of Object.entries(expected)) {
+        await expect(tab(id)).toHaveAttribute('data-role', role);
+        await expect(tab(id).locator('.tab-service')).toHaveCount(services.length);
+        for (const [index, service] of services.entries()) {
+            await expect(tab(id).locator('.tab-service').nth(index)).toHaveAttribute('data-service', service);
+        }
+    }
+    await expect(tab('paper').locator('.tab-service').first()).toHaveAccessibleName('Paperless');
+    await expect(tab('paper').locator('.tab-role')).toHaveText('Documents');
+    await expect(tab('other')).not.toHaveAttribute('data-role', /.*/);
+    await expect(tab('other').locator('.tab-services, .tab-role')).toHaveCount(0);
+
+    // A new detection result updates the tab in place.
+    await page.evaluate(() => { document.getElementById('tab-identity-paper').__marker = true; });
+    await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'paper'
+        ? {...profile, detected_services: ['jellyfin', 'docker']} : profile))));
+    await expect(tab('paper')).toHaveAttribute('data-role', 'media');
+    await expect(tab('paper').locator('.tab-service')).toHaveCount(2);
+    expect(await page.evaluate(() => document.getElementById('tab-identity-paper').__marker)).toBe(true);
+
+    // Logos never widen a tab beyond its limit, and the close button stays inside it.
+    const bounds = await page.locator('.session-tab').evaluateAll(tabs => tabs.map(element => {
+        const box = element.getBoundingClientRect();
+        const close = element.querySelector('.tab-close').getBoundingClientRect();
+        return {id: element.id, width: box.width, max: parseFloat(getComputedStyle(element).maxWidth),
+            closeInside: close.right <= box.right + 0.5 && close.width > 0};
+    }));
+    for (const item of bounds) {
+        expect(item.width, item.id).toBeLessThanOrEqual(item.max + 0.5);
+        expect(item.closeInside, item.id).toBe(true);
+    }
+    await assertNoExternalRequests(page);
+});
+
+test('the role edge of a workspace tab stays visible in every theme, active or not', async ({page}) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await seedIdentityTabs(page);
+    await page.mouse.move(0, 0);
+    // Measure each theme's settled colours, not a transition from the previous one.
+    await page.addStyleTag({content: '*, *::before, *::after { transition: none !important; }'});
+    for (const theme of IDENTITY_THEMES) {
+        const results = await page.evaluate(theme => {
+            document.body.dataset.theme = theme;
+            const parse = value => {
+                const numbers = value.match(/[\d.]+/g).map(Number);
+                const srgb = value.startsWith('color(');
+                const channels = numbers.slice(0, 3).map(v => (srgb ? v * 255 : v));
+                const alpha = value.includes('/') || value.startsWith('rgba') ? numbers[3] : 1;
+                return {channels, alpha: alpha ?? 1};
+            };
+            const mix = (top, alpha, bottom) => top.map((v, i) => v * alpha + bottom[i] * (1 - alpha));
+            const luminance = channels => channels.map(v => v / 255)
+                .map(v => (v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4))
+                .reduce((sum, value, i) => sum + value * [.2126, .7152, .0722][i], 0);
+            const ratio = (a, b) => {
+                const [x, y] = [luminance(a), luminance(b)];
+                return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
+            };
+            // The first opaque background behind the tabs.
+            let holder = document.getElementById('sessionTabs');
+            let behind = parse(getComputedStyle(holder).backgroundColor);
+            while (behind.alpha < 1 && holder.parentElement) {
+                holder = holder.parentElement;
+                behind = parse(getComputedStyle(holder).backgroundColor);
+            }
+            // Every role in both tab states, measured on the active tab and an inactive one.
+            const tabs = [document.getElementById('tab-identity-paper'), document.getElementById('tab-identity-pve')];
+            const results = [];
+            for (const tab of tabs) {
+                const saved = tab.dataset.role;
+                for (const role of HostIdentity.ROLES) {
+                    tab.dataset.role = role;
+                    const style = getComputedStyle(tab);
+                    const own = parse(style.backgroundColor);
+                    const surface = mix(own.channels, own.alpha, behind.channels);
+                    const edge = parse(getComputedStyle(tab, '::after').backgroundColor);
+                    const opacity = Number(style.opacity);
+                    const shown = mix(mix(edge.channels, edge.alpha, surface), opacity, behind.channels);
+                    results.push({role, active: tab.classList.contains('active'), height: getComputedStyle(tab, '::after').height,
+                        background: style.backgroundColor, ratio: ratio(shown, mix(surface, opacity, behind.channels))});
+                }
+                tab.dataset.role = saved;
+            }
+            return results;
+        }, theme);
+        expect(results.filter(result => result.active)).toHaveLength(17);
+        expect(results.filter(result => !result.active)).toHaveLength(17);
+        for (const result of results) {
+            expect(result.height).toBe('2px');
+            expect.soft(result.ratio, `${theme} ${result.role} ${result.active ? 'active' : 'inactive'} on ${result.background}`).toBeGreaterThanOrEqual(3);
+        }
+    }
+    // The theme's own marker for the active tab is kept.
+    const active = await page.locator('#tab-identity-paper').evaluate(tab => getComputedStyle(tab).boxShadow);
+    expect(active).toMatch(/inset/);
+    await page.emulateMedia({forcedColors: 'active'});
+    const forced = await page.locator('#tab-identity-paper').evaluate(tab => {
+        const reference = document.createElement('span');
+        reference.style.color = 'CanvasText';
+        document.body.append(reference);
+        const colours = [getComputedStyle(tab, '::after').backgroundColor, getComputedStyle(reference).color];
+        reference.remove();
+        return colours;
+    });
+    expect(forced[0]).toBe(forced[1]);
+});
+
+test('workspace tabs with services fit a 360px screen', async ({page}) => {
+    await page.setViewportSize({width: 360, height: 740});
+    await login(page);
+    await seedIdentityTabs(page);
+    await expect(page.locator('#tab-identity-paper')).toHaveAttribute('data-role', 'docs');
+    const overflow = await page.evaluate(() => {
+        const tabs = [...document.querySelectorAll('.session-tab')].map(tab => tab.getBoundingClientRect().width);
+        return {page: document.documentElement.scrollWidth, tabs};
+    });
+    expect(overflow.page).toBeLessThanOrEqual(360);
+    for (const width of overflow.tabs) expect(width).toBeLessThanOrEqual(360 * 0.72 + 0.5);
+});
