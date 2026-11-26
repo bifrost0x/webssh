@@ -11,6 +11,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/accounts"
 	"github.com/bifrost0x/webssh/internal/auth"
 	"github.com/bifrost0x/webssh/internal/auth/local"
+	"github.com/bifrost0x/webssh/internal/auth/oidc"
 	"github.com/bifrost0x/webssh/internal/auth/stepup"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
 	"github.com/bifrost0x/webssh/internal/auth/webauthn"
@@ -45,6 +46,7 @@ func productionSchemas() []store.Schema {
 		legacy.RecordSchema(),
 		webauthn.Schema(),
 		terminal.Schema(),
+		oidc.Schema(),
 	}
 }
 
