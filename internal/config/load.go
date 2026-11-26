@@ -98,7 +98,7 @@ func loadIdentity(p *parser, c *Config, in *pending) {
 	p.str("OIDC_LOGIN_RATE_LIMIT", "OIDC_LOGIN_RATE_LIMIT", "10 per minute", false)
 
 	in.ldapEnabled = p.flag("LDAP_ENABLED", "LDAP_ENABLED", "false")
-	p.flag("LDAP_AUTO_PROVISION", "LDAP_AUTO_PROVISION", "false")
+	autoProvision := p.flag("LDAP_AUTO_PROVISION", "LDAP_AUTO_PROVISION", "false")
 	l := &in.ldap
 	l.providerID = p.str("LDAP_PROVIDER_ID", "LDAP_PROVIDER_ID", "default", true)
 	l.url = p.str("LDAP_URL", "LDAP_URL", "", true)
@@ -109,13 +109,14 @@ func loadIdentity(p *parser, c *Config, in *pending) {
 	l.caFile = p.str("LDAP_CA_FILE", "LDAP_CA_FILE", "/run/webssh-auth/ldap_ca.pem", true)
 	l.userFilter = p.str("LDAP_USER_FILTER", "LDAP_USER_FILTER", "", true)
 	l.uniqueID = p.str("LDAP_UNIQUE_ID_ATTRIBUTE", "LDAP_UNIQUE_ID_ATTRIBUTE", "", true)
-	p.str("LDAP_LOGIN_RATE_LIMIT", "LDAP_LOGIN_RATE_LIMIT", "5 per minute", false)
+	ldapRate := p.str("LDAP_LOGIN_RATE_LIMIT", "LDAP_LOGIN_RATE_LIMIT", "5 per minute", false)
 
 	c.Terminal.SessionTimeout = seconds(p.positive("SESSION_TIMEOUT", 1800))
 
-	p.bounded("LDAP_CONNECT_TIMEOUT", 5, 1, 15)
-	p.bounded("LDAP_OPERATION_TIMEOUT", 5, 1, 30)
-	p.bounded("LDAP_SESSION_REVALIDATION_SECONDS", 300, 60, 3600)
+	connect := p.bounded("LDAP_CONNECT_TIMEOUT", 5, 1, 15)
+	operation := p.bounded("LDAP_OPERATION_TIMEOUT", 5, 1, 30)
+	revalidation := p.bounded("LDAP_SESSION_REVALIDATION_SECONDS", 300, 60, 3600)
+	c.LDAP = l.public(in.ldapEnabled, autoProvision, ldapRate, connect, operation, revalidation)
 	c.Features.TOTP = p.flag("TOTP_ENABLED", "TOTP_ENABLED", "true")
 	for _, name := range []string{
 		"OIDC_MFA_AMR_VALUES", "OIDC_MFA_ACR_VALUES",
