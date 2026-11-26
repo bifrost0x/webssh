@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
@@ -133,7 +134,7 @@ func TestReportNamesPendingAndFailures(t *testing.T) {
 		t.Errorf("pending: %+v", st.Report.Pending)
 	}
 	if !slices.ContainsFunc(st.Report.MaterialisedSettings, func(s MaterialisedSetting) bool {
-		return s.Setting == SettingIgnoreOriginScheme && s.Value == "true"
+		return s.Setting == settings.PolicyOriginIgnoreScheme && s.Evidence == "CORS_ORIGINS=*, TRUSTED_PROXIES=0"
 	}) {
 		t.Errorf("origin setting not reported: %+v", st.Report.MaterialisedSettings)
 	}
@@ -141,9 +142,19 @@ func TestReportNamesPendingAndFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, ok, err := Setting(t.Context(), db, SettingIgnoreOriginScheme)
-	if err != nil || !ok || v != "true" {
-		t.Errorf("setting: %q %v %v", v, ok, err)
+	// The setting has one owner, internal/settings; the migration keeps
+	// no copy of its own.
+	var value, source string
+	if err := db.Read(t.Context(), func(tx *store.Tx) error {
+		return tx.QueryRowContext(t.Context(), `SELECT value, source FROM settings_app WHERE key = ?`, settings.PolicyOriginIgnoreScheme).Scan(&value, &source)
+	}); err != nil || value != "true" || source != "materialised" {
+		t.Errorf("setting: %q %q %v", value, source, err)
+	}
+	var copies int
+	if err := db.Read(t.Context(), func(tx *store.Tx) error {
+		return tx.QueryRowContext(t.Context(), `SELECT count(*) FROM sqlite_schema WHERE name LIKE 'migrate_settings%'`).Scan(&copies)
+	}); err != nil || copies != 0 {
+		t.Errorf("migrate_settings: %d %v", copies, err)
 	}
 	_ = db.Close()
 

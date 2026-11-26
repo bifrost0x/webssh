@@ -19,9 +19,10 @@ import (
 //   - migrate_keyring, the key identifier of the keyring the database's
 //     sealed records belong to (state S9), and whether the material lives
 //     in go/; an installation that never had legacy data gets its row
-//     from the composition root;
-//   - migrate_settings, settings the migration derived from the previous
-//     behaviour (D-01) that no other capability owns.
+//     from the composition root.
+//
+// Settings derived from the previous behaviour (D-01) belong to
+// internal/settings (settings.MaterialisePolicies), not to this owner.
 func RecordSchema() store.Schema {
 	return store.Schema{Owner: "migrate", Migrations: []store.Migration{{
 		Version: 1,
@@ -45,12 +46,6 @@ CREATE TABLE migrate_keyring (
 	id INTEGER PRIMARY KEY CHECK (id = 1),
 	key_id TEXT NOT NULL CHECK (key_id <> ''),
 	material_in_go INTEGER NOT NULL CHECK (material_in_go IN (0, 1))
-) STRICT;
-CREATE TABLE migrate_settings (
-	key TEXT PRIMARY KEY,
-	value TEXT NOT NULL,
-	rule TEXT NOT NULL,
-	evidence TEXT NOT NULL
 ) STRICT`,
 	}}}
 }
@@ -183,37 +178,4 @@ func StoredKeyID(ctx context.Context, db *store.DB) (string, error) {
 		return err
 	})
 	return id, err
-}
-
-// writeSetting stores one derived setting (section 6).
-func writeSetting(ctx context.Context, tx *store.Tx, s MaterialisedSetting) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO migrate_settings (key, value, rule, evidence) VALUES (?, ?, ?, ?)`,
-		s.Setting, s.Value, s.Rule, s.Evidence)
-	if err != nil {
-		return fmt.Errorf("legacy: store setting %s: %w", s.Setting, err)
-	}
-	return nil
-}
-
-// Setting returns a setting the migration derived (for example
-// SettingIgnoreOriginScheme) and whether it is stored.
-func Setting(ctx context.Context, db *store.DB, key string) (string, bool, error) {
-	var value string
-	found := false
-	err := db.Read(ctx, func(tx *store.Tx) error {
-		var has int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'migrate_settings'`).Scan(&has); err != nil || has == 0 {
-			return err
-		}
-		err := tx.QueryRowContext(ctx, `SELECT value FROM migrate_settings WHERE key = ?`, key).Scan(&value)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		found = err == nil
-		return err
-	})
-	if err != nil {
-		return "", false, fmt.Errorf("legacy: read setting %s: %w", key, err)
-	}
-	return value, found, nil
 }

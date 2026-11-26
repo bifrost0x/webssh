@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/bifrost0x/webssh/internal/keyring"
+	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
@@ -229,7 +230,7 @@ func (r *run) stage(ctx context.Context) error {
 	if r.db, err = store.Open(ctx, filepath.Join(r.staging, stagedDBName), store.Options{}); err != nil {
 		return stop("", CodeActivation, "the staging database cannot be created", err)
 	}
-	schemas := append([]store.Schema{RecordSchema()}, r.o.Registry.schemas...)
+	schemas := append([]store.Schema{RecordSchema(), settings.Schema()}, r.o.Registry.schemas...)
 	if err := r.db.ApplyAll(ctx, schemas...); err != nil {
 		return stop("", CodeActivation, "the staging database schema cannot be created", err)
 	}
@@ -266,17 +267,27 @@ func (r *run) write(ctx context.Context) error {
 	})
 }
 
+// recordSettings writes the settings derived from the previous behaviour
+// (D-01) through their owner, internal/settings, after every step has
+// written, and lists them in the report.
 func (r *run) recordSettings(ctx context.Context, tx *store.Tx) error {
-	if !r.o.Origin.KeepLegacyScheme {
-		return nil
+	mat, err := settings.MaterialisePolicies(ctx, tx, settings.Legacy{KeepLegacyScheme: r.o.Origin.KeepLegacyScheme}, r.o.now().UnixMicro())
+	if err != nil {
+		return fmt.Errorf("legacy: store derived settings: %w", err)
 	}
-	s := MaterialisedSetting{Setting: SettingIgnoreOriginScheme, Value: "true", Rule: "D-01/D-20 (K6 A1)",
-		Evidence: r.o.Origin.Evidence}
-	r.report.MaterialisedSettings = append(r.report.MaterialisedSettings, s)
-	r.report.Warnings = append(r.report.Warnings, Warning{Code: "origin_scheme_not_checked", Message: "realtime " +
-		"connections keep the Python rule that compares only host and port of the origin; configure TRUSTED_PROXIES to " +
-		"let the scheme be checked"})
-	return writeSetting(ctx, tx, s)
+	for _, m := range mat {
+		s := MaterialisedSetting{Setting: m.Setting, Value: m.Value, Rule: m.Rule, Evidence: m.Evidence}
+		if m.Setting == settings.PolicyOriginIgnoreScheme && r.o.Origin.Evidence != "" {
+			s.Evidence = r.o.Origin.Evidence
+		}
+		r.report.MaterialisedSettings = append(r.report.MaterialisedSettings, s)
+	}
+	if r.o.Origin.KeepLegacyScheme {
+		r.report.Warnings = append(r.report.Warnings, Warning{Code: "origin_scheme_not_checked", Message: "realtime " +
+			"connections keep the Python rule that compares only host and port of the origin; configure TRUSTED_PROXIES to " +
+			"let the scheme be checked"})
+	}
+	return nil
 }
 
 // recheckAndRecord is step 9 and step 10.1.

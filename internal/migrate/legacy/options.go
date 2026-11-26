@@ -25,7 +25,9 @@ type Options struct {
 	// Python configuration compared only host and port for realtime
 	// connections. The composition root evaluates it with
 	// realtime.KeepLegacySchemeRule for the configuration at hand; the
-	// migration records it as the setting SettingIgnoreOriginScheme.
+	// migration stores it through settings.MaterialisePolicies as the
+	// application setting origin.ignore_scheme; internal/settings is its
+	// only owner.
 	Origin OriginRule
 	// Now returns the current time; nil means time.Now.
 	Now func() time.Time
@@ -43,11 +45,6 @@ type OriginRule struct {
 	KeepLegacyScheme bool
 	Evidence         string
 }
-
-// SettingIgnoreOriginScheme is the derived setting that makes the
-// realtime origin check compare host and port only, as the Python release
-// did (OriginPolicy.IgnoreScheme). Its value is "true" when stored.
-const SettingIgnoreOriginScheme = "realtime.origin.ignore_scheme"
 
 func (o Options) now() time.Time {
 	if o.Now != nil {
