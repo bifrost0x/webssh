@@ -121,11 +121,13 @@
     .connection-overview:not(.overview-graph) .overview-host-entry .overview-row { min-height: 88px; padding: 16px; }
 }
 
-/* Identity under the host name: virtualization, role pill and up to three service logos. */
+/* Identity under the host name: virtualization, role pill and up to three service logos.
+   The meta row wraps below the name because midnight-ui.css lays host rows out as flex. */
 #connectionOverview .overview-host-entry .overview-row { flex-wrap: wrap; }
 .overview-row-meta { display: flex; flex: 0 0 100%; order: 1; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; padding-inline-start: 38px; box-sizing: border-box; }
 #connectionOverview .overview-host-entry .overview-row > .host-platform-icon:first-child { flex: 0 0 28px; width: 28px; height: 28px; margin: 0; }
 #connectionOverview .overview-host-entry .overview-row > .host-platform-icon.material-icons:first-child { display: grid; place-items: center; height: 28px; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--platform-ink-dark, #aeb8c5); font-size: 26px; }
+/* Outranks the theme-neutral ink above; host-platform.css cannot, the midnight rule it competes with is more specific. */
 body[data-theme="paper"] #connectionOverview .overview-host-entry .overview-row > .host-platform-icon.material-icons:first-child { color: var(--platform-ink-light, #4b5968); }
 .overview-row-virt {
     padding: 1px 6px;

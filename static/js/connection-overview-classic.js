@@ -23,8 +23,7 @@
             const jump = jumpsLoaded && profile.jump_host_id
                 ? jumps.get(profile.jump_host_id) : null;
             const proxy = socksLoaded && profile.socks_proxy_id ? socks.get(profile.socks_proxy_id) : null;
-            const identity = globalThis.HostIdentity;
-            const described = identity?.describe(profile);
+            const described = globalThis.HostIdentity?.describe(profile);
             return {
                 id: profile.id,
                 name: String(profile.name || ''),
@@ -33,7 +32,7 @@
                 platform: globalThis.HostPlatform?.resolve(profile) || {id: 'server', source: 'pending'},
                 role: described ? {id: described.role.id, source: described.role.source} : {id: 'server', source: 'pending'},
                 virt: described ? described.virt : '',
-                services: identity ? identity.facts(profile).services : [],
+                services: described ? described.facts.services : [],
                 order: Number(profile.sort_order) || 0,
                 route: profile.socks_proxy_id ? (proxy ? 'configured' : (socksLoaded ? 'unavailable' : 'loading')) : profile.jump_host_id ? (jump ? 'configured' : (jumpsLoaded ? 'unavailable' : 'loading')) : 'none',
                 jump: jump || null,
@@ -336,7 +335,7 @@
             if (host.virt) meta.append(node('span', 'overview-row-virt', host.virt));
             if (win.HostIdentity) {
                 const pill = node('span', 'overview-role host-role-pill');
-                pill.append(icon(win.HostIdentity.ROLE_GLYPHS[host.role.id] || 'dns'), node('span', '', t(`role.${host.role.id}`, host.role.id)));
+                pill.append(icon(win.HostIdentity.ROLE_GLYPHS[host.role.id] || 'dns'), node('span', '', t(`role.${host.role.id}`)));
                 meta.append(pill);
             }
             const tiles = win.HostPlatform?.serviceTiles?.(host.services.slice(0, VISIBLE_SERVICES), 'shell-host-service', doc) || [];
@@ -545,7 +544,6 @@
                     items.forEach(host => {
                         const item = button(host.name, () => launch(host.id), 'shell-host');
                         item.dataset.overviewKey = `host:${host.id}`;
-                        item.dataset.role = host.role.id;
                         item.append(win.HostPlatform?.render(host.platform, doc) || icon('dns'), node('span', 'shell-host-name', host.name));
                         section.append(item);
                     });
