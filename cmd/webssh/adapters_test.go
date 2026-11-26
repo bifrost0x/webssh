@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json/jsontext"
+	"slices"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/config"
@@ -38,7 +39,7 @@ func TestSettingsEnvironmentDefaults(t *testing.T) {
 
 func TestPreviewNotice(t *testing.T) {
 	signIn := previewNotice(true)
-	if !signIn.Enabled || len(signIn.Unavailable) != 3 || signIn.Unavailable[0] != "ldap" {
+	if !signIn.Enabled || len(signIn.Unavailable) != 2 || slices.Contains(signIn.Unavailable, "ldap") {
 		t.Errorf("sign-in notice %+v", signIn)
 	}
 	work := previewNotice(false)

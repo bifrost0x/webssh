@@ -69,7 +69,7 @@ func (s *system) buildCapabilities(in bootInput) error {
 	}
 	s.stepup = &stepup.Service{DB: s.db, Ring: s.ring, Sessions: sessionAssurance{s.sessions}, Accounts: mfaAccounts{s.accounts},
 		Gates: gates, Passwords: passwordCheck{s.local, s.accounts}, TOTP: s.totp, Passkeys: opt.passkeys,
-		Targets: targets, RecentWindow: cfg.StepUpMaxAge, Audit: authAudit, Logger: s.log}
+		LDAP: opt.ldapStepUp, Targets: targets, RecentWindow: cfg.StepUpMaxAge, Audit: authAudit, Logger: s.log}
 
 	factors := []auth.Factor{totp.Factor{Service: s.totp}, recoveryFactor{s.db}}
 	if opt.passkeyFactor != nil {

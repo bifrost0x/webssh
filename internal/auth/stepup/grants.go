@@ -208,7 +208,7 @@ func (s *Service) allowed(ctx context.Context, p principal.Principal, in intent,
 // Proof is the user's answer to a step-up prompt.
 type Proof struct {
 	Method string
-	// Secret is the password or the TOTP code.
+	// Secret is the password, the directory password or the TOTP code.
 	Secret string
 	// Credential is the serialized passkey assertion.
 	Credential jsontext.Value
@@ -272,6 +272,15 @@ func (s *Service) verify(ctx context.Context, p principal.Principal, in intent, 
 	switch proof.Method {
 	case MethodPassword:
 		ok, err := s.Passwords.VerifyPassword(ctx, p.UserID, proof.Secret)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return rejected()
+		}
+		return nil
+	case MethodLDAP:
+		ok, err := s.LDAP.VerifyStepUp(ctx, p.UserID, proof.Secret)
 		if err != nil {
 			return err
 		}

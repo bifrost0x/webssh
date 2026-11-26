@@ -52,11 +52,20 @@ func (s *accountsStep) Read(ctx context.Context, src *Source) error {
 	if err != nil {
 		return err
 	}
+	fences, err := readLDAPFences(ctx, src, ids)
+	if err != nil {
+		return err
+	}
 	s.missingColumns = src.Schema().MissingUserColumns()
 	for _, r := range rows {
 		a, err := convertAccount(r, managed[r.ID])
 		if err != nil {
 			return &StepError{UserID: r.ID, Err: err}
+		}
+		if slices.Contains(fences.fenced, r.ID) {
+			// An LDAP revocation fence (E37): every credential issued
+			// before the interrupted invalidation ends.
+			a.acc.AuthGeneration++
 		}
 		s.accounts = append(s.accounts, a)
 	}

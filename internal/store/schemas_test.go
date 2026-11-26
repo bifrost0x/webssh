@@ -10,6 +10,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/accounts"
 	"github.com/bifrost0x/webssh/internal/auth"
+	"github.com/bifrost0x/webssh/internal/auth/ldap"
 	"github.com/bifrost0x/webssh/internal/auth/local"
 	"github.com/bifrost0x/webssh/internal/auth/stepup"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
@@ -47,6 +48,7 @@ func productionSchemas() []store.Schema {
 		webauthn.Schema(),
 		terminal.Schema(),
 		jobs.Schema(),
+		ldap.Schema(),
 	}
 }
 

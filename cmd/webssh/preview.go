@@ -12,12 +12,12 @@ var (
 		"files", "smb", "automation", "credentials", "discovery", "commands",
 		"herdr", "gateway", "tailscale", "serverOps",
 	}
-	previewSignInAreas = []string{"ldap", "oidc", "github"}
+	previewSignInAreas = []string{"oidc", "github"}
 )
 
 const (
 	previewWorkspaceMessage = "Preview: some areas are not available yet."
-	previewSignInMessage    = "Preview: directory and provider accounts (LDAP, OIDC, GitHub) cannot sign in yet."
+	previewSignInMessage    = "Preview: provider accounts (OIDC, GitHub) cannot sign in yet."
 )
 
 // previewNotice describes the preview for a page; signIn selects the

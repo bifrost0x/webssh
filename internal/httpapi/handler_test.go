@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/fault"
@@ -285,5 +286,24 @@ func TestWriteFaultHidesCause(t *testing.T) {
 	writeFault(w, r, e.h.log, &fault.Error{Code: fault.RateLimited, RetryAfter: 1500_000_000})
 	if w.Header().Get("Retry-After") != "2" {
 		t.Fatalf("Retry-After %q", w.Header().Get("Retry-After"))
+	}
+}
+
+// A directory check of another request answers every request of the
+// account with 503 ldap_validation_in_progress and Retry-After, pages
+// included, as the Python before-request check did.
+func TestSessionLookupWhileTheDirectoryChecks(t *testing.T) {
+	e := newEdge(t)
+	e.h.Mux().HandleFunc("GET /settings", echo)
+	inProgress := fault.New(fault.LDAPValidationInProgress, "Directory session validation is in progress")
+	inProgress.RetryAfter = time.Second
+	e.sessions.err = inProgress
+	w := e.do(req{target: "/settings", token: "tok-alice"})
+	if w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") != "1" ||
+		!strings.Contains(w.Body.String(), `"code":"ldap_validation_in_progress"`) {
+		t.Fatalf("%d %v %s", w.Code, w.Header(), w.Body)
+	}
+	if strings.Contains(w.Header().Get("Set-Cookie"), "session=;") {
+		t.Fatal("the session cookie must stay: the check only runs elsewhere")
 	}
 }

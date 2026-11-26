@@ -21,7 +21,7 @@ func (s *system) buildEdges(in bootInput) error {
 	var err error
 	if s.realtime, err = realtime.NewServer(realtimeConfig(s), realtime.Deps{
 		Origin:   s.originPolicy(),
-		Sessions: s.sessions, Revocations: s.sessions,
+		Sessions: s.gatedSessions(), Revocations: s.sessions,
 		Limiter: auth.Realtime{L: realtimeLimiter(cfg)}, Auditor: s.audit, Log: s.log,
 	}); err != nil {
 		return fmt.Errorf("realtime endpoint: %w", err)
@@ -50,7 +50,7 @@ func (s *system) buildEdges(in bootInput) error {
 		provider: settings.PageProvider{Settings: s.settings, Scope: s.ring}, gates: s.gates, flow: s.flow,
 		inv: s.hosts, sessions: s.sessions, tmux: true, log: s.log, now: time.Now}
 	s.edge, err = httpapi.New(httpapi.Options{
-		Config: cfg, Sessions: s.sessions, MAC: s.ring, Assets: assets, Renderer: renderer,
+		Config: cfg, Sessions: s.gatedSessions(), MAC: s.ring, Assets: assets, Renderer: renderer,
 		ErrorPageData: s.pages.errorData,
 		Readiness: httpapi.Readiness{Maintenance: s.maintenance.Load, Stopping: in.stopping,
 			Database: dbPinger{s.db}, DataDir: cfg.DataDir},

@@ -54,11 +54,11 @@ var variables = map[string]usage{
 	"OIDC_MFA_ACR_VALUES": inert, "OIDC_PHISHING_RESISTANT_AMR_VALUES": inert,
 	"OIDC_PHISHING_RESISTANT_ACR_VALUES": inert, "OIDC_STEP_UP_ACR_VALUES": inert,
 	"STEP_UP_MAX_AGE_SECONDS": used,
-	"LDAP_ENABLED":            inert, "LDAP_AUTO_PROVISION": inert, "LDAP_PROVIDER_ID": inert, "LDAP_URL": inert,
-	"LDAP_BACKUP_URL": inert, "LDAP_BASE_DN": inert, "LDAP_BIND_DN": inert,
-	"LDAP_BIND_PASSWORD_FILE": inert, "LDAP_CA_FILE": inert, "LDAP_USER_FILTER": inert,
-	"LDAP_UNIQUE_ID_ATTRIBUTE": inert, "LDAP_LOGIN_RATE_LIMIT": inert, "LDAP_CONNECT_TIMEOUT": inert,
-	"LDAP_OPERATION_TIMEOUT": inert, "LDAP_SESSION_REVALIDATION_SECONDS": inert,
+	"LDAP_ENABLED":            used, "LDAP_AUTO_PROVISION": used, "LDAP_PROVIDER_ID": used, "LDAP_URL": used,
+	"LDAP_BACKUP_URL": used, "LDAP_BASE_DN": used, "LDAP_BIND_DN": used,
+	"LDAP_BIND_PASSWORD_FILE": used, "LDAP_CA_FILE": used, "LDAP_USER_FILTER": used,
+	"LDAP_UNIQUE_ID_ATTRIBUTE": used, "LDAP_LOGIN_RATE_LIMIT": used, "LDAP_CONNECT_TIMEOUT": used,
+	"LDAP_OPERATION_TIMEOUT": used, "LDAP_SESSION_REVALIDATION_SECONDS": used,
 	// No TLS client in this preview; mark used once OIDC or GitHub sign-in
 	// calls CABundle.CertPool.
 	"REQUESTS_CA_BUNDLE": inert, "CURL_CA_BUNDLE": inert,
