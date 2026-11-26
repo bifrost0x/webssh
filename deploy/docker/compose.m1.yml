@@ -8,9 +8,32 @@
 #
 # The host port defaults to 5001 (WEBSSH_GO_PORT is read by Compose only),
 # so a Python instance can keep 5000; inside the container WebSSH listens
-# on 5000. The data volumes are separate from the Python volumes
-# (webssh_data, webssh_recovery). To try existing data, copy the Python
-# volume into webssh_go_data first; the preview writes to its volume.
+# on 5000. The volumes have fixed names, webssh_go_data and
+# webssh_go_recovery, separate from the Python volumes.
+#
+# Trying existing data: the preview writes to its volume, so it gets a copy.
+# Stop the Python container first (an open database journal or lock stops
+# the migration), find its data volume with "docker volume ls" (with
+# docker-compose.yml it is <project>_webssh_data, for example
+# webssh_webssh_data) and copy it into a fresh webssh_go_data before the
+# first start of the preview. The source is mounted read-only; Docker seeds
+# the new volume from the image, so it belongs to 1000:1000:
+#   docker stop webssh
+#   docker run --rm --entrypoint /bin/sh \
+#     -v <python-volume>:/from:ro -v webssh_go_data:/app/data \
+#     webssh-go:m1-debug -c 'cp -a /from/. /app/data/'
+#   docker start webssh
+#
+# Client addresses: with rootless Docker and the default port driver of
+# rootlesskit ("builtin") WebSSH sees one internal address for every
+# client. All LAN clients then share the per-address sign-in limits and the
+# audit log shows that one address. The slirp4netns port driver or rootful
+# Docker keep the real address.
+#
+# Compose files written for the Python image that override the health
+# check with a python command ("CMD-SHELL ... python -c ...") stay unhealthy
+# with this image, which has neither a shell nor Python. Remove the
+# override; the image runs "/app/webssh healthcheck" itself.
 #
 # Passkeys and secure cookies need HTTPS. Over http://<LAN-IP> passkeys do
 # not work (over http://localhost they do). For HTTPS in the LAN add the
@@ -67,5 +90,9 @@ services:
     # shell; no override is needed.
 
 volumes:
+  # Fixed names, so the copy recipe above and "docker volume" commands find
+  # them whatever the Compose project is called.
   webssh_go_data:
+    name: webssh_go_data
   webssh_go_recovery:
+    name: webssh_go_recovery

@@ -1,8 +1,10 @@
 # Reverse proxy for the WebSSH Go preview (compose.m1.tls.yml).
 {
-	# No admin API, no HTTP listener on port 80, no attempt to install the
-	# internal CA into the trust store of the container.
+	# No admin API, no saved configuration, no HTTP listener on port 80, no
+	# attempt to install the internal CA into the trust store of the
+	# container.
 	admin off
+	persist_config off
 	auto_https disable_redirects
 	skip_install_trust
 	http_port 5480

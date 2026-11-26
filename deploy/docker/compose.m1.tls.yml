@@ -15,6 +15,12 @@
 # Passkeys migrated from the Python instance work only under the relying
 # party ID they were registered with; use the same name as there.
 #
+# Client addresses: with rootless Docker and the default port driver of
+# rootlesskit ("builtin") Caddy sees one internal address for every client,
+# so all LAN clients share the per-address sign-in limits and the audit log
+# shows that one address. The slirp4netns port driver or rootful Docker keep
+# the real address.
+#
 # Compose profiles cannot change the settings of another service, so the
 # HTTPS variant is this overlay. It removes the plain HTTP port: with
 # TRUSTED_PROXIES=1 a client that reaches WebSSH directly could choose its
@@ -37,6 +43,10 @@ services:
   caddy:
     image: caddy:2.11.9@sha256:4851e54a46b206517c574821bb5cc67f170d2156041e9fbc4c9193b45e84a75b
     container_name: webssh-go-caddy
+    # Not root: the image's /data/caddy is world-writable with the sticky
+    # bit, which is all Caddy needs once it stops saving its configuration
+    # (persist_config off in Caddyfile.m1). A new volume is seeded from it.
+    user: "10001:10001"
     restart: unless-stopped
     depends_on:
       - webssh-go
@@ -49,7 +59,6 @@ services:
       # Keeps the internal CA, so clients trust the certificate after a
       # restart too.
       - webssh_go_caddy_data:/data
-      - webssh_go_caddy_config:/config
     read_only: true
     cap_drop:
       - ALL
@@ -73,4 +82,3 @@ networks:
 
 volumes:
   webssh_go_caddy_data:
-  webssh_go_caddy_config:

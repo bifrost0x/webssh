@@ -25,8 +25,9 @@ ARG TARGETOS=linux
 ARG TARGETARCH
 ARG VERSION=3.4.0-m1
 ARG VCS_REF=unknown
-# The frontend assets are embedded from internal/httpapi/webassets (ignored
-# by Git) once the HTTP server is wired; copying them is harmless before.
+# The frontend assets are copied from static/ to internal/httpapi/webassets
+# (a build output, ignored by Git and by the build context). The HTTP server
+# embeds that directory once it is wired; until then the copy is unused.
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     mkdir -p internal/httpapi/webassets \
     && cp -a static/. internal/httpapi/webassets/ \
@@ -55,10 +56,12 @@ RUN apk upgrade --no-cache ca-certificates-bundle \
 FROM busybox:1.37-musl@sha256:f6a95d611e0a8780fabdb2aec43e31275b2720dfefa3e41b16835bfc42454478 AS busybox
 
 FROM scratch AS runtime
+ARG VERSION=3.4.0-m1
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.source=https://github.com/bifrost0x/webssh \
-      org.opencontainers.image.description="Web SSH Terminal - A modern web-based SSH client with SFTP file manager" \
+      org.opencontainers.image.description="WebSSH Go server, preview build: sign-in, hosts and SSH terminal in the browser" \
       org.opencontainers.image.licenses=Apache-2.0 \
+      org.opencontainers.image.version=$VERSION \
       org.opencontainers.image.revision=$VCS_REF
 COPY --from=rootfs /rootfs/ /
 # Root-owned and not writable by the service, so a compromised process
