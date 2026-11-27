@@ -153,6 +153,10 @@ type Features struct {
 	Tmux              Switch
 	TmuxDefault       Switch
 	TmuxSessionPrefix string
+	// AutomationInsecureLoopback is AUTOMATION_ALLOW_INSECURE_LOOPBACK:
+	// with DEBUG and the homelab profile, automation accepts plain HTTP
+	// from a direct loopback request without proxy headers.
+	AutomationInsecureLoopback bool
 }
 
 // WebAuthn is the relying party configuration.

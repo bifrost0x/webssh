@@ -4,18 +4,18 @@ package httpapi
 // AU1 moves each route it builds from automationPreview to automationBuilt with its
 // access level; no other package edits this file.
 
-var automationBuilt = []route{}
-
-var automationPreview = []string{
-	"POST /api/automation/preview",
-	"POST /api/automation/runbooks",
-	"DELETE /api/automation/runbooks/{book_id}",
-	"GET /api/automation/runs",
-	"DELETE /api/automation/runs/{run_id}",
-	"POST /api/automation/runs/{run_id}/cancel",
-	"GET /api/automation/runs/{run_id}/export",
-	"POST /api/automation/runs/clear",
-	"POST /api/automation/start",
-	"GET /api/automation/state",
-	"GET /automation",
+var automationBuilt = []route{
+	{"GET /automation", AccessUser},
+	{"GET /api/automation/state", AccessUser},
+	{"POST /api/automation/runbooks", AccessUser},
+	{"DELETE /api/automation/runbooks/{book_id}", AccessUser},
+	{"POST /api/automation/preview", AccessUser},
+	{"POST /api/automation/start", AccessUser},
+	{"GET /api/automation/runs", AccessUser},
+	{"POST /api/automation/runs/{run_id}/cancel", AccessUser},
+	{"DELETE /api/automation/runs/{run_id}", AccessUser},
+	{"POST /api/automation/runs/clear", AccessUser},
+	{"GET /api/automation/runs/{run_id}/export", AccessUser},
 }
+
+var automationPreview = []string{}

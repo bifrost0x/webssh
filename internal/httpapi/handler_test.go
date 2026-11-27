@@ -63,8 +63,8 @@ func TestPreviewRouteLetsNothingThrough(t *testing.T) {
 	if e.sessions.calls.Load() != 0 || body.n != 0 {
 		t.Fatalf("session lookups %d, body bytes read %d; want none", e.sessions.calls.Load(), body.n)
 	}
-	// A page route of the preview answers in plain text.
-	w = e.do(req{target: "/automation"})
+	// A page route without a handler answers in plain text.
+	w = e.do(req{target: "/automation", token: "tok-alice"})
 	if w.Code != http.StatusNotImplemented || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
 		t.Fatalf("/automation: %d %q", w.Code, w.Header().Get("Content-Type"))
 	}
