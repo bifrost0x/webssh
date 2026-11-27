@@ -38,6 +38,7 @@ WIKI_PAGE_NAMES = {
     "Install-on-Unraid.md",
     "Production-Deployment.md",
     "Reverse-Proxy-and-Subfolder-Deployment.md",
+    "Upgrading-to-3.4.md",
     "Upgrading-Rollback-and-FAQ.md",
     "Users-and-Account-Management.md",
     "Authentication-Overview.md",
@@ -408,11 +409,18 @@ def test_recovery_codes_are_not_documented_as_generic_password_bypass():
 
 
 def test_current_runtime_and_proxy_contracts_are_documented():
-    """The operator guide covers native threading and all supported proxies."""
+    """The operator guide covers the single-process runtime and all supported proxies."""
     architecture = wiki_text("Architecture-and-Runtime-Lifecycle.md")
     proxy = wiki_text("Reverse-Proxy-and-Subfolder-Deployment.md")
-    for phrase in ("gthread", "exactly one", "threading", "HTTP reserve"):
+    for phrase in (
+        "exactly one WebSSH server",
+        "go/webssh.lock",
+        "MAX_SOCKET_CONNECTIONS",
+        "RUNTIME_SHUTDOWN_GRACE_SECONDS",
+        "<root>/ws",
+    ):
         assert phrase.lower() in architecture.lower()
+    assert "/ws" in proxy and "Origin" in proxy and "TRUSTED_PROXY_CIDRS" in proxy
     for proxy_name in ("Nginx", "Traefik", "Caddy", "Apache"):
         assert proxy_name in proxy
 
@@ -608,7 +616,8 @@ def test_readme_keeps_current_session_diagnostics_public():
     assert "Session-aware Files, Commands, Diagnostics, and Notes contexts" in readme
 
 
-def test_docker_exec_cli_examples_load_the_persisted_secret():
+def test_docker_exec_cli_examples_use_the_program_of_the_image():
+    """The image has no shell; exec examples call /app/webssh, which loads the persisted secret."""
     wiki = ROOT / 'docs' / 'wiki'
     documentation = '\n'.join(
         (wiki / name).read_text(encoding='utf-8')
@@ -618,14 +627,12 @@ def test_docker_exec_cli_examples_load_the_persisted_secret():
             'Users-and-Account-Management.md',
         )
     )
-    commands = re.findall(
-        r'docker compose(?:(?!```)[\s\S])*?exec webssh'
-        r'(?:(?!```)[\s\S])*?flask [^\n]+',
-        documentation,
-    )
+    blocks = re.findall(r'```bash\n(.*?)```', documentation, re.DOTALL)
+    commands = [block for block in blocks if 'exec webssh' in block]
 
     assert commands
-    assert all('/app/entrypoint.sh flask ' in command for command in commands)
+    assert all('/app/webssh ' in command for command in commands)
+    assert not any('flask' in command for command in commands)
 
 
 def test_production_compose_override_documents_its_minimum_version():
@@ -703,10 +710,16 @@ def test_quick_start_docker_run_matches_the_homelab_compose_file():
 
 def test_development_start_instructions_are_consistent_and_name_the_terminal_limit():
     """Both start guides use development defaults; start.py needs a terminal."""
-    for name in ('Development-and-Testing.md', 'Installation-from-Source.md'):
+    for name, start in (
+        ('Development-and-Testing.md', 'start.py'),
+        ('Installation-from-Source.md', 'webssh serve'),
+    ):
         page = (WIKI / name).read_text(encoding='utf-8')
         blocks = re.findall(r'```(?:bash|powershell)\n(.*?)```', page, re.DOTALL)
-        starts = [block for block in blocks if 'start.py' in block]
+        starts = [
+            block for block in blocks
+            if start in block and 'DEPLOYMENT_PROFILE=production' not in block
+        ]
         assert starts, name
         for block in starts:
             assert re.search(r"DEBUG ?= ?'?True", block), (name, block)
