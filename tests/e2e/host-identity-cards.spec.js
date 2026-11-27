@@ -19,7 +19,11 @@ async function openOverview(page, width = 1440) {
 }
 
 // Replaces the identity facts of the first hosts; every other host keeps none.
+// The new list makes the overview reload its readiness (coalesced, 400 ms)
+// and render the cards again; the seed waits for that render, so a test
+// never reads or marks a card that is about to be replaced.
 async function seed(page, patches) {
+    const readiness = page.waitForResponse('**/api/overview/status');
     await page.evaluate(([patches, fields]) => {
         const now = Math.floor(Date.now() / 1000);
         const base = ProfileManager.profiles[0];
@@ -29,6 +33,8 @@ async function seed(page, patches) {
             ...Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, value === 'NOW' ? now : value])),
         })));
     }, [patches, IDENTITY]);
+    await readiness;
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
 const PROXMOX = {detected_platform: 'proxmox', detected_os_version: '8.2', detected_virt: 'bare-metal', detected_guests: 7,
@@ -74,9 +80,11 @@ test('host cards show the role, machine, system and service logos of each host',
     await expect(plain.locator('.od-host-profile > summary')).toHaveAttribute('aria-label', 'Host profile: identity-2');
     await expect(plain.locator('.od-host-profile > summary')).toHaveText('Host profile');
     // Cards keep their own height: opening one profile leaves its row neighbours alone.
+    // The layout position is read without transforms: the opened card keeps
+    // focus and lifts by its hover and focus accent (translateY(-2px)).
     const rows = () => page.evaluate(() => ['identity-0', 'identity-1'].map(id => {
-        const rect = document.querySelector(`#overviewHostList .od-host[data-host-id="${id}"]`).getBoundingClientRect();
-        return {top: Math.round(rect.top), height: rect.height};
+        const element = document.querySelector(`#overviewHostList .od-host[data-host-id="${id}"]`);
+        return {top: element.offsetTop, height: element.getBoundingClientRect().height};
     }));
     const [, before] = await rows();
     await proxmox.locator('.od-host-profile > summary').click();
@@ -337,14 +345,20 @@ test('the role tint leaves the live border and the hover and focus accents visib
     await seed(page, [PAPERLESS, PAPERLESS]);
     const [first, second] = [card(page, 0), card(page, 1)];
     await expect(first).toHaveAttribute('data-role', 'docs');
-    const border = item => item.evaluate(element => getComputedStyle(element).borderTopColor);
+    // The border colour is read once its transition has ended; a card the
+    // overview re-rendered in between is read again.
+    const border = item => item.evaluate(async element => {
+        await Promise.allSettled(element.getAnimations().map(animation => animation.finished));
+        return element.isConnected ? getComputedStyle(element).borderTopColor : '';
+    });
     await page.mouse.move(0, 0);
-    const rest = await border(first);
-    expect(await border(second)).toBe(rest);
+    let rest = '';
+    await expect.poll(async () => (rest = await border(first))).not.toBe('');
+    await expect.poll(() => border(second)).toBe(rest);
 
     await second.evaluate(element => { element.dataset.state = 'live'; });
     await expect.poll(() => border(second), {message: 'live card'}).not.toBe(rest);
-    expect(await border(first), 'idle card').toBe(rest);
+    await expect.poll(() => border(first), {message: 'idle card'}).toBe(rest);
     await second.evaluate(element => { element.dataset.state = 'ready'; });
 
     await first.hover();
