@@ -327,3 +327,27 @@ func TestInspectGoArchive(t *testing.T) {
 		t.Fatalf("%+v, %v", s, err)
 	}
 }
+
+// RS4-04: the check of an archive works in Installation.Work, so an
+// archive in a read-only directory restores and nothing is left beside
+// it.
+func TestRestoreFromAReadOnlyDirectory(t *testing.T) {
+	t.Parallel()
+	in := installation(t, testSecret, "live")
+	in.Work = t.TempDir()
+	archive, _, _ := foreignArchive(t, testSecret, "restored", ReasonPurge)
+	dir := filepath.Dir(archive)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	if _, err := Inspect(t.Context(), in, archive); err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	if _, err := Stage(t.Context(), in, StageRequest{OperationID: "ro", Archive: archive}); err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if entries, _ := os.ReadDir(in.Work); len(entries) != 0 {
+		t.Fatalf("left in the work directory: %v", entries)
+	}
+}

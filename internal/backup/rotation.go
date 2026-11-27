@@ -129,21 +129,11 @@ func RotateSecret(ctx context.Context, r RotateRequest) (Rotated, error) {
 		return Rotated{}, err
 	}
 	r.point(PointPending)
-	counts := map[string]int{}
+	var counts map[string]int
 	err = r.DB.Write(ctx, func(tx *store.Tx) error {
-		for _, s := range r.Steps {
-			n, err := s.Run(ctx, tx, rt)
-			if err != nil {
-				return fmt.Errorf("%s: %w", s.Name, err)
-			}
-			counts[s.Name] = n
-		}
-		left, err := sealedUnder(ctx, tx, rt.OldHeader())
-		if err != nil {
+		var err error
+		if counts, err = resealTx(ctx, tx, rt, r.Steps); err != nil {
 			return err
-		}
-		if left != "" {
-			return fmt.Errorf("%w (%s)", ErrRotationLeftover, left)
 		}
 		r.point(PointResealed)
 		return r.WriteKeyID(ctx, tx, to.KeyID())
@@ -158,6 +148,27 @@ func RotateSecret(ctx context.Context, r RotateRequest) (Rotated, error) {
 	}
 	r.point(PointDone)
 	return Rotated{KeyID: to.KeyID(), Counts: counts}, nil
+}
+
+// resealTx runs every step in tx and checks that no value sealed under
+// the old key remains. It returns how many records each step handled.
+func resealTx(ctx context.Context, tx *store.Tx, rt *keyring.Rotation, steps []RotationStep) (map[string]int, error) {
+	counts := map[string]int{}
+	for _, s := range steps {
+		n, err := s.Run(ctx, tx, rt)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", s.Name, err)
+		}
+		counts[s.Name] = n
+	}
+	left, err := sealedUnder(ctx, tx, rt.OldHeader())
+	if err != nil {
+		return nil, err
+	}
+	if left != "" {
+		return nil, fmt.Errorf("%w (%s)", ErrRotationLeftover, left)
+	}
+	return counts, nil
 }
 
 // finishRotation installs the committed secret and removes the pending

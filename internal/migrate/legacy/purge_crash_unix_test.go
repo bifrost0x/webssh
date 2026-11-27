@@ -3,6 +3,8 @@ package legacy
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/keyring"
@@ -15,13 +17,30 @@ import (
 // one copy (I-25).
 func TestCrashDuringPurge(t *testing.T) {
 	t.Parallel()
-	for _, point := range []string{PointPurgeStarted, PointPurgeRemoved, PointPurgeRecorded, PointPurgeMaterial} {
+	// RS4-07: besides the first, the crash also hits the second and the
+	// last removed file.
+	removed := 0
+	o := migratedForPurge(t)
+	o.checkpoint = func(p string) {
+		if p == PointPurgeRemoved {
+			removed++
+		}
+	}
+	if _, err := Purge(t.Context(), PurgeOptions{Options: o, SkipBackup: true}); err != nil {
+		t.Fatal(err)
+	}
+	if removed < 3 {
+		t.Fatalf("the purge removed %d files; the test needs at least 3", removed)
+	}
+	points := []string{PointPurgeStarted, PointPurgeRemoved, PointPurgeRemoved + "#2",
+		PointPurgeRemoved + "#" + strconv.Itoa(removed), PointPurgeRecorded, PointPurgeMaterial}
+	for _, point := range points {
 		t.Run(point, func(t *testing.T) {
 			t.Parallel()
 			o := migratedForPurge(t)
 			crashAt(t, "purge", point, o)
 			ev := evaluateOnly(t, o)
-			switch point {
+			switch base, _, _ := strings.Cut(point, "#"); base {
 			case PointPurgeStarted, PointPurgeRemoved:
 				if ev.state != S10 {
 					t.Fatalf("state %s, want S10", ev.state)

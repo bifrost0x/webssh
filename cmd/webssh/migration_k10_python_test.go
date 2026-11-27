@@ -243,3 +243,43 @@ func addHostIdentity(t *testing.T, dataDir string) {
 		t.Fatal(err)
 	}
 }
+
+// RS4-08, the way back of spec 8.3 with the Python release itself: after
+// the Go migration of each golden DATA_DIR and a second Go start, the
+// Python release on the same DATA_DIR shows the same settings and saved
+// hosts and opens the same SSH keys and TOTP secrets as on an untouched
+// copy.
+func TestBuildWayBackToPython(t *testing.T) {
+	python := pythonBinary(t)
+	for _, fx := range k10Fixtures {
+		t.Run(fx.name, func(t *testing.T) {
+			dir := extractGolden(t, fx.archive)
+			pristine := extractGolden(t, fx.archive)
+			_, lookup := k10Env(t, dir)
+			log := slog.New(slog.DiscardHandler)
+			cfg, err := bootstrapConfig(lookup, log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range 2 {
+				st, err := startMigration(t.Context(), cfg, lookup, log)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := st.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			secret := goldenSecret(t)
+			got, want := runPython(t, python, pythonSecrets, dir, secret), runPython(t, python, pythonSecrets, pristine, secret)
+			if got != want {
+				t.Fatalf("the Python release reads other data after the migration:\n got %s\nwant %s", got, want)
+			}
+			_, compared, ok := strings.Cut(got, "--secrets--")
+			if !ok || strings.Count(compared, ": \"") == 0 {
+				t.Fatal("no secrets compared")
+			}
+			t.Logf("%d secrets compared", strings.Count(compared, ": \""))
+		})
+	}
+}

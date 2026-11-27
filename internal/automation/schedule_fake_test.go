@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"encoding/json/jsontext"
+	"errors"
 	"slices"
 	"sync"
 	"testing"
@@ -166,9 +167,12 @@ func (f *fakePasswords) ScheduleBinding(_ context.Context, _ int64, hops []jsont
 	return jsontext.Value(out + `}`), nil
 }
 
-func (f *fakePasswords) SchedulePassword(ctx context.Context, userID int64, hop jsontext.Value) ([]byte, error) {
+func (f *fakePasswords) SchedulePassword(ctx context.Context, userID int64, hop, approved jsontext.Value) ([]byte, error) {
 	if _, err := f.ScheduleBinding(ctx, userID, []jsontext.Value{hop}); err != nil {
 		return nil, err
+	}
+	if len(approved) == 0 {
+		return nil, errors.New("no approved binding")
 	}
 	return []byte("secret"), nil
 }

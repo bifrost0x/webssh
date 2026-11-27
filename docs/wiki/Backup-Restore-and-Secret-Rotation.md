@@ -80,13 +80,23 @@ bootstrap codes and known-device cookies end, and schedules need a new
 approval. The restore state is kept in `DATA_DIR/go/restore-status.json`,
 so an interrupted restore is completed or rolled back at the next start.
 While a failed rollback is unresolved, `/ready` and the sign-in page answer
-503 until `webssh backup restore` succeeds.
+503 until `webssh backup restore` succeeds. That command keeps the files of
+the failed restore (the previous and the restored database) as
+`DATA_DIR/go/failed-restore-<id>/` and names them; remove them once they are
+no longer needed. `rotate-secret-key` is refused until then.
 
 ### SECRET_KEY on restore
 
 - When WebSSH manages the key in `DATA_DIR/secret_key`, restoring a 3.4
   archive installs the archive's key together with its database, so an
   archive from another host works. The previous key is kept for rollback.
+- While the 3.3 data of a migrated installation still exists (before
+  `webssh legacy purge`), `DATA_DIR/secret_key` belongs to that data and is
+  never changed. An archive made with another key is then sealed again
+  under the active key and key material while it is staged, with the same
+  steps as `rotate-secret-key`. SSH keys, saved passwords, second factors
+  and the GitHub client secret open as before, and 3.3 still starts on its
+  own data. An interrupted restore changes nothing.
 - When `SECRET_KEY` is set in the environment and differs from the key in
   the archive, the restore is refused before anything changes. Restore with
   the `SECRET_KEY` the archive was made with.

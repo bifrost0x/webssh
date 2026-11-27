@@ -241,9 +241,10 @@ func backupRestore(ctx context.Context, args []string, s streams) int {
 		return fail(s, err)
 	}
 	var j *backup.Journal
+	var kept []string
 	err = legacy.Exclusive(ctx, o, func(ctx context.Context) error {
 		var err error
-		j, err = restoreOffline(ctx, cfg, archive, *recovery)
+		j, kept, err = restoreOffline(ctx, cfg, archive, *recovery)
 		return err
 	})
 	if se, ok := errors.AsType[*legacy.StopError](err); ok && se.Code == legacy.CodeLocked {
@@ -259,27 +260,42 @@ func backupRestore(ctx context.Context, args []string, s streams) int {
 		}
 		return fail(s, errors.New(msg))
 	}
-	return write(s.stdout, "Backup restored and verified.\n")
+	msg := "Backup restored and verified.\n"
+	if len(kept) > 0 {
+		msg += "The files of the earlier restore whose rollback failed are kept; remove them once they are no longer needed:\n  " +
+			strings.Join(kept, "\n  ") + "\n"
+	}
+	return write(s.stdout, msg)
 }
 
 // restoreOffline stages the archive against the live installation and
-// activates it, with the Go lock held.
-func restoreOffline(ctx context.Context, cfg config.Config, archive string, recovery bool) (*backup.Journal, error) {
+// activates it, with the Go lock held. After a restore whose rollback
+// failed, the files that restore kept (the previous and the restored
+// database) are set aside first and returned, so that neither this
+// restore nor a later start removes them.
+func restoreOffline(ctx context.Context, cfg config.Config, archive string, recovery bool) (*backup.Journal, []string, error) {
 	goDir := filepath.Join(cfg.DataDir, keyring.GoDirName)
 	dbPath := filepath.Join(goDir, keyring.DatabaseName)
 	_, dbErr := os.Lstat(dbPath)
 	fresh := errors.Is(dbErr, fs.ErrNotExist)
 	if fresh && legacyPresent(cfg) {
-		return nil, errNotMigrated
+		return nil, nil, errNotMigrated
+	}
+	var kept []string
+	if blocked, _ := backup.Blocked(goDir); blocked {
+		var err error
+		if kept, err = backup.SetAsideLeftovers(cfg.DataDir); err != nil {
+			return nil, kept, err
+		}
 	}
 	if err := os.MkdirAll(goDir, 0o700); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var live *store.DB
 	if !fresh {
 		var err error
 		if live, err = store.Open(ctx, dbPath, store.Options{}); err != nil {
-			return nil, fmt.Errorf("the Go database does not open: %w", err)
+			return nil, nil, fmt.Errorf("the Go database does not open: %w", err)
 		}
 	}
 	closeLive := func() error {
@@ -293,21 +309,22 @@ func restoreOffline(ctx context.Context, cfg config.Config, archive string, reco
 	defer closeLive()
 	in, err := cliInstallation(cfg, live, fresh)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	id := strings.ReplaceAll(fmt.Sprintf("cli-%d", time.Now().UnixNano()), "-", "_")
 	if err := backup.Begin(goDir, id, time.Now()); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	st, err := backup.Stage(ctx, in, backup.StageRequest{OperationID: id, Archive: archive, RecoverySnapshot: recovery})
 	if err != nil {
-		return nil, errors.Join(err, backup.Fail(goDir, id, "restore_failed", time.Now()))
+		return nil, nil, errors.Join(err, backup.Fail(goDir, id, "restore_failed", time.Now()))
 	}
 	if err := closeLive(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := backup.Commit(goDir, st, in, time.Now()); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return backup.Activate(cfg.DataDir, time.Now)
+	j, err := backup.Activate(cfg.DataDir, time.Now)
+	return j, kept, err
 }

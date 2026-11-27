@@ -28,6 +28,10 @@ const (
 	previousSecretName = "previous-secret_key"
 )
 
+// PointRestoreResealed is the checkpoint of Stage after a Go archive was
+// resealed under the active ring, inside the staging transaction.
+const PointRestoreResealed = "restore-resealed"
+
 // stagedReportName is the migration report of a Python archive in the
 // staging directory; the activation keeps it in the Go directory as
 // restoreReportPrefix<UTC>.json (migration-spec 5.6).
@@ -49,6 +53,16 @@ type Installation struct {
 	// SECRET_KEY from the environment such an archive is refused, since
 	// the environment would still win at the next start.
 	AdoptSecret bool
+	// KeepSecret is true while a legacy source exists: Go never writes
+	// DATA_DIR/secret_key then (migration specification 4.9), so a Go
+	// archive made with another SECRET_KEY is resealed under the active
+	// ring with Reseal, the steps of rotate-secret-key, instead of
+	// bringing its own key. The keyring material stays as well.
+	KeepSecret bool
+	Reseal     []RotationStep
+	// Checkpoint is called at PointRestoreResealed; only the crash tests
+	// set it.
+	Checkpoint func(string)
 	// MaterialPath and Material are the installation's keyring material
 	// (keyring.MaterialLocation); Material is nil on a new installation.
 	MaterialPath string
@@ -128,8 +142,10 @@ type Staged struct {
 // Stage verifies an archive and prepares the database it restores in a
 // staging directory of the Go directory; the live database and material
 // are not touched. A Go archive is read strictly (D-30) and must open
-// with the active SECRET_KEY; a Python archive goes through the
-// migration (LegacyRestorer). On error nothing is left behind.
+// with the active SECRET_KEY, or with its own under AdoptSecret, where it
+// either brings that key or, under KeepSecret, is resealed under the
+// active one; a Python archive goes through the migration
+// (LegacyRestorer). On error nothing is left behind.
 func Stage(ctx context.Context, in *Installation, req StageRequest) (st Staged, err error) {
 	f, err := os.Open(req.Archive) // #nosec G304 G703 -- the archive the operator names or an operation's own file
 	if err != nil {
@@ -160,9 +176,10 @@ func Stage(ctx context.Context, in *Installation, req StageRequest) (st Staged, 
 	db := filepath.Join(st.Dir, keyring.DatabaseName)
 	var material []byte
 	var reason string
+	var reseal *keyring.Rotation
 	if family == familyGo {
 		v, err := VerifyWith(ctx, req.Archive, VerifyOptions{Secret: in.SecretKey, AdoptSecret: in.AdoptSecret,
-			Material: in.Material, Probes: in.Probes, Limits: in.Limits, Database: db})
+			Material: in.Material, Probes: in.Probes, Limits: in.Limits, Database: db, Work: in.Work})
 		if errors.Is(err, ErrSecretMismatch) && in.EnvironmentSecret {
 			return st, fmt.Errorf("%w; SECRET_KEY is set in the environment and would stay active: "+
 				"set it to the archive's SECRET_KEY, or unset it to restore with the archive's key", err)
@@ -170,24 +187,31 @@ func Stage(ctx context.Context, in *Installation, req StageRequest) (st Staged, 
 		if err != nil {
 			return st, err
 		}
+		st.Kind, st.KeyID, material, reason = KindGo, v.Ring.KeyID(), v.Material, v.Manifest.Reason
+		st.Export = req.Portable || reason == ReasonExport
 		if !bytes.Equal(v.Secret, in.SecretKey) {
 			if err := checkSecret(v.Secret); err != nil {
 				return st, fmt.Errorf("%w: %w", ErrInvalid, err)
 			}
-			st.Secret = true
-			if err := writePrivate(filepath.Join(st.Dir, stagedSecretName), v.Secret); err != nil {
-				return st, fmt.Errorf("backup: stage the SECRET_KEY: %w", err)
+			if in.KeepSecret {
+				if reseal, err = restoreRotation(in, v.Ring); err != nil {
+					return st, err
+				}
+				st.KeyID, material = reseal.To().KeyID(), in.Material
+			} else {
+				st.Secret = true
+				if err := writePrivate(filepath.Join(st.Dir, stagedSecretName), v.Secret); err != nil {
+					return st, fmt.Errorf("backup: stage the SECRET_KEY: %w", err)
+				}
 			}
 		}
-		st.Kind, st.KeyID, material, reason = KindGo, v.Ring.KeyID(), v.Material, v.Manifest.Reason
-		st.Export = req.Portable || reason == ReasonExport
 	} else {
 		if st, err = stageLegacy(ctx, in, req, f, info.Size(), st); err != nil {
 			return st, err
 		}
 		material = in.Material
 	}
-	if err := prepareStaged(ctx, in, db, Prepared{Kind: st.Kind, Export: st.Export, KeyID: st.KeyID, RestoredAt: in.now()}); err != nil {
+	if err := prepareStaged(ctx, in, db, reseal, Prepared{Kind: st.Kind, Export: st.Export, KeyID: st.KeyID, RestoredAt: in.now()}); err != nil {
 		return st, err
 	}
 	if !bytes.Equal(material, in.Material) {
@@ -228,9 +252,24 @@ func stageLegacy(ctx context.Context, in *Installation, req StageRequest, f *os.
 	return st, nil
 }
 
+// restoreRotation is the reseal of a Go archive's records from its ring
+// to the installation's ring (KeepSecret).
+func restoreRotation(in *Installation, archive *keyring.Ring) (*keyring.Rotation, error) {
+	if len(in.Reseal) == 0 || in.Material == nil {
+		return nil, errors.New("backup: this installation cannot reseal a Go archive made with another SECRET_KEY")
+	}
+	active, err := keyring.Open(in.SecretKey, in.Material)
+	if err != nil {
+		return nil, fmt.Errorf("backup: open the keyring: %w", err)
+	}
+	return keyring.NewRestoreRotation(archive, active)
+}
+
 // prepareStaged brings the staged database to this build's schemas,
-// applies the restore semantics and closes it for activation.
-func prepareStaged(ctx context.Context, in *Installation, path string, p Prepared) error {
+// applies the restore semantics, reseals it under the active ring when
+// reseal is set, and closes it for activation. Restore semantics and
+// reseal are one transaction.
+func prepareStaged(ctx context.Context, in *Installation, path string, reseal *keyring.Rotation, p Prepared) error {
 	db, err := store.Open(ctx, path, store.Options{})
 	if err != nil {
 		return fmt.Errorf("%w: database: %w", ErrInvalid, err)
@@ -238,8 +277,25 @@ func prepareStaged(ctx context.Context, in *Installation, path string, p Prepare
 	if err := db.ApplyAll(ctx, in.Schemas...); err != nil {
 		return errors.Join(fmt.Errorf("%w: %w", ErrIncompatible, err), db.Close())
 	}
-	if in.Prepare != nil {
-		if err := db.Write(ctx, func(tx *store.Tx) error { return in.Prepare(ctx, tx, p) }); err != nil {
+	if in.Prepare != nil || reseal != nil {
+		err := db.Write(ctx, func(tx *store.Tx) error {
+			if in.Prepare != nil {
+				if err := in.Prepare(ctx, tx, p); err != nil {
+					return err
+				}
+			}
+			if reseal == nil {
+				return nil
+			}
+			if _, err := resealTx(ctx, tx, reseal, in.Reseal); err != nil {
+				return fmt.Errorf("reseal under the active SECRET_KEY: %w", err)
+			}
+			if in.Checkpoint != nil {
+				in.Checkpoint(PointRestoreResealed)
+			}
+			return nil
+		})
+		if err != nil {
 			return errors.Join(fmt.Errorf("backup: prepare the restored database: %w", err), db.Close())
 		}
 	}

@@ -12,14 +12,16 @@ const (
 	// sweepInterval is how often expired sessions are removed and their
 	// end published; validation refuses them on its own in between.
 	sweepInterval = 5 * time.Minute
-	// sourceWatchInterval is the re-check of the legacy source while Go
-	// serves (migration specification, section 5.7).
-	sourceWatchInterval = 60 * time.Second
 	// revocationFollowInterval is how often revocations committed by
 	// another process (an administrator command such as reset-password)
 	// are picked up; they then take effect like those of this process.
 	revocationFollowInterval = time.Second
 )
+
+// sourceWatchInterval is the re-check of the legacy source while Go
+// serves (migration specification, section 5.7). It is a variable only so
+// that the test of the whole chain does not wait a minute.
+var sourceWatchInterval = 60 * time.Second
 
 // startBackground runs the periodic work of the server until close.
 func (s *system) startBackground(ctx context.Context) {

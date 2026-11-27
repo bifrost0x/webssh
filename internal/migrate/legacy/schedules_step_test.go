@@ -212,9 +212,25 @@ func TestSchedulesMigrateGolden(t *testing.T) {
 		}
 	}
 	hop := run.Snapshot.Targets[0]
+	_, vaultSvc, _ := migrateCredentialsOn(t, m)
+	var passwordHops []jsontext.Value
+	for _, h := range run.Snapshot.Targets {
+		if memberText(h, "auth_type") == "password" {
+			passwordHops = append(passwordHops, h)
+		}
+	}
+	approved, err := vaultSvc.ScheduleBinding(t.Context(), run.UserID, passwordHops)
+	if err != nil {
+		t.Fatal(err)
+	}
 	change(`UPDATE vault_credentials SET version = version || 'x' WHERE id = (SELECT credential_id FROM vault_credential_assignments WHERE resource_id = ?)`, memberText(hop, "id"))
 	if err := run.Check(t.Context()); err == nil {
 		t.Fatal("the approval holds after the saved password changed")
+	}
+	// RS4-09: a password changed after the run's last check is not handed
+	// out either; the vault compares with the approved binding itself.
+	if pw, err := vaultSvc.SchedulePassword(t.Context(), run.UserID, hop, approved); fault.CodeOf(err) != fault.PreviewChanged || pw != nil {
+		t.Fatalf("password after it changed since the check: %v", err)
 	}
 	change(`UPDATE vault_credentials SET version = substr(version, 1, length(version) - 1) WHERE id = (SELECT credential_id FROM vault_credential_assignments WHERE resource_id = ?)`, memberText(hop, "id"))
 	if err := run.Check(t.Context()); err != nil {
@@ -229,7 +245,7 @@ func TestSchedulesMigrateGolden(t *testing.T) {
 		t.Fatalf("restoring the target: %v", err)
 	}
 	// A global sign-out ends the approval, as rotating session_epoch did.
-	err := m.db.Write(t.Context(), func(tx *store.Tx) error {
+	err = m.db.Write(t.Context(), func(tx *store.Tx) error {
 		_, err := tx.ExecContext(t.Context(), `UPDATE session_epoch SET value = 'rotated' WHERE singleton = 1`)
 		return err
 	})

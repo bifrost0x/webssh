@@ -55,3 +55,38 @@ func TestRotation(t *testing.T) {
 		t.Fatal("To is not the new ring")
 	}
 }
+
+// A restored database is resealed from the archive's ring to the
+// installation's, whatever material either has.
+func TestRestoreRotation(t *testing.T) {
+	t.Parallel()
+	archive := katRing(t)
+	if _, err := NewRestoreRotation(archive, katRing(t)); !errors.Is(err, ErrRotationSameKey) {
+		t.Fatalf("reseal to the same key: %v", err)
+	}
+	installation, err := Open([]byte("the-installation-secret"), seq(0x40, 0x5f))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt, err := NewRestoreRotation(archive, installation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := archive.Seal(TOTP, katAAD, []byte("JBSWY3DPEHPK3PXP"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resealed, err := rt.Reseal(TOTP, katAAD, sealed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain, err := installation.Open(TOTP, katAAD, resealed); err != nil || string(plain) != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("resealed value: %q %v", plain, err)
+	}
+	if _, err := archive.Open(TOTP, katAAD, resealed); err == nil {
+		t.Fatal("the archive's ring opens the resealed value")
+	}
+	if !bytes.HasPrefix(sealed, rt.OldHeader()) || bytes.HasPrefix(resealed, rt.OldHeader()) {
+		t.Fatal("old header")
+	}
+}

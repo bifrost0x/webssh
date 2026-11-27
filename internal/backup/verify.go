@@ -75,6 +75,9 @@ type VerifyOptions struct {
 	// Database, if set, receives the verified database (a new file, mode
 	// 0600); otherwise the copy is removed.
 	Database string
+	// Work holds the temporary copy of the database during the check
+	// (BACKUP_TEMP_DIR of a restore); empty uses the archive's directory.
+	Work string
 }
 
 // Verify reads an archive back and requires SECRET_KEY and the material
@@ -100,7 +103,11 @@ func VerifyWith(ctx context.Context, path string, o VerifyOptions) (Verified, er
 		return v, fmt.Errorf("backup: open %s: %w", path, err)
 	}
 	defer f.Close()
-	tmp, err := os.MkdirTemp(filepath.Dir(path), ".webssh-backup-verify-")
+	work := o.Work
+	if work == "" {
+		work = filepath.Dir(path)
+	}
+	tmp, err := os.MkdirTemp(work, ".webssh-backup-verify-")
 	if err != nil {
 		return v, fmt.Errorf("backup: verify %s: %w", path, err)
 	}

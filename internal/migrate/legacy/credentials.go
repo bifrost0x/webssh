@@ -63,7 +63,8 @@ func (s *Source) NamedCredentials(ctx context.Context, userID int64) ([]NamedCre
 	for _, rec := range records {
 		password, err := decryptNamedCredential(s.secret, userID, incarnation, rec.ID, rec.ciphertext)
 		if err != nil {
-			return nil, nil, fmt.Errorf("legacy: credential %q of user %d: %w", rec.ID, userID, err)
+			return nil, nil, &StepError{UserID: userID, Record: "credential " + rec.ID,
+				Err: fmt.Errorf("legacy: credential %q of user %d: %w", rec.ID, userID, err)}
 		}
 		rec.Password = password
 		out = append(out, rec)
@@ -93,7 +94,7 @@ func decryptNamedCredential(secret string, userID int64, incarnation, recordID, 
 	}
 	plain, err := openGCM(key, raw, context)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%w: %w", ErrRecordDamaged, err)
 	}
 	return string(plain), nil
 }

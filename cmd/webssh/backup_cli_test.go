@@ -184,7 +184,8 @@ func TestServerStartActivatesACommittedRestore(t *testing.T) {
 }
 
 // A restore whose rollback failed keeps the server in maintenance over a
-// restart; `webssh backup restore` resolves it.
+// restart; `webssh backup restore` resolves it and keeps the files of the
+// failed restore aside instead of removing them (RS4-05).
 func TestFailedRollbackKeepsMaintenanceUntilACLIRestore(t *testing.T) {
 	env := backupEnv(t)
 	sys, _, stop := openEnv(t, env)
@@ -204,6 +205,12 @@ func TestFailedRollbackKeepsMaintenanceUntilACLIRestore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(goDir, backup.JournalName), []byte(failed), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(goDir, ".restore-op"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(goDir, ".restore-op", "previous.db"), []byte("the only copy"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for range 2 {
 		_, ts, stop := openEnv(t, env)
 		c := &http.Client{}
@@ -218,11 +225,19 @@ func TestFailedRollbackKeepsMaintenanceUntilACLIRestore(t *testing.T) {
 	for k, v := range env {
 		t.Setenv(k, v)
 	}
-	if code, _, e := runIn(t, "", "webssh", "backup", "restore", archive, "--confirm-offline"); code != 0 {
+	kept := filepath.Join(goDir, backup.SetAsidePrefix+"op", "previous.db")
+	code, out, e := runIn(t, "", "webssh", "backup", "restore", archive, "--confirm-offline")
+	if code != 0 {
 		t.Fatalf("CLI restore: %q", e)
+	}
+	if !strings.Contains(out, filepath.Dir(kept)) {
+		t.Fatalf("the restore does not name the kept files: %q", out)
 	}
 	_, ts, _ := openEnv(t, env)
 	if resp, _ := get(t, &http.Client{}, ts.URL+"/ready"); resp.StatusCode != http.StatusOK {
 		t.Fatalf("ready after the CLI restore: %d", resp.StatusCode)
+	}
+	if raw, err := os.ReadFile(kept); err != nil || string(raw) != "the only copy" { // #nosec G304 -- test data
+		t.Fatalf("the files of the failed restore are gone: %v", err)
 	}
 }

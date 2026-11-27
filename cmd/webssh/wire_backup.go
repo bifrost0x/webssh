@@ -103,7 +103,9 @@ func backupLimits(cfg config.Config) backup.Limits {
 
 // backupInstallation describes the live installation for a restore: the
 // active SECRET_KEY and keyring material, every schema, and the restore
-// semantics a staged database gets (restorePrepare).
+// semantics a staged database gets (restorePrepare). While the legacy
+// source exists, a Go archive with another SECRET_KEY is resealed under
+// the active one with the rotation steps (migration specification 4.9).
 func backupInstallation(cfg config.Config, lookup config.LookupFunc, live *store.DB, work string) (*backup.Installation, error) {
 	_, legacyErr := os.Lstat(filepath.Join(cfg.DataDir, "app.db"))
 	path, material, err := keyring.MaterialLocation(cfg.DataDir, legacyErr == nil)
@@ -116,6 +118,7 @@ func backupInstallation(cfg config.Config, lookup config.LookupFunc, live *store
 	}
 	return &backup.Installation{DataDir: cfg.DataDir, SecretKey: cfg.SecretKey.Bytes(),
 		EnvironmentSecret: cfg.SecretSource == config.SecretFromEnvironment, AdoptSecret: cfg.SecretSource == config.SecretFromFile,
+		KeepSecret: legacyErr == nil, Reseal: rotationSteps(),
 		MaterialPath: path, Material: material,
 		Schemas: schemas(), Prepare: restorePrepare(live), Probes: []backup.Probe{vault.ProbeSealed, totp.ProbeSealed},
 		Limits: backupLimits(cfg), Legacy: &legacy.Restorer{Options: o, Work: work}, Work: work}, nil
