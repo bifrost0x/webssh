@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -20,8 +21,12 @@ type AccountRow struct {
 	StepUpLastFailedAt        sql.NullString
 }
 
-// AccountRows returns every account ordered by id.
+// AccountRows returns every account ordered by id, or the accounts in
+// scope while the run handles one account at a time.
 func (s *Source) AccountRows(ctx context.Context) ([]AccountRow, error) {
+	if s.scoped {
+		return slices.Clone(s.scope), nil
+	}
 	query := "SELECT " + s.schema.userSelect(s.restored != nil, "id", "username", "password_hash", "created_at", // #nosec G202 -- constant identifiers and literals
 		"is_admin", "is_locked", "auth_generation", "mfa_enabled", "last_login", "settings_default_generation",
 		"mfa_failed_attempts", "mfa_last_failed_at", "mfa_step_up_failed_attempts", "mfa_step_up_last_failed_at") +
@@ -82,4 +87,13 @@ func dbTime(text sql.NullString) (time.Time, error) {
 		t = t.Add(-dt.offset)
 	}
 	return t.UTC(), nil
+}
+
+// scopeTo limits AccountRows to rows, or lifts the limit when scoped is
+// false. The host stores read for the previous scope are released.
+func (s *Source) scopeTo(rows []AccountRow, scoped bool) {
+	s.scoped, s.scope = scoped, rows
+	s.hostsMu.Lock()
+	s.hosts = nil
+	s.hostsMu.Unlock()
 }

@@ -227,15 +227,15 @@ func TestRegistryListsAndWrapsSteps(t *testing.T) {
 	}
 	n := 0
 	r.WrapSteps(func(s Step) Step { return versionedStep{Step: s, wrapped: &n} })
-	steps, err := r.instantiate()
-	if err != nil || len(steps) != 1 {
-		t.Fatalf("%v %v", steps, err)
+	segs, err := r.segments(false)
+	if err != nil || len(segs) != 1 || segs[0].step == nil {
+		t.Fatalf("%v %v", segs, err)
 	}
-	if _, ok := steps[0].(versionedStep); !ok {
-		t.Fatalf("step not wrapped: %T", steps[0])
+	if _, ok := segs[0].step.(versionedStep); !ok {
+		t.Fatalf("step not wrapped: %T", segs[0].step)
 	}
 	r.WrapSteps(func(Step) Step { return &discardStep{def: discardedEntities[0]} })
-	if _, err := r.instantiate(); err == nil {
+	if _, err := r.segments(false); err == nil {
 		t.Error("a wrapper that changes the entity was accepted")
 	}
 }

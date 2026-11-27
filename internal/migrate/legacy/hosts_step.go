@@ -34,6 +34,8 @@ func (*hostsStep) Entity() string { return "E19" }
 
 func (*hostsStep) Version() int { return 1 }
 
+func (*hostsStep) accountScoped() bool { return true }
+
 func (s *hostsStep) Read(ctx context.Context, src *Source) error {
 	var err error
 	s.users, err = readUserHosts(ctx, src)
@@ -58,7 +60,7 @@ func readUserHosts(ctx context.Context, src *Source) ([]userHosts, error) {
 	return slices.Clone(*src.hosts), nil
 }
 
-// loadUserHosts reads the host stores of every account.
+// loadUserHosts reads the host stores of every account in scope.
 func loadUserHosts(ctx context.Context, src *Source) ([]userHosts, error) {
 	rows, err := src.AccountRows(ctx)
 	if err != nil {
@@ -66,39 +68,48 @@ func loadUserHosts(ctx context.Context, src *Source) ([]userHosts, error) {
 	}
 	var out []userHosts
 	for _, a := range rows {
-		u := userHosts{id: a.ID}
-		for _, part := range []struct {
-			store, list string
-			into        *[]jsontext.Value
-		}{
-			{"profiles", "profiles", &u.legacy.Profiles},
-			{"jump_hosts", "jump_hosts", &u.legacy.JumpHosts},
-			{"socks_proxies", "socks_proxies", &u.legacy.SOCKSProxies},
-		} {
-			doc, found, err := userStore(src, a.ID, part.store)
-			if err != nil {
-				return nil, err
-			}
-			if !found {
-				continue
-			}
-			if *part.into, err = doc.RawList(part.list); err != nil {
-				return nil, &StepError{UserID: a.ID, Record: part.store, Err: err}
-			}
-			u.flags = append(u.flags, documentFlags(doc)...)
-		}
-		settingsDoc, found, err := userStore(src, a.ID, "settings")
+		u, err := loadAccountHosts(src, a.ID)
 		if err != nil {
 			return nil, err
-		}
-		if found {
-			if v, ok := pyjson.Get(settingsDoc.Raw, "workspace_presets"); ok {
-				u.legacy.WorkspacePresets = v
-			}
 		}
 		out = append(out, u)
 	}
 	return out, nil
+}
+
+// loadAccountHosts reads the host stores of one account.
+func loadAccountHosts(src *Source, id int64) (userHosts, error) {
+	u := userHosts{id: id}
+	for _, part := range []struct {
+		store, list string
+		into        *[]jsontext.Value
+	}{
+		{"profiles", "profiles", &u.legacy.Profiles},
+		{"jump_hosts", "jump_hosts", &u.legacy.JumpHosts},
+		{"socks_proxies", "socks_proxies", &u.legacy.SOCKSProxies},
+	} {
+		doc, found, err := userStore(src, id, part.store)
+		if err != nil {
+			return userHosts{}, err
+		}
+		if !found {
+			continue
+		}
+		if *part.into, err = doc.RawList(part.list); err != nil {
+			return userHosts{}, &StepError{UserID: id, Record: part.store, Err: err}
+		}
+		u.flags = append(u.flags, documentFlags(doc)...)
+	}
+	settingsDoc, found, err := userStore(src, id, "settings")
+	if err != nil {
+		return userHosts{}, err
+	}
+	if found {
+		if v, ok := pyjson.Get(settingsDoc.Raw, "workspace_presets"); ok {
+			u.legacy.WorkspacePresets = v
+		}
+	}
+	return u, nil
 }
 
 func (s *hostsStep) Write(ctx context.Context, tx *store.Tx, _ Sealer) error {

@@ -51,12 +51,7 @@ func RegisterM1(r *Registry, m M1) error {
 	}
 	r.Schemas(accounts.Schema(), local.Schema(), auth.Schema(), totp.Schema(), webauthn.Schema(), operations.Schema(), settings.Schema(),
 		vault.Schema(), hosts.Schema(), hostops.Schema(), hostkey.Schema(), github.Schema())
-	add := func(g Group, newStep func() Step) error {
-		if m.wrap == nil {
-			return r.Add(g, newStep)
-		}
-		return r.Add(g, func() Step { return m.wrap(newStep()) })
-	}
+	add := func(g Group, newStep func() Step) error { return r.add(g, newStep, m.wrap) }
 	steps := []struct {
 		group Group
 		new   func() Step

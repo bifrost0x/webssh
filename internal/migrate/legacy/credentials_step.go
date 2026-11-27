@@ -48,6 +48,8 @@ func (*credentialsStep) Entity() string { return "E32" }
 
 func (*credentialsStep) Version() int { return 1 }
 
+func (*credentialsStep) accountScoped() bool { return true }
+
 func (s *credentialsStep) Read(ctx context.Context, src *Source) error {
 	rows, err := src.AccountRows(ctx)
 	if err != nil {
@@ -253,6 +255,8 @@ type userVault struct {
 func (*legacyVaultStep) Entity() string { return "E30" }
 
 func (*legacyVaultStep) Version() int { return 1 }
+
+func (*legacyVaultStep) accountScoped() bool { return true }
 
 func (s *legacyVaultStep) Read(ctx context.Context, src *Source) error {
 	rows, err := src.AccountRows(ctx)

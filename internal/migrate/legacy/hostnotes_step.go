@@ -44,6 +44,8 @@ func (*hostNotesStep) Entity() string { return "E28" }
 
 func (*hostNotesStep) Version() int { return 2 }
 
+func (*hostNotesStep) accountScoped() bool { return true }
+
 func (s *hostNotesStep) Read(ctx context.Context, src *Source) error {
 	rows, err := src.AccountRows(ctx)
 	if err != nil {

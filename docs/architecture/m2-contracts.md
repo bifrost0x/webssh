@@ -886,6 +886,29 @@ The phases of the entities kept in place now follow the package map
 E28 (directories and command set references, completed by HO3 and CM1)
 are B6; E30 (legacy vault) and E32 (saved passwords) are B5.
 
+Additive in `internal/migrate/legacy` (MG1, MG1-1):
+
+```go
+func (r *Registry) StepEntities() []string    // entities registered as a step, in run order
+func (r *Registry) PendingEntities() []string // entities kept in place; empty in a release build
+func (r *Registry) WrapSteps(wrap func(Step) Step) // fault injection over a build's registry (tests)
+const CodeRestoreIncomplete = "restore_incomplete" // a Python restore would lose records of a pending entity
+```
+
+A restore of a Python archive stops with `restore_incomplete` before
+anything is installed when an entity with records in the archive is
+pending; the extracted archive is removed afterwards, so its records would
+otherwise be lost (migration-spec 5.6).
+
+Steps whose legacy data lies in the per-user stores (E19 to E32, A05,
+A06 and A11) run account by account: the run reads them for every account before it
+writes, then reads, writes and verifies one account at a time and keeps
+only the report. The peak memory of a migration is bounded by the stores
+of one account (at most 64 MiB each), not by their sum. Such a step
+verifies an account right after writing it; it reads only what earlier
+steps wrote for the same account. The mark is internal (`accountStep`);
+the `Step` interface is unchanged.
+
 ### Modules
 
 No module is added by these contracts. The entries are added by the

@@ -113,6 +113,7 @@ func newReport(release string, started time.Time, dataDir string) Report {
 
 // add takes a step's report into the entity list and the summary lists.
 func (r *Report) add(sr StepReport) {
+	sr = withAccountNote(sr)
 	r.Entities = append(r.Entities, sr)
 	r.MaterialisedSettings = append(r.MaterialisedSettings, sr.Settings...)
 	r.KeptInPlace = append(r.KeptInPlace, sr.KeptInPlace...)

@@ -56,6 +56,9 @@ type registered struct {
 	entity  string
 	version int
 	newStep func() Step
+	// perAccount: the run handles the step one account at a time (see
+	// accountStep).
+	perAccount bool
 }
 
 type pendingEntity struct {
@@ -71,6 +74,12 @@ func NewRegistry() *Registry { return &Registry{} }
 // in place (KeepInPlace) takes it over: the area of a later phase that
 // migrates the entity registers after the release.
 func (r *Registry) Add(g Group, newStep func() Step) error {
+	return r.add(g, newStep, nil)
+}
+
+// add registers a step; wrap, if set, decorates every instance (test
+// fault injection) without hiding what the step itself is.
+func (r *Registry) add(g Group, newStep func() Step, wrap func(Step) Step) error {
 	s := newStep()
 	r.pending = slices.DeleteFunc(r.pending, func(p pendingEntity) bool {
 		return p.entity == s.Entity() && !slices.ContainsFunc(r.steps, func(st registered) bool { return st.entity == p.entity })
@@ -78,7 +87,11 @@ func (r *Registry) Add(g Group, newStep func() Step) error {
 	if err := r.claim(s.Entity()); err != nil {
 		return err
 	}
-	r.steps = append(r.steps, registered{group: g, entity: s.Entity(), version: s.Version(), newStep: newStep})
+	reg := registered{group: g, entity: s.Entity(), version: s.Version(), newStep: newStep, perAccount: isAccountStep(s)}
+	if wrap != nil {
+		reg.newStep = func() Step { return wrap(newStep()) }
+	}
+	r.steps = append(r.steps, reg)
 	return nil
 }
 
@@ -211,19 +224,38 @@ func (r *Registry) ordered() []registered {
 	return out
 }
 
-// instantiate creates the steps of one run in dependency order and checks
-// that every factory returns the entity and version it was registered
-// with.
-func (r *Registry) instantiate() ([]Step, error) {
-	var steps []Step
-	for _, reg := range r.ordered() {
-		s := reg.newStep()
-		if s.Entity() != reg.entity || s.Version() != reg.version {
-			return nil, fmt.Errorf("legacy: step factory for %s returned %s version %d", reg.entity, s.Entity(), s.Version())
-		}
-		steps = append(steps, s)
+// instance creates a step and checks that the factory returns the entity
+// and version it was registered with.
+func (reg registered) instance() (Step, error) {
+	s := reg.newStep()
+	if s.Entity() != reg.entity || s.Version() != reg.version {
+		return nil, fmt.Errorf("legacy: step factory for %s returned %s version %d", reg.entity, s.Entity(), s.Version())
 	}
-	return steps, nil
+	return s, nil
+}
+
+// segments creates the steps of one run in dependency order. A step over
+// the whole source gets its instance now; consecutive account steps form
+// one segment whose instances the run creates per account, unless
+// wholeSource treats them as steps over the whole source.
+func (r *Registry) segments(wholeSource bool) ([]segment, error) {
+	var out []segment
+	for _, reg := range r.ordered() {
+		if reg.perAccount && !wholeSource {
+			if n := len(out); n > 0 && out[n-1].step == nil {
+				out[n-1].accounts = append(out[n-1].accounts, reg)
+			} else {
+				out = append(out, segment{accounts: []registered{reg}})
+			}
+			continue
+		}
+		s, err := reg.instance()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, segment{step: s})
+	}
+	return out, nil
 }
 
 // countPending counts the records of every pending entity.

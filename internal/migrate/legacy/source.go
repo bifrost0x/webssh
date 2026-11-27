@@ -39,7 +39,12 @@ type Source struct {
 	keys map[string][]byte // derived key material by purpose; see kdf.go
 
 	hostsMu sync.Mutex
-	hosts   *[]userHosts // host stores of every account; see readUserHosts
+	hosts   *[]userHosts // host stores of the accounts in scope; see readUserHosts
+
+	// scoped limits AccountRows to scope while the run handles one
+	// account at a time (see accountStep).
+	scoped bool
+	scope  []AccountRow
 
 	restored *restoreState // set by Restored
 }

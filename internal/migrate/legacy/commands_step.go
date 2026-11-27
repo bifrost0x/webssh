@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"errors"
-	"fmt"
 
 	"github.com/bifrost0x/webssh/internal/commands"
 	"github.com/bifrost0x/webssh/internal/pyjson"
@@ -42,6 +41,8 @@ func (*commandsStep) Entity() string { return "E26" }
 
 func (*commandsStep) Version() int { return 1 }
 
+func (*commandsStep) accountScoped() bool { return true }
+
 func (s *commandsStep) Read(ctx context.Context, src *Source) error {
 	var err error
 	s.users, s.flags, s.read, err = readCommandStore(ctx, src, "commands", "", "commands.json")
@@ -78,7 +79,7 @@ func (s *commandsStep) Verify(ctx context.Context, tx *store.Tx, _ Opener) error
 
 func (s *commandsStep) Report() StepReport {
 	return StepReport{Entity: "E26", Version: 1, Read: s.read, Written: s.read, Flagged: s.flags,
-		Notes: []string{fmt.Sprintf("commands taken over verbatim for %d accounts", len(s.users))}}
+		accountNote: "commands taken over verbatim for %d accounts", accounts: len(s.users)}
 }
 
 // commandSetsStep migrates E27: users/user_N/command_sets.json verbatim
@@ -94,6 +95,8 @@ type commandSetsStep struct {
 func (*commandSetsStep) Entity() string { return "E27" }
 
 func (*commandSetsStep) Version() int { return 1 }
+
+func (*commandSetsStep) accountScoped() bool { return true }
 
 func (s *commandSetsStep) Read(ctx context.Context, src *Source) error {
 	var err error
@@ -138,7 +141,7 @@ func (s *commandSetsStep) Verify(ctx context.Context, tx *store.Tx, _ Opener) er
 
 func (s *commandSetsStep) Report() StepReport {
 	return StepReport{Entity: "E27", Version: 1, Read: s.read, Written: s.read, Flagged: s.flags,
-		Notes: []string{fmt.Sprintf("command sets taken over verbatim for %d accounts", len(s.users))}}
+		accountNote: "command sets taken over verbatim for %d accounts", accounts: len(s.users)}
 }
 
 // readCommandStore reads one of the two stores of every account.

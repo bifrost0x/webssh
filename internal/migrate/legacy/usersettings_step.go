@@ -32,6 +32,8 @@ func (*userSettingsStep) Entity() string { return "E25" }
 
 func (*userSettingsStep) Version() int { return 1 }
 
+func (*userSettingsStep) accountScoped() bool { return true }
+
 func (s *userSettingsStep) Read(ctx context.Context, src *Source) error {
 	rows, err := src.AccountRows(ctx)
 	if err != nil {

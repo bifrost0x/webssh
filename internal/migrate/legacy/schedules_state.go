@@ -31,11 +31,14 @@ type legacyState struct {
 	automationRevision string
 	credentialsOn      bool
 	credentialsRev     string
-	hosts              map[int64]vault.Records
+	// hosts are the host stores of hostsUser, the account whose grants
+	// are validated: one account's stores are held at a time.
+	hosts     vault.Records
+	hostsUser int64
 }
 
 func newLegacyState(ctx context.Context, src *Source) (*legacyState, error) {
-	st := &legacyState{users: map[int64]scheduleUser{}, hosts: map[int64]vault.Records{}}
+	st := &legacyState{users: map[int64]scheduleUser{}, hostsUser: -1}
 	rows, err := src.AccountRows(ctx)
 	if err != nil {
 		return nil, err
@@ -57,14 +60,23 @@ func newLegacyState(ctx context.Context, src *Source) (*legacyState, error) {
 		st.credentialsOn = on.Kind() == 't'
 		st.credentialsRev = memberText(app.Raw, "credentials_enabled_revision")
 	}
-	users, err := readUserHosts(ctx, src)
-	if err != nil {
-		return nil, err
-	}
-	for _, h := range users {
-		st.hosts[h.id] = vault.Records{Profiles: h.legacy.Profiles, JumpHosts: h.legacy.JumpHosts, SOCKSProxies: h.legacy.SOCKSProxies}
-	}
 	return st, nil
+}
+
+// loadHosts reads the host stores of userID unless they are the ones
+// held.
+func (st *legacyState) loadHosts(src *Source, userID int64) error {
+	if st.hostsUser == userID {
+		return nil
+	}
+	st.hosts, st.hostsUser = vault.Records{}, -1
+	h, err := loadAccountHosts(src, userID)
+	if err != nil {
+		return err
+	}
+	st.hosts = vault.Records{Profiles: h.legacy.Profiles, JumpHosts: h.legacy.JumpHosts, SOCKSProxies: h.legacy.SOCKSProxies}
+	st.hostsUser = userID
+	return nil
 }
 
 func memberText(v jsontext.Value, name string) string {
@@ -94,7 +106,7 @@ func (st *legacyState) validGrant(ctx context.Context, src *Source, userID int64
 	if err != nil || !slices.ContainsFunc(books, func(b jsontext.Value) bool { return automation.SameJSON(b, g.Book) }) {
 		return false, "runbook_changed"
 	}
-	resources := vault.ResourcesFromRecords(st.hosts[userID])
+	resources := vault.ResourcesFromRecords(st.hosts)
 	current := map[string]jsontext.Value{}
 	for _, r := range resources {
 		if r.Kind == vault.ResourceSSH {

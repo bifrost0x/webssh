@@ -31,6 +31,8 @@ func (*notepadStep) Entity() string { return "A05" }
 
 func (*notepadStep) Version() int { return 1 }
 
+func (*notepadStep) accountScoped() bool { return true }
+
 func (s *notepadStep) Read(ctx context.Context, src *Source) error {
 	rows, err := src.AccountRows(ctx)
 	if err != nil {

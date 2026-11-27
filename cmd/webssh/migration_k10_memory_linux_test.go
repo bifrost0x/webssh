@@ -24,6 +24,13 @@ const k10MemoryEnv = "WEBSSH_K10_MEMORY_IN"
 // (WEBSSH_MEMORY_LIMIT, 2g).
 const memLimit = 2 << 30
 
+// peakBound is what the peak may reach: the migration handles one
+// account at a time, so the peak depends on the largest account's stores
+// and not on the number of accounts. Two accounts with these stores peak
+// at about 820 MiB, ten at about 845 MiB; reading every account before
+// writing took more than 2 GiB from seven accounts on.
+const peakBound = 1280 << 20
+
 // TestK10MemoryHelper migrates the DATA_DIR named by the environment with
 // the build's registry and prints the peak resident set size.
 func TestK10MemoryHelper(t *testing.T) {
@@ -95,14 +102,14 @@ func bigStore(t *testing.T, path, listKey string, version, records, size int) {
 	}
 }
 
-// The peak memory of a migration whose per-user stores sit just below
-// the 64 MiB read limit stays below the container's mem_limit (M2 MG1
-// DoD). The migration may stop on such stores (Python refuses stores
+// The peak memory of a migration of ten accounts whose per-user stores
+// sit just below the 64 MiB read limit stays well below the container's
+// mem_limit (M2 MG1 DoD, MG1-1). The migration may stop on such stores (Python refuses stores
 // above its connection limit); what counts is that the reading never
 // takes the process near the limit.
 func TestBuildMigrationMemoryWithLargeStores(t *testing.T) {
 	if testing.Short() {
-		t.Skip("writes about 250 MiB of legacy stores")
+		t.Skip("writes about 1.3 GiB of legacy stores")
 	}
 	dir := extractGolden(t, "datadir-extended.tar")
 	const size = 63 << 20
@@ -134,15 +141,17 @@ func TestBuildMigrationMemoryWithLargeStores(t *testing.T) {
 		t.Fatalf("no measurement:\n%s", out)
 	}
 	t.Logf("peak RSS %d MiB, %s", peak>>20, result)
-	if peak >= memLimit {
-		t.Fatalf("peak RSS %d MiB reaches mem_limit %d MiB", peak>>20, memLimit>>20)
+	if peak >= peakBound {
+		t.Fatalf("peak RSS %d MiB with %d accounts above %d MiB (mem_limit %d MiB)", peak>>20, len(k10MemoryUsers()), peakBound>>20, memLimit>>20)
 	}
 }
 
 // k10MemoryUsers are the accounts that get the large stores.
 func k10MemoryUsers() []string {
 	n, _ := strconv.Atoi(os.Getenv("WEBSSH_K10_MEMORY_USERS"))
-	n = max(n, 2)
+	if n == 0 {
+		n = 10
+	}
 	out := make([]string, n)
 	for i := range out {
 		out[i] = fmt.Sprintf("user_%d", 3+i)

@@ -2,7 +2,9 @@ package legacy
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -25,8 +27,16 @@ func (s *tamperStep) Write(ctx context.Context, tx *store.Tx, seal Sealer) error
 	if s.Entity() != s.target {
 		return nil
 	}
-	return s.tamper(ctx, tx, seal)
+	err := s.tamper(ctx, tx, seal)
+	if isAccountStep(s.Step) && (errors.Is(err, errTamperedNothing) || errors.Is(err, sql.ErrNoRows)) {
+		// An account step writes one account at a time; the tamper
+		// meets its rows when the run reaches that account.
+		return nil
+	}
+	return err
 }
+
+var errTamperedNothing = errors.New("tamper changed nothing")
 
 func execTx(stmts ...string) func(context.Context, *store.Tx, Sealer) error {
 	return func(ctx context.Context, tx *store.Tx, _ Sealer) error {
@@ -36,7 +46,7 @@ func execTx(stmts ...string) func(context.Context, *store.Tx, Sealer) error {
 				return err
 			}
 			if n, _ := res.RowsAffected(); n == 0 {
-				return errors.New("tamper changed nothing: " + q)
+				return fmt.Errorf("%w: %s", errTamperedNothing, q)
 			}
 		}
 		return nil
@@ -119,7 +129,9 @@ func TestM1VerificationDetectsTampering(t *testing.T) {
 		{"key swapped", "E23", "E23", reseal("vault_ssh_keys", "private_key", "id", usable, keyring.SSHKey,
 			func(id string) string { return "3:" + id }, otherKey)},
 		{"profile name", "E19", "E19", execTx(`UPDATE hosts_profiles SET "name" = '"tampered"' WHERE user_id = 3 AND position = 0`)},
-		{"favourite", "A11", "E19", execTx(`UPDATE hosts_profiles SET "favorite" = 'true' WHERE user_id = 3 AND position = 0`)},
+		// Account steps verify each account right after writing it, so
+		// the step that wrote the rows last (A11) notices.
+		{"favourite", "A11", "A11", execTx(`UPDATE hosts_profiles SET "favorite" = 'true' WHERE user_id = 3 AND position = 0`)},
 		{"jump host", "E20", "E20", execTx(`UPDATE hosts_jump_hosts SET "host" = '"tampered"' WHERE user_id = 3`)},
 		{"SOCKS proxy", "E21", "E21", execTx(`UPDATE hosts_socks_proxies SET "remote_dns" = 'false' WHERE user_id = 3 AND position = 0`)},
 		{"workspace preset", "A06", "A06", execTx(`UPDATE hosts_workspace_presets SET presets = '[]' WHERE user_id = 3`)},

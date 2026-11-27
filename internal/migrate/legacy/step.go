@@ -53,6 +53,12 @@ type StepReport struct {
 	// UserActions are things users must do themselves, such as importing
 	// the legacy automation vault.
 	UserActions []UserAction `json:"pending_user_actions,omitzero"`
+
+	// accountNote is a note of an account step with one %d for the
+	// number of accounts it covers; accounts is that account's share (0
+	// or 1). The run writes it into Notes once all accounts are done.
+	accountNote string
+	accounts    int
 }
 
 // Flag marks one migrated record.

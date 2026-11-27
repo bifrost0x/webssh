@@ -36,6 +36,8 @@ func (*runbooksStep) Entity() string { return "E29" }
 
 func (*runbooksStep) Version() int { return 1 }
 
+func (*runbooksStep) accountScoped() bool { return true }
+
 func (s *runbooksStep) Read(ctx context.Context, src *Source) error {
 	rows, err := src.AccountRows(ctx)
 	if err != nil {
@@ -155,6 +157,8 @@ type userRuns struct {
 func (*runsStep) Entity() string { return "E31" }
 
 func (*runsStep) Version() int { return 1 }
+
+func (*runsStep) accountScoped() bool { return true }
 
 func (s *runsStep) Read(ctx context.Context, src *Source) error {
 	rows, err := src.AccountRows(ctx)

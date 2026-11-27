@@ -566,6 +566,10 @@ is still decided by the digest. Python never removes it (section 2.2).
    credentials, hosts and connections, host trust, commands, host context
    and notes, automation, terminal. Each capability writes through its own
    store; all writes happen in transactions on the staging database.
+   Entities kept in per-user stores are read for every account before
+   anything is written, then read, written and verified one account at a
+   time, so that the memory the migration needs depends on the largest
+   account's stores and not on all of them together.
 8. **Verify** every step (section 3, column Verification): counts per entity
    and per user, field equality, every secret decrypted with the legacy
    derivation and read back through the Go path, compared in memory only;

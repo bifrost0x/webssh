@@ -58,6 +58,8 @@ func (s *hostPartStep) Entity() string { return s.part.entity }
 
 func (*hostPartStep) Version() int { return 1 }
 
+func (*hostPartStep) accountScoped() bool { return true }
+
 func (s *hostPartStep) Read(ctx context.Context, src *Source) error {
 	var err error
 	if s.users, err = readUserHosts(ctx, src); err != nil {

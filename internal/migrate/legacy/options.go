@@ -49,6 +49,9 @@ type Options struct {
 	checkpoint func(point string)
 	// freeSpace replaces the free space query in tests.
 	freeSpace func(dir string) (uint64, error)
+	// wholeSource runs account steps over all accounts at once, as one
+	// step; tests compare it with the run account by account.
+	wholeSource bool
 }
 
 // OriginRule is the evaluated K6 A1 rule with the configuration it was

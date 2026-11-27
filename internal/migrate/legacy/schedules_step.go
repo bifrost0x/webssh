@@ -93,6 +93,9 @@ func (s *schedulesStep) Read(ctx context.Context, src *Source) error {
 			s.kept = append(s.kept, KeptPath{Path: "webssh.db:automation_schedules/" + row.ID, Reason: "schedule_of_deleted_account"})
 			continue
 		}
+		if err := st.loadHosts(src, row.UserID); err != nil {
+			return err
+		}
 		valid, reason := st.validGrant(ctx, src, row.UserID, s.epoch, g)
 		if valid {
 			// Go binds a key by the digest of its public key (the run side

@@ -38,6 +38,10 @@ func (s *hostKeysStep) Entity() string { return s.entity }
 
 func (*hostKeysStep) Version() int { return 1 }
 
+// accountScoped: the known_hosts files of the accounts (E24) are read one
+// account at a time; the global file (E17) is one step.
+func (s *hostKeysStep) accountScoped() bool { return s.entity == "E24" }
+
 func (s *hostKeysStep) scope() hostkey.Scope {
 	if s.entity == "E17" {
 		return hostkey.ScopeGlobal
@@ -133,7 +137,10 @@ func (s *hostKeysStep) Report() StepReport {
 			}
 		}
 	}
-	if len(s.files) > 0 {
+	switch {
+	case s.accountScoped() && len(s.files) > 0:
+		r.accountNote, r.accounts = "%d known_hosts file(s) stored byte for byte", len(s.files)
+	case len(s.files) > 0:
 		r.Notes = append(r.Notes, fmt.Sprintf("%d known_hosts file(s) stored byte for byte", len(s.files)))
 	}
 	return r

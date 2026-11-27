@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"errors"
-	"fmt"
 
 	"github.com/bifrost0x/webssh/internal/files/smb"
 	"github.com/bifrost0x/webssh/internal/store"
@@ -36,6 +35,8 @@ type smbUser struct {
 func (*smbSharesStep) Entity() string { return "E22" }
 
 func (*smbSharesStep) Version() int { return 1 }
+
+func (*smbSharesStep) accountScoped() bool { return true }
 
 func (s *smbSharesStep) Read(ctx context.Context, src *Source) error {
 	rows, err := src.AccountRows(ctx)
@@ -89,5 +90,5 @@ func (s *smbSharesStep) Verify(ctx context.Context, tx *store.Tx, _ Opener) erro
 
 func (s *smbSharesStep) Report() StepReport {
 	return StepReport{Entity: "E22", Version: 1, Read: s.read, Written: s.read, Flagged: s.flags,
-		Notes: []string{fmt.Sprintf("SMB share definitions taken over verbatim for %d accounts; passwords were never stored with them", len(s.users))}}
+		accountNote: "SMB share definitions taken over verbatim for %d accounts; passwords were never stored with them", accounts: len(s.users)}
 }

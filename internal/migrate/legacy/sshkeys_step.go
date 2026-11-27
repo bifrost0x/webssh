@@ -38,6 +38,8 @@ func (*sshKeysStep) Entity() string { return "E23" }
 
 func (*sshKeysStep) Version() int { return 1 }
 
+func (*sshKeysStep) accountScoped() bool { return true }
+
 func (s *sshKeysStep) Read(ctx context.Context, src *Source) error {
 	rows, err := src.AccountRows(ctx)
 	if err != nil {
@@ -191,7 +193,9 @@ func (s *sshKeysStep) Report() StepReport {
 		}
 	}
 	if plaintext > 0 {
-		r.Notes = append(r.Notes, "unencrypted legacy key files remain until webssh legacy purge; an audit event is due for each sealed one")
+		// First, so that the note stays in place when the reports of the
+		// accounts are combined.
+		r.Notes = append([]string{"unencrypted legacy key files remain until webssh legacy purge; an audit event is due for each sealed one"}, r.Notes...)
 	}
 	return r
 }

@@ -3,7 +3,6 @@ package legacy
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -28,7 +27,8 @@ type run struct {
 	report   Report
 	listing  Listing
 	src      *Source
-	steps    []Step
+	segments []segment
+	accounts []AccountRow // every account, for the account steps
 	pending  []Pending
 	ring     *keyring.Ring
 	staging  string
@@ -175,12 +175,22 @@ func (r *run) read(ctx context.Context) error {
 		r.report.Warnings = append(r.report.Warnings, Warning{Code: "secret_key_not_checked",
 			Message: "the legacy data holds no encrypted record, so SECRET_KEY could not be checked"})
 	}
-	if r.steps, err = r.o.Registry.instantiate(); err != nil {
+	if r.segments, err = r.o.Registry.segments(r.o.wholeSource); err != nil {
 		return stop("", CodeStepFailed, "the migration steps are inconsistent", err)
 	}
-	for _, s := range r.steps {
-		if err := s.Read(ctx, src); err != nil {
-			return stepStop(s.Entity(), "the legacy data could not be read", err)
+	if r.accounts, err = src.AccountRows(ctx); err != nil {
+		return stop(S7, CodeLegacyUnknown, "app.db cannot be read", err)
+	}
+	for i := range r.segments {
+		seg := &r.segments[i]
+		if seg.step == nil {
+			if err := r.readAccounts(ctx, seg); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := seg.step.Read(ctx, src); err != nil {
+			return stepStop(seg.step.Entity(), "the legacy data could not be read", err)
 		}
 	}
 	if r.pending, err = r.o.Registry.countPending(ctx, src); err != nil {
@@ -238,59 +248,6 @@ func (r *run) stage(ctx context.Context) error {
 	schemas := append([]store.Schema{RecordSchema(), settings.Schema()}, r.o.Registry.schemas...)
 	if err := r.db.ApplyAll(ctx, schemas...); err != nil {
 		return stop("", CodeActivation, "the staging database schema cannot be created", err)
-	}
-	return nil
-}
-
-// write runs every step's Write and Verify, re-checks the source digest
-// (step 9) and writes the migration record, all in one transaction, so
-// that the record exists only together with the data it describes.
-func (r *run) write(ctx context.Context) error {
-	var b [16]byte
-	_, _ = rand.Read(b[:]) // crypto/rand.Read never fails
-	r.dbID = hex.EncodeToString(b[:])
-	return r.db.Write(ctx, func(tx *store.Tx) error {
-		for _, s := range r.steps {
-			if err := s.Write(ctx, tx, r.ring); err != nil {
-				return stepStop(s.Entity(), "writing the migrated data failed", err)
-			}
-		}
-		r.o.at(PointWritten)
-		for _, s := range r.steps {
-			if err := s.Verify(ctx, tx, r.ring); err != nil {
-				return &StopError{Code: CodeVerifyFailed, Entity: s.Entity(), Message: "the migrated data does not match the legacy data", Err: err}
-			}
-			r.report.add(s.Report())
-		}
-		if err := r.recordSettings(ctx, tx); err != nil {
-			return err
-		}
-		if err := writeKeyID(ctx, tx, r.ring.KeyID()); err != nil {
-			return err
-		}
-		return r.recheckAndRecord(ctx, tx)
-	})
-}
-
-// recordSettings writes the settings derived from the previous behaviour
-// (D-01) through their owner, internal/settings, after every step has
-// written, and lists them in the report.
-func (r *run) recordSettings(ctx context.Context, tx *store.Tx) error {
-	mat, err := settings.MaterialisePolicies(ctx, tx, settings.Legacy{KeepLegacyScheme: r.o.Origin.KeepLegacyScheme}, r.o.now().UnixMicro())
-	if err != nil {
-		return fmt.Errorf("legacy: store derived settings: %w", err)
-	}
-	for _, m := range mat {
-		s := MaterialisedSetting{Setting: m.Setting, Value: m.Value, Rule: m.Rule, Evidence: m.Evidence}
-		if m.Setting == settings.PolicyOriginIgnoreScheme && r.o.Origin.Evidence != "" {
-			s.Evidence = r.o.Origin.Evidence
-		}
-		r.report.MaterialisedSettings = append(r.report.MaterialisedSettings, s)
-	}
-	if r.o.Origin.KeepLegacyScheme {
-		r.report.Warnings = append(r.report.Warnings, Warning{Code: "origin_scheme_not_checked", Message: "realtime " +
-			"connections keep the Python rule that compares only host and port of the origin; configure TRUSTED_PROXIES to " +
-			"let the scheme be checked"})
 	}
 	return nil
 }
