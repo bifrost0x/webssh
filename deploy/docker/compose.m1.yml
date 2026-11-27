@@ -32,9 +32,9 @@
 # Docker keep the real address.
 #
 # Compose files written for the Python image that override the health
-# check with a python command ("CMD-SHELL ... python -c ...") stay unhealthy
-# with this image, which has neither a shell nor Python. Remove the
-# override; the image runs "/app/webssh healthcheck" itself.
+# check with the documented python command (also as "CMD-SHELL ...") keep
+# working: python and /bin/sh in the image accept exactly those commands
+# and run the same probe. The image's own check is "/app/webssh healthcheck".
 #
 # Passkeys and secure cookies need HTTPS. Over http://<LAN-IP> passkeys do
 # not work (over http://localhost they do). For HTTPS in the LAN add the
@@ -51,6 +51,7 @@ services:
       dockerfile: deploy/docker/Dockerfile
       target: release
       args:
+        VERSION: 3.4.0-m1
         VCS_REF: ${WEBSSH_GO_VCS_REF:-unknown}
     image: webssh-go:m1
     container_name: webssh-go
