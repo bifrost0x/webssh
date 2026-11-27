@@ -1,0 +1,3582 @@
+{
+ "destinations": {
+  "absent": {
+   "/dst/keep": [
+    "file",
+    "k"
+   ]
+  },
+  "dir_with_a_dir": {
+   "/dst/x/a.txt": [
+    "dir",
+    null
+   ]
+  },
+  "dir_with_file": {
+   "/dst/x/a.txt": [
+    "file",
+    "old"
+   ]
+  },
+  "dir_with_sub_file": {
+   "/dst/x/sub": [
+    "file",
+    "old"
+   ]
+  },
+  "empty_dir": {
+   "/dst/x": [
+    "dir",
+    null
+   ]
+  },
+  "file": {
+   "/dst/x": [
+    "file",
+    "old"
+   ]
+  },
+  "link": {
+   "/dst/keep": [
+    "file",
+    "k"
+   ],
+   "/dst/x": [
+    "link",
+    "/dst/keep"
+   ]
+  },
+  "no_parent": {
+   "/dst/keep": [
+    "file",
+    "k"
+   ]
+  }
+ },
+ "dispositions": {
+  "": "attachment; filename=\"download\"; filename*=UTF-8''download",
+  "%41.txt": "attachment; filename=\"_41.txt\"; filename*=UTF-8''%2541.txt",
+  ".hidden": "attachment; filename=\".hidden\"; filename*=UTF-8''.hidden",
+  "a\"b;c\\d.txt": "attachment; filename=\"a_b_c_d.txt\"; filename*=UTF-8''a%22b%3Bc%5Cd.txt",
+  "dir/inner.txt": "attachment; filename=\"inner.txt\"; filename*=UTF-8''inner.txt",
+  "emoji \ud83d\ude00.png": "attachment; filename=\"emoji .png\"; filename*=UTF-8''emoji%20%F0%9F%98%80.png",
+  "plain.txt": "attachment; filename=\"plain.txt\"; filename*=UTF-8''plain.txt",
+  "quote'n<tag>.html": "attachment; filename=\"quote_n_tag_.html\"; filename*=UTF-8''quote%27n%3Ctag%3E.html",
+  "two words.tar.gz": "attachment; filename=\"two words.tar.gz\"; filename*=UTF-8''two%20words.tar.gz",
+  "x~y-z_1.0": "attachment; filename=\"x_y-z_1.0\"; filename*=UTF-8''x~y-z_1.0",
+  "\u65e5\u672c": "attachment; filename=\"download\"; filename*=UTF-8''%E6%97%A5%E6%9C%AC",
+  "\u65e5\u672c\u8a9e.txt": "attachment; filename=\".txt\"; filename*=UTF-8''%E6%97%A5%E6%9C%AC%E8%AA%9E.txt"
+ },
+ "limits": {
+  "bytes": [
+   3,
+   100
+  ],
+  "members": [
+   1000,
+   2
+  ],
+  "normal": [
+   1000,
+   100
+  ]
+ },
+ "source": {
+  "/src/dir/a.txt": [
+   "file",
+   "a"
+  ],
+  "/src/dir/empty": [
+   "dir",
+   null
+  ],
+  "/src/dir/sub/b.txt": [
+   "file",
+   "bb"
+  ],
+  "/src/file.txt": [
+   "file",
+   "hello"
+  ],
+  "/src/link": [
+   "link",
+   "/src/file.txt"
+  ],
+  "/src/linkdir/ok.txt": [
+   "file",
+   "ok"
+  ],
+  "/src/linkdir/zz": [
+   "link",
+   "/src/file.txt"
+  ]
+ },
+ "vectors": [
+  {
+   "code": "OK",
+   "destination": "absent",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x file hello"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "absent",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "absent",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x file hello"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "absent",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x file hello"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "absent",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "absent",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x file hello"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file hello"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file hello"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "empty_dir",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "empty_dir",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "empty_dir",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "empty_dir",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_sub_file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_sub_file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_sub_file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_sub_file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_a_dir",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_a_dir",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_a_dir",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_a_dir",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "link",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "link",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "link",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "link",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "no_parent",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "no_parent",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "absent",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x dir",
+    "/dst/x/a.txt file a",
+    "/dst/x/empty dir",
+    "/dst/x/sub dir",
+    "/dst/x/sub/b.txt file bb"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "absent",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x dir",
+    "/dst/x/a.txt file a",
+    "/dst/x/empty dir",
+    "/dst/x/sub dir",
+    "/dst/x/sub/b.txt file bb"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "absent",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "absent",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x dir",
+    "/dst/x/a.txt file a",
+    "/dst/x/empty dir",
+    "/dst/x/sub dir",
+    "/dst/x/sub/b.txt file bb"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "absent",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x dir",
+    "/dst/x/a.txt file a",
+    "/dst/x/empty dir",
+    "/dst/x/sub dir",
+    "/dst/x/sub/b.txt file bb"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "absent",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "empty_dir",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "empty_dir",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "empty_dir",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "empty_dir",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file a",
+    "/dst/x/empty dir",
+    "/dst/x/sub dir",
+    "/dst/x/sub/b.txt file bb"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "empty_dir",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file a",
+    "/dst/x/empty dir",
+    "/dst/x/sub dir",
+    "/dst/x/sub/b.txt file bb"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "empty_dir",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "dir_with_file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file a",
+    "/dst/x/empty dir",
+    "/dst/x/sub dir",
+    "/dst/x/sub/b.txt file bb"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "dir_with_file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file a",
+    "/dst/x/empty dir",
+    "/dst/x/sub dir",
+    "/dst/x/sub/b.txt file bb"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_sub_file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_sub_file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_sub_file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_sub_file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/empty dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_sub_file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/empty dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_sub_file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_a_dir",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "dir_with_a_dir",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_a_dir",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir",
+    "/dst/x/empty dir",
+    "/dst/x/sub dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir",
+    "/dst/x/empty dir",
+    "/dst/x/sub dir"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "dir_with_a_dir",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "link",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "link",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "link",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "link",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "link",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "link",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "no_parent",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "LIMIT_EXCEEDED",
+   "destination": "no_parent",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/link",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/link",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "absent",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "empty_dir",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_sub_file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "dir_with_a_dir",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "link",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/linkdir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "TRANSFER_UNAVAILABLE",
+   "destination": "no_parent",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/linkdir",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "absent",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "absent",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "absent",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "absent",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "absent",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "absent",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "empty_dir",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "empty_dir",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "empty_dir",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "empty_dir",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "empty_dir",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "empty_dir",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_sub_file",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_sub_file",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_sub_file",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_sub_file",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_sub_file",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_sub_file",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/sub file old"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_a_dir",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_a_dir",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_a_dir",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_a_dir",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_a_dir",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "dir_with_a_dir",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/x dir",
+    "/dst/x/a.txt dir"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "link",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "link",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "link",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "link",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "link",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "link",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/dst/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k",
+    "/dst/x link /dst/keep"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "bytes",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "members",
+   "policy": "error",
+   "source": "/src/missing",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "bytes",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "NOT_FOUND",
+   "destination": "no_parent",
+   "limit": "members",
+   "policy": "replace",
+   "source": "/src/missing",
+   "target": "/nope/x",
+   "tree": [
+    "/ dir",
+    "/dst dir",
+    "/dst/keep file k"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "same",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/src/file.txt",
+   "tree": [
+    "/ dir",
+    "/src dir",
+    "/src/dir dir",
+    "/src/dir/a.txt file a",
+    "/src/dir/empty dir",
+    "/src/dir/sub dir",
+    "/src/dir/sub/b.txt file bb",
+    "/src/file.txt file hello",
+    "/src/link link /src/file.txt",
+    "/src/linkdir dir",
+    "/src/linkdir/ok.txt file ok",
+    "/src/linkdir/zz link /src/file.txt"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "same",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/src/file.txt",
+   "tree": [
+    "/ dir",
+    "/src dir",
+    "/src/dir dir",
+    "/src/dir/a.txt file a",
+    "/src/dir/empty dir",
+    "/src/dir/sub dir",
+    "/src/dir/sub/b.txt file bb",
+    "/src/file.txt file hello",
+    "/src/link link /src/file.txt",
+    "/src/linkdir dir",
+    "/src/linkdir/ok.txt file ok",
+    "/src/linkdir/zz link /src/file.txt"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "same",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/file.txt",
+   "target": "/src/copy.txt",
+   "tree": [
+    "/ dir",
+    "/src dir",
+    "/src/copy.txt file hello",
+    "/src/dir dir",
+    "/src/dir/a.txt file a",
+    "/src/dir/empty dir",
+    "/src/dir/sub dir",
+    "/src/dir/sub/b.txt file bb",
+    "/src/file.txt file hello",
+    "/src/link link /src/file.txt",
+    "/src/linkdir dir",
+    "/src/linkdir/ok.txt file ok",
+    "/src/linkdir/zz link /src/file.txt"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "same",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/file.txt",
+   "target": "/src/copy.txt",
+   "tree": [
+    "/ dir",
+    "/src dir",
+    "/src/copy.txt file hello",
+    "/src/dir dir",
+    "/src/dir/a.txt file a",
+    "/src/dir/empty dir",
+    "/src/dir/sub dir",
+    "/src/dir/sub/b.txt file bb",
+    "/src/file.txt file hello",
+    "/src/link link /src/file.txt",
+    "/src/linkdir dir",
+    "/src/linkdir/ok.txt file ok",
+    "/src/linkdir/zz link /src/file.txt"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "same",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/src/dir",
+   "tree": [
+    "/ dir",
+    "/src dir",
+    "/src/dir dir",
+    "/src/dir/a.txt file a",
+    "/src/dir/empty dir",
+    "/src/dir/sub dir",
+    "/src/dir/sub/b.txt file bb",
+    "/src/file.txt file hello",
+    "/src/link link /src/file.txt",
+    "/src/linkdir dir",
+    "/src/linkdir/ok.txt file ok",
+    "/src/linkdir/zz link /src/file.txt"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "same",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/src/dir",
+   "tree": [
+    "/ dir",
+    "/src dir",
+    "/src/dir dir",
+    "/src/dir/a.txt file a",
+    "/src/dir/empty dir",
+    "/src/dir/sub dir",
+    "/src/dir/sub/b.txt file bb",
+    "/src/file.txt file hello",
+    "/src/link link /src/file.txt",
+    "/src/linkdir dir",
+    "/src/linkdir/ok.txt file ok",
+    "/src/linkdir/zz link /src/file.txt"
+   ]
+  },
+  {
+   "code": "CONFLICT",
+   "destination": "same",
+   "limit": "normal",
+   "policy": "error",
+   "source": "/src/dir",
+   "target": "/src/dir/sub",
+   "tree": [
+    "/ dir",
+    "/src dir",
+    "/src/dir dir",
+    "/src/dir/a.txt file a",
+    "/src/dir/empty dir",
+    "/src/dir/sub dir",
+    "/src/dir/sub/b.txt file bb",
+    "/src/file.txt file hello",
+    "/src/link link /src/file.txt",
+    "/src/linkdir dir",
+    "/src/linkdir/ok.txt file ok",
+    "/src/linkdir/zz link /src/file.txt"
+   ]
+  },
+  {
+   "code": "OK",
+   "destination": "same",
+   "limit": "normal",
+   "policy": "replace",
+   "source": "/src/dir",
+   "target": "/src/dir/sub",
+   "tree": [
+    "/ dir",
+    "/src dir",
+    "/src/dir dir",
+    "/src/dir/a.txt file a",
+    "/src/dir/empty dir",
+    "/src/dir/sub dir",
+    "/src/dir/sub/a.txt file a",
+    "/src/dir/sub/b.txt file bb",
+    "/src/dir/sub/empty dir",
+    "/src/dir/sub/sub dir",
+    "/src/dir/sub/sub/b.txt file bb",
+    "/src/file.txt file hello",
+    "/src/link link /src/file.txt",
+    "/src/linkdir dir",
+    "/src/linkdir/ok.txt file ok",
+    "/src/linkdir/zz link /src/file.txt"
+   ]
+  }
+ ]
+}
