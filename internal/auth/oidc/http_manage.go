@@ -213,6 +213,14 @@ func (h *HTTP) adminStepUpResult(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, r, h.Logger, err)
 		return
 	}
+	// The page fetches the result from its own origin. A navigation from
+	// another site must not use it up (RS8-H02): a GET carries no CSRF
+	// token, so the browser's Sec-Fetch-Site decides; a browser that does
+	// not send it is let through as before.
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
+		stepUpRefused(w, http.StatusForbidden)
+		return
+	}
 	res, ok := h.results.take(p.SessionID, h.now())
 	if !ok {
 		stepUpRefused(w, http.StatusNotFound)
