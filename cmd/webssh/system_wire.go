@@ -105,6 +105,7 @@ func (s *system) buildCapabilities(in bootInput) error {
 		routes = opt.terminalRoutes
 	}
 	shells := legacyAlgorithmShells{dialer: dialer, settings: s.settings}
+	s.shells = shells
 	termCfg := terminal.FromConfig(cfg.Terminal)
 	termCfg.TmuxPrefix = cfg.Features.TmuxSessionPrefix
 	s.terminal, err = terminal.New(termCfg, terminal.Deps{

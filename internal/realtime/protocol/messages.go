@@ -139,6 +139,12 @@ var v1 = []MessageType{
 	{TypeFilesDelete, ClientRequest, "internal/files"},
 	{TypeFilesSourceClose, ClientRequest, "internal/files"},
 
+	// The SFTP sources (FS2, payload_sftp.go).
+	{TypeFilesQuickOpen, ClientRequest, "internal/files/sftp"},
+	{TypeFilesQuickClose, ClientRequest, "internal/files/sftp"},
+	{TypeFilesSessionProbe, ClientRequest, "internal/files/sftp"},
+	{TypeFilesSessionDirectory, ClientRequest, "internal/files/sftp"},
+
 	// Area "smb" (FS3, payload_smb.go).
 	{TypeSMBShareList, ClientRequest, "internal/files/smb"},
 	{TypeSMBShareSave, ClientRequest, "internal/files/smb"},

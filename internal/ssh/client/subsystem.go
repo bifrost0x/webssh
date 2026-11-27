@@ -73,3 +73,13 @@ func (s *subsystem) Close() error {
 	})
 	return s.err
 }
+
+// ConnOf returns the connection a shell of this package runs on, for the
+// channels a terminal session opens beside its shell (the SFTP subsystem
+// of its file source, the directory probe). Other shells give nil.
+func ConnOf(s Shell) *Conn {
+	if sh, ok := s.(*shell); ok {
+		return sh.conn
+	}
+	return nil
+}

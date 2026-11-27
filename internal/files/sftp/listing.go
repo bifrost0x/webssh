@@ -222,4 +222,9 @@ func (b *Backend) readAll(ctx context.Context, dir string, budget *metaBudget) (
 	}
 }
 
-func (o Options) maxMembers() int { return files.DefaultMaxMembers }
+func (o Options) maxMembers() int {
+	if o.MaxMembers > 0 {
+		return o.MaxMembers
+	}
+	return files.DefaultMaxMembers
+}

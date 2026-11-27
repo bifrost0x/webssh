@@ -10,10 +10,10 @@ import (
 	"github.com/bifrost0x/webssh/internal/audit"
 	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/files/smb"
 	"github.com/bifrost0x/webssh/internal/hosts"
 	"github.com/bifrost0x/webssh/internal/httpapi"
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
-	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/store"
@@ -29,7 +29,7 @@ func credentialsArea() extension {
 		wire: func(sys *system) error {
 			if err := sys.vault.EnableCredentials(vault.CredentialOptions{
 				Stores:   credentialStores{db: sys.db},
-				Writer:   credentialResources{hosts: sys.hosts},
+				Writer:   credentialResources{hosts: sys.hosts, shares: &smb.Shares{DB: sys.db, Max: sys.cfg.SMB.MaxSavedShares}},
 				Policy:   credentialPolicy{sys.settings},
 				Accounts: credentialAccounts{sys.accounts},
 				Audit:    credentialAudit{sys.audit},
@@ -63,27 +63,36 @@ var (
 	_ vault.Audit             = credentialAudit{}
 	_ vault.Resources         = (*vault.Service)(nil)
 	_ terminal.SavedPasswords = savedPasswords{}
+	_ smb.Passwords           = savedPasswords{}
 )
 
-// credentialStores reads the saved hosts, jump hosts and SOCKS proxies of
-// a user in one snapshot. SMB shares join with internal/files/smb (FS3);
-// until then their assignments are kept and count as in use.
+// credentialStores reads the saved hosts, jump hosts, SOCKS proxies and
+// SMB shares of a user in one snapshot. The share definitions are stored
+// whether SMB_ENABLED is on or not, as in the Python release.
 type credentialStores struct{ db *store.DB }
 
 func (c credentialStores) Records(ctx context.Context, userID int64) (vault.Records, error) {
 	var l hosts.Legacy
+	var shares []jsontext.Value
 	err := c.db.Read(ctx, func(tx *store.Tx) error {
 		var err error
-		l, err = hosts.Export(ctx, tx, userID)
+		if l, err = hosts.Export(ctx, tx, userID); err != nil {
+			return err
+		}
+		shares, err = smb.SharesTx(ctx, tx, userID)
 		return err
 	})
-	return vault.Records{Profiles: l.Profiles, JumpHosts: l.JumpHosts, SOCKSProxies: l.SOCKSProxies}, err
+	return vault.Records{Profiles: l.Profiles, JumpHosts: l.JumpHosts, SOCKSProxies: l.SOCKSProxies,
+		SMBShares: shares, SMB: true}, err
 }
 
-// credentialResources creates and removes saved hosts, jump hosts and
-// SOCKS proxies through their own save, for a resource created together
-// with its password.
-type credentialResources struct{ hosts *hosts.Service }
+// credentialResources creates and removes saved hosts, jump hosts, SOCKS
+// proxies and SMB shares through their own save, for a resource created
+// together with its password.
+type credentialResources struct {
+	hosts  *hosts.Service
+	shares *smb.Shares
+}
 
 func (c credentialResources) CreateResource(ctx context.Context, userID int64, kind vault.ResourceKind, payload jsontext.Value) (jsontext.Value, error) {
 	switch kind {
@@ -105,6 +114,13 @@ func (c credentialResources) CreateResource(ctx context.Context, userID int64, k
 			return nil, fault.New(fault.InvalidRequest, "")
 		}
 		return c.hosts.SaveSOCKSProxy(ctx, userID, req)
+	case vault.ResourceSMB:
+		req, err := smb.SaveRequestOf(payload)
+		if err != nil {
+			return nil, err
+		}
+		req.ID = nil // always a new definition
+		return c.shares.Save(ctx, userID, req)
 	}
 	return nil, fault.New(fault.NotAvailableInPreview, "")
 }
@@ -122,6 +138,8 @@ func (c credentialResources) DeleteResource(ctx context.Context, userID int64, k
 		return c.hosts.DeleteJumpHost(ctx, userID, id)
 	case vault.ResourceSOCKS:
 		return c.hosts.DeleteSOCKSProxy(ctx, userID, id)
+	case vault.ResourceSMB:
+		return c.shares.Delete(ctx, userID, recordID)
 	}
 	return nil
 }
@@ -148,68 +166,4 @@ func (c credentialAudit) CredentialChanged(_ context.Context, userID int64, acti
 	if c.log != nil {
 		c.log.Event(audit.Info, "CREDENTIAL_CHANGED", audit.F("user_id", userID), audit.F("action", action))
 	}
-}
-
-// savedPasswords adapts the vault to the terminal's saved passwords
-// (terminal.SavedPasswords): the password assigned to a saved host, jump
-// host or SOCKS proxy, checked against the resource as it is now. A
-// connection gets one only for the principal of ctx, reached over HTTPS,
-// as connection_password required.
-type savedPasswords struct{ vault *vault.Service }
-
-// connecting is the principal of a connection that may use owner's saved
-// passwords.
-func connecting(ctx context.Context, owner int64) (principal.Principal, error) {
-	p, err := principal.Require(ctx)
-	switch {
-	case err != nil:
-		return principal.Principal{}, err
-	case p.UserID != owner:
-		return principal.Principal{}, fault.New(fault.AuthenticationNeeded, "")
-	case !p.Secure:
-		return principal.Principal{}, fault.New(fault.HTTPSRequired, "")
-	}
-	return p, nil
-}
-
-func (s savedPasswords) Password(ctx context.Context, owner int64, resourceID string) (string, error) {
-	if _, err := connecting(ctx, owner); err != nil {
-		return "", err
-	}
-	t, found, err := s.vault.Resource(ctx, owner, resourceID)
-	if err != nil {
-		return "", err
-	}
-	if !found {
-		return "", fault.New(fault.CredentialMissing, "")
-	}
-	secret, err := s.vault.Password(ctx, owner, resourceID, t)
-	if err != nil {
-		return "", err
-	}
-	defer clear(secret)
-	return string(secret), nil
-}
-
-// TargetPassword is the password of Quick Connect without a saved host:
-// the target token of /api/credentials/authorize-target
-// (credential_target_token) for exactly this host, port, user and route.
-func (s savedPasswords) TargetPassword(ctx context.Context, p principal.Principal, credentialID, token string, host string, port int, user, jumpHostID, socksProxyID string) (string, error) {
-	if _, err := connecting(ctx, p.UserID); err != nil {
-		return "", err
-	}
-	port64, auth := int64(port), "password"
-	t := vault.Target{Kind: vault.ResourceSSH, Host: &host, Port: &port64, Username: &user, AuthType: &auth}
-	if jumpHostID != "" {
-		t.JumpHostID = &jumpHostID
-	}
-	if socksProxyID != "" {
-		t.SOCKSProxyID = &socksProxyID
-	}
-	secret, err := s.vault.TargetPassword(ctx, p, credentialID, token, t)
-	if err != nil {
-		return "", err
-	}
-	defer clear(secret)
-	return string(secret), nil
 }

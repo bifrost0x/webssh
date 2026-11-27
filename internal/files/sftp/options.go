@@ -29,6 +29,9 @@ type Options struct {
 	// MaxMetadataBytes bounds the names and metadata of one listing or
 	// tree operation.
 	MaxMetadataBytes int
+	// MaxMembers bounds the entries of one listing or tree operation
+	// (MAX_TRANSFER_MEMBERS).
+	MaxMembers int
 	// OperationTimeout is SFTP_OPERATION_TIMEOUT: a request without a
 	// reply for that long closes the channel, and it bounds each read.
 	OperationTimeout time.Duration

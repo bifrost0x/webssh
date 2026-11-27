@@ -74,6 +74,9 @@ func descriptor(h client.Hop, name string, ephemeral bool) files.Descriptor {
 type Quick struct {
 	Dialer  Dialer
 	Options Options
+	// Chmod, when set, reads the admin switch sftp_chmod_enabled for each
+	// new source instead of Options.ChmodEnabled.
+	Chmod func(context.Context) bool
 }
 
 // Open connects to t for p and starts SFTP. ix answers the host-key and
@@ -89,7 +92,11 @@ func (q *Quick) Open(ctx context.Context, p principal.Principal, t client.Target
 	if err != nil {
 		return files.Descriptor{}, nil, err
 	}
-	b, err := openOn(ctx, conn, q.Options, func() { _ = conn.Close() })
+	o := q.Options
+	if q.Chmod != nil {
+		o.ChmodEnabled = q.Chmod(ctx)
+	}
+	b, err := openOn(ctx, conn, o, func() { _ = conn.Close() })
 	if err != nil {
 		return files.Descriptor{}, nil, err
 	}
@@ -101,6 +108,10 @@ type Session struct {
 	Conn Channel
 	Hop  client.Hop // host, port and user for the descriptor
 	Name string     // display name of the session, if any
+	// Exec runs the directory probe on the same connection; Tmux is the
+	// tmux session the shell runs in, if any.
+	Exec Execer
+	Tmux string
 }
 
 // Sessions finds a terminal session of p by its handle

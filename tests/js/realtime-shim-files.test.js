@@ -89,3 +89,57 @@ test('cancelling a listing always succeeds and the image preview needs for_previ
     assert.deepEqual(plain(ready), [{source_id: 's:a', request_id: 'r2', filename: 'i.png', file_data: 'UE5H', size: 3, for_preview: true, encoding: 'base64'}]);
     socket.disconnect();
 });
+
+test('Quick SFTP maps onto files.quick.open and answers with the events of today', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const seen = [];
+    socket.on('quick_connect_success', data => seen.push(['ok', data]));
+    socket.on('quick_connect_error', data => seen.push(['err', data]));
+    socket.on('quick_disconnect_success', data => seen.push(['closed', data]));
+    socket.emit('quick_connect', {host: 'h', port: '2222', username: 'u', credential_id: 'c1', credential_target_token: 'tok',
+        password: 'ignored', client_request_id: 'quick_1', gateway_interaction: 1});
+    let request = ws.lastRequest('files.quick.open');
+    assert.deepEqual(plain(request.p), {host: 'h', username: 'u', credential_target_token: 'tok', client_request_id: 'quick_1',
+        auth_type: 'password', port: 2222, saved_password: true, credential_id: 'c1'});
+    ws.reply(request.id, {client_request_id: 'quick_1', connection_id: 'hX', host: 'h', port: 2222, username: 'u', file_source: {source_id: 'sftp-quick:hX'}});
+    socket.emit('quick_connect', {host: 'h', username: 'u', key_id: 'k', client_request_id: 'quick_2'});
+    request = ws.lastRequest('files.quick.open');
+    assert.equal(request.p.auth_type, 'key');
+    ws.fail(request.id, {code: 'busy', message: 'Maximum number of quick connections reached'});
+    socket.emit('quick_disconnect', {connection_id: 'hX'});
+    ws.reply(ws.lastRequest('files.quick.close').id, {connection_id: 'hX'});
+    await tick();
+    assert.deepEqual(plain(seen), [
+        ['ok', {client_request_id: 'quick_1', connection_id: 'hX', host: 'h', port: 2222, username: 'u', file_source: {source_id: 'sftp-quick:hX'}}],
+        ['err', {error: 'Maximum number of quick connections reached', code: 'busy', client_request_id: 'quick_2'}],
+        ['closed', {connection_id: 'hX'}],
+    ]);
+    socket.disconnect();
+});
+
+test('the session probe and the terminal directory reach the server', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const seen = [];
+    socket.on('session_sftp_capability', data => seen.push(data));
+    socket.emit('probe_session_sftp', {session_id: 's', request_id: 'r1'});
+    ws.reply(ws.lastRequest('files.session.probe').id, {session_id: 's', request_id: 'r1', available: true});
+    socket.emit('probe_session_sftp', {session_id: 's', request_id: 'r2'});
+    ws.fail(ws.lastRequest('files.session.probe').id, {code: 'channel_rejected', message: 'refused'});
+    const acks = [];
+    socket.emit('request_session_directory', {session_id: 's'}, ack => acks.push(ack));
+    ws.reply(ws.lastRequest('files.session.directory').id, {directory: {path: '/srv', shell: 'bash'}, reason: null});
+    socket.emit('request_session_directory', {session_id: 's'}, ack => acks.push(ack));
+    ws.fail(ws.lastRequest('files.session.directory').id, {code: 'rate_limited', message: 'slow'});
+    await tick();
+    assert.deepEqual(plain(seen), [
+        {session_id: 's', request_id: 'r1', success: true, available: true},
+        {session_id: 's', request_id: 'r2', success: false, available: false, reason: 'resource_shortage'},
+    ]);
+    assert.deepEqual(plain(acks), [
+        {success: true, directory: {path: '/srv', shell: 'bash'}, reason: null},
+        {success: false, directory: null, reason: 'busy'},
+    ]);
+    socket.disconnect();
+});

@@ -11,6 +11,8 @@ func TestFileLimits(t *testing.T) {
 		MaxEditorBytes: 5 << 20, EditorBytesPerMinute: 20 << 20, ControlBytesPerMin: 2 << 20,
 		ListingPageSize: 500, SnapshotTTL: time.Minute, SnapshotsTotal: 8, SnapshotsPerUser: 4,
 		MaxTransferMembers: 10000, MaxPreviewBytes: 512000, MaxPreviewTailLines: 10000, MaxSupportedFileSize: 1 << 30,
+		SFTP: SFTP{MaxPacketBytes: 1 << 20, MaxHandleBytes: 16 << 10, MaxNameBytes: 4096, MaxMetadataBytes: 4 << 20,
+			OperationTimeout: 30 * time.Second},
 	}
 	if c.Files != want {
 		t.Fatalf("defaults %+v", c.Files)
@@ -18,7 +20,11 @@ func TestFileLimits(t *testing.T) {
 	c, _ = mustLoad(t, map[string]string{
 		"MAX_EDITOR_FILE_SIZE": "1048576", "EDITOR_SAVE_BYTES_PER_MINUTE": "2097152", "REMOTE_LISTING_PAGE_SIZE": "50",
 		"REMOTE_LISTING_SNAPSHOT_TTL_SECONDS": "10", "MAX_PREVIEW_SIZE": "1000",
+		"SFTP_MAX_PACKET_BYTES": "65536", "SFTP_OPERATION_TIMEOUT": "5", "REMOTE_FILENAME_MAX_BYTES": "255",
 	})
+	if s := c.Files.SFTP; s.MaxPacketBytes != 64<<10 || s.OperationTimeout != 5*time.Second || s.MaxNameBytes != 255 {
+		t.Fatalf("configured SFTP %+v", s)
+	}
 	if c.Files.MaxEditorBytes != 1<<20 || c.Files.EditorBytesPerMinute != 2<<20 || c.Files.ListingPageSize != 50 ||
 		c.Files.SnapshotTTL != 10*time.Second || c.Files.MaxPreviewBytes != 1000 {
 		t.Fatalf("configured %+v", c.Files)

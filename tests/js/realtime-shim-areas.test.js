@@ -19,7 +19,8 @@ const M1_REQUESTS = ['list_profiles', 'save_profile', 'delete_profile', 'update_
 const M2_REQUESTS = ['ssh_gateway_answer', 'ssh_gateway_input', 'ssh_gateway_ack',
     'list_directory', 'cancel_directory_listing', 'get_home_directory', 'preview_file',
     'download_file_binary', 'open_file_for_edit', 'save_file', 'create_directory', 'create_file', 'rename_file',
-    'delete_item', 'file_source_disconnect',
+    'delete_item', 'file_source_disconnect', 'quick_connect', 'quick_disconnect', 'probe_session_sftp',
+    'request_session_directory',
     'list_smb_shares', 'save_smb_share', 'delete_smb_share', 'smb_quick_connect', 'smb_quick_connect_cancel'];
 const M1_UNAVAILABLE = ['list_commands', 'list_command_sets', 'list_smb_shares', 'probe_session_sftp',
     'request_session_insights', 'request_session_runtime_inventory'];
@@ -36,7 +37,8 @@ test('the split table equals the table of M1 plus the areas built since', () => 
     assert.equal(catalog.featureOf('delete_command'), 'commands');
     // A built area has no feature of the preview notice any more.
     assert.equal(catalog.featureOf('smb_list'), 'other');
-    assert.equal(catalog.featureOf('quick_sftp_open'), 'files');
+    assert.equal(catalog.featureOf('quick_sftp_open'), 'other');
+    assert.equal(catalog.featureOf('get_file_permissions'), 'files');
     assert.equal(catalog.featureOf('ssh_gateway_quick_cancel'), 'terminalTools');
     assert.equal(catalog.featureOf('list_profiles'), 'other');
     const features = new Set(M1_FEATURES.filter(f => f !== 'smb'));

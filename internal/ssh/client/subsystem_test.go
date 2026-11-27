@@ -25,3 +25,20 @@ func TestSubsystemRefusedByServerKeepsConnection(t *testing.T) {
 		t.Fatalf("connection after a refused subsystem: %d %v", code, err)
 	}
 }
+
+type foreignShell struct{ Shell }
+
+func TestConnOfNamesTheShellsConnection(t *testing.T) {
+	c := dialExec(t)
+	sh, err := c.CommandShell(t.Context(), "cat", 24, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sh.Close()
+	if ConnOf(sh) != c {
+		t.Fatal("shell does not name its connection")
+	}
+	if ConnOf(foreignShell{}) != nil || ConnOf(nil) != nil {
+		t.Fatal("a foreign shell names a connection")
+	}
+}

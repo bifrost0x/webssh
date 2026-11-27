@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/files/smb"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 	"github.com/bifrost0x/webssh/internal/store"
@@ -113,6 +114,41 @@ func TestCredentialsWiring(t *testing.T) {
 	_ = json.Unmarshal(jumps[0], &jr)
 	if pw, err := saved.Password(conn, 1, "jump:"+jr.ID); err != nil || pw != "jump-secret" {
 		t.Fatalf("jump password: %q %v", pw, err)
+	}
+	// An SMB share created with its password (create_for_resource), and
+	// the password of the saved share for exactly its fields.
+	if err := apply(vault.MethodCreateForResource, map[string]any{"resource_kind": "smb", "confirm_target": true, "name": "S", "password": "smb-secret",
+		"resource": map[string]any{"name": "Files", "host": "nas.example", "share": "Data", "domain": "", "username": "u"}}); err != nil {
+		t.Fatal(err)
+	}
+	shares, err := (&smb.Shares{DB: sys.db}).List(t.Context(), 1)
+	if err != nil || len(shares) != 1 {
+		t.Fatalf("shares %v %v", shares, err)
+	}
+	var sr struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(shares[0], &sr)
+	share := smb.ShareFields{Host: "nas.example", Share: "Data", Username: "u"}
+	p1 := principal.Principal{UserID: 1, SessionID: "s1", Secure: true}
+	if pw, err := saved.ConnectionPassword(conn, p1, smb.CredentialRequest{CredentialID: "smb:" + sr.ID, Target: share}); err != nil || string(pw) != "smb-secret" {
+		t.Fatalf("smb password: %q %v", pw, err)
+	}
+	moved := share
+	moved.Share = "Other"
+	if _, err := saved.ConnectionPassword(conn, p1, smb.CredentialRequest{CredentialID: "smb:" + sr.ID, Target: moved}); fault.CodeOf(err) != fault.CredentialTargetChanged {
+		t.Errorf("other share: %v", err)
+	}
+	if _, err := saved.ConnectionPassword(plain, principal.Principal{UserID: 1, SessionID: "s1"}, smb.CredentialRequest{CredentialID: "smb:" + sr.ID, Target: share}); fault.CodeOf(err) != fault.HTTPSRequired {
+		t.Errorf("smb without HTTPS: %v", err)
+	}
+	// A saved host named without a token: the connection must be the host.
+	if _, err := saved.TargetPassword(conn, p1, "jump:"+jr.ID, "", "jump.example", 22, "u", "", ""); fault.CodeOf(err) != fault.CredentialTargetChanged {
+		t.Errorf("jump host as a typed target: %v", err)
+	}
+	if err := apply(vault.MethodCreateForResource, map[string]any{"resource_kind": "smb", "confirm_target": true, "name": "S2", "password": "x",
+		"resource": map[string]any{"name": "Leak", "host": "nas.example", "share": "Data", "username": "u", "password": "no"}}); err == nil {
+		t.Error("a share with a password member was saved")
 	}
 	// HTTP needs HTTPS: the browser's Origin states it behind a proxy.
 	u, _ := url.Parse(ts.URL)

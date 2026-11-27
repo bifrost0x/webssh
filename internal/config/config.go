@@ -281,6 +281,16 @@ type Files struct {
 	MaxPreviewBytes      int64 // MAX_PREVIEW_SIZE
 	MaxPreviewTailLines  int64 // MAX_PREVIEW_TAIL_LINES
 	MaxSupportedFileSize int64 // MAX_SUPPORTED_FILE_SIZE
+	SFTP                 SFTP
+}
+
+// SFTP are the protocol limits of the SFTP backend.
+type SFTP struct {
+	MaxPacketBytes   int           // SFTP_MAX_PACKET_BYTES
+	MaxHandleBytes   int           // SFTP_MAX_HANDLE_BYTES
+	MaxNameBytes     int           // REMOTE_FILENAME_MAX_BYTES
+	MaxMetadataBytes int           // REMOTE_LISTING_MAX_METADATA_BYTES
+	OperationTimeout time.Duration // SFTP_OPERATION_TIMEOUT
 }
 
 // Audit holds the audit log limits.

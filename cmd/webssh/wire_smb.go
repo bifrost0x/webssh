@@ -2,17 +2,22 @@ package main
 
 import (
 	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/files"
 	"github.com/bifrost0x/webssh/internal/files/smb"
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
 	"github.com/bifrost0x/webssh/internal/netpolicy"
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-var _ smb.Network = (*netpolicy.Policy)(nil)
+var (
+	_ smb.Network = (*netpolicy.Policy)(nil)
+	_ smb.Sources = (*files.Registry)(nil)
+)
 
 // smbArea wires the area "smb" (FS3): the SMB file backend
 // (internal/files/smb), the saved share definitions and their migration
-// (E22). FS3 fills in the hooks; no other package edits this file.
+// (E22). Opened shares are sources of the file source registry, which
+// owns their quota and idle expiry; saved passwords come from the vault.
 //
 // With SMB_ENABLED false no smb.* type is mounted: the shim answers the
 // page with SMB_DISABLED, as the Python handlers did. The saved
@@ -30,8 +35,9 @@ func smbArea() extension {
 				Shares: &smb.Shares{DB: sys.db, Max: cfg.MaxSavedShares},
 				Config: smb.Config{Network: sys.policy, AllowedTargets: smbAllowedTargets(cfg),
 					ConnectTimeout: cfg.ConnectTimeout, IOIdleTimeout: cfg.IOIdleTimeout},
-				Sources: smbSources(sys),
-				Logger:  sys.log,
+				Sources:   sys.fileSources,
+				Passwords: savedPasswords{sys.vault},
+				Logger:    sys.log,
 			}
 			sys.realtime.Mount(svc.Routes()...)
 			return nil
@@ -53,8 +59,3 @@ func smbAllowedTargets(cfg config.SMB) []string {
 	}
 	return out
 }
-
-// smbSources is the file source registry of the files area (FS1). Until
-// it is merged an SMB share can be saved and tested but not opened: the
-// connect answers CONNECTION_FAILED before it dials.
-func smbSources(*system) smb.Sources { return nil }

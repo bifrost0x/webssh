@@ -15,6 +15,7 @@ test('every mapped event targets a type of the v1 catalog', () => {
         'prompt.respond', 'gateway.input', 'gateway.ack',
         'files.list', 'files.list.cancel', 'files.home', 'files.preview', 'files.preview.image', 'files.edit.open',
         'files.edit.save', 'files.mkdir', 'files.create', 'files.rename', 'files.delete', 'files.source.close',
+        'files.quick.open', 'files.quick.close', 'files.session.probe', 'files.session.directory',
         'smb.share.list', 'smb.share.save', 'smb.share.delete', 'smb.connect', 'smb.connect.cancel',
     ]);
     const mapped = new Set(Object.values(catalog.REQUESTS).map(entry => entry.type));
@@ -188,21 +189,18 @@ test('events without a v1 type are answered locally and reported to the notice',
     socket.on('error', data => seen.push(['error', data]));
     const sent = ws.sent.length;
     socket.emit('list_commands', {os_filter: 'all'});
-    socket.emit('probe_session_sftp', {session_id: 's', request_id: 'r1'});
     socket.emit('request_herdr_snapshot', {session_id: 's'}, ack => seen.push(['ack', ack]));
     socket.timeout(10000).emit('resolve_command_set_parameters', {}, (error, ack) => seen.push(['timed', error, ack.code]));
     socket.emit('get_file_permissions', {source_id: 'src', request_id: 'r2', path: '/'});
-    socket.emit('quick_disconnect', {});
     await tick();
     assert.equal(ws.sent.length, sent, 'nothing reaches the server');
     assert.deepEqual(plain(seen), [
         ['commands', {commands: [], available: false}],
-        ['sftp', {success: true, session_id: 's', request_id: 'r1', available: false, reason: 'not_available_in_preview'}],
         ['ack', {success: false, code: 'not_available_in_preview', error: 'Not available in this preview yet.'}],
         ['timed', null, 'not_available_in_preview'],
         ['error', {success: false, code: 'not_available_in_preview', error: 'Not available in this preview yet.', source_id: 'src', request_id: 'r2', path: '/'}],
     ]);
-    assert.deepEqual(reported, ['commands', 'files', 'terminalTools', 'commandSets', 'files', 'files']);
+    assert.deepEqual(reported, ['commands', 'terminalTools', 'commandSets', 'files']);
     socket.disconnect();
 });
 

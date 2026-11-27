@@ -64,6 +64,8 @@ func (q *quotas) Reserve(_ context.Context, kind string, user int64, n int64) (f
 	return func() { q.mu.Lock(); q.used[user]--; q.mu.Unlock() }, nil
 }
 
+func (q *quotas) count(user int64) int { q.mu.Lock(); defer q.mu.Unlock(); return q.used[user] }
+
 type fixture struct {
 	svc   *files.Service
 	reg   *files.Registry
@@ -316,5 +318,38 @@ func TestReserveBeforeOpen(t *testing.T) {
 	}
 	if f.q.used[1] != 1 {
 		t.Fatalf("closed source keeps its quota: %d", f.q.used[1])
+	}
+}
+
+// endingBackend ends by itself, as an SFTP source whose SSH connection
+// went away.
+type endingBackend struct {
+	*filestest.Backend
+	done chan struct{}
+}
+
+func (e endingBackend) Done() <-chan struct{} { return e.done }
+
+func TestSourceThatEndsFreesItsQuota(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, files.Options{})
+	b := endingBackend{filestest.New(), make(chan struct{})}
+	id, err := f.reg.Add(alice, files.SourceSFTPQuick, files.Descriptor{Kind: files.KindSFTP}, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.q.count(1) != 2 {
+		t.Fatalf("quota %d", f.q.count(1))
+	}
+	close(b.done)
+	deadline := time.Now().Add(5 * time.Second)
+	for f.q.count(1) != 1 {
+		if time.Now().After(deadline) {
+			t.Fatal("the ended source keeps its quota")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if _, _, err := f.reg.Describe(alice, id); !fault.Is(err, fault.SourceUnavailable) {
+		t.Fatalf("ended source still listed: %v", err)
 	}
 }

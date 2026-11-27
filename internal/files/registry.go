@@ -58,7 +58,12 @@ type source struct {
 	closing  bool // no new holds; closed when the last hold ends
 	closed   bool
 	lastUsed time.Time
+	gone     chan struct{} // closed by finish
 }
+
+// ender is implemented by backends that can end on their own (the SSH
+// connection of an SFTP source went away).
+type ender interface{ Done() <-chan struct{} }
 
 // opening is a first-use open in progress; waiters share its result.
 type opening struct {
@@ -135,7 +140,19 @@ func (r *Registry) insert(p principal.Principal, kind SourceKind, d Descriptor, 
 	if _, dup := r.sources[key]; dup {
 		return errUnavailable
 	}
-	r.sources[key] = &source{key: key, kind: kind, userID: p.UserID, desc: d, backend: b, quota: release, lastUsed: r.opts.Now()}
+	s := &source{key: key, kind: kind, userID: p.UserID, desc: d, backend: b, quota: release, lastUsed: r.opts.Now(),
+		gone: make(chan struct{})}
+	r.sources[key] = s
+	// A backend that ends by itself frees its entry and its quota at once.
+	if e, ok := b.(ender); ok {
+		go func() {
+			select {
+			case <-e.Done():
+				r.closeWhere(true, func(o *source) bool { return o == s })
+			case <-s.gone:
+			}
+		}()
+	}
 	return nil
 }
 
@@ -347,6 +364,7 @@ func (r *Registry) finish(s *source) {
 		return
 	}
 	s.closed = true
+	close(s.gone)
 	if r.sources[s.key] == s {
 		delete(r.sources, s.key)
 	}

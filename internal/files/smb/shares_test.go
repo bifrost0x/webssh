@@ -187,3 +187,15 @@ type rejectSources struct{}
 func (rejectSources) Reserve(context.Context, principal.Principal, files.SourceKind) (*files.Slot, error) {
 	return nil, fault.New(fault.Busy, "quick_connection quota exceeded (per_user limit 3)")
 }
+
+func TestSaveRequestOfRefusesSecrets(t *testing.T) {
+	r, err := SaveRequestOf(jsontext.Value(`{"name":"N","host":"nas.example","share":"Data","username":"u","extra":1}`))
+	if err != nil || string(r.Host) != `"nas.example"` || string(r.Share) != `"Data"` || r.ID != nil {
+		t.Fatalf("%+v %v", r, err)
+	}
+	for _, bad := range []string{`{"name":"N","Pass_Word":"x"}`, `{"apiToken":"x"}`, `[]`} {
+		if _, err := SaveRequestOf(jsontext.Value(bad)); fault.CodeOf(err) != fault.ValidationError {
+			t.Errorf("%s: %v", bad, err)
+		}
+	}
+}

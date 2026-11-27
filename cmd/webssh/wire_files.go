@@ -7,6 +7,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/audit"
 	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/files"
+	"github.com/bifrost0x/webssh/internal/quota"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 )
 
@@ -15,8 +16,8 @@ import (
 //
 // The registry and the service exist after prepare, so the backend areas
 // that follow (sftp, smb) register their source kinds on sys.fileSources.
-// The quota of Quick SFTP and SMB sources (RegistryOptions.Quotas) is set
-// once internal/quota is wired.
+// The registry owns the quick-connection quota of Quick SFTP and SMB
+// sources and learns every realtime connection of a user.
 func filesArea() extension {
 	return extension{
 		name:       "files",
@@ -27,7 +28,7 @@ func filesArea() extension {
 }
 
 func prepareFiles(sys *system) error {
-	sys.fileSources = files.NewRegistry(files.RegistryOptions{})
+	sys.fileSources = files.NewRegistry(files.RegistryOptions{Quotas: sys.quotas})
 	sys.files = files.New(fileOptions(sys.cfg.Files, sys.fileSources, sys.audit))
 	sys.closers = append(sys.closers, func() error { sys.fileSources.Shutdown(); return nil })
 	return nil
@@ -46,6 +47,7 @@ func fileOptions(f config.Files, reg *files.Registry, audit files.Audit) files.O
 
 func wireFiles(sys *system) error {
 	sys.realtime.Mount(sys.files.Routes()...)
+	sys.realtime.OnOpen(func(p protocol.Peer) { sys.fileSources.PeerOpened(p.Principal().UserID, p.ID()) })
 	sys.realtime.OnClose(func(p protocol.Peer) {
 		sys.files.PeerClosed(files.Caller{P: p.Principal(), Peer: p.ID()})
 	})
@@ -75,4 +77,7 @@ func realtimeQueueBytes(f config.Files) int64 {
 
 // The providers that exist already satisfy the consumer interfaces of
 // the area.
-var _ files.Audit = (*audit.Logger)(nil)
+var (
+	_ files.Audit  = (*audit.Logger)(nil)
+	_ files.Quotas = (*quota.Policy)(nil)
+)

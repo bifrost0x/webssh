@@ -1,4 +1,4 @@
-/* Realtime shim, area "files" (FS1, FS2): the file workspace over SFTP.
+/* Realtime shim, area "files" (FS1, FS2): the file workspace and the SFTP sources.
  *
  * Part of the Socket.IO name table of realtime-catalog.js (shape described
  * there). The package that builds the area edits only this file.
@@ -13,7 +13,6 @@
 })(typeof window !== 'undefined' ? window : globalThis, function () {
     'use strict';
 
-    const UNAVAILABLE = 'not_available_in_preview';
 
     // The members of a request the server knows; others are left out, as
     // the Python handlers ignored them.
@@ -135,20 +134,76 @@
         },
     };
 
+    // Quick SFTP (FS2): the target fields of terminal.open. A saved password
+    // is the credential the page picked, with the target token it
+    // confirmed for a typed target.
+    const QUICK_FIELDS = ['host', 'username', 'password', 'key_id', 'profile_id', 'jump_host_id', 'socks_proxy_id',
+        'credential_target_token', 'client_request_id'];
+    const quickTarget = data => {
+        const out = pick(data, QUICK_FIELDS);
+        for (const [name, value] of Object.entries(out)) if (typeof value !== 'string' || value === '') delete out[name];
+        out.auth_type = data.key_id ? 'key' : 'password';
+        const port = typeof data.port === 'string' && /^\d{1,5}$/.test(data.port) ? Number(data.port) : data.port;
+        if (Number.isInteger(port) && port > 0) out.port = port;
+        if (data.credential_id !== undefined && data.credential_id !== null) {
+            out.saved_password = true;
+            if (typeof data.credential_id === 'string' && data.credential_id !== '') out.credential_id = data.credential_id;
+            delete out.password;
+        }
+        return out;
+    };
+    const quickError = (failed, data) => {
+        const out = {error: failed.error};
+        if (failed.code) out.code = failed.code;
+        if (data.client_request_id) out.client_request_id = data.client_request_id;
+        return out;
+    };
+    const capability = (data, extra) => ({
+        session_id: typeof data.session_id === 'string' ? data.session_id : '',
+        request_id: typeof data.request_id === 'string' ? data.request_id : '', ...extra,
+    });
+
+    Object.assign(requests, {
+        quick_connect: {
+            type: 'files.quick.open',
+            payload: quickTarget,
+            push: [['quick_connect_success', reply => withoutSuccess(reply)]],
+            failurePush: [['quick_connect_error', quickError]],
+        },
+        quick_disconnect: {
+            type: 'files.quick.close',
+            payload: data => pick(data, ['connection_id']),
+            push: [['quick_disconnect_success', reply => ({connection_id: reply.connection_id})]],
+            errorEvent: true,
+            failure: failed => ({success: false, error: failed.error}),
+        },
+        probe_session_sftp: {
+            type: 'files.session.probe',
+            payload: data => pick(data, ['session_id', 'request_id']),
+            push: [['session_sftp_capability', (reply, data) => capability(data, {success: true, available: reply.available === true})]],
+            // A refused channel says resource_shortage; every other failure
+            // is an unknown capability.
+            failurePush: [['session_sftp_capability', (failed, data) => capability(data, {
+                success: false, available: false, ...(failed.code === 'channel_rejected' ? {reason: 'resource_shortage'} : {}),
+            })]],
+        },
+        request_session_directory: {
+            type: 'files.session.directory',
+            payload: data => pick(data, ['session_id']),
+            ack: reply => ({success: Boolean(reply.directory), directory: reply.directory ?? null, reason: reply.reason ?? null}),
+            failure: failed => ({success: false, directory: null, reason: failed.code === 'rate_limited' ? 'busy' : 'unavailable'}),
+        },
+    });
+
     return Object.freeze({
         requests: Object.freeze(requests),
         // Events the frontend sends without an acknowledgement and answers
         // with a listener; a local reply keeps those views from waiting.
-        unavailable: Object.freeze({
-            probe_session_sftp: data => ['session_sftp_capability', {
-                success: true, session_id: data.session_id, request_id: data.request_id,
-                available: false, reason: UNAVAILABLE,
-            }],
-        }),
+        unavailable: Object.freeze({}),
         // Feature groups of the preview notice: what this build does not
-        // answer yet (SFTP sources, transfers, permissions).
+        // answer yet (transfers, permissions).
         features: Object.freeze([
-            ['files', /^(prepare_transfer|cancel_transfer|transfer_server_to_server|quick_|get_file_permissions|set_file_permissions|prepare_file_permissions|get_file_permissions_job|apply_file_permissions_job|cancel_file_permissions_job|probe_session_sftp|request_session_directory)/],
+            ['files', /^(prepare_transfer|cancel_transfer|transfer_server_to_server|get_file_permissions|set_file_permissions|prepare_file_permissions|get_file_permissions_job|apply_file_permissions_job|cancel_file_permissions_job)/],
         ]),
     });
 });

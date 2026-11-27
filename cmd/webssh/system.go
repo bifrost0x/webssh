@@ -118,6 +118,9 @@ type system struct {
 	hostkeys *hostkey.Store
 	policy   *netpolicy.Policy
 	terminal *terminal.Manager
+	// shells is the SSH dialer with the per-host legacy setting; Quick
+	// SFTP dials through it like the terminal.
+	shells   legacyAlgorithmShells
 	realtime *realtime.Server
 	quotas   *quota.Policy  // wire_jobs.go
 	jobs     *jobs.Registry // wire_jobs.go

@@ -1,7 +1,80 @@
 package main
 
-// sftpArea wires the area "sftp" (FS2): the SFTP file backend (internal/files/sftp).
-// FS2 fills in the hooks; no other package edits this file.
+import (
+	"context"
+
+	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/files"
+	"github.com/bifrost0x/webssh/internal/files/sftp"
+	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/realtime/protocol"
+	"github.com/bifrost0x/webssh/internal/ssh/client"
+	"github.com/bifrost0x/webssh/internal/terminal"
+)
+
+// sftpArea wires the area "sftp" (FS2): the SFTP file backend
+// (internal/files/sftp). The terminal session's own source opens on first
+// use over the session's connection; Quick SFTP dials like the terminal
+// and asks about host keys with its prompts (D-22). The file source
+// registry of the files area owns both sources and their quota.
 func sftpArea() extension {
-	return extension{name: "sftp"}
+	return extension{name: "sftp", wire: wireSFTP}
 }
+
+func wireSFTP(sys *system) error {
+	opts := sftpOptions(sys.cfg.Files)
+	chmod := func(ctx context.Context) bool {
+		app, err := sys.settings.App(ctx)
+		return err == nil && app.RuntimeFeature("sftp_chmod_enabled").Enabled
+	}
+	sessions := terminalFiles{sys.terminal}
+	sys.fileSources.RegisterKind(files.SourceSFTPSession, func(ctx context.Context, p principal.Principal, handle string) (files.Descriptor, files.Backend, error) {
+		o := opts
+		o.ChmodEnabled = chmod(ctx)
+		return sftp.SessionOpener(sessions, o)(ctx, p, handle)
+	})
+	area := &sftp.Area{
+		Quick:    &sftp.Quick{Dialer: sys.shells, Options: opts, Chmod: chmod},
+		Registry: sys.fileSources, Connector: sessions, Sessions: sessions,
+	}
+	sys.realtime.Mount(area.Routes()...)
+	return nil
+}
+
+// sftpOptions are the protocol limits of the configuration.
+func sftpOptions(f config.Files) sftp.Options {
+	return sftp.Options{
+		MaxPacketBytes: f.SFTP.MaxPacketBytes, MaxHandleBytes: f.SFTP.MaxHandleBytes,
+		MaxNameBytes: f.SFTP.MaxNameBytes, MaxMetadataBytes: f.SFTP.MaxMetadataBytes,
+		MaxMembers: f.MaxTransferMembers, OperationTimeout: f.SFTP.OperationTimeout,
+	}
+}
+
+// terminalFiles adapts the terminal to the SFTP sources: a session's
+// connection for its file source and directory probe, and the target
+// checks and prompts of terminal.open for Quick SFTP.
+type terminalFiles struct{ m *terminal.Manager }
+
+func (t terminalFiles) Session(_ context.Context, p principal.Principal, handle string) (sftp.Session, error) {
+	f, err := t.m.FileSession(p.UserID, handle)
+	if err != nil {
+		return sftp.Session{}, err
+	}
+	return sftp.Session{Conn: f.Conn, Exec: f.Conn, Tmux: f.Tmux, Name: f.Name,
+		Hop: client.Hop{Host: f.Host, Port: f.Port, User: f.User}}, nil
+}
+
+func (t terminalFiles) Target(ctx context.Context, owner int64, req protocol.OpenTarget) (client.Target, error) {
+	return t.m.Target(ctx, owner, req)
+}
+
+func (t terminalFiles) Interaction(peer protocol.Peer, requestID string) client.Interaction {
+	return t.m.Interaction(peer, requestID)
+}
+
+var (
+	_ sftp.Sessions  = terminalFiles{}
+	_ sftp.Connector = terminalFiles{}
+	_ sftp.Registry  = (*files.Registry)(nil)
+	_ sftp.Dialer    = legacyAlgorithmShells{}
+)
