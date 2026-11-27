@@ -40,7 +40,7 @@ func loadWeb(p *parser, c *Config, in *pending) {
 	r.SSHConnect = p.str("RATELIMIT_SSH_CONNECT", "SSH_CONNECT_RATELIMIT", "10 per minute", false)
 	r.SSHKeyWrite = p.str("RATELIMIT_SSH_KEY_WRITE", "SSH_KEY_WRITE_RATELIMIT", "30 per minute", false)
 	r.SSHKeyList = p.str("RATELIMIT_SSH_KEY_LIST", "SSH_KEY_LIST_RATELIMIT", "30 per minute", false)
-	p.str("RATELIMIT_COMMAND_MUTATION", "COMMAND_MUTATION_RATELIMIT", "60 per minute", false)
+	r.CommandMutation = p.str("RATELIMIT_COMMAND_MUTATION", "COMMAND_MUTATION_RATELIMIT", "60 per minute", false)
 	r.ConnectionMutation = p.str("RATELIMIT_CONNECTION_MUTATION", "CONNECTION_MUTATION_RATELIMIT", "60 per minute", false)
 
 	registration := "False"
