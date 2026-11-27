@@ -94,6 +94,7 @@ func (s *Service) AdminLink(ctx context.Context, p principal.Principal, userID i
 	now := s.now()
 	id := Identity{UserID: userID, Provider: s.Provider, Subject: entry.Subject, DirectoryUsername: name,
 		DistinguishedName: entry.DN, CreatedAt: now, LastVerifiedAt: now}
+	var revs []principal.Revocation
 	err = s.DB.Write(ctx, func(tx *store.Tx) error {
 		if _, err := identityBySubjectTx(ctx, tx, id.Provider, id.Subject); err == nil {
 			return errIdentityTaken
@@ -117,13 +118,17 @@ func (s *Service) AdminLink(ctx context.Context, p principal.Principal, userID i
 		if id.ID, err = insertIdentityTx(ctx, tx, id); err != nil {
 			return err
 		}
-		return checkedTx(ctx, tx, userID, now)
+		if err := checkedTx(ctx, tx, userID, now); err != nil {
+			return err
+		}
+		revs, err = s.Sessions.RevokeAccountTx(ctx, tx, userID, principal.ReasonPasswordChanged)
+		return err
 	})
 	if err != nil {
 		s.audit("LDAP_IDENTITY_STORAGE_FAILED", "admin", p.Username, "user", target.Username)
 		return 0, storageFault(err)
 	}
-	s.endSessions(ctx, userID)
+	s.Sessions.Publish(revs)
 	s.audit("LDAP_IDENTITY_LINKED", "admin", p.Username, "user", target.Username, "provider", id.Provider)
 	return id.ID, nil
 }
@@ -178,6 +183,7 @@ func (s *Service) AdminUnlink(ctx context.Context, p principal.Principal, userID
 	if err != nil {
 		return err
 	}
+	var revs []principal.Revocation
 	err = s.DB.Write(ctx, func(tx *store.Tx) error {
 		res, err := tx.ExecContext(ctx, `DELETE FROM authldap_identities WHERE id = ? AND user_id = ?`, identityID, userID)
 		if err != nil {
@@ -189,13 +195,17 @@ func (s *Service) AdminUnlink(ctx context.Context, p principal.Principal, userID
 		if err := forgetTx(ctx, tx, userID); err != nil {
 			return err
 		}
-		return s.Accounts.ReleaseTx(ctx, tx, userID, hash)
+		if err := s.Accounts.ReleaseTx(ctx, tx, userID, hash); err != nil {
+			return err
+		}
+		revs, err = s.Sessions.RevokeAccountTx(ctx, tx, userID, principal.ReasonPasswordChanged)
+		return err
 	})
 	if err != nil {
 		s.audit("LDAP_IDENTITY_STORAGE_FAILED", "admin", p.Username, "user", acc.Username)
 		return storageFault(err)
 	}
-	s.endSessions(ctx, userID)
+	s.Sessions.Publish(revs)
 	s.audit("LDAP_IDENTITY_UNLINKED", "admin", p.Username, "user", acc.Username, "provider", id.Provider)
 	return nil
 }
@@ -214,15 +224,6 @@ func (s *Service) account(ctx context.Context, userID int64) (Account, error) {
 		return Account{}, fault.Wrap(fault.StorageError, err, "")
 	}
 	return acc, nil
-}
-
-// endSessions ends every session of an account whose credentials changed
-// (user_lifecycle.revoke_user_access); the generation raised in the
-// transaction already refuses them, this closes their connections.
-func (s *Service) endSessions(ctx context.Context, userID int64) {
-	if _, err := s.Sessions.RevokeUser(ctx, userID, principal.ReasonPasswordChanged, ""); err != nil {
-		s.logger().WarnContext(ctx, "sessions of a re-linked account not ended", "user_id", userID, "error", err)
-	}
 }
 
 // Status probes the directory with the service account

@@ -57,9 +57,13 @@ type Accounts interface {
 }
 
 // Sessions ends the sessions of an account whose directory check failed
-// (internal/session).
+// or whose credentials changed (internal/session). RevokeAccountTx runs in
+// the transaction that changes the account and always journals an
+// account-wide revocation, so terminals and persistent tmux sessions end
+// in every process; Publish delivers the result after the commit.
 type Sessions interface {
-	RevokeUser(ctx context.Context, userID int64, reason principal.Reason, except string) (int, error)
+	RevokeAccountTx(ctx context.Context, tx *store.Tx, userID int64, reason principal.Reason) ([]principal.Revocation, error)
+	Publish(revs []principal.Revocation)
 }
 
 // StepUp consumes the grants of ldap.link and ldap.unlink
