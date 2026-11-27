@@ -4,15 +4,15 @@ package httpapi
 // HO3 moves each route it builds from hostcontextPreview to hostcontextBuilt with its
 // access level; no other package edits this file.
 
-var hostcontextBuilt = []route{}
-
-var hostcontextPreview = []string{
-	"GET /admin/api/host-keys",
-	"POST /admin/api/host-keys",
-	"DELETE /admin/api/host-keys/{entry_id}",
-	"GET /api/profiles/{profile_id}/context",
-	"PUT /api/profiles/{profile_id}/context",
-	"GET /api/profiles/exchange",
-	"POST /api/profiles/exchange",
-	"POST /api/profiles/exchange/preview",
+var hostcontextBuilt = []route{
+	{"GET /admin/api/host-keys", AccessAdmin},
+	{"POST /admin/api/host-keys", AccessAdmin},
+	{"DELETE /admin/api/host-keys/{entry_id}", AccessAdmin},
+	{"GET /api/profiles/{profile_id}/context", AccessUser},
+	{"PUT /api/profiles/{profile_id}/context", AccessUser},
+	{"GET /api/profiles/exchange", AccessUser},
+	{"POST /api/profiles/exchange", AccessUser},
+	{"POST /api/profiles/exchange/preview", AccessUser},
 }
+
+var hostcontextPreview = []string{}

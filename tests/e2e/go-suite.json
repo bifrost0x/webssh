@@ -38,8 +38,7 @@
       {"title": "single navigation entries retain Files, Commands, Hosts and recent connection form", "reason": "opens the file manager (C-SFTP, template flag off in M1)", "package": "FS1"}
     ]},
     {"file": "empty-states.spec.js", "exclude": [
-      {"title": "empty management surfaces are consistent and actionable", "reason": "expects built-in commands in the command library (C-CMD)", "package": "CM1"},
-      {"title": "empty account factors and admin tables keep structure at", "reason": "ends on the global host trust table; global known_hosts entries (C-TRUST-04, /admin/api/host-keys) answer 501 in M1", "package": "HO3"}
+      {"title": "empty management surfaces are consistent and actionable", "reason": "expects built-in commands in the command library (C-CMD)", "package": "CM1"}
     ]},
     {"file": "onboarding.spec.js", "serial": "e2e_admin", "exclude": [
       {"title": "tour crosses workspaces, handles small screens and saves completion", "reason": "tour step 6 opens the automation workspace (C-AUTO)", "package": "AU1"}
@@ -79,8 +78,7 @@
     ]},
     {"file": "socks-proxy-routes.spec.js", "exclude": [
       {"title": "saved SOCKS password launches automatically and reconnect retains the reference", "reason": "saved passwords (E32, credentials not in M1)", "package": "VA1"},
-      {"title": "SOCKS hosts are blocked at all Quick SFTP entry points", "reason": "Quick SFTP (C-SFTP)", "package": "FS2"},
-      {"title": "host export warns that SOCKS routes are omitted", "reason": "host export (C-EXCH)", "package": "HO3"}
+      {"title": "SOCKS hosts are blocked at all Quick SFTP entry points", "reason": "Quick SFTP (C-SFTP)", "package": "FS2"}
     ]},
 
     {"file": "terminal-safety.spec.js", "exclude": []},
@@ -110,7 +108,6 @@
     ]},
     {"file": "layout.spec.js", "serial": "e2e_admin", "exclude": [
       {"title": "admin audit logs remain mouse-scrollable in a short desktop viewport", "reason": "audit log view (C-AOPS)", "package": "OP3"},
-      {"title": "admin security actions and empty host trust use user-facing copy", "reason": "global host trust table (C-TRUST-04, /admin/api/host-keys answers 501 in M1)", "package": "HO3"},
       {"title": "mobile login keeps every sign-in method and the primary action in the first viewport", "reason": "the preview notice bar lengthens the narrow login page (D4, visible change of the preview); the OIDC method is offered since ID2", "package": "FE1"},
       {"title": "new login, security, and admin controls honor the stored locale", "reason": "opens the audit retention section of the administration (C-AOPS); the OIDC sign-in button passes since ID2", "package": "OP3"}
     ]},
@@ -120,6 +117,16 @@
     ]},
     {"file": "design-system.spec.js", "exclude": [
       {"title": "Warm Graphite Sand separates cream actions, selection and status across views", "reason": "iterates the file workspace (C-SFTP)", "package": "FS1"}
-    ]}
+    ]},
+    {"file": "host-context.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "favorites navigate the bound SFTP source and assigned sets use the existing SSH input launcher", "reason": "needs the seeded command set in the command library (C-CMD, E27)", "package": "CM1"}
+    ]},
+    {"file": "profile-exchange.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "customer-workflows.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "recovery guidance names omitted credentials and current owned hosts on mobile", "reason": "GET /api/account/recovery-check is a preview answer without hosts until backup and restore are built (C-BAK)", "package": "OP1"}
+    ]},
+    {"file": "workspace-preset-regressions.spec.js", "exclude": []},
+    {"file": "host-toolbar-layout.spec.js", "exclude": []},
+    {"file": "containment-refinements.spec.js", "exclude": []}
   ]
 }
