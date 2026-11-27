@@ -161,8 +161,9 @@ func TestBackupFormatOne(t *testing.T) {
 	}
 }
 
-func TestBackupRejections(t *testing.T) {
-	t.Parallel()
+// backupRejectionCases are the 16 malicious or damaged archives of K3,
+// derived from the golden export.
+func backupRejectionCases() []backupRejection {
 	addFile := func(m map[string]any, members map[string][]byte, path string, data []byte) {
 		sum := sha256.Sum256(data)
 		files := append(m["files"].([]any), map[string]any{"path": path, "sha256": hex.EncodeToString(sum[:]), "size": len(data)})
@@ -172,10 +173,7 @@ func TestBackupRejections(t *testing.T) {
 		m["files"] = files
 		members[backupDataPrefix+path] = data
 	}
-	tests := []struct {
-		name string
-		edit func(map[string]any, map[string][]byte)
-	}{
+	return []backupRejection{
 		{"changed content", func(_ map[string]any, ms map[string][]byte) {
 			ms["data/known_hosts"] = append(ms["data/known_hosts"], '\n')
 		}},
@@ -198,13 +196,30 @@ func TestBackupRejections(t *testing.T) {
 		}},
 		{"no manifest", func(map[string]any, map[string][]byte) {}},
 	}
+}
+
+type backupRejection struct {
+	name string
+	edit func(map[string]any, map[string][]byte)
+}
+
+// craftRejection writes the archive of one rejection case.
+func craftRejection(t *testing.T, tt backupRejection) string {
+	t.Helper()
+	archive := rewriteArchive(t, backupPath("export"), tt.edit)
+	if tt.name == "no manifest" {
+		archive = rewriteNoManifest(t, archive)
+	}
+	return archive
+}
+
+func TestBackupRejections(t *testing.T) {
+	t.Parallel()
+	tests := backupRejectionCases()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			archive := rewriteArchive(t, backupPath("export"), tt.edit)
-			if tt.name == "no manifest" {
-				archive = rewriteNoManifest(t, archive)
-			}
+			archive := craftRejection(t, tt)
 			if b, err := OpenBackup(archive, DefaultBackupLimits); !errors.Is(err, ErrBackup) {
 				if b != nil {
 					b.Close()

@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/bifrost0x/webssh/internal/backup"
+	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
@@ -216,7 +218,18 @@ func TestReplaceKeepsWALContent(t *testing.T) {
 	if side, _ := filepath.Glob(filepath.Join(filepath.Dir(res.Database), "webssh.db-*")); len(side) != 0 {
 		t.Errorf("side files beside the kept copy: %v", side)
 	}
-	kept, err := store.OpenReadOnly(t.Context(), res.Database, store.Shared)
+	// The kept database is a Go backup that opens with this installation's
+	// SECRET_KEY and material (C7).
+	_, material, err := keyring.MaterialLocation(dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keptDB := filepath.Join(t.TempDir(), "kept.db")
+	if _, err := backup.VerifyWith(t.Context(), res.Database, backup.VerifyOptions{Secret: []byte(o.Secret), Material: material,
+		Database: keptDB}); err != nil {
+		t.Fatalf("the kept backup does not verify: %v", err)
+	}
+	kept, err := store.OpenReadOnly(t.Context(), keptDB, store.Shared)
 	if err != nil {
 		t.Fatal(err)
 	}
