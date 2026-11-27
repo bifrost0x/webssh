@@ -13,16 +13,25 @@
 })(typeof window !== 'undefined' ? window : globalThis, function () {
     'use strict';
 
-    const UNAVAILABLE = 'not_available_in_preview';
+    const text = value => (typeof value === 'string' ? value : '');
+    // The server answers every sample, also a refused one, with success
+    // false; the page waits for the event, as it did for Python.
+    const sample = data => ({session_id: text(data?.session_id), request_id: text(data?.request_id)});
 
     return Object.freeze({
-        unavailable: Object.freeze({
-            request_session_insights: data => ['session_insights', {
-                success: false, session_id: data.session_id, request_id: data.request_id, reason: UNAVAILABLE,
-            }],
-            request_session_runtime_inventory: data => ['session_runtime_inventory', {
-                success: false, session_id: data.session_id, request_id: data.request_id, code: UNAVAILABLE,
-            }],
+        requests: Object.freeze({
+            request_session_insights: {
+                type: 'insights.sample',
+                payload: data => ({...sample(data), ...(data?.include_diagnostics === true ? {include_diagnostics: true} : {})}),
+                ack: result => result,
+                push: [['session_insights', a => a]],
+            },
+            request_session_runtime_inventory: {
+                type: 'inventory.sample',
+                payload: sample,
+                ack: result => result,
+                push: [['session_runtime_inventory', a => a]],
+            },
         }),
         features: Object.freeze([
             ['insights', /^request_session_(insights|runtime_inventory)$/],

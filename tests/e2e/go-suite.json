@@ -130,6 +130,15 @@
     ]},
     {"file": "design-system.spec.js", "exclude": [
       {"title": "Warm Graphite Sand separates cream actions, selection and status across views", "reason": "iterates the file workspace (C-SFTP)", "package": "FS1"}
+    ]},
+    {"file": "server-operations.spec.js", "exclude": []},
+    {"file": "session-diagnostics-dom.spec.js", "exclude": []},
+    {"file": "herdr.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "host editor offers Herdr as the only alternative to tmux", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"},
+      {"title": "agents read through the own session appear as text and open their session", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"},
+      {"title": "every reason has its own state and busy passes silently", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"},
+      {"title": "a hidden panel stops asking and an old tab gets disabled without a command on the host", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"},
+      {"title": "a refused authentication leaves the integration off", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"}
     ]}
   ]
 }

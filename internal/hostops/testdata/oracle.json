@@ -1,0 +1,2143 @@
+{
+ "actions": {
+  "read": [
+   "container.inspect",
+   "container.logs",
+   "process.inspect",
+   "process.list",
+   "service.logs",
+   "system.inspect"
+  ],
+  "write": [
+   "container.restart",
+   "container.start",
+   "container.stop",
+   "process.terminate",
+   "service.restart",
+   "service.start",
+   "service.stop",
+   "system.reboot"
+  ]
+ },
+ "commands": [
+  {
+   "action": "service.restart",
+   "ok": "systemctl restart -- nginx.service",
+   "sudo": false,
+   "target": {
+    "unit": "nginx.service"
+   }
+  },
+  {
+   "action": "service.stop",
+   "ok": "sudo -n -- systemctl stop -- getty@tty1.service",
+   "sudo": true,
+   "target": {
+    "unit": "getty@tty1.service"
+   }
+  },
+  {
+   "action": "service.start",
+   "ok": "systemctl start -- a:b.service",
+   "sudo": false,
+   "target": {
+    "unit": "a:b.service"
+   }
+  },
+  {
+   "action": "service.logs",
+   "ok": "journalctl --no-pager --reverse --lines=100 --output=short-iso --unit=ssh.service",
+   "sudo": false,
+   "target": {
+    "unit": "ssh.service"
+   }
+  },
+  {
+   "action": "service.logs",
+   "ok": "sudo -n -- journalctl --no-pager --reverse --lines=100 --output=short-iso --unit=ssh.service",
+   "sudo": true,
+   "target": {
+    "unit": "ssh.service"
+   }
+  },
+  {
+   "action": "service.restart",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "unit": "nginx"
+   }
+  },
+  {
+   "action": "service.restart",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "unit": "x;reboot.service"
+   }
+  },
+  {
+   "action": "service.restart",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "unit": "-x.service"
+   }
+  },
+  {
+   "action": "service.restart",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "unit": "a'b.service"
+   }
+  },
+  {
+   "action": "service.restart",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "unit": "a$(id).service"
+   }
+  },
+  {
+   "action": "service.restart",
+   "ok": "systemctl restart -- aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.service",
+   "sudo": false,
+   "target": {
+    "unit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.service"
+   }
+  },
+  {
+   "action": "service.restart",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "unit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.service"
+   }
+  },
+  {
+   "action": "service.restart",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "unit": 5
+   }
+  },
+  {
+   "action": "service.restart",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {}
+  },
+  {
+   "action": "container.inspect",
+   "ok": "docker inspect --type container --format '{\"id\":{{json .Id}},\"name\":{{json .Name}},\"state\":{{json .State.Status}},\"image\":{{json .Config.Image}}}' -- web",
+   "sudo": false,
+   "target": {
+    "name": "web"
+   }
+  },
+  {
+   "action": "container.inspect",
+   "ok": "sudo -n -- docker inspect --type container --format '{\"id\":{{json .Id}},\"name\":{{json .Name}},\"state\":{{json .State.Status}},\"image\":{{json .Config.Image}}}' -- web",
+   "sudo": true,
+   "target": {
+    "name": "web"
+   }
+  },
+  {
+   "action": "container.inspect",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "name": "we b"
+   }
+  },
+  {
+   "action": "container.inspect",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "name": "-rm"
+   }
+  },
+  {
+   "action": "container.logs",
+   "ok": "docker logs --timestamps --tail 100 -- aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "sudo": false,
+   "target": {
+    "container": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  },
+  {
+   "action": "container.stop",
+   "ok": "sudo -n -- docker stop --time 10 -- bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "sudo": true,
+   "target": {
+    "container": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   }
+  },
+  {
+   "action": "container.restart",
+   "ok": "docker restart --time 10 -- cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+   "sudo": false,
+   "target": {
+    "container": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+   }
+  },
+  {
+   "action": "container.start",
+   "ok": "docker start -- 0000000000000000000000000000000000000000000000000000000000000000",
+   "sudo": false,
+   "target": {
+    "container": "0000000000000000000000000000000000000000000000000000000000000000"
+   }
+  },
+  {
+   "action": "container.start",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "container": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+   }
+  },
+  {
+   "action": "container.start",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "container": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  },
+  {
+   "action": "container.start",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "name": "web"
+   }
+  },
+  {
+   "action": "process.list",
+   "ok": "env LC_ALL=C ps -e -o pid=,user:32=,pcpu=,pmem=,comm= --sort=pid",
+   "sudo": false,
+   "target": {}
+  },
+  {
+   "action": "process.list",
+   "ok": "sudo -n -- env LC_ALL=C ps -e -o pid=,user:32=,pcpu=,pmem=,comm= --sort=pid",
+   "sudo": true,
+   "target": {}
+  },
+  {
+   "action": "process.inspect",
+   "ok": "python3 -c 'import json,os,signal,sys\np=int(sys.argv[1])\nsupported=False\nif hasattr(os,\"pidfd_open\") and hasattr(signal,\"pidfd_send_signal\"):\n try:\n  fd=os.pidfd_open(p)\n  try: signal.pidfd_send_signal(fd,0); supported=True\n  finally: os.close(fd)\n except OSError: pass\ns=open(\"/proc/%d/stat\"%p).read()\nprint(json.dumps({\"pid\":p,\"start_time\":s[s.rfind(\")\")+2:].split()[19],\"command\":open(\"/proc/%d/cmdline\"%p,\"rb\").read(8192).replace(b\"\\0\",b\" \").decode(\"utf-8\",\"replace\"),\"pidfd_supported\":supported}))' 1234",
+   "sudo": false,
+   "target": {
+    "pid": 1234
+   }
+  },
+  {
+   "action": "process.inspect",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "pid": 1
+   }
+  },
+  {
+   "action": "process.inspect",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "pid": 4194305
+   }
+  },
+  {
+   "action": "process.inspect",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "pid": "12"
+   }
+  },
+  {
+   "action": "process.inspect",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "pid": true
+   }
+  },
+  {
+   "action": "process.inspect",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "pid": 12.0
+   }
+  },
+  {
+   "action": "process.terminate",
+   "ok": "python3 -c 'import os,signal,sys\nif not hasattr(os,\"pidfd_open\") or not hasattr(signal,\"pidfd_send_signal\"): sys.exit(78)\np=int(sys.argv[1]); fd=os.pidfd_open(p)\ntry:\n s=open(\"/proc/%d/stat\"%p).read()\n if s[s.rfind(\")\")+2:].split()[19]!=sys.argv[2]: sys.exit(75)\n signal.pidfd_send_signal(fd,signal.SIGTERM)\nfinally: os.close(fd)\n' 99 123456",
+   "sudo": false,
+   "target": {
+    "pid": 99,
+    "start_time": "123456"
+   }
+  },
+  {
+   "action": "process.terminate",
+   "ok": "sudo -n -- python3 -c 'import os,signal,sys\nif not hasattr(os,\"pidfd_open\") or not hasattr(signal,\"pidfd_send_signal\"): sys.exit(78)\np=int(sys.argv[1]); fd=os.pidfd_open(p)\ntry:\n s=open(\"/proc/%d/stat\"%p).read()\n if s[s.rfind(\")\")+2:].split()[19]!=sys.argv[2]: sys.exit(75)\n signal.pidfd_send_signal(fd,signal.SIGTERM)\nfinally: os.close(fd)\n' 99 123456",
+   "sudo": true,
+   "target": {
+    "pid": 99,
+    "start_time": "123456"
+   }
+  },
+  {
+   "action": "process.terminate",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "pid": 99,
+    "start_time": "12 34"
+   }
+  },
+  {
+   "action": "process.terminate",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "pid": 99,
+    "start_time": 123
+   }
+  },
+  {
+   "action": "process.terminate",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "pid": 99,
+    "start_time": "111111111111111111111"
+   }
+  },
+  {
+   "action": "process.terminate",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": {
+    "pid": 99
+   }
+  },
+  {
+   "action": "system.reboot",
+   "ok": "systemctl reboot",
+   "sudo": false,
+   "target": {}
+  },
+  {
+   "action": "system.reboot",
+   "ok": "sudo -n -- systemctl reboot",
+   "sudo": true,
+   "target": {}
+  },
+  {
+   "action": "system.inspect",
+   "ok": "uname -a; uptime; df -hP; free -m",
+   "sudo": false,
+   "target": {}
+  },
+  {
+   "action": "system.inspect",
+   "ok": "sudo -n -- sh -c 'uname -a; uptime; df -hP; free -m'",
+   "sudo": true,
+   "target": {}
+  },
+  {
+   "action": "system.shutdown",
+   "error": "invalid_action",
+   "sudo": false,
+   "target": {}
+  },
+  {
+   "action": "service.restart",
+   "error": "invalid_target",
+   "sudo": false,
+   "target": null
+  },
+  {
+   "action": "service.restart",
+   "error": "invalid_target",
+   "sudo": "yes",
+   "target": {
+    "unit": "nginx.service"
+   }
+  }
+ ],
+ "display": [
+  {
+   "input": "706c61696e09746578740a6c696e650d0a",
+   "ok": "plain\ttext\nline\n"
+  },
+  {
+   "input": "1b5b33316d7265641b5b306d",
+   "ok": "[31mred[0m"
+  },
+  {
+   "input": "fffe",
+   "ok": "\ufffd\ufffd"
+  },
+  {
+   "input": "e282",
+   "ok": "\ufffd"
+  },
+  {
+   "input": "e282ac",
+   "ok": "\u20ac"
+  },
+  {
+   "input": "f09f98",
+   "ok": "\ufffd"
+  },
+  {
+   "input": "eda080",
+   "ok": "\ufffd\ufffd\ufffd"
+  },
+  {
+   "input": "c0af",
+   "ok": "\ufffd\ufffd"
+  },
+  {
+   "input": "61f490808062",
+   "ok": "a\ufffd\ufffd\ufffd\ufffdb"
+  },
+  {
+   "input": "e080af",
+   "ok": "\ufffd\ufffd\ufffd"
+  },
+  {
+   "input": "e280aec2a0e280a878e2808b",
+   "ok": "x"
+  },
+  {
+   "input": "007f85",
+   "ok": "\ufffd"
+  },
+  {
+   "input": "c2adefbbbf",
+   "ok": ""
+  }
+ ],
+ "herdr": [
+  {
+   "input": "7b226964223a20312c2022726573756c74223a207b2274797065223a202273657373696f6e5f736e617073686f74222c2022736e617073686f74223a207b226167656e7473223a205b7b2270616e655f6964223a20227031222c20226167656e74223a2022636c61756465222c2022646973706c61795f6167656e74223a2022436c61756465222c20226e616d65223a20227265666163746f72222c2022637764223a20222f686f6d652f752f70726f6a656374222c20226167656e745f737461747573223a2022776f726b696e67227d2c207b2270616e655f6964223a20227032222c20226167656e74223a2022636f646578222c2022637764223a20222f737276222c20226167656e745f737461747573223a2022736c656570696e67227d2c207b2270616e655f6964223a20227032222c20226167656e74223a2022647570227d2c207b2270616e655f6964223a2022626164206964222c20226167656e74223a202278227d2c20226e6f7420612064696374222c207b2270616e655f6964223a20227033222c20226167656e74223a2022615c7532303265625c7530303030635c753230323864222c20226e616d65223a202220205c74222c2022637764223a20352c20226167656e745f737461747573223a202269646c65227d2c207b2270616e655f6964223a20227034222c2022646973706c61795f6167656e74223a2022222c20226167656e74223a2022787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878222c20226e616d65223a2022207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920207920227d5d2c202270616e6573223a205b7b2270616e655f6964223a20227032222c20226c6162656c223a202270616e652074776f227d2c207b2270616e655f6964223a20227032222c20226c6162656c223a20227365636f6e64227d2c207b2270616e655f6964223a20227033222c20226c6162656c223a20227468726565227d2c202278225d7d7d7d",
+   "ok": {
+    "agents": [
+     {
+      "cwd": "/home/u/project",
+      "id": "p1",
+      "kind": "Claude",
+      "label": "refactor",
+      "status": "working"
+     },
+     {
+      "cwd": "/srv",
+      "id": "p2",
+      "kind": "codex",
+      "label": "pane two",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p3",
+      "kind": "abcd",
+      "label": "three",
+      "status": "idle"
+     },
+     {
+      "cwd": "",
+      "id": "p4",
+      "kind": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "label": "y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y  y",
+      "status": "unknown"
+     }
+    ],
+    "truncated": false
+   }
+  },
+  {
+   "input": "7b22726573756c74223a207b2274797065223a202273657373696f6e5f736e617073686f74222c2022736e617073686f74223a207b226167656e7473223a205b7b2270616e655f6964223a20227030227d2c207b2270616e655f6964223a20227031227d2c207b2270616e655f6964223a20227032227d2c207b2270616e655f6964223a20227033227d2c207b2270616e655f6964223a20227034227d2c207b2270616e655f6964223a20227035227d2c207b2270616e655f6964223a20227036227d2c207b2270616e655f6964223a20227037227d2c207b2270616e655f6964223a20227038227d2c207b2270616e655f6964223a20227039227d2c207b2270616e655f6964223a2022703130227d2c207b2270616e655f6964223a2022703131227d2c207b2270616e655f6964223a2022703132227d2c207b2270616e655f6964223a2022703133227d2c207b2270616e655f6964223a2022703134227d2c207b2270616e655f6964223a2022703135227d2c207b2270616e655f6964223a2022703136227d2c207b2270616e655f6964223a2022703137227d2c207b2270616e655f6964223a2022703138227d2c207b2270616e655f6964223a2022703139227d2c207b2270616e655f6964223a2022703230227d2c207b2270616e655f6964223a2022703231227d2c207b2270616e655f6964223a2022703232227d2c207b2270616e655f6964223a2022703233227d2c207b2270616e655f6964223a2022703234227d2c207b2270616e655f6964223a2022703235227d2c207b2270616e655f6964223a2022703236227d2c207b2270616e655f6964223a2022703237227d2c207b2270616e655f6964223a2022703238227d2c207b2270616e655f6964223a2022703239227d2c207b2270616e655f6964223a2022703330227d2c207b2270616e655f6964223a2022703331227d2c207b2270616e655f6964223a2022703332227d2c207b2270616e655f6964223a2022703333227d2c207b2270616e655f6964223a2022703334227d2c207b2270616e655f6964223a2022703335227d2c207b2270616e655f6964223a2022703336227d2c207b2270616e655f6964223a2022703337227d2c207b2270616e655f6964223a2022703338227d2c207b2270616e655f6964223a2022703339227d2c207b2270616e655f6964223a2022703430227d2c207b2270616e655f6964223a2022703431227d2c207b2270616e655f6964223a2022703432227d2c207b2270616e655f6964223a2022703433227d2c207b2270616e655f6964223a2022703434227d2c207b2270616e655f6964223a2022703435227d2c207b2270616e655f6964223a2022703436227d2c207b2270616e655f6964223a2022703437227d2c207b2270616e655f6964223a2022703438227d2c207b2270616e655f6964223a2022703439227d2c207b2270616e655f6964223a2022703530227d2c207b2270616e655f6964223a2022703531227d2c207b2270616e655f6964223a2022703532227d2c207b2270616e655f6964223a2022703533227d2c207b2270616e655f6964223a2022703534227d2c207b2270616e655f6964223a2022703535227d2c207b2270616e655f6964223a2022703536227d2c207b2270616e655f6964223a2022703537227d2c207b2270616e655f6964223a2022703538227d2c207b2270616e655f6964223a2022703539227d2c207b2270616e655f6964223a2022703630227d2c207b2270616e655f6964223a2022703631227d2c207b2270616e655f6964223a2022703632227d2c207b2270616e655f6964223a2022703633227d2c207b2270616e655f6964223a2022703634227d2c207b2270616e655f6964223a2022703635227d2c207b2270616e655f6964223a2022703636227d2c207b2270616e655f6964223a2022703637227d2c207b2270616e655f6964223a2022703638227d2c207b2270616e655f6964223a2022703639227d5d7d7d7d",
+   "ok": {
+    "agents": [
+     {
+      "cwd": "",
+      "id": "p0",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p1",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p2",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p3",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p4",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p5",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p6",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p7",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p8",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p9",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p10",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p11",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p12",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p13",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p14",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p15",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p16",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p17",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p18",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p19",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p20",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p21",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p22",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p23",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p24",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p25",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p26",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p27",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p28",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p29",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p30",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p31",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p32",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p33",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p34",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p35",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p36",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p37",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p38",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p39",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p40",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p41",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p42",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p43",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p44",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p45",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p46",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p47",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p48",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p49",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p50",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p51",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p52",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p53",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p54",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p55",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p56",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p57",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p58",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p59",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p60",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p61",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p62",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     },
+     {
+      "cwd": "",
+      "id": "p63",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     }
+    ],
+    "truncated": true
+   }
+  },
+  {
+   "error": "value_error",
+   "input": "7b22726573756c74223a207b2274797065223a20226f74686572222c2022736e617073686f74223a207b226167656e7473223a205b5d7d7d7d"
+  },
+  {
+   "error": "value_error",
+   "input": "7b22726573756c74223a207b2274797065223a202273657373696f6e5f736e617073686f74222c2022736e617073686f74223a207b226167656e7473223a207b7d7d7d7d"
+  },
+  {
+   "error": "value_error",
+   "input": "7b22726573756c74223a207b2274797065223a202273657373696f6e5f736e617073686f74227d7d"
+  },
+  {
+   "error": "value_error",
+   "input": "5b312c20325d"
+  },
+  {
+   "input": "7b22726573756c74223a207b2274797065223a202273657373696f6e5f736e617073686f74222c2022736e617073686f74223a207b226167656e7473223a205b5d2c20226167656e7473223a205b7b2270616e655f6964223a20227a227d5d7d7d7d",
+   "ok": {
+    "agents": [
+     {
+      "cwd": "",
+      "id": "z",
+      "kind": "",
+      "label": "",
+      "status": "unknown"
+     }
+    ],
+    "truncated": false
+   }
+  },
+  {
+   "error": "value_error",
+   "input": "6e6f74206a736f6e"
+  },
+  {
+   "error": "value_error",
+   "input": ""
+  },
+  {
+   "error": "value_error",
+   "input": "ff"
+  },
+  {
+   "error": "value_error",
+   "input": "7b22726573756c74223a20317d"
+  },
+  {
+   "input": "7b22726573756c74223a207b2274797065223a202273657373696f6e5f736e617073686f74222c2022736e617073686f74223a207b226167656e7473223a205b5d2c202270616e6573223a202278227d7d7d",
+   "ok": {
+    "agents": [],
+    "truncated": false
+   }
+  }
+ ],
+ "herdr_failure": [
+  {
+   "ok": "not_installed",
+   "status": 127,
+   "stderr": ""
+  },
+  {
+   "ok": "unavailable",
+   "status": 2,
+   "stderr": "7b226572726f72223a7b22636f6465223a227365727665725f6e6f745f72756e6e696e67227d7d"
+  },
+  {
+   "ok": "unavailable",
+   "status": 1,
+   "stderr": ""
+  },
+  {
+   "ok": "no_server",
+   "status": 1,
+   "stderr": "6e6f6973650a7b226572726f72223a7b22636f6465223a227365727665725f6e6f745f72756e6e696e67227d7d0a"
+  },
+  {
+   "ok": "incompatible",
+   "status": 1,
+   "stderr": "7b226572726f72223a7b22636f6465223a2270726f746f636f6c5f6d69736d61746368227d7d0d0a6e6f74206a736f6e0a"
+  },
+  {
+   "ok": "unavailable",
+   "status": 1,
+   "stderr": "7b226572726f72223a7b22636f6465223a226f74686572227d7d"
+  },
+  {
+   "ok": "incompatible",
+   "status": 1,
+   "stderr": "7b226572726f72223a7b22636f6465223a357d7d0a7b226572726f72223a7b22636f6465223a2270726f746f636f6c5f6d69736d61746368227d7d"
+  },
+  {
+   "ok": "unavailable",
+   "status": 1,
+   "stderr": "ff0a"
+  },
+  {
+   "ok": "unavailable",
+   "status": 0,
+   "stderr": ""
+  }
+ ],
+ "inventory": [
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "web",
+       "status": "Up 2 hours"
+      },
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 2,
+     "running": 1,
+     "total": 2,
+     "truncated": false,
+     "version": "27.3.1"
+    },
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 3,
+     "services": [
+      {
+       "active": "active",
+       "description": "OpenBSD Secure Shell server",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "ssh.service"
+      },
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "Nightly backup",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": false
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=2\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "web",
+       "status": "Up 2 hours"
+      },
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 2,
+     "running": 1,
+     "total": 2,
+     "truncated": false,
+     "version": "27.3.1"
+    }
+   }
+  },
+  {
+   "input": "systemd_state=weird\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "web",
+       "status": "Up 2 hours"
+      },
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 2,
+     "running": 1,
+     "total": 2,
+     "truncated": false,
+     "version": "27.3.1"
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=3\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "web",
+       "status": "Up 2 hours"
+      },
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 2,
+     "running": 1,
+     "total": 2,
+     "truncated": false,
+     "version": "27.3.1"
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "web",
+       "status": "Up 2 hours"
+      },
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 2,
+     "running": 1,
+     "total": 2,
+     "truncated": false,
+     "version": "27.3.1"
+    },
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 2,
+     "services": [
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "Nightly backup",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": true
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|bad\u001bdesc\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "web",
+       "status": "Up 2 hours"
+      },
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 2,
+     "running": 1,
+     "total": 2,
+     "truncated": false,
+     "version": "27.3.1"
+    },
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 2,
+     "services": [
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "Nightly backup",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": true
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|   |OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "web",
+       "status": "Up 2 hours"
+      },
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 2,
+     "running": 1,
+     "total": 2,
+     "truncated": false,
+     "version": "27.3.1"
+    },
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 2,
+     "services": [
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "Nightly backup",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": true
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|a|b|c\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "web",
+       "status": "Up 2 hours"
+      },
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 2,
+     "running": 1,
+     "total": 2,
+     "truncated": false,
+     "version": "27.3.1"
+    },
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 3,
+     "services": [
+      {
+       "active": "active",
+       "description": "OpenBSD Secure Shell server",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "ssh.service"
+      },
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "a|b|c",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": false
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=-web|Up\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 1,
+     "running": 1,
+     "total": 2,
+     "truncated": true,
+     "version": "27.3.1"
+    },
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 3,
+     "services": [
+      {
+       "active": "active",
+       "description": "OpenBSD Secure Shell server",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "ssh.service"
+      },
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "Nightly backup",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": false
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 1,
+     "running": 1,
+     "total": 2,
+     "truncated": true,
+     "version": "27.3.1"
+    },
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 3,
+     "services": [
+      {
+       "active": "active",
+       "description": "OpenBSD Secure Shell server",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "ssh.service"
+      },
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "Nightly backup",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": false
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 3,
+     "services": [
+      {
+       "active": "active",
+       "description": "OpenBSD Secure Shell server",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "ssh.service"
+      },
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "Nightly backup",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": false
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=3\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 3,
+     "services": [
+      {
+       "active": "active",
+       "description": "OpenBSD Secure Shell server",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "ssh.service"
+      },
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "Nightly backup",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": false
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|Nightly backup\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 1,
+     "running": 1,
+     "total": 2,
+     "truncated": true,
+     "version": "27.3.1"
+    },
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 3,
+     "services": [
+      {
+       "active": "active",
+       "description": "OpenBSD Secure Shell server",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "ssh.service"
+      },
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "Nightly backup",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": false
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=3\nsystemd_active=2\nsystemd_failed=1\nsystemd_returned=3\nsystemd_service=ssh.service|loaded|active|running|OpenBSD Secure Shell server\nsystemd_service=cron.service|loaded|active|running|Regular background program processing daemon\nsystemd_service=backup.service|loaded|failed|failed|\u202eNightly backup\u2066\ndocker_version=27.3.1\ndocker_total=2\ndocker_running=1\ndocker_returned=2\ndocker_container=web|Up 2 hours\ndocker_container=db|Exited (0) 3 days ago\n",
+   "ok": {
+    "docker": {
+     "containers": [
+      {
+       "name": "web",
+       "status": "Up 2 hours"
+      },
+      {
+       "name": "db",
+       "status": "Exited (0) 3 days ago"
+      }
+     ],
+     "returned": 2,
+     "running": 1,
+     "total": 2,
+     "truncated": false,
+     "version": "27.3.1"
+    },
+    "systemd": {
+     "active": 2,
+     "failed": 1,
+     "returned": 3,
+     "services": [
+      {
+       "active": "active",
+       "description": "OpenBSD Secure Shell server",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "ssh.service"
+      },
+      {
+       "active": "active",
+       "description": "Regular background program processing daemon",
+       "load": "loaded",
+       "sub": "running",
+       "unit": "cron.service"
+      },
+      {
+       "active": "failed",
+       "description": "\u202eNightly backup\u2066",
+       "load": "loaded",
+       "sub": "failed",
+       "unit": "backup.service"
+      }
+     ],
+     "state": "running",
+     "total": 3,
+     "truncated": false
+    }
+   }
+  },
+  {
+   "input": "permission_denied=systemd\npermission_denied= docker \npermission_denied=systemd\npermission_denied=x\n",
+   "ok": {
+    "permission_denied": [
+     "systemd",
+     "docker"
+    ]
+   }
+  },
+  {
+   "input": "systemd_state= degraded \nsystemd_total=0\nsystemd_active=0\nsystemd_failed=0\nsystemd_returned=0\n",
+   "ok": {
+    "systemd": {
+     "active": 0,
+     "failed": 0,
+     "returned": 0,
+     "services": [],
+     "state": "degraded",
+     "total": 0,
+     "truncated": false
+    }
+   }
+  },
+  {
+   "input": "systemd_state=running\nsystemd_total=500\nsystemd_active=0\nsystemd_failed=0\nsystemd_returned=201\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\nsystemd_service=a.service|loaded|active|running|d\n",
+   "ok": {}
+  },
+  {
+   "input": "",
+   "ok": {}
+  },
+  {
+   "input": "garbage\n=\n",
+   "ok": {}
+  }
+ ],
+ "logs": [
+  {
+   "error_output": "2026-11-26T10:00:01.000000000Z err\nplain err\n",
+   "ok": [
+    "2026-11-26T10:00:02.000000000Z b\n  continued\n2026-11-26T10:00:01.000000000Z err\nplain err\n2026-11-26T10:00:00.000000001Z a",
+    ""
+   ],
+   "output": "2026-11-26T10:00:00.000000001Z a\n2026-11-26T10:00:02.000000000Z b\n  continued\n"
+  },
+  {
+   "error_output": "",
+   "ok": [
+    "2026-11-26T10:00:00.000000000Z x\n2026-11-26T10:00:00.000000000Z same",
+    "before"
+   ],
+   "output": "before\n2026-11-26T10:00:00.000000000Z x\n2026-11-26T10:00:00.000000000Z same\n"
+  },
+  {
+   "error_output": "",
+   "ok": [
+    "",
+    "2026-11-26T10:00:00.00000000Z short\n2026-11-26T10:00:00.000000000Zno-space"
+   ],
+   "output": "2026-11-26T10:00:00.00000000Z short\n2026-11-26T10:00:00.000000000Zno-space\n"
+  },
+  {
+   "error_output": "",
+   "ok": [
+    "\u0662026-11-26T10:00:00.000000000Z unicode digit",
+    ""
+   ],
+   "output": "\u0662026-11-26T10:00:00.000000000Z unicode digit\n"
+  },
+  {
+   "error_output": "",
+   "ok": [
+    "",
+    ""
+   ],
+   "output": ""
+  },
+  {
+   "error_output": "x\n",
+   "ok": [
+    "2026-11-26T10:00:00.000000000Z\ttab\n2026-11-25T10:00:00.000000000Z\u3000ideographic",
+    "x"
+   ],
+   "output": "2026-11-26T10:00:00.000000000Z\ttab\r\n2026-11-25T10:00:00.000000000Z\u3000ideographic\n"
+  }
+ ],
+ "processes": [
+  {
+   "input": "    1 root                              0.0  0.1 systemd\n  245 root                              0.0  0.0 sshd\n 1201 www-data                         12.5  3.2 nginx: worker\n",
+   "ok": [
+    {
+     "command": "systemd",
+     "cpu": "0.0",
+     "memory": "0.1",
+     "pid": 1,
+     "user": "root"
+    },
+    {
+     "command": "sshd",
+     "cpu": "0.0",
+     "memory": "0.0",
+     "pid": 245,
+     "user": "root"
+    },
+    {
+     "command": "nginx: worker",
+     "cpu": "12.5",
+     "memory": "3.2",
+     "pid": 1201,
+     "user": "www-data"
+    }
+   ]
+  },
+  {
+   "input": "    1 root                              0.0  0.1 systemd\n  245 root                              0.0  0.0 sshd\n 1201 www-data                         12.5  3.2 nginx: worker\n\n\n",
+   "ok": [
+    {
+     "command": "systemd",
+     "cpu": "0.0",
+     "memory": "0.1",
+     "pid": 1,
+     "user": "root"
+    },
+    {
+     "command": "sshd",
+     "cpu": "0.0",
+     "memory": "0.0",
+     "pid": 245,
+     "user": "root"
+    },
+    {
+     "command": "nginx: worker",
+     "cpu": "12.5",
+     "memory": "3.2",
+     "pid": 1201,
+     "user": "www-data"
+    }
+   ]
+  },
+  {
+   "input": "",
+   "ok": []
+  },
+  {
+   "input": "   \n",
+   "ok": []
+  },
+  {
+   "error": "invalid_output",
+   "input": "    1 root                              0.0  0.1 systemd\n  245 root                              0.0  0.0 sshd\n 1201 www-data                         12.5  3.2 nginx: worker\n  245 root 0.0 0.0 dup\n"
+  },
+  {
+   "error": "invalid_output",
+   "input": "abc root 0.0 0.0 x\n"
+  },
+  {
+   "error": "invalid_output",
+   "input": "0 root 0.0 0.0 x\n"
+  },
+  {
+   "error": "invalid_output",
+   "input": "4194305 root 0.0 0.0 x\n"
+  },
+  {
+   "error": "invalid_output",
+   "input": "12345678 root 0.0 0.0 x\n"
+  },
+  {
+   "error": "invalid_output",
+   "input": "1 root 1,5 0.0 x\n"
+  },
+  {
+   "error": "invalid_output",
+   "input": "1 root 0.0 0.0\n"
+  },
+  {
+   "input": "1 root 0.0 0.0 cmd with   spaces  \n",
+   "ok": [
+    {
+     "command": "cmd with   spaces  ",
+     "cpu": "0.0",
+     "memory": "0.0",
+     "pid": 1,
+     "user": "root"
+    }
+   ]
+  },
+  {
+   "error": "invalid_output",
+   "input": "1\troot\t0.0\t0.0\tx\u0085y\n"
+  },
+  {
+   "error": "invalid_output",
+   "input": "\u0661 root 0.0 0.0 x\n"
+  }
+ ],
+ "scripts": {
+  "herdr_probe": "sh -c 'PATH=\"$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin\"; command -v herdr >/dev/null 2>&1'",
+  "herdr_session": "sh -c 'PATH=\"$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin\"; exec herdr'",
+  "herdr_snapshot": "sh -c 'PATH=\"$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin\"; herdr api snapshot & p=$!; (sleep 5; kill \"$p\") >/dev/null 2>&1 & w=$!; wait \"$p\"; s=$?; kill \"$w\" >/dev/null 2>&1; exit \"$s\"'",
+  "insights_diagnostics": "LC_ALL=C\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\nexport LC_ALL PATH\nif [ -r /proc/stat ] && command -v awk >/dev/null 2>&1; then\n  awk 'NR == 1 { $1=\"\"; sub(/^ /, \"\"); print \"cpu=\" $0; exit }' /proc/stat 2>/dev/null\nfi\nif [ -r /proc/meminfo ] && command -v awk >/dev/null 2>&1; then\n  awk '\n    /^MemTotal:/ { print \"mem_total_kib=\" $2 }\n    /^MemAvailable:/ { print \"mem_available_kib=\" $2 }\n  ' /proc/meminfo 2>/dev/null\nfi\nif command -v df >/dev/null 2>&1 && command -v awk >/dev/null 2>&1; then\n  df -Pk / 2>/dev/null | awk 'NR == 2 {\n    percent=$5; sub(/%$/, \"\", percent)\n    print \"disk_total_kib=\" $2\n    print \"disk_used_kib=\" $3\n    print \"disk_available_kib=\" $4\n    print \"disk_percent=\" percent\n  }'\nfi\nif [ -r /proc/uptime ] && command -v awk >/dev/null 2>&1; then\n  awk '{ print \"uptime_seconds=\" $1; exit }' /proc/uptime 2>/dev/null\nfi\nif [ -r /etc/os-release ] && command -v awk >/dev/null 2>&1; then\n  os_name=$(awk -F= '/^PRETTY_NAME=/ { sub(/^PRETTY_NAME=/, \"\"); print; exit }' /etc/os-release 2>/dev/null)\n  os_name=${os_name#\\\"}; os_name=${os_name%\\\"}\n  os_name=${os_name#\\'}; os_name=${os_name%\\'}\nelif command -v uname >/dev/null 2>&1; then\n  os_name=$(uname -srm 2>/dev/null)\nelse\n  os_name=\nfi\n[ -n \"$os_name\" ] && printf 'os_name=%s\\n' \"$os_name\"\n:\n\nif [ -r /proc/meminfo ] && command -v awk >/dev/null 2>&1; then\n  awk '\n    /^SwapTotal:/ { print \"swap_total_kib=\" $2 }\n    /^SwapFree:/ { print \"swap_free_kib=\" $2 }\n  ' /proc/meminfo 2>/dev/null\nfi\nif [ -r /proc/loadavg ] && command -v awk >/dev/null 2>&1; then\n  awk '{\n    print \"load_1=\" $1\n    print \"load_5=\" $2\n    print \"load_15=\" $3\n  }' /proc/loadavg 2>/dev/null\nfi\nif [ -r /proc/stat ] && command -v awk >/dev/null 2>&1; then\n  awk '/^cpu[0-9]+ / { count++ } END {\n    if (count > 0) print \"cpu_count=\" count\n  }' /proc/stat 2>/dev/null\nfi\nif [ -r /proc/net/dev ] && command -v awk >/dev/null 2>&1; then\n  awk 'NR > 2 {\n    separator = index($0, \":\")\n    if (separator == 0) next\n    interface = substr($0, 1, separator - 1)\n    gsub(/^[[:space:]]+|[[:space:]]+$/, \"\", interface)\n    if (interface == \"lo\") next\n    counters = substr($0, separator + 1)\n    sub(/^[[:space:]]+/, \"\", counters)\n    count = split(counters, fields, /[[:space:]]+/)\n    if (count >= 16) {\n      received += fields[1]\n      transmitted += fields[9]\n    }\n  } END {\n    print \"network_received_bytes=\" received + 0\n    print \"network_transmitted_bytes=\" transmitted + 0\n  }' /proc/net/dev 2>/dev/null\nfi\n\nprocess_probe=$(ps -p $$ -o pid= 2>&1)\nprocess_status=$?\nif [ \"$process_status\" -eq 0 ]; then\n  ps -e -o stat= 2>/dev/null | awk '\n    { total++ }\n    substr($1, 1, 1) == \"Z\" { zombies++ }\n    END {\n      print \"process_total=\" total + 0\n      print \"process_zombies=\" zombies + 0\n    }'\n  ps -e -o pid=,user=,comm=,pcpu=,pmem= --sort=-pcpu 2>/dev/null \\\n    | awk 'NR <= 5 {\n        printf \"process_cpu=%s|%s|%s|%s|%s\\n\", $1, $2, $3, $4, $5\n      }'\n  ps -e -o pid=,user=,comm=,pcpu=,pmem= --sort=-pmem 2>/dev/null \\\n    | awk 'NR <= 5 {\n        printf \"process_memory=%s|%s|%s|%s|%s\\n\", $1, $2, $3, $4, $5\n      }'\nelif printf '%s' \"$process_probe\" | grep -Eqi \\\n    'permission denied|access denied|not authorized|authorization denied'; then\n  printf 'permission_denied=processes\\n'\nfi\n:\n\n",
+  "insights_stats": "LC_ALL=C\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\nexport LC_ALL PATH\nif [ -r /proc/stat ] && command -v awk >/dev/null 2>&1; then\n  awk 'NR == 1 { $1=\"\"; sub(/^ /, \"\"); print \"cpu=\" $0; exit }' /proc/stat 2>/dev/null\nfi\nif [ -r /proc/meminfo ] && command -v awk >/dev/null 2>&1; then\n  awk '\n    /^MemTotal:/ { print \"mem_total_kib=\" $2 }\n    /^MemAvailable:/ { print \"mem_available_kib=\" $2 }\n  ' /proc/meminfo 2>/dev/null\nfi\nif command -v df >/dev/null 2>&1 && command -v awk >/dev/null 2>&1; then\n  df -Pk / 2>/dev/null | awk 'NR == 2 {\n    percent=$5; sub(/%$/, \"\", percent)\n    print \"disk_total_kib=\" $2\n    print \"disk_used_kib=\" $3\n    print \"disk_available_kib=\" $4\n    print \"disk_percent=\" percent\n  }'\nfi\nif [ -r /proc/uptime ] && command -v awk >/dev/null 2>&1; then\n  awk '{ print \"uptime_seconds=\" $1; exit }' /proc/uptime 2>/dev/null\nfi\nif [ -r /etc/os-release ] && command -v awk >/dev/null 2>&1; then\n  os_name=$(awk -F= '/^PRETTY_NAME=/ { sub(/^PRETTY_NAME=/, \"\"); print; exit }' /etc/os-release 2>/dev/null)\n  os_name=${os_name#\\\"}; os_name=${os_name%\\\"}\n  os_name=${os_name#\\'}; os_name=${os_name%\\'}\nelif command -v uname >/dev/null 2>&1; then\n  os_name=$(uname -srm 2>/dev/null)\nelse\n  os_name=\nfi\n[ -n \"$os_name\" ] && printf 'os_name=%s\\n' \"$os_name\"\n:\n",
+  "runtime_inventory": "LC_ALL=C\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\nexport LC_ALL PATH\n\nfor inventory_utility in awk cat dd grep mkfifo mktemp rm rmdir; do\n  command -v \"$inventory_utility\" >/dev/null 2>&1 || exit 0\ndone\n\ninventory_dir=$(mktemp -d \"${TMPDIR:-/tmp}/webssh-inventory.XXXXXX\" 2>/dev/null) || exit 0\n[ -n \"$inventory_dir\" ] || exit 0\n\ncleanup_runtime_inventory() {\n  for inventory_file in \\\n      stdout.pipe stderr.pipe \\\n      systemd_state.out systemd_state.err systemd_units.out systemd_units.err \\\n      docker_version.out docker_version.err docker_running.out docker_running.err \\\n      docker_total.out docker_total.err docker_containers.out docker_containers.err; do\n    rm -f \"$inventory_dir/$inventory_file\" 2>/dev/null\n  done\n  rmdir \"$inventory_dir\" 2>/dev/null\n}\n\ntrap 'cleanup_runtime_inventory' 0\ntrap 'exit 1' HUP INT TERM\n\ncapture_inventory_stderr() {\n  dd bs=1 count=4096 of=\"$1\" 2>/dev/null\n  cat >/dev/null\n}\n\ncapture_inventory_stdout() {\n  case \"$1\" in\n    systemd_state)\n      awk '\n        NF && !seen {\n          value = substr($0, 1, 64)\n          seen = 1\n        }\n        END {\n          if (seen) print \"systemd_state=\" value\n        }'\n      ;;\n    systemd_units)\n      awk '\n        NF {\n          total++\n          if ($3 == \"active\") active++\n          if ($3 == \"failed\") failed++\n          if (NF >= 4 && stored < 200) {\n            unit[stored] = substr($1, 1, 200)\n            load[stored] = substr($2, 1, 32)\n            active_state[stored] = substr($3, 1, 32)\n            sub_state[stored] = substr($4, 1, 64)\n            description = $0\n            sub(/^[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]*/, \"\", description)\n            details[stored] = substr(description, 1, 240)\n            stored++\n          }\n        }\n        END {\n          used = 0\n          emitted = 0\n          for (row = 0; row < stored; row++) {\n            line = sprintf(\"systemd_service=%s|%s|%s|%s|%s\", unit[row], load[row], active_state[row], sub_state[row], details[row])\n            line_size = length(line) + 1\n            if (used + line_size > 46080) break\n            used += line_size\n            emitted++\n          }\n          printf \"systemd_total=%.0f\\n\", total + 0\n          printf \"systemd_active=%.0f\\n\", active + 0\n          printf \"systemd_failed=%.0f\\n\", failed + 0\n          printf \"systemd_returned=%.0f\\n\", emitted + 0\n          for (row = 0; row < emitted; row++) {\n            printf \"systemd_service=%s|%s|%s|%s|%s\\n\", unit[row], load[row], active_state[row], sub_state[row], details[row]\n          }\n        }'\n      ;;\n    docker_version)\n      awk '\n        NF && !seen {\n          value = substr($0, 1, 64)\n          seen = 1\n        }\n        END {\n          if (seen) print \"docker_version=\" value\n        }'\n      ;;\n    docker_running)\n      awk 'NF { count++ } END { printf \"docker_running=%.0f\\n\", count + 0 }'\n      ;;\n    docker_total)\n      awk 'NF { count++ } END { printf \"docker_total=%.0f\\n\", count + 0 }'\n      ;;\n    docker_containers)\n      awk '\n        NF && stored < 50 {\n          separator = index($0, \"|\")\n          if (separator) {\n            names[stored] = substr($0, 1, separator - 1)\n            statuses[stored] = substr($0, separator + 1)\n          } else {\n            names[stored] = $0\n            statuses[stored] = \"\"\n          }\n          names[stored] = substr(names[stored], 1, 128)\n          statuses[stored] = substr(statuses[stored], 1, 160)\n          stored++\n        }\n        END {\n          used = 0\n          emitted = 0\n          for (row = 0; row < stored; row++) {\n            line = sprintf(\"docker_container=%s|%s\", names[row], statuses[row])\n            line_size = length(line) + 1\n            if (used + line_size > 12288) break\n            used += line_size\n            emitted++\n          }\n          printf \"docker_returned=%.0f\\n\", emitted + 0\n          for (row = 0; row < emitted; row++) {\n            printf \"docker_container=%s|%s\\n\", names[row], statuses[row]\n          }\n        }'\n      ;;\n    *)\n      cat >/dev/null\n      return 1\n      ;;\n  esac\n}\n\nrun_bounded_inventory_command() {\n  inventory_kind=$1\n  inventory_stdout_file=$2\n  inventory_stderr_file=$3\n  shift 3\n  rm -f \"$inventory_dir/stdout.pipe\" \"$inventory_dir/stderr.pipe\" \\\n    \"$inventory_stdout_file\" \"$inventory_stderr_file\" 2>/dev/null\n  mkfifo \"$inventory_dir/stdout.pipe\" 2>/dev/null || return 125\n  if ! mkfifo \"$inventory_dir/stderr.pipe\" 2>/dev/null; then\n    rm -f \"$inventory_dir/stdout.pipe\" 2>/dev/null\n    return 125\n  fi\n\n  capture_inventory_stdout \"$inventory_kind\" \\\n    <\"$inventory_dir/stdout.pipe\" >\"$inventory_stdout_file\" 2>/dev/null &\n  inventory_stdout_pid=$!\n  capture_inventory_stderr \"$inventory_stderr_file\" \\\n    <\"$inventory_dir/stderr.pipe\" &\n  inventory_stderr_pid=$!\n\n  \"$@\" >\"$inventory_dir/stdout.pipe\" 2>\"$inventory_dir/stderr.pipe\"\n  inventory_command_status=$?\n  wait \"$inventory_stdout_pid\"\n  inventory_stdout_status=$?\n  wait \"$inventory_stderr_pid\"\n  inventory_stderr_status=$?\n  rm -f \"$inventory_dir/stdout.pipe\" \"$inventory_dir/stderr.pipe\" 2>/dev/null\n\n  if [ \"$inventory_stdout_status\" -ne 0 ] || [ \"$inventory_stderr_status\" -ne 0 ]; then\n    return 125\n  fi\n  return \"$inventory_command_status\"\n}\n\nhas_inventory_permission_error() {\n  grep -Eiq 'permission denied|access denied|not authorized|authorization denied|authentication is required|got permission denied' \"$@\"\n}\n\nrun_docker_inventory_command() {\n  DOCKER_CLIENT_TIMEOUT=1 docker \"$@\"\n}\n\nif command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then\n  run_bounded_inventory_command systemd_state \\\n    \"$inventory_dir/systemd_state.out\" \"$inventory_dir/systemd_state.err\" \\\n    systemctl show --property=SystemState --value\n  systemd_state_status=$?\n  run_bounded_inventory_command systemd_units \\\n    \"$inventory_dir/systemd_units.out\" \"$inventory_dir/systemd_units.err\" \\\n    systemctl list-units --type=service --all --no-legend --no-pager --plain\n  systemd_units_status=$?\n  if [ \"$systemd_state_status\" -eq 0 ] && [ \"$systemd_units_status\" -eq 0 ] \\\n      && [ -s \"$inventory_dir/systemd_state.out\" ]; then\n    cat \"$inventory_dir/systemd_state.out\" \"$inventory_dir/systemd_units.out\"\n  elif has_inventory_permission_error \\\n      \"$inventory_dir/systemd_state.err\" \"$inventory_dir/systemd_units.err\"; then\n    printf 'permission_denied=systemd\\n'\n  fi\n  rm -f \"$inventory_dir/systemd_state.out\" \"$inventory_dir/systemd_state.err\" \\\n    \"$inventory_dir/systemd_units.out\" \"$inventory_dir/systemd_units.err\" 2>/dev/null\nfi\n\nif command -v docker >/dev/null 2>&1; then\n  run_bounded_inventory_command docker_version \\\n    \"$inventory_dir/docker_version.out\" \"$inventory_dir/docker_version.err\" \\\n    run_docker_inventory_command version --format '{{.Server.Version}}'\n  docker_version_status=$?\n  run_bounded_inventory_command docker_running \\\n    \"$inventory_dir/docker_running.out\" \"$inventory_dir/docker_running.err\" \\\n    run_docker_inventory_command ps -q\n  docker_running_status=$?\n  run_bounded_inventory_command docker_total \\\n    \"$inventory_dir/docker_total.out\" \"$inventory_dir/docker_total.err\" \\\n    run_docker_inventory_command ps -aq\n  docker_total_status=$?\n  run_bounded_inventory_command docker_containers \\\n    \"$inventory_dir/docker_containers.out\" \"$inventory_dir/docker_containers.err\" \\\n    run_docker_inventory_command ps -a --format '{{.Names}}|{{.Status}}'\n  docker_containers_status=$?\n  if [ \"$docker_version_status\" -eq 0 ] \\\n      && [ \"$docker_running_status\" -eq 0 ] \\\n      && [ \"$docker_total_status\" -eq 0 ] \\\n      && [ \"$docker_containers_status\" -eq 0 ] \\\n      && [ -s \"$inventory_dir/docker_version.out\" ]; then\n    cat \"$inventory_dir/docker_version.out\" \"$inventory_dir/docker_total.out\" \\\n      \"$inventory_dir/docker_running.out\" \"$inventory_dir/docker_containers.out\"\n  elif has_inventory_permission_error \\\n      \"$inventory_dir/docker_version.err\" \"$inventory_dir/docker_running.err\" \\\n      \"$inventory_dir/docker_total.err\" \"$inventory_dir/docker_containers.err\"; then\n    printf 'permission_denied=docker\\n'\n  fi\n  rm -f \"$inventory_dir/docker_version.out\" \"$inventory_dir/docker_version.err\" \\\n    \"$inventory_dir/docker_running.out\" \"$inventory_dir/docker_running.err\" \\\n    \"$inventory_dir/docker_total.out\" \"$inventory_dir/docker_total.err\" \\\n    \"$inventory_dir/docker_containers.out\" \"$inventory_dir/docker_containers.err\" 2>/dev/null\nfi\n"
+ },
+ "stats": [
+  {
+   "input": "cpu=4705 150 1406 136325 345 0 33 0 0 0\nmem_total_kib=16314220\nmem_available_kib=12011452\ndisk_total_kib=61202244\ndisk_used_kib=10283664\ndisk_available_kib=47774620\ndisk_percent=18\nuptime_seconds=12345.67\nos_name=Debian GNU/Linux 13 (trixie)\nswap_total_kib=2097148\nswap_free_kib=2097148\nload_1=0.12\nload_5=0.30\nload_15=0.25\ncpu_count=8\nnetwork_received_bytes=123456789\nnetwork_transmitted_bytes=987654321\nprocess_total=212\nprocess_zombies=1\nprocess_cpu=1234|root|sshd|12.5|0.3\nprocess_cpu=77|www-data|nginx|3.0|1.1\nprocess_memory=900|postgres|postgres|0.1|12.0\n",
+   "ok": {
+    "cpu": [
+     4705,
+     150,
+     1406,
+     136325,
+     345,
+     0,
+     33,
+     0,
+     0,
+     0
+    ],
+    "disk": {
+     "available_kib": 47774620,
+     "percent": 18,
+     "total_kib": 61202244,
+     "used_kib": 10283664
+    },
+    "load": {
+     "cpu_count": 8,
+     "fifteen": 0.25,
+     "five": 0.3,
+     "one": 0.12
+    },
+    "memory": {
+     "available_kib": 12011452,
+     "total_kib": 16314220,
+     "used_kib": 4302768
+    },
+    "network": {
+     "received_bytes": 123456789,
+     "transmitted_bytes": 987654321
+    },
+    "os_name": "Debian GNU/Linux 13 (trixie)",
+    "processes": {
+     "top_cpu": [
+      {
+       "command": "sshd",
+       "cpu_percent": 12.5,
+       "memory_percent": 0.3,
+       "pid": 1234,
+       "user": "root"
+      },
+      {
+       "command": "nginx",
+       "cpu_percent": 3.0,
+       "memory_percent": 1.1,
+       "pid": 77,
+       "user": "www-data"
+      }
+     ],
+     "top_memory": [
+      {
+       "command": "postgres",
+       "cpu_percent": 0.1,
+       "memory_percent": 12.0,
+       "pid": 900,
+       "user": "postgres"
+      }
+     ],
+     "total": 212,
+     "zombies": 1
+    },
+    "swap": {
+     "available_kib": 2097148,
+     "total_kib": 2097148,
+     "used_kib": 0
+    },
+    "uptime_seconds": 12345
+   }
+  },
+  {
+   "input": "cpu=4705 150 1406 136325 345 0 33 0 0 0\r\nmem_total_kib=16314220\r\nmem_available_kib=12011452\r\ndisk_total_kib=61202244\r\ndisk_used_kib=10283664\r\ndisk_available_kib=47774620\r\ndisk_percent=18\r\nuptime_seconds=12345.67\r\nos_name=Debian GNU/Linux 13 (trixie)\r\nswap_total_kib=2097148\r\nswap_free_kib=2097148\r\nload_1=0.12\r\nload_5=0.30\r\nload_15=0.25\r\ncpu_count=8\r\nnetwork_received_bytes=123456789\r\nnetwork_transmitted_bytes=987654321\r\nprocess_total=212\r\nprocess_zombies=1\r\nprocess_cpu=1234|root|sshd|12.5|0.3\r\nprocess_cpu=77|www-data|nginx|3.0|1.1\r\nprocess_memory=900|postgres|postgres|0.1|12.0\r\n",
+   "ok": {
+    "cpu": [
+     4705,
+     150,
+     1406,
+     136325,
+     345,
+     0,
+     33,
+     0,
+     0,
+     0
+    ],
+    "disk": {
+     "available_kib": 47774620,
+     "percent": 18,
+     "total_kib": 61202244,
+     "used_kib": 10283664
+    },
+    "load": {
+     "cpu_count": 8,
+     "fifteen": 0.25,
+     "five": 0.3,
+     "one": 0.12
+    },
+    "memory": {
+     "available_kib": 12011452,
+     "total_kib": 16314220,
+     "used_kib": 4302768
+    },
+    "network": {
+     "received_bytes": 123456789,
+     "transmitted_bytes": 987654321
+    },
+    "os_name": "Debian GNU/Linux 13 (trixie)",
+    "processes": {
+     "top_cpu": [
+      {
+       "command": "sshd",
+       "cpu_percent": 12.5,
+       "memory_percent": 0.3,
+       "pid": 1234,
+       "user": "root"
+      },
+      {
+       "command": "nginx",
+       "cpu_percent": 3.0,
+       "memory_percent": 1.1,
+       "pid": 77,
+       "user": "www-data"
+      }
+     ],
+     "top_memory": [
+      {
+       "command": "postgres",
+       "cpu_percent": 0.1,
+       "memory_percent": 12.0,
+       "pid": 900,
+       "user": "postgres"
+      }
+     ],
+     "total": 212,
+     "zombies": 1
+    },
+    "swap": {
+     "available_kib": 2097148,
+     "total_kib": 2097148,
+     "used_kib": 0
+    },
+    "uptime_seconds": 12345
+   }
+  },
+  {
+   "error": "value_error",
+   "input": "cpu=1 2 3\nmem_total_kib=10\nmem_available_kib=11\n"
+  },
+  {
+   "input": "cpu=1 2 3 -4\nos_name=  spaced  \n",
+   "ok": {
+    "os_name": "spaced"
+   }
+  },
+  {
+   "error": "value_error",
+   "input": "os_name=bad\u001b[31mred\n"
+  },
+  {
+   "error": "value_error",
+   "input": "os_name=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+  },
+  {
+   "input": "os_name=\u202eevil\n",
+   "ok": {
+    "os_name": "\u202eevil"
+   }
+  },
+  {
+   "error": "value_error",
+   "input": "disk_total_kib=10\ndisk_used_kib=11\ndisk_available_kib=1\ndisk_percent=5\n"
+  },
+  {
+   "error": "value_error",
+   "input": "disk_total_kib=10\ndisk_used_kib=1\ndisk_available_kib=1\ndisk_percent=101\n"
+  },
+  {
+   "error": "value_error",
+   "input": "load_1=1\nload_5=2\nload_15=3\ncpu_count=0\nuptime_seconds=nan\n"
+  },
+  {
+   "input": "load_1=1e3\nload_5=.5\nload_15=3.\ncpu_count=2\n",
+   "ok": {
+    "load": {
+     "cpu_count": 2,
+     "fifteen": 3.0,
+     "five": 0.5,
+     "one": 1000.0
+    }
+   }
+  },
+  {
+   "error": "value_error",
+   "input": "load_1=1000001\nload_5=1\nload_15=1\ncpu_count=1\n"
+  },
+  {
+   "input": "swap_total_kib=5\nswap_free_kib=6\nnetwork_received_bytes=18446744073709551615\nnetwork_transmitted_bytes=0\n",
+   "ok": {
+    "network": {
+     "received_bytes": 18446744073709551615,
+     "transmitted_bytes": 0
+    }
+   }
+  },
+  {
+   "error": "value_error",
+   "input": "network_received_bytes=18446744073709551616\nnetwork_transmitted_bytes=0\n"
+  },
+  {
+   "error": "value_error",
+   "input": "process_total=3\nprocess_zombies=4\nprocess_cpu=1|a|b|1|1\n"
+  },
+  {
+   "error": "value_error",
+   "input": "process_total=3\nprocess_zombies=0\nprocess_cpu=0|a|b|1|1\nprocess_cpu=2|a|b|1|101\nprocess_cpu=3|a|b\n"
+  },
+  {
+   "input": "process_total=3\nprocess_zombies=0\nprocess_cpu=1|u|c|1|1\nprocess_cpu=2|u|c|1|1\nprocess_cpu=3|u|c|1|1\nprocess_cpu=4|u|c|1|1\nprocess_cpu=5|u|c|1|1\nprocess_cpu=6|u|c|1|1\nprocess_cpu=7|u|c|1|1\nprocess_cpu=8|u|c|1|1\nprocess_cpu=9|u|c|1|1\nprocess_cpu=10|u|c|1|1\nprocess_cpu=11|u|c|1|1\nprocess_cpu=12|u|c|1|1\nprocess_cpu=13|u|c|1|1\nprocess_cpu=14|u|c|1|1\nprocess_cpu=15|u|c|1|1\nprocess_cpu=16|u|c|1|1\nprocess_cpu=17|u|c|1|1\nprocess_cpu=18|u|c|1|1\nprocess_cpu=19|u|c|1|1\n",
+   "ok": {
+    "processes": {
+     "top_cpu": [
+      {
+       "command": "c",
+       "cpu_percent": 1.0,
+       "memory_percent": 1.0,
+       "pid": 1,
+       "user": "u"
+      },
+      {
+       "command": "c",
+       "cpu_percent": 1.0,
+       "memory_percent": 1.0,
+       "pid": 2,
+       "user": "u"
+      },
+      {
+       "command": "c",
+       "cpu_percent": 1.0,
+       "memory_percent": 1.0,
+       "pid": 3,
+       "user": "u"
+      },
+      {
+       "command": "c",
+       "cpu_percent": 1.0,
+       "memory_percent": 1.0,
+       "pid": 4,
+       "user": "u"
+      },
+      {
+       "command": "c",
+       "cpu_percent": 1.0,
+       "memory_percent": 1.0,
+       "pid": 5,
+       "user": "u"
+      }
+     ],
+     "top_memory": [],
+     "total": 3,
+     "zombies": 0
+    }
+   }
+  },
+  {
+   "error": "value_error",
+   "input": "process_total=1\nprocess_zombies=0\nprocess_memory=5| |cmd|1|1\nprocess_memory=6|u|ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc|1|1\n"
+  },
+  {
+   "input": "permission_denied=processes\npermission_denied=processes\npermission_denied=disk\n",
+   "ok": {
+    "permission_denied": [
+     "processes"
+    ]
+   }
+  },
+  {
+   "error": "value_error",
+   "input": "nothing here\n"
+  },
+  {
+   "error": "value_error",
+   "input": ""
+  },
+  {
+   "error": "value_error",
+   "input": "cpu\nmem_total_kib\n=5\n"
+  },
+  {
+   "input": "uptime_seconds=5\u000bos_name=vt\fload_1=1\u001cx=1\u0085y=2\u2028os_name=ls\n",
+   "ok": {
+    "os_name": "ls",
+    "uptime_seconds": 5
+   }
+  },
+  {
+   "input": "cpu=1 2 3 4\ncpu=5 6 7 8 9\n",
+   "ok": {
+    "cpu": [
+     5,
+     6,
+     7,
+     8,
+     9
+    ]
+   }
+  },
+  {
+   "input": "uptime_seconds= 42 \n",
+   "ok": {
+    "uptime_seconds": 42
+   }
+  },
+  {
+   "input": "mem_total_kib=+10\nmem_available_kib=-0\n",
+   "ok": {
+    "memory": {
+     "available_kib": 0,
+     "total_kib": 10,
+     "used_kib": 10
+    }
+   }
+  }
+ ]
+}

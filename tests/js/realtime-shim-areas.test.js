@@ -16,9 +16,9 @@ const M1_REQUESTS = ['list_profiles', 'save_profile', 'delete_profile', 'update_
     'delete_key', 'set_theme', 'set_confirm_session_close', 'set_disconnect_session_action', 'get_notepad',
     'save_notepad'];
 // Built by M2 packages since the split.
-const M2_REQUESTS = ['ssh_gateway_answer', 'ssh_gateway_input', 'ssh_gateway_ack'];
-const M1_UNAVAILABLE = ['list_commands', 'list_command_sets', 'list_smb_shares', 'probe_session_sftp',
-    'request_session_insights', 'request_session_runtime_inventory'];
+const M2_REQUESTS = ['ssh_gateway_answer', 'ssh_gateway_input', 'ssh_gateway_ack',
+    'request_session_insights', 'request_session_runtime_inventory', 'request_herdr_snapshot'];
+const M1_UNAVAILABLE = ['list_commands', 'list_command_sets', 'list_smb_shares', 'probe_session_sftp'];
 const M1_FEATURES = ['files', 'smb', 'commands', 'commandSets', 'insights', 'terminalTools'];
 
 test('the split table equals the table of M1', () => {

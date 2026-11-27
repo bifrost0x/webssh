@@ -17,8 +17,15 @@
     const sequence = value => (Number.isSafeInteger(value) && value >= 0 ? value : 0);
 
     return Object.freeze({
-        // NW2: answers and the temporary terminal of a gateway attempt.
         requests: Object.freeze({
+            // HO1: the Herdr agents of a connected session, acknowledged as
+            // the Python release answered request_herdr_snapshot.
+            request_herdr_snapshot: {
+                type: 'herdr.snapshot',
+                payload: data => ({session_id: text(data?.session_id)}),
+                ack: result => result,
+            },
+            // NW2: answers and the temporary terminal of a gateway attempt.
             ssh_gateway_answer: {
                 type: 'prompt.respond',
                 payload: data => ({

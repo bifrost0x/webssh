@@ -15,6 +15,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/fault"
@@ -47,16 +48,20 @@ type Command struct {
 	// MaxOutput is the number of stdout bytes kept (DefaultMaxOutput when
 	// zero, at most MaxOutput). More output is read and discarded.
 	MaxOutput int
+	// MaxStderr is the number of stderr bytes kept (4 KiB when zero, at
+	// most MaxOutput).
+	MaxStderr int
 }
 
 // Result is the outcome of a command that reported an exit status.
 type Result struct {
 	ExitStatus int
 	Stdout     []byte
-	// Stderr keeps the first 4 KiB; it is remote text, never shown or
-	// logged as is.
-	Stderr    []byte
-	Truncated bool // stdout exceeded MaxOutput
+	// Stderr keeps the first MaxStderr bytes; it is remote text, never
+	// shown or logged as is.
+	Stderr          []byte
+	Truncated       bool // stdout exceeded MaxOutput
+	StderrTruncated bool // stderr exceeded MaxStderr
 }
 
 var errInvalid = fault.New(fault.InvalidValue, "The remote command is invalid.")
@@ -72,6 +77,11 @@ func (c *Command) check() error {
 		return errInvalid
 	case c.Timeout < 0 || c.MaxOutput < 0 || c.MaxOutput > MaxOutput:
 		return errInvalid
+	case c.MaxStderr < 0 || c.MaxStderr > MaxOutput:
+		return errInvalid
+	}
+	if c.MaxStderr == 0 {
+		c.MaxStderr = maxStderr
 	}
 	if c.Timeout == 0 {
 		c.Timeout = DefaultTimeout
@@ -85,7 +95,8 @@ func (c *Command) check() error {
 // Run runs c on the connection. It fails with fault.Timeout when the time
 // limit ends the command, with the executor's error when the channel
 // fails, and passes client.ErrNoExitStatus through for a command without
-// an exit status.
+// an exit status. On a timeout the result holds the output read until
+// then (ExitStatus -1), for collectors that accept a partial sample.
 func Run(ctx context.Context, on Executor, c Command) (Result, error) {
 	if err := c.check(); err != nil {
 		return Result{}, err
@@ -93,7 +104,7 @@ func Run(ctx context.Context, on Executor, c Command) (Result, error) {
 	rctx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
 	stdout := &capped{max: c.MaxOutput}
-	stderr := &capped{max: maxStderr}
+	stderr := &capped{max: c.MaxStderr}
 	var stdin io.Reader
 	if len(c.Stdin) > 0 {
 		stdin = bytes.NewReader(c.Stdin)
@@ -101,22 +112,27 @@ func Run(ctx context.Context, on Executor, c Command) (Result, error) {
 	status, err := on.Exec(rctx, c.Line, stdin, stdout, stderr)
 	if err != nil {
 		if ctx.Err() == nil && errors.Is(rctx.Err(), context.DeadlineExceeded) {
-			return Result{}, fault.Wrap(fault.Timeout, err, "The remote command timed out.")
+			partial := Result{ExitStatus: -1, Stdout: stdout.bytes(), Stderr: stderr.bytes(), Truncated: stdout.isOver(), StderrTruncated: stderr.isOver()}
+			return partial, fault.Wrap(fault.Timeout, err, "The remote command timed out.")
 		}
 		return Result{}, err
 	}
-	return Result{ExitStatus: status, Stdout: stdout.buf.Bytes(), Stderr: stderr.buf.Bytes(), Truncated: stdout.over}, nil
+	return Result{ExitStatus: status, Stdout: stdout.bytes(), Stderr: stderr.bytes(), Truncated: stdout.isOver(), StderrTruncated: stderr.isOver()}, nil
 }
 
 // capped keeps the first max bytes and accepts everything, so the remote
-// side is drained and never blocks on a full window.
+// side is drained and never blocks on a full window. The executor may
+// still write after a timeout returned, so access is locked.
 type capped struct {
+	mu   sync.Mutex
 	max  int
 	buf  bytes.Buffer
 	over bool
 }
 
 func (w *capped) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	room := w.max - w.buf.Len()
 	if len(p) > room {
 		w.over = true
@@ -125,6 +141,18 @@ func (w *capped) Write(p []byte) (int, error) {
 		w.buf.Write(p)
 	}
 	return len(p), nil
+}
+
+func (w *capped) bytes() []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return bytes.Clone(w.buf.Bytes())
+}
+
+func (w *capped) isOver() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.over
 }
 
 // Word quotes a token for a command line. It accepts 1 to 256 bytes of
@@ -142,6 +170,20 @@ func Word(s string) (string, error) {
 		}
 	}
 	return "'" + s + "'", nil
+}
+
+// Inert reports whether every byte of s is in the alphabet of Word, so s
+// has no meaning to sh, bash, zsh, fish or csh inside single quotes.
+// Outside quotes such a token is inert as well when it starts with a
+// letter or a digit (no "=" expansion in zsh, no "~", no option); callers
+// that write a token without quotes check that themselves.
+func Inert(s string) bool {
+	for i := range len(s) {
+		if !wordByte(s[i]) {
+			return false
+		}
+	}
+	return s != ""
 }
 
 func wordByte(b byte) bool {

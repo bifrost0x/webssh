@@ -1063,6 +1063,36 @@ including another user's session, is `not_found`. The connection belongs to
 the session and is never closed by the caller. Every session opened
 through `Connections` has one.
 
+### Message types (insights, inventory, herdr)
+
+Defined by HO1 (`internal/realtime/protocol/payload_insights.go`). The
+shim maps them in `static/js/realtime-shim-insights.js` (insights,
+inventory) and `static/js/realtime-shim-terminal-tools.js` (Herdr). Each
+request reads one bounded sample of a connected session of the caller on
+a separate channel of its connection (`internal/ssh/remotecmd`): a fixed
+program on stdin for insights and the inventory, the fixed Herdr command
+line for the snapshot. Nothing the browser sends reaches a command line.
+The answers carry `success` and a reason as the Socket.IO events of the
+Python release did; a missing or foreign session, a rate limit (30, 10
+and `max(30, 12 x MAX_SOCKET_CONNECTIONS_PER_USER)` per minute and
+account) or a busy session is an answer with `success: false`, never a
+failed request.
+
+| Type | Direction | Owner | Payload | Socket.IO today |
+|---|---|---|---|---|
+| `insights.sample` | client | `internal/hostops` | `InsightsSample` → `InsightsResult` | `request_session_insights`, answered by the event `session_insights` |
+| `inventory.sample` | client | `internal/hostops` | `InventorySample` → `InventoryResult` | `request_session_runtime_inventory`, answered by the event `session_runtime_inventory` |
+| `herdr.snapshot` | client | `internal/hostops` | `HerdrSnapshot` → `HerdrResult` | `request_herdr_snapshot` (acknowledgement) |
+
+`SessionInfo` gains `herdr` (the overview the saved host granted at
+connect) and `use_herdr` (the session runs the Herdr client), and
+`terminal.open` gains `use_herdr` (see Terminal (TM1)). Insights, the
+inventory and the snapshot run on the session's connection from
+`terminal.Manager.SessionConn`; the snapshot checks the overview again on
+every request through the same `HerdrGrants` provider as the terminal. The server operation routes
+(`/api/server-operations/...`) are HTTP as in the Python release and use
+the step-up action `server.operation` with the intent token as target.
+
 ### End-to-end harness for M2
 
 - `tests/e2e/go-suite.json` (formerly `tests/e2e/m1/go-subset.json`) lists

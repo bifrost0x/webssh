@@ -35,3 +35,15 @@ func Script(body string, sudo bool) (Command, error) {
 	}
 	return Command{Line: line, Stdin: []byte(body)}, nil
 }
+
+// Program builds the Command for a fixed shell program of WebSSH itself
+// (the collectors of session insights and the runtime inventory). It
+// travels on stdin like a Script, so it is read by sh whatever the
+// account's login shell is; it may be up to MaxStdin bytes. The body must
+// be text of the caller, never user input.
+func Program(body string) (Command, error) {
+	if body == "" || len(body) > MaxStdin || !utf8.ValidString(body) || strings.IndexByte(body, 0) >= 0 {
+		return Command{}, errInvalid
+	}
+	return Command{Line: scriptLine, Stdin: []byte(body)}, nil
+}

@@ -124,6 +124,11 @@ var v1 = []MessageType{
 	{TypeGatewayOutput, ServerEvent, "internal/ssh/gateway"},
 	{TypeGatewayInput, ClientRequest, "internal/ssh/gateway"},
 	{TypeGatewayAck, ClientRequest, "internal/ssh/gateway"},
+
+	// Areas "insights", "inventory" and "herdr" (HO1, payload_insights.go).
+	{TypeInsightsSample, ClientRequest, "internal/hostops"},
+	{TypeInventorySample, ClientRequest, "internal/hostops"},
+	{TypeHerdrSnapshot, ClientRequest, "internal/hostops"},
 }
 
 // V1 returns the catalog of schema v1.
