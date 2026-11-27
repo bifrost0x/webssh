@@ -1020,6 +1020,49 @@ connection is returned (the gateway's readiness probe).
 `client.Display.Tailscale` marks a saved host with the auth type
 `tailscale`. Host keys apply to every variant.
 
+### Terminal (TM1)
+
+No new message types; `terminal.open` and `SessionInfo` gain members
+(additive, `internal/realtime/protocol/payload_terminal.go`):
+
+- `target.startup` carries the post-connect members of `ssh_connect`
+  (`startup_mode`, `startup_commands`, `command_id`, `command_set_id`,
+  `parameters_override`). As in Python they come with the request (the
+  page fills them from the saved host or the Quick Connect form) and are
+  resolved by the server: free text is normalised
+  (`normalize_startup_commands`), a command and a set are read from the
+  owner's library at that moment. Each text member is at most
+  `MaxStartupBytes` (16 KiB). The text is the first input of the session
+  with one Enter; it is not sent on a tmux reattach.
+- `target.display_name` names a new or reattached persistent session (only
+  with `use_tmux`, as before); `target.use_herdr` asks for Herdr as the
+  program.
+- `SessionInfo.herdr` and `use_herdr` are `herdr.session_flags`.
+
+Consumer interfaces of `internal/terminal` (Deps):
+
+- `Commands{Command(ctx, owner, commandID) (command, parameters, error);
+  ResolveSet(ctx, owner, setID) (string, error)}` for the modes `command`
+  and `command_set`; CM1 provides it over `commands.Library` (Resolve
+  without values for the set, `sys.optional.terminalCommands`). Without
+  it those modes answer `not_available_in_preview`.
+- `HerdrGrants{Overview, SessionMode}` decide Herdr from the switch
+  `herdr_enabled` and the options `herdr`/`use_herdr` of the owner's saved
+  host (`client.Display.Herdr` is new, additive); cmd/webssh provides it
+  in `wire_terminal.go`. The session mode probes the fixed lookup of
+  `app/herdr.py` and falls back to the login shell.
+- `GatewayTmuxName` is `gateway.TmuxName`: tmux sessions of gateway
+  selectors carry the digest of the Python release. Tailscale SSH starts
+  tmux as `env LANG=C.UTF-8 LC_ALL=C.UTF-8 tmux -u`.
+
+Provider API for HO1 (insights, Herdr snapshot) and FS1/FS2 (the
+`sftp-session` source): `(*terminal.Manager).SessionConn(owner, id)
+(SessionConn, error)` returns the live session's `*client.Conn`, a `Done`
+channel and the session's profile, address and Herdr flags; anything else,
+including another user's session, is `not_found`. The connection belongs to
+the session and is never closed by the caller. Every session opened
+through `Connections` has one.
+
 ### End-to-end harness for M2
 
 - `tests/e2e/go-suite.json` (formerly `tests/e2e/m1/go-subset.json`) lists

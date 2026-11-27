@@ -69,6 +69,7 @@ func resolve(all stores, owner int64, profileID string, variants bool) (client.T
 	mode, _ := startupMode(p.get)
 	useTmux, _ := p.get("use_tmux")
 	useHerdr, _ := p.get("use_herdr")
+	herdr, _ := p.get("herdr")
 	t := client.Target{
 		Owner: owner,
 		Hop:   hop,
@@ -76,6 +77,7 @@ func resolve(all stores, owner int64, profileID string, variants bool) (client.T
 			ProfileID:      profileID,
 			Name:           p.text("name"),
 			UseTmux:        string(useTmux) == "true",
+			Herdr:          string(herdr) == "true",
 			UseHerdr:       string(useHerdr) == "true",
 			StartupCommand: string(mode) != `"none"`,
 			Tailscale:      tailscale,

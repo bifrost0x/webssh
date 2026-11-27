@@ -19,6 +19,7 @@
     // Fields of SessionInfo that use "" for the null of the Python events.
     const NULLABLE = ['key_id', 'profile_id', 'via_jump', 'jump_host_id', 'socks_proxy_id',
         'tmux_session_name', 'display_name', 'detected_platform'];
+    const STARTUP_FIELDS = ['startup_mode', 'startup_commands', 'command_id', 'command_set_id', 'parameters_override'];
     const TARGET_FIELDS = ['profile_id', 'host', 'username', 'password', 'key_id', 'jump_host_id', 'socks_proxy_id'];
 
     function sessionEvent(info, extra) {
@@ -50,7 +51,7 @@
     }
 
     // Projects the Socket.IO ssh_connect payload onto terminal.open; inline
-    // routes and Herdr are not projected. use_tmux carries the persistent
+    // routes are not projected. use_tmux carries the persistent
     // session to reattach, which the server checks. gateway_interaction and
     // ssh_interaction say the page answers prompt.interactive.
     function openTarget(data) {
@@ -69,11 +70,25 @@
         if (socks) Object.assign(target, routeSecrets(data.socks_proxy, 'socks_'));
         const port = typeof data.port === 'string' && /^\d{1,5}$/.test(data.port) ? Number(data.port) : data.port;
         if (Number.isInteger(port) && port > 0) target.port = port;
+        const startup = startupOf(data);
+        if (startup) target.startup = startup;
+        if (data.use_herdr === true) target.use_herdr = true;
         if (data.use_tmux !== true) return target;
         target.use_tmux = true;
         const reattach = data.reconnect_tmux_name;
         if (typeof reattach === 'string' && reattach !== '') target.tmux_session_name = reattach;
+        if (typeof data.display_name === 'string' && data.display_name !== '') target.display_name = data.display_name;
         return target;
+    }
+
+    // The post-connect members of ssh_connect; the server resolves and
+    // checks them (a null is a missing member, as in the Python release).
+    function startupOf(data) {
+        const startup = {};
+        for (const name of STARTUP_FIELDS) {
+            if (typeof data[name] === 'string' && (data[name] !== '' || name === 'parameters_override')) startup[name] = data[name];
+        }
+        return Object.keys(startup).length ? startup : null;
     }
 
     function create(host) {

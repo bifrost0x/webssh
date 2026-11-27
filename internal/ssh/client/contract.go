@@ -90,8 +90,12 @@ type Display struct {
 	Name         string
 	JumpHostID   string
 	SOCKSProxyID string
-	// Startup features that M1 does not run; the terminal shows a notice.
+	// Startup features of the saved host. The terminal takes the
+	// post-connect behaviour and tmux from the request, as the Python
+	// release did; Herdr and UseHerdr are the host's Herdr options
+	// (overview, session mode), which only the server grants.
 	UseTmux        bool
+	Herdr          bool
 	UseHerdr       bool
 	StartupCommand bool
 	// Tailscale marks a host that signs in with the WebSSH node's
