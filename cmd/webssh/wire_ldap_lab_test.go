@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -42,8 +41,6 @@ func labLDAPEnv(t *testing.T) (map[string]string, func(name string) string) {
 		"LDAP_PROVIDER_ID": "lab",
 	}, secret
 }
-
-var csrfMeta = regexp.MustCompile(`name="csrf-token" content="([^"]+)"`)
 
 // TestLabLDAPSignInOverHTTP signs a directory user in through the real
 // sign-in form, provisions the account, and proves the directory

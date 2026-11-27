@@ -63,13 +63,20 @@ func TestRoutesReachOnlyTheOwnAttempt(t *testing.T) {
 		return perr
 	}
 	good := protocol.PromptRespond{RequestID: "req-1", PromptID: shown.PromptID, Answers: []string{"424242"}}
+	// Another id of the same length; the first character differs from the
+	// shown one whatever it is.
+	other := "x"
+	if shown.PromptID[0] == 'x' {
+		other = "y"
+	}
+	other += shown.PromptID[1:]
 	for name, tc := range map[string]struct {
 		p   *protocoltest.Peer
 		req protocol.PromptRespond
 	}{
 		"other connection": {sameUser, good},
 		"other user":       {mallory, good},
-		"wrong prompt":     {peer, protocol.PromptRespond{RequestID: "req-1", PromptID: "x" + shown.PromptID[1:], Answers: []string{"1"}}},
+		"wrong prompt":     {peer, protocol.PromptRespond{RequestID: "req-1", PromptID: other, Answers: []string{"1"}}},
 		"wrong request":    {peer, protocol.PromptRespond{RequestID: "req-2", PromptID: shown.PromptID, Answers: []string{"1"}}},
 		"wrong count":      {peer, protocol.PromptRespond{RequestID: "req-1", PromptID: shown.PromptID, Answers: []string{"1", "2"}}},
 	} {

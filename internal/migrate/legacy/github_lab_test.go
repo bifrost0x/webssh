@@ -28,6 +28,7 @@ import (
 	"github.com/ncruces/go-sqlite3/driver"
 
 	"github.com/bifrost0x/webssh/internal/accounts"
+	"github.com/bifrost0x/webssh/internal/auth"
 	"github.com/bifrost0x/webssh/internal/auth/github"
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
@@ -88,8 +89,8 @@ func (a labAccounts) ReleaseTx(ctx context.Context, tx *store.Tx, id int64, hash
 
 type labSignIn struct{ signed []int64 }
 
-func (l *labSignIn) SignInExternal(w http.ResponseWriter, r *http.Request, userID int64, _, _ string) error {
-	l.signed = append(l.signed, userID)
+func (l *labSignIn) SignInExternal(w http.ResponseWriter, _ *http.Request, in auth.ExternalSignIn) error {
+	l.signed = append(l.signed, in.UserID)
 	w.WriteHeader(http.StatusFound)
 	return nil
 }
