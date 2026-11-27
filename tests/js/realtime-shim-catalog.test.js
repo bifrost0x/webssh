@@ -13,6 +13,8 @@ test('every mapped event targets a type of the v1 catalog', () => {
         'keys.rename', 'keys.replace', 'keys.delete', 'settings.theme.set', 'settings.confirm_close.set',
         'settings.disconnect_action.set', 'notes.get', 'notes.save',
         'prompt.respond', 'gateway.input', 'gateway.ack',
+        'files.list', 'files.list.cancel', 'files.home', 'files.preview', 'files.preview.image', 'files.edit.open',
+        'files.edit.save', 'files.mkdir', 'files.create', 'files.rename', 'files.delete', 'files.source.close',
     ]);
     const mapped = new Set(Object.values(catalog.REQUESTS).map(entry => entry.type));
     assert.deepEqual([...mapped].sort(), [...v1].sort());
@@ -188,8 +190,8 @@ test('events without a v1 type are answered locally and reported to the notice',
     socket.emit('probe_session_sftp', {session_id: 's', request_id: 'r1'});
     socket.emit('request_herdr_snapshot', {session_id: 's'}, ack => seen.push(['ack', ack]));
     socket.timeout(10000).emit('resolve_command_set_parameters', {}, (error, ack) => seen.push(['timed', error, ack.code]));
-    socket.emit('list_directory', {source_id: 'src', request_id: 'r2', path: '/'});
-    socket.emit('file_source_disconnect', {});
+    socket.emit('get_file_permissions', {source_id: 'src', request_id: 'r2', path: '/'});
+    socket.emit('quick_disconnect', {});
     await tick();
     assert.equal(ws.sent.length, sent, 'nothing reaches the server');
     assert.deepEqual(plain(seen), [
@@ -207,7 +209,7 @@ test('the unavailable message follows the page language', async () => {
     const window = loadShim({i18n: {t: key => (key === 'previewNotice.notAvailable' ? 'In dieser Vorschau noch nicht verfügbar.' : key)}});
     const {socket} = await connected(window);
     let message;
-    socket.emit('list_directory', {}, ack => { message = ack.error; });
+    socket.emit('prepare_transfer', {}, ack => { message = ack.error; });
     await tick();
     assert.equal(message, 'In dieser Vorschau noch nicht verfügbar.');
     socket.disconnect();

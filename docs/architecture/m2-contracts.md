@@ -115,8 +115,18 @@ type AccessProber interface { Access(ctx, path string) (Access, error) } // opti
   the admin switch `sftp_chmod_enabled` is on and the server offers the
   extension; SMB never sets it. The mode read back must match
   (`MODE_MISMATCH`); an unverifiable result is `OUTCOME_UNKNOWN`.
-- `Stat` with `follow` describes a link target; SMB refuses
+- `Stat` with `follow` describes a link target, with the canonical path
+  of the final target in `Entry.Path` (SFTP `realpath`); SMB refuses
   (`REPARSE_POINT_REJECTED`). `Open` refuses directories and links.
+- Links (decision of the main chat on the FS2 report): reads follow links
+  as in Python (preview, editor load, image preview, downloads), so a file
+  such as `sites-enabled/*` can still be shown, edited and downloaded.
+  They do so through `files.OpenFollow` in the file layer, which resolves
+  the link with `Stat(follow)` and opens the target; `Backend.Open` keeps
+  refusing links. An editor save follows the link as Python did
+  (`WriteOptions.FollowSymlink`, the link stays). Every other change
+  (rename, delete, chmod, create, upload without the editor) never
+  follows a link and acts on the link itself.
 - `Entry.Mode` is the POSIX `st_mode` with type bits as the page shows it;
   SMB synthesises it (directory `0o040111`, file `0o100444` read-only or
   `0o100666`). `Owner` is numeric (uid, gid) and only for SFTP.
@@ -274,6 +284,40 @@ failures carry the upper-case code as `code` (files) or `error_code`
 (transfers) and the members `retryable`, `limit_kind`, `limit_bytes`,
 `actual_bytes`, `revision`, `recovery_leaves`, `character`, `line`,
 `save_challenge` in `details`.
+
+### Message types (files)
+
+Defined by FS1. Payload types are in `payload_files.go` of
+`internal/realtime/protocol`; the shim file `realtime-shim-files.js` maps
+the Socket.IO events of today to them and turns results and failures into
+the push events the pages listen for (`directory_listing`, `preview_data`
+/ `preview_error`, `edit_data` / `edit_error`, `file_saved`, the generic
+`error` with `operation`, `source_id`, `request_id` and `path`). Every
+type runs asynchronously and charges the per-user byte budget of file
+requests (`FILE_CONTROL_BYTES_PER_MINUTE`; the editor body
+`EDITOR_SAVE_BYTES_PER_MINUTE`), which answers `rate_limited`. Types
+marked "mutates" re-validate the browser session before they run.
+
+| Type | Direction | Owner | Payload | Socket.IO today | Spec |
+|---|---|---|---|---|---|
+| `files.list` | client | `internal/files` | `FilesList` → `FilesListing` | `list_directory` → `directory_listing` | 60 s |
+| `files.list.cancel` | client | `internal/files` | `FilesListCancel` → `Empty` | `cancel_directory_listing` (always succeeds) | 30 s |
+| `files.home` | client | `internal/files` | `FileRef` → `FilesPath` | `get_home_directory` → `home_directory` | 30 s |
+| `files.preview` | client | `internal/files` | `FilesPreview` → `FilesPreviewData` | `preview_file` → `preview_data` / `preview_error` | 60 s |
+| `files.preview.image` | client | `internal/files` | `FilesImage` → `FilesImageData` | `download_file_binary` with `for_preview` → `file_download_ready_binary` | 60 s |
+| `files.edit.open` | client | `internal/files` | `FilesEditOpen` → `FilesEditData` | `open_file_for_edit` → `edit_data` / `edit_error` | 60 s |
+| `files.edit.save` | client | `internal/files` | `FilesEditSave` → `FilesSaved` | `save_file` → `file_saved` | mutates, 120 s, payload 6 × `MAX_EDITOR_FILE_SIZE` + 64 KiB |
+| `files.mkdir` | client | `internal/files` | `FilesMkdir` → `FilesPath` | `create_directory` → `directory_created` | mutates, 60 s |
+| `files.create` | client | `internal/files` | `FilesCreate` → `FilesCreated` | `create_file` → `file_created` | mutates, 60 s |
+| `files.rename` | client | `internal/files` | `FilesRename` → `FilesRenamed` | `rename_file` → ack and `file_renamed` | mutates, 60 s |
+| `files.delete` | client | `internal/files` | `FilesDelete` → `FilesPath` | `delete_item` → `item_deleted` | mutates, 300 s |
+| `files.source.close` | client | `internal/files` | `FilesSourceClose` → `FilesSourceClosed` | `file_source_disconnect` → `file_source_disconnect_success` | mutates, 30 s |
+
+The payload bound of the other types is 32 KiB. `check_exists` and
+`get_file_stat` have no caller in the frontend and get no type (D-13).
+The permission events (`get_file_permissions`, `set_file_permissions`,
+`*_file_permissions_job`) belong to AU2; `probe_session_sftp`,
+`request_session_directory` and `quick_*` to FS2.
 
 ### Transfers
 

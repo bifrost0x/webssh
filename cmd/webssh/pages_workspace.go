@@ -38,10 +38,9 @@ type initialInventory struct {
 // The page publishes them to its scripts; the values are the Python
 // defaults so that the scripts behave as before.
 const (
-	defaultEditorFileSize = 5 << 20
-	defaultUploadBytes    = 100 << 20
-	defaultDownloadBytes  = 100 << 20
-	defaultArchiveBytes   = 500 << 20
+	defaultUploadBytes   = 100 << 20
+	defaultDownloadBytes = 100 << 20
+	defaultArchiveBytes  = 500 << 20
 )
 
 // inventory reads initial_inventory. Like the Python release it gives up
@@ -112,7 +111,7 @@ func (pg *pages) workspace(w http.ResponseWriter, r *http.Request) {
 	d.TerminalAppearance = page.TerminalAppearance
 	d.ConnectionHistoryScope = page.ConnectionHistoryScope
 	d.InitialInventory = pg.inventory(r.Context(), d.User.ID)
-	d.MaxEditorFileSize = defaultEditorFileSize
+	d.MaxEditorFileSize = pg.cfg.Files.MaxEditorBytes
 	d.TransferLimits = httpapi.TransferLimits{UploadBytes: defaultUploadBytes, DownloadBytes: defaultDownloadBytes,
 		ArchiveBytes: defaultArchiveBytes, RemoteTransferBytes: defaultArchiveBytes}
 	d.SSHInputLimits = httpapi.SSHInputLimits{MaxEventBytes: int64(pg.cfg.Terminal.Input.MaxBytes)}

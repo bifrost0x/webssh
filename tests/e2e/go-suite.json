@@ -34,9 +34,7 @@
     {"file": "overview-workspace.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-default-content.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-classic.spec.js", "serial": "e2e_admin", "exclude": []},
-    {"file": "connection-overview.spec.js", "exclude": [
-      {"title": "single navigation entries retain Files, Commands, Hosts and recent connection form", "reason": "opens the file manager (C-SFTP, template flag off in M1)", "package": "FS1"}
-    ]},
+    {"file": "connection-overview.spec.js", "exclude": []},
     {"file": "empty-states.spec.js", "exclude": [
       {"title": "empty management surfaces are consistent and actionable", "reason": "expects built-in commands in the command library (C-CMD)", "package": "CM1"},
       {"title": "empty account factors and admin tables keep structure at", "reason": "ends on the global host trust table; global known_hosts entries (C-TRUST-04, /admin/api/host-keys) answer 501 in M1", "package": "HO3"}
@@ -98,16 +96,12 @@
     ]},
     {"file": "theme-system.spec.js", "exclude": []},
     {"file": "theme-live-settings.spec.js", "exclude": []},
-    {"file": "account-theme-matrix.spec.js", "exclude": [
-      {"title": "main workspaces retain all primary views in", "reason": "visits the file workspace (C-SFTP)", "package": "FS1"}
-    ]},
+    {"file": "account-theme-matrix.spec.js", "exclude": []},
     {"file": "terminal-appearance.spec.js", "serial": "e2e_admin", "exclude": [
       {"title": "restored terminals load their saved fonts on demand without losing output", "reason": "hook e2e_workspace_restore, not mapped in M1", "package": "TM1"}
     ]},
     {"file": "i18n-locales.spec.js", "serial": "e2e_admin", "exclude": []},
-    {"file": "redesign-shell.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "reference composition and workspace continuity at", "reason": "opens the files context and the file manager (C-SFTP)", "package": "FS1"}
-    ]},
+    {"file": "redesign-shell.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "layout.spec.js", "serial": "e2e_admin", "exclude": [
       {"title": "admin audit logs remain mouse-scrollable in a short desktop viewport", "reason": "audit log view (C-AOPS)", "package": "OP3"},
       {"title": "admin security actions and empty host trust use user-facing copy", "reason": "global host trust table (C-TRUST-04, /admin/api/host-keys answers 501 in M1)", "package": "HO3"},
@@ -118,8 +112,10 @@
     {"file": "complete-design.spec.js", "exclude": [
       {"title": "complete account and administration presentation at", "reason": "opens the audit retention section of the administration (C-AOPS)", "package": "OP3"}
     ]},
-    {"file": "design-system.spec.js", "exclude": [
-      {"title": "Warm Graphite Sand separates cream actions, selection and status across views", "reason": "iterates the file workspace (C-SFTP)", "package": "FS1"}
-    ]}
+    {"file": "design-system.spec.js", "exclude": []},
+    {"file": "file-workspace.spec.js", "exclude": []},
+    {"file": "file-mutations.spec.js", "exclude": []},
+    {"file": "file-edit-review.spec.js", "exclude": []},
+    {"file": "file-keyboard-scope.spec.js", "exclude": []}
   ]
 }

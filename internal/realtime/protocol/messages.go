@@ -124,6 +124,20 @@ var v1 = []MessageType{
 	{TypeGatewayOutput, ServerEvent, "internal/ssh/gateway"},
 	{TypeGatewayInput, ClientRequest, "internal/ssh/gateway"},
 	{TypeGatewayAck, ClientRequest, "internal/ssh/gateway"},
+
+	// Area "files" (FS1, payload_files.go).
+	{TypeFilesList, ClientRequest, "internal/files"},
+	{TypeFilesListCancel, ClientRequest, "internal/files"},
+	{TypeFilesHome, ClientRequest, "internal/files"},
+	{TypeFilesPreview, ClientRequest, "internal/files"},
+	{TypeFilesImage, ClientRequest, "internal/files"},
+	{TypeFilesEditOpen, ClientRequest, "internal/files"},
+	{TypeFilesEditSave, ClientRequest, "internal/files"},
+	{TypeFilesMkdir, ClientRequest, "internal/files"},
+	{TypeFilesCreate, ClientRequest, "internal/files"},
+	{TypeFilesRename, ClientRequest, "internal/files"},
+	{TypeFilesDelete, ClientRequest, "internal/files"},
+	{TypeFilesSourceClose, ClientRequest, "internal/files"},
 }
 
 // V1 returns the catalog of schema v1.

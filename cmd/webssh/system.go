@@ -19,6 +19,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/auth/stepup"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
 	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/files"
 	"github.com/bifrost0x/webssh/internal/hostops"
 	"github.com/bifrost0x/webssh/internal/hosts"
 	"github.com/bifrost0x/webssh/internal/httpapi"
@@ -122,6 +123,11 @@ type system struct {
 	jobs     *jobs.Registry // wire_jobs.go
 	edge     *httpapi.Handler
 	pages    *pages
+
+	// The file workspace (wire_files.go); backend areas register their
+	// source kinds on fileSources.
+	fileSources *files.Registry
+	files       *files.Service
 
 	background     sync.WaitGroup
 	stopBackground context.CancelFunc

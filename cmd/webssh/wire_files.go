@@ -1,7 +1,78 @@
 package main
 
+import (
+	"context"
+	"time"
+
+	"github.com/bifrost0x/webssh/internal/audit"
+	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/files"
+	"github.com/bifrost0x/webssh/internal/realtime/protocol"
+)
+
 // filesArea wires the area "files" (FS1): the file workspace and the editor (internal/files).
 // FS1 fills in the hooks; no other package edits this file.
+//
+// The registry and the service exist after prepare, so the backend areas
+// that follow (sftp, smb) register their source kinds on sys.fileSources.
+// The quota of Quick SFTP and SMB sources (RegistryOptions.Quotas) is set
+// once internal/quota is wired.
 func filesArea() extension {
-	return extension{name: "files"}
+	return extension{
+		name:       "files",
+		prepare:    prepareFiles,
+		wire:       wireFiles,
+		background: sweepFileSources,
+	}
 }
+
+func prepareFiles(sys *system) error {
+	sys.fileSources = files.NewRegistry(files.RegistryOptions{})
+	sys.files = files.New(fileOptions(sys.cfg.Files, sys.fileSources, sys.audit))
+	sys.closers = append(sys.closers, func() error { sys.fileSources.Shutdown(); return nil })
+	return nil
+}
+
+func fileOptions(f config.Files, reg *files.Registry, audit files.Audit) files.Options {
+	return files.Options{
+		Registry: reg, Audit: audit,
+		PageSize: f.ListingPageSize, SnapshotTTL: f.SnapshotTTL, SnapshotsPerUser: f.SnapshotsPerUser,
+		SnapshotsTotal: f.SnapshotsTotal, MaxMembers: f.MaxTransferMembers,
+		MaxEditorBytes: f.MaxEditorBytes, EditorBytesPerMinute: f.EditorBytesPerMinute,
+		ControlBytesPerMin: f.ControlBytesPerMin, MaxPreviewBytes: f.MaxPreviewBytes,
+		MaxPreviewTailLines: f.MaxPreviewTailLines, MaxSupportedFileSize: f.MaxSupportedFileSize,
+	}
+}
+
+func wireFiles(sys *system) error {
+	sys.realtime.Mount(sys.files.Routes()...)
+	sys.realtime.OnClose(func(p protocol.Peer) {
+		sys.files.PeerClosed(files.Caller{P: p.Principal(), Peer: p.ID()})
+	})
+	// A revocation closes the file sources of the session at once (K6).
+	unsubscribe := sys.sessions.Subscribe(sys.fileSources.Revoke)
+	sys.closers = append(sys.closers, func() error { unsubscribe(); return nil })
+	return nil
+}
+
+// fileSweepInterval is how often idle SMB sources are looked for.
+const fileSweepInterval = 30 * time.Second
+
+func sweepFileSources(ctx context.Context, sys *system) {
+	sys.background.Go(func() {
+		sys.every(ctx, fileSweepInterval, func(context.Context) bool { sys.fileSources.Sweep(); return true })
+	})
+}
+
+// realtimeQueueBytes bounds the outbound bytes of one realtime connection:
+// the default, raised so that the answer to opening the largest editable
+// file fits (its text, escaped, and its original bytes in base64).
+func realtimeQueueBytes(f config.Files) int64 {
+	const floor, ceiling = 8 << 20, 1 << 30
+	n := min(f.MaxEditorBytes, ceiling/8)
+	return min(max(floor, 8*n+1<<20), ceiling)
+}
+
+// The providers that exist already satisfy the consumer interfaces of
+// the area.
+var _ files.Audit = (*audit.Logger)(nil)

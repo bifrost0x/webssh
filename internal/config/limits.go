@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"math/big"
+	"time"
 )
 
 const (
@@ -35,7 +36,8 @@ func loadLimits(p *parser, c *Config) {
 	p.positive("SFTP_OPERATION_TIMEOUT", 30)
 	p.positive("MAX_UPLOAD_SIZE", 100*mib)
 	editorMax := p.positiveBig("MAX_EDITOR_FILE_SIZE", big.NewInt(5*mib))
-	p.boundedBig("EDITOR_SAVE_BYTES_PER_MINUTE", mul(editorMax, 4), editorMax, mul(editorMax, 64))
+	editorRate := p.boundedBig("EDITOR_SAVE_BYTES_PER_MINUTE", mul(editorMax, 4), editorMax, mul(editorMax, 64))
+	c.Files.MaxEditorBytes, c.Files.EditorBytesPerMinute = saturate(editorMax), saturate(editorRate)
 	p.record("SOCKETIO_MAX_MESSAGE_SIZE", new(big.Int).Add(mul(editorMax, 6), big.NewInt(64*kib)).String())
 
 	in := &c.Terminal.Input
@@ -56,13 +58,13 @@ func loadLimits(p *parser, c *Config) {
 	p.adminSwitch("SFTP_CHMOD_ENABLED", false)
 	p.bounded("REMOTE_FILENAME_MAX_BYTES", 4096, 255, 16*kib)
 	p.bounded("REMOTE_LISTING_MAX_METADATA_BYTES", 4*mib, 64*kib, 16*mib)
-	p.bounded("REMOTE_LISTING_PAGE_SIZE", 500, 50, 1000)
-	p.bounded("REMOTE_LISTING_SNAPSHOT_TTL_SECONDS", 60, 10, 300)
-	p.bounded("REMOTE_LISTING_SNAPSHOT_MAX_STATES", 8, 1, 64)
-	p.bounded("REMOTE_LISTING_SNAPSHOT_MAX_PER_USER", 4, 1, 8)
+	c.Files.ListingPageSize = int(p.bounded("REMOTE_LISTING_PAGE_SIZE", 500, 50, 1000))
+	c.Files.SnapshotTTL = time.Duration(p.bounded("REMOTE_LISTING_SNAPSHOT_TTL_SECONDS", 60, 10, 300)) * time.Second
+	c.Files.SnapshotsTotal = int(p.bounded("REMOTE_LISTING_SNAPSHOT_MAX_STATES", 8, 1, 64))
+	c.Files.SnapshotsPerUser = int(p.bounded("REMOTE_LISTING_SNAPSHOT_MAX_PER_USER", 4, 1, 8))
 	p.bounded("SFTP_MAX_PACKET_BYTES", mib, 64*kib, 4*mib)
 	p.bounded("SFTP_MAX_HANDLE_BYTES", 16*kib, 256, 64*kib)
-	p.bounded("FILE_CONTROL_BYTES_PER_MINUTE", 2*mib, 64*kib, 16*mib)
+	c.Files.ControlBytesPerMin = p.bounded("FILE_CONTROL_BYTES_PER_MINUTE", 2*mib, 64*kib, 16*mib)
 
 	s := &c.Stores
 	s.ProfileMaxRecords = int(p.bounded("PROFILE_MAX_RECORDS", 500, 10, 2000))

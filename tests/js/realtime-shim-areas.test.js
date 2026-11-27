@@ -16,7 +16,10 @@ const M1_REQUESTS = ['list_profiles', 'save_profile', 'delete_profile', 'update_
     'delete_key', 'set_theme', 'set_confirm_session_close', 'set_disconnect_session_action', 'get_notepad',
     'save_notepad'];
 // Built by M2 packages since the split.
-const M2_REQUESTS = ['ssh_gateway_answer', 'ssh_gateway_input', 'ssh_gateway_ack'];
+const M2_REQUESTS = ['ssh_gateway_answer', 'ssh_gateway_input', 'ssh_gateway_ack',
+    'list_directory', 'cancel_directory_listing', 'get_home_directory', 'preview_file',
+    'download_file_binary', 'open_file_for_edit', 'save_file', 'create_directory', 'create_file', 'rename_file',
+    'delete_item', 'file_source_disconnect'];
 const M1_UNAVAILABLE = ['list_commands', 'list_command_sets', 'list_smb_shares', 'probe_session_sftp',
     'request_session_insights', 'request_session_runtime_inventory'];
 const M1_FEATURES = ['files', 'smb', 'commands', 'commandSets', 'insights', 'terminalTools'];
@@ -32,7 +35,7 @@ test('the split table equals the table of M1', () => {
     assert.equal(catalog.featureOf('ssh_gateway_quick_cancel'), 'terminalTools');
     assert.equal(catalog.featureOf('list_profiles'), 'other');
     const features = new Set(M1_FEATURES);
-    for (const event of ['list_directory', 'smb_x', 'list_commands', 'save_command_set', 'request_session_insights', 'request_herdr_snapshot']) {
+    for (const event of ['prepare_transfer', 'smb_x', 'list_commands', 'save_command_set', 'request_session_insights', 'request_herdr_snapshot']) {
         assert.ok(features.has(catalog.featureOf(event)), event);
     }
 });
