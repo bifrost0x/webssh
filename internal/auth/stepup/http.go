@@ -265,6 +265,13 @@ func (h *HTTP) adminPasskeyOptions(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, adminFailure(ErrInvalid))
 		return
 	}
+	// Bounded like every other step-up proof (RS8-H03). Each ceremony
+	// starts here and a refused assertion ends it, so this also bounds
+	// the verifications, as for the account family.
+	if h.Limits.ReauthLimited(r, p.UserID, "admin_step_up_passkey") {
+		h.fail(w, r, rateLimited())
+		return
+	}
 	c, err := h.Service.BeginCeremony(ctx, p, action, target, ChannelAdmin)
 	if err != nil {
 		h.fail(w, r, adminFailure(err))

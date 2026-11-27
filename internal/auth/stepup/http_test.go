@@ -185,4 +185,9 @@ func TestAdminFamily(t *testing.T) {
 	if code, _ := e.post(t, admin, "/api/step-up/passkey/verify", `{"credential":{"id":"good"}}`); code != 403 {
 		t.Fatalf("second verify without options: %d", code)
 	}
+	// RS8-H03: the passkey ceremony is rate limited like the other proofs.
+	e.limiter.limit = 0
+	if code, out := e.post(t, admin, "/api/step-up/passkey/options", `{"action":"user.create","target":"bob"}`); code != 429 {
+		t.Fatalf("passkey options over the limit: %d %v", code, out)
+	}
 }
