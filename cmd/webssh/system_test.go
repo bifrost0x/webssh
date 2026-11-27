@@ -16,7 +16,9 @@ import (
 	"github.com/bifrost0x/webssh/internal/backup"
 	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/netpolicy"
 	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/ssh/client"
 )
 
 func lookupMap(m map[string]string) config.LookupFunc {
@@ -26,13 +28,20 @@ func lookupMap(m map[string]string) config.LookupFunc {
 // openTestSystem wires the whole system on a fresh data directory.
 func openTestSystem(t *testing.T, extra map[string]string) (*system, *httptest.Server) {
 	t.Helper()
+	return openTestSystemWith(t, extra, nil)
+}
+
+// openTestSystemWith is openTestSystem with the outbound dialer of the SSH
+// client replaced (bootInput.network); nil keeps the network policy.
+func openTestSystemWith(t *testing.T, extra map[string]string, network func(*netpolicy.Policy) client.Network) (*system, *httptest.Server) {
+	t.Helper()
 	env := map[string]string{
 		"DATA_DIR": filepath.Join(t.TempDir(), "data"), "SECRET_KEY": "system-test-secret-0123456789abcdef",
 		"SESSION_COOKIE_SECURE": "false", "BOOTSTRAP_REGISTRATION_ENABLED": "true", "TMPDIR": t.TempDir(),
 	}
 	maps.Copy(env, extra)
 	sys, err := openSystem(t.Context(), bootInput{lookup: lookupMap(env), log: slog.New(slog.DiscardHandler),
-		stopping: func() bool { return false }, fastHashing: true})
+		stopping: func() bool { return false }, fastHashing: true, network: network})
 	if err != nil {
 		t.Fatal(err)
 	}
