@@ -24,7 +24,7 @@ const (
 // opened with the active SECRET_KEY, with its database brought to this
 // build's schemas on a copy; a Python archive through LegacyInspector.
 func Inspect(ctx context.Context, in *Installation, archive string) (Summary, error) {
-	f, err := os.Open(archive)
+	f, err := os.Open(archive) // #nosec G304 G703 -- the archive the operator names or an operation's own file
 	if err != nil {
 		return Summary{}, fmt.Errorf("backup: open the archive: %w", err)
 	}

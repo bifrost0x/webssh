@@ -107,7 +107,7 @@ type Staged struct {
 // with the active SECRET_KEY; a Python archive goes through the
 // migration (LegacyRestorer). On error nothing is left behind.
 func Stage(ctx context.Context, in *Installation, req StageRequest) (st Staged, err error) {
-	f, err := os.Open(req.Archive)
+	f, err := os.Open(req.Archive) // #nosec G304 G703 -- the archive the operator names or an operation's own file
 	if err != nil {
 		return st, fmt.Errorf("backup: open the archive: %w", err)
 	}

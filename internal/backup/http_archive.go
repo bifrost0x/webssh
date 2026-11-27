@@ -38,7 +38,7 @@ func (h *HTTP) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = h.Ops.Remove(op.ID) }()
-	f, err := os.Open(op.Archive())
+	f, err := os.Open(op.Archive()) // #nosec G304 G703 -- a file in the operation's private directory, named by a random id
 	if err != nil {
 		h.fail(w, r, fault.Wrap(fault.Internal, err, ""))
 		return

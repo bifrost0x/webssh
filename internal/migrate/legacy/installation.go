@@ -3,6 +3,7 @@ package legacy
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/bifrost0x/webssh/internal/store"
 )
@@ -61,10 +62,7 @@ func (in Installation) CarryTx(ctx context.Context, tx *store.Tx, keyID string) 
 			rows = in.purge
 		}
 		for _, row := range rows {
-			marks := "?"
-			for range len(row) - 1 {
-				marks += ", ?"
-			}
+			marks := strings.Repeat(", ?", len(row))[2:]
 			if _, err := tx.ExecContext(ctx, `INSERT INTO `+table+` VALUES (`+marks+`)`, row...); err != nil { // #nosec G202 -- fixed table names
 				return fmt.Errorf("legacy: carry %s: %w", table, err)
 			}

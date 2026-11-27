@@ -74,7 +74,7 @@ func NewOperations(root string, timeout, ttl time.Duration) (*Operations, error)
 	if err != nil || !info.IsDir() {
 		return nil, errors.Join(fmt.Errorf("backup: %s is not a directory", root), err)
 	}
-	if err := os.Chmod(root, 0o700); err != nil {
+	if err := os.Chmod(root, 0o700); err != nil { // #nosec G302 -- a directory: owner only
 		return nil, err
 	}
 	entries, err := os.ReadDir(root)

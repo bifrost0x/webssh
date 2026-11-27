@@ -23,6 +23,13 @@ import (
 
 const offlineMessage = "Stop every WebSSH application process first, then repeat with --confirm-offline."
 
+// refuseOnline is the refusal of the offline commands, worded as in the
+// Python release.
+func refuseOnline(s streams) int {
+	write(s.stderr, "Error: "+offlineMessage+"\n")
+	return 1
+}
+
 // runBackup is `webssh backup create|verify|restore` (C-BAK-07, the
 // commands of app/cli.py with the same options).
 func runBackup(ctx context.Context, args []string, s streams) int {
@@ -71,7 +78,7 @@ func backupCreate(ctx context.Context, args []string, s streams) int {
 		return usageError(s.stderr, "usage: webssh backup create [--destination ARCHIVE] [--without-secret-key] --confirm-offline")
 	}
 	if !*offline {
-		return fail(s, errors.New(offlineMessage))
+		return refuseOnline(s)
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -83,7 +90,7 @@ func backupCreate(ctx context.Context, args []string, s streams) int {
 	}
 	defer g.Close()
 	if g.startup == nil {
-		return fail(s, errors.New(offlineMessage))
+		return refuseOnline(s)
 	}
 	path, err := backupDestination(cfg, *dest, time.Now())
 	if err != nil {
@@ -216,13 +223,13 @@ func backupRestore(ctx context.Context, args []string, s streams) int {
 		return usageError(s.stderr, "usage: webssh backup restore ARCHIVE --confirm-offline [--recovery-snapshot]")
 	}
 	if !*offline {
-		return fail(s, errors.New(offlineMessage))
+		return refuseOnline(s)
 	}
 	archive, err := filepath.Abs(pos[0])
 	if err != nil {
 		return fail(s, err)
 	}
-	if info, err := os.Stat(archive); err != nil || !info.Mode().IsRegular() {
+	if info, err := os.Stat(archive); err != nil || !info.Mode().IsRegular() { // #nosec G703 -- the archive the operator names on the command line
 		return fail(s, fmt.Errorf("the archive %s is not a readable file", pos[0]))
 	}
 	cfg, err := loadConfig()
@@ -240,7 +247,7 @@ func backupRestore(ctx context.Context, args []string, s streams) int {
 		return err
 	})
 	if se, ok := errors.AsType[*legacy.StopError](err); ok && se.Code == legacy.CodeLocked {
-		return fail(s, errors.New(offlineMessage))
+		return refuseOnline(s)
 	}
 	if err != nil {
 		return fail(s, err)

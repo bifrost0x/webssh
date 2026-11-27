@@ -88,7 +88,7 @@ func VerifyWith(ctx context.Context, path string, o VerifyOptions) (Verified, er
 	if o.Limits == (Limits{}) {
 		o.Limits = DefaultLimits
 	}
-	f, err := os.Open(path) // #nosec G304 -- the archive to verify, named by the operator or an operation
+	f, err := os.Open(path) // #nosec G304 G703 -- the archive to verify, named by the operator or an operation
 	if err != nil {
 		return v, fmt.Errorf("backup: open %s: %w", path, err)
 	}
@@ -251,7 +251,7 @@ func readMember(tr *tar.Reader, h *tar.Header, want File, legacy bool, dbCopy st
 	case legacy:
 		dst = io.Discard // a kept legacy file: only its hash is checked
 	case h.Name == DatabaseName:
-		if out, err = os.OpenFile(dbCopy, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err != nil { // #nosec G304 -- a private temporary directory
+		if out, err = os.OpenFile(dbCopy, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err != nil { // #nosec G304 G703 -- a private temporary directory
 			return err
 		}
 		dst = out
@@ -316,10 +316,10 @@ func moveFile(from, to string) error {
 	if _, err := os.Lstat(to); err == nil {
 		return fmt.Errorf("%s exists", to)
 	}
-	if err := os.Rename(from, to); err == nil {
+	if err := os.Rename(from, to); err == nil { // #nosec G703 -- Go-owned staging paths
 		return syncDir(filepath.Dir(to))
 	}
-	in, err := os.Open(from) // #nosec G304 -- a private temporary file
+	in, err := os.Open(from) // #nosec G304 G703 -- a private temporary file
 	if err != nil {
 		return err
 	}
@@ -332,7 +332,7 @@ func moveFile(from, to string) error {
 	if err = errors.Join(err, out.Sync(), out.Close()); err != nil {
 		return errors.Join(err, os.Remove(to))
 	}
-	return errors.Join(syncDir(filepath.Dir(to)), os.Remove(from))
+	return errors.Join(syncDir(filepath.Dir(to)), os.Remove(from)) // #nosec G703 -- Go-owned staging paths
 }
 
 func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
