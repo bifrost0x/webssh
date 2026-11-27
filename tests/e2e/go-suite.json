@@ -195,6 +195,14 @@
     {"file": "admin-audit-race.spec.js", "exclude": []},
     {"file": "support-report.spec.js", "exclude": []},
     {"file": "runtime-policies.spec.js", "serial": "e2e_admin", "exclude": []},
-    {"file": "admin-sign-in-protection.spec.js", "serial": "e2e_admin", "exclude": []}
+    {"file": "admin-sign-in-protection.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "theme-assets.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "theme-background.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "theme-scenes.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "auth-load-performance.spec.js", "exclude": []},
+    {"file": "tool-theme-contrast.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "presentation-audit.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "translated navigation and content in", "reason": "an anonymous request to / redirects to the sign-in page without the auth.loginRequired notice", "package": "FE1"}
+    ]}
   ]
 }
