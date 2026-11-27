@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -232,9 +233,7 @@ func addHostIdentity(t *testing.T, dataDir string) {
 	}}
 	for i, f := range facts {
 		p := profiles[i].(map[string]any)
-		for k, v := range f {
-			p[k] = v
-		}
+		maps.Copy(p, f)
 	}
 	out, err := json.Marshal(doc, json.Deterministic(true))
 	if err != nil {

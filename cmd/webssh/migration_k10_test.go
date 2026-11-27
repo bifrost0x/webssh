@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -64,9 +65,7 @@ func k10Passwords(t *testing.T) map[string]string {
 			out[name] = *u.Password
 		}
 	}
-	for name, p := range old.Values.Passwords {
-		out[name] = p
-	}
+	maps.Copy(out, old.Values.Passwords)
 	return out
 }
 
