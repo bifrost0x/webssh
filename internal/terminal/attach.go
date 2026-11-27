@@ -31,6 +31,8 @@ type peerState struct {
 	// backpressure may not attach again.
 	cooldown map[string]time.Time
 	closed   bool
+	// dropped counts frames dropped in a row (HandleBinary).
+	dropped int
 }
 
 // peer returns the state of a live connection, nil for a closed one.
