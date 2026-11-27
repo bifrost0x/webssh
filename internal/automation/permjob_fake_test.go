@@ -153,6 +153,24 @@ func (a *permAudit) PermissionChange(_ principal.Principal, _, operation, result
 	a.events = append(a.events, operation+" "+result+" "+p+" "+oldMode+">"+newMode)
 }
 
+// waitFor waits until every event is recorded: the job writes its audit
+// after its final state is visible.
+func (a *permAudit) waitFor(t *testing.T, events ...string) {
+	t.Helper()
+	for range 500 {
+		a.mu.Lock()
+		got := slices.Clone(a.events)
+		a.mu.Unlock()
+		if !slices.ContainsFunc(events, func(e string) bool { return !slices.Contains(got, e) }) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	t.Fatalf("audit %v, want %v", a.events, events)
+}
+
 type permEnv struct {
 	j     *PermissionJobs
 	tree  *permTree

@@ -55,9 +55,7 @@ func TestPermissionJobRecursivePlanKeepsModesSeparate(t *testing.T) {
 	// Applying twice is refused.
 	_, err := e.j.Apply(t.Context(), e.c, src, id)
 	wantCode(t, err, fault.FileConflict)
-	if !slices.Contains(e.audit.events, "chmod COMPLETED /work/sub 700>750") || !slices.Contains(e.audit.events, "chmod_job completed / >") {
-		t.Fatalf("audit %v", e.audit.events)
-	}
+	e.audit.waitFor(t, "chmod COMPLETED /work/sub 700>750", "chmod_job completed / >")
 }
 
 func TestPermissionJobRefusals(t *testing.T) {

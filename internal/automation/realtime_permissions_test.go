@@ -24,6 +24,9 @@ func TestPermissionRoutesAnswerWithThePythonTexts(t *testing.T) {
 	t.Parallel()
 	e := newPermEnv(t)
 	peer := protocoltest.NewPeer(t, e.c.P)
+	// The jobs belong to the connection that prepared them; peer ids
+	// come from a counter shared by every test.
+	e.c.Peer = peer.ID()
 	run := func(typ, payload string) (any, error) {
 		return permissionRoute(t, e.j, typ).Run(t.Context(), peer, jsontext.Value(payload))
 	}
