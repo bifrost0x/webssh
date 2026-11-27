@@ -179,7 +179,7 @@ func Stage(ctx context.Context, in *Installation, req StageRequest) (st Staged, 
 	var reseal *keyring.Rotation
 	if family == familyGo {
 		v, err := VerifyWith(ctx, req.Archive, VerifyOptions{Secret: in.SecretKey, AdoptSecret: in.AdoptSecret,
-			Material: in.Material, Probes: in.Probes, Limits: in.Limits, Database: db})
+			Material: in.Material, Probes: in.Probes, Limits: in.Limits, Database: db, Work: in.Work})
 		if errors.Is(err, ErrSecretMismatch) && in.EnvironmentSecret {
 			return st, fmt.Errorf("%w; SECRET_KEY is set in the environment and would stay active: "+
 				"set it to the archive's SECRET_KEY, or unset it to restore with the archive's key", err)
