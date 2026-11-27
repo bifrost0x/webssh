@@ -37,11 +37,11 @@ type Operation struct {
 	Summary *Summary
 	Error   string
 
-	owner   int64
-	session string
-	dir     string
-	expires time.Time
-	confirm string
+	owner          int64
+	session        string
+	dir            string
+	expires        time.Time
+	confirm        string
 	confirmExpires time.Time
 }
 
