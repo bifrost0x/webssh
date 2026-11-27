@@ -203,6 +203,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U73 | Schedule approvals are checked with the 3.3 rules during the migration. Valid ones stay approved; invalid ones become `stale` with a reason, and schedules that were running at the time of the update are paused as `unknown`. | decided | Review and approve the schedules the report lists. |
 | U74 | Background jobs keep their state across restarts: a periodic job continues from its last run, a run missed during downtime runs once, and an interrupted run is reported and not repeated. | new | Nothing. |
 | U75 | A runbook library with more than 100 runbooks is migrated in full and reported as `runbook_above_limit`; new runbooks need room below the limit. | decided | Remove unused runbooks. |
+| U98 | A connection that would use a saved password over plain HTTP is refused with the code `https_required` (3.3: `authentication_required`); the page still shows "Password management requires HTTPS." | fix | Serve WebSSH over HTTPS, or through a TLS proxy listed in `TRUSTED_PROXY_CIDRS`, to use saved passwords. |
 
 ### Backup, restore and secret rotation
 
