@@ -16,7 +16,10 @@ cd "$(dirname "$0")/../.."
 IMG=${IMG:-webssh:local}
 DEBUG_IMG=${DEBUG_IMG:-webssh:local-debug}
 VERSION=${VERSION:-3.4.0}
-BUSYBOX=busybox:1.37-musl@sha256:f6a95d611e0a8780fabdb2aec43e31275b2720dfefa3e41b16835bfc42454478
+BUSYBOX=busybox:1.38-musl@sha256:80e38f9a1b39188b8bdb28879178edb322a4402b081a9aedda1924609decd6f6
+# Trivy does not recognise BusyBox in the debug image, so its version is
+# checked here. Raise it together with the busybox stage of the Dockerfile.
+BUSYBOX_MIN=1.38.0
 TRIVY_IMG=aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
 P=webssh-go-check
 HARD=(--read-only --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 512 --memory 2g
@@ -122,6 +125,10 @@ check "binary root-owned 0555, entrypoint.sh and python link to it, CA bundle an
 check "/run/webssh-auth is 0700 and owned by 1000:1000, so a new LDAP secret volume is seeded for the service" \
   inspect_volume "$P-data" '[ "$(stat -c "%a %u:%g" /run/webssh-auth)" = "700 1000:1000" ]'
 check "the debug image has a real shell" bash -c "[ \"\$(docker run --rm --entrypoint /bin/sh '$DEBUG_IMG' -c 'echo ok')\" = ok ]"
+bb_version=$(docker run --rm --entrypoint /bin/busybox "$DEBUG_IMG" 2>&1 | sed -n '1s/^BusyBox v\([0-9.]*\).*/\1/p')
+echo "BusyBox $bb_version"
+check "the debug image carries BusyBox $BUSYBOX_MIN or newer" \
+  bash -c "[ -n \"\$1\" ] && [ \"\$(printf '%s\n' \"\$2\" \"\$1\" | sort -V | head -1)\" = \"\$2\" ]" _ "$bb_version" "$BUSYBOX_MIN"
 
 echo "== 3 graceful shutdown as PID 1"
 start=$(date +%s%N)

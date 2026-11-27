@@ -69,7 +69,8 @@ RUN apk upgrade --no-cache ca-certificates-bundle \
     && ln -s /app/webssh /rootfs/usr/local/bin/python3 \
     && ln -s /app/webssh /rootfs/bin/sh
 
-FROM busybox:1.37-musl@sha256:f6a95d611e0a8780fabdb2aec43e31275b2720dfefa3e41b16835bfc42454478 AS busybox
+# Trivy does not detect BusyBox; tests/image/check.sh asserts its version.
+FROM busybox:1.38-musl@sha256:80e38f9a1b39188b8bdb28879178edb322a4402b081a9aedda1924609decd6f6 AS busybox
 
 FROM scratch AS runtime
 ARG VERSION=3.4.0
