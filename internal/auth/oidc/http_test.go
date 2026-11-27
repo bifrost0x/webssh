@@ -21,8 +21,9 @@ import (
 )
 
 type fakeAccounts struct {
-	mu sync.Mutex
-	m  map[int64]Account
+	mu   sync.Mutex
+	m    map[int64]Account
+	onTx func(*fakeAccounts)
 }
 
 func (a *fakeAccounts) OIDCAccount(_ context.Context, id int64) (Account, error) {
@@ -33,6 +34,18 @@ func (a *fakeAccounts) OIDCAccount(_ context.Context, id int64) (Account, error)
 		return Account{}, fault.New(fault.NotFound, "")
 	}
 	return acc, nil
+}
+
+// OIDCAccountTx reads the account, and lets a test change it between the
+// first check and the transaction (onTx).
+func (a *fakeAccounts) OIDCAccountTx(ctx context.Context, _ *store.Tx, id int64) (Account, error) {
+	a.mu.Lock()
+	hook := a.onTx
+	a.mu.Unlock()
+	if hook != nil {
+		hook(a)
+	}
+	return a.OIDCAccount(ctx, id)
 }
 
 func (a *fakeAccounts) set(acc Account) {
