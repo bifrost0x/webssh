@@ -86,3 +86,17 @@ func closeReason(r principal.Reason) string {
 	}
 	return string(r)
 }
+
+// NotifyUser pushes a server event to every open connection of userID and
+// returns how many took it. It never blocks; a connection that is gone or
+// too slow is skipped. Capabilities use it for events that belong to an
+// account rather than to one request, such as detected host facts.
+func (s *Server) NotifyUser(userID int64, typ string, payload any) int {
+	sent := 0
+	for _, c := range s.sessions.all() {
+		if c.p.UserID == userID && c.SendEvent(typ, payload) == nil {
+			sent++
+		}
+	}
+	return sent
+}

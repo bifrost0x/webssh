@@ -55,6 +55,11 @@ func (c *Conn) Close() error {
 // Done is closed when Close was called.
 func (c *Conn) Done() <-chan struct{} { return c.done }
 
+// ServerVersion is the identification line the target's SSH server sent
+// (RFC 4253, section 4.2), without CR LF. It came over the transport whose
+// host key was verified and on which the user authenticated.
+func (c *Conn) ServerVersion() string { return string(c.client.ServerVersion()) }
+
 // guard closes the whole connection when ctx ends or the setup budget runs
 // out before disarm is called. x/crypto/ssh waits for the answer to a
 // channel open or a channel request without a context, so a peer that

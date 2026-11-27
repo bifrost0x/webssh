@@ -1,0 +1,7838 @@
+{
+"base": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"identities": {
+"debian": "ID=debian\nVERSION_ID=\"12\"\nkernel=Linux\nvirt=kvm\ntarget=multi-user.target\nunit=nginx\n",
+"proxmox": "ID=debian\nVERSION_ID=\"12\"\nkernel=Linux\nmarker=proxmox\nguests=4\nvirt=none\n",
+"bare": "kernel=Linux\n",
+"unavailable": "menu\n"
+},
+"maintenance": {
+"updates": "reboot=no\napt=12\naptsecurity=3\n",
+"restart": "reboot=yes\napt=0\naptsecurity=0\n"
+},
+"check_times": [
+1764000000.25,
+1764518400.25,
+1764691200.25,
+1763827200.25
+],
+"cases": [
+{
+"name": "greeting first",
+"steps": [
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"result": [
+true,
+true
+],
+"step": [
+"greeting",
+"plain",
+"ubuntu",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"authenticated_greeting": "ubuntu",
+"greeting_platform": "ubuntu"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"result": [
+true,
+false
+],
+"step": [
+"greeting",
+"plain",
+"ubuntu",
+1764000001.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"authenticated_greeting": "ubuntu",
+"greeting_platform": "ubuntu"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"result": [
+true,
+true
+],
+"step": [
+"greeting",
+"plain",
+null,
+1764000002.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"authenticated_greeting": ""
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "greeting change makes the probe due",
+"steps": [
+{
+"endpoint": [
+"known.lan",
+22,
+"ops",
+null,
+null
+],
+"result": [
+true,
+true
+],
+"step": [
+"greeting",
+"known",
+"ubuntu",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "ubuntu",
+"authenticated_greeting": "ubuntu",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+true,
+true,
+true,
+true
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"known.lan",
+22,
+"ops",
+null,
+null
+],
+"result": [
+true,
+true
+],
+"step": [
+"greeting",
+"known",
+"debian",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+true,
+true,
+true,
+true
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "alternating greetings within a day",
+"steps": [
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"text": "ID=debian\nVERSION_ID=\"12\"\nkernel=Linux\nvirt=kvm\ntarget=multi-user.target\nunit=nginx\n",
+"result": true,
+"step": [
+"identity",
+"plain",
+"debian",
+1764000000.25,
+false
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detection_state": "detected",
+"platform_checked_at": 1764000000.25,
+"detected_platform": "debian",
+"detected_services": [
+"nginx"
+],
+"detected_os_version": "12",
+"detected_virt": "vm",
+"detected_graphical": false,
+"services_checked_at": 1764000000.25
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+false,
+false,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"result": [
+true,
+true
+],
+"step": [
+"greeting",
+"plain",
+"ubuntu",
+1764000010.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detection_state": "detected",
+"platform_checked_at": 1764000000.25,
+"detected_platform": "debian",
+"detected_services": [
+"nginx"
+],
+"detected_os_version": "12",
+"detected_virt": "vm",
+"detected_graphical": false,
+"services_checked_at": 1764000000.25,
+"authenticated_greeting": "ubuntu",
+"greeting_platform": "ubuntu"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+false,
+false,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"result": [
+true,
+true
+],
+"step": [
+"greeting",
+"plain",
+"debian",
+1764000020.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detection_state": "detected",
+"platform_checked_at": 1764000000.25,
+"detected_platform": "debian",
+"detected_services": [
+"nginx"
+],
+"detected_os_version": "12",
+"detected_virt": "vm",
+"detected_graphical": false,
+"services_checked_at": 1764000000.25,
+"authenticated_greeting": "debian",
+"greeting_platform": "debian"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+false,
+false,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"result": [
+true,
+true
+],
+"step": [
+"greeting",
+"plain",
+"ubuntu",
+1764172800.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detection_state": "detected",
+"detected_platform": "debian",
+"detected_services": [
+"nginx"
+],
+"detected_os_version": "12",
+"detected_virt": "vm",
+"detected_graphical": false,
+"services_checked_at": 1764000000.25,
+"authenticated_greeting": "ubuntu",
+"greeting_platform": "ubuntu"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "windows greeting drops the facts",
+"steps": [
+{
+"endpoint": [
+"known.lan",
+22,
+"ops",
+null,
+null
+],
+"result": [
+true,
+true
+],
+"step": [
+"greeting",
+"known",
+"windows",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"greeting_platform": "windows",
+"authenticated_greeting": "windows"
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+true,
+true,
+true,
+true
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "identity detected",
+"steps": [
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"text": "ID=debian\nVERSION_ID=\"12\"\nkernel=Linux\nvirt=kvm\ntarget=multi-user.target\nunit=nginx\n",
+"result": true,
+"step": [
+"identity",
+"plain",
+"debian",
+1764000000.25,
+false
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detection_state": "detected",
+"platform_checked_at": 1764000000.25,
+"detected_platform": "debian",
+"detected_services": [
+"nginx"
+],
+"detected_os_version": "12",
+"detected_virt": "vm",
+"detected_graphical": false,
+"services_checked_at": 1764000000.25
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+false,
+false,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"text": "ID=debian\nVERSION_ID=\"12\"\nkernel=Linux\nmarker=proxmox\nguests=4\nvirt=none\n",
+"result": true,
+"step": [
+"identity",
+"plain",
+"proxmox",
+1764086400.25,
+false
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detection_state": "detected",
+"platform_checked_at": 1764086400.25,
+"detected_platform": "proxmox",
+"detected_services": [],
+"detected_virt": "bare-metal",
+"services_checked_at": 1764086400.25,
+"detected_guests": 4
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+false,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "identity unavailable keeps facts",
+"steps": [
+{
+"endpoint": [
+"known.lan",
+22,
+"ops",
+null,
+null
+],
+"text": "menu\n",
+"result": true,
+"step": [
+"identity",
+"known",
+"unavailable",
+1764000000.25,
+false
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "unavailable",
+"platform_checked_at": 1764000000.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+false,
+true,
+true
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "silent keeps detected",
+"steps": [
+{
+"endpoint": [
+"known.lan",
+22,
+"ops",
+null,
+null
+],
+"text": "menu\n",
+"result": true,
+"step": [
+"identity",
+"known",
+"unavailable",
+1764000000.25,
+true
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1764000000.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+false,
+true,
+true
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "bare kernel drops facts",
+"steps": [
+{
+"endpoint": [
+"known.lan",
+22,
+"ops",
+null,
+null
+],
+"text": "kernel=Linux\n",
+"result": true,
+"step": [
+"identity",
+"known",
+"bare",
+1764000000.25,
+false
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "linux",
+"detection_state": "detected",
+"platform_checked_at": 1764000000.25,
+"detected_services": [],
+"services_checked_at": 1764000000.25,
+"greeting_platform": "debian",
+"authenticated_greeting": "debian"
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+false,
+true,
+true
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "legacy server",
+"steps": [
+{
+"endpoint": [
+"legacy.lan",
+22,
+"ops",
+null,
+null
+],
+"result": true,
+"step": [
+"attempt",
+"legacy",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_checked_at": 1764000000.25
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+false,
+false,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"legacy.lan",
+22,
+"ops",
+null,
+null
+],
+"text": "ID=debian\nVERSION_ID=\"12\"\nkernel=Linux\nvirt=kvm\ntarget=multi-user.target\nunit=nginx\n",
+"result": true,
+"step": [
+"identity",
+"legacy",
+"debian",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_checked_at": 1764000000.25,
+"detection_state": "detected",
+"detected_platform": "debian",
+"detected_services": [
+"nginx"
+],
+"detected_os_version": "12",
+"detected_virt": "vm",
+"detected_graphical": false,
+"services_checked_at": 1764000000.25
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+false,
+false,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "attempt only",
+"steps": [
+{
+"endpoint": [
+"known.lan",
+22,
+"ops",
+null,
+null
+],
+"result": true,
+"step": [
+"attempt",
+"known",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1764000000.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+false,
+true,
+true
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "maintenance",
+"steps": [
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"text": "reboot=no\napt=12\naptsecurity=3\n",
+"result": true,
+"step": [
+"maintenance",
+"plain",
+"updates",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": false,
+"updates": 12,
+"security_updates": 3,
+"checked_at": 1764000000.25
+}
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"plain.lan",
+22,
+"ops",
+null,
+null
+],
+"text": "reboot=yes\napt=0\naptsecurity=0\n",
+"result": true,
+"step": [
+"maintenance",
+"plain",
+"restart",
+1764000005.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 0,
+"security_updates": 0,
+"checked_at": 1764000005.25
+}
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+true,
+true,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "settle cleared",
+"steps": [
+{
+"endpoint": [
+"hinted.lan",
+22,
+"ops",
+null,
+null
+],
+"result": true,
+"step": [
+"settle",
+"hinted",
+1763913600.25,
+true
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": false,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+false,
+false,
+false,
+false
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"hinted.lan",
+22,
+"ops",
+null,
+null
+],
+"result": false,
+"step": [
+"settle",
+"hinted",
+1763913600.25,
+true
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": false,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+false,
+false,
+false,
+false
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "settle stopped",
+"steps": [
+{
+"endpoint": [
+"hinted.lan",
+22,
+"ops",
+null,
+null
+],
+"result": true,
+"step": [
+"settle",
+"hinted",
+1763913600.25,
+false
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25,
+"recheck_stopped": true
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+false,
+false,
+false,
+false
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"hinted.lan",
+22,
+"ops",
+null,
+null
+],
+"result": false,
+"step": [
+"settle",
+"hinted",
+1763913600.25,
+true
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25,
+"recheck_stopped": true
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+false,
+false,
+false,
+false
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "settle other check",
+"steps": [
+{
+"endpoint": [
+"hinted.lan",
+22,
+"ops",
+null,
+null
+],
+"result": false,
+"step": [
+"settle",
+"hinted",
+1764000000.25,
+true
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "wrong endpoint",
+"steps": [
+{
+"endpoint": [
+"elsewhere.lan",
+22,
+"ops",
+null,
+null
+],
+"text": "ID=debian\nVERSION_ID=\"12\"\nkernel=Linux\nvirt=kvm\ntarget=multi-user.target\nunit=nginx\n",
+"result": false,
+"step": [
+"identity_wrong",
+"plain",
+"debian",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"endpoint": [
+"elsewhere.lan",
+22,
+"ops",
+null,
+null
+],
+"result": [
+false,
+false
+],
+"step": [
+"greeting_wrong",
+"plain",
+"ubuntu",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "greeting hints",
+"steps": [
+{
+"result": 3,
+"step": [
+"hints",
+{
+"plain": [
+"plain.lan",
+22,
+"ubuntu"
+],
+"known": [
+"known.lan",
+22,
+null
+],
+"routed": [
+"routed.lan",
+22,
+"debian"
+],
+"manual": [
+"other.lan",
+22,
+"debian"
+],
+"noport": [
+"noport.lan",
+22,
+"alpinelinux"
+]
+}
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"greeting_platform": "ubuntu"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"greeting_platform": "alpinelinux"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+},
+{
+"result": 0,
+"step": [
+"hints",
+{
+"plain": [
+"plain.lan",
+22,
+"ubuntu"
+]
+}
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"greeting_platform": "ubuntu"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"greeting_platform": "alpinelinux"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+},
+{
+"name": "missing host",
+"steps": [
+{
+"endpoint": [
+"gone.lan",
+22,
+"ops",
+null,
+null
+],
+"result": false,
+"step": [
+"attempt",
+"gone",
+1764000000.25
+],
+"profiles": [
+{
+"name": "plain",
+"host": "plain.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "plain",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+},
+{
+"name": "known",
+"host": "known.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "known",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "debian",
+"detection_state": "detected",
+"platform_checked_at": 1763740800.25,
+"detected_services": [
+"docker",
+"nginx"
+],
+"services_checked_at": 1763740800.25,
+"detected_os_version": "12",
+"greeting_platform": "debian",
+"authenticated_greeting": "debian",
+"detected_virt": "vm",
+"detected_guests": 3
+},
+{
+"name": "legacy",
+"host": "legacy.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "legacy",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_platform": "server"
+},
+{
+"name": "manual",
+"host": "manual.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "manual",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"platform_icon": "proxmox"
+},
+{
+"name": "routed",
+"host": "routed.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "routed",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"jump_host_id": "j1"
+},
+{
+"name": "hinted",
+"host": "hinted.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "hinted",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": 4,
+"security_updates": 1,
+"checked_at": 1763913600.25
+}
+},
+{
+"name": "stale",
+"host": "stale.lan",
+"port": 22,
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "stale",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00",
+"detected_maintenance": {
+"reboot_required": true,
+"updates": null,
+"security_updates": null,
+"checked_at": 1763222400.25
+}
+},
+{
+"name": "noport",
+"host": "noport.lan",
+"username": "ops",
+"auth_type": "password",
+"key_id": null,
+"startup_mode": "none",
+"id": "noport",
+"sort_order": 1,
+"created_at": "2026-11-02T09:03:54.250000+00:00",
+"updated_at": "2026-11-02T09:03:54.250000+00:00"
+}
+],
+"needed": {
+"plain": [
+true,
+true,
+true,
+true
+],
+"known": [
+false,
+true,
+true,
+false
+],
+"legacy": [
+true,
+true,
+true,
+true
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+true,
+true,
+true,
+true
+],
+"hinted": [
+true,
+true,
+true,
+true
+],
+"stale": [
+true,
+true,
+true,
+true
+],
+"noport": [
+true,
+true,
+true,
+true
+]
+},
+"reboot": {
+"plain": [
+false,
+false,
+false,
+false
+],
+"known": [
+false,
+false,
+false,
+false
+],
+"legacy": [
+false,
+false,
+false,
+false
+],
+"manual": [
+false,
+false,
+false,
+false
+],
+"routed": [
+false,
+false,
+false,
+false
+],
+"hinted": [
+true,
+true,
+false,
+true
+],
+"stale": [
+false,
+false,
+false,
+true
+],
+"noport": [
+false,
+false,
+false,
+false
+]
+}
+}
+]
+}
+]
+}
