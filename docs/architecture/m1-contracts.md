@@ -778,8 +778,13 @@ type Readiness struct { Maintenance, Stopping func() bool; Database Pinger; Data
 
 - Pipeline: client address, security headers, admin gate (404 while
   `ADMIN_PANEL_ENABLED` is false), preview routes (501 before the body is
-  read), per-request deadlines (none for `/ws`), body limit, session,
-  access level, origin, CSRF, handler.
+  read), per-request deadlines (none for `/ws`), session, access level,
+  origin, body limit, CSRF, handler. The body of an unsafe request is
+  read only after the session, the access level and the origin passed
+  (M2, RS8-01), into a buffer of its declared length; routes without a
+  session take at most 16 KiB, and the buffered bodies in flight share a
+  budget (64 MiB signed in, 16 MiB anonymous; `503 unavailable` after 5 s
+  without a share).
 - Capabilities register on `Mux()` with patterns relative to
   `APPLICATION_ROOT`; wildcard names do not matter. A pattern outside the
   route catalog is refused at run time. `Finish()` runs at start; every

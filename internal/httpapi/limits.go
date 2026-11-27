@@ -3,8 +3,10 @@ package httpapi
 import (
 	"bytes"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
@@ -22,13 +24,28 @@ const (
 	profileExchangeRequestLimit = 512 << 10
 )
 
+// publicRequestLimit bounds the body of every route that needs no
+// session (the sign-in, registration and passkey sign-in forms). Their
+// bodies are a few hundred bytes; the bound keeps what an anonymous client
+// can make the server buffer small. It only lowers a route's own limit.
+const publicRequestLimit = 16 << 10
+
 // bodyLimit returns the body limit of an unsafe request, as
 // request_limits.py chooses it for the routes of this preview: the
 // recovery and TOTP routes MAX_RECOVERY_JSON_SIZE, the passkey routes
 // MAX_WEBAUTHN_JSON_SIZE, the host context 1 MiB, the host import
-// 512 KiB, everything else 64 KiB. The whole body is read
-// before the CSRF check, so no handler sees a partial body.
-func (h *Handler) bodyLimit(path string) int64 {
+// 512 KiB, everything else 64 KiB. Routes without a session take at most
+// publicRequestLimit. The whole body is read before the CSRF check, so no
+// handler sees a partial body.
+func (h *Handler) bodyLimit(path string, access Access) int64 {
+	limit := h.routeLimit(path)
+	if access == AccessPublic {
+		return min(limit, publicRequestLimit)
+	}
+	return limit
+}
+
+func (h *Handler) routeLimit(path string) int64 {
 	s := h.cfg.Stores
 	switch {
 	case strings.HasPrefix(path, "/api/totp/"), path == "/api/recovery-codes",
@@ -54,6 +71,15 @@ func (h *Handler) bodyLimit(path string) int64 {
 func (h *Handler) tooLarge(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "close")
 	h.fail(w, r, fault.New(fault.TooLarge, "Request body too large"), "", "")
+}
+
+// busy answers 503 when the body budget stays exhausted: the server
+// holds as many request bodies as it allows.
+func (h *Handler) busy(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Connection", "close")
+	e := fault.New(fault.Unavailable, "The server is busy. Try again shortly.")
+	e.RetryAfter = time.Second
+	h.fail(w, r, e, "", "")
 }
 
 // unwired answers a catalog route that no capability registered, like a
@@ -84,21 +110,39 @@ func gone(w http.ResponseWriter, _ *http.Request) {
 
 // readBody buffers the body of an unsafe request up to limit bytes and
 // replaces it with the buffer, so the CSRF check and the handler both see
-// it. It reports false when the body is larger.
+// it. It reports false when the body is larger. A body with a known
+// length is read into a buffer of exactly that size; net/http ends the
+// body after Content-Length bytes.
 func readBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, bool, error) {
 	if r.ContentLength > limit {
 		return nil, false, nil
 	}
-	var buf bytes.Buffer
-	_, err := buf.ReadFrom(http.MaxBytesReader(w, r.Body, limit))
+	body := http.MaxBytesReader(w, r.Body, limit)
+	var b []byte
+	var err error
+	if r.ContentLength >= 0 {
+		b = make([]byte, r.ContentLength)
+		_, err = io.ReadFull(body, b)
+	} else {
+		b, err = io.ReadAll(body)
+	}
 	if err != nil {
 		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			return nil, false, nil
 		}
 		return nil, true, err
 	}
-	r.Body = readCloser{bytes.NewReader(buf.Bytes())}
-	return buf.Bytes(), true, nil
+	r.Body = readCloser{bytes.NewReader(b)}
+	return b, true, nil
+}
+
+// bodyReservation is what a request reserves from the body budget: its
+// declared length, or the route limit when the length is unknown.
+func bodyReservation(r *http.Request, limit int64) int64 {
+	if r.ContentLength >= 0 {
+		return min(r.ContentLength, limit)
+	}
+	return limit
 }
 
 type readCloser struct{ *bytes.Reader }

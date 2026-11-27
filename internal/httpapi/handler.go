@@ -63,7 +63,10 @@ type Handler struct {
 	// streamed are the routes whose body the handler reads itself
 	// (StreamBody).
 	streamed map[string]bool
-	ready    *readiness
+	// signedIn and anonymous bound the buffered bodies in flight.
+	signedIn, anonymous *bodyBudget
+	budgetWait          time.Duration
+	ready               *readiness
 	// signInRequired: Options.SignInRequired.
 	signInRequired func(r *http.Request)
 
@@ -98,6 +101,9 @@ func New(o Options) (*Handler, error) {
 		binding: cookieJar{name: bindingCookie, path: path, secure: cfg.Cookies.Secure},
 		mux:     http.NewServeMux(),
 		access:  map[string]Access{},
+
+		signedIn:  newBodyBudget(signedInBodyBudget),
+		anonymous: newBodyBudget(anonymousBodyBudget), budgetWait: bodyBudgetWait,
 	}
 	if h.session.name == "" {
 		return nil, errors.New("httpapi: the session cookie name is empty")
@@ -168,8 +174,8 @@ func (h *Handler) registered(pattern string) bool {
 }
 
 // ServeHTTP runs the pipeline in this order: client address, headers,
-// admin panel gate, edge-answered routes, deadlines, body limit, session,
-// access level, origin and CSRF, handler.
+// admin panel gate, edge-answered routes, deadlines, session, access level,
+// origin, body limit and budget, CSRF, handler.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.Finish(); err != nil {
 		h.log.Error("routing is incomplete", "err", err)
@@ -212,9 +218,45 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setDeadlines(w, h.log)
+	// The session, the access level and the origin are checked before the
+	// body is read: none of them depends on it, and a request that is
+	// refused makes the server buffer nothing.
+	r, ok := h.authenticate(w, r, access)
+	p, signedIn := principal.From(r.Context())
+	if signedIn {
+		if rec, isRec := w.(*statusRecorder); isRec {
+			rec.userID = p.UserID
+		}
+	}
+	if !ok {
+		return
+	}
+	if !unsafeMethod(r.Method) {
+		h.mux.ServeHTTP(w, r)
+		return
+	}
+	if err := h.originCheck(r); err != nil {
+		h.fail(w, r, err, kindForbidden, "")
+		return
+	}
 	var body []byte
-	if unsafeMethod(r.Method) && !h.streamed[patternKey(pattern)] {
-		b, ok, err := readBody(w, r, h.bodyLimit(r.URL.Path))
+	if !h.streamed[patternKey(pattern)] {
+		limit := h.bodyLimit(r.URL.Path, access)
+		if r.ContentLength > limit {
+			h.tooLarge(w, r)
+			return
+		}
+		budget := h.anonymous
+		if signedIn {
+			budget = h.signedIn
+		}
+		reserved := bodyReservation(r, limit)
+		if !budget.acquire(r.Context(), reserved, h.budgetWait) {
+			h.busy(w, r)
+			return
+		}
+		defer budget.release(reserved)
+		b, ok, err := readBody(w, r, limit)
 		if err != nil {
 			// The client stopped sending or the read deadline passed.
 			writePlain(w, http.StatusBadRequest, "The request body could not be read.")
@@ -226,24 +268,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		body = b
 	}
-	r, ok := h.authenticate(w, r, access)
-	if p, signedIn := principal.From(r.Context()); signedIn {
-		if rec, isRec := w.(*statusRecorder); isRec {
-			rec.userID = p.UserID
-		}
-	}
-	if !ok {
+	if err := h.csrfCheck(r, body); err != nil {
+		h.csrfFailed(w, r, pattern)
 		return
-	}
-	if unsafeMethod(r.Method) {
-		if err := h.originCheck(r); err != nil {
-			h.fail(w, r, err, kindForbidden, "")
-			return
-		}
-		if err := h.csrfCheck(r, body); err != nil {
-			h.csrfFailed(w, r, pattern)
-			return
-		}
 	}
 	h.mux.ServeHTTP(w, r)
 }
