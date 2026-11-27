@@ -46,7 +46,8 @@ func TestDeleteRemovesEveryRowOfTheAccount(t *testing.T) {
 	if l.count(t, `SELECT count(*) FROM session_sessions WHERE user_id = 3`) != 1 || l.count(t, `SELECT count(*) FROM session_revocations`) != 1 {
 		t.Fatal("kept tables touched")
 	}
-	if got := l.sessions.list(); len(got) != 1 || got[0].SessionID != "s2" || got[0].Reason != principal.ReasonAccountLocked {
+	if got := l.sessions.list(); len(got) != 2 || got[0].SessionID != "s2" || got[0].Reason != principal.ReasonAccountLocked ||
+		got[1].SessionID != "" || got[1].UserID != 2 {
 		t.Fatalf("published %+v", got)
 	}
 	if l.count(t, `SELECT count(*) FROM accounts_quarantine WHERE path = 'users/user_2' AND former_user_id = 2`) != 1 {
@@ -59,6 +60,29 @@ func TestDeleteRemovesEveryRowOfTheAccount(t *testing.T) {
 	}
 	if w := l.audit.warnings; !slices.Contains(w, "ADMIN_USER_DELETED") {
 		t.Fatalf("audit %v", w)
+	}
+}
+
+// An unlock and a new sign-in between the two steps of a deletion end in
+// the transaction that removes the account (RS2-12).
+func TestDeleteEndsSessionGainedBetweenSteps(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	insertLegacy(t, l.s, 1, "admin", true, false, ManagedLocal, "x")
+	insertLegacy(t, l.s, 2, "bob", false, false, ManagedLocal, "x")
+	l.sessions.onPublish = func() {
+		l.exec(t, `UPDATE accounts_users SET is_locked = 0 WHERE id = 2`)
+		l.exec(t, `INSERT INTO session_sessions (id, user_id) VALUES ('late', 2)`)
+	}
+	if err := l.s.Delete(t.Context(), principaltest.Admin(1), 2); err != nil {
+		t.Fatal(err)
+	}
+	got := l.sessions.list()
+	if !slices.ContainsFunc(got, func(r principal.Revocation) bool { return r.SessionID == "late" }) {
+		t.Fatalf("session gained between the steps not ended: %+v", got)
+	}
+	if n := l.count(t, `SELECT count(*) FROM session_sessions WHERE user_id = 2`); n != 0 {
+		t.Fatalf("%d sessions of the deleted account left", n)
 	}
 }
 

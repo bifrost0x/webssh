@@ -74,9 +74,22 @@ func (s *Service) Delete(ctx context.Context, actor principal.Principal, targetI
 
 	var removed map[string]int64
 	var kept Retained
+	revs = nil
 	err = s.DB.Write(ctx, func(tx *store.Tx) error {
 		current, err := getTx(ctx, tx, acc.ID)
 		if err != nil {
+			return err
+		}
+		// An unlock and sign-in between the steps must not survive: the
+		// account is locked again and whatever session it gained ends in
+		// the transaction that removes it.
+		if _, err := tx.ExecContext(ctx, `UPDATE accounts_users SET is_locked = 1 WHERE id = ?`, acc.ID); err != nil {
+			return fmt.Errorf("accounts: lock before deletion: %w", err)
+		}
+		if revs, err = s.InvalidateTx(ctx, tx, acc.ID, principal.ReasonAccountLocked); err != nil {
+			return err
+		}
+		if current, err = getTx(ctx, tx, acc.ID); err != nil {
 			return err
 		}
 		if s.Data == nil || s.Retain == nil {
@@ -130,6 +143,7 @@ func (s *Service) Delete(ctx context.Context, actor principal.Principal, targetI
 		s.logger().Error("Admin user deletion failed", "admin", actor.Username, "user", acc.Username, "error", err)
 		return fault.Wrap(fault.Internal, err, msgDeleteFailed)
 	}
+	s.announce(revs)
 	kv := []any{"admin", actor.Username, "user", acc.Username}
 	for _, table := range sortedKeys(removed) {
 		kv = append(kv, "rows_"+table, strconv.FormatInt(removed[table], 10))
