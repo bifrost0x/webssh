@@ -25,8 +25,8 @@ var (
 	// ErrInvalid reports an archive that fails verification.
 	ErrInvalid = errors.New("backup: the archive does not verify")
 	// ErrSecretMismatch reports an archive whose SECRET_KEY is not the
-	// active one: its records cannot be opened with the active keyring,
-	// and a restore never changes SECRET_KEY (specification 5.6).
+	// active one where the restore may not adopt it (SECRET_KEY from the
+	// environment, VerifyOptions.AdoptSecret).
 	ErrSecretMismatch = fmt.Errorf("%w: the archive was made with another SECRET_KEY", ErrInvalid)
 	// ErrKeyMismatch reports SECRET_KEY and material that do not give the
 	// archive's key identifier.
