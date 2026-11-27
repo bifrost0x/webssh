@@ -1,4 +1,4 @@
-# Reverse proxy for the WebSSH Go preview (compose.m1.tls.yml).
+# Reverse proxy for the WebSSH 3.4 trial (compose.m1.tls.yml).
 {
 	# No admin API, no saved configuration, no HTTP listener on port 80, no
 	# attempt to install the internal CA into the trust store of the

@@ -128,8 +128,8 @@ func (p *parser) integer(constant, name string, def *big.Int, requirement string
 	return v
 }
 
-// saturate converts a Python integer for use in Go. Every limit the
-// preview acts on is bounded far below the int64 range.
+// saturate converts a Python integer for use in Go. Every limit WebSSH
+// acts on is bounded far below the int64 range.
 func saturate(v *big.Int) int64 {
 	switch {
 	case v.IsInt64():

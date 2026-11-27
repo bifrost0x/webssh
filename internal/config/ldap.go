@@ -10,9 +10,8 @@ var (
 	ldapAttribute  = regexp.MustCompile(`^(?:[A-Za-z][A-Za-z0-9-]*|[0-9]+(?:\.[0-9]+)+)$`)
 )
 
-// validateLDAP is the LDAP part of validate_security_config. LDAP sign-in
-// is not part of this preview, but a configuration the Python release
-// refuses is refused here as well.
+// validateLDAP is the LDAP part of validate_security_config: a
+// configuration the Python release refuses is refused here as well.
 func validateLDAP(l *ldapSettings) error {
 	for _, s := range []struct{ name, value string }{
 		{"LDAP_URL", l.url}, {"LDAP_PROVIDER_ID", l.providerID}, {"LDAP_BASE_DN", l.baseDN},

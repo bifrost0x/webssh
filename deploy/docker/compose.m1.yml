@@ -1,6 +1,6 @@
-# WebSSH Go preview (M1) for a trusted LAN; guide: docs/preview/m1.md.
-# This is a preview, not a release:
-# it runs next to an existing Python instance and never uses its volumes.
+# WebSSH 3.4 trial next to an existing Python instance in a trusted LAN
+# (the M1 test setup); it never uses the Python volumes. The supported
+# trial on a copy of existing data is in docs/operations-guide.md.
 #
 # Start from the repository root:
 #   docker compose -f deploy/docker/compose.m1.yml up -d --build
@@ -12,12 +12,12 @@
 # on 5000. The volumes have fixed names, webssh_go_data and
 # webssh_go_recovery, separate from the Python volumes.
 #
-# Trying existing data: the preview writes to its volume, so it gets a copy.
+# Trying existing data: the trial writes to its volume, so it gets a copy.
 # Stop the Python container first (an open database journal or lock stops
 # the migration), find its data volume with "docker volume ls" (with
 # docker-compose.yml it is <project>_webssh_data, for example
 # webssh_webssh_data) and copy it into a fresh webssh_go_data before the
-# first start of the preview. The source is mounted read-only; Docker seeds
+# first start of the trial. The source is mounted read-only; Docker seeds
 # the new volume from the image, so it belongs to 1000:1000:
 #   docker stop webssh
 #   docker run --rm --entrypoint /bin/sh \

@@ -226,8 +226,8 @@ func TestUsageWarnings(t *testing.T) {
 	}
 }
 
-// Every variable is either acted on or obsolete; the preview category of
-// accepted variables without effect is gone.
+// Every variable is either acted on or obsolete; there is no category of
+// accepted variables without effect.
 func TestEveryVariableHasEffect(t *testing.T) {
 	for name, u := range variables {
 		if u != used && u != obsolete && u != internal {

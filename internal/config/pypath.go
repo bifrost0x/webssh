@@ -42,8 +42,8 @@ func pyPath(s string) string {
 
 // pyTempDir approximates tempfile.gettempdir(): the first of TMPDIR, TEMP
 // and TMP, else /tmp. Python also probes that the directory is writable;
-// the value only names the backup work area, which this preview does not
-// use.
+// here the value only names the backup work area, and a directory that
+// cannot be written fails where it is used, so the probe is left out.
 func pyTempDir(get LookupFunc) string {
 	for _, name := range []string{"TMPDIR", "TEMP", "TMP"} {
 		if v, ok := get(name); ok && v != "" {

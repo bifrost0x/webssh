@@ -1,4 +1,4 @@
-# HTTPS for the M1 preview in the LAN, as an overlay of compose.m1.yml:
+# HTTPS for the M1 trial in the LAN, as an overlay of compose.m1.yml:
 #
 #   WEBSSH_GO_TLS_HOST=webssh.lan docker compose \
 #     -f deploy/docker/compose.m1.yml -f deploy/docker/compose.m1.tls.yml up -d --build
