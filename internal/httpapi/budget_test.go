@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/principal"
 )
 
 func TestBodyBudget(t *testing.T) {
@@ -124,6 +125,76 @@ func TestExhaustedBudgetAnswersBusy(t *testing.T) {
 	}
 	if w := do(100); w.Code != http.StatusOK {
 		t.Fatalf("the budget was not returned after the request: %d", w.Code)
+	}
+}
+
+// FB8-2: one account holds at most its share of the signed-in budget,
+// across all of its sessions; another account still gets the rest. The
+// share is returned when the request ends.
+func TestUserShareOfTheBodyBudget(t *testing.T) {
+	e := newEdge(t)
+	entered, leave := make(chan struct{}), make(chan struct{})
+	e.h.Mux().HandleFunc("PUT /api/profiles/{id}/context", func(w http.ResponseWriter, r *http.Request) {
+		entered <- struct{}{}
+		<-leave
+		echo(w, r)
+	})
+	e.h.Mux().HandleFunc("POST /api/account/preferences", echo)
+	e.h.signedIn = newBodyBudget(1000)
+	e.h.users = newUserBudgets(100)
+	e.h.budgetWait = 20 * time.Millisecond
+	post := func(p principal.Principal, cookie string, size int) *httptest.ResponseRecorder {
+		binding, token := e.csrf(p.SessionID)
+		return e.do(req{method: http.MethodPost, target: "/api/account/preferences", body: strings.Repeat("a", size), token: cookie,
+			binding: binding, headers: map[string]string{"X-CSRFToken": token, "Accept": "application/json"}})
+	}
+	binding, token := e.csrf(alice.SessionID)
+	held := make(chan int)
+	go func() {
+		held <- e.do(req{method: http.MethodPut, target: "/api/profiles/7/context", body: strings.Repeat("a", 80), token: "tok-alice",
+			binding: binding, headers: map[string]string{"X-CSRFToken": token, "Accept": "application/json"}}).Code
+	}()
+	<-entered
+	if w := post(aliceTwo, "tok-alice-2", 21); w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") != "1" {
+		t.Fatalf("a second session of the same account went over its share: %d", w.Code)
+	}
+	if w := post(aliceTwo, "tok-alice-2", 20); w.Code != http.StatusOK {
+		t.Fatalf("within the account's share: %d", w.Code)
+	}
+	if w := post(root, "tok-root", 100); w.Code != http.StatusOK {
+		t.Fatalf("another account was refused while the first held its share: %d", w.Code)
+	}
+	close(leave)
+	if code := <-held; code != http.StatusOK {
+		t.Fatalf("held request: %d", code)
+	}
+	if w := post(alice, "tok-alice", 100); w.Code != http.StatusOK {
+		t.Fatalf("the share was not returned after the request: %d", w.Code)
+	}
+	if n := len(e.h.users.users); n != 0 {
+		t.Fatalf("%d account entries remain without a body in flight", n)
+	}
+}
+
+func TestUserBudgets(t *testing.T) {
+	u := newUserBudgets(10)
+	if !u.acquire(t.Context(), 1, 25, time.Millisecond) {
+		t.Fatal("a body larger than the share must take the whole share, not wait forever")
+	}
+	if u.acquire(t.Context(), 1, 1, 5*time.Millisecond) {
+		t.Fatal("the share is taken")
+	}
+	if !u.acquire(t.Context(), 2, 10, time.Millisecond) {
+		t.Fatal("another account has its own share")
+	}
+	u.release(1, 25)
+	u.release(2, 10)
+	if !u.acquire(t.Context(), 1, 10, time.Millisecond) {
+		t.Fatal("the share was not returned")
+	}
+	u.release(1, 10)
+	if len(u.users) != 0 {
+		t.Fatalf("entries remain: %v", u.users)
 	}
 }
 

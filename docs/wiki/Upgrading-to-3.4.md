@@ -235,7 +235,7 @@ that call it directly see these changes:
 | # | Change | Kind |
 |---|---|---|
 | U89 | Every JSON error has the form `{"success": false, "code": "…", "error": "…"}`; texts are unchanged. An unknown API path answers JSON 404 instead of an HTML page, and an oversized body 413 with the code `too_large`. | fix |
-| U96 | A request body is read only after the session and the access level were checked: a request without the needed session gets 401 or 403 without its body being read. Sign-in, registration and passkey sign-in bodies may be at most 16 KiB. While the server holds its maximum of buffered request bodies (64 MiB for signed-in users, 16 MiB without a session), a request waits up to 5 seconds and then gets 503 `unavailable` with `Retry-After`. | fix |
+| U96 | A request body is read only after the session and the access level were checked: a request without the needed session gets 401 or 403 without its body being read. Sign-in, registration and passkey sign-in bodies may be at most 16 KiB. While the server holds its maximum of buffered request bodies (64 MiB for signed-in users, of which one account holds at most 8 MiB across all its sessions, and 16 MiB without a session), a request waits up to 5 seconds and then gets 503 `unavailable` with `Retry-After`. | fix |
 | U90 | Request bodies are read strictly: duplicate member names, `NaN`, `Infinity`, lone surrogates and trailing data are refused with 400 in most routes. A TOTP code must be a JSON string. | fix |
 | U91 | Routes and live events without a caller in the interface are removed (`U43`, and the file events `check_exists` and `get_file_stat`). | removed |
 

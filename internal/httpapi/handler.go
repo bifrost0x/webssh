@@ -63,8 +63,10 @@ type Handler struct {
 	// streamed are the routes whose body the handler reads itself
 	// (StreamBody).
 	streamed map[string]bool
-	// signedIn and anonymous bound the buffered bodies in flight.
+	// signedIn and anonymous bound the buffered bodies in flight, users
+	// the share of one account within signedIn.
 	signedIn, anonymous *bodyBudget
+	users               *userBudgets
 	budgetWait          time.Duration
 	ready               *readiness
 	// signInRequired: Options.SignInRequired.
@@ -104,6 +106,7 @@ func New(o Options) (*Handler, error) {
 
 		signedIn:  newBodyBudget(signedInBodyBudget),
 		anonymous: newBodyBudget(anonymousBodyBudget), budgetWait: bodyBudgetWait,
+		users: newUserBudgets(userBodyShare),
 	}
 	if h.session.name == "" {
 		return nil, errors.New("httpapi: the session cookie name is empty")
@@ -246,16 +249,13 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 			h.tooLarge(w, r)
 			return
 		}
-		budget := h.anonymous
-		if signedIn {
-			budget = h.signedIn
-		}
 		reserved := bodyReservation(r, limit)
-		if !budget.acquire(r.Context(), reserved, h.budgetWait) {
+		release, ok := h.reserveBody(r, p, signedIn, reserved)
+		if !ok {
 			h.busy(w, r)
 			return
 		}
-		defer budget.release(reserved)
+		defer release()
 		b, ok, err := readBody(w, r, limit)
 		if err != nil {
 			// The client stopped sending or the read deadline passed.
@@ -273,6 +273,32 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.mux.ServeHTTP(w, r)
+}
+
+// reserveBody reserves n bytes for the body of r: from the anonymous
+// budget without a session, otherwise from the account's share first and
+// then from the signed-in budget, both within one wait. The returned
+// function gives the bytes back.
+func (h *Handler) reserveBody(r *http.Request, p principal.Principal, signedIn bool, n int64) (func(), bool) {
+	ctx := r.Context()
+	if !signedIn {
+		if !h.anonymous.acquire(ctx, n, h.budgetWait) {
+			return nil, false
+		}
+		return func() { h.anonymous.release(n) }, true
+	}
+	deadline := time.Now().Add(h.budgetWait)
+	if !h.users.acquire(ctx, p.UserID, n, h.budgetWait) {
+		return nil, false
+	}
+	if !h.signedIn.acquire(ctx, n, time.Until(deadline)) {
+		h.users.release(p.UserID, n)
+		return nil, false
+	}
+	return func() {
+		h.signedIn.release(n)
+		h.users.release(p.UserID, n)
+	}, true
 }
 
 func unsafeMethod(m string) bool {
