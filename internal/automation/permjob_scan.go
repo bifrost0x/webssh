@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 
@@ -143,9 +144,7 @@ func (j *PermissionJobs) scan(ctx context.Context, job *permJob, roots []string,
 func (j *PermissionJobs) preflight(ctx context.Context, job *permJob, src PermSource, check func() error) error {
 	j.mu.Lock()
 	guards := make(map[string]permSnapshot, len(job.guards))
-	for k, v := range job.guards {
-		guards[k] = v
-	}
+	maps.Copy(guards, job.guards)
 	plan := slices.Clone(job.plan)
 	j.mu.Unlock()
 	changed := fault.New(fault.MetadataChanged, "")

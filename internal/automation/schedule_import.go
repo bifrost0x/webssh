@@ -62,9 +62,9 @@ func SchedulesTx(ctx context.Context, tx *store.Tx) ([]StoredSchedule, error) {
 	out := make([]StoredSchedule, 0, len(rows))
 	for _, r := range rows {
 		a := r.Approval
-		out = append(out, StoredSchedule{ImportedSchedule: ImportedSchedule{ID: r.ID, UserID: r.UserID, Revision: r.Revision,
+		out = append(out, StoredSchedule{ID: r.ID, UserID: r.UserID, Revision: r.Revision,
 			Enabled: r.Enabled, Cron: r.Cron, Zone: r.Zone, NextAt: r.NextAt, LastStatus: r.LastStatus, Book: a.Book,
-			Targets: a.Targets, KeyDigests: a.KeyDigests, Binding: a.Binding, Policy: a.Policy, Stale: a.Stale},
+			Targets: a.Targets, KeyDigests: a.KeyDigests, Binding: a.Binding, Policy: a.Policy, Stale: a.Stale,
 			Claimed: r.ClaimID.Valid, AccountTuple: a.Account})
 	}
 	return out, nil

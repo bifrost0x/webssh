@@ -124,7 +124,7 @@ func TestSchedulesMigrateGoldenAfterGlobalSignOut(t *testing.T) {
 		t.Fatalf("%d of %d schedules migrated", len(stored), len(rows))
 	}
 	e := m.entity(t, "E15")
-	if len(e.Flagged) != len(rows) {
+	if len(e.Flagged) != len(rows) || slices.ContainsFunc(e.Flagged, func(f Flag) bool { return !strings.HasSuffix(f.Reason, ": account_changed") }) {
 		t.Fatalf("flags %+v", e.Flagged)
 	}
 	sched, wf := migratedSchedules(t, m, time.Unix(int64(stored[0].NextAt)+1, 0).Add(365*24*time.Hour))

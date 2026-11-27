@@ -73,7 +73,9 @@ func (noWorkflows) Review(context.Context, principal.Principal, jsontext.Value) 
 	return Snapshot{}, fault.New(fault.Unavailable, "")
 }
 
-func (noWorkflows) Current(context.Context, int64, Snapshot) error { return fault.New(fault.Unavailable, "") }
+func (noWorkflows) Current(context.Context, int64, Snapshot) error {
+	return fault.New(fault.Unavailable, "")
+}
 
 func (noWorkflows) PrepareManual(context.Context, principal.Principal, Snapshot, func(context.Context) error) (jsontext.Value, error) {
 	return nil, fault.New(fault.Unavailable, "")
