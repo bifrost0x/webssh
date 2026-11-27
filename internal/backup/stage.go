@@ -21,6 +21,13 @@ var ErrIncompatible = fmt.Errorf("%w: backup data schema is newer than this WebS
 // directory, beside the database it replaces (same file system).
 const stagedPrefix = ".restore-"
 
+// stagedSecretName and previousSecretName are the archive's SECRET_KEY
+// and the replaced DATA_DIR/secret_key in the staging directory.
+const (
+	stagedSecretName   = "secret_key"
+	previousSecretName = "previous-secret_key"
+)
+
 // Installation is the live installation a restore goes into.
 type Installation struct {
 	DataDir string
@@ -28,6 +35,12 @@ type Installation struct {
 	// it came from the environment.
 	SecretKey         []byte
 	EnvironmentSecret bool
+	// AdoptSecret is true when SECRET_KEY comes from DATA_DIR/secret_key:
+	// a Go archive made with another SECRET_KEY then brings its own, as
+	// the Python release restored the archive's secret_key file. With
+	// SECRET_KEY from the environment such an archive is refused, since
+	// the environment would still win at the next start.
+	AdoptSecret bool
 	// MaterialPath and Material are the installation's keyring material
 	// (keyring.MaterialLocation); Material is nil on a new installation.
 	MaterialPath string
@@ -95,8 +108,11 @@ type Staged struct {
 	// Material is the staged keyring material file, or "" when the
 	// installation's material stays.
 	Material string
-	KeyID    string
-	Export   bool
+	// Secret is true when the staging directory holds the archive's
+	// SECRET_KEY (stagedSecretName), which replaces DATA_DIR/secret_key.
+	Secret bool
+	KeyID  string
+	Export bool
 	// Report is the migration report of a Python archive (JSON).
 	Report string
 }
@@ -137,10 +153,23 @@ func Stage(ctx context.Context, in *Installation, req StageRequest) (st Staged, 
 	var material []byte
 	var reason string
 	if family == familyGo {
-		v, err := VerifyWith(ctx, req.Archive, VerifyOptions{Secret: in.SecretKey, Material: in.Material,
-			Probes: in.Probes, Limits: in.Limits, Database: db})
+		v, err := VerifyWith(ctx, req.Archive, VerifyOptions{Secret: in.SecretKey, AdoptSecret: in.AdoptSecret,
+			Material: in.Material, Probes: in.Probes, Limits: in.Limits, Database: db})
+		if errors.Is(err, ErrSecretMismatch) && in.EnvironmentSecret {
+			return st, fmt.Errorf("%w; SECRET_KEY is set in the environment and would stay active: "+
+				"set it to the archive's SECRET_KEY, or unset it to restore with the archive's key", err)
+		}
 		if err != nil {
 			return st, err
+		}
+		if !bytes.Equal(v.Secret, in.SecretKey) {
+			if err := checkSecret(v.Secret); err != nil {
+				return st, fmt.Errorf("%w: %w", ErrInvalid, err)
+			}
+			st.Secret = true
+			if err := writePrivate(filepath.Join(st.Dir, stagedSecretName), v.Secret); err != nil {
+				return st, fmt.Errorf("backup: stage the SECRET_KEY: %w", err)
+			}
 		}
 		st.Kind, st.KeyID, material, reason = KindGo, v.Ring.KeyID(), v.Material, v.Manifest.Reason
 		st.Export = req.Portable || reason == ReasonExport

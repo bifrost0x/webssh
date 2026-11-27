@@ -48,6 +48,9 @@ type Verified struct {
 	Material []byte
 	// Ring is the keyring the archive's records belong to.
 	Ring *keyring.Ring
+	// Secret is the SECRET_KEY that opened the archive: its own, or
+	// VerifyOptions.Secret for an archive without one.
+	Secret []byte
 }
 
 // VerifyOptions configure VerifyWith.
@@ -56,6 +59,11 @@ type VerifyOptions struct {
 	// carry this one (ErrSecretMismatch); an archive without one is
 	// opened with it. Nil accepts the archive's SECRET_KEY.
 	Secret []byte
+	// AdoptSecret accepts an archive whose SECRET_KEY differs from Secret
+	// (the restore on an installation that keeps SECRET_KEY in
+	// DATA_DIR/secret_key, which the Python release replaced with the
+	// archive's file).
+	AdoptSecret bool
 	// Material opens an archive without keyring material.
 	Material []byte
 	// RequireSecret refuses an archive without SECRET_KEY and material
@@ -103,7 +111,7 @@ func VerifyWith(ctx context.Context, path string, o VerifyOptions) (Verified, er
 	if err != nil {
 		return v, err
 	}
-	if v.Ring, v.Material, err = openRing(v.Manifest, members, o); err != nil {
+	if v.Ring, v.Material, v.Secret, err = openRing(v.Manifest, members, o); err != nil {
 		return v, err
 	}
 	if v.SealedChecked, err = checkDatabase(ctx, dbCopy, v.Ring, o.Probes); err != nil {
@@ -117,16 +125,16 @@ func VerifyWith(ctx context.Context, path string, o VerifyOptions) (Verified, er
 	return v, nil
 }
 
-func openRing(m Manifest, members map[string][]byte, o VerifyOptions) (*keyring.Ring, []byte, error) {
+func openRing(m Manifest, members map[string][]byte, o VerifyOptions) (*keyring.Ring, []byte, []byte, error) {
 	secret, material := members[SecretName], members[MaterialName]
 	if o.RequireSecret && (secret == nil || material == nil) {
-		return nil, nil, fmt.Errorf("%w: SECRET_KEY and the material are required", ErrInvalid)
+		return nil, nil, nil, fmt.Errorf("%w: SECRET_KEY and the material are required", ErrInvalid)
 	}
 	switch {
-	case secret != nil && o.Secret != nil && subtle.ConstantTimeCompare(secret, o.Secret) != 1:
-		return nil, nil, ErrSecretMismatch
+	case secret != nil && o.Secret != nil && !o.AdoptSecret && subtle.ConstantTimeCompare(secret, o.Secret) != 1:
+		return nil, nil, nil, ErrSecretMismatch
 	case secret == nil && o.Secret == nil:
-		return nil, nil, fmt.Errorf("%w: the archive holds no SECRET_KEY", ErrInvalid)
+		return nil, nil, nil, fmt.Errorf("%w: the archive holds no SECRET_KEY", ErrInvalid)
 	case secret == nil:
 		secret = o.Secret
 	}
@@ -134,16 +142,16 @@ func openRing(m Manifest, members map[string][]byte, o VerifyOptions) (*keyring.
 		material = o.Material
 	}
 	if material == nil {
-		return nil, nil, fmt.Errorf("%w: the archive holds no keyring material, and none was given", ErrInvalid)
+		return nil, nil, nil, fmt.Errorf("%w: the archive holds no keyring material, and none was given", ErrInvalid)
 	}
 	ring, err := keyring.Open(secret, material)
 	if err == nil {
 		err = ring.Verify(m.KeyID)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %w", ErrKeyMismatch, err)
+		return nil, nil, nil, fmt.Errorf("%w: %w", ErrKeyMismatch, err)
 	}
-	return ring, material, nil
+	return ring, material, secret, nil
 }
 
 // fixedMembers are the members before the kept legacy files, in order,

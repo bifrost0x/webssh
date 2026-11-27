@@ -1069,9 +1069,13 @@ and `backup_download` (MAC). New store owners: `authgithub`, `authldap`,
   (`internal/backup/backup.go`). Online backups snapshot the live database
   through `backup.Snapshotter` (`internal/store`, `VACUUM INTO`), write the
   archive with mode 0600 into `BACKUP_TEMP_DIR`, and are downloaded once
-  with a token stored as its MAC (`keyring.BackupDownload`) after the
-  `backup.download` step-up. `--without-secret-key` leaves out
-  `data/secret_key` and the keyring material (D-08).
+  after the `backup.download` step-up. Operations live in memory only,
+  bound to the account and the browser session, as in Python; the
+  download needs no stored token (`keyring.BackupDownload` stays unused).
+  `--without-secret-key` leaves out `data/secret_key` only; the keyring
+  material stays in the archive, so the same `SECRET_KEY` opens it on
+  another host (D-08, OP1-2). Uploads are streamed past the edge
+  (`httpapi.Handler.StreamBody`).
 - **Restore** reads Go archives strictly (D-30: no absolute paths, no
   `..`, no links or devices, every member in the manifest) within
   `backup.Limits` (the `BACKUP_MAX_*` values and defaults of the Python
@@ -1080,19 +1084,45 @@ and `backup_download` (MAC). New store owners: `authgithub`, `authldap`,
   `internal/migrate/legacy` with the steps of the one-time migration and
   connected in `cmd/webssh/wire_backup.go`; `internal/backup` never imports
   it.
+- **`SECRET_KEY` of a Go archive (OP1-1).** The rule of the Python
+  release, which restored the archive's `data/secret_key` file: with
+  `SECRET_KEY` from `DATA_DIR/secret_key` an archive made with another key
+  brings its own (`Installation.AdoptSecret`). It is staged beside the
+  database, installed during the activation after the database and the
+  material (checkpoints `previous-secret-kept`, `secret-installed`; the
+  replaced file is kept for a rollback), and the start reads the
+  configuration again after activating such a restore
+  (`activateSecretRestore`, before the migration state machine). With
+  `SECRET_KEY` from the environment the environment would still win at the
+  next start, so an archive of another key is refused before anything
+  changes (`ErrSecretMismatch`, fix: Python restored and then could not
+  decrypt). An archive without `SECRET_KEY` opens with the active key.
 - **States.** Operations use the Python statuses (`pending`, `running`,
   `uploading`, `verifying`, `verified`, `ready`, `downloading`,
   `restoring`, `failed`); `Active()` marks those that cannot be cancelled.
   A restore has `preparing`, `in_progress`, `succeeded`, `failed`,
   `rollback_failed`; the blocking ones keep the server in maintenance after
-  a restart until it is finished (table `backup_restore`). A legacy
+  a restart until it is finished (journal `go/restore-status.json`, read
+  before the database is opened, which the restore replaces; OP1-3). A legacy
   `restore-status.json` is only read by the migration (A10).
 - **Maintenance.** `backup.Maintenance` (`Enter(ctx, reason) (leave,
   error)`, `Active()`), provided by `cmd/webssh`: `/ready` answers 503,
   every other route `503 maintenance`, realtime connections close with
-  4503 and new ones are refused. Reasons `restore`, `rotation`,
+  4503 (`realtime.Server.CloseAll`, which keeps accepting afterwards) and
+  new ones are refused. Reasons `restore`, `rotation`,
   `legacy_source_changed`; only one at a time (`busy` otherwise); the
-  last one ends only with a restart.
+  last one ends only with a restart and takes over from any other
+  reason. During a restore `GET /admin/api/backups/restore/status` stays
+  reachable.
+- **Secret rotation** (`rotate-secret-key`, OP2): `backup.RotateSecret`
+  with one `RotationStep` per package (`vault.ResealKeysTx`,
+  `ResealCredentialsTx`, `totp.ResealTx`, `github.ResealTx`,
+  `session.EndAllTx`, `stepup.ForgetTx`, `auth.ForgetPendingTx`,
+  `webauthn.ForgetChallengesTx`), the pending secret `go/rotation-secret`
+  and `backup.CompleteRotation` at the start. Every table of the build is
+  classified in `TestRotationCoversEveryTable`; the W3 tables (automation,
+  commands) hold nothing the keyring sealed or MACed, and transfer tokens
+  and backup operations live in memory.
 - **Audit.** `internal/audit/export.go`: `MaxExportScan` 50,000 lines,
   `ExportFilter{From, To, Level, Query}`, `ExportMeta{Scanned, Truncated}`
   with `Completeness()` for `X-WebSSH-Audit-Completeness`, `Record` with

@@ -38,10 +38,14 @@ type Journal struct {
 	MaterialPath     string `json:"material_path,omitempty"`
 	PreviousMaterial string `json:"previous_material,omitempty"`
 	KeyID            string `json:"key_id,omitempty"`
-	StartedAt        string `json:"started_at"`
-	UpdatedAt        string `json:"updated_at"`
-	Message          string `json:"message"`
-	Code             string `json:"code,omitempty"`
+	// Secret says the staging directory holds the archive's SECRET_KEY,
+	// which replaces DATA_DIR/secret_key (the replaced one is kept there
+	// until the restore is finished).
+	Secret    bool   `json:"secret,omitempty"`
+	StartedAt string `json:"started_at"`
+	UpdatedAt string `json:"updated_at"`
+	Message   string `json:"message"`
+	Code      string `json:"code,omitempty"`
 }
 
 // ErrJournal reports a journal that does not parse; it counts as a
@@ -137,7 +141,7 @@ func Begin(goDir, operationID string, now time.Time) error {
 // completes or is rolled back after any crash.
 func Commit(goDir string, st Staged, in *Installation, now time.Time) error {
 	j := Journal{OperationID: st.OperationID, State: RestoreInProgress, Kind: st.Kind, Staged: filepath.Base(st.Dir),
-		KeyID: st.KeyID, Message: "Restoring persistent state"}
+		KeyID: st.KeyID, Secret: st.Secret, Message: "Restoring persistent state"}
 	if st.Material != "" {
 		j.Material, j.MaterialPath = st.Material, in.MaterialPath
 		j.PreviousMaterial = previousMaterialPath(in.MaterialPath, st.OperationID)

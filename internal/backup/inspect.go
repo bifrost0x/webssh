@@ -53,7 +53,7 @@ func Inspect(ctx context.Context, in *Installation, archive string) (Summary, er
 	}
 	defer os.RemoveAll(tmp)
 	db := filepath.Join(tmp, "webssh.db")
-	v, err := VerifyWith(ctx, archive, VerifyOptions{Secret: in.SecretKey, Material: in.Material, Probes: in.Probes,
+	v, err := VerifyWith(ctx, archive, VerifyOptions{Secret: in.SecretKey, AdoptSecret: in.AdoptSecret, Material: in.Material, Probes: in.Probes,
 		Limits: in.Limits, Database: db})
 	if err != nil {
 		return Summary{}, err

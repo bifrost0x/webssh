@@ -43,6 +43,18 @@ func bootstrapConfig(lookup config.LookupFunc, log *slog.Logger) (config.Config,
 			return config.Config{}, err
 		}
 	}
+	switch done, err := activateSecretRestore(context.Background(), cfg, lookup, log); {
+	case err != nil:
+		return config.Config{}, err
+	case done:
+		log.Info("restore", "message", "the restored backup brought its own SECRET_KEY; it is now in DATA_DIR/secret_key")
+		if cfg, warnings, err = config.Bootstrap(lookup, func(dir string) error {
+			_, err := platform.PrepareDataDir(dir)
+			return err
+		}); err != nil {
+			return config.Config{}, err
+		}
+	}
 	for _, w := range warnings {
 		log.Warn("configuration", "kind", string(w.Kind), "variable", w.Variable, "message", w.Message)
 	}

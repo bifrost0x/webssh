@@ -40,6 +40,14 @@ func loadConfig() (config.Config, error) {
 	case err != nil:
 		return cfg, fmt.Errorf("complete the interrupted secret rotation: %w", err)
 	case done:
+		if cfg, err = read(); err != nil {
+			return cfg, err
+		}
+	}
+	switch done, err := activateSecretRestore(context.Background(), cfg, os.LookupEnv, slog.Default()); {
+	case err != nil:
+		return cfg, err
+	case done:
 		return read()
 	}
 	return cfg, nil

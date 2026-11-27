@@ -115,7 +115,8 @@ func backupInstallation(cfg config.Config, lookup config.LookupFunc, live *store
 		return nil, err
 	}
 	return &backup.Installation{DataDir: cfg.DataDir, SecretKey: cfg.SecretKey.Bytes(),
-		EnvironmentSecret: cfg.SecretSource == config.SecretFromEnvironment, MaterialPath: path, Material: material,
+		EnvironmentSecret: cfg.SecretSource == config.SecretFromEnvironment, AdoptSecret: cfg.SecretSource == config.SecretFromFile,
+		MaterialPath: path, Material: material,
 		Schemas: schemas(), Prepare: restorePrepare(live), Probes: []backup.Probe{vault.ProbeSealed, totp.ProbeSealed},
 		Limits: backupLimits(cfg), Legacy: &legacy.Restorer{Options: o, Work: work}, Work: work}, nil
 }

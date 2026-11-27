@@ -18,6 +18,8 @@ const (
 	PointDatabaseRenamed   = "database-renamed"
 	PointPreviousMaterial  = "previous-material-kept"
 	PointMaterialInstalled = "material-installed"
+	PointPreviousSecret    = "previous-secret-kept"
+	PointSecretInstalled   = "secret-installed"
 	PointJournalDone       = "journal-finished"
 )
 
@@ -138,6 +140,15 @@ func apply(dataDir, goDir string, j *Journal, point func(string)) error {
 		}
 	}
 	point(PointDatabaseRenamed)
+	if err := applyMaterial(dataDir, j, point); err != nil {
+		return err
+	}
+	return applySecret(dataDir, dir, j, point)
+}
+
+// applyMaterial installs the staged keyring material, keeping the
+// replaced one for a rollback.
+func applyMaterial(dataDir string, j *Journal, point func(string)) error {
 	if j.Material == "" || !exists(j.Material) {
 		return nil
 	}
@@ -160,6 +171,37 @@ func apply(dataDir, goDir string, j *Journal, point func(string)) error {
 	}
 	point(PointMaterialInstalled)
 	return removeIfPresent(j.Material)
+}
+
+// applySecret installs the archive's SECRET_KEY as DATA_DIR/secret_key,
+// keeping the replaced file in the staging directory for a rollback. A
+// staged secret that is gone was installed by an earlier attempt.
+func applySecret(dataDir, dir string, j *Journal, point func(string)) error {
+	staged := filepath.Join(dir, stagedSecretName)
+	if !j.Secret || !exists(staged) {
+		return nil
+	}
+	file := filepath.Join(dataDir, secretFileName)
+	prev := filepath.Join(dir, previousSecretName)
+	current, err := readSecretFile(file)
+	if err != nil {
+		return err
+	}
+	if current != nil && !exists(prev) {
+		if err := writePrivate(prev, current); err != nil {
+			return fmt.Errorf("backup: keep the previous SECRET_KEY: %w", err)
+		}
+	}
+	point(PointPreviousSecret)
+	secret, err := readSecretFile(staged)
+	if err != nil || secret == nil {
+		return errors.Join(errors.New("backup: the staged SECRET_KEY is unreadable"), err)
+	}
+	if err := installSecretFile(file, secret); err != nil {
+		return err
+	}
+	point(PointSecretInstalled)
+	return removeRegular(staged)
 }
 
 // rollback puts back the previous database and material of an activation
@@ -192,6 +234,15 @@ func rollback(dataDir, goDir string, j *Journal) error {
 			}
 		}
 		if err := syncDir(goDir); err != nil {
+			return err
+		}
+	}
+	if prev := filepath.Join(dir, previousSecretName); j.Secret && exists(prev) {
+		secret, err := readSecretFile(prev)
+		if err != nil || secret == nil {
+			return errors.Join(errors.New("backup: the previous SECRET_KEY is unreadable"), err)
+		}
+		if err := installSecretFile(filepath.Join(dataDir, secretFileName), secret); err != nil {
 			return err
 		}
 	}

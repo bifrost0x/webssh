@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/backup"
+	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/keyring"
+	"github.com/bifrost0x/webssh/internal/migrate/legacy"
 )
 
 // activateRestore is the legacy.Options.BeforeStart hook: with the Go
@@ -39,4 +42,27 @@ func activateRestore(dataDir string, log *slog.Logger) func(context.Context) err
 // maintenance after the start.
 func restoreBlocked(dataDir string) (bool, string) {
 	return backup.Blocked(filepath.Join(dataDir, keyring.GoDirName))
+}
+
+// activateSecretRestore activates, before the configuration is used, a
+// restore that replaces DATA_DIR/secret_key with the archive's SECRET_KEY:
+// the Go lock is taken and released again around backup.Activate. The
+// caller reads the configuration again when it returns true, so that the
+// start goes on with the restored secret (the Python release read the
+// restored secret_key file at its next start).
+func activateSecretRestore(ctx context.Context, cfg config.Config, lookup config.LookupFunc, log *slog.Logger) (bool, error) {
+	j, err := backup.ReadJournal(filepath.Join(cfg.DataDir, keyring.GoDirName))
+	if err != nil || j == nil || j.State != backup.RestoreInProgress || !j.Secret {
+		// An unreadable journal is reported by the activation at the start.
+		return false, nil
+	}
+	o, err := migrationOptions(cfg, lookup)
+	if err != nil {
+		return false, err
+	}
+	o.BeforeStart = activateRestore(cfg.DataDir, log)
+	if err := legacy.Exclusive(ctx, o, func(context.Context) error { return nil }); err != nil {
+		return false, fmt.Errorf("activate the restore: %w", err)
+	}
+	return true, nil
 }
