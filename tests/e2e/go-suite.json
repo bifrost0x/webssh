@@ -135,13 +135,8 @@
     {"file": "file-mutations.spec.js", "exclude": []},
     {"file": "permission-jobs.spec.js", "exclude": []},
     {"file": "automation-polling.spec.js", "exclude": []},
-    {"file": "automation-state-races.spec.js", "exclude": [
-      {"title": "schedule editing cannot replace a workflow while its save is pending", "reason": "opens the automation page (GET /automation and the automation template flag)", "package": "AU1"},
-      {"title": "Automation follows every application language", "reason": "opens the automation page (GET /automation and the automation template flag)", "package": "AU1"}
-    ]},
-    {"file": "automation-overview-stale.spec.js", "exclude": [
-      {"title": "overview keeps the unavailable automation status through language changes until a successful refresh", "reason": "the overview reads the automation state through the automation area (WebSSHAutomation), which the Go page offers only once that area is built", "package": "AU1"}
-    ]},
+    {"file": "automation-state-races.spec.js", "exclude": []},
+    {"file": "automation-overview-stale.spec.js", "exclude": []},
     {"file": "file-edit-review.spec.js", "exclude": []},
     {"file": "file-keyboard-scope.spec.js", "exclude": []},
     {"file": "file-connection-focus.spec.js", "exclude": []},
@@ -170,15 +165,8 @@
     {"file": "workspace-performance.spec.js", "exclude": []},
     {"file": "palette-navigation.spec.js", "exclude": []},
     {"file": "automation.spec.js", "exclude": []},
-    {"file": "automation-real-journey.spec.js", "exclude": [
-      {"title": "own command set through real backend SSH run and exact overview history link", "reason": "commands and command sets (C-CMD): the page lists and resolves the user's command sets", "package": "CM1"},
-      {"title": "real parameterized command set imports server-quoted values and cancellation preserves the draft", "reason": "commands and command sets (C-CMD): the page lists and resolves the user's command sets", "package": "CM1"}
-    ]},
-    {"file": "automation-review-context.spec.js", "exclude": [
-      {"title": "delayed review rejects changed schedule context", "reason": "automation schedules (C-AUTO-06, /api/automation/schedules answers 501)", "package": "AU2"},
-      {"title": "delayed review rejects changed navigation context", "reason": "reviews a schedule: automation schedules (C-AUTO-06, /api/automation/schedules answers 501)", "package": "AU2"},
-      {"title": "existing schedule edits persist in place and can be paused after reapproval", "reason": "automation schedules (C-AUTO-06, /api/automation/schedules answers 501)", "package": "AU2"}
-    ]},
+    {"file": "automation-real-journey.spec.js", "exclude": []},
+    {"file": "automation-review-context.spec.js", "exclude": []},
     {"file": "automation-native.spec.js", "exclude": []},
     {"file": "automation-editor-layout.spec.js", "exclude": []},
     {"file": "automation-editor-roundtrip.spec.js", "exclude": []},
@@ -187,12 +175,10 @@
     {"file": "automation-library-safety.spec.js", "exclude": []},
     {"file": "automation-templates.spec.js", "exclude": []},
     {"file": "automation-workspace.spec.js", "exclude": [
-      {"title": "workspace sequence and target inventory fit narrow and wide themes", "reason": "the preview notice raised by automation schedules (C-AUTO-06, /api/automation/schedules answers 501) takes the height the test measures", "package": "AU2"}
+      {"title": "workspace sequence and target inventory fit narrow and wide themes", "reason": "the preview notice (host discovery) takes the height the narrow layout measures (329.75 px against 240 at 360 px); the schedules part passes since W3", "package": "FE1"}
     ]},
     {"file": "automation-design.spec.js", "exclude": []},
-    {"file": "automation-followthrough.spec.js", "exclude": [
-      {"title": "source search preserves selected source and draft, without execution", "reason": "commands and command sets (C-CMD): the page lists and resolves the user's command sets as a third source group", "package": "CM1"}
-    ]},
+    {"file": "automation-followthrough.spec.js", "exclude": []},
     {"file": "automation-import-race.spec.js", "exclude": []},
     {"file": "automation-integrated-journey.spec.js", "exclude": []},
     {"file": "automation-lock-races.spec.js", "exclude": []},

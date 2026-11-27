@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 	"sync"
@@ -17,9 +16,9 @@ import (
 
 // AutomationPeer is the disposable loopback SSH server of the hook
 // automation_ssh_peer (tests/e2e/automation_fixture.py): user "fixture"
-// with the seeded key. A command is the script it reads on stdin; it
-// prints "fixture command completed", "fail" exits 2, "wait" waits until
-// the channel closes (at most 20 s).
+// with the seeded key. A command is the exec request, as the Python
+// fixture reads it; it prints "fixture command completed", "fail" exits 2,
+// "wait" waits until the channel closes (at most 20 s).
 type AutomationPeer struct {
 	ln       net.Listener
 	hostKey  ssh.Signer
@@ -139,31 +138,32 @@ func (p *AutomationPeer) conn(c net.Conn, cfg *ssh.ServerConfig) {
 
 func session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 	closed := make(chan struct{})
-	execed := make(chan struct{}, 1)
+	execed := make(chan string, 1)
 	go func() {
 		defer close(closed)
 		for r := range reqs {
-			ok := r.Type == "exec"
+			var req struct{ Command string }
+			ok := r.Type == "exec" && ssh.Unmarshal(r.Payload, &req) == nil
 			if r.WantReply {
 				_ = r.Reply(ok, nil)
 			}
 			if ok {
 				select {
-				case execed <- struct{}{}:
+				case execed <- req.Command:
 				default:
 				}
 			}
 		}
 	}()
+	var command string
 	select {
-	case <-execed:
+	case command = <-execed:
 	case <-closed:
 		_ = ch.Close()
 		return
 	}
-	script, _ := io.ReadAll(io.LimitReader(ch, 64<<10))
 	status := uint32(0)
-	switch string(script) {
+	switch command {
 	case "wait":
 		select {
 		case <-closed:
