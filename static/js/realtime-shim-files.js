@@ -220,15 +220,42 @@
         },
     });
 
+
+    // Permission changes and permission jobs (AU2, permissions.*). The
+    // answers are pushed as the Python events with the correlation members;
+    // failures are the generic error with the upper-case file codes.
+    const permissionFailure = operation => (failed, data) => {
+        const out = fileFailure(operation)(failed, data);
+        if (out.code === 'busy') out.code = 'BUSY';
+        return out;
+    };
+    const permissionEvent = (event, operation, type, names) => ({
+        type,
+        payload: data => pick(data, [...REF, ...names]),
+        push: [[event, (reply, data) => ({...withoutSuccess(reply), operation, ...pick(data, REF)})]],
+        errorEvent: true,
+        failure: permissionFailure(operation),
+    });
+    Object.assign(requests, {
+        get_file_permissions: permissionEvent('file_permissions', 'get_file_permissions', 'permissions.get', ['path']),
+        set_file_permissions: permissionEvent('file_permissions_changed', 'set_file_permissions', 'permissions.set', ['path', 'mode', 'expected_metadata']),
+        prepare_file_permissions: permissionEvent('file_permissions_job', 'prepare_file_permissions', 'permissions.job.prepare',
+            ['paths', 'recursive', 'file_mode', 'directory_mode']),
+        get_file_permissions_job: permissionEvent('file_permissions_job', 'get_file_permissions_job', 'permissions.job.get', ['job_id']),
+        // Paths and modes belong to the server's plan; only the job is sent.
+        apply_file_permissions_job: permissionEvent('file_permissions_job', 'apply_file_permissions_job', 'permissions.job.apply', ['job_id']),
+        cancel_file_permissions_job: permissionEvent('file_permissions_job', 'cancel_file_permissions_job', 'permissions.job.cancel', ['job_id']),
+    });
+
     return Object.freeze({
         requests: Object.freeze(requests),
         // Events the frontend sends without an acknowledgement and answers
         // with a listener; a local reply keeps those views from waiting.
         unavailable: Object.freeze({}),
         // Feature groups of the preview notice: what this build does not
-        // answer yet (transfers, permissions).
+        // answer yet (transfers).
         features: Object.freeze([
-            ['files', /^(prepare_transfer|cancel_transfer|transfer_server_to_server|get_file_permissions|set_file_permissions|prepare_file_permissions|get_file_permissions_job|apply_file_permissions_job|cancel_file_permissions_job)/],
+            ['files', /^(prepare_transfer|cancel_transfer|transfer_server_to_server)/],
         ]),
     });
 });

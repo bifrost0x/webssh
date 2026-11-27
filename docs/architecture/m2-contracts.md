@@ -1332,3 +1332,50 @@ session.
 | Action | Used by |
 |---|---|
 | `automation.schedule` | `internal/automation` |
+
+### Permission jobs
+
+`internal/automation`, compiled in `permjob_contract.go`
+(`app/permission_jobs.py`, C-SFTP-07). The file sources come through the
+consumer interface `PermSources` (`cmd/webssh` adapts
+`files.Registry.Resolve` with `files.CapChmod`; `files.Backend.Stat`
+without following, `OpenListing`, `Chmod`) and are usable only while the
+admin switch `sftp_chmod_enabled` (`SFTP_CHMOD_ENABLED`) is on, read on
+every request.
+
+- A job belongs to the user, the browser session, the realtime connection
+  and the source that prepared it; one active job per user and per
+  source (`CONFLICT`), two scans or applies at once (`BUSY`), quota
+  `background_job`. Closing the connection or ending the session cancels
+  it.
+- The scan freezes every object (files and directories with separate
+  modes, links counted and skipped, set-id and sticky bits refused) and
+  the state of every parent; at most 10 000 objects, depth 64, 4 MiB of
+  names, 90 seconds. The plan expires after 120 seconds (`EXPIRED`).
+- Apply changes exactly the plan, files first, then directories from the
+  deepest up, within 300 seconds; it stops at the first object or parent
+  whose state differs (`METADATA_CHANGED`), keeps what was changed and is
+  never retried. A reopened source is `METADATA_CHANGED`.
+- A single change (`permissions.set`) needs the metadata token of its
+  inspection (`permissions.get`, 60 seconds, HMAC with a key held only
+  in memory); a mismatch after the change is `MODE_MISMATCH` with
+  `details.actual_mode`.
+- The job workers belong to `PermissionJobs` and end with `Shutdown`; they
+  are not jobs of `internal/jobs`, whose runs take no arguments.
+
+### Message types (permissions)
+
+Defined by AU2. Payload types are in `payload_permissions.go` of
+`internal/realtime/protocol`; the shim file `realtime-shim-files.js` maps
+the Socket.IO events of today to them. Failures carry the upper-case file
+codes (`INVALID_REQUEST` and `BUSY` are mapped from `invalid_request` and
+`busy` in the shim).
+
+| Type | Direction | Owner | Payload | Socket.IO today | Spec |
+|---|---|---|---|---|---|
+| `permissions.get` | client | `internal/automation` | `PermissionsGet` → permission state with `path`, `metadata_token` | `get_file_permissions` → `file_permissions` | 30 s |
+| `permissions.set` | client | `internal/automation` | `PermissionsSet` → permission state with `old_mode`, `path` | `set_file_permissions` → `file_permissions_changed` | mutates, 60 s |
+| `permissions.job.prepare` | client | `internal/automation` | `PermissionsJobPrepare` → job state | `prepare_file_permissions` → `file_permissions_job` | mutates, payload 24 MiB + 64 KiB |
+| `permissions.job.get` | client | `internal/automation` | `PermissionsJob` → job state | `get_file_permissions_job` → `file_permissions_job` | 30 s |
+| `permissions.job.apply` | client | `internal/automation` | `PermissionsJob` → job state | `apply_file_permissions_job` → `file_permissions_job` | mutates |
+| `permissions.job.cancel` | client | `internal/automation` | `PermissionsJob` → job state | `cancel_file_permissions_job` → `file_permissions_job` | 30 s |
