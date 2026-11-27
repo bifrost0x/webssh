@@ -1,13 +1,20 @@
 package main
 
 import (
+	"context"
+	json "encoding/json/v2"
 	"net/http"
 	"strings"
 	"testing"
 
-	json "encoding/json/v2"
-
 	"github.com/bifrost0x/webssh/internal/accounts"
+	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/files"
+	"github.com/bifrost0x/webssh/internal/files/filestest"
+	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/principal/principaltest"
+	"github.com/bifrost0x/webssh/internal/quota"
+	"github.com/bifrost0x/webssh/internal/transfer"
 )
 
 // The support report never carries secrets, account names or local
@@ -88,5 +95,60 @@ func TestOperationsThroughTheServer(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(export, "APPLICATION_FEATURE_CHANGED") ||
 		resp.Header.Get("X-WebSSH-Audit-Completeness") != "complete-within-retained-logs" {
 		t.Errorf("audit export: %d %s", resp.StatusCode, export)
+	}
+}
+
+// quietEvents drops the transfer events.
+type quietEvents struct{}
+
+func (quietEvents) Progress(int64, transfer.Progress) {}
+func (quietEvents) Finished(int64, transfer.Finished) {}
+
+// oneSource resolves one file source for its owner.
+type oneSource struct {
+	owner principal.Principal
+	b     files.Backend
+}
+
+func (s oneSource) Resolve(_ context.Context, p principal.Principal, id string, _ files.Capability) (files.Backend, func(), error) {
+	if id != "sftp-session:a" || p.UserID != s.owner.UserID || p.SessionID != s.owner.SessionID {
+		return nil, nil, fault.New(fault.SourceUnavailable, "")
+	}
+	return s.b, func() {}, nil
+}
+
+// OP3-1: the instance view lists the live transfers and cancels them with
+// the answers of cancel_for_admin.
+func TestTransferOpsListAndCancel(t *testing.T) {
+	owner := principaltest.User(7)
+	b := filestest.New()
+	b.PutFile("/f", []byte("data"))
+	q, err := quota.New(quota.DefaultLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := transfer.New(transfer.Options{Sources: oneSource{owner, b}, Quotas: q, Events: quietEvents{}, BasePath: "/"})
+	t.Cleanup(func() { _ = m.Shutdown(context.Background()) })
+	pr, err := m.Prepare(t.Context(), files.Caller{P: owner, Peer: 1},
+		transfer.PrepareRequest{SourceID: "sftp-session:a", Direction: transfer.Download, Path: "/f"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops := transferOps{m}
+	live := ops.Live()
+	if len(live) != 1 || live[0].ID != pr.TransferID || live[0].UserID != 7 || live[0].Kind != "download" || live[0].State != "pending" {
+		t.Fatalf("live %+v", live)
+	}
+	if accepted, state, err := ops.Cancel(t.Context(), pr.TransferID); err != nil || !accepted || state != "cancelled" {
+		t.Fatalf("cancel: %v %s %v", accepted, state, err)
+	}
+	if accepted, state, _ := ops.Cancel(t.Context(), pr.TransferID); accepted || state == "pending" {
+		t.Fatalf("second cancel: %v %s", accepted, state)
+	}
+	if accepted, state, _ := ops.Cancel(t.Context(), "missing"); accepted || state != "unavailable" {
+		t.Fatalf("unknown transfer: %v %s", accepted, state)
+	}
+	if len(ops.Live()) != 0 {
+		t.Fatal("a cancelled transfer is still live")
 	}
 }

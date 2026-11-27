@@ -14,6 +14,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/realtime"
 	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/terminal"
+	"github.com/bifrost0x/webssh/internal/transfer"
 )
 
 // operationsArea wires the area "operations" (OP3): audit, instance operations and the support report (internal/audit, internal/operations, internal/settings).
@@ -34,6 +35,7 @@ var (
 	_ operations.Jobs        = jobsOps{}
 	_ operations.Quotas      = quotaOps{}
 	_ operations.Usernames   = accountNames{}
+	_ operations.Transfers   = transferOps{}
 )
 
 func wireOperations(sys *system) error {
@@ -45,6 +47,9 @@ func wireOperations(sys *system) error {
 		Connections: realtimeOps{sys.realtime}, Sockets: realtimeOps{sys.realtime},
 		Sessions: terminalOps{sys.terminal}, Jobs: jobsOps{sys.jobs}, Quotas: quotaOps{sys.quotas},
 		Names: accountNames{sys}, Maintenance: sys.maintenance.Load,
+	}
+	if sys.transfers != nil {
+		in.Transfers = transferOps{sys.transfers}
 	}
 	(&operations.InstanceHTTP{Instance: in, StepUp: sys.stepup, Audit: sys.audit, Enabled: adminPanel, Logger: sys.log}).Register(mux)
 	(&audit.HTTP{Logger: sys.audit, Retention: sys.settings, StepUp: sys.stepup, Enabled: sys.cfg.Audit.ExportEnabled,
@@ -63,6 +68,49 @@ func settingsChanged(sys *system) func(context.Context, map[string]settings.Admi
 			}
 		}
 	}
+}
+
+// maxAdminTransfers bounds the transfers the instance view reads; the
+// view itself shows fewer.
+const maxAdminTransfers = 1000
+
+// transferOps adapts the transfer manager to the instance view
+// (admin_details and cancel_for_admin of app/transfer_manager.py): the
+// live transfers without tokens or paths, and a cancel whose owner is
+// looked up on the server.
+type transferOps struct{ m *transfer.Manager }
+
+func (t transferOps) Live() []operations.LiveTransfer {
+	active, _ := t.m.Active(maxAdminTransfers)
+	out := make([]operations.LiveTransfer, 0, len(active))
+	for _, a := range active {
+		switch a.State {
+		case transfer.Pending, transfer.Running, transfer.Cancelling:
+			out = append(out, operations.LiveTransfer{ID: a.ID, UserID: a.UserID, Kind: string(a.Direction),
+				State: string(a.State), CreatedAt: a.Started})
+		}
+	}
+	return out
+}
+
+// Cancel accepts the cancel of a pending transfer (cancelled) and of a
+// running one (cancelling); one that is cancelling already, finished or
+// gone is not accepted, as in Python.
+func (t transferOps) Cancel(ctx context.Context, id string) (bool, string, error) {
+	before := transfer.CancelUnavailable
+	active, _ := t.m.Active(maxAdminTransfers)
+	for _, a := range active {
+		if a.ID == id {
+			before = a.State
+		}
+	}
+	state, err := t.m.Cancel(ctx, id)
+	if err != nil {
+		return false, "", err
+	}
+	accepted := (before == transfer.Pending && state == transfer.Cancelled) ||
+		(before == transfer.Running && state == transfer.Cancelling)
+	return accepted, string(state), nil
 }
 
 // realtimeOps adapts the realtime endpoint to the instance view.
