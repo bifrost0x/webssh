@@ -91,7 +91,7 @@ the way out:
 | U11 | `python_restore_unfinished` | A 3.3 restore did not finish. | Start 3.3 once to finish or roll back the restore, stop it, then start 3.4. |
 | U12 | for example `legacy_unsafe_path`, `legacy_unreadable`, `legacy_record_damaged` | A symbolic link, an unreadable or damaged file or an invalid record in the 3.3 data, for example a corrupt `app.db` or an SMB share record that contains a password, or a single stored secret that does not decrypt while `SECRET_KEY` decrypts the others (`legacy_record_damaged`). The message names the file, or the entity, account and record. | Fix or remove the named file in 3.3, then start 3.4 again. |
 | U13 | `migration_incomplete_build` | The 3.4 build cannot migrate every kind of data it found. | Use a released 3.4 image. |
-| U14 | "exceeds 67108864 bytes" | A single store file is larger than 64 MiB. The migration handles one account at a time, so its memory depends on the largest account's stores, not on the number of accounts: accounts with stores close to that limit need about 0.9 GB for a moment. 3.4 sets the Go memory limit to three quarters of the container's `mem_limit` unless `GOMEMLIMIT` is set. | Reduce the store in 3.3 (`connection-store`), or raise the container's memory limit for the first start. |
+| U14 | "exceeds 67108864 bytes" | A single store file is larger than 64 MiB. The migration handles one account at a time, so its memory depends on the largest account's stores, not on the number of accounts: accounts with stores close to that limit need about 0.9 GB for a moment. 3.4 sets the Go memory limit to three quarters of the container's `mem_limit` unless `GOMEMLIMIT` is set. If `DATA_DIR` lies on a tmpfs, everything the migration writes there (the new database and its staging copy) also counts against the container's memory limit, and the first start can be killed for lack of memory. | Reduce the store in 3.3 (`connection-store`), or raise the container's memory limit for the first start. Keep `DATA_DIR` on a disk volume, not on a tmpfs. |
 
 ## Changes you can notice
 
@@ -226,6 +226,12 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U86 | Entering maintenance (backup restore, rotation, a changed 3.3 source) closes every live connection with code 4503; `/ready` answers 503. | fix | Nothing. |
 | U87 | The operations view lists the background jobs of the new server and their state. Python worker threads and the HTTP thread reserve no longer exist; `http_reserve` is always 0. Disconnecting a live connection as an administrator closes it without automatic reconnect. | fix | Nothing. |
 | U88 | `connection-store list` and `delete` also work while the server runs; `--confirm-offline` is still required. | fix | Nothing. |
+
+### Appearance
+
+| # | Change | Kind | What to do |
+|---|---|---|---|
+| U97 | In the Glass theme, primary buttons turn a darker blue on hover (`#0866b0` instead of `#087dcf`), so white text keeps a contrast of at least 4.5:1; 3.3 reached 4.3:1. | fix | Nothing. |
 
 ### HTTP API
 
