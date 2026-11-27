@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 )
 
 // The interfaces below are what the applier needs from the Go stores. They
@@ -109,11 +110,12 @@ type Stores struct {
 	Keys         Keys
 	Hosts        Hosts
 	Identities   Identities
+	Commands     Commands
 }
 
 func (s Stores) complete() error {
 	if s.Accounts == nil || s.AppSettings == nil || s.UserSettings == nil || s.FeatureGates == nil ||
-		s.Factors == nil || s.Keys == nil || s.Hosts == nil || s.Identities == nil {
+		s.Factors == nil || s.Keys == nil || s.Hosts == nil || s.Identities == nil || s.Commands == nil {
 		return errors.New("e2e seed: a store is not wired")
 	}
 	return nil
@@ -149,6 +151,7 @@ func Apply(ctx context.Context, s *Seed, st Stores, log *slog.Logger) (Applied, 
 		func() error { return applyAccounts(ctx, s, st, a.Users) },
 		func() error { return applyFactors(ctx, s, st, a.Users) },
 		func() error { return applyIdentities(ctx, s, st, a.Users) },
+		func() error { return applyCommands(ctx, s, st.Commands, a.Users, time.Now()) },
 		func() error { return applyConnections(ctx, s, st, a.Users) },
 	}
 	for _, step := range steps {
@@ -168,8 +171,6 @@ func (s *Seed) skipped() []string {
 		}
 	}
 	add(s.AdminSettings.AutomationEnabled != nil, "admin_settings.automation_enabled")
-	add(len(s.Commands) > 0, "commands")
-	add(len(s.CommandSets) > 0, "command_sets")
 	for _, h := range s.TestHooks {
 		add(h.Name == HookAutomationSSHPeer || h.Name == HookSocketHerdrSessions, "test_hooks."+h.Name)
 	}

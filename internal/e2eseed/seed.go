@@ -67,6 +67,9 @@ type AccountSettings struct {
 type OwnedEntry struct {
 	Account string
 	Members map[string]jsontext.Value
+	// Raw is the entry as written, for appliers that keep the member
+	// order.
+	Raw jsontext.Value
 }
 
 // UnmarshalJSON keeps all members and requires a string "account".
@@ -83,7 +86,7 @@ func (e *OwnedEntry) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(raw, &account); err != nil {
 		return fmt.Errorf("member account: %w", err)
 	}
-	*e = OwnedEntry{Account: account, Members: members}
+	*e = OwnedEntry{Account: account, Members: members, Raw: append(jsontext.Value(nil), data...)}
 	return nil
 }
 

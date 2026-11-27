@@ -6,8 +6,6 @@ package e2eseed
 // capability, and leaves this table.
 var skippedOwners = map[string]string{
 	"admin_settings.automation_enabled":     "AU1",
-	"commands":                              "CM1",
-	"command_sets":                          "CM1",
 	"test_hooks." + HookAutomationSSHPeer:   "AU1",
 	"test_hooks." + HookSocketHerdrSessions: "HO1",
 }

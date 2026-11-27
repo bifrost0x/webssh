@@ -14,6 +14,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	cmdlib "github.com/bifrost0x/webssh/internal/commands"
 	"io"
 	"log/slog"
 	"net"
@@ -157,8 +158,15 @@ type e2eStores struct{ sys *system }
 func (e e2eStores) stores() e2eseed.Stores {
 	return e2eseed.Stores{
 		Accounts: e, AppSettings: e.sys.settings, UserSettings: e.sys.settings,
-		FeatureGates: e, Factors: e, Keys: e, Hosts: e, Identities: e,
+		FeatureGates: e, Factors: e, Keys: e, Hosts: e, Identities: e, Commands: e,
 	}
+}
+
+// SeedCommands stores the seeded commands and sets of an account.
+func (e e2eStores) SeedCommands(ctx context.Context, owner int64, cmds, sets []jsontext.Value) error {
+	return e.sys.db.Write(ctx, func(tx *store.Tx) error {
+		return cmdlib.ImportTx(ctx, tx, owner, cmds, sets)
+	})
 }
 
 func (e e2eStores) LinkOIDC(ctx context.Context, userID int64, issuer, subject string) error {
