@@ -182,6 +182,15 @@
     {"file": "automation-navigation.spec.js", "exclude": []},
     {"file": "file-workspace.spec.js", "exclude": []},
     {"file": "file-mutations.spec.js", "exclude": []},
+    {"file": "permission-jobs.spec.js", "exclude": []},
+    {"file": "automation-polling.spec.js", "exclude": []},
+    {"file": "automation-state-races.spec.js", "exclude": [
+      {"title": "schedule editing cannot replace a workflow while its save is pending", "reason": "opens the automation page (GET /automation and the automation template flag)", "package": "AU1"},
+      {"title": "Automation follows every application language", "reason": "opens the automation page (GET /automation and the automation template flag)", "package": "AU1"}
+    ]},
+    {"file": "automation-overview-stale.spec.js", "exclude": [
+      {"title": "overview keeps the unavailable automation status through language changes until a successful refresh", "reason": "the overview reads the automation state through the automation area (WebSSHAutomation), which the Go page offers only once that area is built", "package": "AU1"}
+    ]},
     {"file": "file-edit-review.spec.js", "exclude": []},
     {"file": "file-keyboard-scope.spec.js", "exclude": []},
     {"file": "file-connection-focus.spec.js", "exclude": []},
