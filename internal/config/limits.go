@@ -34,7 +34,7 @@ func loadLimits(p *parser, c *Config) {
 	loadQuotas(p, c)
 
 	c.Files.SFTP.OperationTimeout = time.Duration(p.positive("SFTP_OPERATION_TIMEOUT", 30)) * time.Second
-	p.positive("MAX_UPLOAD_SIZE", 100*mib)
+	c.Files.Transfers.MaxUpload = p.positive("MAX_UPLOAD_SIZE", 100*mib)
 	editorMax := p.positiveBig("MAX_EDITOR_FILE_SIZE", big.NewInt(5*mib))
 	editorRate := p.boundedBig("EDITOR_SAVE_BYTES_PER_MINUTE", mul(editorMax, 4), editorMax, mul(editorMax, 64))
 	c.Files.MaxEditorBytes, c.Files.EditorBytesPerMinute = saturate(editorMax), saturate(editorRate)

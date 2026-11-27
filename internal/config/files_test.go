@@ -13,6 +13,7 @@ func TestFileLimits(t *testing.T) {
 		MaxTransferMembers: 10000, MaxPreviewBytes: 512000, MaxPreviewTailLines: 10000, MaxSupportedFileSize: 1 << 30,
 		SFTP: SFTP{MaxPacketBytes: 1 << 20, MaxHandleBytes: 16 << 10, MaxNameBytes: 4096, MaxMetadataBytes: 4 << 20,
 			OperationTimeout: 30 * time.Second},
+		Transfers: Transfers{MaxUpload: 100 << 20, MaxDownload: 100 << 20, MaxArchive: 500 << 20},
 	}
 	if c.Files != want {
 		t.Fatalf("defaults %+v", c.Files)
@@ -28,6 +29,13 @@ func TestFileLimits(t *testing.T) {
 	if c.Files.MaxEditorBytes != 1<<20 || c.Files.EditorBytesPerMinute != 2<<20 || c.Files.ListingPageSize != 50 ||
 		c.Files.SnapshotTTL != 10*time.Second || c.Files.MaxPreviewBytes != 1000 {
 		t.Fatalf("configured %+v", c.Files)
+	}
+	c, _ = mustLoad(t, map[string]string{"MAX_UPLOAD_SIZE": "10", "MAX_DOWNLOAD_SIZE": "-1", "MAX_ZIP_DOWNLOAD_SIZE": "30"})
+	if c.Files.Transfers != (Transfers{MaxUpload: 10, MaxDownload: -1, MaxArchive: 30}) {
+		t.Fatalf("configured transfers %+v", c.Files.Transfers)
+	}
+	if loadErr(t, map[string]string{"MAX_UPLOAD_SIZE": "0"}) == nil {
+		t.Fatal("upload limit 0 accepted")
 	}
 	if loadErr(t, map[string]string{"REMOTE_LISTING_PAGE_SIZE": "10"}) == nil {
 		t.Fatal("page size below 50 accepted")

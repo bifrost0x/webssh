@@ -203,7 +203,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	setDeadlines(w, h.log)
 	var body []byte
-	if unsafeMethod(r.Method) {
+	if unsafeMethod(r.Method) && access != AccessUserStream {
 		b, ok, err := readBody(w, r, h.bodyLimit(r.URL.Path))
 		if err != nil {
 			// The client stopped sending or the read deadline passed.

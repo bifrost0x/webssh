@@ -37,6 +37,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/ssh/hostkey"
 	"github.com/bifrost0x/webssh/internal/store"
 	"github.com/bifrost0x/webssh/internal/terminal"
+	"github.com/bifrost0x/webssh/internal/transfer"
 	"github.com/bifrost0x/webssh/internal/vault"
 )
 
@@ -142,6 +143,8 @@ type system struct {
 	// source kinds on fileSources.
 	fileSources *files.Registry
 	files       *files.Service
+	// Transfers (wire_transfers.go).
+	transfers *transfer.Manager
 
 	background     sync.WaitGroup
 	stopBackground context.CancelFunc
