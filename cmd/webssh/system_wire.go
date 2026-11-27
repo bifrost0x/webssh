@@ -104,7 +104,7 @@ func (s *system) buildCapabilities(in bootInput) error {
 	if opt.terminalRoutes != nil {
 		routes = opt.terminalRoutes
 	}
-	shells := legacyAlgorithmShells{dialer: dialer, settings: s.settings}
+	shells := legacyAlgorithmShells{dialer: dialer, settings: s.settings, observe: opt.connectionObserver}
 	termCfg := terminal.FromConfig(cfg.Terminal)
 	termCfg.TmuxPrefix = cfg.Features.TmuxSessionPrefix
 	s.terminal, err = terminal.New(termCfg, terminal.Deps{
@@ -202,7 +202,8 @@ func (s *system) registerHTTP(mux *http.ServeMux) {
 	(&settings.HTTP{Settings: s.settings, Gates: featureGates{s.gates}, Tour: tourDeployment(cfg, true),
 		BasePath: cfg.ApplicationRoot, Logger: s.log}).Register(mux)
 	(&hosts.HTTP{Service: s.hosts, Logger: s.log}).Register(mux)
-	(&hostops.OverviewHTTP{Inventory: overviewInventory{hosts: s.hosts, vault: s.vault}, Trust: hostTrust{s.hostkeys}, Logger: s.log}).Register(mux)
+	(&hostops.OverviewHTTP{Inventory: overviewInventory{hosts: s.hosts, vault: s.vault}, Trust: hostTrust{s.hostkeys},
+		Reach: s.optional.reachability, Logger: s.log}).Register(mux)
 	(&hostkey.HTTP{Store: s.hostkeys, Targets: sshTargets{s.hosts}, StepUp: s.stepup, Enabled: cfg.Features.HostKeyManagement, Logger: s.log}).Register(mux)
 	s.pages.register(mux)
 	mux.Handle("GET /ws", s.realtime)

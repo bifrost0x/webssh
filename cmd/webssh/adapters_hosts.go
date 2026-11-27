@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"errors"
 	"fmt"
 	"math"
 
@@ -160,9 +161,13 @@ func deref(s *string) string {
 // setting ssh.legacy_algorithms holds. The upgrade writes it for an
 // existing installation (D-01), because paramiko offered them to every
 // host; a profile may also opt in per host.
+//
+// observe, when set, sees every connection once it is authenticated (the
+// platform detection of the area "discovery").
 type legacyAlgorithmShells struct {
 	dialer   *client.Dialer
 	settings *settings.Service
+	observe  func(client.Target, *client.Conn)
 }
 
 func (l legacyAlgorithmShells) OpenShell(ctx context.Context, t client.Target, ix client.Interaction, rows, cols int) (client.Shell, error) {
@@ -170,7 +175,31 @@ func (l legacyAlgorithmShells) OpenShell(ctx context.Context, t client.Target, i
 	if err != nil {
 		return nil, err
 	}
-	return l.dialer.OpenShell(ctx, t, ix, rows, cols)
+	if l.observe == nil {
+		return l.dialer.OpenShell(ctx, t, ix, rows, cols)
+	}
+	conn, err := l.dialer.Dial(ctx, t, ix)
+	if err != nil {
+		return nil, err
+	}
+	sh, err := conn.Shell(ctx, rows, cols)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	l.observe(t, conn)
+	return connShell{sh, conn}, nil
+}
+
+// connShell closes its connection with the shell, as the dialer's own
+// shells do.
+type connShell struct {
+	client.Shell
+	conn *client.Conn
+}
+
+func (c connShell) Close() error {
+	return errors.Join(c.Shell.Close(), c.conn.Close())
 }
 
 // Dial is the connection of a persistent (tmux) session
@@ -180,7 +209,11 @@ func (l legacyAlgorithmShells) Dial(ctx context.Context, t client.Target, ix cli
 	if err != nil {
 		return nil, err
 	}
-	return l.dialer.Dial(ctx, t, ix)
+	conn, err := l.dialer.Dial(ctx, t, ix)
+	if err == nil && l.observe != nil {
+		l.observe(t, conn)
+	}
+	return conn, err
 }
 
 func (l legacyAlgorithmShells) target(ctx context.Context, t client.Target) (client.Target, error) {
