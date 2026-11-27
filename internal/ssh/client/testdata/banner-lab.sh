@@ -1,16 +1,18 @@
 #!/bin/sh
 # Starts a throwaway OpenSSH server from the lab image webssh-lab/ssh:local
 # with a pre-authentication banner and runs TestBannerServer against it. The
-# shared lab (tests/lab) has no banner and is not touched.
+# shared lab (tests/lab) has no banner and is not touched. BANNER_IMAGE
+# selects another build of tests/lab/images/ssh, as in CI.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)
 name="webssh-banner-$$"
+image="${BANNER_IMAGE:-webssh-lab/ssh:local}"
 password=$(head -c 18 /dev/urandom | base64 | tr -d '/+=')
 cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 docker run -d --name "$name" -p 127.0.0.1::22 -e PW="$password" --entrypoint /bin/sh \
-	webssh-lab/ssh:local -c '
+	"$image" -c '
 set -eu
 ssh-keygen -q -t ed25519 -N "" -f /etc/ssh/banner_host_key
 adduser -D -s /bin/sh pwuser

@@ -334,3 +334,29 @@ jobs:
         env:
           NETNS_TOOLS_IMAGE: webssh-netns-tools
         run: internal/netpolicy/testdata/netns-test.sh crafted
+
+  # TestBannerServer (tag lab) against a throwaway OpenSSH server with a
+  # pre-authentication banner, built from the lab's SSH image (base pinned
+  # by digest in its Dockerfile). The script removes its container on exit.
+  ssh-banner:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build the lab SSH image
+        run: docker build -t webssh-banner-ssh tests/lab/images/ssh
+
+      - name: Banner test against OpenSSH
+        env:
+          BANNER_IMAGE: webssh-banner-ssh
+        run: internal/ssh/client/testdata/banner-lab.sh

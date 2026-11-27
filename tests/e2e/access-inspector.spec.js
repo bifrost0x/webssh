@@ -21,14 +21,53 @@ test('network overview remains contained across sizes and themes with screenshot
     await expect(page.locator('#overviewHostList .od-host')).toHaveCount(3);
     await expect(page.locator('#overviewHostList [data-host-id="preview-4"]')).toContainText('bastion');
     await page.screenshot({path:test.info().outputPath('access-details-desktop.png'),animations:'disabled'});
+    const themes = ['glass','werkbank','retro','noir','paper','solar','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian'];
     for (const width of [3440,1920,1280,1024,768,390]) {
         await page.setViewportSize({width,height:900});
-        for (const theme of ['glass','werkbank','retro','noir','paper','solar','arctic-ice','rose-gold','cyberpunk-neon','emerald-matrix','obsidian']) {
-            await page.evaluate(theme => {document.body.dataset.theme=theme;},theme);
-            expect(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-            expect(await page.locator('#connectionOverview').evaluate(el => el.scrollWidth<=el.clientWidth+1)).toBe(true);
-            await expect(page.locator('#overviewHostList [data-host-id="preview-4"]')).toBeVisible();
-        }
+        // All themes of one width in a single synchronous pass: reading the
+        // sizes forces layout after each theme change, so every theme is
+        // measured as rendered without a round trip per check.
+        const failures = await page.evaluate(({width, themes}) => {
+            // Same rule as Playwright's toBeVisible (computeBox in the
+            // injected script): display:contents defers to the children,
+            // otherwise checkVisibility() (display:none or
+            // content-visibility on the element or an ancestor),
+            // visibility exactly "visible" and a non-empty bounding box.
+            // Opacity does not count, as in Playwright.
+            const textVisible = node => {
+                const range = document.createRange();
+                range.selectNode(node);
+                const rect = range.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            };
+            const visible = el => {
+                const style = getComputedStyle(el);
+                if (style.display === 'contents') {
+                    return [...el.childNodes].some(child => child.nodeType === Node.ELEMENT_NODE ? visible(child)
+                        : child.nodeType === Node.TEXT_NODE && textVisible(child));
+                }
+                if (!el.checkVisibility() || style.visibility !== 'visible') return false;
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            };
+            const failures = [];
+            for (const theme of themes) {
+                document.body.dataset.theme = theme;
+                const at = `width ${width}, theme ${theme}`;
+                const root = document.documentElement;
+                if (root.scrollWidth > innerWidth) failures.push(`${at}: page scrollWidth ${root.scrollWidth} > ${innerWidth}`);
+                const overview = document.querySelector('#connectionOverview');
+                if (!overview) failures.push(`${at}: #connectionOverview missing`);
+                else if (overview.scrollWidth > overview.clientWidth + 1) {
+                    failures.push(`${at}: #connectionOverview scrollWidth ${overview.scrollWidth} > ${overview.clientWidth + 1}`);
+                }
+                const hosts = document.querySelectorAll('#overviewHostList [data-host-id="preview-4"]');
+                if (hosts.length !== 1) failures.push(`${at}: ${hosts.length} host cards preview-4, expected 1`);
+                else if (!visible(hosts[0])) failures.push(`${at}: host card preview-4 not visible`);
+            }
+            return failures;
+        }, {width, themes});
+        expect(failures).toEqual([]);
     }
     await page.evaluate(() => {document.body.dataset.theme='glass';});
     await page.locator('#overviewHostList [data-host-id="preview-4"] .od-connect').scrollIntoViewIfNeeded();
