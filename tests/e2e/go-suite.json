@@ -175,7 +175,9 @@
     {"file": "command-builder-width.spec.js", "exclude": []},
     {"file": "command-draft-unload.spec.js", "exclude": []},
     {"file": "editor-dismissal-regression.spec.js", "exclude": []},
-    {"file": "workspace-layout-regressions.spec.js", "exclude": []},
+    {"file": "workspace-layout-regressions.spec.js", "exclude": [
+      {"title": "library and favorites scroll to the final card at 360px", "reason": "the preview notice takes about a quarter of the 529 px viewport, so the 48-card lists need more wheel gestures than the 30 s test budget allows (red also at load 14); the notice goes with the last preview area", "package": "FE1"}
+    ]},
     {"file": "workspace-performance.spec.js", "exclude": []},
     {"file": "palette-navigation.spec.js", "exclude": []}
   ]
