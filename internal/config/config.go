@@ -81,6 +81,8 @@ type Config struct {
 	// where Python keeps its backup operation lock and restore status. The
 	// migration probes both before it reads legacy data.
 	BackupTempDir string
+	// Backup holds the limits and rate limits of backups and restores.
+	Backup Backup
 
 	// explicit holds the variables with a non-empty value
 	// (EXPLICIT_ENVIRONMENT_KEYS).
@@ -91,6 +93,24 @@ type Config struct {
 // blank. An explicit value locks the matching administrator setting, as in
 // the Python release.
 func (c Config) Explicit(name string) bool { return c.explicit[name] }
+
+// Backup is the BACKUP_* configuration of config.py.
+type Backup struct {
+	MaxMembers          int64
+	MaxFileSize         int64
+	MaxTotalSize        int64
+	MaxCompressionRatio int64
+	MaxManifestSize     int64
+	UploadMaxSize       int64
+	OperationTimeout    time.Duration
+	DownloadTTL         time.Duration
+	// RecoveryDurable is BACKUP_RECOVERY_DURABLE; the Go restore keeps its
+	// rollback state in the Go directory and does not need it.
+	RecoveryDurable bool
+	// RateCreate, RateUpload, RateDownload and RateRestore are the
+	// RATELIMIT_BACKUP_* strings.
+	RateCreate, RateUpload, RateDownload, RateRestore string
+}
 
 // Listen is the source-start listen address.
 type Listen struct {
