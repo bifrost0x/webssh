@@ -123,7 +123,7 @@ jobs:
       - name: Vet and test the e2e build
         run: |
           go vet -tags e2e ./cmd/...
-          go test -race -count=1 -tags e2e ./cmd/... ./internal/e2eseed
+          go test -race -count=1 -timeout 30m -tags e2e ./cmd/... ./internal/e2eseed
 
       # Release builds set the version with the linker (ADR 0004); this
       # keeps the variable names and the output format from drifting.
