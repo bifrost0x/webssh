@@ -161,6 +161,13 @@ var v1 = []MessageType{
 	{TypeSMBShareDelete, ClientRequest, "internal/files/smb"},
 	{TypeSMBConnect, ClientRequest, "internal/files/smb"},
 	{TypeSMBConnectCancel, ClientRequest, "internal/files/smb"},
+
+	// Area "transfer" (TR1, payload_transfer.go).
+	{TypeTransferPrepare, ClientRequest, "internal/transfer"},
+	{TypeTransferCancel, ClientRequest, "internal/transfer"},
+	{TypeTransferCopy, ClientRequest, "internal/transfer"},
+	{TypeTransferProgress, ServerEvent, "internal/transfer"},
+	{TypeTransferFinished, ServerEvent, "internal/transfer"},
 }
 
 // V1 returns the catalog of schema v1.

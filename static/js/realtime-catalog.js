@@ -11,7 +11,7 @@
 (function (root, factory) {
     const load = (name, file) => root[name] || (typeof require === 'function' ? require(file) : null);
     // The areas of the name table, in this order (realtime-shim-<area>.js).
-    const names = ['hosts', 'keys', 'settings', 'notes', 'files', 'smb', 'commands', 'insights', 'terminal-tools'];
+    const names = ['hosts', 'keys', 'settings', 'notes', 'files', 'smb', 'transfer', 'commands', 'insights', 'terminal-tools'];
     const areas = names.map(name => {
         const area = root.WebSSHRealtimeAreas?.[name] || (typeof require === 'function' ? require(`./realtime-shim-${name}.js`) : null);
         if (!area) throw new Error(`realtime shim: area ${name} is not loaded`);

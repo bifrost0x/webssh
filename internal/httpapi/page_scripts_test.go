@@ -29,6 +29,7 @@ var realtimeClient = []string{
 	"js/realtime-shim-notes.js",
 	"js/realtime-shim-files.js",
 	"js/realtime-shim-smb.js",
+	"js/realtime-shim-transfer.js",
 	"js/realtime-shim-commands.js",
 	"js/realtime-shim-insights.js",
 	"js/realtime-shim-terminal-tools.js",

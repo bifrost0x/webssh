@@ -139,6 +139,13 @@ type Progress struct {
 	Filename    string // base name, host-to-host only
 	Transferred int64
 	Total       int64
+	Copy        *CopyRef // host-to-host only
+}
+
+// CopyRef correlates the events of a host-to-host copy with the request
+// that started it (the members the page matches s2s_transfer_* on).
+type CopyRef struct {
+	SourceID, RequestID, DestinationSourceID string
 }
 
 // Finished is sent once per transfer (transfer_finished;
@@ -148,6 +155,11 @@ type Finished struct {
 	Direction  Direction
 	State      State // Completed, Cancelled or Failed
 	Failure    *Failure
+	// Host-to-host only: the correlation, the base name of the source and
+	// both paths (s2s_transfer_complete).
+	Copy                 *CopyRef
+	Filename             string
+	SourcePath, DestPath string
 }
 
 // Sources resolves a file source of the principal's browser session and

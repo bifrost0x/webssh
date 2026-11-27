@@ -18,6 +18,7 @@ test('every mapped event targets a type of the v1 catalog', () => {
         'files.edit.save', 'files.mkdir', 'files.create', 'files.rename', 'files.delete', 'files.source.close',
         'files.quick.open', 'files.quick.cancel', 'files.quick.close', 'files.session.probe', 'files.session.directory',
         'smb.share.list', 'smb.share.save', 'smb.share.delete', 'smb.connect', 'smb.connect.cancel',
+        'transfer.prepare', 'transfer.cancel', 'transfer.copy',
     ]);
     const mapped = new Set(Object.values(catalog.REQUESTS).map(entry => entry.type));
     assert.deepEqual([...mapped].sort(), [...v1].sort());
@@ -209,7 +210,7 @@ test('the unavailable message follows the page language', async () => {
     const window = loadShim({i18n: {t: key => (key === 'previewNotice.notAvailable' ? 'In dieser Vorschau noch nicht verfügbar.' : key)}});
     const {socket} = await connected(window);
     let message;
-    socket.emit('prepare_transfer', {}, ack => { message = ack.error; });
+    socket.emit('get_file_permissions', {}, ack => { message = ack.error; });
     await tick();
     assert.equal(message, 'In dieser Vorschau noch nicht verfügbar.');
     socket.disconnect();

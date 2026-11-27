@@ -418,6 +418,37 @@ func (m *Manager) Active(limit int) (items []Active, total int) // no tokens, no
 func (m *Manager) Cancel(ctx context.Context, transferID string) (State, error)
 ```
 
+### Message types (transfer)
+
+Defined by TR1 (`internal/realtime/protocol/payload_transfer.go`), mapped
+in `static/js/realtime-shim-transfer.js`, which only the Go workspace
+loads (after `realtime-shim-smb.js`). Requests charge the per-user byte
+budget of file requests like `files.*` and re-validate the browser
+session. The shim turns the results into the acknowledgements of today
+and the two server events into the push events of today: an event of a
+host-to-host copy (direction `server_to_server`, member `copy` with
+`source_id`, `request_id`, `destination_source_id`) becomes
+`s2s_transfer_progress`, `s2s_transfer_complete` or `s2s_transfer_error`,
+every other one `transfer_progress` or `transfer_finished`. Failures of
+`transfer.copy` carry the public reason (`error_code`, `error`,
+`retryable`, `limit_*`) in `details`; the shim answers them like the
+Python handler and pushes `s2s_transfer_error`.
+
+| Type | Direction | Owner | Payload | Socket.IO today |
+|---|---|---|---|---|
+| `transfer.prepare` | client | `internal/transfer` | `TransferPrepare` → `TransferPrepared` | `prepare_transfer` (ack) |
+| `transfer.cancel` | client | `internal/transfer` | `TransferCancel` → `TransferCancelState` | `cancel_transfer` (ack) |
+| `transfer.copy` | client | `internal/transfer` | `TransferCopy` → `TransferCopyStarted` | `transfer_server_to_server` (ack, `s2s_transfer_error`) |
+| `transfer.progress` | server | `internal/transfer` | `TransferProgressEvent` | `transfer_progress`, `s2s_transfer_progress` |
+| `transfer.finished` | server | `internal/transfer` | `TransferFinishedEvent` | `transfer_finished`, `s2s_transfer_complete`, `s2s_transfer_error` |
+
+- Specs: all `Async`, `Mutates`, 32 KiB; prepare and cancel 30 s, copy
+  30 s (the copy itself runs in the background, owned by the manager).
+- `transfer.cancel` always succeeds; `state` is `unavailable` for a
+  transfer of another user or one that is gone, as in Python.
+- `Progress` and `Finished` of the contract gain `Copy *CopyRef`,
+  `SourcePath` and `DestPath` for these events (additive, TR1).
+
 ### Saved passwords and the legacy vault
 
 `internal/vault`, compiled in `internal/vault/credential.go`.
