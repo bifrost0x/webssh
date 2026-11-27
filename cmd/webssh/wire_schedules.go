@@ -83,7 +83,7 @@ func wireSchedules(sys *system) error {
 		}
 	}
 	perms, err := automation.NewPermissionJobs(automation.PermOptions{
-		Sources: permSources{reg: sys.fileSources, settings: sys.settings}, Quotas: sys.quotas,
+		Sources: permSources{reg: sys.fileSources, settings: sys.settings, maxPath: sys.cfg.Files.MaxPathBytes}, Quotas: sys.quotas,
 		Audit: permAudit{reg: sys.fileSources, log: sys.audit}, Draining: draining,
 	})
 	if err != nil {
@@ -147,6 +147,8 @@ func (p schedulePolicy) AutomationPolicy(ctx context.Context) (bool, string, err
 type permSources struct {
 	reg      *files.Registry
 	settings *settings.Service
+	// maxPath is FILE_CONTROL_MAX_PATH_BYTES.
+	maxPath int
 }
 
 func (s permSources) Hold(ctx context.Context, p principal.Principal, sourceID string) (automation.PermSource, any, func(), error) {
@@ -164,7 +166,12 @@ func (s permSources) Hold(ctx context.Context, p principal.Principal, sourceID s
 	return permBackend{b}, b, release, nil
 }
 
-func (permSources) Clean(path string) (string, error) { return files.CleanTarget(path) }
+func (s permSources) Clean(path string) (string, error) {
+	if s.maxPath > 0 && len(path) > s.maxPath {
+		return "", fault.New(fault.InvalidRequest, "The path is invalid.")
+	}
+	return files.CleanTarget(path)
+}
 
 // permBackend is a files.Backend as a permission source.
 type permBackend struct{ b files.Backend }

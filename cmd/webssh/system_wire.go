@@ -206,7 +206,7 @@ func (s *system) registerHTTP(mux *http.ServeMux) {
 	(&operations.HTTP{Gates: s.gates, Inventory: securityInventory{db: s.db, accounts: s.accounts, totp: s.totp, passkeys: s.optional.passkeyList,
 		github: s.optional.githubIdentity, githubActive: s.optional.githubActive},
 		StepUp: s.stepup, MAC: s.ring, Enabled: cfg.Accounts.AdminPanelEnabled, Logger: s.log}).Register(mux)
-	(&settings.HTTP{Settings: s.settings, Gates: featureGates{s.gates}, Tour: tourDeployment(cfg, true),
+	(&settings.HTTP{Settings: s.settings, Gates: featureGates{s.gates}, Tour: tourDeployment(cfg, s.lookup, true),
 		BasePath: cfg.ApplicationRoot, Logger: s.log}).Register(mux)
 	(&hosts.HTTP{Service: s.hosts, Logger: s.log}).Register(mux)
 	(&hostops.OverviewHTTP{Inventory: overviewInventory{hosts: s.hosts, vault: s.vault}, Trust: hostTrust{s.hostkeys},

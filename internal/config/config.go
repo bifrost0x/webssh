@@ -29,8 +29,8 @@ type Switch struct {
 
 // Config is the configuration of the Go release, read from the documented
 // environment variables with the meaning they have in the Python release.
-// Only the settings this preview acts on are fields; every other
-// documented variable is still validated like the Python release does.
+// Variables without meaning in Go are validated like the Python release
+// does and reported as obsolete.
 type Config struct {
 	Profile Profile
 	Debug   bool
@@ -321,8 +321,11 @@ type Files struct {
 	MaxPreviewBytes      int64 // MAX_PREVIEW_SIZE
 	MaxPreviewTailLines  int64 // MAX_PREVIEW_TAIL_LINES
 	MaxSupportedFileSize int64 // MAX_SUPPORTED_FILE_SIZE
-	SFTP                 SFTP
-	Transfers            Transfers
+	// MaxPathBytes is FILE_CONTROL_MAX_PATH_BYTES, at most 4096 as in
+	// the path checks of the Python release.
+	MaxPathBytes int
+	SFTP         SFTP
+	Transfers    Transfers
 }
 
 // SFTP are the protocol limits of the SFTP backend.

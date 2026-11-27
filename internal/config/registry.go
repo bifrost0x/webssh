@@ -5,15 +5,12 @@ import (
 	"strings"
 )
 
-// usage says what this preview does with a variable.
+// usage says what the Go release does with a variable.
 type usage int
 
 const (
-	// used: the preview reads the variable into Config.
+	// used: the Go release reads the variable into Config and acts on it.
 	used usage = iota
-	// inert: documented and validated like the Python release, but the
-	// feature behind it is not part of this preview (decision D-16).
-	inert
 	// obsolete: the variable has no meaning in the Go release (D-16).
 	obsolete
 	// internal: set by the runtime, the image or the test harness, or read
@@ -34,18 +31,18 @@ var variables = map[string]usage{
 	"ADMIN_PANEL_ENABLED": used, "BLOCK_INTERNAL_SSH": used, "SSH_ALLOWED_INTERNAL_NETWORKS": used,
 	"PROXY_JUMP_REMOTE_DNS_ALLOWLIST": used, "SOCKS_REMOTE_DNS_ALLOWLIST": used,
 	"SESSION_TIMEOUT": used, "HOST": used, "PORT": used, "TZ": used,
-	"TRANSFER_TEMP_DIR": inert, "BACKUP_TEMP_DIR": used, "BACKUP_RECOVERY_DURABLE": used,
-	"HOST_DISCOVERY_ENABLED": inert,
+	"TRANSFER_TEMP_DIR": obsolete, "BACKUP_TEMP_DIR": used, "BACKUP_RECOVERY_DURABLE": obsolete,
+	"HOST_DISCOVERY_ENABLED": used,
 
 	// Feature switches.
 	"HOST_KEY_MANAGEMENT_ENABLED": used, "RECOVERY_CODES_ENABLED": used, "TOTP_ENABLED": used,
 	"WEBAUTHN_ENABLED": used, "WEBAUTHN_RP_ID": used, "WEBAUTHN_RP_NAME": used, "WEBAUTHN_ORIGIN": used,
 	"TMUX_ENABLED": used, "TMUX_DEFAULT": used, "TMUX_SESSION_PREFIX": used,
 	"AUTOMATION_ENABLED": used, "AUTOMATION_ALLOW_INSECURE_LOOPBACK": used,
-	"SERVER_OPERATIONS_ENABLED": inert, "SFTP_CHMOD_ENABLED": used, "AUDIT_EXPORT_ENABLED": used,
-	"TAILSCALE_SSH_ENABLED": inert, "TAILSCALE_SSH_ALLOWED_WEBSSH_USERS": inert,
-	"TAILSCALE_SSH_ALLOWED_TARGETS": inert, "TAILSCALE_SSH_ALLOWED_REMOTE_USERS": inert,
-	"TAILSCALE_SSH_INTERFACE": inert, "SMB_ENABLED": inert, "SMB_ALLOWED_TARGETS": inert,
+	"SERVER_OPERATIONS_ENABLED": used, "SFTP_CHMOD_ENABLED": used, "AUDIT_EXPORT_ENABLED": used,
+	"TAILSCALE_SSH_ENABLED": used, "TAILSCALE_SSH_ALLOWED_WEBSSH_USERS": used,
+	"TAILSCALE_SSH_ALLOWED_TARGETS": used, "TAILSCALE_SSH_ALLOWED_REMOTE_USERS": used,
+	"TAILSCALE_SSH_INTERFACE": used, "SMB_ENABLED": used, "SMB_ALLOWED_TARGETS": used,
 
 	// OIDC, LDAP and outbound TLS.
 	"OIDC_ENABLED": used, "OIDC_ISSUER": used, "OIDC_CLIENT_ID": used,
@@ -70,14 +67,14 @@ var variables = map[string]usage{
 	"RATELIMIT_STORAGE_URL": obsolete, "RATELIMIT_BACKUP_CREATE": used,
 	"RATELIMIT_BACKUP_UPLOAD": used, "RATELIMIT_BACKUP_DOWNLOAD": used,
 	"RATELIMIT_BACKUP_RESTORE": used, "COMMAND_MUTATION_RATELIMIT": used,
-	"SMB_CONNECT_RATELIMIT": inert, "SMB_SHARE_MUTATION_RATELIMIT": inert, "SMB_SHARE_LIST_RATELIMIT": inert,
+	"SMB_CONNECT_RATELIMIT": used, "SMB_SHARE_MUTATION_RATELIMIT": used, "SMB_SHARE_LIST_RATELIMIT": used,
 
 	// Capacity, quotas, process.
 	"QUOTA_SSH_SESSION_GLOBAL": used, "QUOTA_SSH_SESSION_PER_USER": used,
-	"QUOTA_QUICK_CONNECTION_GLOBAL": inert, "QUOTA_QUICK_CONNECTION_PER_USER": inert,
-	"QUOTA_TRANSFER_GLOBAL": inert, "QUOTA_TRANSFER_PER_USER": inert,
-	"QUOTA_TEMP_BYTES_GLOBAL": inert, "QUOTA_TEMP_BYTES_PER_USER": inert,
-	"QUOTA_BACKGROUND_JOB_GLOBAL": inert, "QUOTA_BACKGROUND_JOB_PER_USER": inert,
+	"QUOTA_QUICK_CONNECTION_GLOBAL": used, "QUOTA_QUICK_CONNECTION_PER_USER": used,
+	"QUOTA_TRANSFER_GLOBAL": used, "QUOTA_TRANSFER_PER_USER": used,
+	"QUOTA_TEMP_BYTES_GLOBAL": used, "QUOTA_TEMP_BYTES_PER_USER": used,
+	"QUOTA_BACKGROUND_JOB_GLOBAL": used, "QUOTA_BACKGROUND_JOB_PER_USER": used,
 	"BACKGROUND_WORKERS": obsolete, "GUNICORN_THREADS": obsolete,
 	"RUNTIME_SHUTDOWN_GRACE_SECONDS": used,
 	"MAX_SOCKET_CONNECTIONS":         used, "MAX_SOCKET_CONNECTIONS_PER_USER": used,
@@ -91,7 +88,7 @@ var variables = map[string]usage{
 
 	// Files, transfers, editor.
 	"SFTP_OPERATION_TIMEOUT": used, "MAX_UPLOAD_SIZE": used, "MAX_EDITOR_FILE_SIZE": used,
-	"EDITOR_SAVE_BYTES_PER_MINUTE": used, "FILE_CONTROL_MAX_PATH_BYTES": inert,
+	"EDITOR_SAVE_BYTES_PER_MINUTE": used, "FILE_CONTROL_MAX_PATH_BYTES": used,
 	"REMOTE_FILENAME_MAX_BYTES": used, "REMOTE_LISTING_MAX_METADATA_BYTES": used,
 	"REMOTE_LISTING_PAGE_SIZE": used, "REMOTE_LISTING_SNAPSHOT_TTL_SECONDS": used,
 	"REMOTE_LISTING_SNAPSHOT_MAX_STATES": used, "REMOTE_LISTING_SNAPSHOT_MAX_PER_USER": used,
@@ -99,8 +96,8 @@ var variables = map[string]usage{
 	"FILE_CONTROL_BYTES_PER_MINUTE": used, "MAX_DOWNLOAD_SIZE": used,
 	"MAX_ZIP_DOWNLOAD_SIZE": used, "MAX_TRANSFER_MEMBERS": used, "MAX_PREVIEW_SIZE": used,
 	"MAX_PREVIEW_TAIL_LINES": used, "MAX_SUPPORTED_FILE_SIZE": used,
-	"SMB_CONNECT_TIMEOUT_SECONDS": inert, "SMB_IO_IDLE_TIMEOUT_SECONDS": inert,
-	"SMB_MAX_SAVED_SHARES": inert,
+	"SMB_CONNECT_TIMEOUT_SECONDS": used, "SMB_IO_IDLE_TIMEOUT_SECONDS": used,
+	"SMB_MAX_SAVED_SHARES": used,
 
 	// Storage limits.
 	"COMMAND_MAX_RECORDS": used, "COMMAND_SET_MAX_RECORDS": used, "COMMAND_SET_MAX_STEPS": used,
@@ -110,13 +107,13 @@ var variables = map[string]usage{
 	"CONNECTION_STORE_RECOVERY_MAX_BYTES": used, "CONNECTION_STORE_RECOVERY_MAX_RECORDS": used,
 	"SSH_KEY_MAX_RECORDS": used, "SSH_KEY_STORE_MAX_BYTES": used,
 	"MAX_WEBAUTHN_JSON_SIZE": used, "MAX_RECOVERY_JSON_SIZE": used,
-	"AUDIT_LOG_MAX_BYTES": inert, "AUDIT_LOG_BACKUP_COUNT": inert,
+	"AUDIT_LOG_MAX_BYTES": used, "AUDIT_LOG_BACKUP_COUNT": used,
 	"BACKUP_MAX_MEMBERS": used, "BACKUP_MAX_FILE_SIZE": used, "BACKUP_MAX_TOTAL_SIZE": used,
 	"BACKUP_MAX_COMPRESSION_RATIO": used, "BACKUP_MAX_MANIFEST_SIZE": used,
 	"BACKUP_UPLOAD_MAX_SIZE": used, "BACKUP_OPERATION_TIMEOUT": used, "BACKUP_DOWNLOAD_TTL": used,
 
 	// Python runtime and image.
-	"PYTHONDONTWRITEBYTECODE": obsolete, "PYTHONUNBUFFERED": obsolete, "PYTHON_DOTENV_DISABLED": obsolete,
+	"PYTHONDONTWRITEBYTECODE": obsolete, "PYTHONUNBUFFERED": obsolete, "PYTHON_DOTENV_DISABLED": used,
 	"WEBSSH_SECRET_KEY_SOURCE": internal, "WEBSSH_REVISION": internal, "SERVER_SOFTWARE": internal,
 	"XDG_RUNTIME_DIR": internal, "HOME": internal, "TMPDIR": internal, "TEMP": internal, "TMP": internal,
 	// Read by Compose only.
@@ -136,8 +133,22 @@ func explicitKeys(lookup LookupFunc) map[string]bool {
 	return out
 }
 
-// usageWarnings reports the explicitly set variables this preview does
-// not act on, in name order.
+// obsoleteReasons explain the obsolete variables that do more than the
+// Gunicorn settings did. A value listed in quietValues is the one the
+// Go release behaves like, so it is not reported.
+var obsoleteReasons = map[string]string{
+	"RATELIMIT_STORAGE_URL":   "is ignored: the Go release keeps rate limit counters in the process, so they start over after a restart",
+	"TRANSFER_TEMP_DIR":       "is ignored: the Go release streams folder downloads and keeps no temporary archives",
+	"BACKUP_RECOVERY_DURABLE": "is no longer needed: the Go release keeps the rollback state of a restore on the data volume, so online restore works without it",
+}
+
+var quietValues = map[string]string{
+	"RATELIMIT_STORAGE_URL":   "memory://",
+	"BACKUP_RECOVERY_DURABLE": "true",
+}
+
+// usageWarnings reports the explicitly set variables that have no meaning
+// in the Go release, in name order.
 func usageWarnings(p *parser, c *Config) {
 	names := make([]string, 0, len(c.explicit))
 	for name := range c.explicit {
@@ -145,18 +156,16 @@ func usageWarnings(p *parser, c *Config) {
 	}
 	slices.Sort(names)
 	for _, name := range names {
-		switch variables[name] {
-		case inert:
-			p.warn(WarnNoEffect, name, "accepted, but without effect in this preview")
-		case obsolete:
-			if name == "RATELIMIT_STORAGE_URL" && strings.EqualFold(pyStrip(p.raw(name, "")), "memory://") {
-				continue
-			}
-			if name == "RATELIMIT_STORAGE_URL" {
-				p.warn(WarnObsolete, name, "is ignored: the Go release keeps rate limit counters in the process, so they start over after a restart")
-				continue
-			}
-			p.warn(WarnObsolete, name, "has no meaning in the Go release; it is still checked like in the Python release, so a return to Python keeps starting")
+		if variables[name] != obsolete {
+			continue
 		}
+		if quiet, ok := quietValues[name]; ok && strings.EqualFold(pyStrip(p.raw(name, "")), quiet) {
+			continue
+		}
+		if reason, ok := obsoleteReasons[name]; ok {
+			p.warn(WarnObsolete, name, "%s", reason)
+			continue
+		}
+		p.warn(WarnObsolete, name, "has no meaning in the Go release; it is still checked like in the Python release, so a return to Python keeps starting")
 	}
 }

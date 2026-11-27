@@ -22,7 +22,7 @@ func TestOIDCValues(t *testing.T) {
 		!slices.Equal(o.StepUpACR, []string{"urn:mfa"}) || o.LoginRateLimit != "3 per minute" {
 		t.Fatalf("%+v", o)
 	}
-	if hasWarning(warns, WarnNoEffect, "OIDC_ENABLED", "") {
+	if warningFor(warns, "", "OIDC_ENABLED") {
 		t.Fatal("OIDC variables reported without effect")
 	}
 	if c, _ := mustLoad(t, nil); c.OIDC.Enabled || c.OIDC.LoginRateLimit != "10 per minute" {

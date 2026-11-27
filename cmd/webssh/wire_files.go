@@ -43,6 +43,7 @@ func fileOptions(f config.Files, reg *files.Registry, audit files.Audit) files.O
 		MaxEditorBytes: f.MaxEditorBytes, EditorBytesPerMinute: f.EditorBytesPerMinute,
 		ControlBytesPerMin: f.ControlBytesPerMin, MaxPreviewBytes: f.MaxPreviewBytes,
 		MaxPreviewTailLines: f.MaxPreviewTailLines, MaxSupportedFileSize: f.MaxSupportedFileSize,
+		MaxPathBytes: f.MaxPathBytes,
 	}
 }
 

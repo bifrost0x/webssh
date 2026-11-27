@@ -111,7 +111,7 @@ func (s *Service) Preview(ctx context.Context, c Caller, q PreviewRequest) (Prev
 	if err != nil {
 		return Preview{}, err
 	}
-	p, err := Clean(q.Path)
+	p, err := s.clean(q.Path)
 	if err != nil {
 		return Preview{}, err
 	}
@@ -159,7 +159,7 @@ func (s *Service) Preview(ctx context.Context, c Caller, q PreviewRequest) (Prev
 // Image reads a whole file of at most MAX_EDITOR_FILE_SIZE bytes for the
 // image preview (download_file_binary with for_preview).
 func (s *Service) Image(ctx context.Context, c Caller, sourceID, path string) ([]byte, error) {
-	p, err := Clean(path)
+	p, err := s.clean(path)
 	if err != nil {
 		return nil, err
 	}

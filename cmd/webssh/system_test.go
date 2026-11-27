@@ -132,12 +132,37 @@ func TestMaintenanceAnswersOnlyTheProbes(t *testing.T) {
 	}
 }
 
-func TestSystemRefusesProduction(t *testing.T) {
+func TestSystemRefusesUnsafeProduction(t *testing.T) {
 	_, err := openSystem(t.Context(), bootInput{lookup: lookupMap(map[string]string{
 		"DATA_DIR": filepath.Join(t.TempDir(), "data"), "SECRET_KEY": "x-0123456789abcdef0123456789", "DEPLOYMENT_PROFILE": "production",
 	}), log: slog.New(slog.DiscardHandler), stopping: func() bool { return false }})
-	if err == nil {
-		t.Fatal("production profile started")
+	if err == nil || !strings.Contains(err.Error(), "unsafe production profile") {
+		t.Fatalf("unsafe production profile: %v", err)
+	}
+}
+
+// The production profile starts and keeps its rules at run time:
+// registration stays locked and cannot be enabled by an administrator.
+func TestSystemProductionProfile(t *testing.T) {
+	sys, ts := openTestSystem(t, map[string]string{
+		"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true",
+		"TRUSTED_PROXIES": "0", "SESSION_COOKIE_SECURE": "true", "BOOTSTRAP_REGISTRATION_ENABLED": "false",
+	})
+	if sys.cfg.Profile != config.ProfileProduction || sys.cfg.Features.HostDiscovery || sys.cfg.Accounts.BootstrapRegistrationEnabled {
+		t.Fatalf("production configuration %+v %+v", sys.cfg.Features, sys.cfg.Accounts)
+	}
+	app, err := sys.settings.App(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app.RegistrationEnabled {
+		t.Error("registration open in production")
+	}
+	if err := sys.settings.SetRegistrationEnabled(t.Context(), true); err == nil {
+		t.Error("registration enabled in production")
+	}
+	if resp, _ := get(t, ts.Client(), ts.URL+"/health"); resp.StatusCode != http.StatusOK {
+		t.Errorf("health: %d", resp.StatusCode)
 	}
 }
 

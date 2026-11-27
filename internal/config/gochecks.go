@@ -8,13 +8,8 @@ import (
 	"time"
 )
 
-// previewChecks adds what the Go release reads beyond config.py and the
-// limits of this preview.
-func previewChecks(p *parser, c *Config, lookup LookupFunc) {
-	if c.Profile == ProfileProduction {
-		p.fail(configError("DEPLOYMENT_PROFILE", "DEPLOYMENT_PROFILE=production is not supported by this preview: it cannot yet enforce every rule of the production profile. Run the preview with the homelab profile on a copy of the data volume, or keep the Python release for production."))
-		return
-	}
+// goChecks adds what the Go release reads beyond config.py.
+func goChecks(p *parser, c *Config, lookup LookupFunc) {
 	cidrs, err := parseProxyCIDRs(p.raw("TRUSTED_PROXY_CIDRS", ""))
 	if err != nil {
 		p.fail(err)
@@ -27,6 +22,12 @@ func previewChecks(p *parser, c *Config, lookup LookupFunc) {
 		}
 	}
 	switch {
+	case c.Proxies.Hops > 0 && len(cidrs) == 0 && c.Profile == ProfileProduction:
+		// Condition H1. The Python release had no such variable, so the
+		// production profile warns instead of refusing to start: the
+		// shipped overlay publishes the port on loopback only, and the
+		// address the proxy connects from depends on the Docker network.
+		p.warn(WarnProxy, "TRUSTED_PROXY_CIDRS", "is required beside TRUSTED_PROXIES in the production profile: without it forwarding headers are trusted from every client that reaches the port directly, so a client can choose the address used for sign-in limits and audit; set it to the addresses of the proxy")
 	case c.Proxies.Hops > 0 && len(cidrs) == 0:
 		p.warn(WarnProxy, "TRUSTED_PROXIES", "forwarding headers are trusted from every client that reaches the port directly, so a client can choose the address used for sign-in limits and audit; set TRUSTED_PROXY_CIDRS to the addresses of the proxy")
 	case c.Proxies.Hops == 0 && len(cidrs) > 0:

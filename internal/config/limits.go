@@ -56,7 +56,8 @@ func loadLimits(p *parser, c *Config) {
 	c.Stores.CommandStoreMaxBytes = int(commandStore)
 	c.Stores.CommandConfigMaxBytes = int(p.bounded("COMMAND_CONFIG_MAX_BYTES", 4*mib, commandStore, 16*mib))
 
-	p.bounded("FILE_CONTROL_MAX_PATH_BYTES", 4096, 512, 16*kib)
+	// The path checks of the Python release use min(4096, value).
+	c.Files.MaxPathBytes = int(min(p.bounded("FILE_CONTROL_MAX_PATH_BYTES", 4096, 512, 16*kib), 4096))
 	p.adminSwitch("SFTP_CHMOD_ENABLED", false)
 	c.Files.SFTP.MaxNameBytes = int(p.bounded("REMOTE_FILENAME_MAX_BYTES", 4096, 255, 16*kib))
 	c.Files.SFTP.MaxMetadataBytes = int(p.bounded("REMOTE_LISTING_MAX_METADATA_BYTES", 4*mib, 64*kib, 16*mib))
