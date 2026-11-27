@@ -41,6 +41,15 @@
    "side": "go",
    "line": "<a class=\"btn btn-primary btn-block\" href=\"#ZgotmplZ\">",
    "reason": "Counterpart of the javascript: URL guard above."
+  },
+  {
+   "cases": [
+    "settings_.*"
+   ],
+   "side": "go",
+   "block": true,
+   "line": "<div class=\"admin-settings-row hidden\" data-setting-optional=\"host_(discovery|reachability)_users\">",
+   "reason": "The administrator settings of the Go server show the discovery and reachability rights of the role user (D-29, OP3); the rows are hidden until the server sends the setting. The Python template keeps its form. A block exception removes the whole row."
   }
  ]
 }

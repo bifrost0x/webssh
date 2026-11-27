@@ -167,7 +167,18 @@ def _applies(exception, case):
 def _strip_exceptions(lines, side, case, used):
     kept = []
     drop_script_end = False
+    # A block exception removes the element its line opens, up to the
+    # matching closing tag (depth counts the element's own tag name).
+    block_tag, block_depth = None, 0
     for line in lines:
+        if block_tag is not None:
+            if line.startswith('<' + block_tag + ' ') or line == '<' + block_tag + '>':
+                block_depth += 1
+            elif line == '</' + block_tag + '>':
+                block_depth -= 1
+                if block_depth == 0:
+                    block_tag = None
+            continue
         if drop_script_end and line == '</script>':
             drop_script_end = False
             continue
@@ -180,6 +191,9 @@ def _strip_exceptions(lines, side, case, used):
             kept.append(line)
         else:
             used.add(hit)
+            if EXCEPTIONS[hit].get('block'):
+                block_tag, block_depth = re.match(r'<([a-z0-9]+)', line).group(1), 1
+                continue
             drop_script_end = drop_script_end or line.startswith('<script')
     return kept
 
