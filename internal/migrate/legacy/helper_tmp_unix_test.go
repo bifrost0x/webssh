@@ -13,13 +13,16 @@ import (
 
 const tempHelperEnv = "WEBSSH_TEMP_HELPER"
 
-// helperTempDir points the TMPDIR of a helper process at a directory of
+// helperTempDir points the temporary directories of a helper process at a directory of
 // the calling test. A helper killed with SIGKILL cannot remove its own
 // temporary files (t.TempDir, os.MkdirTemp, the fixture TestMain
 // unpacks); below the caller's t.TempDir they are removed with it.
-func helperTempDir(t *testing.T) string {
+func helperTempDir(t *testing.T) []string {
 	t.Helper()
-	return "TMPDIR=" + t.TempDir()
+	dir := t.TempDir()
+	// t.TempDir prefers GOTMPDIR, os.MkdirTemp uses TMPDIR: both point
+	// at the caller's directory.
+	return []string{"TMPDIR=" + dir, "GOTMPDIR=" + dir}
 }
 
 // TestTempHelper is the helper of TestKilledHelperLeavesNothingBehind: it
@@ -41,12 +44,12 @@ func TestKilledHelperLeavesNothingBehind(t *testing.T) {
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestTempHelper$", "-test.count=1")
 	cmd.Env = append(os.Environ(), tempHelperEnv+"=1")
 	tmp := helperTempDir(t)
-	cmd.Env = append(cmd.Env, tmp)
+	cmd.Env = append(cmd.Env, tmp...)
 	out, err := cmd.Output()
 	if _, ok := errors.AsType[*exec.ExitError](err); !ok {
 		t.Fatalf("helper did not die: %v\n%s", err, out)
 	}
-	dir := strings.TrimPrefix(tmp, "TMPDIR=")
+	dir := strings.TrimPrefix(tmp[0], "TMPDIR=")
 	var paths []string
 	for line := range strings.Lines(string(out)) {
 		if p, ok := strings.CutPrefix(strings.TrimSpace(line), "TEMP "); ok {

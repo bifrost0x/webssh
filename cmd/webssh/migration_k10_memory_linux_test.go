@@ -123,7 +123,7 @@ func TestBuildMigrationMemoryWithLargeStores(t *testing.T) {
 	}
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestK10MemoryHelper$", "-test.count=1", "-test.v")
 	cmd.Env = append(os.Environ(), k10MemoryEnv+"="+dir)
-	cmd.Env = append(cmd.Env, helperTempDir(t))
+	cmd.Env = append(cmd.Env, helperTempDir(t)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("helper: %v\n%s", err, out)

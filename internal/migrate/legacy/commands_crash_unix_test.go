@@ -57,7 +57,7 @@ func TestCommandsCrashInStep(t *testing.T) {
 			before := legacySnapshot(t, dir)
 			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestCommandsCrashHelper$", "-test.count=1")
 			cmd.Env = append(os.Environ(), commandsCrashEnv+"="+dir, commandsCrashEnv+"_ENTITY="+entity)
-			cmd.Env = append(cmd.Env, helperTempDir(t))
+			cmd.Env = append(cmd.Env, helperTempDir(t)...)
 			out, err := cmd.CombinedOutput()
 			var exit *exec.ExitError
 			if !errors.As(err, &exit) {

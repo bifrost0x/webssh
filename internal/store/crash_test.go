@@ -60,7 +60,7 @@ func TestCrashRecovery(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCrashChild$", "-test.count=1")
 	cmd.Env = append(os.Environ(), crashEnv+"="+path)
-	cmd.Env = append(cmd.Env, helperTempDir(t))
+	cmd.Env = append(cmd.Env, helperTempDir(t)...)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)

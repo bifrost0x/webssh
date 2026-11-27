@@ -62,7 +62,7 @@ func TestDiskFull(t *testing.T) {
 			`mount -t tmpfs -o size=96k tmpfs "$1" && exec "$2" -test.run='^TestDiskFullHelper$' -test.count=1 -test.v`,
 			"sh", goDir, os.Args[0])
 		cmd.Env = append(os.Environ(), diskFullEnv+"="+dir+"|"+mode)
-		cmd.Env = append(cmd.Env, helperTempDir(t))
+		cmd.Env = append(cmd.Env, helperTempDir(t)...)
 		out, err := cmd.CombinedOutput()
 		if strings.Contains(string(out), "mount:") || strings.Contains(string(out), "unshare:") {
 			t.Skipf("no rootless tmpfs here: %s", out)

@@ -66,7 +66,7 @@ func TestRotationCrash(t *testing.T) {
 			oldSecret := readSecret(t, dir)
 			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestRotationCrashHelper$", "-test.count=1")
 			cmd.Env = append(os.Environ(), rotationCrashEnv+"="+strings.Join([]string{point, dir, t.TempDir()}, "|"))
-			cmd.Env = append(cmd.Env, helperTempDir(t))
+			cmd.Env = append(cmd.Env, helperTempDir(t)...)
 			out, err := cmd.CombinedOutput()
 			exit, ok := errors.AsType[*exec.ExitError](err)
 			if !ok {
