@@ -4,9 +4,7 @@ package e2eseed
 // of the M2 plan that adds its applier (M2 plan, section 4.8): the part
 // becomes a step of Apply in the same change that merges the entity's
 // capability, and leaves this table.
-var skippedOwners = map[string]string{
-	"test_hooks." + HookSocketHerdrSessions: "HO1",
-}
+var skippedOwners = map[string]string{}
 
 // SkippedOwner returns the package that will apply a skipped part.
 func SkippedOwner(part string) (string, bool) {

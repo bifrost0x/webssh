@@ -9,6 +9,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
+	"github.com/bifrost0x/webssh/internal/ssh/remotecmd"
 )
 
 // Reasons of terminal.closed; the page shows them as the Python release
@@ -36,9 +37,12 @@ type Session struct {
 	created time.Time
 	//lint:ignore U1000 set and read by the e2e hooks (fixtures.go)
 	fixture bool
-	opener  uint64 // the connection whose terminal.open created it
-	request string // the request_id of that terminal.open
-	release func() // quota slot
+	// fixtureExec runs the commands of a Herdr fixture session (e2e build).
+	//lint:ignore U1000 set and read by the e2e hooks (fixtures_herdr.go)
+	fixtureExec remotecmd.Executor
+	opener      uint64 // the connection whose terminal.open created it
+	request     string // the request_id of that terminal.open
+	release     func() // quota slot
 
 	mu       sync.Mutex
 	info     protocol.SessionInfo

@@ -183,16 +183,9 @@ func Apply(ctx context.Context, s *Seed, st Stores, log *slog.Logger) (Applied, 
 
 // skipped lists the non-empty parts of the seed outside this build.
 func (s *Seed) skipped() []string {
-	var parts []string
-	add := func(present bool, part string) {
-		if present {
-			parts = append(parts, part)
-		}
-	}
-	for _, h := range s.TestHooks {
-		add(h.Name == HookSocketHerdrSessions, "test_hooks."+h.Name)
-	}
-	return parts
+	// Since the third wave of M2 this build applies every part of the
+	// seed; a part added later without its applier is listed here.
+	return nil
 }
 
 func applyAdminSettings(ctx context.Context, as AdminSettings, st AppSettings) error {

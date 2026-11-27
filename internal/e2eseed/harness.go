@@ -109,6 +109,9 @@ func Run(ctx context.Context, o Options, wire Wire) (err error) {
 	if b.Close != nil {
 		defer func() { err = errors.Join(err, b.Close()) }()
 	}
+	if b.Hooks.HerdrSnapshot == "" {
+		b.Hooks.HerdrSnapshot = herdrSnapshotPath(o.SeedPath)
+	}
 	routes, err := seed.Routes(b.Hooks)
 	if err != nil {
 		return err

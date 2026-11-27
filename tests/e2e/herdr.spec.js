@@ -240,6 +240,29 @@ async function watchSnapshots(page, answers = null) {
         };
     }, answers);
 }
+/**
+ * watchSnapshots for the page loaded next: the answers are in place before
+ * the panel asks for the first time, however soon the restored sessions
+ * arrive after the reload.
+ */
+async function watchSnapshotsFromLoad(page, answers) {
+    await page.addInitScript(mocked => {
+        let current;
+        Object.defineProperty(window, 'socket', {configurable: true, get: () => current, set: value => {
+            current = value;
+            if (!value || value.__herdrWatched) return;
+            value.__herdrWatched = true;
+            window.__herdrCalls = [];
+            const original = value.emit.bind(value);
+            value.emit = (event, data, ack) => {
+                if (event !== 'request_herdr_snapshot') return original(event, data, ack);
+                window.__herdrCalls.push({session: data.session_id, at: Date.now()});
+                setTimeout(() => ack(mocked[data.session_id]), 20);
+                return value;
+            };
+        }});
+    }, answers);
+}
 const snapshotCalls = page => page.evaluate(() => window.__herdrCalls.length);
 const execCount = async page => (await emitAck(page, 'e2e_herdr_exec_count', {})).count;
 const hostGroup = (panel, name) => panel.locator('.od-agents-host').filter({has: panel.page().locator('h3', {hasText: name})});
@@ -294,9 +317,9 @@ for (const width of [1440, 390]) {
             try {
                 await setIntegration(page, true);
                 const {sessionIds} = await herdrHosts(page, names, {sessions: names.slice(0, reasons.length)});
-                await page.reload();
-                await watchSnapshots(page, Object.fromEntries(sessionIds.map((id, index) => [id,
+                await watchSnapshotsFromLoad(page, Object.fromEntries(sessionIds.map((id, index) => [id,
                     {success: false, agents: [], truncated: false, reason: reasons[index]}])));
+                await page.reload();
                 const panel = await openAgents(page);
                 const texts = new Set();
                 for (const [index, reason] of reasons.entries()) {

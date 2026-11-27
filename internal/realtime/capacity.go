@@ -19,6 +19,8 @@ type capacity struct {
 	perUser int
 	total   int
 	users   map[int64]int
+	// refused counts the connections each limit refused since the start.
+	refusedServer, refusedUser int
 }
 
 // limitHit says which limit refused a connection.
@@ -40,8 +42,10 @@ func (c *capacity) acquire(user int64) limitHit {
 	defer c.mu.Unlock()
 	switch {
 	case c.users[user] >= c.perUser:
+		c.refusedUser++
 		return limitUser
 	case c.total >= c.max:
+		c.refusedServer++
 		return limitServer
 	}
 	c.total++

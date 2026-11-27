@@ -64,6 +64,18 @@ type notReady struct {
 // {"status":"not_ready","failed":[…]}. The status codes and bodies are a
 // compatibility invariant (orchestrators and the image health check).
 func (rd *readiness) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if failed := rd.failures(r.Context()); len(failed) > 0 {
+		writeJSON(w, http.StatusServiceUnavailable, notReady{Status: "not_ready", Failed: failed})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
+// ReadinessFailures runs the checks of /ready and returns the names of
+// those that failed, none when the server is ready (the support report).
+func (h *Handler) ReadinessFailures(ctx context.Context) []string { return h.ready.failures(ctx) }
+
+func (rd *readiness) failures(ctx context.Context) []string {
 	var failed []string
 	maintenance := rd.checks.Maintenance != nil && rd.checks.Maintenance()
 	if maintenance {
@@ -73,7 +85,7 @@ func (rd *readiness) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		failed = append(failed, "runtime")
 	}
 	if !maintenance {
-		if err := rd.ping(r.Context()); err != nil {
+		if err := rd.ping(ctx); err != nil {
 			rd.log.Warn("readiness probe failed", "check", "database", "err", err)
 			failed = append(failed, "database")
 		}
@@ -82,11 +94,7 @@ func (rd *readiness) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			failed = append(failed, "data_directory")
 		}
 	}
-	if len(failed) > 0 {
-		writeJSON(w, http.StatusServiceUnavailable, notReady{Status: "not_ready", Failed: failed})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+	return failed
 }
 
 func (rd *readiness) ping(ctx context.Context) error {

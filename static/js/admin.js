@@ -1385,6 +1385,9 @@
         ['settingHerdr', 'herdr_enabled'],
         ['settingSupportLinks', 'support_links_enabled'],
         ['settingTailnetRestriction', 'tailscale_ssh_restrict_tailnet_routes'],
+        // Only servers that know the role permissions send these.
+        ['settingDiscoveryUsers', 'host_discovery_users'],
+        ['settingReachabilityUsers', 'host_reachability_users'],
     ];
     const SIGN_IN_PROTECTION_FIELDS = [
         ['signInUsernameLimit', 'login_username_limit'],
@@ -1577,6 +1580,9 @@
                 gateway.checked = data.ssh_gateway_enabled === true;
                 gateway.disabled = false;
             }
+            document.querySelectorAll('[data-setting-optional]').forEach(row => {
+                row.classList.toggle('hidden', typeof data[row.dataset.settingOptional] !== 'boolean');
+            });
             for (const [id, key] of SETTING_TOGGLES) {
                 const input = document.getElementById(id);
                 if (input && !settingsWrites.has(key)) {

@@ -10,5 +10,7 @@
 // AUDIT_LOG_MAX_BYTES the file moves to .1, older files shift up to the
 // backup count and the rest is removed.
 //
-// M1 builds the writer only; reading, export and retention follow in B7.
+// The administration reads the log back (view, NDJSON export, E34)
+// through a Python-compatible JSON round trip, so an export repeats the
+// bytes the Python release streamed for the same lines.
 package audit

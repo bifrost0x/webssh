@@ -33,7 +33,7 @@ func (f *fakeBackend) wire(_ context.Context, env Env) (*Backend, error) {
 	f.env = env
 	return &Backend{
 		Stores: f.stores.stores(),
-		Hooks:  Hooks{OutputFlow: newFakeFlow(0), FixtureSessions: &fakeSessions{}},
+		Hooks:  Hooks{OutputFlow: newFakeFlow(0), FixtureSessions: &fakeSessions{}, HerdrSessions: &fakeHerdr{}},
 		Serve: func(ctx context.Context, ln net.Listener, routes []protocol.Route) error {
 			f.routes = routes
 			if f.serveFn != nil {
@@ -95,7 +95,7 @@ func TestRunServesAfterTheSeed(t *testing.T) {
 		t.Fatalf("listening on %s", addr)
 	}
 	// Everything was seeded before the port opened.
-	if len(f.stores.users) != 7 || len(f.stores.profiles) != 2 || len(f.routes) != 2 {
+	if len(f.stores.users) != 7 || len(f.stores.profiles) != 2 || len(f.routes) != 4 {
 		t.Fatalf("users=%d profiles=%d routes=%d", len(f.stores.users), len(f.stores.profiles), len(f.routes))
 	}
 	resp, err := http.Get("http://" + addr + "/login")

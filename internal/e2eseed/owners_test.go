@@ -14,7 +14,7 @@ func TestSkippedPartsHaveOwners(t *testing.T) {
 		AdminSettings: AdminSettings{AutomationEnabled: &on},
 		Commands:      []OwnedEntry{{}},
 		CommandSets:   []OwnedEntry{{}},
-		TestHooks:     []Hook{{Name: HookAutomationSSHPeer}, {Name: HookSocketHerdrSessions}, {Name: HookOutboundSSHGuard}},
+		TestHooks:     []Hook{{Name: HookAutomationSSHPeer}, {Name: HookOutboundSSHGuard}},
 	}
 	parts := s.skipped()
 	for _, part := range parts {

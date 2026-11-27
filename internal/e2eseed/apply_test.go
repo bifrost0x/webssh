@@ -39,7 +39,7 @@ func TestApplyCheckedInSeed(t *testing.T) {
 	if !f.mfa[mixed] || len(f.mfa) != 1 {
 		t.Fatalf("mfa = %v", f.mfa)
 	}
-	wantSkipped := []string{"test_hooks.socket_herdr_sessions"}
+	var wantSkipped []string
 	if !slices.Equal(a.Skipped, wantSkipped) {
 		t.Fatalf("skipped = %q", a.Skipped)
 	}

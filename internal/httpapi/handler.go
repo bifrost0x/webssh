@@ -58,6 +58,7 @@ type Handler struct {
 	// streamed are the routes whose body the handler reads itself
 	// (StreamBody).
 	streamed map[string]bool
+	ready    *readiness
 
 	finish    sync.Once
 	finishErr error
@@ -105,9 +106,9 @@ func New(o Options) (*Handler, error) {
 	h.access[patternKey("/socket.io/")] = AccessPreview
 	h.access[patternKey("/socket.io")] = AccessPreview
 
-	ready := newReadiness(o.Readiness, log)
+	h.ready = newReadiness(o.Readiness, log)
 	h.mux.HandleFunc("GET "+pathHealth, health)
-	h.mux.Handle("GET "+pathReady, ready)
+	h.mux.Handle("GET "+pathReady, h.ready)
 	h.mux.Handle("GET "+pathStatic+"{path...}", newStatic(o.Assets))
 	h.mux.HandleFunc("GET "+pathRealtimeState, h.realtimeStatus)
 	return h, nil

@@ -30,12 +30,14 @@ import (
 	"github.com/bifrost0x/webssh/internal/auth/oidc"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
 	"github.com/bifrost0x/webssh/internal/e2eseed"
+	"github.com/bifrost0x/webssh/internal/hostops"
 	"github.com/bifrost0x/webssh/internal/hosts"
 	"github.com/bifrost0x/webssh/internal/httpapi"
 	"github.com/bifrost0x/webssh/internal/netpolicy"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
 	"github.com/bifrost0x/webssh/internal/store"
+	"github.com/bifrost0x/webssh/internal/terminal"
 	"github.com/bifrost0x/webssh/internal/vault"
 )
 
@@ -53,6 +55,7 @@ const (
 
 func init() {
 	e2eCommand = runE2E
+	fixtureLive = herdrFixtureLive
 	if v := os.Getenv(envE2ESMBPort); v != "" {
 		if port, err := e2eseed.ParsePort(v); err == nil {
 			smbPort = uint16(port) // #nosec G115 -- ParsePort bounds the port to 1..65535
@@ -112,7 +115,7 @@ func wireE2E(ctx context.Context, env e2eseed.Env) (*e2eseed.Backend, error) {
 	}
 	return &e2eseed.Backend{
 		Stores: e2eStores{sys}.stores(),
-		Hooks:  e2eseed.Hooks{OutputFlow: sys.terminal, FixtureSessions: sys.terminal},
+		Hooks:  e2eseed.Hooks{OutputFlow: sys.terminal, FixtureSessions: sys.terminal, HerdrSessions: sys.terminal},
 		Serve: func(ctx context.Context, ln net.Listener, routes []protocol.Route) error {
 			sys.realtime.Mount(routes...)
 			srv := &http.Server{Handler: sys.handler(), ReadHeaderTimeout: 10 * time.Second, ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn)}
@@ -135,6 +138,19 @@ func wireE2E(ctx context.Context, env e2eseed.Env) (*e2eseed.Backend, error) {
 		Close: sys.close,
 	}, nil
 }
+
+// herdrFixtureLive presents a Herdr fixture session to hostops; its
+// commands run on the fixture's executor.
+func herdrFixtureLive(m *terminal.Manager, owner int64, id string) (hostops.Live, bool) {
+	exec, s, ok := m.HerdrFixture(owner, id)
+	if !ok {
+		return hostops.Live{}, false
+	}
+	return hostops.Live{Exec: exec, Host: s.Host, Port: s.Port, Username: s.Username, ProfileID: s.ProfileID,
+		Herdr: s.Herdr, UseHerdr: s.UseHerdr, Done: s.Done}, true
+}
+
+var _ e2eseed.HerdrSessions = (*terminal.Manager)(nil)
 
 // guardedNetwork refuses every outbound connection of the SSH client with
 // the seed's text, while the destination checks stay those of the policy.

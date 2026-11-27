@@ -33,7 +33,7 @@ func fixtureSecret(t *testing.T) string {
 	return m.SecretKey.Value
 }
 
-func accountNames(t *testing.T) []string {
+func storedUsernames(t *testing.T) []string {
 	t.Helper()
 	cfg, err := loadConfig()
 	if err != nil {
@@ -102,7 +102,7 @@ func TestBackupCommandsRoundTrip(t *testing.T) {
 	if code != 0 || out != "Backup restored and verified.\n" {
 		t.Fatalf("restore: %d %q %q", code, out, e)
 	}
-	if names := accountNames(t); len(names) != 1 || names[0] != "admin1" {
+	if names := storedUsernames(t); len(names) != 1 || names[0] != "admin1" {
 		t.Fatalf("accounts after the restore: %v", names)
 	}
 	// The archive without SECRET_KEY restores on the same installation.
@@ -115,7 +115,7 @@ func TestBackupCommandsRoundTrip(t *testing.T) {
 		t.Fatalf("foreign secret: %d %q", code, e)
 	}
 	t.Setenv("SECRET_KEY", testSecret)
-	if names := accountNames(t); len(names) != 1 {
+	if names := storedUsernames(t); len(names) != 1 {
 		t.Fatalf("a refused restore changed the accounts: %v", names)
 	}
 }
@@ -135,7 +135,7 @@ func TestBackupRestorePythonArchiveOnNewInstallation(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("restore: %d %q %q", code, out, e)
 	}
-	names := accountNames(t)
+	names := storedUsernames(t)
 	if len(names) < 10 || !strings.Contains(strings.Join(names, ","), "local_user") {
 		t.Fatalf("accounts: %v", names)
 	}

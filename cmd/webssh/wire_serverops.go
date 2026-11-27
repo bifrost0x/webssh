@@ -40,6 +40,10 @@ var (
 	_ hostops.Auditor       = (*audit.Logger)(nil)
 )
 
+// fixtureLive finds the Herdr fixture sessions of the end-to-end build
+// (e2e.go); nil in every other build.
+var fixtureLive func(m *terminal.Manager, owner int64, id string) (hostops.Live, bool)
+
 // liveSessions adapts the terminal's connected sessions
 // (terminal.Manager.SessionConn) to hostops: commands run on a separate
 // channel of the session's own connection, which stays the session's.
@@ -51,6 +55,9 @@ func (l liveSessions) Live(owner int64, id string) (hostops.Live, bool) {
 	}
 	s, err := l.m.SessionConn(owner, id)
 	if err != nil {
+		if fixtureLive != nil {
+			return fixtureLive(l.m, owner, id)
+		}
 		return hostops.Live{}, false
 	}
 	return hostops.Live{Exec: s.Conn, Host: s.Host, Port: s.Port, Username: s.Username, ProfileID: s.ProfileID,

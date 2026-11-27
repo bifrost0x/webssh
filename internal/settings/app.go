@@ -2,8 +2,6 @@ package settings
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json/jsontext"
 	"fmt"
 
@@ -272,11 +270,4 @@ func putApp(ctx context.Context, tx *store.Tx, key string, v jsontext.Value, sou
 ON CONFLICT (key) DO UPDATE SET value = excluded.value, source = excluded.source, rule = excluded.rule, updated_us = excluded.updated_us`,
 		key, string(v), string(source), rule, nowUS)
 	return err
-}
-
-// newRevision is secrets.token_hex(32).
-func newRevision() string {
-	var b [32]byte
-	_, _ = rand.Read(b[:])
-	return hex.EncodeToString(b[:])
 }

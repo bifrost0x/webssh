@@ -13,19 +13,14 @@
     {"file": "auth-original-layout.spec.js", "exclude": []},
     {"file": "auth-session-warning.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "account-controls.spec.js", "exclude": []},
-    {"file": "account-menu.spec.js", "exclude": [
-      {"title": "administrators can hide the support links for all users", "reason": "admin integration settings (C-ASET) answer 501 in M1", "package": "OP3"}
-    ]},
+    {"file": "account-menu.spec.js", "exclude": []},
     {"file": "branding.spec.js", "exclude": []},
     {"file": "admin-step-up-cancel.spec.js", "exclude": []},
     {"file": "admin-feature-recovery.spec.js", "exclude": []},
     {"file": "admin-functional-flows.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "admin-keyboard-auth.spec.js", "exclude": []},
     {"file": "admin-deep-links.spec.js", "exclude": []},
-    {"file": "admin-pending-state.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "failed audit pagination retries the same page instead of skipping records", "reason": "audit log view (C-AOPS, /admin/api/audit answers 501)", "package": "OP3"},
-      {"title": "registration control is locked during authentication and restored after cancellation", "reason": "saves through POST /admin/api/settings, which belongs to the operations area", "package": "OP3"}
-    ]},
+    {"file": "admin-pending-state.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "presets-recovery-refinement.spec.js", "exclude": []},
     {"file": "admin-config-draft.spec.js", "exclude": []},
     {"file": "overview-workspace.spec.js", "serial": "e2e_admin", "exclude": []},
@@ -54,9 +49,7 @@
     {"file": "socks-proxy-accessibility.spec.js", "exclude": []},
     {"file": "form-journey.spec.js", "exclude": []},
     {"file": "review-regressions.spec.js", "exclude": []},
-    {"file": "ssh-gateway.spec.js", "exclude": [
-      {"title": "admin enables and disables the gateway using the protected settings control", "reason": "admin integration switches (C-ASET-05) answer 501", "package": "OP3"}
-    ]},
+    {"file": "ssh-gateway.spec.js", "exclude": []},
     {"file": "profile-launcher.spec.js", "exclude": []},
     {"file": "socks-proxy-routes.spec.js", "exclude": []},
     {"file": "terminal-safety.spec.js", "exclude": []},
@@ -83,24 +76,14 @@
     {"file": "i18n-locales.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "redesign-shell.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "layout.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "admin audit logs remain mouse-scrollable in a short desktop viewport", "reason": "audit log view (C-AOPS)", "package": "OP3"},
-      {"title": "mobile login keeps every sign-in method and the primary action in the first viewport", "reason": "the preview notice bar lengthens the narrow login page (D4, visible change of the preview); the OIDC method is offered since ID2", "package": "FE1"},
-      {"title": "new login, security, and admin controls honor the stored locale", "reason": "opens the audit retention section of the administration (C-AOPS); the OIDC sign-in button passes since ID2", "package": "OP3"}
+      {"title": "mobile login keeps every sign-in method and the primary action in the first viewport", "reason": "the preview notice bar lengthens the narrow login page (D4, visible change of the preview); the OIDC method is offered since ID2", "package": "FE1"}
     ]},
     {"file": "admin-oidc.spec.js", "exclude": []},
-    {"file": "complete-design.spec.js", "exclude": [
-      {"title": "complete account and administration presentation at", "reason": "opens the audit retention section of the administration (C-AOPS)", "package": "OP3"}
-    ]},
+    {"file": "complete-design.spec.js", "exclude": []},
     {"file": "design-system.spec.js", "exclude": []},
     {"file": "server-operations.spec.js", "exclude": []},
     {"file": "session-diagnostics-dom.spec.js", "exclude": []},
-    {"file": "herdr.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "host editor offers Herdr as the only alternative to tmux", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"},
-      {"title": "agents read through the own session appear as text and open their session", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"},
-      {"title": "every reason has its own state and busy passes silently", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"},
-      {"title": "a hidden panel stops asking and an old tab gets disabled without a command on the host", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"},
-      {"title": "a refused authentication leaves the integration off", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"}
-    ]},
+    {"file": "herdr.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "host-context.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "profile-exchange.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "customer-workflows.spec.js", "serial": "e2e_admin", "exclude": []},
@@ -219,6 +202,11 @@
     {"file": "automation-diagnostics.spec.js", "exclude": []},
     {"file": "feature-availability.spec.js", "exclude": []},
     {"file": "session-diagnostics-automation.spec.js", "exclude": []},
-    {"file": "management-width.spec.js", "exclude": []}
+    {"file": "management-width.spec.js", "exclude": []},
+    {"file": "operations.spec.js", "exclude": []},
+    {"file": "admin-audit-race.spec.js", "exclude": []},
+    {"file": "support-report.spec.js", "exclude": []},
+    {"file": "runtime-policies.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "admin-sign-in-protection.spec.js", "serial": "e2e_admin", "exclude": []}
   ]
 }
