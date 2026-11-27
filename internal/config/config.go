@@ -69,7 +69,9 @@ type Config struct {
 	// QUOTA_<KIND>_GLOBAL and QUOTA_<KIND>_PER_USER.
 	Quotas map[string]QuotaLimit
 	Stores Stores
+	Files  Files
 	Audit  Audit
+	SMB    SMB
 	// ShutdownGrace is RUNTIME_SHUTDOWN_GRACE_SECONDS.
 	ShutdownGrace time.Duration
 	// CABundle is the extra trust anchor file or directory from
@@ -264,6 +266,31 @@ type Stores struct {
 	SSHKeyStoreMaxBytes               int
 	MaxWebAuthnJSONSize               int
 	MaxRecoveryJSONSize               int
+}
+
+// Files are the limits of the file workspace and the editor.
+type Files struct {
+	MaxEditorBytes       int64 // MAX_EDITOR_FILE_SIZE
+	EditorBytesPerMinute int64 // EDITOR_SAVE_BYTES_PER_MINUTE
+	ControlBytesPerMin   int64 // FILE_CONTROL_BYTES_PER_MINUTE
+	ListingPageSize      int   // REMOTE_LISTING_PAGE_SIZE
+	SnapshotTTL          time.Duration
+	SnapshotsTotal       int   // REMOTE_LISTING_SNAPSHOT_MAX_STATES
+	SnapshotsPerUser     int   // REMOTE_LISTING_SNAPSHOT_MAX_PER_USER
+	MaxTransferMembers   int   // MAX_TRANSFER_MEMBERS
+	MaxPreviewBytes      int64 // MAX_PREVIEW_SIZE
+	MaxPreviewTailLines  int64 // MAX_PREVIEW_TAIL_LINES
+	MaxSupportedFileSize int64 // MAX_SUPPORTED_FILE_SIZE
+	SFTP                 SFTP
+}
+
+// SFTP are the protocol limits of the SFTP backend.
+type SFTP struct {
+	MaxPacketBytes   int           // SFTP_MAX_PACKET_BYTES
+	MaxHandleBytes   int           // SFTP_MAX_HANDLE_BYTES
+	MaxNameBytes     int           // REMOTE_FILENAME_MAX_BYTES
+	MaxMetadataBytes int           // REMOTE_LISTING_MAX_METADATA_BYTES
+	OperationTimeout time.Duration // SFTP_OPERATION_TIMEOUT
 }
 
 // Audit holds the audit log limits.

@@ -17,22 +17,33 @@ const M1_REQUESTS = ['list_profiles', 'save_profile', 'delete_profile', 'update_
     'save_notepad'];
 // Built by M2 packages since the split.
 const M2_REQUESTS = ['ssh_gateway_answer', 'ssh_gateway_input', 'ssh_gateway_ack',
-    'request_session_insights', 'request_session_runtime_inventory', 'request_herdr_snapshot'];
-const M1_UNAVAILABLE = ['list_commands', 'list_command_sets', 'list_smb_shares', 'probe_session_sftp'];
+    'list_directory', 'cancel_directory_listing', 'get_home_directory', 'preview_file',
+    'download_file_binary', 'open_file_for_edit', 'save_file', 'create_directory', 'create_file', 'rename_file',
+    'delete_item', 'file_source_disconnect', 'quick_connect', 'quick_disconnect', 'probe_session_sftp',
+    'request_session_directory', 'request_session_insights', 'request_session_runtime_inventory',
+    'request_herdr_snapshot',
+    'list_smb_shares', 'save_smb_share', 'delete_smb_share', 'smb_quick_connect', 'smb_quick_connect_cancel'];
+const M1_UNAVAILABLE = ['list_commands', 'list_command_sets', 'list_smb_shares', 'probe_session_sftp',
+    'request_session_insights', 'request_session_runtime_inventory'];
+// Areas built in M2 move their events from the unavailable replies to the
+// requests (realtime-shim-<area>.js of the owning package).
+const M2_REFRESH = ['smb.share.list'];
 const M1_FEATURES = ['files', 'smb', 'commands', 'commandSets', 'insights', 'terminalTools'];
 
-test('the split table equals the table of M1', () => {
+test('the split table equals the table of M1 plus the areas built since', () => {
     assert.deepEqual(Object.keys(catalog.REQUESTS).sort(), [...M1_REQUESTS, ...M2_REQUESTS].sort());
-    assert.deepEqual(Object.keys(catalog.UNAVAILABLE_REPLIES).sort(), [...M1_UNAVAILABLE].sort());
-    assert.deepEqual(Object.keys(catalog.REFRESH_PUSH), ['keys.list']);
+    assert.deepEqual(Object.keys(catalog.UNAVAILABLE_REPLIES).sort(), M1_UNAVAILABLE.filter(e => !M2_REQUESTS.includes(e)).sort());
+    assert.deepEqual(Object.keys(catalog.REFRESH_PUSH), ['keys.list', ...M2_REFRESH]);
     assert.equal(catalog.featureOf('delete_command_set'), 'commandSets');
     assert.equal(catalog.featureOf('delete_command'), 'commands');
-    assert.equal(catalog.featureOf('smb_list'), 'smb');
-    assert.equal(catalog.featureOf('quick_sftp_open'), 'files');
+    // A built area has no feature of the preview notice any more.
+    assert.equal(catalog.featureOf('smb_list'), 'other');
+    assert.equal(catalog.featureOf('quick_sftp_open'), 'other');
+    assert.equal(catalog.featureOf('get_file_permissions'), 'files');
     assert.equal(catalog.featureOf('ssh_gateway_quick_cancel'), 'terminalTools');
     assert.equal(catalog.featureOf('list_profiles'), 'other');
-    const features = new Set(M1_FEATURES);
-    for (const event of ['list_directory', 'smb_x', 'list_commands', 'save_command_set', 'request_session_insights', 'request_herdr_snapshot']) {
+    const features = new Set(M1_FEATURES.filter(f => f !== 'smb'));
+    for (const event of ['prepare_transfer', 'list_commands', 'save_command_set', 'request_session_insights', 'request_herdr_snapshot']) {
         assert.ok(features.has(catalog.featureOf(event)), event);
     }
 });
@@ -62,8 +73,8 @@ test('a missing area or an event in two areas stops the load', () => {
         ? source.replace("get_notepad: {", "list_keys: {type: 'keys.list'}, get_notepad: {")
         : source));
     assert.throws(() => loadCatalog(twice), /list_keys is in two areas/);
-    const both = sources.map((source, i) => (catalog.AREAS[i] === 'smb'
-        ? source.replace('list_smb_shares: () =>', "list_keys: () => ['x', {}], list_smb_shares: () =>")
+    const both = sources.map((source, i) => (catalog.AREAS[i] === 'commands'
+        ? source.replace('list_commands: () =>', "list_keys: () => ['x', {}], list_commands: () =>")
         : source));
     assert.throws(() => loadCatalog(both), /list_keys is both built and unavailable/);
 });

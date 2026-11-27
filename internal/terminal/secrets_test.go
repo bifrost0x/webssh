@@ -2,10 +2,12 @@ package terminal
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
 )
@@ -39,6 +41,14 @@ func (f fakeSaved) Password(_ context.Context, owner int64, resource string) (st
 		return pw, nil
 	}
 	return "", fault.New(fault.Code("credential_missing"), "")
+}
+
+func (f fakeSaved) TargetPassword(_ context.Context, p principal.Principal, credentialID, token string, host string, port int, user, jump, socks string) (string, error) {
+	key := strings.Join([]string{"target", credentialID, token, host, strconv.Itoa(port), user, jump, socks}, ":")
+	if pw, ok := f[key]; ok && p.UserID == 1 {
+		return pw, nil
+	}
+	return "", fault.New(fault.CredentialTargetChanged, "")
 }
 
 // Jump hosts with password sign-in and SOCKS5 logins get the password of
@@ -94,15 +104,25 @@ func TestRouteSecrets(t *testing.T) {
 				return t.Hop.Auth.Password == "saved-host" && t.Proxy.Password == "saved-socks"
 			}},
 		{name: "profile socks password missing", req: protocol.OpenTarget{ProfileID: "p-socks", AuthType: protocol.AuthPassword, Password: "tp"}, err: "SOCKS5 proxy password required"},
-		{name: "typed saved target password", saved: true, req: typed(func(r *protocol.OpenTarget) { r.SavedPassword = true }), err: string(fault.NotAvailableInPreview)},
+		{name: "typed and saved target password", saved: true, req: typed(func(r *protocol.OpenTarget) { r.SavedPassword = true }), err: string(fault.InvalidRequest)},
+		{name: "saved target password", saved: true, req: typed(func(r *protocol.OpenTarget) {
+			r.Password, r.SavedPassword, r.CredentialID, r.CredentialTargetToken = "", true, "c1", "tok"
+		}), check: func(t client.Target) bool { return t.Hop.Auth.Password == "saved-target" && t.Hop.Auth.Guard != nil }},
+		{name: "saved target password for another target", saved: true, req: typed(func(r *protocol.OpenTarget) {
+			r.Password, r.SavedPassword, r.CredentialID, r.CredentialTargetToken, r.Port = "", true, "c1", "tok", 2222
+		}), err: string(fault.CredentialTargetChanged)},
+		{name: "saved target password without credential", saved: true, req: typed(func(r *protocol.OpenTarget) {
+			r.Password, r.SavedPassword = "", true
+		}), err: string(fault.InvalidRequest)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			m.saved = nil
 			if tc.saved {
-				m.saved = fakeSaved{"jump:pw": "saved-jump", "socks:login": "saved-socks", "p-socks": "saved-host"}
+				m.saved = fakeSaved{"jump:pw": "saved-jump", "socks:login": "saved-socks", "p-socks": "saved-host",
+					"target:c1:tok:t.test:22:u::": "saved-target"}
 			}
-			got, err := m.resolve(ctx, 1, tc.req)
+			got, err := m.resolve(principal.With(ctx, principal.Principal{UserID: 1, SessionID: "s"}), 1, tc.req)
 			if tc.err != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.err) && string(fault.CodeOf(err)) != tc.err {
 					t.Fatalf("got %+v, %v; want %s", got, err, tc.err)
@@ -117,5 +137,30 @@ func TestRouteSecrets(t *testing.T) {
 	// The resolver's own target is never changed in place.
 	if p := m.profiles.(fakeProfiles)["p-jump"]; p.Jumps[0].Auth.Password != "" {
 		t.Fatal("the profile's jump hop was modified")
+	}
+}
+
+// A saved password is resolved again right before it is sent; one that
+// changed meanwhile cancels the attempt.
+func TestSavedPasswordGuard(t *testing.T) {
+	m := newManager(t, Config{}, &fakeShells{})
+	m.profiles = fakeProfiles{"p": {Owner: 1, Hop: client.Hop{Host: "t.test", Port: 22, User: "u"}}}
+	saved := fakeSaved{"p": "one"}
+	m.saved = saved
+	ctx := principal.With(t.Context(), principal.Principal{UserID: 1, SessionID: "s"})
+	got, err := m.resolve(ctx, 1, protocol.OpenTarget{ProfileID: "p", AuthType: protocol.AuthPassword, SavedPassword: true})
+	if err != nil || got.Hop.Auth.Guard == nil {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if err := got.Hop.Auth.Guard.Check(ctx); err != nil {
+		t.Fatalf("unchanged password refused: %v", err)
+	}
+	saved["p"] = "two"
+	if err := got.Hop.Auth.Guard.Check(ctx); fault.CodeOf(err) != fault.CredentialTargetChanged {
+		t.Fatalf("changed password: %v", err)
+	}
+	delete(saved, "p")
+	if err := got.Hop.Auth.Guard.Check(ctx); fault.CodeOf(err) != fault.Code("credential_missing") {
+		t.Fatalf("removed assignment: %v", err)
 	}
 }

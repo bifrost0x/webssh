@@ -39,7 +39,7 @@
     }
 
     // Each area (realtime-shim-<area>.js) provides some of:
-    //   requests:    event: {type, payload?, ack?, push?: [[event, build]], errorEvent?, answeredByPage?, refresh?}
+    //   requests:    event: {type, payload?, ack?, push?: [[event, build]], failure?: [[event, build]], errorEvent?, answeredByPage?, refresh?}
     //   refresh:     list request type: [event, build] pushed after a refresh
     //   unavailable: event: data => [event, payload], a local reply while the area is not built
     //   features:    [[feature, pattern]] for the preview notice
@@ -48,7 +48,12 @@
     // push builders get the acknowledgement and the request data. errorEvent
     // repeats a failure as the generic 'error' event, as Python did for that
     // event, except for failures the page answers itself (answeredByPage);
-    // refresh names a list request whose result is pushed afterwards.
+    // an event name instead of true repeats it as that event. failure(failed,
+    // data) rebuilds the failure for the acknowledgement and the event (the
+    // correlation members Python sent with it). refresh names a list request
+    // whose result is pushed afterwards; failurePush builders
+    // get the failure and the request data and are pushed on a failure (the
+    // error events of their own the Python release sent).
     // Events without a v1 type are answered locally with not_available_in_preview.
     const REQUESTS = join('requests');
     const REFRESH_PUSH = join('refresh');
@@ -97,14 +102,20 @@
 
     function mapped(host, entry, data, ack) {
         const payload = entry.payload ? entry.payload(data) : {...data};
-        host.request(entry.type, payload).then(result => {
+        // expand(host, result) may replace a successful result before it is
+        // answered (a large answer fetched over HTTP).
+        const expand = result => (result.ok && entry.expand ? entry.expand(host, result) : result);
+        host.request(entry.type, payload).then(expand).then(result => {
             if (!result.ok) {
-                const failed = acks.failure(result.err);
+                const failed = entry.failure ? entry.failure(acks.failure(result.err), data) : acks.failure(result.err);
                 // The details Python sent with the event too (usages of a
                 // jump host or SOCKS5 proxy that cannot be deleted), unless
                 // the page answers the failure itself.
-                if (entry.errorEvent && !entry.answeredByPage?.(failed)) host.dispatch('error', {...failed});
-                acks.answer(ack, result);
+                if (entry.errorEvent && !entry.answeredByPage?.(failed)) {
+                    host.dispatch(entry.errorEvent === true ? 'error' : entry.errorEvent, {...failed});
+                }
+                for (const [event, build] of entry.failurePush || []) host.dispatch(event, build(failed, data));
+                acks.answer(ack, result, null, entry.failure ? () => failed : undefined);
                 return;
             }
             const reply = entry.ack ? entry.ack(result.p, data) : {success: true, ...result.p};

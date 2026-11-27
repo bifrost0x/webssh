@@ -151,7 +151,14 @@ test('route passwords and saved passwords reach terminal.open', async () => {
     await tick();
     assert.deepEqual(ws.lastRequest('terminal.open').p.target,
         {auth_type: 'password', profile_id: 'p1', host: 'h', username: 'u', socks_proxy_id: 's1',
-            saved_password: true, socks_saved_password: true});
+            saved_password: true, credential_id: 'c0', socks_saved_password: true});
+    // Quick Connect with a saved password: the credential and the target
+    // token the page confirmed.
+    socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', credential_id: 'c2',
+        credential_target_token: 'tok', client_request_id: 'req_q'});
+    await tick();
+    assert.deepEqual(ws.lastRequest('terminal.open').p.target,
+        {auth_type: 'password', host: 'h', username: 'u', saved_password: true, credential_id: 'c2', credential_target_token: 'tok'});
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', password: 'pw',
         socks_proxy: {socks_proxy_id: 's2', password: 'sp'}, client_request_id: 'req_t'});
     await tick();

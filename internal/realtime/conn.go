@@ -87,6 +87,9 @@ func (c *Conn) run(parent context.Context) {
 	// Register before the second check and before hello: a revocation is
 	// either delivered to this connection or seen by Check (contract).
 	c.srv.sessions.add(c)
+	for _, f := range c.srv.onOpen {
+		f(c)
+	}
 	if c.srv.shutdown.Load() {
 		c.closeWith(protocol.CloseMaintenance, "the server is shutting down")
 		return

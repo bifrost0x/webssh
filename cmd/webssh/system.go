@@ -19,6 +19,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/auth/stepup"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
 	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/files"
 	"github.com/bifrost0x/webssh/internal/hostops"
 	"github.com/bifrost0x/webssh/internal/hosts"
 	"github.com/bifrost0x/webssh/internal/httpapi"
@@ -128,11 +129,19 @@ type system struct {
 	hostkeys *hostkey.Store
 	policy   *netpolicy.Policy
 	terminal *terminal.Manager
+	// shells is the SSH dialer with the per-host legacy setting; Quick
+	// SFTP dials through it like the terminal.
+	shells   legacyAlgorithmShells
 	realtime *realtime.Server
 	quotas   *quota.Policy  // wire_jobs.go
 	jobs     *jobs.Registry // wire_jobs.go
 	edge     *httpapi.Handler
 	pages    *pages
+
+	// The file workspace (wire_files.go); backend areas register their
+	// source kinds on fileSources.
+	fileSources *files.Registry
+	files       *files.Service
 
 	background     sync.WaitGroup
 	stopBackground context.CancelFunc

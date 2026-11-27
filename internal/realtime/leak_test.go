@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"net/http"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -19,9 +20,10 @@ import (
 func TestNoGoroutineLeakOnClose(t *testing.T) {
 	base := settledGoroutines(t, 0)
 	release := make(chan struct{})
-	var closed atomic.Int32
+	var opened, closed atomic.Int32
 	e := newEnv(t, Config{RecheckInterval: 20 * time.Millisecond, PingInterval: 30 * time.Millisecond}, func(s *Server) {
 		testRoutes(new(atomic.Int32), release)(s)
+		s.OnOpen(func(protocol.Peer) { opened.Add(1) })
 		s.OnClose(func(protocol.Peer) { closed.Add(1) })
 	})
 
@@ -54,6 +56,9 @@ func TestNoGoroutineLeakOnClose(t *testing.T) {
 	if got := closed.Load(); got != 9 {
 		t.Fatalf("OnClose ran %d times, want 9", got)
 	}
+	if got := opened.Load(); got != 9 {
+		t.Fatalf("OnOpen ran %d times, want 9 (one per closed connection)", got)
+	}
 	e.ts.Close()
 	close(release)
 	settledGoroutines(t, base)
@@ -77,5 +82,23 @@ func settledGoroutines(t *testing.T, want int) int {
 		}
 		last = n
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// The connection's principal says whether the upgrade reached the server
+// over HTTPS, as the Secure dependency judged it; without one it is false.
+func TestPrincipalSecureFromTheUpgrade(t *testing.T) {
+	for _, secure := range []bool{false, true} {
+		got := make(chan bool, 1)
+		e := newEnv(t, Config{}, func(s *Server) {
+			if secure {
+				s.deps.Secure = func(*http.Request) bool { return true }
+			}
+			s.OnOpen(func(p protocol.Peer) { got <- p.Principal().Secure })
+		})
+		e.open(1, "a")
+		if v := <-got; v != secure {
+			t.Fatalf("Secure = %v, want %v", v, secure)
+		}
 	}
 }

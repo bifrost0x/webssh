@@ -39,6 +39,8 @@ var Owners = []string{
 	"authgithub", "authldap", "authoidc", "backup",
 	// M2 runtime: the durable state of the background jobs.
 	"jobs",
+	// M2: saved SMB share definitions (FS3).
+	"smb",
 }
 
 // ledgerTable records applied migrations. It belongs to the store itself.

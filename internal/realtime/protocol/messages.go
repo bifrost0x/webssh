@@ -133,6 +133,33 @@ var v1 = []MessageType{
 	// Area "hostops.discovery" (HO2, payload_discovery.go).
 	{TypeDiscoveryPlatform, ServerEvent, "internal/hosts"},
 	{TypeDiscoveryMaintenance, ServerEvent, "internal/hosts"},
+
+	// Area "files" (FS1, payload_files.go).
+	{TypeFilesList, ClientRequest, "internal/files"},
+	{TypeFilesListCancel, ClientRequest, "internal/files"},
+	{TypeFilesHome, ClientRequest, "internal/files"},
+	{TypeFilesPreview, ClientRequest, "internal/files"},
+	{TypeFilesImage, ClientRequest, "internal/files"},
+	{TypeFilesEditOpen, ClientRequest, "internal/files"},
+	{TypeFilesEditSave, ClientRequest, "internal/files"},
+	{TypeFilesMkdir, ClientRequest, "internal/files"},
+	{TypeFilesCreate, ClientRequest, "internal/files"},
+	{TypeFilesRename, ClientRequest, "internal/files"},
+	{TypeFilesDelete, ClientRequest, "internal/files"},
+	{TypeFilesSourceClose, ClientRequest, "internal/files"},
+
+	// The SFTP sources (FS2, payload_sftp.go).
+	{TypeFilesQuickOpen, ClientRequest, "internal/files/sftp"},
+	{TypeFilesQuickClose, ClientRequest, "internal/files/sftp"},
+	{TypeFilesSessionProbe, ClientRequest, "internal/files/sftp"},
+	{TypeFilesSessionDirectory, ClientRequest, "internal/files/sftp"},
+
+	// Area "smb" (FS3, payload_smb.go).
+	{TypeSMBShareList, ClientRequest, "internal/files/smb"},
+	{TypeSMBShareSave, ClientRequest, "internal/files/smb"},
+	{TypeSMBShareDelete, ClientRequest, "internal/files/smb"},
+	{TypeSMBConnect, ClientRequest, "internal/files/smb"},
+	{TypeSMBConnectCancel, ClientRequest, "internal/files/smb"},
 }
 
 // V1 returns the catalog of schema v1.

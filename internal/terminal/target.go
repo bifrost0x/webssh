@@ -47,7 +47,9 @@ func (m *Manager) resolve(ctx context.Context, owner int64, req protocol.OpenTar
 		if t.Hop.Auth.Password == "" && t.Hop.Auth.KeyID == "" {
 			t.Hop.Auth.Password = req.Password
 			if req.SavedPassword {
-				if t.Hop.Auth.Password, err = m.savedPassword(ctx, owner, req.ProfileID); err != nil {
+				if t.Hop.Auth, err = m.savedAuth(ctx, func(ctx context.Context) (string, error) {
+					return m.savedPassword(ctx, owner, req.ProfileID)
+				}); err != nil {
 					return client.Target{}, err
 				}
 			}
@@ -83,18 +85,26 @@ func (m *Manager) resolve(ctx context.Context, owner int64, req protocol.OpenTar
 			return client.Target{}, invalid("Username is required.")
 		case !usernamePattern.MatchString(user):
 			return client.Target{}, invalid("Invalid username format.")
-		case req.SavedPassword:
-			// A saved password belongs to a saved host (internal/vault).
-			return client.Target{}, errSavedPasswords
-		case req.AuthType == protocol.AuthPassword && req.Password == "":
+		case req.SavedPassword && req.Password != "":
+			return client.Target{}, errBothPasswords
+		case req.AuthType == protocol.AuthPassword && req.Password == "" && !req.SavedPassword:
 			return client.Target{}, invalid("Password required.")
 		case req.AuthType == protocol.AuthKey && req.KeyID == "":
 			return client.Target{}, invalid("Password or SSH key required.")
 		}
 		t = client.Target{Owner: owner, Hop: client.Hop{Host: host, Port: port, User: user}}
-		if req.AuthType == protocol.AuthKey {
+		switch {
+		case req.AuthType == protocol.AuthKey:
 			t.Hop.Auth.KeyID = req.KeyID
-		} else {
+		case req.SavedPassword:
+			// The password the page picked for this typed target, bound to
+			// it by the target token (Quick Connect without a saved host).
+			if t.Hop.Auth, err = m.savedAuth(ctx, func(ctx context.Context) (string, error) {
+				return m.targetPassword(ctx, req, host, port, user)
+			}); err != nil {
+				return client.Target{}, err
+			}
+		default:
 			t.Hop.Auth.Password = req.Password
 		}
 	}

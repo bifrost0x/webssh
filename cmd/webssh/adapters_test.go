@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json/jsontext"
+	"slices"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/config"
@@ -42,7 +43,7 @@ func TestPreviewNotice(t *testing.T) {
 		t.Errorf("sign-in notice %+v", signIn)
 	}
 	work := previewNotice(false)
-	if !work.Enabled || len(work.Unavailable) < 5 {
+	if !work.Enabled || !slices.Contains(work.Unavailable, "commands") || slices.Contains(work.Unavailable, "files") {
 		t.Errorf("workspace notice %+v", work)
 	}
 }

@@ -112,6 +112,10 @@ type Deps struct {
 	Limiter     Limiter // optional: no rate limits
 	Auditor     Auditor // optional: no audit records
 	Log         *slog.Logger
+	// Secure reports whether the upgrade request reached the server over
+	// HTTPS; it sets principal.Secure of the connection. Optional: without
+	// it no connection counts as secure.
+	Secure func(*http.Request) bool
 }
 
 // Restorer lists the terminal sessions a new connection of p may attach
@@ -139,6 +143,7 @@ type Server struct {
 	reg      registry
 	binary   BinaryHandler
 	restorer Restorer
+	onOpen   []func(protocol.Peer)
 	onClose  []func(protocol.Peer)
 	frozen   atomic.Bool
 	freezing sync.Once
@@ -201,6 +206,13 @@ func (s *Server) HandleBinary(h BinaryHandler) {
 func (s *Server) SetRestorer(r Restorer) {
 	s.mustNotServe()
 	s.restorer = r
+}
+
+// OnOpen registers f, called once per connection before it handles its
+// first frame. Every connection that ran it also runs the OnClose hooks.
+func (s *Server) OnOpen(f func(protocol.Peer)) {
+	s.mustNotServe()
+	s.onOpen = append(s.onOpen, f)
 }
 
 // OnClose registers cleanup that runs once per connection after it ended
@@ -282,6 +294,7 @@ func (s *Server) authenticate(r *http.Request) (principal.Principal, bool) {
 	if err != nil || !p.Valid() {
 		return principal.Principal{}, false
 	}
+	p.Secure = s.deps.Secure != nil && s.deps.Secure(r)
 	return p, true
 }
 

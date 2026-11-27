@@ -51,7 +51,9 @@ func loadPythonRoutes(t *testing.T) []pythonRoute {
 }
 
 // goOnlyRoutes are catalog routes without a Python counterpart.
-var goOnlyRoutes = []string{"GET /ws", "GET /api/realtime/status"}
+// The handoff of large editor and image answers (internal/files) keeps
+// them out of the realtime queue.
+var goOnlyRoutes = []string{"GET /ws", "GET /api/realtime/status", "GET /api/files/handoff/{}"}
 
 // TestRouteCatalogCoversPython: every route of the Python release is a
 // preview route or a route of this preview, never both, and the catalogs

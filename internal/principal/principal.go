@@ -33,6 +33,10 @@ type Principal struct {
 	// Recovery marks a session opened with a recovery code. It may only
 	// repair second factors (C-MFA-09); Require rejects it everywhere else.
 	Recovery bool
+	// Secure says the request or realtime connection reached the server
+	// over HTTPS (request_reached_over_https); saved passwords need it.
+	// The realtime endpoint sets it from the upgrade request.
+	Secure bool
 }
 
 // Valid reports whether p names a user and a session.

@@ -105,6 +105,9 @@ func (s *system) buildCapabilities(in bootInput) error {
 	if opt.terminalRoutes != nil {
 		routes = opt.terminalRoutes
 	}
+	// Quick SFTP dials without the observer: platform detection follows
+	// terminal connections only.
+	s.shells = legacyAlgorithmShells{dialer: dialer, settings: s.settings}
 	shells := legacyAlgorithmShells{dialer: dialer, settings: s.settings, observe: opt.connectionObserver}
 	termCfg := terminal.FromConfig(cfg.Terminal)
 	termCfg.TmuxPrefix = cfg.Features.TmuxSessionPrefix
@@ -112,7 +115,8 @@ func (s *system) buildCapabilities(in bootInput) error {
 		Shells: shells, Profiles: s.hosts, Routes: routes, Log: s.log,
 		Connections: shells, DB: s.db, TmuxEnabled: s.tmuxEnabled, Audit: s.audit, Quotas: s.quotas,
 		Variants: opt.terminalVariants, GatewayTmuxName: gateway.TmuxName,
-		Commands: opt.terminalCommands, Herdr: opt.terminalHerdr})
+		Commands: opt.terminalCommands, Herdr: opt.terminalHerdr,
+		Passwords: savedPasswords{s.vault}})
 	if err != nil {
 		return fmt.Errorf("terminal: %w", err)
 	}

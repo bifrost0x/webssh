@@ -30,20 +30,16 @@
     ]},
     {"file": "presets-recovery-refinement.spec.js", "exclude": []},
     {"file": "admin-config-draft.spec.js", "exclude": []},
-
     {"file": "overview-workspace.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-default-content.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-classic.spec.js", "serial": "e2e_admin", "exclude": []},
-    {"file": "connection-overview.spec.js", "exclude": [
-      {"title": "single navigation entries retain Files, Commands, Hosts and recent connection form", "reason": "opens the file manager (C-SFTP, template flag off in M1)", "package": "FS1"}
-    ]},
+    {"file": "connection-overview.spec.js", "exclude": []},
     {"file": "empty-states.spec.js", "exclude": [
       {"title": "empty management surfaces are consistent and actionable", "reason": "expects built-in commands in the command library (C-CMD)", "package": "CM1"}
     ]},
     {"file": "onboarding.spec.js", "serial": "e2e_admin", "exclude": [
       {"title": "tour crosses workspaces, handles small screens and saves completion", "reason": "tour step 6 opens the automation workspace (C-AUTO)", "package": "AU1"}
     ]},
-
     {"file": "management-dialogs-redesign.spec.js", "exclude": []},
     {"file": "management-persistence.spec.js", "exclude": [
       {"title": "command and command-set edits survive a reload", "reason": "commands and command sets (C-CMD)", "package": "CM1"},
@@ -74,11 +70,7 @@
       {"title": "saved host and command set controls include their names", "reason": "command sets (C-CMD)", "package": "CM1"},
       {"title": "referenced commands and command sets cannot be deleted", "reason": "command sets (C-CMD)", "package": "CM1"}
     ]},
-    {"file": "socks-proxy-routes.spec.js", "exclude": [
-      {"title": "saved SOCKS password launches automatically and reconnect retains the reference", "reason": "saved passwords (E32, credentials not in M1)", "package": "VA1"},
-      {"title": "SOCKS hosts are blocked at all Quick SFTP entry points", "reason": "Quick SFTP (C-SFTP)", "package": "FS2"}
-    ]},
-
+    {"file": "socks-proxy-routes.spec.js", "exclude": []},
     {"file": "terminal-safety.spec.js", "exclude": []},
     {"file": "terminal-parser-bounds.spec.js", "exclude": []},
     {"file": "terminal-scroll.spec.js", "exclude": []},
@@ -97,7 +89,6 @@
       {"title": "sessions over polling at", "reason": "no long polling in the Go server (ADR 0005)", "package": "FE1"},
       {"title": "sessions over websocket at", "reason": "checks the command library, the session's files and diagnostics of the restored sessions (C-CMD first; then FS1 and HO1)", "package": "CM1"}
     ]},
-
     {"file": "settings-layout.spec.js", "exclude": [
       {"title": "settings sections share their content track and user actions remain reachable", "reason": "the preview toast of the 501 routes on the settings page (/admin/api/host-keys, /admin/api/backups/restore/status) covers the user action menu at 390 px once the preview notice lists fewer areas; it goes with the preview toast and banner", "package": "FE1"}
     ]},
@@ -106,14 +97,10 @@
     ]},
     {"file": "theme-system.spec.js", "exclude": []},
     {"file": "theme-live-settings.spec.js", "exclude": []},
-    {"file": "account-theme-matrix.spec.js", "exclude": [
-      {"title": "main workspaces retain all primary views in", "reason": "visits the file workspace (C-SFTP)", "package": "FS1"}
-    ]},
+    {"file": "account-theme-matrix.spec.js", "exclude": []},
     {"file": "terminal-appearance.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "i18n-locales.spec.js", "serial": "e2e_admin", "exclude": []},
-    {"file": "redesign-shell.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "reference composition and workspace continuity at", "reason": "opens the files context and the file manager (C-SFTP)", "package": "FS1"}
-    ]},
+    {"file": "redesign-shell.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "layout.spec.js", "serial": "e2e_admin", "exclude": [
       {"title": "admin audit logs remain mouse-scrollable in a short desktop viewport", "reason": "audit log view (C-AOPS)", "package": "OP3"},
       {"title": "mobile login keeps every sign-in method and the primary action in the first viewport", "reason": "the preview notice bar lengthens the narrow login page (D4, visible change of the preview); the OIDC method is offered since ID2", "package": "FE1"},
@@ -123,9 +110,7 @@
     {"file": "complete-design.spec.js", "exclude": [
       {"title": "complete account and administration presentation at", "reason": "opens the audit retention section of the administration (C-AOPS)", "package": "OP3"}
     ]},
-    {"file": "design-system.spec.js", "exclude": [
-      {"title": "Warm Graphite Sand separates cream actions, selection and status across views", "reason": "iterates the file workspace (C-SFTP)", "package": "FS1"}
-    ]},
+    {"file": "design-system.spec.js", "exclude": []},
     {"file": "server-operations.spec.js", "exclude": []},
     {"file": "session-diagnostics-dom.spec.js", "exclude": []},
     {"file": "herdr.spec.js", "serial": "e2e_admin", "exclude": [
@@ -187,6 +172,29 @@
     {"file": "overview-themes.spec.js", "exclude": []},
     {"file": "overview-topology.spec.js", "exclude": []},
     {"file": "overview-topology-arrange.spec.js", "exclude": []},
-    {"file": "overview-wheel-scroll.spec.js", "serial": "e2e_admin", "exclude": []}
+    {"file": "overview-wheel-scroll.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "native-credentials.spec.js", "exclude": []},
+    {"file": "credential-picker.spec.js", "exclude": []},
+    {"file": "credential-inline.spec.js", "exclude": []},
+    {"file": "credential-connection.spec.js", "exclude": []},
+    {"file": "credential-jump-auto.spec.js", "exclude": []},
+    {"file": "host-resource-consistency.spec.js", "exclude": []},
+    {"file": "automation-navigation.spec.js", "exclude": []},
+    {"file": "file-workspace.spec.js", "exclude": []},
+    {"file": "file-mutations.spec.js", "exclude": []},
+    {"file": "file-edit-review.spec.js", "exclude": []},
+    {"file": "file-keyboard-scope.spec.js", "exclude": []},
+    {"file": "file-connection-focus.spec.js", "exclude": []},
+    {"file": "smb-file-workspace.spec.js", "exclude": []},
+    {"file": "closed-issue-regressions.spec.js", "exclude": []},
+    {"file": "primary-workspace-navigation.spec.js", "exclude": []},
+    {"file": "ux-refinements.spec.js", "exclude": []},
+    {"file": "session-workspace.spec.js", "exclude": [
+      {"title": "command insertion reveals the terminal without executing", "reason": "uses the command library (C-CMD)", "package": "CM1"},
+      {"title": "command management stays compact without session actions at 360px", "reason": "uses the command library (C-CMD)", "package": "CM1"},
+      {"title": "single-session workspace keeps terminal primary with on-demand Files, Diagnostics, and Notes", "reason": "uses the command library (C-CMD)", "package": "CM1"},
+      {"title": "workspace tools resume after repeated transport interruptions", "reason": "uses the command library (C-CMD)", "package": "CM1"},
+      {"title": "narrow desktop tools contain German diagnostics and commands inside every surface", "reason": "uses the command library (C-CMD)", "package": "CM1"}
+    ]}
   ]
 }

@@ -8,6 +8,7 @@ package terminal
 import (
 	"context"
 
+	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
 )
 
@@ -33,6 +34,13 @@ type Shells interface {
 // owner: a saved host "<id>", a jump host "jump:<id>" or a SOCKS5 proxy
 // "socks:<id>" (internal/vault through cmd/webssh). It fails with the
 // vault's codes (credential_missing, credential_target_changed, ...).
+//
+// TargetPassword is the saved password of a connection typed by hand:
+// the credential the page picked and the target token it confirmed
+// (credential_target_token) for exactly this host, port, user and route.
+// Both need the caller's principal from ctx, reached over HTTPS
+// (https_required otherwise).
 type SavedPasswords interface {
 	Password(ctx context.Context, owner int64, resourceID string) (string, error)
+	TargetPassword(ctx context.Context, p principal.Principal, credentialID, token string, host string, port int, user, jumpHostID, socksProxyID string) (string, error)
 }

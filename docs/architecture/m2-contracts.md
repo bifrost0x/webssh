@@ -115,8 +115,18 @@ type AccessProber interface { Access(ctx, path string) (Access, error) } // opti
   the admin switch `sftp_chmod_enabled` is on and the server offers the
   extension; SMB never sets it. The mode read back must match
   (`MODE_MISMATCH`); an unverifiable result is `OUTCOME_UNKNOWN`.
-- `Stat` with `follow` describes a link target; SMB refuses
+- `Stat` with `follow` describes a link target, with the canonical path
+  of the final target in `Entry.Path` (SFTP `realpath`); SMB refuses
   (`REPARSE_POINT_REJECTED`). `Open` refuses directories and links.
+- Links (decision of the main chat on the FS2 report): reads follow links
+  as in Python (preview, editor load, image preview, downloads), so a file
+  such as `sites-enabled/*` can still be shown, edited and downloaded.
+  They do so through `files.OpenFollow` in the file layer, which resolves
+  the link with `Stat(follow)` and opens the target; `Backend.Open` keeps
+  refusing links. An editor save follows the link as Python did
+  (`WriteOptions.FollowSymlink`, the link stays). Every other change
+  (rename, delete, chmod, create, upload without the editor) never
+  follows a link and acts on the link itself.
 - `Entry.Mode` is the POSIX `st_mode` with type bits as the page shows it;
   SMB synthesises it (directory `0o040111`, file `0o100444` read-only or
   `0o100666`). `Owner` is numeric (uid, gid) and only for SFTP.
@@ -165,24 +175,37 @@ type Opener func(ctx context.Context, p principal.Principal, handle string) (Des
 func NewRegistry(o RegistryOptions) *Registry
 func (r *Registry) RegisterKind(kind SourceKind, open Opener)    // sftp-session: opened on first use
 func (r *Registry) Add(p principal.Principal, kind SourceKind, d Descriptor, b Backend) (string, error)
+func (r *Registry) Reserve(ctx, p principal.Principal, kind SourceKind) (*Slot, error) // quota before the connection
+func (s *Slot) Add(d Descriptor, b Backend) (string, error)
+func (s *Slot) Release()
 func (r *Registry) Resolve(ctx, p principal.Principal, sourceID string, need Capability) (Backend, func(), error)
 func (r *Registry) Close(p principal.Principal, sourceID string) error
 func (r *Registry) Revoke(rev principal.Revocation)              // K6: subscribed to the revocation feed
+func (r *Registry) PeerOpened(userID int64, peerID uint64)       // realtime OnOpen
+func (r *Registry) PeerClosed(userID int64, peerID uint64)       // realtime OnClose
 func (r *Registry) LastConnectionClosed(userID int64)            // Python: quick sources close with the last socket
+func (r *Registry) Sweep()                                       // SMB idle expiry, periodic
 ```
 
 - A source is bound to the user and the browser session that opened it;
   `Resolve` checks both and the capability, and returns a release
   function that holds the source open (transfer holds of Python).
 - A revocation closes every source of the session (of the user when the
-  revocation has no session) before `Revoke` returns; held sources are
-  closed when the hold ends, and every operation on them fails with
-  `SOURCE_UNAVAILABLE` from then on.
-- When the user's last realtime connection ends, quick and SMB sources
-  close as in Python (deferred while a transfer holds them). Terminal
-  sessions and their `sftp-session` sources stay.
-- Quick sources reserve quota `quick_connection`; SMB sources expire after
-  300 seconds without use (Python pool).
+  revocation has no session) before `Revoke` returns, held sources too
+  (K6): every operation still running on them fails with
+  `SOURCE_UNAVAILABLE`, and a hold that ends afterwards changes nothing.
+- The registry counts the user's realtime connections from the
+  endpoint's `OnOpen` and `OnClose` hooks. When the last one ends, quick
+  and SMB sources close as in Python (deferred while a transfer holds
+  them). Terminal sessions and their `sftp-session` sources stay.
+- The registry owns the quota and the idle expiry: Quick SFTP and SMB
+  sources reserve quota `quick_connection` (`Reserve` before dialling, as
+  the Python pools did; `Add` reserves itself), and SMB sources expire
+  after 300 seconds without use (Python pool, `Sweep`). The backends
+  reserve nothing.
+- `Descriptor.Access` carries the access probe of the source root when it
+  was opened (SMB); `PublicSource(d, caps)` builds the `file_source` of
+  every source, SMB included (`smb.connect` answers with it).
 - cmd/webssh registers the `sftp-session` opener over an adapter of
   `internal/terminal` (the session's `*client.Conn`) and `internal/files/sftp`.
 
@@ -274,6 +297,70 @@ failures carry the upper-case code as `code` (files) or `error_code`
 (transfers) and the members `retryable`, `limit_kind`, `limit_bytes`,
 `actual_bytes`, `revision`, `recovery_leaves`, `character`, `line`,
 `save_challenge` in `details`.
+
+### Message types (files)
+
+Defined by FS1. Payload types are in `payload_files.go` of
+`internal/realtime/protocol`; the shim file `realtime-shim-files.js` maps
+the Socket.IO events of today to them and turns results and failures into
+the push events the pages listen for (`directory_listing`, `preview_data`
+/ `preview_error`, `edit_data` / `edit_error`, `file_saved`, the generic
+`error` with `operation`, `source_id`, `request_id` and `path`). Every
+type runs asynchronously and charges the per-user byte budget of file
+requests (`FILE_CONTROL_BYTES_PER_MINUTE`; the editor body
+`EDITOR_SAVE_BYTES_PER_MINUTE`), which answers `rate_limited`. Types
+marked "mutates" re-validate the browser session before they run.
+
+| Type | Direction | Owner | Payload | Socket.IO today | Spec |
+|---|---|---|---|---|---|
+| `files.list` | client | `internal/files` | `FilesList` → `FilesListing` | `list_directory` → `directory_listing` | 60 s |
+| `files.list.cancel` | client | `internal/files` | `FilesListCancel` → `Empty` | `cancel_directory_listing` (always succeeds) | 30 s |
+| `files.home` | client | `internal/files` | `FileRef` → `FilesPath` | `get_home_directory` → `home_directory` | 30 s |
+| `files.preview` | client | `internal/files` | `FilesPreview` → `FilesPreviewData` | `preview_file` → `preview_data` / `preview_error` | 60 s |
+| `files.preview.image` | client | `internal/files` | `FilesImage` → `FilesImageData` | `download_file_binary` with `for_preview` → `file_download_ready_binary` | 60 s |
+| `files.edit.open` | client | `internal/files` | `FilesEditOpen` → `FilesEditData` | `open_file_for_edit` → `edit_data` / `edit_error` | 60 s |
+| `files.edit.save` | client | `internal/files` | `FilesEditSave` → `FilesSaved` | `save_file` → `file_saved` | mutates, 120 s, payload 6 × `MAX_EDITOR_FILE_SIZE` + 64 KiB |
+| `files.mkdir` | client | `internal/files` | `FilesMkdir` → `FilesPath` | `create_directory` → `directory_created` | mutates, 60 s |
+| `files.create` | client | `internal/files` | `FilesCreate` → `FilesCreated` | `create_file` → `file_created` | mutates, 60 s |
+| `files.rename` | client | `internal/files` | `FilesRename` → `FilesRenamed` | `rename_file` → ack and `file_renamed` | mutates, 60 s |
+| `files.delete` | client | `internal/files` | `FilesDelete` → `FilesPath` | `delete_item` → `item_deleted` | mutates, 300 s |
+| `files.source.close` | client | `internal/files` | `FilesSourceClose` → `FilesSourceClosed` | `file_source_disconnect` → `file_source_disconnect_success` | mutates, 30 s |
+
+Large answers of `files.edit.open` and `files.preview.image` (JSON
+above `HandoffInline`, 1 MiB) do not travel through the realtime
+connection, whose outbound queue stays at its default of 8 MiB per
+connection: the result carries only the correlation members, `size` and
+`handoff`, a one-time token, and the shim fetches the whole answer from
+`GET <root>/api/files/handoff/{token}` (user route, `no-store`) before it
+pushes `edit_data` or `file_download_ready_binary`. A parked answer is
+bound to the user and the browser session, expires after 60 seconds,
+counts against a budget for all users (128 MiB, `busy` beyond) and four
+per user, and a revocation drops it (K6).
+
+The SFTP sources (FS2, `payload_sftp.go`):
+
+| Type | Direction | Owner | Payload | Socket.IO today | Spec |
+|---|---|---|---|---|---|
+| `files.quick.open` | client | `internal/files/sftp` | `FilesQuickOpen` → `FilesQuickOpened` | `quick_connect` → `quick_connect_success` / `quick_connect_error` | mutates, `ssh_connect` bucket, 5 min |
+| `files.quick.close` | client | `internal/files/sftp` | `FilesQuickClose` → `FilesQuickClosed` | `quick_disconnect` → `quick_disconnect_success` / `error` | mutates |
+| `files.session.probe` | client | `internal/files/sftp` | `FilesSessionProbe` → `FilesSessionCapability` | `probe_session_sftp` → `session_sftp_capability` | 10 per minute |
+| `files.session.directory` | client | `internal/files/sftp` | `FilesSessionDirectoryRequest` → `FilesSessionDirectory` | `request_session_directory` (ack) | max(90, 60 × connections per user) per minute |
+
+`files.quick.open` takes the target fields of `terminal.open` and checks
+them with the terminal (`terminal.Manager.Target`: saved host, typed
+target, jump host, SOCKS5 proxy, saved passwords with their guard); host
+keys and banners are asked with the terminal's prompts (D-22). The
+registry reserves `quick_connection` before the dial ("Maximum number of
+quick connections reached"). A target of the SSH gateway or Tailscale SSH
+answers `not_available_in_preview` (C-GW-02, open). The terminal session's
+own source (`sftp-session:<session id>`) opens on first use over the
+session's connection (`terminal.Manager.FileSession`).
+
+The payload bound of the other types is 32 KiB. `check_exists` and
+`get_file_stat` have no caller in the frontend and get no type (D-13).
+The permission events (`get_file_permissions`, `set_file_permissions`,
+`*_file_permissions_job`) belong to AU2; `probe_session_sftp`,
+`request_session_directory` and `quick_*` to FS2.
 
 ### Transfers
 
@@ -1116,6 +1203,58 @@ Python release (`/api/discovery/scans`, `/api/overview/reachability`),
 behind the permissions `permission.hosts.discovery` and
 `permission.hosts.reachability` (A13) and `HOST_DISCOVERY_ENABLED` as the
 ceiling of discovery.
+
+### Message types (smb)
+
+Defined by FS3 (`internal/realtime/protocol/payload_smb.go`), mapped in
+`static/js/realtime-shim-smb.js`. With `SMB_ENABLED` false no type is
+mounted; the shim answers `unknown_type` with the code `SMB_DISABLED`
+of today. Results are the success payloads of the Python release; the
+shim pushes the events of today from them, and from a failure the error
+event of today (the optional `failurePush` builders of an area entry in
+`realtime-catalog.js`, additive).
+
+| Type | Direction | Owner | Payload | Socket.IO today |
+|---|---|---|---|---|
+| `smb.share.list` | client | `internal/files/smb` | `Empty` → `SMBShares` | `list_smb_shares` (`smb_shares_list`, `smb_share_error`) |
+| `smb.share.save` | client | `internal/files/smb` | `SMBShareSave` → `SMBShareSaved` | `save_smb_share` (`smb_share_saved`, `smb_shares_list`, `smb_share_error`) |
+| `smb.share.delete` | client | `internal/files/smb` | `SMBShareDelete` → `SMBShareDeleted` | `delete_smb_share` (`smb_share_deleted`, `smb_shares_list`, `smb_share_error`) |
+| `smb.connect` | client | `internal/files/smb` | `SMBConnect` → `SMBConnected` | `smb_quick_connect` (`smb_quick_connect_success`, `smb_quick_connect_error`) |
+| `smb.connect.cancel` | client | `internal/files/smb` | `SMBConnectCancel` → `Empty` | `smb_quick_connect_cancel` |
+
+- Specs: list `RateKey smb_share_list`; save and delete `Mutates`,
+  `RateKey smb_share_mutation`; connect `Async`, `Mutates`, `RateKey
+  smb_connect`, 24 KiB, timeout `SMB_CONNECT_TIMEOUT_SECONDS` plus twice
+  `SMB_IO_IDLE_TIMEOUT_SECONDS` plus 5 s; cancel inline. The buckets take
+  `SMB_SHARE_LIST_RATELIMIT`, `SMB_SHARE_MUTATION_RATELIMIT` and
+  `SMB_CONNECT_RATELIMIT` (cmd/webssh `realtimeLimiter`).
+- A connect failure carries `details.diagnostic_id` (`SMB-` and 12
+  upper-case hex digits); the server log has the same id with the
+  credential-free diagnostic (`diagnostic_phase`, `cause_type`,
+  `nt_status`). Codes outside `_SMB_CONNECT_CODES` become
+  `CONNECTION_FAILED`; saved-password codes pass unchanged. The shim maps
+  `rate_limited`, `invalid_request`, `busy` and `unknown_type` to
+  `RATE_LIMITED`, `INVALID_REQUEST`, `REQUEST_IN_PROGRESS` and
+  `SMB_DISABLED`.
+- Share validation failures are `validation_error` (`not_found` for an
+  unknown id) with the Python text; requests decode strictly, so a
+  member the page never sends (a password among them) is
+  `invalid_request` instead of "Passwords cannot be saved".
+
+Consumer interfaces of `internal/files/smb` (compiled):
+
+```go
+type Sources interface { Reserve(ctx, p principal.Principal, kind files.SourceKind) (*files.Slot, error) }
+type Passwords interface { ConnectionPassword(ctx, p principal.Principal, req CredentialRequest) ([]byte, error) }
+type Network interface { Admit(ctx, role netpolicy.Role, host string, port int) (netpolicy.Admitted, error) }
+```
+
+`Sources` is the file source registry (FS1); `Passwords` adapts
+`vault.Service.Password` (VA1) with the resource `smb:<id>` or a
+confirmed target. `(*Service).ResourceTarget` gives the vault the
+current target of a saved share. Store owner `smb` (table `smb_shares`:
+one row per definition with the record as Python stored it, E22) is
+added to `store.Owners`.
 
 ### End-to-end harness for M2
 
