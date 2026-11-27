@@ -12,14 +12,16 @@ import (
 	"time"
 )
 
-// contentSecurityPolicy is the policy of the Python release with one fix:
-// connect-src is 'self' only. The realtime endpoint is same-origin, and
-// 'self' covers ws: and wss: of the same host (CSP Level 3); the Python
-// release also allowed WebSocket connections to every other host.
+// contentSecurityPolicy is the policy of the Python release with two
+// fixes. connect-src is 'self' only: the realtime endpoint is same-origin,
+// and 'self' covers ws: and wss: of the same host (CSP Level 3); the
+// Python release also allowed WebSocket connections to every other host.
+// img-src drops https:, because no page shows an image from another host;
+// the Python release allowed images from every HTTPS origin.
 const contentSecurityPolicy = "default-src 'self'; " +
 	"script-src 'self'; " +
 	"style-src 'self' 'unsafe-inline'; " +
-	"img-src 'self' data: https:; " +
+	"img-src 'self' data:; " +
 	"font-src 'self' data:; " +
 	"media-src 'self' data:; " +
 	"connect-src 'self'; " +

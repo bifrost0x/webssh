@@ -22,6 +22,11 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 		if !strings.Contains(csp, "connect-src 'self';") || strings.Contains(csp, "ws:") {
 			t.Errorf("%s: CSP %q", target, csp)
 		}
+		// No feature loads images from other hosts (H3): uploads, previews
+		// and the QR code are data: URLs, everything else is same-origin.
+		if !strings.Contains(csp, "img-src 'self' data:;") || strings.Contains(csp, "https:") {
+			t.Errorf("%s: img-src of CSP %q", target, csp)
+		}
 		for name, want := range map[string]string{
 			"X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff", "X-XSS-Protection": "0",
 			"Referrer-Policy": "strict-origin-when-cross-origin", "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
