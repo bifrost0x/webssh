@@ -68,7 +68,7 @@ var keepReasons = map[principal.Reason]bool{
 	principal.ReasonPasswordChanged: false,
 	principal.ReasonFactorChanged:   false,
 	principal.ReasonAccountLocked:   false,
-	principal.ReasonRoleChanged:     false,
+	principal.ReasonRoleChanged:     true, // a demotion ends no session (RS8-R01)
 	principal.ReasonExpired:         true,
 	principal.ReasonRecoveryEnded:   true,
 	// A refused directory check ends access everywhere, like a lock.

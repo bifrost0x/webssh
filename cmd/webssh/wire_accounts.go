@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/operations"
 	"github.com/bifrost0x/webssh/internal/session"
+	"github.com/bifrost0x/webssh/internal/store"
 )
 
 // accountsArea wires the area "accounts" (ID4): account administration (internal/accounts, internal/auth, internal/session).
@@ -25,7 +27,25 @@ var (
 	_ accounts.RecoveryCodes = (*auth.Recovery)(nil)
 	_ accounts.Warner        = (*audit.Logger)(nil)
 	_ accounts.Gates         = (*operations.Gates)(nil)
+	_ accounts.RoleChanges   = roleChanges{}
 )
+
+// roleChanges withdraws an administrator's step-up grants and realtime
+// rights on demotion (accounts.RoleChanges).
+type roleChanges struct{ sys *system }
+
+func (r roleChanges) DemotedTx(ctx context.Context, tx *store.Tx, userID int64) error {
+	if r.sys.stepup == nil {
+		return nil
+	}
+	return r.sys.stepup.RevokeAdminTx(ctx, tx, userID)
+}
+
+func (r roleChanges) Demoted(userID int64) {
+	if r.sys.realtime != nil {
+		r.sys.realtime.RightsChanged(userID)
+	}
+}
 
 // legacyUserDir reports the Python data directory of a user id in
 // DATA_DIR, which a deletion records in the quarantine index and never
@@ -45,6 +65,7 @@ func legacyUserDir(dataDir string) accounts.LegacyUserDir {
 func wireAccounts(sys *system) error {
 	a := sys.accounts
 	a.Sessions = sys.sessions
+	a.Roles = roleChanges{sys}
 	a.Data = accounts.TableSweep{Keep: accounts.DefaultKeep}
 	a.Retain = accounts.RetainDir{Root: filepath.Join(sys.cfg.DataDir, keyring.GoDirName, "deleted_users")}
 	a.Factors = accounts.TableReset{Tables: accounts.FactorTables}

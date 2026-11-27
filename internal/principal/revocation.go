@@ -1,5 +1,7 @@
 package principal
 
+import "github.com/bifrost0x/webssh/internal/fault"
+
 // Reason says why a browser session ended. The values are stable: they are
 // written to the audit log and sent as the close reason of realtime
 // connections.
@@ -34,3 +36,17 @@ type Revocation struct {
 	UserID    int64
 	Reason    Reason
 }
+
+// ErrRightsReduced is the refusal of a session check that fails only
+// because the account lost the administrator rights the principal
+// records. The session stays valid: a realtime connection closes with
+// protocol.CloseRightsChanged and the page reconnects with a principal
+// that has the account's current rights (RS8-R01). It unwraps to
+// authentication_required; errors.Is matches only this value.
+var ErrRightsReduced error = rightsReduced{}
+
+type rightsReduced struct{}
+
+func (rightsReduced) Error() string { return "administrator rights were removed" }
+
+func (rightsReduced) Unwrap() error { return fault.New(fault.AuthenticationNeeded, "") }

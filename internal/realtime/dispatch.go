@@ -120,8 +120,9 @@ func (s *Server) invoke(ep endpoint, env protocol.Envelope, route protocol.Route
 	p := ep.Principal()
 	if route.Spec.Mutates {
 		if err := s.deps.Sessions.Check(ctx, p); err != nil {
-			// The session ended: the handler must not run (contract).
-			ep.closeWith(protocol.CloseUnauthenticated, "session_ended")
+			// The session ended or the connection holds rights the account
+			// lost: the handler must not run (contract).
+			ep.closeWith(checkClose(err))
 			return
 		}
 	}

@@ -1,7 +1,10 @@
 package realtime
 
 import (
+	"errors"
 	"sync"
+
+	"github.com/coder/websocket"
 
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
@@ -85,6 +88,32 @@ func closeReason(r principal.Reason) string {
 		return "session_ended"
 	}
 	return string(r)
+}
+
+// RightsChanged closes every open connection of userID that holds
+// administrator rights with protocol.CloseRightsChanged and returns how
+// many it closed. The account management calls it after a demotion is
+// committed; the session stays valid, and the page reconnects at once
+// with the account's current rights. Terminals are detached, not ended.
+func (s *Server) RightsChanged(userID int64) int {
+	n := 0
+	for _, c := range s.sessions.all() {
+		if c.p.UserID == userID && c.p.IsAdmin {
+			c.closeWith(protocol.CloseRightsChanged, string(principal.ReasonRoleChanged))
+			n++
+		}
+	}
+	return n
+}
+
+// checkClose is the close of a connection whose session check failed:
+// a lost administrator right reconnects, everything else ends the
+// session's connection for good.
+func checkClose(err error) (code websocket.StatusCode, reason string) {
+	if errors.Is(err, principal.ErrRightsReduced) {
+		return protocol.CloseRightsChanged, string(principal.ReasonRoleChanged)
+	}
+	return protocol.CloseUnauthenticated, "session_ended"
 }
 
 // NotifyUser pushes a server event to every open connection of userID and
