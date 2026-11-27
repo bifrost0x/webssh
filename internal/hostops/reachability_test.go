@@ -195,7 +195,6 @@ func TestReachabilityPlansAtMostFiftyHosts(t *testing.T) {
 type fakeTailnet struct {
 	may, routed map[string]bool
 	tailnet     *fakeProber
-	asked       []string
 }
 
 func (f *fakeTailnet) MayLaunch(p principal.Principal, host string, _ int, user string) bool {
@@ -203,7 +202,6 @@ func (f *fakeTailnet) MayLaunch(p principal.Principal, host string, _ int, user 
 }
 
 func (f *fakeTailnet) DialTailnet(ctx context.Context, p principal.Principal, host string, port int, user string) (Conn, bool, error) {
-	f.asked = append(f.asked, host)
 	if !f.MayLaunch(p, host, port, user) || !f.routed[host] {
 		return nil, false, nil
 	}
