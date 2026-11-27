@@ -45,3 +45,29 @@ func TestStreamRouteKeepsChecksWithoutBuffering(t *testing.T) {
 		t.Fatal("an unregistered route was marked as streamed")
 	}
 }
+
+// TR1-1: the token of a transfer route never reaches the request log,
+// whether the request succeeds or is refused.
+func TestTransferTokenStaysOutOfTheLog(t *testing.T) {
+	e := newEdge(t)
+	const token = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+	e.h.Mux().HandleFunc("GET /api/transfers/{token}/download", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	e.do(req{method: http.MethodGet, target: "/api/transfers/" + token + "/download", token: "tok-alice"})
+	e.do(req{method: http.MethodGet, target: "/api/transfers/" + token + "/download"})
+	logs := e.logs.String()
+	if strings.Contains(logs, token) || !strings.Contains(logs, "/api/transfers/[token]/download") {
+		t.Fatalf("request log: %s", logs)
+	}
+	for in, want := range map[string]string{
+		"/webssh/api/transfers/" + token + "/upload": "/webssh/api/transfers/[token]/upload",
+		"/api/transfers/" + token:                    "/api/transfers/[token]",
+		"/api/transfers/":                            "/api/transfers/",
+		"/api/hosts":                                 "/api/hosts",
+	} {
+		if got := LogPath(in); got != want {
+			t.Errorf("LogPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

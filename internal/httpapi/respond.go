@@ -67,7 +67,7 @@ type errorBody struct {
 func writeFault(w http.ResponseWriter, r *http.Request, log *slog.Logger, err error) {
 	status, code, message := fault.Status(err)
 	if code == fault.Internal {
-		log.ErrorContext(r.Context(), "request failed", "method", r.Method, "path", r.URL.Path, "err", err)
+		log.ErrorContext(r.Context(), "request failed", "method", r.Method, "path", LogPath(r.URL.Path), "err", err)
 	}
 	if retry := fault.RetryAfter(err); retry > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(int((retry+999_999_999)/1_000_000_000)))

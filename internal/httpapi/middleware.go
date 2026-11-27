@@ -122,7 +122,7 @@ func (h *Handler) logRequest(w *statusRecorder, r *http.Request, started time.Ti
 	}
 	attrs := []slog.Attr{
 		slog.String("method", r.Method),
-		slog.String("path", truncate(r.URL.Path, 256)),
+		slog.String("path", truncate(LogPath(r.URL.Path), 256)),
 		slog.Int("status", w.status),
 		slog.Int64("bytes", w.bytes),
 		slog.Int64("ms", time.Since(started).Milliseconds()),
@@ -144,10 +144,35 @@ func (h *Handler) recoverPanic(w *statusRecorder, r *http.Request) {
 	if v == http.ErrAbortHandler {
 		panic(v)
 	}
-	h.log.ErrorContext(r.Context(), "handler panicked", "path", r.URL.Path, "panic", fmt.Sprint(v), "stack", string(debug.Stack()))
+	h.log.ErrorContext(r.Context(), "handler panicked", "path", LogPath(r.URL.Path), "panic", fmt.Sprint(v), "stack", string(debug.Stack()))
 	if w.status == 0 {
 		writePlain(w, http.StatusInternalServerError, "An internal error occurred.")
 	}
+}
+
+// tokenPaths are the path prefixes whose next segment is a bearer
+// token: the one-time transfer tokens (TR1-1).
+var tokenPaths = []string{"/api/transfers/"}
+
+// LogPath is a request path as logs may show it: the token segment of a
+// token route is replaced, below any APPLICATION_ROOT. A token is spent
+// once it is used, but a refused or unused one would still be valid.
+func LogPath(p string) string {
+	for _, prefix := range tokenPaths {
+		i := strings.Index(p, prefix)
+		if i < 0 {
+			continue
+		}
+		start := i + len(prefix)
+		end := strings.IndexByte(p[start:], '/')
+		if end < 0 {
+			end = len(p) - start
+		}
+		if end > 0 {
+			p = p[:start] + "[token]" + p[start+end:]
+		}
+	}
+	return p
 }
 
 func truncate(s string, n int) string {
