@@ -1167,11 +1167,10 @@ type StepError struct { UserID int64; Record string; Err error }
 - The periodic re-check of 5.7 is `SourceWatch`; D4 calls `Changed` every
   60 seconds and treats an error as a change (maintenance, not ready,
   audit event).
-- `internal/migrate/legacy/host_unix.go` and `host_windows.go` may use
-  `syscall` (lock and free-space probes, architecture test); R2 reviews
-  both. On Windows the Go lock is real; the SQLite and flock probes and
-  the free-space check still only warn and must become real checks before
-  the Windows release (decision C7, open).
+- `internal/migrate/legacy/host_linux.go` may use `syscall` (Go lock,
+  SQLite and flock probes, free-space check, inode; architecture test); R2
+  reviews it. WebSSH runs on Linux only (D-25), so every probe is a real
+  check.
 - `--replace` moves to `internal/backup` (B7).
 
 The steps of M1 (D2) register through one entry point:
