@@ -76,7 +76,6 @@
       {"title": "referenced commands and command sets cannot be deleted", "reason": "command sets (C-CMD)", "package": "CM1"}
     ]},
     {"file": "socks-proxy-routes.spec.js", "exclude": [
-      {"title": "SOCKS hosts are blocked at all Quick SFTP entry points", "reason": "Quick SFTP (C-SFTP)", "package": "FS2"},
       {"title": "host export warns that SOCKS routes are omitted", "reason": "host export (C-EXCH)", "package": "HO3"}
     ]},
     {"file": "native-credentials.spec.js", "exclude": []},
@@ -122,6 +121,18 @@
     {"file": "file-workspace.spec.js", "exclude": []},
     {"file": "file-mutations.spec.js", "exclude": []},
     {"file": "file-edit-review.spec.js", "exclude": []},
-    {"file": "file-keyboard-scope.spec.js", "exclude": []}
+    {"file": "file-keyboard-scope.spec.js", "exclude": []},
+    {"file": "file-connection-focus.spec.js", "exclude": []},
+    {"file": "smb-file-workspace.spec.js", "exclude": []},
+    {"file": "closed-issue-regressions.spec.js", "exclude": []},
+    {"file": "primary-workspace-navigation.spec.js", "exclude": []},
+    {"file": "ux-refinements.spec.js", "exclude": []},
+    {"file": "session-workspace.spec.js", "exclude": [
+      {"title": "command insertion reveals the terminal without executing", "reason": "uses the command library (C-CMD)", "package": "CM1"},
+      {"title": "command management stays compact without session actions at 360px", "reason": "uses the command library (C-CMD)", "package": "CM1"},
+      {"title": "single-session workspace keeps terminal primary with on-demand Files, Diagnostics, and Notes", "reason": "uses the command library (C-CMD)", "package": "CM1"},
+      {"title": "workspace tools resume after repeated transport interruptions", "reason": "uses the command library (C-CMD)", "package": "CM1"},
+      {"title": "narrow desktop tools contain German diagnostics and commands inside every surface", "reason": "uses the command library (C-CMD)", "package": "CM1"}
+    ]}
   ]
 }
