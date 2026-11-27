@@ -133,6 +133,8 @@ type remoteHost interface {
 	shell(ctx context.Context, rows, cols int) (client.Shell, error)
 	// sshConn is the client connection, nil for a test double.
 	sshConn() *client.Conn
+	// netRoute is the route of the connection (client.Conn.Route).
+	netRoute() (client.Route, bool)
 	Close() error
 }
 
@@ -153,6 +155,8 @@ func (h connHost) shell(ctx context.Context, rows, cols int) (client.Shell, erro
 }
 
 func (h connHost) sshConn() *client.Conn { return h.c }
+
+func (h connHost) netRoute() (client.Route, bool) { return h.c.Route() }
 
 func (h connHost) Close() error { return h.c.Close() }
 
