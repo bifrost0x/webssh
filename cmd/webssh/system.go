@@ -80,6 +80,10 @@ type optional struct {
 	terminalVariants terminal.Variants
 	hostVariants     hosts.Variants
 	tailscaleAllowed func(principal.Principal) bool
+	// terminalCommands resolves the command and command-set startup modes
+	// (area "commands"); terminalHerdr grants Herdr (area "terminal").
+	terminalCommands terminal.Commands
+	terminalHerdr    terminal.HerdrGrants
 	// passkeyPlaceholder stores a passkey that never authenticates (end-to-
 	// end seed only).
 	//lint:ignore U1000 read by the end-to-end build (e2e.go)

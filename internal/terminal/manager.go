@@ -44,6 +44,17 @@ type Deps struct {
 	// Variants connects SSH gateway selectors and Tailscale SSH hosts;
 	// without it they answer not_available_in_preview.
 	Variants Variants
+	// GatewayTmuxName names the tmux session of an SSH gateway terminal
+	// (gateway.TmuxName); without it such a session gets the ordinary
+	// name scheme.
+	GatewayTmuxName func(prefix, host string, port int, selector string, userID int64) (string, error)
+	// Commands resolves the command and command-set modes of the
+	// post-connect behaviour; without it they answer
+	// not_available_in_preview. Free text needs nothing.
+	Commands Commands
+	// Herdr grants the Herdr overview and session mode; without it no
+	// session gets either and use_herdr opens the login shell.
+	Herdr HerdrGrants
 }
 
 // Auditor writes warning-level security events (provided by
@@ -63,6 +74,8 @@ type Manager struct {
 	routes   SavedRoutes
 	saved    SavedPasswords
 	variants Variants
+	commands Commands
+	herdr    HerdrGrants
 	log      *slog.Logger
 	now      func() time.Time
 
@@ -70,6 +83,8 @@ type Manager struct {
 	dialHost    func(ctx context.Context, t client.Target, ix client.Interaction) (remoteHost, error)
 	tmuxEnabled func(context.Context) bool
 	audit       Auditor
+
+	gatewayTmuxName func(prefix, host string, port int, selector string, userID int64) (string, error)
 
 	flow    *ledger
 	input   *inputBudget
@@ -104,6 +119,7 @@ func New(cfg Config, deps Deps) (*Manager, error) {
 		sessions: map[string]*Session{}, peers: map[uint64]*peerState{}, attempts: map[attemptKey]*attempt{}, revoked: map[int64]uint64{},
 		stop:  make(chan struct{}),
 		store: persistent{db: deps.DB}, tmuxEnabled: deps.TmuxEnabled, audit: deps.Audit,
+		commands: deps.Commands, herdr: deps.Herdr, gatewayTmuxName: deps.GatewayTmuxName,
 	}
 	if deps.Connections != nil {
 		m.dialHost = func(ctx context.Context, t client.Target, ix client.Interaction) (remoteHost, error) {

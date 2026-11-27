@@ -149,3 +149,16 @@ func TestDAFilterLongSequenceAcrossReads(t *testing.T) {
 		t.Fatalf("%q", out)
 	}
 }
+
+// OSC 52 (clipboard) reaches the page unchanged, also split across
+// reads; the page asks before it writes the clipboard (C-TERM-21).
+func TestOSC52PassesUnchanged(t *testing.T) {
+	seq := "\x1b]52;c;aGVsbG8=\x07"
+	for cut := range len(seq) + 1 {
+		var f daFilter
+		got := string(f.write([]byte("a"+seq[:cut]))) + string(f.write([]byte(seq[cut:]+"b"))) + string(f.flush())
+		if got != "a"+seq+"b" {
+			t.Fatalf("cut %d: %q", cut, got)
+		}
+	}
+}

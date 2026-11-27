@@ -166,3 +166,66 @@ func TestLabTmux(t *testing.T) {
 		t.Fatal("tmux still runs after exit")
 	}
 }
+
+// TestLabTmuxStartupAndSessionConn: startup commands run in a new tmux
+// session and not on its reattach, the display name stays with the
+// session, and another channel runs beside the shell on the session's own
+// connection (SessionConn).
+func TestLabTmuxStartupAndSessionConn(t *testing.T) {
+	pw := client.Auth{Password: labSecret(t, "secrets/ssh-pwuser")}
+	hop := labHop(t, "ssh-modern", false, pw)
+	tg := client.Target{Owner: 1, Hop: hop}
+	m, dialer := newLabTmuxManager(t, fakeProfiles{"tmux": tg})
+
+	peer := user(t, 1)
+	res, _, werr := labOpenTarget(t, m, peer, protocol.TerminalOpen{Ch: 1, RequestID: "s1", Rows: 30, Cols: 100,
+		Target: protocol.OpenTarget{ProfileID: "tmux", AuthType: "password", UseTmux: true, DisplayName: "Lab startup",
+			Startup: &protocol.Startup{Mode: "free_text", Commands: "export TM1MARK=startup\necho S=$((6*7))"}}})
+	if werr != nil {
+		t.Fatalf("open: %+v", werr)
+	}
+	name := res.Info.TmuxSessionName
+	if !res.Info.UseTmux || res.Info.DisplayName != "Lab startup" {
+		t.Fatalf("info %+v", res.Info)
+	}
+	labRun(t, m, peer, 1, 1, "\r", "S=42")
+
+	sc, err := m.SessionConn(1, res.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := remotecmd.Run(t.Context(), sc.Conn, remotecmd.Command{Line: "tmux has-session -t '=" + name + "' && echo beside"})
+	if err != nil || r.ExitStatus != 0 || !strings.Contains(string(r.Stdout), "beside") {
+		t.Fatalf("exec beside the shell: %+v %v", r, err)
+	}
+	if _, err := m.SessionConn(2, res.SessionID); err == nil {
+		t.Fatal("another user got the connection")
+	}
+
+	m.Revoked(principal.Revocation{SessionID: "b", UserID: 1, Reason: principal.ReasonLogout})
+	eventually(t, "detached", func() bool { return m.Stats().Sessions == 0 })
+	select {
+	case <-sc.Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Done not closed with the session")
+	}
+
+	// The reattach does not run the startup commands again: the counter
+	// the first run set is unchanged and S= is not printed anew.
+	peer = user(t, 1)
+	res2, _, werr := labOpenTarget(t, m, peer, protocol.TerminalOpen{Ch: 2, RequestID: "s2", Rows: 30, Cols: 100,
+		Target: protocol.OpenTarget{ProfileID: "tmux", AuthType: "password", UseTmux: true, TmuxSessionName: name,
+			Startup: &protocol.Startup{Mode: "free_text", Commands: "export TM1MARK=again"}}})
+	if werr != nil {
+		t.Fatalf("reattach: %+v", werr)
+	}
+	if res2.Info.DisplayName != "Lab startup" {
+		t.Fatalf("display name after reattach %q", res2.Info.DisplayName)
+	}
+	labRun(t, m, peer, 2, 1, "echo M=$TM1MARK\r", "M=startup")
+	if werr := call(t, m, peer, protocol.TypeTerminalClose, protocol.SessionRef{SessionID: res2.SessionID}, nil); werr != nil {
+		t.Fatal(werr)
+	}
+	eventually(t, "row removed", func() bool { rows, _ := m.store.ofUser(t.Context(), 1); return len(rows) == 0 })
+	_ = dialer
+}

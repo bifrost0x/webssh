@@ -60,25 +60,39 @@ func tmuxSafe(s string) string {
 // Python release: {prefix}_{user}_{host}_{port}_{8 random hex digits}.
 // The host part is shortened so the name stays reattachable.
 func newTmuxName(prefix, user, host string, port int) string {
+	var b [4]byte
+	_, _ = rand.Read(b[:])
+	return tmuxNameWith(prefix, user, host, port, hex.EncodeToString(b[:]))
+}
+
+func tmuxNameWith(prefix, user, host string, port int, suffix string) string {
 	if prefix = tmuxSafe(prefix); prefix == "" {
 		prefix = "webssh"
 	}
 	prefix = prefix[:min(len(prefix), 80)]
 	user = tmuxSafe(user)
 	user = user[:min(len(user), 32)]
-	var b [4]byte
-	_, _ = rand.Read(b[:])
-	tail := "_" + strconv.Itoa(port) + "_" + hex.EncodeToString(b[:])
+	tail := "_" + strconv.Itoa(port) + "_" + suffix
 	h := tmuxSafe(host)
 	h = h[:max(0, min(len(h), maxTmuxName-len(prefix)-len(user)-len(tail)-2))]
 	return prefix + "_" + user + "_" + h + tail
+}
+
+// tmuxProgram starts tmux. Tailscale SSH sets no locale, so tmux is told
+// to use UTF-8 there, or an existing server would replace multibyte
+// characters with underscores (as the Python release did).
+func tmuxProgram(tailscale bool) string {
+	if tailscale {
+		return "env LANG=C.UTF-8 LC_ALL=C.UTF-8 tmux -u"
+	}
+	return "tmux"
 }
 
 // tmuxAttachCommand starts tmux as the session's program: a new session,
 // or for a reattach the existing one (created again if it is gone), with
 // mouse input enabled for exactly this session. The name is a checked
 // token; nothing else on the line is variable.
-func tmuxAttachCommand(name string, reattach bool) (string, error) {
+func tmuxAttachCommand(program, name string, reattach bool) (string, error) {
 	if !validTmuxName(name) {
 		return "", errTmuxName
 	}
@@ -94,7 +108,7 @@ func tmuxAttachCommand(name string, reattach bool) (string, error) {
 	if reattach {
 		attach = "new-session -A"
 	}
-	return "tmux " + attach + " -s " + n + ` \; set-option -t ` + target + " mouse on", nil
+	return program + " " + attach + " -s " + n + ` \; set-option -t ` + target + " mouse on", nil
 }
 
 // tmuxTargetCommand is "tmux <verb> -t '=<name>'": "=" asks for the exact
@@ -117,6 +131,8 @@ type remoteHost interface {
 	run(ctx context.Context, line string, timeout time.Duration) (status int, stderr []byte, err error)
 	commandShell(ctx context.Context, line string, rows, cols int) (client.Shell, error)
 	shell(ctx context.Context, rows, cols int) (client.Shell, error)
+	// sshConn is the client connection, nil for a test double.
+	sshConn() *client.Conn
 	Close() error
 }
 
@@ -135,6 +151,8 @@ func (h connHost) commandShell(ctx context.Context, line string, rows, cols int)
 func (h connHost) shell(ctx context.Context, rows, cols int) (client.Shell, error) {
 	return h.c.Shell(ctx, rows, cols)
 }
+
+func (h connHost) sshConn() *client.Conn { return h.c }
 
 func (h connHost) Close() error { return h.c.Close() }
 
@@ -166,6 +184,7 @@ type tmuxPlan struct {
 	name        string
 	reattach    bool
 	displayName string
+	program     string // tmuxProgram of the target
 }
 
 func (m *Manager) tmuxOn(ctx context.Context) bool {
@@ -179,7 +198,18 @@ func (m *Manager) planTmux(ctx context.Context, owner int64, req protocol.OpenTa
 	if !req.UseTmux || !m.tmuxOn(ctx) {
 		return tmuxPlan{}, nil
 	}
-	plan := tmuxPlan{use: true, name: newTmuxName(m.cfg.TmuxPrefix, t.Hop.User, t.Hop.Host, t.Hop.Port)}
+	plan := tmuxPlan{use: true, displayName: displayName(req.DisplayName), program: tmuxProgram(t.Display.Tailscale)}
+	if strings.Contains(t.Hop.User, ":") && m.gatewayTmuxName != nil {
+		// A gateway terminal keeps the digest of the Python release, so the
+		// same user, host and selector always name the same family.
+		name, err := m.gatewayTmuxName(m.cfg.TmuxPrefix, t.Hop.Host, t.Hop.Port, t.Hop.User, owner)
+		if err != nil {
+			return tmuxPlan{}, err
+		}
+		plan.name = name
+	} else {
+		plan.name = newTmuxName(m.cfg.TmuxPrefix, t.Hop.User, t.Hop.Host, t.Hop.Port)
+	}
 	name := req.TmuxSessionName
 	if name == "" {
 		return plan, nil
@@ -199,44 +229,9 @@ func (m *Manager) planTmux(ctx context.Context, owner int64, req protocol.OpenTa
 	if (stored != "" || row.ViaSOCKS || saved != "") && (stored == "" || stored != saved) {
 		return tmuxPlan{}, invalid("This persistent session uses a different SOCKS5 route. Close it and connect again.")
 	}
-	return tmuxPlan{use: true, name: name, reattach: true, displayName: row.DisplayName.String}, nil
-}
-
-// openShell opens the session's shell: tmux when planned and installed on
-// the host, else the login shell.
-func (m *Manager) openShell(ctx context.Context, t client.Target, ix client.Interaction, rows, cols int, plan tmuxPlan) (client.Shell, *tmuxBinding, error) {
-	if !plan.use {
-		sh, err := m.shells.OpenShell(ctx, t, ix, rows, cols)
-		return sh, nil, err
+	plan.name, plan.reattach = name, true
+	if plan.displayName == "" {
+		plan.displayName = row.DisplayName.String
 	}
-	line, err := tmuxAttachCommand(plan.name, plan.reattach)
-	if err != nil {
-		return nil, nil, err
-	}
-	h, err := m.dialHost(ctx, t, ix)
-	if err != nil {
-		return nil, nil, err
-	}
-	// Probe on a separate channel: no error text to match, and tmux's
-	// first screen is not swallowed.
-	status, _, err := h.run(ctx, tmuxProbeCommand, tmuxProbeTimeout)
-	if ctx.Err() != nil {
-		_ = h.Close()
-		return nil, nil, ctx.Err()
-	}
-	if err != nil || status != 0 {
-		m.log.Warn("tmux not found on target host, falling back to regular shell", "host", t.Hop.Host, "port", t.Hop.Port)
-		sh, err := h.shell(ctx, rows, cols)
-		if err != nil {
-			_ = h.Close()
-			return nil, nil, err
-		}
-		return ownedShell{sh, h}, nil, nil
-	}
-	sh, err := h.commandShell(ctx, line, rows, cols)
-	if err != nil {
-		_ = h.Close()
-		return nil, nil, err
-	}
-	return ownedShell{sh, h}, &tmuxBinding{name: plan.name, reattach: plan.reattach, host: h}, nil
+	return plan, nil
 }

@@ -122,6 +122,14 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	if err != nil {
 		return protocol.TerminalOpened{}, err
 	}
+	startup, err := m.resolveStartup(actx, p.UserID, req.Target.Startup)
+	if err != nil {
+		return protocol.TerminalOpened{}, err
+	}
+	hp, err := m.planHerdr(actx, p.UserID, req.Target, target, startup)
+	if err != nil {
+		return protocol.TerminalOpened{}, err
+	}
 	// The reservation does not end with the attempt; a cancelled attempt
 	// gives it back below, as before the quota moved to the policy.
 	release, err := m.quota.reserve(context.WithoutCancel(actx), p.UserID)
@@ -132,7 +140,7 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	if challenger != nil {
 		ix = challengingInteraction{ix, challenger}
 	}
-	sh, tm, err := m.openShell(actx, target, ix, req.Rows, req.Cols, plan)
+	o, err := m.openShell(actx, target, ix, req.Rows, req.Cols, plan, hp)
 	if err != nil {
 		release()
 		if m.cancelled(att) {
@@ -140,13 +148,18 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 		}
 		return protocol.TerminalOpened{}, err
 	}
+	sh, tm := o.shell, o.tmux
 	if !m.commit(att) || peer.Context().Err() != nil {
 		release()
 		m.spawn(func() { m.finish("", p.UserID, sh, tm, endDiscard) })
 		return protocol.TerminalOpened{}, errCancelled
 	}
-	s := m.newSession(p.UserID, sh, withTmux(sessionInfo(target), tm, plan), release)
-	s.opener, s.request, s.tmux = peer.ID(), req.RequestID, tm
+	info := withTmux(sessionInfo(target), tm, plan)
+	// The overview is granted to the session only if it still holds now.
+	info.Herdr = hp.overview && m.herdr.Overview(context.WithoutCancel(actx), p.UserID, target.Display.ProfileID)
+	info.UseHerdr = o.herdr
+	s := m.newSession(p.UserID, sh, info, release)
+	s.opener, s.request, s.tmux, s.host = peer.ID(), req.RequestID, tm, o.host
 	if tm != nil {
 		m.recordTmux(s)
 	}
@@ -155,15 +168,20 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 		m.spawn(func() { m.finish(s.id, p.UserID, sh, tm, endDiscard) })
 		return protocol.TerminalOpened{}, err
 	}
+	// Startup commands run after a connect, never on a tmux reattach. They
+	// are queued before the writer starts, so they are the first input.
+	if startup != "" && !plan.reattach {
+		s.queueStartup(terminalInput(startup))
+	}
 	// Bind before the loops start: nothing is read yet, so the first
 	// output goes live to the channel without a replay.
 	_, attachErr := m.attach(peer, s, req.Ch, 0, true)
-	s.start(notice(target, req.Target))
+	s.start(nil)
 	if attachErr != nil {
 		s.terminateAs(reasonClosed, nil, endDiscard)
 		return protocol.TerminalOpened{}, attachErr
 	}
-	info, _ := s.snapshot()
+	info, _ = s.snapshot()
 	return protocol.TerminalOpened{SessionID: s.id, Info: info}, nil
 }
 
