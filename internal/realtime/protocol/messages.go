@@ -129,6 +129,10 @@ var v1 = []MessageType{
 	{TypeInsightsSample, ClientRequest, "internal/hostops"},
 	{TypeInventorySample, ClientRequest, "internal/hostops"},
 	{TypeHerdrSnapshot, ClientRequest, "internal/hostops"},
+
+	// Area "hostops.discovery" (HO2, payload_discovery.go).
+	{TypeDiscoveryPlatform, ServerEvent, "internal/hosts"},
+	{TypeDiscoveryMaintenance, ServerEvent, "internal/hosts"},
 }
 
 // V1 returns the catalog of schema v1.

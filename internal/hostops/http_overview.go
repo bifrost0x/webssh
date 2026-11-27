@@ -15,12 +15,13 @@ import (
 // mounts it behind session, CSRF and origin checks; the principal comes
 // from the request context.
 //
-// In this release the overview offers readiness only. The reachability
-// check answers "no result" with available false; starting a check is not
-// offered (the edge answers not_available_in_preview).
+// GET /api/overview/reachability returns the last check of Reach without
+// contacting any host; without Reach it answers "no result" with available
+// false.
 type OverviewHTTP struct {
 	Inventory Inventory
 	Trust     HostTrust
+	Reach     *Reachability
 	Logger    *slog.Logger
 	now       func() time.Time
 }
@@ -55,12 +56,15 @@ func (h *OverviewHTTP) status(ctx context.Context, p principal.Principal) (any, 
 	return statusResponse{
 		Hosts:       rows,
 		GeneratedAt: float64(now().UnixMicro()) / 1e6,
-		Available:   map[string]bool{"readiness": true, "automation": false, "reachability": false},
+		Available:   map[string]bool{"readiness": true, "automation": false, "reachability": h.Reach != nil},
 	}, nil
 }
 
-func (h *OverviewHTTP) reachability(context.Context, principal.Principal) (any, error) {
-	return map[string]any{"results": nil, "available": false}, nil
+func (h *OverviewHTTP) reachability(ctx context.Context, p principal.Principal) (any, error) {
+	if h.Reach == nil {
+		return map[string]any{"results": nil, "available": false}, nil
+	}
+	return h.Reach.Last(ctx, p)
 }
 
 func (h *OverviewHTTP) serve(fn func(context.Context, principal.Principal) (any, error)) http.HandlerFunc {

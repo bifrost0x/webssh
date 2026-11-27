@@ -84,6 +84,13 @@ type optional struct {
 	// (area "commands"); terminalHerdr grants Herdr (area "terminal").
 	terminalCommands terminal.Commands
 	terminalHerdr    terminal.HerdrGrants
+	// discoveryAvailable is host_discovery_available of the pages,
+	// reachability the overview's reachability check and
+	// connectionObserver sees every new terminal connection (area
+	// "discovery", wire_discovery.go). Nil: none.
+	discoveryAvailable func(context.Context, principal.Principal) bool
+	reachability       *hostops.Reachability
+	connectionObserver func(client.Target, *client.Conn)
 	// passkeyPlaceholder stores a passkey that never authenticates (end-to-
 	// end seed only).
 	//lint:ignore U1000 read by the end-to-end build (e2e.go)

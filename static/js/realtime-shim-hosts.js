@@ -1,4 +1,4 @@
-/* Realtime shim, area "hosts" (M1, NW1): saved hosts, jump hosts and SOCKS5 proxies.
+/* Realtime shim, area "hosts" (M1, NW1, HO2): saved hosts, jump hosts, SOCKS5 proxies and detected host facts.
  *
  * Part of the Socket.IO name table of realtime-catalog.js (shape described
  * there). The package that builds the area edits only this file.
@@ -52,6 +52,11 @@
                 push: [['socks_proxy_deleted', a => a]],
                 errorEvent: true,
             },
+        }),
+        // HO2: facts a connection found out about a saved host.
+        events: Object.freeze({
+            'hostops.discovery.platform': p => ['host_platform', p],
+            'hostops.discovery.maintenance': p => ['host_maintenance', {profile_id: p.profile_id}],
         }),
     });
 });

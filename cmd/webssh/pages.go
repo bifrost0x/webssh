@@ -39,8 +39,11 @@ type pages struct {
 	// tailscaleAllowed is user_can_use_tailscale_ssh; nil offers no
 	// Tailscale SSH.
 	tailscaleAllowed func(principal.Principal) bool
-	log              *slog.Logger
-	now              func() time.Time
+	// discoveryAvailable is host_discovery_available; nil offers no
+	// discovery.
+	discoveryAvailable func(context.Context, principal.Principal) bool
+	log                *slog.Logger
+	now                func() time.Time
 }
 
 // signedIn is the account behind a request's principal.
@@ -110,6 +113,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 	d.WebSSHVersion = buildinfo.Read().Version
 	d.SupportLinksEnabled = app.SupportLinksEnabled
 	d.TailscaleSSHAllowed = pg.tailscaleAllowed != nil && pg.tailscaleAllowed(u.p)
+	d.HostDiscoveryAvailable = pg.discoveryAvailable != nil && pg.discoveryAvailable(ctx, u.p)
 	d.TmuxEnabled = pg.tmux && page.TmuxEnabled
 	d.TmuxDefault = pg.tmux && page.TmuxDefault
 	d.LegacySSHOptIn = page.LegacySSHOptIn
