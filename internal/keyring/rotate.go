@@ -44,6 +44,19 @@ func NewRotation(from, to *Ring, legacyPurged bool) (*Rotation, error) {
 	return &Rotation{from: from, to: to}, nil
 }
 
+// NewRestoreRotation prepares the reseal of a restored database from the
+// ring of its archive to the installation's ring. Unlike NewRotation it
+// touches neither SECRET_KEY nor the keyring material of the
+// installation, and the legacy data stays readable under them, so it is
+// allowed while legacy data exists and the material may differ (migration
+// specification, sections 4.9 and 5.6).
+func NewRestoreRotation(archive, installation *Ring) (*Rotation, error) {
+	if archive.id == installation.id {
+		return nil, ErrRotationSameKey
+	}
+	return &Rotation{from: archive, to: installation}, nil
+}
+
 // ErrRotationVerify reports a resealed value that does not open to the
 // original plaintext under the new ring.
 var ErrRotationVerify = errors.New("keyring: a resealed value does not verify under the new SECRET_KEY")

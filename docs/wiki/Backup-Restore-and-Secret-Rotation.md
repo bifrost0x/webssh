@@ -87,6 +87,13 @@ While a failed rollback is unresolved, `/ready` and the sign-in page answer
 - When WebSSH manages the key in `DATA_DIR/secret_key`, restoring a 3.4
   archive installs the archive's key together with its database, so an
   archive from another host works. The previous key is kept for rollback.
+- While the 3.3 data of a migrated installation still exists (before
+  `webssh legacy purge`), `DATA_DIR/secret_key` belongs to that data and is
+  never changed. An archive made with another key is then sealed again
+  under the active key and key material while it is staged, with the same
+  steps as `rotate-secret-key`. SSH keys, saved passwords, second factors
+  and the GitHub client secret open as before, and 3.3 still starts on its
+  own data. An interrupted restore changes nothing.
 - When `SECRET_KEY` is set in the environment and differs from the key in
   the archive, the restore is refused before anything changes. Restore with
   the `SECRET_KEY` the archive was made with.
